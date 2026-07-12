@@ -1,6 +1,66 @@
 # MIRA Release Notes
 
 
+### v3.129.13 (2026-07-12) - chore(deps): remove unused anthropic dependency from Telegram bot
+- **Why:** MIRA policy (PR #610) removed Anthropic as a provider; the `anthropic>=0.97.0` line in `mira-bots/telegram/requirements.txt` is dead weight. Verified unused via grep across the entire Telegram bot codebase.
+- **What:** removed `anthropic>=0.97.0` from `mira-bots/telegram/requirements.txt`. No code change, no behavior change — pure dependency hygiene.
+- **Evidence:** `grep -rn "anthropic\|import anthropic\|from anthropic" mira-bots/telegram/` returns only the requirements.txt line (no actual usage).
+- **Impact:** cleanup only — no functionality affected. VERSION 3.129.1 → 3.129.2.
+
+### v3.129.12 (2026-07-12) - test(stripe): reconcile webhook-before-signup provisioning (#2438)
+- **Why:** GitHub issue #2438 flagged a race condition: if a Stripe webhook fires before Hub signup, the payment is best-effort only—no retry. A paying customer ends up without a provisioned tenant.
+- **What:** integration test `mira-web/src/lib/__tests__/stripe-webhook-before-signup.integration.test.ts` (5 test cases) exercises the full queue-and-reconcile path: webhook queues payment when Hub user doesn't exist yet; later reconciliation drains the queue and provisions the tenant; re-running reconciliation is idempotent (no double-provision); Stripe redelivery doesn't double-queue (ON CONFLICT idempotency); unmatched rows stay pending with attempt count bumped; reconciliation scoped to one email finds and retries only that email.
+- **Test Results:** all 5 pass; surrounding `hub-provisioning-queue.test.ts` suite remains green (9 pass).
+- **Status:** Test PASSES — the queue and reconciliation code already exists (PR #2437 added the durable queue) and works as intended. Test closes issue #2438 by proving the behavior works end-to-end. No product code change.
+
+### v3.129.11 (2026-07-12) - feat(dogfood): Drive Commander public fault-lookup funnel regression check
+- **Why:** extend the daily judge to guard the public fault-lookup money path (Drive Commander SEO funnel). The freemium landing page and fault-detail views must stay live, reachable, grounded (cited), and publicly accessible — the cash-conversion gate for the PLG funnel.
+- **What:** `tools/crew/dogfood/checks/fault-lookup.check` — two-persona gate verifying that `GET /drive-commander/siemens-g120` and `GET /drive-commander/siemens-g120/faults/F30001` return HTML/JSON, contain the G120 library and fault code, ground with citations, require no login. Auto-detects mira-web base URL (defaults to staging 4200 if DF_BASE is 4101). Emits `GREEN` (funnel works), `YELLOW` (works but degraded, e.g., missing citations), `RED` (blocked), or `INFRA` (route not deployed yet — never files false product-RED on pre-deployment).
+- **Base URL logic:** mira-web is on separate port (4200) in staging; the check reuses the Hub base `http://100.68.120.99:4101` and auto-swaps the port. On prod/unified reverse-proxy hosts, it falls back to the same base.
+- **Integration:** auto-discovered from `tools/crew/dogfood/checks/*.check`; wired into the daily judge.sh loop as a 6th check (alongside maintenance-tech, contextualization, work-order, demo-readiness, beta-gate).
+- **Verdict contract:** `GREEN` (200, G120+F30001+citations, no login) | `YELLOW` (reachable but missing citations/freemium gate) | `RED` (200 but missing content/login-blocked) | `INFRA` (404/timeout, not deployed).
+- **CI:** CI runs `test_judge.sh` (hermetic, passes); dry-run judge emits `INFRA` verdict (expected until route deploys).
+- `VERSION 3.129.1 → 3.129.2`.
+
+### v3.129.10 (2026-07-12) - feat(drive-commander): public G120 fault funnel + freemium gate (Pro CTA)
+- **What:** Light up the Drive Commander freemium gate for Siemens G120. Landing page at `/drive-commander/siemens-g120` (lists all 13 faults). Fault pages at `/drive-commander/siemens-g120/faults/F30001` (etc.) show: free tier = fault code + name + cited parameters (id, purpose, citation + manual excerpt); Pro lock teaser = "Full troubleshooting + wiring + reset workflow + Ask MIRA + history" with CTA to pricing page.
+- **Free tier display:** fault meaning (hero) + first N cited parameters from the pack (name, purpose, manual page reference + excerpt), no guesses, all grounded.
+- **Pro gate:** Unlock CTA → `/pricing?product=drive-commander-pro` ($29/mo or $197/yr, individual technician license). TODO(stripe-sku): create Drive Commander Pro price in Stripe + wire Doppler `factorylm/prd STRIPE_DRIVE_COMMANDER_PRICE_ID`.
+- **Routes now rendering:** G120 landing + 13 fault pages + 18 parameter detail pages (same pattern as PowerFlex 525/40).
+- **Tests:** sitemap test updated to include G120 count (was 2 packs → now 3 packs); `drive-commander.test.ts` 21/21 pass.
+- **Impact:** Product feature — public, indexable, no auth, freemium gate live. Users can discover G120 faults for free; Pro subscribers see full cited troubleshooting.
+- **VERSION:** 3.129.2 → 3.130.0 (minor).
+
+### v3.129.2 (2026-07-11) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
+
+### v3.129.9 (2026-07-12) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
+- **What:** new G120 pack with 13 faults (F30001–F7011) + 18 cited parameters (P0100–P2011). Schema matches powerflex_525.json reference. 100% manual-cited from G120X operational instructions (0319_en-US).
+- **Routes:** `/drive-commander/siemens-g120` (landing + faults + parameters all resolve).
+- **Citation coverage:** 100% — F30001 overcurrent, F30004 motor overtemp, F30006 inverter overtemp, P1200 ramp acceleration, etc. all grounded.
+- **Validation:** JSON parse OK, schema compliance, all 13 faults registered, all 18 parameters resolvable. Eval fixture `vfd_siemens_01_sinamics_g120_f30001.yaml` grounds to pack.
+- **Impact:** Proves schema + renderer portability across manufacturers (Siemens/Rockwell).
+- **VERSION:** 3.129.1 → 3.129.2 (patch).
+
+### v3.129.8 (2026-07-11) - feat(ops): wire ENABLE_WO_EVIDENCE (default-off) into every engine service in saas.yml (#2445 Step 1)
+- **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE` + `MIRA_WO_EVIDENCE_TIMEOUT_S`/`MIRA_WO_EVIDENCE_LIMIT`, shipped flag-gated OFF in #2472) was settable in code but wired into **no** deployment, so enabling it meant hand-editing several services. This makes enabling a single Doppler-var flip, with **zero runtime behavior change** until then.
+- **What:** added the three vars (default-off: `${ENABLE_WO_EVIDENCE:-0}`, `${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}`, `${MIRA_WO_EVIDENCE_LIMIT:-5}`) to **every** `docker-compose.saas.yml` service that instantiates `shared.engine.Supervisor` — verified by grepping `Supervisor(` and mapping each hit to its saas build: **mira-pipeline, mira-bot-telegram, mira-bot-slack, mira-ask** (4 — the "assume three" trap: `mira-ask`/AskMira kiosk also runs the engine). Excluded (verified): `mira-mcp` proxies to mira-pipeline over HTTP (no engine); `mira-relay`/`mira-sparkplug-consumer` are ingest-only; teams/whatsapp/reddit/gchat/email adapters instantiate `Supervisor` in code but have no saas service.
+- **Docs + guard:** documented all three in `docs/env-vars.md`; new `tests/test_wo_evidence_compose.py` (4 tests) asserts every engine service carries all three vars default-off, that no non-engine service receives them, and that all three are documented (keeps env-drift green: used + documented).
+- **Scope:** config + docs + test only. Default OFF — nothing enabled, no Doppler/staging/prod change, `#2445` stays open. VERSION 3.129.7 → 3.129.8.
+
+### v3.129.7 (2026-07-11) - test(engine): golden case + CI guard for CMMS work-order-history citation (#2445)
+- **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE`, shipped flag-gated OFF in #2472) is built + unit-tested + wired into the diagnosis prompt, but #2445's Definition of Done requires a **golden case** proving a diagnosis for an asset with prior work orders cites them as evidence. That artifact was missing.
+- **What:**
+  - `tests/golden_factorylm.csv` — new golden case: a recurring GS10 `oC` overcurrent on conveyor CV-101 whose ideal answer cites two prior repairs (`[WO 1042]`, `[WO 0987]`) grounded in the provided work-order context, alongside the manual `[Source:]` tag. Mirrors the real `_format_wo_evidence` block shape (`[WO <num>] <date> (<status>): <title> -- <resolution>`).
+  - `tests/test_wo_evidence.py` — `test_golden_set_has_wo_citation_case`: a deterministic CI guard that the truth set keeps a work-order-citation case, cites ≥2 `[WO N]`, and every cited `[WO N]` is grounded in the case's own context (no invented citations). Keeps the DoD artifact from silently rotting (the CSV isn't auto-run by the offline eval, which loads `tests/eval/fixtures/*.yaml`).
+- **Scope:** test/fixture only — no engine, prompt, or flag-default change; `ENABLE_WO_EVIDENCE` stays OFF. Enablement (document the flag + wire it into the engine service `environment:` blocks + Doppler staging→gate→prod) is the deliberate follow-up. 14/14 `tests/test_wo_evidence.py` pass. VERSION 3.129.6 → 3.129.7.
+
+### v3.129.6 (2026-07-11) - docs(discovery): prod manual-ingest broken (dead docling) + VPS memory over-subscription
+- **What:** discovery record from enabling the drive-pack bridge on prod. Read-only VPS investigation surfaced two pre-existing prod issues beyond the bridge.
+- **Bridge:** `MIRA_DRIVE_PACK_BRIDGE=1` enabled + verified injected into the hourly cron; candidate creation proven on the live box via a one-shot against the cached PF525 PDF (`review_only`, `promoted:false`).
+- **Bug found:** `kb_growth_cron` manual ingest has failed for ~3 weeks — `mira-docling` was removed 2026-06-06 (OOM) but `full_ingest_pipeline` still calls it at `:5001` → `Connection refused` on every PDF. A real PowerFlex-525 manual is stuck failing in the queue purely because of this; fixing it makes the bridge fire automatically.
+- **Memory:** the 8 GB VPS is over-subscribed (swap 3.6/4.0 GiB) — a full staging stack (`stg-*` ≈ 870 MiB+) runs alongside prod, plus two MinIO instances + JVM services (java 777 MiB swapped). That's why docling has no room. Recommend: repoint ingest off docling onto the Tika/OW path; move staging off the prod box.
+- **Scope:** docs only. No code/runtime change. Full findings: `docs/discovery/2026-07-07-prod-ingest-docling-and-vps-memory.md`.
+
 ### v3.129.1 (2026-07-10) - fix(ci): install pytest-asyncio in the offline pytest jobs — stop the asyncio_mode PytestConfigWarning→exit-1 flake
 - **Why:** the `Architecture Check` job (and the two other offline pytest jobs) install only `pytest pyyaml`, but every pytest run reads `asyncio_mode = "auto"` from the shared `[tool.pytest.ini_options]` in `pyproject.toml`. Without `pytest-asyncio` present that's an **unknown ini option** → `PytestConfigWarning: Unknown config option: asyncio_mode`, which some resolved pytest versions escalate to **exit 1 despite all tests passing** (`9 passed, 1 warning` + exit 1). It flaked red on 4 PRs (#2547/#2549/#2550 Drive Commander convergence) while passing on clean-env draws (#2553).
 - **What:** add `pytest-asyncio` to the three offline pytest jobs in `.github/workflows/ci.yml` — `architecture-check`, the **required** `simlab-gate` (would *hard-block* merges if it flaked the same way), and `drive-pack-extract-tests`. This makes `asyncio_mode` a recognized option → no warning → the failure mode is removed at its source regardless of pytest version. No test-behavior change: these suites are synchronous, so `asyncio_mode=auto` is a no-op for them, and `pytest-asyncio`'s only dependency is `pytest` (no chromadb shadow risk).
@@ -78,7 +138,6 @@
 - **Mapping:** `rel.source_entity_id`→source device, `properties.from_terminal` (`"K1:A1"`)→`source_terminal` (`A1`); same for dest; `properties.wire_number`→`wire_number`. `drawing_ref`/`parent_equipment_id`/schematic type/symbol subtypes preserved in `evidence_summary`; `proposed_by='llm:schematic_intelligence'`; `approval_state='proposed'`.
 - **Two honest gaps surfaced (not papered over):** (1) the extractor emits **no `function_class`** (a traced connection carries only from/to/wire) → rows land `function_class='unknown'` with `evidence_summary.function_class_source='unclassified_by_extractor'`, awaiting human/later classification; (2) **doctrine tension** — migration 026 reserves direct INSERT for structured imports and routes *LLM-derived* rows via `ai_suggestions`; schematic output is LLM-derived, so this reuses the PR-1 direct-INSERT seam per instruction but keeps every row `proposed` + `proposed_by='llm:*'` (auditable), flagging `ai_suggestions` routing as the doctrine-strict follow-up. No new migration; no second table; no Drive-Pack schema change; no `schema_version` bump.
 - **Tests:** `+10` `tests/test_wiring_schematic_import.py` over a fixture payload — electrical-only filtering, exact mapping, envelope/raw equivalence, provenance, `proposed` default, `unknown` fclass + gap marker, dedup, reused-seam idempotency. Named CI "Unit Tests" step. Staging-only, no prod deploy.
-
 
 
 ### v3.124.0 (2026-07-09) - feat(wiring): prove the dormant wiring_connections seam — cited YAML → proposed rows (PR-1)
@@ -204,6 +263,12 @@
 - **Trust rules held:** manufacturer-only / ratings-only / ambiguous still refuse; serial identifies an asset but doesn't select a pack; catalog-backed aliases only (GS12N/GS14N stay excluded — not in the official GS10 spec).
 - **Tests:** +16 (asset identity) +6 (raw_text) +5 (applicability parity); full drive-pack + nameplate suite green (85 + 6); ruff clean; Hub GS10 pack copy still byte-synced. Built with Haiku + Sonnet subagents on disjoint files; integration + doc-accuracy pass by the orchestrator.
 - **Scope:** no change to `engine.py` / `ask_api` / `drive_pack.py` / `ignition_chat.py`; resolver unchanged.
+
+### v3.129.5 (2026-07-11) - docs(plan): prod ingest storage fixes — embedder (Bravo Ollama down) + KG upsert ON CONFLICT
+- **Discovery (issue #2562 Phase 1 OCR proof):** the OCR path works end-to-end (scanned PDF → Tika → 224 chars) but the chunk is **never stored / not citable**. Root cause is **not** OCR — it's the storage layer.
+- **Primary:** prod embeddings go to Bravo's home-lab Ollama (`OLLAMA_BASE_URL=http://100.86.236.11:11434` in `factorylm/prd`), which is **offline** (`curl … :11434 → rc=7 connection refused`) → `0 chunks stored` for every manual (OCR *and* text-layer). `knowledge_entries.embedding` is `vector(768)` (nomic-embed-text), so any replacement must be 768-dim-compatible.
+- **Secondary:** `kg_writer.py` `ON CONFLICT (tenant_id, entity_type, name)` errors "no matching constraint" despite a matching non-partial unique index (`kg_entities_tenant_type_name_key`) — anomalous; needs a staging repro. Blocks the KG write, not the citable chunk.
+- **Plan doc:** `docs/plans/2026-07-08-prod-ingest-storage-fixes.md` — immediate unblock (restart Bravo Ollama), durable options (prod-resident Ollama container vs cloud 768-dim provider — **owner decision**), KG constraint-promotion fix, and the re-run verification. Plan only — no prod code change or deploy.
 
 ### v3.111.2 (2026-07-08) - fix(drive-packs): GS10 pack matches real nameplate catalog prefixes (GS11N/GS13N)
 - **Bug the staging smoke found:** a real GS10-series drive photographed on the bench reads **MODEL: GS11N-20P2** — field nameplates print the *catalog part number*, never the series name "GS10". The `durapulse_gs10` pack's `family.aliases` / `nameplate.match_keywords` were only `["GS10","DURApulse","GS-10"]`, so `resolve_service_pack` correctly **refused to guess** (manufacturer recognized, no model match) — right behavior, but the pack data couldn't route a genuine GS10 drive. The resolver was NOT weakened; the data feeding it was completed.

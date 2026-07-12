@@ -1,6 +1,7 @@
 """MIRA MCP Server — equipment diagnostics + CMMS integration."""
 
 import asyncio
+import json as _json
 import logging
 import os
 import sqlite3
@@ -171,14 +172,69 @@ def get_equipment_status(equipment_id: str = "") -> dict:
     return {"equipment": rows}
 
 
+def _conveyor_events_as_faults(db) -> list:
+    """Map unresolved bench `conveyor_events` rows into the faults response shape.
+
+    The conveyor anomaly engine (plc/conv_simple_anomaly/engine.py) writes
+    `conveyor_events` into the SAME SQLite file this server reads
+    (MIRA_DB_PATH), but this surface only ever queried `faults` — so conveyor
+    anomalies were invisible to /api/faults/active (duplicate-systems audit
+    P1). Fail-safe: the table is bench-only, so its absence returns [].
+    `severity` is not persisted by the engine; rows carry the engine's
+    `confidence` instead and default to 'warning'.
+    """
+    try:
+        cur = db.cursor()
+        cur.execute(
+            "SELECT id, ts, fault, confidence, affected_json FROM conveyor_events "
+            "WHERE resolved_ts IS NULL ORDER BY ts DESC"
+        )
+        out = []
+        for r in cur.fetchall():
+            row = dict(r)
+            equipment = ""
+            try:
+                affected = _json.loads(row.get("affected_json") or "[]")
+                if affected and isinstance(affected[0], dict):
+                    equipment = affected[0].get("uns_path", "") or ""
+            except (ValueError, TypeError):
+                pass
+            fault = row.get("fault") or ""
+            code = fault.split(":", 1)[0].strip() if ":" in fault else fault
+            out.append(
+                {
+                    "id": "conveyor_events:%s" % row["id"],
+                    "equipment_id": equipment or "conveyor",
+                    "fault_code": code,
+                    "description": fault,
+                    "severity": "warning",
+                    "timestamp": row.get("ts"),
+                    "resolved": 0,
+                    "resolved_at": None,
+                    "confidence": row.get("confidence"),
+                    "source": "conveyor_events",
+                }
+            )
+        return out
+    except sqlite3.OperationalError:
+        return []  # bench-only table absent in most deployments
+
+
 @mcp.tool
 def list_active_faults() -> dict:
-    """List all currently active faults across all equipment."""
+    """List all currently active faults across all equipment.
+
+    Unions BOTH fault stores sharing the SQLite file: the SaaS-path `faults`
+    table and the bench conveyor anomaly engine's unresolved `conveyor_events`
+    rows (marked `source: conveyor_events`), newest first.
+    """
     db = _get_db()
     db.row_factory = sqlite3.Row
     cur = db.cursor()
     cur.execute("SELECT * FROM faults WHERE resolved = 0 ORDER BY timestamp DESC")
     rows = [dict(r) for r in cur.fetchall()]
+    rows.extend(_conveyor_events_as_faults(db))
+    rows.sort(key=lambda r: r.get("timestamp") or "", reverse=True)
     db.close()
     return {"active_faults": rows}
 

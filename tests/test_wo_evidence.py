@@ -240,3 +240,33 @@ async def test_flag_off_leaves_rag_context_untouched(tmp_path, monkeypatch):
         "why is it faulting", _state("Allen-Bradley, PowerFlex 525"), tenant_id="tenant-1"
     )
     assert "WORK ORDER HISTORY" not in sv.rag.process.await_args.kwargs.get("kg_context", "")
+
+
+# ── #2445 DoD: a golden case where a diagnosis cites prior work orders ──────
+# golden_factorylm.csv is the canonical diagnostic truth set (CLAUDE.md). This
+# guard keeps the WO-citation golden case present + well-formed so the DoD
+# artifact can't silently rot (it isn't auto-run by the offline eval, which
+# loads tests/eval/fixtures/*.yaml).
+
+
+def test_golden_set_has_wo_citation_case():
+    """The truth set contains a case whose ideal answer cites >=2 [WO N]."""
+    import csv
+    from pathlib import Path
+
+    golden = Path(__file__).resolve().parent / "golden_factorylm.csv"
+    rows = list(csv.DictReader(golden.open(newline="", encoding="utf-8")))
+    wo_cases = [
+        r for r in rows if "[WO " in r["ideal_answer"] and "[WO " in r["contexts"]
+    ]
+    assert wo_cases, "golden_factorylm.csv must contain a work-order-citation case (#2445)"
+    case = wo_cases[0]
+    # cites at least two prior work orders as evidence
+    assert case["ideal_answer"].count("[WO ") >= 2
+    # every [WO N] the ideal answer cites must actually appear in the provided context
+    import re
+
+    cited = set(re.findall(r"\[WO\s+([^\]]+)\]", case["ideal_answer"]))
+    ctx = case["contexts"]
+    for wo in cited:
+        assert f"[WO {wo}]" in ctx, f"cited [WO {wo}] not grounded in contexts"

@@ -163,7 +163,11 @@ describe("sitemap", () => {
       const p = getPack(slug)!;
       return 1 + listFaults(p).length + listParameters(p).length;
     };
-    expect(locs.length).toBe(packLocCount("powerflex-525") + packLocCount("powerflex-40"));
+    expect(locs.length).toBe(
+      packLocCount("powerflex-525") +
+        packLocCount("powerflex-40") +
+        packLocCount("siemens-g120")
+    );
   });
 });
 

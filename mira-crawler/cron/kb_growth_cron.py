@@ -60,7 +60,11 @@ except ImportError:
 # ─── paths ────────────────────────────────────────────────────────────────────
 _HERE = Path(__file__).parent.resolve()
 _REPO = _HERE.parent.parent
-QUEUE_FILE = _HERE / "manual_queue.json"
+# Runtime queue path: outside the repo tree so it survives git checkout --force on deploy.
+# Default to /var/lib/mira (Linux standard for application state), but allow override
+# via MIRA_MANUAL_QUEUE_PATH env var. This ensures queue progress persists across deploys.
+_QUEUE_PATH_DEFAULT = Path("/var/lib/mira/manual_queue.json")
+QUEUE_FILE = Path(os.getenv("MIRA_MANUAL_QUEUE_PATH", str(_QUEUE_PATH_DEFAULT)))
 PIPELINE = _REPO / "mira-crawler" / "tasks" / "full_ingest_pipeline.py"
 
 # ─── tunables (env-overridable) ───────────────────────────────────────────────
@@ -71,6 +75,7 @@ MAX_ATTEMPTS = int(os.getenv("KB_GROWTH_MAX_ATTEMPTS", "5"))
 RETRY_BASE_SEC = int(os.getenv("KB_GROWTH_RETRY_BASE_SEC", "600"))  # 10 min
 RETRY_CAP_SEC = int(os.getenv("KB_GROWTH_RETRY_CAP_SEC", "21600"))  # 6 h
 STALE_STATE_SEC = int(os.getenv("KB_GROWTH_STALE_STATE_SEC", "3600"))  # 1 h
+OCR_DRAIN_BATCH_SIZE = int(os.getenv("KB_GROWTH_OCR_DRAIN_BATCH_SIZE", "1"))  # bounded drain
 
 MILESTONE_STEP = int(os.getenv("KB_GROWTH_MILESTONE_STEP", "100"))
 TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
@@ -521,7 +526,7 @@ def drain_needs_ocr() -> dict:
 
     started_at = time.monotonic()
     processed: list[dict] = []
-    for idx in targets[:BATCH_SIZE]:
+    for idx in targets[:OCR_DRAIN_BATCH_SIZE]:
         if time.monotonic() - started_at > RUN_BUDGET_SEC:
             _log(f"Run budget exceeded ({RUN_BUDGET_SEC}s) — stopping drain early")
             break

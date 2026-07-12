@@ -1,0 +1,44 @@
+{
+  "id": 15,
+  "oem": "Omron",
+  "document": "CP1E Programmable Controller I/O Wiring (User Manual)",
+  "url": "https://www.omron-ap.com/data_pdf/mnu/cp1e-cpu(iowiringdiagram)_inst-1131078-2b.pdf?id=2064",
+  "manifest_page_ref": "Wiring section (p. 10–15)",
+  "print_type": "Compact PLC I/O termination",
+  "standard": "Industrial 24VDC",
+  "category": "PLC I/O",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 0,
+  "image_sha256": "2c62411a0ffec89a9d5a3665b573554f1da8e649e53008ea05cfba947b662937",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:09:21.980301+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.85,
+    "drawing_type": "wiring diagram",
+    "drawing_type_confidence": 0.9,
+    "vision_result": "The image shows an **electrical drawing**, specifically an **I/O Wiring Diagram** for OMRON's SYSMAX CP1E CPU Units. It displays detailed wiring diagrams for various CP1E models, including their terminal blocks and configurations. There are no physical indicators or equipment states to analyze.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 353,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "1. **What this appears to be**\n* This appears to be an I/O wiring diagram for OMRON CP1E CPU Units.\n\n2. **Main visible components**\n* The diagram shows multiple configurations of CP1E CPU Units with different I/O specifications:\n\t+ CP1E-□40DR-□: 24-V DC Input (24 Points), Relay Output (16 Points)\n\t+ CP1E-N40DT-□: 24-V DC Input (24 Points), Transistor (NPN) Output (16 Points)\n\t+ CP1E-N40DT1-□: 24-V DC Input (24 Points), Transistor (PNP) Output (16 Points)\n\t+ CP1E-□30DR-□: 24-V DC Input (18 Points), Relay Output (12 Points)\n\t+ CP1E-N30DT-□: 24-V DC Input (18 Points), Transistor (NPN) Output (12 Points)\n\t+ CP1E-N30DT1-□: 24-V DC Input (18 Points), Transistor (PNP) Output (12 Points)\n* Each configuration has upper and lower terminal blocks.\n\n3. **Plain-English theory of operation**\n* The diagrams show the wiring connections for the I/O terminals of the CP1E CPU Units.\n* The upper terminal blocks appear to be for input connections, while the lower terminal blocks are for output connections.\n\n4. **What must be true for it to work**\n* The diagrams indicate the required wiring connections for each I/O configuration.\n\n5. **What would stop it from working**\n* Incorrect wiring connections or missing connections.\n\n6. **Unclear or unreadable items**\n* Nothing major unreadable."
+}

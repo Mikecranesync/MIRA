@@ -1,0 +1,31 @@
+{
+  "id": 10,
+  "oem": "Omron",
+  "document": "G9SP-N Series Dual-Channel Safety Relay (Z922)",
+  "url": "https://files.omron.eu/downloads/latest/manual/en/z922_g9sp_series_safety_controller_operation_manual_en.pdf",
+  "manifest_page_ref": "Wiring diagram section (p. 5–8)",
+  "print_type": "Dual-channel safety relay schematic",
+  "standard": "ISO 13849-1 PLe",
+  "category": "Safety Relays",
+  "rendered_page_number": 41,
+  "image_path": "docs/eval/print-translator-campaign/images/10.png",
+  "run_timestamp_utc": "2026-07-10T12:08:45.641669+00:00",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "caption": "Describe the theory of operation.",
+  "image_sha256": "ff681c48ad1888a61a0729fa3b40b9de5e2fb80fb72a20c74c2926e6452c4591",
+  "drawing_type": "wiring diagram",
+  "ocr_item_count": 0,
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 492,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "response": "## **1. What this appears to be**\nThis appears to be a terminal arrangement and internal circuit diagram for G9SP-series Controllers, specifically detailing the configurations for models G9SP-N10S, G9SP-N10D, and G9SP-N20S.\n\n## **2. Main visible components**\n- **Terminal Blocks**: The diagram shows terminal blocks for different models: \n  - G9SP-N10S (17 pins top, 14 pins bottom)\n  - G9SP-N10D (24 pins top, 24 pins bottom)\n  - G9SP-N20S (24 pins top, 19 pins bottom)\n- **Internal Circuit Diagram**: The internal circuit diagram shows:\n  - Power supply terminals (V1/G1, V2/G2)\n  - Safety Input terminals (Si0 to Si19)\n  - Test Output terminals (T0 to T5)\n  - Safety Output terminals (So0 to So15)\n  - Standard Output terminals (O0 to O3)\n- **Power Supply**: 24 VDC power supply for internal and input circuits (V1/G1) and output circuits (V2/G2).\n\n## **3. Plain-English theory of operation**\nThe G9SP-series Controllers appear to operate as follows:\n- The power supply terminals (V1/G1 and V2/G2) provide 24 VDC to the internal circuits and output circuits.\n- Safety Input terminals (Si0 to Si19) are used to connect safety devices.\n- The Safety Output terminals (So0 to So15) and Standard Output terminals (O0 to O3) are used to control safety and standard output devices.\n- The Test Output terminals (T0 to T5) are likely used for testing purposes.\n\n## **4. What must be true for it to work**\n- Power supply must be connected to V1/G1 and V2/G2 terminals.\n- Safety inputs must be properly connected to Si0 to Si19 terminals.\n- Outputs must be correctly connected to So0 to So15 and O0 to O3 terminals.\n\n## **5. What would stop it from working**\n- Loss of 24 VDC power supply.\n- Incorrect or missing connections to safety input terminals.\n- Faulty or improperly connected output devices.\n\n## **6. Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image."
+}
