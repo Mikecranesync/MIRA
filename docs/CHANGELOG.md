@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.134.2 (2026-07-12) - fix(engine): drive-pack fast-path matches the QUESTION only — kiosk answered GFF to everything
+- **Why:** first live session on the Ask MIRA kiosk after the v3.134.1 mira-ask redeploy: EVERY question returned the GFF ground-fault card ("what does CE10 mean" → GFF; "why is the conveyor stopped" → GFF; reproduced via POST /ask). Root cause: the fast-path (engine.py, shipped 2026-07-06) ran resolve_pack()/answer_question() over the WHOLE composed message. The kiosk path prepends MACHINE_CONTEXT, which embeds the full GS10 fault-code table ("4=GFF ground fault; 12=Lvd; …") — so the pack always resolved ("GS10" in the card) and the first table mnemonic (GFF) always won over the technician's actual question.
+- **What:** the fast-path now strips attached context before matching — text after the kiosk `[QUESTION]\n` marker (ask_api/app.py composition) and after `[END LIVE TAGS]` (mira-pipeline/ignition_chat.py preamble); a bare message is unchanged. No behavior change for chat surfaces that send a plain question.
+- **Evidence:** 2 new regression tests composing the message EXACTLY like ask_api (real MACHINE_CONTEXT import): CE10 kiosk question → CE10 card not GFF; generic kiosk question → falls through to routing (not drive_pack). Both RED against unfixed engine, GREEN with fix; full test_engine_drive_pack_fastpath.py 8/8. ruff clean.
+- **Deploy:** mira-ask is NOT in deploy-vps defaults — dispatch `services="mira-ask"` explicitly; then live-verify POST /ask (CE10 → CE10, generic → non-GFF).
+- **Rollback:** single squash-revert; no migrations.
+
 ### v3.134.1 (2026-07-12) - fix(tools): ruff E401/I001 in drive-pack-extract (import-sorting autofix)
 - **Why:** PRs #2623/#2624 tried to fix these ruff violations but were closed unmerged; #2654's first commit bumped VERSION/CHANGELOG but never staged the actual fix, leaving 4 errors on main (E401 multiple imports on one line, I001 unsorted imports) in `scorecard.py` and `tests/test_scorecard.py`.
 - **What:** `ruff --fix` applied — imports split and sorted in `scorecard.py` and `tests/test_scorecard.py`. Imports-only diff.
