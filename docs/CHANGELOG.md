@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.133.2 (2026-07-12) - fix(saas): pass RESEND_API_KEY to mira-hub — magic-link login emails never sent
+- **Why:** prod magic-link sign-in was silently broken for everyone: `mira-hub` reads `RESEND_API_KEY` in `api/auth/magic-link` (and team invites), but the compose env block never passed it through, so every request hit the missing-key branch — no email sent, and the magic URL (a live sign-in token) written to container logs instead. Found while driving a Command Center fix that needed a real session.
+- **What:** one line — `RESEND_API_KEY=${RESEND_API_KEY:-}` in the mira-hub `environment:` block (key already in Doppler prd; mira-web already had the passthrough). With the key present the token-logging branch is dead code in prod, closing the token-in-logs hygiene issue too.
+- **Evidence:** prod logs show `[magic-link] RESEND_API_KEY not set — skipping email send` on every request. Post-deploy verification = request a magic link and confirm Resend delivery + no skip-warning in logs.
+- **Rollback:** single squash-revert; config-only.
+
 ### v3.133.1 (2026-07-12) - fix(saas): pass STRIPE_DRIVE_COMMANDER_PRICE_ID to mira-web container
 - **Why:** v3.132.3 shipped the Drive Commander Pro checkout code, and Doppler prd now has `STRIPE_DRIVE_COMMANDER_PRICE_ID` + a live key + the live webhook secret — but the mira-web service block in `docker-compose.saas.yml` never passed the new env var through, so the deployed container still saw it unset and the CTA kept falling back to /pricing even after redeploy.
 - **What:** one line — add `STRIPE_DRIVE_COMMANDER_PRICE_ID=${STRIPE_DRIVE_COMMANDER_PRICE_ID:-}` to the mira-web `environment:` block (same optional-default pattern as the sibling Stripe vars).

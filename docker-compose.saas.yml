@@ -681,6 +681,9 @@ services:
       #   3. The old /hub/api/auth/callback/google URI can be removed once no
       #      active sessions reference it (safe to remove after 24h).
       - AUTH_SECRET=${AUTH_SECRET:-}
+      # Magic-link + team-invite email sender (Resend). Without this the Hub
+      # silently skips the send and logs the magic URL instead (login broken).
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/api/auth}
       - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/api/auth}
       # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with
