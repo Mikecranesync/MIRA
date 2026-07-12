@@ -488,6 +488,51 @@ async def test_ask_equipment_prefers_latest_resolved_over_a_later_failed_rescan(
 
 
 @pytest.mark.asyncio
+async def test_ask_equipment_refuses_after_a_legible_photo_of_a_different_machine():
+    """Safety-review stale-identity fix. A first photo resolves the drive (GS10);
+    a SECOND, perfectly LEGIBLE photo shows a DIFFERENT, unsupported machine
+    (Siemens S120 -> NONE, NOT a parse_error). ask_equipment must NOT hand back
+    the first machine's confidently-cited fault-code fact -- the technician has
+    visibly moved machines -- it must refuse with NEEDS_CONTEXT. This is the
+    exact counterpart to the unreadable-rescan test above: an unreadable photo
+    keeps the identity; a legible different-machine photo supersedes it."""
+    service, _store = _service()
+    session_id = await service.create_session(TENANT, title="moved-machine test")
+
+    # Photo #1: legible GS11N nameplate -> RESOLVED durapulse_gs10.
+    await service.ingest_image(
+        session_id,
+        TENANT,
+        _sharp_image_bytes(),
+        vision=_FakeVision(_NAMEPLATE_CLASSIFICATION),
+        nameplate_worker=_FakeNameplateWorker(_GS11_NAMEPLATE_FIELDS),
+    )
+
+    # Photo #2: legible Siemens S120 nameplate -> NONE (unsupported), NOT unreadable.
+    s120 = {"manufacturer": "Siemens", "model": "S120", "raw_text": "SIEMENS S120"}
+    second = await service.ingest_image(
+        session_id,
+        TENANT,
+        _sharp_image_bytes(),
+        vision=_FakeVision(_NAMEPLATE_CLASSIFICATION),
+        nameplate_worker=_FakeNameplateWorker(s120),
+    )
+    assert second.equipment_resolution.status == "NONE"  # legible, unsupported machine
+
+    envelope = await service.ask_equipment(
+        session_id, TENANT, "what does CE10 mean?", retriever=lambda q, t, m: []
+    )
+    documented = [c for c in envelope.claims if c.evidence_state == EvidenceState.DOCUMENTED]
+    assert not documented, (
+        "must NOT answer with the EARLIER machine's cited fault-code fact after a "
+        "legible photo shows a different, unsupported machine (stale-identity leak)"
+    )
+    assert any(c.evidence_state == EvidenceState.NEEDS_CONTEXT for c in envelope.claims), (
+        "must refuse with NEEDS_CONTEXT once the current machine is unidentified"
+    )
+
+
+@pytest.mark.asyncio
 async def test_ask_equipment_surfaces_the_specific_conflict_when_nothing_ever_resolved(monkeypatch):
     service, _store = _service()
     session_id = await service.create_session(TENANT, title="never resolved test")

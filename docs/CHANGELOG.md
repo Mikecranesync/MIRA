@@ -1,6 +1,11 @@
 # MIRA Release Notes
 
 
+### v3.132.1 (2026-07-11) - fix(visual): ask_equipment refuses a stale identity after a legible different-machine photo
+- **Why:** an independent adversarial safety review found a real, reproducible NO-GO in Phase 2. `ask_equipment` selected the latest **RESOLVED** identity, so a perfectly **legible** photo of a **different/unsupported** machine (Siemens S120 → NONE) taken after a first RESOLVED photo (GS10) was ignored — an equipment question ("what does CE10 mean?") was answered with a confidently-cited fault-code fact **from the wrong machine**. The four hard gates (never-invent, energization short-circuit, refuse-without-identity, tenant isolation) all held; this violated their spirit one layer up.
+- **What:** `ask_equipment` now uses the **latest `equipment_resolver` observation outright**, not the latest RESOLVED. The unreadable-photo path (parse_error / quality-gate reject) deliberately writes **no** `equipment_resolver` observation, so an unreadable re-scan still cannot erase a prior identity (preserved + tested) — but a legible different/unsupported machine supersedes it, so `answer_equipment` refuses with NEEDS_CONTEXT instead of leaking a stale pack's cited facts. Verified against the reviewer's own PoC (now refuses) + a new regression test.
+- **Scope:** one-method fix in `session_service.py` + one test. `answer_composer.py`, `equipment.py`, migration 063 unchanged. 103 tests pass (102 + 1 new), ruff clean. Stacked on Phase 2 (PR #2648). VERSION 3.132.0 → 3.132.1.
+
 ### v3.132.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 2 — equipment/nameplate intelligence
 - **Why:** ADR-0027 Phase 2. Adds the session-integrated equipment path (photo → identity candidates → service-pack/manual resolution → cited answer) the PRD calls the strongest-readiness capability, **reusing** the Drive Commander packs + manual retrieval + the Phase 1 session. **Stacked on Phase 1 (PR #2645).**
 - **What:**

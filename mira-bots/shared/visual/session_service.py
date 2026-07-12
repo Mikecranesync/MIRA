@@ -659,25 +659,31 @@ class VisualSessionService:
         observation ``_record_equipment_observations`` wrote (tagged
         ``extractor="equipment_resolver"``) rather than re-resolving.
 
-        Prefers the LATEST observation whose persisted status was RESOLVED,
-        even if a later re-scan in the same session failed (CONFLICTING/
-        AMBIGUOUS/NONE) -- a failed re-scan must not erase a previously
-        established identity. If nothing ever resolved but at least one
-        attempt was made, surfaces that attempt's own (unresolved) status
-        rather than a generic "nothing yet" message. If no nameplate/equipment
-        photo was ever ingested in this session, NEEDS_CONTEXT.
+        Uses the LATEST legible identity attempt -- NOT the latest one that
+        happened to RESOLVE. This is the safety-critical distinction:
+
+        - An *unreadable* re-scan (NameplateWorker parse_error, or a
+          quality-gate reject) deliberately writes NO ``equipment_resolver``
+          observation (``_record_equipment_observations`` early-returns a
+          ``nameplate_worker`` NEEDS_CONTEXT instead), so a blurry photo does
+          NOT erase a previously established identity -- the prior RESOLVED
+          remains the latest ``equipment_resolver`` observation.
+        - A *legible* photo of a DIFFERENT or unsupported machine resolves to
+          NONE / CONFLICTING / AMBIGUOUS and IS persisted as an
+          ``equipment_resolver`` observation, so it SUPERSEDES the earlier
+          identity. We must not answer with the earlier pack's cited facts once
+          the technician has visibly moved to a different machine -- doing so
+          would hand back a confidently-cited fault-code/parameter fact for the
+          WRONG equipment (safety-review stale-identity finding).
+
+        So: the most recent ``equipment_resolver`` observation wins outright.
+        If it did not resolve, ``answer_equipment`` refuses with NEEDS_CONTEXT.
+        If no nameplate/equipment photo was ever ingested, NEEDS_CONTEXT.
         """
         observations = await self.store.load_observations(session_id, tenant_id)
         identity_obs = [o for o in observations if o.extractor == "equipment_resolver"]
 
-        resolved_obs = [
-            o
-            for o in identity_obs
-            if isinstance(o.metadata, dict) and o.metadata.get("status") == "RESOLVED"
-        ]
-        if resolved_obs:
-            resolution = EquipmentResolution.from_dict(resolved_obs[-1].metadata)
-        elif identity_obs:
+        if identity_obs:
             resolution = EquipmentResolution.from_dict(identity_obs[-1].metadata)
         else:
             hint = "no equipment identified yet in this session — send a clear photo of the nameplate first"
