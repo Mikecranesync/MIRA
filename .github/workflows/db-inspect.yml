@@ -65,6 +65,57 @@ jobs:
           echo "::add-mask::$DATABASE_URL"
           echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
 
+      - name: Inspect work_orders quality (#2445 WO-evidence prod audit — READ ONLY)
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === work_orders overview ===
+          SELECT count(*) AS total_wos,
+                 count(DISTINCT tenant_id) AS tenants,
+                 count(DISTINCT equipment_id) AS assets_with_wos
+          FROM work_orders;
+
+          \echo
+          \echo === synthetic (test-harness) vs real-looking (heuristic) ===
+          SELECT
+            count(*) FILTER (
+              WHERE title ~* 'probe|regress|roundtrip|fielddrop|postfix|audit|dogfood|^sw-'
+                 OR coalesce(resolution,'') ~* 'probe|regress|roundtrip|fielddrop|postfix|audit|dogfood|^sw-'
+                 OR coalesce(resolution,'') = 'x'
+            ) AS synthetic,
+            count(*) FILTER (
+              WHERE length(coalesce(resolution, fault_description,'')) > 25
+                AND title !~* 'probe|regress|roundtrip|fielddrop|postfix|audit|dogfood|^sw-'
+                AND coalesce(resolution,'') !~* 'probe|regress|roundtrip|fielddrop|postfix|audit|dogfood|^sw-'
+            ) AS real_looking,
+            count(*) AS total
+          FROM work_orders;
+
+          \echo
+          \echo === closed WOs with a resolution (the citable kind) ===
+          SELECT count(*) AS closed_with_resolution
+          FROM work_orders WHERE status = 'completed' AND length(coalesce(resolution,'')) > 10;
+
+          \echo
+          \echo === top 10 assets by real-looking WO count ===
+          SELECT eq.equipment_number, eq.manufacturer, eq.model_number, count(*) AS real_wos
+          FROM work_orders wo
+          JOIN cmms_equipment eq ON eq.id = wo.equipment_id AND eq.tenant_id = wo.tenant_id
+          WHERE length(coalesce(wo.resolution, wo.fault_description,'')) > 25
+            AND wo.title !~* 'probe|regress|roundtrip|fielddrop|postfix|audit|dogfood|^sw-'
+          GROUP BY 1,2,3 ORDER BY real_wos DESC LIMIT 10;
+
+          \echo
+          \echo === sample of 8 real-looking WO titles/resolutions ===
+          SELECT left(title,40) AS title, left(coalesce(resolution, fault_description,''),80) AS detail
+          FROM work_orders
+          WHERE length(coalesce(resolution, fault_description,'')) > 25
+            AND title !~* 'probe|regress|roundtrip|fielddrop|postfix|audit|dogfood|^sw-'
+          ORDER BY created_at DESC LIMIT 8;
+          SQL
+
       - name: Inspect kg_entities + kg_relationships
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
