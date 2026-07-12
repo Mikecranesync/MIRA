@@ -1,8 +1,18 @@
 # MIRA — Maintenance Intelligence & Response Assistant
 
-**AI-powered industrial maintenance diagnostics, delivered through the browser and every chat app your technicians already use.**
+> **⚠️ PRODUCT FRAMING UPDATE (2026-07-11):** This README describes the infrastructure layer. The **first
+> sellable product is Drive Commander**, a read-only VFD troubleshooting tool (issue #2577, PR #2504,
+> ADR-0025). The generic "AI-powered maintenance diagnostics" framing below is foundational but no
+> longer the lead pitch — **start at the [Drive Commander ADR](docs/adr/0025-drive-intelligence-packs-and-drive-commander.md)
+> and [product strategy](NORTH_STAR.md)** to understand the current direction. **See also the canonical
+> wedge statement in [NORTH_STAR.md](NORTH_STAR.md).**
 
-MIRA diagnoses equipment faults in conversation. Scan a QR code on a machine, tell MIRA what's wrong, and get an answer grounded in that specific asset's manuals, history, and the collective experience of every technician who came before. Built for the plant floor — mobile-first, voice-capable, CMMS-integrated.
+**FactoryLM is the maintenance-context layer that makes a factory's messy reality trustworthy enough for AI.
+MIRA is the grounded agent that proves it by diagnosing with cited sources.**
+
+The first product delivering this vision is **Drive Commander** — context-led, read-only VFD fault intelligence
+on a phone. Earlier framing (generic "copilot", whole-plant "signal difference engine") is archived; see
+`docs/product/` for those framings' superseded-by headers.
 
 ---
 

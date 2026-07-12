@@ -1,6 +1,14 @@
-# What is MIRA?
+# What is MIRA? — Infrastructure Layer (Foundational Docs)
 
-**MIRA — Maintenance Intelligence & Response Assistant** — is a **signal difference engine with a contextual supervisor**: it watches a machine's raw signals, finds what changed, groups the differences into machine events, and explains what they mean for maintenance — grounded in your manuals, with citations.
+> **⚠️ PRODUCT FRAMING SUPERSEDED (2026-07-11).** This document describes the infrastructure ("signal
+> difference engine") that MIRA is built on. The **first sellable product is Drive Commander**, a
+> read-only VFD troubleshooting tool — see **[ADR-0025](../adr/0025-drive-intelligence-packs-and-drive-commander.md)
+> and the canonical [NORTH_STAR.md](../../NORTH_STAR.md)** for the current strategy. The "whole-plant
+> signal difference engine" framing here is foundational but subordinate to the Drive Commander wedge
+> execution (issue #2577, PR #2504). Keep reading for architecture context, but **start with NORTH_STAR
+> and ADR-0025 for product direction.**
+
+**MIRA — Maintenance Intelligence & Response Assistant** — is a **signal difference engine with a contextual supervisor**: it watches a machine's raw signals, finds what changed, groups the differences into machine events, and explains what they mean for maintenance — grounded in your manuals, with citations. This is the foundational capability; Drive Commander is the first product built on it.
 
 > **Positioning (2026-06-30):** raw PLC connectivity is commodity — Litmus, Ignition, OPC UA, and MQTT all do it. MIRA's value is *what changed and what it means*, not the wire. It **surfaces early-warning patterns, identifies maintenance targets, detects differences from normal, explains likely causes, and supports predictive maintenance** — it does **not** predict all failures, never invents a spec, and is **read-only** (no PLC writes). Full offering → [`mira_difference_engine_offering.md`](./mira_difference_engine_offering.md) · PRD → [`mira_signal_difference_engine_prd.md`](./mira_signal_difference_engine_prd.md).
 
