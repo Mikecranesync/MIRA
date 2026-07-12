@@ -10,6 +10,9 @@
   - 64 Phase 2 tests (incl. real-Postgres tenant isolation as `factorylm_app`) + 38 Phase 1 = **102 pass, zero regressions**; ruff check + format clean.
 - **Scope:** additive; no deployed service / resolver / composer / Phase-1 file touched. PR-only per the PRD; stacked on PR #2645. VERSION 3.131.0 → 3.132.0.
 
+=======
+>>>>>>> origin/main
+
 ### v3.131.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 1 — VisualSession spine + grounded answer envelope
 - **Why:** ADR-0027 Phase 1 (Snippet Interpreter MVP) of the MIRA Visual Technician PRD. The north star needs a persistent, multi-image, evidence-graded visual session with claim-level uncertainty — a genuine gap today (a session held ONE photo, replaced not accumulated). This builds the spine + the structured grounded-answer contract, **reusing** the existing extraction workers rather than rebuilding them.
 - **What:**
