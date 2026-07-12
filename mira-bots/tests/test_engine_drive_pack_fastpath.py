@@ -191,3 +191,49 @@ async def test_unmatched_drive_question_falls_through(supervisor):
     assert "CE10" not in reply
     assert "[Source:" not in reply
     assert reply  # normal (greeting-handler) reply still returned
+
+
+# ---------------------------------------------------------------------------
+# 4) Question-only matching — attached context blocks must NEVER hijack the
+#    pack match (2026-07-12 kiosk regression: MACHINE_CONTEXT embeds the full
+#    GS10 fault-code table, so whole-message matching returned the GFF card
+#    for EVERY kiosk question).
+# ---------------------------------------------------------------------------
+
+from ask_api.machine_context import MACHINE_CONTEXT  # noqa: E402
+
+
+def _kiosk_message(question: str) -> str:
+    """Compose a message exactly the way ask_api/app.py does for /ask:
+    MACHINE_CONTEXT + [LIVE CONVEYOR STATUS] block + [QUESTION] marker."""
+    status_block = "[LIVE CONVEYOR STATUS]\nE-STOP: ARMED / OK\nGS10: 0.0 Hz (CMD: STOP)"
+    return "\n\n".join([MACHINE_CONTEXT, status_block, "[QUESTION]\n" + question])
+
+
+@pytest.mark.asyncio
+async def test_kiosk_ce10_question_not_hijacked_by_context_fault_table(supervisor):
+    """A kiosk turn asking about CE10 must answer CE10 — not GFF, the first
+    mnemonic of the fault-code table MACHINE_CONTEXT embeds. Guards the
+    question-only matching contract."""
+    with patch("shared.engine.route_intent", new=_mock_route_intent("continue_current")):
+        result = await supervisor.process_full(
+            "chat-kiosk-ce10", _kiosk_message("what does CE10 mean on my gs10")
+        )
+
+    assert result["dispatch_kind"] == "drive_pack"
+    assert "CE10" in result["reply"]
+    assert "fault GFF" not in result["reply"]
+
+
+@pytest.mark.asyncio
+async def test_kiosk_generic_question_falls_through_not_gff(supervisor):
+    """A kiosk turn with NO fault code in the question must NOT be captured by
+    the drive-pack fast-path at all (the fault table + 'GS10' in
+    MACHINE_CONTEXT previously resolved the pack AND matched GFF)."""
+    with patch("shared.engine.route_intent", new=_mock_route_intent("continue_current")):
+        result = await supervisor.process_full(
+            "chat-kiosk-generic", _kiosk_message("why is the conveyor stopped")
+        )
+
+    assert result.get("dispatch_kind") != "drive_pack"
+    assert "fault GFF" not in result["reply"]
