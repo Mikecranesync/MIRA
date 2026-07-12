@@ -1,0 +1,2128 @@
+{
+  "package": {
+    "drawing_no": "AP31971",
+    "doc_no": "31971",
+    "title": "Sensor Control Unit 2",
+    "drawing_name": "Sensor Control Unit 2 V3.5",
+    "designation_iec81346": "=LA2 +SCU2",
+    "project": "Hyper Launch",
+    "customer_Kunde": "Mack (Mack Rides) — RESOLVED (layout reader's 'Mack vs Mark' settled: sheets 3/5/6/7 all print 'Mack' clearly)",
+    "manufacturer_engineering": "INTRASYS — Innovative Transport Systeme",
+    "location": "Orlando, FL, USA",
+    "cabinet": "+SCU2 (Sensor Control Unit 2)",
+    "unit_chain": "+SCU1 -> +SCU2(this) -> +SCU3 (three sensor-control cabinets daisy-chained for both power (L/N/PE/UL/UN via W5443/W5471) and EtherCAT/LAN (via W5445/W5473))",
+    "of_von_field": "1706 (printed as the 'von' value on every sheet: Blatt 3/4/5/6/7 all read 'von 1706'; verified on sheet 7 corner. Unusually high for a page count — may be an order/document code rather than a literal sheet total; recorded as printed, meaning flagged in unresolved)",
+    "sheets": [
+      {
+        "blatt": 3,
+        "function": "Versorgung 115V, Heizung (115V supply + heater)",
+        "datum": "23.09.2022",
+        "bearb": "Thomas Gruenzinger",
+        "gepr": "(blank)",
+        "file": "PXL_20260712_141820488.jpg"
+      },
+      {
+        "blatt": 4,
+        "function": "Versorgung 24V (24 VDC supply)",
+        "datum": "11.07.2022",
+        "bearb": "Ascher",
+        "gepr": "(blank)",
+        "file": "PXL_20260712_150423041.jpg",
+        "note": "not re-photographed by adjudicator; carried from reader, cross-refs reciprocate with verified sheets 3 & 5"
+      },
+      {
+        "blatt": 5,
+        "function": "PLC overview (EtherCAT node EK1100 + EL terminals A100-A107)",
+        "datum": "11.07.2022",
+        "bearb": "Ascher",
+        "gepr": "(blank)",
+        "file": "PXL_20260712_150435196.jpg"
+      },
+      {
+        "blatt": 6,
+        "function": "PLC overview (I/O map: A101 DO / A102-A103 DI / A104 RTD)",
+        "datum": "11.07.2022",
+        "bearb": "Ascher",
+        "gepr": "(blank)",
+        "file": "PXL_20260712_150446473.jpg"
+      },
+      {
+        "blatt": 7,
+        "function": "PLC overview (230 VAC DI: A105/A106 EL1722, ME05-ME08 Klixon)",
+        "datum": "11.07.2022",
+        "bearb": "Ascher",
+        "gepr": "(blank)",
+        "file": "PXL_20260712_150455846.jpg",
+        "note": "Blatt cell VERIFIED from pixels as 'Blatt 7 / von 1706' — the reader's 'Blatt 5 / two superimposed drawings' was a bleed-through/exposure artifact; at normal exposure this is a single, clean drawing (upper ~60% blank)."
+      },
+      {
+        "blatt": "~2-3 (blurry, NOT legible)",
+        "function": "Montageplatte (mounting-plate physical layout)",
+        "datum": "18.03.2022",
+        "bearb": "Thomas Gruenzinger",
+        "gepr": "(blank)",
+        "file": "PXL_20260712_141813344.jpg",
+        "note": "hand-colored render/photo; NO device tags legible anywhere in the drawing area"
+      }
+    ],
+    "trust": "proposed",
+    "adjudicator_note": "Merged from 6 blind per-sheet reads; every cross-sheet conflict was re-opened at full resolution and decided from pixels (crops in scratchpad). Voltage domains, module lineup, PE architecture, EtherCAT path, heater chain and all off-page grid targets were pixel-verified except sheet 4 (no conflict; carried) and the layout (no tags)."
+  },
+  "devices": [
+    {
+      "tag": "-3/F1",
+      "type": "miniature_circuit_breaker_2pole",
+      "detail": "'UPS Supply', B10A/2pol, MOE.132702 (Moeller/Eaton). 2-pole, ganged (dashed link). Fed from the UPS potentials UL/UN; output = USVL1/USVN to sheet 4.",
+      "connects": [
+        "-3/X0:2",
+        "-3/X0:N2",
+        "USVL1",
+        "USVN"
+      ],
+      "evidence": "Sheet 3: blue text '-3/F1 / UPS Supply / B10A/2pol / MOE.132702' beside a 2-pole breaker; VERIFIED at full res the two poles are fed by the wires from X0:2 (UL) and X0:N2 (UN).",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/F2",
+      "type": "miniature_circuit_breaker_2pole",
+      "detail": "'Heating' (Heizung), B10A/2pol, MOE.132702. 2-pole. Upper pole fed from L; output feeds the common line of the two climate controllers S10 (hygrostat) and S11 (thermostat). Second pole carries the heater neutral.",
+      "connects": [
+        "-3/S10:3",
+        "-3/S11",
+        "-3/X1:N"
+      ],
+      "evidence": "Sheet 3: '-3/F2 / Heating / B10A/2pol / MOE.132702' beside a 2-pole breaker; VERIFIED F2 upper pole (term 1 in / term 2 out) drives a vertical bus to S10:3 and S11.",
+      "confidence": 0.86,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/S10",
+      "type": "hygrostat_humidity_controller",
+      "detail": "Rittal RIT.3118.000 hygrostat, dashed-outline sub-assembly. Terminals 1='Drying', 2='Humidif.' (switched outputs, destinations not on this sheet), 3='L' (common in, from F2).",
+      "connects": [
+        "-3/F2",
+        "-3/S10:1",
+        "-3/S10:2",
+        "-3/S10:3"
+      ],
+      "evidence": "Sheet 3: '-3/S10 / RIT.3118.000'; terminal labels 'Drying'(1), 'Humidif.'(2), '3' with the F2 line arriving at 3 (verified).",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/S11",
+      "type": "thermostat_heat_cool",
+      "detail": "Rittal thermostat, printed 'RIT.3110000' (catalog form RIT.3110.000 — a dot appears dropped in print/scan). Dashed sub-assembly. Bottom terminals 3='Heating' (switched line out to heater) and 4='Cooling' (unused stub). Top-row terminal NUMBERS 5,6,7,1,2 legible; their function micro-labels NOT legible (one carries the F2 common feed).",
+      "connects": [
+        "-3/F2",
+        "-3/X1:1"
+      ],
+      "evidence": "Sheet 3: '-3/S11 / RIT.3110000'; VERIFIED bottom labels '3 Heating' / '4 Cooling' and top numerals '5 6 7 1 2'; wire from term 3 (Heating) runs left to X1:1.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/E1",
+      "type": "resistive_panel_heater",
+      "detail": "Anti-condensation heater, 250W-115V ('L Heizung'). Three leads: L, N, PE.",
+      "connects": [
+        "-3/X1:1",
+        "-3/X1:N",
+        "-3/X1:PE"
+      ],
+      "evidence": "Sheet 3: heater symbol labelled '-3/E1 / 250W-115V' + 'L Heizung'; VERIFIED L->X1:1, N->X1:N, PE->X1:PE with the green PE loop separate from the L/N path.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-4/G1",
+      "type": "power_supply_ac_dc",
+      "detail": "24 VDC switch-mode PSU, 2.5 A, PXC.2909576 (Phoenix Contact article). MODEL NAME (STEP-PS/1AC/24DC/2.5) is INFERRED from the article number, NOT printed. AC in (L/N from USV), DC out (+24V / 0V).",
+      "connects": [
+        "USVL1",
+        "USVN",
+        "-4/X24VDC",
+        "-4/X24GND"
+      ],
+      "evidence": "Sheet 4 reader: PSU block '-4/G1 / 2,5 A / PXC.2909576', pins L/N top, -/+ bottom. Not re-shot by adjudicator (no conflict).",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 4
+    },
+    {
+      "tag": "-4/F3",
+      "type": "temperature_switch_thermal_2pole",
+      "detail": "'Temperature Switches', B2 2pol, MOE.132695. Thermostatic cutout in the USV/230V line feeding X2. Pole 1 (1-2) in the line path; pole 2 (3-4) reads as open stubs on the sheet.",
+      "connects": [
+        "USVL1",
+        "-4/X2:1"
+      ],
+      "evidence": "Sheet 4 reader: '-4/F3 / Temperature Switches / B2, 2pol / MOE.132695', two ganged switch symbols. Not re-shot (no conflict).",
+      "confidence": 0.86,
+      "trust": "proposed",
+      "sheet": 4
+    },
+    {
+      "tag": "-5/A100",
+      "type": "ethercat_bus_coupler",
+      "detail": "Beckhoff EK1100 EtherCAT bus coupler — head of the E-bus stack. Network ports ETH In / ETH Out; power terminals 24V, 0V, +, -, PE. ('-5/' prefix = sheet-5 PLC-overview location marker used on every PLC sheet.)",
+      "connects": [
+        "-5/U1",
+        "-5/U2",
+        "-5/A101",
+        "-4/X24VDC (via 4.4/X24V.3)",
+        "-4/X24GND (via 4.6/X0V.3)",
+        "PE.5DA0"
+      ],
+      "evidence": "Sheet 5: dashed box '-5/A100' with vertical 'EK1100', ports 'ETH In'/'ETH Out', bottom row '24V 0V + - PE'. VERIFIED.",
+      "confidence": 0.96,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-5/A101",
+      "type": "ethercat_digital_output_terminal",
+      "detail": "Beckhoff EL2008, 8-Kanal Digital Ausgangsklemmen (DO8x24VDC/0.5A). Outputs A1.0-A1.7. Overview on sheet 5; I/O detail on sheet 6 (/6.4).",
+      "connects": [
+        "-5/A100",
+        "-5/A102",
+        "sheet6"
+      ],
+      "evidence": "Sheet 5 '-5/A101 / EL2008 / 8-Kanal Digital Ausgangsklemmen'; Sheet 6 '-5/A101 / EL2008 / DO8x24VDC/0.5A'. VERIFIED both.",
+      "confidence": 0.96,
+      "trust": "proposed",
+      "sheet": "5,6"
+    },
+    {
+      "tag": "-5/A102",
+      "type": "ethercat_digital_input_terminal",
+      "detail": "Beckhoff EL1008, 8-channel DI (DI8x24VDC). Occupancy inputs (SensorUnit 5-8 occupied + Occupied Upstream). Detail sheet 6 (/6.4), channel refs /9.x.",
+      "connects": [
+        "-5/A101",
+        "-5/A103",
+        "sheet6"
+      ],
+      "evidence": "Sheet 5 '-5/A102 / EL1008 / 8 Kanal Digital Eingangsklemme'; Sheet 6 '-5/A102 / EL1008 / DI8x24VDC'. VERIFIED.",
+      "confidence": 0.96,
+      "trust": "proposed",
+      "sheet": "5,6"
+    },
+    {
+      "tag": "-5/A103",
+      "type": "ethercat_digital_input_terminal",
+      "detail": "Beckhoff EL1008, 8-channel DI (DI8x24VDC). Broken-sensor inputs (SensorUnit 5-8 Broken + Occupied Downstream + Position Bit 1/2/3). Detail sheet 6 (/6.4), channel refs /10.x.",
+      "connects": [
+        "-5/A102",
+        "-5/A104",
+        "sheet6"
+      ],
+      "evidence": "Sheet 5 '-5/A103 / EL1008 / 8 Kanal Digital Eingangsklemme'; Sheet 6 '-5/A103 / EL1008 / DI8x24VDC'. VERIFIED.",
+      "confidence": 0.96,
+      "trust": "proposed",
+      "sheet": "5,6"
+    },
+    {
+      "tag": "-5/A104",
+      "type": "ethercat_rtd_input_terminal",
+      "detail": "Beckhoff EL3204, 4-channel PT100/RTD analog input (4AI RTD). Reads RTDs of ME05-ME08 as PEW100/102/104/106. Detail sheet 6 (/6.4), channel refs /11.x.",
+      "connects": [
+        "-5/A103",
+        "-5/A105",
+        "ME05",
+        "ME06",
+        "ME07",
+        "ME08",
+        "sheet6"
+      ],
+      "evidence": "Sheet 5 '-5/A104 / EL 3204 / 4Kanal Eingangsklemme PT100 (RTD)'; Sheet 6 '-5/A104 / EL 3204 / 4AI, RTD'. VERIFIED.",
+      "confidence": 0.96,
+      "trust": "proposed",
+      "sheet": "5,6"
+    },
+    {
+      "tag": "-5/A105",
+      "type": "ethercat_digital_input_terminal_230vac",
+      "detail": "Beckhoff EL1722, 2-channel 120...230 VAC digital input (DI2x120...230VAC). Reads ME05 & ME06 Klixon thermal switches as E3.0 / E3.1. Detail sheet 7 (/7.4), wire refs /12.x.",
+      "connects": [
+        "-5/A104",
+        "-5/A106",
+        "ME05",
+        "ME06",
+        "sheet7"
+      ],
+      "evidence": "Sheet 5 '-5/A105 / EL1722 / 2 Kanal Digital Eingang 230V / DI2x120...230VAC'; Sheet 7 detail VERIFIED at full res.",
+      "confidence": 0.94,
+      "trust": "proposed",
+      "sheet": "5,7"
+    },
+    {
+      "tag": "-5/A106",
+      "type": "ethercat_digital_input_terminal_230vac",
+      "detail": "Beckhoff EL1722, 2-channel 120...230 VAC digital input. Reads ME07 & ME08 Klixon thermal switches as E4.0 / E4.1. Detail sheet 7 (/7.4), wire refs /12.x.",
+      "connects": [
+        "-5/A105",
+        "-5/A107",
+        "ME07",
+        "ME08",
+        "sheet7"
+      ],
+      "evidence": "Sheet 5 '-5/A106 / EL1722 / DI2x120...230VAC'; Sheet 7 detail VERIFIED (ME07 term1=E4.0, ME08 term5=E4.1).",
+      "confidence": 0.94,
+      "trust": "proposed",
+      "sheet": "5,7"
+    },
+    {
+      "tag": "-5/A107",
+      "type": "ethercat_ebus_end_terminal",
+      "detail": "Beckhoff EL9011 E-bus end cap / terminator. No I/O, no cross-ref. Closes the EK1100 node.",
+      "connects": [
+        "-5/A106"
+      ],
+      "evidence": "Sheet 5 '-5/A107 / EL9011' in the last dashed box, no '/x.x' beneath. VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-5/U1",
+      "type": "rj45_feed_through_connector",
+      "detail": "Metz Connect 1309426003-E — RJ45 panel feed-through / bulkhead coupler in the ETH-In (upstream/SCU1) path. NOT a media/fibre converter (circle-between-brackets pass-through symbol, no power) — corrects the sheet-7 show-through reading.",
+      "connects": [
+        "-5/A100 (ETH In)",
+        "-W5445",
+        "+SCU1/5.3 (-ETH.D)"
+      ],
+      "evidence": "Sheet 5 '-5/U1 / Metz.1309426003-E'; VERIFIED at full res: feed-through connector symbol with -W5445 passing through.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-5/U2",
+      "type": "rj45_feed_through_connector",
+      "detail": "Metz Connect 1309426003-E — RJ45 panel feed-through / bulkhead coupler in the ETH-Out (downstream/SCU3, outdoor) path.",
+      "connects": [
+        "-5/A100 (ETH Out)",
+        "-W5473",
+        "+SCU3/5.2 (+SCU3-ETH.D)"
+      ],
+      "evidence": "Sheet 5 '-5/U2 / Metz.1309426003-E'; VERIFIED same feed-through symbol, -W5473 'LAN outdoor'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "ME05",
+      "type": "field_unit_with_rtd_and_klixon",
+      "detail": "Field 'ME05' unit carrying BOTH a PT100 RTD (temperature -> A104 PEW100, via +ME5-1.R:4, detail /11.1) AND a Klixon thermal over-temp switch (230VAC -> A105 E3.0, via -18/X2KL:2, detail /12.0). 'ME' expansion (e.g. Mess-/Motor-Einheit) is inferred, not printed.",
+      "connects": [
+        "-5/A104 (PEW100)",
+        "-5/A105 (E3.0)",
+        "+ME5-1.R:4",
+        "-18/X2KL:2"
+      ],
+      "evidence": "Sheet 6 'ME05 Temperature +ME5-1.R:4 /11.1 PEW100'; Sheet 7 'ME05 Klixon -18/X2KL:2 /12.0 E3.0'. VERIFIED both.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "6,7"
+    },
+    {
+      "tag": "ME06",
+      "type": "field_unit_with_rtd_and_klixon",
+      "detail": "RTD -> A104 PEW102 (+ME6-1.R:4, /11.3); Klixon -> A105 E3.1 (-18/X2KL:4, /12.1).",
+      "connects": [
+        "-5/A104 (PEW102)",
+        "-5/A105 (E3.1)",
+        "+ME6-1.R:4",
+        "-18/X2KL:4"
+      ],
+      "evidence": "Sheet 6 'ME06 Temperature +ME6-1.R:4 /11.3 PEW102'; Sheet 7 'ME06 Klixon -18/X2KL:4 /12.1 E3.1'. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "6,7"
+    },
+    {
+      "tag": "ME07",
+      "type": "field_unit_with_rtd_and_klixon",
+      "detail": "RTD -> A104 PEW104 (+ME7-1.R:4, /11.6); Klixon -> A106 E4.0 (-18/X2KL:6, /12.5).",
+      "connects": [
+        "-5/A104 (PEW104)",
+        "-5/A106 (E4.0)",
+        "+ME7-1.R:4",
+        "-18/X2KL:6"
+      ],
+      "evidence": "Sheet 6 'ME07 Temperature +ME7-1.R:4 /11.6 PEW104'; Sheet 7 'ME07 Klixon -18/X2KL:6 /12.5 E4.0'. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "6,7"
+    },
+    {
+      "tag": "ME08",
+      "type": "field_unit_with_rtd_and_klixon",
+      "detail": "RTD -> A104 PEW106 (+ME8-1.R:4, /11.8); Klixon -> A106 E4.1 (-18/X2KL:8, /12.6).",
+      "connects": [
+        "-5/A104 (PEW106)",
+        "-5/A106 (E4.1)",
+        "+ME8-1.R:4",
+        "-18/X2KL:8"
+      ],
+      "evidence": "Sheet 6 'ME08 Temperature +ME8-1.R:4 /11.8 PEW106'; Sheet 7 'ME08 Klixon -18/X2KL:8 /12.6 E4.1'. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "6,7"
+    },
+    {
+      "tag": "-A1",
+      "type": "referenced_marshalling_station_offpage",
+      "detail": "PLC/marshalling station with terminal strips X3/X4/X5; the field-wiring destination/source for A101 DO and A102/A103 DI. Drawn on sheet 13 ('-13/' prefix on every A1-X* reference).",
+      "connects": [
+        "-5/A101",
+        "-5/A102",
+        "-5/A103",
+        "sheet13"
+      ],
+      "evidence": "Sheet 6 repeated targets '-13/A1-X3:*', '-13/A1-X4:*', '-13/A1-X5:*'.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "6->13"
+    },
+    {
+      "tag": "-A10",
+      "type": "referenced_digital_output_source_offpage",
+      "detail": "'Position Bit 1' DIG-OUT source into A103 E1.5. On sheet 20 ('-20/A10:DIG OUT').",
+      "connects": [
+        "-5/A103 (E1.5)",
+        "sheet20"
+      ],
+      "evidence": "Sheet 6 A103 row '-20/A10:DIG OUT  Position Bit 1'.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "6->20"
+    },
+    {
+      "tag": "-A11",
+      "type": "referenced_digital_output_source_offpage",
+      "detail": "'Position Bit 2' DIG-OUT source into A103 E1.6. On sheet 20 ('-20/A11:DIG OUT').",
+      "connects": [
+        "-5/A103 (E1.6)",
+        "sheet20"
+      ],
+      "evidence": "Sheet 6 A103 row '-20/A11:DIG OUT  Position Bit 2'.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "6->20"
+    },
+    {
+      "tag": "-A12",
+      "type": "referenced_digital_output_source_offpage",
+      "detail": "'Position Bit 3' DIG-OUT source into A103 E1.7. On sheet 20 ('-20/A12:DIG OUT').",
+      "connects": [
+        "-5/A103 (E1.7)",
+        "sheet20"
+      ],
+      "evidence": "Sheet 6 A103 row '-20/A12:DIG OUT  Position Bit 3'.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "6->20"
+    }
+  ],
+  "terminals": [
+    {
+      "tag": "-3/X0",
+      "type": "terminal_strip_5way_pass_through",
+      "detail": "SCU2 pass-through/tap of the 115V + UPS buses between incoming -W5443 (from +SCU1) and outgoing -W5471 (to +SCU3). Terminals: 1(L), N1(N), PE, 2(UL), N2(UN). Sits at grid 3.2.",
+      "connects": [
+        "-W5443",
+        "-W5471"
+      ],
+      "evidence": "Sheet 3 '-3/X0' with five circles 1/N1/PE/2/N2. VERIFIED.",
+      "confidence": 0.94,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/X0:PE",
+      "type": "terminal_PE_main_tie",
+      "detail": "Main cabinet PE tie point (grid 3.2). Green: W5443:GNYE in, W5471:GNYE out, plus two off-page PE branches — PE.5DA0/5.5 (to PLC coupler PE on sheet 5) and E1.PE/3.7 (to heater earth, same sheet).",
+      "connects": [
+        "-W5443:GNYE",
+        "-W5471:GNYE",
+        "PE.5DA0",
+        "E1.PE"
+      ],
+      "evidence": "Sheet 3 VERIFIED at full res: X0 'PE' circle branches to red arrows 'PE.5DA0 / 5.5' and 'E1.PE / 3.7'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/X0:2",
+      "type": "terminal_UL",
+      "detail": "UL (UPS line) — W5443:3 / W5471:3; feeds F1 upper pole.",
+      "connects": [
+        "-W5443:3",
+        "-W5471:3",
+        "-3/F1"
+      ],
+      "evidence": "Sheet 3 circle '2'; VERIFIED wire to F1.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/X0:N2",
+      "type": "terminal_UN",
+      "detail": "UN (UPS neutral) — W5443:4 / W5471:4; feeds F1 lower pole.",
+      "connects": [
+        "-W5443:4",
+        "-W5471:4",
+        "-3/F1"
+      ],
+      "evidence": "Sheet 3 circle 'N2'; VERIFIED wire to F1.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/X1",
+      "type": "terminal_strip_heater_3way",
+      "detail": "Heater connection strip: 1(L Heizung, from S11:3), N (heater neutral), PE (heater earth -> E1.PE/3.2). Grid 3.7.",
+      "connects": [
+        "-3/S11:3",
+        "-3/E1"
+      ],
+      "evidence": "Sheet 3 '-3/X1' terminals 1/N/PE VERIFIED; 1='L Heizung'.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-4/X24VDC",
+      "type": "terminal_block_24vdc_distribution",
+      "detail": "+24 V distribution strip, points 1/2/3 bridged; fed from G1(+). Distributes X24V.2->/15.1, X24V.3->/5.4, X24V.4->/20.0. Pt3 spare.",
+      "connects": [
+        "-4/G1:+",
+        "X24V"
+      ],
+      "evidence": "Sheet 4 reader '-4/X24VDC' 1/2/3 + orange jumpers. Not re-shot (no conflict).",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 4
+    },
+    {
+      "tag": "-4/X24GND",
+      "type": "terminal_block_0v_distribution",
+      "detail": "0 V distribution strip, points PE/1/2/3; PE jumpered to pt1 (0V-PE bond); fed from G1(-). Distributes X0V.2->/15.1, X0V.3->/5.4, X0V.4->/20.0.",
+      "connects": [
+        "-4/G1:-",
+        "X0V",
+        "PE"
+      ],
+      "evidence": "Sheet 4 reader '-4/X24GND' PE/1/2/3. Not re-shot.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 4
+    },
+    {
+      "tag": "-4/X2",
+      "type": "terminal_block_230v_output",
+      "detail": "USV/230V output strip: 1(L, from F3:2 -> 230V_2/18.0), N1, N2(bridged, -> 230V_N2/12.2), PE(-> DA_PE1/12.4 + DA_PE2/12.8).",
+      "connects": [
+        "-4/F3:2",
+        "230V_2",
+        "230V_N2",
+        "DA_PE1",
+        "DA_PE2"
+      ],
+      "evidence": "Sheet 4 reader '-4/X2' 1/N1/N2/PE. Not re-shot.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 4
+    },
+    {
+      "tag": "-5/A100:ETH In",
+      "type": "rj45_ethercat_port_in",
+      "detail": "EtherCAT IN port on EK1100 — upstream side of SCU1->SCU2->SCU3 chain; wired via U1 + W5445 to SCU1.",
+      "connects": [
+        "-5/A100",
+        "-5/U1"
+      ],
+      "evidence": "Sheet 5 'ETH In' port VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-5/A100:ETH Out",
+      "type": "rj45_ethercat_port_out",
+      "detail": "EtherCAT OUT port on EK1100 — downstream side; wired via U2 + W5473 (LAN outdoor) to SCU3.",
+      "connects": [
+        "-5/A100",
+        "-5/U2"
+      ],
+      "evidence": "Sheet 5 'ETH Out' port VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-5/A100:24V",
+      "type": "power_terminal_us_plus",
+      "detail": "EK1100 Us +24V; fed off-page 4.4/X24V.3; jumpered to '+'.",
+      "connects": [
+        "4.4 / X24V.3",
+        "-5/A100:+"
+      ],
+      "evidence": "Sheet 5 '24V' terminal + up-arrow '4.4 / X24V.3'. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-5/A100:0V",
+      "type": "power_terminal_us_minus",
+      "detail": "EK1100 Us 0V; fed off-page 4.6/X0V.3; jumpered to '-'.",
+      "connects": [
+        "4.6 / X0V.3",
+        "-5/A100:-"
+      ],
+      "evidence": "Sheet 5 '0V' terminal + up-arrow '4.6 / X0V.3'. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-5/A100:PE",
+      "type": "pe_terminal",
+      "detail": "EK1100 PE; green conductor to 3.2/PE.5DA0 (reciprocal of sheet 3 X0:PE).",
+      "connects": [
+        "3.2 / PE.5DA0"
+      ],
+      "evidence": "Sheet 5 'PE' + arrow '3.2 / PE.5DA0'. VERIFIED both ends.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-5/A105:1",
+      "type": "el1722_input_ch1",
+      "detail": "230V signal input, address E3.0, from ME05 Klixon (-18/X2KL:2, /12.0).",
+      "connects": [
+        "ME05",
+        "-18/X2KL:2"
+      ],
+      "evidence": "Sheet 7 VERIFIED terminal 1 'E3.0' + '/12.0' + 'ME05 Klixon -18/X2KL:2'.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "-5/A105:5",
+      "type": "el1722_input_ch2",
+      "detail": "230V signal input, address E3.1, from ME06 Klixon (-18/X2KL:4, /12.1).",
+      "connects": [
+        "ME06",
+        "-18/X2KL:4"
+      ],
+      "evidence": "Sheet 7 VERIFIED terminal 5 'E3.1' + '/12.1'.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "-5/A105:3",
+      "type": "el1722_terminal_230vN",
+      "detail": "230V neutral to A105 (/12.3).",
+      "connects": [
+        "230V N",
+        "/12.3"
+      ],
+      "evidence": "Sheet 7 VERIFIED '230V N' at term 3 + '/12.3'.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "-5/A105:4",
+      "type": "el1722_terminal_PE",
+      "detail": "PE to A105 (/12.4).",
+      "connects": [
+        "PE",
+        "/12.4"
+      ],
+      "evidence": "Sheet 7 VERIFIED 'PE' at term 4 + '/12.4'.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "-5/A106:1",
+      "type": "el1722_input_ch1",
+      "detail": "230V signal input, address E4.0, from ME07 Klixon (-18/X2KL:6, /12.5).",
+      "connects": [
+        "ME07",
+        "-18/X2KL:6"
+      ],
+      "evidence": "Sheet 7 VERIFIED terminal 1 'E4.0' + '/12.5' + 'ME07 Klixon -18/X2KL:6'.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "-5/A106:5",
+      "type": "el1722_input_ch2",
+      "detail": "230V signal input, address E4.1, from ME08 Klixon (-18/X2KL:8, /12.6).",
+      "connects": [
+        "ME08",
+        "-18/X2KL:8"
+      ],
+      "evidence": "Sheet 7 VERIFIED terminal 5 'E4.1' + '/12.6'.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "-5/A106:3",
+      "type": "el1722_terminal_230vN",
+      "detail": "230V neutral to A106 (/12.7).",
+      "connects": [
+        "230V N",
+        "/12.7"
+      ],
+      "evidence": "Sheet 7 VERIFIED '230V N' at term 3 + '/12.7'.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "-5/A106:4",
+      "type": "el1722_terminal_PE",
+      "detail": "PE to A106 (/12.8).",
+      "connects": [
+        "PE",
+        "/12.8"
+      ],
+      "evidence": "Sheet 7 VERIFIED 'PE' at term 4 + '/12.8'.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "-18/X2KL:2/4/6/8",
+      "type": "referenced_terminal_strip_offpage",
+      "detail": "Terminal strip for the ME05-ME08 Klixon field conductors, drawn on sheet 18. Parse of '-18/X2KL:n' is 'sheet 18, strip X2KL, terminal n' (X2KL likely 'terminal block X2, Klemme'). :2=ME05, :4=ME06, :6=ME07, :8=ME08.",
+      "connects": [
+        "ME05",
+        "ME06",
+        "ME07",
+        "ME08",
+        "sheet18"
+      ],
+      "evidence": "Sheet 7 VERIFIED '-18/X2KL:2/4/6/8' beside each Klixon label.",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "7->18"
+    },
+    {
+      "tag": "+ME5-1.R:4 / +ME6-1.R:4 / +ME7-1.R:4 / +ME8-1.R:4",
+      "type": "referenced_field_rtd_terminal_offpage",
+      "detail": "Field RTD sensor terminals (location +ME5..8, device -1, terminal R:4) feeding A104 RTD channels. Detail on sheet 11 (/11.x).",
+      "connects": [
+        "-5/A104",
+        "ME05",
+        "ME06",
+        "ME07",
+        "ME08",
+        "sheet11"
+      ],
+      "evidence": "Sheet 6 VERIFIED '+ME5-1.R:4' ... '+ME8-1.R:4'.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "6->11"
+    },
+    {
+      "tag": "-13/A1-X3 / -X4 / -X5",
+      "type": "referenced_terminal_strips_offpage",
+      "detail": "Marshalling terminal strips X3/X4/X5 on station -A1, drawn on sheet 13. X3: DO A1.0(:2)/A1.1(:6) + DI Occupied-Upstream(:9). X4: SensorUnit-Broken + Occupied-Downstream (:2..:6). X5: SensorUnit-occupied (:5..:8).",
+      "connects": [
+        "-5/A101",
+        "-5/A102",
+        "-5/A103",
+        "sheet13"
+      ],
+      "evidence": "Sheet 6 VERIFIED repeated '-13/A1-X3/X4/X5:*' targets.",
+      "confidence": 0.83,
+      "trust": "proposed",
+      "sheet": "6->13"
+    }
+  ],
+  "cables": [
+    {
+      "tag": "-W5443",
+      "type": "power_cable_5core_incoming",
+      "detail": "Incoming from +SCU1. Cores 1=-L, 2=-N, GNYE=-PE, 3=-UL, 4=-UN -> lands on -3/X0. Carries both the 115V mains (L/N) and the UPS pair (UL/UN).",
+      "connects": [
+        "+SCU1",
+        "-3/X0"
+      ],
+      "evidence": "Sheet 3 '-W5443' with core markers 1/2/GNYE/3/4 and +SCU1/3.x source arrows. VERIFIED core-to-X0 mapping.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-W5471",
+      "type": "power_cable_5G2.5_outgoing",
+      "detail": "5G2,5mm2 out to +SCU3. Cores 1/2/GNYE/3/4 -> +SCU3 L/N/PE/UL/UN. Continues the 115V + UPS bus to Sensor Control Unit 3.",
+      "connects": [
+        "-3/X0",
+        "+SCU3"
+      ],
+      "evidence": "Sheet 3 '-W5471 / 5G2,5mm2' + '+SCU3/3.0 / +SCU3-*' destination arrows. VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-W5445",
+      "type": "ethernet_lan_cable_ethercat",
+      "detail": "LAN/EtherCAT cable on the ETH-In side: +SCU1 (net -ETH.D, +SCU1/5.3) -> -5/U1 -> A100 ETH In. Upstream SCU1->SCU2 leg.",
+      "connects": [
+        "+SCU1/5.3 (-ETH.D)",
+        "-5/U1",
+        "-5/A100:ETH In"
+      ],
+      "evidence": "Sheet 5 '-W5445' on the blue net above the +SCU1 arrow. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "-W5473",
+      "type": "lan_cable_outdoor_ethercat",
+      "detail": "LAN cable marked 'LAN / outdoor' on the ETH-Out side: A100 ETH Out -> -5/U2 -> +SCU3 (net +SCU3-ETH.D, +SCU3/5.2). Downstream SCU2->SCU3 leg (outdoor run).",
+      "connects": [
+        "-5/A100:ETH Out",
+        "-5/U2",
+        "+SCU3/5.2 (+SCU3-ETH.D)"
+      ],
+      "evidence": "Sheet 5 '-W5473 / LAN / outdoor'. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    }
+  ],
+  "conductors": [
+    {
+      "tag": "-L",
+      "type": "conductor_115V_line",
+      "detail": "115V line; W5443:1 -> X0:1 -> W5471:1 (SCU1->SCU2->SCU3 daisy).",
+      "connects": [
+        "+SCU1/3.1",
+        "-3/X0:1",
+        "+SCU3-L"
+      ],
+      "evidence": "Sheet 3 core '-L'. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-N",
+      "type": "conductor_neutral",
+      "detail": "115V neutral; W5443:2 -> X0:N1 -> W5471:2.",
+      "connects": [
+        "+SCU1/3.2",
+        "-3/X0:N1",
+        "+SCU3-N"
+      ],
+      "evidence": "Sheet 3 core '-N'. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-PE (GNYE)",
+      "type": "conductor_protective_earth",
+      "detail": "Cabinet PE; W5443:GNYE -> X0:PE -> W5471:GNYE; branches to PE.5DA0 and E1.PE nets. Green/yellow — kept separate from current-carrying cores.",
+      "connects": [
+        "+SCU1/3.2",
+        "-3/X0:PE",
+        "+SCU3-PE",
+        "PE.5DA0",
+        "E1.PE"
+      ],
+      "evidence": "Sheet 3 GNYE core + X0:PE branch. VERIFIED.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-UL",
+      "type": "conductor_UPS_line",
+      "detail": "UPS line; W5443:3 -> X0:2 -> W5471:3; also to F1. (Voltage not labelled on sheet 3; the derived net is labelled 230V on sheet 4 — see cross_sheet_notes.)",
+      "connects": [
+        "+SCU1/3.2",
+        "-3/X0:2",
+        "+SCU3-UL",
+        "-3/F1"
+      ],
+      "evidence": "Sheet 3 core '-UL'. VERIFIED F1 feed.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-UN",
+      "type": "conductor_UPS_neutral",
+      "detail": "UPS neutral; W5443:4 -> X0:N2 -> W5471:4; also to F1.",
+      "connects": [
+        "+SCU1/3.3",
+        "-3/X0:N2",
+        "+SCU3-UN",
+        "-3/F1"
+      ],
+      "evidence": "Sheet 3 core '-UN'. VERIFIED F1 feed.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "USVL1",
+      "type": "conductor_UPS_backed_line",
+      "detail": "UPS-backed line (USV = Unterbrechungsfreie StromVersorgung). Output of F1 upper pole -> sheet 4.0 (grid 3.7). On sheet 4 feeds G1:L and F3:1.",
+      "connects": [
+        "-3/F1",
+        "-4/G1",
+        "-4/F3"
+      ],
+      "evidence": "Sheet 3 red arrow 'USVL1 / 4.0'; sheet 4 in-arrow '3.7 / USVL1'. Reciprocal VERIFIED.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "3->4"
+    },
+    {
+      "tag": "USVN",
+      "type": "conductor_UPS_backed_neutral",
+      "detail": "UPS-backed neutral. Output of F1 lower pole -> sheet 4.0 (grid 3.7). On sheet 4 feeds G1:N and (inferred) X2 neutral.",
+      "connects": [
+        "-3/F1",
+        "-4/G1",
+        "-4/X2 (inferred)"
+      ],
+      "evidence": "Sheet 3 red arrow 'USVN / 4.0'; sheet 4 in-arrow '3.7 / USVN'. Reciprocal VERIFIED.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "3->4"
+    },
+    {
+      "tag": "X24V (+24 V bus)",
+      "type": "conductor_24vdc_positive",
+      "detail": "+24 V control rail from G1(+) -> X24VDC; distributed X24V.2(/15.1), X24V.3(/5.4->A100 24V), X24V.4(/20.0).",
+      "connects": [
+        "-4/G1:+",
+        "-4/X24VDC",
+        "-5/A100:24V",
+        "sheet15",
+        "sheet20"
+      ],
+      "evidence": "Sheet 4 reader; sheet 5 VERIFIED '4.4 / X24V.3' into A100 24V.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": "4->5,15,20"
+    },
+    {
+      "tag": "X0V (0 V bus)",
+      "type": "conductor_0v",
+      "detail": "0 V rail from G1(-) -> X24GND; distributed X0V.2(/15.1), X0V.3(/5.4->A100 0V), X0V.4(/20.0). Bonded to PE at X24GND.",
+      "connects": [
+        "-4/G1:-",
+        "-4/X24GND",
+        "-5/A100:0V",
+        "sheet15",
+        "sheet20"
+      ],
+      "evidence": "Sheet 4 reader; sheet 5 VERIFIED '4.6 / X0V.3' into A100 0V.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": "4->5,15,20"
+    },
+    {
+      "tag": "230V_2",
+      "type": "conductor_L_out",
+      "detail": "USV/230V line out of F3 pole-1 via X2:1 -> sheet 18 (18.0). Also referenced by the ME Klixon 230V branch.",
+      "connects": [
+        "-4/F3:2",
+        "-4/X2:1",
+        "sheet18"
+      ],
+      "evidence": "Sheet 4 reader arrow '230V_2 / 18.0' (last digit slightly uncertain).",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "4->18"
+    },
+    {
+      "tag": "230V_N2",
+      "type": "conductor_N_out",
+      "detail": "230V neutral out of X2:N2 -> sheet 12 (12.2).",
+      "connects": [
+        "-4/X2:N2",
+        "sheet12"
+      ],
+      "evidence": "Sheet 4 reader arrow '230V_N2 / 12.2'.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "4->12"
+    },
+    {
+      "tag": "heater switched line",
+      "type": "conductor_switched_L_to_heater",
+      "detail": "F2(Heating) -> S11 common -> S11:3 (Heating contact) -> X1:1 -> E1 heater L. Thermostat-switched.",
+      "connects": [
+        "-3/F2",
+        "-3/S11:3",
+        "-3/X1:1",
+        "-3/E1"
+      ],
+      "evidence": "Sheet 3 VERIFIED: F2 bus to S11, wire S11:3 -> X1:1 -> heater.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-ETH.D",
+      "type": "conductor_ethercat_data_upstream",
+      "detail": "EtherCAT/LAN data net from SCU1 (+SCU1/5.3) via W5445+U1 into A100 ETH In.",
+      "connects": [
+        "+SCU1/5.3",
+        "-5/U1",
+        "-5/A100:ETH In"
+      ],
+      "evidence": "Sheet 5 net '-ETH.D' on the SCU1 column. VERIFIED.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "+SCU3-ETH.D",
+      "type": "conductor_ethercat_data_downstream",
+      "detail": "EtherCAT/LAN data net from A100 ETH Out via U2+W5473 to SCU3 (+SCU3/5.2).",
+      "connects": [
+        "-5/A100:ETH Out",
+        "-5/U2",
+        "+SCU3/5.2"
+      ],
+      "evidence": "Sheet 5 net '+SCU3-ETH.D' on the SCU3 column. VERIFIED.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 5
+    }
+  ],
+  "contacts": [
+    {
+      "tag": "-3/F1 poles",
+      "type": "mcb_contacts_2pole_ganged",
+      "detail": "Two thermal-magnetic poles mechanically linked (dashed gang): UL pole (X0:2->USVL1) + UN pole (X0:N2->USVN).",
+      "connects": [
+        "-3/F1"
+      ],
+      "evidence": "Sheet 3 VERIFIED 2-pole symbol with dashed link; terminals 1/2 (upper) 3/4 (lower).",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/F2 poles",
+      "type": "mcb_contacts_2pole_ganged",
+      "detail": "Two ganged poles: L pole (to S10/S11 line) + N pole (heater neutral).",
+      "connects": [
+        "-3/F2"
+      ],
+      "evidence": "Sheet 3 VERIFIED 2-pole 'Heating' symbol, terminals 1/2 + 3/4.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/S11 changeover",
+      "type": "thermostat_contacts_heat_cool",
+      "detail": "Changeover thermostat: term 3 'Heating' (wired to X1:1) vs term 4 'Cooling' (unused). Only Heating is used on this cabinet.",
+      "connects": [
+        "-3/S11:3",
+        "-3/S11:4"
+      ],
+      "evidence": "Sheet 3 VERIFIED '3 Heating' / '4 Cooling'.",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/S10 contacts",
+      "type": "hygrostat_contacts",
+      "detail": "Hygrostat switching 'Drying'(1)/'Humidif.'(2) outputs against common L(3). Output destinations not shown on this sheet.",
+      "connects": [
+        "-3/S10:1",
+        "-3/S10:2",
+        "-3/S10:3"
+      ],
+      "evidence": "Sheet 3 terminal labels Drying/Humidif./L imply internal contacts.",
+      "confidence": 0.6,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-4/F3 poles",
+      "type": "thermal_cutout_contacts_2pole",
+      "detail": "Two ganged thermostatic (Klixon-type) poles; pole 1 (1-2) in the USVL1->230V_2 line; pole 2 (3-4) reads as open stubs on the sheet.",
+      "connects": [
+        "-4/F3"
+      ],
+      "evidence": "Sheet 4 reader '-4/F3' two switch symbols, dashed gang. Pole 2 routing unresolved.",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": 4
+    },
+    {
+      "tag": "ME05..ME08 Klixon",
+      "type": "thermal_overtemp_switch_contacts",
+      "detail": "Field thermal over-temp switches (Klixon), one per ME unit, switching 230V into A105/A106 (E3.0/E3.1/E4.0/E4.1). Contact detail on sheet 12.",
+      "connects": [
+        "-5/A105",
+        "-5/A106",
+        "sheet12"
+      ],
+      "evidence": "Sheet 7 'ME0x Klixon' at each EL1722 input. VERIFIED.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "7->12"
+    }
+  ],
+  "power_domains": [
+    {
+      "tag": "115 VAC L/N/PE (mains, heater branch)",
+      "type": "single_phase_115v_supply",
+      "detail": "L/N/PE daisy-chained +SCU1 -> +SCU2 -> +SCU3 via X0; F2 taps L/N for the 250W-115V heater E1. Sheet-3 title 'Versorgung 115V'.",
+      "connects": [
+        "-W5443",
+        "-3/X0",
+        "-W5471",
+        "-3/F2",
+        "-3/E1"
+      ],
+      "evidence": "Sheet 3 cores -L/-N/-PE; E1 '250W-115V'. VERIFIED.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "UL/UN -> USVL1/USVN (UPS/USV branch)",
+      "type": "ups_backed_ac_branch",
+      "detail": "Second L/N pair (UL/UN) carried in W5443/W5471 through X0:2/N2, breakered by F1 (UPS Supply), exported as USVL1/USVN to sheet 4 where it powers G1 (24V PSU) and F3->X2. Labelled 230V on sheet 4 (voltage tension — see notes).",
+      "connects": [
+        "-3/X0:2",
+        "-3/X0:N2",
+        "-3/F1",
+        "USVL1",
+        "USVN",
+        "-4/G1",
+        "-4/F3"
+      ],
+      "evidence": "Sheet 3 F1 'UPS Supply' + USVL1/USVN arrows; sheet 4 '3.7/USVL1'. VERIFIED reciprocal.",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "3->4"
+    },
+    {
+      "tag": "+24 VDC / 0 V (control)",
+      "type": "dc_control_supply",
+      "detail": "24 VDC control voltage from G1; +24V on X24V bus, 0V on X0V bus (0V-PE bonded at X24GND); distributed to sheets 5 (PLC coupler), 15, 20.",
+      "connects": [
+        "-4/G1",
+        "-4/X24VDC",
+        "-4/X24GND",
+        "-5/A100"
+      ],
+      "evidence": "Sheet 4 reader + sheet 5 VERIFIED A100 fed 4.4/X24V.3 & 4.6/X0V.3.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "4->5,15,20"
+    },
+    {
+      "tag": "230 VAC (Klixon sensing)",
+      "type": "ac_field_sense_supply",
+      "detail": "120...230 VAC domain for the EL1722 digital inputs (A105/A106): each ME Klixon switches 230V-L into a channel; 230V-N common; PE. Field detail on sheet 12.",
+      "connects": [
+        "-5/A105",
+        "-5/A106",
+        "sheet12"
+      ],
+      "evidence": "Sheet 5 'DI2x120...230VAC'; sheet 7 '230V N' + Klixon inputs. VERIFIED.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "5,7"
+    },
+    {
+      "tag": "PE (protective earth)",
+      "type": "protective_earth_domain",
+      "detail": "Cabinet PE: X0:PE main tie (grid 3.2) -> PE.5DA0 to PLC coupler (5.5) + E1.PE to heater (3.7); enclosure-bonding strip (RAIL DOOR/CHASSIS/DOOR/MOUNTINGPANEL); 0V-PE bond at X24GND; X2:PE->DA_PE1/DA_PE2; A105/A106 PE. Kept SEPARATE from current-carrying paths throughout.",
+      "connects": [
+        "-3/X0:PE",
+        "PE.5DA0",
+        "E1.PE",
+        "-4/X24GND:PE",
+        "-4/X2:PE",
+        "-5/A100:PE"
+      ],
+      "evidence": "Sheets 3/4/5 PE terminals + green conductors. VERIFIED reciprocal PE.5DA0.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "3,4,5"
+    }
+  ],
+  "pe_bonds": [
+    {
+      "tag": "-3/PE:1",
+      "type": "pe_bond_terminal",
+      "detail": "Enclosure bond to RAIL DOOR (dedicated PE bonding strip, SEPARATE from current paths).",
+      "connects": [
+        "RAIL DOOR"
+      ],
+      "evidence": "Sheet 3 VERIFIED green wire 'RAIL DOOR' -> terminal 'PE:1'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/PE:2",
+      "type": "pe_bond_terminal",
+      "detail": "Enclosure bond to CHASSIS.",
+      "connects": [
+        "CHASSIS"
+      ],
+      "evidence": "Sheet 3 VERIFIED 'CHASSIS' -> terminal '2'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/PE:3",
+      "type": "pe_bond_terminal",
+      "detail": "Enclosure bond to DOOR.",
+      "connects": [
+        "DOOR"
+      ],
+      "evidence": "Sheet 3 VERIFIED 'DOOR' -> terminal '3'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/PE:4",
+      "type": "pe_bond_terminal",
+      "detail": "Enclosure bond to MOUNTINGPANEL (Montageplatte).",
+      "connects": [
+        "MOUNTINGPANEL"
+      ],
+      "evidence": "Sheet 3 VERIFIED 'MOUNTINGPANEL' -> terminal '4'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "-3/PE:5",
+      "type": "pe_bond_terminal_spare",
+      "detail": "Spare (unconnected stub, labelled 'spare').",
+      "connects": [],
+      "evidence": "Sheet 3 VERIFIED terminal '5' stub + 'spare'.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "E1.PE (heater earth net)",
+      "type": "pe_net_local",
+      "detail": "Heater protective-earth net: E1 PE -> X1:PE -> arrow 'E1.PE / 3.2', reciprocated at X0:PE by 'E1.PE / 3.7'. Entirely within sheet 3 (grid 3.2 <-> 3.7). Green loop drawn clear of the L/N path.",
+      "connects": [
+        "-3/E1",
+        "-3/X1:PE",
+        "-3/X0:PE"
+      ],
+      "evidence": "Sheet 3 VERIFIED both arrows 'E1.PE / 3.7' (at X0:PE) and 'E1.PE / 3.2' (at heater).",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 3
+    },
+    {
+      "tag": "PE.5DA0 (cabinet PE to PLC)",
+      "type": "pe_net_cross_sheet",
+      "detail": "Cabinet PE net from X0:PE (sheet 3, grid 3.2) to EK1100 A100:PE (sheet 5, grid 5.5). Token '5DA0' legible but its meaning (a PE bar/device code) is not established.",
+      "connects": [
+        "-3/X0:PE",
+        "-5/A100:PE"
+      ],
+      "evidence": "VERIFIED both ends: sheet 3 'PE.5DA0 / 5.5', sheet 5 '3.2 / PE.5DA0'.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "3<->5"
+    },
+    {
+      "tag": "0V-PE bond @ -4/X24GND",
+      "type": "pe_bond_reference",
+      "detail": "24V-supply 0V rail referenced to PE: X24GND PE point jumpered to terminal 1.",
+      "connects": [
+        "-4/X24GND:PE",
+        "-4/X24GND:1"
+      ],
+      "evidence": "Sheet 4 reader PE-to-1 link. Not re-shot.",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 4
+    },
+    {
+      "tag": "-4/X2:PE distribution",
+      "type": "pe_distribution",
+      "detail": "X2 PE fans out to DA_PE1 (/12.4) and DA_PE2 (/12.8).",
+      "connects": [
+        "-4/X2:PE",
+        "DA_PE1",
+        "DA_PE2"
+      ],
+      "evidence": "Sheet 4 reader green branch. Not re-shot.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 4
+    },
+    {
+      "tag": "A105/A106 PE (/12.4, /12.8)",
+      "type": "pe_to_input_terminal",
+      "detail": "PE landed on EL1722 terminal 4 of both A105 (/12.4) and A106 (/12.8).",
+      "connects": [
+        "-5/A105:4",
+        "-5/A106:4"
+      ],
+      "evidence": "Sheet 7 VERIFIED 'PE' at term 4 of each.",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 7
+    }
+  ],
+  "off_page_references": [
+    {
+      "tag": "+SCU1/3.1 -L ; +SCU1/3.2 -N ; +SCU1/3.2 -PE ; +SCU1/3.2 -UL ; +SCU1/3.3 -UN",
+      "type": "incoming_power_from_SCU1",
+      "detail": "115V + UPS supply arriving from cabinet +SCU1 (its sheet 3) via cable -W5443 into -3/X0.",
+      "connects": [
+        "-W5443",
+        "-3/X0"
+      ],
+      "evidence": "Sheet 3 VERIFIED red in-arrows with these +SCU1/3.x labels per core.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "3<-+SCU1.3"
+    },
+    {
+      "tag": "+SCU3/3.0 (+SCU3-L/-N/-PE/-UL/-UN)",
+      "type": "outgoing_power_to_SCU3",
+      "detail": "115V + UPS supply continuing to cabinet +SCU3 (its sheet 3) via cable -W5471 from -3/X0.",
+      "connects": [
+        "-3/X0",
+        "-W5471"
+      ],
+      "evidence": "Sheet 3 VERIFIED red out-arrows '+SCU3/3.0 / +SCU3-*'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "3->+SCU3.3"
+    },
+    {
+      "tag": "PE.5DA0 / 5.5  (<->  3.2 / PE.5DA0)",
+      "type": "pe_net_cross_reference_RESOLVED",
+      "detail": "RESOLVED reciprocal: sheet 3 X0:PE (grid 3.2) <-> sheet 5 EK1100 A100:PE (grid 5.5). Same net PE.5DA0, verified both ends.",
+      "connects": [
+        "-3/X0:PE",
+        "-5/A100:PE"
+      ],
+      "evidence": "Sheet 3 'PE.5DA0 / 5.5' and sheet 5 '3.2 / PE.5DA0' — both pixel-verified.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "3<->5"
+    },
+    {
+      "tag": "E1.PE / 3.7  (<->  E1.PE / 3.2)",
+      "type": "pe_net_cross_reference_RESOLVED",
+      "detail": "RESOLVED reciprocal, same-sheet: X0:PE (3.2) <-> heater X1:PE/E1 (3.7). Local heater earth net.",
+      "connects": [
+        "-3/X0:PE",
+        "-3/X1:PE",
+        "-3/E1"
+      ],
+      "evidence": "Sheet 3 VERIFIED both 'E1.PE / 3.7' and 'E1.PE / 3.2'.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "3<->3"
+    },
+    {
+      "tag": "USVL1 / 4.0 ; USVN / 4.0  (<->  3.7 / USVL1 ; 3.7 / USVN)",
+      "type": "power_cross_reference_RESOLVED",
+      "detail": "RESOLVED reciprocal: F1 output on sheet 3 (grid 3.7) -> sheet 4 (grid 4.0), where USVL1/USVN power G1 and F3.",
+      "connects": [
+        "-3/F1",
+        "-4/G1",
+        "-4/F3"
+      ],
+      "evidence": "Sheet 3 'USVL1/4.0','USVN/4.0'; sheet 4 '3.7/USVL1','3.7/USVN'. Reciprocal VERIFIED.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "3<->4"
+    },
+    {
+      "tag": "X24V.3 / 5.4 ; X0V.3 / 5.4  (<->  4.4 / X24V.3 ; 4.6 / X0V.3)",
+      "type": "power_cross_reference_RESOLVED",
+      "detail": "RESOLVED: 24V/0V from sheet 4 X24VDC/X24GND -> sheet 5 EK1100 (A100 24V at grid 4.4, 0V at grid 4.6). (Sheet-4 side generically labels both '5.4'; sheet-5 side is the precise column.)",
+      "connects": [
+        "-4/X24VDC",
+        "-4/X24GND",
+        "-5/A100:24V",
+        "-5/A100:0V"
+      ],
+      "evidence": "Sheet 5 VERIFIED '4.4 / X24V.3' and '4.6 / X0V.3'.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": "4<->5"
+    },
+    {
+      "tag": "X24V.2 / 15.1 ; X0V.2 / 15.1",
+      "type": "power_cross_reference",
+      "detail": "24V/0V to sheet 15 col 1 (further loads).",
+      "connects": [
+        "-4/X24VDC:1",
+        "-4/X24GND:1",
+        "sheet15"
+      ],
+      "evidence": "Sheet 4 reader out-arrows.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "4->15"
+    },
+    {
+      "tag": "X24V.4 / 20.0 ; X0V.4 / 20.0",
+      "type": "power_cross_reference",
+      "detail": "24V/0V to sheet 20 col 0 (Position-Bit devices -A10/-A11/-A12 area).",
+      "connects": [
+        "-4/X24VDC:2",
+        "-4/X24GND:2",
+        "sheet20"
+      ],
+      "evidence": "Sheet 4 reader out-arrows.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "4->20"
+    },
+    {
+      "tag": "230V_2 / 18.0 ; 230V_N2 / 12.2 ; DA_PE1 / 12.4 ; DA_PE2 / 12.8",
+      "type": "power_cross_reference",
+      "detail": "USV/230V L to sheet 18; N to sheet 12; two PE conductors to sheet 12. (230V_2 last digit 18.0 vs 18.3 uncertain.)",
+      "connects": [
+        "-4/X2",
+        "sheet12",
+        "sheet18"
+      ],
+      "evidence": "Sheet 4 reader out-arrows.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "4->12,18"
+    },
+    {
+      "tag": "+SCU1/5.3 (-ETH.D)  ;  +SCU3/5.2 (+SCU3-ETH.D)",
+      "type": "ethercat_cross_reference_RESOLVED",
+      "detail": "EtherCAT/LAN continuations: upstream to +SCU1 (its sheet 5, col 3) via W5445/U1; downstream to +SCU3 (its sheet 5, col 2) via W5473/U2. This is the SCU1->SCU2->SCU3 backbone.",
+      "connects": [
+        "-5/U1",
+        "-W5445",
+        "-5/U2",
+        "-W5473"
+      ],
+      "evidence": "Sheet 5 VERIFIED both arrows.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "5<->+SCU1/+SCU3"
+    },
+    {
+      "tag": "-5/A101../A104 -> /6.4 ; -5/A105../A106 -> /7.4",
+      "type": "module_detail_cross_reference_RESOLVED",
+      "detail": "Sheet-5 overview modules point to their I/O-detail sheets: A101-A104 detail on sheet 6 (/6.4), A105-A106 detail on sheet 7 (/7.4). This chain is what proves the A105/A106 detail sheet = Blatt 7.",
+      "connects": [
+        "-5/A101",
+        "-5/A102",
+        "-5/A103",
+        "-5/A104",
+        "-5/A105",
+        "-5/A106",
+        "sheet6",
+        "sheet7"
+      ],
+      "evidence": "Sheet 5 VERIFIED '/6.4' x4 and '/7.4' x2; sheet 7 Blatt cell reads 7.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": "5->6,7"
+    },
+    {
+      "tag": "A101 /8.x ; A102 /9.x ; A103 /10.x ; A104 /11.x",
+      "type": "channel_detail_cross_reference",
+      "detail": "Per-channel continuations from sheet 6: A101 outputs used on sheet 8; A102 DI on sheet 9; A103 DI on sheet 10; A104 RTD on sheet 11.",
+      "connects": [
+        "-5/A101",
+        "-5/A102",
+        "-5/A103",
+        "-5/A104",
+        "sheet8",
+        "sheet9",
+        "sheet10",
+        "sheet11"
+      ],
+      "evidence": "Sheet 6 VERIFIED small red '/8.x','/9.x','/10.x','/11.x' beside channels.",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "6->8,9,10,11"
+    },
+    {
+      "tag": "A105/A106 /12.0../12.8 ; -18/X2KL:2/4/6/8",
+      "type": "klixon_wire_cross_reference",
+      "detail": "Sheet 7 EL1722 wiring continues on sheet 12 (/12.x) via terminal strip X2KL on sheet 18. :2/:4/:6/:8 = ME05/ME06/ME07/ME08 Klixon.",
+      "connects": [
+        "-5/A105",
+        "-5/A106",
+        "sheet12",
+        "sheet18"
+      ],
+      "evidence": "Sheet 7 VERIFIED '/12.0..8' and '-18/X2KL:2/4/6/8'.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "7->12,18"
+    },
+    {
+      "tag": "-13/A1-X3/X4/X5 ; -20/A10/A11/A12 ; +ME5..8-1.R:4",
+      "type": "field_wiring_cross_reference",
+      "detail": "Sheet 6 field/terminal targets: marshalling strips X3/X4/X5 on sheet 13 (station -A1); Position-Bit DO sources -A10/-A11/-A12 on sheet 20; RTD field terminals +ME5..8-1.R:4 (detail sheet 11).",
+      "connects": [
+        "-A1",
+        "-A10",
+        "-A11",
+        "-A12",
+        "ME05",
+        "ME06",
+        "ME07",
+        "ME08"
+      ],
+      "evidence": "Sheet 6 VERIFIED targets.",
+      "confidence": 0.83,
+      "trust": "proposed",
+      "sheet": "6->13,20,11"
+    }
+  ],
+  "plc_io_channels": [
+    {
+      "tag": "A1.0",
+      "type": "digital_output_EL2008",
+      "detail": "'SensorUnits off' (A101 term1). To -13/A1-X3:2 (sheet 13). Used /8.0.",
+      "connects": [
+        "-A1-X3:2",
+        "sheet8"
+      ],
+      "evidence": "Sheet 6 VERIFIED 'SensorUnits off -13/A1-X3:2 /8.0 A1.0'.",
+      "confidence": 0.94,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "A1.1",
+      "type": "digital_output_EL2008",
+      "detail": "'Position Bits on' (A101 term5). To -13/A1-X3:6. Used /8.1.",
+      "connects": [
+        "-A1-X3:6",
+        "sheet8"
+      ],
+      "evidence": "Sheet 6 VERIFIED 'A1.1 ... /8.1 -13/A1-X3:6 Position Bits on'.",
+      "confidence": 0.94,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "A1.2-A1.7",
+      "type": "digital_output_EL2008_spare",
+      "detail": "Spare outputs (terms 2/6/3/7/4/8); cross-refs /8.2,/8.4,/8.5,/8.6,/8.7,/8.8.",
+      "connects": [
+        "sheet8"
+      ],
+      "evidence": "Sheet 6 VERIFIED six 'spare' rows on A101.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.0@A102",
+      "type": "digital_input_EL1008",
+      "detail": "'SensorUnit 5 occupied'. From -13/A1-X5:5. /9.0.",
+      "connects": [
+        "-A1-X5:5",
+        "sheet9"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.1@A102",
+      "type": "digital_input_EL1008",
+      "detail": "'SensorUnit 6 occupied'. From -13/A1-X5:6. /9.1.",
+      "connects": [
+        "-A1-X5:6",
+        "sheet9"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.2@A102",
+      "type": "digital_input_EL1008",
+      "detail": "'SensorUnit 7 occupied'. From -13/A1-X5:7. /9.2.",
+      "connects": [
+        "-A1-X5:7",
+        "sheet9"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.3@A102",
+      "type": "digital_input_EL1008",
+      "detail": "'SensorUnit 8 occupied'. From -13/A1-X5:8. /9.4.",
+      "connects": [
+        "-A1-X5:8",
+        "sheet9"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.4@A102",
+      "type": "digital_input_EL1008",
+      "detail": "'Occupied Upstream'. From -13/A1-X3:9. /9.5.",
+      "connects": [
+        "-A1-X3:9",
+        "sheet9"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.5-E1.7@A102",
+      "type": "digital_input_EL1008_spare",
+      "detail": "Spare (/9.6,/9.7,/9.8).",
+      "connects": [
+        "sheet9"
+      ],
+      "evidence": "Sheet 6 VERIFIED three 'spare' rows.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.0@A103",
+      "type": "digital_input_EL1008",
+      "detail": "'SensorUnit 5 Broken'. From -13/A1-X4:2. /10.0. (NOTE: A103 symbolic addresses E1.0-E1.7 duplicate A102's labels on the overview — real TwinCAT byte addresses must differ; distinguished by card A103 + /10 series.)",
+      "connects": [
+        "-A1-X4:2",
+        "sheet10"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.1@A103",
+      "type": "digital_input_EL1008",
+      "detail": "'SensorUnit 6 Broken'. From -13/A1-X4:3. /10.1.",
+      "connects": [
+        "-A1-X4:3",
+        "sheet10"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.2@A103",
+      "type": "digital_input_EL1008",
+      "detail": "'SensorUnit 7 Broken'. From -13/A1-X4:4. /10.2.",
+      "connects": [
+        "-A1-X4:4",
+        "sheet10"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.3@A103",
+      "type": "digital_input_EL1008",
+      "detail": "'SensorUnit 8 Broken'. From -13/A1-X4:5. /10.4.",
+      "connects": [
+        "-A1-X4:5",
+        "sheet10"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.93,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.4@A103",
+      "type": "digital_input_EL1008",
+      "detail": "'Occupied Downstream'. From -13/A1-X4:6. /10.5.",
+      "connects": [
+        "-A1-X4:6",
+        "sheet10"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.5@A103",
+      "type": "digital_input_EL1008",
+      "detail": "'Position Bit 1'. From -20/A10:DIG OUT (sheet 20). /10.6.",
+      "connects": [
+        "-A10",
+        "sheet20"
+      ],
+      "evidence": "Sheet 6 VERIFIED '-20/A10:DIG OUT Position Bit 1'.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.6@A103",
+      "type": "digital_input_EL1008",
+      "detail": "'Position Bit 2'. From -20/A11:DIG OUT. /10.7.",
+      "connects": [
+        "-A11",
+        "sheet20"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E1.7@A103",
+      "type": "digital_input_EL1008",
+      "detail": "'Position Bit 3'. From -20/A12:DIG OUT. /10.8.",
+      "connects": [
+        "-A12",
+        "sheet20"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "PEW100",
+      "type": "rtd_analog_input_EL3204",
+      "detail": "'ME05 Temperature' (A104 ch1, term1; return on term2). From +ME5-1.R:4. /11.1.",
+      "connects": [
+        "ME05",
+        "+ME5-1.R:4",
+        "sheet11"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "PEW102",
+      "type": "rtd_analog_input_EL3204",
+      "detail": "'ME06 Temperature' (A104 ch2, term5). From +ME6-1.R:4. /11.3.",
+      "connects": [
+        "ME06",
+        "+ME6-1.R:4",
+        "sheet11"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "PEW104",
+      "type": "rtd_analog_input_EL3204",
+      "detail": "'ME07 Temperature' (A104 ch3, term3). From +ME7-1.R:4. /11.6.",
+      "connects": [
+        "ME07",
+        "+ME7-1.R:4",
+        "sheet11"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "PEW106",
+      "type": "rtd_analog_input_EL3204",
+      "detail": "'ME08 Temperature' (A104 ch4, term7). From +ME8-1.R:4. /11.8.",
+      "connects": [
+        "ME08",
+        "+ME8-1.R:4",
+        "sheet11"
+      ],
+      "evidence": "Sheet 6 VERIFIED.",
+      "confidence": 0.92,
+      "trust": "proposed",
+      "sheet": 6
+    },
+    {
+      "tag": "E3.0",
+      "type": "digital_input_230vac_EL1722",
+      "detail": "A105 ch1 = ME05 Klixon over-temp status (120...230VAC). Term1; -18/X2KL:2; /12.0.",
+      "connects": [
+        "-5/A105:1",
+        "ME05"
+      ],
+      "evidence": "Sheet 7 VERIFIED at full res.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "E3.1",
+      "type": "digital_input_230vac_EL1722",
+      "detail": "A105 ch2 = ME06 Klixon status. Term5; -18/X2KL:4; /12.1.",
+      "connects": [
+        "-5/A105:5",
+        "ME06"
+      ],
+      "evidence": "Sheet 7 VERIFIED.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "E4.0",
+      "type": "digital_input_230vac_EL1722",
+      "detail": "A106 ch1 = ME07 Klixon status. Term1; -18/X2KL:6; /12.5.",
+      "connects": [
+        "-5/A106:1",
+        "ME07"
+      ],
+      "evidence": "Sheet 7 VERIFIED.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 7
+    },
+    {
+      "tag": "E4.1",
+      "type": "digital_input_230vac_EL1722",
+      "detail": "A106 ch2 = ME08 Klixon status. Term5; -18/X2KL:8; /12.6.",
+      "connects": [
+        "-5/A106:5",
+        "ME08"
+      ],
+      "evidence": "Sheet 7 VERIFIED.",
+      "confidence": 0.88,
+      "trust": "proposed",
+      "sheet": 7
+    }
+  ],
+  "network_links": [
+    {
+      "tag": "EtherCAT E-bus A100->A107",
+      "type": "ethercat_ebus_backplane",
+      "detail": "Internal E-bus backplane, left-to-right: A100(EK1100) -> A101(EL2008) -> A102(EL1008) -> A103(EL1008) -> A104(EL3204) -> A105(EL1722) -> A106(EL1722) -> A107(EL9011 end cap). One contiguous Beckhoff node at +SCU2.",
+      "connects": [
+        "-5/A100",
+        "-5/A101",
+        "-5/A102",
+        "-5/A103",
+        "-5/A104",
+        "-5/A105",
+        "-5/A106",
+        "-5/A107"
+      ],
+      "evidence": "Sheet 5 single dashed assembly enclosure spanning A100..A107. VERIFIED lineup + EL9011 terminator.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "SCU1 -> SCU2 (ETH In, upstream)",
+      "type": "ethercat_link_upstream",
+      "detail": "+SCU1/5.3 (-ETH.D) -> cable -W5445 -> connector -5/U1 -> A100 ETH In. The SCU1->SCU2 leg.",
+      "connects": [
+        "+SCU1/5.3",
+        "-W5445",
+        "-5/U1",
+        "-5/A100:ETH In"
+      ],
+      "evidence": "Sheet 5 VERIFIED blue net + '-W5445' + '+SCU1/5.3 / -ETH.D'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    },
+    {
+      "tag": "SCU2 -> SCU3 (ETH Out, downstream)",
+      "type": "ethercat_link_downstream",
+      "detail": "A100 ETH Out -> connector -5/U2 -> cable -W5473 ('LAN outdoor') -> +SCU3/5.2 (+SCU3-ETH.D). The SCU2->SCU3 leg.",
+      "connects": [
+        "-5/A100:ETH Out",
+        "-5/U2",
+        "-W5473",
+        "+SCU3/5.2"
+      ],
+      "evidence": "Sheet 5 VERIFIED red net + '-W5473 LAN outdoor' + '+SCU3/5.2 / +SCU3-ETH.D'.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 5
+    }
+  ],
+  "functional_paths": [
+    {
+      "name": "115 VAC anti-condensation heater branch",
+      "sheet": 3,
+      "sequence": [
+        "+SCU1 -W5443 -L",
+        "-3/X0:1 (L)",
+        "-3/F2 (Heating breaker, B10A/2pol) upper pole",
+        "-3/S10:3 & -3/S11 common line",
+        "-3/S11:3 (thermostat 'Heating' contact)",
+        "-3/X1:1 (L Heizung)",
+        "-3/E1 L (250W-115V heater)",
+        "-3/E1 N -> -3/X1:N -> system neutral (via F2 2nd pole; upstream tie faint)",
+        "-3/E1 PE -> -3/X1:PE -> E1.PE net -> -3/X0:PE"
+      ],
+      "description": "Mains L is broken by the 2-pole 'Heating' MCB F2, feeds the common of the Rittal hygrostat S10 (Drying/Humidif) and thermostat S11; when S11 calls for heat its 'Heating' contact (term 3) passes L to X1:1 and the 250W/115V heater E1. Neutral returns via X1:N (F2's second pole); PE via a separate green loop X1:PE -> E1.PE. Cooling (S11:4) is unused.",
+      "evidence": "Sheet 3 pixel-verified: F2 2-pole symbol, S10/S11 dashed controllers, S11:3->X1:1 wire, E1 250W-115V, green PE loop, E1.PE/3.2 arrow.",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "open_items": [
+        "exact X1:N upstream tie to system N not cleanly traceable (faint, merges with sub-assembly boundary)",
+        "S11 top-row terminal functions (5,6,7,1,2) illegible"
+      ]
+    },
+    {
+      "name": "24 VDC control supply",
+      "sheet": "3->4->5/15/20",
+      "sequence": [
+        "-3/F1 (UPS Supply B10A/2pol) from UL/UN",
+        "USVL1/USVN (3.7 -> 4.0)",
+        "-4/G1 (PSU 2.5A, PXC.2909576) L/N in",
+        "-4/G1 +24V/0V out",
+        "-4/X24VDC (+24V, pts1-3 bridged) / -4/X24GND (0V, pts PE-1-2-3 bridged, 0V-PE bond)",
+        "X24V.2/X0V.2 -> /15.1",
+        "X24V.3/X0V.3 -> /5.4 (EK1100 A100 24V@4.4, 0V@4.6)",
+        "X24V.4/X0V.4 -> /20.0"
+      ],
+      "description": "The UPS-backed line (USVL1/USVN), created by breaker F1 from the UL/UN pair on sheet 3, powers the Phoenix Contact 24V PSU G1 on sheet 4. G1's +24V/0V are distributed on the X24VDC/X24GND strips (0V referenced to PE) and fanned out to sheets 15, 5 (the EtherCAT coupler), and 20.",
+      "evidence": "Sheet 4 reader + pixel-verified reciprocal cross-refs: sheet3 USVL1/USVN->4.0; sheet5 A100 fed 4.4/X24V.3 & 4.6/X0V.3.",
+      "confidence": 0.86,
+      "trust": "proposed",
+      "open_items": [
+        "sheet 4 not re-photographed by adjudicator (no conflict); X2 neutral source + F3 pole-2 routing flagged by reader"
+      ]
+    },
+    {
+      "name": "EtherCAT I/O station (SCU1->SCU2->SCU3)",
+      "sheet": "5,6,7",
+      "sequence": [
+        "+SCU1 -W5445 -> -5/U1 -> A100 ETH In",
+        "A100 EK1100 (24V/0V from sheet 4; PE via PE.5DA0 to sheet 3)",
+        "E-bus: A101 EL2008 DO8 -> A102 EL1008 DI8 -> A103 EL1008 DI8 -> A104 EL3204 RTD4 -> A105 EL1722 DI2(230V) -> A106 EL1722 DI2(230V) -> A107 EL9011 end",
+        "A100 ETH Out -> -5/U2 -> -W5473 (LAN outdoor) -> +SCU3"
+      ],
+      "description": "A single Beckhoff EtherCAT node reads the cabinet's sensor I/O and passes the fieldbus through to the next cabinet. I/O carried: A101(DO) SensorUnits-off + Position-Bits-on; A102(DI) SensorUnit 5-8 occupied + Occupied Upstream; A103(DI) SensorUnit 5-8 Broken + Occupied Downstream + Position Bit 1/2/3 (from -A10/-A11/-A12 on sheet 20); A104(RTD) ME05-ME08 Temperature; A105/A106(230VAC DI) ME05-ME08 Klixon over-temp. Each ME05-08 unit therefore lands TWICE: an RTD on A104 (analog, sheet 11 detail) and a Klixon on A105/A106 (digital over-temp, sheet 12 detail).",
+      "evidence": "Sheets 5/6/7 all pixel-verified: module lineup, U1/U2 feed-throughs, ETH In/Out routing, full I/O label set.",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "open_items": [
+        "A102 vs A103 share symbolic E1.0-E1.7 (real TwinCAT addresses differ)",
+        "channel field detail on sheets 8/9/10/11/12/13/18/20 not in this set"
+      ]
+    },
+    {
+      "name": "230 VAC Klixon sensing sub-branch",
+      "sheet": "4->12->7",
+      "sequence": [
+        "-4/X2 (230V_2 L / 230V_N2 N / PE)",
+        "sheet 12 distribution + terminal strip -18/X2KL",
+        "ME05-08 Klixon switched 230V-L",
+        "-5/A105 (E3.0/E3.1) & -5/A106 (E4.0/E4.1)"
+      ],
+      "description": "The USV/230V output (X2 on sheet 4) supplies the ME Klixon loop: each thermal switch, when closed, returns 230V to an EL1722 channel; 230V-N and PE are common. Wiring detail is on sheet 12 via strip X2KL (sheet 18).",
+      "evidence": "Sheet 7 pixel-verified '230V N', PE, and -18/X2KL:2/4/6/8 + /12.x; sheet 4 X2 230V outputs.",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "open_items": [
+        "voltage-domain tension: sheet-3 system titled 115V but the USV-derived net is labelled 230V on sheets 4/7 — UL/UN voltage not labelled on sheet 3"
+      ]
+    }
+  ],
+  "physical_layout_matches": [
+    {
+      "layout_feature": "Slim multi-module DIN-rail row across the top band of the front elevation (grainy, ~10+ narrow divisions, orange busbar exit)",
+      "candidate_schematic_device": "-5/A100..A107 EtherCAT station (EK1100 + EL terminals)",
+      "basis": "Form-factor of a Beckhoff EtherCAT terminal row only",
+      "confidence": 0.3,
+      "trust": "proposed",
+      "status": "CANDIDATE — NOT confirmed",
+      "needed_to_confirm": "A readable module tag (EK1100/EL####) on the layout; none legible."
+    },
+    {
+      "layout_feature": "Solid copper busbar on standoff insulators running diagonally (isometric) / horizontally (front)",
+      "candidate_schematic_device": "PE/earth bar OR a power-distribution bar",
+      "basis": "Copper-bar-on-insulators form; function not labelled",
+      "confidence": 0.3,
+      "trust": "proposed",
+      "status": "CANDIDATE — NOT confirmed",
+      "needed_to_confirm": "A PE/label marking; could equally be power distribution."
+    },
+    {
+      "layout_feature": "Multi-level colour-coded terminal-block stacks in the centre band (blue / green-yellow / orange / grey)",
+      "candidate_schematic_device": "Terminal strips -3/X0, -3/X1, -4/X2, -4/X24VDC, -4/X24GND, -18/X2KL",
+      "basis": "A cluster of feed-through terminal strips; green-yellow implies PE by colour convention",
+      "confidence": 0.35,
+      "trust": "proposed",
+      "status": "CANDIDATE — NOT confirmed",
+      "needed_to_confirm": "Readable strip tags (X0/X1/X2/X24…); none legible."
+    },
+    {
+      "layout_feature": "Small rectangular block (front-right) / block in isometric",
+      "candidate_schematic_device": "-4/G1 24V PSU (Phoenix Contact PXC.2909576)",
+      "basis": "PSU-sized block form only",
+      "confidence": 0.25,
+      "trust": "proposed",
+      "status": "CANDIDATE — NOT confirmed",
+      "needed_to_confirm": "Readable device tag / nameplate."
+    },
+    {
+      "layout_feature": "Row of identical white single-pole DIN modules with square windows (centre)",
+      "candidate_schematic_device": "MCBs -3/F1, -3/F2 (and/or -4/F3)",
+      "basis": "Breaker/fuse-holder form only",
+      "confidence": 0.25,
+      "trust": "proposed",
+      "status": "CANDIDATE — NOT confirmed",
+      "needed_to_confirm": "Readable ratings/tag; F1/F2 are sheet 3, F3 sheet 4 — cannot tell which."
+    },
+    {
+      "layout_feature": "~14 cable glands on the bottom gland plate (~10 left incl. 2 larger + 4 right)",
+      "candidate_schematic_device": "Field cable entries (-W5443, -W5471, -W5445, -W5473, ME05-08 sensor cables, etc.)",
+      "basis": "Glands are where field cables enter; count approximate",
+      "confidence": 0.3,
+      "trust": "proposed",
+      "status": "CANDIDATE — NOT confirmed",
+      "needed_to_confirm": "Cable tags at glands; none shown on the layout sheet."
+    }
+  ],
+  "cross_sheet_notes": "SET IDENTITY: AP31971 (doc 31971), '=LA2 +SCU2' Sensor Control Unit 2 V3.5, project 'Hyper Launch', customer Mack (Mack Rides), by INTRASYS, Orlando FL. This is one of a 3-cabinet chain +SCU1 -> +SCU2 -> +SCU3. Every sheet prints 'von 1706' (verified) — treat as printed; the value is oddly high for a page count and may be an order/document code (flagged in unresolved).\n\nSHEET NUMBERING (all pixel-verified): 3 = 115V supply/heater (Gruenzinger, 23.09.2022); 4 = 24V supply (Ascher, 11.07.2022); 5 = PLC overview / EtherCAT node A100-A107 (Ascher); 6 = I/O map A101-A104 (Ascher); 7 = 230V DI A105/A106 Klixon (Ascher). The Montageplatte layout is a separate early sheet (Gruenzinger, 18.03.2022), Blatt cell blurry. Note the author/date split: Gruenzinger did the early layout + the 115V/heater sheet; Ascher did the 24V + all PLC sheets.\n\nKEY CORRECTION vs the blind reads — SHEET 7 IS NOT TWO SUPERIMPOSED DRAWINGS. At normal exposure PXL_...150455846 is a single clean drawing (upper ~60% blank) whose corner reads 'Blatt 7 / von 1706' (pixel-verified). The 'faint node-overview layer B' the reader recovered via autocontrast was bleed-through from the adjacent sheet 5 (which authoritatively carries A100-A107, U1/U2, W5445/W5473, ETH In/Out). All 'layer-B' items were therefore NOT double-counted here; the node overview is attributed solely to sheet 5.\n\nRESOLVED CROSS-REFERENCES (reciprocals verified on both sheets where possible):\n- PE.5DA0: sheet3 X0:PE grid 3.2  <->  sheet5 EK1100 A100:PE grid 5.5 (sheet3 prints 'PE.5DA0/5.5', sheet5 prints '3.2/PE.5DA0').\n- E1.PE (heater earth): sheet3 X0:PE grid 3.2  <->  sheet3 heater X1:PE grid 3.7 (same-sheet net).\n- USVL1/USVN: sheet3 F1 output grid 3.7  <->  sheet4 grid 4.0 (sheet3 'USVL1/4.0','USVN/4.0'; sheet4 '3.7/USVL1','3.7/USVN').\n- 24V/0V: sheet4 X24VDC/X24GND  ->  sheet5 EK1100 (A100 24V at 4.4/X24V.3, 0V at 4.6/X0V.3).\n- EtherCAT: sheet5 -> +SCU1/5.3(-ETH.D) upstream (W5445/U1) and +SCU3/5.2(+SCU3-ETH.D) downstream (W5473/U2).\n- Module detail chain: sheet5 A101-A104 -> /6.4 (sheet 6); A105-A106 -> /7.4 (sheet 7). This chain is the proof that the A105/A106 sheet = Blatt 7.\n\nDEVICE-NAMING: the PLC modules are printed '-5/A100'..'-5/A107','-5/U1','-5/U2' on ALL three PLC sheets; '-5/' is the sheet-5 (PLC-overview) location/cross-ref marker, kept as the literal visible tag.\n\nCROSS-SIGNAL DESIGN (verified sheets 6 & 7): every field unit ME05, ME06, ME07, ME08 provides BOTH a PT100 RTD (analog temperature -> A104 EL3204 PEW100/102/104/106, field term +MEx-1.R:4, detail sheet 11) AND a Klixon thermal over-temp switch (digital 230VAC -> A105/A106 EL1722 E3.0/E3.1/E4.0/E4.1, field strip -18/X2KL:2/4/6/8, detail sheet 12). Continuous temperature + hard over-temp trip per unit.\n\nU1/U2 TYPE (resolved from pixels): Metz Connect 1309426003-E are RJ45 panel feed-through / bulkhead connectors (circle-between-brackets pass-through symbol, no power/converter) — NOT media/fibre converters as the sheet-7 show-through read suggested.\n\nPE DISCIPLINE: PE is kept strictly separate from current-carrying paths in this graph — the enclosure-bonding strip (RAIL DOOR/CHASSIS/DOOR/MOUNTINGPANEL/spare), the X0:PE main tie, PE.5DA0, E1.PE, the X24GND 0V-PE bond, X2:PE->DA_PE1/DA_PE2, and A105/A106 PE are all recorded as pe_bonds / pe nets, never merged into L/N/UL/UN conductors.\n\nVOLTAGE TENSION (open): sheet 3 is titled 'Versorgung 115V' and E1 is 250W-115V, but the UPS-derived net (UL/UN -> F1 -> USVL1/USVN) is labelled '230V' on sheets 4 and 7. UL/UN voltage is not labelled on sheet 3. Likely the cable carries a 115V mains pair (L/N) AND a separate 230V UPS pair (UL/UN); recorded as observed, not resolved.\n\nCONFIDENCE POSTURE: all items 'proposed'. Items I re-opened and confirmed at full resolution (sheet 3 PE/heater/F1, sheet 5 station/network/PE, sheets 6/7 I/O map) carry 0.85-0.96; sheet 4 (no conflict, not re-shot) carries the reader's values; the layout matches are CANDIDATES only (0.25-0.35) because no tags are legible.",
+  "unresolved": [
+    {
+      "item": "Sheet 7 'two superimposed drawings' claim",
+      "resolution": "REJECTED from pixels — single clean drawing, corner reads 'Blatt 7 / von 1706'. Faint overlay was bleed-through of sheet 5. No retake needed.",
+      "status": "resolved"
+    },
+    {
+      "item": "U1/U2 device type (feed-through vs media converter)",
+      "resolution": "RESOLVED from pixels — RJ45 feed-through/bulkhead connector (Metz 1309426003-E), no converter. No retake needed.",
+      "status": "resolved"
+    },
+    {
+      "item": "-3/S11 top-row terminal function labels (terminals 5,6,7,1,2)",
+      "issue": "Terminal NUMBERS legible; per-terminal function micro-labels below photo resolution. Which top terminal carries the F2 common feed is inferred (reader said 5), not read.",
+      "retake": "Macro, square-on, even light, filling frame with just the -3/S11 box."
+    },
+    {
+      "item": "-3/S11 part number dot",
+      "issue": "Prints 'RIT.3110000'; Rittal catalog form is 'RIT.3110.000' — a dot appears dropped. (S10 clearly 'RIT.3118.000'.)",
+      "retake": "Macro of the 'RIT.311…' text left of the S11 box."
+    },
+    {
+      "item": "Heater neutral upstream tie (-3/X1:N -> system N)",
+      "issue": "E1:N -> X1:N confirmed, but the onward tie of X1:N to the system neutral is faint and merges with the sub-assembly boundary + the page-centre fold. F2's 2nd pole is the likely source (2-pole 'Heating' MCB) but the wire is not cleanly traceable.",
+      "retake": "Flatten the centre fold; front-lit macro of X1:N up to F2/N bus."
+    },
+    {
+      "item": "-3/F1 & -3/F2 internal pole-to-pole routing",
+      "issue": "The vertical page-centre fold + faint reverse-side bleed overlap the black conductor runs between X0, F1, F2. Branch assignment (UL/UN->F1, L/N->F2) is confident; the exact node-by-node routing is partly inferred.",
+      "retake": "Flatten sheet, front-lit rescan of the upper third (X0 up through F1/F2 to the USV arrows)."
+    },
+    {
+      "item": "-4/F3 pole 2 (terminals 3,4) routing",
+      "issue": "Sheet-4 reader: second thermostatic pole reads as open stubs; cannot tell if spare or series-jumpered.",
+      "retake": "Square-on macro of -4/F3 right side."
+    },
+    {
+      "item": "-4/X2 neutral (N1/N2) source tie",
+      "issue": "N1/N2 logically tie to USVN but the on-sheet junction from the top rail to X2 is faint (reader-flagged, inferred).",
+      "retake": "Macro of the right vertical run from the USVN rail to X2:N2."
+    },
+    {
+      "item": "230V_2 cross-ref last digit (sheet 4)",
+      "issue": "Reads '/18.0'; a lower-res pass suggested '/18.3'.",
+      "retake": "Zoom on the '230V_2 /1x.x' label above -4/X2:1."
+    },
+    {
+      "item": "PE.5DA0 net-name meaning",
+      "issue": "Token 'PE.5DA0' is legible and verified at both ends, but what '5DA0' designates (a PE bar/device code) is not established from this set.",
+      "retake": "N/A from these sheets — would need the parts list / PE-bar detail."
+    },
+    {
+      "item": "-18/X2KL:n parse",
+      "issue": "Read verbatim; structure likely 'sheet 18, terminal strip X2KL (X2 Klemmen), terminal n' but the X2KL token could parse differently.",
+      "retake": "The sheet-18 terminal plan, or a higher-res crop of each Klixon row."
+    },
+    {
+      "item": "A102 vs A103 duplicate symbolic addresses E1.0-E1.7",
+      "issue": "Both EL1008 cards print the same E1.0-E1.7 labels on the overview; two cards cannot share TwinCAT byte addresses — real addresses differ (distinguished here by card tag + /9 vs /10 series).",
+      "retake": "Cross-check sheets 9 & 10 or the PLC I/O list (text on sheet 6 is clear; not an image issue)."
+    },
+    {
+      "item": "-4/G1 model name",
+      "issue": "Only article 'PXC.2909576' + '2,5 A' printed; STEP-PS/1AC/24DC/2.5 model is inferred from the article, not on the sheet.",
+      "retake": "Parts list / BOM."
+    },
+    {
+      "item": "Voltage of UL/UN / USV bus",
+      "issue": "115V system (sheet 3 title, E1 250W-115V) vs '230V' labels on the USV-derived nets (sheets 4/7). UL/UN not voltage-labelled on sheet 3.",
+      "retake": "A sheet with a voltage note on the UL/UN or USV bus (not in this set)."
+    },
+    {
+      "item": "Montageplatte sheet number + all device identities",
+      "issue": "Blatt cell blurry (~2-3); NO device tags/ratings legible anywhere in the drawing area (hand-colored render). Every physical_layout_match is a form-factor CANDIDATE only.",
+      "retake": "Flat, high-res, glare-free rescan of the title strip AND the component areas; or map components from the schematic BOM."
+    },
+    {
+      "item": "'von 1706' field meaning",
+      "issue": "Legible and consistent across all sheets, but 'sheet N of 1706' is implausibly large — may be a document/order code rather than a page total.",
+      "retake": "Drawing-set index / cover sheet."
+    }
+  ]
+}
