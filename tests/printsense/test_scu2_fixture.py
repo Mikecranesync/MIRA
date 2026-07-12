@@ -48,7 +48,9 @@ def test_pe_segregated_from_current_paths():
     assert g.pe_bonds, "no PE bonds in graph"
     for pe in g.pe_bonds:
         t = (pe.type or "").lower()
-        assert "line" not in t and "neutral" not in t, f"PE bond mislabeled as current path: {pe.tag}"
+        assert "line" not in t and "neutral" not in t, (
+            f"PE bond mislabeled as current path: {pe.tag}"
+        )
 
 
 def test_seed_is_all_proposed_nothing_auto_verified():

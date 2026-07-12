@@ -71,9 +71,7 @@ def test_parses_and_validates_claude_graph(monkeypatch):
     canned = json.dumps(
         {
             "package": {"cabinet": "SCU2", "drawing_no": "AP31971"},
-            "devices": [
-                {"tag": "-3/F1", "type": "breaker", "evidence": "F1", "trust": "proposed"}
-            ],
+            "devices": [{"tag": "-3/F1", "type": "breaker", "evidence": "F1", "trust": "proposed"}],
             "pe_bonds": [{"tag": "-3/PE:1", "type": "pe_bond_terminal", "evidence": "PE"}],
             "unresolved": [{"item": "S11 top terminal labels", "status": "unresolved"}],
         }
