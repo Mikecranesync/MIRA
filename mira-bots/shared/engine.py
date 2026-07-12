@@ -912,9 +912,7 @@ class Supervisor:
             return reply
 
         # 2. Grounded cascade fallback (No-Anthropic vision path).
-        messages = print_translator.build_theory_messages(
-            photo_b64, vision_data, question=question
-        )
+        messages = print_translator.build_theory_messages(photo_b64, vision_data, question=question)
         raw = ""
         try:
             raw, usage = await self.router.complete(
@@ -925,9 +923,7 @@ class Supervisor:
         except Exception as exc:  # noqa: BLE001 — never eat the turn
             logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
             raw = ""
-        return print_translator.format_theory_reply(
-            raw, (vision_data or {}).get("drawing_type")
-        )
+        return print_translator.format_theory_reply(raw, (vision_data or {}).get("drawing_type"))
 
     async def _interpret_print_anthropic(
         self,

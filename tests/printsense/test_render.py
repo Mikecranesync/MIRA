@@ -18,7 +18,12 @@ def _graph() -> PrintSynthGraph:
         {
             "package": {"cabinet": "SCU2", "drawing_no": "AP31971", "sheet": "-3"},
             "devices": [
-                {"tag": "-3/F1", "type": "circuit breaker", "detail": "B10A/2pol", "evidence": "F1"},
+                {
+                    "tag": "-3/F1",
+                    "type": "circuit breaker",
+                    "detail": "B10A/2pol",
+                    "evidence": "F1",
+                },
                 {"tag": "-3/E1", "type": "heater", "detail": "250W-115V", "evidence": "Heizung"},
             ],
             "cables": [{"tag": "-W5471", "evidence": "W5471"}],
