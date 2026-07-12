@@ -888,6 +888,89 @@ class Supervisor:
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
 
+    async def _grounded_print_reply(
+        self,
+        photo_b64: str,
+        question: str | None,
+        vision_data: dict,
+        chat_id: str,
+    ) -> str:
+        """Grounded, display-ready answer for a classified ELECTRICAL_PRINT photo.
+
+        Anthropic PrintSynth interpreter FIRST (deep, typed, never-invent — only
+        when configured), else the No-Anthropic grounded cascade
+        (``print_translator`` over Groq -> Cerebras -> Together). Always returns a
+        display-ready string — the cascade's ``format_theory_reply`` yields a
+        graceful fallback even on an empty provider result — so a print question is
+        never left unanswered.
+        """
+        from . import print_translator
+
+        # 1. Anthropic PrintSynth interpreter (primary, isolated, flag+key gated).
+        reply = await self._interpret_print_anthropic(photo_b64, question, vision_data)
+        if reply:
+            return reply
+
+        # 2. Grounded cascade fallback (No-Anthropic vision path).
+        messages = print_translator.build_theory_messages(
+            photo_b64, vision_data, question=question
+        )
+        raw = ""
+        try:
+            raw, usage = await self.router.complete(
+                messages, max_tokens=1200, session_id=str(chat_id)
+            )
+            if raw:
+                InferenceRouter.log_usage(usage)
+        except Exception as exc:  # noqa: BLE001 — never eat the turn
+            logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
+            raw = ""
+        return print_translator.format_theory_reply(
+            raw, (vision_data or {}).get("drawing_type")
+        )
+
+    async def _interpret_print_anthropic(
+        self,
+        photo_b64: str,
+        question: str | None,
+        vision_data: dict,
+    ) -> str:
+        """ISOLATED Anthropic PrintSynth interpretation -> rendered Telegram reply.
+
+        Returns "" (caller falls back to the No-Anthropic cascade) when the
+        provider isn't configured: no ``printsense`` package in this image, no
+        ``ANTHROPIC_API_KEY``, ``PRINT_VISION_PROVIDER`` != anthropic, or the call
+        fails. Anthropic is confined to this method — the general cascade never
+        touches it. The blocking streamed call runs in a worker thread so the bot
+        event loop stays free during the ~30-60 s interpretation.
+        """
+        try:
+            from printsense import interpret, render
+        except ImportError:
+            return ""  # framework not shipped in this image -> cascade
+        if interpret.PROVIDER != "anthropic" or not os.getenv("ANTHROPIC_API_KEY"):
+            return ""  # inert without the flag + key
+        import base64
+
+        try:
+            photo_bytes = base64.b64decode(photo_b64)
+        except Exception:  # noqa: BLE001 — bad b64 -> cascade
+            return ""
+        pkg_ctx = {"drawing_type": (vision_data or {}).get("drawing_type")}
+        try:
+            graph = await asyncio.to_thread(
+                interpret.interpret_print,
+                [(photo_bytes, "image/jpeg")],
+                package_context=pkg_ctx,
+                question=question,
+            )
+        except interpret.PrintVisionUnavailable:
+            return ""
+        except Exception as exc:  # noqa: BLE001 — any interp/API error -> cascade
+            logger.warning("PRINT_ANTHROPIC_ERROR error=%s", exc)
+            return ""
+        return render.format_graph_for_telegram(graph)
+
     async def _analyze_schematic_with_question(
         self,
         photo_b64: str,
@@ -2451,28 +2534,13 @@ class Supervisor:
                 has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
                 reply = ""
                 if has_real_question:
-                    # Ground ANY question about a classified electrical print
-                    # through the OCR-verbatim, hedged, never-invent
-                    # print_translator path — NOT a free-form vision LLM, which
-                    # fabricated a generic device taxonomy ("ladder logic /
-                    # timers / counters / logic gates") on real field prints.
-                    # Falls back to the deterministic _build_print_reply below
-                    # when the cascade has no vision provider or the call fails.
-                    from . import print_translator
-
-                    messages = print_translator.build_theory_messages(
-                        photo_b64, vision_data, question=message
+                    # Ground ANY question about a classified electrical print:
+                    # Anthropic PrintSynth interpreter first (deep, typed, never
+                    # invent), else the OCR-verbatim cascade — never the free-form
+                    # vision LLM that fabricated a device taxonomy on real prints.
+                    reply = await self._grounded_print_reply(
+                        photo_b64, message, vision_data, chat_id
                     )
-                    try:
-                        raw, usage = await self.router.complete(
-                            messages, max_tokens=1200, session_id=str(chat_id)
-                        )
-                        if raw:
-                            InferenceRouter.log_usage(usage)
-                        reply = raw
-                    except Exception as exc:  # noqa: BLE001 — never eat the turn
-                        logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
-                        reply = ""
                 if not reply:
                     reply = self._build_print_reply(vision_data)
                     if not has_real_question:

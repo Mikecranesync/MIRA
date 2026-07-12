@@ -309,6 +309,12 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      # ISOLATED Anthropic print-vision interpreter (PrintSense) — NOT part of the
+      # Groq->Cerebras->Together cascade below. The engine's print path calls it
+      # only when PRINT_VISION_PROVIDER=anthropic AND ANTHROPIC_API_KEY is set;
+      # otherwise it falls back to the No-Anthropic OCR cascade. Key in Doppler.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-anthropic}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}

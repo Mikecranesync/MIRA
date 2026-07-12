@@ -6,6 +6,12 @@ WORKDIR /app
 COPY mira-bots/telegram/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY mira-bots/shared/ ./shared/
+# The isolated PrintSense print-vision framework (engine imports `printsense`;
+# repo root is NOT on PYTHONPATH, so it must ship as /app/printsense). The
+# Anthropic print interpreter inside it is inert unless
+# PRINT_VISION_PROVIDER=anthropic + ANTHROPIC_API_KEY are set — otherwise the
+# engine falls back to the No-Anthropic OCR cascade.
+COPY printsense/ ./printsense/
 COPY mira-bots/prompts/ ./prompts/
 # Ops-agent runners invoked via `docker exec … python3 /app/agents/*.py` from the
 # install_crons.sh crontab (morning_brief 09:00, safety_alert 10:00, pm_escalation
