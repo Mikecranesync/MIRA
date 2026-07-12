@@ -43,6 +43,7 @@ def make_entry():
         }
         base.update(overrides)
         return base
+
     return _make
 
 
@@ -50,21 +51,27 @@ def make_entry():
 
 
 class TestClassifyError:
-    @pytest.mark.parametrize("err", [
-        "Docling failed: HTTP 504 timeout",
-        "httpx.ReadTimeout: timed out",
-        "ConnectionError: nothing listening",
-        "psycopg2.OperationalError: server closed",
-        "TIMEOUT after 900s",
-    ])
+    @pytest.mark.parametrize(
+        "err",
+        [
+            "Docling failed: HTTP 504 timeout",
+            "httpx.ReadTimeout: timed out",
+            "ConnectionError: nothing listening",
+            "psycopg2.OperationalError: server closed",
+            "TIMEOUT after 900s",
+        ],
+    )
     def test_transient_classified_retryable(self, err):
         assert cron._classify_error(err) == "retryable"
 
-    @pytest.mark.parametrize("err", [
-        "HTTP 404 not found",
-        "Downloaded file is not a valid PDF (bad magic bytes)",
-        "Download aborted: exceeds 50 MB cap",
-    ])
+    @pytest.mark.parametrize(
+        "err",
+        [
+            "HTTP 404 not found",
+            "Downloaded file is not a valid PDF (bad magic bytes)",
+            "Download aborted: exceeds 50 MB cap",
+        ],
+    )
     def test_hard_failures_classified_hard(self, err):
         assert cron._classify_error(err) == "hard"
 
@@ -250,14 +257,13 @@ def patch_io(monkeypatch):
 
 
 class TestBatchProcessing:
-    def test_batch_processes_multiple_entries(
-        self, queue_file, make_entry, patch_io, monkeypatch
-    ):
+    def test_batch_processes_multiple_entries(self, queue_file, make_entry, patch_io, monkeypatch):
         queue = [make_entry(url=f"https://x/{i}.pdf") for i in range(7)]
         queue_file.write_text(json.dumps(queue))
         monkeypatch.setattr(cron, "BATCH_SIZE", 5)
         monkeypatch.setattr(
-            cron, "run_pipeline",
+            cron,
+            "run_pipeline",
             lambda entry: (True, "KB Chunks: 12 chunks created", 12),
         )
 
@@ -270,9 +276,7 @@ class TestBatchProcessing:
         for e in post[:5]:
             assert e["chunks_inserted"] == 12
 
-    def test_dedup_skips_existing_url(
-        self, queue_file, make_entry, patch_io, monkeypatch
-    ):
+    def test_dedup_skips_existing_url(self, queue_file, make_entry, patch_io, monkeypatch):
         queue_file.write_text(json.dumps([make_entry()]))
         monkeypatch.setattr(cron, "url_already_ingested", lambda url: True)
         called = {"n": 0}
@@ -288,12 +292,11 @@ class TestBatchProcessing:
         post = json.loads(queue_file.read_text())
         assert post[0]["status"] == "skipped_dedup"
 
-    def test_retryable_error_schedules_backoff(
-        self, queue_file, make_entry, patch_io, monkeypatch
-    ):
+    def test_retryable_error_schedules_backoff(self, queue_file, make_entry, patch_io, monkeypatch):
         queue_file.write_text(json.dumps([make_entry()]))
         monkeypatch.setattr(
-            cron, "run_pipeline",
+            cron,
+            "run_pipeline",
             lambda entry: (False, "Docling failed: HTTP 504 timeout", 0),
         )
         cron.run_batch()
@@ -303,12 +306,11 @@ class TestBatchProcessing:
         assert "next_retry_at" in post
         assert "504" in post["last_error"]
 
-    def test_hard_error_no_retry(
-        self, queue_file, make_entry, patch_io, monkeypatch
-    ):
+    def test_hard_error_no_retry(self, queue_file, make_entry, patch_io, monkeypatch):
         queue_file.write_text(json.dumps([make_entry()]))
         monkeypatch.setattr(
-            cron, "run_pipeline",
+            cron,
+            "run_pipeline",
             lambda entry: (False, "HTTP 404 not found", 0),
         )
         cron.run_batch()
@@ -327,7 +329,8 @@ class TestBatchProcessing:
         )
         queue_file.write_text(json.dumps([e]))
         monkeypatch.setattr(
-            cron, "run_pipeline",
+            cron,
+            "run_pipeline",
             lambda entry: (False, "timeout", 0),
         )
         cron.run_batch()
@@ -335,9 +338,7 @@ class TestBatchProcessing:
         assert post["status"] == "failed"
         assert post["attempts"] == cron.MAX_ATTEMPTS
 
-    def test_success_clears_retry_state(
-        self, queue_file, make_entry, patch_io, monkeypatch
-    ):
+    def test_success_clears_retry_state(self, queue_file, make_entry, patch_io, monkeypatch):
         # An entry mid-retry that finally succeeds should drop next_retry_at.
         past = (cron._now() - timedelta(minutes=1)).isoformat(timespec="seconds")
         e = make_entry(
@@ -348,7 +349,8 @@ class TestBatchProcessing:
         )
         queue_file.write_text(json.dumps([e]))
         monkeypatch.setattr(
-            cron, "run_pipeline",
+            cron,
+            "run_pipeline",
             lambda entry: (True, "KB Chunks: 9 chunks created", 9),
         )
         cron.run_batch()
@@ -358,29 +360,29 @@ class TestBatchProcessing:
         assert "last_error" not in post
         assert post["chunks_inserted"] == 9
 
-    def test_milestones_fire_on_thresholds(
-        self, queue_file, make_entry, patch_io, monkeypatch
-    ):
+    def test_milestones_fire_on_thresholds(self, queue_file, make_entry, patch_io, monkeypatch):
         # Pre-load 99 done; one new success crosses the 100 milestone.
-        done_entries = [make_entry(url=f"https://done/{i}", status="done")
-                        for i in range(99)]
+        done_entries = [make_entry(url=f"https://done/{i}", status="done") for i in range(99)]
         pending = make_entry(url="https://x/100.pdf")
         queue_file.write_text(json.dumps(done_entries + [pending]))
         monkeypatch.setattr(
-            cron, "run_pipeline",
+            cron,
+            "run_pipeline",
             lambda entry: (True, "KB Chunks: 4 chunks created", 4),
         )
         sent: list[tuple] = []
         monkeypatch.setattr(
-            cron, "_tg_notify",
+            cron,
+            "_tg_notify",
             lambda *args, **kwargs: sent.append(args) or True,
         )
 
         summary = cron.run_batch()
         cron._emit_run_report(summary)
 
-        assert any("100 manuals ingested" in a[1] for a in sent), \
+        assert any("100 manuals ingested" in a[1] for a in sent), (
             f"expected milestone message in {sent}"
+        )
 
 
 # ─── pipeline output parsing ─────────────────────────────────────────────────
@@ -433,3 +435,182 @@ class TestParseIso:
 
     def test_none_returns_none(self):
         assert cron._parse_iso(None) is None
+
+
+# ─── OCR drain functionality ──────────────────────────────────────────────────
+
+
+class TestZeroCharDetection:
+    """_is_zero_char_extraction correctly detects scanned/0-char PDFs."""
+
+    def test_detects_zero_char_marker(self):
+        tail = "Extraction failed: Extract: pdfplumber produced 0 chars"
+        assert cron._is_zero_char_extraction(tail) is True
+
+    def test_ignores_normal_errors(self):
+        tail = "HTTP 404 not found"
+        assert cron._is_zero_char_extraction(tail) is False
+
+    def test_ignores_empty_tail(self):
+        assert cron._is_zero_char_extraction("") is False
+        assert cron._is_zero_char_extraction(None) is False
+
+    def test_marker_is_exact_phrase(self):
+        # Ensure we're looking for the exact pipeline error string, not substring
+        tail = "Extraction failed: Extract: pypdf produced 0 chars"
+        assert cron._is_zero_char_extraction(tail) is True
+
+
+class TestAttemptOCR:
+    """_attempt_ocr runs pipeline with --ocr flag and handles Tika failures."""
+
+    def test_ocr_success_with_text(self, make_entry, monkeypatch):
+        """When OCR succeeds and finds text, return success tuple."""
+        entry = make_entry()
+        monkeypatch.setattr(
+            cron,
+            "run_pipeline",
+            lambda e, ocr: (True, "KB Chunks: 5 chunks created", 5) if ocr else (False, "", 0),
+        )
+        success, tail, chunks = cron._attempt_ocr(entry)
+        assert success is True
+        assert chunks == 5
+
+    def test_ocr_timeout_fails_gracefully(self, make_entry, monkeypatch):
+        """When OCR times out, return failure tuple (never raise)."""
+        entry = make_entry()
+        fake_run = mock.Mock(side_effect=cron.subprocess.TimeoutExpired("cmd", 900))
+        monkeypatch.setattr(cron.subprocess, "run", fake_run)
+        success, tail, chunks = cron._attempt_ocr(entry)
+        assert success is False
+        assert "TIMEOUT" in tail
+        assert chunks == 0
+
+    def test_ocr_exception_fails_gracefully(self, make_entry, monkeypatch):
+        """When OCR raises any exception, return failure tuple (never crash)."""
+        entry = make_entry()
+        fake_run = mock.Mock(side_effect=RuntimeError("Tika unreachable"))
+        monkeypatch.setattr(cron.subprocess, "run", fake_run)
+        success, tail, chunks = cron._attempt_ocr(entry)
+        assert success is False
+        assert chunks == 0
+
+
+class TestDrainNeedsOcr:
+    """drain_needs_ocr processes quarantined needs_ocr entries."""
+
+    def test_drain_empty_queue(self, queue_file, monkeypatch, patch_io):
+        """When there are no needs_ocr entries, drain exits cleanly."""
+        queue_file.write_text("[]")
+        summary = cron.drain_needs_ocr()
+        assert summary["processed"] == []
+        assert summary["stats"]["needs_ocr"] == 0
+
+    def test_drain_successful_ocr(self, queue_file, make_entry, monkeypatch, patch_io):
+        """When OCR succeeds on a needs_ocr entry, mark it done."""
+        entry = make_entry(status="needs_ocr", attempts=0)
+        queue_file.write_text(json.dumps([entry]))
+
+        monkeypatch.setattr(
+            cron,
+            "_attempt_ocr",
+            lambda e: (True, "KB Chunks: 12 chunks created", 12),
+        )
+        summary = cron.drain_needs_ocr()
+        post = json.loads(queue_file.read_text())[0]
+
+        assert summary["stats"]["needs_ocr"] == 0
+        assert summary["stats"]["done"] == 1
+        assert post["status"] == "done"
+        assert post["ocr_used"] is True
+        assert post["chunks_inserted"] == 12
+
+    def test_drain_failed_ocr_stays_quarantined(
+        self, queue_file, make_entry, monkeypatch, patch_io
+    ):
+        """When OCR fails, entry stays in needs_ocr with last_ocr_attempt_at."""
+        entry = make_entry(status="needs_ocr", attempts=0)
+        queue_file.write_text(json.dumps([entry]))
+
+        monkeypatch.setattr(
+            cron,
+            "_attempt_ocr",
+            lambda e: (False, "Tika unreachable", 0),
+        )
+        summary = cron.drain_needs_ocr()
+        post = json.loads(queue_file.read_text())[0]
+
+        assert summary["stats"]["needs_ocr"] == 1  # still needs_ocr
+        assert summary["stats"]["done"] == 0
+        assert post["status"] == "needs_ocr"
+        assert "last_ocr_attempt_at" in post
+        assert post["last_error"] == "Tika unreachable"
+
+    def test_drain_bounded_batch_size(self, queue_file, make_entry, monkeypatch, patch_io):
+        """drain_needs_ocr only processes up to OCR_DRAIN_BATCH_SIZE entries."""
+        entries = [make_entry(url=f"https://x/{i}.pdf", status="needs_ocr") for i in range(5)]
+        queue_file.write_text(json.dumps(entries))
+        monkeypatch.setattr(cron, "OCR_DRAIN_BATCH_SIZE", 2)
+        monkeypatch.setattr(
+            cron,
+            "_attempt_ocr",
+            lambda e: (True, "KB Chunks: 3 chunks created", 3),
+        )
+
+        cron.drain_needs_ocr()
+        post = json.loads(queue_file.read_text())
+
+        # Only 2 should be processed (batch size), 3 remain needs_ocr
+        done_count = sum(1 for e in post if e["status"] == "done")
+        needs_ocr_count = sum(1 for e in post if e["status"] == "needs_ocr")
+        assert done_count == 2
+        assert needs_ocr_count == 3
+
+
+class TestProcessEntryOCRFallback:
+    """_process_entry auto-retries 0-char PDFs with OCR before quarantining."""
+
+    def test_zero_char_triggers_ocr_attempt(self, queue_file, make_entry, monkeypatch, patch_io):
+        """When local extraction yields 0 chars, try OCR before failing."""
+        entry = make_entry(status="pending", attempts=0)
+        queue_file.write_text(json.dumps([entry]))
+
+        # First call (no OCR) returns 0 chars
+        # _attempt_ocr is called, succeeds with text
+        monkeypatch.setattr(
+            cron,
+            "run_pipeline",
+            lambda e, ocr=False: (
+                (False, "Extract: pdfplumber produced 0 chars", 0)
+                if not ocr
+                else (True, "KB Chunks: 8 chunks created", 8)
+            ),
+        )
+        queue = json.loads(queue_file.read_text())
+        cron._process_entry(queue[0], queue)
+        post = json.loads(queue_file.read_text())[0]
+
+        # Should succeed via OCR, not quarantine
+        assert post["status"] == "done"
+        assert post["ocr_used"] is True
+
+    def test_zero_char_ocr_unavailable_quarantines(
+        self, queue_file, make_entry, monkeypatch, patch_io
+    ):
+        """When OCR is unavailable/unreachable, quarantine needs_ocr."""
+        entry = make_entry(status="pending", attempts=0)
+        queue_file.write_text(json.dumps([entry]))
+
+        monkeypatch.setattr(
+            cron,
+            "run_pipeline",
+            lambda e, ocr=False: (False, "Extract: pdfplumber produced 0 chars", 0),
+        )
+        queue = json.loads(queue_file.read_text())
+        cron._process_entry(queue[0], queue)
+        post = json.loads(queue_file.read_text())[0]
+
+        # Should quarantine, not retry forever
+        assert post["status"] == "needs_ocr"
+        assert "needs_ocr_at" in post
+        assert "next_retry_at" not in post  # no retry schedule
