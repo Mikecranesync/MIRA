@@ -2451,12 +2451,28 @@ class Supervisor:
                 has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
                 reply = ""
                 if has_real_question:
-                    reply = await self._analyze_schematic_with_question(
-                        photo_b64=photo_b64,
-                        question=message,
-                        vision_data=vision_data,
-                        chat_id=chat_id,
+                    # Ground ANY question about a classified electrical print
+                    # through the OCR-verbatim, hedged, never-invent
+                    # print_translator path — NOT a free-form vision LLM, which
+                    # fabricated a generic device taxonomy ("ladder logic /
+                    # timers / counters / logic gates") on real field prints.
+                    # Falls back to the deterministic _build_print_reply below
+                    # when the cascade has no vision provider or the call fails.
+                    from . import print_translator
+
+                    messages = print_translator.build_theory_messages(
+                        photo_b64, vision_data, question=message
                     )
+                    try:
+                        raw, usage = await self.router.complete(
+                            messages, max_tokens=1200, session_id=str(chat_id)
+                        )
+                        if raw:
+                            InferenceRouter.log_usage(usage)
+                        reply = raw
+                    except Exception as exc:  # noqa: BLE001 — never eat the turn
+                        logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
+                        reply = ""
                 if not reply:
                     reply = self._build_print_reply(vision_data)
                     if not has_real_question:

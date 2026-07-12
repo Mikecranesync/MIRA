@@ -927,15 +927,16 @@ async def _try_print_translator_reply(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> bool:
-    """Print Translator: an electrical-print photo + an "explain this / theory
-    of operation" caption -> a plain-English, OCR-grounded explanation of what
-    the circuit appears to do. Read-only generation — NO wiring DB writes, NO
-    control writes. Falls through (returns ``False``) for any caption that
-    isn't a print-explanation request, and for photos the vision worker does
-    NOT classify as ``ELECTRICAL_PRINT`` — so non-print photos and the
-    existing nameplate/drive and wiring-intake flows are untouched.
+    """Print Translator: an electrical-print photo + any print QUESTION (explain
+    / theory of operation, OR a device / wiring / tracing question like "what
+    devices are listed in this print?") -> a plain-English, OCR-grounded answer.
+    Read-only generation — NO wiring DB writes, NO control writes. Falls through
+    (returns ``False``) for any caption that isn't a print question, and for
+    photos the vision worker does NOT classify as ``ELECTRICAL_PRINT`` — so
+    non-print photos and the existing nameplate/drive and wiring-intake flows are
+    untouched.
     """
-    if not print_translator.is_theory_request(caption):
+    if not print_translator.is_print_question(caption):
         return False  # cheap reject, no vision call
 
     photo_b64 = base64.b64encode(vision_bytes).decode()
@@ -948,7 +949,7 @@ async def _try_print_translator_reply(
     if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
         return False  # not a print → fall through unchanged
 
-    messages = print_translator.build_theory_messages(photo_b64, vision_data)
+    messages = print_translator.build_theory_messages(photo_b64, vision_data, question=caption)
     try:
         reply, _usage = await engine.router.complete(
             messages,

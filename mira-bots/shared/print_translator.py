@@ -57,6 +57,46 @@ THEORY_INTENT_PHRASES = (
     "what is this circuit",
 )
 
+# Broader "question about the print" phrases: device/component inventory,
+# wiring/tracing, and "what is this <print/schematic/…>". Together with
+# THEORY_INTENT_PHRASES these route an electrical-print photo to the GROUNDED
+# interpreter instead of the free-form vision LLM (which fabricated a generic
+# "ladder logic / timers / counters" device taxonomy on a real field print).
+# Still conservative — must NOT match the wiring-intake caption ("add this
+# wiring") or a nameplate/drive caption; the ELECTRICAL_PRINT classification is
+# the real filter, so this is a cheap pre-reject to skip the vision call for
+# obviously-unrelated captions.
+PRINT_QUESTION_PHRASES = THEORY_INTENT_PHRASES + (
+    "what device",
+    "what devices",
+    "what component",
+    "what parts",
+    "what is on this print",
+    "what's on this print",
+    "what is in this print",
+    "what's in this print",
+    "what is shown",
+    "list the device",
+    "list the component",
+    "identify the",
+    "what is this print",
+    "what is this schematic",
+    "what is this diagram",
+    "what is this drawing",
+    "trace this",
+    "trace the",
+    "where does this",
+    "what feeds",
+    "what connects",
+    "what terminal",
+    "which terminal",
+    "which plc",
+    "what plc",
+    "what protects",
+    "how is this wired",
+    "how is it wired",
+)
+
 # Cap on OCR items fed into the prompt — mirrors
 # `engine.py::_analyze_schematic_with_question`'s `ocr_items[:80]`.
 OCR_ITEM_CAP = 80
@@ -119,6 +159,23 @@ def is_theory_request(text: str) -> bool:
     return any(phrase in lowered for phrase in THEORY_INTENT_PHRASES)
 
 
+def is_print_question(text: str) -> bool:
+    """True if the caption is any question/request about an electrical print.
+
+    Broader than ``is_theory_request``: also matches device/component inventory
+    ("what devices are listed in this print?"), wiring/tracing, and "what is
+    this <print/schematic/…>". This is what routes a print photo to the GROUNDED
+    interpreter instead of the free-form vision LLM. The ELECTRICAL_PRINT
+    classification (checked by the caller) is the real filter — this substring
+    match is a cheap pre-reject so the vision call is skipped for obviously
+    unrelated captions.
+    """
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in PRINT_QUESTION_PHRASES)
+
+
 def _ocr_block(vision_data: dict) -> str:
     """The OCR ground-truth block.
 
@@ -137,14 +194,26 @@ def _ocr_block(vision_data: dict) -> str:
     )
 
 
-def build_theory_messages(photo_b64: str, vision_data: dict) -> list[dict]:
+def build_theory_messages(
+    photo_b64: str, vision_data: dict, question: str | None = None
+) -> list[dict]:
     """Build the ``[system, user(image+text)]`` messages for ``router.complete``.
 
     ``user`` text = ``"Drawing type: <drawing_type or 'electrical drawing'>"``
-    followed by the OCR ground-truth block from ``_ocr_block``.
+    followed by the OCR ground-truth block from ``_ocr_block``. When ``question``
+    is given (a specific technician question about the print), it is appended so
+    the grounded reply answers it directly — still ONLY from the OCR labels + the
+    visible image, never inventing a device/tag/connection.
     """
     drawing_type = (vision_data or {}).get("drawing_type") or "electrical drawing"
     user_text = f"Drawing type: {drawing_type}\n\n{_ocr_block(vision_data)}"
+    if question and question.strip():
+        user_text += (
+            f"\n\nThe technician specifically asked: {question.strip()}\n"
+            "Answer that question directly, grounded ONLY in the OCR labels above "
+            "and what is visibly in the image — never invent a device, tag, or "
+            "connection that isn't there — then give the six-section explanation."
+        )
 
     return [
         {"role": "system", "content": THEORY_SYSTEM_PROMPT},
