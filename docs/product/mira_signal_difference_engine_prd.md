@@ -1,11 +1,18 @@
-# PRD — MIRA Signal Difference Engine + Contextual Supervisor
+# PRD — MIRA Signal Difference Engine + Contextual Supervisor (Architecture)
 
-**Status:** DRAFT (2026-06-30). Companion to
-`docs/product/mira_difference_engine_offering.md` (positioning) and
+> **⚠️ PRODUCT FRAMING UPDATE (2026-07-11).** This PRD describes the foundational engine architecture.
+> The **first sellable product is Drive Commander**, a read-only VFD troubleshooting tool (issue #2577,
+> PR #2504, ADR-0025). This PRD is valid engine design; it is **not the first product**.
+> See **[NORTH_STAR.md](../../NORTH_STAR.md) and [ADR-0025](../adr/0025-drive-intelligence-packs-and-drive-commander.md)**
+> for the current strategy.
+
+**Status:** DRAFT engine architecture (2026-06-30). Companion to
+`docs/product/mira_difference_engine_offering.md` (engine positioning) and
 `docs/plans/2026-06-30-mira-difference-engine-backlog.md` (phased work).
 Reconciles with `NORTH_STAR.md`, `docs/THEORY_OF_OPERATIONS.md`, and the
 `.claude/rules/` laws (one-pipeline ingest, fieldbus read-only, direct-connection
-UNS certification, train-before-deploy).
+UNS certification, train-before-deploy). Drive Commander is the first product
+built on this engine.
 
 > **Reuse mandate.** This PRD extends existing cores; it does **not** propose rival
 > ones. No second allowlist, no second UNS resolver, no second Supervisor, no

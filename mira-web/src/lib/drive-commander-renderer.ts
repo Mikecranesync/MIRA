@@ -28,8 +28,12 @@ import {
 } from "./drive-pack-data.js";
 
 const BASE_URL = "https://factorylm.com";
+// Live checkout: /api/checkout/session dispatches on ?product= and falls back
+// to /pricing?product=drive-commander-pro until STRIPE_DRIVE_COMMANDER_PRICE_ID
+// is provisioned in Doppler factorylm/prd.
+const PRICING_HREF = "/api/checkout/session?product=drive-commander-pro";
 const WAITLIST_HREF =
-  "mailto:hello@factorylm.com?subject=Drive%20Commander%20Pro%20waitlist";
+  "mailto:hello@factorylm.com?subject=Drive%20Commander%20Pro%20interest";
 
 function escHtml(s: string): string {
   return s
@@ -199,8 +203,8 @@ function provBadge(pack: DrivePackDisplay): string {
 }
 
 function waitlistCTA(): string {
-  return `<a class="cta" href="${WAITLIST_HREF}"><small>Individual technician license</small>Unlock Drive Commander Pro &mdash; $197/year &rarr;</a>
-    <p class="price-note">$197/year &middot; or $29/month &middot; join the waitlist</p>`;
+  return `<a class="cta" href="${PRICING_HREF}"><small>Individual technician license</small>Unlock Drive Commander Pro &mdash; $29/mo or $197/yr &rarr;</a>
+    <p class="price-note">Cancel anytime &middot; 30-day money-back guarantee</p>`;
 }
 
 // The Pro teaser. IMPORTANT: no real pack data (no value tables, no full param

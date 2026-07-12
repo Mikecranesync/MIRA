@@ -1,5 +1,106 @@
 # MIRA Release Notes
 
+### v3.133.1 (2026-07-12) - fix(saas): pass STRIPE_DRIVE_COMMANDER_PRICE_ID to mira-web container
+- **Why:** v3.132.3 shipped the Drive Commander Pro checkout code, and Doppler prd now has `STRIPE_DRIVE_COMMANDER_PRICE_ID` + a live key + the live webhook secret — but the mira-web service block in `docker-compose.saas.yml` never passed the new env var through, so the deployed container still saw it unset and the CTA kept falling back to /pricing even after redeploy.
+- **What:** one line — add `STRIPE_DRIVE_COMMANDER_PRICE_ID=${STRIPE_DRIVE_COMMANDER_PRICE_ID:-}` to the mira-web `environment:` block (same optional-default pattern as the sibling Stripe vars).
+- **Evidence:** live checkout dry-run against Stripe with the prd key succeeded (customer + subscription-mode session created with this price, checkout.stripe.com URL returned, then expired/cleaned); post-deploy verification = CTA 303 must point at checkout.stripe.com.
+- **Rollback:** single squash-revert; config-only, no migrations.
+
+### v3.133.0 (2026-07-12) - fix(vision): caption-aware print classification + grounded schematic prompt (never fabricate a device list)
+- **Why:** a real prod-bot turn — a MACK/InTraSys final-brake stator wiring sheet captioned "what types of devices are listed in this print?" — returned a fabricated ladder-logic device list (timers/counters/logic gates/IO modules) and a false "no safety-critical elements", on a coaster final brake. `_classify_photo` already routes a print to ELECTRICAL_PRINT when the vision model NAMES the drawing type (STRONG_PRINT_SIGNALS). The residual gap: when the model describes only the drawing's CONTENTS — a stator/RTD/sensor/terminals, all EQUIPMENT_FACE keywords — and does NOT name the drawing type, the photo misclassifies EQUIPMENT_PHOTO and falls through to the generic engine, which has no "don't invent a device taxonomy" guard. The technician's own caption ("...in this print?") was ignored.
+- **What:** `_classify_photo` is now caption-aware — a caption saying print/schematic/diagram/wiring/one-line/ladder routes to the grounded ELECTRICAL_PRINT path (word-boundary matched, same `_kw_in` as the rest of the classifier) even when the vision summary trips an equipment keyword. Ordering preserved: nameplate + STRONG_PRINT_SIGNALS still win first (genuine nameplates and clearly-named drawings unaffected); the caption override only pre-empts the EQUIPMENT_FACE override. Separately, `_analyze_schematic_with_question`'s prompt is hardened to name only readable components, never emit a generic device taxonomy, never assume ladder logic, refuse honestly on unreadable images, and never claim "no safety-critical elements" without reading the drawing. New hermetic test file.
+- **Evidence:** Lint & Format + Static Analysis + Version Bump CI green; 4 new hermetic tests (pure string logic — the components-only summary → EQUIPMENT_PHOTO without a caption and ELECTRICAL_PRINT with one, a genuine nameplate stays NAMEPLATE) + tests/test_schematic_qa.py + tests/regime3_nameplate/test_classification.py run in CI Unit Tests.
+- **Note:** live end-to-end (does the cloud vision model now answer right on the real photo) is only verifiable on staging/prod — the vision endpoint isn't reachable from a feature session and CI can't run a vision model. The tests prove the routing/guard, not the model's answer. Ground-truth fixture: PR #2652.
+- **Rollback:** single squash-revert; no migrations.
+
+### v3.132.3 (2026-07-12) - feat(web): Drive Commander Pro live checkout — CTA -> Stripe session + purchase-recording webhook branch
+- **Why:** the public G120 fault funnel (v3.129.10) shipped with the Pro CTA pointing at a pricing placeholder. Stripe live mode is now verified; this closes the last code gap between the funnel and a paying stranger.
+- **What:** `createDriveCommanderCheckoutSession()` (subscription mode, `STRIPE_DRIVE_COMMANDER_PRICE_ID`, metadata `product=drive-commander-pro`, success/cancel back to the funnel); `/api/checkout/session?product=drive-commander-pro` dispatch with a graceful `/pricing` fallback while the price ID is unprovisioned; webhook `checkout.session.completed` gets an early drive-commander branch that records the purchase (tenant by email, tier `drive_commander_pro`, Stripe ids, audit + `drive_commander_purchase` funnel event) and explicitly SKIPS CMMS tenant activation + Hub provisioning (different product, different buyer). Funnel CTA now hits the live endpoint.
+- **Evidence:** bun test 341 tests — failures 9/9 identical to clean main (pre-existing env-dependent nameplate/jwt cases; zero introduced); tsc: zero new errors (remaining errors pre-exist on main).
+- **Ops:** requires `STRIPE_DRIVE_COMMANDER_PRICE_ID` in Doppler `factorylm/prd` + a mira-web redeploy to take effect; until then the CTA falls back to /pricing. Entitlement DELIVERY (what Pro unlocks post-purchase) is a tracked follow-up.
+- **Rollback:** single squash-revert; no migrations; webhook branch is additive and keyed on session metadata only.
+
+
+### v3.132.1 (2026-07-11) - fix(visual): ask_equipment refuses a stale identity after a legible different-machine photo
+- **Why:** an independent adversarial safety review found a real, reproducible NO-GO in Phase 2. `ask_equipment` selected the latest **RESOLVED** identity, so a perfectly **legible** photo of a **different/unsupported** machine (Siemens S120 → NONE) taken after a first RESOLVED photo (GS10) was ignored — an equipment question ("what does CE10 mean?") was answered with a confidently-cited fault-code fact **from the wrong machine**. The four hard gates (never-invent, energization short-circuit, refuse-without-identity, tenant isolation) all held; this violated their spirit one layer up.
+- **What:** `ask_equipment` now uses the **latest `equipment_resolver` observation outright**, not the latest RESOLVED. The unreadable-photo path (parse_error / quality-gate reject) deliberately writes **no** `equipment_resolver` observation, so an unreadable re-scan still cannot erase a prior identity (preserved + tested) — but a legible different/unsupported machine supersedes it, so `answer_equipment` refuses with NEEDS_CONTEXT instead of leaking a stale pack's cited facts. Verified against the reviewer's own PoC (now refuses) + a new regression test.
+- **Scope:** one-method fix in `session_service.py` + one test. `answer_composer.py`, `equipment.py`, migration 063 unchanged. 103 tests pass (102 + 1 new), ruff clean. Stacked on Phase 2 (PR #2648). VERSION 3.132.0 → 3.132.1.
+
+=======
+>>>>>>> origin/main
+
+### v3.132.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 2 — equipment/nameplate intelligence
+- **Why:** ADR-0027 Phase 2. Adds the session-integrated equipment path (photo → identity candidates → service-pack/manual resolution → cited answer) the PRD calls the strongest-readiness capability, **reusing** the Drive Commander packs + manual retrieval + the Phase 1 session. **Stacked on Phase 1 (PR #2645).**
+- **What:**
+  - `mira-bots/shared/visual/equipment.py` (new) — `resolve_equipment` resolves each identity signal **independently** and compares, closing the resolver's cross-signal-conflict blind spot so it **never silently selects a pack when identifiers conflict/are incomplete** (`RESOLVED`/`AMBIGUOUS`/`CONFLICTING`/`NONE`; `pack_id` non-None only for `RESOLVED`; deterministic, no LLM). `default_manual_retriever` (injectable, tenant-scoped by the session's `tenant_id` — the only guard — vendor-relevance filtered, graceful-empty). `answer_equipment` gathers deterministic pack facts + tenant manuals as `DOCUMENTED` observations → the **unchanged** Phase 1 composer (never invents; `LIKELY` for inference; energization safety short-circuit preserved even without identity).
+  - `mira-bots/shared/visual/session_service.py` (extended, additive — Phase 1 print route + `ask` byte-identical) — nameplate/equipment ingest route (raw OCR kept separate from normalized) + `ask_equipment`.
+  - **No new migration** — reuses the Phase 1 `observation` ledger (candidates/confidence in JSONB metadata). `answer_composer.py` + migration 063 unchanged.
+  - 64 Phase 2 tests (incl. real-Postgres tenant isolation as `factorylm_app`) + 38 Phase 1 = **102 pass, zero regressions**; ruff check + format clean.
+- **Scope:** additive; no deployed service / resolver / composer / Phase-1 file touched. PR-only per the PRD; stacked on PR #2645. VERSION 3.131.0 → 3.132.0.
+
+=======
+>>>>>>> origin/main
+
+### v3.131.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 1 — VisualSession spine + grounded answer envelope
+- **Why:** ADR-0027 Phase 1 (Snippet Interpreter MVP) of the MIRA Visual Technician PRD. The north star needs a persistent, multi-image, evidence-graded visual session with claim-level uncertainty — a genuine gap today (a session held ONE photo, replaced not accumulated). This builds the spine + the structured grounded-answer contract, **reusing** the existing extraction workers rather than rebuilding them.
+- **What:**
+  - `mira-hub/db/migrations/063_visual_sessions.sql` — 6 tenant-scoped, RLS'd, append-only tables (visual_session / evidence_item / region_of_interest / observation / visual_question / answer_claim), faithful to the mig-038 pattern. Tenant isolation proven on a real ephemeral `postgres:16` as the `factorylm_app` role (not superuser) — `test_visual_session_migration.py` 3/3.
+  - `mira-bots/shared/visual/` — `EvidenceState` (9 states, a VIEW over ADR-0026/0017 + the Print Pack field-verify tier, mirrored by the SQL CHECK); `models`; `store` (Neon, mirrors `decision_trace.py`'s connection shape; `InMemoryVisualStore` double); `quality_gate` (pure/deterministic, numpy-optional); `answer_composer` (the safety-critical deterministic core — never invents a destination/terminal/voltage/rating, labels inference `LIKELY`, short-circuits energization questions to a safety disclaimer before consulting observations); `session_service` (injectable workers, graceful degrade); `demo` CLI.
+  - Tests: 38 hermetic (composer golden + no-invented-destination + safety, quality gate, session continuity/persistence, `EvidenceState`↔SQL-CHECK parity) + 3 ephemeral-Postgres tenant-isolation (skip cleanly where Docker is absent). ruff-clean.
+- **Scope:** additive new package + one migration + tests. No deployed service, adapter, or existing schema touched. PR-only per the PRD directive; the Print Pack publish path (Phase 4) is untouched. VERSION 3.129.8 → 3.131.0 (3.130.0 reserved by the concurrent Print Pack PR #2642 to avoid a VERSION collision).
+
+### v3.129.13 (2026-07-12) - chore(deps): remove unused anthropic dependency from Telegram bot
+- **Why:** MIRA policy (PR #610) removed Anthropic as a provider; the `anthropic>=0.97.0` line in `mira-bots/telegram/requirements.txt` is dead weight. Verified unused via grep across the entire Telegram bot codebase.
+- **What:** removed `anthropic>=0.97.0` from `mira-bots/telegram/requirements.txt`. No code change, no behavior change — pure dependency hygiene.
+- **Evidence:** `grep -rn "anthropic\|import anthropic\|from anthropic" mira-bots/telegram/` returns only the requirements.txt line (no actual usage).
+- **Impact:** cleanup only — no functionality affected. VERSION 3.129.1 → 3.129.2.
+
+### v3.129.12 (2026-07-12) - test(stripe): reconcile webhook-before-signup provisioning (#2438)
+- **Why:** GitHub issue #2438 flagged a race condition: if a Stripe webhook fires before Hub signup, the payment is best-effort only—no retry. A paying customer ends up without a provisioned tenant.
+- **What:** integration test `mira-web/src/lib/__tests__/stripe-webhook-before-signup.integration.test.ts` (5 test cases) exercises the full queue-and-reconcile path: webhook queues payment when Hub user doesn't exist yet; later reconciliation drains the queue and provisions the tenant; re-running reconciliation is idempotent (no double-provision); Stripe redelivery doesn't double-queue (ON CONFLICT idempotency); unmatched rows stay pending with attempt count bumped; reconciliation scoped to one email finds and retries only that email.
+- **Test Results:** all 5 pass; surrounding `hub-provisioning-queue.test.ts` suite remains green (9 pass).
+- **Status:** Test PASSES — the queue and reconciliation code already exists (PR #2437 added the durable queue) and works as intended. Test closes issue #2438 by proving the behavior works end-to-end. No product code change.
+
+### v3.129.11 (2026-07-12) - feat(dogfood): Drive Commander public fault-lookup funnel regression check
+- **Why:** extend the daily judge to guard the public fault-lookup money path (Drive Commander SEO funnel). The freemium landing page and fault-detail views must stay live, reachable, grounded (cited), and publicly accessible — the cash-conversion gate for the PLG funnel.
+- **What:** `tools/crew/dogfood/checks/fault-lookup.check` — two-persona gate verifying that `GET /drive-commander/siemens-g120` and `GET /drive-commander/siemens-g120/faults/F30001` return HTML/JSON, contain the G120 library and fault code, ground with citations, require no login. Auto-detects mira-web base URL (defaults to staging 4200 if DF_BASE is 4101). Emits `GREEN` (funnel works), `YELLOW` (works but degraded, e.g., missing citations), `RED` (blocked), or `INFRA` (route not deployed yet — never files false product-RED on pre-deployment).
+- **Base URL logic:** mira-web is on separate port (4200) in staging; the check reuses the Hub base `http://100.68.120.99:4101` and auto-swaps the port. On prod/unified reverse-proxy hosts, it falls back to the same base.
+- **Integration:** auto-discovered from `tools/crew/dogfood/checks/*.check`; wired into the daily judge.sh loop as a 6th check (alongside maintenance-tech, contextualization, work-order, demo-readiness, beta-gate).
+- **Verdict contract:** `GREEN` (200, G120+F30001+citations, no login) | `YELLOW` (reachable but missing citations/freemium gate) | `RED` (200 but missing content/login-blocked) | `INFRA` (404/timeout, not deployed).
+- **CI:** CI runs `test_judge.sh` (hermetic, passes); dry-run judge emits `INFRA` verdict (expected until route deploys).
+- `VERSION 3.129.1 → 3.129.2`.
+
+### v3.129.10 (2026-07-12) - feat(drive-commander): public G120 fault funnel + freemium gate (Pro CTA)
+- **What:** Light up the Drive Commander freemium gate for Siemens G120. Landing page at `/drive-commander/siemens-g120` (lists all 13 faults). Fault pages at `/drive-commander/siemens-g120/faults/F30001` (etc.) show: free tier = fault code + name + cited parameters (id, purpose, citation + manual excerpt); Pro lock teaser = "Full troubleshooting + wiring + reset workflow + Ask MIRA + history" with CTA to pricing page.
+- **Free tier display:** fault meaning (hero) + first N cited parameters from the pack (name, purpose, manual page reference + excerpt), no guesses, all grounded.
+- **Pro gate:** Unlock CTA → `/pricing?product=drive-commander-pro` ($29/mo or $197/yr, individual technician license). TODO(stripe-sku): create Drive Commander Pro price in Stripe + wire Doppler `factorylm/prd STRIPE_DRIVE_COMMANDER_PRICE_ID`.
+- **Routes now rendering:** G120 landing + 13 fault pages + 18 parameter detail pages (same pattern as PowerFlex 525/40).
+- **Tests:** sitemap test updated to include G120 count (was 2 packs → now 3 packs); `drive-commander.test.ts` 21/21 pass.
+- **Impact:** Product feature — public, indexable, no auth, freemium gate live. Users can discover G120 faults for free; Pro subscribers see full cited troubleshooting.
+- **VERSION:** 3.129.2 → 3.130.0 (minor).
+
+### v3.129.2 (2026-07-11) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
+
+### v3.129.9 (2026-07-12) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
+- **What:** new G120 pack with 13 faults (F30001–F7011) + 18 cited parameters (P0100–P2011). Schema matches powerflex_525.json reference. 100% manual-cited from G120X operational instructions (0319_en-US).
+- **Routes:** `/drive-commander/siemens-g120` (landing + faults + parameters all resolve).
+- **Citation coverage:** 100% — F30001 overcurrent, F30004 motor overtemp, F30006 inverter overtemp, P1200 ramp acceleration, etc. all grounded.
+- **Validation:** JSON parse OK, schema compliance, all 13 faults registered, all 18 parameters resolvable. Eval fixture `vfd_siemens_01_sinamics_g120_f30001.yaml` grounds to pack.
+- **Impact:** Proves schema + renderer portability across manufacturers (Siemens/Rockwell).
+- **VERSION:** 3.129.1 → 3.129.2 (patch).
+
+### v3.129.8 (2026-07-11) - feat(ops): wire ENABLE_WO_EVIDENCE (default-off) into every engine service in saas.yml (#2445 Step 1)
+- **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE` + `MIRA_WO_EVIDENCE_TIMEOUT_S`/`MIRA_WO_EVIDENCE_LIMIT`, shipped flag-gated OFF in #2472) was settable in code but wired into **no** deployment, so enabling it meant hand-editing several services. This makes enabling a single Doppler-var flip, with **zero runtime behavior change** until then.
+- **What:** added the three vars (default-off: `${ENABLE_WO_EVIDENCE:-0}`, `${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}`, `${MIRA_WO_EVIDENCE_LIMIT:-5}`) to **every** `docker-compose.saas.yml` service that instantiates `shared.engine.Supervisor` — verified by grepping `Supervisor(` and mapping each hit to its saas build: **mira-pipeline, mira-bot-telegram, mira-bot-slack, mira-ask** (4 — the "assume three" trap: `mira-ask`/AskMira kiosk also runs the engine). Excluded (verified): `mira-mcp` proxies to mira-pipeline over HTTP (no engine); `mira-relay`/`mira-sparkplug-consumer` are ingest-only; teams/whatsapp/reddit/gchat/email adapters instantiate `Supervisor` in code but have no saas service.
+- **Docs + guard:** documented all three in `docs/env-vars.md`; new `tests/test_wo_evidence_compose.py` (4 tests) asserts every engine service carries all three vars default-off, that no non-engine service receives them, and that all three are documented (keeps env-drift green: used + documented).
+- **Scope:** config + docs + test only. Default OFF — nothing enabled, no Doppler/staging/prod change, `#2445` stays open. VERSION 3.129.7 → 3.129.8.
+
+### v3.129.7 (2026-07-11) - test(engine): golden case + CI guard for CMMS work-order-history citation (#2445)
+- **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE`, shipped flag-gated OFF in #2472) is built + unit-tested + wired into the diagnosis prompt, but #2445's Definition of Done requires a **golden case** proving a diagnosis for an asset with prior work orders cites them as evidence. That artifact was missing.
+- **What:**
+  - `tests/golden_factorylm.csv` — new golden case: a recurring GS10 `oC` overcurrent on conveyor CV-101 whose ideal answer cites two prior repairs (`[WO 1042]`, `[WO 0987]`) grounded in the provided work-order context, alongside the manual `[Source:]` tag. Mirrors the real `_format_wo_evidence` block shape (`[WO <num>] <date> (<status>): <title> -- <resolution>`).
+  - `tests/test_wo_evidence.py` — `test_golden_set_has_wo_citation_case`: a deterministic CI guard that the truth set keeps a work-order-citation case, cites ≥2 `[WO N]`, and every cited `[WO N]` is grounded in the case's own context (no invented citations). Keeps the DoD artifact from silently rotting (the CSV isn't auto-run by the offline eval, which loads `tests/eval/fixtures/*.yaml`).
+- **Scope:** test/fixture only — no engine, prompt, or flag-default change; `ENABLE_WO_EVIDENCE` stays OFF. Enablement (document the flag + wire it into the engine service `environment:` blocks + Doppler staging→gate→prod) is the deliberate follow-up. 14/14 `tests/test_wo_evidence.py` pass. VERSION 3.129.6 → 3.129.7.
 
 ### v3.130.0 (2026-07-11) - feat(conv-simple-electrical): CV-101 electrical print package (9 sheets, photo-aligned)
 - **Why:** a model-first, evidence-graded electrical print set for the CV-101 garage conveyor, aligned to the real bench — every claim cited to a repo artifact / bench photo, or marked FIELD VERIFY. No invented terminals/wires/devices.
@@ -11,7 +112,6 @@
 - **Bug found:** `kb_growth_cron` manual ingest has failed for ~3 weeks — `mira-docling` was removed 2026-06-06 (OOM) but `full_ingest_pipeline` still calls it at `:5001` → `Connection refused` on every PDF. A real PowerFlex-525 manual is stuck failing in the queue purely because of this; fixing it makes the bridge fire automatically.
 - **Memory:** the 8 GB VPS is over-subscribed (swap 3.6/4.0 GiB) — a full staging stack (`stg-*` ≈ 870 MiB+) runs alongside prod, plus two MinIO instances + JVM services (java 777 MiB swapped). That's why docling has no room. Recommend: repoint ingest off docling onto the Tika/OW path; move staging off the prod box.
 - **Scope:** docs only. No code/runtime change. Full findings: `docs/discovery/2026-07-07-prod-ingest-docling-and-vps-memory.md`.
-
 
 ### v3.129.1 (2026-07-10) - fix(ci): install pytest-asyncio in the offline pytest jobs — stop the asyncio_mode PytestConfigWarning→exit-1 flake
 - **Why:** the `Architecture Check` job (and the two other offline pytest jobs) install only `pytest pyyaml`, but every pytest run reads `asyncio_mode = "auto"` from the shared `[tool.pytest.ini_options]` in `pyproject.toml`. Without `pytest-asyncio` present that's an **unknown ini option** → `PytestConfigWarning: Unknown config option: asyncio_mode`, which some resolved pytest versions escalate to **exit 1 despite all tests passing** (`9 passed, 1 warning` + exit 1). It flaked red on 4 PRs (#2547/#2549/#2550 Drive Commander convergence) while passing on clean-env draws (#2553).

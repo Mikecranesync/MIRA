@@ -217,6 +217,7 @@ services:
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_DRIVE_COMMANDER_PRICE_ID=${STRIPE_DRIVE_COMMANDER_PRICE_ID:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
       # Unit 3 — magic email inbox (Apps Script + Gmail plus-addressing)
       - INBOUND_HMAC_SECRET=${INBOUND_HMAC_SECRET:-}
@@ -254,6 +255,13 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - VISION_MODEL=qwen2.5vl:7b
       - INFERENCE_BACKEND=cloud
+      # CMMS work-order-history evidence (#2445/#2472). Default OFF — zero runtime
+      # behavior change until ENABLE_WO_EVIDENCE=1 (Doppler). Wired so enabling is a
+      # one-var flip; see docs/env-vars.md. Applies to every service that runs the
+      # shared.engine.Supervisor diagnosis path.
+      - ENABLE_WO_EVIDENCE=${ENABLE_WO_EVIDENCE:-0}
+      - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
+      - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
@@ -315,6 +323,13 @@ services:
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
+      # CMMS work-order-history evidence (#2445/#2472). Default OFF — zero runtime
+      # behavior change until ENABLE_WO_EVIDENCE=1 (Doppler). Wired so enabling is a
+      # one-var flip; see docs/env-vars.md. Applies to every service that runs the
+      # shared.engine.Supervisor diagnosis path.
+      - ENABLE_WO_EVIDENCE=${ENABLE_WO_EVIDENCE:-0}
+      - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
+      - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
@@ -364,6 +379,13 @@ services:
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
+      # CMMS work-order-history evidence (#2445/#2472). Default OFF — zero runtime
+      # behavior change until ENABLE_WO_EVIDENCE=1 (Doppler). Wired so enabling is a
+      # one-var flip; see docs/env-vars.md. Applies to every service that runs the
+      # shared.engine.Supervisor diagnosis path.
+      - ENABLE_WO_EVIDENCE=${ENABLE_WO_EVIDENCE:-0}
+      - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
+      - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
@@ -424,6 +446,12 @@ services:
       # questions back) instead of the Guided Socratic Dialogue. Scoped to
       # mira-ask only; Telegram/Slack bots keep GSD.
       MIRA_DIRECT_ANSWER_MODE: "1"
+      # CMMS work-order-history evidence (#2445/#2472). Default OFF — zero runtime
+      # behavior change until ENABLE_WO_EVIDENCE=1 (Doppler). mira-ask runs the
+      # shared.engine.Supervisor (ask_api/app.py) so it needs these too.
+      ENABLE_WO_EVIDENCE: "${ENABLE_WO_EVIDENCE:-0}"
+      MIRA_WO_EVIDENCE_TIMEOUT_S: "${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}"
+      MIRA_WO_EVIDENCE_LIMIT: "${MIRA_WO_EVIDENCE_LIMIT:-5}"
     volumes:
       - /opt/mira/data:/mira-db
     networks:

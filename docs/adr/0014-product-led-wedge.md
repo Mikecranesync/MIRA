@@ -1,7 +1,13 @@
 # ADR-0014: MIRA is product-led, not services-led
 
+> **⚠️ FRAMING UPDATE (2026-07-11).** This ADR is valid for its architectural decision (product-led
+> motion over services-led). However, the "maintenance copilot" positioning used here is superseded.
+> The **first sellable product is Drive Commander**, a read-only VFD troubleshooting tool (issue #2577,
+> PR #2504, ADR-0025). Product-led principles here still hold; the product example has changed.
+> See **[NORTH_STAR.md](../../NORTH_STAR.md) and [ADR-0025](./0025-drive-intelligence-packs-and-drive-commander.md)**.
+
 ## Status
-Accepted — 2026-05-20
+Accepted — 2026-05-20 · **Framing note added 2026-07-11**
 
 **Follows:** ADR-0008 (sidecar deprecation) · ADR-0013 (UNS namespace builder schema)
 

@@ -57,6 +57,30 @@ STRONG_PRINT_SIGNALS = {
     "terminal diagram",
 }
 
+# Caption/question vocabulary that signals the photo is a DRAWING, not a
+# physical component. Routes a captioned print photo to the grounded schematic
+# path even when the vision summary of the drawing's CONTENT (motor, sensor,
+# RTD, terminal, relay) trips an EQUIPMENT_FACE keyword — the technician saying
+# "this print/schematic/diagram" outranks an incidental component word.
+# Regression: docs/eval/visual-technician-corpus/hard_failures/
+#   mack_intrasys_brake_stator.yaml
+CAPTION_PRINT_KEYWORDS = {
+    "print",
+    "prints",
+    "schematic",
+    "diagram",
+    "drawing",
+    "wiring",
+    "one-line",
+    "one line",
+    "single line",
+    "ladder",
+    "p&id",
+    "panel schedule",
+    "elementary",
+    "control print",
+}
+
 # Keywords that indicate a nameplate / data plate / rating plate photo.
 # These appear in the vision model description or OCR text when the photo
 # shows an equipment identification label rather than a faceplate with
@@ -213,7 +237,7 @@ class VisionWorker:
 
         tesseract_text = self._ocr_extract(photo_b64)
 
-        classify_result = self._classify_photo(str(vision_result), ocr_items)
+        classify_result = self._classify_photo(str(vision_result), ocr_items, message)
         classification = classify_result["type"]
         classify_confidence = classify_result["confidence"]
         logger.info(
@@ -385,7 +409,7 @@ class VisionWorker:
             logger.warning("OCR extraction failed: %s", e)
             return ""
 
-    def _classify_photo(self, vision_result: str, ocr_items: list) -> dict:
+    def _classify_photo(self, vision_result: str, ocr_items: list, caption: str = "") -> dict:
         """Classify photo as ELECTRICAL_PRINT, NAMEPLATE, or EQUIPMENT_PHOTO with confidence.
 
         Returns {"type": str, "confidence": float}.
@@ -449,6 +473,16 @@ class VisionWorker:
         if any(_kw_in(sig, vision_lower) for sig in STRONG_PRINT_SIGNALS):
             conf = min(1.0, 0.7 + print_matches * 0.05)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
+
+        # Caption override: if the technician's caption/question explicitly calls
+        # this a print/schematic/diagram/wiring drawing, trust that over an
+        # incidental equipment-component word in the vision summary. A genuine
+        # nameplate (handled above) still wins; this only pre-empts the
+        # EQUIPMENT_FACE override below so a captioned drawing routes to the
+        # grounded schematic path instead of the generic engine.
+        caption_lower = (caption or "").lower()
+        if any(_kw_in(kw, caption_lower) for kw in CAPTION_PRINT_KEYWORDS):
+            return {"type": "ELECTRICAL_PRINT", "confidence": 0.6}
 
         # Equipment faceplate keywords (only when NO strong print signal above) —
         # a physical faceplate photo, never a drawing.

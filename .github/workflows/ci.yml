@@ -327,6 +327,13 @@ jobs:
         # already covered by tools/env_drift_allowlist.txt (pre-existing drift).
         run: python3 tools/check_env_drift.py
 
+      - name: Check knowledge_entries read filters (hybrid corpus law)
+        # Enforce `.claude/rules/knowledge-entries-tenant-scoping.md`:
+        # HYBRID surfaces must filter (is_private=false OR tenant_id), not TENANT-ONLY
+        # alone (bug class #1761). All UNFILTERED and TENANT-ONLY reads must be in
+        # the explicit allowlist with documented reasons (deferred fixes, test code).
+        run: python3 tools/qa/security/check_knowledge_entries_filters.py
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
