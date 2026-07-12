@@ -2144,9 +2144,25 @@ class Supervisor:
             # resolve_pack() match is harmless by construction. See ADR-0025 +
             # shared/drive_packs/ask.py for the pack-grounded-only contract
             # (never a generic LLM answer, never a guess).
-            _dp_pack = resolve_pack(message)
+            #
+            # Match on the technician's QUESTION ONLY (2026-07-12) — never on
+            # attached context blocks. The kiosk /ask path composes
+            # MACHINE_CONTEXT + status block + "[QUESTION]\n<q>" (ask_api/app.py),
+            # and MACHINE_CONTEXT embeds the full GS10 fault-code TABLE
+            # ("4=GFF ground fault; 12=Lvd; …") — so matching the whole message
+            # made answer_question() hit the first table mnemonic (GFF) on EVERY
+            # kiosk turn, hijacking unrelated questions to the GFF card. Same
+            # class of risk for the Ignition "[LIVE TAGS …]…[END LIVE TAGS]"
+            # preamble (mira-pipeline/ignition_chat.py). Strip both; a message
+            # with no marker is already a bare question.
+            _dp_question = message
+            if "[QUESTION]\n" in _dp_question:
+                _dp_question = _dp_question.rsplit("[QUESTION]\n", 1)[-1]
+            if "[END LIVE TAGS]" in _dp_question:
+                _dp_question = _dp_question.rsplit("[END LIVE TAGS]", 1)[-1]
+            _dp_pack = resolve_pack(_dp_question)
             if _dp_pack is not None:
-                _dp_answer = answer_question(_dp_pack.pack_id, message)
+                _dp_answer = answer_question(_dp_pack.pack_id, _dp_question)
                 if _dp_answer.matched:
                     _dp_seen: set[tuple[str, str]] = set()
                     _dp_cite_parts: list[str] = []
