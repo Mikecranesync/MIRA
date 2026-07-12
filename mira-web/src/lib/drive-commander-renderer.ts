@@ -28,10 +28,10 @@ import {
 } from "./drive-pack-data.js";
 
 const BASE_URL = "https://factorylm.com";
-// TODO(stripe-sku): add STRIPE_DRIVE_COMMANDER_PRICE_ID to Doppler factorylm/prd
-// When ready, create a Drive Commander Pro subscription price in Stripe (Individual: $29/mo or $197/yr)
-// and update this URL to /api/checkout/session?product=drive-commander-pro
-const PRICING_HREF = "/pricing?product=drive-commander-pro";
+// Live checkout: /api/checkout/session dispatches on ?product= and falls back
+// to /pricing?product=drive-commander-pro until STRIPE_DRIVE_COMMANDER_PRICE_ID
+// is provisioned in Doppler factorylm/prd.
+const PRICING_HREF = "/api/checkout/session?product=drive-commander-pro";
 const WAITLIST_HREF =
   "mailto:hello@factorylm.com?subject=Drive%20Commander%20Pro%20interest";
 

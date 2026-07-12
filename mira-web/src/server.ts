@@ -92,6 +92,7 @@ import { decryptSecret, verifyTotp, findRecoveryCodeIndex } from "./lib/mfa.js";
 import {
   createCheckoutSession,
   createDirectCheckoutSession,
+  createDriveCommanderCheckoutSession,
   createPortalSession,
   constructWebhookEvent,
 } from "./lib/stripe.js";
@@ -1006,6 +1007,21 @@ function magicLinkErrorPage(msg: string): string {
 
 // Direct checkout — no email required, Stripe collects it. Used by pricing page buttons.
 app.get("/api/checkout/session", async (c) => {
+  const product = c.req.query("product");
+  if (product === "drive-commander-pro") {
+    // Graceful until the price is provisioned: fall back to the pricing page
+    // instead of an error redirect (the funnel ships ahead of the SKU).
+    if (!process.env.STRIPE_DRIVE_COMMANDER_PRICE_ID) {
+      return c.redirect("/pricing?product=drive-commander-pro", 303);
+    }
+    try {
+      const url = await createDriveCommanderCheckoutSession();
+      return c.redirect(url, 303);
+    } catch (err) {
+      console.error("[checkout/session] drive-commander error:", err);
+      return c.redirect("/pricing?product=drive-commander-pro&checkout=error", 303);
+    }
+  }
   try {
     const url = await createDirectCheckoutSession();
     return c.redirect(url, 303);
@@ -1127,6 +1143,58 @@ app.post("/api/stripe/webhook", async (c) => {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
+
+      // Drive Commander Pro (individual $29/mo) — record the purchase and STOP.
+      // This is NOT a CMMS team tenant: no tier activation, no Atlas, no Hub
+      // provisioning. Entitlement delivery is tracked separately.
+      if (session.metadata?.product === "drive-commander-pro") {
+        const dcEmail = session.customer_details?.email || "";
+        const dcCustomer = typeof session.customer === "string"
+          ? session.customer
+          : session.customer?.id || "";
+        const dcSubscription = typeof session.subscription === "string"
+          ? session.subscription
+          : session.subscription?.id || "";
+        console.log(
+          "[stripe-webhook] Drive Commander Pro purchase:",
+          dcEmail, dcCustomer, dcSubscription
+        );
+        let dcTenant = dcEmail ? await findTenantByEmail(dcEmail) : null;
+        if (!dcTenant && dcEmail) {
+          const newId = crypto.randomUUID();
+          await createTenant({
+            id: newId,
+            email: dcEmail,
+            company: dcEmail.split("@")[1] || "unknown",
+            firstName: "",
+            tier: "drive_commander_pro",
+            atlasPassword: "",
+            atlasCompanyId: 0,
+            atlasUserId: 0,
+          });
+          dcTenant = await findTenantById(newId);
+        }
+        if (dcTenant) {
+          await updateTenantStripe(dcTenant.id, dcCustomer, dcSubscription);
+          if (dcTenant.tier !== "active") {
+            await updateTenantTier(dcTenant.id, "drive_commander_pro");
+          }
+          void recordAuditEvent({
+            tenantId: dcTenant.id,
+            actorType: "system",
+            actorId: "stripe.webhook",
+            action: "drive_commander_pro.purchased",
+            resource: dcSubscription,
+            metadata: { customer_id: dcCustomer, subscription_id: dcSubscription },
+          });
+          captureServerEvent({
+            event: "drive_commander_purchase",
+            distinctId: dcTenant.id,
+            properties: { subscription_id: dcSubscription },
+          });
+        }
+        break;
+      }
 
       const customerId = typeof session.customer === "string"
         ? session.customer

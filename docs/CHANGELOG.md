@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.129.20 (2026-07-12) - feat(web): Drive Commander Pro live checkout — CTA -> Stripe session + purchase-recording webhook branch
+- **Why:** the public G120 fault funnel (v3.129.10) shipped with the Pro CTA pointing at a pricing placeholder. Stripe live mode is now verified; this closes the last code gap between the funnel and a paying stranger.
+- **What:** `createDriveCommanderCheckoutSession()` (subscription mode, `STRIPE_DRIVE_COMMANDER_PRICE_ID`, metadata `product=drive-commander-pro`, success/cancel back to the funnel); `/api/checkout/session?product=drive-commander-pro` dispatch with a graceful `/pricing` fallback while the price ID is unprovisioned; webhook `checkout.session.completed` gets an early drive-commander branch that records the purchase (tenant by email, tier `drive_commander_pro`, Stripe ids, audit + `drive_commander_purchase` funnel event) and explicitly SKIPS CMMS tenant activation + Hub provisioning (different product, different buyer). Funnel CTA now hits the live endpoint.
+- **Evidence:** bun test 341 tests — failures 9/9 identical to clean main (pre-existing env-dependent nameplate/jwt cases; zero introduced); tsc: zero new errors (remaining errors pre-exist on main).
+- **Ops:** requires `STRIPE_DRIVE_COMMANDER_PRICE_ID` in Doppler `factorylm/prd` + a mira-web redeploy to take effect; until then the CTA falls back to /pricing. Entitlement DELIVERY (what Pro unlocks post-purchase) is a tracked follow-up.
+- **Rollback:** single squash-revert; no migrations; webhook branch is additive and keyed on session metadata only.
+
 
 ### v3.132.1 (2026-07-11) - fix(visual): ask_equipment refuses a stale identity after a legible different-machine photo
 - **Why:** an independent adversarial safety review found a real, reproducible NO-GO in Phase 2. `ask_equipment` selected the latest **RESOLVED** identity, so a perfectly **legible** photo of a **different/unsupported** machine (Siemens S120 → NONE) taken after a first RESOLVED photo (GS10) was ignored — an equipment question ("what does CE10 mean?") was answered with a confidently-cited fault-code fact **from the wrong machine**. The four hard gates (never-invent, energization short-circuit, refuse-without-identity, tenant isolation) all held; this violated their spirit one layer up.
