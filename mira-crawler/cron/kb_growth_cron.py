@@ -60,7 +60,11 @@ except ImportError:
 # ─── paths ────────────────────────────────────────────────────────────────────
 _HERE = Path(__file__).parent.resolve()
 _REPO = _HERE.parent.parent
-QUEUE_FILE = _HERE / "manual_queue.json"
+# Runtime queue path: outside the repo tree so it survives git checkout --force on deploy.
+# Default to /var/lib/mira (Linux standard for application state), but allow override
+# via MIRA_MANUAL_QUEUE_PATH env var. This ensures queue progress persists across deploys.
+_QUEUE_PATH_DEFAULT = Path("/var/lib/mira/manual_queue.json")
+QUEUE_FILE = Path(os.getenv("MIRA_MANUAL_QUEUE_PATH", str(_QUEUE_PATH_DEFAULT)))
 PIPELINE = _REPO / "mira-crawler" / "tasks" / "full_ingest_pipeline.py"
 
 # ─── tunables (env-overridable) ───────────────────────────────────────────────
