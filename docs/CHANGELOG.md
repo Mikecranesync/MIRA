@@ -1,6 +1,14 @@
 # MIRA Release Notes
 
 
+### v3.131.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 1 — VisualSession spine + grounded answer envelope
+- **Why:** ADR-0027 Phase 1 (Snippet Interpreter MVP) of the MIRA Visual Technician PRD. The north star needs a persistent, multi-image, evidence-graded visual session with claim-level uncertainty — a genuine gap today (a session held ONE photo, replaced not accumulated). This builds the spine + the structured grounded-answer contract, **reusing** the existing extraction workers rather than rebuilding them.
+- **What:**
+  - `mira-hub/db/migrations/063_visual_sessions.sql` — 6 tenant-scoped, RLS'd, append-only tables (visual_session / evidence_item / region_of_interest / observation / visual_question / answer_claim), faithful to the mig-038 pattern. Tenant isolation proven on a real ephemeral `postgres:16` as the `factorylm_app` role (not superuser) — `test_visual_session_migration.py` 3/3.
+  - `mira-bots/shared/visual/` — `EvidenceState` (9 states, a VIEW over ADR-0026/0017 + the Print Pack field-verify tier, mirrored by the SQL CHECK); `models`; `store` (Neon, mirrors `decision_trace.py`'s connection shape; `InMemoryVisualStore` double); `quality_gate` (pure/deterministic, numpy-optional); `answer_composer` (the safety-critical deterministic core — never invents a destination/terminal/voltage/rating, labels inference `LIKELY`, short-circuits energization questions to a safety disclaimer before consulting observations); `session_service` (injectable workers, graceful degrade); `demo` CLI.
+  - Tests: 38 hermetic (composer golden + no-invented-destination + safety, quality gate, session continuity/persistence, `EvidenceState`↔SQL-CHECK parity) + 3 ephemeral-Postgres tenant-isolation (skip cleanly where Docker is absent). ruff-clean.
+- **Scope:** additive new package + one migration + tests. No deployed service, adapter, or existing schema touched. PR-only per the PRD directive; the Print Pack publish path (Phase 4) is untouched. VERSION 3.129.8 → 3.131.0 (3.130.0 reserved by the concurrent Print Pack PR #2642 to avoid a VERSION collision).
+
 ### v3.129.13 (2026-07-12) - chore(deps): remove unused anthropic dependency from Telegram bot
 - **Why:** MIRA policy (PR #610) removed Anthropic as a provider; the `anthropic>=0.97.0` line in `mira-bots/telegram/requirements.txt` is dead weight. Verified unused via grep across the entire Telegram bot codebase.
 - **What:** removed `anthropic>=0.97.0` from `mira-bots/telegram/requirements.txt`. No code change, no behavior change — pure dependency hygiene.
