@@ -37,6 +37,25 @@ Original query: {query}
 Expanded query:"""
 
 
+def _log_nim_fallback(op: str, exc: Exception, **extra: object) -> None:
+    """Emit a loud, ops-alertable marker when a NIM call fails and we fall back
+    to a degraded path (#2257).
+
+    A silent reranker/embed outage is the worst failure mode for a
+    grounding-first product: retrieval still returns results, just worse ones,
+    with nothing an ops dashboard or canary can alert on. This logs a distinct
+    ERROR marker ``NEMOTRON_<OP>_FALLBACK`` carrying the HTTP status (so a
+    404-on-every-call outage is visible), while callers keep their graceful
+    fallback return value unchanged.
+    """
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    logger.error(
+        "NEMOTRON_%s_FALLBACK %s",
+        op.upper(),
+        json.dumps({"error": str(exc)[:200], "status": status, **extra}),
+    )
+
+
 class NemotronClient:
     """NVIDIA NIM API client with graceful fallback to local Ollama."""
 
@@ -114,7 +133,7 @@ class NemotronClient:
             return rewritten or query
 
         except Exception as e:
-            logger.warning("Nemotron rewrite failed, using original: %s", e)
+            _log_nim_fallback("rewrite", e)
             return query
 
     # ------------------------------------------------------------------
@@ -150,7 +169,7 @@ class NemotronClient:
             return embedding
 
         except Exception as e:
-            logger.warning("Nemotron embed failed: %s", e)
+            _log_nim_fallback("embed", e)
             return None
 
     # ------------------------------------------------------------------
@@ -217,7 +236,7 @@ class NemotronClient:
             return results
 
         except Exception as e:
-            logger.warning("Nemotron rerank failed, using original order: %s", e)
+            _log_nim_fallback("rerank", e, passages_in=len(passages))
             return [{"index": i, "text": p, "score": 1.0} for i, p in enumerate(passages[:top_n])]
 
     # ------------------------------------------------------------------
@@ -264,5 +283,5 @@ class NemotronClient:
             logger.info("NEMOTRON_VL_EMBED dim=%d latency_ms=%d", len(embedding), elapsed)
             return embedding
         except Exception as e:
-            logger.warning("Nemotron VL embed failed: %s", e)
+            _log_nim_fallback("vl_embed", e)
             return None

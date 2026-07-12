@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.134.3 (2026-07-12) - fix(retrieval): make Nemotron/NIM fallback loud so a silent reranker outage is alertable (#2257)
+- **Why:** the Nemotron reranker hop 404s on every retrieval and the code catches it, falls back to un-reranked order, and logs only a buried `WARNING` — "fails open and quiet," the worst failure mode for a grounding-first product. A silent reranker/embed outage degrades citation grounding with nothing an ops dashboard or canary can alert on.
+- **What:** the four NIM call fallbacks (`rewrite`, `embed`, `rerank`, VL `embed`) now emit a distinct **ERROR**-level marker `NEMOTRON_<OP>_FALLBACK` (via a small `_log_nim_fallback` helper) carrying the HTTP status, so a 404-on-every-call outage surfaces. Graceful fallback return values are **unchanged** (behavior-preserving — original order / `None`), and a disabled client (no key) stays silent.
+- **Test:** new `mira-bots/tests/test_nemotron_fallback.py` — asserts the fallback preserves order/`None` AND emits the loud ERROR marker with `status:404`; disabled client makes no noise.
+- **Follow-up (not in this PR):** restore or retire the NIM ranking endpoint/key/model, and wire an ops alert rule on `NEMOTRON_.*_FALLBACK`. Tracked in #2257.
+
 ### v3.134.2 (2026-07-12) - fix(engine): drive-pack fast-path matches the QUESTION only — kiosk answered GFF to everything
 - **Why:** first live session on the Ask MIRA kiosk after the v3.134.1 mira-ask redeploy: EVERY question returned the GFF ground-fault card ("what does CE10 mean" → GFF; "why is the conveyor stopped" → GFF; reproduced via POST /ask). Root cause: the fast-path (engine.py, shipped 2026-07-06) ran resolve_pack()/answer_question() over the WHOLE composed message. The kiosk path prepends MACHINE_CONTEXT, which embeds the full GS10 fault-code table ("4=GFF ground fault; 12=Lvd; …") — so the pack always resolved ("GS10" in the card) and the first table mnemonic (GFF) always won over the technician's actual question.
 - **What:** the fast-path now strips attached context before matching — text after the kiosk `[QUESTION]\n` marker (ask_api/app.py composition) and after `[END LIVE TAGS]` (mira-pipeline/ignition_chat.py preamble); a bare message is unchanged. No behavior change for chat surfaces that send a plain question.
