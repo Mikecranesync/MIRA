@@ -1,0 +1,30 @@
+approval_tier: APPROVABLE WITH FIELD VERIFICATION
+approval_tier_definition: Every drawn fact in this pack is either backed by a citation you can check (a
+  manual page, a program line, a dated bench photo) or is explicitly and visibly flagged FIELD VERIFY
+  (dashed on the drawings, listed in the open-items register). No hard-fail defects remain, and every
+  independent reviewer scored every sheet at or above 90/100. It does NOT mean this is a certified as-built
+  — every FIELD VERIFY item must be confirmed on the physical machine before it is relied on for energized
+  work.
+asset:
+  label: Garage conveyor (Conv_Simple)
+  tag: CV-101
+  uns_path: enterprise.garage.demo_cell.cv_101
+history_note: Full technical revision history is retained in the preparer's internal QA record; available
+  on request.
+review_verdict_source: engineering review panel (see evidence/provenance_report.md QA summary)
+revisions:
+- author: MIRA / FactoryLM
+  date: '2026-07-11'
+  description: Initial drafted 9-sheet electrical print set (E-001..E-009); dash-true field-verify rendering;
+    model-backed annotations; validator checks A-L green.
+  rev: A
+- author: MIRA / FactoryLM
+  date: '2026-07-11'
+  description: 'MIRA Print Pack commercial bundle: cover/status page, PDF metadata+bookmarks+links, evidence
+    & provenance report, structured open-items register, field-verification worksheet, revision/approval
+    record, machine-readable pack_model export.'
+  rev: A (commercial pack)
+signatures:
+  customer_field_accepted_by: ''
+  engineering_reviewed_by: 4-reviewer panel (technician, controls, drafting, evidence-auditor)
+  prepared_by: MIRA / FactoryLM
