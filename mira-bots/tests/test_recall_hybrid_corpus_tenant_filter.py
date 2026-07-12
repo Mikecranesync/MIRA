@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, "mira-bots")
@@ -62,9 +61,7 @@ def _make_oem_chunk(manufacturer: str = "AutomationDirect", model: str = "GS10")
     }
 
 
-def _make_tenant_chunk(
-    tenant_id: str, manufacturer: str = "Yaskawa", model: str = "V1000"
-):
+def _make_tenant_chunk(tenant_id: str, manufacturer: str = "Yaskawa", model: str = "V1000"):
     """Per-tenant upload chunk (is_private=true)."""
     return {
         "content": f"{manufacturer} {model} customer upload",
@@ -155,9 +152,7 @@ class TestProductSearchHybridFilter:
         ]
 
         with _patch_create_engine(_mock_engine_with_conn(conn)):
-            results = _product_search(
-                conn, str, tenant_b, ["GS10"], embedding=[0.5] * 4, limit=5
-            )
+            results = _product_search(conn, str, tenant_b, ["GS10"], embedding=[0.5] * 4, limit=5)
 
         assert len(results) == 2
 
@@ -170,9 +165,7 @@ class TestProductSearchHybridFilter:
         ]
 
         with _patch_create_engine(_mock_engine_with_conn(conn)):
-            results = _product_search(
-                conn, str, None, ["GS10"], embedding=[0.5] * 4, limit=5
-            )
+            results = _product_search(conn, str, None, ["GS10"], embedding=[0.5] * 4, limit=5)
 
         assert len(results) == 1
         assert results[0]["is_private"] is False
@@ -334,8 +327,8 @@ class TestRecallKnowledgeHybridFilter:
         """Critical security test: anonymous tenant_id=None never sees private rows."""
         conn = MagicMock()
         tenant_g = "tenant-uuid-ggg"
-        tenant_chunk_g = _make_tenant_chunk(tenant_g)
-        oem_chunk = _make_oem_chunk()
+        _make_tenant_chunk(tenant_g)
+        _make_oem_chunk()
 
         # If the DB mistakenly returned a private chunk, would we leak it?
         # This test verifies the SQL filter prevents it.
@@ -364,7 +357,7 @@ class TestCrosstTenantIsolation:
 
         oem_chunk = _make_oem_chunk()
         # This chunk belongs to tenant B
-        tenant_b_chunk = _make_tenant_chunk(tenant_b)
+        _make_tenant_chunk(tenant_b)
 
         # If tenant A runs a query, the SQL filter should exclude tenant B's chunk
         # Mock only returns OEM to represent correct filtering
@@ -396,4 +389,4 @@ class TestCrosstTenantIsolation:
         # Must have is_private check + tenant check
         assert "is_private" in sql_text.lower()
         # Either explicit tenant_id column or parameter placeholder
-        assert ("tenant_id" in sql_text.lower() or ":tid" in sql_text)
+        assert "tenant_id" in sql_text.lower() or ":tid" in sql_text

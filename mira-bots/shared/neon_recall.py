@@ -382,7 +382,9 @@ def _extract_product_names(query_text: str) -> list[str]:
     return list({m.strip() for m in _PRODUCT_NAME_RE.findall(query_text)})
 
 
-def _like_search(conn, text_fn, tenant_id: Optional[str], codes: list[str], limit: int) -> list[dict]:
+def _like_search(
+    conn, text_fn, tenant_id: Optional[str], codes: list[str], limit: int
+) -> list[dict]:
     """Run ILIKE keyword search for fault codes against content column.
 
     Hybrid corpus read: searches both the shared OEM knowledge pool and the
