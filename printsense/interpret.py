@@ -53,7 +53,7 @@ _SYSTEM = (
     "- Keep protective earth (PE) in `pe_bonds`, SEPARATE from current-carrying "
     "conductors — never mix PE into a line/neutral path.\n"
     "- Every entity carries `evidence` (what text/region supports it) and a "
-    "`confidence` 0-1. Set `trust` to \"proposed\" on EVERYTHING (nothing is "
+    '`confidence` 0-1. Set `trust` to "proposed" on EVERYTHING (nothing is '
     "verified yet).\n"
     "- Distinguish visible fact from rule-derived inference; hedge inferences.\n\n"
     "OUTPUT: return ONLY a single JSON object that conforms to the PrintSynth "

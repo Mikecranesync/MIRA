@@ -49,7 +49,9 @@ class Entity(BaseModel):
     type: str | None = None
     detail: str | None = None
     connects: list[str] = Field(default_factory=list)
-    evidence: str | None = Field(default=None, description="the on-sheet text/region supporting this fact")
+    evidence: str | None = Field(
+        default=None, description="the on-sheet text/region supporting this fact"
+    )
     confidence: float | None = None
     trust: TrustState = TrustState.proposed
     sheet: str | int | None = None
@@ -98,7 +100,9 @@ class PrintSynthGraph(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    package: dict = Field(default_factory=dict, description="drawing no, cabinet, sheet list, unit chain")
+    package: dict = Field(
+        default_factory=dict, description="drawing no, cabinet, sheet list, unit chain"
+    )
     devices: list[Entity] = Field(default_factory=list)
     terminals: list[Entity] = Field(default_factory=list)
     conductors: list[Entity] = Field(default_factory=list)
