@@ -101,6 +101,13 @@ def _golden_diff_relpaths(root: Path) -> set[str]:
 @pytest.fixture(scope="module")
 def rebuilt_bundle(tmp_path_factory) -> Path:
     """Rebuild the CV-101 bundle to an isolated tmp dir once per test module."""
+    # build_pack.py renders sheet PDFs/PNGs via fitz/PyMuPDF (validate_model.py's
+    # raster-parity gate), so a full rebuild cannot run without it. Skip these
+    # rebuild tests where PyMuPDF is absent (e.g. the lean "Eval Offline" job that
+    # sweeps all of tests/) -- they run in the dedicated "Machine Print Pack" CI
+    # step, which installs pymupdf. The fitz-independent tests below still run
+    # everywhere (validate_pack.py degrades gracefully without fitz).
+    pytest.importorskip("fitz", reason="needs PyMuPDF to render sheets")
     out = tmp_path_factory.mktemp("cv101_rebuild") / "cv-101"
     result = _run_build(out)
     assert result.returncode == 0, (
