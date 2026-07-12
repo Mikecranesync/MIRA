@@ -7,7 +7,12 @@ and a pack cannot claim `production` without bench/live evidence.
 Runnable as a plain script (`python tools/drive-pack-extract/tests/test_scorecard.py`)
 or under pytest. No network, no LLM.
 """
-import io, json, os, sys, tempfile
+
+import io
+import json
+import os
+import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOOL = os.path.dirname(HERE)
@@ -61,14 +66,43 @@ def test_low_citation_pack_is_not_promotable():
                 "pack_id": "synthetic_lowcite",
                 "schema_version": 2,
                 "family": {"manufacturer": "X", "series": "Y"},
-                "live_decode": {"fault_codes": {"1": "A", "2": "B"}, "status_bits": {}, "cmd_word": {}, "registers": {}},
+                "live_decode": {
+                    "fault_codes": {"1": "A", "2": "B"},
+                    "status_bits": {},
+                    "cmd_word": {},
+                    "registers": {},
+                },
                 "envelope": {},
                 "parameters": [
-                    {"parameter_id": "P1", "name": "p1", "related_faults": [], "related_parameters": [],
-                     "value_meanings": [], "source_citation": {"doc": "m", "page": "1"}},
-                    {"parameter_id": "P2", "name": "p2", "related_faults": [], "related_parameters": [], "value_meanings": []},
-                    {"parameter_id": "P3", "name": "p3", "related_faults": [], "related_parameters": [], "value_meanings": []},
-                    {"parameter_id": "P4", "name": "p4", "related_faults": [], "related_parameters": [], "value_meanings": []},
+                    {
+                        "parameter_id": "P1",
+                        "name": "p1",
+                        "related_faults": [],
+                        "related_parameters": [],
+                        "value_meanings": [],
+                        "source_citation": {"doc": "m", "page": "1"},
+                    },
+                    {
+                        "parameter_id": "P2",
+                        "name": "p2",
+                        "related_faults": [],
+                        "related_parameters": [],
+                        "value_meanings": [],
+                    },
+                    {
+                        "parameter_id": "P3",
+                        "name": "p3",
+                        "related_faults": [],
+                        "related_parameters": [],
+                        "value_meanings": [],
+                    },
+                    {
+                        "parameter_id": "P4",
+                        "name": "p4",
+                        "related_faults": [],
+                        "related_parameters": [],
+                        "value_meanings": [],
+                    },
                 ],
                 "keypad_navigation": [],
                 "provenance": {"items": {"parameters": "manual_cited"}},
@@ -90,14 +124,30 @@ def test_manual_cited_pack_cannot_be_production_even_with_approval():
                 "schema_version": 2,
                 "family": {"manufacturer": "X", "series": "Y"},
                 # manual-cited: no bench live_decode
-                "live_decode": {"fault_codes": {"1": "A"}, "status_bits": {}, "cmd_word": {}, "registers": {}},
+                "live_decode": {
+                    "fault_codes": {"1": "A"},
+                    "status_bits": {},
+                    "cmd_word": {},
+                    "registers": {},
+                },
                 "envelope": {},
                 "parameters": [
-                    {"parameter_id": "P1", "name": "p1", "related_faults": [], "related_parameters": [],
-                     "value_meanings": [], "source_citation": {"doc": "m", "page": "1"}}
+                    {
+                        "parameter_id": "P1",
+                        "name": "p1",
+                        "related_faults": [],
+                        "related_parameters": [],
+                        "value_meanings": [],
+                        "source_citation": {"doc": "m", "page": "1"},
+                    }
                 ],
                 "keypad_navigation": [],
-                "provenance": {"items": {"parameters": "manual_cited", "live_decode.fault_codes": "manual_cited"}},
+                "provenance": {
+                    "items": {
+                        "parameters": "manual_cited",
+                        "live_decode.fault_codes": "manual_cited",
+                    }
+                },
             },
         )
         # even with a recorded human approval, no bench data => not production
@@ -126,11 +176,22 @@ def test_scorecard_still_catches_bogus_fault_ref():
                 "pack_id": "syn_bogus",
                 "schema_version": 2,
                 "family": {"manufacturer": "X", "series": "Y"},
-                "live_decode": {"fault_codes": {"1": "A comm ok"}, "status_bits": {}, "cmd_word": {}, "registers": {}},
+                "live_decode": {
+                    "fault_codes": {"1": "A comm ok"},
+                    "status_bits": {},
+                    "cmd_word": {},
+                    "registers": {},
+                },
                 "envelope": {},
                 "parameters": [
-                    {"parameter_id": "P1", "name": "p1", "related_faults": ["ZZ99"], "related_parameters": [],
-                     "value_meanings": [], "source_citation": {"doc": "m", "page": "1"}}
+                    {
+                        "parameter_id": "P1",
+                        "name": "p1",
+                        "related_faults": ["ZZ99"],
+                        "related_parameters": [],
+                        "value_meanings": [],
+                        "source_citation": {"doc": "m", "page": "1"},
+                    }
                 ],
                 "keypad_navigation": [],
                 "provenance": {"items": {"parameters": "manual_cited"}},
@@ -151,5 +212,5 @@ if __name__ == "__main__":
         except AssertionError as e:
             fails += 1
             print(f"FAIL  {fn.__name__}: {e}")
-    print(f"\n{'ALL PASSED' if not fails else str(fails)+' FAILED'} ({len(fns)} tests)")
+    print(f"\n{'ALL PASSED' if not fails else str(fails) + ' FAILED'} ({len(fns)} tests)")
     sys.exit(1 if fails else 0)
