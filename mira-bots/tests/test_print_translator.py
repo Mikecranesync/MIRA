@@ -165,3 +165,77 @@ class TestFormatTheoryReply:
         raw = "Some explanation text."
         result = print_translator.format_theory_reply(raw, drawing_type="ladder logic")
         assert result == raw
+
+
+# ── is_print_question (widened gate: device/wiring questions route to grounded) ─
+
+
+class TestIsPrintQuestion:
+    def test_what_devices_are_listed_regression(self):
+        # The exact caption that hit the free-form LLM and hallucinated
+        # ("ladder logic / timers / counters") — must now route to grounded.
+        assert (
+            print_translator.is_print_question("what devices are listed in this print?") is True
+        )
+
+    def test_theory_phrases_still_match(self):
+        assert print_translator.is_print_question("explain this print") is True
+        assert print_translator.is_print_question("theory of operation") is True
+
+    def test_device_and_component_questions(self):
+        assert print_translator.is_print_question("what components are in this print") is True
+        assert print_translator.is_print_question("list the devices on this drawing") is True
+
+    def test_wiring_and_tracing_questions(self):
+        assert print_translator.is_print_question("trace this wire") is True
+        assert print_translator.is_print_question("what feeds this motor") is True
+
+    def test_case_insensitive(self):
+        assert print_translator.is_print_question("WHAT DEVICES ARE ON THIS PRINT") is True
+
+    def test_wiring_intake_caption_falls_through(self):
+        # The wiring-intake flow owns "add this wiring".
+        assert print_translator.is_print_question("add this wiring") is False
+
+    def test_nameplate_caption_does_not_steal(self):
+        assert print_translator.is_print_question("what drive is this?") is False
+
+    def test_unrelated_text_falls_through(self):
+        assert print_translator.is_print_question("what's the weather") is False
+
+    def test_empty_and_none(self):
+        assert print_translator.is_print_question("") is False
+        assert print_translator.is_print_question(None) is False
+
+
+# ── build_theory_messages(question=...) — grounded + targeted ──
+
+
+class TestBuildTheoryMessagesWithQuestion:
+    def _vd(self):
+        return {
+            "classification": "ELECTRICAL_PRINT",
+            "ocr_items": ["-3/F1", "-3/E1"],
+            "drawing_type": "schematic",
+        }
+
+    def test_question_is_appended_and_grounded(self):
+        messages = print_translator.build_theory_messages(
+            "B64", self._vd(), question="what devices are listed in this print?"
+        )
+        text = messages[1]["content"][1]["text"]
+        assert "what devices are listed in this print?" in text
+        assert "specifically asked" in text
+        assert "never invent" in text.lower()
+        # still grounded ONLY in the provided OCR items
+        assert "-3/F1" in text and "-3/E1" in text
+
+    def test_no_question_is_backward_compatible(self):
+        messages = print_translator.build_theory_messages("B64", self._vd())
+        text = messages[1]["content"][1]["text"]
+        assert "specifically asked" not in text
+
+    def test_blank_question_ignored(self):
+        messages = print_translator.build_theory_messages("B64", self._vd(), question="   ")
+        text = messages[1]["content"][1]["text"]
+        assert "specifically asked" not in text
