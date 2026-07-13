@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Capper 01 — HMI screen options</title>
+<link rel="stylesheet" href="factorylm-tokens.css">
+<link rel="stylesheet" href="faceplate.css">
+</head>
+<body>
+<div class="page">
+  <h1>CAPPER&nbsp;01 — HMI screen options</h1>
+  <p class="sub">Pick one. Original ISA-101 / High-Performance HMI designs · FactoryLM tokens · muted-normal, color = state only.
+     UNS <code>enterprise.proveit.bottling.plant1.filling.capper01</code></p>
+  <div class="grid">
+
+    <!-- 1: HP-HMI faceplate (ISA-101 canonical) -->
+    <div class="opt">
+      <span class="tag">OPTION 1</span>
+      <p class="name">HP-HMI faceplate (ISA-101 canonical) — muted, value+setpoint+range+quality</p>
+      <div class="fp">
+        <div class="fp-head"><span class="id">CAPPER 01</span><span class="pill run"><span class="dot"></span>RUNNING</span></div>
+        <div class="fp-body">
+          <div class="row"><span class="lbl">Cap torque</span><span class="val">11.8<span class="u">in·lb</span></span></div>
+          <div class="bar"><i style="width:62%"></i><span class="sp-mark" style="left:66%"></span></div>
+          <div class="row"><span class="lbl">Setpoint / range</span><span class="sp">12.0 (11.5–12.5)</span></div>
+          <div class="row"><span class="lbl">Caps applied</span><span class="val">1,284</span></div>
+          <div class="row"><span class="lbl">Rejects</span><span class="val">3</span></div>
+          <div class="row"><span class="lbl">Mode</span><span class="val">AUTO</span></div>
+        </div>
+        <div class="fp-foot"><span>Comms ✓ <span class="q">good</span></span><span>upd 1s ago</span></div>
+      </div>
+    </div>
+
+    <!-- 2: Detail / diagnostic faceplate -->
+    <div class="opt">
+      <span class="tag">OPTION 2</span>
+      <p class="name">Detail / diagnostic — trend + interlocks + MIRA evidence strip</p>
+      <div class="fp">
+        <div class="fp-head"><span class="id">CAPPER 01 · detail</span><span class="pill run"><span class="dot"></span>RUNNING</span></div>
+        <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none">
+          <polyline style="fill:none;stroke:var(--fl-ok)" stroke-width="1.5"
+            points="0,18 20,16 40,19 60,15 80,17 100,16 120,18 140,15 160,17 180,16 200,17"/>
+        </svg>
+        <div class="fp-body">
+          <div class="row"><span class="lbl">Cap torque</span><span class="val">11.8<span class="u">in·lb</span> <span class="sp">sp 12.0</span></span></div>
+          <div class="row"><span class="lbl">Reject rate</span><span class="val">0.2<span class="u">%</span></span></div>
+          <div class="row"><span class="lbl">Interlocks</span><span class="q">all clear</span></div>
+        </div>
+        <div class="mira"><b>Ask MIRA</b> ▸ torque trending nominal · last PM 6 d ago <span class="btn">open</span></div>
+      </div>
+    </div>
+
+    <!-- 3: Equipment mimic -->
+    <div class="opt">
+      <span class="tag">OPTION 3</span>
+      <p class="name">Equipment mimic — capping head graphic with live values overlaid</p>
+      <div class="fp">
+        <div class="fp-head"><span class="id">CAPPER 01 · mimic</span><span class="pill run"><span class="dot"></span>RUN</span></div>
+        <div class="mimic">
+          <svg viewBox="0 0 120 120">
+            <rect x="46" y="6" width="28" height="34" rx="3" style="fill:var(--fl-line-strong)"/>
+            <rect x="52" y="40" width="16" height="22" style="fill:var(--fl-off)"/>
+            <path d="M44 62 h32 l-6 14 h-20 z" style="fill:var(--fl-ok)"/>
+            <circle cx="60" cy="92" r="13" style="fill:none;stroke:var(--fl-line-strong)" stroke-width="6"/>
+            <rect x="10" y="104" width="100" height="8" rx="2" style="fill:var(--fl-line)"/>
+            <circle cx="60" cy="20" r="4" style="fill:var(--fl-ok)"/>
+          </svg>
+          <div class="vals">
+            <div class="row"><span class="lbl">Torque</span><span class="val">11.8<span class="u">in·lb</span></span></div>
+            <div class="row"><span class="lbl">Head</span><span class="val">240<span class="u">rpm</span></span></div>
+            <div class="row"><span class="lbl">Caps</span><span class="val">1,284</span></div>
+            <div class="row"><span class="lbl">Chuck</span><span class="q">engaged</span></div>
+          </div>
+        </div>
+        <div class="fp-foot"><span>Comms ✓</span><span>AUTO · 1s</span></div>
+      </div>
+    </div>
+
+    <!-- 4: KPI tiles -->
+    <div class="opt">
+      <span class="tag">OPTION 4</span>
+      <p class="name">KPI tiles — flat dashboard cards (status pill + big numbers)</p>
+      <div class="fp">
+        <div class="fp-head"><span class="id">CAPPER 01</span><span class="pill run"><span class="dot"></span>RUNNING</span></div>
+        <div class="tiles">
+          <div class="tile"><div class="k">CAP TORQUE</div><div class="v">11.8<small> in·lb</small></div></div>
+          <div class="tile"><div class="k">SETPOINT</div><div class="v">12.0<small> in·lb</small></div></div>
+          <div class="tile"><div class="k">CAPS APPLIED</div><div class="v">1,284</div></div>
+          <div class="tile"><div class="k">REJECTS</div><div class="v">3</div></div>
+          <div class="tile span2"><div class="k">OEE (shift)</div><div class="v">96.4<small> %</small></div></div>
+        </div>
+        <div class="fp-foot"><span>Comms ✓ good</span><span>updated 1s ago</span></div>
+      </div>
+    </div>
+
+    <!-- 5: Alarm-first / operator action (FAULT state) -->
+    <div class="opt">
+      <span class="tag">OPTION 5</span>
+      <p class="name">Alarm-first / operator action — ISA-18.2 (shown in FAULT state)</p>
+      <div class="fp">
+        <div class="fp-head"><span class="id">CAPPER 01</span><span class="pill fault"><span class="dot"></span>FAULT</span></div>
+        <div class="alarm"><span>⚠ TORQUE OUT OF SPEC</span><span class="meta">PRIO HIGH · 00:04 · unacked</span></div>
+        <div class="action">
+          <div class="row"><span class="lbl">Cap torque</span><span class="val bad">9.0<span class="u">in·lb</span> <span class="sp">sp 12.0</span></span></div>
+          <div class="row"><span class="lbl">Rejects</span><span class="val bad">▲ rising</span></div>
+          <span class="req">REQUIRED RESPONSE</span>
+          <ol><li>Check capping-head clutch / friction pads</li><li>Re-verify torque setpoint</li><li>Run a torque audit</li></ol>
+        </div>
+        <div class="acks"><span class="btn">ACK</span><span class="btn ghost">Ask MIRA ▸</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

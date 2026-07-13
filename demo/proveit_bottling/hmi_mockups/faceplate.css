@@ -1,0 +1,103 @@
+/* FactoryLM HMI faceplate styles — 5 industry-standard layouts, all colors via factorylm-tokens.css.
+ * Doctrine: muted-gray normal; strong color reserved for state (green=running, amber=warn, red=fault,
+ * gray=off). Value rows show actual + setpoint + range + units + quality. (.claude/rules/ui-style.md +
+ * industrial-hmi-scada-design.) No hardcoded hex — every color is a --fl-* token. */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--fl-bg); color: var(--fl-ink);
+  font-family: var(--fl-font); font-size: var(--fl-fs);
+}
+.page { padding: 20px 24px 36px; }
+.page > h1 { font-size: 18px; margin: 0 0 4px; }
+.page > .sub { color: var(--fl-muted); font-size: var(--fl-fs-sm); margin: 0 0 18px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.opt { background: transparent; }
+.opt > .tag {
+  display: inline-block; font-size: var(--fl-fs-xs); font-weight: 700; letter-spacing: .04em;
+  color: var(--fl-accent-ink); background: var(--fl-accent-tint);
+  padding: 2px 8px; border-radius: 999px; margin-bottom: 8px;
+}
+.opt > .name { font-size: var(--fl-fs-sm); color: var(--fl-muted); margin: 0 0 8px; }
+
+/* base faceplate card */
+.fp {
+  background: var(--fl-surface); border: 1px solid var(--fl-line); border-radius: var(--fl-radius);
+  box-shadow: var(--fl-shadow); overflow: hidden; font-size: var(--fl-fs-sm);
+}
+.fp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px var(--fl-pad); border-bottom: 1px solid var(--fl-line);
+}
+.fp-head .id { font-weight: 700; letter-spacing: .02em; }
+.fp-body { padding: 10px var(--fl-pad); }
+
+/* status pill */
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fl-fs-xs);
+  font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.pill.run { color: var(--fl-ok); background: var(--fl-ok-bg); }
+.pill.warn { color: var(--fl-warn); background: var(--fl-warn-bg); }
+.pill.fault { color: var(--fl-fault); background: var(--fl-fault-bg); }
+.pill.off { color: var(--fl-off); background: var(--fl-bg); }
+
+/* value rows: actual + setpoint + range + units + quality */
+.row { display: grid; grid-template-columns: 1fr auto; align-items: baseline; padding: 5px 0;
+  border-bottom: 1px dashed var(--fl-line); }
+.row:last-child { border-bottom: 0; }
+.row .lbl { color: var(--fl-muted); }
+.row .val { font-family: var(--fl-mono); font-weight: 700; }
+.row .val .u { color: var(--fl-muted); font-weight: 400; font-size: var(--fl-fs-xs); margin-left: 3px; }
+.row .sp { color: var(--fl-faint); font-size: var(--fl-fs-xs); font-family: var(--fl-mono); }
+.bad { color: var(--fl-fault); }
+.q { font-size: var(--fl-fs-xs); color: var(--fl-ok); }
+.q.stale { color: var(--fl-warn); }
+
+/* horizontal range/gauge bar */
+.bar { position: relative; height: 6px; background: var(--fl-line); border-radius: 3px; margin-top: 5px; }
+.bar > i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--fl-ok); border-radius: 3px; }
+.bar > i.warn { background: var(--fl-warn); }
+.bar > i.fault { background: var(--fl-fault); }
+.bar > .sp-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--fl-ink); }
+
+/* footer / comms */
+.fp-foot { display: flex; justify-content: space-between; padding: 8px var(--fl-pad);
+  border-top: 1px solid var(--fl-line); color: var(--fl-muted); font-size: var(--fl-fs-xs); }
+
+/* alarm banner */
+.alarm { display: flex; gap: 8px; align-items: flex-start; padding: 9px var(--fl-pad);
+  background: var(--fl-fault-bg); color: var(--fl-fault); border-bottom: 1px solid var(--fl-line);
+  font-weight: 600; }
+.alarm.ok { background: var(--fl-ok-bg); color: var(--fl-ok); font-weight: 500; }
+.alarm .meta { color: var(--fl-muted); font-weight: 400; font-size: var(--fl-fs-xs); }
+
+/* MIRA evidence strip */
+.mira { display: flex; align-items: center; gap: 8px; padding: 8px var(--fl-pad);
+  background: var(--fl-accent-tint); color: var(--fl-accent-ink); font-size: var(--fl-fs-xs); }
+.mira b { font-weight: 700; }
+.btn { font-size: var(--fl-fs-xs); font-weight: 700; color: var(--fl-header-ink);
+  background: var(--fl-accent); padding: 4px 10px; border-radius: var(--fl-radius-sm); }
+.btn.ghost { color: var(--fl-accent-ink); background: var(--fl-surface); border: 1px solid var(--fl-line-strong); }
+
+/* sparkline */
+svg.spark { display: block; width: 100%; height: 34px; }
+
+/* ---- Style 3: equipment mimic ---- */
+.mimic { padding: 12px; display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: center; }
+.mimic svg { width: 120px; height: 120px; }
+.mimic .vals .row { border: 0; padding: 3px 0; }
+
+/* ---- Style 4: KPI tiles ---- */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px var(--fl-pad); }
+.tile { background: var(--fl-bg); border: 1px solid var(--fl-line); border-radius: var(--fl-radius-sm); padding: 9px 10px; }
+.tile .k { color: var(--fl-muted); font-size: var(--fl-fs-xs); }
+.tile .v { font-family: var(--fl-mono); font-size: 20px; font-weight: 700; line-height: 1.1; }
+.tile .v small { font-size: var(--fl-fs-xs); color: var(--fl-muted); font-family: var(--fl-font); }
+.tile.span2 { grid-column: span 2; }
+
+/* ---- Style 5: alarm-first / operator action ---- */
+.action { padding: 10px var(--fl-pad); }
+.action ol { margin: 6px 0 0; padding-left: 18px; color: var(--fl-ink); }
+.action ol li { margin: 3px 0; }
+.action .req { color: var(--fl-fault); font-weight: 700; font-size: var(--fl-fs-xs); }
+.acks { display: flex; gap: 8px; padding: 8px var(--fl-pad); border-top: 1px solid var(--fl-line); }
