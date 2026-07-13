@@ -1,0 +1,94 @@
+<!doctype html><meta charset=utf-8><title>schneider-atv340-vfd</title><body style='font:14px system-ui;max-width:60rem;margin:2rem'><p># MIRA Print Translator Test — schneider-atv340-vfd</p><p></p><p>## 1. Source &amp; drawing metadata</p><p>- Publisher: Schneider Electric</p><p>- Title: Altivar Machine ATV340 Wiring Diagrams (NVE97896)</p><p>- Sheet: Wiring diagram section (p. 3-5)</p><p>- Equipment: Variable frequency drive (VFD)</p><p>- Standard: IEC 61800-5-1</p><p>- Category: vfd</p><p>- Source URL: https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&amp;p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&amp;p_Doc_Ref=NVE97896</p><p>- Access date (UTC): 2026-07-13T20:51:54Z</p><p>- Original sha256: `5d8d99b51ecee2eb5e8f085552c3e4b72f0b63295497b88aa7978135ee204785`</p><p></p><p>## 2. Why selected
+Schneider ATV340 VFD: mains input (S1/S2/S3 variants), motor output, STO_A/STO_B safety, DI1-DI5, AI1-AI3/AQ1 analog, R1/R2 relays, DQ1/DQ2, encoder, Modbus/Sercos — a dense IEC drive to cross-check against the NEMA GS20. Page 0 verified by render 2026-07-13 as the wiring sheet (1/2). Caption chosen to satisfy the production is_print_question() gate (an initial &#x27;Explain the power and control wiring…&#x27; phrasing is gate-rejected). Publicly published instruction sheet on download.schneider-electric.com; provenance verified 2026-07-10.</p><p></p><p>## 3. Exact Telegram bot response (verbatim, unmodified)</p><p></p><p>📋 Sheet 1/2 of Schneider Electric&#x27;s ATV340 variable-speed drive wiring reference — the power terminals (for frame sizes S1, S2 and S3) and the shared control terminals.
+
+This is a factory connection diagram for the Altivar ATV340 AC drive. The upper &#x27;Power&#x27; half shows how to land three-phase incoming mains on connector CN1 (L1/L2/L3, or L1-R/L2-S/L3-T on the S3 frame), the motor output U/V/W (U/T1,V/T2,W/T3) on CN10 to the motor, the internal DC bus at PA/+ and PC/- (CN9), and an optional dynamic braking resistor on the PB/PBe terminals. An earth (PE) plate and ground terminals bond the chassis. The lower &#x27;Control&#x27; half shows the low-voltage terminals: the Safe Torque Off safety inputs (STO_A/STO_B, 24V, 0V) on CN2, programmable relay outputs R1 (A/B/C) and R2 (A/C), analog I/O on CN6 (AI1 0..10V/20mA, AI2 ±10V, AQ1 output 0..10V/20mA), five digital inputs (DI1–DI5), two transistor outputs (DO1, DO2), a +10V pot reference, plus expansion/communication ports: HMI/Modbus on CN7, optional Ethernet or Sercos III (ETH1,2), an encoder interface (ENC, 1Vpp A/B/I) and pulse train ports PTI/PTO (CN3/CN4/CN5) and an RS422 link. A logic-type selector (SW1: SRC/SK/EXT) sets sink/source for the digital inputs. Screw torque is 0.5 N·m / 4.4 lb·in.
+
+🔑 Signals
+• Three-phase line input
+• Motor output to motor
+• DC bus terminals
+• Dynamic braking resistor
+• Safe Torque Off channel A
+• Safe Torque Off channel B
+• 24V / 0V control supply
+• Relay output 1 (form-C)
+• Relay output 2
+• Analog input 1 (0..10V / x..20mA), pot reference
+• Analog input 2 bipolar ±10Vdc (differential)
+• Analog output 1 (0..10V / x..20mA)
+• +10V potentiometer reference supply
+• Digital inputs 1–5
+• Transistor output 1
+• Transistor output 2
+• Digital output common
+• Digital input supply
+• HMI / Modbus serial port
+• Ethernet / Sercos III option ports
+• Encoder interface (1Vpp, A/B/I) / RS422
+• Pulse train output
+• Pulse train input
+
+🔧 Devices
+• Altivar ATV340 variable-speed drive (frames S1/S2/S3) (ATV340)
+• Three-phase AC motor (M)
+• Dynamic braking resistor (optional, &#x27;if used&#x27;) (Braking resistor)
+… (more — reply &quot;map&quot;)
+
+❓ Couldn&#x27;t confirm (verify on the sheet):
+• S3 power block CN8/CN9 grouping (PB, PA/+, PC/-) is cramped and overlapping — verify exact terminal-to-connector assignment from a clean crop.
+• The repeated &#x27;DISUP&#x27; terminal(s) at CN6 and their count are low-confidence.
+• CN7 Modbus marking &#x27;VP12S&#x27; is uncertain.
+• No absolute supply/motor voltage is printed on this sheet — get it from the ATV340 rating plate/catalog.
+
+⚠️ The power terminals (CN1 line, CN10 motor, CN9 PA/+/PC/- DC bus) are lethal live parts; the DC-bus capacitors can hold a dangerous charge AFTER the mains disconnect, so treat PA/+/PC/- and the braking terminals as energized until proven discharged. This sheet does NOT print the actual line/motor voltage — determine it from the drive rating plate before working. For continuity/resistance checks (e.g. motor leads, resistor), de-energize, lock out, and verify absence of voltage including the DC bus. The only voltage values actually printed here are the control-side references: ±10Vdc and 0..10Vdc analog, 24V/0V, 5V, 10V and the 1Vpp encoder signal — for live checks on those use appropriately rated meters and energized-work procedures. Terminal screw torque printed as 0.5 N·m / 4.4 lb·in.
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply &quot;map&quot; for the full terminal and wire list.</p><p></p><p>- classification: **ELECTRICAL_PRINT** (conf 0.9)</p><p>- interpreter used (Anthropic PrintSynth): **True**</p><p>- model: claude-opus-4-8 · effort xhigh · latency 180.4s</p><p></p><p>## 4. Automated grade (PROVISIONAL — not technician approval until Mike calibrates)</p><p>- score: **81/100** (B)</p><p>- hard failure: **False**</p><p>- summary: The response is a reasonably careful, well-hedged reading of the ATV340 S1/S2/S3 wiring sheet, correctly identifying the Power/Control layout, key connectors (CN1, CN9, CN10, CN2, CN6, CN7), and control voltages actually printed, while appropriately flagging ambiguous areas (S3 CN8/CN9 grouping, DISUP count, VP12S label) instead of asserting them as fact. Minor issues include a slightly invented AI2 terminal suffix and under-detailed wire/cable itemization, but no hard hallucinations of voltage levels, device tags, or hazardous terminal facts were found.</p><p></p><p>## 5. Verified strengths</p><p>- Correctly distinguishes S1&amp;S2 CN1 (L1/L2/L3) from S3 CN1 (L1-R/L2-S/L3-T) as shown in the drawing.</p><p>- Correctly notes the drawing does not print an absolute mains/motor voltage value, matching the absence of such text on the sheet.</p><p>- Flags the cramped CN8/CN9/PB/PA+/PC- grouping on the S3 block as low-confidence rather than asserting a definite terminal assignment.</p><p></p><p>## 6. Suspected errors / hallucinations</p><p>- &quot;Analog input 2 bipolar ±10Vdc (differential) — AI2+ / AI2-  @ CN6:AI2+/AI2-&quot; — The drawing labels the terminals &#x27;AI2&#x27; and &#x27;+AI2&#x27;, not &#x27;AI2+/AI2-&#x27;; this is a paraphrase rather than the printed terminal designation.</p><p></p><p>## 7. Items requiring technician review</p><p>- S3 power block CN8/CN9 grouping (PA/+, PB, PC/-) terminal-to-connector assignment, as flagged by the assistant itself.</p><p>- Exact count/location of DISUP terminals on CN6.</p><p>- Whether CN7&#x27;s &#x27;VP12S&#x27; marking is a Modbus port designation as claimed.</p><p></p><p>## 8. Build &amp; runtime
+- commit: `33ee01082734f372d0f6d568d0731d868405d613` · branch: feat/internet-print-test-runner · version: 3.137.2
+- judge model: claude-sonnet-5 · run: 2026-07-13T20:56:37Z</p><p>
+## 9. Source URL
+https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&amp;p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&amp;p_Doc_Ref=NVE97896</p><h2>Verbatim response</h2><pre style='white-space:pre-wrap;border:1px solid #ccc;padding:1rem'>📋 Sheet 1/2 of Schneider Electric&#x27;s ATV340 variable-speed drive wiring reference — the power terminals (for frame sizes S1, S2 and S3) and the shared control terminals.
+
+This is a factory connection diagram for the Altivar ATV340 AC drive. The upper &#x27;Power&#x27; half shows how to land three-phase incoming mains on connector CN1 (L1/L2/L3, or L1-R/L2-S/L3-T on the S3 frame), the motor output U/V/W (U/T1,V/T2,W/T3) on CN10 to the motor, the internal DC bus at PA/+ and PC/- (CN9), and an optional dynamic braking resistor on the PB/PBe terminals. An earth (PE) plate and ground terminals bond the chassis. The lower &#x27;Control&#x27; half shows the low-voltage terminals: the Safe Torque Off safety inputs (STO_A/STO_B, 24V, 0V) on CN2, programmable relay outputs R1 (A/B/C) and R2 (A/C), analog I/O on CN6 (AI1 0..10V/20mA, AI2 ±10V, AQ1 output 0..10V/20mA), five digital inputs (DI1–DI5), two transistor outputs (DO1, DO2), a +10V pot reference, plus expansion/communication ports: HMI/Modbus on CN7, optional Ethernet or Sercos III (ETH1,2), an encoder interface (ENC, 1Vpp A/B/I) and pulse train ports PTI/PTO (CN3/CN4/CN5) and an RS422 link. A logic-type selector (SW1: SRC/SK/EXT) sets sink/source for the digital inputs. Screw torque is 0.5 N·m / 4.4 lb·in.
+
+🔑 Signals
+• Three-phase line input
+• Motor output to motor
+• DC bus terminals
+• Dynamic braking resistor
+• Safe Torque Off channel A
+• Safe Torque Off channel B
+• 24V / 0V control supply
+• Relay output 1 (form-C)
+• Relay output 2
+• Analog input 1 (0..10V / x..20mA), pot reference
+• Analog input 2 bipolar ±10Vdc (differential)
+• Analog output 1 (0..10V / x..20mA)
+• +10V potentiometer reference supply
+• Digital inputs 1–5
+• Transistor output 1
+• Transistor output 2
+• Digital output common
+• Digital input supply
+• HMI / Modbus serial port
+• Ethernet / Sercos III option ports
+• Encoder interface (1Vpp, A/B/I) / RS422
+• Pulse train output
+• Pulse train input
+
+🔧 Devices
+• Altivar ATV340 variable-speed drive (frames S1/S2/S3) (ATV340)
+• Three-phase AC motor (M)
+• Dynamic braking resistor (optional, &#x27;if used&#x27;) (Braking resistor)
+… (more — reply &quot;map&quot;)
+
+❓ Couldn&#x27;t confirm (verify on the sheet):
+• S3 power block CN8/CN9 grouping (PB, PA/+, PC/-) is cramped and overlapping — verify exact terminal-to-connector assignment from a clean crop.
+• The repeated &#x27;DISUP&#x27; terminal(s) at CN6 and their count are low-confidence.
+• CN7 Modbus marking &#x27;VP12S&#x27; is uncertain.
+• No absolute supply/motor voltage is printed on this sheet — get it from the ATV340 rating plate/catalog.
+
+⚠️ The power terminals (CN1 line, CN10 motor, CN9 PA/+/PC/- DC bus) are lethal live parts; the DC-bus capacitors can hold a dangerous charge AFTER the mains disconnect, so treat PA/+/PC/- and the braking terminals as energized until proven discharged. This sheet does NOT print the actual line/motor voltage — determine it from the drive rating plate before working. For continuity/resistance checks (e.g. motor leads, resistor), de-energize, lock out, and verify absence of voltage including the DC bus. The only voltage values actually printed here are the control-side references: ±10Vdc and 0..10Vdc analog, 24V/0V, 5V, 10V and the 1Vpp encoder signal — for live checks on those use appropriately rated meters and energized-work procedures. Terminal screw torque printed as 0.5 N·m / 4.4 lb·in.
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply &quot;map&quot; for the full terminal and wire list.</pre></body>

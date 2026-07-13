@@ -7,3 +7,4 @@
 | automationdirect-gs20-vfd | https://cdn.automationdirect.com/static/ | vfd | NEMA ICS 6 | ok | 86 | False | dry-run (package built, not sent) |
 | abb-star-delta-starter | https://library.e.abb.com/public/ac6b6e4 | contactor | IEC 60947-4-1 | ok | 78 | False | sent |
 | automationdirect-click-plc-io | https://cdn.automationdirect.com/static/ | plc_io | Industrial 24VDC | ok | 42 | True | sent |
+| schneider-atv340-vfd | https://download.schneider-electric.com/ | vfd | IEC 61800-5-1 | ok | 81 | False | sent |

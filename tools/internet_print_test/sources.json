@@ -135,8 +135,8 @@
     "standard": "IEC 61800-5-1",
     "category": "vfd",
     "page": 0,
-    "caption": "Explain the power and control wiring in this drive print.",
-    "why_selected": "Schneider ATV340 VFD: mains input, motor output, 24 V control circuits, and analog reference inputs — a second, IEC drive to cross-check against the NEMA GS20. Page 0 is the campaign-verified rendered page (corpus_manifest.md first-10, entry #19). Publicly published instruction sheet on download.schneider-electric.com; provenance verified 2026-07-10.",
+    "caption": "Explain this wiring diagram.",
+    "why_selected": "Schneider ATV340 VFD: mains input (S1/S2/S3 variants), motor output, STO_A/STO_B safety, DI1-DI5, AI1-AI3/AQ1 analog, R1/R2 relays, DQ1/DQ2, encoder, Modbus/Sercos — a dense IEC drive to cross-check against the NEMA GS20. Page 0 verified by render 2026-07-13 as the wiring sheet (1/2). Caption chosen to satisfy the production is_print_question() gate (an initial 'Explain the power and control wiring…' phrasing is gate-rejected). Publicly published instruction sheet on download.schneider-electric.com; provenance verified 2026-07-10.",
     "license_note": "Publicly published OEM literature; ownership retained by Schneider Electric; retained only for read-only interpreter testing."
   },
   {

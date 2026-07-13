@@ -65,5 +65,18 @@
     "classification": "ELECTRICAL_PRINT",
     "interpreter_used": true,
     "elapsed_s": 312.0
+  },
+  {
+    "test_id": "schneider-atv340-vfd",
+    "source_url": "https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&p_Doc_Ref=NVE97896",
+    "category": "vfd",
+    "standard": "IEC 61800-5-1",
+    "status": "ok",
+    "score": 81,
+    "hard_failure": false,
+    "email": "sent",
+    "classification": "ELECTRICAL_PRINT",
+    "interpreter_used": true,
+    "elapsed_s": 285.3
   }
 ]
