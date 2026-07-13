@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.137.1 (2026-07-13) - ci(printsense): E2E autopilot workflow on main (enables the staging E2E gate for #2665)
+- **Why:** GitHub Actions cannot dispatch or schedule a workflow until it is on the default branch (verified: 404 not-on-default-branch). The self-driving staging-E2E autopilot must be on main to poll for TELEGRAM_TEST_SESSION and gate PR #2665.
+- **What:** adds .github/workflows/printsense-staging-e2e.yml — polls Doppler stg every 30 min, skips cleanly while the session is absent, and once present runs the 7-check live E2E against @Mira_stagong_bot, uploads the report + evidence, posts to #2665, and merges #2665 only if the E2E and every check pass. Creds via Doppler; the session is never logged; deploys nothing. (Identical to the copy in #2665, so #2665 merges cleanly later.)
+- **Note:** merging this workflow-only PR triggers a no-op prod redeploy (same service code) — the operator authorized it explicitly.
+
 ### v3.137.0 (2026-07-13) - feat(printsense): technician-first render — plain-English brief + protected safety footer
 - **Why:** the PrintSynth interpreter is accurate, but the default Telegram reply was a wall of IEC tags ("-13/A1 → -X4:2 (LOK1) → DA5.1/10.0") — unreadable to a technician on a phone. And on a long sheet the reply could truncate away the safety/closing/uncertainty lines.
 - **What:** the interpreter emits one grounded `TechnicianBrief` field (sheet title / purpose / complete plain-English signals / key devices / one discriminating troubleshooting example / measurement-specific safety / unresolved items) — **no second model call**, just an added field on the existing interpretation. The default reply leads with that brief in a fixed 6-part order; exact tags/terminals/wires/destinations/confidence live in the on-request **`map`**. The brief splits into a truncatable **body** and a **protected footer** so uncertainty / measurement-safety / closing are **never** dropped when a long sheet overflows the 3500-char limit.
@@ -56,8 +61,6 @@
 - **What:** `ask_equipment` now uses the **latest `equipment_resolver` observation outright**, not the latest RESOLVED. The unreadable-photo path (parse_error / quality-gate reject) deliberately writes **no** `equipment_resolver` observation, so an unreadable re-scan still cannot erase a prior identity (preserved + tested) — but a legible different/unsupported machine supersedes it, so `answer_equipment` refuses with NEEDS_CONTEXT instead of leaking a stale pack's cited facts. Verified against the reviewer's own PoC (now refuses) + a new regression test.
 - **Scope:** one-method fix in `session_service.py` + one test. `answer_composer.py`, `equipment.py`, migration 063 unchanged. 103 tests pass (102 + 1 new), ruff clean. Stacked on Phase 2 (PR #2648). VERSION 3.132.0 → 3.132.1.
 
-=======
->>>>>>> origin/main
 
 ### v3.132.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 2 — equipment/nameplate intelligence
 - **Why:** ADR-0027 Phase 2. Adds the session-integrated equipment path (photo → identity candidates → service-pack/manual resolution → cited answer) the PRD calls the strongest-readiness capability, **reusing** the Drive Commander packs + manual retrieval + the Phase 1 session. **Stacked on Phase 1 (PR #2645).**
@@ -68,8 +71,6 @@
   - 64 Phase 2 tests (incl. real-Postgres tenant isolation as `factorylm_app`) + 38 Phase 1 = **102 pass, zero regressions**; ruff check + format clean.
 - **Scope:** additive; no deployed service / resolver / composer / Phase-1 file touched. PR-only per the PRD; stacked on PR #2645. VERSION 3.131.0 → 3.132.0.
 
-=======
->>>>>>> origin/main
 
 ### v3.131.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 1 — VisualSession spine + grounded answer envelope
 - **Why:** ADR-0027 Phase 1 (Snippet Interpreter MVP) of the MIRA Visual Technician PRD. The north star needs a persistent, multi-image, evidence-graded visual session with claim-level uncertainty — a genuine gap today (a session held ONE photo, replaced not accumulated). This builds the spine + the structured grounded-answer contract, **reusing** the existing extraction workers rather than rebuilding them.
