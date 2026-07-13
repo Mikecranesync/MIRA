@@ -91,5 +91,18 @@
     "classification": "ELECTRICAL_PRINT",
     "interpreter_used": true,
     "elapsed_s": 195.0
+  },
+  {
+    "test_id": "automationdirect-an-gs-022-reversing",
+    "source_url": "https://support.automationdirect.com/docs/an-gs-022.pdf",
+    "category": "reversing_braking",
+    "standard": "NEMA ICS 2",
+    "status": "ok",
+    "score": 79,
+    "hard_failure": false,
+    "email": "sent",
+    "classification": "ELECTRICAL_PRINT",
+    "interpreter_used": true,
+    "elapsed_s": 187.4
   }
 ]

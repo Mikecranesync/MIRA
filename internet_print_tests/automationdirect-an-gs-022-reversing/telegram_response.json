@@ -1,0 +1,459 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.85,
+  "drawing_type": "wiring diagram",
+  "vision_description": "The image shows an application note document titled \"Application Note\" with a table and text describing common wiring scenarios for start/stop and forward/reverse. The document is not a physical piece of equipment or component but rather an electrical drawing, specifically a wiring diagram.",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+  "final_text": "📋 Page 2 of an Automation Direct application note showing how to wire the digital-input control terminals of a GS20/GS20X variable-frequency drive for Start/Stop and Forward/Reverse, for the three values of parameter P02.00.\n\nThis sheet explains three ways to command run/direction from external switches or pushbuttons wired to the drive's digital inputs. First you set P00.21=1 so the drive takes its run command from the digital input terminals instead of the keypad. Then P02.00 selects the terminal behavior. Setting 1 is two-wire FWD/STOP and REV/STOP: closing FWD/DI1 runs forward, closing REV/DI2 runs reverse, opening either stops. Setting 2 is two-wire RUN/STOP with a separate direction bit: FWD/DI1 closed = run, and REV/DI2 chooses forward (open) or reverse (closed). Setting 3 is three-wire momentary control: a normally-open RUN button and a normally-closed STOP button (STOP on DI3) start and stop the drive, with REV/DI2 as an optional direction select. All input circuits shown return to the DCM common because the drive switch is assumed set to NPN (sink); for PNP/source mode you feed 24VDC to each DI and tie the supply 0V to DCM.\n\n🔑 Signals\n• Run Forward / Start command\n• Run Reverse / direction-select command\n• Stop command (3-wire mode, normally-closed)\n• Digital-input common / 0V return\n\n🔧 Devices\n• AC variable-frequency drive (control-terminal block) (GS20(X))\n• Two-wire selector/relay contacts for FWD-STOP and REV-STOP (Setting 1) (FWD/STOP, REV/STOP)\n• Two-wire RUN-STOP contact plus FWD-REV direction contact (Setting 2) (RUN/STOP, FWD/REV)\n• Momentary NO Start pushbutton, momentary NC Stop pushbutton, and REV/FWD direction select (Setting 3) (RUN, STOP, REV/FWD)\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• Exact junction between the NC STOP button, NO RUN button, and DI3 in the three-wire (Setting value 3) diagram is small and should be confirmed from a higher-resolution crop.\n• The DI voltage level is not printed on this sheet — confirm against the GS20/GS20X manual before metering live.\n• Whether each switch common lands directly on DCM or on a shared common bus is inferred from the note text, not explicitly drawn.\n\n⚠️ These are low-voltage digital-input control circuits, but no voltage value is printed on this sheet, so the drawing does not establish the DI voltage (the drive's DI/DCM system is typically a low-voltage 24VDC control circuit, but confirm on the drive nameplate/manual — do not assume). For continuity checks of the switches and DI-to-DCM paths, de-energize the drive, lock out, and verify absence of voltage first. Also remember the drive power terminals and motor output are lethal-voltage even though only the control section is drawn here; keep clear of them during any live check.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list.",
+  "all_messages": [
+    "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+    "📋 Page 2 of an Automation Direct application note showing how to wire the digital-input control terminals of a GS20/GS20X variable-frequency drive for Start/Stop and Forward/Reverse, for the three values of parameter P02.00.\n\nThis sheet explains three ways to command run/direction from external switches or pushbuttons wired to the drive's digital inputs. First you set P00.21=1 so the drive takes its run command from the digital input terminals instead of the keypad. Then P02.00 selects the terminal behavior. Setting 1 is two-wire FWD/STOP and REV/STOP: closing FWD/DI1 runs forward, closing REV/DI2 runs reverse, opening either stops. Setting 2 is two-wire RUN/STOP with a separate direction bit: FWD/DI1 closed = run, and REV/DI2 chooses forward (open) or reverse (closed). Setting 3 is three-wire momentary control: a normally-open RUN button and a normally-closed STOP button (STOP on DI3) start and stop the drive, with REV/DI2 as an optional direction select. All input circuits shown return to the DCM common because the drive switch is assumed set to NPN (sink); for PNP/source mode you feed 24VDC to each DI and tie the supply 0V to DCM.\n\n🔑 Signals\n• Run Forward / Start command\n• Run Reverse / direction-select command\n• Stop command (3-wire mode, normally-closed)\n• Digital-input common / 0V return\n\n🔧 Devices\n• AC variable-frequency drive (control-terminal block) (GS20(X))\n• Two-wire selector/relay contacts for FWD-STOP and REV-STOP (Setting 1) (FWD/STOP, REV/STOP)\n• Two-wire RUN-STOP contact plus FWD-REV direction contact (Setting 2) (RUN/STOP, FWD/REV)\n• Momentary NO Start pushbutton, momentary NC Stop pushbutton, and REV/FWD direction select (Setting 3) (RUN, STOP, REV/FWD)\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• Exact junction between the NC STOP button, NO RUN button, and DI3 in the three-wire (Setting value 3) diagram is small and should be confirmed from a higher-resolution crop.\n• The DI voltage level is not printed on this sheet — confirm against the GS20/GS20X manual before metering live.\n• Whether each switch common lands directly on DCM or on a shared common bus is inferred from the note text, not explicitly drawn.\n\n⚠️ These are low-voltage digital-input control circuits, but no voltage value is printed on this sheet, so the drawing does not establish the DI voltage (the drive's DI/DCM system is typically a low-voltage 24VDC control circuit, but confirm on the drive nameplate/manual — do not assume). For continuity checks of the switches and DI-to-DCM paths, de-energize the drive, lock out, and verify absence of voltage first. Also remember the drive power terminals and motor output are lethal-voltage even though only the control section is drawn here; keep clear of them during any live check.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list."
+  ],
+  "map_text": "📐 sheet Page 2 of 3\n\n🔌 Signals (exact — source → destination)\n• Run Forward / Start command — FWD/DI1  @ FWD/DI1  → GS20(X) drive digital input 1 · conf 0.92\n• Run Reverse / direction-select command — REV/DI2  @ REV/DI2  → GS20(X) drive digital input 2 · conf 0.92\n• Stop command (3-wire mode, normally-closed) — DI3  @ DI3  → GS20(X) drive digital input 3 · conf 0.88\n• Digital-input common / 0V return — DCM  @ DCM  → GS20(X) drive digital common · conf 0.90\n\n🔧 Devices (1)\n• GS20(X) — AC variable-frequency drive (GS20 / GS20X series drive; digital input control block shown for parameter P02.00 settings 1, 2 and 3) · conf 0.97\n\n🔗 Wires / cables\n• FWD/STOP -> FWD/DI1 — control wire · conf 0.90\n• REV/STOP -> REV/DI2 — control wire · conf 0.90\n• RUN/STOP -> FWD/DI1 — control wire · conf 0.90\n• FWD/REV -> REV/DI2 — control wire · conf 0.90\n• STOP+RUN -> FWD/DI1 — control wire · conf 0.85\n• REV/FWD -> REV/DI2 (setting3) — control wire · conf 0.85\n\n🧩 1 off-page ref(s): GS20/GS20X User Manual — Control Circuit Wiring Diagrams (Ch.2) · 3 PLC I/O\n\n⚠️ Couldn't read (retake or crop closer):\n• Exact junction between the NC STOP button, NO RUN button, and DI3 in the three-wire (Setting value 3) diagram is small and should be confirmed from a higher-resolution crop.\n• The DI voltage level is not printed on this sheet — confirm against the GS20/GS20X manual before metering live.\n• Whether each switch common lands directly on DCM or on a shared common bus is inferred from the note text, not explicitly drawn.\n\n🔎 Proposed interpretation from the drawing — not yet field-verified. Reply to confirm or correct any item.",
+  "graph": {
+    "package": {
+      "title": "Application Note — GS20 & GS20X Drive: Common Wiring Scenarios for Start/Stop and Forward/Reverse (External Terminal Control Circuits)",
+      "publisher": "Automation Direct",
+      "drawing_type": "wiring diagram (application note supplement)",
+      "sheet": "Page 2 of 3",
+      "reference_documents": "GS20 & GS20X Drive User Manual and Quick Start Guides",
+      "note": "Wiring diagrams assume the drive switch is set to NPN (sink) position; PNP/Source mode requires supplying 24VDC to each DI terminal and 0V to DCM."
+    },
+    "devices": [
+      {
+        "tag": "GS20(X)",
+        "type": "AC variable-frequency drive",
+        "detail": "GS20 / GS20X series drive; digital input control block shown for parameter P02.00 settings 1, 2 and 3",
+        "connects": [
+          "FWD/DI1",
+          "REV/DI2",
+          "DI3",
+          "DCM"
+        ],
+        "evidence": "'GS20(X)' label in each External Terminal Control Circuit box; title references GS20 & GS20X Drive",
+        "confidence": 0.97,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "terminals": [
+      {
+        "tag": "FWD/DI1",
+        "type": "digital input terminal",
+        "detail": "Digital input 1 / Forward. Setting1: OPEN=STOP, CLOSE=FWD. Setting2: OPEN=STOP, CLOSE=RUN. Setting3: CLOSE=RUN (start input)",
+        "connects": [
+          "GS20(X)"
+        ],
+        "evidence": "'FWD/DI1' terminal in all three control-circuit boxes",
+        "confidence": 0.96,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "REV/DI2",
+        "type": "digital input terminal",
+        "detail": "Digital input 2 / Reverse. Setting1: OPEN=STOP, CLOSE=REV. Setting2: OPEN=FWD, CLOSE=REV. Setting3: REV/FWD OPEN=FWD, CLOSE=REV",
+        "connects": [
+          "GS20(X)"
+        ],
+        "evidence": "'REV/DI2' terminal in all three control-circuit boxes",
+        "confidence": 0.96,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "DI3",
+        "type": "digital input terminal",
+        "detail": "Digital input 3 used in Setting value 3 (3-wire) as Stop input: OPEN=STOP",
+        "connects": [
+          "GS20(X)"
+        ],
+        "evidence": "'DI3' terminal with '\"OPEN\": STOP' in Setting value 3 box",
+        "confidence": 0.94,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "DCM",
+        "type": "digital common terminal",
+        "detail": "Digital input common (0V reference in NPN/sink mode); all input circuits return here",
+        "connects": [
+          "GS20(X)"
+        ],
+        "evidence": "'DCM' terminal at bottom of each control-circuit box; note about wiring back to DCM",
+        "confidence": 0.95,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "conductors": [
+      {
+        "tag": "FWD/STOP -> FWD/DI1",
+        "type": "control wire",
+        "detail": "Setting value 1: FWD/STOP switch to FWD/DI1",
+        "connects": [
+          "FWD/STOP",
+          "FWD/DI1"
+        ],
+        "evidence": "Line from FWD/STOP contact to FWD/DI1, Setting value 1",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "REV/STOP -> REV/DI2",
+        "type": "control wire",
+        "detail": "Setting value 1: REV/STOP switch to REV/DI2",
+        "connects": [
+          "REV/STOP",
+          "REV/DI2"
+        ],
+        "evidence": "Line from REV/STOP contact to REV/DI2, Setting value 1",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "RUN/STOP -> FWD/DI1",
+        "type": "control wire",
+        "detail": "Setting value 2: RUN/STOP switch to FWD/DI1",
+        "connects": [
+          "RUN/STOP",
+          "FWD/DI1"
+        ],
+        "evidence": "Line from RUN/STOP contact to FWD/DI1, Setting value 2",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "FWD/REV -> REV/DI2",
+        "type": "control wire",
+        "detail": "Setting value 2: FWD/REV switch to REV/DI2",
+        "connects": [
+          "FWD/REV",
+          "REV/DI2"
+        ],
+        "evidence": "Line from FWD/REV contact to REV/DI2, Setting value 2",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "STOP+RUN -> FWD/DI1",
+        "type": "control wire",
+        "detail": "Setting value 3: series STOP (NC) and RUN (NO) pushbuttons to FWD/DI1 start input",
+        "connects": [
+          "STOP",
+          "RUN",
+          "FWD/DI1"
+        ],
+        "evidence": "STOP and RUN pushbutton symbols wired to FWD/DI1, Setting value 3",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "REV/FWD -> REV/DI2 (setting3)",
+        "type": "control wire",
+        "detail": "Setting value 3: REV/FWD direction selector to REV/DI2",
+        "connects": [
+          "REV/FWD",
+          "REV/DI2"
+        ],
+        "evidence": "REV/FWD contact wired to REV/DI2, Setting value 3",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "cables": [],
+    "contacts": [
+      {
+        "tag": "FWD/STOP",
+        "type": "maintained switch / relay contact",
+        "detail": "Setting value 1 (P02.00=1): OPEN=STOP, CLOSE=FWD",
+        "connects": [
+          "FWD/DI1",
+          "DCM"
+        ],
+        "evidence": "'FWD / STOP' contact symbol, Setting value 1",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "REV/STOP",
+        "type": "maintained switch / relay contact",
+        "detail": "Setting value 1 (P02.00=1): OPEN=STOP, CLOSE=REV (optional reverse)",
+        "connects": [
+          "REV/DI2",
+          "DCM"
+        ],
+        "evidence": "'REV / STOP' contact symbol, Setting value 1",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "RUN/STOP",
+        "type": "maintained switch / relay contact",
+        "detail": "Setting value 2 (P02.00=2): OPEN=STOP, CLOSE=RUN (start input)",
+        "connects": [
+          "FWD/DI1",
+          "DCM"
+        ],
+        "evidence": "'RUN / STOP' contact symbol, Setting value 2",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "FWD/REV",
+        "type": "maintained switch / relay contact",
+        "detail": "Setting value 2 (P02.00=2): OPEN=FWD, CLOSE=REV (direction select)",
+        "connects": [
+          "REV/DI2",
+          "DCM"
+        ],
+        "evidence": "'FWD / REV' contact symbol, Setting value 2",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "STOP",
+        "type": "momentary pushbutton, normally-closed",
+        "detail": "Setting value 3 (P02.00=3): OPEN=STOP; NC Stop button in series with Start",
+        "connects": [
+          "RUN",
+          "DI3"
+        ],
+        "evidence": "'STOP' pushbutton symbol + note 'Requires normally-closed Stop contacts'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "RUN",
+        "type": "momentary pushbutton, normally-open",
+        "detail": "Setting value 3 (P02.00=3): CLOSE=RUN; NO Start button",
+        "connects": [
+          "STOP",
+          "FWD/DI1"
+        ],
+        "evidence": "'RUN' pushbutton symbol + note 'Requires normally-open Start contacts'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "REV/FWD",
+        "type": "maintained switch / relay contact",
+        "detail": "Setting value 3 (P02.00=3): OPEN=FWD, CLOSE=REV (optional direction select)",
+        "connects": [
+          "REV/DI2",
+          "DCM"
+        ],
+        "evidence": "'REV / FWD' contact symbol, Setting value 3",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "power_domains": [
+      {
+        "tag": "DCM common (NPN/sink)",
+        "type": "digital I/O common / 0V reference",
+        "detail": "In NPN mode each DI circuit returns to DCM; note states PNP mode supplies 24VDC to each DI and 0V of external source to DCM",
+        "connects": [
+          "DCM"
+        ],
+        "evidence": "Note re NPN/PNP; 'connect the 0v of any external 24vdc power source to the DCM terminal'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "pe_bonds": [],
+    "off_page_references": [
+      {
+        "tag": "GS20/GS20X User Manual — Control Circuit Wiring Diagrams (Ch.2)",
+        "type": "document cross-reference",
+        "detail": "For Source Mode (PNP) wiring examples, see 'Control Circuit Wiring Diagrams' in TOC of chapter 2 of the user manual",
+        "connects": [],
+        "evidence": "'See the \"Control Circuit Wiring Diagrams\" in the table of contents in chapter 2 of the user manual'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "plc_io_channels": [
+      {
+        "tag": "FWD/DI1",
+        "type": "drive digital input channel",
+        "detail": "Run Forward / Start input depending on P02.00 setting",
+        "connects": [
+          "GS20(X)"
+        ],
+        "evidence": "FWD/DI1 with 'CLOSE': FWD/RUN annotations",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "REV/DI2",
+        "type": "drive digital input channel",
+        "detail": "Run Reverse / direction-select input depending on P02.00 setting",
+        "connects": [
+          "GS20(X)"
+        ],
+        "evidence": "REV/DI2 with 'CLOSE': REV annotations",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "DI3",
+        "type": "drive digital input channel",
+        "detail": "Stop input in 3-wire mode (P02.00=3): OPEN=STOP",
+        "connects": [
+          "GS20(X)"
+        ],
+        "evidence": "DI3 '\"OPEN\": STOP', Setting value 3",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "network_links": [],
+    "functional_paths": [
+      {
+        "name": "P02.00=1 Two-wire FWD/STOP + REV/STOP",
+        "sheet": null,
+        "sequence": [
+          "FWD/STOP",
+          "FWD/DI1",
+          "GS20(X)",
+          "REV/STOP",
+          "REV/DI2",
+          "DCM"
+        ]
+      },
+      {
+        "name": "P02.00=2 Two-wire RUN/STOP + FWD/REV",
+        "sheet": null,
+        "sequence": [
+          "RUN/STOP",
+          "FWD/DI1",
+          "GS20(X)",
+          "FWD/REV",
+          "REV/DI2",
+          "DCM"
+        ]
+      },
+      {
+        "name": "P02.00=3 Three-wire momentary Start/Stop + direction",
+        "sheet": null,
+        "sequence": [
+          "STOP",
+          "RUN",
+          "FWD/DI1",
+          "DI3",
+          "REV/FWD",
+          "REV/DI2",
+          "DCM"
+        ]
+      }
+    ],
+    "physical_layout_matches": [],
+    "unresolved": [
+      {
+        "item": "Exact internal wiring node between the STOP (NC) and RUN (NO) pushbuttons and DI3 in Setting value 3",
+        "status": "partially legible",
+        "resolution": "High-resolution crop of the Setting value 3 control-circuit box to confirm series/junction topology of STOP, RUN and DI3"
+      },
+      {
+        "item": "Whether commons of each switch tie directly to DCM or through a shared bus",
+        "status": "inferred from note text",
+        "resolution": "Confirm common-return path against the drive user manual control-wiring diagram"
+      }
+    ],
+    "cross_sheet_notes": "This is page 2 of 3 of an application note. Source Mode (PNP) wiring is not drawn here; it is referenced to Chapter 2 'Control Circuit Wiring Diagrams' of the GS20/GS20X User Manual. Diagrams shown are NPN/sink mode.",
+    "brief": {
+      "sheet_title": "Page 2 of an Automation Direct application note showing how to wire the digital-input control terminals of a GS20/GS20X variable-frequency drive for Start/Stop and Forward/Reverse, for the three values of parameter P02.00.",
+      "purpose": "This sheet explains three ways to command run/direction from external switches or pushbuttons wired to the drive's digital inputs. First you set P00.21=1 so the drive takes its run command from the digital input terminals instead of the keypad. Then P02.00 selects the terminal behavior. Setting 1 is two-wire FWD/STOP and REV/STOP: closing FWD/DI1 runs forward, closing REV/DI2 runs reverse, opening either stops. Setting 2 is two-wire RUN/STOP with a separate direction bit: FWD/DI1 closed = run, and REV/DI2 chooses forward (open) or reverse (closed). Setting 3 is three-wire momentary control: a normally-open RUN button and a normally-closed STOP button (STOP on DI3) start and stop the drive, with REV/DI2 as an optional direction select. All input circuits shown return to the DCM common because the drive switch is assumed set to NPN (sink); for PNP/source mode you feed 24VDC to each DI and tie the supply 0V to DCM.",
+      "key_signals": [
+        {
+          "signal": "Run Forward / Start command",
+          "tag": "FWD/DI1",
+          "terminal": "FWD/DI1",
+          "destination": "GS20(X) drive digital input 1",
+          "confidence": 0.92
+        },
+        {
+          "signal": "Run Reverse / direction-select command",
+          "tag": "REV/DI2",
+          "terminal": "REV/DI2",
+          "destination": "GS20(X) drive digital input 2",
+          "confidence": 0.92
+        },
+        {
+          "signal": "Stop command (3-wire mode, normally-closed)",
+          "tag": "DI3",
+          "terminal": "DI3",
+          "destination": "GS20(X) drive digital input 3",
+          "confidence": 0.88
+        },
+        {
+          "signal": "Digital-input common / 0V return",
+          "tag": "DCM",
+          "terminal": "DCM",
+          "destination": "GS20(X) drive digital common",
+          "confidence": 0.9
+        }
+      ],
+      "key_devices": [
+        {
+          "device": "AC variable-frequency drive (control-terminal block)",
+          "tag": "GS20(X)",
+          "confidence": 0.96
+        },
+        {
+          "device": "Two-wire selector/relay contacts for FWD-STOP and REV-STOP (Setting 1)",
+          "tag": "FWD/STOP, REV/STOP",
+          "confidence": 0.9
+        },
+        {
+          "device": "Two-wire RUN-STOP contact plus FWD-REV direction contact (Setting 2)",
+          "tag": "RUN/STOP, FWD/REV",
+          "confidence": 0.9
+        },
+        {
+          "device": "Momentary NO Start pushbutton, momentary NC Stop pushbutton, and REV/FWD direction select (Setting 3)",
+          "tag": "RUN, STOP, REV/FWD",
+          "confidence": 0.85
+        }
+      ],
+      "troubleshooting_example": "Say the drive won't start in P02.00=1 two-wire mode when the FWD/STOP switch is closed. With the switch CLOSED, meter continuity from FWD/DI1 back to DCM: if it reads open, the fault is in the field device or its wiring (bad switch contact or broken conductor). If continuity is good from FWD/DI1 to DCM but the drive still won't run, the problem is not in this external contact circuit — check that P00.21=1 (control from terminals) and P02.00=1 are actually set, and that the NPN/PNP switch matches the wiring, since this application note does NOT show the drive's internal run logic. Note this sheet shows no live control response, so it cannot tell you what the drive firmware does beyond the terminal function.",
+      "safety_context": "These are low-voltage digital-input control circuits, but no voltage value is printed on this sheet, so the drawing does not establish the DI voltage (the drive's DI/DCM system is typically a low-voltage 24VDC control circuit, but confirm on the drive nameplate/manual — do not assume). For continuity checks of the switches and DI-to-DCM paths, de-energize the drive, lock out, and verify absence of voltage first. Also remember the drive power terminals and motor output are lethal-voltage even though only the control section is drawn here; keep clear of them during any live check.",
+      "unresolved_items": [
+        "Exact junction between the NC STOP button, NO RUN button, and DI3 in the three-wire (Setting value 3) diagram is small and should be confirmed from a higher-resolution crop.",
+        "The DI voltage level is not printed on this sheet — confirm against the GS20/GS20X manual before metering live.",
+        "Whether each switch common lands directly on DCM or on a shared common bus is inferred from the note text, not explicitly drawn."
+      ],
+      "detailed_map_available": true
+    }
+  },
+  "interpreter_used": true,
+  "model": "claude-opus-4-8",
+  "provider": "anthropic",
+  "effort": "xhigh",
+  "max_tokens": 32000,
+  "latency_s": 84.29,
+  "error": null
+}

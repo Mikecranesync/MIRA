@@ -1,0 +1,108 @@
+{
+  "overall_score_provisional": 79,
+  "letter": "B",
+  "hard_failures": {
+    "invented_voltage_level": {
+      "failed": false,
+      "evidence": "Response states 'no voltage value is printed on this sheet, so the drawing does not establish the DI voltage' and hedges the 24VDC mention as 'typically...but confirm' — matches the image, which shows no voltage callouts anywhere in the P02.00 table."
+    },
+    "invented_device_tag": {
+      "failed": false,
+      "evidence": "Only device tag used is 'GS20(X)', which is visibly printed in the black label box in all three diagram rows of the image."
+    },
+    "incorrect_terminal_or_destination_as_fact": {
+      "failed": false,
+      "evidence": "Terminal names FWD/DI1, REV/DI2, DI3, DCM used in the response all appear verbatim in the image (e.g., 'FWD/DI1', 'REV/DI2', 'DI3', 'DCM' labels in each row), and the open/close-to-function mapping (e.g., Setting 2: FWD/DI1 'CLOSE': RUN, REV/DI2 'CLOSE': REV) matches the printed table text."
+    },
+    "missed_hazardous_voltage_clearly_shown": {
+      "failed": false,
+      "evidence": "The image contains only low-voltage control-terminal diagrams (switch contacts to DI1/DI2/DI3/DCM); no power, motor, or bus-voltage conductors are drawn on this page, so there is no clearly-shown hazardous voltage to miss."
+    },
+    "false_certainty_on_illegible_area": {
+      "failed": false,
+      "evidence": "The response explicitly flags the Setting-3 junction (STOP/RUN/DI3) as small and needing a higher-resolution crop rather than asserting it with full certainty, consistent with the genuinely cramped symbol cluster in that row of the image."
+    },
+    "non_electrical_image_treated_as_print": {
+      "failed": false,
+      "evidence": "The image is unambiguously an electrical control-wiring table/diagram (P02.00 settings with FWD/DI1, REV/DI2, DCM terminals), and the response correctly treats it as such."
+    }
+  },
+  "criteria": {
+    "sheet_identity": {
+      "score": 82,
+      "note": "Correctly ties response to 'Page 2 of an Automation Direct application note,' matching the footer 'Page 2 of 3' in the image; does not claim it is the reversing-contactor/braking sheet implied by the source metadata, which is appropriate since that content is not visible here."
+    },
+    "circuit_purpose": {
+      "score": 90,
+      "note": "Accurately summarizes the page's purpose: setting P00.21 and P02.00 to define 2-wire/3-wire FWD-STOP/REV control from digital inputs, matching the bullet text and table headings 'External Terminal Control Circuits'."
+    },
+    "device_identification": {
+      "score": 88,
+      "note": "Correctly lists the single device as the GS20(X) drive control-terminal block, matching the 'GS20(X)' label visible in each diagram row."
+    },
+    "wire_cable_identification": {
+      "score": 70,
+      "note": "Labels like 'FWD/STOP -> FWD/DI1' and 'STOP+RUN -> FWD/DI1' reasonably describe the switch-to-terminal connections shown, but the diagram uses contact symbols, not labeled wire numbers, so calling these 'control wire' entries adds a layer of interpretation beyond what is printed."
+    },
+    "terminal_mapping": {
+      "score": 85,
+      "note": "FWD/DI1, REV/DI2, DI3, and DCM mappings correctly mirror the terminal labels printed in the three rows of the P02.00 table."
+    },
+    "voltage_identification": {
+      "score": 88,
+      "note": "Correctly states 'no voltage value is printed on this sheet' — accurate, since the image shows no voltage ratings anywhere in the table or diagrams."
+    },
+    "cross_reference_accuracy": {
+      "score": 88,
+      "note": "Cites 'Control Circuit Wiring Diagrams... Chapter 2... Source Mode' which matches the printed note: 'See the “Control Circuit Wiring Diagrams” in the table of contents in chapter 2 of the user manual for “Source Mode” wiring examples.'"
+    },
+    "uncertainty_calibration": {
+      "score": 82,
+      "note": "Flags the cramped Setting-3 junction and the unlabeled DI voltage as unverified, matching genuinely ambiguous/absent details in the image; confidence numbers (0.85-0.97) are somewhat arbitrary but directionally consistent with which items are less certain."
+    },
+    "unsupported_or_invented_claims": {
+      "score": 60,
+      "note": "The map follow-up includes the stray fragment '🧩 1 off-page ref(s): GS20/GS20X User Manual — Control Circuit Wiring Diagrams (Ch.2) · 3 PLC I/O' — the '3 PLC I/O' clause has no basis in the image and is not explained, an unsupported/garbled insertion."
+    },
+    "technician_usefulness": {
+      "score": 80,
+      "note": "Provides parameter settings, terminal roles, and NPN/PNP wiring guidance that a technician could act on directly, matching the bullet-list and diagram content of the image."
+    },
+    "safety_language": {
+      "score": 84,
+      "note": "Correctly instructs to de-energize/lockout/verify absence of voltage before continuity checks and separately cautions about lethal power/motor terminals not shown on this page, which is reasonable general practice given no power circuitry appears in this image."
+    },
+    "readability": {
+      "score": 68,
+      "note": "Heavy emoji-sectioning and dense bullet nesting (e.g., '🔌 Signals', '🔧 Devices', '🩺 If you're chasing a fault') reduce quick scannability for a print review despite being organized."
+    },
+    "response_completeness": {
+      "score": 85,
+      "note": "Covers all three P02.00 settings, the P00.21 enable bit, and the NPN/PNP DCM note, matching all textual and tabular content visible on the page."
+    },
+    "map_offer_supported": {
+      "score": 80,
+      "note": "The follow-up 'map' reply delivers signal/terminal/wire detail consistent with what was promised, though it introduces the unexplained '3 PLC I/O' artifact noted above."
+    }
+  },
+  "verified_strengths": [
+    "Correctly reads P02.00 Setting 1/2/3 open-close logic exactly as printed (e.g., Setting 2: FWD/DI1 'CLOSE': RUN, REV/DI2 'CLOSE': REV).",
+    "Accurately reflects the printed NPN/PNP note about wiring back to DCM vs. supplying 24VDC and tying 0V to DCM.",
+    "Does not invent a voltage value; explicitly states none is printed on the sheet.",
+    "Uses only the device tag 'GS20(X)' that is actually printed in the diagram boxes."
+  ],
+  "suspected_errors_or_hallucinations": [
+    {
+      "claim": "🧩 1 off-page ref(s): GS20/GS20X User Manual — Control Circuit Wiring Diagrams (Ch.2) · 3 PLC I/O",
+      "why": "The trailing '3 PLC I/O' fragment has no corresponding text, symbol, or reference in the image and is not explained; appears to be an unsupported/garbled artifact."
+    }
+  ],
+  "items_requiring_technician_review": [
+    "Exact contact arrangement of STOP (NC) and RUN (NO) buttons relative to DI3 in the Setting-3 (three-wire) diagram — the junction is small in the source image.",
+    "Actual DI/DCM voltage level should be confirmed from the GS20/GS20X manual before any live measurement, since it is not printed on this page."
+  ],
+  "summary": "The response accurately paraphrases the visible P02.00 table (Settings 1-3), the P00.21 enable bit, and the NPN/PNP DCM wiring note without inventing voltages, tags, or terminal destinations, and it appropriately hedges the one genuinely cramped diagram area. It loses points for an unsupported, unexplained '3 PLC I/O' fragment in the off-page-reference line and for dense, emoji-heavy formatting that hurts scannability, but no hard-failure-level fabrication is present.",
+  "judge_model": "claude-sonnet-5",
+  "provisional": true,
+  "hard_failure": false
+}

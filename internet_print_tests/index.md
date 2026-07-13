@@ -9,3 +9,4 @@
 | automationdirect-click-plc-io | https://cdn.automationdirect.com/static/ | plc_io | Industrial 24VDC | ok | 42 | True | sent |
 | schneider-atv340-vfd | https://download.schneider-electric.com/ | vfd | IEC 61800-5-1 | ok | 81 | False | sent |
 | siemens-3sk1-safety-relay | https://cache.industry.siemens.com/dl/fi | safety_relay | ISO 13849-1 PLe / IEC 62061 SIL3 | ok | 84 | False | sent |
+| automationdirect-an-gs-022-reversing | https://support.automationdirect.com/doc | reversing_braking | NEMA ICS 2 | ok | 79 | False | sent |
