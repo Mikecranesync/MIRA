@@ -1,0 +1,7 @@
+{
+  "test_id": "abb-star-delta-starter",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "146749bb955e478dad39aa2c6598d3de00524899f430639bbac903b2608886dc",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

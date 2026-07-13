@@ -1,0 +1,114 @@
+{
+  "overall_score_provisional": 78,
+  "letter": "B",
+  "hard_failures": {
+    "invented_voltage_level": {
+      "failed": false,
+      "evidence": "Response states: 'No voltage value is printed anywhere on this sheet — the drawing does NOT establish the control-circuit or motor voltage, so do not assume a level.' This matches the drawing, which has no voltage rating printed anywhere on sheet 2/4."
+    },
+    "invented_device_tag": {
+      "failed": false,
+      "evidence": "All tags used (KM1, KM2, KM3, FR1, KT, M 3~) are visibly present on the drawing exactly as labeled."
+    },
+    "incorrect_terminal_or_destination_as_fact": {
+      "failed": false,
+      "evidence": "Terminal numbers cited (1/L1,3/L2,5/L3, 2/T1,4/T2,6/T3, 95-96, 97-98, 15/16/18, 13-14, 21-22, 23-24) all appear on the drawing at the locations described; no fabricated terminal numbers were found."
+    },
+    "missed_hazardous_voltage_clearly_shown": {
+      "failed": false,
+      "evidence": "The drawing shows line terminals 1/L1,3/L2,5/L3 feeding contactors; response explicitly instructs to de-energize/lock out and treat live verification as energized work, so this hazard is not missed."
+    },
+    "false_certainty_on_illegible_area": {
+      "failed": false,
+      "evidence": "Response flags FR1 97-98 destination and KT 15/16/18 routing as needing zoom/verification rather than asserting them with certainty: '• FR1 97-98 contact and its destination not clearly legible.'"
+    },
+    "non_electrical_image_treated_as_print": {
+      "failed": false,
+      "evidence": "The image is unambiguously an electrical wiring/schematic sheet (contactor symbols, coil terminals, motor windings), correctly treated as such."
+    }
+  },
+  "criteria": {
+    "sheet_identity": {
+      "score": 95,
+      "note": "Correctly identifies 'YKA ..-30, YDA ..-30 Star-Delta Starters, Open Type Version, Protection by Thermal O/L Relay' and sheet 2/4, matching the title block exactly."
+    },
+    "circuit_purpose": {
+      "score": 90,
+      "note": "Correctly explains star-delta starting sequence and matches the Y/Δ/L labels visible under KM2/KM3/KM1 in the Local/Remote Control diagrams."
+    },
+    "device_identification": {
+      "score": 90,
+      "note": "KM1, KM2, KM3, FR1, KT, and M 3~ are all correctly identified and described with terminal sets matching the drawing (A1/A2, T1/T2/T3, 13-14, 21-22, 23-24)."
+    },
+    "wire_cable_identification": {
+      "score": 60,
+      "note": "Wires/cables section is generic ('L1/L2/L3 supply to contactors'); correctly notes 'No explicit -W#### wire numbers appear on this wiring diagram,' which is accurate since the sheet has no wire numbering, but detail is thin."
+    },
+    "terminal_mapping": {
+      "score": 75,
+      "note": "Most terminal callouts (95-96, 97-98, 15/16/18) match the drawing, but describing FR1 as being in the 'motor (delta) current path' is questionable — FR1 sits after KM1 (the line contactor) which the same response calls the 'L' main contactor, so calling it specifically a 'delta' path is inconsistent with its own device description."
+    },
+    "voltage_identification": {
+      "score": 90,
+      "note": "Accurately reports no voltage is printed on the sheet and defers to sheet 1/4 or 4/4 for ratings, consistent with the absence of any voltage label in the image."
+    },
+    "cross_reference_accuracy": {
+      "score": 55,
+      "note": "Labels 'KM3 : 5/L3' and 'KM3 : 3/L2' as '2 off-page ref(s)' though these dashed-line references point to the KM3 terminals in the power circuit on the same sheet (Local/Remote diagrams are on the same page as the power circuit), not another page."
+    },
+    "uncertainty_calibration": {
+      "score": 85,
+      "note": "Confidence scores and explicit 'Couldn't read' flags (e.g., 'KT timer contact terminal routing ... is small and needs a zoom to confirm') are well calibrated to genuinely small/dense text in the drawing."
+    },
+    "unsupported_or_invented_claims": {
+      "score": 65,
+      "note": "The interpretive gloss 't1 = star time, t2 = transition' is not explicitly labeled anywhere on the sheet (only 't1' and 't1+t2' appear); presented with conf 0.85 as near-fact rather than flagged as inference."
+    },
+    "technician_usefulness": {
+      "score": 85,
+      "note": "Provides a clear operational summary and offers a fault-chasing hint plus a detailed terminal/device map on request, which is practically useful for a technician working this print."
+    },
+    "safety_language": {
+      "score": 90,
+      "note": "Appropriately instructs to de-energize, lock out, verify absence of voltage, and treat live checks as energized work, matching the general hazard of the 3-phase line terminals (1/L1,3/L2,5/L3) shown."
+    },
+    "readability": {
+      "score": 90,
+      "note": "Well organized with headers, bullet lists, and clear separation of signals/devices/uncertainties, easy to scan."
+    },
+    "response_completeness": {
+      "score": 85,
+      "note": "Covers power circuit, both control diagrams, and safety notes; defers deeper fault-chasing detail behind 'map', which is a reasonable staged completeness approach given the prompt design."
+    },
+    "map_offer_supported": {
+      "score": 85,
+      "note": "The follow-up 'map' response delivers the promised terminal/device/wire list consistent with the initial offer, with matching confidence flags carried over (e.g., FR1 97-98 still flagged as illegible)."
+    }
+  },
+  "verified_strengths": [
+    "Correctly extracts the title 'YKA ..-30, YDA ..-30 Star-Delta Starters, Open Type Version, Protection by Thermal O/L Relay' and sheet number 2/4.",
+    "Correctly maps KM2→Y (star), KM3→Δ (delta), KM1→L (line), matching the labels under the contactors in the Local/Remote Control diagrams.",
+    "Correctly notes the absence of any printed voltage value on the sheet and appropriately defers to other sheets for ratings.",
+    "Appropriately flags illegible/small details (FR1 97-98 destination, KT contact routing) instead of asserting them as fact."
+  ],
+  "suspected_errors_or_hallucinations": [
+    {
+      "claim": "Thermal O/L relay in the motor (delta) current path — heater elements on 2/T1, 4/T2, 6/T3",
+      "why": "FR1's heater terminals (2/T1,4/T2,6/T3) are drawn immediately below KM1, which the same response identifies as the 'L' (line) contactor, not specifically the delta path; calling it the 'delta current path' is an unsupported/inconsistent characterization."
+    },
+    {
+      "claim": "🧩 2 off-page ref(s): KM3 : 5/L3, KM3 : 3/L2",
+      "why": "These dashed references point to KM3 terminals in the power circuit diagram on the same page, not to another sheet, so labeling them 'off-page' misrepresents the drawing's cross-reference structure."
+    }
+  ],
+  "items_requiring_technician_review": [
+    "Confirm whether FR1's heater elements truly sense only delta-run current or full line current through KM1, per actual panel wiring.",
+    "Verify KT 15/16/18 contact assignment to KM2/KM3 coils by zooming into the timer symbol.",
+    "Confirm FR1 97-98 contact destination, which the response could not read.",
+    "Check sheets 1/4 and 4/4 for actual control/motor voltage ratings, as none appear on this sheet."
+  ],
+  "summary": "The response correctly identifies the sheet, title, and the star/delta/line contactor roles (KM2/KM3/KM1) matching the Y/Δ/L labels in the drawing, and appropriately flags the absence of any printed voltage and several genuinely small/illegible details. However, it mislabels the KM3:5/L3 and KM3:3/L2 references as 'off-page' when they point within the same sheet, and its description of FR1 as being in the 'delta current path' is inconsistent with its own identification of KM1 as the line contactor. No hard failures (invented tags, fabricated voltages, or false certainty on illegible text) were found, so the response merits a solid but not perfect grade.",
+  "judge_model": "claude-sonnet-5",
+  "provisional": true,
+  "hard_failure": false
+}

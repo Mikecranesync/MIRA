@@ -1,0 +1,791 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.85,
+  "drawing_type": "wiring diagram",
+  "vision_description": "The image shows an electrical drawing, specifically a wiring diagram for YKA...-30 and YDA...-30 Star-Delta Starters. The diagram includes a power circuit, local control, and remote control sections, with various symbols and labels indicating connections and components.",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+  "final_text": "📋 Sheet 2/4 of an ABB open-type star-delta motor starter (YKA/YDA ..-30) — the wiring diagrams for the power circuit plus two control-circuit options (local and remote), protected by a thermal overload relay.\n\nThis sheet shows how to wire a star-delta (wye-delta) motor starter. Three contactors switch the motor: KM1 is the line/main contactor (marked 'L'), KM2 is the star contactor (marked 'Y'), and KM3 is the delta contactor (marked '△'). To limit inrush at start, the motor windings are first connected in star (KM1 + KM2). A timing relay KT then times out and hands over to delta (KM1 + KM3) for normal running. The thermal overload relay FR1 sits in the motor current path and its 95-96 trip contact opens the control circuit on overload. The bottom two diagrams give two ways to build the control side: 'Local Control' (start/reset pushbuttons on the panel) and 'Remote Control' (start/stop/reset from a remote station). The control supply is taken as Us/N, with reference points tied to KM3 terminals 5/L3 and 3/L2.\n\n🔑 Signals\n• Three-phase motor supply (line side)\n• Motor load / winding connections\n• Overload trip (control-circuit break)\n• Overload signalling contact\n• Star/delta transition timing\n• Control supply live reference\n• Control supply return reference\n• Reset / Auto-Manual selection at overload\n\n🔧 Devices\n• Line/main contactor ('L') (KM1)\n• Star contactor ('Y') (KM2)\n• Delta contactor ('△') (KM3)\n• Thermal overload relay (FR1)\n• Star-delta changeover timing relay (KT)\n• Three-phase induction motor (M 3~)\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• Supply/control voltage not printed on this sheet (check the rating/order-data sheet 1/4 or 4/4).\n• FR1 97-98 contact and its destination not clearly legible.\n• KT timer contact terminal routing (15/16/18, t1 vs t1+t2) is small and needs a zoom to confirm.\n• No explicit -W#### wire numbers appear on this wiring diagram; connections are shown graphically only.\n\n⚠️ No voltage value is printed anywhere on this sheet — the drawing does NOT establish the control-circuit or motor voltage, so do not assume a level. For continuity/resistance checks on FR1 contacts, contactor coils or the timer, de-energize, lock out, and verify absence of voltage first. If live verification of the control supply (Us/N) or the three-phase power terminals is required, treat it as energized work and use appropriately rated PPE and instruments; the drawing does not prove the present field state of the panel.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list.",
+  "all_messages": [
+    "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+    "📋 Sheet 2/4 of an ABB open-type star-delta motor starter (YKA/YDA ..-30) — the wiring diagrams for the power circuit plus two control-circuit options (local and remote), protected by a thermal overload relay.\n\nThis sheet shows how to wire a star-delta (wye-delta) motor starter. Three contactors switch the motor: KM1 is the line/main contactor (marked 'L'), KM2 is the star contactor (marked 'Y'), and KM3 is the delta contactor (marked '△'). To limit inrush at start, the motor windings are first connected in star (KM1 + KM2). A timing relay KT then times out and hands over to delta (KM1 + KM3) for normal running. The thermal overload relay FR1 sits in the motor current path and its 95-96 trip contact opens the control circuit on overload. The bottom two diagrams give two ways to build the control side: 'Local Control' (start/reset pushbuttons on the panel) and 'Remote Control' (start/stop/reset from a remote station). The control supply is taken as Us/N, with reference points tied to KM3 terminals 5/L3 and 3/L2.\n\n🔑 Signals\n• Three-phase motor supply (line side)\n• Motor load / winding connections\n• Overload trip (control-circuit break)\n• Overload signalling contact\n• Star/delta transition timing\n• Control supply live reference\n• Control supply return reference\n• Reset / Auto-Manual selection at overload\n\n🔧 Devices\n• Line/main contactor ('L') (KM1)\n• Star contactor ('Y') (KM2)\n• Delta contactor ('△') (KM3)\n• Thermal overload relay (FR1)\n• Star-delta changeover timing relay (KT)\n• Three-phase induction motor (M 3~)\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• Supply/control voltage not printed on this sheet (check the rating/order-data sheet 1/4 or 4/4).\n• FR1 97-98 contact and its destination not clearly legible.\n• KT timer contact terminal routing (15/16/18, t1 vs t1+t2) is small and needs a zoom to confirm.\n• No explicit -W#### wire numbers appear on this wiring diagram; connections are shown graphically only.\n\n⚠️ No voltage value is printed anywhere on this sheet — the drawing does NOT establish the control-circuit or motor voltage, so do not assume a level. For continuity/resistance checks on FR1 contacts, contactor coils or the timer, de-energize, lock out, and verify absence of voltage first. If live verification of the control supply (Us/N) or the three-phase power terminals is required, treat it as energized work and use appropriately rated PPE and instruments; the drawing does not prove the present field state of the panel.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list."
+  ],
+  "map_text": "📐 sheet 2/4\n\n🔌 Signals (exact — source → destination)\n• Three-phase motor supply (line side) — 1/L1, 3/L2, 5/L3  @ contactor line terminals  → KM1/KM2/KM3 line side · conf 0.82\n• Motor load / winding connections — 2/T1, 4/T2, 6/T3  @ U1/V1/W1 and U2/V2/W2  → motor 'M 3~' · conf 0.80\n• Overload trip (control-circuit break) — FR1 95-96  @ 95-96  → control circuit (Local/Remote) · conf 0.82\n• Overload signalling contact — FR1 97-98  @ 97-98  → not fully legible · conf 0.60\n• Star/delta transition timing — KT (t1, t1+t2)  @ 15/16/18  → KM2 / KM3 coils · conf 0.70\n• Control supply live reference — Us  @ KM3 : 5/L3  → control circuit top rail · conf 0.76\n• Control supply return reference — N  @ KM3 : 3/L2  → control circuit bottom rail · conf 0.76\n• Reset / Auto-Manual selection at overload — R / O/R  @ FR1 reset symbols  → FR1 · conf 0.65\n\n🔧 Devices (6)\n• KM2 — contactor (Star (Y) contactor — coil terminals A1/A2, three main poles (1/L1-2/T1, 3/L2-4/T2, 5/L3-6/T3), aux contacts 13-14 (NO) and 21-22 (NC). Placed under 'Y' in control diagrams.) · conf 0.90\n• KM3 — contactor (Delta (△) contactor — coil terminals A1/A2, three main poles (1/L1-2/T1, 3/L2-4/T2, 5/L3-6/T3), aux contact 21-22 (NC). Placed under '△' in control diagrams; feeds control supply reference points KM3:3/L2 and KM3:5/L3.) · conf 0.90\n• KM1 — contactor (Line/main (L) contactor — coil terminals A1/A2, three main poles (1/L1-2/T1, 3/L2-4/T2, 5/L3-6/T3) feeding overload FR1, aux contacts 13-14 (NO) and 23-24 (NO). Placed under 'L' in control diagrams.) · conf 0.90\n• FR1 — thermal overload relay (Thermal O/L relay in the motor (delta) current path — heater elements on 2/T1, 4/T2, 6/T3; signalling contacts 95-96 (NC) and 97-98 (NO), with Reset (R) and Auto/Manual (O/R) selection shown.) · conf 0.90\n• KT — timer relay (star-delta changeover) (Star-delta timing relay — coil A1/A2, timed changeover contacts marked 15/16/18 with delays t1 and t1+t2 (t1 = star time, t2 = transition). Controls the Y→△ transition.) · conf 0.85\n• M 3~ — three-phase motor (Three-phase induction motor, winding terminals U1/V1/W1 and U2/V2/W2 for star-delta connection. Two motor symbols drawn to show the terminal-box connection arrangement.) · conf 0.88\n\n🔗 Wires / cables\n• L1/L2/L3 supply to contactors — 3-phase line conductors · conf 0.75\n• Contactor loads to motor windings — motor conductors · conf 0.70\n\n🧩 2 off-page ref(s): KM3 : 5/L3, KM3 : 3/L2\n\n⚠️ Couldn't read (retake or crop closer):\n• Supply/control voltage not printed on this sheet (check the rating/order-data sheet 1/4 or 4/4).\n• FR1 97-98 contact and its destination not clearly legible.\n• KT timer contact terminal routing (15/16/18, t1 vs t1+t2) is small and needs a zoom to confirm.\n• No explicit -W#### wire numbers appear on this wiring diagram; connections are shown graphically only.\n\n🔎 Proposed interpretation from the drawing — not yet field-verified. Reply to confirm or correct any item.",
+  "graph": {
+    "package": {
+      "title": "YKA ..-30, YDA ..-30 Star-Delta Starters — Open Type Version — Protection by Thermal O/L Relay",
+      "subtitle": "Wiring Diagrams",
+      "drawing_number": "1SBC 0095 00 R1001",
+      "sheet": "2/4",
+      "manufacturer": "ABB Control",
+      "diagram_references": [
+        "E1127D (Power Circuit)",
+        "E1612D (Local Control)",
+        "E1128D (Remote Control)"
+      ],
+      "drawing_type": "wiring diagram",
+      "evidence": "Title block: 'YKA ..-30, YDA ..-30 Star-Delta Starters / Open Type Version / Protection by Thermal O/L Relay'; footer '2/4', '1SBC 0095 00 R1001', 'ABB Control'; section labels 'Power Circuit', 'Local Control', 'Remote Control'.",
+      "confidence": 0.96
+    },
+    "devices": [
+      {
+        "tag": "KM2",
+        "type": "contactor",
+        "detail": "Star (Y) contactor — coil terminals A1/A2, three main poles (1/L1-2/T1, 3/L2-4/T2, 5/L3-6/T3), aux contacts 13-14 (NO) and 21-22 (NC). Placed under 'Y' in control diagrams.",
+        "connects": [],
+        "evidence": "KM2 with A1/A2, poles 1/L1..6/T3, aux 13,14,21,22; coil KM2 under 'Y' at bottom of control circuits.",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM3",
+        "type": "contactor",
+        "detail": "Delta (△) contactor — coil terminals A1/A2, three main poles (1/L1-2/T1, 3/L2-4/T2, 5/L3-6/T3), aux contact 21-22 (NC). Placed under '△' in control diagrams; feeds control supply reference points KM3:3/L2 and KM3:5/L3.",
+        "connects": [],
+        "evidence": "KM3 with A1/A2, poles 1/L1..6/T3, aux 21,22; coil KM3 under '△'; 'KM3 : 5/L3' and 'KM3 : 3/L2' labels in control circuits.",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM1",
+        "type": "contactor",
+        "detail": "Line/main (L) contactor — coil terminals A1/A2, three main poles (1/L1-2/T1, 3/L2-4/T2, 5/L3-6/T3) feeding overload FR1, aux contacts 13-14 (NO) and 23-24 (NO). Placed under 'L' in control diagrams.",
+        "connects": [],
+        "evidence": "KM1 with A1/A2, poles 1/L1..6/T3, aux 13,14,23,24; coil KM1 under 'L'.",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "FR1",
+        "type": "thermal overload relay",
+        "detail": "Thermal O/L relay in the motor (delta) current path — heater elements on 2/T1, 4/T2, 6/T3; signalling contacts 95-96 (NC) and 97-98 (NO), with Reset (R) and Auto/Manual (O/R) selection shown.",
+        "connects": [],
+        "evidence": "FR1 with 95,96,97,98, terminals 2/T1,4/T2,6/T3, and 'R'/'O/R' reset symbols.",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KT",
+        "type": "timer relay (star-delta changeover)",
+        "detail": "Star-delta timing relay — coil A1/A2, timed changeover contacts marked 15/16/18 with delays t1 and t1+t2 (t1 = star time, t2 = transition). Controls the Y→△ transition.",
+        "connects": [],
+        "evidence": "KT block with 15, 16, 18, 't1', 't1+t2', coil A1/A2.",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "M 3~",
+        "type": "three-phase motor",
+        "detail": "Three-phase induction motor, winding terminals U1/V1/W1 and U2/V2/W2 for star-delta connection. Two motor symbols drawn to show the terminal-box connection arrangement.",
+        "connects": [],
+        "evidence": "Two 'M 3~' circles with terminals W2,W1,V2,V1,U2,U1.",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      }
+    ],
+    "terminals": [
+      {
+        "tag": "KM2:A1",
+        "type": "coil terminal",
+        "detail": "KM2 coil A1",
+        "connects": [],
+        "evidence": "A1 at KM2",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM2:A2",
+        "type": "coil terminal",
+        "detail": "KM2 coil A2",
+        "connects": [],
+        "evidence": "A2 at KM2",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM3:A1",
+        "type": "coil terminal",
+        "detail": "KM3 coil A1",
+        "connects": [],
+        "evidence": "A1 at KM3",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM3:A2",
+        "type": "coil terminal",
+        "detail": "KM3 coil A2",
+        "connects": [],
+        "evidence": "A2 at KM3",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM1:A1",
+        "type": "coil terminal",
+        "detail": "KM1 coil A1",
+        "connects": [],
+        "evidence": "A1 at KM1",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM1:A2",
+        "type": "coil terminal",
+        "detail": "KM1 coil A2",
+        "connects": [],
+        "evidence": "A2 at KM1",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "1/L1",
+        "type": "power terminal",
+        "detail": "Line phase L1 input (per contactor)",
+        "connects": [],
+        "evidence": "1/L1 marks on KM2/KM3/KM1",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "3/L2",
+        "type": "power terminal",
+        "detail": "Line phase L2 input (per contactor)",
+        "connects": [],
+        "evidence": "3/L2 marks",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "5/L3",
+        "type": "power terminal",
+        "detail": "Line phase L3 input (per contactor)",
+        "connects": [],
+        "evidence": "5/L3 marks",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "2/T1",
+        "type": "power terminal",
+        "detail": "Load terminal T1",
+        "connects": [],
+        "evidence": "2/T1 marks on contactors and FR1",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "4/T2",
+        "type": "power terminal",
+        "detail": "Load terminal T2",
+        "connects": [],
+        "evidence": "4/T2 marks",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "6/T3",
+        "type": "power terminal",
+        "detail": "Load terminal T3",
+        "connects": [],
+        "evidence": "6/T3 marks",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "FR1:95",
+        "type": "aux terminal",
+        "detail": "FR1 NC contact terminal 95",
+        "connects": [],
+        "evidence": "95 at FR1",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "FR1:96",
+        "type": "aux terminal",
+        "detail": "FR1 NC contact terminal 96",
+        "connects": [],
+        "evidence": "96 at FR1",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "FR1:97",
+        "type": "aux terminal",
+        "detail": "FR1 NO contact terminal 97",
+        "connects": [],
+        "evidence": "97 at FR1",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "FR1:98",
+        "type": "aux terminal",
+        "detail": "FR1 NO contact terminal 98",
+        "connects": [],
+        "evidence": "98 at FR1",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KT:15",
+        "type": "aux terminal",
+        "detail": "KT timed contact common 15",
+        "connects": [],
+        "evidence": "15 at KT",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KT:16",
+        "type": "aux terminal",
+        "detail": "KT timed contact 16",
+        "connects": [],
+        "evidence": "16 at KT",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KT:18",
+        "type": "aux terminal",
+        "detail": "KT timed contact 18",
+        "connects": [],
+        "evidence": "18 at KT",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "Us",
+        "type": "control supply terminal",
+        "detail": "Control supply line 'Us'",
+        "connects": [],
+        "evidence": "'Us' labels at control circuit tops/bottoms",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Local Control"
+      },
+      {
+        "tag": "N",
+        "type": "control supply terminal",
+        "detail": "Control supply neutral 'N'",
+        "connects": [],
+        "evidence": "'N' label at control circuit bottom",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Local Control"
+      },
+      {
+        "tag": "U1",
+        "type": "motor terminal",
+        "detail": "Motor winding terminal U1",
+        "connects": [],
+        "evidence": "U1 on motor",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "V1",
+        "type": "motor terminal",
+        "detail": "Motor winding terminal V1",
+        "connects": [],
+        "evidence": "V1 on motor",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "W1",
+        "type": "motor terminal",
+        "detail": "Motor winding terminal W1",
+        "connects": [],
+        "evidence": "W1 on motor",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "U2",
+        "type": "motor terminal",
+        "detail": "Motor winding terminal U2",
+        "connects": [],
+        "evidence": "U2 on motor",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "V2",
+        "type": "motor terminal",
+        "detail": "Motor winding terminal V2",
+        "connects": [],
+        "evidence": "V2 on motor",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "W2",
+        "type": "motor terminal",
+        "detail": "Motor winding terminal W2",
+        "connects": [],
+        "evidence": "W2 on motor",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      }
+    ],
+    "conductors": [
+      {
+        "tag": "L1/L2/L3 supply to contactors",
+        "type": "3-phase line conductors",
+        "detail": "Three-phase incoming supply bussed to line side (1/L1, 3/L2, 5/L3) of the contactors; no printed wire numbers on this diagram.",
+        "connects": [
+          "1/L1",
+          "3/L2",
+          "5/L3"
+        ],
+        "evidence": "Three horizontal bus lines feeding contactor line terminals in power circuit.",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "Contactor loads to motor windings",
+        "type": "motor conductors",
+        "detail": "Contactor/overload load terminals (2/T1,4/T2,6/T3) route to motor winding terminals U1/V1/W1 and U2/V2/W2 for star/delta switching; no printed wire numbers.",
+        "connects": [
+          "2/T1",
+          "4/T2",
+          "6/T3",
+          "U1",
+          "V1",
+          "W1",
+          "U2",
+          "V2",
+          "W2"
+        ],
+        "evidence": "Dashed connection lines between power terminals and motor terminals.",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      }
+    ],
+    "cables": [],
+    "contacts": [
+      {
+        "tag": "KM2 main",
+        "type": "3-pole NO power contacts",
+        "detail": "Star contactor main contacts 1/L1-2/T1, 3/L2-4/T2, 5/L3-6/T3",
+        "connects": [
+          "1/L1",
+          "2/T1",
+          "3/L2",
+          "4/T2",
+          "5/L3",
+          "6/T3"
+        ],
+        "evidence": "KM2 three power poles",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM2 13-14",
+        "type": "aux NO",
+        "detail": "KM2 auxiliary normally-open contact",
+        "connects": [
+          "13",
+          "14"
+        ],
+        "evidence": "13/14 at KM2",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM2 21-22",
+        "type": "aux NC",
+        "detail": "KM2 auxiliary normally-closed contact (interlock)",
+        "connects": [
+          "21",
+          "22"
+        ],
+        "evidence": "21/22 at KM2",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM3 main",
+        "type": "3-pole NO power contacts",
+        "detail": "Delta contactor main contacts",
+        "connects": [
+          "1/L1",
+          "2/T1",
+          "3/L2",
+          "4/T2",
+          "5/L3",
+          "6/T3"
+        ],
+        "evidence": "KM3 three power poles",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM3 21-22",
+        "type": "aux NC",
+        "detail": "KM3 auxiliary normally-closed contact (interlock)",
+        "connects": [
+          "21",
+          "22"
+        ],
+        "evidence": "21/22 at KM3",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM1 main",
+        "type": "3-pole NO power contacts",
+        "detail": "Line/main contactor main contacts feeding FR1",
+        "connects": [
+          "1/L1",
+          "2/T1",
+          "3/L2",
+          "4/T2",
+          "5/L3",
+          "6/T3"
+        ],
+        "evidence": "KM1 three power poles",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM1 13-14",
+        "type": "aux NO",
+        "detail": "KM1 auxiliary normally-open contact (seal-in)",
+        "connects": [
+          "13",
+          "14"
+        ],
+        "evidence": "13/14 at KM1",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KM1 23-24",
+        "type": "aux NO",
+        "detail": "KM1 auxiliary normally-open contact",
+        "connects": [
+          "23",
+          "24"
+        ],
+        "evidence": "23/24 at KM1",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "FR1 95-96",
+        "type": "aux NC",
+        "detail": "Overload trip NC contact used in control circuit",
+        "connects": [
+          "95",
+          "96"
+        ],
+        "evidence": "95/96 at FR1 in power and control circuits",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "FR1 97-98",
+        "type": "aux NO",
+        "detail": "Overload trip NO signalling contact",
+        "connects": [
+          "97",
+          "98"
+        ],
+        "evidence": "97/98 at FR1",
+        "confidence": 0.72,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "KT 15-16/15-18",
+        "type": "timed changeover contact",
+        "detail": "Timer changeover: after t1 star drops, after t1+t2 delta picks up (Y→△ transition)",
+        "connects": [
+          "15",
+          "16",
+          "18"
+        ],
+        "evidence": "KT 't1'/'t1+t2' with 15,16,18",
+        "confidence": 0.72,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      }
+    ],
+    "power_domains": [
+      {
+        "tag": "3-phase power (L1/L2/L3)",
+        "type": "three-phase supply",
+        "detail": "Motor power domain — no voltage value printed on this sheet.",
+        "connects": [],
+        "evidence": "1/L1, 3/L2, 5/L3 markings; three-phase motor 'M 3~'.",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Power Circuit"
+      },
+      {
+        "tag": "Control supply Us / N",
+        "type": "control-circuit supply",
+        "detail": "Control circuit fed from Us and N; Us reference derived from KM3:5/L3 in both control diagrams. No voltage value printed.",
+        "connects": [],
+        "evidence": "'Us', 'N', 'KM3 : 5/L3', 'KM3 : 3/L2' labels in Local/Remote control.",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Local Control"
+      }
+    ],
+    "pe_bonds": [],
+    "off_page_references": [
+      {
+        "tag": "KM3 : 5/L3",
+        "type": "cross-reference",
+        "detail": "Control-supply feed point referenced to KM3 power terminal 5/L3 in Power Circuit; appears at top of both Local and Remote control diagrams beside 'Us'.",
+        "connects": [],
+        "evidence": "'KM3 : 5/L3' with 'Us' at control-circuit top.",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "Local Control"
+      },
+      {
+        "tag": "KM3 : 3/L2",
+        "type": "cross-reference",
+        "detail": "Control-return point referenced to KM3 power terminal 3/L2; appears at bottom of both control diagrams beside 'N'.",
+        "connects": [],
+        "evidence": "'KM3 : 3/L2' with 'N' at control-circuit bottom.",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "Local Control"
+      }
+    ],
+    "plc_io_channels": [],
+    "network_links": [],
+    "functional_paths": [
+      {
+        "name": "Star (Y) start",
+        "sheet": "Power Circuit",
+        "sequence": [
+          "L1/L2/L3",
+          "KM1 main (line)",
+          "FR1 heaters",
+          "motor U1/V1/W1",
+          "KM2 main (star short of U2/V2/W2)"
+        ]
+      },
+      {
+        "name": "Delta (△) run",
+        "sheet": "Power Circuit",
+        "sequence": [
+          "L1/L2/L3",
+          "KM1 main (line)",
+          "FR1 heaters",
+          "motor U1/V1/W1",
+          "KM3 main (connects U2/V2/W2 to phases for delta)"
+        ]
+      },
+      {
+        "name": "Y→△ timed changeover",
+        "sheet": "Power Circuit",
+        "sequence": [
+          "KT coil energized",
+          "t1 (star time)",
+          "KM2 drops via interlock",
+          "t1+t2 transition",
+          "KM3 picks up (delta run)"
+        ]
+      },
+      {
+        "name": "Control energize (local)",
+        "sheet": "Local Control",
+        "sequence": [
+          "Us (KM3:5/L3)",
+          "FR1 95-96",
+          "Start pushbutton",
+          "KM1 23-24 seal-in / KT / KM interlocks",
+          "coils KM2/KM3/KM1",
+          "N (KM3:3/L2)"
+        ]
+      }
+    ],
+    "physical_layout_matches": [],
+    "unresolved": [
+      {
+        "item": "No control-circuit or supply VOLTAGE value is printed on this sheet.",
+        "status": "unresolved",
+        "resolution": "Confirm Us and motor voltage from the sheet 1/4 or 4/4 rating table / order data before assuming a level."
+      },
+      {
+        "item": "FR1 contact 97-98 legibility and exact usage",
+        "status": "unresolved",
+        "resolution": "High-resolution crop of FR1 terminal cluster (95/96/97/98) in the power circuit."
+      },
+      {
+        "item": "KT timer contact terminal assignment (15/16/18 changeover routing) is small/blurred",
+        "status": "unresolved",
+        "resolution": "Zoom on the KT block in power, local and remote diagrams to trace t1 / t1+t2 wiring exactly."
+      },
+      {
+        "item": "No explicit -W#### wire numbers are shown on this wiring diagram.",
+        "status": "unresolved",
+        "resolution": "Confirm whether a separate terminal/wire list sheet exists; conductor paths here are shown by graphic lines only."
+      }
+    ],
+    "cross_sheet_notes": "This is sheet 2/4 of ABB doc 1SBC 0095 00 R1001. Diagram IDs E1127D (power), E1612D (local control) and E1128D (remote control) identify the three sub-drawings. Control supply reference points KM3:5/L3 (Us) and KM3:3/L2 (N) tie the control circuits back to the power circuit contactor terminals.",
+    "brief": {
+      "sheet_title": "Sheet 2/4 of an ABB open-type star-delta motor starter (YKA/YDA ..-30) — the wiring diagrams for the power circuit plus two control-circuit options (local and remote), protected by a thermal overload relay.",
+      "purpose": "This sheet shows how to wire a star-delta (wye-delta) motor starter. Three contactors switch the motor: KM1 is the line/main contactor (marked 'L'), KM2 is the star contactor (marked 'Y'), and KM3 is the delta contactor (marked '△'). To limit inrush at start, the motor windings are first connected in star (KM1 + KM2). A timing relay KT then times out and hands over to delta (KM1 + KM3) for normal running. The thermal overload relay FR1 sits in the motor current path and its 95-96 trip contact opens the control circuit on overload. The bottom two diagrams give two ways to build the control side: 'Local Control' (start/reset pushbuttons on the panel) and 'Remote Control' (start/stop/reset from a remote station). The control supply is taken as Us/N, with reference points tied to KM3 terminals 5/L3 and 3/L2.",
+      "key_signals": [
+        {
+          "signal": "Three-phase motor supply (line side)",
+          "tag": "1/L1, 3/L2, 5/L3",
+          "terminal": "contactor line terminals",
+          "destination": "KM1/KM2/KM3 line side",
+          "confidence": 0.82
+        },
+        {
+          "signal": "Motor load / winding connections",
+          "tag": "2/T1, 4/T2, 6/T3",
+          "terminal": "U1/V1/W1 and U2/V2/W2",
+          "destination": "motor 'M 3~'",
+          "confidence": 0.8
+        },
+        {
+          "signal": "Overload trip (control-circuit break)",
+          "tag": "FR1 95-96",
+          "terminal": "95-96",
+          "destination": "control circuit (Local/Remote)",
+          "confidence": 0.82
+        },
+        {
+          "signal": "Overload signalling contact",
+          "tag": "FR1 97-98",
+          "terminal": "97-98",
+          "destination": "not fully legible",
+          "confidence": 0.6
+        },
+        {
+          "signal": "Star/delta transition timing",
+          "tag": "KT (t1, t1+t2)",
+          "terminal": "15/16/18",
+          "destination": "KM2 / KM3 coils",
+          "confidence": 0.7
+        },
+        {
+          "signal": "Control supply live reference",
+          "tag": "Us",
+          "terminal": "KM3 : 5/L3",
+          "destination": "control circuit top rail",
+          "confidence": 0.76
+        },
+        {
+          "signal": "Control supply return reference",
+          "tag": "N",
+          "terminal": "KM3 : 3/L2",
+          "destination": "control circuit bottom rail",
+          "confidence": 0.76
+        },
+        {
+          "signal": "Reset / Auto-Manual selection at overload",
+          "tag": "R / O/R",
+          "terminal": "FR1 reset symbols",
+          "destination": "FR1",
+          "confidence": 0.65
+        }
+      ],
+      "key_devices": [
+        {
+          "device": "Line/main contactor ('L')",
+          "tag": "KM1",
+          "confidence": 0.9
+        },
+        {
+          "device": "Star contactor ('Y')",
+          "tag": "KM2",
+          "confidence": 0.88
+        },
+        {
+          "device": "Delta contactor ('△')",
+          "tag": "KM3",
+          "confidence": 0.88
+        },
+        {
+          "device": "Thermal overload relay",
+          "tag": "FR1",
+          "confidence": 0.9
+        },
+        {
+          "device": "Star-delta changeover timing relay",
+          "tag": "KT",
+          "confidence": 0.85
+        },
+        {
+          "device": "Three-phase induction motor",
+          "tag": "M 3~",
+          "confidence": 0.88
+        }
+      ],
+      "troubleshooting_example": "Symptom: motor will not start from the Local Control station. With the circuit safely de-energized and locked out, check the overload path first: put a meter (continuity) across FR1 95-96 — it should read closed when the relay is not tripped. If 95-96 is open, the overload has tripped (reset it / investigate the motor load) — the fault is at the device. If 95-96 reads closed but the KM1 coil (A1-A2) never energizes when the start button is pressed, work along the control string toward the coil: verify the start pushbutton and the KM1 23-24 seal-in contact, and confirm control supply is present at the Us reference (KM3:5/L3) versus N (KM3:3/L2). If good voltage/continuity reaches the start-button side but nothing appears at the KM1 coil, the break is in the wiring/contacts between them, not in the overload relay. Note: this sheet shows only the starter's own control logic — there is no PLC/controller logic on this drawing, so no external control response can be inferred here.",
+      "safety_context": "No voltage value is printed anywhere on this sheet — the drawing does NOT establish the control-circuit or motor voltage, so do not assume a level. For continuity/resistance checks on FR1 contacts, contactor coils or the timer, de-energize, lock out, and verify absence of voltage first. If live verification of the control supply (Us/N) or the three-phase power terminals is required, treat it as energized work and use appropriately rated PPE and instruments; the drawing does not prove the present field state of the panel.",
+      "unresolved_items": [
+        "Supply/control voltage not printed on this sheet (check the rating/order-data sheet 1/4 or 4/4).",
+        "FR1 97-98 contact and its destination not clearly legible.",
+        "KT timer contact terminal routing (15/16/18, t1 vs t1+t2) is small and needs a zoom to confirm.",
+        "No explicit -W#### wire numbers appear on this wiring diagram; connections are shown graphically only."
+      ],
+      "detailed_map_available": true
+    }
+  },
+  "interpreter_used": true,
+  "model": "claude-opus-4-8",
+  "provider": "anthropic",
+  "effort": "xhigh",
+  "max_tokens": 32000,
+  "latency_s": 137.56,
+  "error": null
+}

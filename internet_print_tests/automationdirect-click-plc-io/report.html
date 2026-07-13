@@ -1,0 +1,66 @@
+<!doctype html><meta charset=utf-8><title>automationdirect-click-plc-io</title><body style='font:14px system-ui;max-width:60rem;margin:2rem'><p># MIRA Print Translator Test — automationdirect-click-plc-io</p><p></p><p>## 1. Source &amp; drawing metadata</p><p>- Publisher: AutomationDirect</p><p>- Title: CLICK PLC Hardware User Manual — Ch.3 Installation and Wiring (C0-USER-M)</p><p>- Sheet: Ch.3 — DC Input &amp; Output Wiring Methods, sinking/sourcing (p.3-31)</p><p>- Equipment: PLC discrete I/O module</p><p>- Standard: Industrial 24VDC</p><p>- Category: plc_io</p><p>- Source URL: https://cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf</p><p>- Access date (UTC): 2026-07-13T20:34:21Z</p><p>- Original sha256: `82e374d7253644771a0f40b2845b6d4935fd1f22fb81b1537669ee64e57e6313`</p><p></p><p>## 2. Why selected
+Page index 30 is a genuine 24 VDC PLC discrete-I/O wiring diagram (verified by render 2026-07-13): sinking/sourcing DC inputs, NPN/PNP field-sensor termination (Input/Common, DC NPN Sensor sinking, DC PNP Sensor sourcing, Field Device, Supply, Ground, 20-28 VDC), and DC output-to-load wiring. Completely different category/standard from the NEMA starter. Publicly published OEM chapter PDF; provenance verified 2026-07-10.</p><p></p><p>## 3. Exact Telegram bot response (verbatim, unmodified)</p><p></p><p>📋 Manual page 3-31 (CLICK PLC Hardware User Manual, Ch. 3) showing generic DC input and DC output wiring methods between PLC I/O points and field devices.
+
+This page teaches how to wire CLICK PLC DC I/O to field devices, not a specific machine. The DC input point is drawn as an opto-coupler with dual (anti-parallel) diodes, so it can be wired either sinking or sourcing. Example 1: an NPN (open-collector) sensor that sinks current is paired with a PLC input wired sourcing, with an external DC supply feeding the Common terminal. Example 2: a PNP (open-emitter) sensor that sources current is paired with a PLC input wired sinking, and no extra module supply is needed because the field loop already sources current. Example 3 (output side): a PLC DC output wired sinking drives a field-device load with a sourcing input, powered by a 20-28 VDC supply. Stated ranges: DC inputs ~+12-24 VDC, DC outputs ~+5-24 VDC.
+
+🔑 Signals
+• NPN sensor output signal into the PLC (sensor sinks, PLC sources)
+• PNP sensor output signal into the PLC (sensor sources, PLC sinks)
+• PLC output signal to the field-device load (PLC sinks to Common)
+• Supply power to PLC Common / field loop (input examples)
+• 20-28 VDC loop power for the output example
+
+🔧 Devices
+• Generic PLC DC input point (dual-diode opto-coupler, wireable sinking or sourcing) (PLC DC Input)
+• Open-collector NPN field sensor (sinking) (DC NPN Sensor (Sinking))
+• Open-emitter PNP field sensor (sourcing) (DC PNP Sensor (Sourcing))
+• PLC DC output point (sinking, transistor/MOSFET) (PLC DC Output)
+• Field-device load with a sourcing input (Field Device)
+• External DC supply for input loop (Supply)
+• 20-28 VDC supply for output loop (20-28 VDC)
+
+🩺 If you&#x27;re chasing a fault
+… (more — reply &quot;map&quot;)
+
+❓ Couldn&#x27;t confirm (verify on the sheet):
+• No device tags, wire numbers, terminal numbers, or PLC channel addresses are printed — this is a generic method illustration.
+• No specific CLICK module part number is identified for the illustrated I/O points.
+
+⚠️ Voltages printed on this page: DC inputs typically +12-24 VDC, DC outputs typically +5-24 VDC, and the output example uses a 20-28 VDC supply — no higher/AC levels are shown, and this is a generic reference, not proof of your actual field conditions. For continuity/resistance checks on wiring, de-energize, lock out, and verify absence of voltage first. For live signal/voltage checks on the low-voltage DC loops, use appropriately rated meters and follow energized-work procedures. The drawing does not establish the real installed voltage of your specific panel.
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply &quot;map&quot; for the full terminal and wire list.</p><p></p><p>- classification: **ELECTRICAL_PRINT** (conf 0.85)</p><p>- interpreter used (Anthropic PrintSynth): **True**</p><p>- model: claude-opus-4-8 · effort xhigh · latency 120.06s</p><p></p><p>## 4. Automated grade (PROVISIONAL — not technician approval until Mike calibrates)</p><p>- score: **42/100** (F)</p><p>- hard failure: **True**</p><p>- summary: The response correctly identifies the sheet, purpose, and most sinking/sourcing input wiring paths, and cites voltages accurately from the page. However, the &#x27;map&#x27; follow-up confidently (0.85) mis-states the output-circuit topology by merging the &#x27;+DC Power/Power&#x27; terminal with the separate 20-28 VDC supply node shown in the Common-to-Ground return path, an incorrect terminal/connection claim presented as fact, which caps the grade at F despite otherwise solid generic descriptions.</p><p></p><p>## 5. Verified strengths</p><p>- Correctly identifies the page/section as CLICK PLC manual Ch.3 p.3-31 DC Input/Output Wiring Methods.</p><p>- Correctly captures the NPN sinking sensor -&gt; PLC sourcing input wiring with external Supply in the Common/Ground return path, matching the diagram.</p><p>- Correctly captures the PNP sourcing sensor -&gt; PLC sinking input wiring with no additional supply needed, matching the diagram text &#x27;no additional power supply is required for the module.&#x27;</p><p>- Correctly cites all printed voltage ranges (+12-24 VDC, +5-24 VDC, 20-28 VDC) without inventing new values.</p><p>- Appropriate generic safety/LOTO language for a low-voltage DC training diagram.</p><p></p><p>## 6. Suspected errors / hallucinations</p><p>- &quot;20-28 VDC loop power for the output example — 20-28 VDC @ Power / +DC Power → PLC DC Output and field-device load loop&quot; — The drawing shows &#x27;+DC Power&#x27; feeding a separate &#x27;Power&#x27; terminal on the PLC DC Output block, while the 20-28 VDC battery symbol sits in the Common-to-Ground return path (consistent with the &#x27;Supply&#x27; battery placement in the NPN input example above it); conflating these two nodes is not supported by the visible layout.</p><p>- &quot;Supply(+) -&gt; load Input (sourcing) — power conductor&quot; — Per the drawing&#x27;s wiring pattern, the direct signal path is PLC &#x27;Output (sinking)&#x27; to Field Device &#x27;Input (sourcing)&#x27;; the supply is inserted in the Common-Ground return path, not directly wired to the load&#x27;s Input terminal.</p><p></p><p>## 7. Items requiring technician review</p><p>- Verify actual node connections of the &#x27;Power&#x27;/&#x27;+DC Power&#x27; terminal versus the 20-28 VDC supply in the PLC DC Output diagram before relying on the assistant&#x27;s stated loop topology.</p><p>- Confirm whether &#x27;+DC Power&#x27; and the 20-28 VDC supply are electrically the same net or two independent supplies before troubleshooting an output circuit based on this page.</p><p></p><p>## 8. Build &amp; runtime
+- commit: `a5be72afa0a6396b225fefeb751e30cedeeecc2f` · branch: feat/internet-print-test-runner · version: 3.137.2
+- judge model: claude-sonnet-5 · run: 2026-07-13T20:49:15Z</p><p>
+## 9. Source URL
+https://cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf</p><h2>Verbatim response</h2><pre style='white-space:pre-wrap;border:1px solid #ccc;padding:1rem'>📋 Manual page 3-31 (CLICK PLC Hardware User Manual, Ch. 3) showing generic DC input and DC output wiring methods between PLC I/O points and field devices.
+
+This page teaches how to wire CLICK PLC DC I/O to field devices, not a specific machine. The DC input point is drawn as an opto-coupler with dual (anti-parallel) diodes, so it can be wired either sinking or sourcing. Example 1: an NPN (open-collector) sensor that sinks current is paired with a PLC input wired sourcing, with an external DC supply feeding the Common terminal. Example 2: a PNP (open-emitter) sensor that sources current is paired with a PLC input wired sinking, and no extra module supply is needed because the field loop already sources current. Example 3 (output side): a PLC DC output wired sinking drives a field-device load with a sourcing input, powered by a 20-28 VDC supply. Stated ranges: DC inputs ~+12-24 VDC, DC outputs ~+5-24 VDC.
+
+🔑 Signals
+• NPN sensor output signal into the PLC (sensor sinks, PLC sources)
+• PNP sensor output signal into the PLC (sensor sources, PLC sinks)
+• PLC output signal to the field-device load (PLC sinks to Common)
+• Supply power to PLC Common / field loop (input examples)
+• 20-28 VDC loop power for the output example
+
+🔧 Devices
+• Generic PLC DC input point (dual-diode opto-coupler, wireable sinking or sourcing) (PLC DC Input)
+• Open-collector NPN field sensor (sinking) (DC NPN Sensor (Sinking))
+• Open-emitter PNP field sensor (sourcing) (DC PNP Sensor (Sourcing))
+• PLC DC output point (sinking, transistor/MOSFET) (PLC DC Output)
+• Field-device load with a sourcing input (Field Device)
+• External DC supply for input loop (Supply)
+• 20-28 VDC supply for output loop (20-28 VDC)
+
+🩺 If you&#x27;re chasing a fault
+… (more — reply &quot;map&quot;)
+
+❓ Couldn&#x27;t confirm (verify on the sheet):
+• No device tags, wire numbers, terminal numbers, or PLC channel addresses are printed — this is a generic method illustration.
+• No specific CLICK module part number is identified for the illustrated I/O points.
+
+⚠️ Voltages printed on this page: DC inputs typically +12-24 VDC, DC outputs typically +5-24 VDC, and the output example uses a 20-28 VDC supply — no higher/AC levels are shown, and this is a generic reference, not proof of your actual field conditions. For continuity/resistance checks on wiring, de-energize, lock out, and verify absence of voltage first. For live signal/voltage checks on the low-voltage DC loops, use appropriately rated meters and follow energized-work procedures. The drawing does not establish the real installed voltage of your specific panel.
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply &quot;map&quot; for the full terminal and wire list.</pre></body>

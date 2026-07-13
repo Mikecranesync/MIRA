@@ -1,0 +1,18 @@
+# Per-drawing binary artifacts are NOT committed: the source drawings are public OEM
+# literature (copyright retained by the publisher) and would bloat the repo. The immutable
+# TEXT evidence for each test IS committed as a sanitized artifact:
+#   source.json, sha256.txt, telegram_request.json, telegram_response.{txt,json},
+#   extraction.json, judge_1.json, report.md, report.html, run.log, index.{json,md}.
+original.*
+tested_page.png
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.tif
+_email/
+_runner.sqlite
+
+# run.log is intentional per-drawing evidence — re-include it despite the repo-root `*.log` ignore.
+!run.log

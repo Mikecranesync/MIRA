@@ -1,0 +1,7 @@
+{
+  "test_id": "siemens-3sk1-safety-relay",
+  "caption": "Explain this circuit.",
+  "tested_page_sha256": "59a0df61c7a94a2c655a55c35563347bfaded4d30669fd77758a4650da69ae75",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

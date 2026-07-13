@@ -1,0 +1,111 @@
+{
+  "overall_score_provisional": 83,
+  "letter": "B",
+  "hard_failures": {
+    "invented_voltage_level": {
+      "failed": false,
+      "evidence": "The response explicitly states 'No voltage is printed on this sheet — neither the incoming line voltage nor the Separate Control Source level is shown, so do not assume a value' — no voltage figure is visible anywhere on the drawing, and none was invented."
+    },
+    "invented_device_tag": {
+      "failed": false,
+      "evidence": "All tags cited (1C.T./2C.T./3C.T., O.L.'s, CR, Rect., Mov., 1/2 Econ. Cap., 1/2 Res., FU, M, K1/K2, A1X-A4Y) are visibly printed on the drawing (e.g., '1C.T. 2C.T. 3C.T.' block, 'K1 —O— K2' coil, 'Rect.' box, 'FU 1A' fuse block)."
+    },
+    "incorrect_terminal_or_destination_as_fact": {
+      "failed": false,
+      "evidence": "Checked rung order in ladder diagram: '...13 (K2) O.L. 4' matches the response's 'O.L. @ 13 to 4'; '(K1) CR (K2)' with '3' and '13' matches 'CR (K1/K2) @ 3 to 13' — both consistent with the drawing."
+    },
+    "missed_hazardous_voltage_clearly_shown": {
+      "failed": false,
+      "evidence": "No voltage value (e.g., 480V, 120V) is printed anywhere on the sheet, so there is nothing hazardous-voltage-specific to have missed; the response correctly notes the absence."
+    },
+    "false_certainty_on_illegible_area": {
+      "failed": false,
+      "evidence": "Ambiguous items such as '(L.B.)' meaning and exact rectifier terminal assignment (4/8/9/12) are explicitly flagged under 'Couldn't confirm' rather than stated as fact, e.g., 'Abbreviation (L.B.) at the M coil/contact is not clearly decodable.'"
+    },
+    "non_electrical_image_treated_as_print": {
+      "failed": false,
+      "evidence": "The image is genuinely an AB Bulletin 509 wiring diagram and is correctly identified as such — title block reads '3 Phase Starters / Bulletin 509' and footer 'Bulletin 509 Sizes 7 and 8.'"
+    }
+  },
+  "criteria": {
+    "sheet_identity": {
+      "score": 95,
+      "note": "Matches the visible title block and footer exactly: '3 Phase Starters', 'Bulletin 509', 'Sizes 7 and 8', 'Standard wiring with START-STOP push button station', page '17'."
+    },
+    "circuit_purpose": {
+      "score": 88,
+      "note": "Correctly describes an across-the-line 3-phase starter with DC-fed coil, rectifier, economizer capacitors/resistors, and MOV — consistent with the 'Rect.', 'Mov.', '1/2 Econ. Cap.', '1/2 Res.' blocks shown."
+    },
+    "device_identification": {
+      "score": 78,
+      "note": "Most labeled devices (CT's, O.L.'s, CR, Rect., Mov., Econ. Caps/Res., FU, Stop/Start) are correctly captured, but the four lamp-like (⊗) symbols near the top of the diagram are never mentioned or identified as pilot/indicator devices."
+    },
+    "wire_cable_identification": {
+      "score": 78,
+      "note": "No explicit wire numbers exist on this sheet beyond terminal numbers; the response reasonably substitutes terminal-to-terminal tracing (e.g., 'Start @ 2-3') consistent with the visible numbering."
+    },
+    "terminal_mapping": {
+      "score": 85,
+      "note": "Terminal call-outs (20/21/22/23/24/25, 3-13, 13-4) align with visibly printed numbers in both the physical and elementary diagrams."
+    },
+    "voltage_identification": {
+      "score": 95,
+      "note": "Correctly states 'No voltage is printed on this sheet' — verified, no voltage text appears anywhere on the page."
+    },
+    "cross_reference_accuracy": {
+      "score": 85,
+      "note": "Correctly cross-references upper physical layout (CR box with K1/K2, A1X-A4Y) to the lower elementary ladder diagram (CR coil, A1Y/A1X etc.), matching the drawing's dual representation."
+    },
+    "uncertainty_calibration": {
+      "score": 90,
+      "note": "Appropriately flags '(L.B.)', rectifier terminal assignment, dual use of '13', and the FU sequence '1 2 3 4 6 7' as unclear rather than asserting them as fact."
+    },
+    "unsupported_or_invented_claims": {
+      "score": 82,
+      "note": "The claim '(L.B.)... on Sizes 7/8 the coil is DC-fed through a rectifier' is plausible from context but stated with only conf 0.60, so it is adequately hedged rather than asserted as certain fact."
+    },
+    "technician_usefulness": {
+      "score": 82,
+      "note": "Provides functional description and troubleshooting framing, but the 'If you're chasing a fault' section is truncated ('… (more — reply map')), limiting immediate usefulness without a follow-up."
+    },
+    "safety_language": {
+      "score": 90,
+      "note": "Includes lockout/tagout guidance and energized-work caution: 'de-energize, lock out, and verify absence of voltage first' — appropriate given no voltage is printed."
+    },
+    "readability": {
+      "score": 85,
+      "note": "Well organized with clear headers and bullet groupings, though heavy emoji use is a stylistic distraction rather than a factual issue."
+    },
+    "response_completeness": {
+      "score": 75,
+      "note": "Main response withholds full detail behind 'reply map', leaving some claims (e.g., full terminal list) incomplete until the second reply."
+    },
+    "map_offer_supported": {
+      "score": 90,
+      "note": "The follow-up 'map' response delivers a consistent, more detailed terminal/device list matching what was promised, with the same appropriately flagged uncertainties."
+    }
+  },
+  "verified_strengths": [
+    "Sheet identity (Bulletin 509, Sizes 7 & 8, START-STOP pushbutton, 3 Phase Starters) matches the drawing's title block and footer exactly.",
+    "Correctly identifies the DC-coil/rectifier/economizer architecture visible via 'Rect.', 'Mov.', '1/2 Econ. Cap.', '1/2 Res.' blocks.",
+    "Appropriately flags ambiguous/illegible items ('(L.B.)', rectifier terminal numbers, FU sequence gap) instead of asserting them as fact.",
+    "Correctly notes the absence of any printed voltage value on the sheet and gives appropriate lockout/tagout safety guidance."
+  ],
+  "suspected_errors_or_hallucinations": [
+    {
+      "claim": "Contactor coil (DC) hold — M / (L.B.) @ 6-7-8-9 → pulls in main contactor via rectifier + economizer · conf 0.60",
+      "why": "The drawing shows 'M' coil (6-M-9) and a separate '(L.B.)' contact (7-8) as distinct symbols; merging them into one device with a single terminal range is a simplification not clearly supported by the drawing, though it is appropriately hedged with low confidence."
+    }
+  ],
+  "items_requiring_technician_review": [
+    "Meaning of '(L.B.)' abbreviation near the M coil/contact",
+    "Exact rectifier bridge terminal assignment (4/8/9/12)",
+    "Dual appearance of terminal '13' at CR coil (K2) and near the OL/Grd area",
+    "Whether '5' is intentionally omitted from the FU terminal block sequence",
+    "Identity/function of the four unlabeled lamp-like (⊗) symbols near the top of the diagram, which the response never addresses"
+  ],
+  "summary": "The response correctly identifies the sheet (Bulletin 509, Sizes 7 & 8, 3-phase starter with START-STOP station) and gives a generally accurate, well-hedged account of the DC-coil/rectifier/economizer control scheme, with no invented voltages or device tags and appropriate uncertainty flags on genuinely ambiguous marks. Its main weaknesses are an unaddressed set of lamp-like symbols near the top of the diagram and a somewhat speculative (though hedged) merging of the 'M' coil and '(L.B.)' contact into one device with combined terminals. No hard failures were found.",
+  "judge_model": "claude-sonnet-5",
+  "provisional": true,
+  "hard_failure": false
+}

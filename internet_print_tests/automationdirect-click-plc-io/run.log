@@ -1,0 +1,15 @@
+2026-07-13 16:44:05,338 INFO regrade: reusing saved tested_page.png + telegram_response.json
+2026-07-13 16:44:05,354 INFO running independent multimodal judge…
+2026-07-13 16:46:37,764 INFO judge_1 flagged a HARD FAILURE — escalating to an independent second judge…
+2026-07-13 16:49:15,897 INFO second judge hard_failure=True → confirmed=True
+2026-07-13 16:49:15,960 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — automationdirect-click-plc-io — CLICK PLC Hardware User Manual — Ch.3 Installation and Wiring (C0-USER-M) — 42/100
+ATTACHMENTS:
+  [attach] original.pdf (5,680,128 B)
+  [attach] tested_page.png (296,335 B)
+  [attach] report.html (10,387 B)
+  [attach] judge_1.json (8,655 B)
+  [attach] telegram_response.json (39,348 B)
+HTML: 3,853 chars
+2026-07-13 16:49:17,372 INFO email send: {'sent': True, 'status': 200, 'id': '388d7e0f-2529-4cd3-8d27-a0ca98b69a40'}

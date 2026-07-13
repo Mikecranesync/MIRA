@@ -1,0 +1,948 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.9,
+  "drawing_type": "wiring diagram",
+  "vision_description": "The image shows an electrical drawing, specifically a wiring diagram for 3-phase starters, Bulletin 509 Sizes 7 and 8, with standard wiring and a start-stop push button station. The diagram is a detailed schematic of the electrical connections and components.",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+  "final_text": "📋 Allen-Bradley Bulletin 509 three-phase full-voltage magnetic motor starter (Sizes 7 and 8), wired for a standard START-STOP push-button station — catalog wiring page 17.\n\nThis page documents an across-the-line 3-phase motor starter. Incoming lines L1/L2/L3 pass through the main contactor poles, through current transformers (1/2/3 C.T.) and the three overload elements (O.L.'s), then out to the motor as T1/T2/T3. The lower elementary (ladder) diagram shows the control logic: a separate control source, protected by a 1-amp fuse, runs through a normally-closed Stop button and a normally-open Start button (sealed in by a CR relay contact) to energize the control relay CR; a normally-closed overload contact in series drops the circuit out on overload. Because Sizes 7 and 8 use very large contactors, the operating coil is DC-fed: a rectifier bridge converts the control AC to DC, an economizer circuit (1 & 2 Econ. Cap. plus 1 & 2 Res. switched by CR contacts) lowers the coil holding current after pull-in, and a MOV (Mov.) suppresses coil transients.\n\n🔑 Signals\n• Three-phase supply in\n• Motor output leads\n• Stop command (opens control circuit)\n• Start command (energizes/seal-in via CR)\n• Control-relay coil energize\n• Overload trip (drops control circuit)\n• Contactor coil (DC) hold\n\n🔧 Devices\n• Three-phase motor (MOTOR (T1/T2/T3))\n• Main contactor operating coil (DC, economizer) (M / (L.B.))\n• Line current transformers (1C.T. / 2C.T. / 3C.T.)\n• Three-pole overload relay (O.L.'s)\n• Control relay with seal-in and economizer contacts (CR (coil K1/K2; contacts A1X..A4X / A1Y..A4Y))\n• Rectifier bridge (AC-to-DC for coil) (Rect.)\n• Surge-suppression varistor (Mov.)\n• Economizer capacitors (1 Econ. Cap. / 2 Econ. Cap.)\n• Economizer resistors (1 Res. / 2 Res.)\n• Control-circuit fuse (FU (1A))\n• Stop push button (NC) (Stop (1-2))\n• Start push button (NO) (Start (2-3))\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• Abbreviation '(L.B.)' at the M coil/contact is not clearly decodable.\n• Exact AC/DC terminal assignment on the rectifier bridge (which of 4/8/9/12) is hard to read.\n• Terminal '13' appears both at CR coil (K2) and near the OL/Grd area — possible dual usage needs a clean crop.\n• FU block digit sequence '1 2 3 4 6 7' (whether '5' is intentionally skipped).\n…and 1 more (see 'map')\n\n⚠️ No voltage is printed on this sheet — neither the incoming line voltage nor the 'Separate Control Source' level is shown, so do not assume a value; treat the circuit as potentially lethal until measured. For continuity/resistance checks (Stop/Start contacts, coil, OL contact, capacitors, resistors) de-energize, lock out, and verify absence of voltage first. If live voltage checks are required to isolate coil vs OL, follow energized-work procedures with properly rated meters and PPE. Note that this is a generic catalog diagram and may not reflect the exact as-built panel.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list.",
+  "all_messages": [
+    "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+    "📋 Allen-Bradley Bulletin 509 three-phase full-voltage magnetic motor starter (Sizes 7 and 8), wired for a standard START-STOP push-button station — catalog wiring page 17.\n\nThis page documents an across-the-line 3-phase motor starter. Incoming lines L1/L2/L3 pass through the main contactor poles, through current transformers (1/2/3 C.T.) and the three overload elements (O.L.'s), then out to the motor as T1/T2/T3. The lower elementary (ladder) diagram shows the control logic: a separate control source, protected by a 1-amp fuse, runs through a normally-closed Stop button and a normally-open Start button (sealed in by a CR relay contact) to energize the control relay CR; a normally-closed overload contact in series drops the circuit out on overload. Because Sizes 7 and 8 use very large contactors, the operating coil is DC-fed: a rectifier bridge converts the control AC to DC, an economizer circuit (1 & 2 Econ. Cap. plus 1 & 2 Res. switched by CR contacts) lowers the coil holding current after pull-in, and a MOV (Mov.) suppresses coil transients.\n\n🔑 Signals\n• Three-phase supply in\n• Motor output leads\n• Stop command (opens control circuit)\n• Start command (energizes/seal-in via CR)\n• Control-relay coil energize\n• Overload trip (drops control circuit)\n• Contactor coil (DC) hold\n\n🔧 Devices\n• Three-phase motor (MOTOR (T1/T2/T3))\n• Main contactor operating coil (DC, economizer) (M / (L.B.))\n• Line current transformers (1C.T. / 2C.T. / 3C.T.)\n• Three-pole overload relay (O.L.'s)\n• Control relay with seal-in and economizer contacts (CR (coil K1/K2; contacts A1X..A4X / A1Y..A4Y))\n• Rectifier bridge (AC-to-DC for coil) (Rect.)\n• Surge-suppression varistor (Mov.)\n• Economizer capacitors (1 Econ. Cap. / 2 Econ. Cap.)\n• Economizer resistors (1 Res. / 2 Res.)\n• Control-circuit fuse (FU (1A))\n• Stop push button (NC) (Stop (1-2))\n• Start push button (NO) (Start (2-3))\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• Abbreviation '(L.B.)' at the M coil/contact is not clearly decodable.\n• Exact AC/DC terminal assignment on the rectifier bridge (which of 4/8/9/12) is hard to read.\n• Terminal '13' appears both at CR coil (K2) and near the OL/Grd area — possible dual usage needs a clean crop.\n• FU block digit sequence '1 2 3 4 6 7' (whether '5' is intentionally skipped).\n…and 1 more (see 'map')\n\n⚠️ No voltage is printed on this sheet — neither the incoming line voltage nor the 'Separate Control Source' level is shown, so do not assume a value; treat the circuit as potentially lethal until measured. For continuity/resistance checks (Stop/Start contacts, coil, OL contact, capacitors, resistors) de-energize, lock out, and verify absence of voltage first. If live voltage checks are required to isolate coil vs OL, follow energized-work procedures with properly rated meters and PPE. Note that this is a generic catalog diagram and may not reflect the exact as-built panel.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list."
+  ],
+  "map_text": "📐 Electrical print\n\n🔌 Signals (exact — source → destination)\n• Three-phase supply in — L1 / L2 / L3  @ poles 20/22/24  → main contactor poles then motor · conf 0.90\n• Motor output leads — T1 / T2 / T3  @ T1/T2/T3  → MOTOR · conf 0.90\n• Stop command (opens control circuit) — Stop  @ 1-2  → control-relay CR rung · conf 0.90\n• Start command (energizes/seal-in via CR) — Start  @ 2-3  → CR coil (K1)-(K2) · conf 0.90\n• Control-relay coil energize — CR (K1/K2)  @ 3 to 13  → operates contactor coil economizer circuit · conf 0.85\n• Overload trip (drops control circuit) — O.L.  @ 13 to 4  → opens series with CR coil · conf 0.85\n• Contactor coil (DC) hold — M / (L.B.)  @ 6-7-8-9  → pulls in main contactor via rectifier + economizer · conf 0.60\n\n🔧 Devices (16)\n• MOTOR — three-phase induction motor (Motor load with leads T1, T2, T3 (shown both at MOTOR box lower-left and at contactor output T1/T2/T3)) · conf 0.95\n• M — main contactor coil (DC, economizer-operated) (Contactor operating coil shown as (M) with '(L.B.)' near terminals 6, 7, 8, 9; on Sizes 7/8 the coil is DC-fed through a rectifier) · conf 0.60\n• 1C.T. — current transformer (Line current transformer in phase feeding T1) · conf 0.90\n• 2C.T. — current transformer (Line current transformer in phase feeding T2) · conf 0.90\n• 3C.T. — current transformer (Line current transformer in phase feeding T3) · conf 0.90\n• O.L.'s — overload relay assembly (3-pole) (Three overload heater/sensing elements with terminals 20/22/24 top and 21/23/25 bottom; drives a control-circuit overload contact) · conf 0.90\n• CR — control relay (coil K1-K2, contacts A1X..A4X / A1Y..A4Y) (Master control relay; coil marked between K1 (3) and K2 (13); provides seal-in and economizer switching contacts) · conf 0.85\n• Rect. — rectifier bridge (AC-to-DC bridge feeding the DC contactor coil; corners marked + and -, terminals include 8, 9, 12, 4) · conf 0.75\n• Mov. — metal-oxide varistor (surge suppressor) (Transient suppressor across the coil circuit near the rectifier, terminals 4, 8, 12) · conf 0.80\n• 1 Econ. Cap. — economizer capacitor (Energy-saving (economizer) capacitor for coil holding circuit, terminals 8 and 5) · conf 0.85\n• 2 Econ. Cap. — economizer capacitor (Second economizer capacitor for coil holding circuit, terminals 8 and 5) · conf 0.85\n• 1 Res. — resistor (Economizer/discharge resistor in coil circuit (rung with CR A2/A3 contacts)) · conf 0.80\n• 2 Res. — resistor (Economizer/holding resistor in coil circuit (rung with CR A4 contact)) · conf 0.80\n• FU — control-circuit fuse (1A) (Control fuse '1A' in the separate control source line; also a fuse/terminal block marked FU with 1 2 3 4 6 7) · conf 0.85\n…and 2 more\n\n🧩 1 PE bond(s)\n\n⚠️ Couldn't read (retake or crop closer):\n• Abbreviation '(L.B.)' at the M coil/contact is not clearly decodable.\n• Exact AC/DC terminal assignment on the rectifier bridge (which of 4/8/9/12) is hard to read.\n• Terminal '13' appears both at CR coil (K2) and near the OL/Grd area — possible dual usage needs a clean crop.\n• FU block digit sequence '1 2 3 4 6 7' (whether '5' is intentionally skipped).\n• No system voltages are printed anywhere on the sheet.\n\n🔎 Proposed interpretation from the drawing — not yet field-verified. Reply to confirm or correct any item.",
+  "graph": {
+    "package": {
+      "manufacturer": "Allen-Bradley (AB Quality)",
+      "publication": "WIRING DIAGRAMS",
+      "bulletin": "Bulletin 509",
+      "title": "3 Phase Starters",
+      "subtitle": "Bulletin 509 Sizes 7 and 8 — Standard wiring with START-STOP push button station",
+      "drawing_type": "wiring diagram / elementary (ladder) diagram",
+      "page": "17",
+      "secondary_page_number": "13",
+      "note": "Generic catalog wiring diagram; designations are AB/reference-style, not DIN/IEC 81346 project tags."
+    },
+    "devices": [
+      {
+        "tag": "MOTOR",
+        "type": "three-phase induction motor",
+        "detail": "Motor load with leads T1, T2, T3 (shown both at MOTOR box lower-left and at contactor output T1/T2/T3)",
+        "connects": [
+          "T1",
+          "T2",
+          "T3"
+        ],
+        "evidence": "'MOTOR' box with 'T1 T2 T3' lower-left",
+        "confidence": 0.95,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "M",
+        "type": "main contactor coil (DC, economizer-operated)",
+        "detail": "Contactor operating coil shown as (M) with '(L.B.)' near terminals 6, 7, 8, 9; on Sizes 7/8 the coil is DC-fed through a rectifier",
+        "connects": [
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "evidence": "circle 'M', '(L.B.)', terminals 7-8 top and 6-9 bottom",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "1C.T.",
+        "type": "current transformer",
+        "detail": "Line current transformer in phase feeding T1",
+        "connects": [
+          "20",
+          "21",
+          "T1"
+        ],
+        "evidence": "'1C.T.' with terminals 20/21 and 'T1'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "2C.T.",
+        "type": "current transformer",
+        "detail": "Line current transformer in phase feeding T2",
+        "connects": [
+          "22",
+          "23",
+          "T2"
+        ],
+        "evidence": "'2C.T.' with terminals 22/23 and 'T2'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "3C.T.",
+        "type": "current transformer",
+        "detail": "Line current transformer in phase feeding T3",
+        "connects": [
+          "24",
+          "25",
+          "T3"
+        ],
+        "evidence": "'3C.T.' with terminals 24/25 and 'T3'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "O.L.'s",
+        "type": "overload relay assembly (3-pole)",
+        "detail": "Three overload heater/sensing elements with terminals 20/22/24 top and 21/23/25 bottom; drives a control-circuit overload contact",
+        "connects": [
+          "20",
+          "22",
+          "24",
+          "21",
+          "23",
+          "25"
+        ],
+        "evidence": "'O.L.'s' box with 20 22 24 / 21 23 25",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "CR",
+        "type": "control relay (coil K1-K2, contacts A1X..A4X / A1Y..A4Y)",
+        "detail": "Master control relay; coil marked between K1 (3) and K2 (13); provides seal-in and economizer switching contacts",
+        "connects": [
+          "3",
+          "13",
+          "A1X",
+          "A2X",
+          "A3X",
+          "A4X",
+          "A1Y",
+          "A2Y",
+          "A3Y",
+          "A4Y"
+        ],
+        "evidence": "'CR', coil '3 -O- 13' with K1/K2, contact array A1X-A4X / A1Y-A4Y",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "Rect.",
+        "type": "rectifier bridge",
+        "detail": "AC-to-DC bridge feeding the DC contactor coil; corners marked + and -, terminals include 8, 9, 12, 4",
+        "connects": [
+          "8",
+          "9",
+          "12",
+          "4"
+        ],
+        "evidence": "'Rect.' diamond bridge with + / - and numbers 8, 4, 9, 12",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "Mov.",
+        "type": "metal-oxide varistor (surge suppressor)",
+        "detail": "Transient suppressor across the coil circuit near the rectifier, terminals 4, 8, 12",
+        "connects": [
+          "4",
+          "8",
+          "12"
+        ],
+        "evidence": "'Mov.' varistor symbol, terminals 4/12/8",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "1 Econ. Cap.",
+        "type": "economizer capacitor",
+        "detail": "Energy-saving (economizer) capacitor for coil holding circuit, terminals 8 and 5",
+        "connects": [
+          "8",
+          "5"
+        ],
+        "evidence": "'1 Econ. Cap.' with terminals 8 / 5",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "2 Econ. Cap.",
+        "type": "economizer capacitor",
+        "detail": "Second economizer capacitor for coil holding circuit, terminals 8 and 5",
+        "connects": [
+          "8",
+          "5"
+        ],
+        "evidence": "'2 Econ. Cap.' with terminals 8 / 5",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "1 Res.",
+        "type": "resistor",
+        "detail": "Economizer/discharge resistor in coil circuit (rung with CR A2/A3 contacts)",
+        "connects": [
+          "5",
+          "7"
+        ],
+        "evidence": "'1 Res.' resistor box, near terminals 5/7 and RES block '5 1 7'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "2 Res.",
+        "type": "resistor",
+        "detail": "Economizer/holding resistor in coil circuit (rung with CR A4 contact)",
+        "connects": [
+          "12",
+          "6"
+        ],
+        "evidence": "'2 Res.' resistor box, near terminals 12/6 and RES block '12 2 6'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "FU",
+        "type": "control-circuit fuse (1A)",
+        "detail": "Control fuse '1A' in the separate control source line; also a fuse/terminal block marked FU with 1 2 3 4 6 7",
+        "connects": [
+          "1A",
+          "1",
+          "2",
+          "3",
+          "4",
+          "6",
+          "7"
+        ],
+        "evidence": "'FU 1A' fuse symbol at 'Separate Control Source'; 'FU' block '1 2 3 4 6 7' with '1A'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "Stop",
+        "type": "STOP push button (NC)",
+        "detail": "Normally-closed stop pushbutton, terminals 1 and 2",
+        "connects": [
+          "1",
+          "2"
+        ],
+        "evidence": "'Stop' pushbutton, terminals 1 - 2",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "Start",
+        "type": "START push button (NO)",
+        "detail": "Normally-open start pushbutton, terminals 2 and 3, sealed by CR contact",
+        "connects": [
+          "2",
+          "3"
+        ],
+        "evidence": "'Start' pushbutton, terminals 2 - 3",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      }
+    ],
+    "terminals": [
+      {
+        "tag": "L1",
+        "type": "incoming line terminal",
+        "detail": null,
+        "connects": [
+          "20"
+        ],
+        "evidence": "'Incoming Lines L1'",
+        "confidence": 0.95,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "L2",
+        "type": "incoming line terminal",
+        "detail": null,
+        "connects": [
+          "22"
+        ],
+        "evidence": "'Incoming Lines L2'",
+        "confidence": 0.95,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "L3",
+        "type": "incoming line terminal",
+        "detail": null,
+        "connects": [
+          "24"
+        ],
+        "evidence": "'Incoming Lines L3'",
+        "confidence": 0.95,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "20",
+        "type": "pole/OL terminal",
+        "detail": null,
+        "connects": [
+          "L1",
+          "1C.T.",
+          "O.L.'s"
+        ],
+        "evidence": "'20' at contactor pole and OL",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "21",
+        "type": "pole/OL terminal",
+        "detail": null,
+        "connects": [
+          "1C.T.",
+          "O.L.'s"
+        ],
+        "evidence": "'21'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "22",
+        "type": "pole/OL terminal",
+        "detail": null,
+        "connects": [
+          "L2",
+          "2C.T.",
+          "O.L.'s"
+        ],
+        "evidence": "'22'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "23",
+        "type": "pole/OL terminal",
+        "detail": null,
+        "connects": [
+          "2C.T.",
+          "O.L.'s"
+        ],
+        "evidence": "'23'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "24",
+        "type": "pole/OL terminal",
+        "detail": null,
+        "connects": [
+          "L3",
+          "3C.T.",
+          "O.L.'s"
+        ],
+        "evidence": "'24'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "25",
+        "type": "pole/OL terminal",
+        "detail": null,
+        "connects": [
+          "3C.T.",
+          "O.L.'s"
+        ],
+        "evidence": "'25'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "T1",
+        "type": "motor lead terminal",
+        "detail": null,
+        "connects": [
+          "1C.T.",
+          "MOTOR"
+        ],
+        "evidence": "'T1'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "T2",
+        "type": "motor lead terminal",
+        "detail": null,
+        "connects": [
+          "2C.T.",
+          "MOTOR"
+        ],
+        "evidence": "'T2'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "T3",
+        "type": "motor lead terminal",
+        "detail": null,
+        "connects": [
+          "3C.T.",
+          "MOTOR"
+        ],
+        "evidence": "'T3'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "1",
+        "type": "control terminal",
+        "detail": null,
+        "connects": [
+          "FU",
+          "Stop"
+        ],
+        "evidence": "'1' left of Stop in ladder",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "2",
+        "type": "control terminal",
+        "detail": null,
+        "connects": [
+          "Stop",
+          "Start"
+        ],
+        "evidence": "'2' between Stop and Start",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "3",
+        "type": "control terminal",
+        "detail": null,
+        "connects": [
+          "Start",
+          "CR"
+        ],
+        "evidence": "'3' after Start feeding CR coil (K1)",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "4",
+        "type": "control return terminal",
+        "detail": null,
+        "connects": [
+          "O.L.'s",
+          "Rect.",
+          "Mov."
+        ],
+        "evidence": "'4' at Separate Control Source return and rectifier AC",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "5",
+        "type": "coil-circuit terminal",
+        "detail": null,
+        "connects": [
+          "CR",
+          "1 Econ. Cap.",
+          "1 Res."
+        ],
+        "evidence": "'5' at Econ. Cap. and RES block",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "6",
+        "type": "coil-circuit terminal",
+        "detail": null,
+        "connects": [
+          "M",
+          "CR",
+          "2 Res."
+        ],
+        "evidence": "'6' at coil and RES block",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "7",
+        "type": "coil-circuit terminal",
+        "detail": null,
+        "connects": [
+          "M",
+          "1 Res.",
+          "CR"
+        ],
+        "evidence": "'7' at coil and RES block",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "8",
+        "type": "coil/rectifier terminal",
+        "detail": null,
+        "connects": [
+          "M",
+          "Rect.",
+          "Mov.",
+          "1 Econ. Cap.",
+          "2 Econ. Cap."
+        ],
+        "evidence": "'8' at coil, rectifier and Econ. Caps",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "9",
+        "type": "coil/rectifier terminal",
+        "detail": null,
+        "connects": [
+          "M",
+          "Rect."
+        ],
+        "evidence": "'9' at coil and rectifier",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "12",
+        "type": "coil-circuit terminal",
+        "detail": null,
+        "connects": [
+          "Rect.",
+          "Mov.",
+          "CR",
+          "2 Res."
+        ],
+        "evidence": "'12' at Mov./Rect. and CR A4",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "13",
+        "type": "coil/return terminal",
+        "detail": null,
+        "connects": [
+          "CR",
+          "O.L.'s"
+        ],
+        "evidence": "'13' at CR coil (K2) and near OL/Grd",
+        "confidence": 0.65,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "1A",
+        "type": "fuse terminal",
+        "detail": null,
+        "connects": [
+          "FU"
+        ],
+        "evidence": "'1A' at fuse block",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      }
+    ],
+    "conductors": [],
+    "cables": [],
+    "contacts": [
+      {
+        "tag": "CR (A1Y/A1X)",
+        "type": "NO seal-in contact",
+        "detail": "Normally-open CR contact in parallel with Start push button (seal/hold-in)",
+        "connects": [
+          "2",
+          "3"
+        ],
+        "evidence": "'CR (A1Y) (A1X)' under Start",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "CR (A2Y/A2X)",
+        "type": "CR contact",
+        "detail": "CR contact in coil/economizer rung, terminal 5",
+        "connects": [
+          "5"
+        ],
+        "evidence": "'CR (A2Y) (A2X) 5'",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "CR (A3X/A3Y)",
+        "type": "CR contact",
+        "detail": "CR contact in coil/economizer rung, terminal 7",
+        "connects": [
+          "5",
+          "7"
+        ],
+        "evidence": "'CR (A3X) (A3Y) 7'",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "CR (A4X/A4Y)",
+        "type": "CR contact",
+        "detail": "CR contact switching economizer resistor 2 Res. in coil circuit, terminals 12/6",
+        "connects": [
+          "12",
+          "6"
+        ],
+        "evidence": "'CR (A4X) (A4Y)' with 12 and 6",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "O.L.",
+        "type": "NC overload contact",
+        "detail": "Normally-closed overload contact in series with control relay coil; opens on overload to drop out coil",
+        "connects": [
+          "13",
+          "4"
+        ],
+        "evidence": "'O.L.' contact after (K2)/13 to terminal 4",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "M (L.B.)",
+        "type": "contactor auxiliary contact",
+        "detail": "Contactor-driven contact ('L.B.') in economizer coil rung, near terminal 8",
+        "connects": [
+          "7",
+          "8"
+        ],
+        "evidence": "'M (L.B.)' contact in lower rung",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "Stop",
+        "type": "NC push-button contact",
+        "detail": "Stop contact 1-2, opens control circuit",
+        "connects": [
+          "1",
+          "2"
+        ],
+        "evidence": "'Stop' NC symbol",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "Start",
+        "type": "NO push-button contact",
+        "detail": "Start contact 2-3, momentary, initiates CR",
+        "connects": [
+          "2",
+          "3"
+        ],
+        "evidence": "'Start' NO symbol",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      }
+    ],
+    "power_domains": [
+      {
+        "tag": "3-phase power (L1/L2/L3)",
+        "type": "three-phase incoming supply",
+        "detail": "Incoming Lines L1, L2, L3 to contactor main poles; voltage not printed",
+        "connects": [
+          "L1",
+          "L2",
+          "L3"
+        ],
+        "evidence": "'Incoming Lines L1 L2 L3'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "17"
+      },
+      {
+        "tag": "Separate Control Source",
+        "type": "control power source",
+        "detail": "Control circuit fed from a separate source through fuse 1A; voltage not printed",
+        "connects": [
+          "FU",
+          "1",
+          "4"
+        ],
+        "evidence": "'Separate Control Source' with FU 1A and terminal 4",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "17"
+      }
+    ],
+    "pe_bonds": [
+      {
+        "tag": "Grd.",
+        "type": "protective/equipment ground",
+        "detail": "Ground connection shown at the overload/coil-circuit area",
+        "connects": [
+          "O.L.'s"
+        ],
+        "evidence": "'Grd.' with ground symbol near O.L.'s box",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "17"
+      }
+    ],
+    "off_page_references": [],
+    "plc_io_channels": [],
+    "network_links": [],
+    "functional_paths": [
+      {
+        "name": "Power path (line to motor)",
+        "sheet": "17",
+        "sequence": [
+          "L1/L2/L3",
+          "main contactor poles (20/22/24 - 21/23/25)",
+          "1C.T./2C.T./3C.T.",
+          "O.L.'s",
+          "T1/T2/T3",
+          "MOTOR"
+        ]
+      },
+      {
+        "name": "Control seal-in (Start/Stop)",
+        "sheet": "17",
+        "sequence": [
+          "FU 1A",
+          "1",
+          "Stop (NC 1-2)",
+          "2",
+          "Start (NO 2-3) || CR (A1Y/A1X) seal",
+          "3",
+          "CR coil (K1)-(K2)",
+          "13",
+          "O.L. (NC)",
+          "4"
+        ]
+      },
+      {
+        "name": "DC coil / economizer circuit",
+        "sheet": "17",
+        "sequence": [
+          "CR (A2/A3) contacts + 1 Res.",
+          "M (L.B.) contact",
+          "Rect. bridge",
+          "CR (A4X/A4Y) + 2 Res.",
+          "M contactor coil",
+          "1/2 Econ. Cap. + Mov. across coil"
+        ]
+      }
+    ],
+    "physical_layout_matches": [],
+    "unresolved": [
+      {
+        "item": "Meaning of '(L.B.)' next to the M coil/contact",
+        "status": "unreadable/ambiguous abbreviation",
+        "resolution": "Confirm against Bulletin 509 legend; likely a coil/contact designation but not decodable from image alone"
+      },
+      {
+        "item": "Exact AC/DC corner assignments of the rectifier bridge (which of 4/8/9/12 are AC vs DC)",
+        "status": "small numbers near diamond bridge",
+        "resolution": "High-resolution crop of the 'Rect.' bridge region"
+      },
+      {
+        "item": "Terminal '13' appears at both CR coil (K2) and near the O.L./Grd. area",
+        "status": "possible dual use / occlusion",
+        "resolution": "Crop of OL box '4 [symbol] 13 Grd.' to confirm"
+      },
+      {
+        "item": "FU block digits '1 2 3 4 6 7' and whether '5' is intentionally omitted",
+        "status": "small numerals",
+        "resolution": "Zoom on FU/terminal block"
+      },
+      {
+        "item": "Control-source and line voltages",
+        "status": "not printed on sheet",
+        "resolution": "Refer to job/nameplate data; not derivable from this generic diagram"
+      }
+    ],
+    "cross_sheet_notes": "This is a self-contained catalog page (AB Bulletin 509, page 17/13). It shows both a connection/wiring layout (upper) and an elementary/ladder diagram (lower) for the SAME Size 7/8 starter; no genuine off-page continuation references are present.",
+    "brief": {
+      "sheet_title": "Allen-Bradley Bulletin 509 three-phase full-voltage magnetic motor starter (Sizes 7 and 8), wired for a standard START-STOP push-button station — catalog wiring page 17.",
+      "purpose": "This page documents an across-the-line 3-phase motor starter. Incoming lines L1/L2/L3 pass through the main contactor poles, through current transformers (1/2/3 C.T.) and the three overload elements (O.L.'s), then out to the motor as T1/T2/T3. The lower elementary (ladder) diagram shows the control logic: a separate control source, protected by a 1-amp fuse, runs through a normally-closed Stop button and a normally-open Start button (sealed in by a CR relay contact) to energize the control relay CR; a normally-closed overload contact in series drops the circuit out on overload. Because Sizes 7 and 8 use very large contactors, the operating coil is DC-fed: a rectifier bridge converts the control AC to DC, an economizer circuit (1 & 2 Econ. Cap. plus 1 & 2 Res. switched by CR contacts) lowers the coil holding current after pull-in, and a MOV (Mov.) suppresses coil transients.",
+      "key_signals": [
+        {
+          "signal": "Three-phase supply in",
+          "tag": "L1 / L2 / L3",
+          "terminal": "poles 20/22/24",
+          "destination": "main contactor poles then motor",
+          "confidence": 0.9
+        },
+        {
+          "signal": "Motor output leads",
+          "tag": "T1 / T2 / T3",
+          "terminal": "T1/T2/T3",
+          "destination": "MOTOR",
+          "confidence": 0.9
+        },
+        {
+          "signal": "Stop command (opens control circuit)",
+          "tag": "Stop",
+          "terminal": "1-2",
+          "destination": "control-relay CR rung",
+          "confidence": 0.9
+        },
+        {
+          "signal": "Start command (energizes/seal-in via CR)",
+          "tag": "Start",
+          "terminal": "2-3",
+          "destination": "CR coil (K1)-(K2)",
+          "confidence": 0.9
+        },
+        {
+          "signal": "Control-relay coil energize",
+          "tag": "CR (K1/K2)",
+          "terminal": "3 to 13",
+          "destination": "operates contactor coil economizer circuit",
+          "confidence": 0.85
+        },
+        {
+          "signal": "Overload trip (drops control circuit)",
+          "tag": "O.L.",
+          "terminal": "13 to 4",
+          "destination": "opens series with CR coil",
+          "confidence": 0.85
+        },
+        {
+          "signal": "Contactor coil (DC) hold",
+          "tag": "M / (L.B.)",
+          "terminal": "6-7-8-9",
+          "destination": "pulls in main contactor via rectifier + economizer",
+          "confidence": 0.6
+        }
+      ],
+      "key_devices": [
+        {
+          "device": "Three-phase motor",
+          "tag": "MOTOR (T1/T2/T3)",
+          "confidence": 0.95
+        },
+        {
+          "device": "Main contactor operating coil (DC, economizer)",
+          "tag": "M / (L.B.)",
+          "confidence": 0.6
+        },
+        {
+          "device": "Line current transformers",
+          "tag": "1C.T. / 2C.T. / 3C.T.",
+          "confidence": 0.9
+        },
+        {
+          "device": "Three-pole overload relay",
+          "tag": "O.L.'s",
+          "confidence": 0.9
+        },
+        {
+          "device": "Control relay with seal-in and economizer contacts",
+          "tag": "CR (coil K1/K2; contacts A1X..A4X / A1Y..A4Y)",
+          "confidence": 0.85
+        },
+        {
+          "device": "Rectifier bridge (AC-to-DC for coil)",
+          "tag": "Rect.",
+          "confidence": 0.75
+        },
+        {
+          "device": "Surge-suppression varistor",
+          "tag": "Mov.",
+          "confidence": 0.8
+        },
+        {
+          "device": "Economizer capacitors",
+          "tag": "1 Econ. Cap. / 2 Econ. Cap.",
+          "confidence": 0.85
+        },
+        {
+          "device": "Economizer resistors",
+          "tag": "1 Res. / 2 Res.",
+          "confidence": 0.8
+        },
+        {
+          "device": "Control-circuit fuse",
+          "tag": "FU (1A)",
+          "confidence": 0.85
+        },
+        {
+          "device": "Stop push button (NC)",
+          "tag": "Stop (1-2)",
+          "confidence": 0.9
+        },
+        {
+          "device": "Start push button (NO)",
+          "tag": "Start (2-3)",
+          "confidence": 0.9
+        }
+      ],
+      "troubleshooting_example": "Symptom: pressing Start does not pull in the contactor. First verify the control string with power on and rated PPE: check for voltage/continuity through Stop (terminals 1-2) and that Start makes across 2-3. If 1-2-3 is good but CR never energizes, you must separate a bad relay coil from an open overload path: measure across the CR coil (K1)-(K2) leads (terminals 3 and 13) — if there is voltage across it but it doesn't operate, the coil is the fault; if there is NO voltage there, move to the overload contact and measure from terminal 13 through the O.L. contact to terminal 4 — an open there (tripped/failed OL contact) is the cause, not the relay. NOTE: this drawing shows the control logic but does not prove the actual field wiring condition.",
+      "safety_context": "No voltage is printed on this sheet — neither the incoming line voltage nor the 'Separate Control Source' level is shown, so do not assume a value; treat the circuit as potentially lethal until measured. For continuity/resistance checks (Stop/Start contacts, coil, OL contact, capacitors, resistors) de-energize, lock out, and verify absence of voltage first. If live voltage checks are required to isolate coil vs OL, follow energized-work procedures with properly rated meters and PPE. Note that this is a generic catalog diagram and may not reflect the exact as-built panel.",
+      "unresolved_items": [
+        "Abbreviation '(L.B.)' at the M coil/contact is not clearly decodable.",
+        "Exact AC/DC terminal assignment on the rectifier bridge (which of 4/8/9/12) is hard to read.",
+        "Terminal '13' appears both at CR coil (K2) and near the OL/Grd area — possible dual usage needs a clean crop.",
+        "FU block digit sequence '1 2 3 4 6 7' (whether '5' is intentionally skipped).",
+        "No system voltages are printed anywhere on the sheet."
+      ],
+      "detailed_map_available": true,
+      "purpose_note": "Inference: the seal-in/economizer function is standard AB 509 behavior; only what is labeled on the sheet is asserted as fact."
+    }
+  },
+  "interpreter_used": true,
+  "model": "claude-opus-4-8",
+  "provider": "anthropic",
+  "effort": "xhigh",
+  "max_tokens": 32000,
+  "latency_s": 169.84,
+  "error": null
+}

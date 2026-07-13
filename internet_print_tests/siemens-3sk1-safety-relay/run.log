@@ -1,0 +1,17 @@
+2026-07-13 16:57:29,379 INFO fetching https://cache.industry.siemens.com/dl/files/885/67585885/att_37825/v1/manual_safety_relay_3SK1_en-US.pdf
+2026-07-13 16:57:30,838 INFO fetched 9757924 bytes (application/pdf)
+2026-07-13 16:57:31,170 INFO rendered PDF page 127 @ 200 dpi -> 345540 bytes PNG
+2026-07-13 16:57:31,173 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-13 16:59:23,210 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=True latency=111.75s
+2026-07-13 16:59:23,210 INFO running independent multimodal judge…
+2026-07-13 17:00:42,630 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — siemens-3sk1-safety-relay — SIRIUS 3SK1 Safety Relay Manual (67585885) — 84/100
+ATTACHMENTS:
+  [attach] original.pdf (9,757,924 B)
+  [attach] tested_page.png (345,540 B)
+  [attach] report.html (11,803 B)
+  [attach] judge_1.json (6,647 B)
+  [attach] telegram_response.json (33,118 B)
+HTML: 3,339 chars
+2026-07-13 17:00:44,344 INFO email send: {'sent': True, 'status': 200, 'id': '281785b8-ac72-447f-ab72-a8bd8d9912c6'}
