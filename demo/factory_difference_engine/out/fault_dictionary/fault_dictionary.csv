@@ -1,0 +1,54 @@
+asset,code,label,severity,referenced_tags,missing_evidence,source_path,confidence,parse_status
+airsystem01,AS001,Low Header Pressure,CRITICAL,compressor_running;header_pressure_psi;low_air_alarm,,simlab/docs/airsystem01/fault_code_table.md,1.0,ok
+airsystem01,AS002,Air Dryer Fault,FAULT,dryer_fault,,simlab/docs/airsystem01/fault_code_table.md,1.0,ok
+airsystem01,AS003,Compressor Offline,CRITICAL,compressor_running,overload_count,simlab/docs/airsystem01/fault_code_table.md,1.0,ok
+airsystem01,AS004,Low Air Alarm Persistent,WARN,compressor_running;low_air_alarm,,simlab/docs/airsystem01/fault_code_table.md,1.0,ok
+capper01,C001,No Cap Present,FAULT,cap_present,,simlab/docs/capper01/fault_code_table.md,1.0,ok
+capper01,C002,Over-torque Reject,WARN,cap_torque_inlb;reject_count,,simlab/docs/capper01/fault_code_table.md,1.0,ok
+capper01,C003,Under-torque Reject,FAULT,cap_torque_inlb,,simlab/docs/capper01/fault_code_table.md,1.0,ok
+capper01,C004,Jam Detected,FAULT,jam_detected,,simlab/docs/capper01/fault_code_table.md,1.0,ok
+capper01,C005,Interlock / E-Stop,FAULT,,,simlab/docs/capper01/fault_code_table.md,1.0,ok
+capper01,C006,Torque Variance High,WARN,cap_torque_variance,bearing_temp_c,simlab/docs/capper01/fault_code_table.md,1.0,ok
+capper01,C007,Low Air Pressure,WARN,header_pressure_psi,,simlab/docs/capper01/fault_code_table.md,1.0,ok
+casepacker01,CP001,E-Stop / Interlock,FAULT,,,simlab/docs/casepacker01/fault_code_table.md,1.0,ok
+casepacker01,CP002,Case Former Not Ready,FAULT,case_former_ready,,simlab/docs/casepacker01/fault_code_table.md,1.0,ok
+casepacker01,CP003,Glue Level Low,WARN,glue_level,,simlab/docs/casepacker01/fault_code_table.md,1.0,ok
+casepacker01,CP004,Jam Detected,FAULT,jam_detected,,simlab/docs/casepacker01/fault_code_table.md,1.0,ok
+casepacker01,CP005,Glue Temp Fault,WARN,glue_temperature,,simlab/docs/casepacker01/fault_code_table.md,1.0,ok
+casepacker01,CP006,High Reject Count,WARN,reject_count,,simlab/docs/casepacker01/fault_code_table.md,1.0,ok
+casepacker01,CP007,Low Air Pressure,WARN,header_pressure_psi,,simlab/docs/casepacker01/fault_code_table.md,1.0,ok
+cipskid01,CIP001,Valve Fault,FAULT,valve_fault,,simlab/docs/cipskid01/fault_code_table.md,1.0,ok
+cipskid01,CIP002,Supply Temp Low,WARN,supply_temp,,simlab/docs/cipskid01/fault_code_table.md,1.0,ok
+cipskid01,CIP003,Conductivity Out of Range,WARN,conductivity,,simlab/docs/cipskid01/fault_code_table.md,1.0,ok
+conveyorzone01,CV1001,Zone Full / Blocked,WARN,accumulation_percent,,simlab/docs/conveyorzone01/fault_code_table.md,1.0,ok
+conveyorzone01,CV1002,Zone Starved,WARN,starved,,simlab/docs/conveyorzone01/fault_code_table.md,1.0,ok
+conveyorzone01,CV1003,Motor Overload,FAULT,motor_current_amps,overload_count,simlab/docs/conveyorzone01/fault_code_table.md,1.0,ok
+conveyorzone02,CV2001,Zone Full / Blocked,WARN,accumulation_percent,,simlab/docs/conveyorzone02/fault_code_table.md,1.0,ok
+conveyorzone02,CV2002,Zone Starved,WARN,starved,,simlab/docs/conveyorzone02/fault_code_table.md,1.0,ok
+conveyorzone02,CV2003,Motor Overload,FAULT,motor_current_amps,overload_count,simlab/docs/conveyorzone02/fault_code_table.md,1.0,ok
+depalletizer01,DP001,No Pallet at Infeed,FAULT,pallet_present,,simlab/docs/depalletizer01/fault_code_table.md,1.0,ok
+depalletizer01,DP002,Vacuum Loss,FAULT,vacuum_pressure,,simlab/docs/depalletizer01/fault_code_table.md,1.0,ok
+depalletizer01,DP003,Jam Detected,FAULT,jam_detected,,simlab/docs/depalletizer01/fault_code_table.md,1.0,ok
+depalletizer01,DP004,Layer Count Error,WARN,layer_count,,simlab/docs/depalletizer01/fault_code_table.md,1.0,ok
+filler01,F001,E-Stop / Interlock,FAULT,run_state,,simlab/docs/filler01/fault_code_table.md,1.0,ok
+filler01,F002,Motor Overload,FAULT,motor_current_amps,overload_count,simlab/docs/filler01/fault_code_table.md,1.0,ok
+filler01,F003,Nozzle Fault,FAULT,nozzle_fault_count,,simlab/docs/filler01/fault_code_table.md,1.0,ok
+filler01,F004,Overfill,WARN,overfill_reject_count,,simlab/docs/filler01/fault_code_table.md,1.0,ok
+filler01,F005,Fill Variance High,WARN,fill_level_variance,,simlab/docs/filler01/fault_code_table.md,1.0,ok
+filler01,F006,Product Temp High,WARN,product_temperature,,simlab/docs/filler01/fault_code_table.md,1.0,ok
+filler01,F007,Low Bowl Pressure,FAULT,filler_bowl_pressure;tank_level_percent;underfill_reject_count,,simlab/docs/filler01/fault_code_table.md,1.0,ok
+filler01,F008,Tank Level Low,WARN,tank_level_percent,,simlab/docs/filler01/fault_code_table.md,1.0,ok
+labeler01,L001,Label Roll Low/Empty,FAULT,label_roll_percent,,simlab/docs/labeler01/fault_code_table.md,1.0,ok
+labeler01,L002,Web Tension Fault,FAULT,label_web_tension,,simlab/docs/labeler01/fault_code_table.md,1.0,ok
+labeler01,L003,Registration Error,WARN,registration_error_mm;reject_count,,simlab/docs/labeler01/fault_code_table.md,1.0,ok
+labeler01,L004,Glue Temp Out of Range,WARN,glue_temperature,,simlab/docs/labeler01/fault_code_table.md,1.0,ok
+labeler01,L005,High Reject Count,WARN,reject_count,,simlab/docs/labeler01/fault_code_table.md,1.0,ok
+labeler01,L006,Interlock / E-Stop,FAULT,,,simlab/docs/labeler01/fault_code_table.md,1.0,ok
+labeler01,L007,Label Sensor Blocked,FAULT,label_sensor_blocked,,simlab/docs/labeler01/fault_code_table.md,1.0,ok
+palletizer01,PA001,Robot E-Stop,CRITICAL,robot_ready;run_state,,simlab/docs/palletizer01/fault_code_table.md,1.0,ok
+palletizer01,PA002,No Pallet at Station,FAULT,pallet_present,,simlab/docs/palletizer01/fault_code_table.md,1.0,ok
+palletizer01,PA003,Infeed Jam,FAULT,jam_detected,,simlab/docs/palletizer01/fault_code_table.md,1.0,ok
+palletizer01,PA004,Slip Sheet Empty,WARN,slip_sheet_present,,simlab/docs/palletizer01/fault_code_table.md,1.0,ok
+rinser01,RN001,Low Water Pressure,FAULT,water_pressure,,simlab/docs/rinser01/fault_code_table.md,1.0,ok
+rinser01,RN002,Rinse Valve Fault,FAULT,rinse_valve_open,,simlab/docs/rinser01/fault_code_table.md,1.0,ok
+rinser01,RN003,Reject Count High,WARN,reject_count,,simlab/docs/rinser01/fault_code_table.md,1.0,ok

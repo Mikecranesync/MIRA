@@ -1,0 +1,380 @@
+{
+  "schema_version": "1.0",
+  "model_id": "cv-101-garage-conveyor",
+  "description": "Approved maintenance context model for the garage demo discharge conveyor CV-101. Turns the raw Micro820/GS10 register wall into named maintenance signals + components, each traced to evidence and a human approval. Consumed by plc/litmus/demo_context_model.py; the signal map drives raw-register -> rules-topic mapping so the model IS the mapping.",
+  "approval": {
+    "status": "approved",
+    "approved_by": "mike",
+    "approved_at": "2026-07-01",
+    "note": "Bench-verified against the live Micro820 Conv_Simple map (0 modbus exceptions) and the GS10 DURApulse manual. Approval = a human confirmed each mapping is correct before MIRA is allowed to answer with it."
+  },
+  "site": {
+    "enterprise": "Northwind (garage demo)",
+    "site": "garage",
+    "area": "demo_cell",
+    "line": "bottling_demo",
+    "uns_path": "enterprise.garage.demo_cell.bottling_demo.cv_101"
+  },
+  "asset": {
+    "id": "CV-101",
+    "name": "Discharge conveyor CV-101",
+    "type": "belt_conveyor",
+    "role": "Carries product off the demo line; the machine under diagnosis."
+  },
+  "plc": {
+    "make": "Allen-Bradley",
+    "model": "Micro820 (2080-LC20-20QBB)",
+    "program": "Conv_Simple (live bench map, sparse)",
+    "modbus": {
+      "host": "192.168.1.100",
+      "port": 502,
+      "unit_id": 1,
+      "zero_based": true
+    },
+    "evidence": {
+      "source_type": "cip_read_by_name",
+      "source_name": "CIP List Identity 2026-06-30 (Vendor 1 Allen-Bradley, rev 14.11)",
+      "confidence": "high"
+    }
+  },
+  "drive": {
+    "make": "AutomationDirect",
+    "model": "GS10 / GS11 DURApulse VFD",
+    "note": "GS10 telemetry is mirrored into Micro820 holding registers; Litmus/MIRA read it through the PLC over Modbus TCP (the GS10 RS-485 link is not directly reached).",
+    "evidence": {
+      "source_type": "vendor_manual",
+      "source_name": "DURApulse GS10 User Manual 1st Ed Rev B (fault codes, register map)",
+      "confidence": "high"
+    }
+  },
+  "components": [
+    {
+      "id": "motor101",
+      "name": "Conveyor drive motor M-101",
+      "type": "motor",
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "Conv_Simple coil/HR map",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "id": "vfd101",
+      "name": "GS10 VFD (VFD-101)",
+      "type": "vfd",
+      "evidence": {
+        "source_type": "vendor_manual",
+        "source_name": "DURApulse GS10 UM",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "id": "estop",
+      "name": "E-stop / run permissive",
+      "type": "safety",
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "Conv_Simple safety coils",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "id": "belt",
+      "name": "Conveyor belt",
+      "type": "mechanical",
+      "evidence": {
+        "source_type": "bench_observation",
+        "source_name": "physical bench",
+        "confidence": "medium"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "id": "photo_eye",
+      "name": "Infeed photo-eye PE-101",
+      "type": "sensor",
+      "evidence": {
+        "source_type": "machine_card",
+        "source_name": "Conv_Simple anomaly catalog (A12)",
+        "confidence": "medium"
+      },
+      "approval_status": "proposed"
+    }
+  ],
+  "signals": [
+    {
+      "name": "motor_running",
+      "topic": "motor/m101/running",
+      "component": "motor101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "C",
+        "function": "FC1",
+        "address": 0,
+        "data_type": "bit"
+      },
+      "scale": {
+        "kind": "bool"
+      },
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "Conv_Simple coil 000001 (offset 0)",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "vfd_comm_ok",
+      "topic": "vfd/vfd101/comm_ok",
+      "component": "vfd101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "C",
+        "function": "FC1",
+        "address": 3,
+        "data_type": "bit"
+      },
+      "scale": {
+        "kind": "bool"
+      },
+      "role": "trust_gate",
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "Conv_Simple coil 000004 (offset 3)",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "e_stop_active",
+      "topic": "safety/estop",
+      "component": "estop",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "C",
+        "function": "FC1",
+        "address": 5,
+        "data_type": "bit"
+      },
+      "scale": {
+        "kind": "bool"
+      },
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "Conv_Simple coil 000006 (offset 5)",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "estop_wiring_fault",
+      "topic": "safety/wiring",
+      "component": "estop",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "C",
+        "function": "FC1",
+        "address": 9,
+        "data_type": "bit"
+      },
+      "scale": {
+        "kind": "bool"
+      },
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "Conv_Simple coil 000010 (offset 9)",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "vfd_frequency",
+      "topic": "vfd/vfd101/freq",
+      "component": "vfd101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "H",
+        "function": "FC3",
+        "address": 106,
+        "data_type": "word"
+      },
+      "scale": {
+        "kind": "divisor",
+        "divisor": 100.0,
+        "unit": "Hz"
+      },
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "live_check.py HR_SPECS 106",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "vfd_current",
+      "topic": "vfd/vfd101/current_a",
+      "component": "motor101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "H",
+        "function": "FC3",
+        "address": 107,
+        "data_type": "word"
+      },
+      "scale": {
+        "kind": "divisor",
+        "divisor": 100.0,
+        "unit": "A"
+      },
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "live_check.py HR_SPECS 107",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "vfd_voltage",
+      "topic": "vfd/vfd101/voltage_v",
+      "component": "vfd101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "H",
+        "function": "FC3",
+        "address": 108,
+        "data_type": "word"
+      },
+      "scale": {
+        "kind": "divisor",
+        "divisor": 10.0,
+        "unit": "V"
+      },
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "live_check.py HR_SPECS 108",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "vfd_dc_bus",
+      "topic": "vfd/vfd101/dc_bus_v",
+      "component": "vfd101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "H",
+        "function": "FC3",
+        "address": 109,
+        "data_type": "word"
+      },
+      "scale": {
+        "kind": "divisor",
+        "divisor": 10.0,
+        "unit": "V"
+      },
+      "nominal": {
+        "idle_v": 320.0,
+        "display_tol_v": 8.0
+      },
+      "evidence": {
+        "source_type": "bench_measurement",
+        "source_name": "idle DC-bus baseline 320.0 V +/- 0.8 (measured 2026-06)",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "vfd_cmd_word",
+      "topic": "vfd/vfd101/cmd_word",
+      "component": "vfd101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "H",
+        "function": "FC3",
+        "address": 114,
+        "data_type": "word"
+      },
+      "scale": {
+        "kind": "divisor",
+        "divisor": 1.0
+      },
+      "decode": {
+        "1": "STOP",
+        "18": "FWD + RUN (0x12)",
+        "34": "REV + RUN (0x22)"
+      },
+      "evidence": {
+        "source_type": "bench_verified",
+        "source_name": "GS10 cmd word bench-verified (rules DEFAULT_CFG.run_cmd_values)",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "vfd_status_word",
+      "topic": "vfd/vfd101/status_word",
+      "component": "vfd101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "H",
+        "function": "FC3",
+        "address": 117,
+        "data_type": "word"
+      },
+      "scale": {
+        "kind": "divisor",
+        "divisor": 1.0
+      },
+      "evidence": {
+        "source_type": "plc_register_map",
+        "source_name": "Conv_Simple_2.1 status block (offset 117)",
+        "confidence": "medium"
+      },
+      "approval_status": "approved"
+    },
+    {
+      "name": "vfd_fault_code",
+      "topic": "vfd/vfd101/fault_code",
+      "component": "vfd101",
+      "source": {
+        "protocol": "modbus_tcp",
+        "register_class": "H",
+        "function": "FC3",
+        "address": 118,
+        "data_type": "word"
+      },
+      "scale": {
+        "kind": "divisor",
+        "divisor": 1.0
+      },
+      "decode_ref": "GS10_FAULT_CODES (rules_core.py)",
+      "evidence": {
+        "source_type": "vendor_manual",
+        "source_name": "GS10 0x2100 low byte fault map",
+        "confidence": "high"
+      },
+      "approval_status": "approved"
+    }
+  ],
+  "unmapped": [
+    {
+      "component": "photo_eye",
+      "signal": "safety/pe_latched",
+      "reason": "PE-101 (coil 000023 / offset 22) is not exposed on the current sparse Micro820 map (pre slave-map-v2).",
+      "effect": "MIRA must NOT assert or rule out a photo-eye jam (A12) from data. It has to say the signal is unavailable, not guess."
+    },
+    {
+      "component": "vfd101",
+      "signal": "vfd/vfd101/freq_setpoint",
+      "reason": "Commanded-Hz setpoint (A7) is not in the provisioned 11-register set.",
+      "effect": "MIRA cannot judge freq-vs-setpoint tracking; it must not claim the drive is/ isn't holding commanded speed."
+    }
+  ],
+  "maintenance_question": {
+    "prompt": "Why is CV-101 stopped?",
+    "answer_strategy": "Map the live registers into named signals via this model, run the A0-A12 machine-card rules, and answer from (a) any active anomaly, else (b) the honest idle/commanded state. Cite each signal used with its source + approval. Explicitly decline any question that depends on an unmapped signal."
+  }
+}

@@ -1,0 +1,935 @@
+[
+  {
+    "asset": "airsystem01",
+    "code": "AS001",
+    "label": "Low Header Pressure",
+    "severity": "CRITICAL",
+    "description": "`header_pressure_psi` < 75 PSI; `low_air_alarm` = TRUE. Multi-machine impact: depalletizer vacuum, filler bowl, capper chute, and case packer cylinders all affected.",
+    "likely_cause": "Compressor offline, major distribution leak, demand surge (CIP simultaneous), isolation valve partially closed.",
+    "recommended_action": "Check `compressor_running`; if FALSE see AS003. Walk headers for leak; check isolation valves on all machines; verify CIP is not drawing simultaneously.",
+    "referenced_tags": [
+      "compressor_running",
+      "header_pressure_psi",
+      "low_air_alarm"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/airsystem01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "airsystem01",
+    "code": "AS002",
+    "label": "Air Dryer Fault",
+    "severity": "FAULT",
+    "description": "`dryer_fault` = TRUE. Moisture enters compressed air distribution.",
+    "likely_cause": "Refrigerant leak, dryer heater fault, condensate drain blocked, high ambient temperature.",
+    "recommended_action": "Check dryer fault display; verify condensate drain auto-purge; call refrigeration technician if refrigerant issue.",
+    "referenced_tags": [
+      "dryer_fault"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/airsystem01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "airsystem01",
+    "code": "AS003",
+    "label": "Compressor Offline",
+    "severity": "CRITICAL",
+    "description": "`compressor_running` = FALSE. Full plant air loss imminent once receiver drains.",
+    "likely_cause": "Motor thermal overload tripped, unloader valve stuck, high-temperature shutdown, power loss to compressor panel.",
+    "recommended_action": "Check compressor control panel fault code; reset thermal overload if tripped (allow cool-down 10 min); if high-temp shutdown, check compressor room ambient < 100 \u00b0F. Call compressor technician if fault recurs.",
+    "referenced_tags": [
+      "compressor_running"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/airsystem01/fault_code_table.md",
+    "missing_evidence": [
+      {
+        "category": "overload",
+        "suggested_signal": "overload_count",
+        "note": "fault text references 'overload' but the sim exposes no such signal to corroborate it"
+      }
+    ],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "airsystem01",
+    "code": "AS004",
+    "label": "Low Air Alarm Persistent",
+    "severity": "WARN",
+    "description": "`low_air_alarm` remains TRUE > 5 min with `compressor_running` = TRUE. Major leak or excess demand confirmed.",
+    "likely_cause": "Ruptured line, open bleed valve, excessive simultaneous demand from multiple machines.",
+    "recommended_action": "Immediately shut down non-essential pneumatic consumers; walk headers systematically for leak; escalate to maintenance supervisor.",
+    "referenced_tags": [
+      "compressor_running",
+      "low_air_alarm"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/airsystem01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "capper01",
+    "code": "C001",
+    "label": "No Cap Present",
+    "severity": "FAULT",
+    "description": "`cap_present` = FALSE; chute empty or sensor failure.",
+    "likely_cause": "Cap hopper exhausted, cap orienter jam, photo-eye dirty.",
+    "recommended_action": "Refill cap hopper; inspect chute and orienter; clean sensor.",
+    "referenced_tags": [
+      "cap_present"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/capper01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "capper01",
+    "code": "C002",
+    "label": "Over-torque Reject",
+    "severity": "WARN",
+    "description": "`cap_torque_inlb` > 20 in-lb; `reject_count` increasing.",
+    "likely_cause": "Worn clutch pads, wrong cap format, setpoint too high.",
+    "recommended_action": "Inspect clutch pads; verify cap spec; check torque setpoint.",
+    "referenced_tags": [
+      "cap_torque_inlb",
+      "reject_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/capper01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "capper01",
+    "code": "C003",
+    "label": "Under-torque Reject",
+    "severity": "FAULT",
+    "description": "`cap_torque_inlb` < 12 in-lb; sealing integrity compromised.",
+    "likely_cause": "Glazed clutch pads, worn chuck, weak torque-head spring.",
+    "recommended_action": "Scuff or replace clutch pads; check chuck fit; verify spring.",
+    "referenced_tags": [
+      "cap_torque_inlb"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/capper01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "capper01",
+    "code": "C004",
+    "label": "Jam Detected",
+    "severity": "FAULT",
+    "description": "`jam_detected` = TRUE; carousel obstructed.",
+    "likely_cause": "Doubled bottle, dropped cap, bottle neck fragment.",
+    "recommended_action": "Clear jam per SOP; inspect carousel; reset.",
+    "referenced_tags": [
+      "jam_detected"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/capper01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "capper01",
+    "code": "C005",
+    "label": "Interlock / E-Stop",
+    "severity": "FAULT",
+    "description": "Startup prevented by interlock or E-stop.",
+    "likely_cause": "E-stop latched, guard open, Filler 01 faulted, chute empty.",
+    "recommended_action": "Clear interlock; confirm upstream ready; reset PackML.",
+    "referenced_tags": [],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/capper01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "capper01",
+    "code": "C006",
+    "label": "Torque Variance High",
+    "severity": "WARN",
+    "description": "`cap_torque_variance` > \u00b13 in-lb; erratic caps.",
+    "likely_cause": "Mixed cap orientation, worn spindle bearings, non-uniform clutch pads.",
+    "recommended_action": "Inspect cap orientation; check spindle bearings; inspect all clutch pads.",
+    "referenced_tags": [
+      "cap_torque_variance"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/capper01/fault_code_table.md",
+    "missing_evidence": [
+      {
+        "category": "bearing",
+        "suggested_signal": "bearing_temp_c",
+        "note": "fault text references 'bearing' but the sim exposes no such signal to corroborate it"
+      }
+    ],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "capper01",
+    "code": "C007",
+    "label": "Low Air Pressure",
+    "severity": "WARN",
+    "description": "AirSystem01 `header_pressure_psi` < 80 PSI \u2014 reject cylinders may fail to extend.",
+    "likely_cause": "AirSystem01 compressor fault or distribution loss.",
+    "recommended_action": "Address AirSystem01 fault first; do not run capper with low air.",
+    "referenced_tags": [
+      "header_pressure_psi"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/capper01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "casepacker01",
+    "code": "CP001",
+    "label": "E-Stop / Interlock",
+    "severity": "FAULT",
+    "description": "Machine halted by E-Stop or interlock.",
+    "likely_cause": "E-stop pressed, guard door open, Labeler 01 faulted.",
+    "recommended_action": "Clear E-stop/interlock; confirm upstream ready; reset PackML.",
+    "referenced_tags": [],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/casepacker01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "casepacker01",
+    "code": "CP002",
+    "label": "Case Former Not Ready",
+    "severity": "FAULT",
+    "description": "`case_former_ready` = FALSE; cannot start case cycle.",
+    "likely_cause": "Glue temp below threshold, blank magazine empty, mandrel sensor mis-aligned.",
+    "recommended_action": "Wait for glue warm-up; reload blank magazine; check mandrel sensors.",
+    "referenced_tags": [
+      "case_former_ready"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/casepacker01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "casepacker01",
+    "code": "CP003",
+    "label": "Glue Level Low",
+    "severity": "WARN",
+    "description": "`glue_level` < 25%. Machine halts at 10%.",
+    "likely_cause": "Glue hopper consumed.",
+    "recommended_action": "Add approved food-grade hot-melt pellets to hopper; wait 3\u20135 min.",
+    "referenced_tags": [
+      "glue_level"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/casepacker01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "casepacker01",
+    "code": "CP004",
+    "label": "Jam Detected",
+    "severity": "FAULT",
+    "description": "`jam_detected` = TRUE; carousel or discharge blocked. Upstream accumulation will build.",
+    "likely_cause": "Tipped bottle, deformed case blank, palletizer discharge backed up.",
+    "recommended_action": "Safe-to-enter; clear jam per SOP; reset; confirm upstream ready.",
+    "referenced_tags": [
+      "jam_detected"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/casepacker01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "casepacker01",
+    "code": "CP005",
+    "label": "Glue Temp Fault",
+    "severity": "WARN",
+    "description": "`glue_temperature` outside 300\u2013325 \u00b0F.",
+    "likely_cause": "Heater fault, thermocouple drift, setpoint error, cold start.",
+    "recommended_action": "Inspect heater element; verify setpoint; allow full warm-up cycle.",
+    "referenced_tags": [
+      "glue_temperature"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/casepacker01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "casepacker01",
+    "code": "CP006",
+    "label": "High Reject Count",
+    "severity": "WARN",
+    "description": "`reject_count` rising \u2014 case seal quality issue.",
+    "likely_cause": "Inadequate glue bead, low air pressure (fold cylinder), temp too low.",
+    "recommended_action": "Check glue bead; verify AirSystem01 pressure; check fold cylinder timing.",
+    "referenced_tags": [
+      "reject_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/casepacker01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "casepacker01",
+    "code": "CP007",
+    "label": "Low Air Pressure",
+    "severity": "WARN",
+    "description": "AirSystem01 `header_pressure_psi` < 80 PSI \u2014 fold/seal cylinders affected.",
+    "likely_cause": "AirSystem01 fault.",
+    "recommended_action": "Address AirSystem01 first; do not run case former with low air.",
+    "referenced_tags": [
+      "header_pressure_psi"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/casepacker01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "cipskid01",
+    "code": "CIP001",
+    "label": "Valve Fault",
+    "severity": "FAULT",
+    "description": "`valve_fault` = TRUE; a CIP valve is not responding to command.",
+    "likely_cause": "Solenoid coil burned out, actuator seized, position switch failure.",
+    "recommended_action": "Identify faulted valve via HMI valve status screen; check solenoid coil; replace actuator if seized.",
+    "referenced_tags": [
+      "valve_fault"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/cipskid01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "cipskid01",
+    "code": "CIP002",
+    "label": "Supply Temp Low",
+    "severity": "WARN",
+    "description": "`supply_temp` < 130 \u00b0F during a step requiring heat.",
+    "likely_cause": "Heater element failure, thermostat drift, inadequate hot-water supply.",
+    "recommended_action": "Check heater element circuit; verify thermostat setpoint; confirm hot-water supply pressure.",
+    "referenced_tags": [
+      "supply_temp"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/cipskid01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "cipskid01",
+    "code": "CIP003",
+    "label": "Conductivity Out of Range",
+    "severity": "WARN",
+    "description": "`conductivity` outside expected band for current step.",
+    "likely_cause": "Incorrect chemical concentration, premature dilution, dosing pump failure.",
+    "recommended_action": "Check chemical dosing pump operation; verify solution concentration manually; re-dose if needed.",
+    "referenced_tags": [
+      "conductivity"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/cipskid01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "conveyorzone01",
+    "code": "CV1001",
+    "label": "Zone Full / Blocked",
+    "severity": "WARN",
+    "description": "`accumulation_percent` = 100%; downstream station not accepting bottles.",
+    "likely_cause": "Downstream machine faulted or stopped (Rinser01, Filler01, or beyond).",
+    "recommended_action": "Identify and resolve downstream root cause first. Zone will clear automatically when downstream resumes.",
+    "referenced_tags": [
+      "accumulation_percent"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/conveyorzone01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "conveyorzone01",
+    "code": "CV1002",
+    "label": "Zone Starved",
+    "severity": "WARN",
+    "description": "`starved` = TRUE; no bottles arriving from Depalletizer01.",
+    "likely_cause": "Depalletizer01 faulted, no pallet staged, or vacuum loss.",
+    "recommended_action": "Check Depalletizer01 status; stage pallet if needed.",
+    "referenced_tags": [
+      "starved"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/conveyorzone01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "conveyorzone01",
+    "code": "CV1003",
+    "label": "Motor Overload",
+    "severity": "FAULT",
+    "description": "`motor_current_amps` > 5.0 A; drive trips.",
+    "likely_cause": "Belt jam, foreign object on belt, worn belt tensioner.",
+    "recommended_action": "Clear obstruction; check belt tension; reset overload relay.",
+    "referenced_tags": [
+      "motor_current_amps"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/conveyorzone01/fault_code_table.md",
+    "missing_evidence": [
+      {
+        "category": "overload",
+        "suggested_signal": "overload_count",
+        "note": "fault text references 'overload' but the sim exposes no such signal to corroborate it"
+      }
+    ],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "conveyorzone02",
+    "code": "CV2001",
+    "label": "Zone Full / Blocked",
+    "severity": "WARN",
+    "description": "`accumulation_percent` = 100%; downstream station not accepting bottles.",
+    "likely_cause": "Downstream machine faulted or stopped (Rinser01, Filler01, or beyond).",
+    "recommended_action": "Identify and resolve downstream root cause first. Zone will clear automatically when downstream resumes.",
+    "referenced_tags": [
+      "accumulation_percent"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/conveyorzone02/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "conveyorzone02",
+    "code": "CV2002",
+    "label": "Zone Starved",
+    "severity": "WARN",
+    "description": "`starved` = TRUE; no bottles arriving from Depalletizer01.",
+    "likely_cause": "Depalletizer01 faulted, no pallet staged, or vacuum loss.",
+    "recommended_action": "Check Depalletizer01 status; stage pallet if needed.",
+    "referenced_tags": [
+      "starved"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/conveyorzone02/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "conveyorzone02",
+    "code": "CV2003",
+    "label": "Motor Overload",
+    "severity": "FAULT",
+    "description": "`motor_current_amps` > 5.0 A; drive trips.",
+    "likely_cause": "Belt jam, foreign object on belt, worn belt tensioner.",
+    "recommended_action": "Clear obstruction; check belt tension; reset overload relay.",
+    "referenced_tags": [
+      "motor_current_amps"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/conveyorzone02/fault_code_table.md",
+    "missing_evidence": [
+      {
+        "category": "overload",
+        "suggested_signal": "overload_count",
+        "note": "fault text references 'overload' but the sim exposes no such signal to corroborate it"
+      }
+    ],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "depalletizer01",
+    "code": "DP001",
+    "label": "No Pallet at Infeed",
+    "severity": "FAULT",
+    "description": "`pallet_present` = FALSE; no pallet at pick station.",
+    "likely_cause": "Fork truck has not staged a pallet; pallet photoeye dirty or misaligned.",
+    "recommended_action": "Stage full pallet; clean/realign pallet-present sensor.",
+    "referenced_tags": [
+      "pallet_present"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/depalletizer01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "depalletizer01",
+    "code": "DP002",
+    "label": "Vacuum Loss",
+    "severity": "FAULT",
+    "description": "`vacuum_pressure` > -15 in-Hg (insufficient suction).",
+    "likely_cause": "Low AirSystem01 header pressure; vacuum cup seal wear; cracked cup.",
+    "recommended_action": "Check AirSystem01 header_pressure_psi; inspect vacuum cups; replace worn cups.",
+    "referenced_tags": [
+      "vacuum_pressure"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/depalletizer01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "depalletizer01",
+    "code": "DP003",
+    "label": "Jam Detected",
+    "severity": "FAULT",
+    "description": "`jam_detected` = TRUE; bottle obstruction at outfeed.",
+    "likely_cause": "Tipped bottle, double-bottle presentation, guide rail misalignment.",
+    "recommended_action": "Safe-to-enter; clear obstruction; reset PackML.",
+    "referenced_tags": [
+      "jam_detected"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/depalletizer01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "depalletizer01",
+    "code": "DP004",
+    "label": "Layer Count Error",
+    "severity": "WARN",
+    "description": "`layer_count` does not decrement as expected; layer sensor fault.",
+    "likely_cause": "Layer detection photoeye dirty or misaligned; pallet loaded off-center.",
+    "recommended_action": "Clean and realign layer sensor; re-home pick head; reload pallet.",
+    "referenced_tags": [
+      "layer_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/depalletizer01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "filler01",
+    "code": "F001",
+    "label": "E-Stop / Interlock",
+    "severity": "FAULT",
+    "description": "Machine halted by E-Stop or interlock chain. `run_state` = ABORTED.",
+    "likely_cause": "E-stop pressed, guard door open, downstream interlock (Capper 01 not ready), or CIP active.",
+    "recommended_action": "Clear E-stop or interlock condition; confirm downstream ready; reset PackML.",
+    "referenced_tags": [
+      "run_state"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/filler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "filler01",
+    "code": "F002",
+    "label": "Motor Overload",
+    "severity": "FAULT",
+    "description": "Motor overload relay tripped. `motor_current_amps` exceeded 8.5 A.",
+    "likely_cause": "Mechanical jam in rotary carousel, worn rotary seal, jammed infeed starwheel, lubrication failure.",
+    "recommended_action": "Clear jam, allow motor to cool 10 min, inspect rotary seals and lubrication; reset overload relay before restarting.",
+    "referenced_tags": [
+      "motor_current_amps"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/filler01/fault_code_table.md",
+    "missing_evidence": [
+      {
+        "category": "overload",
+        "suggested_signal": "overload_count",
+        "note": "fault text references 'overload' but the sim exposes no such signal to corroborate it"
+      }
+    ],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "filler01",
+    "code": "F003",
+    "label": "Nozzle Fault",
+    "severity": "FAULT",
+    "description": "One or more fill nozzles failed self-test or flow check. `nozzle_fault_count` > 0.",
+    "likely_cause": "Blocked nozzle orifice (pulp, residue), worn nozzle tip seal, failed fill valve solenoid.",
+    "recommended_action": "Identify faulted nozzle(s) via HMI valve diagnostic; clean or replace nozzle tip; confirm solenoid response.",
+    "referenced_tags": [
+      "nozzle_fault_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/filler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "filler01",
+    "code": "F004",
+    "label": "Overfill",
+    "severity": "WARN",
+    "description": "Overfill detections exceed threshold. `overfill_reject_count` rising.",
+    "likely_cause": "Bowl pressure too high (> 20 PSI), VFD speed too low (extended dwell), fill valve timing drift.",
+    "recommended_action": "Reduce bowl pressure regulator set-point; verify VFD speed setpoint; run valve timing diagnostic.",
+    "referenced_tags": [
+      "overfill_reject_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/filler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "filler01",
+    "code": "F005",
+    "label": "Fill Variance High",
+    "severity": "WARN",
+    "description": "`fill_level_variance` > \u00b10.5 oz \u2014 erratic fill.",
+    "likely_cause": "Bowl level swings (float valve stuck), air entrainment in supply line, intermittent valve actuation.",
+    "recommended_action": "Inspect bowl float valve; bleed air from supply line; verify product supply tank pressure stability.",
+    "referenced_tags": [
+      "fill_level_variance"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/filler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "filler01",
+    "code": "F006",
+    "label": "Product Temp High",
+    "severity": "WARN",
+    "description": "`product_temperature` > 42 \u00b0F. Product quality risk.",
+    "likely_cause": "Refrigeration supply failure, product stagnant in bowl > 45 min, ambient heat during extended pause.",
+    "recommended_action": "Drain and replace bowl product; check refrigeration; reduce pause duration between runs.",
+    "referenced_tags": [
+      "product_temperature"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/filler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "filler01",
+    "code": "F007",
+    "label": "Low Bowl Pressure",
+    "severity": "FAULT",
+    "description": "`filler_bowl_pressure` < 8 PSI \u2014 systematic underfill risk. `underfill_reject_count` rising.",
+    "likely_cause": "Low supply tank level, failed/blocked pressure regulator, restricted supply line, low air pressure on pneumatic actuators, clogged fill nozzles.",
+    "recommended_action": "Check `tank_level_percent`; inspect pressure regulator; verify AirSystem01 header pressure; inspect nozzles. See Troubleshooting \u00a7 Underfill.",
+    "referenced_tags": [
+      "filler_bowl_pressure",
+      "tank_level_percent",
+      "underfill_reject_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/filler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "filler01",
+    "code": "F008",
+    "label": "Tank Level Low",
+    "severity": "WARN",
+    "description": "`tank_level_percent` < 15%.",
+    "likely_cause": "Product supply batch exhausted; refill pump failure; supply valve closed.",
+    "recommended_action": "Notify product supply; do not run production below 15%; replenish batch.",
+    "referenced_tags": [
+      "tank_level_percent"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/filler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "labeler01",
+    "code": "L001",
+    "label": "Label Roll Low/Empty",
+    "severity": "FAULT",
+    "description": "`label_roll_percent` < 5% or 0%. Machine stops at 0%.",
+    "likely_cause": "Roll consumed; no splice performed in time.",
+    "recommended_action": "Splice new roll before 5% threshold; confirm web threaded correctly after splice.",
+    "referenced_tags": [
+      "label_roll_percent"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/labeler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "labeler01",
+    "code": "L002",
+    "label": "Web Tension Fault",
+    "severity": "FAULT",
+    "description": "`label_web_tension` outside 0.5\u20132.0 lb.",
+    "likely_cause": "Broken dancer spring, web brake failure, roll binding, web path obstruction.",
+    "recommended_action": "Inspect dancer roller and brake pad; inspect web path for obstruction.",
+    "referenced_tags": [
+      "label_web_tension"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/labeler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "labeler01",
+    "code": "L003",
+    "label": "Registration Error",
+    "severity": "WARN",
+    "description": "`registration_error_mm` > \u00b11.0 mm sustained; `reject_count` rising.",
+    "likely_cause": "Web tension off, sensor contaminated, roll core run-out, glue temp low, servo error.",
+    "recommended_action": "Check web tension; clean registration sensor; inspect roll seating; verify glue temp.",
+    "referenced_tags": [
+      "registration_error_mm",
+      "reject_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/labeler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "labeler01",
+    "code": "L004",
+    "label": "Glue Temp Out of Range",
+    "severity": "WARN",
+    "description": "`glue_temperature` outside 270\u2013295 \u00b0F.",
+    "likely_cause": "Heater element failure, thermocouple drift, cold start delay, setpoint error.",
+    "recommended_action": "Check heater circuit; allow warm-up; inspect thermocouple.",
+    "referenced_tags": [
+      "glue_temperature"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/labeler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "labeler01",
+    "code": "L005",
+    "label": "High Reject Count",
+    "severity": "WARN",
+    "description": "`reject_count` rising above baseline without specific fault active.",
+    "likely_cause": "Vision camera contamination, label print defect, stuck reject gate.",
+    "recommended_action": "Clean camera lens; inspect label stock quality; test reject gate.",
+    "referenced_tags": [
+      "reject_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/labeler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "labeler01",
+    "code": "L006",
+    "label": "Interlock / E-Stop",
+    "severity": "FAULT",
+    "description": "Startup prevented by interlock.",
+    "likely_cause": "Glue temp not at warm-up threshold, roll empty, guard door open, E-stop, upstream fault.",
+    "recommended_action": "Clear interlock condition; confirm upstream ready; reset PackML.",
+    "referenced_tags": [],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/labeler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "labeler01",
+    "code": "L007",
+    "label": "Label Sensor Blocked",
+    "severity": "FAULT",
+    "description": "`label_sensor_blocked` = TRUE; web not advancing.",
+    "likely_cause": "Web break, label jam in web path, threading error after splice.",
+    "recommended_action": "Inspect web path; re-thread web; check splice quality.",
+    "referenced_tags": [
+      "label_sensor_blocked"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/labeler01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "palletizer01",
+    "code": "PA001",
+    "label": "Robot E-Stop",
+    "severity": "CRITICAL",
+    "description": "`robot_ready` = FALSE; safety zone E-stop tripped. `run_state` = ABORTED. Upstream cases accumulate; CasePacker01 jam risk.",
+    "likely_cause": "Safety zone intrusion, teach pendant in T1 mode, hardware E-stop pressed, robot servo fault.",
+    "recommended_action": "Verify no person in robot cell; clear physical cause; twist-unlock E-stop mushroom; reset safety relay; acknowledge on teach pendant; return robot to home.",
+    "referenced_tags": [
+      "robot_ready",
+      "run_state"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/palletizer01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "palletizer01",
+    "code": "PA002",
+    "label": "No Pallet at Station",
+    "severity": "FAULT",
+    "description": "`pallet_present` = FALSE; palletizer paused at layer-complete waiting for next pallet.",
+    "likely_cause": "Fork truck has not staged empty pallet; pallet photoeye dirty or misaligned.",
+    "recommended_action": "Stage empty pallet; clean/realign pallet-present sensor.",
+    "referenced_tags": [
+      "pallet_present"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/palletizer01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "palletizer01",
+    "code": "PA003",
+    "label": "Infeed Jam",
+    "severity": "FAULT",
+    "description": "`jam_detected` = TRUE; case infeed conveyor blocked.",
+    "likely_cause": "Misaligned case, deformed case, foreign object on infeed conveyor.",
+    "recommended_action": "Press STOP; wait for robot to park at home; clear infeed jam; press START to resume.",
+    "referenced_tags": [
+      "jam_detected"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/palletizer01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "palletizer01",
+    "code": "PA004",
+    "label": "Slip Sheet Empty",
+    "severity": "WARN",
+    "description": "`slip_sheet_present` = FALSE; slip sheet magazine exhausted.",
+    "likely_cause": "Magazine consumed; no operator restocked.",
+    "recommended_action": "Load slip sheet magazine (100 sheets per load); manually trigger SLIP SHEET cycle to verify feed.",
+    "referenced_tags": [
+      "slip_sheet_present"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/palletizer01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "rinser01",
+    "code": "RN001",
+    "label": "Low Water Pressure",
+    "severity": "FAULT",
+    "description": "`water_pressure` < 20 PSI; rinse effectiveness compromised.",
+    "likely_cause": "Water supply valve partially closed, pressure regulator failure, upstream supply issue.",
+    "recommended_action": "Check supply isolation valve; inspect pressure regulator; confirm building water pressure.",
+    "referenced_tags": [
+      "water_pressure"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/rinser01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "rinser01",
+    "code": "RN002",
+    "label": "Rinse Valve Fault",
+    "severity": "FAULT",
+    "description": "`rinse_valve_open` stuck FALSE during production run.",
+    "likely_cause": "Solenoid coil burned out, valve actuator seized, 24 VDC DO failure.",
+    "recommended_action": "Check DO output to solenoid; megger coil; replace solenoid or valve assembly.",
+    "referenced_tags": [
+      "rinse_valve_open"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/rinser01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  },
+  {
+    "asset": "rinser01",
+    "code": "RN003",
+    "label": "Reject Count High",
+    "severity": "WARN",
+    "description": "`reject_count` rising; foreign material detected in bottles.",
+    "likely_cause": "Bottle contamination from supplier, detection sensor calibration drift.",
+    "recommended_action": "Inspect rejected bottles; check detection sensor calibration; notify QA.",
+    "referenced_tags": [
+      "reject_count"
+    ],
+    "source_doc": "fault_code_table.md",
+    "source_path": "simlab/docs/rinser01/fault_code_table.md",
+    "missing_evidence": [],
+    "confidence": 1.0,
+    "parse_status": "ok"
+  }
+]

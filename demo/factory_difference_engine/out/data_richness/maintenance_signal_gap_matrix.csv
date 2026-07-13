@@ -1,0 +1,17 @@
+conveyor_param,status_in_sim,sim_signal_or_note,recommendation
+torque_pct,ABSENT,"cap_torque_inlb is process (capper), NOT VFD torque",add vfd_torque_pct
+output_frequency_hz,PARTIAL,vfd_speed_hz (filler01 only),extend to more assets
+dc_bus_voltage_v,ABSENT,none,add dc_bus_voltage_v
+output_voltage_v,ABSENT,none,add output_voltage_v
+output_current_a,PRESENT,"motor_current_amps (filler,capper,conv1,conv2)",keep / extend line-wide
+power_kw,ABSENT,none,add power_kw
+drive_igbt_temp_c,ABSENT,none (only product/glue/supply temps),add drive_temp_c
+overload_count,ABSENT,manual text only,add overload_count
+vfd_fault_code_numeric,PARTIAL,"fault_code is a string, not decoded",enrich to numeric decoded
+run_status,PRESENT,run_state (enum),keep
+photoeye_sensor_state,PRESENT,jam/occupancy/present bools,keep
+motor_run_cmd_vs_feedback,DERIVABLE,run_state + vfd_speed_hz imply it,add explicit run_cmd/run_fb
+runtime_hours,ABSENT,none,add runtime_hours
+start_cycle_counts,ABSENT,none (cycle_step is a step index),add start_count/cycle_count
+vibration,ABSENT,manual text only,optional: add vibration_mm_s
+bearing_temp,ABSENT,manual text only,optional: add bearing_temp_c

@@ -1,0 +1,143 @@
+{
+  "source": "REPLAY fixture 'cv101_comm_down' (deterministic, no PLC)",
+  "raw": {
+    "holding": {
+      "106": 0,
+      "107": 0,
+      "108": 0,
+      "109": 3215,
+      "114": 1,
+      "117": 9472,
+      "118": 0
+    },
+    "coils": {
+      "0": false,
+      "3": false,
+      "5": false,
+      "9": false
+    }
+  },
+  "mapped": [
+    {
+      "signal": "motor_running",
+      "topic": "motor/m101/running",
+      "component": "motor101",
+      "source": "C @0 (FC1)",
+      "raw": false,
+      "confidence": "high",
+      "approval": "approved",
+      "value": false,
+      "display": "False"
+    },
+    {
+      "signal": "vfd_comm_ok",
+      "topic": "vfd/vfd101/comm_ok",
+      "component": "vfd101",
+      "source": "C @3 (FC1)",
+      "raw": false,
+      "confidence": "high",
+      "approval": "approved",
+      "value": false,
+      "display": "False"
+    },
+    {
+      "signal": "e_stop_active",
+      "topic": "safety/estop",
+      "component": "estop",
+      "source": "C @5 (FC1)",
+      "raw": false,
+      "confidence": "high",
+      "approval": "approved",
+      "value": false,
+      "display": "False"
+    },
+    {
+      "signal": "estop_wiring_fault",
+      "topic": "safety/wiring",
+      "component": "estop",
+      "source": "C @9 (FC1)",
+      "raw": false,
+      "confidence": "high",
+      "approval": "approved",
+      "value": false,
+      "display": "False"
+    },
+    {
+      "signal": "vfd_frequency",
+      "topic": "vfd/vfd101/freq",
+      "component": "vfd101",
+      "source": "H @106 (FC3)",
+      "raw": 0,
+      "confidence": "high",
+      "approval": "approved",
+      "value": 0.0,
+      "display": "0.00 Hz"
+    },
+    {
+      "signal": "vfd_current",
+      "topic": "vfd/vfd101/current_a",
+      "component": "motor101",
+      "source": "H @107 (FC3)",
+      "raw": 0,
+      "confidence": "high",
+      "approval": "approved",
+      "value": 0.0,
+      "display": "0.00 A"
+    },
+    {
+      "signal": "vfd_voltage",
+      "topic": "vfd/vfd101/voltage_v",
+      "component": "vfd101",
+      "source": "H @108 (FC3)",
+      "raw": 0,
+      "confidence": "high",
+      "approval": "approved",
+      "value": 0.0,
+      "display": "0.00 V"
+    },
+    {
+      "signal": "vfd_dc_bus",
+      "topic": "vfd/vfd101/dc_bus_v",
+      "component": "vfd101",
+      "source": "H @109 (FC3)",
+      "raw": 3215,
+      "confidence": "high",
+      "approval": "approved",
+      "value": 321.5,
+      "display": "321.50 V"
+    },
+    {
+      "signal": "vfd_cmd_word",
+      "topic": "vfd/vfd101/cmd_word",
+      "component": "vfd101",
+      "source": "H @114 (FC3)",
+      "raw": 1,
+      "confidence": "high",
+      "approval": "approved",
+      "value": 1,
+      "display": "1 (STOP)"
+    },
+    {
+      "signal": "vfd_status_word",
+      "topic": "vfd/vfd101/status_word",
+      "component": "vfd101",
+      "source": "H @117 (FC3)",
+      "raw": 9472,
+      "confidence": "medium",
+      "approval": "approved",
+      "value": 9472,
+      "display": "9472"
+    },
+    {
+      "signal": "vfd_fault_code",
+      "topic": "vfd/vfd101/fault_code",
+      "component": "vfd101",
+      "source": "H @118 (FC3)",
+      "raw": 0,
+      "confidence": "high",
+      "approval": "approved",
+      "value": 0,
+      "display": "0"
+    }
+  ]
+}

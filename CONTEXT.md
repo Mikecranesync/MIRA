@@ -65,6 +65,28 @@ Components are identified by **SerialNumber when present**, by **(UNS path, pare
 A component that does not carry a serial number — push buttons, selector switches, pilot lights, limit switches, photo eyes, pneumatic fittings, terminal blocks, fuses. Identified by the (`uns_path`, `asset_id`, `panel_id`) tuple. The UNS path becomes the human-facing identifier on the bench ("PB-7 on Panel 12 of Conveyor A's HMI"). `installed_component_instances.serial_number` is `NULL` for these rows; that's expected, not a data-quality issue.
 _Avoid_: bulk part, generic component, unidentified part.
 
+### Drive Commander product (ADR-0025)
+
+**Drive Commander**:
+The single sellable product — a read-only VFD diagnostic tool. Two surfaces: a **desktop fleet console** (direct read-only EtherNet/IP/Modbus-TCP to the whole drive fleet, DriveExplorer model) and a **mobile point-of-service** app (standalone, zero-integration fault-code/Ask-MIRA). Named after the Allen-Bradley DriveExplorer/DriveExecutive lineage, but overlays *diagnostic intelligence* on the raw parameters, not just a parameter viewer. Working name — trademark diligence pending.
+_Avoid_: "the app" (ambiguous — name the surface: Drive Commander **desktop** or **mobile**), "Live Machine Context" (superseded framing), "copilot" (positioning is context-led, not copilot).
+
+**drive pack** (a.k.a. **service pack for drives**):
+The sellable *atom* — an OEM manual **transformed into KB/KG-backed diagnostic intelligence**, keyed to a **drive family**. NOT a JSON register table, NOT "chat with a PDF". A **manifest** binding three layers for one family: (1) **Document** — the manuals in `knowledge_entries` + citations in `component_template_sources`; (2) **Extracted intelligence** — `component_templates` (`common_failure_modes`/`troubleshooting_steps`/`diagnostic_indicators`/`pinout`/`safety_notes`) + `kg_entities` (`fault_code`/`specification`/`procedure`); (3) **Diagnostic reasoning** — the generic engine (`live_snapshot.assess_*` + Supervisor). A pack **REUSES** layers 1–2 (does not re-hold them) and **ADDS** only: the live-decode data (register/status/command decode + expected envelope → `tag_entities.expected_envelope`), the family + nameplate-recognition descriptor, and derived `diagnostic cards`. Adding a drive = converting its manuals into a family pack, not editing engine code. GS10/DURApulse is the gold reference pack.
+_Avoid_: "the decode" (a pack is far more than decode), "chat with the manual" (a pack is *extracted*, not raw-RAG), "driver" (that's a fieldbus client), "profile" (reserved for component profiles), "model pack" (a pack is family-keyed — see below).
+
+**drive family**:
+The pack's primary key — a manufacturer's drive series that one manual covers (DURApulse GS10, Yaskawa GA500, PowerFlex 525). Holds the **shared family intelligence** (fault table, status/command decode, parameter groups — usually common across the family) once, with **per-model overrides** for the parts that differ (exact ratings, envelope, any register-address deltas). A nameplate **photo resolves family-first, model-refined**: photo → identify family → load family pack → answer + ask clarifiers → sharpen to the exact model. Groups the member `component_templates` rows via a `family` descriptor; not a new store.
+_Avoid_: "model pack" (packs are family-keyed), "product line" (family is the specific technical grouping one manual covers).
+
+**diagnostic card**:
+A **derived, cited view** over a pack's extracted intelligence — one per fault code / symptom: `{fault_or_symptom, meaning, likely_causes[], first_checks[], citations[], confidence, provenance_tier}`. The unit the UI shows and the LLM cites. Generated at build/query time from `component_templates` + `kg_entities`, citations from `component_template_sources`. **Promotable** to a hand-curated per-card override when a human tunes one; default is automatic. Not a new hand-authored store.
+_Avoid_: "card" (alone — ambiguous), "troubleshooting step" (a card composes several), a new `diagnostic_cards` table as the default (it's derived).
+
+**pack provenance** (`bench_verified` | `manual_cited`):
+Per-item trust tier inside a drive pack. `bench_verified` = confirmed on real hardware (GS10 live decode). `manual_cited` = extracted from the OEM manual with a page cite but not hardware-confirmed (most fault semantics, all packs for drives we don't own). Surfaced honestly in the answer ("per manual §X … not hardware-verified"). Tracked **per item**, not per pack — a "bench-verified" pack can still have manual-cited fault meanings. Same honesty discipline as `.claude/rules/fieldbus-readonly.md` ("confidently wrong is worse than no answer").
+_Avoid_: "verified" (collides with `kg_*.approval_state='verified'` — see ADR-0017; say `bench_verified`), "trusted", "confirmed".
+
 ### Control relationships (sibling tree + typed edge)
 
 Per ADR-0018: a Motor and the VFD that controls it are **siblings** in the Asset tree (under the same sub-assembly), connected by a `DRIVES` / `IS_DRIVEN_BY` edge in `kg_relationships`. Same rule for Inverter↔DC bus (via `POWERED_BY`), Sensor↔PLC analog input (via `WIRED_TO`), and any other "X controls Y" pairing. The tree captures *physical containment*; the graph captures *control / power / signal flow*. This matches IEC 81346, OPC UA Robotics (`IsDrivenBy`), and every major vendor tool (Rockwell PlantPAx `P_Motor`+`P_VFD` as separate AOIs; Siemens TIA Portal SINAMICS+motor as separate Devices).

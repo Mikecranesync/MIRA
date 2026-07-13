@@ -1,3 +1,161 @@
+# Hot Cache — 2026-07-11 — CV-101 print package V3.3: unanimous APPROVABLE WITH FIELD VERIFICATION
+
+E-003 (VFD power) + E-006 (PLC outputs) drafted from recovered CCW prior art (ControlsToVFD/
+Beginner_Verify/WI-001 + GS10_UM + live program), then the WHOLE package (now 5 sheets incl. new
+model-driven E-001 cover) was graded by a 4-reviewer campaign (technician/controls/drafting/
+auditor, 100-pt rubric, hard-fails) and corrected V2→V3.3. **Final: 98-100 all sheets all
+reviewers, zero hard-fails.** Branches: `feat/conv-simple-e003-e006` (V2 `b1900a0f`) →
+`feat/conv-simple-prints-v3` (V3.3 `a300bf6c`), both pushed, no PRs yet. Records in
+`plc/conv_simple_electrical/review/` (grades, 8 ledgers, matrices, rubric, change report).
+KEY CATCHES: PyMuPDF silently drops SVG `stroke-dasharray` (E-005/E-007 had shipped with every
+FIELD-VERIFY conductor printing solid — now dashes are constructed segments + PDF-vector-audited);
+GS10 freq registers scale **×100** not x10 (`GS10_Integration_Guide.md` still stale on x10 AND
+REV+RUN=20 vs correct 34 — one-line follow-up owed); GS10 control = Modbus only (P00.21=2 per
+param export; WI-001 DI1..DI5 map = unapplied fallback, P02.0x factory default); O-02 =
+ContactorQ1 safety-power coil (triply corroborated). Validator = 12 machine checks incl.
+all-stroke collision audit (Liang-Barsky, mutation-tested). NEXT: E-002/E-004/E-008/E-009 stubs;
+bench meter session closes OI-01..OI-20 (supply/model/breaker/gauge = why plain APPROVABLE is
+unreachable); memory `project_cv101_print_package`.
+
+---
+
+# Hot Cache — 2026-07-04 LATE NIGHT — LATENCY ROOT CAUSE = RELAY (resume doc written)
+
+**Resume:** `docs/RESUME_2026-07-04_live-tag-latency.md` (has the paste-able resume prompt + all infra gotchas).
+Chased the live-tag lag through 3 layers; browser-poll (#2460) + collector-timer (#2462, applied to
+live gateway via UAC + restart) + SSE push (#2463) all SHIPPED but the lag persisted. Measured cadence
+after each: timer change made it WORSE (2.0→2.47s → proved each collector exec is ~2s), keepalive to
+warm Tailscale left it UNCHANGED (ruled out network). **ROOT CAUSE (code-confirmed):
+`mira-relay/tag_ingest.py` `NeonTagStore` opens 3 fresh NeonDB connections per push (`_engine()`
+recreates engine each call + `pool_pre_ping=True`; `ingest_batch` calls load_allowlist +
+current_state_simulated + persist_batch separately) ≈ ~2s.** FIX (NOT built, AWAITING MIKE'S GO —
+ingest hot path + VPS redeploy blast radius): cache engine once, ONE connection per ingest_batch, drop
+pool_pre_ping → ~0.6s; preserve persist_batch one-transaction guarantee + one-pipeline-ingest Contract
+5; deploy `mira-relay`; re-measure via cadence probe (PR #2473, open). Gateway is LOCAL (service
+`Ignition`, port 8088, project writes need UAC). See [[reference_live_tag_latency_budget]].
+
+---
+
+# Hot Cache — 2026-07-04 NIGHT (3) — SSE push DEPLOYED; software side of latency fix COMPLETE
+
+Part 3 (Hub SSE push) #2463 MERGED + DEPLOYED to prod (mira-hub). Verified: `/api/assets/[id]/machine-memory/stream` 401-auth-guards identically to the known-good GET sibling (route resolves, not 404). CI saga on the way: sub-agent's new route drifted `sitemap.snapshot.json` (regen via `bun run sitemap`); the docs-only fix commit was `paths-ignore`d so CI didn't re-run (stuck PR) — resolving the CHANGELOG/VERSION conflict against main touched VERSION (non-ignored) which re-triggered CI green; main raced 3.59.5→3.60.0 (#2461) mid-flight so bumped to 3.60.1; deploy aborted on staging-gate (admin-merged before gate re-ran on the re-sync SHA) → used documented `skip_staging_gate=true`+reason (runtime code byte-identical to the gate-green ac2193bd; only VERSION/CHANGELOG differed; auto-audit-issue opened). **All 3 software parts now live: browser poll 750ms (#2460), collector timer 500ms Fixed-Delay (#2462, applies on gateway restart), SSE push (#2463).** REMAINING = MIKE's gateway: 250ms fast scan class for MIRA_IOCheck/* + Ignition service restart (applies #2462 + scan class) → then re-measure toward <1s. SSE already improves latency pre-gateway-change (additive, poll fallback). Lesson: any NEW hub route must be added to sitemap.snapshot.json (`bun run sitemap`); a docs-only follow-up commit gets paths-ignored and won't re-run CI.
+
+---
+
+# Hot Cache — 2026-07-04 NIGHT (2) — latency fix: all buildable parts DONE
+
+Full plan in [[reference_live_tag_latency_budget]] + `docs/perf/live-latency-budget.md`. Parts:
+1. Browser poll 2000→750ms — #2460 MERGED+DEPLOYED. 2. Collector timer 2000→500ms Fixed-Delay
+(`MiraTagStream/resource.json`, cache freshness ~2s→~0.7s) — #2462 MERGED (applies on Ignition
+service RESTART = Mike). 3. Hub SSE push (new `/machine-memory/stream` route + card EventSource,
+fallback to poll) — built by Sonnet sub-agent, I REVIEWED + fixed a real bug (onerror downgraded every
+card to poll permanently after the 10-min recycle → now guarded by sseEverConnected), #2463 CI running
+→ merge+deploy mira-hub when green. 4. 250ms fast scan class for MIRA_IOCheck/* tags — MIKE (gateway
+GUI; repo tags.json is STALE = old Conveyor/* gen, don't edit). MIKE's deploy order when home: set fast
+scan class → restart Ignition service (applies #2462 + scan class) → tell me → I deploy #2463 →
+re-measure toward <1s. SSE is safe to deploy even pre-collector-change (additive, fallback). Disk was
+100% full (worktrees); freed to 8GB by pruning my merged wt-*.
+
+---
+
+# Hot Cache — 2026-07-04 NIGHT — latency benchmark + #2460 (750ms poll) deployed
+
+Mike: live tags lag 5s+. Benchmarked the full pipeline (`docs/perf/live-latency-budget.md`,
+[[reference_live_tag_latency_budget]]): ~3.5s typ / ~7s worst = THREE stacked polls, each adding its
+full interval — gateway scan (~1s Default class) + **collector push timer (2000ms, gateway setting =
+biggest lever)** + browser poll (2000ms). Relay write + Hub API are fast (~150ms). PLC analog floor =
+rotating vfd_poll_step (500ms/step). #2460 MERGED+DEPLOYED (mira-hub, hub 200): browser poll 2000→750ms.
+NEXT (the real win, MIKE's gateway action): set the tag-stream Gateway Timer Fixed Rate 2000→500ms +
+add a 250ms fast scan class for the ~12 MIRA_IOCheck/* tags → ~1s. Tier 2 (sub-second "instant") = SSE
+push; relay ALREADY has a WS (`ws_tags`/`broadcast`, opt-in) — but payoff is GATED on the collector
+change, so do gateway first + measure before building SSE. Tier 3 ceiling: cloud RTT ~150-300ms floor;
+truly instant = local Perspective panel. DISK: bench C: hit 100% full (~28 worktrees); removing my
+merged wt-* freed 7.4GB → 8.4GB free. ~18 other mira-*/codex worktrees remain (other sessions' — do NOT
+auto-delete; Mike to prune). Still open: #2459 ghost Conveyor/VFD_Hz row cleanup (awaiting go).
+
+---
+
+# Hot Cache — 2026-07-04 EVE (final) — MERGED + DEPLOYED: Next buttons, probes, anomaly cooldown
+
+Deploy 28711222376 SUCCESS: mira-hub + mira-historian-worker + mira-historian-beat recreated on VPS
+(first attempt aborted — staging gate for the merge-resolution commit was still running; gate green →
+re-dispatch worked). Live verify: app.factorylm.com/hub 200. Cooldown now active on next historian
+beats (`anomalies_cooldown_suppressed` in beat summary). Still open: #2459 stale Conveyor/VFD_Hz ghost
+row cleanup (option A awaiting Mike's go), #2428 close needs one live WO save, bench Start press +
+promo screenshots, frozen vfd_dc_bus bench diagnosis.
+
+#2455/#2456/#2458 all merged to main (VERSION 3.59.1→.2→.3; conflicts resolved by stacking CHANGELOG
+entries). #2455 needed a follow-up: `i18n-provider.tsx` types MESSAGES as `Record<Locale, typeof en>` —
+adding `common.next` to en only broke the hi/zh build (Hub E2E typecheck). Key added to all four locales
+(आगे / 下一步); test widened. **Lesson: any new en.json key must land in es+hi+zh too.**
+NEW DIAGNOSIS (#2459): Mike's "vfd hz 18h ago" on the asset card = retired `[default]Conveyor/VFD_Hz`
+cache row (old collector generation, stopped 2026-07-03 20:34Z when MIRA_IOCheck map took over). The
+12 current tags were 2 s fresh — hub IS live. Fix option A (prune retired Conveyor/*+Mira_Monitored/*
+from approved_tags seed + delete stale cache rows) awaiting Mike's go. First deploy attempt aborted:
+staging gate for #2458's merge-resolution commit was still in_progress; re-dispatch
+`deploy-vps.yml services="mira-hub mira-historian-worker mira-historian-beat"` once green.
+
+---
+
+# Hot Cache — 2026-07-04 EVE — #2428 FIXED on prod (migration 060 applied); #2427/#2431 PRs open
+
+**#2428 (WO save 500) root-caused + fixed on prod, schema-verified.** db-inspect probe (new permanent
+`work_orders` + `schema_migrations` section, PR #2456) proved prod had NO `source_run_diff_id` and the
+ledger ended at 059 → every INSERT (and the list SELECT) threw 42703. `apply-migrations.yml` 060:
+dry-run staging+prod → apply staging (28708574352) → apply prod (28708591114) → re-probe (28708607400)
+shows `source_run_diff_id | uuid` + 060 in ledger. **Remaining: one live save on prod** (bench tenant)
+to close — evidence commented on the issue. PRs opened (all off origin/main in worktree
+C:/wt-dbinspect-2428, VERSION-bumped 3.59.1/.2/.3 — expect VERSION/CHANGELOG merge conflicts, resolve
+at merge): **#2455** = #2427 fix (`common.next` en+es, both wizard forward buttons, static test);
+**#2456** = db-inspect probes; **#2458** = #2431 data-layer fix (`recent_anomaly_pair_ts` on RunStore,
+`anomaly_cooldown_seconds=1800` — info-severity anomalies suppressed cross-window within cooldown,
+CRITICAL/HIGH stay per-window, env `MIRA_ANOMALY_COOLDOWN_SECONDS`, 4 new tests, 26/26 green).
+State bubble still `faulted`, ended_at advancing seconds-fresh (probe) → Mike hasn't pressed Start;
+card verify + promo screenshots still owed. Frozen `vfd_dc_bus` bench diagnosis still open.
+Pre-existing: stray `=======` conflict marker in docs/CHANGELOG.md on main (above v3.58.4 entry).
+
+---
+
+# Hot Cache — 2026-07-04 PM — truthful State bubble + visibly-live card DEPLOYED
+
+#2432 historian on server time: `historize_runs` reads/orders/stamps on `ingested_at` (client
+`event_timestamp` freezes under report-by-exception — it pinned windows at 11:06 then aged them out
+of the 1 h lookback); real `now` feeds the final window's staleness so A0_OFFLINE (≥30 s) fires on a
+dead stream. Deployed `mira-historian-worker`+`beat`; verified live: window `ended_at` 10 s fresh.
+#2433 card: `gs10-display.ts` engineering units (parity-pinned vs `tag_topic_map.py`; dc_bus ÷10,
+freq/current ÷100; status word → "Stopped · FWD"), 2 s poll, flash-on-change, `· chg Xs ago`,
+SVG sparklines via new `/api/assets/[id]/signal-history`, anomalies deduped ×N (#2431 = data-layer
+cooldown follow-up). Deployed mira-hub. BENCH: `pe_latched` needs re-arm with Start after clearing
+the beam — faulted-with-live-signals is truthful until then; frozen dc_bus register while stopped =
+PLC rotating GS10 poll (bench diagnosis open). PROCESS ⚠️: a concurrent session in the same checkout
+swept WIP into #2430 (closed → rebuilt clean as #2432; stray commit 525e7415 sits atop
+feat/wiring-diagram-generator); cloud-routine merges moved main 3× mid-flight (VERSION re-bumps).
+
+---
+
+# Hot Cache — 2026-07-04 — CV-101: 12/12 tags accepted + live-signals card deployed
+
+All on `main`, deployed to prod. #2425 backfilled the 6 VFD-analyzer tags into
+`tools/seeds/approved_tags_conveyor.sql` (parity test now pins only `[default]MIRA/Config/conveyor/map`
+as gateway-only); applied via `apply-approved-tags.yml` staging (0→64 rows) → prod (58→64). Measured
+prod ingest ≈5.9 events/s = **12 tags per 2 s batch, rejected=0**. #2426 upgraded the MachineMemoryCard:
+`live_tags` (per-tag value + freshness via new `fetchLiveSignals` + `classifyTagFreshness`) and
+freshness-aware `current_state` (`mira-hub/src/lib/machine-current-state.ts` — closed-window+stale →
+comm_down), 5 s polling, live tags underlined `--status-green-ink` (#15803D light / #4ADE80 dark;
+canonical `--fl-ok-ink` added to factorylm-tokens.css). Deployed via `deploy-vps.yml services=mira-hub`.
+Earlier same morning: e-stop demo shot captured live (`machine_state_window` idle→running→faulted,
+db-inspect run 28702827534); #2423 merged.
+**#2429 (same day): the "all grey / last seen 8 min ago" bug** — relay trusted the CLIENT tag ts for
+`last_seen_at`; Ignition stamps by value change, so an idle bench froze the ts while the stream stayed
+healthy (skew grew to 23 min, prod-proven via the new db-inspect clock-skew probe). Fixed: `persist_batch`
+stamps server `NOW()`; client ts kept in `tag_events.event_timestamp`; pin test added; deployed
+(`services=mira-relay`) + verified skew 00:00:00. Grey now genuinely means the collector stopped.
+Open: WO-wizard bugs #2427 (no "Next" label) + #2428 (save 500 — suspect migration 060 unapplied on
+prod); promo screenshots of the card still owed; E2E smoke signup test flakes on repeat runs
+(rate-limit + strict-mode locator); card could surface `latest_quality` (dead PLC link vs dead collector).
+
+---
+
 # Hot Cache — 2026-06-25 — Hub one-board Command Center status view
 
 Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
