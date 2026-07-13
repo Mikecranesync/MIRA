@@ -1,0 +1,32 @@
+{
+  "case": "scu2_ap31971_sheet20_opto",
+  "_source": "printsense/benchmarks/scu2_ap31971_sheet20_opto.md ground-truth table; known_misreads are the confident errors documented in that file's Response A (the D/43% run).",
+  "package": {
+    "drawing_no": "AP31971",
+    "cabinet": "+SCU2",
+    "sheet": "20"
+  },
+  "categories": {
+    "device": {
+      "expected": ["-21/A13", "-21/A14", "ITS.LWL-K-01.2"],
+      "known_misreads": ["J1", "-J1", "-21/J1", "A1X"]
+    },
+    "wire": {
+      "expected": ["-W5497", "-W5469"],
+      "known_misreads": ["-WK902", "-WK901", "WK902", "WK901", "24VDC-BEL"]
+    },
+    "xref": {
+      "expected": ["15.7", "-X3.9", "16.6", "-X4.6", "X24V.41", "X0V.41", "20.9", "+SCU2-BEL", "+SCU1-BEL"],
+      "known_misreads": ["157", "X3.5", "-X3.5", "16.1"]
+    }
+  },
+  "structure": [
+    {"desc": "two opto modules A13 + A14", "any_of": ["a13", "a14"]},
+    {"desc": "occupied upstream role", "any_of": ["occupied upstream", "upstream"]},
+    {"desc": "occupied downstream role", "any_of": ["occupied downstream", "downstream"]},
+    {"desc": "DIG I/O channels", "any_of": ["dig in", "dig out", "dig i/o", "digital"]},
+    {"desc": "fiber-optic / opto-coupler nature", "any_of": ["lwl", "opto", "fiber", "fibre", "pof"]},
+    {"desc": "off-page continuation refs", "any_of": ["+scu1", "+scu2", "+sd3", "off_page", "off-page", "21.2", "21.7"]}
+  ],
+  "should_be_unresolved": []
+}

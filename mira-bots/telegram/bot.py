@@ -933,6 +933,7 @@ def _print_interpreter_configured() -> bool:
 
 
 async def _try_print_translator_reply(
+    raw_bytes: bytes,
     vision_bytes: bytes,
     caption: str,
     update: Update,
@@ -946,6 +947,12 @@ async def _try_print_translator_reply(
     photos the vision worker does NOT classify as ``ELECTRICAL_PRINT`` — so
     non-print photos and the existing nameplate/drive and wiring-intake flows are
     untouched.
+
+    Classification runs on the small ``vision_bytes`` (fast, local qwen), but the
+    Anthropic PrintSynth interpreter reads the FULL-RESOLUTION ``raw_bytes`` — the
+    print path must not be crushed to 1024 px, or Claude's high-res perception is
+    wasted (roadmap Phase 0.1). ``interpret.prepare_print_image`` then auto-uprights
+    and resizes it to the 2576 px vision budget.
     """
     if not print_translator.is_print_question(caption):
         return False  # cheap reject, no vision call
@@ -969,9 +976,14 @@ async def _try_print_translator_reply(
         await update.message.reply_text(
             "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…"
         )
+    interpret_b64 = base64.b64encode(raw_bytes).decode()
     async with typing_action(context, update.effective_chat.id):
         reply = await engine._grounded_print_reply(
-            photo_b64, caption, vision_data, str(update.effective_chat.id)
+            photo_b64,
+            caption,
+            vision_data,
+            str(update.effective_chat.id),
+            interpret_b64=interpret_b64,
         )
     await update.message.reply_text(
         reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
@@ -1010,9 +1022,10 @@ async def _dispatch_single_photo(
 
     # Print Translator: read-only LLM explanation of an electrical print for
     # an "explain this / theory of operation" caption. Falls through
-    # unchanged for anything else. See `_try_print_translator_reply`
-    # docstring.
-    if await _try_print_translator_reply(vision_bytes, caption, update, context):
+    # unchanged for anything else. Passes the full-res raw_bytes so the
+    # Anthropic interpreter reads the print at Claude's high-res budget, not
+    # the 1024px-crushed vision_bytes. See `_try_print_translator_reply`.
+    if await _try_print_translator_reply(raw_bytes, vision_bytes, caption, update, context):
         return
 
     chat_id = str(update.effective_chat.id)

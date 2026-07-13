@@ -9,3 +9,9 @@
 #             Imported lazily; tests mock it, so CI does not require it.
 pydantic>=2.0
 anthropic>=0.116.0
+# Print-image preprocessing (auto-rotate + resolution-budget resize). Both are
+# lazy-imported in printsense/preprocess.py and fully defensive, so the package
+# still imports and interprets without them (they ARE in the bot container).
+# Pillow = resize/encode; pytesseract = content-based OSD auto-rotate.
+Pillow>=12.2.0
+pytesseract>=0.3.13

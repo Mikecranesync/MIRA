@@ -894,6 +894,8 @@ class Supervisor:
         question: str | None,
         vision_data: dict,
         chat_id: str,
+        *,
+        interpret_b64: str | None = None,
     ) -> str:
         """Grounded, display-ready answer for a classified ELECTRICAL_PRINT photo.
 
@@ -903,11 +905,21 @@ class Supervisor:
         display-ready string — the cascade's ``format_theory_reply`` yields a
         graceful fallback even on an empty provider result — so a print question is
         never left unanswered.
+
+        ``interpret_b64`` is the FULL-RESOLUTION image for the Anthropic
+        interpreter — the bot passes the raw Telegram bytes so Claude's 2576 px
+        high-res vision budget is used, NOT the 1024 px ``photo_b64`` crushed for
+        the local qwen classifier (roadmap Phase 0.1). Defaults to ``photo_b64``
+        when a caller has no full-res image to hand (e.g. the FSM path), which is
+        the prior behavior. The cascade fallback stays on ``photo_b64`` — the local
+        vision models want the small image.
         """
         from . import print_translator
 
         # 1. Anthropic PrintSynth interpreter (primary, isolated, flag+key gated).
-        reply = await self._interpret_print_anthropic(photo_b64, question, vision_data)
+        reply = await self._interpret_print_anthropic(
+            interpret_b64 or photo_b64, question, vision_data
+        )
         if reply:
             return reply
 
