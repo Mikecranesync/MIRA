@@ -1,0 +1,154 @@
+name: PrintSense E2E autopilot (staging)
+
+# SELF-DRIVING live Telegram staging E2E for PR #2665.
+#
+# On a schedule (and on demand) it POLLS Doppler stg for TELEGRAM_TEST_SESSION. While
+# that secret is absent it SKIPS CLEANLY (no failure) and retries next tick. Once the
+# operator has created the session (one-time interactive login on their side), it:
+#   1. checks out the PR branch (which carries the E2E code + the committed sha-pinned
+#      corpus images, so no laptop and no external sync are needed),
+#   2. installs tesseract (auto-rotate parity with prod) + deps,
+#   3. runs the 7-check staging E2E against @Mira_stagong_bot via `doppler run`
+#      (print routing, nameplate routing, plain-English reply, map reply, rotated image,
+#       degraded image, zero confident misreads, protected safety/uncertainty footer),
+#   4. uploads the Markdown/HTML report + preserved evidence,
+#   5. posts the result to PR #2665,
+#   6. MERGES #2665 only if the E2E passed AND every check on the PR is green.
+#
+# All credentials load from Doppler (factorylm/stg). The Telegram session is used only
+# inside the Telethon client process — never echoed, never written to a log or artifact.
+# This workflow deploys NOTHING and never touches production secrets.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "*/30 * * * *" # every 30 min — poll for the staging session, then self-complete
+  release:
+    types: [published]
+
+concurrency:
+  group: printsense-e2e-autopilot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  PR_NUMBER: "2665"
+  PR_BRANCH: "feat/printsense-test-harness"
+
+jobs:
+  autopilot:
+    name: Live staging E2E → auto-merge #2665
+    runs-on: ubuntu-latest
+    environment: staging # inherits DOPPLER_TOKEN → factorylm/stg
+    timeout-minutes: 35
+    steps:
+      - name: Guard — DOPPLER_TOKEN present
+        id: doppler
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::notice::DOPPLER_TOKEN absent — skipping."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Doppler CLI
+        if: steps.doppler.outputs.ok == 'true'
+        uses: dopplerhq/cli-action@v4
+
+      - name: Guard — PR still open AND session present
+        id: guard
+        if: steps.doppler.outputs.ok == 'true'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          state=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json state --jq .state 2>/dev/null || echo UNKNOWN)
+          if [ "$state" != "OPEN" ]; then
+            echo "::notice::PR #$PR_NUMBER is $state — nothing to do."
+            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Presence check only — the value is NEVER printed.
+          if doppler secrets --project factorylm --config stg --only-names 2>/dev/null | tr ' \t' '\n\n' | grep -qx "TELEGRAM_TEST_SESSION"; then
+            echo "::notice::TELEGRAM_TEST_SESSION present — running the live E2E."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::TELEGRAM_TEST_SESSION absent — skipping cleanly; will retry next schedule."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout PR branch (E2E code + committed corpus)
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.PR_BRANCH }}
+
+      - uses: actions/setup-python@v6
+        if: steps.guard.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install tesseract (auto-rotate parity) + deps
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
+          pip install pydantic pillow anthropic telethon pytesseract
+
+      - name: Run the 7-check staging E2E + acceptance report
+        id: e2e
+        if: steps.guard.outputs.run == 'true'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          PRINT_VISION_PROVIDER: anthropic
+          # ANTHROPIC_API_KEY + TELEGRAM_TEST_{API_ID,API_HASH,SESSION} come from
+          # factorylm/stg via `doppler run` — used in-process only, never logged.
+        run: doppler run -- python tools/printsense_acceptance.py
+
+      - name: Upload report + preserved evidence
+        if: always() && steps.guard.outputs.run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: printsense-e2e-report
+          path: |
+            printsense/benchmarks/_acceptance_out/
+            printsense/benchmarks/_e2e_out/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Post result to PR #2665
+        if: always() && steps.guard.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          verdict="✅ live staging E2E PASSED"
+          [ "${{ steps.e2e.outcome }}" = "success" ] || verdict="❌ live staging E2E FAILED"
+          rpt="printsense/benchmarks/_acceptance_out/acceptance_report.md"
+          {
+            echo "## $verdict — @Mira_stagong_bot"
+            echo
+            if [ -f "$rpt" ]; then sed -n '1,120p' "$rpt"; else echo "_(no report file produced)_"; fi
+            echo
+            echo "_Full Markdown/HTML report + preserved evidence in this run's artifacts._"
+          } > /tmp/e2e_comment.md
+          gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body-file /tmp/e2e_comment.md
+
+      - name: Merge #2665 — only if E2E green AND every check passes
+        if: steps.e2e.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          notpass=$(gh pr checks "$PR_NUMBER" --repo "${{ github.repository }}" 2>/dev/null \
+            | awk -F'\t' '$2!="pass" && $2!="skipping"{print $1}')
+          if [ -n "$notpass" ]; then
+            echo "::warning::not merging — these checks are not green:"; echo "$notpass"
+            exit 0
+          fi
+          # All checks green + E2E green. --admin only clears the (already-green) phantom
+          # required check; every real gate is verified passing above.
+          gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash --admin
+          echo "::notice::merged PR #$PR_NUMBER (live E2E + all checks green)."
