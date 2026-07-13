@@ -16,7 +16,8 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `TOGETHERAI_API_KEY`     | mira-bots, mira-pipeline (Together AI — third in cascade; OpenAI-compatible) |
 | `TOGETHERAI_MODEL`       | mira-bots, mira-pipeline — default: meta-llama/Llama-3.3-70B-Instruct-Turbo |
 | `TOGETHERAI_VISION_MODEL`| mira-bots, mira-pipeline — default: unset (image requests stay on Groq) |
-| ~~`ANTHROPIC_API_KEY`~~ | **REMOVED PR #610** — Anthropic dependency ripped out 2026-04-25; runtime silently ignores this key if set |
+| `ANTHROPIC_API_KEY` | **Print-vision ONLY** (owner-authorized, isolated) — the PrintSense electrical-print interpreter (`printsense/interpret.py`) calls Claude to read prints. **NOT** in the Groq→Cerebras→Together cascade, which stays No-Anthropic per PR #610. Inert unless `PRINT_VISION_PROVIDER=anthropic`. |
+| `PRINT_VISION_PROVIDER` | mira-bot-telegram — selects the electrical-print interpreter: `anthropic` (default; PrintSense Claude reader, needs `ANTHROPIC_API_KEY`) else the No-Anthropic OCR cascade. Optional tuning read by `printsense/interpret.py`: PRINT_VISION_MODEL (default claude-opus-4-8), PRINT_VISION_EFFORT, PRINT_VISION_MAX_TOKENS. |
 | ~~`CLAUDE_MODEL`~~      | **REMOVED PR #610** — see above |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |
 | `PIPELINE_API_KEY`   | mira-pipeline (bearer auth), mira-core (OPENAI_API_KEYS) |

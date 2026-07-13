@@ -246,6 +246,20 @@ jobs:
           pip install pyyaml pymupdf pillow
           pytest tests/test_machine_print_pack.py -v
 
+      - name: PrintSense interpreter + grader gate (hermetic, no Anthropic SDK)
+        # Guards printsense/ — the isolated Anthropic print interpreter (client
+        # mocked), the deterministic Telegram renderer, the SCU2 gold fixture, and
+        # the deterministic grader (P/R/F1 + confident-misread count + A-gate) on
+        # injected-error fixtures. NO anthropic SDK is installed here, so the paid
+        # API structurally cannot be called — real interpret runs happen off-CI and
+        # are promoted deliberately. Root tests/ is not collected wholesale, so this
+        # dir is named explicitly (like the steps above). Pillow exercises the
+        # preprocess resize path; pytesseract is intentionally absent (auto-rotate
+        # degrades gracefully).
+        run: |
+          pip install pydantic pillow
+          pytest tests/printsense/ -v
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only

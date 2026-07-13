@@ -431,6 +431,11 @@ services:
       - SESSION_RECORDING_PATH=/data/sessions
       - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
       - NTFY_TOPIC=${NTFY_TOPIC:-mira-staging-alerts}
+      # ISOLATED Anthropic print-vision interpreter (PrintSense). Inert until
+      # ANTHROPIC_API_KEY is added to Doppler factorylm/stg — until then the print
+      # path uses the No-Anthropic OCR cascade. Provider defaults to anthropic.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-anthropic}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions

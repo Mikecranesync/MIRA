@@ -921,21 +921,40 @@ async def _try_wiring_intake_reply(
 # fast path never writes to `wiring_connections`, never touches control, and
 # never persists anything — it reads the vision classification + OCR, calls
 # the inference cascade, and replies.
+def _print_interpreter_configured() -> bool:
+    """True when the isolated Anthropic PrintSynth interpreter is active
+    (``PRINT_VISION_PROVIDER=anthropic`` + ``ANTHROPIC_API_KEY``). Used only to
+    decide whether to ack the ~30-60 s interpretation; the engine re-checks
+    before calling Anthropic and falls back to the cascade when it's off.
+    """
+    return os.getenv("PRINT_VISION_PROVIDER", "anthropic") == "anthropic" and bool(
+        os.getenv("ANTHROPIC_API_KEY")
+    )
+
+
 async def _try_print_translator_reply(
+    raw_bytes: bytes,
     vision_bytes: bytes,
     caption: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> bool:
-    """Print Translator: an electrical-print photo + an "explain this / theory
-    of operation" caption -> a plain-English, OCR-grounded explanation of what
-    the circuit appears to do. Read-only generation — NO wiring DB writes, NO
-    control writes. Falls through (returns ``False``) for any caption that
-    isn't a print-explanation request, and for photos the vision worker does
-    NOT classify as ``ELECTRICAL_PRINT`` — so non-print photos and the
-    existing nameplate/drive and wiring-intake flows are untouched.
+    """Print Translator: an electrical-print photo + any print QUESTION (explain
+    / theory of operation, OR a device / wiring / tracing question like "what
+    devices are listed in this print?") -> a plain-English, OCR-grounded answer.
+    Read-only generation — NO wiring DB writes, NO control writes. Falls through
+    (returns ``False``) for any caption that isn't a print question, and for
+    photos the vision worker does NOT classify as ``ELECTRICAL_PRINT`` — so
+    non-print photos and the existing nameplate/drive and wiring-intake flows are
+    untouched.
+
+    Classification runs on the small ``vision_bytes`` (fast, local qwen), but the
+    Anthropic PrintSynth interpreter reads the FULL-RESOLUTION ``raw_bytes`` — the
+    print path must not be crushed to 1024 px, or Claude's high-res perception is
+    wasted (roadmap Phase 0.1). ``interpret.prepare_print_image`` then auto-uprights
+    and resizes it to the 2576 px vision budget.
     """
-    if not print_translator.is_theory_request(caption):
+    if not print_translator.is_print_question(caption):
         return False  # cheap reject, no vision call
 
     photo_b64 = base64.b64encode(vision_bytes).decode()
@@ -948,21 +967,26 @@ async def _try_print_translator_reply(
     if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
         return False  # not a print → fall through unchanged
 
-    messages = print_translator.build_theory_messages(photo_b64, vision_data)
-    try:
-        reply, _usage = await engine.router.complete(
-            messages,
-            max_tokens=1200,
-            session_id=str(update.effective_chat.id),
+    # Grounded answer: Anthropic PrintSynth interpreter first (deep, typed,
+    # never-invent), else the OCR-verbatim cascade. Both live in
+    # engine._grounded_print_reply, which always returns a display-ready string.
+    # Ack the ~30-60 s Anthropic interpretation so the tech isn't left staring at
+    # a silent chat.
+    if _print_interpreter_configured():
+        await update.message.reply_text(
+            "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…"
         )
-    except Exception as e:  # noqa: BLE001 — a malformed provider reply must not eat the turn
-        # router.complete's per-provider guard only catches _ProviderSkip, so a
-        # JSONDecodeError/KeyError on a malformed 200 can escape. Mirror the
-        # vision-call handling above: degrade to the graceful fallback, never crash.
-        logger.warning("print translator LLM call failed: %s", e)
-        reply = ""  # -> FALLBACK_REPLY via format_theory_reply
+    interpret_b64 = base64.b64encode(raw_bytes).decode()
+    async with typing_action(context, update.effective_chat.id):
+        reply = await engine._grounded_print_reply(
+            photo_b64,
+            caption,
+            vision_data,
+            str(update.effective_chat.id),
+            interpret_b64=interpret_b64,
+        )
     await update.message.reply_text(
-        print_translator.format_theory_reply(reply, vision_data.get("drawing_type"))
+        reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
     )
     return True
 
@@ -998,9 +1022,10 @@ async def _dispatch_single_photo(
 
     # Print Translator: read-only LLM explanation of an electrical print for
     # an "explain this / theory of operation" caption. Falls through
-    # unchanged for anything else. See `_try_print_translator_reply`
-    # docstring.
-    if await _try_print_translator_reply(vision_bytes, caption, update, context):
+    # unchanged for anything else. Passes the full-res raw_bytes so the
+    # Anthropic interpreter reads the print at Claude's high-res budget, not
+    # the 1024px-crushed vision_bytes. See `_try_print_translator_reply`.
+    if await _try_print_translator_reply(raw_bytes, vision_bytes, caption, update, context):
         return
 
     chat_id = str(update.effective_chat.id)

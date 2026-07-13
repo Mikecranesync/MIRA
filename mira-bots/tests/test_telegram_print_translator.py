@@ -80,7 +80,7 @@ class TestPrintTranslatorTrigger:
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         assert result is True
@@ -107,7 +107,7 @@ class TestPrintTranslatorTrigger:
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
 
         await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this circuit", update, context
+            b"fake-image-data", b"fake-image-data", "explain this circuit", update, context
         )
 
         mock_complete.assert_awaited_once()
@@ -134,7 +134,7 @@ class TestPrintTranslatorFallsThrough:
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this", update, context
+            b"fake-image-data", b"fake-image-data", "explain this", update, context
         )
 
         assert result is False
@@ -152,7 +152,7 @@ class TestPrintTranslatorFallsThrough:
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this diagram", update, context
+            b"fake-image-data", b"fake-image-data", "explain this diagram", update, context
         )
 
         assert result is False
@@ -172,7 +172,7 @@ class TestPrintTranslatorFallsThrough:
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "what drive is this?", update, context
+            b"fake-image-data", b"fake-image-data", "what drive is this?", update, context
         )
 
         assert result is False
@@ -191,7 +191,7 @@ class TestPrintTranslatorFallsThrough:
         monkeypatch.setattr(bot.engine.vision, "process", vision_process)
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "CV-101 add this wiring", update, context
+            b"fake-image-data", b"fake-image-data", "CV-101 add this wiring", update, context
         )
 
         assert result is False
@@ -213,7 +213,7 @@ class TestPrintTranslatorFallsThrough:
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         assert result is False
@@ -242,7 +242,7 @@ class TestGroundingContract:
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
 
         await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         messages = mock_complete.call_args[0][0]
@@ -268,7 +268,7 @@ class TestGroundingContract:
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
 
         await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         messages = mock_complete.call_args[0][0]
@@ -297,7 +297,7 @@ class TestGroundingContract:
         monkeypatch.setattr(bot.engine.router, "complete", _mock_router_complete(canned_reply))
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         assert result is True
@@ -330,7 +330,7 @@ class TestNoWrites:
         monkeypatch.setattr(bot.engine.router, "complete", _mock_router_complete())
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         assert result is True  # ran fine, write helper never touched
@@ -355,7 +355,7 @@ class TestNoWrites:
         monkeypatch.setattr(bot.engine.router, "complete", _mock_router_complete())
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         assert result is True
@@ -380,7 +380,7 @@ class TestNoWrites:
         monkeypatch.setattr(bot.engine.router, "complete", _mock_router_complete())
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         assert result is True
@@ -405,7 +405,7 @@ class TestLLMFailure:
         monkeypatch.setattr(bot.engine.router, "complete", AsyncMock(return_value=("", {})))
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         assert result is True
@@ -432,7 +432,7 @@ class TestLLMFailure:
         )
 
         result = await bot._try_print_translator_reply(
-            b"fake-image-data", "explain this print", update, context
+            b"fake-image-data", b"fake-image-data", "explain this print", update, context
         )
 
         assert result is True
