@@ -1141,3 +1141,8 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 - Scorecard: 50/57 passing (88%) — from 2026-07-12T0234 run (up 5 from 2026-07-11's 45/57)
 - Action: issue-filed (commented on #1876)
 - Multi-file cluster hard stop, third night running: 6 patchable failures span engine.py (5 fixtures — FSM stuck at Q1 instead of Q2 ×3, DIAGNOSIS_REVISION not reaching RESOLVED on the CMMS WO fixture, IDLE not entering Q1) + guardrails.py/prompts (2 keyword misses, incl. gs3_ground_fault_14 falling to the KB-miss clarification). 1 non-patchable wrong-vendor citation (ABB ACS580 fixture citing Rockwell pflex manual). The Q1→Q2 progression cluster is the recurring highest-leverage fix; diagnosis + next steps in issue comment.
+
+## eval-fixer run — 2026-07-13
+- Scorecard: 47/57 passing (82%) — from 2026-07-13T0120 run (down 3 from 2026-07-12's 50/57)
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop, **fourth night running**: 10 patchable failures span engine.py (7 fixtures — FSM pacing: Q1→Q2 stall on vague/abbreviated openers ×3, Q2→DIAGNOSIS short ×2, IDLE-not-entering-Q1, Q2→Q3 short) + guardrails.py/prompts (4 keyword misses). **Infra caveat:** 2 of those (`pf520_hw_overcurrent_17`, `yaskawa_j1000_thermal_24`) ended on the "taking longer than usual" timeout placeholder — LLM-latency flakes, not logic; real failure count is likely ~8. The engine.py Q1→Q2→…→DIAGNOSIS pacing cluster is the same recurring highest-leverage human fix (4th night). Genuine cluster-B misses (gs3_ground_fault_14, lenze_thermal_30) look like KB-gap over-trigger routing thermal/ground-fault to the generic manufacturer prompt. Diagnosis + next steps in issue comment.
