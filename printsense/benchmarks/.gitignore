@@ -1,0 +1,6 @@
+# Derived / large eval images — the JSON graphs, grades, and summaries are the
+# durable, reviewable artifacts. Source photos live outside the repo.
+_eval_inputs/
+*.jpg
+*.jpeg
+*.png

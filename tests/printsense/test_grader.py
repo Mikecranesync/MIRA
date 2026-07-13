@@ -154,6 +154,18 @@ def test_trust_violation_fails_hard():
     assert r["letter"] == "F"
 
 
+def test_machine_verified_is_not_a_trust_violation():
+    """machine_verified is a legitimate Phase-3 state (earned by independent
+    agreement) — NOT a machine trust violation; only human_verified is."""
+    g = _perfect_graph()
+    g["devices"][0]["trust"] = "machine_verified"
+    r = grader.grade(g, _RUBRIC)
+    assert r["trust_violations"] == 0
+    assert r["scores"]["honesty"] > 0
+    assert r["gates"]["zero_trust_violations"] is True
+    assert r["letter"] != "F"
+
+
 def test_missing_pydantic_not_required():
     """Grader operates on plain dicts/JSON — no pydantic import needed."""
     r = grader.grade(json.dumps(_perfect_graph()), _RUBRIC)

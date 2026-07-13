@@ -1,0 +1,4 @@
+01_sheet20_upright: [4000, 3000]->[2576, 1932]  lat=89.8s  tok=8570/8966  $0.267  unreadable=5  GRADE=95.1/A misreads=0 devF1=0.8 wireF1=1.0 isA=False
+03_sheet20_lowres: [1100, 825]->[1100, 825]  lat=91.0s  tok=5030/8766  $0.2443  unreadable=6  GRADE=86.3/B misreads=0 devF1=0.8 wireF1=1.0 isA=False
+04_scu2_sheet5: [4000, 3000]->[2576, 1932]  lat=111.8s  tok=8570/11228  $0.3236  unreadable=5
+05_unrelated_print: [4000, 3000]->[2576, 1932]  lat=54.2s  tok=8570/4586  $0.1575  unreadable=6  hallucinated_SCU2=NONE (good)
