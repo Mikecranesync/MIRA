@@ -145,6 +145,7 @@ def run_one(src: dict, args) -> dict:
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     log.addHandler(fh)
     log.addHandler(logging.StreamHandler(sys.stderr))
+    log.propagate = False  # don't double-echo through the root logger (keeps send-count logs unambiguous)
 
     row = {"test_id": test_id, "source_url": src.get("source_url"), "category": src.get("category"),
            "standard": src.get("standard"), "status": "started", "score": None,

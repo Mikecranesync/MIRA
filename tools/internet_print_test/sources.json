@@ -74,13 +74,13 @@
     "source_url": "https://cache.industry.siemens.com/dl/files/885/67585885/att_37825/v1/manual_safety_relay_3SK1_en-US.pdf",
     "publisher": "Siemens",
     "title": "SIRIUS 3SK1 Safety Relay Manual (67585885)",
-    "sheet": "Ch.2 terminal arrangement & example circuits",
+    "sheet": "Ch.7.2 Typical circuits — Emergency-stop two-channel, monitored start (Typical circuit 8)",
     "equipment_type": "Modular IEC safety relay",
-    "standard": "ISO 13849-1 PLe",
+    "standard": "ISO 13849-1 PLe / IEC 62061 SIL3",
     "category": "safety_relay",
-    "page": 110,
-    "caption": "Explain this safety circuit and what it protects.",
-    "why_selected": "Siemens 3SK1 modular safety relay with dual-channel monitoring, E-stop input and controlled output. Page 110 is the campaign-verified rendered schematic page (corpus_manifest.md first-10, entry #12). Publicly published on cache.industry.siemens.com; provenance verified 2026-07-10.",
+    "page": 127,
+    "caption": "Explain this circuit.",
+    "why_selected": "Page index 127 is a genuine 3SK1 typical safety circuit (verified by render 2026-07-13): EMERGENCY-STOP two-channel with cross-circuit detection and monitored start — A1/A2, INK, T1/IN1/T2/IN2, INF/INS, Q1/Qn enabling outputs to motor M, DIP-switch config, and PRINTED ratings 'Up to PL e (ISO 13849-1)' and 'SIL 3 (IEC 62061)'. Unlike the Banner datasheet (no PL printed), here the PL/SIL ARE on the sheet — a direct test of reading a printed Performance Level vs. inventing one. Original page 110 was a system-configuration TEXT page (unsuitable). Caption 'Explain this circuit.' satisfies the production is_print_question() gate. Publicly published on cache.industry.siemens.com; provenance verified 2026-07-10.",
     "license_note": "Publicly published OEM literature; ownership retained by Siemens; retained only for read-only interpreter testing."
   },
   {

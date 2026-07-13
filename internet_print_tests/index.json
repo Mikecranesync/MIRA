@@ -37,5 +37,18 @@
     "classification": "ELECTRICAL_PRINT",
     "interpreter_used": true,
     "elapsed_s": 248.9
+  },
+  {
+    "test_id": "abb-star-delta-starter",
+    "source_url": "https://library.e.abb.com/public/ac6b6e46df1ea3e6c1256e35004c9145/Star-delta%20Starters%20Open%20Type_technical%20data.pdf",
+    "category": "contactor",
+    "standard": "IEC 60947-4-1",
+    "status": "ok",
+    "score": 78,
+    "hard_failure": false,
+    "email": "sent",
+    "classification": "ELECTRICAL_PRINT",
+    "interpreter_used": true,
+    "elapsed_s": 228.0
   }
 ]
