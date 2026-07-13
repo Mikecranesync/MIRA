@@ -246,3 +246,23 @@ def test_response_txt_is_byte_faithful_no_crlf(tmp_path, monkeypatch):
     raw = (tmp_path / "out" / "crlf-fixture" / "telegram_response.txt").read_bytes()
     assert b"\r\n" not in raw  # no Windows CRLF
     assert raw.decode("utf-8") == multiline  # byte-identical to the model's final_text
+
+
+def test_email_body_is_concise_summary_not_full_dump():
+    src = {"test_id": "x", "title": "ACME Starter WD", "publisher": "ACME",
+           "source_url": "https://acme.example/x.pdf", "equipment_type": "NEMA starter",
+           "category": "motor_starter", "standard": "NEMA"}
+    result = {"final_text": "📋 A big verbatim response\n" + ("blah " * 500) +
+              "\n⚠️ Verify voltage before working the strip.", "model": "claude-opus-4-8", "latency_s": 12.3}
+    jr = {"overall_score_provisional": 88, "letter": "B", "hard_failure": False,
+          "verified_strengths": ["Read L1/L2/L3 correctly", "Flagged the unstated voltage"],
+          "suspected_errors_or_hallucinations": [{"claim": "merged M and LB", "why": "distinct symbols"}],
+          "criteria": {"safety_language": {"note": "Correctly warned to verify voltage first."}},
+          "judge_model": "claude-sonnet-5"}
+    body = runner._email_summary_html(src, result, jr)
+    assert "88/100" in body and "ACME Starter WD" in body and "NEMA starter" in body  # key results
+    assert "Read L1/L2/L3 correctly" in body  # a strength
+    assert "merged M and LB" in body          # an important error
+    assert "verify voltage" in body.lower()   # safety-performance note
+    assert "blah blah blah" not in body       # the 500-word verbatim body is NOT dumped
+    assert len(body) < 4000                   # a scannable card, not a wall of text

@@ -125,7 +125,7 @@ def _grade_and_deliver(td: Path, source_json: dict, result: dict, tested: bytes,
     (td / "report.md").write_text(report_md, encoding="utf-8")
     (td / "report.html").write_text(report_html, encoding="utf-8")
 
-    row["email"] = _deliver(td, source_json, result, jr, report_html, args, log)
+    row["email"] = _deliver(td, source_json, result, jr, args, log)
     row["status"] = "ok"
     row["score"] = (jr or {}).get("overall_score_provisional")
     row["hard_failure"] = (jr or {}).get("hard_failure")
@@ -219,14 +219,64 @@ def _subject(source_json: dict, jr: dict) -> str:
     return f"MIRA Print Translator Test — {source_json['test_id']} — {title} — {score_s}"
 
 
-def _deliver(td: Path, source_json: dict, result: dict, jr: dict, report_html: str, args, log) -> str:
-    files = [td / "tested_page.png", td / "report.html", td / "telegram_response.json"]
+def _email_summary_html(source_json: dict, result: dict, jr: dict) -> str:
+    """A concise, readable email body — the key results, NOT the full test dump.
+
+    The full verbatim response + report + graph ride along as ATTACHMENTS; the body is a
+    scannable card: title/source, system type, score/grade/hard-fail, what was understood,
+    the important errors/uncertainties, and safety-performance notes.
+    """
+    import html as _html
+
+    e = _html.escape
+    score = jr.get("overall_score_provisional")
+    score_s = f"{score}/100" if isinstance(score, int) else "ungraded"
+    letter = jr.get("letter") or "—"
+    hard = jr.get("hard_failure")
+    hard_s, hard_color = ("YES", "#c0392b") if hard else ("No", "#2e7d32")
+    strengths = (jr.get("verified_strengths") or [])[:3]
+    errors = (jr.get("suspected_errors_or_hallucinations") or [])[:3]
+    safety_note = ((jr.get("criteria") or {}).get("safety_language") or {}).get("note") \
+        or "No specific safety-language note recorded by the judge."
+    warn = next((ln.strip() for ln in (result.get("final_text") or "").splitlines()
+                 if ln.strip().startswith("⚠")), "")
+    url = source_json.get("source_url") or ""
+    str_li = "".join(f"<li>{e(str(s))}</li>" for s in strengths) or "<li>None recorded.</li>"
+    err_li = "".join(
+        f"<li>{e((h.get('claim') or '')[:220])} — <span style='color:#666'>{e((h.get('why') or '')[:260])}</span></li>"
+        for h in errors) or "<li>None flagged by the independent judge.</li>"
+    return f"""<div style="font:15px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;color:#222">
+<h2 style="margin:0 0 2px">{e(source_json.get('title') or source_json['test_id'])}</h2>
+<div style="color:#555;font-size:13px">{e(source_json.get('publisher') or '')} · <a href="{e(url)}" style="color:#3949ab">source</a></div>
+<div style="margin:6px 0 14px;color:#555;font-size:13px"><b>System / circuit:</b> {e(source_json.get('equipment_type') or '')} · {e(source_json.get('category') or '')} · {e(source_json.get('standard') or '')}</div>
+<table style="border-collapse:collapse;margin:0 0 4px"><tr>
+<td style="padding:8px 14px;background:#f5f5f7;border-radius:8px;font-size:22px;font-weight:700">{e(score_s)} <span style="font-size:15px;color:#666">({e(letter)})</span></td>
+<td style="padding:8px 14px">Hard failure: <b style="color:{hard_color}">{hard_s}</b></td>
+</tr></table>
+<div style="font-size:12px;color:#999;margin-bottom:14px">PROVISIONAL automated grade — not technician approval until the rubric is calibrated.</div>
+<h3 style="margin:14px 0 4px;font-size:15px">✅ Understood correctly</h3>
+<ul style="margin:0;padding-left:20px">{str_li}</ul>
+<h3 style="margin:14px 0 4px;font-size:15px">⚠️ Most important errors / uncertainties</h3>
+<ul style="margin:0;padding-left:20px">{err_li}</ul>
+<h3 style="margin:14px 0 4px;font-size:15px">🛟 Safety-performance notes</h3>
+<div style="font-size:14px">{e(safety_note)}</div>
+{("<div style='font-size:13px;color:#555;margin-top:4px'>Interpreter safety line: " + e(warn) + "</div>") if warn else ""}
+<hr style="border:none;border-top:1px solid #eee;margin:16px 0">
+<div style="font-size:12px;color:#888"><b>Attached:</b> original diagram · tested page (PNG) · full report (report.html) · judge result (judge_1.json) · verbatim response (telegram_response.json).<br>
+{e(source_json['test_id'])} · judge {e(jr.get('judge_model') or 'n/a')} · interpret {e(result.get('model') or '')} {e(str(result.get('latency_s') or ''))}s · {e(_utc())}</div>
+</div>"""
+
+
+def _deliver(td: Path, source_json: dict, result: dict, jr: dict, args, log) -> str:
+    # Attachments = the approved test package: the drawing + the supporting eval files.
+    files = [td / "tested_page.png", td / "report.html", td / "judge_1.json", td / "telegram_response.json"]
     orig = next(td.glob("original.*"), None)
     if orig:
         files.insert(0, orig)
     subject = _subject(source_json, jr)
     recipient = args.recipient or mailer.default_recipient()
-    pkg = mailer.build_package(subject, report_html, recipient, files)
+    body = _email_summary_html(source_json, result, jr)  # concise summary, NOT the full dump
+    pkg = mailer.build_package(subject, body, recipient, files)
     mailer.write_dry_run(td / "_email", pkg)
     log.info("email package built:\n%s", mailer.package_summary(pkg))
     if args.send_email:
