@@ -114,6 +114,34 @@ def test_default_safety_is_measurement_specific_and_has_closing():
     assert 'Reply "map"' in text
 
 
+def test_long_brief_truncates_body_but_never_the_safety_footer():
+    """A brief too long for one Telegram message must trim the BODY, never the
+    footer: the safety note, measurement closing, uncertainty, and map hint always
+    survive. (This is the failure the corpus harness caught on the 9-signal sheet —
+    the closing was being dropped when the body overflowed 3500 chars.)"""
+    g = _graph_with_brief()
+    # Blow the body well past the 3500-char budget with many long signal lines.
+    g.brief.key_signals = [
+        type(g.brief.key_signals[0])(
+            signal=f"Sensor Unit {i} reports a broken feedback loop to the downstream marshalling controller",
+            tag=f"LOK{i}",
+            terminal=f"-X4:{i}",
+            destination=f"DA5 controller (sheet 10.{i})",
+        )
+        for i in range(60)
+    ]
+    text = render.format_graph_for_telegram(g)
+
+    assert len(text) <= 3600                                    # still within the Telegram limit
+    assert 'reply "map")' in text.lower()                       # the BODY was actually truncated
+    # …yet every footer element survived intact:
+    assert "de-energize, lock out, and verify absence of voltage" in text  # measurement-specific safety
+    assert render._CLOSING in text                              # the closing line
+    assert 'Reply "map"' in text                                # the map affordance
+    assert "Couldn't confirm" in text                           # uncertainty never dropped
+    assert "DA5.x destination suffixes are blurred" in text
+
+
 # ── on-request map: exact designations, uncertainty kept ─────────────────────
 
 

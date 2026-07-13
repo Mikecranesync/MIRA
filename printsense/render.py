@@ -62,37 +62,41 @@ def format_graph_for_telegram(graph: PrintSynthGraph) -> str:
         return format_map_for_telegram(graph)
 
     b = graph.brief
-    out: list[str] = [f"📋 {b.sheet_title.strip()}" if b.sheet_title else _pkg_header(graph.package or {})]
+    # BODY (truncatable if the sheet is huge): title → purpose → signals → devices
+    #  → troubleshooting → uncertainty.
+    body: list[str] = [f"📋 {b.sheet_title.strip()}" if b.sheet_title else _pkg_header(graph.package or {})]
 
     if b.purpose:  # 2. what the circuit/sheet does
-        out += ["", b.purpose.strip()]
+        body += ["", b.purpose.strip()]
 
     if b.key_signals:  # 3. complete signals (plain), then devices
-        out += ["", "🔑 Signals"]
-        out += [f"• {s.signal.strip()}" for s in b.key_signals if s.signal]
+        body += ["", "🔑 Signals"]
+        body += [f"• {s.signal.strip()}" for s in b.key_signals if s.signal]
     if b.key_devices:
-        out += ["", "🔧 Devices"]
-        out += [
-            f"• {d.device.strip()}" + (f" ({d.tag})" if d.tag else "")
-            for d in b.key_devices
-            if d.device
-        ]
+        body += ["", "🔧 Devices"]
+        body += [f"• {d.device.strip()}" + (f" ({d.tag})" if d.tag else "") for d in b.key_devices if d.device]
 
     if b.troubleshooting_example:  # 4. one grounded troubleshooting example
-        out += ["", "🩺 If you're chasing a fault", b.troubleshooting_example.strip()]
+        body += ["", "🩺 If you're chasing a fault", b.troubleshooting_example.strip()]
 
-    if b.unresolved_items:  # uncertainty is surfaced in the DEFAULT too — never hidden
-        out += ["", "❓ Couldn't confirm (verify on the sheet):"]
-        out += [f"• {u.strip()}" for u in b.unresolved_items[:4] if u]
+    # FOOTER (never dropped): uncertainty → measurement-specific safety → closing → reply 'map'.
+    footer: list[str] = []
+    if b.unresolved_items:  # uncertainty is surfaced in the DEFAULT — never hidden, never truncated
+        footer += ["❓ Couldn't confirm (verify on the sheet):"]
+        footer += [f"• {u.strip()}" for u in b.unresolved_items[:4] if u]
         if len(b.unresolved_items) > 4:
-            out.append(f"…and {len(b.unresolved_items) - 4} more (see 'map')")
+            footer.append(f"…and {len(b.unresolved_items) - 4} more (see 'map')")
+        footer.append("")
+    if b.safety_context:  # 5. safety
+        footer += [f"⚠️ {b.safety_context.strip()}"]
+    footer += [f"🔎 {_CLOSING}", "", _MAP_HINT]  # closing + 6. reply 'map'
+    footer_str = "\n".join(footer)
 
-    if b.safety_context:  # 5. measurement-specific safety, then the concise closing
-        out += ["", f"⚠️ {b.safety_context.strip()}"]
-    out += ["", f"🔎 {_CLOSING}"]
-
-    out += ["", _MAP_HINT]  # 6. reply 'map'
-    return _truncate("\n".join(out))
+    body_str = "\n".join(body)
+    budget = _TG_LIMIT - len(footer_str) - 6
+    if len(body_str) > budget:  # trim the middle, keep the safety/closing/map footer intact
+        body_str = body_str[:budget].rsplit("\n", 1)[0] + '\n… (more — reply "map")'
+    return body_str + "\n\n" + footer_str
 
 
 # ── on-request "map": the exact designations ─────────────────────────────────
