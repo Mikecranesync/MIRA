@@ -1,46 +1,49 @@
 name: PrintSense E2E autopilot (staging)
 
-# SELF-DRIVING live Telegram staging E2E for PR #2665.
+# SELF-DRIVING, ROUTE-AWARE, SHA-PINNED live Telegram staging E2E for PR #2665.
 #
-# On a schedule (and on demand) it POLLS Doppler stg for TELEGRAM_TEST_SESSION. While
-# that secret is absent it SKIPS CLEANLY (no failure) and retries next tick. Once the
-# operator has created the session (one-time interactive login on their side), it:
-#   1. checks out the PR branch (which carries the E2E code + the committed sha-pinned
-#      corpus images, so no laptop and no external sync are needed),
-#   2. installs tesseract (auto-rotate parity with prod) + deps,
-#   3. runs the 7-check staging E2E against @Mira_stagong_bot via `doppler run`
-#      (print routing, nameplate routing, plain-English reply, map reply, rotated image,
-#       degraded image, zero confident misreads, protected safety/uncertainty footer),
-#   4. uploads the Markdown/HTML report + preserved evidence,
-#   5. posts the result to PR #2665,
-#   6. MERGES #2665 only if the E2E passed AND every check on the PR is green.
+# Pre-release / manual only — NOT triggered by releases. On a schedule (and on demand)
+# it POLLS Doppler stg for TELEGRAM_TEST_SESSION *while PR #2665 is open*; it SKIPS
+# CLEANLY while the session is absent or the PR is already closed/merged (polling then
+# self-stops). When the session is present it:
+#   1. reads the PR HEAD SHA and checks out that EXACT immutable commit (not the branch),
+#   2. installs tesseract (auto-rotate parity) + deps,
+#   3. FETCHES the protected corpus from controlled staging storage via Doppler config
+#      (tools/printsense_corpus_sync.py) — sha-verified, fail-closed; images are NOT in git,
+#   4. runs the 7-check route-aware E2E against @Mira_stagong_bot via `doppler run`
+#      (print routing + map, nameplate routing WITHOUT map, rotated, degraded, plain-English,
+#       zero confident misreads, protected footer),
+#   5. uploads the Markdown/HTML report + preserved evidence,
+#   6. posts the result — with the exact tested SHA — to PR #2665,
+#   7. re-reads the PR head; if it changed, marks the run STALE and does NOT merge,
+#   8. otherwise enables NORMAL head-guarded GitHub auto-merge which merges only when branch
+#      protection is satisfied — no admin override, no gate bypass. If auto-merge is
+#      unavailable it stops and requires a normal human merge.
 #
-# All credentials load from Doppler (factorylm/stg). The Telegram session is used only
-# inside the Telethon client process — never echoed, never written to a log or artifact.
-# This workflow deploys NOTHING and never touches production secrets.
+# Credentials load from Doppler only. TELEGRAM_TEST_SESSION is used in-process and is
+# NEVER printed, logged, uploaded, posted, or passed as a CLI argument. Branch protection
+# is never bypassed. This workflow deploys nothing and touches no production secret.
 
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "*/30 * * * *" # every 30 min — poll for the staging session, then self-complete
-  release:
-    types: [published]
+    - cron: "*/30 * * * *" # poll only while #2665 is open + the session is absent
 
 concurrency:
   group: printsense-e2e-autopilot
   cancel-in-progress: false
 
+# Least privilege: read the repo; comment on + (auto-)merge the one PR. No more.
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
 env:
   PR_NUMBER: "2665"
-  PR_BRANCH: "feat/printsense-test-harness"
 
 jobs:
   autopilot:
-    name: Live staging E2E → auto-merge #2665
+    name: Route-aware staging E2E (SHA-pinned) → normal auto-merge #2665
     runs-on: ubuntu-latest
     environment: staging # inherits DOPPLER_TOKEN → factorylm/stg
     timeout-minutes: 35
@@ -51,42 +54,42 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
           if [ -z "${DOPPLER_TOKEN:-}" ]; then
-            echo "::notice::DOPPLER_TOKEN absent — skipping."
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          fi
+            echo "::notice::DOPPLER_TOKEN absent — skipping."; echo "ok=false" >> "$GITHUB_OUTPUT"
+          else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
 
       - name: Install Doppler CLI
         if: steps.doppler.outputs.ok == 'true'
         uses: dopplerhq/cli-action@v4
 
-      - name: Guard — PR still open AND session present
+      - name: Guard — PR open, session present, corpus configured; capture HEAD SHA
         id: guard
         if: steps.doppler.outputs.ok == 'true'
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          state=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json state --jq .state 2>/dev/null || echo UNKNOWN)
+          read -r state head < <(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" \
+            --json state,headRefOid --jq '"\(.state) \(.headRefOid)"' 2>/dev/null || echo "UNKNOWN -")
           if [ "$state" != "OPEN" ]; then
-            echo "::notice::PR #$PR_NUMBER is $state — nothing to do."
-            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            echo "::notice::PR #$PR_NUMBER is $state — polling stops cleanly."; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # Presence check only — the value is NEVER printed.
-          if doppler secrets --project factorylm --config stg --only-names 2>/dev/null | tr ' \t' '\n\n' | grep -qx "TELEGRAM_TEST_SESSION"; then
-            echo "::notice::TELEGRAM_TEST_SESSION present — running the live E2E."
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::TELEGRAM_TEST_SESSION absent — skipping cleanly; will retry next schedule."
-            echo "run=false" >> "$GITHUB_OUTPUT"
+          names=$(doppler secrets --project factorylm --config stg --only-names 2>/dev/null | tr ' \t' '\n\n')
+          # Presence checks only — values are NEVER printed.
+          if ! echo "$names" | grep -qx "TELEGRAM_TEST_SESSION"; then
+            echo "::notice::TELEGRAM_TEST_SESSION absent — skip; retry next schedule."; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
+          if ! echo "$names" | grep -qxE "PRINTSENSE_CORPUS_URL|PRINTSENSE_CORPUS_DIR"; then
+            echo "::notice::protected-corpus source not configured (PRINTSENSE_CORPUS_URL/DIR) — skip."; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "::notice::session + corpus present — running E2E against PR head $head"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout PR branch (E2E code + committed corpus)
+      - name: Checkout the EXACT PR head SHA (immutable, not the branch)
         if: steps.guard.outputs.run == 'true'
         uses: actions/checkout@v5
         with:
-          ref: ${{ env.PR_BRANCH }}
+          ref: ${{ steps.guard.outputs.head_sha }}
 
       - uses: actions/setup-python@v6
         if: steps.guard.outputs.run == 'true'
@@ -99,12 +102,20 @@ jobs:
           sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
           pip install pydantic pillow anthropic telethon pytesseract
 
-      - name: Run the 7-check staging E2E + acceptance report
+      - name: Fetch + verify the protected corpus (Doppler-injected source, fail-closed)
+        if: steps.guard.outputs.run == 'true'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          PRINTSENSE_CORPUS_IMAGES: ${{ runner.temp }}/corpus
+        run: doppler run -- python tools/printsense_corpus_sync.py --require
+
+      - name: Run the 7-check route-aware staging E2E + acceptance report
         id: e2e
         if: steps.guard.outputs.run == 'true'
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           PRINT_VISION_PROVIDER: anthropic
+          PRINTSENSE_CORPUS_IMAGES: ${{ runner.temp }}/corpus
           # ANTHROPIC_API_KEY + TELEGRAM_TEST_{API_ID,API_HASH,SESSION} come from
           # factorylm/stg via `doppler run` — used in-process only, never logged.
         run: doppler run -- python tools/printsense_acceptance.py
@@ -113,17 +124,18 @@ jobs:
         if: always() && steps.guard.outputs.run == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: printsense-e2e-report
+          name: printsense-e2e-report-${{ steps.guard.outputs.head_sha }}
           path: |
             printsense/benchmarks/_acceptance_out/
             printsense/benchmarks/_e2e_out/
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Post result to PR #2665
+      - name: Post result to PR #2665 (with the tested SHA)
         if: always() && steps.guard.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TESTED_SHA: ${{ steps.guard.outputs.head_sha }}
         run: |
           verdict="✅ live staging E2E PASSED"
           [ "${{ steps.e2e.outcome }}" = "success" ] || verdict="❌ live staging E2E FAILED"
@@ -131,24 +143,34 @@ jobs:
           {
             echo "## $verdict — @Mira_stagong_bot"
             echo
+            echo "Tested commit (immutable): \`$TESTED_SHA\`"
+            echo
             if [ -f "$rpt" ]; then sed -n '1,120p' "$rpt"; else echo "_(no report file produced)_"; fi
             echo
-            echo "_Full Markdown/HTML report + preserved evidence in this run's artifacts._"
+            echo "_Full report + preserved evidence in this run's artifacts (30-day retention)._"
           } > /tmp/e2e_comment.md
           gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body-file /tmp/e2e_comment.md
 
-      - name: Merge #2665 — only if E2E green AND every check passes
+      - name: Enable NORMAL auto-merge — E2E green, head unchanged, no bypass
         if: steps.e2e.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TESTED_SHA: ${{ steps.guard.outputs.head_sha }}
         run: |
-          notpass=$(gh pr checks "$PR_NUMBER" --repo "${{ github.repository }}" 2>/dev/null \
-            | awk -F'\t' '$2!="pass" && $2!="skipping"{print $1}')
-          if [ -n "$notpass" ]; then
-            echo "::warning::not merging — these checks are not green:"; echo "$notpass"
+          # Stale guard: the PR head must still equal the exact commit we tested.
+          now=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid)
+          if [ "$now" != "$TESTED_SHA" ]; then
+            echo "::warning::PR head moved ($TESTED_SHA → $now) — run is STALE; not merging. Re-run the E2E."
+            gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" \
+              --body "⚠️ E2E was run against \`$TESTED_SHA\` but the PR head is now \`$now\`. Marking the run **stale** — not merging. Re-run the E2E against the new head."
             exit 0
           fi
-          # All checks green + E2E green. --admin only clears the (already-green) phantom
-          # required check; every real gate is verified passing above.
-          gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash --admin
-          echo "::notice::merged PR #$PR_NUMBER (live E2E + all checks green)."
+          # Normal GitHub auto-merge, head-guarded, no admin override — merges only when
+          # branch protection is satisfied (all required checks green). Never bypasses a gate.
+          if gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash --auto --match-head-commit "$TESTED_SHA"; then
+            echo "::notice::normal auto-merge enabled for #$PR_NUMBER at $TESTED_SHA (merges when checks pass; no bypass)."
+          else
+            echo "::warning::auto-merge unavailable — E2E is green; a normal human merge is required."
+            gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" \
+              --body "✅ Live E2E is green against \`$TESTED_SHA\`, but GitHub auto-merge is unavailable. **Merge manually via the normal button once all required checks are green** (no admin bypass)."
+          fi

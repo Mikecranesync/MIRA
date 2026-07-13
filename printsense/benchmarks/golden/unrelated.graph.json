@@ -1,0 +1,352 @@
+{
+  "package": {
+    "drawing_number": null,
+    "cabinet": null,
+    "sheet": null,
+    "note": "This is a field/panel photograph, not a schematic sheet — there is NO title block, drawing number, or sheet identifier visible. Content is a physically installed PLC and its terminal/wiring, read directly off the hardware.",
+    "unit_chain": null
+  },
+  "devices": [
+    {
+      "tag": "2080-LC20-20QBB",
+      "type": "PLC controller",
+      "detail": "Allen-Bradley Micro820 programmable controller (20-point). Nameplate reads 'AB Allen-Bradley', 'Micro820', catalog '2080-LC20-20QBB'.",
+      "connects": [],
+      "evidence": "Front label: 'AB Allen-Bradley', 'Micro820™', '2080-LC20-20QBB'",
+      "confidence": 0.97,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "adjacent module (expansion/relay?)",
+      "detail": "Two/three light-gray modules mounted on the DIN rail to the right of the Micro820; no legible catalog or tag text visible. Function not determinable from photo.",
+      "connects": [],
+      "evidence": "Gray rectangular modules right of the controller; no printed markings visible",
+      "confidence": 0.4,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "DIN rail / mounting hardware",
+      "detail": "Metal DIN rail and gray DIN-rail end/mounting clips visible; carries the mounted assembly.",
+      "connects": [],
+      "evidence": "Steel DIN rail and gray plastic rail clips at right and behind modules",
+      "confidence": 0.6,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "terminals": [
+    {
+      "tag": "UNREADABLE",
+      "type": "input terminal block (green, pluggable)",
+      "detail": "Upper green pluggable screw-terminal strips on the Micro820 for the embedded inputs; individual terminal numbers not legible in photo.",
+      "connects": [],
+      "evidence": "Green terminal blocks with slotted screws above the controller face; blue conductors landed",
+      "confidence": 0.55,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "output/field terminal block (green, pluggable)",
+      "detail": "Lower green pluggable screw-terminal strip spanning under the modules; many slotted screws, blue and white/cream conductors landed. Terminal numbers not legible.",
+      "connects": [],
+      "evidence": "Long green terminal strip along the bottom with numerous slotted terminal screws",
+      "confidence": 0.55,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "conductors": [
+    {
+      "tag": "UNREADABLE",
+      "type": "field wire (blue)",
+      "detail": "Multiple blue single conductors routed to the upper and lower terminal blocks. No wire numbers legible.",
+      "connects": [],
+      "evidence": "Blue insulated conductors entering terminal blocks",
+      "confidence": 0.5,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "cable (white/cream jacketed)",
+      "detail": "White/cream jacketed multi-conductor cable(s) bundled with a cable tie, routed past the modules to the lower terminal strip. Purpose not identifiable from photo.",
+      "connects": [],
+      "evidence": "White/cream jacketed cable bundle with white zip tie",
+      "confidence": 0.5,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "cables": [],
+  "contacts": [],
+  "power_domains": [
+    {
+      "tag": "24VDC",
+      "type": "24V DC control supply",
+      "detail": "Micro820 controller 24VDC input power rail (panel supply).",
+      "connects": [],
+      "evidence": "24VDC supply labelling on the Micro820 control panel",
+      "confidence": 0.7,
+      "trust": "proposed"
+    }
+  ],
+  "pe_bonds": [],
+  "off_page_references": [],
+  "plc_io_channels": [
+    {
+      "tag": "IN 0..11",
+      "type": "embedded digital input channels (status LEDs)",
+      "detail": "Front-panel input LED map labelled 0 1 2 3 4 5 / 6 7 8 9 10 11 under heading 'IN' — 12 embedded input points/indicators.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Front label rows '0 1 2 3 4 5', '6 7 8 9 10 11', 'IN'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "OUT 0..6",
+      "type": "embedded digital output channels (status LEDs)",
+      "detail": "Front-panel output LED map labelled 0 1 2 3 / 4 5 6 under heading 'OUT' — 7 embedded output points/indicators.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Front label rows '0 1 2 3', '4 5 6', 'OUT'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "RUN",
+      "type": "status LED",
+      "detail": "Controller RUN status indicator.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Front label cell 'RUN'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "FAULT",
+      "type": "status LED",
+      "detail": "Controller FAULT status indicator.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Front label cell 'FAULT'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "FORCE",
+      "type": "status LED",
+      "detail": "Force-active status indicator.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Front label cell 'FORCE'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "COMM",
+      "type": "status LED",
+      "detail": "Serial/communication status indicator.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Front label cell 'COMM'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "ENET",
+      "type": "status LED",
+      "detail": "Ethernet link/activity status indicator.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Front label cell 'ENET'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "SD",
+      "type": "status LED",
+      "detail": "SD (memory card) status indicator.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Front label cell 'SD'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "network_links": [
+    {
+      "tag": "5C:88:16:D8:E4:D7",
+      "type": "Ethernet (MAC address)",
+      "detail": "Printed Ethernet MAC ID of the Micro820. The controller has an on-board Ethernet port (see ENET LED). No connected Ethernet patch cable confirmed in this view.",
+      "connects": [
+        "2080-LC20-20QBB"
+      ],
+      "evidence": "Label: 'MAC ID 5C:88:16:D8:E4:D7  Ethernet Address'",
+      "confidence": 0.95,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "functional_paths": [],
+  "physical_layout_matches": [
+    {
+      "layout_feature": "Light-gray controller body with black AB logo, 'Micro820' and '2080-LC20-20QBB' text, DIN-rail mounted, top and bottom green pluggable terminal blocks",
+      "candidate_schematic_device": "2080-LC20-20QBB",
+      "basis": "Printed nameplate text read directly off the device",
+      "confidence": 0.95,
+      "trust": "proposed",
+      "status": "identified from nameplate",
+      "needed_to_confirm": "No schematic sheet provided to cross-reference a device tag; identity rests on the physical nameplate."
+    },
+    {
+      "layout_feature": "Two/three unmarked gray modules on DIN rail right of the PLC",
+      "candidate_schematic_device": null,
+      "basis": "Form factor only; no legible markings",
+      "confidence": 0.3,
+      "trust": "proposed",
+      "status": "unidentified",
+      "needed_to_confirm": "Close-up crop of each module's front label / catalog number"
+    }
+  ],
+  "unresolved": [
+    {
+      "item": "No wire numbers or terminal numbers are legible on any green terminal block.",
+      "status": "unreadable",
+      "resolution": "Macro close-up of each terminal strip with the ferrule/wire markers in focus."
+    },
+    {
+      "item": "Identity and function of the two/three gray modules to the right of the Micro820 are unknown (expansion I/O? relay bases? power supply?).",
+      "status": "unreadable",
+      "resolution": "Photograph each module's front/side label showing catalog number."
+    },
+    {
+      "item": "Function of the white/cream jacketed cable bundle and the blue conductors is not established (control wiring vs. network vs. sensor).",
+      "status": "ambiguous",
+      "resolution": "Trace/label the cables and photograph their landings and any cable tags."
+    },
+    {
+      "item": "No title block / drawing number / cabinet designation — this is a hardware photo, not a drawing sheet.",
+      "status": "not present",
+      "resolution": "Provide the associated schematic/panel drawing if a print-level interpretation is required."
+    },
+    {
+      "item": "Operating voltage of the inputs/outputs is not printed on the visible label.",
+      "status": "unreadable",
+      "resolution": "Capture the full side/spec nameplate, or reference the 2080-LC20-20QBB datasheet."
+    }
+  ],
+  "cross_sheet_notes": "No schematic sheets or cross-references are present in this image; it is a standalone hardware photograph. All designations are read directly from the device nameplate and front-panel silk-screen.",
+  "brief": {
+    "sheet_title": "Field photograph of an Allen-Bradley Micro820 PLC (catalog 2080-LC20-20QBB) mounted on a DIN rail with its green pluggable I/O terminal blocks wired — this is hardware, not a drawing sheet.",
+    "purpose": "The photo shows a Micro820 20-point programmable controller with its embedded I/O terminals wired with blue field conductors and a white/cream cable bundle. The controller's front face carries a diagnostic LED map: input indicators 0–11, output indicators 0–6, and status LEDs RUN, FAULT, FORCE, COMM, ENET and SD. It has an on-board Ethernet port (MAC ID 5C:88:16:D8:E4:D7). Several unmarked gray modules sit on the same DIN rail to the right. Because no schematic or wire/terminal markings are legible, individual signal assignments cannot be determined from this image alone.",
+    "key_signals": [
+      {
+        "signal": "Controller running",
+        "tag": "RUN",
+        "terminal": null,
+        "destination": "Front-panel status LED on the Micro820",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Controller fault",
+        "tag": "FAULT",
+        "terminal": null,
+        "destination": "Front-panel status LED on the Micro820",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Force active on I/O",
+        "tag": "FORCE",
+        "terminal": null,
+        "destination": "Front-panel status LED on the Micro820",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Serial communication activity",
+        "tag": "COMM",
+        "terminal": null,
+        "destination": "Front-panel status LED on the Micro820",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Ethernet link/activity",
+        "tag": "ENET",
+        "terminal": null,
+        "destination": "Front-panel status LED on the Micro820",
+        "confidence": 0.9
+      },
+      {
+        "signal": "SD memory card status",
+        "tag": "SD",
+        "terminal": null,
+        "destination": "Front-panel status LED on the Micro820",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Digital input point indicators (12)",
+        "tag": "IN 0..11",
+        "terminal": null,
+        "destination": "Embedded input LEDs / input terminal block on the Micro820",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Digital output point indicators (7)",
+        "tag": "OUT 0..6",
+        "terminal": null,
+        "destination": "Embedded output LEDs / output terminal block on the Micro820",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Ethernet hardware address",
+        "tag": "5C:88:16:D8:E4:D7",
+        "terminal": null,
+        "destination": "Micro820 on-board Ethernet port",
+        "confidence": 0.95
+      }
+    ],
+    "key_devices": [
+      {
+        "device": "Allen-Bradley Micro820 20-point programmable controller",
+        "tag": "2080-LC20-20QBB",
+        "confidence": 0.97
+      },
+      {
+        "device": "Unmarked gray DIN-rail modules right of the PLC (expansion/relay/power — unidentified)",
+        "tag": "UNREADABLE",
+        "confidence": 0.3
+      }
+    ],
+    "troubleshooting_example": "If an input LED (say one of IN 0–11) does not light when the field device operates, isolate device-versus-wiring at two points: (1) at the sensor/field-device end, confirm the device actually switches its output; (2) at the corresponding green input terminal on the Micro820, confirm that same switched signal arrives. If the device switches but nothing arrives at the PLC input terminal, the fault is the wire/terminal between them; if the signal is present at the PLC terminal but the IN LED still does not turn on, the fault is in the input point/module. NOTE: this photo shows no schematic and no control logic, so it cannot tell you what the program does with that input — only the hardware indication is visible here.",
+    "safety_context": "The visible nameplate does NOT print an operating voltage, so this image does not establish the I/O voltage level — do not assume it. For continuity/resistance checks on the wiring or terminals, de-energize, lock out, and verify absence of voltage first. If you must verify a live input signal, treat it as energized work and use appropriately rated test equipment and PPE. A photograph does not prove present field conditions — confirm the actual state before contacting terminals.",
+    "unresolved_items": [
+      "No terminal numbers or wire numbers are legible on the green terminal blocks.",
+      "The gray modules on the DIN rail are unidentified (no legible catalog/tag).",
+      "The purpose of the blue conductors and white/cream cable bundle is not established.",
+      "No title block/drawing number — this is a hardware photo, not a print.",
+      "Input/output operating voltage is not printed on the visible label."
+    ],
+    "detailed_map_available": true
+  }
+}
