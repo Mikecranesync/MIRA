@@ -192,3 +192,45 @@ test captions actually used were chosen to satisfy the existing gate, not to rou
 - `printsense/render.py` — `format_map_for_telegram` (the render-layer confidence formatting).
 - `mira-bots/shared/print_translator.py` — `is_print_question()` / `is_theory_request()` (the
   production caption gate).
+
+---
+
+## 8. Addendum — Batch 2: five additional standalone-email diagram tests (2026-07-13)
+
+Five more public-OEM wiring diagrams run through the same real pipeline, each with its own
+**concise standalone report email** (title/source, system type, score/grade/hard-fail, strengths,
+key errors, safety-performance notes) plus the original diagram + eval files attached. None reuse a
+previously-tested drawing. `index.json`/`index.md` now aggregate all eight cases.
+
+| test_id | OEM / category | standard | score | hard fail | email (Resend id) |
+|---|---|---|---|---|---|
+| abb-star-delta-starter | ABB / contactor (star-delta) | IEC 60947-4-1 | 78/B | No | c874b4c7 |
+| automationdirect-click-plc-io | AutomationDirect / PLC I/O | 24VDC | 42/F | **YES (confirmed)** | 388d7e0f |
+| schneider-atv340-vfd | Schneider / VFD | IEC 61800-5-1 | 81/B | No | d44d65c1 |
+| siemens-3sk1-safety-relay | Siemens / safety relay | ISO 13849-1 PLe / IEC 62061 SIL3 | 84/B | No | 281785b8 |
+| automationdirect-an-gs-022-reversing | AutomationDirect / reversing | NEMA ICS 2 | 79/B | No | 7c2185b1 |
+
+Across both batches the campaign now spans all six circuit categories (starter, safety relay, VFD,
+contactor, PLC I/O, reversing/braking). Scores remain PROVISIONAL.
+
+**Key batch-2 findings:**
+- **CLICK PLC I/O — a CONFIRMED hard failure (42/F).** judge_1 (42/F) AND the independent judge_2
+  escalation (60/F) both flag the `map` follow-up stating a wrong DC-output terminal topology at
+  0.85 confidence (`incorrect_terminal_or_destination_as_fact`) — the batch-1 render-layer
+  over-confidence pattern, here manifesting as a confidently-wrong claim. The escalation caught it.
+  Numeric scores are noisy across judge runs (42 / 60 / 84 seen on this case), but the hard-failure
+  detection was robust across two independent judges.
+- **Siemens 3SK1 — reads a PRINTED Performance Level correctly.** It reported `PL e` / `SILCL` from
+  the sheet where they are printed — the correct mirror of the Banner case (no PL printed → it
+  declined to invent one). Grounding discipline holds in both directions.
+- **Judge reliability fix (harness, this batch).** Sonnet-5 adaptive thinking consumed the entire
+  16k budget on the dense CLICK case (`stop_reason=max_tokens`, empty verdict). Fix: retry with
+  thinking disabled so all tokens go to the JSON verdict (`end_turn`, reliable). Added a guard that
+  HOLDS any ungraded email — a report must carry score/grade/hard-fail. (CLICK's first email went
+  out ungraded before the fix; one corrected graded email was then sent — so CLICK has two emails,
+  the second authoritative.)
+- **Email standardized.** The report email is now a concise summary card; the full verbatim
+  response + report.html + judge_1.json + telegram_response.json ride along as attachments.
+- **Source safety.** The originally-planned Yaskawa V1000 diagram was **rejected by robots.txt**
+  (the fetcher refused it) and dropped; AN-GS-022 (reversing) replaced it, completing category
+  coverage.
