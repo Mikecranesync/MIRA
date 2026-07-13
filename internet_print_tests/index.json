@@ -1,0 +1,41 @@
+[
+  {
+    "test_id": "rockwell-509-nema-starter",
+    "source_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf",
+    "category": "motor_starter",
+    "standard": "NEMA",
+    "status": "ok",
+    "score": 83,
+    "hard_failure": false,
+    "email": "sent",
+    "classification": "ELECTRICAL_PRINT",
+    "interpreter_used": true,
+    "elapsed_s": 94.4
+  },
+  {
+    "test_id": "banner-esfl-estop-relay",
+    "source_url": "https://info.bannerengineering.com/cs/groups/public/documents/literature/46262.pdf",
+    "category": "safety_relay",
+    "standard": "ISO 13850 / EN 418",
+    "status": "ok",
+    "score": 85,
+    "hard_failure": false,
+    "email": "dry-run (package built, not sent)",
+    "classification": "ELECTRICAL_PRINT",
+    "interpreter_used": true,
+    "elapsed_s": 237.9
+  },
+  {
+    "test_id": "automationdirect-gs20-vfd",
+    "source_url": "https://cdn.automationdirect.com/static/manuals/gs20m/ch2.pdf",
+    "category": "vfd",
+    "standard": "NEMA ICS 6",
+    "status": "ok",
+    "score": 86,
+    "hard_failure": false,
+    "email": "dry-run (package built, not sent)",
+    "classification": "ELECTRICAL_PRINT",
+    "interpreter_used": true,
+    "elapsed_s": 248.9
+  }
+]

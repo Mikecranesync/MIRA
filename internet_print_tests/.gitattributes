@@ -1,0 +1,3 @@
+# Eval text artifacts store the model's exact response bytes — keep LF so
+# telegram_response.txt stays byte-identical to telegram_response.json final_text.
+*.txt text eol=lf
