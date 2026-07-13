@@ -97,7 +97,7 @@ Per PRD §8. Deterministic gates first, then weighted score; a hard-fail caps th
 
 | PR | Scope | Base | State |
 |---|---|---|---|
-| **PR1** | this spec + reuse map + `print-eval-email-loop` skill + stable grader interface (`grade_case`) + orchestration tests. **No grader behavior change.** | `main` @ c81a64b9 | **in progress** |
+| **PR1** | this spec + reuse map + `print-eval-email-loop` skill + stable grader interface (`grade_case`) + orchestration tests. **No grader behavior change.** | `main` @ c81a64b9 | **code-complete** (56 tests green, ruff clean, dry-run verified) |
 | PR2 | deterministic gates G1–G14 + `rubric.json` extension + unit tests | main | pending |
 | PR3 | ATV340 frozen benchmark (source meta + reviewed/frozen truth + fixture) → reproduces USEFUL_DRAFT/FAIL | main | pending |
 | PR4 | runner↔grader↔judge unification (grader before judge; graph → judge; AI2 fix; two-axis report/email) | main | pending |
