@@ -57,7 +57,12 @@ A_OVERALL = 90
 A_TAG_F1 = 0.85
 
 _CONFIDENT_TRUST = {"proposed", "machine_verified", "human_verified"}
-_VERIFIED_TRUST = {"machine_verified", "human_verified"}  # a fresh interp must not claim these
+# The machine must NEVER claim `human_verified` (that is a technician sign-off, per
+# the models.py TrustState doctrine + roadmap Phase 3 "Never write human_verified").
+# `machine_verified` is a LEGITIMATE machine state earned by Phase-3 independent
+# agreement, so it is NOT a violation — flagging it would wrongly tank a verified
+# graph. A fresh full-page pass is all `proposed`, so this does not change its grade.
+_VERIFIED_TRUST = {"human_verified"}
 _ENTITY_SECTIONS = (
     "devices",
     "terminals",
