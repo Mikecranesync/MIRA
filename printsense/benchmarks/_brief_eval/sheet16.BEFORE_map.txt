@@ -1,0 +1,34 @@
+📐 sheet 16
+
+🔌 Signals (exact — source → destination)
+• Sensor Unit 5 broken — LOK1  @ -X4:2  → DA5 module pin 1 (sheet 10.6) · conf 0.80
+• Sensor Unit 6 broken — LOK2  @ -X4:3  → DA5 module pin 5 (sheet 10.1) · conf 0.80
+• Sensor Unit 7 broken — LOK3  @ -X4:4  → DA5 module pin 2 (sheet 10.2) · conf 0.80
+• Sensor Unit 8 broken — LOK4  @ -X4:5  → DA5 module pin 6 (sheet 10.4) · conf 0.80
+• Occupied downstream (belegt) — BEL  @ -X4:6  → DA5 module pin 3 (sheet 10.5), branch to X4.6 (sheet 15.5) · conf 0.60
+• PP1 (function not labeled on this sheet) — PP1  @ -X4:7  → module pin 'LKK4,7' (sheet 20.1) — source tag uncertain · conf 0.50
+• PP2 (function not labeled on this sheet) — PP2  @ -X4:8  → module pin 'LKK4,8' (sheet 20.4) — source tag uncertain · conf 0.50
+• PP3 (function not labeled on this sheet) — PP3  @ -X4:9  → module pin 'LKK4,9' (sheet 20.6) — source tag uncertain · conf 0.50
+• Signal ground — Gnd  @ -X4:1 · conf 0.80
+• Signal ground — Gnd  @ -X4:10 · conf 0.80
+
+🔧 Devices (2)
+• -X4 — terminal_strip (Signal-output/interconnect terminal strip of Sensor Control Unit 2 (SCU2), terminals 1-10; drawn inside dashed module boundary) · conf 0.90
+• -13/A1 — module_reference (Device/module A1 referenced on sheet 13 (cross-ref 13.1); shown at left edge near strip, associated tag 'TTS.SNET-SB01-4') · conf 0.55
+
+🔗 Wires / cables
+• LOK1 — signal_conductor · conf 0.80
+• LOK2 — signal_conductor · conf 0.80
+• LOK3 — signal_conductor · conf 0.80
+• LOK4 — signal_conductor · conf 0.80
+• BEL — signal_conductor · conf 0.60
+
+🧩 10 off-page ref(s): DA5,1 / 10.6, DA5,5 / 10.1, DA5,2 / 10.2, DA5,6 / 10.4, DA5,3 / 10.5, UNREADABLE, UNREADABLE, UNREADABLE · 1 network link(s): UNREADABLE
+
+⚠️ Couldn't read (retake or crop closer):
+• Source tags for PP1–PP3 (read as 'LKK4,7 / LKK4,8 / LKK4,9') are low-confidence — first characters ambiguous; verify with a close-up.
+• Whether BEL (-X4:6) truly branches to both DA5,3 (10.5) and X4.6 (15.5) — the jogged line/label needs a sharper image.
+• Left-edge designation '-13/A1', '/13.1', 'TTS.SNET-SB01-4' is small/blurred; its role and any connection to the strip are unconfirmed.
+• Title-block 'von 1.706' sheet-count value is unusual and unverified.
+
+🔎 Proposed interpretation from the drawing — not yet field-verified. Reply to confirm or correct any item.

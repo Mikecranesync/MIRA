@@ -1,0 +1,29 @@
+📐 sheet 20
+
+🔌 Signals (exact — source → destination)
+• Upstream 'occupied' optical signal into the upstream coupler — -W5497 (POF)  @ -21/A13:LWL IN  → from +SCU2-BEL (cross-ref +SCU3/21.7) · conf 0.82
+• Upstream 'occupied' digital output from the upstream coupler — -21/A13 DIG OUT  @ -X3.9  → sheet 15.7, terminal -X3.9 · conf 0.76
+• Downstream 'occupied' digital input to the downstream coupler — -21/A14 DIG IN  @ -X4.6  → from sheet 16.6, terminal -X4.6 · conf 0.76
+• Downstream 'occupied' optical signal out of the downstream coupler — -W5469 (POF)  @ -21/A14:LWL OUT  → to +SCU1-BEL (cross-ref +SCU1/21.2) · conf 0.82
+• 24VDC module supply — X24V.41  @ -21/A13:24VDC and -21/A14:24VDC  → rail continues to sheet 20.9 (last digit uncertain) · conf 0.68
+• 0V module supply return — X0V.41  @ -21/A13:GND and -21/A14:GND  → rail continues to sheet 20.9 (last digit uncertain) · conf 0.68
+
+🔧 Devices (2)
+• -21/A13 — fiber-optic opto-coupler module (Type marking 'ITS.LWL-K-01.2', In=P / Out=P; labelled 'Occupied Upstream'. Ports: 24VDC, GND, LWL IN, LWL OUT, DIG IN, DIG OUT.) · conf 0.86
+• -21/A14 — fiber-optic opto-coupler module (Type marking 'ITS.LWL-K-01.2', In=P / Out=P; labelled 'Occupied Downstream'. Ports: 24VDC, GND, LWL IN, LWL OUT, DIG IN, DIG OUT.) · conf 0.86
+
+🔗 Wires / cables
+• -W5497 — fiber-optic cable (POF) · conf 0.82
+• -W5469 — fiber-optic cable (POF) · conf 0.82
+• X24V.41 — supply rail conductor (24VDC) · conf 0.70
+• X0V.41 — supply rail conductor (0V) · conf 0.70
+
+🧩 8 off-page ref(s): +SCU2-BEL, +SCU3/21.7, +SCU1-BEL, +SCU1/21.2, 15.7 / -X3.9, 16.6 / -X4.6, X24V.41 /20.9, X0V.41 /20.9 · 2 PLC I/O · 2 network link(s): -W5497, -W5469
+
+⚠️ Couldn't read (retake or crop closer):
+• Last digit of the supply-rail cross-references 'X24V.41 /20.9' and 'X0V.41 /20.9' (could be 20.8).
+• Exact module type suffix 'ITS.LWL-K-01.2' (small/blurred).
+• Routing of the dashed 24VDC vs GND drops from the top rails to each module (lines overlap).
+• LWL OUT of A13, LWL IN of A14, DIG IN of A13 and DIG OUT of A14 show no connection on this sheet — verify on adjacent sheets.
+
+🔎 Proposed interpretation from the drawing — not yet field-verified. Reply to confirm or correct any item.

@@ -1,0 +1,582 @@
+{
+  "package": {
+    "drawing_number": "AP31971 / 31971",
+    "title": "Sensor Control Unit 2 (V3.5)",
+    "sub_title": "Sensor Überwachung X4 (sensor monitoring, terminal strip -X4)",
+    "project": "Hyper Launch",
+    "manufacturer": "INTRASYS - Innovative Transport Systeme",
+    "customer": "Mack",
+    "location": "Orlando, FL, USA",
+    "cabinet_location": "=UA2 / +SCU2",
+    "sheet": 16,
+    "sheet_note": "Blatt 16, von 1.706; adjacent sheet refs 15 (prev) and 17 (next) in border",
+    "date": "11.07.2022",
+    "editor": "Ascher",
+    "evidence": "Title block: 'AP31971', '31971', 'Sensor Control Unit 2', 'Sensor Control Unit 2 V3.5', 'Hyper Launch', 'Sensor Überwachung X4', 'INTRASYS Innovative Transport Systeme', 'Orlando, FL, USA', 'Kunde Mack', '=UA2 +SCU2', 'Blatt 16 von 1.706', 'Datum 11.07.2022', 'Bearb. Ascher'",
+    "confidence": 0.85
+  },
+  "devices": [
+    {
+      "tag": "-X4",
+      "type": "terminal_strip",
+      "detail": "Signal-output/interconnect terminal strip of Sensor Control Unit 2 (SCU2), terminals 1-10; drawn inside dashed module boundary",
+      "connects": [
+        "-X4:1",
+        "-X4:2",
+        "-X4:3",
+        "-X4:4",
+        "-X4:5",
+        "-X4:6",
+        "-X4:7",
+        "-X4:8",
+        "-X4:9",
+        "-X4:10"
+      ],
+      "evidence": "'-X4' label at left of terminal row; numbered positions 1..10",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-13/A1",
+      "type": "module_reference",
+      "detail": "Device/module A1 referenced on sheet 13 (cross-ref 13.1); shown at left edge near strip, associated tag 'TTS.SNET-SB01-4'",
+      "connects": [],
+      "evidence": "Left of strip: '-13/A1', '/13.1', 'TTS.SNET-SB01-4'",
+      "confidence": 0.55,
+      "trust": "proposed",
+      "sheet": 16
+    }
+  ],
+  "terminals": [
+    {
+      "tag": "-X4:1",
+      "type": "terminal",
+      "detail": "labeled 'Gnd' (signal ground)",
+      "connects": [
+        "-X4"
+      ],
+      "evidence": "position 1, 'Gnd'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:2",
+      "type": "terminal",
+      "detail": "labeled 'LOK1' = 'SensorUnit 5 Broken'",
+      "connects": [
+        "-X4",
+        "DA5,1"
+      ],
+      "evidence": "position 2, 'LOK1', bottom note 'SensorUnit 5 Broken'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:3",
+      "type": "terminal",
+      "detail": "labeled 'LOK2' = 'SensorUnit 6 Broken'",
+      "connects": [
+        "-X4",
+        "DA5,5"
+      ],
+      "evidence": "position 3, 'LOK2', bottom note 'SensorUnit 6 Broken'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:4",
+      "type": "terminal",
+      "detail": "labeled 'LOK3' = 'SensorUnit 7 Broken'",
+      "connects": [
+        "-X4",
+        "DA5,2"
+      ],
+      "evidence": "position 4, 'LOK3', bottom note 'SensorUnit 7 Broken'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:5",
+      "type": "terminal",
+      "detail": "labeled 'LOK4' = 'SensorUnit 8 Broken'",
+      "connects": [
+        "-X4",
+        "DA5,6"
+      ],
+      "evidence": "position 5, 'LOK4', bottom note 'SensorUnit 8 Broken'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:6",
+      "type": "terminal",
+      "detail": "labeled 'BEL' (belegt = occupied) = 'Occupied Downstream'",
+      "connects": [
+        "-X4",
+        "DA5,3",
+        "X4.6"
+      ],
+      "evidence": "position 6, 'BEL', bottom note 'Occupied Downstream'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:7",
+      "type": "terminal",
+      "detail": "labeled 'PP1'",
+      "connects": [
+        "-X4",
+        "LKK4,7"
+      ],
+      "evidence": "position 7, 'PP1'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:8",
+      "type": "terminal",
+      "detail": "labeled 'PP2'",
+      "connects": [
+        "-X4",
+        "LKK4,8"
+      ],
+      "evidence": "position 8, 'PP2'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:9",
+      "type": "terminal",
+      "detail": "labeled 'PP3'",
+      "connects": [
+        "-X4",
+        "LKK4,9"
+      ],
+      "evidence": "position 9, 'PP3'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "-X4:10",
+      "type": "terminal",
+      "detail": "labeled 'Gnd' (signal ground)",
+      "connects": [
+        "-X4"
+      ],
+      "evidence": "position 10, 'Gnd'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    }
+  ],
+  "conductors": [
+    {
+      "tag": "LOK1",
+      "type": "signal_conductor",
+      "detail": "SensorUnit 5 Broken; -X4:2 to DA5 pin 1, cross-ref sheet 10.6",
+      "connects": [
+        "-X4:2",
+        "DA5,1"
+      ],
+      "evidence": "vertical line from terminal 2 to arrow labeled 'DA5,1 / 10.6'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "LOK2",
+      "type": "signal_conductor",
+      "detail": "SensorUnit 6 Broken; -X4:3 to DA5 pin 5, cross-ref sheet 10.1",
+      "connects": [
+        "-X4:3",
+        "DA5,5"
+      ],
+      "evidence": "vertical line from terminal 3 to arrow labeled 'DA5,5 / 10.1'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "LOK3",
+      "type": "signal_conductor",
+      "detail": "SensorUnit 7 Broken; -X4:4 to DA5 pin 2, cross-ref sheet 10.2",
+      "connects": [
+        "-X4:4",
+        "DA5,2"
+      ],
+      "evidence": "vertical line from terminal 4 to arrow labeled 'DA5,2 / 10.2'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "LOK4",
+      "type": "signal_conductor",
+      "detail": "SensorUnit 8 Broken; -X4:5 to DA5 pin 6, cross-ref sheet 10.4",
+      "connects": [
+        "-X4:5",
+        "DA5,6"
+      ],
+      "evidence": "vertical line from terminal 5 to arrow labeled 'DA5,6 / 10.4'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "BEL",
+      "type": "signal_conductor",
+      "detail": "Occupied Downstream; -X4:6 to DA5 pin 3 (sheet 10.5) and branch to X4.6 (sheet 15.5)",
+      "connects": [
+        "-X4:6",
+        "DA5,3",
+        "X4.6"
+      ],
+      "evidence": "vertical line from terminal 6 to arrow 'DA5,3 / 10.5', horizontal branch to arrow 'X4.6 / 15.5'",
+      "confidence": 0.6,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "signal_conductor",
+      "detail": "-X4:7 to LKK4 pin 7, cross-ref sheet 20.1 (source tag 'LKK4' uncertain)",
+      "connects": [
+        "-X4:7",
+        "LKK4,7"
+      ],
+      "evidence": "low-confidence guess: PP1 — vertical line from terminal 7 to arrow labeled 'LKK4,7 / 20.1'",
+      "confidence": 0.5,
+      "trust": "unresolved",
+      "sheet": 16
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "signal_conductor",
+      "detail": "-X4:8 to LKK4 pin 8, cross-ref sheet 20.4 (source tag 'LKK4' uncertain)",
+      "connects": [
+        "-X4:8",
+        "LKK4,8"
+      ],
+      "evidence": "low-confidence guess: PP2 — vertical line from terminal 8 to arrow labeled 'LKK4,8 / 20.4'",
+      "confidence": 0.5,
+      "trust": "unresolved",
+      "sheet": 16
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "signal_conductor",
+      "detail": "-X4:9 to LKK4 pin 9, cross-ref sheet 20.6 (source tag 'LKK4' uncertain)",
+      "connects": [
+        "-X4:9",
+        "LKK4,9"
+      ],
+      "evidence": "low-confidence guess: PP3 — vertical line from terminal 9 to arrow labeled 'LKK4,9 / 20.6'",
+      "confidence": 0.5,
+      "trust": "unresolved",
+      "sheet": 16
+    }
+  ],
+  "cables": [],
+  "contacts": [],
+  "power_domains": [
+    {
+      "tag": "Gnd",
+      "type": "signal_ground",
+      "detail": "signal/reference ground on terminals -X4:1 and -X4:10 (not protective earth)",
+      "connects": [
+        "-X4:1",
+        "-X4:10"
+      ],
+      "evidence": "'Gnd' labels at positions 1 and 10",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": 16
+    }
+  ],
+  "pe_bonds": [],
+  "off_page_references": [
+    {
+      "tag": "DA5,1 / 10.6",
+      "type": "cross_reference",
+      "detail": "target DA5 module pin 1 on sheet 10.6 (from LOK1 / SensorUnit 5 Broken)",
+      "connects": [
+        "-X4:2"
+      ],
+      "evidence": "top arrow label 'DA5,1 / 10.6'",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "DA5,5 / 10.1",
+      "type": "cross_reference",
+      "detail": "target DA5 module pin 5 on sheet 10.1 (from LOK2 / SensorUnit 6 Broken)",
+      "connects": [
+        "-X4:3"
+      ],
+      "evidence": "top arrow label 'DA5,5 / 10.1'",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "DA5,2 / 10.2",
+      "type": "cross_reference",
+      "detail": "target DA5 module pin 2 on sheet 10.2 (from LOK3 / SensorUnit 7 Broken)",
+      "connects": [
+        "-X4:4"
+      ],
+      "evidence": "top arrow label 'DA5,2 / 10.2'",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "DA5,6 / 10.4",
+      "type": "cross_reference",
+      "detail": "target DA5 module pin 6 on sheet 10.4 (from LOK4 / SensorUnit 8 Broken)",
+      "connects": [
+        "-X4:5"
+      ],
+      "evidence": "top arrow label 'DA5,6 / 10.4'",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "DA5,3 / 10.5",
+      "type": "cross_reference",
+      "detail": "target DA5 module pin 3 on sheet 10.5 (from BEL / Occupied Downstream)",
+      "connects": [
+        "-X4:6"
+      ],
+      "evidence": "top arrow label 'DA5,3 / 10.5'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": 16
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "cross_reference",
+      "detail": "terminal X4.6 continuation on sheet 15.5; branched from BEL line at terminal 6",
+      "connects": [
+        "-X4:6"
+      ],
+      "evidence": "low-confidence guess: X4.6 / 15.5 — arrow label 'X4.6 / 15.5' with horizontal branch to BEL vertical",
+      "confidence": 0.5,
+      "trust": "unresolved",
+      "sheet": 16
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "cross_reference",
+      "detail": "target module pin on sheet 20.1 (from PP1); source tag 'LKK4' uncertain",
+      "connects": [
+        "-X4:7"
+      ],
+      "evidence": "low-confidence guess: LKK4,7 / 20.1 — top arrow label reading 'LKK4,7 / 20.1'",
+      "confidence": 0.45,
+      "trust": "unresolved",
+      "sheet": 16
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "cross_reference",
+      "detail": "target module pin on sheet 20.4 (from PP2); source tag 'LKK4' uncertain",
+      "connects": [
+        "-X4:8"
+      ],
+      "evidence": "low-confidence guess: LKK4,8 / 20.4 — top arrow label reading 'LKK4,8 / 20.4'",
+      "confidence": 0.45,
+      "trust": "unresolved",
+      "sheet": 16
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "cross_reference",
+      "detail": "target module pin on sheet 20.6 (from PP3); source tag 'LKK4' uncertain",
+      "connects": [
+        "-X4:9"
+      ],
+      "evidence": "low-confidence guess: LKK4,9 / 20.6 — top arrow label reading 'LKK4,9 / 20.6'",
+      "confidence": 0.45,
+      "trust": "unresolved",
+      "sheet": 16
+    },
+    {
+      "tag": "UNREADABLE",
+      "type": "cross_reference",
+      "detail": "module A1 on sheet 13 (cross-ref 13.1), associated with 'TTS.SNET-SB01-4'; drawn at left of strip",
+      "connects": [],
+      "evidence": "low-confidence guess: -13/A1 / 13.1 — left-edge text '-13/A1', '/13.1'",
+      "confidence": 0.5,
+      "trust": "unresolved",
+      "sheet": 16
+    }
+  ],
+  "plc_io_channels": [],
+  "network_links": [
+    {
+      "tag": "UNREADABLE",
+      "type": "sensor_network_node",
+      "detail": "network/bus node designation shown at left edge, associated with module -13/A1 (SNET = sensor network, presumed)",
+      "connects": [
+        "-13/A1 / 13.1"
+      ],
+      "evidence": "low-confidence guess: TTS.SNET-SB01-4 — left-edge text 'TTS.SNET-SB01-4'",
+      "confidence": 0.4,
+      "trust": "unresolved",
+      "sheet": 16
+    }
+  ],
+  "functional_paths": [
+    {
+      "name": "SensorUnit 7 broken status",
+      "sheet": 16,
+      "sequence": [
+        "-X4:4 (LOK3)",
+        "DA5,2 (sheet 10.2)"
+      ]
+    },
+    {
+      "name": "Occupied downstream status",
+      "sheet": 16,
+      "sequence": [
+        "-X4:6 (BEL)",
+        "DA5,3 (sheet 10.5)",
+        "X4.6 (sheet 15.5)"
+      ]
+    }
+  ],
+  "physical_layout_matches": [],
+  "unresolved": [
+    {
+      "item": "Source tags 'LKK4,7 / LKK4,8 / LKK4,9' over terminals 7-9 (PP1-PP3)",
+      "status": "low confidence — could be 'LKK4' or 'LOK4' or other; first characters ambiguous",
+      "resolution": "Retake sharp close-up of the top-of-arrow labels above terminals 7, 8, 9"
+    },
+    {
+      "item": "BEL (-X4:6) branch to 'X4.6 / 15.5'",
+      "status": "connection topology and exact label ambiguous — whether BEL feeds both DA5,3 and X4.6",
+      "resolution": "Close-up of terminal 6 area and the jogged line to arrow labeled 'X4.6 / 15.5'"
+    },
+    {
+      "item": "Left-edge designation '-13/A1', '/13.1', 'TTS.SNET-SB01-4'",
+      "status": "small/blurred; role and connection to strip not fully legible",
+      "resolution": "Macro crop of left edge near terminal 1"
+    },
+    {
+      "item": "Sheet total 'von 1.706'",
+      "status": "unusual value, possibly '1706' or a code; not confirmed",
+      "resolution": "Close-up of Blatt/von fields in title block"
+    }
+  ],
+  "cross_sheet_notes": "This is sheet 16 (=UA2 / +SCU2). Signal statuses route to a 'DA5' module across sheets 10.1/10.2/10.4/10.5/10.6; PP1-PP3 route to sheet 20.1/20.4/20.6; BEL branches to X4.6 on sheet 15.5. Module -13/A1 is on sheet 13.1. Adjacent border refs 15 (prev) and 17 (next).",
+  "brief": {
+    "sheet_title": "Sheet 16 — the signal-output/interconnect terminal strip (-X4) of Sensor Control Unit 2 (SCU2), the sensor-monitoring wiring point.",
+    "purpose": "This sheet documents terminal strip -X4 inside Sensor Control Unit 2, where sensor-monitoring status signals are landed and routed to other sheets. Terminals LOK1–LOK4 (positions 2–5) carry 'Sensor Unit 5/6/7/8 Broken' status and go to a 'DA5' module on sheet 10. BEL (position 6, from German 'belegt' = occupied) reports 'Occupied Downstream' to the DA5 module (sheet 10.5) and also branches to terminal X4.6 on sheet 15.5. PP1–PP3 (positions 7–9) route to another module on sheet 20. Positions 1 and 10 are signal ground (Gnd). This is an interconnect/terminal sheet — the sensor logic itself is on the referenced sheets, not here.",
+    "key_signals": [
+      {
+        "signal": "Sensor Unit 5 broken",
+        "tag": "LOK1",
+        "terminal": "-X4:2",
+        "destination": "DA5 module pin 1 (sheet 10.6)",
+        "confidence": 0.8
+      },
+      {
+        "signal": "Sensor Unit 6 broken",
+        "tag": "LOK2",
+        "terminal": "-X4:3",
+        "destination": "DA5 module pin 5 (sheet 10.1)",
+        "confidence": 0.8
+      },
+      {
+        "signal": "Sensor Unit 7 broken",
+        "tag": "LOK3",
+        "terminal": "-X4:4",
+        "destination": "DA5 module pin 2 (sheet 10.2)",
+        "confidence": 0.8
+      },
+      {
+        "signal": "Sensor Unit 8 broken",
+        "tag": "LOK4",
+        "terminal": "-X4:5",
+        "destination": "DA5 module pin 6 (sheet 10.4)",
+        "confidence": 0.8
+      },
+      {
+        "signal": "Occupied downstream (belegt)",
+        "tag": "BEL",
+        "terminal": "-X4:6",
+        "destination": "DA5 module pin 3 (sheet 10.5), branch to X4.6 (sheet 15.5)",
+        "confidence": 0.6
+      },
+      {
+        "signal": "PP1 (function not labeled on this sheet)",
+        "tag": "PP1",
+        "terminal": "-X4:7",
+        "destination": "module pin 'LKK4,7' (sheet 20.1) — source tag uncertain",
+        "confidence": 0.5
+      },
+      {
+        "signal": "PP2 (function not labeled on this sheet)",
+        "tag": "PP2",
+        "terminal": "-X4:8",
+        "destination": "module pin 'LKK4,8' (sheet 20.4) — source tag uncertain",
+        "confidence": 0.5
+      },
+      {
+        "signal": "PP3 (function not labeled on this sheet)",
+        "tag": "PP3",
+        "terminal": "-X4:9",
+        "destination": "module pin 'LKK4,9' (sheet 20.6) — source tag uncertain",
+        "confidence": 0.5
+      },
+      {
+        "signal": "Signal ground",
+        "tag": "Gnd",
+        "terminal": "-X4:1",
+        "destination": null,
+        "confidence": 0.8
+      },
+      {
+        "signal": "Signal ground",
+        "tag": "Gnd",
+        "terminal": "-X4:10",
+        "destination": null,
+        "confidence": 0.8
+      }
+    ],
+    "key_devices": [
+      {
+        "device": "Signal-output/interconnect terminal strip of Sensor Control Unit 2 (10 positions)",
+        "tag": "-X4",
+        "confidence": 0.9
+      },
+      {
+        "device": "Referenced module/network node (sheet 13) associated with tag TTS.SNET-SB01-4",
+        "tag": "-13/A1",
+        "confidence": 0.5
+      }
+    ],
+    "troubleshooting_example": "To trace 'Sensor Unit 7 broken' (LOK3), take two discriminating measurements: (1) at terminal -X4:4 on this strip, and (2) at the DA5 module input on sheet 10.2 (DA5 pin 2). If the expected state is present at -X4:4 but does NOT appear at the DA5,2 input on sheet 10.2, the fault is in the wiring/cable between the terminal strip and the DA5 module. If the state is already absent/incorrect at -X4:4 itself, the fault is upstream in the sensor unit / SCU logic feeding the terminal — which is NOT detailed on this sheet, so follow it to the source sheets. Note: this sheet does not show the controller's response logic, so no claim about what DA5 does is made here.",
+    "safety_context": "No voltage level is printed on this sheet, so the drawing does not establish the operating voltage of these signals — do not assume a level. For continuity/wire-tracing between -X4 and the referenced sheets, de-energize, lock out, and verify absence of voltage first. If you must verify a live signal state, treat the circuit as potentially energized and use appropriately rated equipment. The 'Gnd' terminals here are signal reference, not protective earth — do not treat them as a safety ground.",
+    "unresolved_items": [
+      "Source tags for PP1–PP3 (read as 'LKK4,7 / LKK4,8 / LKK4,9') are low-confidence — first characters ambiguous; verify with a close-up.",
+      "Whether BEL (-X4:6) truly branches to both DA5,3 (10.5) and X4.6 (15.5) — the jogged line/label needs a sharper image.",
+      "Left-edge designation '-13/A1', '/13.1', 'TTS.SNET-SB01-4' is small/blurred; its role and any connection to the strip are unconfirmed.",
+      "Title-block 'von 1.706' sheet-count value is unusual and unverified."
+    ],
+    "detailed_map_available": true
+  }
+}

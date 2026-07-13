@@ -1,0 +1,817 @@
+{
+  "package": {
+    "drawing_number": "31971",
+    "drawing_no_field": "Zeichnungs Nr: Sensor Control Unit 2 V3.5",
+    "project": "AP31971 / Sensor Control Unit 2",
+    "sheet_title": "PLC overview",
+    "customer_project": "Hyper Launch",
+    "cabinet_location_code": "=LA2 / +SCU2",
+    "location": "Orlando, FL, USA",
+    "manufacturer_titleblock": "INTRASYS - Innovative Transport Systeme",
+    "sheet": "5 (Blatt 5)",
+    "sheet_count_field": "von 1706 (as printed, uncertain)",
+    "date": "11.07.2022",
+    "drawn_by_Bearb": "Ascher",
+    "customer_Kunde": "Mack",
+    "grid_reference": "column marker 6 (right), 4 (left)",
+    "unit_chain": "SCU2 station linking to remote SCU1 and SCU3"
+  },
+  "devices": [
+    {
+      "tag": "-5/A100",
+      "type": "EtherCAT bus coupler",
+      "detail": "EK1100 (Beckhoff EtherCAT coupler); dashed enclosure with ETH In / ETH Out / 24V / 0V / + / - / PE terminals",
+      "connects": [
+        "ETH In",
+        "ETH Out",
+        "24V",
+        "0V",
+        "+",
+        "-",
+        "PE",
+        "-5/A101"
+      ],
+      "evidence": "dashed box '-5/A100' with vertical text 'EK1100'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A101",
+      "type": "digital output terminal",
+      "detail": "EL2008 - '8-Kanal Digital Ausgangsklemmen' (8-channel digital output); continuation /5.4",
+      "connects": [
+        "-5/A100",
+        "-5/A102"
+      ],
+      "evidence": "'-5/A101', 'EL2008', '8-Kanal Digital Ausgangsklemmen', xref '/5.4'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A102",
+      "type": "digital input terminal",
+      "detail": "EL1008 - '8 Kanal Digital Eingangsklemme' (8-channel digital input); continuation /6.4",
+      "connects": [
+        "-5/A101",
+        "-5/A103"
+      ],
+      "evidence": "'-5/A102', 'EL1008', '8 Kanal Digital Eingangsklemme', xref '/6.4'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A103",
+      "type": "digital input terminal",
+      "detail": "EL1008 - '8 Kanal Digital Eingangsklemme' (8-channel digital input); continuation /6.4",
+      "connects": [
+        "-5/A102",
+        "-5/A104"
+      ],
+      "evidence": "'-5/A103', 'EL1008', '8 Kanal Digital Eingangsklemme', xref '/6.4'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A104",
+      "type": "analog RTD input terminal",
+      "detail": "EL 3204 - '4-Kanal Eingangsklemme PT100 (RTD)' (4-channel PT100/RTD input); continuation /6.4",
+      "connects": [
+        "-5/A103",
+        "-5/A105"
+      ],
+      "evidence": "'-5/A104', 'EL 3204', '4-Kanal Eingangsklemme PT100 (RTD)', xref '/6.4'",
+      "confidence": 0.83,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A105",
+      "type": "230V digital input terminal",
+      "detail": "EL1722 - '2 Kanal Digital Eingang 230V, DI2x120...230VAC'; continuation /7.4",
+      "connects": [
+        "-5/A104",
+        "-5/A106"
+      ],
+      "evidence": "'-5/A105', 'EL1722', '2 Kanal Digital Eingang 230V DI2x120...230VAC', xref '/7.4'",
+      "confidence": 0.83,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A106",
+      "type": "230V digital input terminal",
+      "detail": "EL1722 - '2 Kanal Digital Eingang 230V, DI2x120...230VAC'; continuation /7.4",
+      "connects": [
+        "-5/A105",
+        "-5/A107"
+      ],
+      "evidence": "'-5/A106', 'EL1722', '2 Kanal Digital Eingang 230V DI2x120...230VAC', xref '/7.4'",
+      "confidence": 0.83,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A107",
+      "type": "bus end terminal",
+      "detail": "EL9011 - EtherCAT bus end/terminating terminal (no I/O continuation)",
+      "connects": [
+        "-5/A106"
+      ],
+      "evidence": "'-5/A107', 'EL9011'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/U1",
+      "type": "media converter / fiber-optic coupler",
+      "detail": "Metz Connect 1309426003-E; converts panel Ethernet toward SCU1",
+      "connects": [
+        "ETH In",
+        "-W5445"
+      ],
+      "evidence": "'-5/U1', 'Metz.1309426003-E', bottom label 'SCU1'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/U2",
+      "type": "media converter / fiber-optic coupler",
+      "detail": "Metz Connect 1309426003-E; converts panel Ethernet toward SCU3",
+      "connects": [
+        "ETH Out",
+        "-W5473"
+      ],
+      "evidence": "'-5/U2', 'Metz.1309426003-E', bottom label 'SCU3'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "terminals": [
+    {
+      "tag": "ETH In",
+      "type": "Ethernet port",
+      "detail": "EtherCAT/Ethernet input port on coupler -5/A100 (blue link toward -5/U1)",
+      "connects": [
+        "-5/A100",
+        "-5/U1"
+      ],
+      "evidence": "'ETH In' at coupler",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "ETH Out",
+      "type": "Ethernet port",
+      "detail": "EtherCAT/Ethernet output port on coupler -5/A100 (red link toward -5/U2)",
+      "connects": [
+        "-5/A100",
+        "-5/U2"
+      ],
+      "evidence": "'ETH Out' at coupler",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "24V",
+      "type": "power terminal",
+      "detail": "24V supply terminal at coupler -5/A100, fed from xref 4.4 / X24V.3",
+      "connects": [
+        "-5/A100",
+        "4.4 / X24V.3"
+      ],
+      "evidence": "'24V' label on coupler bottom edge",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "0V",
+      "type": "power terminal",
+      "detail": "0V terminal at coupler -5/A100, fed from xref 4.6 / X0V.3",
+      "connects": [
+        "-5/A100",
+        "4.6 / X0V.3"
+      ],
+      "evidence": "'0V' label on coupler bottom edge",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "+",
+      "type": "power contact terminal",
+      "detail": "positive power-contact terminal at coupler -5/A100 (jumpered to 24V)",
+      "connects": [
+        "-5/A100"
+      ],
+      "evidence": "'+' label on coupler bottom edge",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-",
+      "type": "power contact terminal",
+      "detail": "negative power-contact terminal at coupler -5/A100 (jumpered to 0V)",
+      "connects": [
+        "-5/A100"
+      ],
+      "evidence": "'-' label on coupler bottom edge",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "PE",
+      "type": "protective earth terminal",
+      "detail": "PE terminal at coupler -5/A100, from xref 3.2 / PE.5DA0 (green line)",
+      "connects": [
+        "-5/A100",
+        "3.2 / PE.5DA0"
+      ],
+      "evidence": "'PE' label on coupler bottom edge, green conductor",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "conductors": [
+    {
+      "tag": "-W5445",
+      "type": "Ethernet/fiber wire (to SCU1)",
+      "detail": "runs from media converter -5/U1 down to +SCU1/5.3 (-ETH.D)",
+      "connects": [
+        "-5/U1",
+        "+SCU1/5.3"
+      ],
+      "evidence": "'-W5445' with arrow to '+SCU1/5.3 / -ETH.D'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-W5473",
+      "type": "LAN wire (outdoor, to SCU3)",
+      "detail": "labelled 'LAN outdoor'; runs from media converter -5/U2 down to +SCU3/5.2 (+SCU3-ETH.D)",
+      "connects": [
+        "-5/U2",
+        "+SCU3/5.2"
+      ],
+      "evidence": "'-W5473', 'LAN outdoor', arrow to '+SCU3/5.2 / +SCU3-ETH.D'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "24V-supply",
+      "type": "24V DC feed",
+      "detail": "24V into coupler -5/A100 from cross-reference 4.4 / X24V.3 (red arrow up)",
+      "connects": [
+        "4.4 / X24V.3",
+        "24V"
+      ],
+      "evidence": "red arrow labelled '4.4 / X24V.3' below '24V' terminal",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "0V-supply",
+      "type": "0V DC return",
+      "detail": "0V into coupler -5/A100 from cross-reference 4.6 / X0V.3 (red arrow up)",
+      "connects": [
+        "4.6 / X0V.3",
+        "0V"
+      ],
+      "evidence": "red arrow labelled '4.6 / X0V.3' below '0V' terminal",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "cables": [
+    {
+      "tag": "-W5445",
+      "type": "communication cable",
+      "detail": "Ethernet/fiber link to SCU1 via converter -5/U1",
+      "connects": [
+        "-5/U1",
+        "+SCU1/5.3"
+      ],
+      "evidence": "'-W5445' below U1",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-W5473",
+      "type": "LAN cable (outdoor)",
+      "detail": "'LAN outdoor' link to SCU3 via converter -5/U2",
+      "connects": [
+        "-5/U2",
+        "+SCU3/5.2"
+      ],
+      "evidence": "'-W5473', 'LAN outdoor' below U2",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "contacts": [],
+  "power_domains": [
+    {
+      "tag": "24V",
+      "type": "24V DC control supply",
+      "detail": "Coupler/station supply; sourced from 4.4 / X24V.3",
+      "connects": [
+        "-5/A100",
+        "4.4 / X24V.3"
+      ],
+      "evidence": "'24V' terminal label + '4.4 / X24V.3'",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "0V",
+      "type": "0V DC reference/return",
+      "detail": "Sourced from 4.6 / X0V.3",
+      "connects": [
+        "-5/A100",
+        "4.6 / X0V.3"
+      ],
+      "evidence": "'0V' terminal label + '4.6 / X0V.3'",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "pe_bonds": [
+    {
+      "tag": "PE",
+      "type": "protective earth",
+      "detail": "PE to coupler -5/A100 from cross-reference 3.2 / PE.5DA0 (green conductor)",
+      "connects": [
+        "-5/A100",
+        "3.2 / PE.5DA0"
+      ],
+      "evidence": "'PE' terminal, green line, '3.2 / PE.5DA0'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "off_page_references": [
+    {
+      "tag": "+SCU1/5.3",
+      "type": "off-page location target",
+      "detail": "destination of -W5445; label '-ETH.D' (Ethernet at SCU1)",
+      "connects": [
+        "-W5445"
+      ],
+      "evidence": "'+SCU1/5.3 / -ETH.D' at bottom of U1 branch",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "+SCU3/5.2",
+      "type": "off-page location target",
+      "detail": "destination of -W5473; label '+SCU3-ETH.D' (Ethernet at SCU3)",
+      "connects": [
+        "-W5473"
+      ],
+      "evidence": "'+SCU3/5.2 / +SCU3-ETH.D' at bottom of U2 branch",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "4.4 / X24V.3",
+      "type": "cross-reference (source)",
+      "detail": "24V feed continuation from sheet 4.4, terminal X24V.3",
+      "connects": [
+        "24V"
+      ],
+      "evidence": "'4.4 / X24V.3' with red arrow",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "4.6 / X0V.3",
+      "type": "cross-reference (source)",
+      "detail": "0V feed continuation from sheet 4.6, terminal X0V.3",
+      "connects": [
+        "0V"
+      ],
+      "evidence": "'4.6 / X0V.3' with red arrow",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "3.2 / PE.5DA0",
+      "type": "cross-reference (PE source)",
+      "detail": "PE continuation from sheet 3.2, node PE.5DA0",
+      "connects": [
+        "PE"
+      ],
+      "evidence": "'3.2 / PE.5DA0' with red arrow, green conductor",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "/5.4",
+      "type": "module continuation",
+      "detail": "detail sheet for -5/A101 (EL2008)",
+      "connects": [
+        "-5/A101"
+      ],
+      "evidence": "'/5.4' under A101",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "/6.4",
+      "type": "module continuation",
+      "detail": "detail sheet for -5/A102, -5/A103, -5/A104",
+      "connects": [
+        "-5/A102",
+        "-5/A103",
+        "-5/A104"
+      ],
+      "evidence": "three '/6.4' marks under A102/A103/A104",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "/7.4",
+      "type": "module continuation",
+      "detail": "detail sheet for -5/A105, -5/A106 (EL1722)",
+      "connects": [
+        "-5/A105",
+        "-5/A106"
+      ],
+      "evidence": "two '/7.4' marks under A105/A106",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "plc_io_channels": [
+    {
+      "tag": "-5/A101 EL2008",
+      "type": "digital output block",
+      "detail": "8-channel digital output; channel detail on /5.4",
+      "connects": [
+        "-5/A100"
+      ],
+      "evidence": "'EL2008', '8-Kanal Digital Ausgangsklemmen'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A102 EL1008",
+      "type": "digital input block",
+      "detail": "8-channel digital input; channel detail on /6.4",
+      "connects": [
+        "-5/A100"
+      ],
+      "evidence": "'EL1008', '8 Kanal Digital Eingangsklemme'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A103 EL1008",
+      "type": "digital input block",
+      "detail": "8-channel digital input; channel detail on /6.4",
+      "connects": [
+        "-5/A100"
+      ],
+      "evidence": "'EL1008', '8 Kanal Digital Eingangsklemme'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A104 EL3204",
+      "type": "analog RTD input block",
+      "detail": "4-channel PT100/RTD input; channel detail on /6.4",
+      "connects": [
+        "-5/A100"
+      ],
+      "evidence": "'EL 3204', '4-Kanal Eingangsklemme PT100 (RTD)'",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A105 EL1722",
+      "type": "230VAC digital input block",
+      "detail": "2-channel digital input 120...230VAC; channel detail on /7.4",
+      "connects": [
+        "-5/A100"
+      ],
+      "evidence": "'EL1722', '2 Kanal Digital Eingang 230V DI2x120...230VAC'",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "-5/A106 EL1722",
+      "type": "230VAC digital input block",
+      "detail": "2-channel digital input 120...230VAC; channel detail on /7.4",
+      "connects": [
+        "-5/A100"
+      ],
+      "evidence": "'EL1722', '2 Kanal Digital Eingang 230V DI2x120...230VAC'",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "network_links": [
+    {
+      "tag": "ETH In -> -5/U1",
+      "type": "Ethernet/EtherCAT link",
+      "detail": "coupler -5/A100 ETH In to media converter -5/U1 (blue), then to SCU1",
+      "connects": [
+        "-5/A100",
+        "-5/U1",
+        "-W5445",
+        "+SCU1/5.3"
+      ],
+      "evidence": "blue line from 'ETH In' to U1",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "ETH Out -> -5/U2",
+      "type": "Ethernet/EtherCAT link",
+      "detail": "coupler -5/A100 ETH Out to media converter -5/U2 (red), then to SCU3 via 'LAN outdoor'",
+      "connects": [
+        "-5/A100",
+        "-5/U2",
+        "-W5473",
+        "+SCU3/5.2"
+      ],
+      "evidence": "red line from 'ETH Out' to U2",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "5"
+    },
+    {
+      "tag": "EtherCAT E-bus A100->A107",
+      "type": "EtherCAT terminal bus",
+      "detail": "coupler EK1100 (-5/A100) feeding EL terminal string A101..A107 (EL9011 end terminal)",
+      "connects": [
+        "-5/A100",
+        "-5/A101",
+        "-5/A102",
+        "-5/A103",
+        "-5/A104",
+        "-5/A105",
+        "-5/A106",
+        "-5/A107"
+      ],
+      "evidence": "EK1100 coupler followed by EL series terminals in dashed boxes",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "5"
+    }
+  ],
+  "functional_paths": [
+    {
+      "name": "SCU2 EtherCAT I/O station",
+      "sheet": "5",
+      "sequence": [
+        "24V/0V supply",
+        "-5/A100 (EK1100)",
+        "-5/A101 EL2008",
+        "-5/A102 EL1008",
+        "-5/A103 EL1008",
+        "-5/A104 EL3204",
+        "-5/A105 EL1722",
+        "-5/A106 EL1722",
+        "-5/A107 EL9011"
+      ]
+    },
+    {
+      "name": "Ethernet to remote SCU1",
+      "sheet": "5",
+      "sequence": [
+        "-5/A100 ETH In",
+        "-5/U1 (Metz media converter)",
+        "-W5445",
+        "+SCU1/5.3 (-ETH.D)"
+      ]
+    },
+    {
+      "name": "Ethernet to remote SCU3",
+      "sheet": "5",
+      "sequence": [
+        "-5/A100 ETH Out",
+        "-5/U2 (Metz media converter)",
+        "-W5473 (LAN outdoor)",
+        "+SCU3/5.2 (+SCU3-ETH.D)"
+      ]
+    }
+  ],
+  "physical_layout_matches": [],
+  "unresolved": [
+    {
+      "item": "Coupler part text read as 'EK1100' (Beckhoff EtherCAT coupler) — vertical, slightly blurred.",
+      "status": "proposed",
+      "resolution": "Crop/zoom the vertical label inside box -5/A100 to confirm 'EK1100' vs 'BK1100'."
+    },
+    {
+      "item": "Title-block sheet-count field read as 'von 1706' — value uncertain.",
+      "status": "proposed",
+      "resolution": "Retake the bottom-right Blatt/von cells at higher resolution."
+    },
+    {
+      "item": "Media-converter type '-5/U1'/'-5/U2' printed 'Metz.1309426003-E' — last characters faint.",
+      "status": "proposed",
+      "resolution": "Zoom on the Metz Connect part number beneath U1/U2."
+    },
+    {
+      "item": "Exact interconnection of coupler '+'/'-' power-contact terminals vs '24V'/'0V' (jumper crossover) not fully legible.",
+      "status": "proposed",
+      "resolution": "Crop the lower edge of box -5/A100 showing the 24V/0V/+/-/PE jumper routing."
+    },
+    {
+      "item": "EL3204 label spacing read as 'EL 3204' — confirm no extra digit.",
+      "status": "proposed",
+      "resolution": "Zoom on -5/A104 module text."
+    }
+  ],
+  "cross_sheet_notes": "This is sheet 5 ('PLC overview') of Sensor Control Unit 2, drawing 31971 (=LA2/+SCU2). Power (24V from 4.4/X24V.3, 0V from 4.6/X0V.3, PE from 3.2/PE.5DA0) arrives from other sheets. I/O module details continue on /5.4 (A101), /6.4 (A102/A103/A104) and /7.4 (A105/A106). Ethernet extends off-station to +SCU1/5.3 and +SCU3/5.2 via the two Metz media converters.",
+  "brief": {
+    "sheet_title": "Sheet 5 'PLC overview' of Sensor Control Unit 2 (SCU2) — the Beckhoff EtherCAT I/O station and its two fiber/LAN media converters that link the panel to remote sensor units SCU1 and SCU3.",
+    "purpose": "This sheet lays out the EtherCAT I/O rack: a bus coupler (-5/A100, read as EK1100) with a string of terminal modules — one 8-channel digital output (EL2008), two 8-channel digital inputs (EL1008), a 4-channel PT100/RTD temperature input (EL3204), two 2-channel 120...230VAC digital inputs (EL1722), and an end terminal (EL9011). The coupler is powered by 24V and 0V (from cross-references on other sheets) and earthed via PE. Its two Ethernet ports (ETH In / ETH Out) run to two Metz Connect media converters (-5/U1, -5/U2), which carry the network out over cables -W5445 and -W5473 ('LAN outdoor') to the remote units SCU1 and SCU3. The actual per-channel wiring is on the referenced detail sheets (/5.4, /6.4, /7.4).",
+    "key_signals": [
+      {
+        "signal": "Network link to remote sensor unit SCU1",
+        "tag": "-W5445",
+        "terminal": "-5/A100 ETH In via converter -5/U1",
+        "destination": "+SCU1/5.3 (-ETH.D)",
+        "confidence": 0.8
+      },
+      {
+        "signal": "Network link to remote sensor unit SCU3 (outdoor LAN run)",
+        "tag": "-W5473 (LAN outdoor)",
+        "terminal": "-5/A100 ETH Out via converter -5/U2",
+        "destination": "+SCU3/5.2 (+SCU3-ETH.D)",
+        "confidence": 0.8
+      },
+      {
+        "signal": "24V control supply into the coupler",
+        "tag": "24V",
+        "terminal": "-5/A100 '24V'",
+        "destination": "4.4 / X24V.3",
+        "confidence": 0.78
+      },
+      {
+        "signal": "0V supply return into the coupler",
+        "tag": "0V",
+        "terminal": "-5/A100 '0V'",
+        "destination": "4.6 / X0V.3",
+        "confidence": 0.78
+      },
+      {
+        "signal": "Protective earth to the station",
+        "tag": "PE",
+        "terminal": "-5/A100 'PE'",
+        "destination": "3.2 / PE.5DA0",
+        "confidence": 0.78
+      },
+      {
+        "signal": "Digital outputs (8 ch) — detail continues on sheet 5.4",
+        "tag": "-5/A101 EL2008",
+        "terminal": "EtherCAT terminal on -5/A100",
+        "destination": "/5.4",
+        "confidence": 0.78
+      },
+      {
+        "signal": "Digital inputs (8 ch) — detail on sheet 6.4",
+        "tag": "-5/A102 EL1008",
+        "terminal": "EtherCAT terminal on -5/A100",
+        "destination": "/6.4",
+        "confidence": 0.78
+      },
+      {
+        "signal": "Digital inputs (8 ch) — detail on sheet 6.4",
+        "tag": "-5/A103 EL1008",
+        "terminal": "EtherCAT terminal on -5/A100",
+        "destination": "/6.4",
+        "confidence": 0.78
+      },
+      {
+        "signal": "PT100 / RTD temperature inputs (4 ch) — detail on sheet 6.4",
+        "tag": "-5/A104 EL3204",
+        "terminal": "EtherCAT terminal on -5/A100",
+        "destination": "/6.4",
+        "confidence": 0.76
+      },
+      {
+        "signal": "230VAC digital inputs (2 ch) — detail on sheet 7.4",
+        "tag": "-5/A105 EL1722",
+        "terminal": "EtherCAT terminal on -5/A100",
+        "destination": "/7.4",
+        "confidence": 0.76
+      },
+      {
+        "signal": "230VAC digital inputs (2 ch) — detail on sheet 7.4",
+        "tag": "-5/A106 EL1722",
+        "terminal": "EtherCAT terminal on -5/A100",
+        "destination": "/7.4",
+        "confidence": 0.76
+      },
+      {
+        "signal": "Bus end terminal (no I/O)",
+        "tag": "-5/A107 EL9011",
+        "terminal": "end of EtherCAT terminal string",
+        "destination": null,
+        "confidence": 0.75
+      }
+    ],
+    "key_devices": [
+      {
+        "device": "EtherCAT bus coupler (Beckhoff EK1100) — head of the I/O station",
+        "tag": "-5/A100",
+        "confidence": 0.82
+      },
+      {
+        "device": "8-channel digital output terminal (EL2008)",
+        "tag": "-5/A101",
+        "confidence": 0.85
+      },
+      {
+        "device": "8-channel digital input terminal (EL1008)",
+        "tag": "-5/A102",
+        "confidence": 0.85
+      },
+      {
+        "device": "8-channel digital input terminal (EL1008)",
+        "tag": "-5/A103",
+        "confidence": 0.85
+      },
+      {
+        "device": "4-channel PT100/RTD temperature input terminal (EL3204)",
+        "tag": "-5/A104",
+        "confidence": 0.83
+      },
+      {
+        "device": "2-channel 120...230VAC digital input terminal (EL1722)",
+        "tag": "-5/A105",
+        "confidence": 0.83
+      },
+      {
+        "device": "2-channel 120...230VAC digital input terminal (EL1722)",
+        "tag": "-5/A106",
+        "confidence": 0.83
+      },
+      {
+        "device": "EtherCAT bus end terminal (EL9011)",
+        "tag": "-5/A107",
+        "confidence": 0.8
+      },
+      {
+        "device": "Ethernet-to-fiber/LAN media converter (Metz Connect 1309426003-E) serving SCU1",
+        "tag": "-5/U1",
+        "confidence": 0.8
+      },
+      {
+        "device": "Ethernet-to-fiber/LAN media converter (Metz Connect 1309426003-E) serving SCU3",
+        "tag": "-5/U2",
+        "confidence": 0.8
+      }
+    ],
+    "troubleshooting_example": "Suppose SCU1 drops off the network. Check the link at two distinct points. First, at the coupler side of converter -5/U1: confirm the copper Ethernet from -5/A100 'ETH In' is live/linked at -5/U1. If there is no copper link there, the fault is between the coupler and U1 (patch/port), not the outdoor run. Second, if the copper side at -5/U1 is good but the converter's outgoing side / cable -W5445 shows no link at the far end (+SCU1/5.3, -ETH.D), the fault is the media converter -5/U1 or the -W5445 run to SCU1. A dead copper link at U1 points to the coupler/patch; a good copper link with no far-end link isolates the converter or its outbound cable. Note: this sheet is only the physical/overview layout — it does not show the control logic, so it cannot tell you how the PLC application reacts to the loss.",
+    "safety_context": "The drawing prints '24V' / '0V' for the coupler power (low-voltage control) and PE for earth. It also explicitly labels the EL1722 input modules (-5/A105, -5/A106) as '230V, DI2x120...230VAC' — treat those two terminals as live line voltage and use energized-work procedures with appropriately rated equipment if measuring there. For continuity/resistance checks on the Ethernet/LAN cables (-W5445, -W5473), de-energize, lock out, and verify absence of voltage first. This overview sheet does not prove the actual field state of any circuit — confirm with a meter before contact.",
+    "unresolved_items": [
+      "Coupler part text (read 'EK1100') is vertical and slightly blurred — confirm EK1100 vs BK1100.",
+      "Media-converter part number 'Metz.1309426003-E' has faint trailing characters.",
+      "Title-block 'von' sheet-count field read as '1706' is uncertain.",
+      "Jumper routing between the coupler's 24V/0V and +/- power-contact terminals is not fully legible.",
+      "Cross-reference digits (4.4/X24V.3, 4.6/X0V.3, 3.2/PE.5DA0, /5.4, /6.4, /7.4) should be re-verified at higher resolution before use."
+    ],
+    "detailed_map_available": true
+  }
+}

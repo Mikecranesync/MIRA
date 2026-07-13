@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.137.0 (2026-07-13) - feat(printsense): technician-first render — plain-English brief + protected safety footer
+- **Why:** the PrintSynth interpreter is accurate, but the default Telegram reply was a wall of IEC tags ("-13/A1 → -X4:2 (LOK1) → DA5.1/10.0") — unreadable to a technician on a phone. And on a long sheet the reply could truncate away the safety/closing/uncertainty lines.
+- **What:** the interpreter emits one grounded `TechnicianBrief` field (sheet title / purpose / complete plain-English signals / key devices / one discriminating troubleshooting example / measurement-specific safety / unresolved items) — **no second model call**, just an added field on the existing interpretation. The default reply leads with that brief in a fixed 6-part order; exact tags/terminals/wires/destinations/confidence live in the on-request **`map`**. The brief splits into a truncatable **body** and a **protected footer** so uncertainty / measurement-safety / closing are **never** dropped when a long sheet overflows the 3500-char limit.
+- **Unchanged:** the interpreter, image preprocessing, and confidence gates — render/models/tests only. No invented voltage; safety is measurement-specific.
+- **Test:** `tests/printsense/test_render.py` = 14 passed hermetically (incl. `test_long_brief_truncates_body_but_never_the_safety_footer`, RED on the old renderer). A live paid interpret of SCU2 sheet 20 grades 93/A, 0 confident misreads.
+
 ### v3.134.3 (2026-07-12) - fix(retrieval): make Nemotron/NIM fallback loud so a silent reranker outage is alertable (#2257)
 - **Why:** the Nemotron reranker hop 404s on every retrieval and the code catches it, falls back to un-reranked order, and logs only a buried `WARNING` — "fails open and quiet," the worst failure mode for a grounding-first product. A silent reranker/embed outage degrades citation grounding with nothing an ops dashboard or canary can alert on.
 - **What:** the four NIM call fallbacks (`rewrite`, `embed`, `rerank`, VL `embed`) now emit a distinct **ERROR**-level marker `NEMOTRON_<OP>_FALLBACK` (via a small `_log_nim_fallback` helper) carrying the HTTP status, so a 404-on-every-call outage surfaces. Graceful fallback return values are **unchanged** (behavior-preserving — original order / `None`), and a disabled client (no key) stays silent.

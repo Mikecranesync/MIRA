@@ -1,0 +1,7 @@
+# Large derived eval images + prior-branch eval dirs — keep code + JSON/text
+# before/after evidence only. Source photos live outside the repo.
+_eval_inputs/
+_eval_outputs/
+*.jpg
+*.jpeg
+*.png

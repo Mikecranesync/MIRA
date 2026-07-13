@@ -1,0 +1,42 @@
+📐 sheet 5 (Blatt 5)
+
+🔌 Signals (exact — source → destination)
+• Network link to remote sensor unit SCU1 — -W5445  @ -5/A100 ETH In via converter -5/U1  → +SCU1/5.3 (-ETH.D) · conf 0.80
+• Network link to remote sensor unit SCU3 (outdoor LAN run) — -W5473 (LAN outdoor)  @ -5/A100 ETH Out via converter -5/U2  → +SCU3/5.2 (+SCU3-ETH.D) · conf 0.80
+• 24V control supply into the coupler — 24V  @ -5/A100 '24V'  → 4.4 / X24V.3 · conf 0.78
+• 0V supply return into the coupler — 0V  @ -5/A100 '0V'  → 4.6 / X0V.3 · conf 0.78
+• Protective earth to the station — PE  @ -5/A100 'PE'  → 3.2 / PE.5DA0 · conf 0.78
+• Digital outputs (8 ch) — detail continues on sheet 5.4 — -5/A101 EL2008  @ EtherCAT terminal on -5/A100  → /5.4 · conf 0.78
+• Digital inputs (8 ch) — detail on sheet 6.4 — -5/A102 EL1008  @ EtherCAT terminal on -5/A100  → /6.4 · conf 0.78
+• Digital inputs (8 ch) — detail on sheet 6.4 — -5/A103 EL1008  @ EtherCAT terminal on -5/A100  → /6.4 · conf 0.78
+• PT100 / RTD temperature inputs (4 ch) — detail on sheet 6.4 — -5/A104 EL3204  @ EtherCAT terminal on -5/A100  → /6.4 · conf 0.76
+• 230VAC digital inputs (2 ch) — detail on sheet 7.4 — -5/A105 EL1722  @ EtherCAT terminal on -5/A100  → /7.4 · conf 0.76
+• 230VAC digital inputs (2 ch) — detail on sheet 7.4 — -5/A106 EL1722  @ EtherCAT terminal on -5/A100  → /7.4 · conf 0.76
+• Bus end terminal (no I/O) — -5/A107 EL9011  @ end of EtherCAT terminal string · conf 0.75
+
+🔧 Devices (10)
+• -5/A100 — EtherCAT bus coupler (EK1100 (Beckhoff EtherCAT coupler); dashed enclosure with ETH In / ETH Out / 24V / 0V / + / - / PE terminals) · conf 0.82
+• -5/A101 — digital output terminal (EL2008 - '8-Kanal Digital Ausgangsklemmen' (8-channel digital output); continuation /5.4) · conf 0.85
+• -5/A102 — digital input terminal (EL1008 - '8 Kanal Digital Eingangsklemme' (8-channel digital input); continuation /6.4) · conf 0.85
+• -5/A103 — digital input terminal (EL1008 - '8 Kanal Digital Eingangsklemme' (8-channel digital input); continuation /6.4) · conf 0.85
+• -5/A104 — analog RTD input terminal (EL 3204 - '4-Kanal Eingangsklemme PT100 (RTD)' (4-channel PT100/RTD input); continuation /6.4) · conf 0.83
+• -5/A105 — 230V digital input terminal (EL1722 - '2 Kanal Digital Eingang 230V, DI2x120...230VAC'; continuation /7.4) · conf 0.83
+• -5/A106 — 230V digital input terminal (EL1722 - '2 Kanal Digital Eingang 230V, DI2x120...230VAC'; continuation /7.4) · conf 0.83
+• -5/A107 — bus end terminal (EL9011 - EtherCAT bus end/terminating terminal (no I/O continuation)) · conf 0.80
+• -5/U1 — media converter / fiber-optic coupler (Metz Connect 1309426003-E; converts panel Ethernet toward SCU1) · conf 0.80
+• -5/U2 — media converter / fiber-optic coupler (Metz Connect 1309426003-E; converts panel Ethernet toward SCU3) · conf 0.80
+
+🔗 Wires / cables
+• -W5445 — communication cable · conf 0.80
+• -W5473 — LAN cable (outdoor) · conf 0.80
+• -W5445 — Ethernet/fiber wire (to SCU1) · conf 0.82
+• -W5473 — LAN wire (outdoor, to SCU3) · conf 0.82
+• 24V-supply — 24V DC feed · conf 0.78
+• 0V-supply — 0V DC return · conf 0.78
+
+🧩 8 off-page ref(s): +SCU1/5.3, +SCU3/5.2, 4.4 / X24V.3, 4.6 / X0V.3, 3.2 / PE.5DA0, /5.4, /6.4, /7.4 · 6 PLC I/O · 3 network link(s): ETH In -> -5/U1, ETH Out -> -5/U2, EtherCAT E-bus A100->A107 · 1 PE bond(s)
+
+⚠️ Couldn't read (retake or crop closer):
+• Coupler part text (read 'EK1100') is vertical and slightly blurred — confirm EK1100 vs BK1100.
+• Media-converter part number 'Metz.1309426003-E' has faint trailing characters.
+… (truncated — reply "map" for detail)
