@@ -1,9 +1,21 @@
 """Render a validated ``PrintSynthGraph`` into a technician-readable Telegram reply.
 
-Deterministic — NO LLM. Claude produced the graph; MIRA renders it, so this stage
-can never introduce a claim the graph doesn't already hold. Every line traces to an
-entity + its evidence; unreadable items are surfaced (not hidden); and the trust
-caveat is always shown — a fresh interpretation is ``proposed``, never field-verified.
+Two deterministic renderers (no LLM). The interpreter (``interpret.py``) is
+unchanged — it now also emits a grounded ``brief`` (a typed ``TechnicianBrief``),
+the plain-English presentation a technician actually wants. The render layer LEADS
+with that brief instead of a wall of designations:
+
+- ``format_graph_for_telegram`` — the DEFAULT reply, understandable read aloud
+  WITHOUT decoding IEC tags, in the order: plain title → what it does → complete
+  signals & devices → one grounded troubleshooting example → measurement-specific
+  safety → "reply 'map'". Cryptic tags are translated to meaning here.
+- ``format_map_for_telegram`` — the on-request EXACT list: device tags, terminals,
+  wire/cable ids, source→destination, sheet/grid refs, confidence, and unresolved
+  readings. Uncertainty is never hidden and unresolved values are never replaced
+  with likely ones.
+
+If a graph has no ``brief`` (an older or degraded read), the default gracefully
+falls back to the map, so a print question is never left unanswered.
 """
 
 from __future__ import annotations
@@ -11,6 +23,13 @@ from __future__ import annotations
 from .models import Entity, PrintSynthGraph
 
 _TG_LIMIT = 3500  # keep under Telegram's 4096-char cap with room for the caveat
+_CLOSING = (
+    "Read from the drawing. Verify field conditions and use the correct procedure for the measurement."
+)
+_MAP_HINT = 'Reply "map" for the full terminal and wire list.'
+
+
+# ── shared helpers ────────────────────────────────────────────────────────────
 
 
 def _pkg_header(pkg: dict) -> str:
@@ -22,67 +41,141 @@ def _pkg_header(pkg: dict) -> str:
     return "📐 " + " · ".join(bits) if bits else "📐 Electrical print"
 
 
-def _device_line(e: Entity) -> str:
+def _truncate(text: str) -> str:
+    if len(text) > _TG_LIMIT:
+        text = text[:_TG_LIMIT].rsplit("\n", 1)[0] + '\n… (truncated — reply "map" for detail)'
+    return text
+
+
+def _has_brief(graph: PrintSynthGraph) -> bool:
+    b = graph.brief
+    return bool(b and (b.sheet_title or b.purpose or b.key_signals))
+
+
+# ── DEFAULT reply: plain-English brief first ──────────────────────────────────
+
+
+def format_graph_for_telegram(graph: PrintSynthGraph) -> str:
+    """The default, plain-English-first reply — readable without decoding tags.
+    Falls back to the exact-tag map when the interpreter produced no ``brief``."""
+    if not _has_brief(graph):
+        return format_map_for_telegram(graph)
+
+    b = graph.brief
+    out: list[str] = [f"📋 {b.sheet_title.strip()}" if b.sheet_title else _pkg_header(graph.package or {})]
+
+    if b.purpose:  # 2. what the circuit/sheet does
+        out += ["", b.purpose.strip()]
+
+    if b.key_signals:  # 3. complete signals (plain), then devices
+        out += ["", "🔑 Signals"]
+        out += [f"• {s.signal.strip()}" for s in b.key_signals if s.signal]
+    if b.key_devices:
+        out += ["", "🔧 Devices"]
+        out += [
+            f"• {d.device.strip()}" + (f" ({d.tag})" if d.tag else "")
+            for d in b.key_devices
+            if d.device
+        ]
+
+    if b.troubleshooting_example:  # 4. one grounded troubleshooting example
+        out += ["", "🩺 If you're chasing a fault", b.troubleshooting_example.strip()]
+
+    if b.unresolved_items:  # uncertainty is surfaced in the DEFAULT too — never hidden
+        out += ["", "❓ Couldn't confirm (verify on the sheet):"]
+        out += [f"• {u.strip()}" for u in b.unresolved_items[:4] if u]
+        if len(b.unresolved_items) > 4:
+            out.append(f"…and {len(b.unresolved_items) - 4} more (see 'map')")
+
+    if b.safety_context:  # 5. measurement-specific safety, then the concise closing
+        out += ["", f"⚠️ {b.safety_context.strip()}"]
+    out += ["", f"🔎 {_CLOSING}"]
+
+    out += ["", _MAP_HINT]  # 6. reply 'map'
+    return _truncate("\n".join(out))
+
+
+# ── on-request "map": the exact designations ─────────────────────────────────
+
+
+def _conf(c) -> str:
+    return f" · conf {c:.2f}" if isinstance(c, (int, float)) else ""
+
+
+def _signal_map_line(s) -> str:
+    """One exact signal row: plain — tag @ terminal → destination (conf)."""
+    ref: list[str] = []
+    if s.tag:
+        ref.append(str(s.tag))
+    if s.terminal:
+        ref.append(f"@ {s.terminal}")
+    if s.destination:
+        ref.append(f"→ {s.destination}")
+    detail = "  ".join(ref)
+    return f"• {s.signal}" + (f" — {detail}" if detail else "") + _conf(s.confidence)
+
+
+def _device_map_line(e: Entity) -> str:
     line = e.tag
     if e.type:
         line += f" — {e.type}"
     tail = e.detail or e.evidence
     if tail:
         line += f" ({tail})"
-    return "• " + line
+    return "• " + line + _conf(e.confidence)
 
 
-def format_graph_for_telegram(graph: PrintSynthGraph) -> str:
-    """A grounded, plain-text summary of the interpreted print for a phone screen."""
+def format_map_for_telegram(graph: PrintSynthGraph) -> str:
+    """The exact list — device tags, terminals, wire/cable ids, source→destination,
+    sheet/grid refs, confidence, and unresolved readings. The precise designations
+    live in the graph; this surfaces them when the technician replies "map". Also the
+    graceful fallback for a graph with no brief. Uncertainty is never hidden."""
     lines: list[str] = [_pkg_header(graph.package or {})]
+    b = graph.brief
 
-    # What the circuit does — functional paths, else the cross-sheet note.
-    if graph.functional_paths:
-        lines += ["", "⚡ How it works"]
-        for fp in graph.functional_paths[:4]:
-            seq = " → ".join(fp.sequence) if fp.sequence else ""
-            lines.append(f"• {fp.name}" + (f": {seq}" if seq else ""))
-    elif graph.cross_sheet_notes:
-        lines += ["", f"⚡ {graph.cross_sheet_notes}"]
+    # Signals with exact tag / terminal / destination / confidence (from the brief).
+    signals = list(b.key_signals) if b and b.key_signals else []
+    if signals:
+        lines += ["", "🔌 Signals (exact — source → destination)"]
+        lines += [_signal_map_line(s) for s in signals]
 
-    # Devices.
+    # Devices — exact tag + type/detail + confidence.
     if graph.devices:
         lines += ["", f"🔧 Devices ({len(graph.devices)})"]
-        lines += [_device_line(e) for e in graph.devices[:12]]
-        if len(graph.devices) > 12:
-            lines.append(f"…and {len(graph.devices) - 12} more")
+        lines += [_device_map_line(e) for e in graph.devices[:14]]
+        if len(graph.devices) > 14:
+            lines.append(f"…and {len(graph.devices) - 14} more")
 
-    # Connections / infrastructure — counts + a few notable tags.
+    # Wire / cable identifiers.
+    wires = [e for e in (graph.cables + graph.conductors) if e.tag and e.tag != "UNREADABLE"]
+    if wires:
+        lines += ["", "🔗 Wires / cables"]
+        lines += [f"• {e.tag}" + (f" — {e.type}" if e.type else "") + _conf(e.confidence) for e in wires[:12]]
+
+    # Terminals / off-page continuations (when not already covered by the signal map).
     infra: list[str] = []
-    if graph.cables:
-        infra.append(f"{len(graph.cables)} cable(s): " + ", ".join(e.tag for e in graph.cables[:6]))
-    if graph.terminals:
-        infra.append(f"{len(graph.terminals)} terminal(s)")
-    if graph.pe_bonds:
-        infra.append(f"{len(graph.pe_bonds)} PE bond(s)")
+    if graph.terminals and not signals:
+        infra.append(f"{len(graph.terminals)} terminal(s): " + ", ".join(e.tag for e in graph.terminals[:8]))
+    if graph.off_page_references:
+        infra.append(f"{len(graph.off_page_references)} off-page ref(s): " + ", ".join(e.tag for e in graph.off_page_references[:8]))
     if graph.plc_io_channels:
         infra.append(f"{len(graph.plc_io_channels)} PLC I/O")
     if graph.network_links:
-        tags = ", ".join(e.tag for e in graph.network_links[:6])
-        infra.append(f"{len(graph.network_links)} network link(s): {tags}")
-    if graph.off_page_references:
-        infra.append(f"{len(graph.off_page_references)} off-page ref(s)")
+        infra.append(f"{len(graph.network_links)} network link(s): " + ", ".join(e.tag for e in graph.network_links[:6]))
+    if graph.pe_bonds:
+        infra.append(f"{len(graph.pe_bonds)} PE bond(s)")
     if infra:
-        lines += ["", "🔌 " + " · ".join(infra)]
+        lines += ["", "🧩 " + " · ".join(infra)]
 
-    # The honesty — unreadable / contradictory items, never invented past.
-    if graph.unresolved:
+    # Unresolved — surfaced, never replaced with a likely value.
+    unresolved = list(b.unresolved_items) if (b and b.unresolved_items) else [u.item for u in graph.unresolved]
+    if unresolved:
         lines += ["", "⚠️ Couldn't read (retake or crop closer):"]
-        lines += [f"• {u.item}" for u in graph.unresolved[:6]]
+        lines += [f"• {u}" for u in unresolved[:8]]
 
-    # Trust caveat — always. Read-only doctrine: meter before you act.
     lines += [
         "",
         "🔎 Proposed interpretation from the drawing — not yet field-verified. "
-        "Meter before you act. Reply to confirm or correct any item.",
+        "Reply to confirm or correct any item.",
     ]
-
-    text = "\n".join(lines)
-    if len(text) > _TG_LIMIT:
-        text = text[:_TG_LIMIT].rsplit("\n", 1)[0] + "\n… (truncated)"
-    return text
+    return _truncate("\n".join(lines))

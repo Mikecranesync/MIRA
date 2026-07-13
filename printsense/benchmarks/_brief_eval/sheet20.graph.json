@@ -1,0 +1,572 @@
+{
+  "package": {
+    "drawing_number": "31971",
+    "document_id": "AP31971",
+    "title": "Sensor Control Unit 2",
+    "drawing_no_field": "Sensor Control Unit 2 V3.5",
+    "project": "Hyper Launch",
+    "customer": "Mack",
+    "editor": "Ascher",
+    "date": "11.07.2022",
+    "manufacturer": "INTRASYS (Innovative Transport Systeme)",
+    "location": "Orlando, FL, USA",
+    "sheet": "20",
+    "installation_code": "=LA2",
+    "location_code": "+SCU2",
+    "note": "Opto-Koppler, belegt (opto-coupler, occupied)",
+    "sheet_list": [
+      "20"
+    ]
+  },
+  "devices": [
+    {
+      "tag": "-21/A13",
+      "type": "fiber-optic opto-coupler module",
+      "detail": "Type marking 'ITS.LWL-K-01.2', In=P / Out=P; labelled 'Occupied Upstream'. Ports: 24VDC, GND, LWL IN, LWL OUT, DIG IN, DIG OUT.",
+      "connects": [
+        "X24V.41",
+        "X0V.41",
+        "-W5497",
+        "15.7 / -X3.9"
+      ],
+      "evidence": "Left dashed module box '-21/A13  ITS.LWL-K-01.2  In=P Out=P' with 24VDC/GND/LWL IN/LWL OUT/DIG IN/DIG OUT and 'Occupied Upstream' below",
+      "confidence": 0.86,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A14",
+      "type": "fiber-optic opto-coupler module",
+      "detail": "Type marking 'ITS.LWL-K-01.2', In=P / Out=P; labelled 'Occupied Downstream'. Ports: 24VDC, GND, LWL IN, LWL OUT, DIG IN, DIG OUT.",
+      "connects": [
+        "X24V.41",
+        "X0V.41",
+        "-W5469",
+        "16.6 / -X4.6"
+      ],
+      "evidence": "Right dashed module box '-21/A14  ITS.LWL-K-01.2  In=P Out=P' with 24VDC/GND/LWL IN/LWL OUT/DIG IN/DIG OUT and 'Occupied Downstream' below",
+      "confidence": 0.86,
+      "trust": "proposed",
+      "sheet": "20"
+    }
+  ],
+  "terminals": [
+    {
+      "tag": "-21/A13:24VDC",
+      "type": "power terminal",
+      "detail": "24VDC supply input of module -21/A13",
+      "connects": [
+        "X24V.41"
+      ],
+      "evidence": "'24VDC' at top of left module box",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A13:GND",
+      "type": "power terminal",
+      "detail": "0V/GND supply input of module -21/A13",
+      "connects": [
+        "X0V.41"
+      ],
+      "evidence": "'GND' at top of left module box",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A13:LWL IN",
+      "type": "fiber-optic port (input)",
+      "detail": "Optical receive port; fed by -W5497 (POF)",
+      "connects": [
+        "-W5497"
+      ],
+      "evidence": "'LWL IN' port on left module, red POF wire arrives here",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A13:LWL OUT",
+      "type": "fiber-optic port (output)",
+      "detail": "Optical transmit port; no connection drawn on this sheet",
+      "connects": [],
+      "evidence": "'LWL OUT' port on left module (open circle)",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A13:DIG IN",
+      "type": "digital input port",
+      "detail": "Digital input of upstream module; no connection drawn on this sheet",
+      "connects": [],
+      "evidence": "'DIG IN' text in left module box",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A13:DIG OUT",
+      "type": "digital output port",
+      "detail": "Digital output of upstream module routed to cross-reference 15.7 / terminal -X3.9",
+      "connects": [
+        "15.7 / -X3.9"
+      ],
+      "evidence": "'DIG OUT' text in left module box with blue line to '15.7 / -X3.9'",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A14:24VDC",
+      "type": "power terminal",
+      "detail": "24VDC supply input of module -21/A14",
+      "connects": [
+        "X24V.41"
+      ],
+      "evidence": "'24VDC' at top of right module box",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A14:GND",
+      "type": "power terminal",
+      "detail": "0V/GND supply input of module -21/A14",
+      "connects": [
+        "X0V.41"
+      ],
+      "evidence": "'GND' at top of right module box",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A14:LWL IN",
+      "type": "fiber-optic port (input)",
+      "detail": "Optical receive port; no connection drawn on this sheet",
+      "connects": [],
+      "evidence": "'LWL IN' port on right module (open circle)",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A14:LWL OUT",
+      "type": "fiber-optic port (output)",
+      "detail": "Optical transmit port; drives -W5469 (POF) toward +SCU1-BEL",
+      "connects": [
+        "-W5469"
+      ],
+      "evidence": "'LWL OUT' port on right module, red POF wire departs here",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A14:DIG IN",
+      "type": "digital input port",
+      "detail": "Digital input of downstream module fed from cross-reference 16.6 / terminal -X4.6",
+      "connects": [
+        "16.6 / -X4.6"
+      ],
+      "evidence": "'DIG IN' text in right module box with blue line to '16.6 / -X4.6'",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A14:DIG OUT",
+      "type": "digital output port",
+      "detail": "Digital output of downstream module; no connection drawn on this sheet",
+      "connects": [],
+      "evidence": "'DIG OUT' text in right module box",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-X3.9",
+      "type": "terminal (off-sheet target)",
+      "detail": "Destination terminal for -21/A13 DIG OUT, paired with cross-reference 15.7",
+      "connects": [
+        "-21/A13:DIG OUT"
+      ],
+      "evidence": "'15.7 / -X3.9' at left, arrow pointing off page",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-X4.6",
+      "type": "terminal (off-sheet source)",
+      "detail": "Source terminal for -21/A14 DIG IN, paired with cross-reference 16.6",
+      "connects": [
+        "-21/A14:DIG IN"
+      ],
+      "evidence": "'16.6 / -X4.6' with arrow into DIG IN of right module",
+      "confidence": 0.78,
+      "trust": "proposed",
+      "sheet": "20"
+    }
+  ],
+  "conductors": [
+    {
+      "tag": "X24V.41",
+      "type": "supply rail conductor (24VDC)",
+      "detail": "Top horizontal 24VDC rail feeding 24VDC terminals of both modules via dashed drops; cross-reference to sheet 20.9 (last digit uncertain)",
+      "connects": [
+        "-21/A13:24VDC",
+        "-21/A14:24VDC"
+      ],
+      "evidence": "'X24V.41 /20.9' top-left with dashed horizontal line and vertical drops",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "X0V.41",
+      "type": "supply rail conductor (0V)",
+      "detail": "Top horizontal 0V return rail feeding GND terminals of both modules via dashed drops; cross-reference to sheet 20.9 (last digit uncertain)",
+      "connects": [
+        "-21/A13:GND",
+        "-21/A14:GND"
+      ],
+      "evidence": "'X0V.41 /20.9' below the 24V rail with dashed line",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "20"
+    }
+  ],
+  "cables": [
+    {
+      "tag": "-W5497",
+      "type": "fiber-optic cable (POF)",
+      "detail": "Plastic optical fiber ('POF') carrying the upstream 'occupied' optical signal from +SCU2-BEL (cross-ref +SCU3/21.7) to LWL IN of module -21/A13",
+      "connects": [
+        "+SCU2-BEL",
+        "-21/A13:LWL IN"
+      ],
+      "evidence": "Red arrow labelled '-W5497 / POF' between '+SCU3/21.7 / +SCU2-BEL' and 'LWL IN'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-W5469",
+      "type": "fiber-optic cable (POF)",
+      "detail": "Optical link from LWL OUT of module -21/A14 to +SCU1-BEL (cross-ref +SCU1/21.2)",
+      "connects": [
+        "-21/A14:LWL OUT",
+        "+SCU1-BEL"
+      ],
+      "evidence": "Red arrow labelled '-W5469' from 'LWL OUT' to '+SCU1-BEL / +SCU1/21.2'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "20"
+    }
+  ],
+  "contacts": [],
+  "power_domains": [
+    {
+      "tag": "X24V.41",
+      "type": "24VDC power domain",
+      "detail": "Panel 24VDC distribution rail on this sheet",
+      "connects": [
+        "-21/A13:24VDC",
+        "-21/A14:24VDC"
+      ],
+      "evidence": "'X24V.41 /20.9' with '24VDC' module terminals",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "X0V.41",
+      "type": "0V reference domain",
+      "detail": "Panel 0V return rail on this sheet",
+      "connects": [
+        "-21/A13:GND",
+        "-21/A14:GND"
+      ],
+      "evidence": "'X0V.41 /20.9' with 'GND' module terminals",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "20"
+    }
+  ],
+  "pe_bonds": [],
+  "off_page_references": [
+    {
+      "tag": "+SCU2-BEL",
+      "type": "location/off-page reference",
+      "detail": "Origin location label for -W5497 (upstream occupied fiber source)",
+      "connects": [
+        "-W5497"
+      ],
+      "evidence": "'+SCU3/21.7 / +SCU2-BEL' left of -W5497",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "+SCU3/21.7",
+      "type": "cross-reference (location/sheet target)",
+      "detail": "Continuation reference paired with +SCU2-BEL for -W5497",
+      "connects": [
+        "-W5497"
+      ],
+      "evidence": "'+SCU3/21.7' preceding '+SCU2-BEL'",
+      "confidence": 0.68,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "+SCU1-BEL",
+      "type": "location/off-page reference",
+      "detail": "Destination location label for -W5469 (downstream occupied fiber output)",
+      "connects": [
+        "-W5469"
+      ],
+      "evidence": "'+SCU1-BEL / +SCU1/21.2' right of -W5469",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "+SCU1/21.2",
+      "type": "cross-reference (location/sheet target)",
+      "detail": "Continuation reference paired with +SCU1-BEL for -W5469",
+      "connects": [
+        "-W5469"
+      ],
+      "evidence": "'+SCU1/21.2' following '+SCU1-BEL'",
+      "confidence": 0.68,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "15.7 / -X3.9",
+      "type": "cross-reference (sheet target + terminal)",
+      "detail": "DIG OUT of -21/A13 continues to sheet 15.7 at terminal -X3.9",
+      "connects": [
+        "-21/A13:DIG OUT"
+      ],
+      "evidence": "'15.7 / -X3.9' with arrow at left of DIG OUT line",
+      "confidence": 0.76,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "16.6 / -X4.6",
+      "type": "cross-reference (sheet target + terminal)",
+      "detail": "DIG IN of -21/A14 sourced from sheet 16.6 at terminal -X4.6",
+      "connects": [
+        "-21/A14:DIG IN"
+      ],
+      "evidence": "'16.6 / -X4.6' with arrow into DIG IN line",
+      "confidence": 0.76,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "X24V.41 /20.9",
+      "type": "power continuation reference",
+      "detail": "24VDC rail continuation to/from sheet 20.9 (last digit of cross-ref uncertain, could be 20.8)",
+      "connects": [
+        "X24V.41"
+      ],
+      "evidence": "'X24V.41 /20.9' top-left with red arrow",
+      "confidence": 0.6,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "X0V.41 /20.9",
+      "type": "power continuation reference",
+      "detail": "0V rail continuation to/from sheet 20.9 (last digit of cross-ref uncertain, could be 20.8)",
+      "connects": [
+        "X0V.41"
+      ],
+      "evidence": "'X0V.41 /20.9' top-left with red arrow",
+      "confidence": 0.6,
+      "trust": "proposed",
+      "sheet": "20"
+    }
+  ],
+  "plc_io_channels": [
+    {
+      "tag": "-21/A13:DIG OUT",
+      "type": "digital output channel",
+      "detail": "Upstream 'occupied' digital output derived from received fiber signal; routed to 15.7 / -X3.9",
+      "connects": [
+        "15.7 / -X3.9"
+      ],
+      "evidence": "'DIG OUT' -> '15.7 / -X3.9'",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-21/A14:DIG IN",
+      "type": "digital input channel",
+      "detail": "Downstream 'occupied' digital input converted to outgoing fiber signal; sourced from 16.6 / -X4.6",
+      "connects": [
+        "16.6 / -X4.6"
+      ],
+      "evidence": "'DIG IN' <- '16.6 / -X4.6'",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "20"
+    }
+  ],
+  "network_links": [
+    {
+      "tag": "-W5497",
+      "type": "fiber-optic link (POF)",
+      "detail": "Optical 'occupied upstream' link into -21/A13 LWL IN from +SCU2-BEL",
+      "connects": [
+        "+SCU2-BEL",
+        "-21/A13:LWL IN"
+      ],
+      "evidence": "'-W5497 / POF' red fiber arrow to LWL IN",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "20"
+    },
+    {
+      "tag": "-W5469",
+      "type": "fiber-optic link (POF)",
+      "detail": "Optical 'occupied downstream' link out of -21/A14 LWL OUT toward +SCU1-BEL",
+      "connects": [
+        "-21/A14:LWL OUT",
+        "+SCU1-BEL"
+      ],
+      "evidence": "'-W5469' red fiber arrow from LWL OUT",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "20"
+    }
+  ],
+  "functional_paths": [
+    {
+      "name": "Occupied-Upstream: incoming fiber -> digital output",
+      "sheet": "20",
+      "sequence": [
+        "+SCU2-BEL",
+        "-W5497",
+        "-21/A13:LWL IN",
+        "-21/A13",
+        "-21/A13:DIG OUT",
+        "15.7 / -X3.9"
+      ]
+    },
+    {
+      "name": "Occupied-Downstream: digital input -> outgoing fiber",
+      "sheet": "20",
+      "sequence": [
+        "16.6 / -X4.6",
+        "-21/A14:DIG IN",
+        "-21/A14",
+        "-21/A14:LWL OUT",
+        "-W5469",
+        "+SCU1-BEL"
+      ]
+    }
+  ],
+  "physical_layout_matches": [],
+  "unresolved": [
+    {
+      "item": "Cross-reference sheet digit on the 24VDC/0V rails 'X24V.41 /20.9' and 'X0V.41 /20.9' — last digit reads as 9 but could be 8.",
+      "status": "digit ambiguous",
+      "resolution": "Provide a close crop of the top-left rail labels."
+    },
+    {
+      "item": "Module type marking 'ITS.LWL-K-01.2' partially small/blurred; confirm exact suffix.",
+      "status": "low-resolution text",
+      "resolution": "Zoom-in retake of the module header text under -21/A13 and -21/A14."
+    },
+    {
+      "item": "Exact routing of the dashed power drops from the top rails to each module's 24VDC vs GND terminal (lines overlap/cross near top).",
+      "status": "geometry overlap",
+      "resolution": "Higher-resolution image of the upper wiring between the rails and both module headers."
+    },
+    {
+      "item": "Whether LWL OUT of -21/A13, LWL IN of -21/A14, DIG IN of -21/A13, and DIG OUT of -21/A14 are unused or continue off-sheet — no connection is drawn.",
+      "status": "no connection shown",
+      "resolution": "Check adjacent sheets (21.x) for continuations of these ports."
+    }
+  ],
+  "cross_sheet_notes": "Sheet 20 of installation =LA2 / +SCU2. Upstream fiber -W5497 comes from +SCU2-BEL (ref +SCU3/21.7); downstream fiber -W5469 goes to +SCU1-BEL (ref +SCU1/21.2). Module digital ports cross-reference 15.7/-X3.9 (A13 DIG OUT) and 16.6/-X4.6 (A14 DIG IN). Supply rails X24V.41 / X0V.41 continue to sheet 20.9 (digit uncertain).",
+  "brief": {
+    "sheet_title": "Sheet 20 of the Sensor Control Unit 2 (SCU2) drawings — the two fiber-optic opto-coupler modules that pass 'block occupied' signals between adjacent sensor control units.",
+    "purpose": "This sheet shows two identical fiber-optic opto-coupler modules (type ITS.LWL-K-01.2) that isolate and relay 'occupied' block-status signals between neighbouring Sensor Control Units over plastic optical fiber (POF), so no electrical connection runs between the units. The upstream module (-21/A13, 'Occupied Upstream') receives an optical signal on its LWL IN from +SCU2-BEL over fiber -W5497 and produces a digital output (DIG OUT) that goes off-sheet to 15.7 / -X3.9. The downstream module (-21/A14, 'Occupied Downstream') takes a digital input (DIG IN) from 16.6 / -X4.6 and drives an optical output (LWL OUT) over fiber -W5469 to +SCU1-BEL. Both modules are powered from the panel 24VDC (X24V.41) and 0V (X0V.41) rails shown at the top of the sheet.",
+    "key_signals": [
+      {
+        "signal": "Upstream 'occupied' optical signal into the upstream coupler",
+        "tag": "-W5497 (POF)",
+        "terminal": "-21/A13:LWL IN",
+        "destination": "from +SCU2-BEL (cross-ref +SCU3/21.7)",
+        "confidence": 0.82
+      },
+      {
+        "signal": "Upstream 'occupied' digital output from the upstream coupler",
+        "tag": "-21/A13 DIG OUT",
+        "terminal": "-X3.9",
+        "destination": "sheet 15.7, terminal -X3.9",
+        "confidence": 0.76
+      },
+      {
+        "signal": "Downstream 'occupied' digital input to the downstream coupler",
+        "tag": "-21/A14 DIG IN",
+        "terminal": "-X4.6",
+        "destination": "from sheet 16.6, terminal -X4.6",
+        "confidence": 0.76
+      },
+      {
+        "signal": "Downstream 'occupied' optical signal out of the downstream coupler",
+        "tag": "-W5469 (POF)",
+        "terminal": "-21/A14:LWL OUT",
+        "destination": "to +SCU1-BEL (cross-ref +SCU1/21.2)",
+        "confidence": 0.82
+      },
+      {
+        "signal": "24VDC module supply",
+        "tag": "X24V.41",
+        "terminal": "-21/A13:24VDC and -21/A14:24VDC",
+        "destination": "rail continues to sheet 20.9 (last digit uncertain)",
+        "confidence": 0.68
+      },
+      {
+        "signal": "0V module supply return",
+        "tag": "X0V.41",
+        "terminal": "-21/A13:GND and -21/A14:GND",
+        "destination": "rail continues to sheet 20.9 (last digit uncertain)",
+        "confidence": 0.68
+      }
+    ],
+    "key_devices": [
+      {
+        "device": "Fiber-optic opto-coupler module, 'Occupied Upstream' (converts incoming POF signal to a digital output)",
+        "tag": "-21/A13",
+        "confidence": 0.86
+      },
+      {
+        "device": "Fiber-optic opto-coupler module, 'Occupied Downstream' (converts a digital input to an outgoing POF signal)",
+        "tag": "-21/A14",
+        "confidence": 0.86
+      }
+    ],
+    "troubleshooting_example": "Upstream path: if the digital 'occupied' output at -X3.9 (cross-ref 15.7) is missing, check two distinct points. First confirm the module has light at its LWL IN (fed by fiber -W5497 from +SCU2-BEL). If the optical input is present but the module's DIG OUT terminal on -21/A13 stays inactive, the opto-coupler module A13 is the fault. If DIG OUT is active right at the module but nothing shows up at -X3.9 (15.7), the fault is in the wiring between the module and that off-sheet terminal. Note: the control logic that acts on these occupied signals is not shown on this sheet, so this drawing cannot tell you what the controller does with the result.",
+    "safety_context": "The only electrical level printed on this sheet is 24VDC (rails X24V.41 / X0V.41); no other voltage is established by the drawing. The LWL/-W5497/-W5469 links are plastic optical fiber carrying light, not voltage — do not look directly into fiber ends. For continuity/resistance checks on the digital wiring (-X3.9, -X4.6) de-energize the 24VDC supply, lock out, and verify absence of voltage first. This drawing does not prove the actual energized state of the panel in the field.",
+    "unresolved_items": [
+      "Last digit of the supply-rail cross-references 'X24V.41 /20.9' and 'X0V.41 /20.9' (could be 20.8).",
+      "Exact module type suffix 'ITS.LWL-K-01.2' (small/blurred).",
+      "Routing of the dashed 24VDC vs GND drops from the top rails to each module (lines overlap).",
+      "LWL OUT of A13, LWL IN of A14, DIG IN of A13 and DIG OUT of A14 show no connection on this sheet — verify on adjacent sheets."
+    ],
+    "detailed_map_available": true
+  }
+}

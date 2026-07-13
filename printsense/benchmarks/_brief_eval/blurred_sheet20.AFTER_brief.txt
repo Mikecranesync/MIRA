@@ -1,0 +1,22 @@
+📋 An INTRASYS (Orlando, FL, USA) control schematic whose center title-block text appears to read 'Sensor Control Unit 1', photographed as a curled paper print — most content is not legible.
+
+The drawing shows two boxed component groups (dashed-line assembly boundaries) fed by a pair of horizontal rail/supply lines across the top, with marked (red) connection points on the outer edge of each box. Beyond this general topology, the function cannot be stated because the internal designations, wire numbers, and terminal labels are not readable at this image quality. No control logic or signal function is legible enough to describe honestly.
+
+🔧 Devices
+• Left component group inside a dashed assembly boundary (role not legible) (UNREADABLE)
+• Right component group inside a dashed assembly boundary (role not legible) (UNREADABLE)
+
+🩺 If you're chasing a fault
+No grounded troubleshooting example can be given: no source terminal, destination, or cross-reference is legible on this photo. Provide a flat, high-resolution scan and specific tags/terminals first.
+
+❓ Couldn't confirm (verify on the sheet):
+• Drawing number in bottom-right title block (looks like '31971' — digits unconfirmed).
+• Sheet/equipment title (possibly 'Sensor Control Unit 1' — unconfirmed).
+• All device tags, wire numbers (-W####), and terminal designations inside and between the two dashed boxes.
+• Top rail/supply line labels and any cross-sheet references.
+
+⚠️ This drawing does not establish any voltage level or the present field condition of the circuit — no rating is legible. Do not assume a voltage from appearance. Before any metering, confirm the actual circuit and required procedure from a legible copy of the print; for continuity/resistance checks de-energize, lock out, and verify absence of voltage, and for any voltage checks follow energized-work procedures with appropriately rated equipment.
+
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply "map" for the full terminal and wire list.

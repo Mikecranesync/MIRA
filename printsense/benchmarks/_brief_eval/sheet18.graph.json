@@ -1,0 +1,602 @@
+{
+  "package": {
+    "drawing_no": "31971",
+    "document_title": "Sensor Control Unit 2",
+    "document_no_field": "Sensor Control Unit 2 V3.5",
+    "function_description": "Statoren Temp.-Überwachung (stator temperature monitoring)",
+    "project": "Hyper Launch",
+    "project_no": "AP31971",
+    "customer": "Mack",
+    "location": "Orlando, FL, USA",
+    "manufacturer_title_block": "INTRASYS - Innovative Transport Systeme",
+    "unit_designation": "=UA2 +SCU2",
+    "sheet": "18",
+    "sheet_of": "1706",
+    "date": "11.07.2022",
+    "drawn_by": "Ascher",
+    "sheet_navigation": "left edge '17', right edge '19' (this sheet 18)",
+    "evidence": "Title block: '31971', 'Sensor Control Unit 2', 'Statoren Temp.-Überwachung', 'Orlando, FL, USA', 'Kunde: Mack', 'AP31971', 'Datum 11.07.2022', 'Bearb Ascher', '=UA2 +SCU2', 'Blatt 18 von 1706'",
+    "confidence": 0.9,
+    "trust": "proposed"
+  },
+  "devices": [
+    {
+      "tag": "+EXT-3B105",
+      "type": "thermal switch (Klixon)",
+      "detail": "Stator temperature switch for channel ME05; two field terminals .1 and .2",
+      "connects": [
+        "-W5483:1",
+        "-W5483:2"
+      ],
+      "evidence": "bottom label 'ME05 Klixon'; field refs '+EXT-3B105.1' / '+EXT-3B105.2'",
+      "confidence": 0.72,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B205",
+      "type": "thermal switch (Klixon)",
+      "detail": "Stator temperature switch for channel ME06; field terminals .1 and .2",
+      "connects": [
+        "-W5485:1",
+        "-W5485:2"
+      ],
+      "evidence": "bottom label 'ME06 Klixon'; field refs '+EXT-3B205.1' / '+EXT-3B205.2'",
+      "confidence": 0.68,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B107",
+      "type": "thermal switch (Klixon)",
+      "detail": "Stator temperature switch for channel ME07; field terminals .1 and .2",
+      "connects": [
+        "-W5487:1",
+        "-W5487:2"
+      ],
+      "evidence": "bottom label 'ME07 Klixon'; field refs '+EXT-3B107.1' / '+EXT-3B107.2'",
+      "confidence": 0.68,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B207",
+      "type": "thermal switch (Klixon)",
+      "detail": "Stator temperature switch for channel ME08; field terminals .1 and .2",
+      "connects": [
+        "-W5489:1",
+        "-W5489:2"
+      ],
+      "evidence": "bottom label 'ME08 Klixon'; field refs '+EXT-3B207.1' / '+EXT-3B207.2'",
+      "confidence": 0.68,
+      "trust": "proposed",
+      "sheet": "18"
+    }
+  ],
+  "terminals": [
+    {
+      "tag": "-18/X2KL:1",
+      "type": "terminal",
+      "detail": "supply-side terminal (channel ME05), fed from 230V_2 bus",
+      "connects": [
+        "230V_2",
+        "-W5483:1"
+      ],
+      "evidence": "terminal strip label '-18/X2KL', terminal number '1'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-18/X2KL:2",
+      "type": "terminal",
+      "detail": "return/monitoring terminal (channel ME05), up to DA6.1",
+      "connects": [
+        "-W5483:2",
+        "DA6.1"
+      ],
+      "evidence": "terminal strip '-18/X2KL', terminal number '2'; upward ref '12.0 / DA6.1'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-18/X2KL:3",
+      "type": "terminal",
+      "detail": "supply-side terminal (channel ME06)",
+      "connects": [
+        "230V_2",
+        "-W5485:1"
+      ],
+      "evidence": "terminal strip '-18/X2KL', terminal number '3'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-18/X2KL:4",
+      "type": "terminal",
+      "detail": "return/monitoring terminal (channel ME06), up to DA6.5",
+      "connects": [
+        "-W5485:2",
+        "DA6.5"
+      ],
+      "evidence": "terminal strip '-18/X2KL', terminal number '4'; upward ref '12.1 / DA6.5'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-18/X2KL:5",
+      "type": "terminal",
+      "detail": "supply-side terminal (channel ME07)",
+      "connects": [
+        "230V_2",
+        "-W5487:1"
+      ],
+      "evidence": "terminal strip '-18/X2KL', terminal number '5'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-18/X2KL:6",
+      "type": "terminal",
+      "detail": "return/monitoring terminal (channel ME07), up to DA6.2",
+      "connects": [
+        "-W5487:2",
+        "DA6.2"
+      ],
+      "evidence": "terminal strip '-18/X2KL', terminal number '6'; upward ref '12.5 / DA6.2'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-18/X2KL:7",
+      "type": "terminal",
+      "detail": "supply-side terminal (channel ME08)",
+      "connects": [
+        "230V_2",
+        "-W5489:1"
+      ],
+      "evidence": "terminal strip '-18/X2KL', terminal number '7'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-18/X2KL:8",
+      "type": "terminal",
+      "detail": "return/monitoring terminal (channel ME08), up to DA6.6",
+      "connects": [
+        "-W5489:2",
+        "DA6.6"
+      ],
+      "evidence": "terminal strip '-18/X2KL', terminal number '8'; upward ref '12.6 / DA6.6'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    }
+  ],
+  "conductors": [
+    {
+      "tag": "230V_2-bus",
+      "type": "supply bus / horizontal line",
+      "detail": "230V_2 supply distributed to terminals -18/X2KL:1,3,5,7 (odd terminals)",
+      "connects": [
+        "230V_2",
+        "-18/X2KL:1",
+        "-18/X2KL:3",
+        "-18/X2KL:5",
+        "-18/X2KL:7"
+      ],
+      "evidence": "horizontal line from '230V_2 / 4.8' branching to terminal drops",
+      "confidence": 0.6,
+      "trust": "proposed",
+      "sheet": "18"
+    }
+  ],
+  "cables": [
+    {
+      "tag": "-W5483",
+      "type": "cable 4x1 mm² (2 cores used)",
+      "detail": "channel ME05; cores 1,2; cross-ref /19.1; to +EXT-3B105",
+      "connects": [
+        "-18/X2KL:1",
+        "-18/X2KL:2",
+        "+EXT-3B105"
+      ],
+      "evidence": "'-W5483', '/19.1', '4x1 mm²', cores '1' '2'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-W5485",
+      "type": "cable 4x1 mm² (2 cores used)",
+      "detail": "channel ME06; cores 1,2; cross-ref /19.3; to +EXT-3B205",
+      "connects": [
+        "-18/X2KL:3",
+        "-18/X2KL:4",
+        "+EXT-3B205"
+      ],
+      "evidence": "'-W5485', '/19.3', '4x1 mm²', cores '1' '2'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-W5487",
+      "type": "cable 4x1 mm² (2 cores used)",
+      "detail": "channel ME07; cores 1,2; cross-ref /19.4; to +EXT-3B107",
+      "connects": [
+        "-18/X2KL:5",
+        "-18/X2KL:6",
+        "+EXT-3B107"
+      ],
+      "evidence": "'-W5487', '/19.4', '4x1 mm²', cores '1' '2'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "-W5489",
+      "type": "cable 4x1 mm² (2 cores used)",
+      "detail": "channel ME08; cores 1,2; cross-ref /19.6; to +EXT-3B207",
+      "connects": [
+        "-18/X2KL:7",
+        "-18/X2KL:8",
+        "+EXT-3B207"
+      ],
+      "evidence": "'-W5489', '/19.6', '4x1 mm²', cores '1' '2'",
+      "confidence": 0.82,
+      "trust": "proposed",
+      "sheet": "18"
+    }
+  ],
+  "contacts": [],
+  "power_domains": [
+    {
+      "tag": "230V_2",
+      "type": "AC supply",
+      "detail": "230 V supply feed entering from left, cross-referenced to sheet 4.8",
+      "connects": [
+        "-18/X2KL:1",
+        "-18/X2KL:3",
+        "-18/X2KL:5",
+        "-18/X2KL:7"
+      ],
+      "evidence": "left label '230V_2 / 4.8' with incoming line",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": "18"
+    }
+  ],
+  "pe_bonds": [],
+  "off_page_references": [
+    {
+      "tag": "DA6.1",
+      "type": "cross-reference (destination up)",
+      "detail": "monitoring input for ME05 channel; sheet-column ref 12.0",
+      "connects": [
+        "-18/X2KL:2"
+      ],
+      "evidence": "top arrow '12.0 / DA6.1'",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "DA6.5",
+      "type": "cross-reference (destination up)",
+      "detail": "monitoring input for ME06 channel; sheet-column ref 12.1",
+      "connects": [
+        "-18/X2KL:4"
+      ],
+      "evidence": "top arrow '12.1 / DA6.5'",
+      "confidence": 0.68,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "DA6.2",
+      "type": "cross-reference (destination up)",
+      "detail": "monitoring input for ME07 channel; sheet-column ref 12.5",
+      "connects": [
+        "-18/X2KL:6"
+      ],
+      "evidence": "top arrow '12.5 / DA6.2'",
+      "confidence": 0.68,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "DA6.6",
+      "type": "cross-reference (destination up)",
+      "detail": "monitoring input for ME08 channel; sheet-column ref 12.6",
+      "connects": [
+        "-18/X2KL:8"
+      ],
+      "evidence": "top arrow '12.6 / DA6.6'",
+      "confidence": 0.66,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "230V_2 / 4.8",
+      "type": "cross-reference (supply source)",
+      "detail": "230V_2 supply origin at sheet 4.8",
+      "connects": [
+        "230V_2"
+      ],
+      "evidence": "left label '230V_2 / 4.8'",
+      "confidence": 0.75,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B105.1",
+      "type": "field destination",
+      "detail": "ME05 Klixon terminal .1; adjacent sheet ref reads approx '+EXT/13.7'",
+      "connects": [
+        "-W5483:1"
+      ],
+      "evidence": "bottom vertical text '+EXT/13.7 / +EXT-3B105.1'",
+      "confidence": 0.6,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B105.2",
+      "type": "field destination",
+      "detail": "ME05 Klixon terminal .2; adjacent sheet ref reads approx '+EXT/13.7'",
+      "connects": [
+        "-W5483:2"
+      ],
+      "evidence": "bottom vertical text '+EXT/13.7 / +EXT-3B105.2'",
+      "confidence": 0.6,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B205.1",
+      "type": "field destination",
+      "detail": "ME06 Klixon terminal .1; adjacent sheet ref reads approx '+EXT/18.5'",
+      "connects": [
+        "-W5485:1"
+      ],
+      "evidence": "bottom vertical text '+EXT/18.5 / +EXT-3B205.1'",
+      "confidence": 0.58,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B205.2",
+      "type": "field destination",
+      "detail": "ME06 Klixon terminal .2; adjacent sheet ref reads approx '+EXT/18.5'",
+      "connects": [
+        "-W5485:2"
+      ],
+      "evidence": "bottom vertical text '+EXT/18.5 / +EXT-3B205.2'",
+      "confidence": 0.58,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B107.1",
+      "type": "field destination",
+      "detail": "ME07 Klixon terminal .1; adjacent sheet ref reads approx '+EXT/13.5'",
+      "connects": [
+        "-W5487:1"
+      ],
+      "evidence": "bottom vertical text '+EXT/13.5 / +EXT-3B107.1'",
+      "confidence": 0.56,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B107.2",
+      "type": "field destination",
+      "detail": "ME07 Klixon terminal .2; adjacent sheet ref reads approx '+EXT/18.5'",
+      "connects": [
+        "-W5487:2"
+      ],
+      "evidence": "bottom vertical text '+EXT/18.5 / +EXT-3B107.2'",
+      "confidence": 0.56,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B207.1",
+      "type": "field destination",
+      "detail": "ME08 Klixon terminal .1; adjacent sheet ref reads approx '+EXT/22.5'",
+      "connects": [
+        "-W5489:1"
+      ],
+      "evidence": "bottom vertical text '+EXT/22.5 / +EXT-3B207.1'",
+      "confidence": 0.56,
+      "trust": "proposed",
+      "sheet": "18"
+    },
+    {
+      "tag": "+EXT-3B207.2",
+      "type": "field destination",
+      "detail": "ME08 Klixon terminal .2; adjacent sheet ref reads approx '+EXT/22.5'",
+      "connects": [
+        "-W5489:2"
+      ],
+      "evidence": "bottom vertical text '+EXT/22.5 / +EXT-3B207.2'",
+      "confidence": 0.56,
+      "trust": "proposed",
+      "sheet": "18"
+    }
+  ],
+  "plc_io_channels": [],
+  "network_links": [],
+  "functional_paths": [
+    {
+      "name": "ME05 stator temp loop",
+      "sheet": "18",
+      "sequence": [
+        "230V_2",
+        "-18/X2KL:1",
+        "-W5483:1",
+        "+EXT-3B105.1",
+        "+EXT-3B105.2",
+        "-W5483:2",
+        "-18/X2KL:2",
+        "DA6.1"
+      ]
+    },
+    {
+      "name": "ME06 stator temp loop",
+      "sheet": "18",
+      "sequence": [
+        "230V_2",
+        "-18/X2KL:3",
+        "-W5485:1",
+        "+EXT-3B205.1",
+        "+EXT-3B205.2",
+        "-W5485:2",
+        "-18/X2KL:4",
+        "DA6.5"
+      ]
+    },
+    {
+      "name": "ME07 stator temp loop",
+      "sheet": "18",
+      "sequence": [
+        "230V_2",
+        "-18/X2KL:5",
+        "-W5487:1",
+        "+EXT-3B107.1",
+        "+EXT-3B107.2",
+        "-W5487:2",
+        "-18/X2KL:6",
+        "DA6.2"
+      ]
+    },
+    {
+      "name": "ME08 stator temp loop",
+      "sheet": "18",
+      "sequence": [
+        "230V_2",
+        "-18/X2KL:7",
+        "-W5489:1",
+        "+EXT-3B207.1",
+        "+EXT-3B207.2",
+        "-W5489:2",
+        "-18/X2KL:8",
+        "DA6.6"
+      ]
+    }
+  ],
+  "physical_layout_matches": [],
+  "unresolved": [
+    {
+      "item": "Bottom field sheet-references ('+EXT/13.7', '+EXT/18.5', '+EXT/13.5', '+EXT/22.5') are small rotated text; digit pairs are only ~0.55 confident. ME07 shows inconsistent refs (13.5 vs 18.5) for the two cores of one cable.",
+      "status": "low-confidence digit reading",
+      "resolution": "Close-up crop of each bottom vertical label to confirm '+EXT/xx.x' digits."
+    },
+    {
+      "item": "Terminal-strip designation read as '-18/X2KL' — the 'KL' suffix (Klemmleiste?) and whether the strip tag is 'X2' or 'X2KL' is uncertain.",
+      "status": "ambiguous tag",
+      "resolution": "Crop of the '-18/X2KL' label at terminals 1/2."
+    },
+    {
+      "item": "Top cross-reference digits (DA6.1/DA6.5/DA6.2/DA6.6 with 12.0/12.1/12.5/12.6) — DA6.x and sheet-column values need confirmation; digit drift possible.",
+      "status": "low-confidence digit reading",
+      "resolution": "Crop of each top arrow label."
+    },
+    {
+      "item": "Bus branch topology (which of terminals 1-8 the 230V_2 bus feeds vs. which route up to DA6) is inferred from geometry, not from an explicit dot pattern.",
+      "status": "inferred connection",
+      "resolution": "Higher-resolution image of the horizontal bus junctions and top drop lines."
+    }
+  ],
+  "cross_sheet_notes": "230V_2 supply arrives from sheet 4.8. Four monitoring returns exit upward to DA6 inputs referenced at sheet-columns 12.0/12.1/12.5/12.6. Cable cross-references point to sheet 19 (/19.1, /19.3, /19.4, /19.6). Field Klixon devices are in +EXT location with additional sheet refs (~13.7/18.5/13.5/22.5).",
+  "brief": {
+    "sheet_title": "Sheet 18 of drawing 31971 (Sensor Control Unit 2, =UA2 +SCU2) — the stator over-temperature monitoring circuit using Klixon thermal switches.",
+    "purpose": "This sheet documents four stator temperature-monitoring channels (ME05–ME08). A 230 V supply (230V_2, coming from sheet 4.8) is distributed across a terminal strip -18/X2KL. For each channel the supply is carried out through a 2-core cable to a Klixon thermal switch mounted at the stator, and the return conductor comes back to the terminal strip and up to a DA6 monitoring module input (cross-referenced around sheet-column 12). A Klixon is a normally-closed thermal switch: while the stator is cool it passes the loop signal; if a winding overheats the Klixon opens, the loop breaks, and the DA6 input drops out to flag the over-temperature. (Inference on the loop direction based on the drawing geometry — the exact bus junctions are not fully legible.)",
+    "key_signals": [
+      {
+        "signal": "ME05 stator over-temperature status return",
+        "tag": "DA6.1",
+        "terminal": "-18/X2KL:2",
+        "destination": "DA6 monitoring module input (sheet-column 12.0)",
+        "confidence": 0.7
+      },
+      {
+        "signal": "ME06 stator over-temperature status return",
+        "tag": "DA6.5",
+        "terminal": "-18/X2KL:4",
+        "destination": "DA6 monitoring module input (sheet-column 12.1)",
+        "confidence": 0.68
+      },
+      {
+        "signal": "ME07 stator over-temperature status return",
+        "tag": "DA6.2",
+        "terminal": "-18/X2KL:6",
+        "destination": "DA6 monitoring module input (sheet-column 12.5)",
+        "confidence": 0.68
+      },
+      {
+        "signal": "ME08 stator over-temperature status return",
+        "tag": "DA6.6",
+        "terminal": "-18/X2KL:8",
+        "destination": "DA6 monitoring module input (sheet-column 12.6)",
+        "confidence": 0.66
+      },
+      {
+        "signal": "230 V monitoring-loop supply feed",
+        "tag": "230V_2",
+        "terminal": "-18/X2KL:1,3,5,7",
+        "destination": "supply source on sheet 4.8",
+        "confidence": 0.78
+      }
+    ],
+    "key_devices": [
+      {
+        "device": "Klixon stator thermal switch, channel ME05",
+        "tag": "+EXT-3B105",
+        "confidence": 0.72
+      },
+      {
+        "device": "Klixon stator thermal switch, channel ME06",
+        "tag": "+EXT-3B205",
+        "confidence": 0.68
+      },
+      {
+        "device": "Klixon stator thermal switch, channel ME07",
+        "tag": "+EXT-3B107",
+        "confidence": 0.68
+      },
+      {
+        "device": "Klixon stator thermal switch, channel ME08",
+        "tag": "+EXT-3B207",
+        "confidence": 0.68
+      },
+      {
+        "device": "Monitoring-loop terminal strip",
+        "tag": "-18/X2KL (terminals 1-8)",
+        "confidence": 0.7
+      },
+      {
+        "device": "2-core 4x1 mm² field cables to the Klixons",
+        "tag": "-W5483 / -W5485 / -W5487 / -W5489",
+        "confidence": 0.82
+      }
+    ],
+    "troubleshooting_example": "For an ME05 over-temp indication that will not clear: with the circuit isolated, locked out, and verified dead, measure continuity across the Klixon at its field terminals +EXT-3B105.1 to +EXT-3B105.2 — when cold and healthy it should read near 0 Ω; an open reading means the switch itself (or a genuinely hot/failed stator). If the switch checks good but you get no continuity through the loop from -18/X2KL:1 to -18/X2KL:2, the fault is in cable -W5483 or its terminations, not the Klixon. Those are two distinct measurement points: the field terminals isolate the device, the terminal-strip pair isolates the cable. Note: what the DA6 module does with this input is not shown on this sheet, so do not assume its response here.",
+    "safety_context": "The feed on this sheet is printed as '230V_2' — treat the terminal strip -18/X2KL as live 230 V AC. Continuity/resistance checks on a Klixon or cable must be done de-energized: isolate, lock out, and verify absence of voltage first. If you must confirm the 230 V at the strip, use energized-work procedures and properly rated equipment. This drawing does not prove the present state of the field wiring, so verify actual conditions before contact.",
+    "unresolved_items": [
+      "Bottom '+EXT/xx.x' sheet references (~13.7, 18.5, 13.5, 22.5) are small/rotated and only ~0.55 confident; ME07's two cores appear to cite different sheets (13.5 vs 18.5).",
+      "Terminal-strip tag read as '-18/X2KL' — the 'KL' suffix and whether the strip is 'X2' or 'X2KL' is unconfirmed.",
+      "Top DA6.x and 12.x cross-reference digits need confirmation to avoid digit drift.",
+      "The 230V bus feed vs. DA6 return split across terminals 1-8 is inferred from geometry, not a legible junction pattern."
+    ],
+    "detailed_map_available": true,
+    "purpose_note": "Function derived from labels 'Statoren Temp.-Überwachung' and 'Klixon'; the DA6 module logic itself is not on this sheet."
+  }
+}
