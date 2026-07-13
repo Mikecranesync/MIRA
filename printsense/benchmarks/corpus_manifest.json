@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "note": "Immutable PrintSense test corpus. The frozen `graph` files under golden/ ARE the golden structured interpretations (harness-owned, committed, small); layer 1 replays them through the renderer with NO model calls, layer 2 (metamorphic) compares real degraded reads against them. golden/ was seeded from the renderer eval graphs and CORRECTED for completeness (e.g. golden/unrelated.graph.json carries the Micro820's real 24VDC control rail so a true rail reading is not counted as invention). Source photos are PROPRIETARY customer prints and are NEVER committed to git; each is pinned by sha256 here. Layers 2 and 3 (Telethon E2E) resolve them from the directory named by $PRINTSENSE_CORPUS_IMAGES, which tools/printsense_corpus_sync.py FETCHES AT RUNTIME from controlled staging storage (Doppler-injected PRINTSENSE_CORPUS_DIR or PRINTSENSE_CORPUS_URL) and verifies against these sha256 pins, failing closed on a mismatch. With no source configured the paid/live layers skip cleanly and free Layer 1 still runs off the committed golden graphs.",
+  "image_root_env": "PRINTSENSE_CORPUS_IMAGES",
+  "cases": [
+    {
+      "name": "sheet16",
+      "graph": "golden/sheet16.graph.json",
+      "image": {"file": "sheet16.jpg", "sha256_prefix": "35a0dd9fd422a754", "source": "SCU2 AP31971 sheet 16 (Sensor Ueberwachung X4), rotated workbench phone photo"},
+      "routing": "electrical_print",
+      "min_signals": 5,
+      "forbid_tokens": [],
+      "degraded": false
+    },
+    {
+      "name": "sheet18",
+      "graph": "golden/sheet18.graph.json",
+      "image": {"file": "sheet18.jpg", "sha256_prefix": "55ad8f1ee0ab00df", "source": "SCU2 AP31971 sheet 18 (Klixon temp monitoring), rotated workbench phone photo"},
+      "routing": "electrical_print",
+      "min_signals": 4,
+      "forbid_tokens": [],
+      "degraded": false
+    },
+    {
+      "name": "sheet20",
+      "graph": "golden/sheet20.graph.json",
+      "rubric": "scu2_sheet20/rubric.json",
+      "image": {"file": "sheet20.jpg", "sha256_prefix": "1f5ced99ba4a60d5", "source": "SCU2 AP31971 sheet 20 (Opto-Koppler), upright full-res"},
+      "routing": "electrical_print",
+      "min_signals": 4,
+      "forbid_tokens": [],
+      "degraded": false
+    },
+    {
+      "name": "sheet5",
+      "graph": "golden/sheet5.graph.json",
+      "image": {"file": "sheet5.jpg", "sha256_prefix": "ce91455bcb5f0711", "source": "SCU2 AP31971 sheet 5 (EK1100 PLC/EtherCAT overview), upright full-res"},
+      "routing": "electrical_print",
+      "min_signals": 4,
+      "forbid_tokens": [],
+      "degraded": false
+    },
+    {
+      "name": "unrelated",
+      "graph": "golden/unrelated.graph.json",
+      "image": {"file": "unrelated.jpg", "sha256_prefix": "953a17cf5b995f57", "source": "Allen-Bradley Micro820 control-panel photo (NOT an SCU2 sheet)"},
+      "routing": "electrical_print",
+      "min_signals": 1,
+      "forbid_tokens": ["-21/A13", "-21/A14", "ITS.LWL-K-01.2", "-W5497", "-W5469", "AP31971", "+SCU2-BEL"],
+      "degraded": false
+    },
+    {
+      "name": "blurred_sheet20",
+      "graph": "golden/blurred_sheet20.graph.json",
+      "image": {"file": "sheet20.jpg", "sha256_prefix": "1f5ced99ba4a60d5", "source": "sheet20.jpg, degraded at runtime (heavy downscale + blur) by the harness"},
+      "routing": "electrical_print",
+      "min_signals": 0,
+      "forbid_tokens": ["-W5497", "-W5469", "ITS.LWL-K-01.2", "24VDC"],
+      "degraded": true
+    },
+    {
+      "name": "sheet20_rotated",
+      "graph": null,
+      "image": {"file": "sheet20_rotated.jpg", "sha256_prefix": "57ffdfa6493b8ba5", "source": "SCU2 AP31971 sheet 20, real as-delivered ROTATED workbench phone photo — exercises the container's tesseract auto-rotate/OSD path end-to-end (live E2E only)."},
+      "routing": "electrical_print",
+      "e2e_only": true,
+      "forbid_tokens": [],
+      "degraded": false
+    },
+    {
+      "name": "nameplate",
+      "graph": null,
+      "image": {"file": "nameplate.jpg", "sha256_prefix": "79fcfc3e1d62e3d6", "source": "GS10 VFD nameplate photo (tests/fixtures/nameplate_gs10.jpg) — must route to the nameplate/drive-pack flow, NOT the print interpreter."},
+      "routing": "nameplate",
+      "e2e_only": true,
+      "forbid_tokens": [],
+      "degraded": false
+    }
+  ]
+}

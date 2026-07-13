@@ -246,18 +246,25 @@ jobs:
           pip install pyyaml pymupdf pillow
           pytest tests/test_machine_print_pack.py -v
 
-      - name: PrintSense interpreter + grader gate (hermetic, no Anthropic SDK)
+      - name: PrintSense interpreter + grader + harness gate (hermetic, no Anthropic SDK)
         # Guards printsense/ — the isolated Anthropic print interpreter (client
-        # mocked), the deterministic Telegram renderer, the SCU2 gold fixture, and
-        # the deterministic grader (P/R/F1 + confident-misread count + A-gate) on
-        # injected-error fixtures. NO anthropic SDK is installed here, so the paid
-        # API structurally cannot be called — real interpret runs happen off-CI and
-        # are promoted deliberately. Root tests/ is not collected wholesale, so this
-        # dir is named explicitly (like the steps above). Pillow exercises the
-        # preprocess resize path; pytesseract is intentionally absent (auto-rotate
-        # degrades gracefully).
+        # mocked), the deterministic Telegram renderer, the SCU2 gold fixture, the
+        # deterministic grader (P/R/F1 + confident-misread count + A-gate) on
+        # injected-error fixtures, AND the 3-layer test harness:
+        #   L1 (test_render_corpus)  — free, replays frozen graphs through the
+        #        renderer: completeness, plain-English, exact-map preservation,
+        #        uncertainty surfaced, routing, safety wording. Runs here.
+        #   L2 (test_metamorphic)    — free part runs (transforms produce valid
+        #        images + the no-invention comparator). The PAID matrix auto-skips
+        #        (no PRINTSENSE_PAID) → printsense-nightly.yml.
+        #   L3 (test_staging_e2e)    — auto-skips (telethon absent + no creds) →
+        #        printsense-staging-e2e.yml before a release.
+        # NO anthropic SDK is installed here, so the paid API structurally cannot be
+        # called — real interpret runs happen off-CI and are promoted deliberately.
+        # Pillow exercises the preprocess/transform path; hypothesis drives the
+        # property tests; pytesseract is intentionally absent (auto-rotate degrades).
         run: |
-          pip install pydantic pillow
+          pip install pydantic pillow hypothesis
           pytest tests/printsense/ -v
 
       - name: Deploy-target guard (staging deploy must rebuild the bot)

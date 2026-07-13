@@ -5,3 +5,12 @@ _eval_outputs/
 *.jpg
 *.jpeg
 *.png
+
+# Harness runtime output — regenerated each run, never committed.
+_e2e_out/
+_acceptance_out/
+_corpus.tar.gz
+
+# corpus/ is the RUNTIME-FETCHED image dir (protected customer prints, NEVER in git —
+# see tools/printsense_corpus_sync.py). Ignored so a local fetch can't be committed.
+corpus/

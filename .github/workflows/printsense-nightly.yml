@@ -1,0 +1,102 @@
+name: PrintSense nightly (paid metamorphic matrix)
+
+# LAYER 2 — the PAID metamorphic matrix, run on a schedule (not on every PR).
+# Applies realistic capture degradations (rotate/downscale/jpeg/blur/crop/
+# perspective/shadow/document-clean) to each pinned corpus image, interprets the
+# transformed image through the REAL Anthropic interpreter, and asserts against the
+# frozen golden graph: nothing invented (no new wire/terminal/voltage) and facts
+# materially equivalent OR less confident. Costs real API tokens, hence nightly.
+#
+# Gated on DOPPLER_TOKEN (staging env → factorylm/stg: ANTHROPIC_API_KEY) AND the
+# corpus images being syncable; if either is absent the job SKIPS cleanly. This
+# workflow never deploys and never touches production secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: "Optional pytest -k filter (e.g. 'sheet20 or sheet16')"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 8 * * *" # 08:00 UTC nightly — off the PR path
+
+concurrency:
+  group: printsense-nightly
+  cancel-in-progress: false
+
+# Least privilege, self-declared (not relying on the org default): this job only reads
+# the repo and uploads an artifact — it never writes contents or touches a PR.
+permissions:
+  contents: read
+
+jobs:
+  metamorphic:
+    name: Paid metamorphic matrix
+    runs-on: ubuntu-latest
+    environment: staging # inherits DOPPLER_TOKEN → resolves factorylm/stg
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Guard — DOPPLER_TOKEN present
+        id: guard
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::notice::DOPPLER_TOKEN absent — skipping paid metamorphic layer."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Doppler CLI
+        if: steps.guard.outputs.run == 'true'
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install tesseract (OSD auto-rotate — matches the prod bot container)
+        # The prod bot ships tesseract, so a sideways photo is straightened BEFORE
+        # interpretation. Installing it here makes the metamorphic rotate_* transforms
+        # exercise the same auto-rotate path as production (not the uncorrected image).
+        if: steps.guard.outputs.run == 'true'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
+      - name: Install deps (incl. anthropic — real interpret runs here)
+        if: steps.guard.outputs.run == 'true'
+        run: pip install pydantic pillow hypothesis anthropic pytesseract
+
+      - name: Sync corpus images
+        if: steps.guard.outputs.run == 'true'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          PRINTSENSE_CORPUS_IMAGES: ${{ runner.temp }}/corpus
+        run: doppler run -- python tools/printsense_corpus_sync.py
+
+      - name: Layer 2 — paid metamorphic + acceptance report
+        if: steps.guard.outputs.run == 'true'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          PRINTSENSE_PAID: "1"
+          PRINTSENSE_CORPUS_IMAGES: ${{ runner.temp }}/corpus
+          PRINT_VISION_PROVIDER: anthropic
+          KFILTER: ${{ github.event.inputs.cases }}
+        run: |
+          if [ -n "${KFILTER}" ]; then
+            doppler run -- python -m pytest tests/printsense/test_metamorphic.py -v -k "${KFILTER}"
+          else
+            doppler run -- python tools/printsense_acceptance.py
+          fi
+
+      - name: Upload acceptance report
+        if: always() && steps.guard.outputs.run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: printsense-nightly-report
+          path: printsense/benchmarks/_acceptance_out/
+          if-no-files-found: ignore
+          retention-days: 30
