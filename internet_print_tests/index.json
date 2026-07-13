@@ -78,5 +78,18 @@
     "classification": "ELECTRICAL_PRINT",
     "interpreter_used": true,
     "elapsed_s": 285.3
+  },
+  {
+    "test_id": "siemens-3sk1-safety-relay",
+    "source_url": "https://cache.industry.siemens.com/dl/files/885/67585885/att_37825/v1/manual_safety_relay_3SK1_en-US.pdf",
+    "category": "safety_relay",
+    "standard": "ISO 13849-1 PLe / IEC 62061 SIL3",
+    "status": "ok",
+    "score": 84,
+    "hard_failure": false,
+    "email": "sent",
+    "classification": "ELECTRICAL_PRINT",
+    "interpreter_used": true,
+    "elapsed_s": 195.0
   }
 ]
