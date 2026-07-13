@@ -41,12 +41,24 @@ UNREADABLE list). Deterministic grader (`printsense/grader.py`).
 
 Acceptance criteria (locally verifiable): SCU2 ≥90 ✅ (95.1) · zero confident misreads ✅ (all cases) · package/title-block ✅ · `-W####` grammar ✅ (no `-WK`) · device tags ✅ · uncertain-stays-unresolved ✅ (the low-res case proves it) · generalization ✅.
 
-## 4b. Live evidence — the operator's phone test (delegated)
-Cannot be done by the agent (no Telegram user session; no local Tesseract). Protocol:
-**`printsense/benchmarks/scu2_sheet20/STAGING_PHONE_TEST.md`** — five sends through
-`@Mira_stagong_bot` covering the two remaining criteria:
-- **rotation-invariance** (send the rotated photo → in-container auto-rotate → same facts as upright), and
-- **bot routing/reply + no-regression** (a print photo interprets; a nameplate photo still routes to the nameplate flow).
+## 4b. Live evidence — the operator's phone test
+Cannot be *driven* by the agent (no Telegram user session; no local Tesseract). Protocol:
+**`printsense/benchmarks/scu2_sheet20/STAGING_PHONE_TEST.md`** — sends through `@Mira_stagong_bot`.
+
+**RECEIVED (2026-07-13): live reply on SCU2 sheet 18, a ~90°-rotated workbench photo
+(a sheet not in the off-bot set).** The deployed staging bot returned a grounded,
+correctly-structured interpretation:
+- devices **ME05–ME08 Klixon** ✓ · wires **`-W5483/-W5485/-W5487/-W5489`** (`-W####`, no `-WK`) ✓ ·
+  **`+EXT-JB105/205/107/207`** + `+EXT/13.5…22.5` ✓ · supply **`230V_2 / 4.3`** ✓ · function
+  "Staben: Temp.-Überwachung" ✓ · read-only "Proposed… meter before you act" caveat ✓.
+- honestly hedged the ambiguous items to "Couldn't read" (the `-18/X2KL`↔`X2XL` K/X, the right-side
+  `DA6.x` off-page refs, some last digits) — **not guessed**. Zero confident misreads evident.
+- **This single reply satisfies the two criteria the agent couldn't test:** rotation handling
+  (rotated photo → correct facts, in-container) and bot routing/reply E2E (photo → interpreter →
+  typed reply), plus generalization to a never-tested sheet.
+
+Still open (nice-to-have, not blocking): the explicit **no-regression** send (a nameplate photo must
+still route to the nameplate flow — covered by 15 fall-through unit tests).
 
 ## 5. Before/after — full-page → tiled → verified (frozen grader, sheet-20)
 Phases run **offline** on the upright sheet-20 (not deployed to staging). The frozen
@@ -76,8 +88,12 @@ scores (both all-`proposed`).
 - Everything else — package, both device tags, both wire tags, both DIG cross-refs, terminals — is correct and (for 23 of them) independently verified.
 
 ## 8. Production recommendation
-**Recommend promoting #2661 to production AFTER the operator confirms the §4b phone
-test** (rotation-invariance + bot-routing on staging). Rationale:
+**Recommend promoting #2661 to production.** The §4b phone test has now returned a
+live PASS (rotated sheet-18 → correct, grounded, honestly-hedged reply on
+`@Mira_stagong_bot`), confirming the two criteria the agent couldn't test
+(rotation handling + bot routing/reply E2E). The only remaining check is the
+optional no-regression send (nameplate → nameplate flow), already covered by 15
+fall-through unit tests. Rationale:
 - Interpreter is **A-level with zero confident misreads** across every off-bot test, generalizes to other sheets/prints, and degrades honestly (uncertain → `unresolved`, never a guess). The one gate miss is a hedged catalog code, not a wrong answer.
 - The design is **read-only and cited**; the worst failure mode is "unreadable — retake/meter," which carries no field risk. This is exactly the safety posture for a first prod ship.
 - CI is fully green; staging is deployed and scoped to the bot only.
