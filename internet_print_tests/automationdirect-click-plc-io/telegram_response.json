@@ -1,0 +1,743 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.85,
+  "drawing_type": "wiring diagram",
+  "vision_description": "The image depicts an electrical drawing, specifically a wiring diagram for DC input and output methods. The diagram illustrates various configurations, including sinking and sourcing inputs, and provides detailed information on the connections and components involved.",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+  "final_text": "📋 Manual page 3-31 (CLICK PLC Hardware User Manual, Ch. 3) showing generic DC input and DC output wiring methods between PLC I/O points and field devices.\n\nThis page teaches how to wire CLICK PLC DC I/O to field devices, not a specific machine. The DC input point is drawn as an opto-coupler with dual (anti-parallel) diodes, so it can be wired either sinking or sourcing. Example 1: an NPN (open-collector) sensor that sinks current is paired with a PLC input wired sourcing, with an external DC supply feeding the Common terminal. Example 2: a PNP (open-emitter) sensor that sources current is paired with a PLC input wired sinking, and no extra module supply is needed because the field loop already sources current. Example 3 (output side): a PLC DC output wired sinking drives a field-device load with a sourcing input, powered by a 20-28 VDC supply. Stated ranges: DC inputs ~+12-24 VDC, DC outputs ~+5-24 VDC.\n\n🔑 Signals\n• NPN sensor output signal into the PLC (sensor sinks, PLC sources)\n• PNP sensor output signal into the PLC (sensor sources, PLC sinks)\n• PLC output signal to the field-device load (PLC sinks to Common)\n• Supply power to PLC Common / field loop (input examples)\n• 20-28 VDC loop power for the output example\n\n🔧 Devices\n• Generic PLC DC input point (dual-diode opto-coupler, wireable sinking or sourcing) (PLC DC Input)\n• Open-collector NPN field sensor (sinking) (DC NPN Sensor (Sinking))\n• Open-emitter PNP field sensor (sourcing) (DC PNP Sensor (Sourcing))\n• PLC DC output point (sinking, transistor/MOSFET) (PLC DC Output)\n• Field-device load with a sourcing input (Field Device)\n• External DC supply for input loop (Supply)\n• 20-28 VDC supply for output loop (20-28 VDC)\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• No device tags, wire numbers, terminal numbers, or PLC channel addresses are printed — this is a generic method illustration.\n• No specific CLICK module part number is identified for the illustrated I/O points.\n\n⚠️ Voltages printed on this page: DC inputs typically +12-24 VDC, DC outputs typically +5-24 VDC, and the output example uses a 20-28 VDC supply — no higher/AC levels are shown, and this is a generic reference, not proof of your actual field conditions. For continuity/resistance checks on wiring, de-energize, lock out, and verify absence of voltage first. For live signal/voltage checks on the low-voltage DC loops, use appropriately rated meters and follow energized-work procedures. The drawing does not establish the real installed voltage of your specific panel.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list.",
+  "all_messages": [
+    "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+    "📋 Manual page 3-31 (CLICK PLC Hardware User Manual, Ch. 3) showing generic DC input and DC output wiring methods between PLC I/O points and field devices.\n\nThis page teaches how to wire CLICK PLC DC I/O to field devices, not a specific machine. The DC input point is drawn as an opto-coupler with dual (anti-parallel) diodes, so it can be wired either sinking or sourcing. Example 1: an NPN (open-collector) sensor that sinks current is paired with a PLC input wired sourcing, with an external DC supply feeding the Common terminal. Example 2: a PNP (open-emitter) sensor that sources current is paired with a PLC input wired sinking, and no extra module supply is needed because the field loop already sources current. Example 3 (output side): a PLC DC output wired sinking drives a field-device load with a sourcing input, powered by a 20-28 VDC supply. Stated ranges: DC inputs ~+12-24 VDC, DC outputs ~+5-24 VDC.\n\n🔑 Signals\n• NPN sensor output signal into the PLC (sensor sinks, PLC sources)\n• PNP sensor output signal into the PLC (sensor sources, PLC sinks)\n• PLC output signal to the field-device load (PLC sinks to Common)\n• Supply power to PLC Common / field loop (input examples)\n• 20-28 VDC loop power for the output example\n\n🔧 Devices\n• Generic PLC DC input point (dual-diode opto-coupler, wireable sinking or sourcing) (PLC DC Input)\n• Open-collector NPN field sensor (sinking) (DC NPN Sensor (Sinking))\n• Open-emitter PNP field sensor (sourcing) (DC PNP Sensor (Sourcing))\n• PLC DC output point (sinking, transistor/MOSFET) (PLC DC Output)\n• Field-device load with a sourcing input (Field Device)\n• External DC supply for input loop (Supply)\n• 20-28 VDC supply for output loop (20-28 VDC)\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• No device tags, wire numbers, terminal numbers, or PLC channel addresses are printed — this is a generic method illustration.\n• No specific CLICK module part number is identified for the illustrated I/O points.\n\n⚠️ Voltages printed on this page: DC inputs typically +12-24 VDC, DC outputs typically +5-24 VDC, and the output example uses a 20-28 VDC supply — no higher/AC levels are shown, and this is a generic reference, not proof of your actual field conditions. For continuity/resistance checks on wiring, de-energize, lock out, and verify absence of voltage first. For live signal/voltage checks on the low-voltage DC loops, use appropriately rated meters and follow energized-work procedures. The drawing does not establish the real installed voltage of your specific panel.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list."
+  ],
+  "map_text": "📐 Electrical print\n\n🔌 Signals (exact — source → destination)\n• NPN sensor output signal into the PLC (sensor sinks, PLC sources) — @ Output (sinking) -> Input (sourcing)  → PLC DC Input point (sourcing example) · conf 0.85\n• PNP sensor output signal into the PLC (sensor sources, PLC sinks) — @ Output (sourcing) -> Input (sinking)  → PLC DC Input point (sinking example) · conf 0.85\n• PLC output signal to the field-device load (PLC sinks to Common) — @ Output (sinking) -> Input (sourcing)  → Field Device sourcing-input load (output example) · conf 0.85\n• Supply power to PLC Common / field loop (input examples) — @ Common  → external DC Supply (battery symbol) · conf 0.80\n• 20-28 VDC loop power for the output example — 20-28 VDC  @ Power / +DC Power  → PLC DC Output and field-device load loop · conf 0.85\n\n🔧 Devices (9)\n• PLC DC Input (opto-coupler, dual-diode) — PLC DC input circuit (Generic CLICK PLC DC input point drawn as an opto-coupler with dual (anti-parallel) input diodes so current may flow in either direction (sinking or sourcing). Terminals shown: Input, Common.) · conf 0.85\n• DC NPN Sensor (Sinking) — field device, open-collector NPN sensor (Field device with open-collector NPN transistor output; when energized it sinks current to ground from the DC input point. Terminals: Output (sinking), Ground.) · conf 0.85\n• PLC DC Input (sourcing, NPN example) — PLC DC input circuit (PLC DC input point wired as sourcing; input current is sourced from the Common terminal connected to power supply (+). Terminals: Input (sourcing), Common.) · conf 0.85\n• Supply (NPN example) — DC power supply (DC supply (battery symbol with + terminal) providing loop power between PLC Common (+) and sensor Ground for the NPN sinking-sensor to PLC sourcing-input example.) · conf 0.80\n• DC PNP Sensor (Sourcing) — field device, open-emitter PNP sensor (Field device with open-emitter PNP transistor output; when energized it sources current to the PLC input point. Terminals: Output (sourcing), Ground.) · conf 0.85\n• PLC DC Input (sinking, PNP example) — PLC DC input circuit (PLC DC input point wired as sinking; it sinks the current supplied by the PNP sensor to ground. No additional module power supply required since the field-device loop is sourcing. Terminals: Input (sinking), Common.) · conf 0.85\n• PLC DC Output (sinking) — PLC DC output circuit (CLICK PLC DC output point drawn with a transistor/MOSFET; output sinks current to ground (Common) when energized. Terminals: Power (+DC Power), Output (sinking), Common.) · conf 0.85\n• Field Device (sourcing load, output example) — field device load with sourcing input (Load device with a sourcing input driven by the PLC sinking output. Terminals: Input (sourcing), Ground.) · conf 0.85\n• 20-28 VDC supply (output example) — DC power supply (DC supply rated 20-28 VDC (battery symbol with +) powering the PLC sinking-output to sourcing-load loop.) · conf 0.85\n\n🔗 Wires / cables\n• NPN sensor output -> PLC sourcing input — signal conductor · conf 0.85\n• PLC Common -> Supply(+) — power conductor · conf 0.80\n• NPN sensor Ground -> Supply(-) — return conductor · conf 0.80\n• PNP sensor output -> PLC sinking input — signal conductor · conf 0.85\n• PNP sensor Ground -> PLC Common — return conductor · conf 0.80\n• Supply(+) -> load Input (sourcing) — power conductor · conf 0.80\n• PLC Output (sinking) -> load — signal conductor · conf 0.85\n\n🧩 4 PLC I/O · 4 PE bond(s)\n\n⚠️ Couldn't read (retake or crop closer):\n… (truncated — reply \"map\" for detail)",
+  "graph": {
+    "package": {
+      "drawing_type": "wiring diagram (instructional/reference)",
+      "source": "CLICK PLC Hardware User Manual, 6th Edition, Rev. Q – C0-USER-M",
+      "document_id": "C0-USER-M",
+      "chapter": "Chapter 3: Installation and Wiring",
+      "section": "DC Input Wiring Methods / DC Output Wiring Methods",
+      "page": "3-31",
+      "note": "This is a manufacturer manual page illustrating generic DC I/O wiring methods, NOT a project schematic. No IEC 81346 device tags, wire numbers, or cross-references are present. Devices are labelled only by plain-English function.",
+      "evidence": "Title block bottom: 'CLICK PLC Hardware User Manual, 6th Edition, Rev. Q – C0-USER-M  3-31'; header 'Chapter 3: Installation and Wiring'",
+      "confidence": 0.95
+    },
+    "devices": [
+      {
+        "tag": "PLC DC Input (opto-coupler, dual-diode)",
+        "type": "PLC DC input circuit",
+        "detail": "Generic CLICK PLC DC input point drawn as an opto-coupler with dual (anti-parallel) input diodes so current may flow in either direction (sinking or sourcing). Terminals shown: Input, Common.",
+        "connects": [
+          "Input",
+          "Common"
+        ],
+        "evidence": "Top-left diagram labelled 'PLC DC Input' with 'Input' and 'Common' terminals and dual-diode opto-coupler symbol; text 'The dual diodes ... allow current to flow in either direction'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "DC NPN Sensor (Sinking)",
+        "type": "field device, open-collector NPN sensor",
+        "detail": "Field device with open-collector NPN transistor output; when energized it sinks current to ground from the DC input point. Terminals: Output (sinking), Ground.",
+        "connects": [
+          "Output (sinking)",
+          "Ground"
+        ],
+        "evidence": "Middle-upper diagram, 'Field Device', label 'DC NPN Sensor (Sinking)', 'Output (sinking)', 'Ground'; text 'open-collector NPN transistor output ... sinks current to ground'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PLC DC Input (sourcing, NPN example)",
+        "type": "PLC DC input circuit",
+        "detail": "PLC DC input point wired as sourcing; input current is sourced from the Common terminal connected to power supply (+). Terminals: Input (sourcing), Common.",
+        "connects": [
+          "Input (sourcing)",
+          "Common"
+        ],
+        "evidence": "Middle-upper diagram 'PLC DC Input', 'Input (sourcing)', 'Common', callout 'PLC Input (Sourcing)'; text 'PLC input current is sourced from the common terminal connected to power supply (+)'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Supply (NPN example)",
+        "type": "DC power supply",
+        "detail": "DC supply (battery symbol with + terminal) providing loop power between PLC Common (+) and sensor Ground for the NPN sinking-sensor to PLC sourcing-input example.",
+        "connects": [
+          "Common",
+          "Ground"
+        ],
+        "evidence": "Middle-upper diagram center, label 'Supply' with battery symbol and '+' mark",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "DC PNP Sensor (Sourcing)",
+        "type": "field device, open-emitter PNP sensor",
+        "detail": "Field device with open-emitter PNP transistor output; when energized it sources current to the PLC input point. Terminals: Output (sourcing), Ground.",
+        "connects": [
+          "Output (sourcing)",
+          "Ground"
+        ],
+        "evidence": "Middle-lower diagram 'Field Device', label 'DC PNP Sensor (Sourcing)', 'Output (sourcing)', 'Ground'; text 'open-emitter PNP transistor output ... sources current to the PLC input point'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PLC DC Input (sinking, PNP example)",
+        "type": "PLC DC input circuit",
+        "detail": "PLC DC input point wired as sinking; it sinks the current supplied by the PNP sensor to ground. No additional module power supply required since the field-device loop is sourcing. Terminals: Input (sinking), Common.",
+        "connects": [
+          "Input (sinking)",
+          "Common"
+        ],
+        "evidence": "Middle-lower diagram 'PLC DC Input', 'Input (sinking)', 'Common', callout 'PLC Input (Sinking)'; text 'PLC input point, which sinks the current to ground'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PLC DC Output (sinking)",
+        "type": "PLC DC output circuit",
+        "detail": "CLICK PLC DC output point drawn with a transistor/MOSFET; output sinks current to ground (Common) when energized. Terminals: Power (+DC Power), Output (sinking), Common.",
+        "connects": [
+          "Power",
+          "Output (sinking)",
+          "Common"
+        ],
+        "evidence": "Bottom diagram 'PLC DC Output', '+DC Power', 'Power', 'Output (sinking)', 'Common', MOSFET symbol; text 'the PLC output point sinks current to ground (common) when energized'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Field Device (sourcing load, output example)",
+        "type": "field device load with sourcing input",
+        "detail": "Load device with a sourcing input driven by the PLC sinking output. Terminals: Input (sourcing), Ground.",
+        "connects": [
+          "Input (sourcing)",
+          "Ground"
+        ],
+        "evidence": "Bottom-right diagram 'Field Device', 'Input (sourcing)', 'Ground'; text 'output is connected to a field device load with a sourcing input'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "20-28 VDC supply (output example)",
+        "type": "DC power supply",
+        "detail": "DC supply rated 20-28 VDC (battery symbol with +) powering the PLC sinking-output to sourcing-load loop.",
+        "connects": [
+          "Power",
+          "Ground"
+        ],
+        "evidence": "Bottom diagram center, battery symbol labelled '20-28 VDC' with '+'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      }
+    ],
+    "terminals": [
+      {
+        "tag": "Input",
+        "type": "PLC input terminal",
+        "detail": "Top 'PLC DC Input' block input terminal",
+        "connects": [
+          "PLC DC Input (opto-coupler, dual-diode)"
+        ],
+        "evidence": "'Input' label, top-left diagram",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Common",
+        "type": "PLC common terminal",
+        "detail": "Top 'PLC DC Input' block common terminal",
+        "connects": [
+          "PLC DC Input (opto-coupler, dual-diode)"
+        ],
+        "evidence": "'Common' label, top-left diagram",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Output (sinking)",
+        "type": "sensor output terminal",
+        "detail": "NPN field-device output terminal (sinking)",
+        "connects": [
+          "DC NPN Sensor (Sinking)",
+          "Input (sourcing)"
+        ],
+        "evidence": "'Output (sinking)' label, NPN example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Ground",
+        "type": "sensor ground terminal",
+        "detail": "NPN field-device ground terminal",
+        "connects": [
+          "DC NPN Sensor (Sinking)",
+          "Supply (NPN example)"
+        ],
+        "evidence": "'Ground' label, NPN example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Input (sourcing)",
+        "type": "PLC input terminal",
+        "detail": "PLC DC input terminal, sourcing (NPN example)",
+        "connects": [
+          "PLC DC Input (sourcing, NPN example)",
+          "Output (sinking)"
+        ],
+        "evidence": "'Input (sourcing)' label, NPN example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Common (NPN example)",
+        "type": "PLC common terminal",
+        "detail": "PLC common terminal tied to Supply(+) (NPN example)",
+        "connects": [
+          "PLC DC Input (sourcing, NPN example)",
+          "Supply (NPN example)"
+        ],
+        "evidence": "'Common' label, NPN example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Output (sourcing)",
+        "type": "sensor output terminal",
+        "detail": "PNP field-device output terminal (sourcing)",
+        "connects": [
+          "DC PNP Sensor (Sourcing)",
+          "Input (sinking)"
+        ],
+        "evidence": "'Output (sourcing)' label, PNP example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Ground (PNP example)",
+        "type": "sensor ground terminal",
+        "detail": "PNP field-device ground terminal",
+        "connects": [
+          "DC PNP Sensor (Sourcing)"
+        ],
+        "evidence": "'Ground' label, PNP example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Input (sinking)",
+        "type": "PLC input terminal",
+        "detail": "PLC DC input terminal, sinking (PNP example)",
+        "connects": [
+          "PLC DC Input (sinking, PNP example)",
+          "Output (sourcing)"
+        ],
+        "evidence": "'Input (sinking)' label, PNP example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Common (PNP example)",
+        "type": "PLC common terminal",
+        "detail": "PLC common terminal (PNP example)",
+        "connects": [
+          "PLC DC Input (sinking, PNP example)"
+        ],
+        "evidence": "'Common' label, PNP example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "+DC Power",
+        "type": "PLC output power terminal",
+        "detail": "PLC DC output block external +DC power input; ties to 'Power' terminal",
+        "connects": [
+          "PLC DC Output (sinking)",
+          "Power"
+        ],
+        "evidence": "'+DC Power' and 'Power' labels, output example",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Power",
+        "type": "PLC output power terminal",
+        "detail": "PLC DC output 'Power' terminal, fed from +DC Power / 20-28 VDC supply",
+        "connects": [
+          "PLC DC Output (sinking)",
+          "20-28 VDC supply (output example)"
+        ],
+        "evidence": "'Power' label, output example",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Output (sinking) [PLC output]",
+        "type": "PLC output terminal",
+        "detail": "PLC DC output terminal that sinks current when energized",
+        "connects": [
+          "PLC DC Output (sinking)",
+          "Input (sourcing) [load]"
+        ],
+        "evidence": "'Output (sinking)' label, output example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Common (PLC output)",
+        "type": "PLC output common terminal",
+        "detail": "PLC DC output common (current sink return), earthed",
+        "connects": [
+          "PLC DC Output (sinking)"
+        ],
+        "evidence": "'Common' label, output example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Input (sourcing) [load]",
+        "type": "field-device input terminal",
+        "detail": "Field-device load sourcing input terminal",
+        "connects": [
+          "Field Device (sourcing load, output example)",
+          "Output (sinking) [PLC output]"
+        ],
+        "evidence": "'Input (sourcing)' label, output example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Ground (load)",
+        "type": "field-device ground terminal",
+        "detail": "Field-device load ground terminal, earthed",
+        "connects": [
+          "Field Device (sourcing load, output example)"
+        ],
+        "evidence": "'Ground' label, output example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      }
+    ],
+    "conductors": [
+      {
+        "tag": "NPN sensor output -> PLC sourcing input",
+        "type": "signal conductor",
+        "detail": "Wire from NPN sensor 'Output (sinking)' to PLC 'Input (sourcing)'",
+        "connects": [
+          "Output (sinking)",
+          "Input (sourcing)"
+        ],
+        "evidence": "Line between Output (sinking) and Input (sourcing), NPN example",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PLC Common -> Supply(+)",
+        "type": "power conductor",
+        "detail": "Wire from PLC 'Common' to Supply positive",
+        "connects": [
+          "Common (NPN example)",
+          "Supply (NPN example)"
+        ],
+        "evidence": "Line between Common and Supply, NPN example",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "NPN sensor Ground -> Supply(-)",
+        "type": "return conductor",
+        "detail": "Wire from NPN sensor 'Ground' to Supply negative",
+        "connects": [
+          "Ground",
+          "Supply (NPN example)"
+        ],
+        "evidence": "Line between Ground and Supply, NPN example",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PNP sensor output -> PLC sinking input",
+        "type": "signal conductor",
+        "detail": "Wire from PNP sensor 'Output (sourcing)' to PLC 'Input (sinking)'",
+        "connects": [
+          "Output (sourcing)",
+          "Input (sinking)"
+        ],
+        "evidence": "Line between Output (sourcing) and Input (sinking), PNP example",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PNP sensor Ground -> PLC Common",
+        "type": "return conductor",
+        "detail": "Wire from PNP sensor 'Ground' to PLC 'Common'",
+        "connects": [
+          "Ground (PNP example)",
+          "Common (PNP example)"
+        ],
+        "evidence": "Line between Ground and Common, PNP example",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Supply(+) -> load Input (sourcing)",
+        "type": "power conductor",
+        "detail": "20-28 VDC positive routed to field-device 'Input (sourcing)'",
+        "connects": [
+          "Power",
+          "Input (sourcing) [load]"
+        ],
+        "evidence": "Line from Power / +DC Power along top to load Input (sourcing), output example",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PLC Output (sinking) -> load",
+        "type": "signal conductor",
+        "detail": "PLC 'Output (sinking)' drives the field-device load through 'Input (sourcing)'",
+        "connects": [
+          "Output (sinking) [PLC output]",
+          "Input (sourcing) [load]"
+        ],
+        "evidence": "Line between PLC Output (sinking) and load Input (sourcing), output example",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      }
+    ],
+    "cables": [],
+    "contacts": [],
+    "power_domains": [
+      {
+        "tag": "+12-24 VDC (DC inputs)",
+        "type": "DC control voltage",
+        "detail": "Stated typical operating range for CLICK DC inputs",
+        "connects": [
+          "PLC DC Input (opto-coupler, dual-diode)"
+        ],
+        "evidence": "Text: 'DC inputs typically operate in the range of +12-24 VDC'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "+5-24 VDC (DC outputs)",
+        "type": "DC control voltage",
+        "detail": "Stated typical operating range for CLICK DC outputs",
+        "connects": [
+          "PLC DC Output (sinking)"
+        ],
+        "evidence": "Text: 'DC outputs typically operate in the range of +5-24 VDC'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "20-28 VDC (output example loop)",
+        "type": "DC supply",
+        "detail": "Supply voltage shown for the PLC sinking-output to sourcing-load example",
+        "connects": [
+          "20-28 VDC supply (output example)",
+          "PLC DC Output (sinking)",
+          "Field Device (sourcing load, output example)"
+        ],
+        "evidence": "Battery symbol labelled '20-28 VDC', output example",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "3-31"
+      }
+    ],
+    "pe_bonds": [
+      {
+        "tag": "NPN sensor earth",
+        "type": "earth ground",
+        "detail": "Earth-ground symbol at NPN field-device Ground node",
+        "connects": [
+          "Ground"
+        ],
+        "evidence": "Ground/earth symbol at bottom of NPN Field Device",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PNP sensor earth",
+        "type": "earth ground",
+        "detail": "Earth-ground symbol at PNP field-device Ground node",
+        "connects": [
+          "Ground (PNP example)"
+        ],
+        "evidence": "Ground/earth symbol at bottom of PNP Field Device",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "PLC output common earth",
+        "type": "earth ground",
+        "detail": "Earth-ground symbol at PLC DC output Common",
+        "connects": [
+          "Common (PLC output)"
+        ],
+        "evidence": "Ground/earth symbol at PLC DC Output Common, output example",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "Load ground earth",
+        "type": "earth ground",
+        "detail": "Earth-ground symbol at field-device load Ground",
+        "connects": [
+          "Ground (load)"
+        ],
+        "evidence": "Ground/earth symbol at Field Device Ground, output example",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "3-31"
+      }
+    ],
+    "off_page_references": [],
+    "plc_io_channels": [
+      {
+        "tag": "DC Input point (top, generic)",
+        "type": "PLC DC input channel",
+        "detail": "Generic DC input point that can be wired sinking or sourcing (dual-diode opto-coupler). Terminals Input / Common. No channel address printed.",
+        "connects": [
+          "Input",
+          "Common"
+        ],
+        "evidence": "'PLC DC Input' block, top-left",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "DC Input point (sourcing example)",
+        "type": "PLC DC input channel",
+        "detail": "Sourcing DC input paired with an NPN sinking sensor. No address printed.",
+        "connects": [
+          "Input (sourcing)",
+          "Common (NPN example)"
+        ],
+        "evidence": "'PLC DC Input' / 'Input (sourcing)', NPN example",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "DC Input point (sinking example)",
+        "type": "PLC DC input channel",
+        "detail": "Sinking DC input paired with a PNP sourcing sensor. No address printed.",
+        "connects": [
+          "Input (sinking)",
+          "Common (PNP example)"
+        ],
+        "evidence": "'PLC DC Input' / 'Input (sinking)', PNP example",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      },
+      {
+        "tag": "DC Output point (sinking example)",
+        "type": "PLC DC output channel",
+        "detail": "Sinking DC output driving a sourcing-input field load. No address printed.",
+        "connects": [
+          "Output (sinking) [PLC output]",
+          "Common (PLC output)",
+          "Power"
+        ],
+        "evidence": "'PLC DC Output' / 'Output (sinking)', output example",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "3-31"
+      }
+    ],
+    "network_links": [],
+    "functional_paths": [
+      {
+        "name": "NPN sinking sensor -> PLC sourcing input loop",
+        "sheet": "3-31",
+        "sequence": [
+          "Supply (NPN example) (+)",
+          "Common (NPN example)",
+          "PLC DC Input (sourcing, NPN example)",
+          "Input (sourcing)",
+          "Output (sinking)",
+          "DC NPN Sensor (Sinking)",
+          "Ground",
+          "Supply (NPN example) (-)"
+        ]
+      },
+      {
+        "name": "PNP sourcing sensor -> PLC sinking input loop",
+        "sheet": "3-31",
+        "sequence": [
+          "DC PNP Sensor (Sourcing)",
+          "Output (sourcing)",
+          "Input (sinking)",
+          "PLC DC Input (sinking, PNP example)",
+          "Common (PNP example)",
+          "Ground (PNP example)"
+        ]
+      },
+      {
+        "name": "PLC sinking output -> sourcing load loop (20-28 VDC)",
+        "sheet": "3-31",
+        "sequence": [
+          "20-28 VDC supply (output example)",
+          "Power",
+          "Input (sourcing) [load]",
+          "Field Device (sourcing load, output example)",
+          "Output (sinking) [PLC output]",
+          "PLC DC Output (sinking)",
+          "Common (PLC output)"
+        ]
+      }
+    ],
+    "physical_layout_matches": [],
+    "unresolved": [
+      {
+        "item": "No IEC/DIN device tags, wire numbers, or terminal numbers are present anywhere on this page.",
+        "status": "not applicable to this document",
+        "resolution": "This is a manual reference page of generic wiring methods, not a tagged project schematic; expect device tags only on actual project drawings."
+      },
+      {
+        "item": "No specific PLC/module part number or I/O channel addresses shown for the illustrated input/output points.",
+        "status": "not shown",
+        "resolution": "Consult the specific CLICK module drawing/datasheet for the exact I/O module and channel addressing."
+      }
+    ],
+    "cross_sheet_notes": "Single manual page (3-31). Four generic wiring examples: (1) generic PLC DC input opto-coupler; (2) NPN sinking sensor to PLC sourcing input with external Supply; (3) PNP sourcing sensor to PLC sinking input (no extra module supply needed); (4) PLC sinking DC output to a sourcing-input field-device load with a 20-28 VDC supply. No off-page cross-references.",
+    "brief": {
+      "sheet_title": "Manual page 3-31 (CLICK PLC Hardware User Manual, Ch. 3) showing generic DC input and DC output wiring methods between PLC I/O points and field devices.",
+      "purpose": "This page teaches how to wire CLICK PLC DC I/O to field devices, not a specific machine. The DC input point is drawn as an opto-coupler with dual (anti-parallel) diodes, so it can be wired either sinking or sourcing. Example 1: an NPN (open-collector) sensor that sinks current is paired with a PLC input wired sourcing, with an external DC supply feeding the Common terminal. Example 2: a PNP (open-emitter) sensor that sources current is paired with a PLC input wired sinking, and no extra module supply is needed because the field loop already sources current. Example 3 (output side): a PLC DC output wired sinking drives a field-device load with a sourcing input, powered by a 20-28 VDC supply. Stated ranges: DC inputs ~+12-24 VDC, DC outputs ~+5-24 VDC.",
+      "key_signals": [
+        {
+          "signal": "NPN sensor output signal into the PLC (sensor sinks, PLC sources)",
+          "tag": null,
+          "terminal": "Output (sinking) -> Input (sourcing)",
+          "destination": "PLC DC Input point (sourcing example)",
+          "confidence": 0.85
+        },
+        {
+          "signal": "PNP sensor output signal into the PLC (sensor sources, PLC sinks)",
+          "tag": null,
+          "terminal": "Output (sourcing) -> Input (sinking)",
+          "destination": "PLC DC Input point (sinking example)",
+          "confidence": 0.85
+        },
+        {
+          "signal": "PLC output signal to the field-device load (PLC sinks to Common)",
+          "tag": null,
+          "terminal": "Output (sinking) -> Input (sourcing)",
+          "destination": "Field Device sourcing-input load (output example)",
+          "confidence": 0.85
+        },
+        {
+          "signal": "Supply power to PLC Common / field loop (input examples)",
+          "tag": null,
+          "terminal": "Common",
+          "destination": "external DC Supply (battery symbol)",
+          "confidence": 0.8
+        },
+        {
+          "signal": "20-28 VDC loop power for the output example",
+          "tag": "20-28 VDC",
+          "terminal": "Power / +DC Power",
+          "destination": "PLC DC Output and field-device load loop",
+          "confidence": 0.85
+        }
+      ],
+      "key_devices": [
+        {
+          "device": "Generic PLC DC input point (dual-diode opto-coupler, wireable sinking or sourcing)",
+          "tag": "PLC DC Input",
+          "confidence": 0.85
+        },
+        {
+          "device": "Open-collector NPN field sensor (sinking)",
+          "tag": "DC NPN Sensor (Sinking)",
+          "confidence": 0.85
+        },
+        {
+          "device": "Open-emitter PNP field sensor (sourcing)",
+          "tag": "DC PNP Sensor (Sourcing)",
+          "confidence": 0.85
+        },
+        {
+          "device": "PLC DC output point (sinking, transistor/MOSFET)",
+          "tag": "PLC DC Output",
+          "confidence": 0.85
+        },
+        {
+          "device": "Field-device load with a sourcing input",
+          "tag": "Field Device",
+          "confidence": 0.85
+        },
+        {
+          "device": "External DC supply for input loop",
+          "tag": "Supply",
+          "confidence": 0.8
+        },
+        {
+          "device": "20-28 VDC supply for output loop",
+          "tag": "20-28 VDC",
+          "confidence": 0.85
+        }
+      ],
+      "troubleshooting_example": "This is an instructional page with no tagged terminals, so use it as method guidance rather than a point-to-point map. For the NPN-sensor / sourcing-input example: with the sensor commanded ON, measure across the PLC 'Input' vs 'Common' terminals — if the input point does not activate, first meter voltage at the sensor 'Output (sinking)' terminal referenced to the loop ground: if the sensor output does not pull toward ground/Common when energized, the sensor (device) is at fault; if the sensor output IS switching correctly but the same signal is absent at the PLC 'Input' terminal, the fault is the conductor/connection between sensor Output and PLC Input. Note: the actual PLC program/logic response is NOT shown on this page, so do not assume what the controller does with the input.",
+      "safety_context": "Voltages printed on this page: DC inputs typically +12-24 VDC, DC outputs typically +5-24 VDC, and the output example uses a 20-28 VDC supply — no higher/AC levels are shown, and this is a generic reference, not proof of your actual field conditions. For continuity/resistance checks on wiring, de-energize, lock out, and verify absence of voltage first. For live signal/voltage checks on the low-voltage DC loops, use appropriately rated meters and follow energized-work procedures. The drawing does not establish the real installed voltage of your specific panel.",
+      "unresolved_items": [
+        "No device tags, wire numbers, terminal numbers, or PLC channel addresses are printed — this is a generic method illustration.",
+        "No specific CLICK module part number is identified for the illustrated I/O points."
+      ],
+      "detailed_map_available": true
+    }
+  },
+  "interpreter_used": true,
+  "model": "claude-opus-4-8",
+  "provider": "anthropic",
+  "effort": "xhigh",
+  "max_tokens": 32000,
+  "latency_s": 120.06,
+  "error": null
+}

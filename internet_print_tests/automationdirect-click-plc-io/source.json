@@ -1,0 +1,25 @@
+{
+  "test_id": "automationdirect-click-plc-io",
+  "source_url": "https://cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf",
+  "publisher": "AutomationDirect",
+  "title": "CLICK PLC Hardware User Manual \u2014 Ch.3 Installation and Wiring (C0-USER-M)",
+  "sheet": "Ch.3 \u2014 DC Input & Output Wiring Methods, sinking/sourcing (p.3-31)",
+  "equipment_type": "PLC discrete I/O module",
+  "standard": "Industrial 24VDC",
+  "category": "plc_io",
+  "why_selected": "Page index 30 is a genuine 24 VDC PLC discrete-I/O wiring diagram (verified by render 2026-07-13): sinking/sourcing DC inputs, NPN/PNP field-sensor termination (Input/Common, DC NPN Sensor sinking, DC PNP Sensor sourcing, Field Device, Supply, Ground, 20-28 VDC), and DC output-to-load wiring. Completely different category/standard from the NEMA starter. Publicly published OEM chapter PDF; provenance verified 2026-07-10.",
+  "access_date_utc": "2026-07-13T20:34:21Z",
+  "original_sha256": "82e374d7253644771a0f40b2845b6d4935fd1f22fb81b1537669ee64e57e6313",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf",
+    "final_url": "https://cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 5680128,
+    "host": "cdn.automationdirect.com"
+  },
+  "license_note": "Publicly published OEM literature; ownership retained by AutomationDirect; retained only for read-only interpreter testing."
+}

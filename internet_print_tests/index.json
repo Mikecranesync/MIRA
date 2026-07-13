@@ -50,5 +50,20 @@
     "classification": "ELECTRICAL_PRINT",
     "interpreter_used": true,
     "elapsed_s": 228.0
+  },
+  {
+    "test_id": "automationdirect-click-plc-io",
+    "source_url": "https://cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf",
+    "category": "plc_io",
+    "standard": "Industrial 24VDC",
+    "status": "ok",
+    "score": 42,
+    "hard_failure": true,
+    "email": "sent",
+    "hard_failure_second_opinion": true,
+    "hard_failure_confirmed": true,
+    "classification": "ELECTRICAL_PRINT",
+    "interpreter_used": true,
+    "elapsed_s": 312.0
   }
 ]

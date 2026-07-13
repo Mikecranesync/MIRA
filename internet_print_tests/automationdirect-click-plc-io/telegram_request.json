@@ -1,0 +1,7 @@
+{
+  "test_id": "automationdirect-click-plc-io",
+  "caption": "What devices and I/O are wired in this print?",
+  "tested_page_sha256": "cd9481115213c424f07c84a44b9a0dc18c4d03a799e3116208cbf2f611862918",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

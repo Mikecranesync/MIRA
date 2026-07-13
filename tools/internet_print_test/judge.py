@@ -83,22 +83,30 @@ def judge(image_bytes: bytes, response_text: str, map_text: str | None, source_m
                                      "data": base64.b64encode(image_bytes).decode()}},
         {"type": "text", "text": _prompt(response_text, map_text, source_meta)},
     ]
+    def _text_of(m) -> str:
+        return "".join(b.text for b in m.content if getattr(b, "type", "") == "text").strip()
+
     try:
         # claude-sonnet-5 runs adaptive thinking by default; the budget must cover BOTH the
         # thinking pass AND the JSON verdict, or thinking consumes it all and 0 text is emitted
-        # (stop_reason=max_tokens, one empty thinking block). 16k leaves ample room for both.
+        # (stop_reason=max_tokens, empty thinking block). 16k fits most cases.
         msg = client.messages.create(
-            model=JUDGE_MODEL,
-            max_tokens=16000,
-            thinking={"type": "adaptive"},
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": content}],
+            model=JUDGE_MODEL, max_tokens=16000, thinking={"type": "adaptive"},
+            system=_SYSTEM, messages=[{"role": "user", "content": content}],
         )
-        raw = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
+        raw = _text_of(msg)
+        if not raw and getattr(msg, "stop_reason", "") == "max_tokens":
+            # A dense case can let adaptive thinking eat the WHOLE budget before the verdict.
+            # Retry with thinking OFF so every token goes to the JSON (proven reliable: end_turn).
+            msg = client.messages.create(
+                model=JUDGE_MODEL, max_tokens=8000, thinking={"type": "disabled"},
+                system=_SYSTEM, messages=[{"role": "user", "content": content}],
+            )
+            raw = _text_of(msg)
         if not raw:
             return {"judge_error": f"judge returned no text (stop_reason={msg.stop_reason}; "
-                    f"output_tokens={msg.usage.output_tokens}) — likely thinking consumed max_tokens",
-                    "provisional": True, "judge_model": JUDGE_MODEL}
+                    f"output_tokens={msg.usage.output_tokens})", "provisional": True,
+                    "judge_model": JUDGE_MODEL}
         data = _parse_json(raw)
         data["judge_model"] = JUDGE_MODEL
         data["provisional"] = True  # NOT authoritative technician approval until Mike calibrates

@@ -281,6 +281,10 @@ def _deliver(td: Path, source_json: dict, result: dict, jr: dict, args, log) -> 
     mailer.write_dry_run(td / "_email", pkg)
     log.info("email package built:\n%s", mailer.package_summary(pkg))
     if args.send_email:
+        if (jr or {}).get("overall_score_provisional") is None:
+            # Never send an ungraded report — a report email must carry score/grade/hard-fail.
+            log.warning("email HELD — no grade available (judge failed); not sending an ungraded report")
+            return "held (judge failed — not sent)"
         res = mailer.send(pkg)
         log.info("email send: %s", {k: v for k, v in res.items() if k != "error" or v})
         return "sent" if res.get("sent") else f"send-failed: {res.get('error')}"

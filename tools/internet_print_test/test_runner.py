@@ -266,3 +266,29 @@ def test_email_body_is_concise_summary_not_full_dump():
     assert "verify voltage" in body.lower()   # safety-performance note
     assert "blah blah blah" not in body       # the 500-word verbatim body is NOT dumped
     assert len(body) < 4000                   # a scannable card, not a wall of text
+
+
+def test_email_held_when_judge_fails(tmp_path, monkeypatch):
+    # A judge failure must HOLD the email — never send an ungraded report.
+    png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+                        "890000000a49444154789c6360000002000154a24f5f0000000049454e44ae426082")
+    fixture = tmp_path / "x.png"
+    fixture.write_bytes(png)
+    src = {"test_id": "held-fixture", "local_file": str(fixture), "title": "t", "publisher": "p",
+           "source_url": "https://example.org/x.png", "category": "test", "caption": "Explain this print."}
+    monkeypatch.setattr(runner, "TESTS_ROOT", tmp_path / "out")
+
+    import mailer as mailermod
+    import submit as submitmod
+
+    monkeypatch.setattr(submitmod, "submit_image_sync", lambda image_bytes, caption, **kw: {
+        "handled": True, "classification": "ELECTRICAL_PRINT", "final_text": "R", "map_text": "m",
+        "graph": {"brief": {}}, "interpreter_used": True, "model": "x", "latency_s": 0.1})
+    monkeypatch.setattr("runner.run_judge", lambda *a, **k: {"judge_error": "boom", "provisional": True})  # no score
+    sent = {"n": 0}
+    monkeypatch.setattr(mailermod, "send", lambda pkg: sent.__setitem__("n", sent["n"] + 1) or {"sent": True})
+    args = runner.argparse.Namespace(page=0, dpi=200, caption="Explain this print.", no_judge=False,
+                                     send_email=True, recipient=None, regrade=False)
+    row = runner.run_one(src, args)
+    assert row["email"].startswith("held")  # not sent — no grade
+    assert sent["n"] == 0                    # mailer.send never called for an ungraded report
