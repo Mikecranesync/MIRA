@@ -1146,3 +1146,8 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 - Scorecard: 47/57 passing (82%) — from 2026-07-13T0120 run (down 3 from 2026-07-12's 50/57)
 - Action: issue-filed (commented on #1876)
 - Multi-file cluster hard stop, **fourth night running**: 10 patchable failures span engine.py (7 fixtures — FSM pacing: Q1→Q2 stall on vague/abbreviated openers ×3, Q2→DIAGNOSIS short ×2, IDLE-not-entering-Q1, Q2→Q3 short) + guardrails.py/prompts (4 keyword misses). **Infra caveat:** 2 of those (`pf520_hw_overcurrent_17`, `yaskawa_j1000_thermal_24`) ended on the "taking longer than usual" timeout placeholder — LLM-latency flakes, not logic; real failure count is likely ~8. The engine.py Q1→Q2→…→DIAGNOSIS pacing cluster is the same recurring highest-leverage human fix (4th night). Genuine cluster-B misses (gs3_ground_fault_14, lenze_thermal_30) look like KB-gap over-trigger routing thermal/ground-fault to the generic manufacturer prompt. Diagnosis + next steps in issue comment.
+
+## eval-fixer run — 2026-07-14
+- Scorecard: 51/57 passing (89%)
+- Action: issue-filed (commented rolling tracker #1876)
+- 6 failures / 3 patchable, but spanned 3 file_clusters (engine.py, guardrails.py, active.yaml) → single-file guardrail tripped, no autopatch. Dominant real signal = cross-vendor citation (AutomationDirect/ABB assets pulling Rockwell PowerFlex chunks) → retrieval-precision work (#2083/#2085), not an FSM/keyword patch.
