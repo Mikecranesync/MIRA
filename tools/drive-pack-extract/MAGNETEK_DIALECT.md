@@ -113,3 +113,20 @@ y≈735 — excluded as bleed).
   **no invented integers**. This is the preserved evidence for the Run C
   schema decision; nothing is promoted to runtime or `gold/`.
 - Parameters fit the existing `ParameterCard` (string ids) unchanged.
+
+## Technician confirmations (2026-07-14)
+
+Crane-application semantics confirmed by the owner/technician live in
+`candidates/magnetek_impulse_g_plus_mini/TECHNICIAN_CONFIRMATIONS.json`
+(sidecar overlay — `pack.json` stays deterministic extractor output and is
+never hand-edited):
+
+- **LL1/LL2 are axis-dependent** (CONFIRMED): on a hoist drive they are the
+  hoist **lower limit** (LL1 slow-down, LL2 stop); on a traverse drive
+  (trolley/bridge) the same inputs are **travel / end-of-travel limits**. Any
+  answer surface must establish the motion (hoist vs traverse) before naming
+  the limit — and never advise bypassing a limit input.
+- **UL1–UL3 symmetry** is PROPOSED only — not confirmed; do not assert it.
+
+The overlay-merge mechanism + `technician_confirmed` provenance tier are Run C
+scope (`RUN_C_PLAN.md` item 6).
