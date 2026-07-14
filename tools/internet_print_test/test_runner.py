@@ -95,6 +95,35 @@ def test_judge_prompt_marks_response_as_data():
     assert "UNTRUSTED DOCUMENT TEXT" in p  # the response is fenced
 
 
+def test_judge_prompt_hands_the_graph_to_the_judge():
+    # PR4: the judge was prose-only; now it also sees the structured extraction so it can
+    # cross-check the asserted claims against the drawing (spec §1 fact 3).
+    import judge as judgemod
+
+    graph = {"devices": [{"tag": "ATV340"}], "plc_io_channels": [{"tag": "DQ1"}]}
+    p = judgemod._prompt("resp", None, {"title": "x"}, graph=graph)
+    assert "STRUCTURED GRAPH" in p
+    assert "ATV340" in p and "DQ1" in p
+
+
+def test_judge_prompt_without_graph_stays_wellformed():
+    import judge as judgemod
+
+    p = judgemod._prompt("resp", None, {"title": "x"})
+    assert "DATA to grade" in p
+    assert "STRUCTURED GRAPH" not in p  # nothing injected when there is no graph
+
+
+def test_judge_system_does_not_flag_terminal_ordering_as_hallucination():
+    # The +AI2/-AI2 fix (PRD §10.6): a sign/order variant of the SAME terminal is not an
+    # invented tag. The guidance must live in the system prompt so the judge stops false-flagging.
+    import judge as judgemod
+
+    sys_l = judgemod._SYSTEM.lower()
+    assert "same terminal" in sys_l
+    assert "ai2" in sys_l
+
+
 # ── artifact preservation (real dir shape, submit mocked) ─────────────────────
 
 
