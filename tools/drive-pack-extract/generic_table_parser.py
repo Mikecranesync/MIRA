@@ -79,6 +79,21 @@ def _pick_id_column(rows: list[list[str]]) -> int | None:
     return best_col if best_hits >= 2 else None
 
 
+_RULED_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\-]{0,9}$")
+
+
+def _ruled_id_ok(tok: str, *, header_gated: bool) -> bool:
+    """A ruled table whose header named an id column can trust a wider set of
+    id shapes than the strict generic classifier — e.g. ABB's hex warning
+    codes (``A2B4``), which interleave letters and digits. Still requires a
+    digit and rejects prose, so a header cell or a sentence is not an id."""
+    if si.is_identifier(tok):
+        return True
+    if not header_gated:
+        return False
+    return bool(_RULED_ID_RE.match(tok)) and any(c.isdigit() for c in tok)
+
+
 def parse_ruled(page: PageIR, cand: TableCandidate) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     param = cand.kind == "parameter"
@@ -88,6 +103,7 @@ def parse_ruled(page: PageIR, cand: TableCandidate) -> list[dict[str, Any]]:
             continue
         # Header = the row resolving the most roles; data rows follow it.
         header_idx, roles = _best_header_row(rows, param)
+        header_gated = roles_id_col(roles) is not None
         id_col = roles_id_col(roles) if roles else _pick_id_column(rows)
         if id_col is None:
             continue
@@ -96,7 +112,7 @@ def parse_ruled(page: PageIR, cand: TableCandidate) -> list[dict[str, Any]]:
         for r in data:
             cell = r[id_col].strip() if id_col < len(r) and r[id_col] else ""
             first = cell.split()[0] if cell else ""
-            if first and si.is_identifier(first):
+            if first and _ruled_id_ok(first, header_gated=header_gated):
                 rec = _row_to_record(r, id_col, roles, first, page, param, "ruled_table", cand.confidence)
                 if rec:
                     out.append(rec)
@@ -141,11 +157,23 @@ def _row_to_record(row, id_col, roles, ident, page, param, route, conf) -> dict[
             name = val
         elif role not in (si.FAULT_ID, si.PARAM_ID):
             fields[role] = val
-    # If no header-mapped name, take the widest non-id cell as the name.
+    # If no header-mapped name, use the first column to the RIGHT of the id
+    # that isn't a mapped value column (the usual ``id | name | values``
+    # layout) — falling back to the widest remaining cell.
     if not name:
-        cand_cells = [(_clean(row[i])) for i in range(len(row)) if i != id_col and _clean(row[i])]
-        if cand_cells:
-            name = max(cand_cells, key=len)
+        value_roles = {si.FAULT_CAUSE, si.FAULT_REMEDY, si.FAULT_TYPE,
+                       si.PARAM_DEFAULT, si.PARAM_RANGE, si.PARAM_UNIT}
+        for i in range(id_col + 1, len(row)):
+            if roles.get(i) in value_roles:
+                continue
+            val = _clean(row[i])
+            if val:
+                name = val
+                break
+        if not name:
+            cand_cells = [(_clean(row[i])) for i in range(len(row)) if i != id_col and _clean(row[i])]
+            if cand_cells:
+                name = max(cand_cells, key=len)
     excerpt = _excerpt_for(page.text, ident)
     if not excerpt:
         return None

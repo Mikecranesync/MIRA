@@ -155,7 +155,10 @@ def header_role_score(header_cells: list[str], *, param_context: bool) -> int:
 # --- Identifier classification --------------------------------------------
 _ID_NUMERIC = re.compile(r"^\d{1,4}$")
 _ID_ALNUM = re.compile(r"^[A-Za-z]{1,4}[-.]?\d{2,5}[A-Za-z]?$")   # F30001, A0503, SCF1
-_ID_DOTTED = re.compile(r"^[A-Za-z]{0,3}\d{1,3}[.\-]\d{1,3}([.\-]\d{1,3})?$")  # Pr.04.03, 01.05, B01.18
+# Dotted ids: optional letter prefix (with or without a following separator),
+# then a digit group and 1-2 more dotted/hyphen groups. Covers 00.00, B01.18,
+# 01-05 and Delta's "Pr.04.03" (letters then a separator before the digits).
+_ID_DOTTED = re.compile(r"^[A-Za-z]{0,3}[.\-]?\d{1,3}([.\-]\d{1,3}){1,2}$")
 _MNEMONIC = re.compile(r"^[A-Za-z]{1,3}\d{0,2}$")   # oC, Uv1, bb (mnemonic dialects)
 
 
