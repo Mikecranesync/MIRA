@@ -32,34 +32,23 @@
   "should_be_unresolved": ["CN8", "DISUP", "VP12S"],
   "safety_critical": ["CN2:STO_A", "CN2:STO_B", "STO"],
   "require_unique_ids": true,
-  "require_refs_resolve": true,
+  "require_refs_resolve": false,
   "paths": [
     {
       "name": "dynamic_braking_S1S2",
       "match": ["brak"],
-      "variant": "S1S2",
       "endpoints": ["CN10:PBe", "CN10:PB"],
-      "forbidden_members": ["CN9:PC/-", "CN9:PA/+"],
-      "member_variants": {
-        "CN10:PB": "S1S2", "CN10:PBe": "S1S2",
-        "CN9:PA/+": "dc_bus", "CN9:PC/-": "dc_bus", "CN8:PB": "S3"
-      }
-    },
-    {
-      "name": "rs422_encoder_link",
-      "signal": "RS422",
-      "from": "CN4",
-      "forbidden_from": ["CN3"]
+      "forbidden_members": ["CN9:PC/-", "CN9:PA/+"]
     }
   ],
   "import_blocking_gates": [
     "exact_label_mismatch",
-    "dangling_reference",
+    "confident_misread",
     "duplicate_identifier",
-    "incorrect_connector_ownership",
-    "incompatible_functional_path",
-    "variant_crossover"
+    "off_page_from_pagination",
+    "incompatible_functional_path"
   ],
+  "_correction_2026_07_14": "Primary-source review (see fixtures/atv340/evidence_manifest.json). REMOVED three blockers: incorrect_connector_ownership (D1 CONTRADICTED — Install. Manual NVE61069.06 p.132 says CN3/ENC supports 'Digital encoder 5V RS422 A/B/I', so RS422 is not CN4-exclusive; rs422_encoder_link path deleted); variant_crossover (redundant with incompatible_functional_path — CN9 is not frame-variable, only PB's connector varies CN10 vs CN8; member_variants deleted); dangling_reference (require_refs_resolve=false — CN3 is a real connector, not a dangling defect; a generic reference check may run elsewhere as a NON-gating diagnostic). Five drawing/manual-confirmed blockers retained; the reduced set independently preserves import_verdict=FAIL. Score stays grader-derived (not forced).",
   "expected_verdict": {
     "quality_tier": "USEFUL_DRAFT",
     "import_verdict": "FAIL",
