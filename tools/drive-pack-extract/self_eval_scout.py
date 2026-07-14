@@ -69,6 +69,24 @@ logger = logging.getLogger("drive-commander-scout")
 # ``gold/<pack_id>/`` set (that would stop being an unseen test).
 SCOUT_TARGETS: list[dict[str, Any]] = [
     {
+        # Magnetek (Columbus McKinnon) IMPULSE G+ Mini — a crane-hoist VFD, and
+        # the pinned first unseen-family target. STRONGLY INFERRED to be a
+        # relabeled Yaskawa V1000 (CIMR-VU4A) carrying proprietary Magnetek crane
+        # firmware (Load Check, Torque Proving, Swift-Lift, brake-proving faults)
+        # — see MAGNETEK_YASKAWA_MATRIX.md. Treated as its OWN family regardless
+        # of shared hardware. Fault table is a 3-column mnemonic layout
+        # (oC/BE2/LL1) + dotted params (H01.01); the PowerFlex-tuned extractor
+        # does not yet parse this shape (the unseen-eval finding — see
+        # MAGNETEK_RESULTS.md).
+        "pack_id": "magnetek_impulse_g_plus_mini",
+        "manufacturer": "Magnetek",
+        "series": "IMPULSE G+ Mini",
+        "aliases": ["impulse g+ mini", "g+ mini", "gplus mini", "impulse gplus mini"],
+        "match_keywords": ["impulse g+ mini", "g+ mini", "magnetek impulse", "gplus mini"],
+        "url": "https://www.magnetekdrives.com/wp-content/uploads/sites/7/drives-g-mini-manual.pdf",
+        "doc_label": "Magnetek IMPULSE G+ Mini Technical Manual (144-25085)",
+    },
+    {
         "pack_id": "durapulse_gs20",
         "manufacturer": "AutomationDirect",
         "series": "DURApulse GS20",

@@ -35,12 +35,24 @@ _LEADING_FAULT_ID_RE = re.compile(r"^([A-Za-z]\d{2,3})\b")
 #                (^[A-Za-z]\d{2}\.\d{2}$); alphanumeric fault mnemonics
 #                CE10/GFF/Lvd/oL/EF/CE1..4 — anything that is NOT the PowerFlex
 #                F\d+ form and is a short letter(+digit) token.
+#   magnetek   : Magnetek/Columbus McKinnon IMPULSE crane VFDs (G+ Mini,
+#                G+/VG+ Series 4/5). STRONGLY INFERRED relabeled Yaskawa
+#                (V1000/G5) hardware, so the ID SHAPE matches durapulse — dotted
+#                params H01.01/U01.10/C12.05 (^[A-Za-z]\d{2}\.\d{2}$) and mnemonic
+#                faults oC/EF0/LL1/BE2/UV1/MNT (^(?!F\d+$)[A-Za-z]{1,4}\d{0,2}$),
+#                verified against the real G+ Mini manual (144-25085). It is a
+#                DISTINCT family (own crane firmware/faults/brake logic), so it
+#                gets its own key even though the regexes coincide with durapulse.
 _FAMILY_CONVENTIONS = {
     "powerflex": {
         "param_id": re.compile(r"^[APCTBDapctbd]\d{2,3}$"),
         "fault_ref": re.compile(r"^F\d+$"),
     },
     "durapulse": {
+        "param_id": re.compile(r"^[A-Za-z]\d{2}\.\d{2}$"),
+        "fault_ref": re.compile(r"^(?!F\d+$)[A-Za-z]{1,4}\d{0,2}$"),
+    },
+    "magnetek": {
         "param_id": re.compile(r"^[A-Za-z]\d{2}\.\d{2}$"),
         "fault_ref": re.compile(r"^(?!F\d+$)[A-Za-z]{1,4}\d{0,2}$"),
     },
@@ -62,6 +74,8 @@ def _family_key(pack_dict: dict[str, Any]) -> str:
     ).lower()
     if "powerflex" in hay:
         return "powerflex"
+    if any(t in hay for t in ("magnetek", "impulse", "columbus mckinnon", "g+ mini", "vg+")):
+        return "magnetek"
     if any(t in hay for t in ("durapulse", "automationdirect", "gs10", "gs20")):
         return "durapulse"
     return _DEFAULT_FAMILY
