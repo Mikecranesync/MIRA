@@ -223,9 +223,13 @@ def grade(graph: object, rubric: dict) -> dict:
     unresolved_recall = (len(unres_hits) / len(should_unres)) if should_unres else 1.0
     honesty_score = 0.0
     if trust_violations == 0:
-        honesty_score = max(0.0, min(float(W_HONESTY), 20 - 5 * confident_misreads + 10 * unresolved_recall))
+        honesty_score = max(
+            0.0, min(float(W_HONESTY), 20 - 5 * confident_misreads + 10 * unresolved_recall)
+        )
 
-    overall = package_score + structure_score + device_score + wire_score + xref_score + honesty_score
+    overall = (
+        package_score + structure_score + device_score + wire_score + xref_score + honesty_score
+    )
 
     gates = {
         "overall_ge_90": overall >= A_OVERALL,

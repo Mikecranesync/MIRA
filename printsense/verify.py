@@ -56,7 +56,9 @@ def _blind_reread(image_bytes: bytes):
     ) as stream:
         msg = stream.get_final_message()
     graph = interpret._apply_confidence_gate(
-        PrintSynthGraph.model_validate(json.loads(interpret._strip_fences(interpret._first_text(msg))))
+        PrintSynthGraph.model_validate(
+            json.loads(interpret._strip_fences(interpret._first_text(msg)))
+        )
     )
     return graph, {"input_tokens": msg.usage.input_tokens, "output_tokens": msg.usage.output_tokens}
 
@@ -91,11 +93,38 @@ def verify(image_bytes: bytes, graph: PrintSynthGraph, blind_pass=None) -> dict:
             head = grader._norm(_head(e.tag))
             if head and head in pool_b:
                 e.trust = TrustState.machine_verified
-                e.evidence = f"phase-3: independent blind reread agreed on {e.tag}. " + (e.evidence or "")
-                decisions.append({"tag": e.tag, "section": section, "decision": "agree", "action": "machine_verified"})
+                e.evidence = f"phase-3: independent blind reread agreed on {e.tag}. " + (
+                    e.evidence or ""
+                )
+                decisions.append(
+                    {
+                        "tag": e.tag,
+                        "section": section,
+                        "decision": "agree",
+                        "action": "machine_verified",
+                    }
+                )
             else:
-                decisions.append({"tag": e.tag, "section": section, "decision": "no_second_witness", "action": "kept_proposed"})
+                decisions.append(
+                    {
+                        "tag": e.tag,
+                        "section": section,
+                        "decision": "no_second_witness",
+                        "action": "kept_proposed",
+                    }
+                )
 
     verified = sum(1 for d in decisions if d["decision"] == "agree")
-    logger.info("PHASE3_DONE verified=%d/%d tok=%d/%d", verified, len(decisions), usage["input_tokens"], usage["output_tokens"])
-    return {"graph": improved, "decisions": decisions, "blind_graph": graph_b.model_dump(), "usage": usage}
+    logger.info(
+        "PHASE3_DONE verified=%d/%d tok=%d/%d",
+        verified,
+        len(decisions),
+        usage["input_tokens"],
+        usage["output_tokens"],
+    )
+    return {
+        "graph": improved,
+        "decisions": decisions,
+        "blind_graph": graph_b.model_dump(),
+        "usage": usage,
+    }

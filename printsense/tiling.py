@@ -195,14 +195,22 @@ def enhance(image_bytes: bytes, graph: PrintSynthGraph, max_regions: int = 8) ->
             )
             existing.add(_norm(text))
             resolved_items.add(item)
-            changes.append({"text": text, "kind": kind, "confidence": conf, "bbox": box, "resolved_item": item})
+            changes.append(
+                {"text": text, "kind": kind, "confidence": conf, "bbox": box, "resolved_item": item}
+            )
 
     # Drop the unresolved items we resolved.
     improved.unresolved = [
         u2 for u2 in (improved.unresolved or []) if _item_text(u2) not in resolved_items
     ]
-    logger.info("PHASE2_DONE regions=%d merged=%d tok=%d/%d", len(items), len(changes), tok_in, tok_out)
-    return {"graph": improved, "changes": changes, "usage": {"input_tokens": tok_in, "output_tokens": tok_out}}
+    logger.info(
+        "PHASE2_DONE regions=%d merged=%d tok=%d/%d", len(items), len(changes), tok_in, tok_out
+    )
+    return {
+        "graph": improved,
+        "changes": changes,
+        "usage": {"input_tokens": tok_in, "output_tokens": tok_out},
+    }
 
 
 def _norm(tag) -> str:

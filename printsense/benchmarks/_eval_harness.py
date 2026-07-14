@@ -32,7 +32,9 @@ from printsense.models import PrintSynthGraph
 _CONFIDENT_TRUST = {"proposed", "machine_verified", "human_verified"}
 
 
-def interpret_capture(image_bytes: bytes, question: str | None = None, do_preprocess: bool = True) -> dict:
+def interpret_capture(
+    image_bytes: bytes, question: str | None = None, do_preprocess: bool = True
+) -> dict:
     """Run the exact Phase-0 interpretation, capturing tokens + latency + raw text."""
     orig_dims = _dims(image_bytes)
     pages = [(image_bytes, "image/jpeg")]
@@ -42,7 +44,9 @@ def interpret_capture(image_bytes: bytes, question: str | None = None, do_prepro
 
     client = interpret._client()
     content = [interpret._source_block(d, mt) for d, mt in pages]
-    content.append({"type": "text", "text": interpret._user_prompt({"drawing_type": None}, question)})
+    content.append(
+        {"type": "text", "text": interpret._user_prompt({"drawing_type": None}, question)}
+    )
 
     t0 = time.time()
     with client.messages.stream(
@@ -95,9 +99,7 @@ def run_and_grade(
     pool = grader._structured_tag_pool(g)
 
     record = {"name": name, **cap}
-    record["unreadable"] = [
-        (u or {}).get("item") for u in (g.get("unresolved") or [])
-    ]
+    record["unreadable"] = [(u or {}).get("item") for u in (g.get("unresolved") or [])]
     record["confident_structured_tags"] = sorted(t for t in pool if t and t != "UNREADABLE")
     if rubric is not None:
         result = grader.grade(g, rubric)
@@ -111,8 +113,12 @@ def run_and_grade(
             "gates": result["gates"],
             "device_f1": result["device"]["f1"],
             "wire_f1": result["wire"]["f1"],
-            "missed": result["device"]["missed"] + result["wire"]["missed"] + result["xref"]["missed"],
-            "misreads": result["device"]["misreads"] + result["wire"]["misreads"] + result["xref"]["misreads"],
+            "missed": result["device"]["missed"]
+            + result["wire"]["missed"]
+            + result["xref"]["missed"],
+            "misreads": result["device"]["misreads"]
+            + result["wire"]["misreads"]
+            + result["xref"]["misreads"],
         }
     if forbid_tokens:
         hits = [t for t in forbid_tokens if grader._norm(t) in pool]
