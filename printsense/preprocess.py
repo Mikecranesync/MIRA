@@ -30,8 +30,14 @@ import os
 
 logger = logging.getLogger("printsense.preprocess")
 
-# Opus 4.8 high-res vision budget: 2576 px on the long edge (~4784 tokens).
+# Opus 4.8 high-res vision budget: 2576 px on the long edge AND <= 4784 vision
+# tokens, where tokens = ceil(w/28) * ceil(h/28) (28x28-px patches). BOTH limits
+# bind (Anthropic vision-coordinates doc): a square sheet at 2576px costs 8464
+# tokens and is silently downscaled server-side — so the client must honor the
+# token budget too, or portrait/square prints lose resolution with no log line.
 MAX_PX = int(os.getenv("PRINT_VISION_MAX_PX", "2576"))
+MAX_IMG_TOKENS = int(os.getenv("PRINT_VISION_MAX_IMG_TOKENS", "4784"))
+_PATCH = 28
 # Minimum Tesseract OSD orientation confidence to trust an auto-rotate.
 OSD_MIN_CONF = float(os.getenv("PRINT_VISION_OSD_MIN_CONF", "1.0"))
 # JPEG quality for the re-encode -- q>=95, never Pillow's lossy default of 75.
@@ -61,8 +67,9 @@ def prepare_print_image(data: bytes, media_type: str) -> tuple[bytes, str]:
         logger.warning("PRINT_PREPROCESS_SKIP reason=decode_failed err=%s", exc)
         return data, media_type
 
+    img = _exif_upright(img)
     img = _auto_upright(img)
-    img = _resize_long_edge(img, MAX_PX)
+    img = _resize_to_budget(img)
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
     buf = io.BytesIO()
@@ -70,8 +77,74 @@ def prepare_print_image(data: bytes, media_type: str) -> tuple[bytes, str]:
     return buf.getvalue(), "image/jpeg"
 
 
+def _exif_upright(img):
+    """Apply the EXIF Orientation tag (free upright for phone photos; no Tesseract).
+
+    Runs BEFORE the content-based OSD pass: a phone photo usually carries the
+    rotation as EXIF metadata, which this fixes without any binary; OSD then only
+    has to handle rotation baked into the pixels. Defensive like everything here.
+    """
+    try:
+        from PIL import ImageOps  # noqa: PLC0415
+
+        return ImageOps.exif_transpose(img)
+    except Exception as exc:  # noqa: BLE001 -- corrupt EXIF must not eat the turn
+        logger.warning("PRINT_EXIF_UPRIGHT_SKIP err=%s", exc)
+        return img
+
+
+def _fits(w: int, h: int, max_edge: int, max_tokens: int) -> bool:
+    if max(w, h) > max_edge:
+        return False
+    return -(-w // _PATCH) * -(-h // _PATCH) <= max_tokens
+
+
+def resized_size(
+    w: int, h: int, max_edge: int | None = None, max_tokens: int | None = None
+) -> tuple[int, int]:
+    """Largest aspect-preserving size honoring BOTH high-res-tier constraints.
+
+    Mirrors Anthropic's server resize rule (vision-coordinates doc): every side
+    <= ``max_edge`` AND ceil(w/28)*ceil(h/28) <= ``max_tokens``. Never upscales.
+    Binary-search on the long edge, then nudge down past ceil() wobble.
+    """
+    max_edge = MAX_PX if max_edge is None else max_edge
+    max_tokens = MAX_IMG_TOKENS if max_tokens is None else max_tokens
+    if _fits(w, h, max_edge, max_tokens):
+        return w, h
+    long0 = max(w, h)
+    lo, hi = 1, min(long0, max_edge)  # candidate long-edge lengths
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        s = mid / long0
+        if _fits(max(1, round(w * s)), max(1, round(h * s)), max_edge, max_tokens):
+            lo = mid
+        else:
+            hi = mid - 1
+    s = lo / long0
+    rw, rh = max(1, round(w * s)), max(1, round(h * s))
+    while not _fits(rw, rh, max_edge, max_tokens) and max(rw, rh) > 1:  # ceil wobble
+        rw, rh = max(1, rw - 1), max(1, rh - 1)
+    return rw, rh
+
+
+def _resize_to_budget(img):
+    """Downscale to :func:`resized_size` (never upscale)."""
+    from PIL import Image  # noqa: PLC0415
+
+    w, h = img.size
+    tw, th = resized_size(w, h)
+    if (tw, th) == (w, h):
+        return img
+    return img.resize((tw, th), Image.LANCZOS)
+
+
 def _resize_long_edge(img, max_px: int):
-    """Downscale so the long edge is at most ``max_px`` (never upscale)."""
+    """Downscale so the long edge is at most ``max_px`` (never upscale).
+
+    Retained for callers that budget by edge only (e.g. tile crops sized well
+    under the token cap); the full-page path uses :func:`_resize_to_budget`.
+    """
     from PIL import Image  # noqa: PLC0415
 
     w, h = img.size

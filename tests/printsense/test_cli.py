@@ -148,9 +148,16 @@ def test_map_flag_writes_map(monkeypatch, tmp_path, photo):
     assert (out / "map.txt").read_text(encoding="utf-8")
 
 
-def test_pdf_media_type(monkeypatch, tmp_path):
+def test_pdf_rendered_pages_reach_interpret_as_images(monkeypatch, tmp_path):
+    # F5 contract: a PDF is rasterized client-side; interpret receives IMAGE pages
+    # (one per PDF page), never a raw application/pdf block (which would bypass
+    # the preprocess budget — the R1 ATV340 56.5/F finding).
+    fitz = pytest.importorskip("fitz")
+    doc = fitz.open()
+    doc.new_page(width=300, height=200)
+    doc.new_page(width=300, height=200)
     pdf = tmp_path / "sheet.pdf"
-    pdf.write_bytes(b"%PDF-1.4 fake")
+    pdf.write_bytes(doc.tobytes())
     seen = {}
     monkeypatch.setattr(
         cli, "interpret_print", lambda pages, **kw: seen.update(pages=pages) or _graph()
@@ -159,4 +166,60 @@ def test_pdf_media_type(monkeypatch, tmp_path):
     rc = cli.main([str(pdf), "--out", str(tmp_path / "o")])
 
     assert rc == cli.EXIT_OK
-    assert seen["pages"][0][1] == "application/pdf"
+    assert len(seen["pages"]) == 2
+    assert all(mt == "image/jpeg" for _b, mt in seen["pages"])
+
+
+def test_enhance_flag_runs_targeted_tiling(monkeypatch, tmp_path, photo):
+    from printsense.models import Unresolved
+
+    g = _graph()
+    g.unresolved = [Unresolved(item="module marking needs close-up")]
+    improved = _graph()  # enhanced result: unresolved recovered
+    calls = {}
+
+    monkeypatch.setattr(cli, "interpret_print", lambda *a, **k: g)
+    monkeypatch.setattr(
+        cli,
+        "_enhance",
+        lambda image_bytes, graph: calls.update(ran=True)
+        or {"graph": improved, "changes": [{"item": "recovered"}], "usage": {}},
+    )
+
+    rc = cli.main([str(photo), "--enhance", "--out", str(tmp_path / "o")])
+
+    assert rc == cli.EXIT_OK
+    assert calls.get("ran") is True
+    # the written graph is the IMPROVED one (no unresolved left)
+    out = json.loads((tmp_path / "o" / "graph.json").read_text(encoding="utf-8"))
+    assert out["unresolved"] == []
+
+
+def test_enhance_flag_skipped_when_nothing_unresolved(monkeypatch, tmp_path, photo):
+    monkeypatch.setattr(cli, "interpret_print", lambda *a, **k: _graph())  # unresolved=[]
+    called = []
+    monkeypatch.setattr(cli, "_enhance", lambda *a, **k: called.append(1))
+
+    rc = cli.main([str(photo), "--enhance", "--out", str(tmp_path / "o")])
+
+    assert rc == cli.EXIT_OK
+    assert not called  # nothing to enhance -> no extra spend
+
+
+def test_verify_flag_runs_blind_reread(monkeypatch, tmp_path, photo):
+    verified = _graph()
+    monkeypatch.setattr(cli, "interpret_print", lambda *a, **k: _graph())
+    monkeypatch.setattr(
+        cli,
+        "_verify",
+        lambda image_bytes, graph: {
+            "graph": verified,
+            "verified_count": 1,
+            "checked": 1,
+        },
+    )
+
+    rc = cli.main([str(photo), "--verify", "--out", str(tmp_path / "o")])
+
+    assert rc == cli.EXIT_OK
+    assert (tmp_path / "o" / "graph.json").exists()
