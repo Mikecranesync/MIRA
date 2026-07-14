@@ -1,8 +1,8 @@
 {
   "case": "atv340_vfd_s1s2s3_nve97896",
   "_source": "Schneider ATV340 wiring diagram NVE97896-02, sheet 1/2. Ground-truth facts verified against the rendered page in docs/plans/2026-07-13-print-eval-gold-standard.md §3 + the professor review. Graded graph = the frozen defective extraction at printsense/fixtures/atv340/graph.json (a copy of internet_print_tests/schneider-atv340-vfd/extraction.json).",
-  "truth_status": "draft_llm_authored",
-  "_truth_status_note": "draft_llm_authored -> Mike reviews-and-freezes to frozen_human_confirmed (PRD §10.7). Only frozen truth blocks CI; the benchmark test skips until then.",
+  "truth_status": "frozen_human_confirmed",
+  "_truth_status_note": "frozen_human_confirmed 2026-07-14 by Mike after primary-source review (see fixtures/atv340/evidence_manifest.json + the _correction_2026_07_14 note). This truth now blocks CI — test_atv340_frozen_verdict is enforced.",
   "package": {
     "drawing_no": "NVE97896-02",
     "sheet": "1/2"

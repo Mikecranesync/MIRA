@@ -1,9 +1,9 @@
 # ATV340 verified truth-set (defect list) — the calibration ground truth
 
-**truth_status: `draft_llm_authored`** — verified against the hash-verified Schneider **NVE97896-02
-sheet 1/2** drawing AND the official Schneider **Installation Manual NVE61069.06** (see
-`evidence_manifest.json`). **Awaiting Mike's review-and-freeze** to `frozen_human_confirmed`
-(PRD §10.7). Only frozen truth blocks CI.
+**truth_status: `frozen_human_confirmed`** (2026-07-14) — verified against the hash-verified
+Schneider **NVE97896-02 sheet 1/2** drawing AND the official Schneider **Installation Manual
+NVE61069.06** (see `evidence_manifest.json`), then **frozen by Mike after primary-source review**
+(PRD §10.7). This truth now blocks CI (`test_atv340_frozen_verdict` is enforced).
 
 > **⚠️ D1 REVERSED after primary-source verification (2026-07-14).** An earlier draft claimed
 > "RS422 belongs to CN4 and RS422-on-CN3 is a defect." The official Installation Manual
@@ -59,8 +59,8 @@ weights (`benchmarks/atv340_vfd/rubric.json`) + the honesty penalty — it is **
 benchmark test pins the USEFUL_DRAFT band `60 ≤ score < 75`. The reduced blocker set **independently
 preserves the FAIL verdict**.
 
-## To freeze (Mike)
+## Frozen (2026-07-14)
 
-Confirm the rows above against the rendered page + the Installation Manual, then set
-`"truth_status": "frozen_human_confirmed"` in `printsense/benchmarks/atv340_vfd/rubric.json`.
-That flips `test_atv340_frozen_verdict` from *skipped* to an **enforced CI gate**.
+Rows above confirmed against the rendered page + the Installation Manual and frozen by Mike.
+`"truth_status": "frozen_human_confirmed"` is set in `printsense/benchmarks/atv340_vfd/rubric.json`,
+so `test_atv340_frozen_verdict` is now an **enforced CI gate** (no longer skipped).

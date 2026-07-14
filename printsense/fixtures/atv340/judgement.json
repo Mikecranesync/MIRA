@@ -47,6 +47,6 @@
   "quality_tier": "USEFUL_DRAFT",
   "import_verdict": "FAIL",
   "bot_importable": false,
-  "truth_status": "draft_llm_authored",
+  "truth_status": "frozen_human_confirmed",
   "summary": "The defective ATV340 graph reads its tags with decent accuracy (score ~74/100, grader-derived) yet is structurally UNSAFE to import. FIVE deterministic gates fire (exact_label_mismatch, confident_misread, duplicate_identifier, off_page_from_pagination, incompatible_functional_path), each confirmed against the rendered NVE97896-02 sheet 1/2 and/or the official Install. Manual NVE61069.06 (see evidence_manifest.json). This is the negative calibration anchor: good prose (~74) does NOT imply a trustworthy graph (import_verdict=FAIL). D1 (RS422/CN3) was REVERSED after primary-source verification and its blocker removed, along with the redundant variant_crossover and the non-defect dangling_reference — the reduced set independently preserves FAIL. truth_status=draft_llm_authored: awaiting Mike's review-and-freeze (PRD §10.7)."
 }
