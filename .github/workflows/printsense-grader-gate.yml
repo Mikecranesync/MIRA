@@ -1,0 +1,48 @@
+name: PrintSense Grader Gate
+
+# Offline, no-spend structural gate for the deterministic PrintSense grader
+# (printsense.grade_case). NO Anthropic, NO Doppler, NO internet, NO production services —
+# deterministic fixtures only. Reuses the REAL grade_case (no second grader), proves the LLM
+# judge cannot override a deterministic FAIL, verifies runner/report/email expose the same
+# verdict, and enforces the frozen ATV340 truth-set against regression. (PR5.)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'printsense/**'
+      - 'tests/printsense/**'
+      - 'tools/internet_print_test/**'
+      - '.github/workflows/printsense-grader-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'printsense/**'
+      - 'tests/printsense/**'
+      - 'tools/internet_print_test/**'
+      - '.github/workflows/printsense-grader-gate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: printsense-grader-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  printsense-grader-gate:
+    name: printsense-grader-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # pytest + httpx ONLY. No anthropic SDK is installed, so the paid API structurally cannot
+      # be called; no Doppler; no network at runtime (submit + judge are mocked in the tests).
+      - name: Install (pytest + httpx — no Anthropic / no Doppler / no network)
+        run: pip install pytest httpx
+      - name: Deterministic grader gate — grade the frozen corpus, print blockers, fail on regression
+        run: python -m printsense.grader_gate
+      - name: 12-point hermetic grader-gate suite + frozen ATV340 benchmark
+        run: pytest tests/printsense/test_grader_gate.py tests/printsense/test_atv340_benchmark.py -v
