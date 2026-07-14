@@ -244,3 +244,47 @@ python -m pytest tools/drive-pack-extract/tests/ -q
 `sys.path` so `extractor` and `cite_integrity` import as plain top-level
 modules (the tool lives in a hyphenated directory, so it can't be a normal
 importable Python package).
+
+---
+
+## Universal VFD Manual Compiler (generalize beyond PowerFlex/Magnetek)
+
+The original `extractor.py` is a set of **exact-header dialects**: a page yields
+records only if it carries a verbatim header phrase (`"Description"`+`"Action"`
+for PowerFlex faults, `"Name/Description"` for Magnetek). On five unseen vendors
+(Yaskawa GA500, ABB ACS580, Schneider ATV320, Siemens G120X, Delta VFD-E) that
+gate never fires — recovery was **0/5**.
+
+The **Universal Compiler** replaces exact-header gating as the *primary*
+architecture with a vendor-agnostic pipeline. Exact vendor phrases still *boost*
+confidence; they are never *required*.
+
+```
+document_ir  ->  table_discovery  ->  [dialect_registry | generic_table_parser]
+             ->  llm_region_repair (optional)  ->  evidence_validator
+             ->  universal_extract (canonical JSON + evidence)
+```
+
+| Module | Role |
+|---|---|
+| `document_ir.py` | One-pass pdfplumber normalization: words+bbox, ruling edges, ruled `extract_tables`, text, OCR status. |
+| `table_discovery.py` | Finds fault/parameter table candidates by a repeated **identifier column** + role vocabulary. No exact phrase required. |
+| `schema_inference.py` | Maps arbitrary vendor headers (`What to do`/`Remedy`/`Possible Solutions`) onto canonical roles; classifies id shapes (numeric/alnum/dotted). |
+| `generic_table_parser.py` | `ruled` (pdfplumber cells) / `unruled` (word-position columns) / `block` (id + `Cause:`/`Remedy:` prose) routes. Source-preserved string ids; wrapped-row merge. |
+| `dialect_registry.py` | Wraps the proven PowerFlex + Magnetek parsers as scored plugins. Generic is the fallback where no dialect fires — so existing dialect tests stay green. |
+| `evidence_validator.py` | Reuses `cite_integrity` to prove every record's excerpt on its page; rejects unverifiable; attaches field-level evidence. |
+| `llm_region_repair.py` | Region-bounded, **offline by default** (`MIRA_DRIVE_LLM_REPAIR=1`), cascade Groq→Cerebras→Together (no Anthropic), source-validated, emits learning artifacts. |
+| `universal_extract.py` | Orchestrator + CLI. Honest status: `COMPLETE` / `PARTIAL` / `NO_TABLES_FOUND` / `TABLES_FOUND_NOT_PARSED` / `FAILED`. A zero-record run is never a success. |
+
+```bash
+python universal_extract.py MANUAL.pdf --output result.json --evidence-dir evidence/
+```
+
+Canonical output: `faults[]` and `parameters[]` (string `id`, casing preserved),
+document identity + provenance (sha256), status + coverage, rejected candidates
+with reasons, and field-level citations. The legacy integer `fault_codes` map is
+**derived** (numeric ids only) — a mnemonic code is never assigned an invented
+integer. Still read-only / offline; never writes a shipped `pack.json`.
+
+Benchmark results (before/after per manual) and measured-vs-gap gate analysis:
+`docs/eval/universal-vfd-compiler-results.md`.
