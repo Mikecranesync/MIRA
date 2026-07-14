@@ -1,19 +1,36 @@
-# Drive Commander eval — IMPULSE G+ Mini — EMPTY — 0 entries extracted (generalization gap)
+# Run B evaluation — Magnetek IMPULSE G+ Mini (2026-07-14)
 
-```
-Drive Commander self-eval scout — 2026-07-14T02-02-06Z
+**Question Run B answers:** can the deterministic extractor learn the Magnetek
+document dialect and produce a substantially better, cited candidate WITHOUT
+changing the production runtime schema? **Answer: YES.**
 
-Drive family : Magnetek IMPULSE G+ Mini  (pack_id: magnetek_impulse_g_plus_mini)
-Source        : https://www.magnetekdrives.com/wp-content/uploads/sites/7/drives-g-mini-manual.pdf
-Manual        : 2915657 bytes  sha256=56075883958090ed…
-Fetch         : 0.8s
-Extracted     : 0 fault codes, 0 parameters  (7.6s)
-Status        : GRADED
+| | Run A (baseline, PR #2690) | Run B (this branch) |
+|---|---|---|
+| Fault identifiers | 0 | **77** (76 unique + `oV` plain/flashing) — mnemonic strings, source-preserved |
+| Parameters | 0 | **468** — dotted ids, verbatim ranges/defaults |
+| Citation coverage | — | **100%** both tables (cite-gate re-verified against the PDF) |
+| Duplicates | — | 0 |
+| Ambiguity-flagged ids | — | 53 (`ambiguous_glyphs` detection; nothing normalized) |
+| Invented integer keys | — | **0** — `live_decode.fault_codes` stays `{}` |
+| Grade | B (85.7) INCOMPLETE | **A (100.0) INCOMPLETE** |
+| Promotion verdict | NOT PROMOTABLE | **NOT PROMOTABLE** (gold categories N/A — no gold set; verdict policy unchanged, no thresholds touched) |
+| Regressions | — | **0** — full pre-existing suite green (186 tests: PF40/PF525/GS10 extraction, grading, registry) |
 
-Grade: B (85.7/100) — INCOMPLETE
-Promotion: NOT PROMOTABLE (INCOMPLETE) — missing evidence prevents a full scientific grade; un-graded categories: ['fault_coverage_precision', 'fault_field_accuracy', 'parameter_coverage_precision', 'parameter_field_accuracy', 'relationship_accuracy']. Provide the missing evidence, then re-grade.
+Same manual bytes as Run A (sha256 `56075883…d00be`) — the delta is the
+extractor, nothing else. How it works: `magnetek_dialect.py` +
+`MAGNETEK_DIALECT.md` (geometry: rect-rule row spans, whitespace-channel +
+step-number column edges; identifiers preserved verbatim with confusable-glyph
+flagging; `and`-continuation multi-code cells; sub-row anchors).
 
-Interpretation: the extractor recovered NOTHING from this manual's layout. The numeric grade only reflects schema+domain checks on an empty pack — it is NOT a quality signal. The finding is a real generalization gap: the position-aware fault/parameter parser is tuned to the PowerFlex 520-series table shapes and does not yet recognise this family's tables. Next step: capture this manual's fault/parameter page ranges + header shape and extend the parser (or add a gold set) — same play as GS10.
-
-Note: gold-independent grade (unseen family — schema + cite-integrity + domain layers only). Staged candidate; nothing promoted to the runtime resolver.
-```
+**Remaining blockers to promotion (Run C material, NOT addressed here):**
+1. **Runtime schema**: `schema.LiveDecode.fault_codes: dict[int,str]` cannot
+   hold mnemonic identifiers. Run B evidence supports moving to a
+   string-identifier fault representation (the candidate-layer `fault_entries`
+   loads through the real loader untouched today). Decision + migration = Run C.
+2. **No gold set**: fault/parameter coverage-precision categories are
+   ungradeable until a human-curated `gold/magnetek_impulse_g_plus_mini/`
+   exists. 
+3. **Auto-tune fault namespace** (`Er-01`…`End 3`, p.141) deliberately out of
+   scope — Run C should decide whether it ships as a separate table.
+4. Runtime consumers (ask/cards/nameplate) have no code path for
+   `fault_entries` — deploying this pack would answer nothing yet. By design.

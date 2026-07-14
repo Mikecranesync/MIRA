@@ -267,6 +267,7 @@ def build_pack(fragment: dict[str, Any], target: dict[str, Any], provenance_note
     honestly empty — precision over invented completeness.
     """
     fault_codes = fragment.get("fault_codes", {})
+    fault_entries = fragment.get("fault_entries", [])
     fault_citations = fragment.get("fault_citations", [])
     parameters = fragment.get("parameters", [])
 
@@ -302,6 +303,13 @@ def build_pack(fragment: dict[str, Any], target: dict[str, Any], provenance_note
         "parameters": parameters,
         "keypad_navigation": [],
     }
+    if fault_entries:
+        # Candidate-layer ONLY (Run B, Magnetek mnemonic dialect): string
+        # fault identifiers the runtime's dict[int,str] fault_codes cannot
+        # hold. The loader tolerates the extra key; no runtime consumes it —
+        # this is the preserved evidence for the Run C schema decision.
+        pack["fault_entries"] = fault_entries
+        pack["provenance"]["items"]["fault_entries"] = "manual_cited"
 
     missing = set(_REQUIRED_TOP_LEVEL_KEYS) - pack.keys()
     if missing:

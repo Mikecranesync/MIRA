@@ -1,51 +1,57 @@
-# Magnetek IMPULSE G+ Mini pack — provenance
+# Magnetek IMPULSE G+ Mini pack — provenance (Run B)
 
-**Status: STAGED CANDIDATE — genuine UNSEEN evaluation, NOT deployed.** Records
-how the candidate `pack.json` here was generated. This location is NOT the live
-`mira-bots/shared/drive_packs/packs/` tree — `resolve_pack()` cannot see it.
-Nothing here is promoted to `gold/` or to the runtime resolver (train-before-deploy).
+**Status: STAGED CANDIDATE — NOT deployed, NOT promoted, NOT in `gold/`.**
+Run B of the Magnetek investigation: the extractor learned the IMPULSE document
+dialect (`magnetek_dialect.py`, spec `../../MAGNETEK_DIALECT.md`). Run A — the
+genuine unseen baseline (0 faults / 0 parameters) — is preserved UNMODIFIED in
+`runA/` with the machine-readable delta in `runA/COMPARISON_CONTRACT.json`.
 
-- Vendor: Magnetek (Columbus McKinnon)
-- Family: IMPULSE G+ Mini — crane-hoist VFD
-- Publication: Magnetek IMPULSE G+ Mini Technical Manual
-- Document part number: 144-25085
-- Firmware referenced: 14515
+- Vendor: Magnetek (Columbus McKinnon) · Family: IMPULSE G+ Mini (crane-hoist VFD)
+- Publication: IMPULSE G+ Mini Technical Manual, part 144-25085, firmware 14515
 - Source URL: https://www.magnetekdrives.com/wp-content/uploads/sites/7/drives-g-mini-manual.pdf
-- Source sha256: `56075883958090ed…` (2,915,657 bytes, 182 pages, PDF 1.4, text-readable)
-- Source PDF is **NOT committed to git** (copyrighted Magnetek manual; provenance +
-  SHA-256 + citations only — see `.gitignore`).
-- Yaskawa relationship: **strongly_inferred** relabeled Yaskawa V1000 (CIMR-VU4A) with
-  proprietary Magnetek crane firmware — see `../../MAGNETEK_YASKAWA_MATRIX.md`.
+- Source sha256: `56075883958090ed9b59b5c201feb19f556f19d232dfc9138d0caf68900d00be`
+  (2,915,657 bytes, 182 pages) — **byte-identical to the Run A manual** (re-downloaded
+  and re-hashed 2026-07-14), so the extraction delta is attributable to extractor
+  changes alone. PDF is NOT committed (copyrighted; provenance + citations only).
 
-## Result — EMPTY (0 entries): a real generalization gap
+## Run B result — 77 fault entries / 468 parameters, all cited
 
-Whole-document extract recovered **0 fault codes, 0 parameters**. Grade
-**B (85.7/100) INCOMPLETE → NOT PROMOTABLE** (schema + domain layers only, on an
-empty pack — NOT a quality signal). This is the honest unseen-eval finding, same
-class as GS20 (#2685) / GS10:
+| Metric | Run A (PR #2690, `35fe2611`) | Run B |
+|---|---|---|
+| Fault identifiers | 0 | **77** (76 unique + `oV` plain/flashing pair) |
+| Parameters | 0 | **468** (12 prefixes, A–U; 2 grouped-range rows deliberately skipped — see MAGNETEK_DIALECT.md) |
+| Citation coverage | n/a | **77/77 faults, 468/468 params** (cite-gate verified verbatim) |
+| Duplicates | n/a | 0 |
+| Ambiguity-flagged identifiers | n/a | 53 (`ambiguous_glyphs`, detection-not-normalization) |
+| Invented integer fault keys | n/a | **0** (`live_decode.fault_codes` = `{}` by design) |
+| Grade | B (85.7) INCOMPLETE | **A (100.0) INCOMPLETE** |
+| Promotable | NO | **NO** (gold-set categories still N/A — no gold set exists) |
 
-- The G+ Mini **fault table** is a 3-column `Fault | Name/Description | Corrective
-  Action` layout with **mnemonic codes** (`dnE`, `EF0`-`EF8`, `LF`, `LL1`/`LL2`,
-  `oC`, `UV1`, `BE2`/`BE3`/`BE6`, `MNT`). The `live_decode.fault_codes` schema is
-  `dict[int,str]`; mnemonic codes cannot key into it, and the position-aware parser
-  is tuned to the PowerFlex 520-series table shape.
-- **Parameters** are dotted (`H01.01`, `U01.10`, `C12.05`) — the parser looks for the
-  PowerFlex grid/labeled-block layout, not this one.
+Mnemonic fault identifiers (`oC`, `Uv1`, `LC dn`, `CPF18`…) are SOURCE-PRESERVED
+strings in the candidate-layer `fault_entries` block — the runtime
+`live_decode.fault_codes` is `dict[int,str]` and cannot hold them; the loader
+tolerates (ignores) the extra key. **This is the Run C evidence: the runtime
+schema needs a string-identifier decision before any Magnetek pack can be
+promoted.** Out of scope here (Run C, not Run B).
 
-**Next step (named follow-up, NOT in this PR):** capture the fault/parameter page
-ranges + header shape and add a Magnetek extractor dialect (or a gold set). Tracked
-as its own issue alongside GS20 (#2685).
+Excluded by design (see `../../MAGNETEK_DIALECT.md`): auto-tune faults
+(`Er-01`…`End 3`, p.141 — separate namespace), U-group monitor tables
+(pp.129–133), symptom/maintenance guides (p.134), power-section checks
+(pp.142–143), description-prose parameter mentions (pp.42–127).
 
-## Reproduce
+## Reproduce (deterministic)
 
 ```
-# manual cached at /tmp/gplus_mini.pdf (sha256 above)
-python3.12 self_eval_scout.py --target magnetek_impulse_g_plus_mini --dry-run
-# or, deterministically into candidates/:
-#   extractor.extract(pdf, doc="Magnetek IMPULSE G+ Mini Technical Manual (144-25085)")
-#   build_pack(fragment, target, provenance_note) -> pack.json
-#   grading/grade_scientific.py --pack magnetek_impulse_g_plus_mini --manual <pdf>
+# manual at $PDF (sha256 above)
+python - <<'PY'
+import extractor; from self_eval_scout import build_pack
+frag = extractor.extract("$PDF", doc="Magnetek IMPULSE G+ Mini Technical Manual (144-25085)")
+# → 77 fault_entries / 468 parameters, every entry carrying page+verbatim excerpt
+PY
+python grading/grade_scientific.py --pack magnetek_impulse_g_plus_mini --manual $PDF \
+  --out candidates/magnetek_impulse_g_plus_mini/
 ```
 
-Fault/parameter page anchors observed (for the future dialect): fault table ~pp.136-140,
-mnemonic codes; parameter references throughout as `Hnn.nn` / `Cnn.nn` / `Unn.nn`.
+Grading note: `grading/domain_rules.py` (magnetek family conventions + crane-safety
+citation rule) is inherited VERBATIM from the Run A branch (PR #2690) so grades
+compare like-for-like; identical blobs merge cleanly whichever PR lands first.

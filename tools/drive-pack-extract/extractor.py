@@ -60,6 +60,7 @@ from pathlib import Path
 from typing import Any
 
 import cite_integrity
+import magnetek_dialect
 import pdfplumber
 
 logger = logging.getLogger("drive-pack-extract.extractor")
@@ -588,6 +589,13 @@ def parse_faults(pdf_path: str | Path, *, pages: list[int] | None = None) -> lis
     with pdfplumber.open(str(pdf_path)) as pdf:
         for page in pdf.pages:
             if wanted is not None and page.page_number not in wanted:
+                continue
+            # Magnetek/Yaskawa IMPULSE dialect first — its page gate (the
+            # single word "Name/Description") is disjoint from the PowerFlex
+            # gate below by construction, so exactly one parser can fire.
+            magnetek = magnetek_dialect.parse_magnetek_fault_page(page)
+            if magnetek:
+                entries.extend(magnetek)
                 continue
             words = page.extract_words()
             text = page.extract_text() or ""
@@ -1121,6 +1129,13 @@ def parse_parameters(
         for page in pdf.pages:
             if wanted is not None and page.page_number not in wanted:
                 continue
+            # Magnetek/Yaskawa IMPULSE dotted-parameter listing first — gated
+            # on its own per-page header shape (see magnetek_dialect), which
+            # no PowerFlex page carries.
+            magnetek = magnetek_dialect.parse_magnetek_param_page(page)
+            if magnetek:
+                entries.extend(magnetek)
+                continue
             # ``fontname`` is needed by the labeled parser's bold-header gate to
             # tell a real (bold) parameter header from a plain-Helvetica graph
             # callout; it is harmless to the grid parser (x0/top only).
@@ -1230,9 +1245,34 @@ def assemble_pack_fragment(
     matching ``mira-bots/shared/drive_packs/schema.py``.
     """
     fault_codes: dict[int, str] = {}
+    fault_entries: list[dict[str, Any]] = []
     fault_citations: list[dict[str, str]] = []
     for fault in faults:
-        fault_codes[fault["code"]] = fault["name"]
+        if fault["code"] is None:
+            # Mnemonic identifier (Magnetek/Yaskawa dialect: "oC", "Uv1",
+            # "LC dn") — the runtime ``live_decode.fault_codes`` map is
+            # dict[int,str] and CANNOT hold it. Never invent an integer:
+            # the entry goes to the candidate-layer ``fault_entries`` list,
+            # SOURCE-PRESERVED, as Run C schema evidence. The runtime loader
+            # tolerates (ignores) this extra key; nothing consumes it yet.
+            fault_entries.append(
+                {
+                    "fault_id": fault["fault_id"],
+                    "name": fault["name"],
+                    "action": fault.get("action", ""),
+                    "flashing": fault.get("flashing", False),
+                    "secondary_label": fault.get("secondary_label", ""),
+                    "references_parameters": fault.get("references_parameters", []),
+                    "ambiguous_glyphs": fault.get("ambiguous_glyphs", []),
+                    "source_citation": {
+                        "doc": doc,
+                        "page": str(fault["page"]),
+                        "excerpt": fault["excerpt"],
+                    },
+                }
+            )
+        else:
+            fault_codes[fault["code"]] = fault["name"]
         fault_citations.append(
             {
                 "fault_id": fault["fault_id"],
@@ -1265,6 +1305,7 @@ def assemble_pack_fragment(
 
     return {
         "fault_codes": fault_codes,
+        "fault_entries": fault_entries,
         "fault_citations": fault_citations,
         "parameters": parameter_cards,
         "keypad_navigation": [],

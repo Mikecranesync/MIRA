@@ -1,9 +1,9 @@
 # Drive-Pack Scientific Grade — magnetek_impulse_g_plus_mini
 
-Generated: unknown
+Generated: 2026-07-14T02-02-06Z
 
-## Grade: **A — 100.0/100** (INCOMPLETE)
-_Production-ready after human sign-off_
+## Grade: **B — 85.7/100** (INCOMPLETE)
+_Beta; waiver required for promotion_
 
 **Promotion:** NOT PROMOTABLE (INCOMPLETE) — missing evidence prevents a full scientific grade; un-graded categories: ['fault_coverage_precision', 'fault_field_accuracy', 'parameter_coverage_precision', 'parameter_field_accuracy', 'relationship_accuracy']. Provide the missing evidence, then re-grade.
 
@@ -13,7 +13,7 @@ _Production-ready after human sign-off_
 - schema_version: 2
 
 ## Hard gates
-- ✅ **schema_validity** — schema OK (schema_version=2) — 0 fault codes, 468 parameters
+- ✅ **schema_validity** — schema OK (schema_version=2) — 0 fault codes, 0 parameters
 - ✅ **runtime_compatibility** — pack loads + validates through the runtime drive_packs loader
 - ✅ **provenance_present** — provenance.items present with valid tiers
 
@@ -21,7 +21,7 @@ _Production-ready after human sign-off_
 
 | Category | Weight | Score |
 |---|---:|---:|
-| Manual provenance and traceability | 10 | 100.0 |
+| Manual provenance and traceability | 10 | 50.0 |
 | Fault coverage and precision | 20 | N/A |
 | Fault field accuracy | 20 | N/A |
 | Parameter coverage and precision | 20 | N/A |
@@ -29,6 +29,9 @@ _Production-ready after human sign-off_
 | Relationship accuracy | 10 | N/A |
 | Citation fidelity | 15 | 100.0 |
 | Safety and technician usability | 10 | 100.0 |
+
+**Manual provenance and traceability** (50.0):
+- provenance.sources missing page+excerpt evidence
 
 **Fault coverage and precision** (N/A):
 - no gold set for this pack
