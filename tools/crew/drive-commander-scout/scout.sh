@@ -39,19 +39,16 @@ cd "$REPO" || { echo "[scout] repo not found: $REPO"; exit 1; }
 OUT="$REPO/dogfood-output/drive-commander-scout"
 mkdir -p "$OUT"
 
-# Rotate the target family across runs so each day exercises a different unseen
-# manual. Persist a monotonically-incrementing index in a small state file.
-STATE="$OUT/.run-index"
-IDX=0
-[ -r "$STATE" ] && IDX="$(cat "$STATE" 2>/dev/null || echo 0)"
-echo "$(( IDX + 1 ))" > "$STATE"
-
-echo "[scout] start $(date -u +%Y-%m-%dT%H:%M:%SZ)  HEAD=$(git rev-parse --short HEAD 2>/dev/null)  run-index=$IDX"
+# Target selection is now HISTORY-DRIVEN inside the scout (never-attempted-first,
+# fails loud when the unseen pool is exhausted) — no run-index bookkeeping here.
+# The scout reads/writes $OUT/history.json; a completed (GRADED) family is not
+# re-run, so each day exercises a genuinely new manual until the pool runs dry.
+echo "[scout] start $(date -u +%Y-%m-%dT%H:%M:%SZ)  HEAD=$(git rev-parse --short HEAD 2>/dev/null)"
 
 # --send emails the evaluation via RESEND; the artifact is always written to $OUT.
 doppler run --project factorylm --config prd -- \
   python3.12 tools/drive-pack-extract/self_eval_scout.py \
-    --send --run-index "$IDX" --out "$OUT"
+    --send --out "$OUT"
 rc=$?
 
 echo "[scout] done rc=$rc — latest: $OUT/latest-eval.md"

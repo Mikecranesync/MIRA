@@ -35,12 +35,24 @@ _LEADING_FAULT_ID_RE = re.compile(r"^([A-Za-z]\d{2,3})\b")
 #                (^[A-Za-z]\d{2}\.\d{2}$); alphanumeric fault mnemonics
 #                CE10/GFF/Lvd/oL/EF/CE1..4 — anything that is NOT the PowerFlex
 #                F\d+ form and is a short letter(+digit) token.
+#   magnetek   : Magnetek/Columbus McKinnon IMPULSE crane VFDs (G+ Mini,
+#                G+/VG+ Series 4/5). STRONGLY INFERRED relabeled Yaskawa
+#                (V1000/G5) hardware, so the ID SHAPE matches durapulse — dotted
+#                params H01.01/U01.10/C12.05 (^[A-Za-z]\d{2}\.\d{2}$) and mnemonic
+#                faults oC/EF0/LL1/BE2/UV1/MNT (^(?!F\d+$)[A-Za-z]{1,4}\d{0,2}$),
+#                verified against the real G+ Mini manual (144-25085). It is a
+#                DISTINCT family (own crane firmware/faults/brake logic), so it
+#                gets its own key even though the regexes coincide with durapulse.
 _FAMILY_CONVENTIONS = {
     "powerflex": {
         "param_id": re.compile(r"^[APCTBDapctbd]\d{2,3}$"),
         "fault_ref": re.compile(r"^F\d+$"),
     },
     "durapulse": {
+        "param_id": re.compile(r"^[A-Za-z]\d{2}\.\d{2}$"),
+        "fault_ref": re.compile(r"^(?!F\d+$)[A-Za-z]{1,4}\d{0,2}$"),
+    },
+    "magnetek": {
         "param_id": re.compile(r"^[A-Za-z]\d{2}\.\d{2}$"),
         "fault_ref": re.compile(r"^(?!F\d+$)[A-Za-z]{1,4}\d{0,2}$"),
     },
@@ -62,6 +74,8 @@ def _family_key(pack_dict: dict[str, Any]) -> str:
     ).lower()
     if "powerflex" in hay:
         return "powerflex"
+    if any(t in hay for t in ("magnetek", "impulse", "columbus mckinnon", "g+ mini", "vg+")):
+        return "magnetek"
     if any(t in hay for t in ("durapulse", "automationdirect", "gs10", "gs20")):
         return "durapulse"
     return _DEFAULT_FAMILY
@@ -69,6 +83,86 @@ def _family_key(pack_dict: dict[str, Any]) -> str:
 
 def _is_blank(value: Any) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
+
+
+# --- crane-domain supplement -------------------------------------------------
+# The crane hard-fail rule (task Phase 3): crane-safety-critical content in a
+# pack must be CITED — an uncited brake/limit/load-check/STO/encoder entry is a
+# hard fail. This is a PACK-level integrity check (does the shipped pack carry a
+# cited basis for its crane-safety content), NOT an answer-quality judge: the
+# spec's "unsafe answer -> hard failure" is about Q&A answers, and there is no
+# answer-judge in the scout. That crane-safety ANSWER judge is a named follow-up;
+# this supplement is the in-scope pack-content half.
+#
+# Deterministic keyword match only — deliberately NO "scan the prose for unsafe
+# advice" regex (it false-positives on "do NOT bypass the brake" and is trivially
+# evaded; that would be safety theater, not a control).
+_CRANE_FAMILY_RE = re.compile(r"magnetek|impulse|crane|hoist|columbus mckinnon", re.I)
+_CRANE_SAFETY_RE = re.compile(
+    r"brake|torque prov|load check|swift[-\s]?lift|ultra[-\s]?lift|overspeed|"
+    r"upper limit|lower limit|travel limit|safe torque|\bsto\b|answer[-\s]?back|"
+    r"\bencoder\b|\bhoist\b",
+    re.I,
+)
+
+
+def _is_crane_family(pack_dict: dict[str, Any]) -> bool:
+    fam = pack_dict.get("family", {}) or {}
+    hay = " ".join(
+        [str(fam.get("manufacturer", "")), str(fam.get("series", ""))]
+        + [str(a) for a in (fam.get("aliases") or [])]
+    )
+    return bool(_CRANE_FAMILY_RE.search(hay))
+
+
+def _crane_domain_violations(pack_dict: dict[str, Any]) -> list[str]:
+    """Family-gated crane-safety hard-fails. Returns [] for a non-crane family
+    (so the base rubric is never weakened). For a crane family: any crane-safety
+    fault / parameter / keypad step present in the pack MUST carry a citation."""
+    if not _is_crane_family(pack_dict):
+        return []
+
+    violations: list[str] = []
+
+    # A crane-safety fault (by name) must have a cited corrective action: a
+    # non-empty provenance.sources excerpt referencing it (sharing a safety
+    # keyword with the fault name). Uncited crane-safety guidance is a hard fail.
+    sources = pack_dict.get("provenance", {}).get("sources", []) or []
+    src_text = " ".join(str(s.get("excerpt") or "") for s in sources).lower()
+    fault_codes = pack_dict.get("live_decode", {}).get("fault_codes", {}) or {}
+    for code, name in fault_codes.items():
+        m = _CRANE_SAFETY_RE.search(str(name))
+        if m and m.group(0).lower() not in src_text:
+            violations.append(
+                f"crane-safety fault_codes[{code}]={name!r}: no cited corrective action "
+                "in provenance.sources (crane-safety content must be cited)"
+            )
+
+    # A crane-safety parameter must be cited (stricter than the generic
+    # uncited-value rule: fires even if range/default/unit are all blank).
+    for param in pack_dict.get("parameters", []) or []:
+        pid = param.get("parameter_id", "")
+        text = " ".join(str(v) for v in param.values() if isinstance(v, str))
+        if _CRANE_SAFETY_RE.search(text):
+            cit = param.get("source_citation") or {}
+            if _is_blank(cit.get("excerpt")) or _is_blank(cit.get("page")):
+                violations.append(
+                    f"crane-safety parameter {pid!r}: uncited (empty source_citation) — "
+                    "crane-safety content must be cited"
+                )
+
+    # A crane-safety keypad step must be cited.
+    for keypad in pack_dict.get("keypad_navigation", []) or []:
+        goal = keypad.get("goal")
+        if goal and _CRANE_SAFETY_RE.search(str(goal)):
+            cit = keypad.get("source_citation") or {}
+            if _is_blank(cit.get("excerpt")):
+                violations.append(
+                    f"crane-safety keypad goal={goal!r}: uncited — "
+                    "crane-safety content must be cited"
+                )
+
+    return violations
 
 
 def check_domain(pack_dict: dict[str, Any]) -> LayerResult:
@@ -196,6 +290,12 @@ def check_domain(pack_dict: dict[str, Any]) -> LayerResult:
     # no such marker) — this rule is a forward-compat placeholder per
     # GRADING_SPEC.md ("if the pack ever emits one"). A future field would be
     # checked here; today there is nothing to flag.
+
+    # --- crane-domain supplement (family-gated) -----------------------------
+    # Adds crane-safety hard-fails on top of the base rubric WITHOUT weakening
+    # it: these rules only fire for a crane family, so PowerFlex/DuraPulse packs
+    # are unaffected. See _crane_domain_violations.
+    violations.extend(_crane_domain_violations(pack_dict))
 
     status = "fail" if violations else "pass"
     summary = (

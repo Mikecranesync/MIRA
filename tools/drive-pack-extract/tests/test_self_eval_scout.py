@@ -25,17 +25,67 @@ def test_targets_are_all_outside_gold():
         assert t["pack_id"] not in gold, f"{t['pack_id']} has a gold set — not unseen"
 
 
-def test_pick_target_rotates_and_is_deterministic():
-    fresh = [t for t in scout.SCOUT_TARGETS if t["pack_id"] not in scout._gold_families()]
-    assert fresh, "need at least one non-gold target"
-    a = scout.pick_target(None, 0)
-    b = scout.pick_target(None, len(fresh))  # wraps back to index 0
-    assert a["pack_id"] == b["pack_id"]
+def _eligible():
+    gold = scout._gold_families()
+    return [t for t in scout.SCOUT_TARGETS if t["pack_id"] not in gold]
+
+
+def test_pick_target_prefers_never_attempted_first_deterministic():
+    # No history -> the FIRST declared eligible family (declaration order is the
+    # priority: Magnetek G+ Mini leads). Deterministic across calls.
+    eligible = _eligible()
+    assert eligible, "need at least one non-gold target"
+    a = scout.pick_target(None, attempted=set(), gold=scout._gold_families())
+    assert a["pack_id"] == eligible[0]["pack_id"]
+    assert a["pack_id"] == scout.pick_target(None, attempted=set())["pack_id"]
+
+
+def test_pick_target_skips_already_attempted():
+    eligible = _eligible()
+    if len(eligible) < 2:
+        pytest.skip("need >=2 eligible families to test skipping")
+    first = eligible[0]["pack_id"]
+    nxt = scout.pick_target(None, attempted={first}, gold=scout._gold_families())
+    assert nxt["pack_id"] == eligible[1]["pack_id"]
+
+
+def test_pick_target_fails_loud_when_pool_exhausted():
+    # Core Phase-4 fix: NOT a modulo loop — when every eligible family has a
+    # completed evaluation, refuse rather than silently re-run a done family.
+    all_ids = {t["pack_id"] for t in _eligible()}
+    with pytest.raises(SystemExit):
+        scout.pick_target(None, attempted=all_ids, gold=scout._gold_families())
+
+
+def test_pick_target_pin_overrides_attempted():
+    # An explicit --target re-evaluates on purpose, even if already attempted.
+    pinned = scout.SCOUT_TARGETS[0]["pack_id"]
+    t = scout.pick_target(pinned, attempted={pinned}, gold=scout._gold_families())
+    assert t["pack_id"] == pinned
 
 
 def test_pick_target_unknown_id_fails_loud():
     with pytest.raises(SystemExit):
-        scout.pick_target("no_such_drive", 0)
+        scout.pick_target("no_such_drive")
+
+
+def test_history_records_and_only_graded_retires(tmp_path):
+    tgt = scout.SCOUT_TARGETS[0]
+    # A failed fetch is recorded but does NOT retire the family (retry next run).
+    scout.record_attempt(tmp_path, tgt, {"status": "FETCH_FAILURE", "generated_at": "t0"})
+    hist = scout._load_history(tmp_path)
+    assert len(hist) == 1 and hist[0]["pack_id"] == tgt["pack_id"]
+    assert scout._graded_families(hist) == set(), "a failure must not retire a family"
+    # A GRADED run retires it.
+    scout.record_attempt(
+        tmp_path, tgt,
+        {"status": "GRADED", "generated_at": "t1", "sha256": "abc", "faults_extracted": 0},
+    )
+    hist = scout._load_history(tmp_path)
+    assert scout._graded_families(hist) == {tgt["pack_id"]}
+    # Corrupt history is tolerated (never crashes a run).
+    (tmp_path / "history.json").write_text("{not json", encoding="utf-8")
+    assert scout._load_history(tmp_path) == []
 
 
 def _base(**kw):

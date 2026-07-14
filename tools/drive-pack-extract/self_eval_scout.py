@@ -69,6 +69,26 @@ logger = logging.getLogger("drive-commander-scout")
 # ``gold/<pack_id>/`` set (that would stop being an unseen test).
 SCOUT_TARGETS: list[dict[str, Any]] = [
     {
+        # Magnetek (Columbus McKinnon) IMPULSE G+ Mini — a crane-hoist VFD, and
+        # the pinned first unseen-family target. STRONGLY INFERRED to be a
+        # relabeled Yaskawa V1000 (CIMR-VU4A) carrying proprietary Magnetek crane
+        # firmware (Load Check, Torque Proving, Swift-Lift, brake-proving faults)
+        # — see MAGNETEK_YASKAWA_MATRIX.md. Treated as its OWN family regardless
+        # of shared hardware. Fault table is a 3-column mnemonic layout
+        # (oC/BE2/LL1) + dotted params (H01.01); the PowerFlex-tuned extractor
+        # does not yet parse this shape (the unseen-eval finding — see
+        # candidates/magnetek_impulse_g_plus_mini/PROVENANCE.md).
+        "pack_id": "magnetek_impulse_g_plus_mini",
+        "manufacturer": "Magnetek",
+        "series": "IMPULSE G+ Mini",
+        "aliases": ["impulse g+ mini", "g+ mini", "gplus mini", "impulse gplus mini"],
+        "match_keywords": ["impulse g+ mini", "g+ mini", "magnetek impulse", "gplus mini"],
+        "url": "https://www.magnetekdrives.com/wp-content/uploads/sites/7/drives-g-mini-manual.pdf",
+        "doc_label": "Magnetek IMPULSE G+ Mini Technical Manual (144-25085)",
+        "revision": "144-25085",
+        "firmware": "14515",
+    },
+    {
         "pack_id": "durapulse_gs20",
         "manufacturer": "AutomationDirect",
         "series": "DURApulse GS20",
@@ -116,24 +136,110 @@ def _gold_families() -> set[str]:
     return {p.name for p in gold_dir.iterdir() if p.is_dir()} if gold_dir.is_dir() else set()
 
 
-def pick_target(target_id: str | None, run_index: int) -> dict[str, Any]:
-    """Choose the target: an explicit ``--target`` id, else rotate by run index.
+def _history_path(out_dir: Path) -> Path:
+    return out_dir / "history.json"
 
-    Refuses any family that already has a gold set (that would no longer be an
-    unseen test) — fail loud rather than silently grade against gold.
+
+def _load_history(out_dir: Path) -> list[dict[str, Any]]:
+    """Return the recorded run history (list of attempt dicts). Missing/corrupt
+    history is treated as empty — the scout must never crash on a bad log."""
+    path = _history_path(out_dir)
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        attempts = data.get("attempts", []) if isinstance(data, dict) else []
+        return [a for a in attempts if isinstance(a, dict)]
+    except Exception as exc:  # noqa: BLE001 — a bad log must not stop a run
+        logger.warning("could not read history %s: %s", path, exc)
+        return []
+
+
+def _graded_families(history: list[dict[str, Any]]) -> set[str]:
+    """Families that already have a COMPLETED (GRADED) evaluation. A failed
+    fetch/extract is recorded but does NOT retire the family — so a transient
+    outage retries, while a real evaluation is never duplicated."""
+    return {a["pack_id"] for a in history if a.get("status") == "GRADED" and a.get("pack_id")}
+
+
+def record_attempt(out_dir: Path, target: dict[str, Any], result: dict[str, Any]) -> None:
+    """Append this run to the shared history (manual AND scheduled runs land in
+    the same file). Records manufacturer, family, revision, firmware, sha256,
+    status and timestamp per the Phase-4 spec. Best-effort — never raises."""
+    history = _load_history(out_dir)
+    history.append(
+        {
+            "pack_id": target["pack_id"],
+            "manufacturer": target.get("manufacturer"),
+            "series": target.get("series"),
+            "revision": target.get("revision"),
+            "firmware": target.get("firmware"),
+            "source_url": target.get("url"),
+            "sha256": result.get("sha256"),
+            "status": result.get("status"),
+            "faults_extracted": result.get("faults_extracted"),
+            "params_extracted": result.get("params_extracted"),
+            "attempted_at": result.get("generated_at"),
+        }
+    )
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        _history_path(out_dir).write_text(
+            json.dumps({"attempts": history}, indent=2), encoding="utf-8"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not write history: %s", exc)
+
+
+def pick_target(
+    target_id: str | None,
+    attempted: set[str] | None = None,
+    gold: set[str] | None = None,
+) -> dict[str, Any]:
+    """Choose the target. Unseen-never-attempted-FIRST, in the deterministic
+    ``SCOUT_TARGETS`` declaration order (that order IS the priority — Magnetek
+    G+ Mini leads). NOT a modulo loop: once every eligible family has a completed
+    evaluation, the scout FAILS LOUD rather than silently re-running a done family.
+
+    - ``gold``: families with a gold set — skipped (grading one is no longer unseen).
+    - ``attempted``: families with a completed (GRADED) run — skipped when auto-selecting.
+    - ``target_id``: an explicit pin overrides selection (but still refuses a gold family);
+      a pin may re-run an already-attempted family on purpose (manual re-eval).
+
+    Intended cadence consequence (by design): an EMPTY extract still returns
+    ``GRADED``, so each family is evaluated **once** and its gap emailed once —
+    the scout does NOT re-email a 0/0 result daily. Once every eligible family has
+    been evaluated the scheduled run raises here (before the send path) and exits
+    non-zero with **no email** — a loud "add a new family / land a dialect" signal,
+    not silent repetition. Add families to ``SCOUT_TARGETS`` (or promote one to
+    ``gold/``) to keep the daily cadence producing new evaluations.
     """
-    gold = _gold_families()
-    fresh = [t for t in SCOUT_TARGETS if t["pack_id"] not in gold]
-    if not fresh:
+    gold = _gold_families() if gold is None else gold
+    attempted = set() if attempted is None else attempted
+
+    eligible = [t for t in SCOUT_TARGETS if t["pack_id"] not in gold]
+    if not eligible:
         raise SystemExit("scout: every configured target is already in gold/ — add a new family")
+
     if target_id:
         for t in SCOUT_TARGETS:
             if t["pack_id"] == target_id:
                 if t["pack_id"] in gold:
                     raise SystemExit(f"scout: {target_id} is in gold/ — not an unseen test")
                 return t
-        raise SystemExit(f"scout: unknown --target {target_id}; known: {[t['pack_id'] for t in SCOUT_TARGETS]}")
-    return fresh[run_index % len(fresh)]
+        raise SystemExit(
+            f"scout: unknown --target {target_id}; known: {[t['pack_id'] for t in SCOUT_TARGETS]}"
+        )
+
+    for t in eligible:  # deterministic: first declared, never-attempted family
+        if t["pack_id"] not in attempted:
+            return t
+
+    raise SystemExit(
+        "scout: every eligible family already has a completed evaluation "
+        f"({sorted(attempted)}). Add a new family to SCOUT_TARGETS or promote one "
+        "to gold/ — refusing to re-run a done family (use --target to force a re-eval)."
+    )
 
 
 def fetch_manual(url: str, dest: Path, timeout: float = 120.0) -> tuple[Path, str, int]:
@@ -397,8 +503,12 @@ def send_email(subject: str, html: str, api_key: str, to_addr: str) -> bool:
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--target", default=None, help="pin a target pack_id instead of rotating")
-    p.add_argument("--run-index", type=int, default=0, help="rotation index (scheduler passes an incrementing value)")
+    p.add_argument("--target", default=None, help="pin a target pack_id (forces a re-eval even if already attempted)")
+    p.add_argument(
+        "--run-index", type=int, default=0,
+        help="DEPRECATED / ignored — selection is now history-driven "
+        "(never-attempted-first). Accepted for back-compat with old schedulers.",
+    )
     g = p.add_mutually_exclusive_group()
     g.add_argument("--send", action="store_true", help="send the real evaluation email via RESEND")
     g.add_argument("--dry-run", action="store_true", help="write the evaluation to a file, do NOT email (default)")
@@ -414,9 +524,12 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     args = _parse_args(argv)
 
-    target = pick_target(args.target, args.run_index)
     out_dir = Path(args.out) if args.out else _REPO_ROOT / "dogfood-output" / "drive-commander-scout"
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # History-driven selection: never-attempted-first, fail loud when exhausted.
+    history = _load_history(out_dir)
+    target = pick_target(args.target, attempted=_graded_families(history))
 
     tmp = Path(tempfile.mkdtemp(prefix="dc-scout-"))
     try:
@@ -425,6 +538,8 @@ def main(argv: list[str] | None = None) -> int:
         if not args.keep_workdir:
             import shutil
             shutil.rmtree(tmp, ignore_errors=True)
+
+    record_attempt(out_dir, target, result)
 
     subject, text, html = render_evaluation(result)
 
