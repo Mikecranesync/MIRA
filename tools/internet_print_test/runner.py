@@ -28,7 +28,7 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[1]
-for _p in (str(_HERE), str(_REPO / "tools" / "print_translator_eval")):
+for _p in (str(_HERE), str(_REPO), str(_REPO / "tools" / "print_translator_eval")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -101,34 +101,71 @@ def _tested_page(original: bytes, mime: str | None, page: int, dpi: int, td: Pat
     return original
 
 
+def _deterministic_grade(td: Path, result: dict, log) -> dict | None:
+    """Deterministic import verdict (``printsense.grade_case``) on the extraction graph, run BEFORE
+    the LLM judge — it OWNS import safety (spec §5; PRD §8.2). The judge may explain a FAIL but
+    never clear it. An open-corpus print has no frozen rubric, so only the truth-free structural
+    gates apply (score/tier stay ``None``). Never raises: the deterministic layer must not break a run."""
+    graph = result.get("graph")
+    if not isinstance(graph, dict):
+        return None
+    try:
+        from printsense.grade_case import grade_case
+
+        grade = grade_case(td / "extraction.json", rubric_path=None)
+        log.info("deterministic import_verdict=%s blockers=%s",
+                 grade.get("import_verdict"), grade.get("import_blocking_failures"))
+        return grade
+    except Exception as e:  # noqa: BLE001
+        log.warning("deterministic grade failed: %s", e)
+        return None
+
+
+def _deterministic_report_lines(grade: dict | None) -> list[str]:
+    if not grade:
+        return []
+    blockers = ", ".join(grade.get("import_blocking_failures") or []) or "none"
+    return [
+        "## 3a. Deterministic import gate (AUTHORITATIVE — owns import safety; an LLM judge may explain a FAIL but never clear it)",
+        f"- import_verdict: **{grade.get('import_verdict')}**",
+        f"- quality_tier: **{grade.get('quality_tier')}** · score: {grade.get('score')}",
+        f"- import-blocking failures: {blockers}", "",
+    ]
+
+
 def _grade_and_deliver(td: Path, source_json: dict, result: dict, tested: bytes, args, row: dict, log) -> None:
-    """Judge → report → email. Shared by the normal run and --regrade (mutates `row`)."""
+    """Deterministic grader → judge → report → email. Shared by the normal run and --regrade (mutates `row`)."""
+    grade = _deterministic_grade(td, result, log)
+    graph = result.get("graph")
     final_text = result.get("final_text")
     jr = {"judge_error": "skipped"}
     if not args.no_judge and final_text:
         log.info("running independent multimodal judge…")
-        jr = run_judge(tested, final_text, result.get("map_text"), source_json, media_type="image/png")
+        jr = run_judge(tested, final_text, result.get("map_text"), source_json, media_type="image/png", graph=graph)
     (td / "judge_1.json").write_text(json.dumps(jr, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Independent review of any hard failure — a second, fresh judge pass (adversarial second opinion).
     # A hard failure is only "confirmed" if both independent judges agree; disagreement → needs human review.
     if jr.get("hard_failure") and not args.no_judge and final_text:
         log.info("judge_1 flagged a HARD FAILURE — escalating to an independent second judge…")
-        jr2 = run_judge(tested, final_text, result.get("map_text"), source_json, media_type="image/png")
+        jr2 = run_judge(tested, final_text, result.get("map_text"), source_json, media_type="image/png", graph=graph)
         (td / "judge_2.json").write_text(json.dumps(jr2, indent=2, ensure_ascii=False), encoding="utf-8")
         row["hard_failure_second_opinion"] = jr2.get("hard_failure")
         row["hard_failure_confirmed"] = bool(jr.get("hard_failure")) and bool(jr2.get("hard_failure"))
         log.info("second judge hard_failure=%s → confirmed=%s",
                  jr2.get("hard_failure"), row["hard_failure_confirmed"])
 
-    report_md, report_html = _build_report(source_json, result, jr, _repo_version())
+    report_md, report_html = _build_report(source_json, result, jr, _repo_version(), grade)
     (td / "report.md").write_text(report_md, encoding="utf-8")
     (td / "report.html").write_text(report_html, encoding="utf-8")
 
-    row["email"] = _deliver(td, source_json, result, jr, args, log)
+    row["email"] = _deliver(td, source_json, result, jr, grade, args, log)
     row["status"] = "ok"
     row["score"] = (jr or {}).get("overall_score_provisional")
     row["hard_failure"] = (jr or {}).get("hard_failure")
+    row["import_verdict"] = (grade or {}).get("import_verdict")
+    row["import_blocking_failures"] = (grade or {}).get("import_blocking_failures") or []
+    row["quality_tier"] = (grade or {}).get("quality_tier")
     row["classification"] = result.get("classification")
     row["interpreter_used"] = result.get("interpreter_used")
 
@@ -220,7 +257,7 @@ def _subject(source_json: dict, jr: dict) -> str:
     return f"MIRA Print Translator Test — {source_json['test_id']} — {title} — {score_s}"
 
 
-def _email_summary_html(source_json: dict, result: dict, jr: dict) -> str:
+def _email_summary_html(source_json: dict, result: dict, jr: dict, grade: dict | None = None) -> str:
     """A concise, readable email body — the key results, NOT the full test dump.
 
     The full verbatim response + report + graph ride along as ATTACHMENTS; the body is a
@@ -242,6 +279,14 @@ def _email_summary_html(source_json: dict, result: dict, jr: dict) -> str:
     warn = next((ln.strip() for ln in (result.get("final_text") or "").splitlines()
                  if ln.strip().startswith("⚠")), "")
     url = source_json.get("source_url") or ""
+    gate_html = ""
+    if grade:
+        iv = grade.get("import_verdict") or "—"
+        iv_color = "#c0392b" if iv == "FAIL" else "#2e7d32"
+        gate_blockers = ", ".join(grade.get("import_blocking_failures") or []) or "none"
+        gate_html = (f"<div style='margin:6px 0 12px;font-size:13px'><b>Deterministic import gate</b> "
+                     f"(authoritative): <b style='color:{iv_color}'>{e(iv)}</b> "
+                     f"<span style='color:#666'>· blockers: {e(gate_blockers)}</span></div>")
     str_li = "".join(f"<li>{e(str(s))}</li>" for s in strengths) or "<li>None recorded.</li>"
     err_li = "".join(
         f"<li>{e((h.get('claim') or '')[:220])} — <span style='color:#666'>{e((h.get('why') or '')[:260])}</span></li>"
@@ -255,6 +300,7 @@ def _email_summary_html(source_json: dict, result: dict, jr: dict) -> str:
 <td style="padding:8px 14px">Hard failure: <b style="color:{hard_color}">{hard_s}</b></td>
 </tr></table>
 <div style="font-size:12px;color:#999;margin-bottom:14px">PROVISIONAL automated grade — not technician approval until the rubric is calibrated.</div>
+{gate_html}
 <h3 style="margin:14px 0 4px;font-size:15px">✅ Understood correctly</h3>
 <ul style="margin:0;padding-left:20px">{str_li}</ul>
 <h3 style="margin:14px 0 4px;font-size:15px">⚠️ Most important errors / uncertainties</h3>
@@ -268,7 +314,7 @@ def _email_summary_html(source_json: dict, result: dict, jr: dict) -> str:
 </div>"""
 
 
-def _deliver(td: Path, source_json: dict, result: dict, jr: dict, args, log) -> str:
+def _deliver(td: Path, source_json: dict, result: dict, jr: dict, grade: dict | None, args, log) -> str:
     # Attachments = the approved test package: the drawing + the supporting eval files.
     files = [td / "tested_page.png", td / "report.html", td / "judge_1.json", td / "telegram_response.json"]
     orig = next(td.glob("original.*"), None)
@@ -276,7 +322,7 @@ def _deliver(td: Path, source_json: dict, result: dict, jr: dict, args, log) -> 
         files.insert(0, orig)
     subject = _subject(source_json, jr)
     recipient = args.recipient or mailer.default_recipient()
-    body = _email_summary_html(source_json, result, jr)  # concise summary, NOT the full dump
+    body = _email_summary_html(source_json, result, jr, grade)  # concise summary, NOT the full dump
     pkg = mailer.build_package(subject, body, recipient, files)
     mailer.write_dry_run(td / "_email", pkg)
     log.info("email package built:\n%s", mailer.package_summary(pkg))
@@ -291,7 +337,7 @@ def _deliver(td: Path, source_json: dict, result: dict, jr: dict, args, log) -> 
     return "dry-run (package built, not sent)"
 
 
-def _build_report(source_json: dict, result: dict, jr: dict, ver: dict) -> tuple[str, str]:
+def _build_report(source_json: dict, result: dict, jr: dict, ver: dict, grade: dict | None = None) -> tuple[str, str]:
     resp = safety.redact_secrets(result.get("final_text") or "(no response)")
     md = [
         f"# MIRA Print Translator Test — {source_json['test_id']}", "",
@@ -306,7 +352,8 @@ def _build_report(source_json: dict, result: dict, jr: dict, ver: dict) -> tuple
         f"- classification: **{result.get('classification')}** (conf {result.get('classification_confidence')})",
         f"- interpreter used (Anthropic PrintSynth): **{result.get('interpreter_used')}**",
         f"- model: {result.get('model')} · effort {result.get('effort')} · latency {result.get('latency_s')}s", "",
-        "## 4. Automated grade (PROVISIONAL — not technician approval until Mike calibrates)",
+        *_deterministic_report_lines(grade),
+        "## 4. LLM judge grade (PROVISIONAL, qualitative — not technician approval until Mike calibrates)",
         f"- score: **{jr.get('overall_score_provisional')}/100** ({jr.get('letter')})",
         f"- hard failure: **{jr.get('hard_failure')}**",
         f"- summary: {jr.get('summary')}", "",
