@@ -38,11 +38,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      # pytest + httpx + pydantic (printsense/__init__ imports .models → pydantic; runner imports
-      # httpx via safety/mailer). NO anthropic SDK is installed, so the paid API structurally
-      # cannot be called; no Doppler; no network at runtime (submit + judge are mocked).
-      - name: Install (pytest + httpx + pydantic — no Anthropic / no Doppler / no network)
-        run: pip install pytest httpx pydantic
+      # pytest + httpx + pydantic + pyyaml. httpx: runner (safety/mailer). pydantic:
+      # printsense/__init__ imports .models. pyyaml: the root tests/conftest.py imports yaml.
+      # NO anthropic SDK is installed, so the paid API structurally cannot be called; no Doppler;
+      # no network at runtime (submit + judge are mocked).
+      - name: Install (pytest + httpx + pydantic + pyyaml — no Anthropic / no Doppler / no network)
+        run: pip install pytest httpx pydantic pyyaml
       - name: Deterministic grader gate — grade the frozen corpus, print blockers, fail on regression
         run: python -m printsense.grader_gate
       - name: 12-point hermetic grader-gate suite + frozen ATV340 benchmark
