@@ -51,7 +51,10 @@ def _fallback_records(caplog):
 
 
 @pytest.mark.asyncio
-async def test_rerank_fallback_preserves_order_and_is_loud(caplog):
+async def test_rerank_fallback_preserves_order_and_is_loud(caplog, monkeypatch):
+    # Hop explicitly enabled — the loud-on-failure contract applies to a LIVE
+    # rerank hop; the default is OFF (hosted NIM ranking EOL, #2257).
+    monkeypatch.setenv("NEMOTRON_RERANK_ENABLED", "1")
     client = NemotronClient(api_key="test-key")
     with patch("shared.nemotron.httpx.AsyncClient", return_value=_fake_client_raising()):
         with caplog.at_level(logging.ERROR, logger="mira-gsd"):
@@ -92,4 +95,23 @@ async def test_disabled_client_makes_no_noise(caplog):
         out = await client.rerank("q", ["p0", "p1"])
 
     assert [r["index"] for r in out] == [0, 1]
+    assert not _fallback_records(caplog)
+
+
+@pytest.mark.asyncio
+async def test_rerank_default_off_no_network_no_noise(caplog):
+    # Default (NEMOTRON_RERANK_ENABLED unset): the hosted NIM ranking API is
+    # EOL (#2257 — /v1/ranking 404s, successor NIM 410 Gone since 2026-05-18),
+    # so the hop must not fire: original order back, ZERO HTTP calls, and no
+    # NEMOTRON_RERANK_FALLBACK alert spamming ops on every retrieval.
+    client = NemotronClient(api_key="test-key")
+    assert client.enabled and not client.rerank_enabled
+
+    with patch("shared.nemotron.httpx.AsyncClient") as mock_client:
+        with caplog.at_level(logging.ERROR, logger="mira-gsd"):
+            out = await client.rerank("why fault", ["p0", "p1", "p2"], top_n=2)
+
+    assert [r["index"] for r in out] == [0, 1]
+    assert [r["text"] for r in out] == ["p0", "p1"]
+    mock_client.assert_not_called()
     assert not _fallback_records(caplog)
