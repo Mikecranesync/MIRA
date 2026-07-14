@@ -14,4 +14,9 @@ Open questions and unverified inferences. Moving an item out of here requires co
   `active-supporting` by heuristic (not-archived) — confirm actual role vs. dormant. (light Phase 2)
 
 ## Phase 4 (dependency/security)
-- **U7** — Whether `syft` / `osv-scanner` / `semgrep` are installed on CHARLIE for SBOM/vuln evidence. (Phase 4 preflight)
+- **U7 — RESOLVED (negative).** No scanner (`syft`/`osv-scanner`/`semgrep`/`trivy`/`grype`) is installed on CHARLIE.
+  SBOM/CVE evidence is therefore **owed** — install a scanner and run a real pass. See `dependencies/README.md`, gaps G13.
+
+## Resolved in Phase 2
+- **U1 — RESOLVED.** All 9 undocumented modules identified (services.yaml).
+- **U2 — RESOLVED.** `mira-ops` does not exist; it's a stale repo-map entry (observability = compose file).

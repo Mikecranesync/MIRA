@@ -1,5 +1,37 @@
-# deployments.yaml — Compose files, environments, deploy workflows, VPS targets
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-deployments: []
+# deployments.yaml — compose, environments, deploy workflows (Phase 2, commit cde2c418)
+status: populated
+environments:
+  - {env: dev, where: "CHARLIE local", compose: docker-compose.yml, doppler: factorylm/dev}
+  - {env: staging, where: "CHARLIE + Neon staging branch / VPS stg-*", compose: "docker-compose.staging.yml + docker-compose.staging-vps.yml", doppler: factorylm/stg}
+  - {env: prod, where: "VPS 165.245.138.91 (DigitalOcean)", compose: docker-compose.saas.yml, doppler: factorylm/prd, safe_to_break: false}
+compose_files:
+  - {file: docker-compose.yml, role: "dev base stack"}
+  - {file: docker-compose.saas.yml, role: "prod SaaS (mira-relay lives here)"}
+  - {file: docker-compose.staging.yml, role: "local-dev staging"}
+  - {file: docker-compose.staging-vps.yml, role: "VPS staging"}
+  - {file: docker-compose.hub.yml, role: "Hub stack"}
+  - {file: docker-compose.observability.yml, role: "Prometheus/Grafana/Flower (the 'mira-ops' function)"}
+  - {file: docker-compose.fault-detective.yml, role: "bench Fault-Detective harness (NOT a customer arch)"}
+  - {file: docker-compose.override.yml, role: "local overrides"}
+  - {file: docker-compose.pathb.yml, role: "path-b variant"}
+  - {file: docker-compose.sync.yml, role: "sync stack"}
+deploy_workflows:
+  - {workflow: deploy-vps.yml, role: "prod VPS deploy (gated on smoke)"}
+  - {workflow: deploy-staging.yml, role: "staging deploy (supports --ref for digital-twin)"}
+  - {workflow: apply-migrations.yml, role: "dev->staging->prod migrations (dry-run then apply)"}
+  - {workflow: smoke-test.yml, role: "staging gate"}
+  - {workflow: version-gate.yml, role: "required: /VERSION bump on code PRs"}
+  - {workflow: beta-gate.yml, role: "required: stranger upload->cited-answer"}
+facts:
+  - fact: "MIRA ships 10 docker-compose files; prod is docker-compose.saas.yml on the DigitalOcean VPS, deployed via deploy-vps.yml."
+    repository: MIRA
+    file: docker-compose.saas.yml
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "Observability (the repo-map's 'mira-ops' function) is docker-compose.observability.yml, not a module directory."
+    repository: MIRA
+    file: docker-compose.observability.yml
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"

@@ -1,5 +1,50 @@
-# environment-variables.yaml — Notable env vars + where they are read
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-variables: []
+# environment-variables.yaml — notable env vars (Phase 2, commit cde2c418)
+# ~185 distinct env var names exist across the tree (scout count). This lists the NOTABLE ones
+# grouped by domain. All secrets are Doppler-managed (factorylm/{dev,stg,prd}); no values here.
+status: populated
+notable_vars:
+  infra_and_auth:
+    - {var: NEON_DATABASE_URL, read_in: "mira-pipeline/connector_import.py:26", note: "primary Postgres"}
+    - {var: DATABASE_URL, read_in: "mira-bots/shared/wiring_intake.py", note: "Postgres fallback"}
+    - {var: OPENWEBUI_API_KEY, note: "Open WebUI bearer"}
+    - {var: MCP_REST_API_KEY, note: "mira-mcp REST bearer"}
+    - {var: RELAY_API_KEY, note: "mira-relay auth"}
+    - {var: PIPELINE_API_KEY, note: "mira-pipeline auth"}
+    - {var: MIRA_IGNITION_HMAC_KEY, read_in: "mira-pipeline/ignition_chat.py", note: "Ignition payload signing"}
+  llm:
+    - {var: GROQ_API_KEY, read_in: "mira-bots/shared/inference/router.py:143"}
+    - {var: CEREBRAS_API_KEY, read_in: "mira-bots/shared/inference/router.py:145"}
+    - {var: TOGETHERAI_API_KEY, read_in: "mira-bots/shared/inference/router.py:147"}
+    - {var: INFERENCE_BACKEND, note: "cloud|local"}
+    - {var: "{GROQ,CEREBRAS,TOGETHERAI}_MODEL", note: "provider model selection"}
+  adapters:
+    - {var: SLACK_BOT_TOKEN, read_in: "mira-bots/slack/bot.py:26"}
+    - {var: TELEGRAM_BOT_TOKEN, read_in: "mira-bots/telegram/bot.py"}
+  ingest_mqtt:
+    - {var: "MQTT_INGEST_BROKER_{HOST,PORT}", read_in: "mira-relay/mqtt_ingest/config.py"}
+    - {var: "MQTT_INGEST_{USERNAME,PASSWORD}"}
+    - {var: "MQTT_INGEST_FLUSH_{SIZE,INTERVAL_S}"}
+  tenancy:
+    - {var: MIRA_TENANT_ID, note: "current tenant (legacy slug or UUID)"}
+    - {var: MIRA_SHARED_TENANT_ID, note: "system tenant for shared OEM corpus"}
+  ci_ingest:
+    - {var: "{GITHUB,ACTIVE_LEARNING_GH,FIX_PROPOSER_GH}_TOKEN", note: "PR automation"}
+    - {var: "GOOGLE_{USER,APP_PASSWORD}", note: "Drive ingest"}
+    - {var: "FAULT_DETECTIVE_{URL,HTTP_TOKEN}", note: "bench diagnostic tool"}
+facts:
+  - fact: "The provider cascade keys GROQ_API_KEY / CEREBRAS_API_KEY / TOGETHERAI_API_KEY are read in mira-bots/shared/inference/router.py lines 143-147."
+    repository: MIRA
+    file: mira-bots/shared/inference/router.py
+    line_start: 143
+    line_end: 147
+    commit: cde2c418
+    detection_method: file-read
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "Roughly 185 distinct env var names appear across the MIRA tree."
+    repository: MIRA
+    file: mira-bots/shared/inference/router.py
+    detection_method: rg
+    confidence: strong-inference
+    last_verified: "2026-07-14"
+    notes: "Aggregate scout count (rg os.getenv/os.environ); not individually enumerated here."

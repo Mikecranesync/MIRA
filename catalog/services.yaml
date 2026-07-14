@@ -1,5 +1,354 @@
-# services.yaml — Applications / services / workers / agents — component records
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-components: []
+# services.yaml — MIRA applications / services / workers (Phase 2)
+# Component records for the 21 mira-* modules + plc/ simlab/ ignition/, at commit cde2c418.
+# Each `evidence` file anchor is checked by validate.py (a fabricated path fails the build).
+# kind: fastapi-service | starlette-service | nextjs-app | bun-web | static-web | node-red |
+#       ignition-project | python-lib | cli-tool | desktop-app | bench-tool | deploy-harness
+status: populated
+components:
+  - canonical_name: mira-pipeline
+    kind: fastapi-service
+    entry_point: "mira-pipeline/main.py (uvicorn main:app :9099, per Dockerfile CMD)"
+    port: 9099
+    purpose: "Active VPS chat path. OpenAI-compat API (/v1/chat/completions) wrapping the Supervisor engine; hosts the Ignition cloud-chat endpoint (/api/v1/ignition/chat) + PM/identity/agents/briefing APIs."
+    status: production
+    evidence:
+      - fact: "mira-pipeline is a FastAPI service exposing /v1/chat/completions at :9099 via uvicorn main:app."
+        repository: MIRA
+        file: mira-pipeline/main.py
+        symbol: "@app.post /v1/chat/completions"
+        line_start: 420
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-mcp
+    kind: fastapi-service
+    entry_point: "mira-mcp/server.py (Dockerfile CMD python server.py)"
+    purpose: "FastMCP server. 26 @mcp.tool tools: equipment status/faults, CMMS work orders (atlas/maintainx/limble/upkeep), KG multi-hop (impact/root-cause/traverse), agent invocation, nameplate->asset."
+    status: production
+    evidence:
+      - fact: "mira-mcp/server.py defines 26 @mcp.tool tools (e.g. get_equipment_status, kg_impact_analysis, cmms_create_work_order)."
+        repository: MIRA
+        file: mira-mcp/server.py
+        symbol: "@mcp.tool"
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"
+        notes: "rg -c '@mcp.tool' = 26 (verified)."
+  - canonical_name: mira-core
+    kind: fastapi-service
+    entry_point: "mira-core/mira-ingest/main.py"
+    purpose: "Open WebUI + MCPO proxy + the mira-ingest FastAPI service (photo/document/PLC-parse/scrape ingest + visual search). OW container still active as chunk/embed backend."
+    status: production
+    evidence:
+      - fact: "mira-core/mira-ingest/main.py is a FastAPI service with /ingest/photo, /ingest/document-kb, /ingest/plc-parse routes."
+        repository: MIRA
+        file: mira-core/mira-ingest/main.py
+        line_start: 562
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-bots
+    kind: python-lib
+    entry_point: "per-adapter (mira-bots/{telegram,slack,whatsapp,webchat,email_adapter,ask_api}/*), shared engine in mira-bots/shared/"
+    purpose: "Chat adapters (Telegram, Slack, WhatsApp, webchat, email, ask_api) + the shared Supervisor diagnostic engine (shared/engine.py) + shared/workers/ (rag/vision/print/nameplate/query_triage) + shared/inference/router.py (provider cascade)."
+    status: production
+    evidence:
+      - fact: "mira-bots/shared/inference/router.py reads GROQ/CEREBRAS/TOGETHERAI keys (the provider cascade)."
+        repository: MIRA
+        file: mira-bots/shared/inference/router.py
+        line_start: 143
+        line_end: 147
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-hub
+    kind: nextjs-app
+    entry_point: "mira-hub (Next.js, Dockerfile node:22-alpine; app.factorylm.com)"
+    purpose: "FactoryLM Command Center. Namespace builder, uploads, KG proposals, asset-agent train/validate/approve, command-center displays. 150 route.ts API handlers. NeonDB + RLS + factorylm_app role."
+    status: production
+    evidence:
+      - fact: "mira-hub is a Next.js app with 150 route.ts API handlers under src/app/api."
+        repository: MIRA
+        file: mira-hub/README.md
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+        notes: "find mira-hub/src/app/api -name route.ts | wc -l = 150 (verified)."
+  - canonical_name: mira-web
+    kind: bun-web
+    entry_point: "mira-web/src/server.ts (Dockerfile oven/bun; bun run src/server.ts)"
+    purpose: "FactoryLM PLG funnel — CMMS acquisition & onboarding flow (Hono/Bun, Stripe, /cmms landing + Mira AI chat)."
+    status: production
+    evidence:
+      - fact: "mira-web is a Bun web service (package.json description: 'FactoryLM PLG funnel — CMMS acquisition & onboarding flow')."
+        repository: MIRA
+        file: mira-web/package.json
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-relay
+    kind: starlette-service
+    entry_point: "mira-relay/relay_server.py (Dockerfile CMD python relay_server.py); mira-relay/mqtt_ingest/subscriber.py"
+    purpose: "Cloud relay for Ignition/MQTT factory->cloud tag streaming (SaaS-only). Canonical one-pipeline ingest: ingest_contract.py + tag_ingest.py (ingest_batch, NeonTagStore)."
+    status: production
+    evidence:
+      - fact: "mira-relay/relay_server.py is a Starlette ASGI tag-ingest service; mqtt_ingest/subscriber.py is the Sparkplug B ingester."
+        repository: MIRA
+        file: mira-relay/relay_server.py
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-crawler
+    kind: python-lib
+    entry_point: "mira-crawler/main.py (argparse CLI); mira-crawler/celery_app.py (Celery orchestrator); mira-crawler/bridge.py (FastAPI /crawl)"
+    purpose: "KB ingest + manual chunker (OEM discovery). Celery app with ~15 tasks (reddit, blog, sitemaps, gdrive, manualslib_scraper, component_template, tag_diff_historizer). ingest/uns.py = canonical UNS path builders."
+    status: production
+    evidence:
+      - fact: "mira-crawler has a Celery app (celery_app.py) and a FastAPI crawl bridge (bridge.py /crawl, /status, /health)."
+        repository: MIRA
+        file: mira-crawler/bridge.py
+        line_start: 152
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-bridge
+    kind: node-red
+    entry_point: "mira-bridge/Dockerfile (FROM nodered/node-red:4.1.7-22)"
+    purpose: "Node-RED orchestration + SQLite WAL shared state (conversation_state, wo_outbox, conveyor_events). Configuration-driven; canonical Node-RED image, no bespoke source."
+    status: production
+    evidence:
+      - fact: "mira-bridge is the canonical Node-RED image (Dockerfile FROM nodered/node-red:4.1.7-22)."
+        repository: MIRA
+        file: mira-bridge/Dockerfile
+        line_start: 1
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-cmms
+    kind: deploy-harness
+    entry_point: "mira-cmms/docker-compose.yml (Atlas CMMS deploy harness)"
+    purpose: "Atlas CMMS (work orders, PM scheduling, asset registry) — deployment/config harness (compose + smoke_test.sh), not bespoke app code in this dir."
+    status: production
+    evidence:
+      - fact: "mira-cmms is a deploy harness for Atlas CMMS (docker-compose.yml + smoke_test.sh; no runnable app source in-dir)."
+        repository: MIRA
+        file: mira-cmms/docker-compose.yml
+        commit: cde2c418
+        detection_method: ls
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-sidecar
+    kind: fastapi-service
+    entry_point: "mira-sidecar/app.py (Dockerfile CMD uvicorn app:app :5000)"
+    purpose: "LEGACY ChromaDB RAG (collections shared_oem, mira_docs). Superseded by mira-pipeline (ADR-0008); sunset pending OEM migration."
+    status: legacy
+    evidence:
+      - fact: "mira-sidecar uses ChromaDB (chromadb.PersistentClient) as its vector store."
+        repository: MIRA
+        file: mira-sidecar/rag/store.py
+        line_start: 15
+        line_end: 33
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-connect
+    kind: python-lib
+    entry_point: "mira-connect/pyproject.toml (library, no scripts entry)"
+    purpose: "DEFERRED Modbus/PLC drivers ('Config 4', post-MVP). Dormant library."
+    status: deferred
+    evidence:
+      - fact: "mira-connect is a dormant Python library (pyproject.toml, no CLI/Dockerfile/__main__)."
+        repository: MIRA
+        file: mira-connect/pyproject.toml
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  # --- Previously UNDOCUMENTED modules (G1) — RESOLVED in Phase 2 ---
+  - canonical_name: mira-connectors
+    kind: python-lib
+    entry_point: "mira-connectors/pyproject.toml (library)"
+    purpose: "Generic connector framework: turns external systems (CMMS/EAM, SCADA, Historian, doc stores, MQTT/UNS) into MIRA's canonical model, routing proposed mappings through a technician confirmation gate."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-connectors is a 'Generic connector framework for MIRA' (README) packaged as a Python lib."
+        repository: MIRA
+        file: mira-connectors/README.md
+        line_start: 1
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-contextualizer
+    kind: desktop-app
+    entry_point: "mira-contextualizer/pyproject.toml -> mira_contextualizer.app:main (CLI + Edge GUI)"
+    purpose: "Offline-first Windows desktop app: ingests any document and deterministically contextualizes a factory (proposes UNS paths, roles, i3X objects), then exports a portable bundle for import into MIRA Hub."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-contextualizer is an offline desktop app with CLI entry mira_contextualizer.app:main."
+        repository: MIRA
+        file: mira-contextualizer/README.md
+        line_start: 3
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-fault-detective
+    kind: fastapi-service
+    entry_point: "mira-fault-detective/engine.py (Dockerfile CMD python -u engine.py)"
+    purpose: "MIRA Conveyor Fault Detective — 7-rule diagnostic engine (bench Fault-Detective demo surface)."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-fault-detective pyproject description = 'MIRA Conveyor Fault Detective — 7-rule diagnostic engine'."
+        repository: MIRA
+        file: mira-fault-detective/pyproject.toml
+        line_start: 4
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-fault-sim
+    kind: fastapi-service
+    entry_point: "mira-fault-sim/sim.py (Dockerfile CMD python -u sim.py; FastAPI)"
+    purpose: "Sensor + vision + fuse simulator for the Conveyor Fault Detective bench."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-fault-sim pyproject description = 'MIRA Conveyor Fault Detective — sensor + vision + fuse simulator' (note: copy-pasted 'Fault Detective' prefix)."
+        repository: MIRA
+        file: mira-fault-sim/pyproject.toml
+        line_start: 4
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-ignition-exchange
+    kind: ignition-project
+    entry_point: "mira-ignition-exchange/ignition-project/ (Perspective export)"
+    purpose: "Free Perspective resources for the Ignition Exchange: MIRA/ChatDock (chat assistant) + MIRA/ScanWidget (nameplate scanner). Import into any plant gateway."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-ignition-exchange README = 'MIRA for Ignition Perspective' — two importable Perspective views (ChatDock, ScanWidget)."
+        repository: MIRA
+        file: mira-ignition-exchange/README.md
+        line_start: 1
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-machine-logic-graph
+    kind: fastapi-service
+    entry_point: "mira-machine-logic-graph (Bun/TS; HTTP service :8090; scripts/generate-tags.ts)"
+    purpose: "Parses Micro800 (CCW) Structured Text programs and exposes their variable graph as Ignition-importable tag JSON over HTTP (GET /projects/:id/ignition-tags)."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-machine-logic-graph parses Micro800 CCW Structured Text to Ignition tag JSON (README)."
+        repository: MIRA
+        file: mira-machine-logic-graph/README.md
+        line_start: 3
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-plc-parser
+    kind: cli-tool
+    entry_point: "mira-plc-parser/pyproject.toml -> mira_plc_parser.cli:main"
+    purpose: "Read-only, vendor-agnostic PLC program-export analysis: parse exports from different vendors into one IR, extract maintenance intelligence (tags, routines, outputs, faults, interlocks, sequences, asset mappings). stdlib-only, no network/LLM."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-plc-parser is a read-only vendor-agnostic PLC-export analyzer with CLI entry mira_plc_parser.cli:main."
+        repository: MIRA
+        file: mira-plc-parser/pyproject.toml
+        line_start: 9
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-scan-monday
+    kind: fastapi-service
+    entry_point: "mira-scan-monday/backend (FastAPI) + mira-scan-monday/frontend (React/Vite)"
+    purpose: "monday.com marketplace app (item-view iframe panel) turning a phone camera into a maintenance flywheel (nameplate scan -> asset)."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-scan-monday is a monday.com marketplace app (README) with a FastAPI backend + React frontend."
+        repository: MIRA
+        file: mira-scan-monday/README.md
+        line_start: 1
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: mira-trend-viewer
+    kind: static-web
+    entry_point: "mira-trend-viewer (vanilla ES modules; python -m http.server 8791)"
+    purpose: "Platform-agnostic ISA-101 / High-Performance-HMI trend viewer for FactoryLM/MIRA (feels like Ignition/FactoryTalk/WinCC trend tools). Static web app with a historian data-source adapter."
+    status: active
+    documented_in_repo_map: false
+    evidence:
+      - fact: "mira-trend-viewer is an ISA-101/HP-HMI static-web trend viewer (README 'MIRA Industrial Trend Viewer')."
+        repository: MIRA
+        file: mira-trend-viewer/README.md
+        line_start: 1
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  # --- non-module dirs that ARE services/harnesses ---
+  - canonical_name: simlab
+    kind: fastapi-service
+    entry_point: "simlab/__main__.py (python -m simlab)"
+    purpose: "Headless deterministic juice-bottling-line simulator (Florida Natural Demo). FastAPI app; the ProveIt-style benchmark source of truth (Factory I/O optional visual)."
+    status: active
+    evidence:
+      - fact: "simlab starts a FastAPI app via `python -m simlab` (simlab/__main__.py) loading the juice-bottling-line demo."
+        repository: MIRA
+        file: simlab/__main__.py
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: ignition
+    kind: ignition-project
+    entry_point: "ignition/project/ (Ignition 8.x export) + ignition/webdev/ + gateway-scripts/"
+    purpose: "MIRA ConveyorMIRA Dashboard — bench Ignition project (juice bottling line, A0-A12 anomaly detection, Ask MIRA). Deploy via ignition/deploy_ignition.ps1."
+    status: active
+    evidence:
+      - fact: "ignition/ is an Ignition 8.x project export (README 'MIRA — Ignition ConveyorMIRA Dashboard')."
+        repository: MIRA
+        file: ignition/README.md
+        line_start: 1
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - canonical_name: plc
+    kind: bench-tool
+    entry_point: "plc/*.py scripts (discover.py, live_monitor.py, deploy_modbus_map.py) + plc/*.st programs"
+    purpose: "PLC R&D codeline: Micro820 Structured Text programs + read-only fieldbus discovery (discover.py) + BENCH-ONLY write tools (live_monitor.py, live-plc-bridge/bridge.py). Pairs with private MIRA_PLC repo."
+    status: active
+    evidence:
+      - fact: "plc/ holds Micro820 Structured Text programs + Python bench/discovery tools (discover.py has an argparse main)."
+        repository: MIRA
+        file: plc/discover.py
+        line_start: 532
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"

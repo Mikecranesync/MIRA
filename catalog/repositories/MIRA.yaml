@@ -32,10 +32,11 @@ deploy:
   environments: [dev (CHARLIE local), staging (CHARLIE + Neon staging branch / VPS stg-*), prod (VPS)]
   detection_method: ls
 
-# --- Module inventory (Phase 1: enumeration confirmed; per-module deep dive = Phase 2) ---
-# 23 mira-* module dirs confirmed via `ls -d` at commit cde2c418. The 9 flagged
-# `documented_in_repo_map: false` EXIST but are ABSENT from CLAUDE.md's Repo Map —
-# a real documentation-drift finding (see gaps-and-risks.md).
+# --- Module inventory (enumeration confirmed; per-module component records in services.yaml) ---
+# 21 mira-* module dirs confirmed via `ls -d mira-*/` at commit cde2c418. The 9 flagged
+# `documented_in_repo_map: false` EXIST but are ABSENT from CLAUDE.md's Repo Map — a real
+# documentation-drift finding (G1). Phase-2 RESOLVED each (README/pyproject-grounded) — see
+# services.yaml for entry points, kind, and purpose evidence.
 modules:
   # --- documented in CLAUDE.md repo map ---
   - name: mira-core
@@ -73,8 +74,8 @@ modules:
   - name: mira-ops
     documented_in_repo_map: true
     purpose_source: existing-doc
-    purpose: "Observability dashboards (Prometheus, Grafana, Flower). NOTE: dir not present at commit cde2c418 top-level — verify in Phase 2."
-    status: verify
+    purpose: "STALE REPO-MAP ENTRY — no mira-ops directory exists at commit cde2c418 (confirmed absent top-level AND nested, fd -t d mira-ops). CLAUDE.md's repo map lists it but it is not in the tree. Observability is docker-compose.observability.yml (Prometheus/Grafana/Flower) directly, not a module dir."
+    status: absent
   - name: mira-relay
     documented_in_repo_map: true
     purpose_source: existing-doc
@@ -157,12 +158,19 @@ facts:
     detection_method: file-read
     confidence: confirmed
     last_verified: "2026-07-14"
-  - fact: "MIRA has 23 mira-* module directories at top level."
+  - fact: "MIRA has 21 mira-* module directories at top level."
     repository: MIRA
     file: catalog/evidence/mira-structure.txt
     detection_method: ls
     confidence: confirmed
     last_verified: "2026-07-14"
+  - fact: "The 'mira-ops' module in CLAUDE.md's repo map does not exist in the tree at commit cde2c418 (absent top-level and nested)."
+    repository: MIRA
+    file: CLAUDE.md
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"
+    notes: "Stale documentation entry — observability is docker-compose.observability.yml, not a module dir."
   - fact: "Nine mira-* modules exist in the tree but are absent from CLAUDE.md's Repo Map (mira-connectors, mira-contextualizer, mira-fault-detective, mira-fault-sim, mira-ignition-exchange, mira-machine-logic-graph, mira-plc-parser, mira-scan-monday, mira-trend-viewer)."
     repository: MIRA
     file: catalog/evidence/mira-structure.txt

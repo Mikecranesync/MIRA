@@ -31,6 +31,46 @@
       "detection_method": "existing-doc",
       "evidence": "session memory project_mira_plc_dir_active: monorepo plc/ = R&D, MIRA_PLC = shippable artifacts.",
       "last_verified": "2026-07-14"
+    },
+    {
+      "id": "pipeline->engine",
+      "from": "mira-pipeline",
+      "to": "mira-bots/shared/engine.py (Supervisor)",
+      "type": "wraps",
+      "confidence": "confirmed",
+      "detection_method": "file-read",
+      "evidence": "mira-pipeline/main.py:420 /v1/chat/completions dispatches to the Supervisor engine.",
+      "last_verified": "2026-07-14"
+    },
+    {
+      "id": "relay->neon-tags",
+      "from": "mira-relay",
+      "to": "NeonDB (tag_events, live_signal_cache)",
+      "type": "writes",
+      "confidence": "confirmed",
+      "detection_method": "file-read",
+      "evidence": "mira-relay ingest_contract.py -> tag_ingest.py ingest_batch (one-pipeline law); tables tag_events/approved_tags in mira-hub/db/migrations/033/035.",
+      "last_verified": "2026-07-14"
+    },
+    {
+      "id": "contextualizer->hub",
+      "from": "mira-contextualizer",
+      "to": "mira-hub",
+      "type": "exports_bundle_to",
+      "confidence": "confirmed",
+      "detection_method": "file-read",
+      "evidence": "mira-contextualizer/README.md: exports a portable bundle for import into MIRA Hub.",
+      "last_verified": "2026-07-14"
+    },
+    {
+      "id": "mcp->neon-kg",
+      "from": "mira-mcp",
+      "to": "NeonDB (kg_entities, cmms_*)",
+      "type": "reads",
+      "confidence": "confirmed",
+      "detection_method": "file-read",
+      "evidence": "mira-mcp/server.py kg_* and cmms_* tools query the KG + CMMS tables.",
+      "last_verified": "2026-07-14"
     }
   ]
 }

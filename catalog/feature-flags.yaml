@@ -1,5 +1,31 @@
-# feature-flags.yaml — Feature / enforcement flags
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-flags: []
+# feature-flags.yaml — feature / enforcement flags (Phase 2, commit cde2c418)
+# No single FEATURE_/ENFORCE_ registry exists — flags are distributed across code (a finding: G7).
+status: populated
+flags:
+  - {flag: ENFORCE_PLAN_QUOTA, default: off, read_in: "mira-bots/shared/quota.py", purpose: "hard plan-quota enforcement", verified: true}
+  - {flag: QUALITY_GATE_ENABLED, read_in: "mira-bots/shared/quality_gate.py", purpose: "reply quality gate"}
+  - {flag: MIRA_CITATION_ENFORCE, read_in: "mira-bots/shared/citation_compliance.py", purpose: "strict citation mode"}
+  - {flag: MIRA_ENFORCE_APPROVED_RETRIEVAL, purpose: "only approved sources in retrieval"}
+  - {flag: MIRA_UNS_GATE_ENABLED, purpose: "UNS location-confirmation gate", verified: false, note: "NOT found at the scout's cited ignition_chat.py location — flag name unverified; do not treat as confirmed."}
+  - {flag: MIRA_RETRIEVAL_HYBRID_ENABLED, purpose: "BM25+embedding hybrid retrieval (experimental)"}
+  - {flag: MIRA_USE_DST, purpose: "dialogue state tracker enable"}
+  - {flag: "MIRA_{KG,INTERLOCK,CTX_SIGNALS}_CONTEXT_ENABLED", purpose: "context injection gates"}
+  - {flag: ENFORCE_ASSET_AGENT_GATE, purpose: "HMI deploy gate (train-before-deploy); doctrine until asset_agent_status ships"}
+  - {flag: "MIRA_ALLOW_{PROD,RM,GIT_WEDGE}", purpose: "per-shell human overrides for prod-guard/rm-guard/git-state-guard hooks"}
+  - {flag: MIRA_SKIP_STOP_GATE, purpose: "override the lint stop-gate (diagnostic only)"}
+facts:
+  - fact: "ENFORCE_PLAN_QUOTA is a real, default-off enforcement flag gating plan-quota checks."
+    repository: MIRA
+    file: mira-bots/shared/quota.py
+    line_start: 11
+    commit: cde2c418
+    detection_method: file-read
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "MIRA has no single feature-flag registry; flags are read ad-hoc via os.getenv across modules."
+    repository: MIRA
+    file: mira-bots/shared/quota.py
+    detection_method: rg
+    confidence: strong-inference
+    last_verified: "2026-07-14"
+    notes: "Finding G7 — no FEATURE_/ENFORCE_ prefix registry; distributed flags are hard to audit."

@@ -1,0 +1,28 @@
+# repositories/FactoryLM_v2.0.yaml — PRIVATE, not cloned locally
+repository: FactoryLM_v2.0
+classification: superseded
+visibility: private
+default_branch: master           # NOTE: 'master', unlike the active repos' 'main'
+local_checkout: null
+last_push: "2026-04-05"
+open_prs: 0
+open_issues: 4
+purpose: >
+  "FactoryLM v2.0 — Industrial maintenance AI platform. Multi-tenant RAG pipeline, Telegram/Slack/
+  WhatsApp thin clients, pgvector KB." A predecessor platform framing. Stale (last push 2026-04-05,
+  default branch 'master'); the live surface is now the MIRA + factorylm split. Not archived on GitHub.
+classification_reasoning:
+  confidence: strong-inference
+  detection_method: gh-description
+  note: >
+    Superseded is inferred from staleness + the 'v2.0' framing + the current MIRA/factorylm split,
+    NOT code-verified (repo not cloned). Could alternatively be a still-referenced dependency —
+    tracked in unknowns.md. Do not state 'superseded' as confirmed without a code check.
+facts:
+  - fact: "FactoryLM_v2.0 is a private repo on default branch 'master', last pushed 2026-04-05, 4 open issues, 0 open PRs."
+    repository: FactoryLM_v2.0
+    file: null
+    detection_method: gh-cli
+    confidence: strong-inference
+    last_verified: "2026-07-14"
+    notes: "gh metadata only; not cloned."

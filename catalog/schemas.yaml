@@ -1,5 +1,71 @@
-# schemas.yaml — Migration lineages + notable schema facts
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-schemas: []
+# schemas.yaml — migration lineages + notable tables (Phase 2, commit cde2c418)
+status: populated
+
+migration_lineages:
+  - dir: mira-hub/db/migrations
+    file_count: 73
+    highest: 064_kg_entities_upsert_constraint.sql
+    role: "Authoritative Hub schema (kg, namespace builder, proposals, tags, contextualization, asset-agent, visual sessions). Applied to staging by migration-verify.yml, to prod by apply-migrations.yml."
+    note: "Ledger keys on filename (schema_migrations); duplicate numeric prefixes are cosmetic — do NOT renumber. Applied migration files are immutable."
+  - dir: docs/migrations
+    file_count: 10
+    highest: 008_kg_approval_state.sql
+    role: "Engine-side read layer (knowledge_entries, fault_codes, tenants, manuals). kg_entities/kg_relationships also defined here (004/005) but Hub 001 is the live source."
+  - dir: mira-core/mira-ingest/db/migrations
+    file_count: 11
+    highest: 013_conversation_eval_meta.sql
+    role: "Ingest layer (asset_qr_tags, tenant_channel_config, guest_reports, hub_users/tenants, intent_signals, conversation_eval)."
+  - dir: mira-bridge/migrations
+    file_count: 5
+    highest: 005_conveyor_events.sql
+    role: "SQLite bridge state (conversation_state, wo_outbox, conveyor_events)."
+  - dir: tools/migrations
+    file_count: 1
+    role: "One-off backfill (backfill_equipment_entities.py)."
+
+key_tables:
+  - {table: kg_entities, created_in: mira-hub/db/migrations/001_knowledge_graph.sql, line: 3}
+  - {table: kg_relationships, created_in: mira-hub/db/migrations/001_knowledge_graph.sql, line: 15}
+  - {table: knowledge_entries, created_in: docs/migrations/001_knowledge_entries.sql, line: 11, note: "hybrid corpus: is_private discriminator"}
+  - {table: ai_suggestions, created_in: mira-hub/db/migrations/027_ai_suggestions.sql, line: 24}
+  - {table: relationship_proposals, created_in: mira-hub/db/migrations/018_relationship_proposals.sql, line: 15}
+  - {table: relationship_evidence, created_in: mira-hub/db/migrations/018_relationship_proposals.sql, line: 70}
+  - {table: tag_events, created_in: mira-hub/db/migrations/033_tag_events.sql, line: 56}
+  - {table: approved_tags, created_in: mira-hub/db/migrations/035_approved_tags.sql, line: 39}
+  - {table: live_signal_cache, created_in: mira-hub/db/migrations/020_signal_cache_and_trends.sql, line: 44}
+  - {table: asset_agent_status, created_in: mira-hub/db/migrations/046_asset_agent_status.sql, line: 34}
+  - {table: asset_validation_qa, created_in: mira-hub/db/migrations/047_asset_validation_qa.sql, line: 21}
+  - {table: component_templates, created_in: mira-hub/db/migrations/016_component_templates.sql, line: 18}
+  - {table: wiring_connections, created_in: mira-hub/db/migrations/026_wiring_connections.sql, line: 33}
+  - {table: decision_traces, created_in: mira-hub/db/migrations/032_decision_traces.sql, line: 56}
+  - {table: contextualization_projects, created_in: mira-hub/db/migrations/055_contextualization.sql, line: 12}
+  - {table: visual_session, created_in: mira-hub/db/migrations/063_visual_sessions.sql, line: 43}
+  - {table: tenants, created_in: docs/migrations/003_supporting_tables.sql, line: 6}
+  - {table: schema_migrations, created_in: mira-hub/db/migrations/048_schema_migrations_ledger.sql, line: 30}
+
+facts:
+  - fact: "The Hub migration dir holds 73 files; the highest is 064_kg_entities_upsert_constraint.sql."
+    repository: MIRA
+    file: mira-hub/db/migrations/064_kg_entities_upsert_constraint.sql
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"
+    notes: "ls mira-hub/db/migrations/*.sql | wc -l = 73 (verified)."
+  - fact: "kg_entities and kg_relationships are created in Hub migration 001_knowledge_graph.sql (the live source), with parallel definitions in docs/migrations 004/005."
+    repository: MIRA
+    file: mira-hub/db/migrations/001_knowledge_graph.sql
+    symbol: kg_entities
+    line_start: 3
+    commit: cde2c418
+    detection_method: rg
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "knowledge_entries (the hybrid OEM+per-tenant corpus) is created in docs/migrations/001_knowledge_entries.sql."
+    repository: MIRA
+    file: docs/migrations/001_knowledge_entries.sql
+    symbol: knowledge_entries
+    line_start: 11
+    commit: cde2c418
+    detection_method: rg
+    confidence: confirmed
+    last_verified: "2026-07-14"

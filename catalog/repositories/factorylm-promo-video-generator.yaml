@@ -1,0 +1,22 @@
+# repositories/factorylm-promo-video-generator.yaml
+repository: factorylm-promo-video-generator
+classification: active-supporting
+visibility: public
+default_branch: main
+primary_language: Python
+local_checkout: "~/factorylm-promo-video"
+commit_at_catalog: "9fae7bf"
+last_push: "2026-06-26"
+open_prs: 0
+purpose: >
+  Tool to generate promo videos for the FactoryLM Hub from screenshots and notes.
+  Entry point make_video.py (+ NOTES.md). Supporting/marketing tooling, not on the product path.
+facts:
+  - fact: "factorylm-promo-video-generator has a make_video.py entry point (no requirements.txt found; deps likely inline/global)."
+    repository: factorylm-promo-video-generator
+    file: make_video.py
+    commit: "9fae7bf"
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"
+    notes: "checkout ~/factorylm-promo-video; not under MIRA/factorylm so validator skips existence."

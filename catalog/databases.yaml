@@ -1,5 +1,99 @@
-# databases.yaml — Databases, schemas, key tables, tenancy model
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-databases: []
+# databases.yaml — MIRA data stores + tenancy (Phase 2, commit cde2c418)
+status: populated
+
+databases:
+  - name: NeonDB (Postgres, SaaS)
+    role: "Primary persistence. kg_entities, kg_relationships, knowledge_entries, cmms_*, tag_events, ai_suggestions, asset_agent_status, ~70 tables."
+    access: "SQLAlchemy NullPool (Neon PgBouncer). RLS + SET LOCAL ROLE factorylm_app for Hub routes."
+    connected_from: [mira-hub, mira-pipeline, mira-bots, mira-relay, mira-core, mira-mcp]
+    evidence:
+      - fact: "NeonDB is reached via NEON_DATABASE_URL (mira-pipeline) / DATABASE_URL (mira-bots)."
+        repository: MIRA
+        file: mira-pipeline/connector_import.py
+        line_start: 26
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - name: ChromaDB (vector store)
+    role: "LEGACY RAG vectors for mira-sidecar. Collections: shared_oem, mira_docs. Persistent client on disk (CHROMA_PATH)."
+    connected_from: [mira-sidecar]
+    status: legacy
+    evidence:
+      - fact: "mira-sidecar opens a ChromaDB PersistentClient as its vector store."
+        repository: MIRA
+        file: mira-sidecar/rag/store.py
+        line_start: 33
+        commit: cde2c418
+        detection_method: file-read
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - name: SQLite (WAL, local state)
+    role: "mira-bridge shared conversation state (conversation_state, wo_outbox, conveyor_events) + mira-bots local learning/screener/email-thread stores."
+    connected_from: [mira-bridge, mira-bots]
+    evidence:
+      - fact: "mira-bots opens local SQLite stores (e.g. active_learner, learning_ingester, screener, email thread_tracker)."
+        repository: MIRA
+        file: mira-bots/tools/active_learner.py
+        line_start: 195
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"
+      - fact: "mira-bridge stores conversation_state / wo_outbox / conveyor_events in SQLite migrations."
+        repository: MIRA
+        file: mira-bridge/migrations/001_add_gsd_state.sql
+        line_start: 3
+        commit: cde2c418
+        detection_method: rg
+        confidence: confirmed
+        last_verified: "2026-07-14"
+  - name: "Redis / Qdrant"
+    role: "Redis is the mira-crawler Celery broker (referenced in bridge.py health-check); no active Qdrant usage found in code at this commit."
+    status: partial
+    evidence:
+      - fact: "No active Qdrant client usage was found in MIRA app code at cde2c418; Redis appears as the crawler Celery broker."
+        repository: MIRA
+        file: mira-crawler/bridge.py
+        line_start: 127
+        commit: cde2c418
+        detection_method: rg
+        confidence: strong-inference
+        last_verified: "2026-07-14"
+        notes: "Absence-of-Qdrant is a scout finding; treat as strong-inference (proving a negative)."
+
+tenancy:
+  summary: "Two tenant_id type families (mid-migration to UUID-only). See .claude/rules/mira-hub-migrations.md."
+  families:
+    - family: "kg / Hub / knowledge (UUID)"
+      example_tables: [kg_entities, knowledge_entries, ai_suggestions, approved_tags, tag_events, namespace_versions]
+      evidence:
+        - fact: "Namespace-builder tables key tenant_id as UUID NOT NULL."
+          repository: MIRA
+          file: mira-hub/db/migrations/021_namespace_builder.sql
+          line_start: 36
+          commit: cde2c418
+          detection_method: rg
+          confidence: confirmed
+          last_verified: "2026-07-14"
+    - family: "CMMS / equipment (TEXT)"
+      example_tables: [cmms_equipment, guest_reports, asset_agent_status, asset_validation_qa]
+      evidence:
+        - fact: "Migration 048 converts asset_agent_status/asset_validation_qa tenant_id to TEXT to match cmms_equipment for RLS comparison."
+          repository: MIRA
+          file: mira-hub/db/migrations/048_asset_agent_tenant_text.sql
+          line_start: 33
+          commit: cde2c418
+          detection_method: rg
+          confidence: confirmed
+          last_verified: "2026-07-14"
+  anomaly:
+    - fact: "cmms_equipment is CREATEd in integration-fixtures (000_base_cmms_rls.sql), not in the numbered migrations dir."
+      repository: MIRA
+      file: mira-hub/db/integration-fixtures/000_base_cmms_rls.sql
+      line_start: 62
+      commit: cde2c418
+      detection_method: rg
+      confidence: confirmed
+      last_verified: "2026-07-14"
+      notes: "Recorded in gaps-and-risks (schema location anomaly)."

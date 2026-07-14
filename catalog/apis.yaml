@@ -1,5 +1,93 @@
-# apis.yaml — HTTP routes / MCP tools / CLI entry points
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-endpoints: []
+# apis.yaml — HTTP routes / MCP tools / CLI entry points (Phase 2)
+# Commit cde2c418. Route lists are representative, not exhaustive (counts given).
+# A sample of these was spot-verified against file:line (see facts with confidence: confirmed).
+status: populated
+
+http_services:
+  - service: mira-pipeline
+    base: ":9099"
+    key_routes:
+      - {method: POST, path: /v1/chat/completions, file: mira-pipeline/main.py, line: 420, note: "OpenAI-compat chat entry (Supervisor)"}
+      - {method: POST, path: /api/v1/ignition/chat, file: mira-pipeline/ignition_chat.py, line: 562, note: "Ignition direct-connection chat"}
+      - {method: GET,  path: /health, file: mira-pipeline/main.py, line: 371}
+      - {method: GET,  path: /v1/models, file: mira-pipeline/main.py, line: 380}
+      - {method: POST, path: /v1/feedback, file: mira-pipeline/main.py, line: 957}
+      - {method: POST, path: /webhook/signup, file: mira-pipeline/main.py, line: 1059}
+      - {method: POST, path: /api/pm/extract, file: mira-pipeline/main.py, line: 1351}
+      - {method: POST, path: /v1/connectors/ignition/import, file: mira-pipeline/connector_import.py, line: 46}
+      - {method: GET,  path: /api/agents/status, file: mira-pipeline/main.py, line: 1234}
+  - service: mira-core/mira-ingest
+    key_routes:
+      - {method: POST, path: /ingest/photo, file: mira-core/mira-ingest/main.py, line: 562}
+      - {method: POST, path: /ingest/document-kb, file: mira-core/mira-ingest/main.py, line: 888}
+      - {method: POST, path: /ingest/plc-parse, file: mira-core/mira-ingest/main.py, line: 1148}
+      - {method: POST, path: /ingest/search-visual, file: mira-core/mira-ingest/main.py, line: 697}
+  - service: mira-bots (adapters + ask_api)
+    key_routes:
+      - {method: POST, path: /ask, file: mira-bots/ask_api/app.py, line: 83, note: "AskMira kiosk endpoint"}
+      - {method: POST, path: /drive-pack/ask, file: mira-bots/ask_api/drive_pack.py, line: 60, note: "drive-pack fast-path"}
+      - {method: POST, path: /webhook, file: mira-bots/whatsapp/bot.py, line: 104}
+      - {method: POST, path: /chat, file: mira-bots/webchat/chat_adapter.py, line: 38}
+      - {method: POST, path: /email/inbound, file: mira-bots/email_adapter/ses_webhook.py, line: 138}
+  - service: mira-crawler
+    key_routes:
+      - {method: POST, path: /crawl, file: mira-crawler/bridge.py, line: 152}
+      - {method: GET,  path: /status, file: mira-crawler/bridge.py, line: 212}
+  - service: mira-hub (Next.js)
+    route_count: 150
+    note: "150 route.ts handlers under mira-hub/src/app/api (find -name route.ts). Notable: /api/assets/[id]/chat, /api/documents, /api/proposals, /api/kg/{trace,graph,sync}, /api/uns/{subtree,browse}, /api/command-center/{tree,display}, /api/connectors/{ignition,plc}/import, /api/work-orders, /api/pm-schedules."
+
+mcp_tools:
+  server: mira-mcp/server.py
+  count: 26
+  groups:
+    equipment: [get_equipment_status, list_active_faults, get_fault_history, get_maintenance_notes]
+    cmms: [diagnostic_record_case, cmms_write_work_order, cmms_create_work_order, cmms_list_work_orders, cmms_complete_work_order, cmms_list_assets, cmms_get_asset, cmms_list_pm_schedules, cmms_health, create_asset_from_nameplate]
+    agents: [run_kb_builder, run_prompt_optimizer, run_infra_guardian, get_agent_status]
+    knowledge_graph: [kg_maintenance_context, kg_impact_analysis, kg_root_cause_chain, kg_traverse_chain, kg_flag_pm_mismatches, mira_browse_namespace, mira_get_equipment, kg_extract_schematic]
+
+cli_entry_points:
+  - {name: mira-crawler, file: mira-crawler/main.py, line: 238}
+  - {name: simlab, file: simlab/__main__.py, note: "python -m simlab"}
+  - {name: fieldbus-discover, file: plc/discover.py, line: 532, note: "read-only fieldbus scan"}
+  - {name: vfd-diag, file: plc/vfd_diag.py, line: 234}
+  - {name: live-monitor, file: plc/live_monitor.py, line: 461, note: "BENCH-ONLY (writes GS10)"}
+  - {name: mira-drop-watcher, file: tools/mira-drop-watcher/main.py, line: 491}
+  - {name: mira-plc-parser, file: mira-plc-parser, note: "console_script mira_plc_parser.cli:main"}
+  - {name: mira-contextualizer, file: mira-contextualizer, note: "console_script mira_contextualizer.app:main"}
+
+facts:
+  - fact: "mira-pipeline exposes the OpenAI-compat /v1/chat/completions and the Ignition direct-connection /api/v1/ignition/chat endpoints."
+    repository: MIRA
+    file: mira-pipeline/ignition_chat.py
+    symbol: "@router.post /api/v1/ignition/chat"
+    line_start: 562
+    commit: cde2c418
+    detection_method: file-read
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "mira-mcp/server.py registers 26 @mcp.tool tools across equipment/cmms/agents/kg groups."
+    repository: MIRA
+    file: mira-mcp/server.py
+    symbol: get_equipment_status
+    line_start: 160
+    commit: cde2c418
+    detection_method: file-read
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "The AskMira kiosk endpoint is POST /ask in mira-bots/ask_api/app.py, with a drive-pack fast-path at /drive-pack/ask."
+    repository: MIRA
+    file: mira-bots/ask_api/app.py
+    symbol: "@app.post /ask"
+    line_start: 83
+    commit: cde2c418
+    detection_method: file-read
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "mira-hub has 150 Next.js API route.ts handlers."
+    repository: MIRA
+    file: mira-hub/src/app/api
+    detection_method: file-read
+    confidence: confirmed
+    last_verified: "2026-07-14"
+    notes: "find mira-hub/src/app/api -name route.ts | wc -l = 150."

@@ -1,0 +1,27 @@
+# repositories/ladder-logic-editor.yaml
+repository: ladder-logic-editor
+classification: active-supporting
+visibility: public
+default_branch: main
+primary_language: TypeScript
+local_checkout: "~/ladder-logic-editor"
+commit_at_catalog: "9d0b346"
+last_push: "2026-05-11"
+open_prs: 0
+purpose: >
+  Web-based IEC 61131-3 Structured-Text -> Ladder Diagram editor with live PLC simulation.
+  Standalone TypeScript web app (has a parser build step + Playwright e2e across desktop/mobile).
+tech:
+  dependency_count: 18            # package.json .dependencies
+  has_tests: true                 # scripts: test (vitest), test:e2e (playwright), test:e2e:mobile/desktop
+  build: "build + build:parser (custom ST parser)"
+  detection_method: jq
+facts:
+  - fact: "ladder-logic-editor is a TypeScript web app with 18 runtime deps and a Playwright e2e suite (desktop+mobile+ui)."
+    repository: ladder-logic-editor
+    file: package.json
+    commit: "9d0b346"
+    detection_method: jq
+    confidence: confirmed
+    last_verified: "2026-07-14"
+    notes: "file path is relative to the ladder-logic-editor checkout, not cloned under MIRA/factorylm — validator skips existence for this repo."

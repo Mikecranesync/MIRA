@@ -1,5 +1,76 @@
-# workers-and-crons.yaml — Async/Celery workers, scheduled jobs, GitHub cron workflows, launchd
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-jobs: []
+# workers-and-crons.yaml — scheduled + background work (Phase 2, commit cde2c418)
+status: populated
+
+github_cron_workflows:
+  count: 15
+  jobs:
+    - {workflow: ci-evals.yml, cron: "0 6 * * *", purpose: "nightly offline eval suite"}
+    - {workflow: mira-benchmark-weekly.yml, cron: "0 5 * * 3", purpose: "weekly grounded diagnostic benchmark"}
+    - {workflow: dogfood-judge-heartbeat.yml, cron: "30 */6 * * *", purpose: "judge agent health"}
+    - {workflow: provider-health-canary.yml, cron: "23 */6 * * *", purpose: "LLM provider availability"}
+    - {workflow: oauth-redirect-canary.yml, cron: "17 * * * *", purpose: "sign-in flow health"}
+    - {workflow: dogfood-weekly-digest.yml, cron: "0 13 * * 1", purpose: "weekly quality digest"}
+    - {workflow: web-review-canary.yml, cron: "0 16 * * *", purpose: "mira-web uptime"}
+    - {workflow: beta-gate.yml, cron: "0 7 * * 1", purpose: "weekly beta-readiness re-proof"}
+    - {workflow: enforcement-audit.yml, cron: "0 3 * * *", purpose: "RBAC/safety enforcement audit"}
+    - {workflow: printsense-staging-e2e.yml, cron: "*/30 * * * *", purpose: "staging session E2E poll"}
+    - {workflow: qa-rbac-inspect.yml, cron: "0 6 * * 1", purpose: "weekly RBAC frontier snapshot"}
+    - {workflow: dependency-check.yml, cron: "0 9 * * 1", purpose: "dependency vuln scan"}
+    - {workflow: qa-regression.yml, cron: "0 */2 * * *", purpose: "golden-case regression sweep"}
+    - {workflow: proposal-state-canary.yml, cron: "0 7 * * *", purpose: "proposal state drift"}
+    - {workflow: migration-drift-check.yml, cron: "0 6 * * *", purpose: "schema drift canary"}
+  evidence:
+    - fact: "15 GitHub Actions workflows carry a schedule: cron trigger."
+      repository: MIRA
+      file: .github/workflows/ci-evals.yml
+      detection_method: rg
+      confidence: confirmed
+      last_verified: "2026-07-14"
+      notes: "rg -l 'schedule:' .github/workflows | wc -l = 15 (verified)."
+
+celery:
+  app: mira-crawler/celery_app.py
+  task_count: ~15
+  tasks: [intent_digest, report, sitemaps, reddit, blog, content, tag_diff_historizer, historize_runs, foundational, patents, linkedin, reddit_intent, gdrive, manualslib_scraper, component_template]
+  evidence:
+    - fact: "mira-crawler has a Celery app orchestrating ~15 scraping/analytics tasks."
+      repository: MIRA
+      file: mira-crawler/celery_app.py
+      detection_method: ls
+      confidence: confirmed
+      last_verified: "2026-07-14"
+
+background_workers:
+  items:
+    - {name: RAGWorker, file: mira-bots/shared/workers/rag_worker.py, purpose: "knowledge retrieval + diagnosis"}
+    - {name: QueryTriageWorker, file: mira-bots/shared/workers/query_triage.py, line: 38, purpose: "query understanding"}
+    - {name: PrintWorker, file: mira-bots/shared/workers/print_worker.py, line: 47, purpose: "electrical print translation"}
+    - {name: VisionWorker, file: mira-bots/shared/workers/vision_worker.py, purpose: "qwen2.5vl vision inference"}
+    - {name: NameplateWorker, file: mira-bots/shared/workers/nameplate_worker.py, purpose: "nameplate field extraction"}
+    - {name: PhotoIngestWorker, file: mira-bots/shared/workers/photo_ingest_worker.py, line: 69, purpose: "nameplate proposal -> Neon"}
+    - {name: PLCWorker, file: mira-bots/shared/workers/plc_worker.py, line: 8, purpose: "stub, deferred to Config 4"}
+    - {name: MQTT subscriber, file: mira-relay/mqtt_ingest/subscriber.py, purpose: "Sparkplug B tag ingest"}
+    - {name: Telegram poller, file: mira-bots/telegram/bot.py, purpose: "async run_polling adapter"}
+  evidence:
+    - fact: "mira-bots/shared/workers/ holds the diagnostic worker pool (rag, query_triage, print, vision, nameplate, photo_ingest, plc)."
+      repository: MIRA
+      file: mira-bots/shared/workers/rag_worker.py
+      detection_method: ls
+      confidence: confirmed
+      last_verified: "2026-07-14"
+
+launchd_host_jobs:
+  note: "Host-level launchd jobs (~/Library/LaunchAgents on CHARLIE) — NOT repo files, so cataloged as strong-inference from scout + session memory. Verify on-host with `launchctl list | grep factorylm`."
+  jobs:
+    - {label: com.factorylm.mira-drop-watcher, purpose: "MiraDrop inbox watcher -> Hub ingest"}
+    - {label: com.factorylm.codegraph-reindex, purpose: "daily codegraph index --force"}
+    - {label: com.mira.graphify-refresh, purpose: "orchestrator-pulse product KG regen"}
+  evidence:
+    - fact: "MiraDrop watcher runs as launchd label com.factorylm.mira-drop-watcher (per repo docs), driving tools/mira-drop-watcher/main.py."
+      repository: MIRA
+      file: tools/mira-drop-watcher/main.py
+      line_start: 491
+      detection_method: existing-doc
+      confidence: strong-inference
+      last_verified: "2026-07-14"
+      notes: "The launchd plist is host-level, not in-repo; the watcher script IS in-repo."

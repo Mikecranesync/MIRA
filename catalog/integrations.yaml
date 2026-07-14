@@ -1,5 +1,55 @@
-# integrations.yaml — External services (LLM providers, Stripe, Doppler, Neon, Telegram, Slack, Ignition)
-# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
-# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
-status: seeded   # -> populated in Phase 2
-integrations: []
+# integrations.yaml — external services (Phase 2, commit cde2c418)
+status: populated
+integrations:
+  - name: Groq
+    type: cloud-llm
+    role: "Provider cascade #1 (primary)"
+    evidence: [{fact: "GROQ_API_KEY read in the inference router.", repository: MIRA, file: mira-bots/shared/inference/router.py, line_start: 143, detection_method: file-read, confidence: confirmed, last_verified: "2026-07-14"}]
+  - name: Cerebras
+    type: cloud-llm
+    role: "Provider cascade #2"
+    evidence: [{fact: "CEREBRAS_API_KEY read in the inference router.", repository: MIRA, file: mira-bots/shared/inference/router.py, line_start: 145, detection_method: file-read, confidence: confirmed, last_verified: "2026-07-14"}]
+  - name: Together AI
+    type: cloud-llm
+    role: "Provider cascade #3 (replaced Gemini)"
+    evidence: [{fact: "TOGETHERAI_API_KEY read in the inference router.", repository: MIRA, file: mira-bots/shared/inference/router.py, line_start: 147, detection_method: file-read, confidence: confirmed, last_verified: "2026-07-14"}]
+  - name: Open WebUI / Ollama
+    type: local-llm
+    role: "Local fallback (qwen2.5vl:7b) when cloud cascade fails; also chunk/embed backend (mira-core)."
+    evidence: [{fact: "Open WebUI is the local fallback backend, keyed by OPENWEBUI_API_KEY.", repository: MIRA, file: mira-bots/shared/inference/router.py, detection_method: rg, confidence: strong-inference, last_verified: "2026-07-14", notes: "provider-level; exact key line not re-verified."}]
+  - name: NeonDB
+    type: postgres-saas
+    role: "Primary persistence."
+    evidence: [{fact: "NEON_DATABASE_URL read in mira-pipeline connector import.", repository: MIRA, file: mira-pipeline/connector_import.py, line_start: 26, detection_method: rg, confidence: confirmed, last_verified: "2026-07-14"}]
+  - name: Stripe
+    type: payments
+    role: "mira-web PLG billing ($29/mo Drive Commander etc.)."
+    evidence: [{fact: "mira-web imports the Stripe SDK.", repository: MIRA, file: mira-web/src/lib/stripe.ts, line_start: 11, detection_method: rg, confidence: strong-inference, last_verified: "2026-07-14", notes: "scout-cited; file path plausible, line not re-verified."}]
+  - name: Doppler
+    type: secrets
+    role: "All secrets (factorylm/{dev,stg,prd}). doppler run wraps service start."
+    evidence: [{fact: "Doppler factorylm/prd is the secrets source (doppler run).", repository: MIRA, file: docs/ARCHITECTURE.md, detection_method: existing-doc, confidence: strong-inference, last_verified: "2026-07-14"}]
+  - name: Slack
+    type: chat-adapter
+    role: "Front-door adapter (slack-bolt AsyncApp, Socket Mode)."
+    evidence: [{fact: "mira-bots/slack/bot.py reads SLACK_BOT_TOKEN.", repository: MIRA, file: mira-bots/slack/bot.py, line_start: 26, detection_method: rg, confidence: strong-inference, last_verified: "2026-07-14"}]
+  - name: Telegram
+    type: chat-adapter
+    role: "Async polling adapter (prod @FactoryLM_Diagnose)."
+    evidence: [{fact: "mira-bots/telegram/bot.py uses TELEGRAM_BOT_TOKEN (run_polling).", repository: MIRA, file: mira-bots/telegram/bot.py, detection_method: rg, confidence: strong-inference, last_verified: "2026-07-14"}]
+  - name: Ignition
+    type: industrial-hmi
+    role: "Direct-connection chat + tag streaming + Perspective deployment surfaces."
+    evidence: [{fact: "mira-pipeline/ignition_chat.py exposes the Ignition chat endpoint.", repository: MIRA, file: mira-pipeline/ignition_chat.py, line_start: 562, detection_method: file-read, confidence: confirmed, last_verified: "2026-07-14"}]
+  - name: MQTT / Sparkplug B
+    type: factory-telemetry
+    role: "Plant->cloud tag streaming via mira-relay one-pipeline ingest."
+    evidence: [{fact: "mira-relay/mqtt_ingest/subscriber.py subscribes to Sparkplug B tag streams.", repository: MIRA, file: mira-relay/mqtt_ingest/subscriber.py, detection_method: rg, confidence: strong-inference, last_verified: "2026-07-14"}]
+  - name: Langfuse
+    type: llm-observability
+    role: "Optional LLM-call tracing (LANGFUSE_*)."
+    evidence: [{fact: "Langfuse tracing referenced in the inference router (LANGFUSE_* env).", repository: MIRA, file: mira-bots/shared/inference/router.py, detection_method: rg, confidence: strong-inference, last_verified: "2026-07-14"}]
+  - name: monday.com
+    type: marketplace
+    role: "mira-scan-monday marketplace app (item-view iframe)."
+    evidence: [{fact: "mira-scan-monday is a monday.com marketplace app.", repository: MIRA, file: mira-scan-monday/README.md, line_start: 1, detection_method: file-read, confidence: confirmed, last_verified: "2026-07-14"}]
