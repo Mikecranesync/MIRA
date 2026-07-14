@@ -1,0 +1,112 @@
+{
+  "yaskawa_ga500": {
+    "pdf": "yaskawa_ga500_prog.pdf",
+    "sha256": "5f43120dcc975297b7393fd500cd034f7fafb0f22f983c3b8e1ce1ab984e20db",
+    "before": {
+      "faults": 0,
+      "parameters": 0,
+      "seconds": 94.2
+    },
+    "after": {
+      "status": "PARTIAL",
+      "faults": 30,
+      "parameters": 1245,
+      "candidate_pages": 368,
+      "parsed_pages": 149,
+      "by_route": {
+        "unruled_table": 200,
+        "ruled_table": 1075
+      },
+      "rejected_records": 19
+    },
+    "total_seconds": 274.5
+  },
+  "abb_acs580": {
+    "pdf": "abb_acs580_fw.pdf",
+    "sha256": "8d1b3a25cac85e7d03b181e1490c0533ee5312633781c1b52d728a76459487b6",
+    "before": {
+      "faults": 0,
+      "parameters": 0,
+      "seconds": 62.2
+    },
+    "after": {
+      "status": "PARTIAL",
+      "faults": 260,
+      "parameters": 1641,
+      "candidate_pages": 419,
+      "parsed_pages": 214,
+      "by_route": {
+        "unruled_table": 921,
+        "ruled_table": 980
+      },
+      "rejected_records": 71
+    },
+    "total_seconds": 149.2
+  },
+  "schneider_atv320": {
+    "pdf": "schneider_atv320_prog_nve41295.pdf",
+    "sha256": "295ab838a6b5da54334ee44599077a37f6ec4957225adbd92bcff1caf0e1072c",
+    "before": {
+      "faults": 0,
+      "parameters": 0,
+      "seconds": 26.6
+    },
+    "after": {
+      "status": "PARTIAL",
+      "faults": 5,
+      "parameters": 439,
+      "candidate_pages": 81,
+      "parsed_pages": 54,
+      "by_route": {
+        "unruled_table": 104,
+        "ruled_table": 340
+      },
+      "rejected_records": 0
+    },
+    "total_seconds": 53.8
+  },
+  "siemens_g120x": {
+    "pdf": "siemens_g120x.pdf",
+    "sha256": "9245b0530133b523ae8e5770c70c1e5f957eaa870d4b097e255fc457a66c1abf",
+    "before": {
+      "faults": 0,
+      "parameters": 0,
+      "seconds": 82.3
+    },
+    "after": {
+      "status": "PARTIAL",
+      "faults": 423,
+      "parameters": 876,
+      "candidate_pages": 503,
+      "parsed_pages": 340,
+      "by_route": {
+        "ruled_table": 152,
+        "unruled_table": 1147
+      },
+      "rejected_records": 2
+    },
+    "total_seconds": 199.6
+  },
+  "delta_vfd_e": {
+    "pdf": "delta_vfd_e.pdf",
+    "sha256": "428a0c30be9a0a5a97c945f6f89b4aa18d8cb267a57bfb7f2b261a730473b0ca",
+    "before": {
+      "faults": 0,
+      "parameters": 0,
+      "seconds": 59.1
+    },
+    "after": {
+      "status": "PARTIAL",
+      "faults": 52,
+      "parameters": 654,
+      "candidate_pages": 186,
+      "parsed_pages": 133,
+      "by_route": {
+        "unruled_table": 530,
+        "ruled_table": 176
+      },
+      "rejected_records": 2
+    },
+    "total_seconds": 131.2
+  }
+}

@@ -36,9 +36,16 @@ def _is_noise(rec: dict[str, Any]) -> str | None:
     ident = (rec.get("id") or "").strip()
     if not ident:
         return "empty id"
-    name_low = (rec.get("name") or "").lower()
-    if not rec.get("fields") and any(h in name_low for h in _SECTION_HEADING_HINTS):
+    name = (rec.get("name") or "").strip()
+    fields = rec.get("fields") or {}
+    name_low = name.lower()
+    if not fields and any(h in name_low for h in _SECTION_HEADING_HINTS):
         return "section heading, no fields"
+    # A record with neither a name nor any value field carries no information
+    # (a stray section number / page ref caught as an id) — drop it. Safe for
+    # recall: a real fault/parameter always has at least a name or a value.
+    if not name and not fields:
+        return "no name and no fields"
     return None
 
 
