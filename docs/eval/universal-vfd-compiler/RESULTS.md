@@ -33,7 +33,14 @@ After = `universal_extract.extract_manual`. Raw: `benchmark_summary.json`.
 | Delta VFD-E | 0 / 0 | PARTIAL | 52 | 654 | 133 | 133 |
 | **TOTAL** | **0 / 0** | — | **770** | **4855** | — | — |
 
-**5,625 cited records recovered from zero.** Status is honestly `PARTIAL`
+**5,625 emitted validated records recovered from zero** (validated = excerpt
+proven on the cited page). NOTE: this is the count of *emitted* records, **not**
+distinct fault/parameter definitions — a fraction of the 4,855 "parameters" are
+enum/setting-value rows and near-duplicates (e.g. Yaskawa's 1,245 from a 526pp
+manual is inflated by setting-value rows like `293 JogReferenceSelection`). The
+generalization gate is still genuinely met (real params like `C1-06
+DecelerationTime3` are recovered), but read the headline as "emitted validated
+records," not "distinct parameters." Status is honestly `PARTIAL`
 (not `COMPLETE`) because discovery over-flags some candidate pages — TOCs,
 status-bit tables, cross-reference lists — that yield no validated record, so
 `parsed_pages < candidate_pages`. A zero-record run is **never** labelled a
@@ -51,8 +58,8 @@ success (was the original `EXTRACTED`-on-0/0 bug).
 | Deterministic extraction first, offline | ✅ **MET** | Deterministic routes run first; LLM repair off unless `MIRA_DRIVE_LLM_REPAIR=1`. Benchmark is fully offline. |
 | LLM fallback region-bounded, auditable, optional, emits learning evidence | ✅ **MET** | `llm_region_repair`: one region only, source-validated, learning artifacts + deterministic-rule proposals. |
 | No hallucinated codes/values/defaults/ranges/actions | ✅ **MET** | String ids source-preserved (never an invented integer for a mnemonic); every field value re-verified against the page; excerpt is a verbatim page line. |
-| Sampled row **precision ≥ 98%** | ❌ **NOT MET — measured gap ~87%** | Clean-record proxy: ABB 92%, Yaskawa 91%, Siemens 91%, Delta 82%, **Schneider 46%** (outlier). Noise sources: page-footers caught as ids (`502 "YASKAWA…Programming"`), section refs (`1.2`, `4.1`), and enum-value tables (setting-value columns) mis-classified as parameters. A safe empty-name/no-field filter is applied; the remaining gap needs per-vendor precision passes. |
-| Sampled row **recall ≥ 90%** | ⏳ **NOT MEASURED** | No per-page hand gold was built for the five vendors this session (only PF40/525/GS10 gold exists). `parsed_pages` coverage is a proxy, not a recall number. Building sampled row gold (~20–30 rows/manual) is the tracked follow-up. |
+| Sampled row **precision ≥ 98%** | ❌ **NOT MET — true precision ~65% (hand-labelled, small sample)** | A **hand-labelled** spot-check of ~18 records ≈ **11–13 clearly correct (~65%)**. The automated "clean-record proxy" below (overall 87%: ABB 92%, Yaskawa 91%, Siemens 91%, Delta 82%, **Schneider 46%**) counts *plausible-looking* names and **OVERSTATES** true precision — it passes footers (`502 "YASKAWA…Programming"`), enum setting-values (`293 JogReferenceSelection`), and name-bleed records (ABB fault `0001` whose name and remedy are the same fragment). Report the ~65% hand number as precision; the 87% proxy is a triage signal, not precision. Noise sources: page-footers/section-refs caught as ids, enum-value tables mis-classified as parameters, and ruled-page name-bleed. Needs per-vendor precision passes. |
+| Sampled row **recall ≥ 90%** | ❌ **POOR (direct evidence) — not rigorously measured** | Not rigorously measured (no per-vendor row gold built this session; only PF40/525/GS10 gold exists). But there is **direct evidence recall is poor**: Schneider recovered **5 faults** when the ATV320 fault list has dozens; Yaskawa 30 faults is similarly thin. Building sampled row gold (~20–30 rows/manual) to *measure* it is the tracked follow-up. |
 
 ## What this proves / what remains
 
@@ -66,6 +73,10 @@ vendor.
 **Remains (measured gaps, not hand-waves):**
 1. **Precision to 98%** — filter page-footers/section-refs and separate
    enum-value tables from parameter listings (Schneider is the worst case).
+   **Known root cause of ruled-manual name-bleed:** `generic_table_parser.parse_candidate`
+   picks the route with `max(len(records))`, so the unruled route's over-segmented
+   output beats the cleaner `extract_tables` ruled route on ruled manuals (ABB). The
+   fix is dispatch — *prefer ruled when it yields ≥N records* — not a discovery rewrite.
 2. **Row-recall gold** — hand-label ~20–30 rows/manual to *measure* recall
    (currently unmeasured).
 3. **Promote recurring generic geometries into scored dialects** via the
