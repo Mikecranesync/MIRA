@@ -18,10 +18,11 @@ verdict is impossible by construction (PRD §10.4 G11).
 This module WRAPS the existing deterministic :func:`grader.grade` (its scoring is
 unchanged). The structural graph-integrity gates — duplicate ids, dangling refs,
 variant crossover, off-page-from-pagination, exact-label (PRD §10.4 G3/G4/G5/G7/G8)
-— land in a later PR and *append* to ``import_blocking_failures`` behind this same
-signature. Today the import verdict is driven by the two import-blockers the grader
-already proves (confident misreads, trust violations), so the contract is stable and
-already useful; the gate set only grows behind it.
+run in :mod:`printsense.gates` (structural, truth-free ones now; the rubric-truth
+ones next) and *append* to ``import_blocking_failures`` behind this same signature.
+The import verdict is also driven by the two import-blockers the grader itself proves
+(confident misreads, trust violations), so the contract is stable and the gate set
+only grows behind it.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from . import grader
+from . import gates, grader
 
 # Release-tier score thresholds (PRD §8.1).
 _AUTO_IMPORT_MIN = 90
@@ -91,6 +92,7 @@ def grade_case(
     (those arrive in a later PR). With a rubric, the deterministic grader scores it.
     """
     graph = _load(extraction_path)
+    rubric = _load(rubric_path) if rubric_path is not None else None
 
     result: dict = {
         "score": None,
@@ -108,8 +110,7 @@ def grade_case(
         "evidence": [],
     }
 
-    if rubric_path is not None:
-        rubric = _load(rubric_path)
+    if rubric is not None:
         g = grader.grade(graph, rubric)
         result["score"] = g["overall"]
         result["letter"] = g["letter"]
@@ -128,16 +129,20 @@ def grade_case(
             "scores": g["scores"],
         }
 
-    # Import-blocking failures the deterministic layer can already prove. PR2 appends
-    # the structural gates (duplicate_identifier / dangling_reference / variant_crossover
-    # / incorrect_connector_ownership / incompatible_functional_path / off_page_from_pagination)
-    # to this same list.
+    # Import-blocking failures: the two the grader itself proves (confident misreads,
+    # trust violations) plus the deterministic graph-integrity gates (structural now;
+    # rubric-truth exact-label/path gates append here in slice 2).
     blocking: list[str] = []
     if result["confident_misreads"]:
         blocking.append("confident_misread")
     if result["trust_violations"]:
         blocking.append("trust_violation")
-    result["import_blocking_failures"] = blocking
+
+    gate_report = gates.run_gates(graph, rubric)
+    result["gate_results"]["structural"] = gate_report["failures"]
+    blocking.extend(gate_report["codes"])
+
+    result["import_blocking_failures"] = sorted(set(blocking))
     result["import_verdict"] = "FAIL" if blocking else "PASS"
 
     result["quality_tier"] = _tier(
