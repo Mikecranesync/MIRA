@@ -18,8 +18,8 @@ verdict is impossible by construction (PRD §10.4 G11).
 This module WRAPS the existing deterministic :func:`grader.grade` (its scoring is
 unchanged). The structural graph-integrity gates — duplicate ids, dangling refs,
 variant crossover, off-page-from-pagination, exact-label (PRD §10.4 G3/G4/G5/G7/G8)
-run in :mod:`printsense.gates` (structural, truth-free ones now; the rubric-truth
-ones next) and *append* to ``import_blocking_failures`` behind this same signature.
+run in :mod:`printsense.gates` (structural truth-free + rubric-truth) and *append*
+to ``import_blocking_failures`` behind this same signature.
 The import verdict is also driven by the two import-blockers the grader itself proves
 (confident misreads, trust violations), so the contract is stable and the gate set
 only grows behind it.
@@ -140,6 +140,7 @@ def grade_case(
 
     gate_report = gates.run_gates(graph, rubric)
     result["gate_results"]["structural"] = gate_report["failures"]
+    result["safety_critical_misreads"] = gate_report["safety_critical_misreads"]
     blocking.extend(gate_report["codes"])
 
     result["import_blocking_failures"] = sorted(set(blocking))

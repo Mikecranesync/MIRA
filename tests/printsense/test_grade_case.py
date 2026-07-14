@@ -74,3 +74,21 @@ def test_grade_case_envelope_and_g11_invariant():
         assert r["quality_tier"] == "AUTO_IMPORT" and r["import_verdict"] == "PASS"
     # import_verdict is a pure function of the blocking list.
     assert (r["import_verdict"] == "FAIL") == bool(r["import_blocking_failures"])
+
+
+def test_grade_case_surfaces_safety_critical_misreads(tmp_path):
+    # G12 flows from the gate layer into the envelope so _tier can bar APPROVABLE,
+    # not just fail import. Here the safety-critical STO terminals are absent.
+    graph = tmp_path / "extraction.json"
+    graph.write_text(
+        json.dumps({"package": {}, "terminals": [{"tag": "CN6:DI1"}]}), encoding="utf-8"
+    )
+    rubric = tmp_path / "rubric.json"
+    rubric.write_text(
+        json.dumps({"categories": {}, "safety_critical": ["CN2:STO_A", "CN2:STO_B"]}),
+        encoding="utf-8",
+    )
+    r = gc.grade_case(graph, rubric)
+    assert r["safety_critical_misreads"]  # non-empty — STO absent from the graph
+    assert "safety_critical_misread" in r["import_blocking_failures"]
+    assert r["import_verdict"] == "FAIL"
