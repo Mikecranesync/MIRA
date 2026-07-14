@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.139.0 (2026-07-13) - feat(drive-commander): autonomous self-eval scout (fetch real manual → extract → grade → email)
+- **Why:** the Drive Commander analogue of the PrintSense internet-print test runner (#2674) — continuously prove the drive-pack pipeline works end-to-end on **real, unseen** inputs, and surface how well the extractor generalises beyond its tuned families.
+- **What:** `tools/drive-pack-extract/self_eval_scout.py` fetches a real OEM VFD manual PDF off the internet for a family NOT in `gold/` (rotating), runs the production `extractor.extract()` → schema-valid staged candidate → `grading/grade_scientific.py` (gold-independent), and emails a complete evaluation via RESEND. Honest by construction: an *empty* pack (0 entries) is reported as a recall/generalization gap, never sold as a good grade; failures emit an honest FAILURE eval. Read-only + staged (no fieldbus, no live `packs/` write, nothing promoted). Scheduled on Bravo via `tools/crew/drive-commander-scout/` (launchd, daily), mirroring the dogfood judge.
+- **First run (2026-07-13):** DURApulse GS20 (51 MB manual) → **0 fault codes / 0 parameters extracted** → real evaluation email delivered. Finding: the PowerFlex-520-tuned parser doesn't yet recognise GS20's table layout — a genuine generalization gap the loop was built to catch.
+- **Test:** `tools/drive-pack-extract/tests/test_self_eval_scout.py` — 7 pure-logic tests (rotation refuses gold families; empty pack ≠ grade; failures render honestly; pack is schema-shaped). No network/PDF/email.
+
 ### v3.137.1 (2026-07-13) - ci(printsense): E2E autopilot workflow on main (enables the staging E2E gate for #2665)
 - **Why:** GitHub Actions cannot dispatch or schedule a workflow until it is on the default branch (verified: 404 not-on-default-branch). The self-driving staging-E2E autopilot must be on main to poll for TELEGRAM_TEST_SESSION and gate PR #2665.
 - **What:** adds .github/workflows/printsense-staging-e2e.yml — polls Doppler stg every 30 min, skips cleanly while the session is absent, and once present runs the 7-check live E2E against @Mira_stagong_bot, uploads the report + evidence, posts to #2665, and merges #2665 only if the E2E and every check pass. Creds via Doppler; the session is never logged; deploys nothing. (Identical to the copy in #2665, so #2665 merges cleanly later.)
