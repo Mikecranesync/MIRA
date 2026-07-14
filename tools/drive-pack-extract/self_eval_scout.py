@@ -77,7 +77,7 @@ SCOUT_TARGETS: list[dict[str, Any]] = [
         # of shared hardware. Fault table is a 3-column mnemonic layout
         # (oC/BE2/LL1) + dotted params (H01.01); the PowerFlex-tuned extractor
         # does not yet parse this shape (the unseen-eval finding — see
-        # MAGNETEK_RESULTS.md).
+        # candidates/magnetek_impulse_g_plus_mini/PROVENANCE.md).
         "pack_id": "magnetek_impulse_g_plus_mini",
         "manufacturer": "Magnetek",
         "series": "IMPULSE G+ Mini",
@@ -205,6 +205,14 @@ def pick_target(
     - ``attempted``: families with a completed (GRADED) run — skipped when auto-selecting.
     - ``target_id``: an explicit pin overrides selection (but still refuses a gold family);
       a pin may re-run an already-attempted family on purpose (manual re-eval).
+
+    Intended cadence consequence (by design): an EMPTY extract still returns
+    ``GRADED``, so each family is evaluated **once** and its gap emailed once —
+    the scout does NOT re-email a 0/0 result daily. Once every eligible family has
+    been evaluated the scheduled run raises here (before the send path) and exits
+    non-zero with **no email** — a loud "add a new family / land a dialect" signal,
+    not silent repetition. Add families to ``SCOUT_TARGETS`` (or promote one to
+    ``gold/``) to keep the daily cadence producing new evaluations.
     """
     gold = _gold_families() if gold is None else gold
     attempted = set() if attempted is None else attempted
