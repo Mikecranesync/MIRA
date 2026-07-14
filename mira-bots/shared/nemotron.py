@@ -75,9 +75,23 @@ class NemotronClient:
         self.rewrite_model = rewrite_model or DEFAULT_REWRITE_MODEL
         self.vl_embed_model = vl_embed_model or DEFAULT_VL_EMBED_MODEL
         self.enabled = bool(self.api_key)
+        # The hosted NIM ranking API is EOL — verified 2026-07-13 (#2257):
+        # POST {base}/ranking → 404, the successor retrieval NIM returns
+        # 410 Gone ("end of life 2026-05-18"), and the account's model catalog
+        # lists zero rerank models. Default OFF so every retrieval doesn't burn
+        # a guaranteed-failing HTTP call + a NEMOTRON_RERANK_FALLBACK alert
+        # (#2662). Re-enable only against a working (e.g. self-hosted NIM)
+        # endpoint: NEMOTRON_RERANK_ENABLED=1 + NEMOTRON_BASE_URL +
+        # NEMOTRON_RERANK_MODEL.
+        self.rerank_enabled = os.environ.get("NEMOTRON_RERANK_ENABLED", "0") == "1"
 
         if self.enabled:
             logger.info("Nemotron client enabled (base=%s)", self.base_url)
+            if not self.rerank_enabled:
+                logger.info(
+                    "Nemotron rerank hop disabled (hosted NIM ranking EOL — #2257); "
+                    "set NEMOTRON_RERANK_ENABLED=1 with a working endpoint to re-enable"
+                )
         else:
             logger.info("Nemotron client disabled — NVIDIA_API_KEY not set, using fallbacks")
 
@@ -186,8 +200,12 @@ class NemotronClient:
 
         Returns list of {"index": int, "text": str, "score": float}
         sorted by score descending. Falls back to original order.
+
+        Gated by ``NEMOTRON_RERANK_ENABLED`` (default OFF — hosted NIM ranking
+        is EOL, see the __init__ comment / #2257): when the hop is disabled the
+        original order is returned with no network call and no fallback alert.
         """
-        if not self.enabled or not passages:
+        if not self.enabled or not self.rerank_enabled or not passages:
             return [{"index": i, "text": p, "score": 1.0} for i, p in enumerate(passages[:top_n])]
 
         payload = {
