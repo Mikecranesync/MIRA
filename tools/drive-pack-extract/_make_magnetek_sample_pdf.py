@@ -151,6 +151,47 @@ def _fault_page_1(c: canvas.Canvas) -> None:
 
 
 # ===========================================================================
+# Page 1b — VARIABLE action-column x on one page (LL1/LL2 regression).
+# A wide-wrapping-name row whose action steps sit far right (x≈400), plus a
+# short row whose action sits far left (x≈228). A PAGE-GLOBAL min(step) would
+# put the action edge at 228 and slice the wide row's name tail into the action
+# band (the real-manual LL1/LL2 garble). The per-row action edge keeps them clean.
+# ===========================================================================
+X_ACTION_LEFT, X_ACTION_RIGHT = 228, 400
+
+
+def _fault_page_variable_action(c: canvas.Canvas) -> None:
+    _draw(c, 100, 762, "Fault Page (Variable Action Column)", font=TITLE_FONT)
+    y = 740
+    _draw(c, 88, y, "Fault", font=BOLD)
+    _draw(c, 167, y, "Fault", font=BOLD)
+    _draw(c, 200, y, "or", font=BOLD)
+    _draw(c, 230, y, "Indicator", font=BOLD)
+    _draw(c, 280, y, "Name/Description", font=BOLD)
+    _draw(c, 413, y, "Corrective", font=BOLD)
+    _draw(c, 483, y, "Action", font=BOLD)
+    _draw_horiz_rule(c, 54, 558, y - 3)
+
+    # Wide row: name wraps well past X_ACTION_LEFT; its own action is far right.
+    y -= 20
+    _draw(c, X_FAULT, y, "WL1")
+    _draw(c, X_DESC, y, "Wide Overtravel Limit One Indicator. The wide")
+    _draw(c, X_ACTION_RIGHT, y, "1. May not require corrective action.")
+    y -= 13
+    _draw(c, X_DESC, y, "overtravel limit one condition is active.")
+    _draw_horiz_rule(c, 54, 558, y - 3)
+
+    # Short row: action far LEFT — this is what a page-global min would latch onto.
+    y -= 20
+    _draw(c, X_FAULT, y, "SH2")
+    _draw(c, X_DESC, y, "Short fault.")
+    _draw(c, X_ACTION_LEFT, y, "1. Reset.")
+    _draw_horiz_rule(c, 54, 558, y - 3)
+
+    _draw(c, 100, 40, SYNTHETIC_FOOTER)
+
+
+# ===========================================================================
 # Page 2 — Negative fault page (NOT a Magnetek fault table).
 # Symptom/Corrective Action table WITHOUT "Name/Description" header word.
 # Also contains a monitor/trace table with "Monitor | Name | Function | Units".
@@ -302,6 +343,11 @@ def main() -> None:
     c.showPage()
 
     _negative_param_page(c)
+    c.showPage()
+
+    # Appended LAST so existing page indices (negative pages at [1] and [3])
+    # stay stable for the tests that address pages by index.
+    _fault_page_variable_action(c)
     c.showPage()
 
     c.save()

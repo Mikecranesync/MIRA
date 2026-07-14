@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.146.0 (2026-07-14) - fix(drive-pack): Run C reconciliation — LL1/LL2 name-garble fix + source-preserved mnemonic schema (ADR-0028)
+- **Why:** reconcile the two parallel Magnetek Run B efforts (merged deterministic dialect #2695 vs unmerged hybrid evidence) into one authoritative result, and make the Run C schema decision.
+- **What:** the hybrid's sole additive finding was a real deterministic bug — `magnetek_dialect` set a PAGE-GLOBAL action-column edge from `min(step_nums)`, slicing wide-wrapping names (LL1/LL2) into the action band. Fixed with a PER-ROW action edge; LL1→"Lower Limit 1—SLOW DOWN Indicator", LL2→"Lower Limit 2—STOP Indicator", 75 other codes unchanged. No LLM fallback needed (deterministic resolves all 10 probe tokens + 77 total).
+- **Schema (ADR-0028):** source-preserved string `fault_id`, `code=None` (never an invented integer), additive `fault_entries` list; int-keyed `fault_codes` + its 5 readers unchanged.
+- **Tests:** new variable-action fixture page (WL1/SH2) + fixture regression + real-manual reconcile locks. 140 pass, 1 xfail, ruff clean, zero regressions.
+
 ### v3.141.0 (2026-07-14) - feat(drive-commander): Magnetek IMPULSE the next unseen family + magnetek grading convention
 - **Why:** make Magnetek (Columbus McKinnon) crane VFDs the next Drive Commander unseen-family target and **execute** the first run now (not just open an issue). Pinned first so the rotation doesn't select GS20 again.
 - **What:** added `magnetek_impulse_g_plus_mini` to `self_eval_scout.py` `SCOUT_TARGETS` (verified official manual 144-25085, firmware 14515) and a family-keyed `magnetek` convention to `grading/domain_rules.py` (dotted params `H01.01`, mnemonic faults `oC`/`BE2`/`LL1` — verified against the real manual; the wrong-family param-id guard stays absolute).

@@ -250,9 +250,19 @@ def parse_magnetek_fault_page(page) -> list[dict[str, Any]]:
         row_words = [w for w in words if row_top < w["top"] < row_bottom]
         if not row_words:
             continue
+        # Per-row action-column edge: this row's OWN leftmost numbered step. The
+        # action column is not perfectly x-aligned across rows — a row with a
+        # short description has its "1." further left than a row whose
+        # description wraps wide (LL1/LL2 wrap to x0≈314). A PAGE-GLOBAL
+        # min(step_nums) therefore sliced the wide rows' description tails into
+        # the action band and garbled their names (e.g. LL1 →
+        # "Lower Limit 1—SLOW Limit 1—SLOW DOWN changed)"). Fall back to the
+        # page action_x0 only when a row has no numbered steps at all.
+        row_steps = [w["x0"] for w in row_words if _STEP_NUM_RE.fullmatch(w["text"])]
+        row_action_x0 = (min(row_steps) - _COL_MARGIN) if row_steps else action_x0
         left = [w for w in row_words if w["x0"] < desc_x0 - _COL_MARGIN]
-        mid = [w for w in row_words if desc_x0 - _COL_MARGIN <= w["x0"] < action_x0 - _COL_MARGIN]
-        right = [w for w in row_words if w["x0"] >= action_x0 - _COL_MARGIN]
+        mid = [w for w in row_words if desc_x0 - _COL_MARGIN <= w["x0"] < row_action_x0 - _COL_MARGIN]
+        right = [w for w in row_words if w["x0"] >= row_action_x0 - _COL_MARGIN]
 
         left_lines = _cluster_lines(left)
         mid_lines = _cluster_lines(mid)

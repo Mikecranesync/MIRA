@@ -67,6 +67,24 @@ def test_fault_extraction_returns_list(pdf):
         assert isinstance(result, list)
 
 
+def test_variable_action_column_wide_name_not_garbled(pdf):
+    """Run C reconciliation regression (the LL1/LL2 garble).
+
+    On the variable-action-column fixture page, a wide-wrapping-name row (WL1,
+    action steps far right) sits with a short row (SH2, action step far left).
+    A PAGE-GLOBAL min(step) action edge sliced the wide row's name tail into the
+    action band → garbled name ('Wide Overtravel Limit overtravel limit one').
+    The per-row action edge keeps it clean. This is exactly the real-manual
+    LL1/LL2 defect the hybrid Run B surfaced.
+    """
+    by_id = {f["fault_id"]: f for f in _faults(pdf)}
+    assert "WL1" in by_id, "wide-name row not extracted"
+    assert by_id["WL1"]["name"] == "Wide Overtravel Limit One Indicator", (
+        f"wide name garbled: {by_id['WL1']['name']!r}"
+    )
+    assert "SH2" in by_id and by_id["SH2"]["name"] == "Short fault"
+
+
 def test_fault_codes_exact_casing_and_spacing(pdf):
     """Fault codes preserve exact casing and spacing from source."""
     faults = _faults(pdf)
