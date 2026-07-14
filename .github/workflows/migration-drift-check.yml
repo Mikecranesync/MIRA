@@ -1,30 +1,41 @@
 name: Migration Drift Check
 
 # The guard that makes "staging/prod silently missed a migration" impossible to
-# ignore (W3, 2026-07-09). Runs tools/migration_drift.py against a deployed DB:
-# it compares every repo migration (mira-hub + mira-ingest) to that DB's
-# schema_migrations ledger and reports anything in the repo but not recorded.
+# ignore (W3, 2026-07-09; hardened 2026-07-14 after the 061-064 incident).
+# Runs tools/migration_drift.py against a deployed DB: it compares every repo
+# migration (mira-hub + mira-ingest) to that DB's schema_migrations ledger and
+# reports anything in the repo but not recorded.
 #
-# Gate posture (per target):
-#   - staging: HARD gate. Staging's ledger was baselined to zero drift on
-#     2026-07-09 (docs/runbooks/migration-apply-and-drift.md), so any new drift
-#     is a real regression — the scheduled run fails loud.
-#   - prod: WARN-ONLY. Prod's ledger has NOT been baselined yet (needs an
-#     approved path); a hard fail would be noise until it is. Flip prod to hard
-#     (drop --warn-only below) once prod drift is zero.
+# 2026-07-14 incident (why this file looks the way it does): hub migrations
+# 061-064 sat unapplied on prod for 2-9 days — one of them the GRANT fix whose
+# absence 500'd asset-enrich the whole time. The original guard failed three
+# ways at once:
+#   1. the scheduled run resolved `inputs.target || 'staging'` — schedule
+#      events have no inputs, so the cron NEVER checked prod;
+#   2. the staging leg resolved its DB URL through the Doppler CI token, which
+#      has no access to config `stg` — every scheduled run died at secret
+#      resolution (red daily since 2026-07-10, lost in inbox noise);
+#   3. prod was --warn-only anyway.
+# Fix: two explicit jobs (no input-fallback trap), staging reads
+# NEON_STG_DATABASE_URL from the `staging` environment (the migration-verify
+# pattern — the Doppler CI token is prd-scoped), prod keeps the Doppler prd
+# path, BOTH run on schedule, prod is now a HARD gate (prod ledger baselined
+# to zero drift 2026-07-14: hub head 064 + ingest 003-013 recorded), and any
+# drift files/updates a P1 ops issue so the alarm is a tracker item, not a
+# fourth unread failure email.
 #
-# Read-only: it only SELECTs schema_migrations — no mutation, so it is safe
-# against prod (prod-guard governs mutations, not reads).
+# Read-only against the DBs: it only SELECTs schema_migrations.
 
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'staging | prod'
+        description: 'Which target(s) to check'
         required: true
-        default: 'staging'
+        default: 'both'
         type: choice
         options:
+          - both
           - staging
           - prod
   schedule:
@@ -33,51 +44,84 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
-  drift:
-    name: Migration drift (${{ github.event.inputs.target || 'staging' }})
+  drift-staging:
+    name: Migration drift (staging)
+    if: ${{ github.event_name == 'schedule' || inputs.target == 'both' || inputs.target == 'staging' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # `staging` environment exposes NEON_STG_DATABASE_URL (no required
+    # reviewers — same as migration-verify.yml). Do NOT switch this to the
+    # Doppler CI token: it is prd-scoped and cannot read config `stg`
+    # (failure mode #2 above).
+    environment: staging
     steps:
       - uses: actions/checkout@v6
-
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      - name: Install psycopg2 + Doppler
+      - name: Install psycopg2
         run: pip install psycopg2-binary
-
-      - uses: dopplerhq/cli-action@v4
-
-      - name: Resolve DATABASE_URL for target
+      - name: Check migration drift (staging — hard gate)
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
         run: |
           set -euo pipefail
-          case "${{ github.event.inputs.target || 'staging' }}" in
-            staging) CFG="stg" ;;
-            prod)    CFG="prd" ;;
-            *) echo "::error::unknown target"; exit 1 ;;
-          esac
-          URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "$CFG" --plain)"
-          if [ -z "$URL" ]; then echo "::error::empty DATABASE_URL for factorylm/$CFG"; exit 1; fi
-          echo "::add-mask::$URL"
-          echo "DATABASE_URL=$URL" >> "$GITHUB_ENV"
-
-      - name: Check migration drift (staging = hard gate, prod = warn-only)
-        run: |
-          set -euo pipefail
-          TARGET="${{ github.event.inputs.target || 'staging' }}"
-          # prod isn't baselined yet -> advisory; staging is zero-drift -> hard fail.
-          FLAG=""
-          [ "$TARGET" = "prod" ] && FLAG="--warn-only"
-          python tools/migration_drift.py $FLAG --database-url "$DATABASE_URL" | tee /tmp/drift.out || RC=$?
+          if [ -z "$DATABASE_URL" ]; then echo "::error::NEON_STG_DATABASE_URL is empty"; exit 1; fi
+          python tools/migration_drift.py --database-url "$DATABASE_URL" | tee /tmp/drift.out || RC=$?
           {
-            echo "## Migration drift — ${TARGET}"
+            echo "## Migration drift — staging"
             echo '```'
             cat /tmp/drift.out
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "${RC:-0}"
+      - name: File/refresh drift issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/migration-drift-issue.sh staging "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+  drift-prod:
+    name: Migration drift (prod)
+    if: ${{ github.event_name == 'schedule' || inputs.target == 'both' || inputs.target == 'prod' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install psycopg2 + Doppler
+        run: pip install psycopg2-binary
+      - uses: dopplerhq/cli-action@v4
+      - name: Resolve prod DATABASE_URL
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          if [ -z "$URL" ]; then echo "::error::empty DATABASE_URL for factorylm/prd"; exit 1; fi
+          echo "::add-mask::$URL"
+          echo "DATABASE_URL=$URL" >> "$GITHUB_ENV"
+      - name: Check migration drift (prod — hard gate)
+        run: |
+          set -euo pipefail
+          # HARD gate since 2026-07-14: prod ledger baselined to zero drift
+          # (hub 001-064 + ingest 003-013 all recorded). Any drift now means a
+          # merged migration was never promoted — exactly the 061-064 failure.
+          python tools/migration_drift.py --database-url "$DATABASE_URL" | tee /tmp/drift.out || RC=$?
+          {
+            echo "## Migration drift — prod"
+            echo '```'
+            cat /tmp/drift.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "${RC:-0}"
+      - name: File/refresh drift issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/migration-drift-issue.sh prod "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
