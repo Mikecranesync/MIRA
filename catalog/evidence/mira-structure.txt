@@ -1,0 +1,74 @@
+# MIRA structure evidence — commit cde2c418 — 2026-07-14
+## module dirs (top-level, excluding dotdirs)
+bravo
+calendar
+config
+content_strategy
+contracts
+demo
+deployment
+device-profiles
+docs
+dogfood-output
+evals
+ignition
+infra
+install
+internet_print_tests
+machine-print-pack
+marketing
+mira_copy
+Mira-BizDev
+mira-bots
+mira-bridge
+mira-cmms
+mira-connect
+mira-connectors
+mira-contextualizer
+mira-core
+mira-crawler
+mira-fault-detective
+mira-fault-sim
+mira-hub
+mira-ignition-exchange
+mira-machine-logic-graph
+mira-mcp
+mira-pipeline
+mira-plc-parser
+mira-relay
+mira-scan-monday
+mira-sidecar
+mira-trend-viewer
+mira-web
+nango-integrations
+outputs
+paperclip
+plc
+PRDS
+printsense
+qa
+reports
+research
+samples
+scripts
+simlab
+tests
+tools
+wiki
+## .github/workflows count
+      48
+## docker-compose files
+docker-compose.fault-detective.yml
+docker-compose.hub.yml
+docker-compose.observability.yml
+docker-compose.override.yml
+docker-compose.pathb.yml
+docker-compose.saas.yml
+docker-compose.staging-vps.yml
+docker-compose.staging.yml
+docker-compose.sync.yml
+docker-compose.yml
+## VERSION
+3.146.0
+## CODEOWNERS?
+none

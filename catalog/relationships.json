@@ -1,0 +1,36 @@
+{
+  "generated": "2026-07-14",
+  "note": "Phase 3 output. Seeded with Phase-1 confirmed structural edges. Cross-repo/-module edges are added only when code-verified; documentation-derived edges are marked confidence=strong-inference.",
+  "edges": [
+    {
+      "id": "MIRA->deploy->vps",
+      "from": "MIRA",
+      "to": "VPS (DigitalOcean 165.245.138.91)",
+      "type": "deploys_to",
+      "confidence": "confirmed",
+      "detection_method": "ls",
+      "evidence": ".github/workflows/deploy-vps.yml",
+      "last_verified": "2026-07-14"
+    },
+    {
+      "id": "MIRA<->factorylm-overlap",
+      "from": "MIRA",
+      "to": "factorylm",
+      "type": "conceptual_overlap_unverified",
+      "confidence": "unknown",
+      "detection_method": "manual-reasoning",
+      "evidence": "Both branded FactoryLM; separate remotes. Relationship (superseded? shared libs? disjoint?) not code-verified.",
+      "last_verified": "2026-07-14"
+    },
+    {
+      "id": "MIRA->MIRA_PLC-codeline",
+      "from": "MIRA/plc",
+      "to": "MIRA_PLC",
+      "type": "paired_codeline",
+      "confidence": "strong-inference",
+      "detection_method": "existing-doc",
+      "evidence": "session memory project_mira_plc_dir_active: monorepo plc/ = R&D, MIRA_PLC = shippable artifacts.",
+      "last_verified": "2026-07-14"
+    }
+  ]
+}

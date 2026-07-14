@@ -1,0 +1,5 @@
+# deployments.yaml — Compose files, environments, deploy workflows, VPS targets
+# Phase 2 output. Each entry SHOULD carry an evidence: [fact-object] list.
+# Fill via read-only scouts; the sole writer spot-verifies before marking confirmed.
+status: seeded   # -> populated in Phase 2
+deployments: []

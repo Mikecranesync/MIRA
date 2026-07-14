@@ -1,0 +1,37 @@
+# repositories/factorylm.yaml — separate Digital-Twin monorepo (NOT the MIRA repo)
+repository: factorylm
+classification: production-critical
+visibility: public
+default_branch: main
+primary_language: Python
+local_checkout: "~/factorylm"
+commit_at_catalog: "2129452"        # local ~/factorylm HEAD
+behind_origin_main: 10              # local checkout was 10 commits behind origin/main at run
+last_push: "2026-06-30"
+open_prs: 10
+open_issues: 28
+purpose: >
+  The original "FactoryLM - Industrial AI Platform (Digital Twin Architecture)" monorepo.
+  Distinct codebase from MIRA. Broad surface (~40 top-level dirs) spanning services, core,
+  agents/antfarm, gateway, cmms, cosmos, diagnosis, infra, video/promo, remoteme jarvis node,
+  openclaw, my-ralph. Home of the FactoryLM cluster tooling and the promo-video pipeline.
+caveats:
+  - "Local checkout is 10 behind origin/main — facts anchored to local commit 2129452 may lag origin."
+  - "Overlaps conceptually with MIRA (both 'FactoryLM'); relationship to MIRA is not yet code-verified (see gaps-and-risks.md — possible duplication / superseded surfaces)."
+top_level_dirs_sample: [services, core, agents, antfarm, gateway, cmms, cosmos, diagnosis, infra, brain, collectors, integrations, kb, monitoring, observability, workers, workflows, video, recordings, remoteme-jarvis-node, openclaw, my-ralph, sim, simulation, specs, tests, tools]
+facts:
+  - fact: "factorylm is a separate monorepo from MIRA with its own git remote git@github.com:Mikecranesync/factorylm.git."
+    repository: factorylm
+    file: catalog/evidence/factorylm-structure.txt
+    commit: "2129452"
+    detection_method: gh-cli
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "The local ~/factorylm checkout is 10 commits behind origin/main."
+    repository: factorylm
+    file: catalog/evidence/factorylm-structure.txt
+    commit: "2129452"
+    detection_method: gh-cli
+    confidence: confirmed
+    last_verified: "2026-07-14"
+    notes: "Deep archaeology of factorylm internals deferred to a later phase; enumerated at top-level-dir granularity here."

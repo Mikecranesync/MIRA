@@ -1,0 +1,14 @@
+flowchart LR
+  %% Document upload -> ingest -> retrieval -> cited answer (Phase 1 seed; Phase 3 verifies each hop)
+  UP["Upload (Hub /api/documents/upload, folder=brain, MiraDrop)"] --> KE["knowledge_entries (is_private=true, tenant UUID)"]
+  OEM["OEM crawl / seeds (mira-crawler)"] --> KE2["knowledge_entries (is_private=false, system tenant)"]
+  KE --> RAG["BM25 + embedding retrieval (manual-rag.ts / recall_knowledge)"]
+  KE2 --> RAG
+  RAG --> ENG["Supervisor engine.py (grounding + citation_compliance)"]
+  ENG --> ANS["Cited answer on chat surface"]
+
+  %% Telemetry ingest (one-pipeline law)
+  TAGS["Ignition / MQTT / PLC tags"] --> IC["mira-relay ingest_contract.py"]
+  IC --> IB["ingest_batch (tag_ingest.py)"]
+  IB --> TE["tag_events / live_signal_cache"]
+  TE --> DIFF["tag_diff_logger (difference engine)"]

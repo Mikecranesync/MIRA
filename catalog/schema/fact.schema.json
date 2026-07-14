@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://factorylm/catalog/fact.schema.json",
+  "title": "Catalog Fact",
+  "description": "A single evidence-backed claim in the repository archaeology catalog. Every `confirmed` fact must carry provenance (file + detection_method). Line numbers are HINTS, not identity — commit + file + symbol are the durable anchors.",
+  "type": "object",
+  "required": ["fact", "repository", "confidence", "detection_method", "last_verified"],
+  "properties": {
+    "fact": {
+      "type": "string",
+      "minLength": 8,
+      "description": "The claim, stated as a falsifiable sentence."
+    },
+    "repository": {
+      "type": "string",
+      "description": "Owning repository (e.g. MIRA, factorylm, MIRA_PLC)."
+    },
+    "file": {
+      "type": ["string", "null"],
+      "description": "Repo-relative path the evidence lives in. Required when confidence=confirmed."
+    },
+    "symbol": {
+      "type": ["string", "null"],
+      "description": "Durable anchor: function/class/route/table name. Preferred over line numbers."
+    },
+    "line_start": {"type": ["integer", "null"], "description": "Hint only — may drift."},
+    "line_end": {"type": ["integer", "null"], "description": "Hint only — may drift."},
+    "commit": {
+      "type": ["string", "null"],
+      "description": "Commit the fact was verified against (short SHA)."
+    },
+    "detection_method": {
+      "type": "string",
+      "enum": ["gh-cli", "gh-description", "rg", "grep", "ls", "fd", "file-read", "ast-grep", "codegraph", "yq", "jq", "syft", "osv-scanner", "manual-reasoning", "existing-doc"],
+      "description": "How the fact was detected. gh-description + manual-reasoning + existing-doc CANNOT support confidence=confirmed for a code relationship (plan: never assert relationships from documentation alone)."
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["confirmed", "strong-inference", "unknown"],
+      "description": "confirmed = grounded in code/config/git via a code-level detection_method. strong-inference = supported but derived (e.g. from a gh description or a single doc). unknown = flagged for follow-up."
+    },
+    "last_verified": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "ISO date the fact was last checked."
+    },
+    "notes": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false
+}

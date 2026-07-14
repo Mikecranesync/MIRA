@@ -1,0 +1,27 @@
+graph TD
+  %% FactoryLM/MIRA org — active-repo + MIRA chat-path architecture (Phase 1 seed; Phase 3 expands)
+  subgraph org["Mikecranesync org (active repos)"]
+    MIRA["MIRA (primary monorepo)"]
+    FLM["factorylm (Digital-Twin monorepo)"]
+    PLC["MIRA_PLC (firmware + Ignition, private)"]
+    PROMO["factorylm-promo-video-generator"]
+    LADDER["ladder-logic-editor"]
+  end
+
+  subgraph chat["MIRA VPS chat path (confirmed via CLAUDE.md build-state)"]
+    PHONE["User phone"] --> OW["Open WebUI (mira-core)"]
+    OW --> PIPE["mira-pipeline :9099"]
+    PIPE --> SUP["Supervisor / engine.py (mira-bots/shared)"]
+    SUP --> CASCADE["Cascade: Groq -> Cerebras -> Together"]
+    SUP --> NEON["NeonDB (kg_entities, knowledge_entries, cmms_*)"]
+  end
+
+  subgraph surfaces["Consumption surfaces (adapters)"]
+    SLACK["Slack"] --> SUP
+    TG["Telegram"] --> SUP
+    IGN["Ignition cloud-chat"] --> PIPE
+    HUB["mira-hub Command Center (app.factorylm.com)"] --> NEON
+  end
+
+  MIRA --> PLC
+  MIRA -.overlap/unverified.-> FLM

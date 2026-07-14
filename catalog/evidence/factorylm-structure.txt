@@ -1,0 +1,49 @@
+# factorylm structure evidence — commit 2129452 — checkout ~/factorylm (10 behind origin/main) — 2026-07-14
+## top-level dirs
+_BUILDS
+agents
+analytics
+antfarm
+apps
+brain
+cmms
+collectors
+config
+cookoff
+core
+cosmos
+data
+demos
+diagnosis
+docs
+execution
+factorylm-promo-video
+gateway
+infra
+integrations
+kb
+monitoring
+my-ralph
+observability
+openclaw
+output
+packages
+prompts
+recordings
+recovery
+remoteme-jarvis-node
+runbooks
+scripts
+services
+sim
+simulation
+specs
+tests
+tools
+video
+workers
+workflows
+## workflows
+       3
+## compose
+docker-compose.yml

@@ -1,0 +1,32 @@
+# repositories/MIRA_PLC.yaml — PLC firmware + Ignition project (PRIVATE, NOT cloned locally)
+repository: MIRA_PLC
+classification: production-critical
+visibility: private
+default_branch: main
+primary_language: Python
+local_checkout: null                 # not cloned on CHARLIE at run time
+last_push: "2026-06-30"
+open_prs: 12
+open_issues: 3
+purpose: >
+  MIRA conveyor PLC firmware (Micro 820 + GS10 VFD) + Ignition project + work-instruction PDF
+  generator. Demo target: Florida Automation Expo 2026-05-21. The shippable-artifact codeline
+  that pairs with MIRA/plc/ (the monorepo's iterative R&D codeline).
+internals_status: unknown
+internals_note: >
+  Repository is private and was NOT cloned locally during this run. Internals are cataloged at
+  gh-metadata level only. Do NOT infer file/module contents — deep archaeology requires a clone
+  and a follow-up pass (see unknowns.md).
+relationship_to_MIRA_plc_dir:
+  claim: "MIRA_PLC (private repo) holds shippable artifacts; MIRA/plc/ is the active R&D codeline; the two codelines feed each other."
+  confidence: strong-inference
+  detection_method: existing-doc
+  source: "session memory project_mira_plc_dir_active / project_mira_plc_pr6_split; gh description"
+facts:
+  - fact: "MIRA_PLC is a private repo, default branch main, last pushed 2026-06-30, with 12 open PRs and 3 open issues."
+    repository: MIRA_PLC
+    file: null
+    detection_method: gh-cli
+    confidence: strong-inference
+    last_verified: "2026-07-14"
+    notes: "gh metadata only; no local clone, so file-level facts cannot be confirmed."

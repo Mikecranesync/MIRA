@@ -1,59 +1,63 @@
-# PLAN — Path to Beta Testers (next official dev phase)
+# PLAN — Repository Archaeology Catalog
 
-**Branch:** `feat/path-to-beta` · **Worktree:** `.claude/worktrees/path-to-beta` · **Base:** origin/main `4b9778c8`
-**Authored:** 2026-06-07 · **Owner:** Mike Harper (operator)
+**Branch:** `docs/repo-archaeology-catalog` · **Worktree:** `.claude/worktrees/repo-archaeology` · **Base:** origin/main `cde2c418`
+**Goal source:** `~/Downloads/Repository Archaeology Plan.docx` · **Run:** autonomous, 2026-07-14
+**(Replaces the stale `feat/path-to-beta` PLAN.md that shipped on origin/main — that content lives in git history + on `feat/path-to-beta`.)**
 
-## North Star (the beta gate)
-A maintenance person can upload their own equipment manual, ask a real troubleshooting
-question, and MIRA returns a grounded answer with citations from that uploaded manual —
-**without Mike manually fixing anything.**
+## Contract
 
-## Scope (numbered — the contract)
+Durable, evidence-backed, machine-readable catalog of every FactoryLM/MIRA repo + its important
+systems. Every `confirmed` fact carries repository/file/line/commit/detection-method/last_verified.
+**No production changes. No merges. Read-only archaeology.** Reuse existing arch docs
+(`docs/ARCHITECTURE.md`, `CONTEXT-MAP.md`, `docs/THEORY_OF_OPERATIONS.md`) — don't restart done work.
+Distinguish confirmed / strong-inference / unknown. Never invent relationships from filenames alone.
 
-1. **Lane 1 — Repo memory / North Star alignment.** Add the BETA GATE line to root
-   `CLAUDE.md` North Star; add the 4-week beta phase to `NORTH_STAR.md`; record blockers in
-   `wiki/hot.md`; add beta-readiness as primary focus to `.claude/CLAUDE.md`. Update auto-memory.
-2. **Lane 2 — Upload-to-retrieval gap investigation.** Trace the full upload path (CodeGraph),
-   write a findings doc, assess PR #1592 (right fix? mergeable? minimal path), and write a
-   **failing** test `tests/beta/test_upload_retrieval_citation.py` that proves the gap.
-3. **Lane 3 — Beta demo tenant / empty state.** Idempotent seed (`tools/seeds/beta_demo_seed.py`
-   or `.sql`) for the bench story (CV-101, Micro820, GS10 + fault codes, manuals, WOs, KG nodes,
-   a known-good Q/A). Design a first-run empty-state message.
-4. **Lane 4 — Graph stability.** Confirm PR #1742 (NaN coord fix) merge/deploy state; add a
-   regression test for empty/NaN graph coords.
-5. **Lane 5 — Ignition Ask MIRA readiness.** Check HMAC key in Doppler prd, WebDev deploy state,
-   `ignition_chat.py` `source="direct_connection"`, endpoint health. Write
-   `docs/runbooks/activate-ignition-ask-mira.md`.
-6. **Lane 6 — Beta readiness verification harness.** `tests/beta/beta_ready_upload_retrieval_citation.py`
-   — the RELEASE GATE test (expected to FAIL until the gap closes). PDF fixture
-   `tests/beta/fixtures/gs10_fault_codes.pdf`.
+## Reality (Phase-1 orientation, confirmed via `gh repo list Mikecranesync` + local git)
 
-## OUT of scope (do NOT touch)
+Org has ~62 repos; the **active, non-archived** set is small:
+- **MIRA** — primary monorepo (this worktree). ~90% of the live surface. `mira-*` modules + plc/ + simlab/ + ignition/.
+- **factorylm** — separate Digital-Twin monorepo (`~/factorylm`).
+- **MIRA_PLC** (private) — PLC firmware + Ignition project + PDF generator.
+- **factorylm-promo-video-generator**, **ladder-logic-editor** — supporting tools.
+- **FactoryLM_v2.0** (private) — likely superseded.
+Everything pushed `2026-03-03` = the "great archive" (merged-into-monolith cluster + frozen Jarvis/PAI/openclaw/Ralph).
 
-- Merging PR #1592, #1742, or any PR (operator merges; I only assess + flag).
-- Any prod deploy, VPS SSH, `docker compose` on VPS, prod NeonDB `psql`, prod schema edits.
-- Engine FSM/gate logic rewrites (`engine.py`) — Lane 2 closing-the-gap code is NOT in scope
-  this session; investigation + failing test only.
-- Reading/writing prod Telegram bot; pointing any build at `@FactoryLM_Diagnose`.
-- Rotating/printing secret VALUES (Doppler key presence check only — name, not value).
-- Touching `mira-hub` schema migrations against any live DB.
+## Scope (IN)
 
-## Per-task success criteria
+1. **Catalog scaffold** under `catalog/` — README + machine-readable YAML/JSON + evidence/ + mermaid.
+2. **Phase 1 — Org discovery.** `organization.yaml` (all 62 repos, classified) + `repositories/<repo>.yaml` for the ~6 active repos (branch, langs, activity, purpose, CI, deploy, relationships).
+3. **Phase 2 — Repo archaeology (ACTIVE).** MIRA per-module deep dive; factorylm + MIRA_PLC key-systems; tools lighter. Populate `services.yaml`, `apis.yaml`, `databases.yaml`, `schemas.yaml`, `workers-and-crons.yaml`, `integrations.yaml`, `deployments.yaml`, `environment-variables.yaml`, `feature-flags.yaml` — each fact evidence-backed.
+4. **Phase 3 — Cross-repo architecture.** `relationships.json` + `architecture.mmd` + `data-flows.mmd`. Trace upload→ingest→retrieval, Ask MIRA, KB+KG, telemetry ingest, PLC/Ignition/Slack/Telegram/kiosk surfaces, deterministic-vs-LLM, approval gates, staging/prod. `gaps-and-risks.md` = duplication/dead-code/rebuilt-elsewhere/coupling.
+5. **Phase 4 — Dependency & security.** `dependencies/` per active repo; SBOM (syft if present) / vuln (osv-scanner if present) / secrets-risk (no values) / base images / exposed services. Scanner output = evidence needing interpretation.
+6. **Phase 5 — Durable assembly + evidence.** Fact objects with full provenance; `catalog/evidence/` raw findings; `unknowns.md`.
+7. **Phase 6 — Refresh tooling.** `catalog/refresh.sh` + `.claude/commands/catalog-org.md` skill + `catalog/validate.py` (files exist, required fields present, mermaid compiles, dup ids rejected, confirmed⇒evidence, deleted-surfaced). Optional CI stub documented (not merged).
 
-1. Lane 1: BETA GATE line present in root CLAUDE.md; 4-week plan in NORTH_STAR.md; hot.md session
-   block added; .claude/CLAUDE.md beta-focus line. Memory file + MEMORY.md index line.
-2. Lane 2: `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md` exists with the traced
-   path + #1592 assessment + minimal close path. `pytest tests/beta/test_upload_retrieval_citation.py`
-   runs and **fails/xfails for the documented reason** (marker explaining it's the gate).
-3. Lane 3: seed script is idempotent (re-run = no dup rows), labels rows as demo, offline-safe
-   (does NOT require prod). Empty-state copy written to a doc.
-4. Lane 4: PR #1742 state confirmed in writing; regression test added that asserts no crash on
-   empty/NaN coords.
-5. Lane 5: runbook exists with exact PLC-laptop steps; Doppler key presence reported; endpoint health.
-6. Lane 6: release-gate test exists, importable, runs, clearly marked as the beta gate.
+## Out of scope (OUT)
+
+- Any code change to production modules / migrations / deploys / VPS / prod DB. **Read-only.**
+- Merging this branch (operator merges after HANDOFF).
+- Deep archaeology of **archived** repos — Phase-1 classification only.
+- Modifying any file outside `catalog/`, `PLAN.md`, `HANDOFF.md`, `.planning/STATE.md`, `.claude/commands/catalog-org.md`.
+- Fixing any bug/risk found — record in `gaps-and-risks.md`, do not fix.
+- Running scanners that mutate state or hit external prod services / prod NeonDB / `@FactoryLM_Diagnose`.
+
+## Success criteria
+
+- P1: `organization.yaml` = all 62 repos classified (confirmed from gh); active set has `repositories/<repo>.yaml`.
+- P2: every MIRA module has a component record with entry point + evidence; the 9 YAML inventories populated with file:line evidence.
+- P3: `relationships.json` + 2 mermaid diagrams compile; `gaps-and-risks.md` evidence-backed.
+- P4: `dependencies/` per active repo; SBOM/vuln/secrets present or explicitly "tool unavailable".
+- P5: all `confirmed` facts have `file` + `detection_method`; `unknowns.md` separates inference from fact.
+- P6: `python catalog/validate.py` exits 0; `/catalog-org` refresh entry point exists.
 
 ## Verify steps
-- `ruff check` on any `.py` touched.
-- `pytest tests/beta/ -q` runs (gate tests may xfail by design).
-- `git diff --name-only $(git merge-base origin/main HEAD)..HEAD` contains nothing in OUT-of-scope.
-- HANDOFF.md written at stop with row-by-row PLAN status.
+
+- `python catalog/validate.py` exits 0 · `yq` parses every `catalog/*.yaml` · `jq` parses `relationships.json`.
+- mermaid blocks compile (mmdc if available, else the validator's syntax check).
+- Every `confidence: confirmed` fact has non-empty `file` + `detection_method`.
+- **Spot-verify ≥10 sampled facts against real `file:line` before each commit** — guard against subagent-fabricated symbols (global CLAUDE.md law).
+
+## Cadence & stop conditions
+
+Commit each phase (durable checkpoint). Update `.planning/STATE.md` after each phase.
+STOP + write HANDOFF.md on: turn > 200, budget > 70%, OUT-of-scope touch, architecture/security decision needed, all phases complete.

@@ -1,0 +1,184 @@
+# repositories/MIRA.yaml — the primary FactoryLM/MIRA monorepo
+repository: MIRA
+classification: production-critical
+visibility: public
+default_branch: main
+primary_language: Python
+commit_at_catalog: cde2c418
+version: "3.146.0"          # /VERSION at commit cde2c418
+last_push: "2026-07-14"
+open_prs: 30
+open_issues: 30
+purpose: >
+  The live product. FactoryLM = the maintenance-context layer; MIRA = the grounded diagnostic
+  agent proving it by diagnosing with citations. Chat surfaces (Slack/Telegram/Ignition/QR/web)
+  render the same approved-context answer over one Supervisor engine.
+entry_docs:
+  - CLAUDE.md              # build state + repo map
+  - CONTEXT-MAP.md         # per-module contexts
+  - docs/THEORY_OF_OPERATIONS.md  # primary doctrine
+  - docs/ARCHITECTURE.md   # layer map + dependency rules
+  - NORTH_STAR.md          # canonical wedge
+
+# --- CI / deploy (confirmed) ---
+ci:
+  workflow_count: 48
+  gates_of_note: [version-gate.yml, staging-gate.yml, beta-gate.yml, smoke-test.yml, ci.yml, code-review.yml, migration-verify.yml]
+  detection_method: ls
+  evidence_file: catalog/evidence/mira-structure.txt
+deploy:
+  compose_files: [docker-compose.yml, docker-compose.saas.yml, docker-compose.staging.yml, docker-compose.staging-vps.yml, docker-compose.hub.yml, docker-compose.observability.yml, docker-compose.fault-detective.yml, docker-compose.override.yml, docker-compose.pathb.yml, docker-compose.sync.yml]
+  prod_target: "VPS 165.245.138.91 (DigitalOcean) via deploy-vps.yml"
+  environments: [dev (CHARLIE local), staging (CHARLIE + Neon staging branch / VPS stg-*), prod (VPS)]
+  detection_method: ls
+
+# --- Module inventory (Phase 1: enumeration confirmed; per-module deep dive = Phase 2) ---
+# 23 mira-* module dirs confirmed via `ls -d` at commit cde2c418. The 9 flagged
+# `documented_in_repo_map: false` EXIST but are ABSENT from CLAUDE.md's Repo Map —
+# a real documentation-drift finding (see gaps-and-risks.md).
+modules:
+  # --- documented in CLAUDE.md repo map ---
+  - name: mira-core
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "Open WebUI + MCPO proxy + ingest service (photo/RAG API in mira-ingest/)."
+  - name: mira-bots
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "Telegram, Slack, email adapters + shared/ diagnostic engine (Supervisor, engine.py)."
+  - name: mira-bridge
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "Node-RED orchestration, SQLite WAL shared state."
+  - name: mira-mcp
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "FastMCP server, NeonDB recall, equipment diagnostic + CMMS tools."
+  - name: mira-pipeline
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "OpenAI-compat API wrapping Supervisor (shared/engine.py) — active VPS chat path. Ignition cloud-chat endpoint lives here."
+  - name: mira-web
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "PLG funnel — Hono/Bun, Stripe, /cmms landing + Mira AI chat."
+  - name: mira-cmms
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "Atlas CMMS — work orders, PM scheduling, asset registry."
+  - name: mira-crawler
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "KB ingest + manual chunker (OEM discovery pipeline). ingest/uns.py = canonical UNS path builders."
+  - name: mira-ops
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "Observability dashboards (Prometheus, Grafana, Flower). NOTE: dir not present at commit cde2c418 top-level — verify in Phase 2."
+    status: verify
+  - name: mira-relay
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "Cloud relay endpoint for Ignition factory->cloud tag streaming (SaaS-only). Canonical ingest contract: ingest_contract.py + tag_ingest.py."
+  - name: mira-sidecar
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "LEGACY ChromaDB RAG, superseded by mira-pipeline (ADR-0008). Sunset pending OEM migration."
+    status: legacy
+  - name: mira-connect
+    documented_in_repo_map: true
+    purpose_source: existing-doc
+    purpose: "DEFERRED Modbus/PLC drivers (post-MVP 'Config 4'). Dormant."
+    status: deferred
+  - name: mira-hub
+    documented_in_repo_map: true   # referenced heavily in .claude rules; app.factorylm.com Command Center
+    purpose_source: existing-doc
+    purpose: "FactoryLM Command Center (app.factorylm.com) — namespace builder, uploads, KG proposals, asset-agent train/validate/approve. Next.js + NeonDB + RLS."
+  # --- present in tree but NOT in CLAUDE.md repo map (documentation drift; Phase 2 targets) ---
+  - name: mira-connectors
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown — CMMS/integration connector framework (per memory project_connector_framework: base/canonical/factory/gate/service/store). Verify in Phase 2."
+    status: undocumented
+  - name: mira-contextualizer
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown — has a gui/ front end (referenced in ui-style rule). Verify in Phase 2."
+    status: undocumented
+  - name: mira-fault-detective
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown — likely the bench Fault-Detective demo surface. Verify in Phase 2."
+    status: undocumented
+  - name: mira-fault-sim
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown — fault simulation. Verify in Phase 2."
+    status: undocumented
+  - name: mira-ignition-exchange
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown — Ignition project exchange packaging. Verify in Phase 2."
+    status: undocumented
+  - name: mira-machine-logic-graph
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown — machine logic graph. Verify in Phase 2."
+    status: undocumented
+  - name: mira-plc-parser
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown — PLC program parser with gui/ (referenced in ui-style rule). Verify in Phase 2."
+    status: undocumented
+  - name: mira-scan-monday
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown. Verify in Phase 2."
+    status: undocumented
+  - name: mira-trend-viewer
+    documented_in_repo_map: false
+    purpose_source: unknown
+    purpose: "unknown — bench historian/trend viewer (cf. TRENDS localhost:8766 in memory). Verify in Phase 2."
+    status: undocumented
+
+non_module_dirs:
+  - {name: plc/, purpose: "PLC program files (Micro820 Structured Text) + discover.py + bench tools.", source: existing-doc}
+  - {name: simlab/, purpose: "Deterministic headless juice-bottling-line benchmark (SimLab). python -m simlab.", source: existing-doc}
+  - {name: ignition/, purpose: "Ignition WebDev endpoints + Perspective + tag allowlist.", source: existing-doc}
+  - {name: tests/, purpose: "5-regime test framework + tests/eval + tests/beta gate + tests/simlab.", source: existing-doc}
+  - {name: tools/, purpose: "Photo pipeline, Drive ingest, hooks (prod-guard/rm-guard/stop-gate), orchestrator, codegraph.", source: existing-doc}
+  - {name: wiki/, purpose: "LLM-maintained ops wiki (Obsidian vault) + orchestrator KG.", source: existing-doc}
+  - {name: docs/, purpose: "PRD, ADRs, specs, runbooks, migrations, plans, environments doctrine.", source: existing-doc}
+
+facts:
+  - fact: "MIRA is the primary production monorepo, actively pushed 2026-07-14, at version 3.146.0."
+    repository: MIRA
+    file: VERSION
+    commit: cde2c418
+    detection_method: file-read
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "MIRA has 23 mira-* module directories at top level."
+    repository: MIRA
+    file: catalog/evidence/mira-structure.txt
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "Nine mira-* modules exist in the tree but are absent from CLAUDE.md's Repo Map (mira-connectors, mira-contextualizer, mira-fault-detective, mira-fault-sim, mira-ignition-exchange, mira-machine-logic-graph, mira-plc-parser, mira-scan-monday, mira-trend-viewer)."
+    repository: MIRA
+    file: catalog/evidence/mira-structure.txt
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"
+    notes: "Documentation drift — the canonical repo map understates the module surface. See gaps-and-risks.md."
+  - fact: "MIRA has 48 GitHub Actions workflows including required gates version-gate, staging-gate, beta-gate."
+    repository: MIRA
+    file: .github/workflows
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"
+  - fact: "MIRA ships 10 docker-compose files spanning dev/staging/saas/hub/observability/fault-detective."
+    repository: MIRA
+    file: docker-compose.yml
+    detection_method: ls
+    confidence: confirmed
+    last_verified: "2026-07-14"
