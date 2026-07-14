@@ -80,6 +80,10 @@
           {
             "type": "command",
             "command": "bash tools/hooks/prod-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash tools/hooks/rm-guard.sh"
           }
         ]
       },
