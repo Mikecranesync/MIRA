@@ -321,3 +321,59 @@ def test_email_held_when_judge_fails(tmp_path, monkeypatch):
     row = runner.run_one(src, args)
     assert row["email"].startswith("held")  # not sent — no grade
     assert sent["n"] == 0                    # mailer.send never called for an ungraded report
+
+
+# ── PR4: deterministic grader runs BEFORE the judge (two-axis verdict) ─────────
+
+_PNG_1x1 = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+                         "890000000a49444154789c6360000002000154a24f5f0000000049454e44ae426082")
+
+
+def _run_with_graph(tmp_path, monkeypatch, graph, test_id, judge=None):
+    fixture = tmp_path / "x.png"
+    fixture.write_bytes(_PNG_1x1)
+    src = {"test_id": test_id, "local_file": str(fixture), "title": "t", "publisher": "p",
+           "source_url": "https://example.org/x.png", "category": "test", "caption": "Explain this print."}
+    monkeypatch.setattr(runner, "TESTS_ROOT", tmp_path / "out")
+    import submit as submitmod
+
+    monkeypatch.setattr(submitmod, "submit_image_sync", lambda image_bytes, caption, **kw: {
+        "handled": True, "classification": "ELECTRICAL_PRINT", "final_text": "R", "map_text": "m",
+        "graph": graph, "interpreter_used": True, "model": "x", "latency_s": 0.1})
+    monkeypatch.setattr("runner.run_judge",
+                        judge or (lambda *a, **k: {"overall_score_provisional": 80, "hard_failure": False, "provisional": True}))
+    args = runner.argparse.Namespace(page=0, dpi=200, caption="Explain this print.", no_judge=False,
+                                     send_email=False, recipient=None, regrade=False)
+    return runner.run_one(src, args)
+
+
+def test_run_one_import_verdict_fails_on_structural_defect(tmp_path, monkeypatch):
+    # The deterministic grader (printsense) runs on the extraction and OWNS import safety —
+    # independent of the LLM judge (which here returns a healthy 80).
+    bad = {"package": {"sheet": "1/2"}, "devices": [{"tag": "M"}, {"tag": "M"}],
+           "off_page_references": [{"tag": "2/2", "evidence": "Footer '1/2'"}]}
+    row = _run_with_graph(tmp_path, monkeypatch, bad, "det-fail")
+    assert row["import_verdict"] == "FAIL"
+    assert "duplicate_identifier" in row["import_blocking_failures"]
+    assert "off_page_from_pagination" in row["import_blocking_failures"]
+    report = (tmp_path / "out" / "det-fail" / "report.md").read_text(encoding="utf-8")
+    assert "import gate" in report.lower() and "FAIL" in report  # two-axis report
+
+
+def test_run_one_import_verdict_passes_on_clean_graph(tmp_path, monkeypatch):
+    clean = {"devices": [{"tag": "M"}], "terminals": [{"tag": "CN10:U"}]}
+    row = _run_with_graph(tmp_path, monkeypatch, clean, "det-pass")
+    assert row["import_verdict"] == "PASS"
+    assert row["import_blocking_failures"] == []
+
+
+def test_runner_hands_the_graph_to_the_judge(tmp_path, monkeypatch):
+    captured = {}
+
+    def _cap_judge(image, final_text, map_text, source_json, **kw):
+        captured["graph"] = kw.get("graph")
+        return {"overall_score_provisional": 50, "hard_failure": False, "provisional": True}
+
+    graph = {"devices": [{"tag": "ENC"}]}
+    _run_with_graph(tmp_path, monkeypatch, graph, "judge-graph", judge=_cap_judge)
+    assert captured["graph"] == graph
