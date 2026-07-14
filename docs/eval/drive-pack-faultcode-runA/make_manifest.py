@@ -74,8 +74,8 @@ manifest = {
 lines = [
     "# Run A baseline — hash manifest",
     "",
-    f"- **Run:** A (frozen, immutable)",
-    f"- **Subject:** IMPULSE G+ Mini fault-code baseline",
+    "- **Run:** A (frozen, immutable)",
+    "- **Subject:** IMPULSE G+ Mini fault-code baseline",
     f"- **Execution timestamp (UTC):** {manifest['execution_timestamp_utc']}",
     f"- **Commit SHA:** `{manifest['commit_sha']}`",
     f"- **Branch at capture:** `{manifest['commit_branch_at_capture']}`",
