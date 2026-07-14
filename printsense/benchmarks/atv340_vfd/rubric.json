@@ -1,0 +1,69 @@
+{
+  "case": "atv340_vfd_s1s2s3_nve97896",
+  "_source": "Schneider ATV340 wiring diagram NVE97896-02, sheet 1/2. Ground-truth facts verified against the rendered page in docs/plans/2026-07-13-print-eval-gold-standard.md §3 + the professor review. Graded graph = the frozen defective extraction at printsense/fixtures/atv340/graph.json (a copy of internet_print_tests/schneider-atv340-vfd/extraction.json).",
+  "truth_status": "draft_llm_authored",
+  "_truth_status_note": "draft_llm_authored -> Mike reviews-and-freezes to frozen_human_confirmed (PRD §10.7). Only frozen truth blocks CI; the benchmark test skips until then.",
+  "package": {
+    "drawing_no": "NVE97896-02",
+    "sheet": "1/2"
+  },
+  "categories": {
+    "device": {
+      "expected": ["ATV340", "M", "ENC", "PTI", "PTO", "PLC", "HMI", "SW1", "Braking resistor", "PE Plate"],
+      "known_misreads": []
+    },
+    "wire": {
+      "expected": ["AI2 shielded cable", "AI1/AQ1 shielded cable"],
+      "known_misreads": []
+    },
+    "xref": {
+      "expected": ["DQ1", "DQ2", "CN6:DQ1", "CN6:DQ2", "CN6:DQCOM", "CN9:PA/+", "CN9:PC/-", "CN2:STO_A", "CN2:STO_B", "CN6:AQ1"],
+      "known_misreads": ["DO1", "DO2", "CN6:DO1", "CN6:DO2"]
+    }
+  },
+  "structure": [
+    {"desc": "three-phase mains input at CN1", "any_of": ["cn1", "three-phase", "3-phase"]},
+    {"desc": "motor output U/V/W at CN10", "any_of": ["cn10", "motor output", "u/v/w"]},
+    {"desc": "DC bus PA/+ , PC/- at CN9", "any_of": ["dc bus", "pa/+", "pc/-"]},
+    {"desc": "Safe Torque Off inputs on CN2", "any_of": ["sto", "safe torque"]},
+    {"desc": "analog I/O AI1 / AI2 / AQ1", "any_of": ["ai1", "ai2", "aq1"]},
+    {"desc": "dynamic braking resistor", "any_of": ["brak"]}
+  ],
+  "should_be_unresolved": ["CN8", "DISUP", "VP12S"],
+  "safety_critical": ["CN2:STO_A", "CN2:STO_B", "STO"],
+  "require_unique_ids": true,
+  "require_refs_resolve": true,
+  "paths": [
+    {
+      "name": "dynamic_braking_S1S2",
+      "match": ["brak"],
+      "variant": "S1S2",
+      "endpoints": ["CN10:PBe", "CN10:PB"],
+      "forbidden_members": ["CN9:PC/-", "CN9:PA/+"],
+      "member_variants": {
+        "CN10:PB": "S1S2", "CN10:PBe": "S1S2",
+        "CN9:PA/+": "dc_bus", "CN9:PC/-": "dc_bus", "CN8:PB": "S3"
+      }
+    },
+    {
+      "name": "rs422_encoder_link",
+      "signal": "RS422",
+      "from": "CN4",
+      "forbidden_from": ["CN3"]
+    }
+  ],
+  "import_blocking_gates": [
+    "exact_label_mismatch",
+    "dangling_reference",
+    "duplicate_identifier",
+    "incorrect_connector_ownership",
+    "incompatible_functional_path",
+    "variant_crossover"
+  ],
+  "expected_verdict": {
+    "quality_tier": "USEFUL_DRAFT",
+    "import_verdict": "FAIL",
+    "bot_importable": false,
+    "score_note": "Emerges from rubric weights + honesty penalty; NOT hardcoded. See the benchmark test's asserted band. The two axes are independent by design: the graph's tag accuracy scores in the USEFUL_DRAFT band while the structural gates FAIL import — that separation is the thesis (good prose != trustworthy graph)."
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "acceptance": [
+    {
+      "item": "digital output labels DQ1/DQ2 read correctly",
+      "covered": false,
+      "note": "Graph asserted DO1/DO2 (and terminals CN6:DO1/CN6:DO2) for the printed DQ1/DQ2; DQCOM is correct. Caught by exact_label_mismatch + confident_misread."
+    },
+    {
+      "item": "RS422 on its rightful connector (CN4/PTO)",
+      "covered": false,
+      "note": "Graph put RS422 on CN3 (the 1Vpp A/B/I encoder connector). RS422 belongs to CN4/PTO -> remote ATV340 PTI. Caught by incorrect_connector_ownership; the bare CN3 target also dangles (dangling_reference)."
+    },
+    {
+      "item": "per-variant braking topology (S1&S2 vs S3) kept distinct",
+      "covered": false,
+      "note": "Graph merged one path [CN9:PA/+, CN9:PC/-, CN10:PB, CN10:PBe, resistor]. S1&S2 brake = CN10 PBe<->PB; S3 = CN9 PA/+ <-> CN8 PB; PC/- is DC-bus, in neither. Caught by incompatible_functional_path (forbidden PC/-, PA/+) + variant_crossover (S1S2 x dc_bus)."
+    },
+    {
+      "item": "variant-qualified entity ids",
+      "covered": false,
+      "note": "Graph carries unqualified duplicate ids M, CN9:PA/+, CN9:PC/- (S1/S2 vs S3). Need S1S2:M / S3:M etc. Caught by duplicate_identifier."
+    },
+    {
+      "item": "off-page references are electrical, not pagination",
+      "covered": false,
+      "note": "Graph modeled the footer '1/2' as an off_page_reference '2/2'. Caught by off_page_from_pagination."
+    },
+    {
+      "item": "+AI2 / -AI2 differential analog input",
+      "covered": true,
+      "note": "Graph used AI2+/AI2- (ordering nit; the terminals are CORRECT). The LLM judge falsely flagged this as a hallucination -- a JUDGE error (PR4 §10.6), NOT a graph defect. Correctly NOT gated here."
+    }
+  ],
+  "hard_failures": [
+    "exact_label_mismatch: printed DQ1/DQ2 read as DO1/DO2",
+    "incorrect_connector_ownership: RS422 on CN3, not CN4",
+    "incompatible_functional_path: DC-bus PC/- merged into the brake loop",
+    "variant_crossover: S1&S2 and dc-bus/S3 braking conflated in one path",
+    "duplicate_identifier: unqualified M / CN9:PA/+ / CN9:PC/-",
+    "dangling_reference: RS422 link targets undefined CN3"
+  ],
+  "score": 74,
+  "quality_tier": "USEFUL_DRAFT",
+  "import_verdict": "FAIL",
+  "bot_importable": false,
+  "truth_status": "draft_llm_authored",
+  "summary": "The defective ATV340 graph reads its tags with decent accuracy (score 74/100 -- package, structure, device, and wire categories are strong) yet is structurally UNSAFE to import. Six deterministic gates fire; every P0 electrical error is verified against the rendered NVE97896-02 sheet 1/2 (durable spec section 3). This is the negative calibration anchor: good prose (74) does NOT imply a trustworthy graph (import_verdict=FAIL). The +AI2/-AI2 item is deliberately NOT a defect -- it is a judge false-flag fixed in PR4. truth_status=draft_llm_authored: awaiting Mike's review-and-freeze before this benchmark blocks CI (PRD 10.7)."
+}
