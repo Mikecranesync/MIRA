@@ -3,17 +3,17 @@
     "drawing_no": "31971",
     "project": "AP31971",
     "title": "Sensor Control Unit 2",
-    "sub_title": "Hyper Launch",
+    "sub_title": "Launch System",
     "drawing_nr_text": "Sensor Control Unit 2 V3.5",
     "note": "Opto-Koppler, belegt (opto-coupler, occupied)",
     "cabinet": "=LA2 +SCU2",
     "sheet": "20",
     "date": "11.07.2022",
     "bearb": "Ascher",
-    "kunde": "Mack",
+    "kunde": "[customer]",
     "manufacturer": "INTRASYS - Innovative Transport Systeme",
-    "location": "Orlando, FL, USA",
-    "evidence": "Title block: 31971, AP31971, Sensor Control Unit 2, Sensor Control Unit 2 V3.5, =LA2 +SCU2, Datum 11.07.2022, Kunde Mack, Orlando FL USA",
+    "location": "[site], USA",
+    "evidence": "Title block: 31971, AP31971, Sensor Control Unit 2, Sensor Control Unit 2 V3.5, =LA2 +SCU2, Datum 11.07.2022, Kunde [customer], [site] FL USA",
     "confidence": 0.9
   },
   "devices": [
@@ -493,5 +493,5 @@
       "resolution": "Zoom on A13/A14 header text to confirm model string"
     }
   ],
-  "cross_sheet_notes": "Sheet 20 of drawing 31971 (=LA2 +SCU2), 'Sensor Control Unit 2 V3.5', Hyper Launch, INTRASYS, Orlando FL. Two opto-coupler/fiber modules -21/A13 (Occupied Upstream) and -21/A14 (Occupied Downstream). Fiber -W5497 (POF) enters A13 LWL IN from +SCU2-BEL(+SCU3/21.7); fiber -W5469 leaves A14 LWL OUT to +SCU1-BEL(+SCU1/21.2). Digital: A13 DIG OUT -> 15.7/-X3.9; A14 DIG IN <- 16.6/-X4.6. Supply rails X24V.41 (/20.9) and X0V.41 (/20.8) feed module 24VDC/GND. No PE shown on this sheet."
+  "cross_sheet_notes": "Sheet 20 of drawing 31971 (=LA2 +SCU2), 'Sensor Control Unit 2 V3.5', Launch System, INTRASYS, [site] FL. Two opto-coupler/fiber modules -21/A13 (Occupied Upstream) and -21/A14 (Occupied Downstream). Fiber -W5497 (POF) enters A13 LWL IN from +SCU2-BEL(+SCU3/21.7); fiber -W5469 leaves A14 LWL OUT to +SCU1-BEL(+SCU1/21.2). Digital: A13 DIG OUT -> 15.7/-X3.9; A14 DIG IN <- 16.6/-X4.6. Supply rails X24V.41 (/20.9) and X0V.41 (/20.8) feed module 24VDC/GND. No PE shown on this sheet."
 }

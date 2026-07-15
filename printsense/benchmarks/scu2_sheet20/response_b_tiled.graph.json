@@ -2,18 +2,18 @@
   "package": {
     "drawing_number": "31971",
     "ap_number": "AP31971",
-    "title": "Hyper Launch - Sensor Control Unit 2",
+    "title": "Launch System - Sensor Control Unit 2",
     "drawing_no_text": "Sensor Control Unit 2 V3.5",
     "designation": "=LA2 / +SCU2",
     "cabinet": "+SCU2",
     "sheet": "20",
     "date": "11.07.2022",
     "editor": "Ascher",
-    "customer": "Mack",
+    "customer": "[customer]",
     "manufacturer": "INTRASYS - Innovative Transport Systeme",
-    "location": "Orlando, FL, USA",
+    "location": "[site], USA",
     "note": "Opto-Koppler, belegt (opto-coupler, occupied)",
-    "evidence": "Title block: AP31971, Hyper Launch, Sensor Control Unit 2, Zeichnungs Nr: Sensor Control Unit 2 V3.5, 31971, =LA2 +SCU2, Orlando FL USA, Datum 11.07.2022",
+    "evidence": "Title block: AP31971, Launch System, Sensor Control Unit 2, Zeichnungs Nr: Sensor Control Unit 2 V3.5, 31971, =LA2 +SCU2, [site] FL USA, Datum 11.07.2022",
     "confidence": 0.9,
     "trust": "proposed"
   },
@@ -501,5 +501,5 @@
       "resolution": "Flattened full-page scan."
     }
   ],
-  "cross_sheet_notes": "Sheet 20 of Sensor Control Unit 2 (=LA2 / +SCU2), drawing 31971 / AP31971, INTRASYS, Mack, Orlando FL. Two opto-coupler / LWL converter modules (ITS.LWL-K-01.2): -21/A13 'Occupied Upstream' and -21/A14 'Occupied Downstream'. A13 receives POF fiber -W5497 from +SCU2-BEL/+SCU3/21.7 at LWL IN and drives DIG OUT to -X3.9 (15.7). A14 takes DIG IN from -X4.6 (16.6) and sends fiber -W5469 out to +SCU1-BEL/+SCU1/21.2. Both modules supplied 24VDC/GND from X24V.41 (/20.9) and X0V.41 (/20.8). No PE conductors shown on this sheet. All entities proposed, pending verification."
+  "cross_sheet_notes": "Sheet 20 of Sensor Control Unit 2 (=LA2 / +SCU2), drawing 31971 / AP31971, INTRASYS, [customer], [site] FL. Two opto-coupler / LWL converter modules (ITS.LWL-K-01.2): -21/A13 'Occupied Upstream' and -21/A14 'Occupied Downstream'. A13 receives POF fiber -W5497 from +SCU2-BEL/+SCU3/21.7 at LWL IN and drives DIG OUT to -X3.9 (15.7). A14 takes DIG IN from -X4.6 (16.6) and sends fiber -W5469 out to +SCU1-BEL/+SCU1/21.2. Both modules supplied 24VDC/GND from X24V.41 (/20.9) and X0V.41 (/20.8). No PE conductors shown on this sheet. All entities proposed, pending verification."
 }
