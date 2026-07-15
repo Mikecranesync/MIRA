@@ -316,7 +316,12 @@ def render_report(summary: dict[str, dict], verdict: dict) -> str:
     ]
     for check, ok in verdict["checks"].items():
         lines.append(f"- [{'ok' if ok else 'FAIL'}] {check}")
+    grand_total = round(sum(s["cost_total"] for s in summary.values()), 2)
     lines += [
+        "",
+        f"Costs are shown at STANDARD per-token rates for comparability with the "
+        f"interactive benchmark; a Batches submission bills at 50% of these numbers "
+        f"(billed total ~= ${round(grand_total / 2, 2)} of ${grand_total} standard).",
         "",
         f"Not measured here: {'; '.join(verdict['not_measured'])}.",
         "Latency evidence lives in the interactive cost benchmark "
