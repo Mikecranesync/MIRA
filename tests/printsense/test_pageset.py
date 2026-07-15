@@ -137,6 +137,37 @@ def test_duplicate_sheet_ids_rejected():
         pageset.load_pageset(manifest, _graphs())
 
 
+def test_decoder_integration_is_strictly_opt_in():
+    """D19/D20: default behavior byte-identical (no 'designation' key, no
+    changed identities); opting in attaches decoded keys WITHOUT changing
+    the tag used as graph identity."""
+    default = pageset.load_pageset(_manifest(), _graphs())
+    for sheet in default["sheets"]:
+        for dev in sheet["devices"]:
+            assert "designation" not in dev
+
+    opted = pageset.load_pageset(_manifest(), _graphs(),
+                                 decoder_profile="eplan_iec")
+    s1 = opted["sheets"][0]
+    k01 = next(d for d in s1["devices"] if d["tag"] == "-1/K01")
+    dz = k01["designation"]
+    assert dz["parent_device_key"] == "-1/K01"
+    assert dz["profile"] == "eplan_iec"
+    assert k01["tag"] == "-1/K01"  # identity untouched
+    # tags with a connection point expose the child keys for Phase C
+    graphs = _graphs()
+    graphs["p1"]["devices"].append(
+        {"tag": "-1/K01:A1", "type": "coil terminal", "confidence": 0.9,
+         "connects": []})
+    opted2 = pageset.load_pageset(_manifest(), graphs,
+                                  decoder_profile="eplan_iec")
+    a1 = next(d for d in opted2["sheets"][0]["devices"]
+              if d["tag"] == "-1/K01:A1")
+    assert a1["designation"]["parent_device_key"] == "-1/K01"
+    assert a1["designation"]["connection_point_key"] == "-1/K01:A1"
+    assert a1["designation"]["relationship"] == "COIL_TERMINAL_OF"
+
+
 def test_index_feeds_systemgraph_end_to_end():
     index = pageset.load_pageset(_manifest(), _graphs())
     graph = systemgraph.build_system_graph(index)
