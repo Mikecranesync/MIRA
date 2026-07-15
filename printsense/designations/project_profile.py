@@ -22,6 +22,16 @@ class LegendRule:
     provenance: dict = field(default_factory=dict)
 
 
+def assert_pending_never_frozen(record: dict) -> None:
+    """Production invariant (Safety law 11 / D12): a record whose
+    human_confirmation_status is 'pending' can never carry a frozen truth.
+    Raised, not warned — freezing requires the human step."""
+    if record.get("human_confirmation_status") == "pending" and \
+            record.get("truth_status") == "frozen_human_confirmed":
+        raise AssertionError(
+            "pending human confirmation cannot coexist with a frozen truth")
+
+
 def legend_conflicts(legends: list[LegendRule] | None, class_code: str,
                      candidate_meanings: list[str]) -> list[dict]:
     """Return ambiguity entries for legend/registry disagreement on a class

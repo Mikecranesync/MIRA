@@ -174,3 +174,25 @@ def test_coil_overfire_regression_sensor_a1_is_not_a_coil():
     # contactor A1 remains a coil
     d2 = decode("-K1:A1", profile="eplan_iec")
     assert d2["connection_point"]["role"] == "coil_or_control_terminal"
+
+
+def test_coil_default_denied_for_unknown_device_class():
+    """Final diff review: an A1 whose parent class cannot be determined must
+    NOT default to a coil claim."""
+    d = decode("101CR:A1", profile="eplan_iec")  # NFPA-style, class unknown
+    cp = d["connection_point"]
+    assert cp.get("role") != "coil_or_control_terminal"
+    assert cp["convention"]["state_proof"] == "never"
+
+
+def test_query_surfaces_nested_device_parent():
+    index = {"sheets": [{"sheet": "1", "quality": "clear_upright",
+                         "page_id": "p1",
+                         "devices": [{"tag": "-A1-K1", "kind": "x", "ev": "obs",
+                                      "provenance": {},
+                                      "designation": {"profile": "eplan_iec"}}],
+                         "xrefs": [], "unresolved": []}]}
+    g = ig.build_identity_graph(index)
+    result = ig.query_designation(g, "-A1-K1")
+    assert result["parent"] is not None
+    assert result["parent"]["key"] == "-A1"

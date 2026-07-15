@@ -191,8 +191,8 @@ class TestPackageScopeStates:
 
         assert result["references"][0]["scope_state"] == "not_yet_processed"
 
-    def test_missing_expected_page_dangling_partial_declared_in_range(self):
-        """dangling, partial_declared, dst in declared_range → missing_expected_page."""
+    def test_partial_declared_inventory_vs_range_only_split(self):
+        """dangling, partial_declared: range-only -> not_yet_processed; inventory line-item -> missing_expected_page."""
         graph = {
             "edges": [
                 {
