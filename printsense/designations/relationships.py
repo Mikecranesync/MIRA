@@ -79,37 +79,47 @@ def migrate_alias_variations(graph: dict, profile: str = "eplan_iec") -> dict:
     for finding in findings:
         forms = list(finding.get("forms", []))
         decoded = {f: decode(f, profile=profile) for f in forms}
-        bases = {d.get("base_designation") for d in decoded.values()}
-        shortest = min(forms, key=len)
+        # anchor = the most common DECODED parent base among the members —
+        # never the shortest raw form: a finding may contain only sibling
+        # connection points with no bare parent form present (the canonical
+        # A1/A2 case). Ties break to the shortest base string.
+        base_counts: dict[str, int] = {}
+        for d in decoded.values():
+            base = d.get("base_designation")
+            if base:
+                base_counts[base] = base_counts.get(base, 0) + 1
+        anchor = max(base_counts,
+                     key=lambda b: (base_counts[b], -len(b))) \
+            if base_counts else None
         members: list[dict] = []
         for form in forms:
             d = decoded[form]
-            if form == shortest:
+            if anchor and form == anchor:
                 rel = "SAME_EXACT_DESIGNATION"
                 counts["same_exact_designation"] += 1
-            elif d.get("base_designation") == shortest:
+            elif anchor and d.get("base_designation") == anchor:
                 child = _child_relationship(d)
                 if child in ("COIL_TERMINAL_OF", "CHILD_CONNECTION_POINT_OF",
                              "CONNECTOR_PIN_OF", "PORT_OF"):
                     rel = child
                     counts["child_connection_point"] += 1
                 else:
+                    # same parent, unsourced suffix: related but unproven
                     rel = "AMBIGUOUS_WITH"
                     counts["unresolved"] += 1
-            elif len(bases) > 1 and d.get("connection_point") is None:
-                # truncation/expansion family (e.g. head vs suffixed sibling):
-                # cannot be resolved from Phase B data alone (no raw context)
-                rel = "PROBABLE_ALIAS_OF"
-                counts["probable_alias"] += 1
             else:
-                rel = "UNRESOLVED"
+                # different decoded base (truncation/expansion families like
+                # a head vs a suffixed sibling): Phase B forms alone can NEVER
+                # prove an alias (Safety law 7) — stays ambiguous, no guess.
+                rel = "AMBIGUOUS_WITH"
                 counts["unresolved"] += 1
             members.append({"form": form, "relationship": rel,
-                            "target": shortest,
+                            "target": anchor or form,
                             "state_proof": "never"})
         reinterpretations.append({
             "key": finding.get("key"),
             "original": dict(finding),  # evidence preserved verbatim
+            "anchor": anchor,
             "members": members,
             "sheets": list(finding.get("sheets", [])),
         })

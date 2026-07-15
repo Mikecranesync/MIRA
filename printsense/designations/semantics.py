@@ -42,7 +42,14 @@ def classify_connection_point(cp: str, parent_class: str | None) -> dict:
 
 def changeover_group(common: str, nc: str, no: str) -> dict:
     """D5/D6: one changeover contact group — branches related, never merged,
-    and never a statement about which branch is currently made."""
+    and never a statement about which branch is currently made.
+
+    WHICH terminal digit is the common is deliberately NOT encoded: the
+    standards review returned conflicting claims (UNVERIFIED) — the caller
+    supplies the assignment from drawing/device evidence. Likewise a bare
+    'x4' terminal's pair_key from contact_markings is convention-only:
+    in a changeover group its true companion is the common terminal, and
+    group membership must come from the drawing, never the number."""
     return {
         "common": common,
         "nc_branch": f"{common}-{nc}",

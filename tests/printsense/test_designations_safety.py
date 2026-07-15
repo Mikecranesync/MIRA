@@ -137,6 +137,31 @@ def test_31_migration_reclassifies_without_touching_original():
                            "probable_alias", "unresolved", "contradiction"}
 
 
+def test_31b_migration_siblings_without_bare_parent():
+    """Diff-review regression: a finding containing ONLY sibling connection
+    points (no bare parent form) must still resolve both to their decoded
+    parent — the canonical A1/A2 case — and never emit a type outside
+    RELATIONSHIP_TYPES, and never guess PROBABLE_ALIAS_OF from Phase B data."""
+    from printsense.designations.relationships import RELATIONSHIP_TYPES
+    graph = {"contradictions": [
+        {"type": "alias_variation", "key": "21/K01",
+         "forms": ["-21/K01:A1", "-21/K01:A2"], "sheets": ["21"]},
+        {"type": "alias_variation", "key": "24/A10",
+         "forms": ["-24/A10", "-24/A10U"], "sheets": ["15", "24"]},
+    ]}
+    report = dz.migrate_alias_variations(graph, profile="eplan_iec")
+    k01 = next(r for r in report["reinterpretations"] if r["key"] == "21/K01")
+    rels = {m["form"]: m["relationship"] for m in k01["members"]}
+    assert rels["-21/K01:A1"] == "COIL_TERMINAL_OF"
+    assert rels["-21/K01:A2"] == "COIL_TERMINAL_OF"
+    assert k01["anchor"] == "-21/K01"
+    for r in report["reinterpretations"]:
+        for m in r["members"]:
+            assert m["relationship"] in RELATIONSHIP_TYPES, m
+            assert m["relationship"] != "PROBABLE_ALIAS_OF", (
+                "Phase B forms alone can never prove an alias (Safety law 7)")
+
+
 # --- D17 32: frozen grading paths remain untouched -----------------------------
 
 def test_32_frozen_modules_do_not_import_designations():
