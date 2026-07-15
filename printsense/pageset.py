@@ -107,6 +107,11 @@ def load_pageset(manifest: dict, graphs: dict[str, dict],
             "xrefs": [],
             "unresolved": [],
         }
+        # contextual-seam passthrough (Phase C): page-level context and
+        # revision metadata travel with the sheet entry when declared
+        for key in ("context_prefix", "revision"):
+            if page.get(key) is not None:
+                entry[key] = page[key]
         graph = graphs.get(page["page_id"])
         if graph is None:
             sheets.append(entry)
