@@ -13,21 +13,21 @@ _SRC_60947 = {"source_title": "Low-voltage switchgear - control circuit "
                               "devices: terminal marking scheme (derived)",
               "organization": "IEC/CENELEC", "document_id": "IEC 60947-5-1",
               "section": "auxiliary contact function digits (derived)",
-              "confidence": 0.8, "verified_date": "2026-07-15",
+              "confidence": 0.8, "reviewed_date": "2026-07-15", "verification": "secondary_sources_only",
               "note": "two-digit marking: first=sequence, second=function; "
                       "function 1-2 break (NC), 3-4 make (NO)"}
 _SRC_50005 = {"source_title": "Terminal markings for control devices incl. "
                               "coil terminals (derived)",
               "organization": "CENELEC", "document_id": "EN 50005/50011",
               "section": "coil terminal designations (derived)",
-              "confidence": 0.7, "verified_date": "2026-07-15",
+              "confidence": 0.7, "reviewed_date": "2026-07-15", "verification": "secondary_sources_only",
               "note": "A1/A2 designate coil terminals; polarity is NOT "
                       "derivable from the marking alone"}
 _SRC_MAIN = {"source_title": "Main-circuit terminal markings for contactors "
                              "and overload relays (derived)",
              "organization": "IEC/CENELEC", "document_id": "IEC 60947-4-1",
              "section": "main pole and overload auxiliary markings (derived)",
-             "confidence": 0.7, "verified_date": "2026-07-15",
+             "confidence": 0.7, "reviewed_date": "2026-07-15", "verification": "secondary_sources_only",
              "note": "1/L1..6/T3 line/load poles; 95-96 NC / 97-98 NO "
                      "overload auxiliaries — device-class gated"}
 

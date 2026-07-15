@@ -14,12 +14,12 @@ _SRC_81346 = {"source_title": "Industrial systems - structuring principles "
                               "codes (derived)",
               "organization": "IEC/CENELEC", "document_id": "IEC 81346-2",
               "section": "class tables (derived summary)",
-              "confidence": 0.7, "verified_date": "2026-07-15",
+              "confidence": 0.7, "reviewed_date": "2026-07-15", "verification": "secondary_sources_only",
               "note": "derived candidate meanings; edition differences exist"}
 _SRC_DIN = {"source_title": "Legacy German drawing practice (derived)",
             "organization": "DIN", "document_id": "DIN 40719-2 (withdrawn)",
             "section": "letter code usage (derived summary)",
-            "confidence": 0.5, "verified_date": "2026-07-15",
+            "confidence": 0.5, "reviewed_date": "2026-07-15", "verification": "secondary_sources_only",
             "note": "older drawings may follow this; UNVERIFIED per-project"}
 
 CLASS_CODES: dict[str, list[dict]] = {
