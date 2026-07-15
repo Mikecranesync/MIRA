@@ -255,7 +255,7 @@ Any sub-agent dispatched for parallel work that will Edit/Write files MUST opera
 
 ## Safety / Dangerous Commands
 
-Before running `rm -rf`, `git reset --hard`, `git clean -f[d]`, or any other command that irreversibly discards data, print the exact resolved absolute path/target first and confirm it matches the intended target before executing. See `.claude/rules/dangerous-commands-safety.md`.
+Before running `rm -rf`, `git reset --hard`, `git clean -f[d]`, or any other command that irreversibly discards data, print the exact resolved absolute path/target first and confirm it matches the intended target before executing. A deterministic floor (`tools/hooks/rm-guard.sh`, `PreToolUse(Bash)`) also hard-blocks a recursive+force `rm` that resolves to `/`, `$HOME`, the repo root, or any `.git` dir (override: `MIRA_ALLOW_RM=1`); it's a floor, not a substitute for the print-the-path discipline. See `.claude/rules/dangerous-commands-safety.md`.
 
 ## Security
 
