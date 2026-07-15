@@ -18,6 +18,7 @@ Schema (one table, ``photo_batches``):
                                    | 'done' | 'failed'
     caption          TEXT
     photos_json      TEXT          JSON list of base64 vision-resized bytes
+    raw_photos_json  TEXT          JSON list of base64 original bytes
     photo_count      INTEGER
     ack_message_id   INTEGER       NULL until adapter sends ack
     created_at       REAL
@@ -40,7 +41,7 @@ import json
 import logging
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from shared.photo_handler import DEFAULT_PHOTO_CAPTION, preserve_first_meaningful_caption
 
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS photo_batches (
     status          TEXT NOT NULL,
     caption         TEXT NOT NULL,
     photos_json     TEXT NOT NULL,
+    raw_photos_json TEXT NOT NULL DEFAULT '[]',
     photo_count     INTEGER NOT NULL,
     ack_message_id  INTEGER,
     created_at      REAL NOT NULL,
@@ -93,6 +95,7 @@ class PhotoBatchRecord:
     photos_b64: list[str]
     ack_message_id: int | None
     created_at: float
+    raw_photos_b64: list[str] = field(default_factory=list)
 
 
 class PhotoBatchQueue:
@@ -111,8 +114,16 @@ class PhotoBatchQueue:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
+        self._ensure_schema()
         self._notify: asyncio.Queue[int] = asyncio.Queue()
         self._lock = asyncio.Lock()
+
+    def _ensure_schema(self) -> None:
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(photo_batches)").fetchall()}
+        if "raw_photos_json" not in cols:
+            self._conn.execute(
+                "ALTER TABLE photo_batches ADD COLUMN raw_photos_json TEXT NOT NULL DEFAULT '[]'"
+            )
 
     # --------------------------------------------------------------- producer
 
@@ -123,6 +134,7 @@ class PhotoBatchQueue:
         photo_b64: str,
         caption: str,
         ack_message_id: int | None = None,
+        raw_photo_b64: str | None = None,
     ) -> tuple[int, int]:
         """Add a photo to the current open burst for (chat_id, platform).
 
@@ -147,12 +159,22 @@ class PhotoBatchQueue:
             if row is None:
                 now = time.time()
                 photos = [photo_b64]
+                raw_photos = [raw_photo_b64 or photo_b64]
                 cur = self._conn.execute(
                     "INSERT INTO photo_batches "
                     "(chat_id, platform, status, caption, photos_json, "
-                    " photo_count, ack_message_id, created_at) "
-                    "VALUES (?, ?, 'collecting', ?, ?, ?, ?, ?)",
-                    (chat_id, platform, caption, json.dumps(photos), 1, ack_message_id, now),
+                    " raw_photos_json, photo_count, ack_message_id, created_at) "
+                    "VALUES (?, ?, 'collecting', ?, ?, ?, ?, ?, ?)",
+                    (
+                        chat_id,
+                        platform,
+                        caption,
+                        json.dumps(photos),
+                        json.dumps(raw_photos),
+                        1,
+                        ack_message_id,
+                        now,
+                    ),
                 )
                 return int(cur.lastrowid), 1
 
@@ -165,13 +187,27 @@ class PhotoBatchQueue:
 
             photos = json.loads(photos_json)
             photos.append(photo_b64)
+            raw_row = self._conn.execute(
+                "SELECT raw_photos_json FROM photo_batches WHERE id = ?", (batch_id,)
+            ).fetchone()
+            raw_photos = json.loads(raw_row[0] or "[]") if raw_row else []
+            if not raw_photos:
+                raw_photos = list(photos[:-1])
+            raw_photos.append(raw_photo_b64 or photo_b64)
             merged_caption = preserve_first_meaningful_caption(existing_caption, caption)
             new_ack = existing_ack if existing_ack is not None else ack_message_id
 
             self._conn.execute(
                 "UPDATE photo_batches SET photos_json = ?, photo_count = ?, "
-                "caption = ?, ack_message_id = ? WHERE id = ?",
-                (json.dumps(photos), new_count, merged_caption, new_ack, batch_id),
+                "raw_photos_json = ?, caption = ?, ack_message_id = ? WHERE id = ?",
+                (
+                    json.dumps(photos),
+                    new_count,
+                    json.dumps(raw_photos),
+                    merged_caption,
+                    new_ack,
+                    batch_id,
+                ),
             )
             return int(batch_id), new_count
 
@@ -225,27 +261,41 @@ class PhotoBatchQueue:
             async with self._lock:
                 row = self._conn.execute(
                     "SELECT id, chat_id, platform, caption, photos_json, "
-                    " ack_message_id, created_at "
+                    " raw_photos_json, ack_message_id, created_at "
                     "FROM photo_batches WHERE status = 'queued' "
                     "ORDER BY queued_at ASC, id ASC LIMIT 1"
                 ).fetchone()
                 if row is None:
                     continue
-                batch_id, chat_id, platform, caption, photos_json, ack_id, created_at = row
+                (
+                    batch_id,
+                    chat_id,
+                    platform,
+                    caption,
+                    photos_json,
+                    raw_photos_json,
+                    ack_id,
+                    created_at,
+                ) = row
                 now = time.time()
                 self._conn.execute(
                     "UPDATE photo_batches SET status = 'processing', started_at = ? "
                     "WHERE id = ? AND status = 'queued'",
                     (now, batch_id),
                 )
+            photos_b64 = list(json.loads(photos_json))
+            raw_photos_b64 = list(json.loads(raw_photos_json or "[]"))
+            if len(raw_photos_b64) != len(photos_b64):
+                raw_photos_b64 = list(photos_b64)
             return PhotoBatchRecord(
                 id=int(batch_id),
                 chat_id=str(chat_id),
                 platform=str(platform),
                 caption=str(caption),
-                photos_b64=list(json.loads(photos_json)),
+                photos_b64=photos_b64,
                 ack_message_id=int(ack_id) if ack_id is not None else None,
                 created_at=float(created_at),
+                raw_photos_b64=raw_photos_b64,
             )
 
     async def mark_done(self, batch_id: int, reply_text: str) -> None:
