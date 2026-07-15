@@ -6,7 +6,9 @@ mira_copy/outputs/*
 .tmp_*
 .claude/worktrees/
 .worktrees/
-.audit-worktrees/   # nested audit worktrees — MUST stay ignored: CodeGraph respects
+# nested audit worktrees — MUST stay ignored: CodeGraph indexes any non-ignored
+# nested worktree, inflating every caller/callee/impact count with duplicate copies.
+.audit-worktrees/
                     # .gitignore, so a tracked/untracked nested worktree gets indexed and
                     # inflates every caller count with duplicate copies (2026-07-14 finding).
 .claude/scratchpad/
