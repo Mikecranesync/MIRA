@@ -1,0 +1,256 @@
+{
+  "full_page": {
+    "overall": 95.1,
+    "letter": "A",
+    "is_A": false,
+    "confident_misreads": 0,
+    "trust_violations": 0,
+    "device_f1": 0.8,
+    "wire_f1": 1.0,
+    "xref_f1": 0.941,
+    "missed": [
+      "ITS.LWL-K-01.2",
+      "20.9"
+    ],
+    "machine_verified_count": 0
+  },
+  "tiled": {
+    "overall": 96.0,
+    "letter": "A",
+    "is_A": false,
+    "confident_misreads": 0,
+    "trust_violations": 0,
+    "device_f1": 0.8,
+    "wire_f1": 1.0,
+    "xref_f1": 1.0,
+    "missed": [
+      "ITS.LWL-K-01.2"
+    ],
+    "machine_verified_count": 0
+  },
+  "verified": {
+    "overall": 96.0,
+    "letter": "A",
+    "is_A": false,
+    "confident_misreads": 0,
+    "trust_violations": 0,
+    "device_f1": 0.8,
+    "wire_f1": 1.0,
+    "xref_f1": 1.0,
+    "missed": [
+      "ITS.LWL-K-01.2"
+    ],
+    "machine_verified_count": 23,
+    "agreed": [
+      "-21/A13",
+      "-21/A14",
+      "-W5497",
+      "-W5469",
+      "X0V.41 /20.8",
+      "+SCU3/21.7",
+      "+SCU2-BEL",
+      "+SCU1-BEL",
+      "+SCU1/21.2",
+      "-21/A13:24VDC",
+      "-21/A13:GND",
+      "-21/A13:LWL IN",
+      "-21/A13:LWL OUT",
+      "-21/A13:DIG IN",
+      "-21/A13:DIG OUT",
+      "-21/A14:24VDC",
+      "-21/A14:GND",
+      "-21/A14:LWL IN",
+      "-21/A14:LWL OUT",
+      "-21/A14:DIG IN",
+      "-21/A14:DIG OUT",
+      "-X3.9",
+      "-X4.6"
+    ]
+  },
+  "phase2_changes": [
+    {
+      "text": "20.9",
+      "kind": "xref",
+      "confidence": 0.8,
+      "bbox": [
+        204,
+        135,
+        1585,
+        494
+      ],
+      "resolved_item": "Exact routing of top supply dashed lines (X24V.41/X0V.41) to each module's 24VDC/GND terminals"
+    }
+  ],
+  "phase2_usage": {
+    "input_tokens": 10658,
+    "output_tokens": 618
+  },
+  "phase3_decisions": [
+    {
+      "tag": "-21/A13",
+      "section": "devices",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A14",
+      "section": "devices",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-W5497",
+      "section": "cables",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-W5469",
+      "section": "cables",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "X24V.41 /20.9",
+      "section": "off_page_references",
+      "decision": "no_second_witness",
+      "action": "kept_proposed"
+    },
+    {
+      "tag": "X0V.41 /20.8",
+      "section": "off_page_references",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "+SCU3/21.7",
+      "section": "off_page_references",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "+SCU2-BEL",
+      "section": "off_page_references",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "+SCU1-BEL",
+      "section": "off_page_references",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "+SCU1/21.2",
+      "section": "off_page_references",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "15.7",
+      "section": "off_page_references",
+      "decision": "no_second_witness",
+      "action": "kept_proposed"
+    },
+    {
+      "tag": "16.6",
+      "section": "off_page_references",
+      "decision": "no_second_witness",
+      "action": "kept_proposed"
+    },
+    {
+      "tag": "20.9",
+      "section": "off_page_references",
+      "decision": "no_second_witness",
+      "action": "kept_proposed"
+    },
+    {
+      "tag": "-21/A13:24VDC",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A13:GND",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A13:LWL IN",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A13:LWL OUT",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A13:DIG IN",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A13:DIG OUT",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A14:24VDC",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A14:GND",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A14:LWL IN",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A14:LWL OUT",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A14:DIG IN",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-21/A14:DIG OUT",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-X3.9",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    },
+    {
+      "tag": "-X4.6",
+      "section": "terminals",
+      "decision": "agree",
+      "action": "machine_verified"
+    }
+  ],
+  "phase3_usage": {
+    "input_tokens": 8570,
+    "output_tokens": 9343
+  }
+}
