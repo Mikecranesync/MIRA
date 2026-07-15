@@ -22,11 +22,22 @@ matches the intended target, before executing.
    command that could plausibly hit more than the intended target (a glob, a
    missing trailing slash, a `..` in the path) gets rewritten to be
    unambiguous, or the user is asked to confirm, before it runs.
-4. **This is doctrine, not a hook.** A `PreToolUse` hook can pattern-match
-   the command text but cannot verify "was the resolved path printed and
-   confirmed first" — that requires the response text preceding the tool
-   call. Enforcement is self-audit + human review of the transcript, the
-   same posture as `.claude/rules/train-before-deploy.md`.
+4. **Doctrine for the judgment cases; a deterministic floor underneath.** A
+   `PreToolUse` hook cannot verify "was the resolved path printed and confirmed
+   first" — that requires the response text preceding the tool call, so *that*
+   part is doctrine (self-audit + human review of the transcript, the same
+   posture as `.claude/rules/train-before-deploy.md`). But the unambiguous
+   *catastrophic* subset IS mechanically enforceable, and now is:
+   **`tools/hooks/rm-guard.sh`** (a `PreToolUse(Bash)` hook) hard-blocks a
+   recursive+force `rm` whose target *resolves* to the root filesystem, your
+   home directory, the repo root (or an ancestor), or any `.git` admin dir —
+   after expanding variables (`rm -rf "$REPO"`), normalizing relative paths
+   (`..`), and following symlinks, which a static `permissions.deny` glob
+   cannot do. Scope is deliberately narrow so legitimate scoped cleanup
+   (`rm -rf .audit-worktrees/x`, `graphify-out/`, `node_modules`, `/tmp/...`)
+   still passes. Override (human, per-shell): `MIRA_ALLOW_RM=1`. The hook is the
+   floor; this rule is the ceiling — the hook can't catch every judgment case,
+   so the print-the-resolved-path-first discipline still applies above it.
 
 ## Relationship to existing guards
 
@@ -36,9 +47,14 @@ unaffected:
 - **`tools/hooks/prod-guard.sh`** hard-blocks a specific class (prod-service
   mutations: container restart/compose, `nginx -s`, `systemctl`, direct
   writes to the VPS). It is a deterministic backstop for *production*
-  specifically — this rule covers the wider set of destructive **local**
-  commands prod-guard doesn't pattern-match (an errant `rm -rf` in the local
-  checkout, a `git reset --hard` that discards uncommitted work).
+  specifically.
+- **`tools/hooks/rm-guard.sh`** is the deterministic backstop for the
+  *catastrophic local `rm -rf`* subset (root / home / repo-root / `.git`),
+  resolving variables + symlinks + relative paths first (see rule 4). It
+  complements — does not replace — this doctrine, which still covers the wider
+  set of destructive local commands the hook can't safely pattern-match (a
+  `git reset --hard` that discards uncommitted work, a `DROP TABLE`, an
+  `rm -rf` on a *non*-catastrophic but still-wrong path).
 - **The Git Safety Protocol** in the system prompt already requires
   `git status` before any command that could discard uncommitted work
   (`git checkout`/`restore`/`reset`/`clean` in a git repo) — this rule
@@ -61,6 +77,9 @@ unaffected:
 
 ## Cross-references
 
+- `tools/hooks/rm-guard.sh` + `tools/hooks/rm_guard.py` — the deterministic
+  catastrophic-`rm -rf` floor (root / home / repo-root / `.git`), with
+  variable/symlink/relative-path resolution; tests in `tests/test_rm_guard.py`
 - `tools/hooks/prod-guard.sh` — the deterministic prod-mutation backstop
 - `.claude/rules/subagent-worktree-isolation.md` — the parallel-dispatch
   analog (isolate instead of risking a shared checkout)
