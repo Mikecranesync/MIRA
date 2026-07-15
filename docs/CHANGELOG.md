@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.148.0 (2026-07-15) - feat(plc-parser): parse Siemens AWL alarm exports
+- **Why:** the T7 controls corpus includes readable STEP 7 AWL fault data blocks with high-value HMI alarm text (`Alarm#### :BOOL ... // message`). This is directly useful for MIRA's fault dictionary and Drive Commander vocabulary without committing raw customer projects.
+- **What:** adds `siemens_awl` detection + parser support in `mira-plc-parser`, mapping exported AWL alarm comments into IR tags with line provenance so existing analysis surfaces fault, safety-review, and VFD candidates. Adds closed-format guidance for `.DNO` drive configs and regression coverage for `.RSS`, `.S7P`, `.DNO`, and sanitized AWL alarm fixtures.
+- **Evidence:** local parser suite `python3 -m pytest mira-plc-parser/tests -q` = 134 passed; live local smoke against the T7 AWL fault block parsed 944 tags / 944 fault candidates / 39 VFD candidates / 30 review-required items.
+
 ### v3.147.2 (2026-07-15) - fix(printsense): route Telegram print albums through package interpretation
 - **What:** Telegram media groups that classify as all electrical prints now preserve original image bytes and run through the multi-page PrintSense package interpreter before falling back to generic multi-photo synthesis. HTTP request logs also redact Telegram bot-token URL segments from `httpx`/`httpcore`. Fixes #2710 and #2711.
 

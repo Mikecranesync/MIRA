@@ -50,10 +50,11 @@ _VFD_ROLES = [
     ("frequency", _kw(["freq", "hz", "outputhz", "speedhz"])),
     ("current_a", _kw(["current", "amp", "amps", "iout"])),
     ("fault_code", _kw(["faultcode", "tripcode"])),
-    ("dc_bus_v", _kw(["dcbus", "busv", "vdc", "dclink"])),
+    ("dc_bus_v", _kw(["dcbus", "busv", "dc_bus", "dclink"])),
     ("freq_setpoint", _kw(["setpoint", "freqcmd", "cmdfreq", "freqref", "freqsp"])),
     ("comm_ok", _kw(["comm", "online", "heartbeat", "linkok"])),
 ]
+_VFD_DEVICE_PAT = _kw(["vfd"])
 
 
 @dataclass
@@ -307,6 +308,7 @@ def _vfd_signal_candidates(proj: PLCProject) -> list[Finding]:
     out = []
     for t in proj.all_tags():
         hay = t.name + " " + (t.description or "")
+        matched = False
         for role, pat in _VFD_ROLES:
             if pat.search(hay):
                 out.append(Finding(
@@ -314,7 +316,16 @@ def _vfd_signal_candidates(proj: PLCProject) -> list[Finding]:
                     detail="candidate role: %s" % role, confidence=Confidence.MEDIUM.value,
                     evidence=[t.provenance.locator] if t.provenance else [],
                 ))
+                matched = True
                 break
+        if matched:
+            continue
+        if _VFD_DEVICE_PAT.search(t.name) or ("fault" in t.roles and _VFD_DEVICE_PAT.search(hay)):
+            out.append(Finding(
+                kind="vfd_signal", name=t.name,
+                detail="candidate role: drive_state", confidence=Confidence.MEDIUM.value,
+                evidence=[t.provenance.locator] if t.provenance else [],
+            ))
     return out
 
 
