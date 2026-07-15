@@ -914,34 +914,76 @@ class Supervisor:
         the prior behavior. The cascade fallback stays on ``photo_b64`` — the local
         vision models want the small image.
         """
+        import base64
+        import hashlib
+        import time as _time
+
         from . import print_translator
+
+        # Print-turn persistence (2026-07-15 operator directive): this method is
+        # the single choke point every PrintSense turn flows through (bot fast
+        # path AND the engine's ELECTRICAL_PRINT branch), so ONE best-effort
+        # write here makes every request + full reply retrievable from the same
+        # `interactions` table as chat turns — no screenshots needed.
+        _t0 = _time.monotonic()
+        meta: dict = {"route": None, "model": None, "devices": None, "fallback_reason": None}
+        try:
+            _input_sha = hashlib.sha256(
+                base64.b64decode(interpret_b64 or photo_b64)
+            ).hexdigest()
+        except Exception:  # noqa: BLE001 — checksum is provenance, never fatal
+            _input_sha = None
 
         # 1. Anthropic PrintSynth interpreter (primary, isolated, flag+key gated).
         reply = await self._interpret_print_anthropic(
-            interpret_b64 or photo_b64, question, vision_data
+            interpret_b64 or photo_b64, question, vision_data, meta=meta
         )
-        if reply:
-            return reply
 
-        # 2. Grounded cascade fallback (No-Anthropic vision path).
-        messages = print_translator.build_theory_messages(photo_b64, vision_data, question=question)
-        raw = ""
-        try:
-            raw, usage = await self.router.complete(
-                messages, max_tokens=1200, session_id=str(chat_id)
+        if not reply:
+            # 2. Grounded cascade fallback (No-Anthropic vision path).
+            meta["route"] = "cascade"
+            meta.setdefault("fallback_reason", None)
+            messages = print_translator.build_theory_messages(
+                photo_b64, vision_data, question=question
             )
-            if raw:
-                InferenceRouter.log_usage(usage)
-        except Exception as exc:  # noqa: BLE001 — never eat the turn
-            logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
             raw = ""
-        return print_translator.format_theory_reply(raw, (vision_data or {}).get("drawing_type"))
+            try:
+                raw, usage = await self.router.complete(
+                    messages, max_tokens=1200, session_id=str(chat_id)
+                )
+                if raw:
+                    InferenceRouter.log_usage(usage)
+                    meta["model"] = (usage or {}).get("model") or (usage or {}).get("provider")
+            except Exception as exc:  # noqa: BLE001 — never eat the turn
+                logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
+                meta["fallback_reason"] = meta.get("fallback_reason") or f"router_error:{type(exc).__name__}"
+                raw = ""
+            reply = print_translator.format_theory_reply(
+                raw, (vision_data or {}).get("drawing_type")
+            )
+
+        self._log_interaction(
+            chat_id,
+            question or DEFAULT_PHOTO_CAPTION,
+            reply,
+            fsm_state="ELECTRICAL_PRINT",
+            intent="print",
+            has_photo=True,
+            response_time_ms=int((_time.monotonic() - _t0) * 1000),
+            route=meta.get("route"),
+            model=meta.get("model"),
+            devices=meta.get("devices"),
+            input_sha256=_input_sha,
+            fallback_reason=meta.get("fallback_reason"),
+        )
+        return reply
 
     async def _interpret_print_anthropic(
         self,
         photo_b64: str,
         question: str | None,
         vision_data: dict,
+        meta: dict | None = None,
     ) -> str:
         """ISOLATED Anthropic PrintSynth interpretation -> rendered Telegram reply.
 
@@ -955,14 +997,20 @@ class Supervisor:
         try:
             from printsense import interpret, render
         except ImportError:
+            if meta is not None:
+                meta["fallback_reason"] = "printsense_not_shipped"
             return ""  # framework not shipped in this image -> cascade
         if interpret.PROVIDER != "anthropic" or not os.getenv("ANTHROPIC_API_KEY"):
+            if meta is not None:
+                meta["fallback_reason"] = "print_vision_not_configured"
             return ""  # inert without the flag + key
         import base64
 
         try:
             photo_bytes = base64.b64decode(photo_b64)
         except Exception:  # noqa: BLE001 — bad b64 -> cascade
+            if meta is not None:
+                meta["fallback_reason"] = "bad_photo_b64"
             return ""
         pkg_ctx = {"drawing_type": (vision_data or {}).get("drawing_type")}
         try:
@@ -973,10 +1021,21 @@ class Supervisor:
                 question=question,
             )
         except interpret.PrintVisionUnavailable:
+            if meta is not None:
+                meta["fallback_reason"] = "print_vision_unavailable"
             return ""
         except Exception as exc:  # noqa: BLE001 — any interp/API error -> cascade
             logger.warning("PRINT_ANTHROPIC_ERROR error=%s", exc)
+            if meta is not None:
+                meta["fallback_reason"] = f"interp_error:{type(exc).__name__}"
             return ""
+        if meta is not None:
+            meta.update(
+                route="printsense",
+                model=getattr(interpret, "DEFAULT_MODEL", "claude-opus-4-8"),
+                devices=len(getattr(graph, "devices", None) or []),
+                fallback_reason=None,
+            )
         return render.format_graph_for_telegram(graph)
 
     async def _analyze_schematic_with_question(
@@ -5957,6 +6016,11 @@ class Supervisor:
         confidence: str = "",
         response_time_ms: int = 0,
         platform: str = "telegram",
+        route: str | None = None,
+        model: str | None = None,
+        devices: int | None = None,
+        input_sha256: str | None = None,
+        fallback_reason: str | None = None,
     ) -> None:
         """Append-only log of every user/bot exchange for quality analysis."""
         if fsm_state == "DIAGNOSIS_REVISION":
@@ -5972,6 +6036,11 @@ class Supervisor:
             confidence=confidence,
             response_time_ms=response_time_ms,
             platform=platform,
+            route=route,
+            model=model,
+            devices=devices,
+            input_sha256=input_sha256,
+            fallback_reason=fallback_reason,
         )
 
     # ------------------------------------------------------------------
