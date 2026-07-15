@@ -40,6 +40,29 @@ def test_duplicate_ids_ignores_unreadable():
     assert gates.check_duplicate_ids(g) == []
 
 
+def test_duplicate_ids_cross_section_facets_pass():
+    """One physical object modeled in two schema facets shares its printed tag across
+    sections (terminal + PLC I/O channel, cable + network link). That is sanctioned
+    modeling, not referential ambiguity — the live sheet-20 false-FAIL of 2026-07-14
+    (the identical pattern exists in the frozen 95.1/A baseline graph)."""
+    g = {
+        "terminals": [{"tag": "-21/A13:DIG OUT"}],
+        "plc_io_channels": [{"tag": "-21/A13:DIG OUT"}],
+        "cables": [{"tag": "-W5497"}],
+        "network_links": [{"tag": "-W5497"}],
+    }
+    assert gates.check_duplicate_ids(g) == []
+
+
+def test_duplicate_ids_same_section_still_fires_after_scoping():
+    # The gate's raison d'etre (ATV340: two physical variants, one unqualified id,
+    # SAME section) must keep firing after per-section scoping.
+    g = {"devices": [{"tag": "M"}, {"tag": "M"}]}
+    f = gates.check_duplicate_ids(g)
+    assert _codes(f) == ["duplicate_identifier"]
+    assert f[0]["items"] == ["M"]
+
+
 # ---- G8 off_page_from_pagination -------------------------------------------
 
 
@@ -84,8 +107,10 @@ def test_run_gates_atv340_shape_fires_structural_blockers():
         "package": {"sheet": "1/2"},
         "devices": [{"tag": "ENC"}, {"tag": "ATV340"}],
         "terminals": [
-            {"tag": "CN9:PA/+"}, {"tag": "CN9:PA/+"},  # S1/S2 vs S3, unqualified
-            {"tag": "CN9:PC/-"}, {"tag": "CN9:PC/-"},
+            {"tag": "CN9:PA/+"},
+            {"tag": "CN9:PA/+"},  # S1/S2 vs S3, unqualified
+            {"tag": "CN9:PC/-"},
+            {"tag": "CN9:PC/-"},
         ],
         "off_page_references": [{"tag": "2/2", "evidence": "Footer '1/2'"}],
     }
@@ -99,7 +124,9 @@ def test_run_gates_atv340_shape_fires_structural_blockers():
 def test_exact_label_mismatch_flagged():
     # The ATV340 graph emitted DO1/DO2 for the printed DQ1/DQ2 (digital outputs).
     g = {"plc_io_channels": [{"tag": "DO1"}, {"tag": "DO2"}]}
-    rubric = {"categories": {"device": {"expected": ["DQ1", "DQ2"], "known_misreads": ["DO1", "DO2"]}}}
+    rubric = {
+        "categories": {"device": {"expected": ["DQ1", "DQ2"], "known_misreads": ["DO1", "DO2"]}}
+    }
     f = gates.check_exact_label(g, rubric)
     assert _codes(f) == ["exact_label_mismatch"]
     assert "DO1" in f[0]["items"] and "DO2" in f[0]["items"]
@@ -107,7 +134,9 @@ def test_exact_label_mismatch_flagged():
 
 def test_exact_label_clean_passes():
     g = {"plc_io_channels": [{"tag": "DQ1"}, {"tag": "DQ2"}]}
-    rubric = {"categories": {"device": {"expected": ["DQ1", "DQ2"], "known_misreads": ["DO1", "DO2"]}}}
+    rubric = {
+        "categories": {"device": {"expected": ["DQ1", "DQ2"], "known_misreads": ["DO1", "DO2"]}}
+    }
     assert gates.check_exact_label(g, rubric) == []
 
 
@@ -154,7 +183,10 @@ def test_dangling_reference_ignores_unreadable():
 def test_dangling_reference_disabled_without_flag():
     # THE LESSON: run truth-free, legit cross-sheet / sub-terminal refs false-positive.
     # Without require_refs_resolve, the gate MUST NOT fire (an import blocker needs ~0 FPs).
-    g = {"devices": [{"tag": "A"}], "network_links": [{"tag": "L", "connects": ["+SCU1/5.3", "-A1-X3:2"]}]}
+    g = {
+        "devices": [{"tag": "A"}],
+        "network_links": [{"tag": "L", "connects": ["+SCU1/5.3", "-A1-X3:2"]}],
+    }
     assert gates.check_dangling_refs(g, {}) == []
     assert gates.check_dangling_refs(g, None) == []
 
@@ -165,7 +197,9 @@ def test_dangling_reference_disabled_without_flag():
 def test_connector_ownership_flagged():
     # RS422 belongs to CN4/PTO; the graph put it on CN3 (the encoder connector).
     g = {"network_links": [{"tag": "RS422 (CN3 ENC)", "connects": ["ENC", "CN3", "ATV340"]}]}
-    rubric = {"paths": [{"name": "rs422", "signal": "RS422", "from": "CN4", "forbidden_from": ["CN3"]}]}
+    rubric = {
+        "paths": [{"name": "rs422", "signal": "RS422", "from": "CN4", "forbidden_from": ["CN3"]}]
+    }
     f = gates.check_connector_ownership(g, rubric)
     assert _codes(f) == ["incorrect_connector_ownership"]
     assert "CN3" in f[0]["items"]
@@ -173,7 +207,9 @@ def test_connector_ownership_flagged():
 
 def test_connector_ownership_correct_passes():
     g = {"network_links": [{"tag": "RS422 CN4", "connects": ["PTO", "CN4", "ATV340"]}]}
-    rubric = {"paths": [{"name": "rs422", "signal": "RS422", "from": "CN4", "forbidden_from": ["CN3"]}]}
+    rubric = {
+        "paths": [{"name": "rs422", "signal": "RS422", "from": "CN4", "forbidden_from": ["CN3"]}]
+    }
     assert gates.check_connector_ownership(g, rubric) == []
 
 
@@ -185,35 +221,50 @@ def test_connector_ownership_no_rubric_passes():
 # ---- G5/G6 functional-path (variant crossover + forbidden member) ----------
 
 _BRAKING_RUBRIC = {
-    "paths": [{
-        "name": "braking", "match": ["brak"], "variant": "S1S2",
-        "endpoints": ["CN10:PBe", "CN10:PB"],
-        "forbidden_members": ["CN9:PC/-", "CN9:PA/+"],
-        "member_variants": {
-            "CN10:PB": "S1S2", "CN10:PBe": "S1S2",
-            "CN9:PA/+": "dc_bus", "CN9:PC/-": "dc_bus", "CN8:PB": "S3",
-        },
-    }]
+    "paths": [
+        {
+            "name": "braking",
+            "match": ["brak"],
+            "variant": "S1S2",
+            "endpoints": ["CN10:PBe", "CN10:PB"],
+            "forbidden_members": ["CN9:PC/-", "CN9:PA/+"],
+            "member_variants": {
+                "CN10:PB": "S1S2",
+                "CN10:PBe": "S1S2",
+                "CN9:PA/+": "dc_bus",
+                "CN9:PC/-": "dc_bus",
+                "CN8:PB": "S3",
+            },
+        }
+    ]
 }
 
 
 def test_functional_path_forbidden_member_and_crossover_flagged():
     # ATV340 merged one braking path mixing DC-bus PC/- into the brake loop
     # AND conflating the per-variant (S1S2 vs dc_bus) terminals.
-    g = {"functional_paths": [{
-        "name": "DC bus / dynamic braking",
-        "sequence": ["CN9:PA/+", "CN9:PC/-", "CN10:PB", "CN10:PBe", "Braking resistor"],
-    }]}
+    g = {
+        "functional_paths": [
+            {
+                "name": "DC bus / dynamic braking",
+                "sequence": ["CN9:PA/+", "CN9:PC/-", "CN10:PB", "CN10:PBe", "Braking resistor"],
+            }
+        ]
+    }
     codes = _codes(gates.check_functional_paths(g, _BRAKING_RUBRIC))
     assert "incompatible_functional_path" in codes
     assert "variant_crossover" in codes
 
 
 def test_functional_path_clean_passes():
-    g = {"functional_paths": [{
-        "name": "dynamic braking (S1&S2)",
-        "sequence": ["CN10:PBe", "CN10:PB", "Braking resistor"],
-    }]}
+    g = {
+        "functional_paths": [
+            {
+                "name": "dynamic braking (S1&S2)",
+                "sequence": ["CN10:PBe", "CN10:PB", "Braking resistor"],
+            }
+        ]
+    }
     assert gates.check_functional_paths(g, _BRAKING_RUBRIC) == []
 
 
