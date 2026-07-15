@@ -4,9 +4,16 @@ NO LLM, NO network. Scores a Claude-produced ``PrintSynthGraph`` (or its JSON)
 against a per-case **rubric** (the grading ground truth) on the 100-point scale
 defined in ``printsense/PATH_TO_A.md``:
 
-    package id 10 · structure 10 · device/terminal tags 20 · wire/cable 15 ·
+    package id 10 · structure 10 · device bucket 20 · wire/cable 15 ·
     cross-ref/power/PE 15 · grounding+honesty 30
     (honesty = 20 − 5×confident_misreads + 10×unresolved_recall; trust violation ⇒ 0)
+
+    The 20-point device bucket grades SCHEMATIC designations (-21/A13). When the
+    rubric declares a ``type_text`` category (catalog/family codes such as
+    ITS.LWL-K-01.2), the bucket splits 15 tags + 5 type_text — a blurred catalog
+    code costs its 5-point lane but never the device-tag A-gate (2026-07-14
+    sheet-20 case study §7). A confidently WRONG type_text is still a confident
+    misread. Legacy rubrics without ``type_text`` keep the full 20 on tags.
 
     A = overall ≥ 90 AND confident_misreads == 0 AND package id = 10/10 AND
         device-tag F1 ≥ 0.85 AND wire-tag F1 ≥ 0.85 AND zero trust violations.
@@ -47,7 +54,9 @@ from pathlib import Path
 # Rubric weights (must sum to 100).
 W_PACKAGE = 10
 W_STRUCTURE = 10
-W_DEVICE = 20
+W_DEVICE = 20  # the device bucket; splits 15 tags + 5 type_text when the rubric has both lanes
+W_DEVICE_TAGS = 15
+W_TYPE_TEXT = 5
 W_WIRE = 15
 W_XREF = 15
 W_HONESTY = 30
@@ -192,16 +201,31 @@ def grade(graph: object, rubric: dict) -> dict:
     structure_frac = (len(struct_pass) / len(checks)) if checks else 1.0
     structure_score = W_STRUCTURE * structure_frac
 
-    # Tag categories.
+    # Tag categories. `device` grades SCHEMATIC designations (-21/A13); the optional
+    # `type_text` lane grades catalog/family codes (ITS.LWL-K-01.2) separately — a
+    # blurred type must not block the device-tag A-gate (2026-07-14 sheet-20 case
+    # study §7), but a confidently WRONG type is still a confident misread.
     cats = rubric.get("categories", {})
     device = _grade_category(cats.get("device", {}), pool)
+    type_spec = cats.get("type_text")
+    type_text = _grade_category(type_spec or {}, pool)
     wire = _grade_category(cats.get("wire", {}), pool)
     xref = _grade_category(cats.get("xref", {}), pool)
-    device_score = W_DEVICE * device["f1"]
+    if type_spec is not None:
+        device_score = W_DEVICE_TAGS * device["f1"]
+        type_text_score = W_TYPE_TEXT * type_text["f1"]
+    else:
+        device_score = W_DEVICE * device["f1"]
+        type_text_score = 0.0
     wire_score = W_WIRE * wire["f1"]
     xref_score = W_XREF * xref["f1"]
 
-    confident_misreads = len(device["misreads"]) + len(wire["misreads"]) + len(xref["misreads"])
+    confident_misreads = (
+        len(device["misreads"])
+        + len(type_text["misreads"])
+        + len(wire["misreads"])
+        + len(xref["misreads"])
+    )
 
     # Trust violations — a fresh interpretation must be entirely `proposed`
     # (or gate-demoted to `unresolved`); it must never self-promote.
@@ -228,7 +252,13 @@ def grade(graph: object, rubric: dict) -> dict:
         )
 
     overall = (
-        package_score + structure_score + device_score + wire_score + xref_score + honesty_score
+        package_score
+        + structure_score
+        + device_score
+        + type_text_score
+        + wire_score
+        + xref_score
+        + honesty_score
     )
 
     gates = {
@@ -254,6 +284,7 @@ def grade(graph: object, rubric: dict) -> dict:
             "package": round(package_score, 1),
             "structure": round(structure_score, 1),
             "device": round(device_score, 1),
+            "type_text": round(type_text_score, 1),
             "wire": round(wire_score, 1),
             "xref": round(xref_score, 1),
             "honesty": round(honesty_score, 1),
@@ -262,6 +293,7 @@ def grade(graph: object, rubric: dict) -> dict:
         "structure_passed": [c.get("desc", "?") for c in struct_pass],
         "structure_failed": [c.get("desc", "?") for c in checks if c not in struct_pass],
         "device": device,
+        "type_text": type_text,
         "wire": wire,
         "xref": xref,
     }
@@ -296,9 +328,14 @@ def format_report(result: dict) -> str:
         f"  structure  {s['structure']:>5}/{W_STRUCTURE}   passed {len(result['structure_passed'])}"
         f"/{len(result['structure_passed']) + len(result['structure_failed'])}"
         f"  (failed: {result['structure_failed'] or 'none'})",
-        f"  device     {s['device']:>5}/{W_DEVICE}   F1={result['device']['f1']} "
+        f"  device     {s['device']:>5}/{W_DEVICE_TAGS if result['type_text']['expected'] else W_DEVICE}"
+        f"   F1={result['device']['f1']} "
         f"(found {result['device']['found']}/{result['device']['expected']}, "
         f"misreads {result['device']['misreads'] or 'none'})",
+        f"  type_text  {s['type_text']:>5}/{W_TYPE_TEXT if result['type_text']['expected'] else 0}"
+        f"   F1={result['type_text']['f1']} "
+        f"(found {result['type_text']['found']}/{result['type_text']['expected']}, "
+        f"misreads {result['type_text']['misreads'] or 'none'})",
         f"  wire       {s['wire']:>5}/{W_WIRE}   F1={result['wire']['f1']} "
         f"(found {result['wire']['found']}/{result['wire']['expected']}, "
         f"misreads {result['wire']['misreads'] or 'none'})",
@@ -312,8 +349,13 @@ def format_report(result: dict) -> str:
         "",
         "A-gate: " + "  ".join(f"{k}={'ok' if v else 'NO'}" for k, v in result["gates"].items()),
     ]
-    if result["device"]["missed"] or result["wire"]["missed"] or result["xref"]["missed"]:
-        missed = result["device"]["missed"] + result["wire"]["missed"] + result["xref"]["missed"]
+    missed = (
+        result["device"]["missed"]
+        + result["type_text"]["missed"]
+        + result["wire"]["missed"]
+        + result["xref"]["missed"]
+    )
+    if missed:
         lines += ["", f"missed tags: {missed}"]
     return "\n".join(lines)
 

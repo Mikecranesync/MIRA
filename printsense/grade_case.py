@@ -115,7 +115,10 @@ def grade_case(
         result["score"] = g["overall"]
         result["letter"] = g["letter"]
         result["confident_misreads"] = (
-            g["device"]["misreads"] + g["wire"]["misreads"] + g["xref"]["misreads"]
+            g["device"]["misreads"]
+            + g["type_text"]["misreads"]
+            + g["wire"]["misreads"]
+            + g["xref"]["misreads"]
         )
         result["trust_violations"] = g["trust_violations"]
         result["gate_results"] = g["gates"]
@@ -123,6 +126,7 @@ def grade_case(
             "overall": g["overall"],
             "is_A": g["is_A"],
             "device_f1": g["device"]["f1"],
+            "type_text_f1": g["type_text"]["f1"],
             "wire_f1": g["wire"]["f1"],
             "xref_f1": g["xref"]["f1"],
             "unresolved_recall": g["unresolved_recall"],
