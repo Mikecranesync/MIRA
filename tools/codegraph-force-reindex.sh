@@ -32,6 +32,12 @@ cd "$REPO_ROOT" || exit 2
 
 CG=(npx -y @colbymchenry/codegraph)
 
+# Freshness marker writer (cg_write_sync_marker) — so the daily reindex updates
+# .codegraph/.last-sync. Previously only the git hooks wrote it, so the marker
+# went stale (and preflight reported STALE) even right after a clean reindex.
+# shellcheck source=tools/codegraph-freshness.sh
+. "$SCRIPT_DIR/codegraph-freshness.sh"
+
 ts() { date '+%Y-%m-%dT%H:%M:%S'; }
 log() { echo "[$(ts)] codegraph-force-reindex: $*"; }
 
@@ -60,17 +66,24 @@ log "verifying with corruption canary"
 rc=$?
 case "$rc" in
   0)
+    # Only write the freshness marker AFTER a confirmed-healthy reindex — a
+    # marker written on a failed rebuild would falsely claim the index is fresh.
+    cg_write_sync_marker "$REPO_ROOT/.codegraph" force-reindex healthy "$REPO_ROOT" \
+      && log "wrote .codegraph/.last-sync (event=force-reindex, canary=healthy)"
     log "canary healthy — call-graph restored"
     exit 0
     ;;
   1)
     # Canary itself re-ran a reindex and recovered — unexpected right after a
-    # fresh rebuild, but the end state is healthy.
+    # fresh rebuild, but the end state is healthy, so the marker is warranted.
+    cg_write_sync_marker "$REPO_ROOT/.codegraph" force-reindex repaired "$REPO_ROOT" \
+      && log "wrote .codegraph/.last-sync (event=force-reindex, canary=repaired)"
     log "canary repaired on its own pass — call-graph healthy"
     exit 0
     ;;
   *)
-    log "WARNING — canary still reports corruption after force-reindex"
+    # Do NOT write the marker: the rebuild did not restore a healthy call-graph.
+    log "WARNING — canary still reports corruption after force-reindex (marker NOT updated)"
     exit 1
     ;;
 esac
