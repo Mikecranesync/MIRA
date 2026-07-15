@@ -60,3 +60,36 @@ A → requires spending: Phase 0 ≈ same (1 call, xhigh a bit slower). Phase 2 
 ## Recommended order
 
 **Phase 0 (all 5 items) + Phase 1 grader → re-run sheet 20 → measure the jump.** Phase 0 alone (real resolution + upright + grammar + xhigh + conf-gate) should move D→B without any new deps or multi-pass. Then Phase 2 (tiling) and Phase 3 (verify) close to A. Build the grader early so every phase is measured, not asserted.
+
+## 2026-07-14 case-study program (operator decision record: `docs/eval/2026-07-14-printsense-sheet20-case-study.md`)
+
+Landed with / right after the decision record:
+
+- ✅ **type_text rubric lane (§7)** — schematic tags vs catalog codes split; strict-A device gate
+  = tags only. `grader.py` + sheet-20 rubric + regraded `response_b` (94.1/A, `is_A` true).
+- ✅ **Cost benchmark** (`docs/eval/2026-07-14-printsense-cost-benchmark.md`) — effort=high holds
+  A-band at 55% of xhigh cost; Batches −50%; caching ~12%.
+- ✅ **Variance-study harness (§9/§12)** — `printsense/benchmarks/variance_study.py` (sibling PR),
+  Batches API, ≥5 runs × opus xhigh/high/medium, decision-rule report. **Prod default stays xhigh
+  until this study passes the §9 decision rule.**
+
+Staged next (blocked on the #2698→#2701 merge queue, then the iterate-branch derivation of
+F1 token-budget resize / F2 EXIF upright / F5 client-side PDF render / --enhance/--verify):
+
+- **§8A port-aware graph** — DIG IN / DIG OUT / LWL IN / LWL OUT / 24VDC / GND as first-class
+  port edges; no generic "opto-coupler" collapse. Schema (models.py) + prompt + grader checks.
+- **§8B off-sheet cross-reference graph** — sheet refs, cable numbers, SCU identifiers,
+  direction; enables deterministic "received from SCU3 / sent onward to SCU1" statements.
+  (Also the systematic fix for the xref-F1 0.36–1.0 run variance — tiling overview+labels.)
+- **§8C OCR reconciliation** — repeated-context normalization (the `Position Blt` class of
+  error); raw OCR preserved separately; promote only on multi-clue agreement.
+- **§8D/§8F observation-vs-inference + evidence-sensitive uncertainty** — visible fact / strong
+  inference / unknown as explicit categories; a blurred model number reduces confidence in the
+  model number only, never in traceable connectivity.
+- **§8E technician response planner (overview-first)** — §4 ordering (whole-circuit function →
+  purpose → flow → one-channel detail → fault meaning → troubleshooting → exact mapping →
+  unknowns/safety) + §11 prose rubric (topology 25 / port-direction 20 / xref 15 / functional 15 /
+  ordering 15 / honesty 10, field-ready ≥90, hard-fail on topology or direction).
+- **§10 Bit 1–3 regression case** — needs the "Opto-Koppler, Bit 1–3" page image (`-20/A10…A12`,
+  three modules) + verified truth; the current benchmark image is the two-module *belegt* page.
+  Do NOT reuse the belegt rubric for it.

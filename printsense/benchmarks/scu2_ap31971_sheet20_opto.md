@@ -81,3 +81,16 @@ Reproduce (paid, one call): `doppler run -c dev -- py -3` a driver that uprights
 `printsense/grader.py response_b.graph.json rubric.json`. Auto-rotate ran the
 pre-upright branch here because Tesseract isn't on the dev box; in the bot
 container OSD uprights the raw photo itself.
+
+## 2026-07-14 convention update — type_text lane (operator decision)
+
+Per the operator-authorized case study (`docs/eval/2026-07-14-printsense-sheet20-case-study.md`
+§7): the catalog/family code **ITS.LWL-K-01.2** is graded in its own `type_text` rubric lane
+(5 of the 20-point device bucket), not as a schematic device tag. The strict-A `device_f1`
+gate covers schematic designations only (`-21/A13`, `-21/A14`). A confidently *wrong* catalog
+code still counts as a confident misread; an honest hedge costs only the 5-point lane.
+
+Response B regraded under this convention: **94.1/A, `is_A: true`** (was 95.1/A, `is_A: false`
+— blocked solely by the hedged catalog code). The 2026-07-14 cost benchmark's constant
+device F1 = 0.8 across five model configs (incl. Haiku) was the evidence that the miss was
+convention, not perception.
