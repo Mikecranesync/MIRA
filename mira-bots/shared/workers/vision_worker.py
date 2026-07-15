@@ -237,6 +237,43 @@ def _kw_affirmed(keyword: str, text: str) -> bool:
 
 OCR_CLASSIFICATION_THRESHOLD = 10
 
+# IEC/DIN designation-grammar tokens (schematic tags) — deterministic LAYOUT
+# evidence that a page is a drawing. Real prints label entities with short
+# designators (-M1, -B1, -X1, -W5497, -20/A10, 15.7, PT100); physical equipment
+# photos carry brand/catalog text (Micro820, 2080-LC20-20QBB) that matches none
+# of these. Anchored full-token patterns — an OCR item must BE a tag, not merely
+# contain one — so long catalog strings can never false-positive.
+_SCHEMATIC_TAG_PATTERNS = [
+    re.compile(r"^[+-][A-Z]{1,3}\d{1,4}$", re.IGNORECASE),        # -M1, -B2, +S1
+    re.compile(r"^-?[A-Z]{0,3}\d{1,3}/[A-Z]{1,3}\d{1,4}$", re.IGNORECASE),  # -20/A10
+    re.compile(r"^-?W\d{2,5}$", re.IGNORECASE),                    # -W5497
+    re.compile(r"^\d{1,3}\.\d{1,2}$"),                             # 15.7 (sheet.column)
+    re.compile(r"^[A-Z]{1,3}\d{1,4}$", re.IGNORECASE),             # PT100, M1 (unprefixed)
+]
+_PREFIXED_TAG = re.compile(r"^[+-]|/")
+
+
+def _ocr_schematic_tag_hits(ocr_items: list) -> tuple[int, int]:
+    """(total tag-grammar hits, prefixed hits) across OCR items.
+
+    ``prefixed`` (leading -/+ or a sheet/device slash) is the high-precision
+    subset — bare ``PT100``-style tokens also appear on nameplates, so the
+    caller requires at least one prefixed tag before trusting the count.
+    """
+    hits = prefixed = 0
+    for item in ocr_items or []:
+        tok = str(item).strip()
+        if any(p.match(tok) for p in _SCHEMATIC_TAG_PATTERNS):
+            hits += 1
+            if _PREFIXED_TAG.search(tok[:4]):
+                prefixed += 1
+    return hits, prefixed
+
+
+# Minimum distinct tag-grammar hits (with >=1 prefixed) to call a page a print
+# on layout evidence alone.
+SCHEMATIC_TAG_THRESHOLD = 3
+
 
 def parse_ocr_reply(raw: str) -> list[str]:
     """Model OCR reply -> clean text items (numbered list / markdown tolerant)."""
@@ -611,15 +648,17 @@ class VisionWorker:
             conf = min(1.0, 0.7 + print_matches * 0.05)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 
-        # Caption override: if the technician's caption/question explicitly calls
-        # this a print/schematic/diagram/wiring drawing, trust that over an
-        # incidental equipment-component word in the vision summary. A genuine
-        # nameplate (handled above) still wins; this only pre-empts the
-        # EQUIPMENT_FACE override below so a captioned drawing routes to the
-        # grounded schematic path instead of the generic engine.
-        caption_lower = (caption or "").lower()
-        if any(_kw_in(kw, caption_lower) for kw in CAPTION_PRINT_KEYWORDS):
-            return {"type": "ELECTRICAL_PRINT", "confidence": 0.6}
+        # OCR schematic-tag grammar (LAYOUT evidence — operator directive
+        # 2026-07-15: visual -> OCR/layout -> caption). A page whose OCR items
+        # are IEC designators (-M1, -B1, -X1, PT100 …) is a drawing even when
+        # the vision model describes only its CONTENTS ("a stator winding with
+        # an RTD…" — the 2026-07-12 MACK/InTraSys misroute). This replaces the
+        # old caption pre-empt: the rescue no longer needs a caption at all,
+        # and a caption alone can never produce it.
+        tag_hits, tag_prefixed = _ocr_schematic_tag_hits(ocr_items)
+        if tag_hits >= SCHEMATIC_TAG_THRESHOLD and tag_prefixed >= 1:
+            conf = min(1.0, 0.6 + tag_hits * 0.04)
+            return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 
         # Equipment faceplate keywords (only when NO strong print signal above) —
         # a physical faceplate photo, never a drawing.
@@ -639,6 +678,17 @@ class VisionWorker:
         if len(ocr_items) >= OCR_CLASSIFICATION_THRESHOLD:
             conf = min(1.0, 0.3 + len(ocr_items) * 0.02)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
+
+        # Caption as a TIE-BREAKER only (operator directive 2026-07-15: visual
+        # evidence -> OCR/layout evidence -> caption). Reached only when nothing
+        # visual or OCR-based matched above — a technician calling an otherwise
+        # unidentifiable page "my print" may break the tie toward the schematic
+        # path, but a caption can never override visual/OCR evidence in either
+        # direction (a cabinet photo captioned "explain this print" stays
+        # EQUIPMENT_PHOTO via the vision keywords above).
+        caption_lower = (caption or "").lower()
+        if any(_kw_in(kw, caption_lower) for kw in CAPTION_PRINT_KEYWORDS):
+            return {"type": "ELECTRICAL_PRINT", "confidence": 0.6}
 
         # Default: equipment photo with low confidence
         return {"type": "EQUIPMENT_PHOTO", "confidence": 0.3}

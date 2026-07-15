@@ -1971,6 +1971,11 @@ class Supervisor:
         ``state["context"]["uns_context"]["source"]`` so downstream consumers
         (decision trace, audits) can see the turn's provenance. See process().
         """
+        # Boundary normalization: adapters send strings, but a captionless photo
+        # from a non-Telegram caller may arrive as None — the pipeline's regex
+        # guards assume str (guardrails.py). Normalize once at the entry point.
+        message = message or ""
+
         # Resolve tenant per call — chat_tenant LRU cache makes this cheap
         resolved_tenant = resolve_tenant(chat_id) or self.rag.tenant_id
 
@@ -2586,21 +2591,23 @@ class Supervisor:
                 ctx["drawing_type"] = vision_data["drawing_type"]
                 state["context"] = ctx
 
-                # If the technician sent a real question with the schematic,
-                # send image + question to the vision LLM for circuit analysis.
-                # Otherwise (just the default "Analyze this equipment photo"
-                # caption) keep the OCR-label preview + prompt-for-question.
+                # Visual-first routing (operator directive 2026-07-15): a photo
+                # the vision worker classified as an ELECTRICAL_PRINT ALWAYS gets
+                # the grounded interpretation — Anthropic PrintSynth first (deep,
+                # typed, never-invent), else the OCR-verbatim cascade. Captions
+                # are weak evidence: a real question is forwarded to the
+                # interpreter; an empty caption or the bot's own default caption
+                # means "interpret the whole sheet" (question=None). The live
+                # 2026-07-15 phone test proved a technician typing the literal
+                # default caption otherwise got only the thin OCR-label preview.
                 has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
-                reply = ""
-                if has_real_question:
-                    # Ground ANY question about a classified electrical print:
-                    # Anthropic PrintSynth interpreter first (deep, typed, never
-                    # invent), else the OCR-verbatim cascade — never the free-form
-                    # vision LLM that fabricated a device taxonomy on real prints.
-                    reply = await self._grounded_print_reply(
-                        photo_b64, message, vision_data, chat_id
-                    )
+                question = message if has_real_question else None
+                reply = await self._grounded_print_reply(
+                    photo_b64, question, vision_data, chat_id
+                )
                 if not reply:
+                    # Fail-safe only — the grounded path is display-ready even on
+                    # provider failure, but never leave a print unanswered.
                     reply = self._build_print_reply(vision_data)
                     if not has_real_question:
                         reply += "\n\nWhat would you like to know about this circuit?"
