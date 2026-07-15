@@ -184,7 +184,7 @@ def run_study(
         status = client.messages.batches.retrieve(batch.id).processing_status
         if status == "ended":
             break
-        print(f"[batch] {batch.id} {status} …", flush=True)
+        print(f"[batch] {batch.id} {status} ...", flush=True)
         time.sleep(poll_s)
 
     rows: list[dict] = []
