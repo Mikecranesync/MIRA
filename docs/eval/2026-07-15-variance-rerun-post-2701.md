@@ -1,6 +1,6 @@
 # PrintSense variance rerun — post-#2701 causal confirmation + configuration decision table
 
-**Date:** 2026-07-15 (immediately after the six-PR ladder merged)
+**Date:** 2026-07-15 UTC = evening of **2026-07-14 America/New_York** (see Timestamps below)
 **Stack under test (all on main):** #2698 `7c2ef472` · #2699 `0e55a5d5` · #2700 `afea72ae` ·
 #2701 `83955481` · #2705 `8a9cdad7` · #2706 `416200ed` — VERSION 3.146.8.
 **Run:** `printsense.benchmarks.variance_study`, 5 runs × {opus-xhigh, opus-high, opus-medium},
@@ -8,6 +8,32 @@ upright sheet-20, canonical rubric (type_text lane), one Batches job
 `msgbatch_01KzkAF7p3KEJ2GUWX7bZEfG`. Standard-rate total $3.92 → **batch-billed ≈ $1.96**
 (stg Doppler, operator-authorized rerun). Raw rows: `2026-07-15-variance-rerun-rows.json`
 (run 1 for comparison: `2026-07-14-variance-run1-rows.json`).
+
+## 0. Timestamps & provenance (timezone reconciliation)
+
+All GitHub timestamps are **UTC**; the work happened the **evening of 2026-07-14
+America/New_York (EDT, UTC−4)** and crossed midnight UTC — that is the whole cause of the
+mixed 07-14/07-15 dates. Precisely:
+
+- Ladder merges: 2026-07-15 **01:59:06Z → 02:16:50Z** = 2026-07-14 **21:59 → 22:17 EDT**
+  (#2698 01:59:06Z · #2699 02:01:42Z · #2700 02:06:00Z · #2701 02:09:33Z · #2705 02:13:29Z ·
+  #2706 02:16:50Z).
+- Rerun batch `msgbatch_01KzkAF7p3KEJ2GUWX7bZEfG`: submitted ≈ 02:18Z, results collected
+  **02:25Z = 22:25 EDT 2026-07-14** (row/graph file mtimes).
+- Filename convention: this file and its rows JSON carry the **UTC** date (07-15); run 1's rows
+  file carries the **local** date (07-14; it ran ≈ 20:04–20:30 EDT = 00:04–00:30Z on 07-15 UTC).
+  One working session, one evening.
+
+**Input identity:** `01_sheet20_upright.jpg`, 1,866,158 bytes, sha256 `1f5ced99ba4a60d5…`
+(reproduce with `hashlib.sha256` over the gitignored eval-inputs copy).
+
+**Rows-file caveat:** `2026-07-14-variance-run1-rows.json` was graded under the **pre-#2705
+grader** (no type_text lane; device = 2 tags @ 20 pts) and pre-#2701 gates — its per-run
+`is_A`/`import_verdict` fields are NOT on the canonical scale; §1's regrade line and §2's fresh
+table are canonical. Both raw files are preserved unmodified (never overwritten).
+
+**Consistency check:** re-running `variance_study.summarize()` over both committed rows files
+reproduces every figure in the tables below exactly (means, stdevs, F1s, per-run and total costs).
 
 ## 1. Causal confirmation — the #2701 question
 
