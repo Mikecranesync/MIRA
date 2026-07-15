@@ -1151,3 +1151,8 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 - Scorecard: 51/57 passing (89%)
 - Action: issue-filed (commented rolling tracker #1876)
 - 6 failures / 3 patchable, but spanned 3 file_clusters (engine.py, guardrails.py, active.yaml) → single-file guardrail tripped, no autopatch. Dominant real signal = cross-vendor citation (AutomationDirect/ABB assets pulling Rockwell PowerFlex chunks) → retrieval-precision work (#2083/#2085), not an FSM/keyword patch.
+
+## eval-fixer run — 2026-07-15
+- Scorecard: 51/57 passing (89%) — from 2026-07-15T0348 run (flat vs 2026-07-14's 51/57)
+- Action: issue-filed (commented rolling tracker #1876)
+- Multi-file cluster hard stop, **fifth night running**: 6 failures / 5 patchable spanning 3 clusters (engine.py, guardrails.py, active.yaml) → single-file guardrail tripped, no autopatch. Cluster A = engine.py FSM state (4 fixtures: pf525_f004_02 Q2-not-DIAGNOSIS, vague_opener_05 & asset_change_08 Q1-not-Q2, self_critique_34 IDLE-not-Q1) — same recurring Q1→Q2→DIAGNOSIS pacing fix, 5th night. Cluster B = gs3_ground_fault_14 falling to KB-miss honesty fallback (guardrails/prompt). Non-patchable = vfd_abb_01_acs580 wrong-vendor citation (ABB→Rockwell), same cross-vendor bleed as #2083/#2085. Highest-leverage human fix remains the engine.py FSM pacing cluster (4 of 5 patchable failures).
