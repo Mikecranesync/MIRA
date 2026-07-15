@@ -36,14 +36,25 @@ _NON_ENTITY_REFS = frozenset({"UNREADABLE"})
 
 
 def check_duplicate_ids(graph: dict) -> list[dict]:
-    """G4 — an entity ``tag`` may not appear on two entities without a variant scope.
+    """G4 — an entity ``tag`` may not appear on two entities **in the same section**
+    without a variant scope.
 
     The ATV340 graph carries ``M``, ``CN9:PA/+`` and ``CN9:PC/-`` twice (the S1/S2 and S3
-    variants sharing one unqualified id) — a downstream graph writer cannot tell which
-    entity a connection references. The fix is a variant-qualified id (``S1S2:M`` /
-    ``S3:M``), so *any* unqualified duplicate is import-blocking.
+    variants sharing one unqualified id, side by side in one section) — a downstream
+    graph writer cannot tell which entity a connection references. The fix is a
+    variant-qualified id (``S1S2:M`` / ``S3:M``), so a same-section unqualified
+    duplicate is import-blocking.
+
+    Scoped per section (2026-07-14): the same printed tag appearing in two *different*
+    sections is coherent facet modeling of ONE physical object (a ``-21/A13:DIG OUT``
+    terminal that is also a ``plc_io_channels`` entry; a ``-W5497`` cable that is also
+    a ``network_links`` entry). The live sheet-20 A-grade graphs and the frozen 95.1/A
+    baseline all carry that pattern legitimately, and an import blocker must have
+    ~zero false positives (module doctrine — see the dangling-reference precedent
+    above). Downstream import merges same-tag entities across sections as facet
+    aliases of one node.
     """
-    counts: dict[str, int] = {}
+    counts: dict[tuple[str, str], int] = {}
     for section in _ENTITY_SECTIONS:
         for e in graph.get(section) or []:
             if not isinstance(e, dict):
@@ -51,14 +62,16 @@ def check_duplicate_ids(graph: dict) -> list[dict]:
             tag = _norm(e.get("tag", ""))
             if not tag or tag in _NON_ENTITY_REFS:
                 continue
-            counts[tag] = counts.get(tag, 0) + 1
-    dups = sorted(t for t, n in counts.items() if n > 1)
+            counts[(section, tag)] = counts.get((section, tag), 0) + 1
+    dups = sorted({t for (_s, t), n in counts.items() if n > 1})
     if dups:
-        return [{
-            "gate": "duplicate_identifier",
-            "detail": f"unqualified tag(s) on >=2 entities (need variant scope): {dups}",
-            "items": dups,
-        }]
+        return [
+            {
+                "gate": "duplicate_identifier",
+                "detail": f"same-section unqualified tag(s) on >=2 entities (need variant scope): {dups}",
+                "items": dups,
+            }
+        ]
     return []
 
 
@@ -83,11 +96,13 @@ def check_off_page_from_pagination(graph: dict) -> list[dict]:
         if tm and (sheet_denom is None or tm.group(1) == sheet_denom):
             bad.append(tag)
     if bad:
-        return [{
-            "gate": "off_page_from_pagination",
-            "detail": f"pagination token(s) modeled as an electrical off-page ref: {bad}",
-            "items": bad,
-        }]
+        return [
+            {
+                "gate": "off_page_from_pagination",
+                "detail": f"pagination token(s) modeled as an electrical off-page ref: {bad}",
+                "items": bad,
+            }
+        ]
     return []
 
 
@@ -114,17 +129,22 @@ def check_exact_label(graph: dict, rubric: dict | None) -> list[dict]:
     if not rubric:
         return []
     pool = _structured_tag_pool(graph)
-    misreads = sorted({
-        m for cat in (rubric.get("categories") or {}).values()
-        for m in (cat or {}).get("known_misreads") or []
-        if _norm(m) in pool
-    })
+    misreads = sorted(
+        {
+            m
+            for cat in (rubric.get("categories") or {}).values()
+            for m in (cat or {}).get("known_misreads") or []
+            if _norm(m) in pool
+        }
+    )
     if misreads:
-        return [{
-            "gate": "exact_label_mismatch",
-            "detail": f"known-misread label(s) asserted in the graph: {misreads}",
-            "items": misreads,
-        }]
+        return [
+            {
+                "gate": "exact_label_mismatch",
+                "detail": f"known-misread label(s) asserted in the graph: {misreads}",
+                "items": misreads,
+            }
+        ]
     return []
 
 
@@ -154,11 +174,13 @@ def check_dangling_refs(graph: dict, rubric: dict | None) -> list[dict]:
             _check(step)
     if dangling:
         items = sorted(dangling)
-        return [{
-            "gate": "dangling_reference",
-            "detail": f"connection/path target(s) resolve to no defined entity: {items}",
-            "items": items,
-        }]
+        return [
+            {
+                "gate": "dangling_reference",
+                "detail": f"connection/path target(s) resolve to no defined entity: {items}",
+                "items": items,
+            }
+        ]
     return []
 
 
@@ -186,11 +208,13 @@ def check_connector_ownership(graph: dict, rubric: dict | None) -> list[dict]:
                 found += [fb for fb in forbidden_from if _norm(fb) in refs or _norm(fb) in tag]
         if found:
             items = sorted(set(found))
-            failures.append({
-                "gate": "incorrect_connector_ownership",
-                "detail": f"{signal} referenced from forbidden connector(s) {items}; expected {spec.get('from')}",
-                "items": items,
-            })
+            failures.append(
+                {
+                    "gate": "incorrect_connector_ownership",
+                    "detail": f"{signal} referenced from forbidden connector(s) {items}; expected {spec.get('from')}",
+                    "items": items,
+                }
+            )
     return failures
 
 
@@ -217,19 +241,23 @@ def check_functional_paths(graph: dict, rubric: dict | None) -> list[dict]:
             if forbidden:
                 present = sorted({f for f in forbidden if _norm(f) in seq})
                 if present:
-                    failures.append({
-                        "gate": "incompatible_functional_path",
-                        "detail": f"path '{fp.get('name')}' contains forbidden member(s) {present}",
-                        "items": present,
-                    })
+                    failures.append(
+                        {
+                            "gate": "incompatible_functional_path",
+                            "detail": f"path '{fp.get('name')}' contains forbidden member(s) {present}",
+                            "items": present,
+                        }
+                    )
             if member_variants:
                 variants = sorted({v for m, v in member_variants.items() if _norm(m) in seq})
                 if len(variants) > 1:
-                    failures.append({
-                        "gate": "variant_crossover",
-                        "detail": f"path '{fp.get('name')}' spans variants {variants}",
-                        "items": variants,
-                    })
+                    failures.append(
+                        {
+                            "gate": "variant_crossover",
+                            "detail": f"path '{fp.get('name')}' spans variants {variants}",
+                            "items": variants,
+                        }
+                    )
     return failures
 
 
@@ -247,17 +275,20 @@ def check_safety_critical(graph: dict, rubric: dict | None) -> list[dict]:
     sc_norm = {_norm(s) for s in sc}
     missing = [s for s in sc if _norm(s) not in pool]
     misread = [
-        m for cat in (rubric.get("categories") or {}).values()
+        m
+        for cat in (rubric.get("categories") or {}).values()
         for m in (cat or {}).get("known_misreads") or []
         if _norm(m) in pool and _norm(m) in sc_norm
     ]
     items = sorted(set(missing) | set(misread))
     if items:
-        return [{
-            "gate": "safety_critical_misread",
-            "detail": f"safety-critical entity/label misrepresented or absent: {items}",
-            "items": items,
-        }]
+        return [
+            {
+                "gate": "safety_critical_misread",
+                "detail": f"safety-critical entity/label misrepresented or absent: {items}",
+                "items": items,
+            }
+        ]
     return []
 
 
@@ -294,7 +325,11 @@ def run_gates(graph: dict, rubric: dict | None = None) -> dict:
         for gate in _RUBRIC_GATES:
             failures.extend(gate(graph, rubric))
     codes = sorted({f["gate"] for f in failures})
-    safety_critical_misreads = sorted({
-        i for f in failures if f["gate"] == "safety_critical_misread" for i in f["items"]
-    })
-    return {"failures": failures, "codes": codes, "safety_critical_misreads": safety_critical_misreads}
+    safety_critical_misreads = sorted(
+        {i for f in failures if f["gate"] == "safety_critical_misread" for i in f["items"]}
+    )
+    return {
+        "failures": failures,
+        "codes": codes,
+        "safety_critical_misreads": safety_critical_misreads,
+    }
