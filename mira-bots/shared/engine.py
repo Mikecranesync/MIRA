@@ -36,7 +36,12 @@ from .dialogue_tracker import (
     DISPATCH_SLOT_DONT_KNOW,
     track_turn,
 )
-from .drive_packs import answer_question, resolve_pack
+from .drive_packs import (
+    answer_fault_code,
+    answer_question,
+    extract_pack_fault_codes,
+    resolve_pack,
+)
 from .fallback_responses import (
     GENERIC_ENGINE_ERROR,
     INFERENCE_EXHAUSTED,
@@ -2704,6 +2709,61 @@ class Supervisor:
             )
 
             if has_fault_indicators:
+                # Photo→pack fast-path (the OCR-code → drive-pack bridge): if we
+                # already know WHICH drive this is — resolved from the identified
+                # ASSET, never inferred from the code (a bare code is ambiguous
+                # across vendors) — and the OCR shows a fault code that drive
+                # documents, answer from the pack: cited, deterministic,
+                # read-only. Any miss (no pack, no code, or code not documented)
+                # falls through to the generic RAG auto-diagnose below, unchanged.
+                # extract_pack_fault_codes() is the gate that rejects bare OCR
+                # numerals ("5 A"); see shared/drive_packs/ask.py +
+                # .claude/rules/direct-connection-uns-certified.md (grounded only).
+                #
+                # Safety precedence: NEVER let this fast-path pre-empt a hazard.
+                # If the OCR/vision text carries a safety keyword (arc flash,
+                # smoke, ...), skip the pack answer entirely and fall through so
+                # a cited fault answer can never mask the safety path — mirrors
+                # the text drive-pack fast-path, which sits AFTER the safety
+                # short-circuit, and the vision-safety bypass above (~L2489).
+                _photo_safety = any(kw in ocr_text or kw in vision_text for kw in SAFETY_KEYWORDS)
+                _pf_pack = (
+                    None if _photo_safety else resolve_pack(state.get("asset_identified", "") or "")
+                )
+                if _pf_pack is not None:
+                    _pf_ocr = " ".join(ocr_items)
+                    for _pf_code in extract_pack_fault_codes(_pf_pack, _pf_ocr):
+                        _pf_ans = answer_fault_code(_pf_pack.pack_id, _pf_code)
+                        if not _pf_ans.matched:
+                            continue
+                        _pf_seen: set[tuple[str, str]] = set()
+                        _pf_cites: list[str] = []
+                        for _c in _pf_ans.citations:
+                            _doc = _c.get("doc", "")
+                            _page = _c.get("page", "")
+                            if not _doc or (_doc, _page) in _pf_seen:
+                                continue
+                            _pf_seen.add((_doc, _page))
+                            _pf_cites.append(
+                                f"[Source: {_doc} p.{_page}]" if _page else f"[Source: {_doc}]"
+                            )
+                        # Echo the code we READ off the photo so a human catches
+                        # an OCR misread before trusting the answer.
+                        _pf_reply = (
+                            f"I read fault code {_pf_code} off the photo.\n\n{_pf_ans.answer}"
+                        )
+                        if _pf_cites:
+                            _pf_reply = f"{_pf_reply}\n\n{' '.join(_pf_cites)}"
+                        self._record_exchange(chat_id, state, message, _pf_reply)
+                        tl_flush()
+                        return self._make_result(
+                            _pf_reply,
+                            "high",
+                            trace_id,
+                            state.get("state", "IDLE"),
+                            dispatch_kind="drive_pack",
+                        )
+
                 # Auto-diagnose: inject fault context into message and route to RAG
                 asset = state.get("asset_identified", "this equipment")
                 fault_items = [
