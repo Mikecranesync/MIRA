@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.147.2 (2026-07-15) - fix(printsense): route Telegram print albums through package interpretation
+- **What:** Telegram media groups that classify as all electrical prints now preserve original image bytes and run through the multi-page PrintSense package interpreter before falling back to generic multi-photo synthesis. HTTP request logs also redact Telegram bot-token URL segments from `httpx`/`httpcore`. Fixes #2710 and #2711.
+
 ### v3.147.1 (2026-07-15) - fix(ci): un-break Eval Offline on main — test_cli.py module-name collision aborted collection
 - **Why:** every `main` CI run since `83955481` (2026-07-15 ~02:10Z) fails the `Eval Offline` job. Root cause: #2700 added `tests/printsense/test_cli.py`, which collides with the pre-existing `tests/proveit/test_cli.py` — both directories lack `__init__.py`, so under pytest's default import mode both files map to the bare module `test_cli`, and collection aborts with "import file mismatch" (1931 tests pass; the job exits 1 on the collection error). It slipped through because #2700's own merge-CI run was cancelled by #2701's push 3 minutes later.
 - **What:** adds `tests/proveit/__init__.py` (the repo convention — nearly every other `tests/` subdir is a package), making the module `tests.proveit.test_cli` — unique, collision gone. Deliberately does NOT package `tests/printsense/`: its tests import siblings by bare module name (`test_sabotage_gates.py` → `from test_privacy_guards import …`), which requires the directory on `sys.path`, and the open PrintSense stack (#2716–#2720) adds many more files there.

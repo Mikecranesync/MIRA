@@ -957,6 +957,27 @@ class Supervisor:
         touches it. The blocking streamed call runs in a worker thread so the bot
         event loop stays free during the ~30-60 s interpretation.
         """
+        pkg_ctx = {"drawing_type": (vision_data or {}).get("drawing_type")}
+        return await self._interpret_print_anthropic_pages(
+            photo_b64s=[photo_b64],
+            question=question,
+            package_context=pkg_ctx,
+        )
+
+    async def _interpret_print_anthropic_pages(
+        self,
+        *,
+        photo_b64s: list[str],
+        question: str | None,
+        package_context: dict | None = None,
+    ) -> str:
+        """ISOLATED Anthropic PrintSynth interpretation for a print package.
+
+        The Telegram album path uses this to send multiple print photos as one
+        ``interpret_print(pages=[...])`` package so cross-page references stay
+        in the same typed graph. Returns "" when unavailable or failed so callers
+        can fall back to the no-Anthropic vision path.
+        """
         try:
             from printsense import interpret, render
         except ImportError:
@@ -965,16 +986,17 @@ class Supervisor:
             return ""  # inert without the flag + key
         import base64
 
-        try:
-            photo_bytes = base64.b64decode(photo_b64)
-        except Exception:  # noqa: BLE001 — bad b64 -> cascade
-            return ""
-        pkg_ctx = {"drawing_type": (vision_data or {}).get("drawing_type")}
+        pages: list[tuple[bytes, str]] = []
+        for b64 in photo_b64s:
+            try:
+                pages.append((base64.b64decode(b64), "image/jpeg"))
+            except Exception:  # noqa: BLE001 — bad b64 -> cascade
+                return ""
         try:
             graph = await asyncio.to_thread(
                 interpret.interpret_print,
-                [(photo_bytes, "image/jpeg")],
-                package_context=pkg_ctx,
+                pages,
+                package_context=package_context or {},
                 question=question,
             )
         except interpret.PrintVisionUnavailable:
