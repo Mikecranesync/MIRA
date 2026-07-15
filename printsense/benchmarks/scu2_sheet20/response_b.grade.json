@@ -1,13 +1,13 @@
 {
   "case": "scu2_ap31971_sheet20_opto",
-  "overall": 95.1,
+  "overall": 94.1,
   "letter": "A",
-  "is_A": false,
+  "is_A": true,
   "gates": {
     "overall_ge_90": true,
     "zero_confident_misreads": true,
     "package_id_full": true,
-    "device_f1_ge_085": false,
+    "device_f1_ge_085": true,
     "wire_f1_ge_085": true,
     "zero_trust_violations": true
   },
@@ -17,7 +17,8 @@
   "scores": {
     "package": 10.0,
     "structure": 10.0,
-    "device": 16.0,
+    "device": 15.0,
+    "type_text": 0.0,
     "wire": 15.0,
     "xref": 14.1,
     "honesty": 30.0
@@ -37,15 +38,24 @@
   ],
   "structure_failed": [],
   "device": {
-    "expected": 3,
+    "expected": 2,
     "found": 2,
+    "missed": [],
+    "misreads": [],
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "type_text": {
+    "expected": 1,
+    "found": 0,
     "missed": [
       "ITS.LWL-K-01.2"
     ],
     "misreads": [],
     "precision": 1.0,
-    "recall": 0.667,
-    "f1": 0.8
+    "recall": 0.0,
+    "f1": 0.0
   },
   "wire": {
     "expected": 2,

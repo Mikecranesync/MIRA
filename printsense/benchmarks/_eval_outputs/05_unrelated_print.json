@@ -1,0 +1,323 @@
+{
+  "name": "05_unrelated_print",
+  "orig_dims": [
+    4000,
+    3000
+  ],
+  "pre_dims": [
+    2576,
+    1932
+  ],
+  "request": {
+    "model": "claude-opus-4-8",
+    "effort": "xhigh",
+    "max_tokens": 32000,
+    "thinking": "adaptive",
+    "preprocess": true
+  },
+  "latency_s": 54.2,
+  "usage": {
+    "input_tokens": 8570,
+    "output_tokens": 4586
+  },
+  "cost_usd": 0.1575,
+  "graph": {
+    "package": {
+      "drawing_no": null,
+      "cabinet": null,
+      "sheets": null,
+      "note": "Physical panel photograph (not a schematic sheet). No title block present. Interpreted from visible hardware markings only.",
+      "unit_chain": null
+    },
+    "devices": [
+      {
+        "tag": "UNREADABLE",
+        "type": "plc_controller",
+        "detail": "Allen-Bradley Micro820 programmable controller, catalog 2080-LC20-20QBB. No DIN/IEC device tag visible on hardware; identified by product marking only.",
+        "connects": [],
+        "evidence": "Nameplate: 'AB Allen-Bradley  Micro820(TM)  2080-LC20-20QBB'",
+        "confidence": 0.97,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "UNREADABLE",
+        "type": "module",
+        "detail": "Gray module immediately to the right of the Micro820 (front cover blank/unmarked in view). Possibly an expansion or relay/interface module; no legible catalog or tag.",
+        "connects": [],
+        "evidence": "Blank gray module body right of PLC; wires routed over it",
+        "confidence": 0.4,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "UNREADABLE",
+        "type": "module",
+        "detail": "Second gray module to the far right, blank front cover, no legible marking.",
+        "connects": [],
+        "evidence": "Blank gray module body; blue conductors and white cable routed across",
+        "confidence": 0.4,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "terminals": [
+      {
+        "tag": "UNREADABLE",
+        "type": "terminal_block",
+        "detail": "Green pluggable terminal block at top of PLC (upper input row) with screw clamps; individual terminal numbers not legible. Four black insulated boots/ferrules visible over conductors above it.",
+        "connects": [],
+        "evidence": "Green screw terminal block near top, above PLC LED legend",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "UNREADABLE",
+        "type": "terminal_block",
+        "detail": "Second green pluggable terminal block below the first (second input row); terminal numbers not legible.",
+        "connects": [],
+        "evidence": "Green screw terminal block above 'IN' legend region",
+        "confidence": 0.55,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "UNREADABLE",
+        "type": "terminal_strip",
+        "detail": "Long green multi-position screw terminal strip along bottom of assembly (output/field wiring). ~20+ positions with blue conductors landed; no legible position numbers.",
+        "connects": [],
+        "evidence": "Horizontal green terminal strip at bottom with many screw clamps and blue wires",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "conductors": [
+      {
+        "tag": "UNREADABLE",
+        "type": "wire",
+        "detail": "Multiple blue single conductors routed from top terminal blocks and bottom terminal strip; no wire numbers legible in image.",
+        "connects": [],
+        "evidence": "Numerous blue wires entering top green terminals and bottom green strip",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "UNREADABLE",
+        "type": "wire",
+        "detail": "White/yellow-striped conductors visible at top-left edge; count and destinations not legible.",
+        "connects": [],
+        "evidence": "White/yellow striped conductors upper-left of frame",
+        "confidence": 0.4,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "cables": [
+      {
+        "tag": "UNREADABLE",
+        "type": "cable",
+        "detail": "Two cream/white jacketed round cables bundled with a cable tie, routed vertically along the right modules (appearance consistent with Ethernet/comm patch cables). No legible cable number.",
+        "connects": [],
+        "evidence": "White jacketed cables bundled by white cable tie on right side",
+        "confidence": 0.45,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "contacts": [],
+    "power_domains": [],
+    "pe_bonds": [],
+    "off_page_references": [],
+    "plc_io_channels": [
+      {
+        "tag": "IN 0-11",
+        "type": "digital_input_leds",
+        "detail": "Input status LED legend on Micro820 face: '0 1 2 3 4 5 / 6 7 8 9 10 11  IN' — 12 input status indicators. These are indicator labels, not field terminal numbers.",
+        "connects": [],
+        "evidence": "Silk-screen legend '0 1 2 3 4 5 / 6 7 8 9 10 11  IN'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "OUT 0-6",
+        "type": "digital_output_leds",
+        "detail": "Output status LED legend on Micro820 face: '0 1 2 3 / 4 5 6  OUT' — 7 output status indicators.",
+        "connects": [],
+        "evidence": "Silk-screen legend '0 1 2 3 / 4 5 6  OUT'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "RUN",
+        "type": "status_led",
+        "detail": "Controller RUN status indicator.",
+        "connects": [],
+        "evidence": "Status matrix cell 'RUN'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "FAULT",
+        "type": "status_led",
+        "detail": "Controller FAULT status indicator.",
+        "connects": [],
+        "evidence": "Status matrix cell 'FAULT'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "FORCE",
+        "type": "status_led",
+        "detail": "Controller FORCE status indicator.",
+        "connects": [],
+        "evidence": "Status matrix cell 'FORCE'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "COMM",
+        "type": "status_led",
+        "detail": "Serial/comm status indicator.",
+        "connects": [],
+        "evidence": "Status matrix cell 'COMM'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "ENET",
+        "type": "status_led",
+        "detail": "Ethernet status indicator.",
+        "connects": [],
+        "evidence": "Status matrix cell 'ENET'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      },
+      {
+        "tag": "SD",
+        "type": "status_led",
+        "detail": "SD card status indicator.",
+        "connects": [],
+        "evidence": "Status matrix cell 'SD'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "network_links": [
+      {
+        "tag": "ENET",
+        "type": "ethernet",
+        "detail": "Micro820 embedded Ethernet port. Device MAC ID printed as 5C:88:16:D8:E4:D7 ('Ethernet Address'). Physical patch cable connection to port not confirmed in view.",
+        "connects": [],
+        "evidence": "Label: 'MAC ID 5C:88:16:D8:E4:D7  Ethernet Address'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": null
+      }
+    ],
+    "functional_paths": [],
+    "physical_layout_matches": [
+      {
+        "layout_feature": "Leftmost gray module with LED legend + 'Allen-Bradley Micro820 2080-LC20-20QBB'",
+        "candidate_schematic_device": null,
+        "basis": "Direct product nameplate reading (no schematic provided to correlate to)",
+        "confidence": 0.95,
+        "trust": "proposed",
+        "status": "identified_by_nameplate",
+        "needed_to_confirm": "A schematic/PLC I/O sheet with the device tag to bind this hardware to a drawing reference"
+      },
+      {
+        "layout_feature": "Steel/aluminum DIN rail (top-hat) at right, with mounting slot",
+        "candidate_schematic_device": null,
+        "basis": "Visible mounting rail",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "status": "layout_only",
+        "needed_to_confirm": null
+      },
+      {
+        "layout_feature": "Two blank gray modules right of the PLC",
+        "candidate_schematic_device": null,
+        "basis": "Form factor only; front covers unmarked in this view",
+        "confidence": 0.35,
+        "trust": "proposed",
+        "status": "candidate",
+        "needed_to_confirm": "Photo of module nameplates/side labels to read catalog numbers"
+      }
+    ],
+    "unresolved": [
+      {
+        "item": "Individual terminal numbers on all three green terminal blocks/strips",
+        "status": "not_legible",
+        "resolution": "Close-up, straight-on crop of each terminal block with adequate lighting to read printed position numbers"
+      },
+      {
+        "item": "Wire numbers / conductor markers on blue and white/yellow conductors",
+        "status": "not_legible",
+        "resolution": "Macro crop of ferrules/wire markers near landing points"
+      },
+      {
+        "item": "Catalog/tag of the two gray modules to the right of the PLC",
+        "status": "not_legible",
+        "resolution": "Photograph the front and side labels of each right-hand module"
+      },
+      {
+        "item": "White/yellow striped conductors at top-left edge (count and routing)",
+        "status": "partially_visible",
+        "resolution": "Wider or repositioned shot showing full run and terminations"
+      },
+      {
+        "item": "Whether the bundled white cables actually connect to the Micro820 Ethernet/serial port",
+        "status": "obstructed",
+        "resolution": "Shot showing the PLC port face and cable connector engagement"
+      },
+      {
+        "item": "No DIN/IEC device tag or drawing/title-block present",
+        "status": "absent_in_image",
+        "resolution": "Provide the associated schematic/panel drawing to assign 81346 tags"
+      }
+    ],
+    "cross_sheet_notes": "Source is a physical panel photograph, not a drawing sheet; no title block, drawing number, or cross-references are present. Only the Micro820 (2080-LC20-20QBB) is positively identified by its nameplate, with MAC ID 5C:88:16:D8:E4:D7. All terminal positions and wire numbers are illegible and placed in unresolved. Nothing verified — all entities 'proposed'."
+  },
+  "raw_text": "{\n  \"package\": {\n    \"drawing_no\": null,\n    \"cabinet\": null,\n    \"sheets\": null,\n    \"note\": \"Physical panel photograph (not a schematic sheet). No title block present. Interpreted from visible hardware markings only.\",\n    \"unit_chain\": null\n  },\n  \"devices\": [\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"plc_controller\",\n      \"detail\": \"Allen-Bradley Micro820 programmable controller, catalog 2080-LC20-20QBB. No DIN/IEC device tag visible on hardware; identified by product marking only.\",\n      \"connects\": [],\n      \"evidence\": \"Nameplate: 'AB Allen-Bradley  Micro820(TM)  2080-LC20-20QBB'\",\n      \"confidence\": 0.97,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"module\",\n      \"detail\": \"Gray module immediately to the right of the Micro820 (front cover blank/unmarked in view). Possibly an expansion or relay/interface module; no legible catalog or tag.\",\n      \"connects\": [],\n      \"evidence\": \"Blank gray module body right of PLC; wires routed over it\",\n      \"confidence\": 0.4,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"module\",\n      \"detail\": \"Second gray module to the far right, blank front cover, no legible marking.\",\n      \"connects\": [],\n      \"evidence\": \"Blank gray module body; blue conductors and white cable routed across\",\n      \"confidence\": 0.4,\n      \"trust\": \"proposed\"\n    }\n  ],\n  \"terminals\": [\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"terminal_block\",\n      \"detail\": \"Green pluggable terminal block at top of PLC (upper input row) with screw clamps; individual terminal numbers not legible. Four black insulated boots/ferrules visible over conductors above it.\",\n      \"connects\": [],\n      \"evidence\": \"Green screw terminal block near top, above PLC LED legend\",\n      \"confidence\": 0.6,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"terminal_block\",\n      \"detail\": \"Second green pluggable terminal block below the first (second input row); terminal numbers not legible.\",\n      \"connects\": [],\n      \"evidence\": \"Green screw terminal block above 'IN' legend region\",\n      \"confidence\": 0.55,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"terminal_strip\",\n      \"detail\": \"Long green multi-position screw terminal strip along bottom of assembly (output/field wiring). ~20+ positions with blue conductors landed; no legible position numbers.\",\n      \"connects\": [],\n      \"evidence\": \"Horizontal green terminal strip at bottom with many screw clamps and blue wires\",\n      \"confidence\": 0.6,\n      \"trust\": \"proposed\"\n    }\n  ],\n  \"conductors\": [\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"wire\",\n      \"detail\": \"Multiple blue single conductors routed from top terminal blocks and bottom terminal strip; no wire numbers legible in image.\",\n      \"connects\": [],\n      \"evidence\": \"Numerous blue wires entering top green terminals and bottom green strip\",\n      \"confidence\": 0.7,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"wire\",\n      \"detail\": \"White/yellow-striped conductors visible at top-left edge; count and destinations not legible.\",\n      \"connects\": [],\n      \"evidence\": \"White/yellow striped conductors upper-left of frame\",\n      \"confidence\": 0.4,\n      \"trust\": \"proposed\"\n    }\n  ],\n  \"cables\": [\n    {\n      \"tag\": \"UNREADABLE\",\n      \"type\": \"cable\",\n      \"detail\": \"Two cream/white jacketed round cables bundled with a cable tie, routed vertically along the right modules (appearance consistent with Ethernet/comm patch cables). No legible cable number.\",\n      \"connects\": [],\n      \"evidence\": \"White jacketed cables bundled by white cable tie on right side\",\n      \"confidence\": 0.45,\n      \"trust\": \"proposed\"\n    }\n  ],\n  \"contacts\": [],\n  \"power_domains\": [],\n  \"pe_bonds\": [],\n  \"off_page_references\": [],\n  \"plc_io_channels\": [\n    {\n      \"tag\": \"IN 0-11\",\n      \"type\": \"digital_input_leds\",\n      \"detail\": \"Input status LED legend on Micro820 face: '0 1 2 3 4 5 / 6 7 8 9 10 11  IN' — 12 input status indicators. These are indicator labels, not field terminal numbers.\",\n      \"connects\": [],\n      \"evidence\": \"Silk-screen legend '0 1 2 3 4 5 / 6 7 8 9 10 11  IN'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"OUT 0-6\",\n      \"type\": \"digital_output_leds\",\n      \"detail\": \"Output status LED legend on Micro820 face: '0 1 2 3 / 4 5 6  OUT' — 7 output status indicators.\",\n      \"connects\": [],\n      \"evidence\": \"Silk-screen legend '0 1 2 3 / 4 5 6  OUT'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"RUN\",\n      \"type\": \"status_led\",\n      \"detail\": \"Controller RUN status indicator.\",\n      \"connects\": [],\n      \"evidence\": \"Status matrix cell 'RUN'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"FAULT\",\n      \"type\": \"status_led\",\n      \"detail\": \"Controller FAULT status indicator.\",\n      \"connects\": [],\n      \"evidence\": \"Status matrix cell 'FAULT'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"FORCE\",\n      \"type\": \"status_led\",\n      \"detail\": \"Controller FORCE status indicator.\",\n      \"connects\": [],\n      \"evidence\": \"Status matrix cell 'FORCE'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"COMM\",\n      \"type\": \"status_led\",\n      \"detail\": \"Serial/comm status indicator.\",\n      \"connects\": [],\n      \"evidence\": \"Status matrix cell 'COMM'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"ENET\",\n      \"type\": \"status_led\",\n      \"detail\": \"Ethernet status indicator.\",\n      \"connects\": [],\n      \"evidence\": \"Status matrix cell 'ENET'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    },\n    {\n      \"tag\": \"SD\",\n      \"type\": \"status_led\",\n      \"detail\": \"SD card status indicator.\",\n      \"connects\": [],\n      \"evidence\": \"Status matrix cell 'SD'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    }\n  ],\n  \"network_links\": [\n    {\n      \"tag\": \"ENET\",\n      \"type\": \"ethernet\",\n      \"detail\": \"Micro820 embedded Ethernet port. Device MAC ID printed as 5C:88:16:D8:E4:D7 ('Ethernet Address'). Physical patch cable connection to port not confirmed in view.\",\n      \"connects\": [],\n      \"evidence\": \"Label: 'MAC ID 5C:88:16:D8:E4:D7  Ethernet Address'\",\n      \"confidence\": 0.9,\n      \"trust\": \"proposed\"\n    }\n  ],\n  \"functional_paths\": [],\n  \"physical_layout_matches\": [\n    {\n      \"layout_feature\": \"Leftmost gray module with LED legend + 'Allen-Bradley Micro820 2080-LC20-20QBB'\",\n      \"candidate_schematic_device\": null,\n      \"basis\": \"Direct product nameplate reading (no schematic provided to correlate to)\",\n      \"confidence\": 0.95,\n      \"trust\": \"proposed\",\n      \"status\": \"identified_by_nameplate\",\n      \"needed_to_confirm\": \"A schematic/PLC I/O sheet with the device tag to bind this hardware to a drawing reference\"\n    },\n    {\n      \"layout_feature\": \"Steel/aluminum DIN rail (top-hat) at right, with mounting slot\",\n      \"candidate_schematic_device\": null,\n      \"basis\": \"Visible mounting rail\",\n      \"confidence\": 0.85,\n      \"trust\": \"proposed\",\n      \"status\": \"layout_only\",\n      \"needed_to_confirm\": null\n    },\n    {\n      \"layout_feature\": \"Two blank gray modules right of the PLC\",\n      \"candidate_schematic_device\": null,\n      \"basis\": \"Form factor only; front covers unmarked in this view\",\n      \"confidence\": 0.35,\n      \"trust\": \"proposed\",\n      \"status\": \"candidate\",\n      \"needed_to_confirm\": \"Photo of module nameplates/side labels to read catalog numbers\"\n    }\n  ],\n  \"unresolved\": [\n    {\n      \"item\": \"Individual terminal numbers on all three green terminal blocks/strips\",\n      \"status\": \"not_legible\",\n      \"resolution\": \"Close-up, straight-on crop of each terminal block with adequate lighting to read printed position numbers\"\n    },\n    {\n      \"item\": \"Wire numbers / conductor markers on blue and white/yellow conductors\",\n      \"status\": \"not_legible\",\n      \"resolution\": \"Macro crop of ferrules/wire markers near landing points\"\n    },\n    {\n      \"item\": \"Catalog/tag of the two gray modules to the right of the PLC\",\n      \"status\": \"not_legible\",\n      \"resolution\": \"Photograph the front and side labels of each right-hand module\"\n    },\n    {\n      \"item\": \"White/yellow striped conductors at top-left edge (count and routing)\",\n      \"status\": \"partially_visible\",\n      \"resolution\": \"Wider or repositioned shot showing full run and terminations\"\n    },\n    {\n      \"item\": \"Whether the bundled white cables actually connect to the Micro820 Ethernet/serial port\",\n      \"status\": \"obstructed\",\n      \"resolution\": \"Shot showing the PLC port face and cable connector engagement\"\n    },\n    {\n      \"item\": \"No DIN/IEC device tag or drawing/title-block present\",\n      \"status\": \"absent_in_image\",\n      \"resolution\": \"Provide the associated schematic/panel drawing to assign 81346 tags\"\n    }\n  ],\n  \"cross_sheet_notes\": \"Source is a physical panel photograph, not a drawing sheet; no title block, drawing number, or cross-references are present. Only the Micro820 (2080-LC20-20QBB) is positively identified by its nameplate, with MAC ID 5C:88:16:D8:E4:D7. All terminal positions and wire numbers are illegible and placed in unresolved. Nothing verified — all entities 'proposed'.\"\n}",
+  "unreadable": [
+    "Individual terminal numbers on all three green terminal blocks/strips",
+    "Wire numbers / conductor markers on blue and white/yellow conductors",
+    "Catalog/tag of the two gray modules to the right of the PLC",
+    "White/yellow striped conductors at top-left edge (count and routing)",
+    "Whether the bundled white cables actually connect to the Micro820 Ethernet/serial port",
+    "No DIN/IEC device tag or drawing/title-block present"
+  ],
+  "confident_structured_tags": [
+    "CABLE",
+    "COMM",
+    "DIGITAL_INPUT_LEDS",
+    "DIGITAL_OUTPUT_LEDS",
+    "ENET",
+    "ETHERNET",
+    "FAULT",
+    "FORCE",
+    "IN0-11",
+    "MODULE",
+    "OUT0-6",
+    "PHYSICALPANELPHOTOGRAPH(NOTASCHEMATICSHEET).NOTITLEBLOCKPRESENT.INTERPRETEDFROMVISIBLEHARDWAREMARKINGSONLY.",
+    "PLC_CONTROLLER",
+    "RUN",
+    "SD",
+    "STATUS_LED",
+    "TERMINAL_BLOCK",
+    "TERMINAL_STRIP",
+    "WIRE"
+  ],
+  "hallucinated_forbidden": []
+}
