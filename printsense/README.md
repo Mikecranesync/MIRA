@@ -1,5 +1,22 @@
 # PrintSense / PrintSynth
 
+## Interpret a print RIGHT NOW (local CLI — no Telegram, no VPS)
+
+```bash
+doppler run -p factorylm -c stg -- py -3 -m printsense C:/path/photo.jpg \
+    --question "why would the heater circuit be dead?" --map
+```
+
+Outputs to `./printsense_out/` (override `--out`): `brief.txt` (technician brief, also printed),
+`graph.json` (typed PrintSynth graph), `grade.json` (deterministic gates + `import_verdict`),
+`map.txt` (with `--map`: exact tags/terminals/wires). Multiple files = one multi-sheet package.
+Exit codes: 0 ok · 2 bad input · 3 provider not configured (run under stg Doppler).
+
+Field tips: photograph **upright** if this box lacks the Tesseract binary (auto-rotate is a
+container feature; locally it logs `PRINT_AUTOROTATE_SKIP` and proceeds unrotated), and crop tight
+per circuit — legibility beats coverage. On the Telegram staging bot, send prints **as a PHOTO,
+not a document** (documents divert to the Hub uploader), same crop-tight rule (~2560px cap).
+
 **PrintSense** — a technician photographs an electrical print (page / cropped circuit / whole package),
 sends it via Telegram, and MIRA identifies the page + package, explains the circuit in technician
 language, calls out every device / terminal / wire / cable / power-domain / I-O / continuation / PE,
