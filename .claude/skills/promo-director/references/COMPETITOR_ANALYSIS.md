@@ -1,8 +1,32 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-07-15
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-07-15
+
+### Most actionable pattern for MIRA playbook
+
+Augury's "Industrial AI Workforce" pivot (May 2026) shifts the competitive frame from "AI copilot" to "role-specific agent workforce that bridges insight to action." Simultaneously, MaintainX's $3.6B Autodesk acquisition (May 28) consolidates the independent CMMS market. Together these create an opening: MIRA as the independent, open-platform, sensor-agnostic diagnostic agent vs. locked-ecosystem plays from Autodesk/MaintainX and AVEVA/Augury. The steal candidate from Anthropic's Claude Science launch: "grounded maintenance intelligence the way Claude Code is grounded software intelligence."
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Acquired by Autodesk for $3.6B all-cash (May 28, 2026): https://siliconangle.com/2026/05/28/autodesk-acquire-maintainx-3-6-billion-push-operations/ — largest CMMS exit to date; closes fiscal 2027; Autodesk framing: "connect digital intent with real-world performance in a closed-loop system"; MaintainX brand reportedly retained through integration
+- **MaintainX** — "June 2026 Product Announcements": https://www.youtube.com/watch?v=034-1hTrapM — monthly cadence video; opening hook: "Brace yourselves: we're kicking off summer with a bang!"; product-update-as-marketing cadence continues [transcript not verified]
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" launch at AVEVA World Milan (May 18, 2026): press: https://www.prnewswire.com/news-releases/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce-302773828.html — Machine Design CEO/CPO interview video: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce — frame: role-based AI agents for reliability + operations roles; new anchor concept: "Industrial Context Graph" (dynamic layer connecting machine health signals with operational + environmental data); AVEVA CONNECT + Google Gemini as the stack; no standalone YouTube video confirmed [transcript not verified]
+
+**B2B SaaS (pattern transfer)**
+- **Cursor** — "Compile 2026" keynote (June 16, Fort Mason SF): https://www.youtube.com/watch?v=fWa7uxyhVDE — co-founder Michael Truell on stage; three launches: Origin (Git platform rebuilt for multi-agent simultaneous commits, GA fall 2026), in-house 1.5T-parameter model (ships ~Jul 2026), Cursor Mobile iOS (public beta); style shift: changelog-only GTM → conference-as-launch-vehicle
+- **OpenAI** — GPT-5.6 family livestream (July 9, 2026): https://openai.com/live/ — three-tier model family: Sol (high-reasoning, $5/$30/1M), Terra (half cost of Sol), Luna (fast/cheap); also launched ChatGPT Work (autonomous complex task mode), redesigned desktop app (local files + browser access), Hosted Sites; six-presenter stage format; three-name model family is now the industry pricing default
+- **Anthropic** — "Claude Science" launch (June 30, 2026): https://www.youtube.com/watch?v=9zK0omjrwWY — desktop app for researchers/pharma; hook: "supports scientific research the way Claude Code supports software engineering" — establishes the domain-specific autonomous workbench pattern (Code → Design → Science); steal candidate for MIRA positioning
+- **Figma** — Config 2026 (June 24, 2026): https://help.figma.com/hc/en-us/articles/39582753756695-What-s-new-from-Config-2026 — Figma Agent now GA with reusable "skills" packaging; Code Layers (design → interactive code in one click); Figma Motion (timeline + keyframes → CSS/JSON/React/MP4 export); annual conference cadence with GA agent moment is the notable new pattern
+- **Supabase** — Launch Week 15 (Jul 14–18, 2026): https://supabase.com/launch-week — 500 GB file uploads, 97%-faster Edge Function cold starts via S3 bucket mounting, lightning-fast search, AI-assisted log debugging, in-dashboard branch management; blog-native/no-YouTube pattern continues
 
 ---
 
@@ -88,6 +112,17 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**Autodesk acquisition (May 28, 2026)**
+- Deal: $3.6B all-cash; expected close fiscal 2027
+- Autodesk rationale: "connect digital intent with real-world performance in a closed-loop system" — explicitly positioning maintenance as the missing loop between design/build and operations
+- Competitive implication: MaintainX is being absorbed into a CAD/AEC ecosystem. Independents (including MIRA) now have more whitespace. Watch for feature freeze during integration and existing customers evaluating alternatives.
+
+**June 2026 Product Announcements**
+- URL: https://www.youtube.com/watch?v=034-1hTrapM
+- Opening hook: "Brace yourselves: we're kicking off summer with a bang! We've got something for virtually everyone this month." [description-derived]
+- VO register: product/corporate
+- Style: monthly cadence product recap; continuing pattern established in early 2025
+
 ---
 
 ### Fiix
@@ -144,7 +179,18 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**Pattern note (updated Jul 2026):** Augury has moved to a three-track strategy: (1) category-creation technical videos (Ultra Low RPM), (2) third-party credibility (Bloomberg/Fortune Brands), and now (3) strategic-platform announcements (Industrial AI Workforce at AVEVA World). The third track targets the C-suite and positions Augury as infrastructure, not a tool.
+
+**Industrial AI Workforce (May 18, 2026)**
+- Source: https://www.prnewswire.com/news-releases/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce-302773828.html
+- Video (trade publication, not YouTube): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce
+- Speakers: CEO Elan Greenberg + Chief Product & Technology Officer Anoop Mohan
+- New anchor concept: **"Industrial Context Graph"** — a dynamic, continuously evolving layer connecting machine health signals with operational, process, and environmental data
+- New framing: "role-based AI agents" for reliability and operations roles (workers adapt to software → agents adapt to workers)
+- Tech stack: AVEVA CONNECT + Google Gemini for reasoning
+- Claim: "bridge the gap between insight and action" — closest Augury has come to MIRA's diagnostic-response positioning
+- CTA: soft brand / partner ecosystem
+- No standalone YouTube URL confirmed [transcript not verified]
 
 ---
 
@@ -283,9 +329,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 **"Supabase Wrapped 2025"**
 - URL: https://supabase.com/wrapped
-- Launch Week format: new features announced daily for a week; currently on cycle toward Launch Week 15 (Jul 14–18, 2026)
 - No standalone YouTube launch video; blog/GitHub-native launch strategy
 - Hook pattern: "developers around the world shipped faster, scaled further"
+
+**Launch Week 15 (Jul 14–18, 2026)**
+- URL: https://supabase.com/launch-week
+- Notable: 500 GB large file uploads with significant egress cost reduction; S3-compatible bucket mounting in Edge Functions (97% faster cold starts); lightning-fast search with no code required; unified logging + AI-powered log debugging; in-dashboard branch create/review/merge
+- Format: blog-native, daily cadence, no YouTube; community challenge + hackathon
+- Pattern: Launch Week cadence (now at #15) is Supabase's core marketing engine — high-frequency, developer-word-of-mouth, zero video budget
 
 ---
 
@@ -295,27 +346,52 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Key claim: Codex agent "grown 20x since August, now serves trillions of tokens weekly"
 - Multiple 2025 launches: GPT-4o Image, Sora standalone app, group chats
 
+**GPT-5.6 family launch (July 9, 2026)**
+- Livestream: https://openai.com/live/
+- Three-tier model family: **Sol** (top-tier reasoning + coding, $5/$30/1M tokens), **Terra** (GPT-5.5-quality at half cost), **Luna** (fast/low-cost/high-volume)
+- Simultaneous product launches: ChatGPT Work (autonomous complex-task mode), redesigned desktop app (local file + browser access), Hosted Sites (publish interactive pages directly from ChatGPT)
+- Also: **GPT-Live** — full-duplex voice that listens while speaking, delegates harder queries mid-conversation; ships as GPT-Live-1 (paid) + GPT-Live-1 mini (free) with nine voices + real-time translation
+- Format: six-presenter stage format; Thibault Sottiaux hosting
+- Pattern: three-name tiered model family + simultaneous multi-product launch is now the industry format default (parallels GPT-4o → 4o mini → 4o turbo naming)
+
 ---
 
 ### Anthropic
 
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
+- 29 distinct product updates in 5 months (Jan–May 2026)
 - No standalone promo video; analyst/conference appearances as primary video channel
+
+**Claude Science launch (June 30, 2026)**
+- YouTube coverage: https://www.youtube.com/watch?v=9zK0omjrwWY — CNBC video: https://www.cnbc.com/video/2026/06/30/anthropic-launches-claude-science.html
+- Product: desktop app (macOS + Linux beta) for researchers + pharma; access to tools for computational biology + drug development
+- Opening hook: "supports scientific research the way Claude Code supports software engineering" [CNBC coverage]
+- Pattern: **domain-specific autonomous workbench** — Anthropic now has Code (software), Design (visuals, Apr 2026), Science (research). Each workbench reuses the same Claude foundation but packages domain-appropriate tools + scaffolding.
+- Steal candidate for MIRA: "grounded maintenance intelligence the way Claude Code is grounded software engineering"
 
 ---
 
 ### Cursor
 
-**Product trajectory (all video-light)**
+**Product trajectory**
 - Channel: https://www.youtube.com/@cursor_ai
 - Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
 - Cursor 3.0 (Apr 2, 2026): Agents Window
 - Cursor 3.1 (Apr 13, 2026): Tiled Layout
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
-- No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**Compile 2026 (June 16, 2026) — style shift**
+- Keynote URL: https://www.youtube.com/watch?v=fWa7uxyhVDE
+- Presenter: co-founder Michael Truell, on stage at Fort Mason SF
+- Footage style: on-stage keynote, polished conference production
+- Three product launches:
+  - **Origin** — Git hosting platform rebuilt for simultaneous multi-agent commits; GA fall 2026
+  - **In-house 1.5T-parameter model** — first model trained from scratch by Cursor; comparable to Opus/GPT in size; ships Jul 2026
+  - **Cursor Mobile (iOS)** — public beta; voice input, slash commands, agent launch from anywhere
+- Pattern: Cursor abandoned changelog-only GTM for a conference-as-launch-vehicle — matches Figma's Config, Stripe's Sessions pattern
+- CTA: soft — "available now in beta" callouts
 
 ---
 
@@ -355,6 +431,11 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Config 2026 (June 24, 2026)**
+- Release notes: https://help.figma.com/hc/en-us/articles/39582753756695-What-s-new-from-Config-2026
+- Key launches: **Code Layers** (turn any design layer into interactive code in one click or prompt); **Figma Motion** (timeline + keyframes, exports CSS/JSON/React/MP4/WebM/SVG/GIF); **Figma Agent GA** (reusable "skills" that package domain workflows into agent instructions); Shader fills + Generative plugins
+- Pattern note: Figma Agent going GA with a "skills" packaging model is the new hook — each skill encodes a team's conventions as reusable agent instructions. Direct parallel to MIRA's component-profile pattern.
+
 ---
 
 ### Replit
@@ -385,6 +466,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Domain-specific workbench: "X intelligence the way Claude Code is software intelligence" | Anthropic Claude Science (Jun 2026) | "grounded maintenance intelligence the way Claude Code is software intelligence" |
+| Role-specific agent workforce: "bridges insight to action" | Augury Industrial AI Workforce (May 2026) | "MIRA already knows the fault — your tech just confirms and acts" |
+| Conference-as-launch-vehicle (previously Stripe/Figma only, now expanding) | Cursor Compile 2026 (Jun 2026) | FactoryLM ProveIt 2027 demo runbook already planned — lean into it |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +479,7 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. **Jul 2026 update:** being absorbed into Autodesk — likely to shift toward AEC/BIM integration narrative over pure maintenance.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos → third-party credibility (Bloomberg) → **platform strategy announcements (AVEVA World)**. Now pitching Industrial AI Workforce at the C-suite, not just the reliability engineer. The anchor concept shifted from "Machine Health" (tool) to "Industrial Context Graph" (infrastructure).
+- **Cursor**: abandoned changelog-only GTM for a full conference launch (Compile 2026, Jun). Pattern follows Figma/Stripe. Now a credible conference-launch vehicle at $2B ARR.
