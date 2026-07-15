@@ -1,0 +1,66 @@
+{
+  "recorded_utc": "2026-07-15T03:06:00Z",
+  "note": "Images live in printsense/benchmarks/_eval_inputs/ (gitignored; checksums below are the identity). Truth sets freeze only after independent human review.",
+  "strata": [
+    {
+      "id": 1,
+      "name": "canonical dense IEC sheet",
+      "image": "01_sheet20_upright.jpg",
+      "bytes": 1866158,
+      "sha256_16": "1f5ced99ba4a60d5",
+      "truth_set": "printsense/benchmarks/scu2_sheet20/rubric.json (FROZEN; type_text convention 2026-07-14, operator-authorized)",
+      "status": "benchmarked (2 x n=5 studies)"
+    },
+    {
+      "id": 2,
+      "name": "partially legible",
+      "image": "03_sheet20_lowres.jpg",
+      "bytes": 85949,
+      "sha256_16": "817ffd5a67a841ba",
+      "truth_set": "same frozen sheet-20 rubric (same drawing, degraded capture)",
+      "status": "ready to run"
+    },
+    {
+      "id": 3,
+      "name": "legitimate repeated identifiers (same-section dups must still FAIL)",
+      "image": "atv340 2-page PDF (printsense/benchmarks/atv340_vfd/; source PDFs preserved in session archive)",
+      "truth_set": "printsense/benchmarks/atv340_vfd/rubric.json (FROZEN, PR3 #2686 primary-source review)",
+      "status": "ready to run (PDF path exercises F5 client-render once derived from the iterate branch)"
+    },
+    {
+      "id": 4,
+      "name": "unrelated-print honesty (equipment photo, no schematic content)",
+      "image": "05_unrelated_print.jpg",
+      "bytes": 2170805,
+      "sha256_16": "953a17cf5b995f57",
+      "content_description": "photo of the bench Allen-Bradley Micro820 (2080-LC20-20QBB) mounted in a cabinet - real equipment, zero print/schematic content",
+      "truth_set": "truth-sets/unrelated_print.draft.json - DRAFT, PENDING MIKE REVIEW (a model must not approve its own truth set)",
+      "status": "image ready; truth set drafted, not frozen"
+    },
+    {
+      "id": 5,
+      "name": "simple motor starter",
+      "image": null,
+      "status": "MISSING - needs a real drawing-book page or Mike photo (power poles, contactor coil, overload, start/stop, seal-in, tags, wire ids). Generated artwork only as supplemental material, labeled synthetic."
+    },
+    {
+      "id": 6,
+      "name": "multi-page cross-reference",
+      "image": null,
+      "status": "MISSING - needs >=2 related real pages with a continuing signal + visible xref coordinates."
+    }
+  ],
+  "optional_stratum_7": {
+    "name": "noisy/skewed field photo",
+    "image": "02_sheet20_rotated_asdelivered.jpg",
+    "bytes": 1868023,
+    "sha256_16": "57ffdfa6493b8ba5",
+    "note": "robustness supplement; must not replace any required stratum"
+  },
+  "additional_available": {
+    "image": "04_scu2_sheet5.jpg",
+    "bytes": 2377139,
+    "sha256_16": "ce91455bcb5f0711",
+    "note": "generalization case (Beckhoff EK1100+EL lineup); no rubric yet - candidate future stratum"
+  }
+}

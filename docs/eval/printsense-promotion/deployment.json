@@ -1,0 +1,31 @@
+{
+  "environment": "staging (VPS 165.245.138.91, docker-compose.staging-vps.yml)",
+  "workflow": "deploy-staging.yml (workflow_dispatch, ref=main) — the normal protected staging path; no manual patching",
+  "run_id": 29385543917,
+  "run_url": "https://github.com/Mikecranesync/MIRA/actions/runs/29385543917",
+  "deployed_sha": "720e2181c9553d1072de6e0c22e022ecece54639",
+  "repo_version_at_sha": "3.146.9",
+  "contains_ladder": ["7c2ef472 (#2698)", "0e55a5d5 (#2699)", "afea72ae (#2700)", "83955481 (#2701)", "8a9cdad7 (#2705)", "416200ed (#2706)", "720e2181 (#2704 docs)", "a013ddf5 (#2707, unrelated codegraph fix)"],
+  "started_utc": "2026-07-15T03:02:25Z",
+  "completed_utc": "2026-07-15T03:05:35Z",
+  "local_time": "2026-07-14 23:02-23:06 EDT",
+  "conclusion": "success",
+  "rebuild_targets": "default: mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram (bot image COPYs printsense/ per mira-bots/telegram/Dockerfile)",
+  "health_checks_on_vps": {
+    "stg-mira-bot-telegram": "Up (healthy)",
+    "stg-mira-pipeline": "Up (healthy), :4099",
+    "stg-mira-hub": "Up (healthy), :4101",
+    "stg-mira-mcp": "Up (healthy), :4000/:4001",
+    "stg-mira-web": "Up (healthy), :4200",
+    "stg-atlas-api/db/minio/frontend": "healthy",
+    "stg-mira-tika": "healthy (not rebuilt)"
+  },
+  "external_probe_from_dev_laptop": "hub :4101 answers (308 redirect on /api/version — route exists); pipeline :4099 filtered from this network (fail2ban/ufw allowlist) — on-VPS checks above are the authoritative health evidence",
+  "migrations": "none in this deploy (docs + printsense package only; no mira-hub/db/migrations changes in the ladder)",
+  "feature_flags_printsense": {
+    "PRINT_VISION_PROVIDER": "anthropic (stg Doppler)",
+    "PRINT_VISION_EFFORT": "unset -> code default xhigh (the production-default configuration, unchanged)",
+    "PRINT_VISION_MODEL": "unset -> code default claude-opus-4-8"
+  },
+  "staging_bot": "@Mira_stagong_bot (TELEGRAM_BOT_TOKEN_STG) — the phone-test surface for the deployed ladder; @FactoryLM_Diagnose is prod and redeploys on the prod pipeline, not this run"
+}
