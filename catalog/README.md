@@ -1,5 +1,31 @@
 # FactoryLM / MIRA Repository Catalog
 
+## For agents — orientation map (start here)
+
+This catalog is the **repo/module/deployment inventory map**. Use it to orient — *not* to navigate
+code. **CodeGraph remains the code-navigation authority** (symbols, call graphs, "what calls X"); this
+catalog answers the *inventory* questions CodeGraph and a stale repo map don't. Pick the file by question:
+
+| Question | File |
+|---|---|
+| What repos exist in the org, and which are alive vs archived? | `organization.yaml` |
+| What is repo/module X, its entry point, kind, status? | `repositories/*.yaml`, `services.yaml` |
+| What HTTP routes / MCP tools / CLIs exist? | `apis.yaml` |
+| What databases / tables / migrations / tenancy? | `databases.yaml`, `schemas.yaml` |
+| What runs on a schedule / in the background? | `workers-and-crons.yaml` |
+| What external services are wired in? | `integrations.yaml` |
+| What env vars / feature flags exist? | `environment-variables.yaml`, `feature-flags.yaml` |
+| Where does each env deploy? | `deployments.yaml` |
+| What's duplicated / dead / risky / drifted? | `gaps-and-risks.md` |
+| What's still unverified? | `unknowns.md` |
+| How does X flow across modules? | `relationships.json`, `architecture.mmd`, `data-flows.mmd` |
+
+Every `confidence: confirmed` fact carries a real `file` anchor. **Snapshot at commit `cde2c418`** — it
+drifts; run `python catalog/validate.py` (surfaces missing-file drift) and `bash catalog/refresh.sh`
+before trusting it after big changes. For code-level truth, prefer CodeGraph + the live files.
+
+---
+
 A **durable, evidence-backed, machine-readable** catalog of every repository in the
 `Mikecranesync` org and the important systems inside the active ones. Built by the
 Repository Archaeology run (2026-07-14). Every `confirmed` fact carries provenance

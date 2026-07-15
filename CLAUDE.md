@@ -89,6 +89,11 @@ MIRA/
 
 See local CLAUDE.md in each module for deep context.
 
+> The block above is a quick summary and drifts (it omits ~9 `mira-*` modules and lists a
+> non-existent `mira-ops`). The **authoritative, validation-backed repo/module/deployment
+> inventory** is `catalog/` (start at `catalog/README.md`) — use it to answer "what exists / where
+> / what deploys where"; use **CodeGraph** for code navigation (it stays the code-nav authority).
+
 ## Container Map
 
 | Container | Port(s) | Network(s) |
