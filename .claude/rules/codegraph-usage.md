@@ -120,6 +120,20 @@ These are real limitations that persist even on a fresh index (confirmed in the
    "aggregated across N symbols" — you cannot scope to one def. Grep the specific
    file when it matters.
 
+5. **Nested worktrees inflate caller/callee counts.** CodeGraph **respects
+   `.gitignore`**, but a nested git worktree that is NOT gitignored
+   (`.audit-worktrees/`, an ad-hoc `git worktree add` outside `.claude/worktrees/`)
+   gets **indexed**, and every duplicate copy of a symbol counts as an extra
+   caller — silently multiplying `callers`/`callees`/`impact`. If a result shows
+   paths like `.audit-worktrees/…/foo.py` or `…/.worktrees/…`, the index is
+   polluted: **gitignore the nested-worktree dir, then `index --force`** and
+   re-query. The benchmark's "nested-worktree pollution" row flags this; keep the
+   ignore list in `.gitignore` + `tools/codegraph-freshness.sh` in sync.
+   (Worked example, 2026-07-14: `callers check_citation_compliance` returned 11,
+   but 10 were `.audit-worktrees/*` duplicates and only 1 was real — this was
+   pollution, **NOT** an import-alias fix; blind spot #3 was unchanged. Fixed by
+   gitignoring `.audit-worktrees/`.)
+
 When a result depends on any of the above, the honest answer is CodeGraph **plus**
 a targeted grep — say so in the PR's "manual checks" line.
 

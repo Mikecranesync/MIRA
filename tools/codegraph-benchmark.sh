@@ -116,7 +116,16 @@ t2() {  # symbol  expected_count  label  ('resolve'-direction note)
 "
 }
 t2 Supervisor                0 "class instantiation not edged (#774)"
-t2 check_citation_compliance 0 "import-alias call not resolved"
+# NOTE (2026-07-14): the former `t2 check_citation_compliance 0` case was RETIRED.
+# It was never a clean import-alias probe and its count was polluted: on
+# 2026-07-14 `callers check_citation_compliance` returned 11, but 10 were
+# duplicate `.audit-worktrees/*/…/citation_compliance.py:315` copies (a
+# non-gitignored nested worktree the index picked up) and only 1 was the real
+# `mira-bots/shared/citation_compliance.py:315` — a genuine DIRECT caller
+# (`enforce_citation_via_rewrite`), not the engine.py *aliased* call. The
+# engine.py `_check_citation_compliance` alias still resolves to 0, so the
+# import-alias blind spot is UNCHANGED. The worktree-pollution reporter below
+# replaces this case. See docs/tech-debt/2026-07-14-codegraph-benchmark.md.
 # same-name aggregation: `resolve_uns_path` is defined twice (uns_resolver.py
 # + mira-mcp/kg_client.py); callers/callees/trace union across both and can't
 # scope to one. Deterministic CLI signal = query returns ≥2 definition sites.
@@ -125,6 +134,24 @@ NDEFS="$( "${CG[@]}" query resolve_uns_path 2>/dev/null | strip \
 if [ "${NDEFS:-0}" -ge 2 ]; then ROWS_T2+="| same-name (\`resolve_uns_path\` ×N defs) | ≥2 defs, can't scope | $NDEFS defs | ✅ as-expected — callers union across defs; grep the file |
 "; T2_NOTE=$((T2_NOTE+1)); else ROWS_T2+="| same-name (\`resolve_uns_path\` ×N defs) | ≥2 defs, can't scope | $NDEFS def | 🎉 only one def now — ambiguity gone, verify |
 "; T2_NOTE=$((T2_NOTE+1)); fi
+
+# ---- Tier-2: nested-worktree index pollution (reported; remediation = gitignore + reindex)
+# CodeGraph respects .gitignore. A non-gitignored nested worktree (`.audit-worktrees/`,
+# an ad-hoc `git worktree add` outside `.claude/worktrees/`) gets INDEXED, and every
+# duplicate copy of a symbol is counted as an extra caller — silently inflating
+# `callers`/`callees`/`impact`. Probe a symbol that exists in worktree copies and count
+# how many callers come from a worktree path. Non-gating: the fix is a reindex after the
+# offending dir is gitignored, which this suite can't force on a shared index.
+# `callers` indents path lines with spaces, so match the fragment ANYWHERE on the
+# line (no ^/ anchor — that was a false-"clean" bug caught 2026-07-14).
+WT_HITS="$(callers_raw check_citation_compliance | grep -cE '(\.audit-worktrees|\.worktrees|\.claude/worktrees)/' )"
+if [ "${WT_HITS:-0}" -eq 0 ]; then
+  ROWS_T2+="| nested-worktree pollution | 0 worktree callers | clean | ✅ index excludes nested worktrees |
+"; T2_NOTE=$((T2_NOTE+1))
+else
+  ROWS_T2+="| nested-worktree pollution | 0 worktree callers | $WT_HITS polluted | ⚠️ index includes nested-worktree copies — gitignore the dir + \`index --force\` (inflates caller counts) |
+"; T2_NOTE=$((T2_NOTE+1))
+fi
 
 # ---- Verdict + write report -----------------------------------------------
 EXIT=0
