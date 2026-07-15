@@ -29,7 +29,9 @@ def test_requests_vary_only_in_model_effort_thinking():
     systems = {json.dumps(r["params"]["system"], sort_keys=True) for r in reqs}
     assert len(msgs) == 1, "user content must be byte-identical across configs"
     assert len(systems) == 1, "system block must be byte-identical across configs"
-    xhigh = next(r for r in reqs if "xhigh" in r["custom_id"] and "|0" in r["custom_id"])
+    xhigh = next(
+        r for r in reqs if vs.parse_custom_id(r["custom_id"])[1:] == ("opus-xhigh", 0)
+    )
     assert xhigh["params"]["output_config"] == {"effort": "xhigh"}
     assert xhigh["params"]["thinking"] == {"type": "adaptive"}
 
@@ -41,9 +43,25 @@ def test_system_block_carries_cache_breakpoint():
     assert sys_block["text"]  # the shipped _SYSTEM prompt rides every call
 
 
-def test_custom_id_roundtrip():
-    cid = vs.make_custom_id("upright", "opus-high", 3)
-    assert vs.parse_custom_id(cid) == ("upright", "opus-high", 3)
+def test_custom_id_roundtrip_and_api_charset():
+    """Live-API constraint (400 on violation): custom_id must match
+    ^[a-zA-Z0-9_-]{1,64}$ — no '|', no '.', bounded length."""
+    import re
+
+    cid = vs.make_custom_id("sheet20_upright", "opus-high", 3)
+    assert re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", cid), cid
+    assert vs.parse_custom_id(cid) == ("sheet20_upright", "opus-high", 3)
+
+
+def test_custom_id_rejects_unencodable_names():
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        vs.make_custom_id("bad--case", "opus-high", 0)  # separator collision
+    with _pytest.raises(ValueError):
+        vs.make_custom_id("has.dot", "opus-high", 0)  # illegal charset
+    with _pytest.raises(ValueError):
+        vs.make_custom_id("x" * 70, "opus-high", 0)  # over 64 chars total
 
 
 # ---------------------------------------------------------------- aggregation

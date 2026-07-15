@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 import sys
 import time
@@ -74,11 +75,22 @@ EXTRA_CONFIGS = (
     Config("haiku45", "claude-haiku-4-5", None, False),
 )
 
-_CID_SEP = "|"
+# Batch custom_id must match ^[a-zA-Z0-9_-]{1,64}$ (live-API 400 otherwise), so
+# the separator comes from that charset: a double hyphen, banned inside parts.
+_CID_SEP = "--"
+_CID_PART = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 def make_custom_id(case: str, config_label: str, run: int) -> str:
-    return f"{case}{_CID_SEP}{config_label}{_CID_SEP}{run}"
+    for part in (case, config_label):
+        if _CID_SEP in part or not _CID_PART.match(part):
+            raise ValueError(
+                f"custom_id part {part!r} must match [a-zA-Z0-9_-]+ and not contain {_CID_SEP!r}"
+            )
+    cid = f"{case}{_CID_SEP}{config_label}{_CID_SEP}{run}"
+    if len(cid) > 64:
+        raise ValueError(f"custom_id {cid!r} exceeds the 64-char API limit")
+    return cid
 
 
 def parse_custom_id(cid: str) -> tuple[str, str, int]:
