@@ -47,7 +47,7 @@ def classify_scope(graph: dict, index: dict, scope: dict) -> dict:
         5. cls dangling, dst None -> "invalid_reference"
         6. cls dangling, dst present with quality -> "unresolved_in_scope"
         7. cls dangling, scope_status unknown_scope -> "not_yet_processed" (NEVER out_of_scope)
-        8. cls dangling, partial_declared: in-range -> "missing_expected_page", out -> "out_of_scope"
+        8. cls dangling, partial_declared: inventory line-item -> "missing_expected_page"; range-only -> "not_yet_processed" (weaker evidence); outside -> "out_of_scope"
         9. cls dangling, complete_declared: in-range -> "missing_expected_page", out -> "invalid_reference"
 
     Inputs are not mutated.

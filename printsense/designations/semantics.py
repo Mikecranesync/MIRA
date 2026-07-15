@@ -15,8 +15,9 @@ _COLOR_CORES = {"GNYE", "GN", "YE", "BU", "BN", "BK", "GY", "WH", "RD",
                 "OG", "VT", "PK", "TQ"}
 # device classes that plausibly carry an EN 50005 coil: relays/contactors and
 # power-switching devices. An A1 on a sensor/instrument/motor is NOT a coil
-# (EU-semantics review) — it stays a generic connection point.
-_COIL_BEARING_CLASSES = {"K", "Q", None}
+# (EU-semantics review) — and an UNKNOWN device class gets no coil default
+# either (final diff review): the coil claim requires a coil-bearing class.
+_COIL_BEARING_CLASSES = {"K", "Q"}
 
 
 def classify_connection_point(cp: str, parent_class: str | None) -> dict:

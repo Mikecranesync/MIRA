@@ -211,7 +211,7 @@ def build_identity_graph(index: dict, legends: list | None = None) -> dict:
 
 
 _PARENT_RELS = {"CHILD_CONNECTION_POINT_OF", "CONNECTOR_PIN_OF", "PORT_OF",
-                "COIL_TERMINAL_OF"}
+                "COIL_TERMINAL_OF", "NESTED_DEVICE_OF"}
 
 
 def query_designation(graph: dict, raw: str,
