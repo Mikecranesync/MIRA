@@ -7,6 +7,8 @@ mutating the input graph — originals are evidence and stay untouched."""
 
 from __future__ import annotations
 
+import copy
+
 from .decoder import decode
 
 RELATIONSHIP_TYPES = (
@@ -118,7 +120,10 @@ def migrate_alias_variations(graph: dict, profile: str = "eplan_iec") -> dict:
                             "state_proof": "never"})
         reinterpretations.append({
             "key": finding.get("key"),
-            "original": dict(finding),  # evidence preserved verbatim
+            # deep copy: a shallow dict would share the nested forms/sheets
+            # lists with the source graph — downstream mutation of the record
+            # must never reach back into the legacy evidence
+            "original": copy.deepcopy(finding),
             "anchor": anchor,
             "members": members,
             "sheets": list(finding.get("sheets", [])),
