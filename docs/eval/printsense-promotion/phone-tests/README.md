@@ -1,5 +1,12 @@
 # Phone-path acceptance tests — awaiting Mike's hands-on runs
 
+> **A numbered test kit now exists: `printsense/benchmarks/_phone_kit/` (local-only images +
+> committed `KIT.md` instruction card).** Mike's only action per test: send the numbered file
+> to the staging bot with the caption in KIT.md and save the response here. The kit covers
+> known-good, multi-page (album), motor starter, low-res, and equipment-honesty cases;
+> kit-07 (genuinely non-electrical) is the single item he must snap himself — every existing
+> candidate was electrical, confidential, a screenshot, or contained people.
+
 Programmatic execution is NOT possible tonight: `factorylm/stg` has `TELEGRAM_TEST_API_ID/HASH/
 PHONE` but **no `TELEGRAM_TEST_SESSION`** — minting a Telethon session string requires a one-time
 interactive phone-code login only Mike can do. (Doing that once would let future agents run these
