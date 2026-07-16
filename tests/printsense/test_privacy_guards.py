@@ -241,7 +241,7 @@ def test_5_legacy_marker_allowlist():
         "printsense/fixtures/scu2/README.md",
         "printsense/fixtures/scu2/explanation.md",
         "printsense/fixtures/scu2/graph.json",
-        "printsense/benchmarks/scu2_ap31971_sheet20_opto.md",
+        "printsense/benchmarks/scu2_sheet20_opto.md",
         "printsense/benchmarks/scu2_sheet20/response_b.graph.json",
         "printsense/benchmarks/scu2_sheet20/response_b_tiled.graph.json",
         "printsense/benchmarks/scu2_sheet20/response_b_verified.graph.json",
