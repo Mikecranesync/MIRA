@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.151.3 (2026-07-16) - feat(printsense): conversion funnel + survey + pilot qualification (commercial PR-4)
+- **What:** `printsense/funnel.py` — 11-event taxonomy (intake_started ... pilot_won/lost), analytics that STRUCTURALLY cannot leak content (whitelisted prop keys; numeric/bool/short-token values only; content-shaped keys rejected at emit — test-proven), strict 5-question post-report survey (free text lives with the intake, never analytics), deterministic pilot qualification (interest + complete package + reviewer sign-off, with explicit refusal reasons).
+- **Test:** 4 tests incl. the content-leak guard and the qualification truth table.
+
 ### v3.151.2 (2026-07-16) - feat(printsense): internal review-and-delivery queue (commercial PR-3)
 - **What:** `printsense/review_queue.py` — every customer report passes a human before delivery: inspect uploaded source (CAS refs) + extracted evidence + machine draft; approve / correct / reject / mark_unresolved; corrections never mutate the preserved machine original; approval renders the final customer report and flips the intake to delivered; reviewer can mark the lead pilot-suitable; full audit history; double decisions refused; `run_step` hook = WorkflowRun-compatible without import coupling.
 - **Test:** 6 lifecycle tests; printsense suite 425 green.
