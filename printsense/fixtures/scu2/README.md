@@ -14,7 +14,7 @@ drawing **AP31971** (`=LA2 +SCU2`), one of a `+SCU1 → +SCU2 → +SCU3` daisy c
 
 ## Provenance (how it was made — reproducible)
 
-- **Source:** 6 phone photos of the physical print set (`~/Downloads/PXL_20260712_*.jpg`), preserved as
+- **Source:** 6 phone photos of the physical print set (`~/Downloads/corpus-photo-*.jpg (local-only)`), preserved as
   the immutable benchmark input (sheets `-3` 115 VAC heater, `-4` 24 VDC, `-5` EtherCAT overview,
   sheet 6 I/O map, sheet 7 230 V Klixon, + Montageplatte layout).
 - **Method:** ultracode Workflow `printsense-scu2-fixture` (run `wf_3a82c76b-9c9`) — **blind per-sheet
