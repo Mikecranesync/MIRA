@@ -55,12 +55,22 @@ def _tag_prefix_sheet(tag: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+def _head(tag: str) -> str:
+    """Strip a ':port' suffix — mirrors verify._head without importing the
+    verify module (which pulls the interpreter chain)."""
+    return str(tag).split(":")[0]
+
+
 def build_system_graph(index: dict) -> dict:
     """Fold a sheet index into one system graph with per-edge provenance.
 
-    Returns ``{"devices", "edges", "violations", "summary"}`` — every edge
-    carries its source sheet (``src``), evidence kind (``ev``) and
-    classification (``cls`` in resolved|unverifiable|dangling|external).
+    Returns ``{"devices", "edges", "violations", "contradictions", "summary"}``
+    — every edge carries its source sheet (``src``), evidence kind (``ev``)
+    and classification (``cls`` in resolved|unverifiable|dangling|external).
+    ``contradictions`` are typed (alias_variation, kind_mismatch,
+    terminal_conflict, contact_semantic_conflict, impossible_continuity),
+    each carrying ``safety: True`` when its subject is listed in the index's
+    optional ``safety_critical`` list.
     """
     sheets = index.get("sheets", [])
     quality = {str(s["sheet"]).lower(): s.get("quality", "clear_upright") for s in sheets}
@@ -121,6 +131,14 @@ def build_system_graph(index: dict) -> dict:
         if e["cls"] == "resolved":
             e["reciprocal"] = _norm(e["sig"]) in sigs_by_sheet.get(e["dst"], set())
 
+    safety_set = {_norm(s) for s in index.get("safety_critical", [])}
+
+    def _is_safety(*subjects: str) -> bool:
+        return any(_norm(_head(s)) in safety_set or _norm(s) in safety_set
+                   for s in subjects if s)
+
+    contradictions: list[dict] = []
+
     for node in devices.values():
         # EPLAN convention: the tag prefix names the device's HOME sheet.
         # Cross-sheet appearances (aux contacts, references) are legitimate —
@@ -138,6 +156,96 @@ def build_system_graph(index: dict) -> dict:
                 {"code": "duplicate_conflict", "item": node["tag"],
                  "kinds": sorted(kinds)}
             )
+            contradictions.append(
+                {"type": "kind_mismatch", "item": node["tag"],
+                 "kinds": sorted(kinds), "sheets": sorted(node["sheets"]),
+                 "safety": _is_safety(node["tag"])}
+            )
+
+    # alias_variation: same device identity (head-normalized, sign-insensitive)
+    # written in more than one raw form across the book.
+    alias_forms: dict[str, dict] = {}
+    for node in devices.values():
+        key = _norm(_head(node["tag"])).lstrip("+-")
+        slot = alias_forms.setdefault(key, {"forms": set(), "sheets": set()})
+        slot["forms"].add(node["tag"])
+        slot["sheets"] |= node["sheets"]
+    for key, slot in alias_forms.items():
+        if len(slot["forms"]) > 1:
+            contradictions.append(
+                {"type": "alias_variation", "key": key,
+                 "forms": sorted(slot["forms"]),
+                 "sheets": sorted(slot["sheets"]),
+                 "safety": _is_safety(*slot["forms"])}
+            )
+
+    # terminal_conflict: the same (device:terminal) claimed toward different
+    # peer sheets. NOTE: a deliberately bussed/jumpered terminal is a known
+    # legitimate pattern — this is a review queue, not an auto-verdict.
+    terminals: dict[str, dict] = {}
+    for s in sheets:
+        sid = str(s["sheet"]).lower()
+        if quality[sid] in QUALITY_UNOBSERVABLE:
+            continue
+        for x in s.get("xrefs", []):
+            term = x.get("terminal")
+            if not term:
+                continue
+            dst = None if str(x.get("peer", "")).startswith("EXT:") \
+                else _sheet_of_peer(str(x.get("peer", "")))
+            slot = terminals.setdefault(
+                _norm(term), {"raw": term, "peers": set(), "sheets": set()})
+            slot["sheets"].add(sid)
+            if dst:
+                slot["peers"].add(dst)
+    for slot in terminals.values():
+        if len(slot["peers"]) > 1:
+            contradictions.append(
+                {"type": "terminal_conflict", "terminal": slot["raw"],
+                 "peer_sheets": sorted(slot["peers"]),
+                 "sheets": sorted(slot["sheets"]),
+                 "safety": _is_safety(slot["raw"])}
+            )
+
+    # contact_semantic_conflict: one chain designation, two contact forms.
+    chains: dict[str, dict] = {}
+    for s in sheets:
+        sid = str(s["sheet"]).lower()
+        for c in s.get("contact_chains", []):
+            slot = chains.setdefault(
+                str(c.get("chain")), {"forms": set(), "sheets": set()})
+            slot["forms"].add(str(c.get("form", "")))
+            slot["sheets"].add(sid)
+    for chain, slot in chains.items():
+        forms = {f for f in slot["forms"] if f}
+        if len(forms) > 1:
+            # NO/NC meaning on a feedback/interlock chain is inherently
+            # safety-relevant — always escalated, never allowlist-gated.
+            contradictions.append(
+                {"type": "contact_semantic_conflict", "chain": chain,
+                 "forms": sorted(forms), "sheets": sorted(slot["sheets"]),
+                 "safety": True}
+            )
+
+    # impossible_continuity: both endpoints drive the same signal OUT at each
+    # other. NOTE: multi-drop buses / wired-OR loops can false-positive; the
+    # entry is evidence for review, not a verdict.
+    outs = {(_norm(e["sig"]), e["src"], e["dst"])
+            for e in edges if e.get("dir") == "out" and e["dst"]}
+    seen_pairs: set[tuple] = set()
+    for sig, src, dst in outs:
+        if (sig, dst, src) in outs:
+            pair = (sig, *sorted((src, dst)))
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            raw_sig = next(e["sig"] for e in edges
+                           if _norm(e["sig"]) == sig and e["src"] in pair)
+            # a phantom always-driven signal is inherently safety-relevant
+            contradictions.append(
+                {"type": "impossible_continuity", "sig": raw_sig,
+                 "sheets": sorted((src, dst)), "safety": True}
+            )
 
     by_class = {"resolved": 0, "unverifiable": 0, "dangling": 0, "external": 0}
     for e in edges:
@@ -153,6 +261,7 @@ def build_system_graph(index: dict) -> dict:
         "devices": device_rows,
         "edges": edges,
         "violations": violations,
+        "contradictions": contradictions,
         "summary": {
             "sheets": len(sheets),
             "observable_sheets": sum(
@@ -161,5 +270,6 @@ def build_system_graph(index: dict) -> dict:
             "devices": len(device_rows),
             "edges_by_class": by_class,
             "violations": len(violations),
+            "contradictions": len(contradictions),
         },
     }
