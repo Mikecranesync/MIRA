@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.151.0 (2026-07-16) - feat(printsense): customer-facing technician report (commercial PR-1)
+- **What:** `printsense/customer_report.py` — plain-English, cited report over the degraded-mode contracts: probable page purpose, device table with page+bbox evidence, proven cross-references and cable continuations, deterministic circuit explanation (model assist ONLY via injected fn gated on a qualified provider; refused otherwise, test-pinned), safety + uncertainty notes, unresolved/contradictory surfaced never hidden, unavailable capabilities shown verbatim (`advanced_reasoning_unavailable` — reconstruction never implied), and the "Analyze my complete machine package" call to action. Byte-deterministic markdown + canonical JSON.
+- **Test:** 6 tests; printsense suite green; ruff clean.
+
 ### v3.150.11 (2026-07-16) - feat(printsense): degraded Scout reports + frontier job packets (PR-G)
 - **What:** `printsense/reports.py` — evidence-linked Scout deliverables (ToC, device register + page-device index with bboxes, missing/duplicate/unreadable page reports, resolved-xref subsystem clusters via union-find, xref + contradiction reports), always wrapped in the mandatory degraded banner. `printsense/packets.py` — schema-validated (pydantic, extra=forbid), content-addressed (sha256 of canonical JSON), size-bounded, provider-neutral frontier packets scoped to one subsystem's evidence only; unknown requested outputs and oversize packets fail closed.
 - **Test:** 7 tests; full printsense+proveit 420 green on the stack; gate PASS; privacy grep over every new program file: zero hits.
