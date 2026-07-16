@@ -43,22 +43,22 @@ PHOTO 2 — PXL_20260219_045141856.MACRO_FOCUS.jpg  (5.1 MB)
 ----------------------------------------------------------------------
 What the bot said:
   "I can see a P&ID with 18 labeled elements. Key labels:
-   2400WK0266_HDW_AVL_220, 2400WK0266_OPM_Ride_V1, 1280,
-   file C:/Use..."
+   [DWG]_HDW_AVL_220, [DWG]_OPM_Ride_V1, 1280,
+   file [local]..."
 
 1. Did it correctly identify what it was looking at?
    PARTIALLY — Called it a P&ID and pulled 18 labels including
    what look like real asset tag numbers. Good start.
 
 2. Would the answer help a senior tech troubleshoot or decide?
-   PARTIALLY — The tag numbers (2400WK0266_HDW_AVL_220 etc.) are
+   PARTIALLY — The tag numbers ([DWG]_HDW_AVL_220 etc.) are
    exactly the kind of IDs a tech would use to cross-reference a
    maintenance system. The problem is the bot just lists them and
    asks "what would you like to know?" instead of saying anything
    useful on its own.
 
 3. Obvious mistakes or missing info?
-   It also pulled "file C:/Use..." — that's a Windows file path
+   It also pulled "file [local]..." — that's a Windows file path
    visible somewhere in the image, probably from the screen it was
    photographed off of. Bot can't tell the difference between
    equipment data and background noise on the screen. A tech would
@@ -218,11 +218,11 @@ PHOTO 9 — PXL_20260219_045802513.MP.jpg  (8.0 MB)
 ----------------------------------------------------------------------
 What the bot said:
   "I can see a wiring diagram with 2 labeled elements.
-   Key labels: EMIS, EMIS."
+   Key labels: [partner], [partner]."
 
 1. Did it correctly identify what it was looking at?
    PARTIALLY — Wiring diagram is a reasonable guess. But 2
-   elements from an 8 MB photo is a very sparse read. EMIS
+   elements from an 8 MB photo is a very sparse read. [partner]
    appears twice — likely a manufacturer or system acronym.
 
 2. Would the answer help a senior tech troubleshoot or decide?

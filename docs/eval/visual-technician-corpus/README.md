@@ -10,8 +10,8 @@ metadata, the question, the observed (often wrong) response, the diagnosed root
 cause, and machine-checkable `pass_criteria` / `hard_fail_if_any`.
 
 ## Cases
-- `hard_failures/mack_intrasys_brake_stator.yaml` — Mack/InTraSys LSM final-brake
-  stator sheet (Universal "Racing Coaster", drawing 2400WK0266). The prod bot called
+- `hard_failures/oem_brake_stator.yaml` — ride-OEM LSM final-brake
+  stator sheet (a customer coaster project; identifiers neutralized). The prod bot called
   it "ladder logic" and invented timers/counters/logic-gates. **Canonical
   "never invent a device list" regression.** Root cause: a device question bypassed
   the grounded `print_translator` path and hit the generic engine; the vision model

@@ -63,7 +63,7 @@ STRONG_PRINT_SIGNALS = {
 # RTD, terminal, relay) trips an EQUIPMENT_FACE keyword — the technician saying
 # "this print/schematic/diagram" outranks an incidental component word.
 # Regression: docs/eval/visual-technician-corpus/hard_failures/
-#   mack_intrasys_brake_stator.yaml
+#   oem_brake_stator.yaml
 CAPTION_PRINT_KEYWORDS = {
     "print",
     "prints",
