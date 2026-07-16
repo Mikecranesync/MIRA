@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.150.4 (2026-07-16) - chore(privacy): regime3 golden labels — customer photo session moved to a gitignored local overlay
+- **Why:** the committed nameplate golden-label file carried a customer-project photo session (OEM/operator/project/drawing identifiers + a person name) in graded `ground_truth` fields and notes. Masking in place would FALSIFY functional truth (the photos visibly show those strings), so the whole session moves out instead.
+- **What:** the 9-case customer session is evicted to `real_photos.local.json` (gitignored; fixture merges it when present — absent overlay behaves exactly like missing photos). Committed file keeps 734 neutral cases; vendor names that are the OCR subject of neutral product photos are untouched (they ARE the ground truth). New salted-hash privacy test forbids the customer markers in the committed file forever + a merge-mechanism test.
+- **Test:** `tests/regime3_nameplate/` 27 passed, 1 skipped (env-gated); ruff clean on touched files.
+
 ### v3.150.2 (2026-07-16) - chore(privacy): remove tracked customer print photo + neutralize identifiers in the visual-technician hard-failure corpus
 - **Why:** the visual-technician hard-failure benchmark carried a real customer print photo as a tracked image, plus customer/operator/project/drawing identifiers and one person name across the fixture yaml, corpus README, two code comments, and OCR-verbatim eval transcripts. The benchmark's value (the "never invent a device list" regression case) does not depend on any of them.
 - **What:** the image is removed from the repo (provenance pinned by sha256 in the fixture; file stays local-only with the operator); the fixture is renamed to a neutral basename with identifiers replaced by role placeholders (ground truth, root cause, and pass/fail criteria byte-for-byte preserved); README/docstring/comment references updated; OCR-verbatim transcripts token-masked (drawing-number tokens, operator/OEM/project names, a third-party corporate file path). No functional code changed.
