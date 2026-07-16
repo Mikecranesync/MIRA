@@ -1152,6 +1152,11 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 - Action: issue-filed (commented rolling tracker #1876)
 - 6 failures / 3 patchable, but spanned 3 file_clusters (engine.py, guardrails.py, active.yaml) → single-file guardrail tripped, no autopatch. Dominant real signal = cross-vendor citation (AutomationDirect/ABB assets pulling Rockwell PowerFlex chunks) → retrieval-precision work (#2083/#2085), not an FSM/keyword patch.
 
+## eval-fixer run — 2026-07-16
+- Scorecard: 32/57 passing (56%) — from 2026-07-16T0235 run
+- Action: issue-filed (commented rolling tracker #1876)
+- **Flaky/provider-degraded run, NOT a regression.** Runtime ~45 min (2723s) vs a healthy fast run; 32/57 is a sharp downward outlier against the five prior same-day runs (46/49/44/49/51). **13 of 25 failures returned the provider-timeout placeholder** ("This is taking longer than usual…") — the cascade timed out and never produced a diagnostic answer, so those fixtures failed cp_reached_state + cp_keyword_match purely for lack of output. Watchdog flagged 0 regressions; engine unchanged. Autopatch skipped on both hard stops (24 patchable > 15; 3 file clusters). **Next step = re-run the suite before treating anything as real**; if it returns to the 44–51 band it was provider flake. Real-signal leftovers if they recur on a clean run: engine.py FSM Q1→Q2→DIAGNOSIS pacing (pf525_02, vfd_ab_02, vague_05, asset_change_08, gs1_12, reset_09), yaskawa_j1000_24 context bleed, and non-patchable vfd_siemens_04 wrong-vendor citation (Siemens→Rockwell).
+
 ## eval-fixer run — 2026-07-15
 - Scorecard: 51/57 passing (89%) — from 2026-07-15T0348 run (flat vs 2026-07-14's 51/57)
 - Action: issue-filed (commented rolling tracker #1876)
