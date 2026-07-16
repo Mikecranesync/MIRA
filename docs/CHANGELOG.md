@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.150.5 (2026-07-16) - chore(privacy): remove personal local-path strings (behavior-neutral)
+- **What:** drive-pack grading reports' recorded extraction commands mask absolute personal paths (`<local path>`/`<local manual pdf>` — display-only fields, generators unchanged; follow-up: relativize at generation); the hub laptop-to-cloud e2e fallback derives the operator's sibling checkout RELATIVE to the repo root instead of a hardcoded personal path (env `MIRA_CTX_ROOT` still wins; resolves to the identical directory on the operator machine).
+- **Test:** drive-pack read-only gate 3 passed; report JSON valid; `git grep` for personal paths over mira-bots/ + mira-hub/ returns zero.
 ### v3.150.4 (2026-07-16) - chore(privacy): regime3 golden labels — customer photo session moved to a gitignored local overlay
 - **Why:** the committed nameplate golden-label file carried a customer-project photo session (OEM/operator/project/drawing identifiers + a person name) in graded `ground_truth` fields and notes. Masking in place would FALSIFY functional truth (the photos visibly show those strings), so the whole session moves out instead.
 - **What:** the 9-case customer session is evicted to `real_photos.local.json` (gitignored; fixture merges it when present — absent overlay behaves exactly like missing photos). Committed file keeps 734 neutral cases; vendor names that are the OCR subject of neutral product photos are untouched (they ARE the ground truth). New salted-hash privacy test forbids the customer markers in the committed file forever + a merge-mechanism test.
