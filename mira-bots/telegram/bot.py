@@ -1070,7 +1070,8 @@ async def _dispatch_single_photo(
     # /printsense state or an "analyze ... print" caption. Everything else
     # falls through unchanged. See printsense_commercial.py.
     if await printsense_commercial.try_printsense_commercial_reply(
-            raw_bytes, caption, update, context):
+        raw_bytes, caption, update, context
+    ):
         return
 
     chat_id = str(update.effective_chat.id)

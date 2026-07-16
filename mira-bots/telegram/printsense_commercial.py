@@ -25,25 +25,25 @@ from printsense.intake import IntakeRefused, IntakeRequest
 
 logger = logging.getLogger("mira.telegram.printsense_commercial")
 
-ROOT = os.environ.get("PRINTSENSE_COMMERCIAL_ROOT",
-                      "/data/printsense_commercial")
+ROOT = os.environ.get("PRINTSENSE_COMMERCIAL_ROOT", "/data/printsense_commercial")
 TENANT = os.environ.get("MIRA_TENANT_ID", "beta-tenant")
-_ADMIN_IDS = {s.strip() for s in
-              os.environ.get("PRINTSENSE_REVIEWER_CHAT_IDS", "").split(",")
-              if s.strip()}
-_INTENT_RE = re.compile(r"\b(analyze|analyse)\b.*\bprint\b|/printsense",
-                        re.IGNORECASE)
+_ADMIN_IDS = {
+    s.strip() for s in os.environ.get("PRINTSENSE_REVIEWER_CHAT_IDS", "").split(",") if s.strip()
+}
+_INTENT_RE = re.compile(r"\b(analyze|analyse)\b.*\bprint\b|/printsense", re.IGNORECASE)
 _TAG_RE = re.compile(r"^-?\d{0,3}[A-Z]{0,3}\d{0,2}/[A-Z]{1,3}\d{1,4}[A-Z]?$")
 
 PRIVACY_TEXT = (
     "PrintSense privacy: your files are stored content-addressed and "
     "tenant-isolated, logs carry hashes only, nothing is used for model "
     "training, and deletion is on request. Every report passes a human "
-    "reviewer before delivery. Reply /printsense to start an analysis.")
+    "reviewer before delivery. Reply /printsense to start an analysis."
+)
 CONSENT_PROMPT = (
     "Before I analyze this: your file will be processed confidentially "
     "(hash-only logs, human-reviewed output, deletion on request). "
-    "Reply YES to consent and start, or NO to cancel.")
+    "Reply YES to consent and start, or NO to cancel."
+)
 
 
 class _DeterministicProcessing:
@@ -62,9 +62,7 @@ class _DeterministicProcessing:
             try:
                 page_tokens = xref_extractor.ocr_tokens(file_bytes[sha])
             except xref_extractor.OcrUnavailable:
-                payloads[sha] = {"devices": [],
-                                 "unreadable": False,
-                                 "ocr_skipped": True}
+                payloads[sha] = {"devices": [], "unreadable": False, "ocr_skipped": True}
                 continue
             for t in page_tokens:
                 if _TAG_RE.match(t["text"]):
@@ -84,38 +82,45 @@ class _TelegramDelivery:
     def deliver(self, tenant_id, intake_id, markdown, report):
         chat_id = self.chat_map.get(intake_id)
         if chat_id is None:
-            logger.warning("no chat mapping intake=%s — report on disk only",
-                           intake_id)
+            logger.warning("no chat mapping intake=%s — report on disk only", intake_id)
             return
         n_dev = len(report.get("devices", []))
         n_ref = len(report.get("proven_cross_references", []))
-        summary = (f"✅ Your PrintSense report is reviewed and ready: "
-                   f"{n_dev} device(s), {n_ref} proven cross-reference(s). "
-                   f"Full cited report attached. "
-                   f"{report.get('call_to_action', '')} → /ps_pilot")
+        summary = (
+            f"✅ Your PrintSense report is reviewed and ready: "
+            f"{n_dev} device(s), {n_ref} proven cross-reference(s). "
+            f"Full cited report attached. "
+            f"{report.get('call_to_action', '')} → /ps_pilot"
+        )
         self.bot.send_message(chat_id=chat_id, text=summary)
         self.bot.send_document(
             chat_id=chat_id,
             document=io.BytesIO(markdown.encode("utf-8")),
-            filename=f"printsense_report_{intake_id[:8]}.md")
+            filename=f"printsense_report_{intake_id[:8]}.md",
+        )
 
 
 def _service(bot=None, chat_map: dict | None = None):
     return PrintSenseCommercialService(
-        ROOT, TENANT, processing=_DeterministicProcessing(),
-        delivery=_TelegramDelivery(bot, chat_map or {}) if bot else None)
+        ROOT,
+        TENANT,
+        processing=_DeterministicProcessing(),
+        delivery=_TelegramDelivery(bot, chat_map or {}) if bot else None,
+    )
 
 
 # --------------------------------------------------------------------------
 # Handlers (async, python-telegram-bot). State kept in context.chat_data.
 # --------------------------------------------------------------------------
 
+
 async def printsense_command(update, context):
     context.chat_data["ps_state"] = "awaiting_photo"
     await update.message.reply_text(
         "Send one print page (photo or PDF page) with your question as the "
         "caption — e.g. 'Why does K01 trip?'. Small photo sets are fine. "
-        "/ps_privacy explains confidentiality.")
+        "/ps_privacy explains confidentiality."
+    )
 
 
 async def ps_privacy_command(update, context):
@@ -126,15 +131,20 @@ async def ps_status_command(update, context):
     iid = context.chat_data.get("ps_last_intake")
     if not iid:
         await update.message.reply_text(
-            "No PrintSense submission from this chat yet — /printsense to start.")
+            "No PrintSense submission from this chat yet — /printsense to start."
+        )
         return
     st = _service().get_status(iid)
-    human = {"queued": "queued for processing",
-             "processing": "processing",
-             "needs_review": "processed — awaiting human review",
-             "delivered": "delivered ✅", "failed": "failed ❌"}
+    human = {
+        "queued": "queued for processing",
+        "processing": "processing",
+        "needs_review": "processed — awaiting human review",
+        "delivered": "delivered ✅",
+        "failed": "failed ❌",
+    }
     await update.message.reply_text(
-        f"Submission {iid[:8]}: {human.get(st['status'], st['status'])}.")
+        f"Submission {iid[:8]}: {human.get(st['status'], st['status'])}."
+    )
 
 
 async def ps_pilot_command(update, context):
@@ -147,31 +157,31 @@ async def ps_pilot_command(update, context):
                 "🎯 You qualify for a managed package pilot: we analyze your "
                 "COMPLETE print package, human-reviewed and cited, with "
                 "introductory pricing. Reply here and Mike will follow up "
-                "within one business day.")
+                "within one business day."
+            )
             return
     svc.funnel.emit("package_request_submitted", TENANT, iid or "direct")
     await update.message.reply_text(
         "Package pilot: send us your complete print set (PDF preferred) and "
         "we return searchable, cited troubleshooting knowledge — human-"
         "reviewed, confidential, no reconstruction over-claims. Reply here "
-        "to start the conversation.")
+        "to start the conversation."
+    )
 
 
-async def try_printsense_commercial_reply(raw_bytes, caption, update,
-                                          context) -> bool:
+async def try_printsense_commercial_reply(raw_bytes, caption, update, context) -> bool:
     """Fall-through handler: claims the turn ONLY on explicit intent."""
     state = context.chat_data.get("ps_state")
     explicit = bool(caption and _INTENT_RE.search(caption))
     if state not in ("awaiting_photo", "awaiting_consent") and not explicit:
         return False
 
-    if not caption or len(caption.strip()) < 5 or _INTENT_RE.fullmatch(
-            caption.strip()):
+    if not caption or len(caption.strip()) < 5 or _INTENT_RE.fullmatch(caption.strip()):
         context.chat_data["ps_state"] = "awaiting_question"
         context.chat_data["ps_pending_file"] = raw_bytes
         await update.message.reply_text(
-            "What are you trying to understand from this print? "
-            "(one sentence is perfect)")
+            "What are you trying to understand from this print? (one sentence is perfect)"
+        )
         return True
 
     context.chat_data["ps_pending_file"] = raw_bytes
@@ -193,8 +203,7 @@ async def try_printsense_text_reply(text, update, context) -> bool:
         if text.strip().upper().startswith("YES"):
             return await _submit(update, context)
         context.chat_data["ps_state"] = None
-        await update.message.reply_text(
-            "Cancelled — nothing was stored. /printsense any time.")
+        await update.message.reply_text("Cancelled — nothing was stored. /printsense any time.")
         return True
     return False
 
@@ -207,8 +216,11 @@ async def _submit(update, context) -> bool:
     req = IntakeRequest(
         work_email=f"telegram-{user.id}@pending.example",
         company="(telegram beta — collected at pilot stage)",
-        machine_type="(from conversation)", question=question,
-        consent_confidentiality=True, request_full_package=False)
+        machine_type="(from conversation)",
+        question=question,
+        consent_confidentiality=True,
+        request_full_package=False,
+    )
     svc = _service()
     try:
         out = svc.submit_intake(req, [("telegram_upload", data)])
@@ -223,17 +235,20 @@ async def _submit(update, context) -> bool:
         await update.message.reply_text(
             f"Got it — submission {iid[:8]} is processed and now awaiting "
             f"human review (every report is reviewed before delivery). "
-            f"/ps_status to check.")
+            f"/ps_status to check."
+        )
     except Exception:
         await update.message.reply_text(
             f"Processing hit a problem; submission {iid[:8]} is recorded "
-            f"and we'll follow up. /ps_status to check.")
+            f"and we'll follow up. /ps_status to check."
+        )
     return True
 
 
 # --------------------------------------------------------------------------
 # Reviewer surface (beta): admin-gated commands. Approval delivers in-process.
 # --------------------------------------------------------------------------
+
 
 def _chat_map_store() -> dict:
     if not hasattr(_chat_map_store, "_m"):
@@ -254,11 +269,11 @@ async def ps_review_command(update, context):
     if not args or args[0] == "list":
         pend = svc.queue.list_pending()
         await update.message.reply_text(
-            "Pending review: " + (", ".join(p[:8] for p in pend) or "none"))
+            "Pending review: " + (", ".join(p[:8] for p in pend) or "none")
+        )
         return
     action, iid = args[0], args[1] if len(args) > 1 else ""
-    full = next((p for p in svc.queue.list_pending()
-                 if p.startswith(iid)), iid)
+    full = next((p for p in svc.queue.list_pending() if p.startswith(iid)), iid)
     if action == "inspect":
         item = svc.queue.inspect(full)
         mo = item["machine_original"]
@@ -266,20 +281,21 @@ async def ps_review_command(update, context):
             f"{full[:8]}: devices={len(mo['devices'])} "
             f"proven={len(mo['proven_cross_references'])} "
             f"open={len(mo['unresolved_or_contradictory'])} "
-            f"files={len(item['source_files'])} (artifacts on disk)")
+            f"files={len(item['source_files'])} (artifacts on disk)"
+        )
     elif action == "approve":
         pilot = "pilot" in args
-        svc.approve(full, reviewer=f"tg:{update.effective_user.id}",
-                    pilot_suitable=pilot)
+        svc.approve(full, reviewer=f"tg:{update.effective_user.id}", pilot_suitable=pilot)
         await update.message.reply_text(f"{full[:8]} approved + delivered.")
     elif action == "reject":
-        svc.reject(full, reviewer=f"tg:{update.effective_user.id}",
-                   note=" ".join(args[2:]) or "rejected")
+        svc.reject(
+            full, reviewer=f"tg:{update.effective_user.id}", note=" ".join(args[2:]) or "rejected"
+        )
         await update.message.reply_text(f"{full[:8]} rejected.")
     else:
         await update.message.reply_text(
-            "Usage: /ps_review [list|inspect <id>|approve <id> [pilot]|"
-            "reject <id> <note>]")
+            "Usage: /ps_review [list|inspect <id>|approve <id> [pilot]|reject <id> <note>]"
+        )
 
 
 async def ps_survey_command(update, context):
@@ -290,16 +306,26 @@ async def ps_survey_command(update, context):
         await update.message.reply_text(
             "After your report: /ps_survey <saved-time y/n> <useful y/n> "
             "<would-trust y/n> <have-complete-package y/n> "
-            "<consider-paid-pilot y/n>")
+            "<consider-paid-pilot y/n>"
+        )
         return
     svc = _service()
-    svc.record_survey(iid, Survey(
-        saved_time=args[0], identified_useful=args[1],
-        would_trust_troubleshooting=args[2], has_complete_package=args[3],
-        consider_paid_pilot=args[4]))
+    svc.record_survey(
+        iid,
+        Survey(
+            saved_time=args[0],
+            identified_useful=args[1],
+            would_trust_troubleshooting=args[2],
+            has_complete_package=args[3],
+            consider_paid_pilot=args[4],
+        ),
+    )
     ok, _reason = svc.qualify(iid)
     await update.message.reply_text(
-        "Thanks! " + ("🎯 You qualify for the managed package pilot — "
-                      "/ps_pilot for next steps." if ok else
-                      "Noted — /ps_pilot any time you want the complete "
-                      "package analyzed."))
+        "Thanks! "
+        + (
+            "🎯 You qualify for the managed package pilot — /ps_pilot for next steps."
+            if ok
+            else "Noted — /ps_pilot any time you want the complete package analyzed."
+        )
+    )
