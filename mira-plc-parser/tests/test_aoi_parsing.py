@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import textwrap
-from pathlib import Path
 
 import pytest
 
@@ -134,7 +133,7 @@ class TestAOIIR:
 
     def test_context_aoi_not_extracted(self, aoi_project):
         """Use="Context" AOI definitions must NOT be extracted."""
-        # The outer AddOnInstructionDefinitions has Use="Context" — 
+        # The outer AddOnInstructionDefinitions has Use="Context" —
         # but the inner AOI has Use="Target". Only Use="Target" is extracted.
         ctrl = aoi_project.controllers[0]
         assert len(ctrl.aoi_definitions) == 1  # only the target one
