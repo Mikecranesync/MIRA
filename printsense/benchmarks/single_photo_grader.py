@@ -87,14 +87,16 @@ def grade_answer(
     low = answer.lower()
 
     # --- path wiring: did the rung claim the turn as expected? ---
+    # expected True/False is exact; "either" accepts both honest paths (e.g. a
+    # blank image may be rejected at classification OR claimed-then-refused).
     lanes["path_wiring"] = {"claimed": claimed, "expected": exp["claimed"]}
-    if claimed != exp["claimed"]:
+    if exp["claimed"] != "either" and claimed != exp["claimed"]:
         hard.append(
             {"class": "path_wiring", "detail": f"rung claimed={claimed}, expected {exp['claimed']}"}
         )
         return _result(case, lanes, hard, latency_s, usage)
     if not claimed:
-        return _result(case, lanes, hard, latency_s, usage)  # fell through as expected
+        return _result(case, lanes, hard, latency_s, usage)  # fell through honestly
 
     # --- invention: tag-shaped strings not in the allowed set ---
     allowed = set(exp.get("allowed_tags", []))

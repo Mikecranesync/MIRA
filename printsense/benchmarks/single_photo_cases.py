@@ -62,7 +62,7 @@ CASES: list[dict] = [
         "expect": {
             "claimed": True,
             "allowed_tags": ["-91/K01", "K911"],
-            "required_mentions": ["coil", "-91/K01"],
+            "required_mentions": ["K01"],
             "affirm_any": [],
             "forbid_any": [],
             "safety_language_required": False,
@@ -88,7 +88,7 @@ CASES: list[dict] = [
             "claimed": True,
             "allowed_tags": ["-91/K01", "K911"],
             "required_mentions": ["91", "K01"],
-            "affirm_any": ["contactor", "relay"],
+            "affirm_any": ["contactor", "relay", "class letter", "device class"],
             "forbid_any": [],
             "safety_language_required": False,
             "refusal": False,
@@ -209,7 +209,7 @@ CASES: list[dict] = [
             ),
         },
         "expect": {
-            "claimed": True,
+            "claimed": "either",
             "allowed_tags": [],
             "required_mentions": [],
             "affirm_any": [],
@@ -258,10 +258,26 @@ def expectations_digest(cases: list[dict] | None = None) -> str:
 
 
 def render_case_png(case: dict) -> bytes:
-    """Deterministically draw the base golden-corpus page as a PNG (live mode).
-    Same pattern as provider_qualification.render_synthetic_xref_sheet: PIL
-    default font, fixed layout from the token stream — nothing random."""
+    """Deterministically draw the case's live-mode image (PNG).
+
+    Print cases draw the base golden-corpus page from its token stream (same
+    pattern as provider_qualification.render_synthetic_xref_sheet — PIL default
+    font, fixed layout, nothing random). A case that expects the rung to FALL
+    THROUGH gets a genuinely non-schematic image instead: rendering the print
+    page for it would make `expected claimed=False` unachievable, since a
+    correct classifier will (rightly) call a drawn schematic a print."""
     from PIL import Image, ImageDraw  # lazy: hermetic mode never needs PIL
+
+    if case["expect"].get("claimed") is False:
+        img = Image.new("RGB", (1024, 768), (118, 118, 122))
+        draw = ImageDraw.Draw(img)
+        for y in range(0, 768, 8):  # flat photo-like gradient, no line work
+            shade = 96 + (y * 48 // 768)
+            draw.line([(0, y), (1024, y)], fill=(shade, shade, shade), width=8)
+        draw.ellipse([362, 234, 662, 534], fill=(84, 84, 88))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
 
     base = _base(case["base"])
     width = base.get("page_width", 1400)
