@@ -1,6 +1,6 @@
 {
   "case": "scu2_ap31971_sheet20_opto",
-  "_source": "printsense/benchmarks/scu2_ap31971_sheet20_opto.md ground-truth table; known_misreads are the confident errors documented in that file's Response A (the D/43% run). 2026-07-14 convention update (Mike, docs/eval/2026-07-14-printsense-sheet20-case-study.md §7): the catalog code ITS.LWL-K-01.2 moved from the device lane to the new type_text lane — schematic tags only gate strict-A.",
+  "_source": "printsense/benchmarks/scu2_sheet20_opto.md ground-truth table; known_misreads are the confident errors documented in that file's Response A (the D/43% run). 2026-07-14 convention update (Mike, docs/eval/2026-07-14-printsense-sheet20-case-study.md §7): the catalog code ITS.LWL-K-01.2 moved from the device lane to the new type_text lane — schematic tags only gate strict-A.",
   "package": {
     "drawing_no": "AP31971",
     "cabinet": "+SCU2",
