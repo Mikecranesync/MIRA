@@ -54,3 +54,6 @@ jobs:
 
       - name: Phase-1 capability bench tests
         run: pytest tests/printsense/test_capability_bench.py tests/printsense/test_capability_privacy.py -v
+
+      - name: Phase-2 single-photo grader tests
+        run: pytest tests/printsense/test_single_photo_grader.py -v

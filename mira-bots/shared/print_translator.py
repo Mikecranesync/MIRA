@@ -95,6 +95,27 @@ PRINT_QUESTION_PHRASES = THEORY_INTENT_PHRASES + (
     "what protects",
     "how is this wired",
     "how is it wired",
+    # Canonical technician single-photo questions (testing-program Phase 2).
+    # Designation meaning, contact conventions, next-page guidance, and
+    # why-won't-it-energize troubleshooting are print questions by this gate's
+    # own docstring — ELECTRICAL_PRINT classification stays the real filter.
+    "what does -",
+    " mean?",
+    "normally open",
+    "normally closed",
+    "contact",
+    "coil",
+    "photograph next",
+    "photo next",
+    "next page",
+    "which page",
+    "which sheet",
+    "what sheet",
+    "energize",
+    "energise",
+    "won't start",
+    "wont start",
+    "why would this",
 )
 
 # Cap on OCR items fed into the prompt — mirrors

@@ -340,10 +340,17 @@ async def printsense_test_command(update, context):
         await update.message.reply_text("Not authorized.")
         return
     phase = context.args[0].lower() if getattr(context, "args", None) else "phase1"
+    if phase == "phase2":
+        try:
+            import printsense_testkit
+
+            await printsense_testkit.run_phase2_live(update, context)
+        except Exception as exc:
+            logger.warning("printsense_test phase2 failed: %s", type(exc).__name__)
+            await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
+        return
     if phase != "phase1":
-        await update.message.reply_text(
-            "Usage: /printsense_test phase1 — only phase1 exists so far."
-        )
+        await update.message.reply_text("Usage: /printsense_test phase1|phase2")
         return
     try:
         from printsense import grader_gate

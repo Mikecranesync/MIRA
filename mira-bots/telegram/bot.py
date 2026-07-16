@@ -9,6 +9,7 @@ import re
 
 import httpx
 import printsense_commercial
+import printsense_testkit
 from admin_commands import (
     invite_command,
     invite_status_command,
@@ -1048,6 +1049,13 @@ async def _dispatch_single_photo(
     refusal) from the nameplate — everything else falls through to the
     unchanged engine dispatch below.
     """
+    # Admin test-caption mode (/printsense_grade <question>): pre-empts every
+    # rung so an admin probe never leaks into customer flows. Fail-closed.
+    if await printsense_testkit.try_printsense_grade_reply(
+        raw_bytes, vision_bytes, caption, update, context
+    ):
+        return
+
     if await _try_nameplate_drive_pack_reply(vision_bytes, caption, update, context):
         return
 
