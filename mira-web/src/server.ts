@@ -142,6 +142,7 @@ import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 import { qrTest } from "./routes/qr-test.js";
+import { printsensePage } from "./routes/printsense.js";
 import { inbox } from "./routes/inbox.js";
 import { mfa } from "./routes/mfa.js";
 import { probeStateRoute } from "./routes/probe-state.js";
@@ -214,6 +215,7 @@ app.use("*", async (c, next) => {
 });
 
 // QR scan routes — /m/:asset_tag (auth optional), /m/:asset_tag/choose, /m/:asset_tag/report
+app.route("/", printsensePage); // GET /printsense + POST /printsense/interest (PR-D)
 app.route("/m", mChooser);     // GET /m/:asset_tag/choose[?set_pref=...]
 app.route("/m", mReport);      // GET /m/:asset_tag/report
 app.route("/m", mRegister);    // GET /m/:asset_tag/register (auto-register form)
