@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.150.10 (2026-07-16) - feat(printsense): durable package pipeline + content-addressed storage (PR-F)
+- **What:** `printsense/cas.py` (sha256 CAS, atomic writes, versioned derivation cache keyed on source-sha+stage+version — approved work is never re-paid unless source/version changes or reanalysis is forced) + `printsense/package_pipeline.py` (upload→CAS→split→hash→dedup→staged processing; page identity = content hash, survives reordering; reupload detected by package hash; per-page/per-stage status; resume skips cached work; retries touch ONLY failed pages; tenant enforced at the workspace; logs carry hashes never content — test-asserted). **Dependency decision:** `pypdfium2>=4.30` added to printsense requirements (Apache-2.0/BSD-3 wheel) for page-streamed PDF rendering; absent → explicit `SplitUnavailable`; OCR absence → explicit `skipped_ocr_unavailable`.
+- **Test:** 9 tests (resume, retry-failed-only, dedup/reupload, tenancy, log-privacy, versioned cache, live 2-page split); suite 397 green on the stack; gate PASS.
+
 ### v3.150.9 (2026-07-16) - feat(printsense): human xref review workflow — durable, idempotent, pinned (PR-E)
 - **What:** `printsense/review.py` — compact review contract (question/candidates/allowed_actions), validated decisions (confirm_candidate must pick a listed candidate; enter_correct_target requires a target), durable content-keyed decision records (reviewer, timestamp, machine proposal, selected target, source crop ref, source doc hash, status, audit trail) in an append-only idempotent store (re-apply appends audit, never clobbers), and the pin rule: a confirmed edge is recomputed ONLY when the source hash or extractor version changes (or the user forces reanalysis). `run_step` hook lets pipeline callers wrap persistence in `WorkflowRun` steps without import coupling.
 - **Test:** 8 lifecycle tests; printsense suite green on the stacked branch.
