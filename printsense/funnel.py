@@ -22,12 +22,12 @@ EVENTS = (
     "pilot_qualified", "pilot_won", "pilot_lost",
 )
 
-_ALLOWED_PROP_KEYS = {"files", "pages", "duration_s", "failed_stage",
-                      "review_action", "qualified_reason", "survey_score",
-                      "devices_found", "xrefs_proven"}
+# typed whitelist: numeric-only keys can never smuggle a filename/string;
+# token keys accept only short machine tokens (no spaces, no content).
+_NUMERIC_KEYS = {"files", "pages", "duration_s", "survey_score",
+                 "devices_found", "xrefs_proven"}
+_TOKEN_KEYS = {"failed_stage", "review_action", "qualified_reason"}
 _TOKEN_RE = re.compile(r"^[a-z0-9_.:-]{1,64}$")
-_FORBIDDEN_HINTS = ("question", "text", "content", "name", "email",
-                    "company", "file", "raw", "body", "note")
 
 
 class Survey(BaseModel):
@@ -51,17 +51,16 @@ class Funnel:
             raise ValueError(f"unknown funnel event {event!r}")
         clean: dict = {}
         for k, v in (props or {}).items():
-            if k not in _ALLOWED_PROP_KEYS:
-                raise ValueError(f"prop {k!r} not whitelisted for analytics")
-            if any(h in k for h in _FORBIDDEN_HINTS):
-                raise ValueError(f"prop {k!r} is content-shaped")
-            if isinstance(v, bool) or isinstance(v, (int, float)):
+            if k in _NUMERIC_KEYS:
+                if isinstance(v, bool) or not isinstance(v, (int, float)):
+                    raise ValueError(f"prop {k!r} must be numeric")
                 clean[k] = v
-            elif isinstance(v, str) and _TOKEN_RE.match(v):
+            elif k in _TOKEN_KEYS:
+                if not (isinstance(v, str) and _TOKEN_RE.match(v)):
+                    raise ValueError(f"prop {k!r} must be a short machine token")
                 clean[k] = v
             else:
-                raise ValueError(f"prop value for {k!r} must be numeric, "
-                                 f"bool, or a short token")
+                raise ValueError(f"prop {k!r} not whitelisted for analytics")
         row = {"at": time.time(), "event": event, "tenant_id": tenant_id,
                "intake_id": intake_id, "props": clean}
         with open(self.path, "a", encoding="utf-8") as fh:
