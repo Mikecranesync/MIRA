@@ -11,7 +11,14 @@ from . import analyze as _analyze
 from . import uns as _uns
 from .detect import Detection, detect
 from .ir import PLCProject
-from .parsers import csv_tags, ignition_json, plcopen_xml, rockwell_l5x, siemens_awl, structured_text
+from .parsers import (
+    csv_tags,
+    ignition_json,
+    plcopen_xml,
+    rockwell_l5x,
+    siemens_awl,
+    structured_text,
+)
 
 # format key -> parser module (each exposes parse(text, source_file) -> PLCProject)
 _PARSERS = {
