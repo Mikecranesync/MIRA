@@ -401,8 +401,6 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_STG}
-      - PRINTSENSE_COMMERCIAL_ROOT=${PRINTSENSE_COMMERCIAL_ROOT:-}
-      - PRINTSENSE_REVIEWER_CHAT_IDS=${PRINTSENSE_REVIEWER_CHAT_IDS:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=disabled://staging
       - OPENWEBUI_API_KEY=
