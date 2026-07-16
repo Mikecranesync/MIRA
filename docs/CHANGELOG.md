@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.151.2 (2026-07-16) - feat(printsense): internal review-and-delivery queue (commercial PR-3)
+- **What:** `printsense/review_queue.py` — every customer report passes a human before delivery: inspect uploaded source (CAS refs) + extracted evidence + machine draft; approve / correct / reject / mark_unresolved; corrections never mutate the preserved machine original; approval renders the final customer report and flips the intake to delivered; reviewer can mark the lead pilot-suitable; full audit history; double decisions refused; `run_step` hook = WorkflowRun-compatible without import coupling.
+- **Test:** 6 lifecycle tests; printsense suite 425 green.
+
 ### v3.151.1 (2026-07-16) - feat(printsense): lead-magnet intake — secure, bounded, tenant-isolated (commercial PR-2)
 - **What:** `printsense/intake.py` — validated intake (work email, company, machine type, question, MANDATORY confidentiality consent, full-package request flag) + bounded upload (8 files / 15MB each / 60MB total; magic-byte sniffing, disguised executables refused; PDFs over 25 pages explicitly refused toward the managed pilot — no free multi-thousand-page ingestion on this surface). Content-addressed storage per tenant/intake; sanitized display names (traversal neutralized); explicit status lifecycle (received→queued→processing→needs_review→delivered/failed) with history; hash-only logging (test-asserted: no content, no question text, no raw filenames).
 - **Test:** 9 security/lifecycle tests; printsense suite 419 green.
