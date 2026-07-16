@@ -1,7 +1,7 @@
 """Regression: a captioned electrical-print photo must route to the grounded
 schematic path, not the generic engine.
 
-Captured from a real prod-bot failure (2026-07-12): a MACK RIDES / InTraSys
+Captured from a real prod-bot failure (2026-07-12): a ride-OEM LSM
 final-brake stator wiring sheet, captioned "What types of devices are listed in
 this print?", was answered with a fabricated ladder-logic device list.
 
@@ -14,7 +14,7 @@ misclassify EQUIPMENT_PHOTO and fall through to the generic engine. The
 technician's own caption ("...in this print?") is the signal that closes it.
 
 Ground truth + pass/fail:
-docs/eval/visual-technician-corpus/hard_failures/mack_intrasys_brake_stator.yaml
+docs/eval/visual-technician-corpus/hard_failures/oem_brake_stator.yaml
 """
 
 from __future__ import annotations

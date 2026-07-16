@@ -1,19 +1,23 @@
 # MIRA Visual Technician — hard-failure benchmark fixture
 # Captured 2026-07-12 from a real prod-bot (@FactoryLM_Diagnose) interaction.
 # This is the canonical "never invent a device list" regression case.
+# Identifiers neutralized 2026-07-16 (privacy Bundle 2); the source photo was
+# removed from the repo the same day — confidential customer print. Provenance
+# is pinned by sha256 below; the file lives local-only with the operator.
 
-id: hard_fail_mack_intrasys_brake_stator_2400WK0266
-image: ../images/mack_intrasys_brake_stator_2400WK0266_sheet11.jpg
+id: hard_fail_oem_brake_stator_sheet11
+image: "LOCAL-ONLY (removed from repo 2026-07-16 — confidential customer print photo)"
+image_sha256: 189456e88a3b2a801d917a2f0e8ddae535fc21495675e282c600275c2b5ba3f9
 capture: phone photo of a laptop screen (Adobe/Edge) showing the PDF — moiré + glare
 
 source:
-  manufacturer: MACK RIDES (electrical partner EMIS)
-  customer: Universal Orlando
-  project: Racing Coaster
-  drawing_number: 2400WK0266
+  manufacturer: "[ride OEM] (electrical partner [partner])"
+  customer: "[park operator]"
+  project: "[coaster project]"
+  drawing_number: "[drawing]"
   sheet: "11/12 (page 13)"
   revision: AB01
-  drawn_by: Raphael Reichenbach (2024-01-09)
+  drawn_by: "[OEM engineer] (2024-01-09)"
   scope: "+JB01 stator pair 1 — final brake"
 
 question_asked: "What types of devices are listed in this print?"
@@ -27,7 +31,7 @@ ground_truth_devices:
   - { type: "terminal strips", tags: ["-X1", "-X12"] }
   - { type: "junction box", tags: ["+JB01"] }
   - { type: "power/signal cables", note: "≈3G25 (25mm²) stator power; ≈4G6 (6mm²) aux" }
-system: "InTraSys LSM (linear synchronous motor) final-brake stator pair — left (+BR01L) + right (+BR01R)"
+system: "[LSM vendor] LSM (linear synchronous motor) final-brake stator pair — left (+BR01L) + right (+BR01R)"
 safety_critical: true   # coaster FINAL BRAKE; the Klixon switches ARE the over-temp safety trip
 
 # ---- WHAT THE PROD BOT ACTUALLY SAID (verbatim summary — the failure) ----
@@ -35,8 +39,8 @@ observed_response_summary: >
   Called it a "ladder logic diagram for PLC programming" and listed I/O modules,
   timers, counters, AND/OR/NOT logic gates, and relay/output coils — NONE of which
   are present. Said "no safety-critical elements visible." Named zero real labels
-  (no MACK/EMIS/InTraSys/stator/PT100/KLIX/drawing number). Appended a KB-gap
-  admission at the very end, after a page of confident fabrication.
+  (no OEM/partner/LSM-vendor names, no stator/PT100/KLIX, no drawing number).
+  Appended a KB-gap admission at the very end, after a page of confident fabrication.
 failure_class: fabrication (generic-PLC hallucination) + misclassification + missed-safety-critical
 
 # ---- ROOT CAUSE (diagnosed 2026-07-12; CORRECTED 2026-07-12 against real code) ----
@@ -60,8 +64,8 @@ root_cause:
 empirical_note: >
   Reproduction is limited offline. On PROD, VisionWorker._call_vision hits the
   cloud InferenceRouter (Groq/Cerebras/Together) FIRST and only falls back to
-  local Open WebUI — so the model that actually described Mike's photo was a
-  CLOUD vision model, NOT the qwen2.5vl:7b on Bravo. An earlier note that
+  local Open WebUI — so the model that actually described the operator's photo
+  was a CLOUD vision model, NOT the qwen2.5vl:7b on Bravo. An earlier note that
   "qwen reads this photo correctly when grounded" is about a model prod does
   not use for this call; treat it as evidence the image is READABLE, not as
   proof of the prod path. The vision endpoint is not reachable from a feature
