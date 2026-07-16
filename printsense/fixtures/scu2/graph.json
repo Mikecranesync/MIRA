@@ -17,51 +17,51 @@
         "blatt": 3,
         "function": "Versorgung 115V, Heizung (115V supply + heater)",
         "datum": "23.09.2022",
-        "bearb": "Thomas Gruenzinger",
+        "bearb": "Thomas [design engineer 1]",
         "gepr": "(blank)",
-        "file": "PXL_20260712_141820488.jpg"
+        "file": "corpus-photo-02.jpg"
       },
       {
         "blatt": 4,
         "function": "Versorgung 24V (24 VDC supply)",
         "datum": "11.07.2022",
-        "bearb": "Ascher",
+        "bearb": "[design engineer 2]",
         "gepr": "(blank)",
-        "file": "PXL_20260712_150423041.jpg",
+        "file": "corpus-photo-03.jpg",
         "note": "not re-photographed by adjudicator; carried from reader, cross-refs reciprocate with verified sheets 3 & 5"
       },
       {
         "blatt": 5,
         "function": "PLC overview (EtherCAT node EK1100 + EL terminals A100-A107)",
         "datum": "11.07.2022",
-        "bearb": "Ascher",
+        "bearb": "[design engineer 2]",
         "gepr": "(blank)",
-        "file": "PXL_20260712_150435196.jpg"
+        "file": "corpus-photo-04.jpg"
       },
       {
         "blatt": 6,
         "function": "PLC overview (I/O map: A101 DO / A102-A103 DI / A104 RTD)",
         "datum": "11.07.2022",
-        "bearb": "Ascher",
+        "bearb": "[design engineer 2]",
         "gepr": "(blank)",
-        "file": "PXL_20260712_150446473.jpg"
+        "file": "corpus-photo-05.jpg"
       },
       {
         "blatt": 7,
         "function": "PLC overview (230 VAC DI: A105/A106 EL1722, ME05-ME08 Klixon)",
         "datum": "11.07.2022",
-        "bearb": "Ascher",
+        "bearb": "[design engineer 2]",
         "gepr": "(blank)",
-        "file": "PXL_20260712_150455846.jpg",
+        "file": "corpus-photo-06.jpg",
         "note": "Blatt cell VERIFIED from pixels as 'Blatt 7 / von 1706' — the reader's 'Blatt 5 / two superimposed drawings' was a bleed-through/exposure artifact; at normal exposure this is a single, clean drawing (upper ~60% blank)."
       },
       {
         "blatt": "~2-3 (blurry, NOT legible)",
         "function": "Montageplatte (mounting-plate physical layout)",
         "datum": "18.03.2022",
-        "bearb": "Thomas Gruenzinger",
+        "bearb": "Thomas [design engineer 1]",
         "gepr": "(blank)",
-        "file": "PXL_20260712_141813344.jpg",
+        "file": "corpus-photo-01.jpg",
         "note": "hand-colored render/photo; NO device tags legible anywhere in the drawing area"
       }
     ],
@@ -2042,7 +2042,7 @@
       "needed_to_confirm": "Cable tags at glands; none shown on the layout sheet."
     }
   ],
-  "cross_sheet_notes": "SET IDENTITY: AP31971 (doc 31971), '=LA2 +SCU2' Sensor Control Unit 2 V3.5, project 'Launch System', customer [customer] ([customer] Rides), by INTRASYS, [site] FL. This is one of a 3-cabinet chain +SCU1 -> +SCU2 -> +SCU3. Every sheet prints 'von 1706' (verified) — treat as printed; the value is oddly high for a page count and may be an order/document code (flagged in unresolved).\n\nSHEET NUMBERING (all pixel-verified): 3 = 115V supply/heater (Gruenzinger, 23.09.2022); 4 = 24V supply (Ascher, 11.07.2022); 5 = PLC overview / EtherCAT node A100-A107 (Ascher); 6 = I/O map A101-A104 (Ascher); 7 = 230V DI A105/A106 Klixon (Ascher). The Montageplatte layout is a separate early sheet (Gruenzinger, 18.03.2022), Blatt cell blurry. Note the author/date split: Gruenzinger did the early layout + the 115V/heater sheet; Ascher did the 24V + all PLC sheets.\n\nKEY CORRECTION vs the blind reads — SHEET 7 IS NOT TWO SUPERIMPOSED DRAWINGS. At normal exposure PXL_...150455846 is a single clean drawing (upper ~60% blank) whose corner reads 'Blatt 7 / von 1706' (pixel-verified). The 'faint node-overview layer B' the reader recovered via autocontrast was bleed-through from the adjacent sheet 5 (which authoritatively carries A100-A107, U1/U2, W5445/W5473, ETH In/Out). All 'layer-B' items were therefore NOT double-counted here; the node overview is attributed solely to sheet 5.\n\nRESOLVED CROSS-REFERENCES (reciprocals verified on both sheets where possible):\n- PE.5DA0: sheet3 X0:PE grid 3.2  <->  sheet5 EK1100 A100:PE grid 5.5 (sheet3 prints 'PE.5DA0/5.5', sheet5 prints '3.2/PE.5DA0').\n- E1.PE (heater earth): sheet3 X0:PE grid 3.2  <->  sheet3 heater X1:PE grid 3.7 (same-sheet net).\n- USVL1/USVN: sheet3 F1 output grid 3.7  <->  sheet4 grid 4.0 (sheet3 'USVL1/4.0','USVN/4.0'; sheet4 '3.7/USVL1','3.7/USVN').\n- 24V/0V: sheet4 X24VDC/X24GND  ->  sheet5 EK1100 (A100 24V at 4.4/X24V.3, 0V at 4.6/X0V.3).\n- EtherCAT: sheet5 -> +SCU1/5.3(-ETH.D) upstream (W5445/U1) and +SCU3/5.2(+SCU3-ETH.D) downstream (W5473/U2).\n- Module detail chain: sheet5 A101-A104 -> /6.4 (sheet 6); A105-A106 -> /7.4 (sheet 7). This chain is the proof that the A105/A106 sheet = Blatt 7.\n\nDEVICE-NAMING: the PLC modules are printed '-5/A100'..'-5/A107','-5/U1','-5/U2' on ALL three PLC sheets; '-5/' is the sheet-5 (PLC-overview) location/cross-ref marker, kept as the literal visible tag.\n\nCROSS-SIGNAL DESIGN (verified sheets 6 & 7): every field unit ME05, ME06, ME07, ME08 provides BOTH a PT100 RTD (analog temperature -> A104 EL3204 PEW100/102/104/106, field term +MEx-1.R:4, detail sheet 11) AND a Klixon thermal over-temp switch (digital 230VAC -> A105/A106 EL1722 E3.0/E3.1/E4.0/E4.1, field strip -18/X2KL:2/4/6/8, detail sheet 12). Continuous temperature + hard over-temp trip per unit.\n\nU1/U2 TYPE (resolved from pixels): Metz Connect 1309426003-E are RJ45 panel feed-through / bulkhead connectors (circle-between-brackets pass-through symbol, no power/converter) — NOT media/fibre converters as the sheet-7 show-through read suggested.\n\nPE DISCIPLINE: PE is kept strictly separate from current-carrying paths in this graph — the enclosure-bonding strip (RAIL DOOR/CHASSIS/DOOR/MOUNTINGPANEL/spare), the X0:PE main tie, PE.5DA0, E1.PE, the X24GND 0V-PE bond, X2:PE->DA_PE1/DA_PE2, and A105/A106 PE are all recorded as pe_bonds / pe nets, never merged into L/N/UL/UN conductors.\n\nVOLTAGE TENSION (open): sheet 3 is titled 'Versorgung 115V' and E1 is 250W-115V, but the UPS-derived net (UL/UN -> F1 -> USVL1/USVN) is labelled '230V' on sheets 4 and 7. UL/UN voltage is not labelled on sheet 3. Likely the cable carries a 115V mains pair (L/N) AND a separate 230V UPS pair (UL/UN); recorded as observed, not resolved.\n\nCONFIDENCE POSTURE: all items 'proposed'. Items I re-opened and confirmed at full resolution (sheet 3 PE/heater/F1, sheet 5 station/network/PE, sheets 6/7 I/O map) carry 0.85-0.96; sheet 4 (no conflict, not re-shot) carries the reader's values; the layout matches are CANDIDATES only (0.25-0.35) because no tags are legible.",
+  "cross_sheet_notes": "SET IDENTITY: AP31971 (doc 31971), '=LA2 +SCU2' Sensor Control Unit 2 V3.5, project 'Launch System', customer [customer] ([customer] Rides), by INTRASYS, [site] FL. This is one of a 3-cabinet chain +SCU1 -> +SCU2 -> +SCU3. Every sheet prints 'von 1706' (verified) — treat as printed; the value is oddly high for a page count and may be an order/document code (flagged in unresolved).\n\nSHEET NUMBERING (all pixel-verified): 3 = 115V supply/heater ([design engineer 1], 23.09.2022); 4 = 24V supply ([design engineer 2], 11.07.2022); 5 = PLC overview / EtherCAT node A100-A107 ([design engineer 2]); 6 = I/O map A101-A104 ([design engineer 2]); 7 = 230V DI A105/A106 Klixon ([design engineer 2]). The Montageplatte layout is a separate early sheet ([design engineer 1], 18.03.2022), Blatt cell blurry. Note the author/date split: [design engineer 1] did the early layout + the 115V/heater sheet; [design engineer 2] did the 24V + all PLC sheets.\n\nKEY CORRECTION vs the blind reads — SHEET 7 IS NOT TWO SUPERIMPOSED DRAWINGS. At normal exposure PXL_...150455846 is a single clean drawing (upper ~60% blank) whose corner reads 'Blatt 7 / von 1706' (pixel-verified). The 'faint node-overview layer B' the reader recovered via autocontrast was bleed-through from the adjacent sheet 5 (which authoritatively carries A100-A107, U1/U2, W5445/W5473, ETH In/Out). All 'layer-B' items were therefore NOT double-counted here; the node overview is attributed solely to sheet 5.\n\nRESOLVED CROSS-REFERENCES (reciprocals verified on both sheets where possible):\n- PE.5DA0: sheet3 X0:PE grid 3.2  <->  sheet5 EK1100 A100:PE grid 5.5 (sheet3 prints 'PE.5DA0/5.5', sheet5 prints '3.2/PE.5DA0').\n- E1.PE (heater earth): sheet3 X0:PE grid 3.2  <->  sheet3 heater X1:PE grid 3.7 (same-sheet net).\n- USVL1/USVN: sheet3 F1 output grid 3.7  <->  sheet4 grid 4.0 (sheet3 'USVL1/4.0','USVN/4.0'; sheet4 '3.7/USVL1','3.7/USVN').\n- 24V/0V: sheet4 X24VDC/X24GND  ->  sheet5 EK1100 (A100 24V at 4.4/X24V.3, 0V at 4.6/X0V.3).\n- EtherCAT: sheet5 -> +SCU1/5.3(-ETH.D) upstream (W5445/U1) and +SCU3/5.2(+SCU3-ETH.D) downstream (W5473/U2).\n- Module detail chain: sheet5 A101-A104 -> /6.4 (sheet 6); A105-A106 -> /7.4 (sheet 7). This chain is the proof that the A105/A106 sheet = Blatt 7.\n\nDEVICE-NAMING: the PLC modules are printed '-5/A100'..'-5/A107','-5/U1','-5/U2' on ALL three PLC sheets; '-5/' is the sheet-5 (PLC-overview) location/cross-ref marker, kept as the literal visible tag.\n\nCROSS-SIGNAL DESIGN (verified sheets 6 & 7): every field unit ME05, ME06, ME07, ME08 provides BOTH a PT100 RTD (analog temperature -> A104 EL3204 PEW100/102/104/106, field term +MEx-1.R:4, detail sheet 11) AND a Klixon thermal over-temp switch (digital 230VAC -> A105/A106 EL1722 E3.0/E3.1/E4.0/E4.1, field strip -18/X2KL:2/4/6/8, detail sheet 12). Continuous temperature + hard over-temp trip per unit.\n\nU1/U2 TYPE (resolved from pixels): Metz Connect 1309426003-E are RJ45 panel feed-through / bulkhead connectors (circle-between-brackets pass-through symbol, no power/converter) — NOT media/fibre converters as the sheet-7 show-through read suggested.\n\nPE DISCIPLINE: PE is kept strictly separate from current-carrying paths in this graph — the enclosure-bonding strip (RAIL DOOR/CHASSIS/DOOR/MOUNTINGPANEL/spare), the X0:PE main tie, PE.5DA0, E1.PE, the X24GND 0V-PE bond, X2:PE->DA_PE1/DA_PE2, and A105/A106 PE are all recorded as pe_bonds / pe nets, never merged into L/N/UL/UN conductors.\n\nVOLTAGE TENSION (open): sheet 3 is titled 'Versorgung 115V' and E1 is 250W-115V, but the UPS-derived net (UL/UN -> F1 -> USVL1/USVN) is labelled '230V' on sheets 4 and 7. UL/UN voltage is not labelled on sheet 3. Likely the cable carries a 115V mains pair (L/N) AND a separate 230V UPS pair (UL/UN); recorded as observed, not resolved.\n\nCONFIDENCE POSTURE: all items 'proposed'. Items I re-opened and confirmed at full resolution (sheet 3 PE/heater/F1, sheet 5 station/network/PE, sheets 6/7 I/O map) carry 0.85-0.96; sheet 4 (no conflict, not re-shot) carries the reader's values; the layout matches are CANDIDATES only (0.25-0.35) because no tags are legible.",
   "unresolved": [
     {
       "item": "Sheet 7 'two superimposed drawings' claim",

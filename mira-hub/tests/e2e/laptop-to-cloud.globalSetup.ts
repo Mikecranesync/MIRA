@@ -46,9 +46,11 @@ const OFFLINE_STATE = path.join(STATE_DIR, "offline.json");
 
 // Repo root is two levels up from mira-hub/tests/e2e -> mira-hub -> <repo>.
 const REPO_ROOT = path.resolve(__dirname, "../../..");
+// Fallback derives the operator's sibling checkout RELATIVE to the repo
+// root (…/Documents/MIRA-pr2068) — no personal path segments in-repo.
 const CTX_ROOT =
   process.env.MIRA_CTX_ROOT ??
-  "C:/Users/hharp/Documents/MIRA-pr2068/mira-contextualizer";
+  path.resolve(REPO_ROOT, "../../MIRA-pr2068/mira-contextualizer");
 const VENV_PY =
   process.env.MIRA_CTX_PYTHON ?? path.join(CTX_ROOT, ".venv/Scripts/python.exe");
 const LAUNCHER = path.join(REPO_ROOT, "tools/e2e/launch_contextualizer.py");
