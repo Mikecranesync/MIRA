@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.150.7 (2026-07-16) - feat(printsense): explicit degraded product modes (PR-B)
+- **What:** `printsense/modes.py` — `one_off_page` (single-page scope metadata; reconstruction claims structurally forbidden), `package_scout` (verbatim mandatory banner: "Preliminary package inventory — full system reconstruction has not been performed." + degraded_mode_reason), `full_reconstruction` (hard capability gate -> explicit `advanced_reasoning_unavailable` + queue action; opens only when cross_reference_extraction AND system_reconstruction are independently qualified). No silent fallback anywhere.
+- **Test:** 4 mode-contract tests; printsense suite green on the stacked branch.
+
 ### v3.150.6 (2026-07-16) - feat(printsense): capability-gated provider registry — fail-closed routing (degraded-mode PR-A)
 - **Why:** the 2026-07-16 provider bake-off proved capability is provider-AND-task specific (perfect device inventory next to zero cross-reference emission from the same model). A provider must never receive a broad "qualified" status, and the router must be unable to assign a capability that has not been passed.
 - **What:** `printsense/providers/` — signed capability registry (`capabilities.json`: qualified|disqualified|untested per capability, evidence+date required for any verdict) + fail-closed `select_provider` (anything but explicit qualified raises; no fallback, no default) + the `full_reconstruction` gate returning an explicit `advanced_reasoning_unavailable` state until BOTH `cross_reference_extraction` and `system_reconstruction` are qualified somewhere. Registry seeded from the bake-off evidence; frontier lane recorded as untested pending the 3-probe harness.
