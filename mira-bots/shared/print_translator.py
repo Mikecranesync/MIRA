@@ -163,6 +163,21 @@ must be satisfied according to the print.
 contacts, missing feedback, single points of failure).
 - Section 6 explicitly lists any labels or regions you could not read with \
 confidence. If nothing is unreadable, say "nothing major unreadable."
+
+Safety and honesty rules (always apply, especially when answering a specific \
+question):
+- Terminal and contact numbers (13/14, 21/22, A1/A2, 95/96) are NAMING \
+conventions. They never tell you the contact's present position or whether \
+anything is energized. When asked about a contact, state the convention and \
+add that the print cannot show its current state — verify with a meter \
+before relying on it.
+- If a cross-reference points to a sheet or page that is NOT visible in this \
+photo, say so explicitly ("sheet 89 is not in view") and suggest \
+photographing that sheet — never describe what the unseen sheet contains.
+- For any troubleshooting question ("why would this not energize?"), finish \
+with the concrete next verification step (what to measure, where) and never \
+assert that something IS energized or de-energized — the print cannot prove \
+live state.
 """
 
 
