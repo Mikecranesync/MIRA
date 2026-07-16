@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.151.5 (2026-07-16) - feat(printsense): PrintSenseCommercialService — platform-neutral commercial seam (PR-A)
+- **What:** `printsense/commercial_service.py` — ONE service drives every platform: submit_intake / get_status / process_submission / enqueue_review / approve / correct / reject / deliver / record_survey / qualify. Processing + delivery are injected Protocol adapters (no platform imports); tenant-scoped throughout; deterministic state vocabulary (intake module); idempotent retries (re-processing a needs_review/delivered intake is a no-op status read, test-pinned); delivery structurally impossible before an approved review; capability gate untouched (report still carries advanced_reasoning_unavailable); funnel events emitted at every step with content-free props; survey stored with the intake, never analytics.
+- **Test:** 8 seam tests (journey, idempotency, unreviewed-delivery refusal, reject, survey+qualification, tenancy, gate, content-free logs); printsense suite green.
+
 ### v3.151.4 (2026-07-16) - feat(printsense): paid pilot operating package (commercial PR-5)
 - **What:** `printsense/pilot.py` — the internal pilot record: fixed positioning ("turns existing electrical prints into searchable, cited troubleshooting knowledge; does not replace engineering review or claim complete reconstruction"), explicit supported/unsupported capability lists (reconstruction listed UNSUPPORTED while gated), customer prerequisites, security/retention expectations (tenant-isolated CAS, hash-only logs, deletion on request, no training use), mandatory human-review requirement, acceptance criteria, processing-scope estimate, introductory pricing fields (unset by default — per deal), handoff report ref. Strict schema (extra=forbid).
 - **Test:** 3 tests; full printsense+proveit suite green; gate PASS.
