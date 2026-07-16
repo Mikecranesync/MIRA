@@ -156,6 +156,16 @@ def _salted(token: str) -> str:
     return hashlib.sha256((_SALT + token).encode()).hexdigest()
 
 
+def _hash_hits(text: str, hash_set: set[str]) -> list[str]:
+    """Pure matching core (exposed for the sabotage positive-control test):
+    dual-pass tokenize, salt-hash, return matching hashes."""
+    lowercase = text.lower()
+    seen: set[str] = set()
+    for pattern in _TOKEN_PASSES:
+        seen.update(pattern.findall(lowercase))
+    return [h for h in (_salted(t) for t in seen) if h in hash_set]
+
+
 def _scan_tracked(repo_root: Path, hash_set: set[str]) -> list[tuple[str, str]]:
     """Return (path, hash) hits of salted-token matches in tracked text files
     under printsense/** and tests/printsense/**."""
