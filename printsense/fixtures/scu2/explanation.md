@@ -206,12 +206,12 @@ PE **is** recorded as its own set of bonds and nets, never merged into any L/N/U
 **Sheet index (all Blatt numbers pixel-verified except the layout):**
 | Sheet | Function | By / date |
 |---|---|---|
-| 3 | 115V supply + heater | Gruenzinger, 23.09.2022 |
-| 4 | 24V supply | Ascher, 11.07.2022 *(carried, not re-shot)* |
-| 5 | PLC overview / EtherCAT node A100–A107 | Ascher, 11.07.2022 |
-| 6 | I/O map (A101 DO / A102–A103 DI / A104 RTD) | Ascher, 11.07.2022 |
-| 7 | 230 VAC DI (A105/A106 EL1722, ME05–08 Klixon) | Ascher, 11.07.2022 |
-| ~2–3 (blurry) | Montageplatte physical layout | Gruenzinger, 18.03.2022 — Blatt number **could not be resolved** |
+| 3 | 115V supply + heater | [design engineer 1], 23.09.2022 |
+| 4 | 24V supply | [design engineer 2], 11.07.2022 *(carried, not re-shot)* |
+| 5 | PLC overview / EtherCAT node A100–A107 | [design engineer 2], 11.07.2022 |
+| 6 | I/O map (A101 DO / A102–A103 DI / A104 RTD) | [design engineer 2], 11.07.2022 |
+| 7 | 230 VAC DI (A105/A106 EL1722, ME05–08 Klixon) | [design engineer 2], 11.07.2022 |
+| ~2–3 (blurry) | Montageplatte physical layout | [design engineer 1], 18.03.2022 — Blatt number **could not be resolved** |
 
 **Resolved reciprocal cross-references (verified both ends):**
 - **PE.5DA0** — sheet 3 X0:PE (3.2) ↔ sheet 5 A100:PE (5.5)
