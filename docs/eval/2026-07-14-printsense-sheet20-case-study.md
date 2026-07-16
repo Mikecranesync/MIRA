@@ -6,16 +6,16 @@
 > `printsense/benchmarks/scu2_sheet20/rubric.json` (same PR as this doc). **Sheet-identity
 > caveat:** §1–§2 of this report describe a *three-module* "Opto-Koppler, Bit 1–3" page
 > (`-20/A10…A12`, cables W5463/65/67 + W5491/93/95); the repo's benchmark image + verified
-> ground truth (`printsense/benchmarks/scu2_ap31971_sheet20_opto.md`) is the *two-module*
+> ground truth (`printsense/benchmarks/scu2_sheet20_opto.md`) is the *two-module*
 > "Opto-Koppler, belegt" page (`-21/A13`, `-21/A14`, wires -W5497/-W5469) of the same drawing
-> AP31971. They are different pages of the same book — the §10 regression case for the Bit 1–3
+> [drawing]. They are different pages of the same book — the §10 regression case for the Bit 1–3
 > page needs its own image + verified truth before it can be added to the benchmark set (tracked
 > in `printsense/PATH_TO_A.md`). The economics table (§6) is the same data as
 > `docs/eval/2026-07-14-printsense-cost-benchmark.md`, measured on the *belegt* benchmark image.
 
 **Date:** 2026-07-14  
 **Scope:** Wiring-diagram interpretation quality, technician usefulness, model cost/latency, rubric calibration, and recommended production changes  
-**Reference case:** Drawing 31971, Sensor Control Unit 2, sheet 20, “Opto-Koppler, Bit 1–3”
+**Reference case:** Drawing [drawing], Sensor Control Unit 2, sheet 20, “Opto-Koppler, Bit 1–3”
 
 ---
 
@@ -60,8 +60,8 @@ The constant device F1 score of 0.8 across every model strongly suggests the rem
 
 ### Document identity
 
-- Drawing: 31971
-- System: Hyper Launch
+- Drawing: [drawing]
+- System: [project]
 - Assembly: Sensor Control Unit 2
 - Sheet: 20
 - Sheet title: Opto-Koppler, Bit 1–3

@@ -281,3 +281,6 @@ proof_simlab.db
 # survives deploy-vps.yml's `git checkout --force <tag>` on /opt/mira.
 # The mira-crawler/cron/ template is shipped as reference only (not runtime).
 mira-crawler/cron/manual_queue.json
+
+# regime3 golden-label local overlays (customer-project cases live local-only)
+tests/regime3_nameplate/golden_labels/**/*.local.json
