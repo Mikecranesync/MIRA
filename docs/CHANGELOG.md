@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.150.8 (2026-07-16) - feat(printsense): xref_extractor_v1 — deterministic cross-reference extraction (PR-C/D)
+- **Why:** the bake-off proved every reachable vision model emits zero cross-references while the corpus draws them as reciprocal continuation arrows — so xrefs become DETERMINISTIC code: OCR text + geometry, never a model claim.
+- **What:** `printsense/xref_extractor.py` — strictly separated lexical layer (ordered pattern table: IEC/German sheet.column anchors, page-anchor refs, coil-column `/N.c`, `+EXT` externals, cable continuations, von/nach/from/to sheet phrases, NFPA grid refs; IEC 60947-5-1 contact-convention numbers can never become device anchors; raw text + evidence bbox always preserved; deterministic confidence with itemized reasons) and resolution layer (package PAGE INDEX only — statuses resolved | ambiguous(+explicit candidates) | missing_target(target null, never invented) | contradictory; unresolved segments preserved). Canonical byte-stable JSON; pageset/systemgraph converter. OCR adapter over Tesseract `image_to_data` raising explicit `OcrUnavailable` (degraded stages report skipped, never silently pass).
+- **Test:** 14 synthetic per-syntax + resolution + determinism + fail-explicit tests (fictional identifiers only); printsense suite green on the stacked branch; grader gate PASS.
+
 ### v3.150.7 (2026-07-16) - feat(printsense): explicit degraded product modes (PR-B)
 - **What:** `printsense/modes.py` — `one_off_page` (single-page scope metadata; reconstruction claims structurally forbidden), `package_scout` (verbatim mandatory banner: "Preliminary package inventory — full system reconstruction has not been performed." + degraded_mode_reason), `full_reconstruction` (hard capability gate -> explicit `advanced_reasoning_unavailable` + queue action; opens only when cross_reference_extraction AND system_reconstruction are independently qualified). No silent fallback anywhere.
 - **Test:** 4 mode-contract tests; printsense suite green on the stacked branch.
