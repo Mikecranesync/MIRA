@@ -147,7 +147,7 @@ def render_markdown(report: dict) -> str:
         L += ["", "**Cable continuations:** "
               + ", ".join(f"`{c['raw']}`" for c in r["cable_continuations"])]
     L += ["", "## What this means", "", r["circuit_explanation"],
-          f"", f"_Explanation source: {r['explanation_source']}_", ""]
+          "", f"_Explanation source: {r['explanation_source']}_", ""]
     L += ["## Safety & uncertainty", "", r["safety_note"], "",
           r["uncertainty_note"], ""]
     if r["unresolved_or_contradictory"]:
