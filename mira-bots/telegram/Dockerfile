@@ -18,7 +18,7 @@ COPY mira-bots/prompts/ ./prompts/
 # 12:00 UTC). They import from /app/shared, so they must ship in this image —
 # without this COPY the crons fail "No such file" every run (fixed 2026-07-09).
 COPY mira-bots/agents/ ./agents/
-COPY mira-bots/telegram/bot.py mira-bots/telegram/chat_adapter.py mira-bots/telegram/renderers.py mira-bots/telegram/voice_transcription.py mira-bots/telegram/admin_commands.py mira-bots/telegram/start_command.py ./
+COPY mira-bots/telegram/bot.py mira-bots/telegram/chat_adapter.py mira-bots/telegram/renderers.py mira-bots/telegram/voice_transcription.py mira-bots/telegram/admin_commands.py mira-bots/telegram/start_command.py mira-bots/telegram/printsense_commercial.py ./
 COPY VERSION .
 
 ENV PYTHONUNBUFFERED=1
