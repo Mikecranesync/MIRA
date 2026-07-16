@@ -61,12 +61,19 @@ def _xref_entries(raw: str, sig: str, source_field: str, prov: dict,
     return entries
 
 
-def load_pageset(manifest: dict, graphs: dict[str, dict]) -> dict:
+def load_pageset(manifest: dict, graphs: dict[str, dict],
+                 decoder_profile: str | None = None) -> dict:
     """Fold per-page graphs + manifest into a systemgraph sheet index.
 
     Raises ValueError on any manifest/graph mismatch: a graph without a
     manifest page, a non-missing page without a graph, or duplicate sheet
     ids (a reshoot is a NEW page/case, never a silent overwrite).
+
+    ``decoder_profile`` (D19, STRICTLY OPT-IN): when set, each device also
+    carries a ``designation`` block with the decoded identity keys
+    (parent_device_key / connection_point_key / relationship) for Phase C
+    entity construction. The ``tag`` used as graph identity is UNCHANGED —
+    default behavior stays byte-identical (D20: no silent graph-ID changes).
     """
     pages = manifest.get("pages", [])
     page_ids = [p["page_id"] for p in pages]
@@ -110,13 +117,24 @@ def load_pageset(manifest: dict, graphs: dict[str, dict]) -> dict:
                 tag = str(ent.get("tag", "")).strip()
                 if not tag or tag == _UNREADABLE:
                     continue
-                entry["devices"].append({
+                device = {
                     "tag": tag,
                     "kind": ent.get("type") or section,
                     "ev": "obs",
                     "confidence": ent.get("confidence"),
                     "provenance": {**prov_base, "section": section},
-                })
+                }
+                if decoder_profile is not None:
+                    from .designations import decode
+                    d = decode(tag, profile=decoder_profile)
+                    device["designation"] = {
+                        "profile": decoder_profile,
+                        "parent_device_key": d["entity_plan"]["parent_device"],
+                        "connection_point_key": d["entity_plan"]["child_entity"],
+                        "relationship": d["entity_plan"]["relationship"],
+                        "normalized": d["normalized"],
+                    }
+                entry["devices"].append(device)
                 for j, raw in enumerate(ent.get("connects", []) or []):
                     entry["xrefs"].extend(_xref_entries(
                         str(raw), sig=tag,
