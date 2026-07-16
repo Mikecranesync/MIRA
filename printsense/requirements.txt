@@ -15,3 +15,4 @@ anthropic>=0.116.0
 # Pillow = resize/encode; pytesseract = content-based OSD auto-rotate.
 Pillow>=12.2.0
 pytesseract>=0.3.13
+pypdfium2>=4.30
