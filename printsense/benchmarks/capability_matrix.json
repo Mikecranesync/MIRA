@@ -1,0 +1,35 @@
+{
+  "_meta": {
+    "description": "PrintSense grading-capability matrix (Phase 1). Separate from providers/capabilities.json (which qualifies PROVIDERS): this file enumerates WHAT is graded, HOW (deterministic | constrained_judge | human_confirmed), and whether Phase 1 grades it. A capability is never qualified by another capability's score; judge lanes may score clarity only and can never clear a deterministic or safety failure; hard failures override aggregate scores.",
+    "version": "capability_matrix_v1",
+    "phase": 1,
+    "bench": "printsense/benchmarks/capability_bench.py",
+    "corpus": "printsense/benchmarks/golden_corpus.py",
+    "truth_status": "synthetic"
+  },
+  "capabilities": {
+    "electrical_print_classification": {"grading": "deterministic", "metric": "exact-match on closed page-class enum", "phase1": "deferred", "note": "graded on the Telegram-equivalent path in Phase 2 (vision classifier owns it); Phase 1 corpus is print-only by construction"},
+    "german_word_translation": {"grading": "constrained_judge", "metric": "frozen glossary exact-match (DET core) + clarity (judge)", "phase1": "deferred", "note": "requires the interpreter; judge may never override glossary truth"},
+    "iec_designation_decoding": {"grading": "deterministic", "metric": "exact-match on decoded fields (designation_bench, 16 fixtures)", "phase1": "graded_existing", "note": "already covered by printsense/benchmarks/designation_bench.py"},
+    "nfpa_vs_iec_profile_discrimination": {"grading": "deterministic", "metric": "selected_profile in accept-set + exact conflicts[]; never forces a profile", "phase1": "graded"},
+    "a1_a2_coil_recognition": {"grading": "deterministic", "metric": "convention role == coil_or_control_by_convention AND state_proof == never", "phase1": "graded"},
+    "no_13_14_interpretation": {"grading": "deterministic", "metric": "convention role == NO_by_convention", "phase1": "graded"},
+    "nc_21_22_interpretation": {"grading": "deterministic", "metric": "convention role == NC_by_convention", "phase1": "graded"},
+    "source_dependent_contact_numbers": {"grading": "human_confirmed", "metric": "convention decode DET (53/54 -> NO); project meaning stays human-confirmed; mirror/positively-driven/safety-rated assertions are hard failures", "phase1": "graded"},
+    "device_terminal_extraction": {"grading": "deterministic", "metric": "device-tag P/R/F1, exact tags, digit drift never fuzzy-matched", "phase1": "graded"},
+    "cross_sheet_references": {"grading": "deterministic", "metric": "edge-key F1 over (pattern_class, resolution, target_page)", "phase1": "graded"},
+    "grid_references": {"grading": "deterministic", "metric": "GRID_REF must stay unresolved_segment; auto-resolve is a hard failure", "phase1": "graded"},
+    "cable_continuations": {"grading": "deterministic", "metric": "cable-set F1; resolution stays unresolved_segment without index proof", "phase1": "graded"},
+    "bounding_box_evidence": {"grading": "deterministic", "metric": "IoU >= 0.5 vs truth region (exact on token fixtures); missing evidence_bbox is a hard failure", "phase1": "graded"},
+    "page_purpose_identification": {"grading": "constrained_judge", "metric": "closed enum exact-match where declared; prose clarity judge-only", "phase1": "deferred"},
+    "visible_theory_of_operation": {"grading": "constrained_judge", "metric": "every claim passes grounding G0-G6 deterministically (system_bench); prose usefulness judge-only", "phase1": "deferred"},
+    "permissive_interlock_identification": {"grading": "deterministic", "metric": "grounding G1 isolation-vs-gating class checks (system_bench)", "phase1": "deferred"},
+    "missing_context_recognition": {"grading": "deterministic", "metric": "missing_target/ambiguous/contradictory declared exactly where truth requires", "phase1": "graded"},
+    "next_page_recommendation": {"grading": "deterministic", "metric": "recommended sheets == lexical sheets of missing_target refs; inventing a page is a hard failure", "phase1": "graded"},
+    "unsupported_claim_detection": {"grading": "deterministic", "metric": "claimed-set minus truth-set must be empty (invention, fabricated destination, misread assertion)", "phase1": "graded"},
+    "evidence_to_claim_alignment": {"grading": "deterministic", "metric": "every claim carries usable bbox evidence tied to truth region", "phase1": "graded"},
+    "safety_uncertainty_language": {"grading": "constrained_judge", "metric": "state_proof == never on every contact claim (DET, graded); caveat presence DET; phrasing judge-only", "phase1": "partial", "note": "state_proof discipline graded in Phase 1; caveat/phrasing lanes need the interpreter"},
+    "deterministic_output_stability": {"grading": "deterministic", "metric": "byte-identical envelope across repeated runs", "phase1": "graded"},
+    "privacy_tenant_isolation": {"grading": "deterministic", "metric": "test_privacy_guards suite + artifact self-audit + tenant-isolation tests", "phase1": "graded_existing", "note": "tests/printsense/test_privacy_guards.py + test_intake.py own this"}
+  }
+}

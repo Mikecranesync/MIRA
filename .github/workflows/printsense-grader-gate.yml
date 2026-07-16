@@ -48,3 +48,9 @@ jobs:
         run: python -m printsense.grader_gate
       - name: 12-point hermetic grader-gate suite + frozen ATV340 benchmark
         run: pytest tests/printsense/test_grader_gate.py tests/printsense/test_atv340_benchmark.py -v
+
+      - name: Phase-1 capability bench (frozen synthetic corpus, deterministic)
+        run: python -m printsense.benchmarks.capability_bench
+
+      - name: Phase-1 capability bench tests
+        run: pytest tests/printsense/test_capability_bench.py tests/printsense/test_capability_privacy.py -v

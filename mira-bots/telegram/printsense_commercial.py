@@ -329,3 +329,60 @@ async def ps_survey_command(update, context):
             else "Noted — /ps_pilot any time you want the complete package analyzed."
         )
     )
+
+
+async def printsense_test_command(update, context):
+    """Admin-only Phase-1 smoke: run the frozen deterministic gates through the
+    SAME shared printsense logic the concierge uses and return a phone-readable
+    summary + JSON/MD artifacts. Zero paid calls, zero OCR, zero network —
+    everything is committed synthetic fixtures. Fails closed on every path."""
+    if not _is_reviewer(update):
+        await update.message.reply_text("Not authorized.")
+        return
+    phase = context.args[0].lower() if getattr(context, "args", None) else "phase1"
+    if phase != "phase1":
+        await update.message.reply_text(
+            "Usage: /printsense_test phase1 — only phase1 exists so far."
+        )
+        return
+    try:
+        from printsense import grader_gate
+        from printsense.benchmarks import capability_bench as _cb
+        from printsense.grade_case import grade_case as _grade_case
+
+        frozen = []
+        for label, graph, rubric, expected in grader_gate._CORPUS:
+            r = _grade_case(grader_gate._ROOT / graph, grader_gate._ROOT / rubric)
+            frozen.append((label.split()[0], r["import_verdict"], expected))
+
+        env = _cb.run_corpus()
+        report_md = _cb.render_report(env)
+        report_json = _cb.stable_envelope_json(env)
+        for artifact in (report_md, report_json):
+            violations = _cb.audit_artifact(artifact)
+            if violations:
+                logger.warning("printsense_test artifact audit failed: %s", violations)
+                await update.message.reply_text(
+                    "PrintSense test artifact failed its privacy self-audit — not sent."
+                )
+                return
+
+        frozen_ok = all(v == e for _, v, e in frozen)
+        summary = _cb.phone_summary(env, frozen)
+        if not frozen_ok:
+            summary = "FROZEN GATE REGRESSED\n" + summary
+        await update.message.reply_text(summary)
+        chat_id = update.effective_chat.id
+        await context.bot.send_document(
+            chat_id=chat_id,
+            document=io.BytesIO(report_json.encode("utf-8")),
+            filename="printsense_phase1.json",
+        )
+        await context.bot.send_document(
+            chat_id=chat_id,
+            document=io.BytesIO(report_md.encode("utf-8")),
+            filename="printsense_phase1.md",
+        )
+    except Exception as exc:  # fail closed: generic class name, never a traceback
+        logger.warning("printsense_test failed: %s", type(exc).__name__)
+        await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
