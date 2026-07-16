@@ -8,6 +8,7 @@ import os
 import re
 
 import httpx
+import printsense_commercial
 from admin_commands import (
     invite_command,
     invite_status_command,
@@ -697,6 +698,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # the drive. Falls through unchanged for non-drive text.
     if await _try_drive_pack_followup(text, chat_id, update, context):
         return
+
+    # Commercial PrintSense consent/question turns (PR-B) — claims the turn
+    # ONLY while this chat has a pending PrintSense state; otherwise falls
+    # through unchanged.
+    if await printsense_commercial.try_printsense_text_reply(text, update, context):
+        return
     # Wiring Q&A: verified-only, cited answers over `wiring_connections`
     # (PR-4). Falls through unchanged for anything that isn't a wiring
     # question. See `_try_wiring_question_reply` docstring.
@@ -1057,6 +1064,13 @@ async def _dispatch_single_photo(
     # Anthropic interpreter reads the print at Claude's high-res budget, not
     # the 1024px-crushed vision_bytes. See `_try_print_translator_reply`.
     if await _try_print_translator_reply(raw_bytes, vision_bytes, caption, update, context):
+        return
+
+    # Commercial PrintSense concierge (PR-B): explicit-intent only —
+    # /printsense state or an "analyze ... print" caption. Everything else
+    # falls through unchanged. See printsense_commercial.py.
+    if await printsense_commercial.try_printsense_commercial_reply(
+            raw_bytes, caption, update, context):
         return
 
     chat_id = str(update.effective_chat.id)
@@ -1772,6 +1786,12 @@ def main():
     app.add_handler(CommandHandler("team", _wrap_team))
     app.add_handler(CommandHandler("revoke", _wrap_revoke))
     app.add_handler(CommandHandler("invite_status", _wrap_invite_status))
+    app.add_handler(CommandHandler("printsense", printsense_commercial.printsense_command))
+    app.add_handler(CommandHandler("ps_status", printsense_commercial.ps_status_command))
+    app.add_handler(CommandHandler("ps_pilot", printsense_commercial.ps_pilot_command))
+    app.add_handler(CommandHandler("ps_privacy", printsense_commercial.ps_privacy_command))
+    app.add_handler(CommandHandler("ps_survey", printsense_commercial.ps_survey_command))
+    app.add_handler(CommandHandler("ps_review", printsense_commercial.ps_review_command))
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("drive", drive_command))
