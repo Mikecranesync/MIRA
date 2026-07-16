@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.151.10 (2026-07-16) - fix(printsense): OS-independent display-name traversal neutralization
+- **What:** `_safe_display_name` used `Path(name).name`, which strips backslash directories only on Windows — on Linux CI `"evil\..\name.png"` kept its `..` after sanitization and `test_safe_display_name_neutralizes_traversal` failed (the one red test on main once #2749 unblocked collection). Now `PureWindowsPath(name).name` (host-independent, treats both separators) + collapse of any `..` runs.
+- **Test:** tests/printsense 440/440 on Windows; POSIX behavior proven via `PurePosixPath` reproduction of the CI failure + new-code assertion.
+
 ### v3.151.9 (2026-07-16) - fix(ci): bot-test collection + env-var drift (stranded #2748 follow-up)
 - **What:** repo root on sys.path in `mira-bots/tests/conftest.py` (bare `pytest` doesn't add cwd; bot.py -> printsense_commercial -> `printsense.*` broke collection of 12 telegram modules on main) + document `PRINTSENSE_COMMERCIAL_ROOT`/`PRINTSENSE_REVIEWER_CHAT_IDS` in docs/env-vars.md + .env.template (Architecture Check drift). Both commits raced past #2748's auto-merge the same way #2746's fix did — required checks don't include Unit Tests/Architecture Check.
 - **Test:** 26/26 previously-failing suites pass in CI-faithful env (`env -u ANTHROPIC_API_KEY`); `tools/check_env_drift.py` OK.
