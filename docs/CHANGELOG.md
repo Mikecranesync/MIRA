@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.150.5 (2026-07-16) - chore(privacy): remove personal local-path strings (behavior-neutral)
+- **What:** drive-pack grading reports' recorded extraction commands mask absolute personal paths (`<local path>`/`<local manual pdf>` — display-only fields, generators unchanged; follow-up: relativize at generation); the hub laptop-to-cloud e2e fallback derives the operator's sibling checkout RELATIVE to the repo root instead of a hardcoded personal path (env `MIRA_CTX_ROOT` still wins; resolves to the identical directory on the operator machine).
+- **Test:** drive-pack read-only gate 3 passed; report JSON valid; `git grep` for personal paths over mira-bots/ + mira-hub/ returns zero.
+
 ### v3.150.2 (2026-07-16) - chore(privacy): remove tracked customer print photo + neutralize identifiers in the visual-technician hard-failure corpus
 - **Why:** the visual-technician hard-failure benchmark carried a real customer print photo as a tracked image, plus customer/operator/project/drawing identifiers and one person name across the fixture yaml, corpus README, two code comments, and OCR-verbatim eval transcripts. The benchmark's value (the "never invent a device list" regression case) does not depend on any of them.
 - **What:** the image is removed from the repo (provenance pinned by sha256 in the fixture; file stays local-only with the operator); the fixture is renamed to a neutral basename with identifiers replaced by role placeholders (ground truth, root cause, and pass/fail criteria byte-for-byte preserved); README/docstring/comment references updated; OCR-verbatim transcripts token-masked (drawing-number tokens, operator/OEM/project names, a third-party corporate file path). No functional code changed.
