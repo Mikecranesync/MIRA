@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.151.8 (2026-07-16) - fix(telegram): ship printsense_commercial.py in the bot image (prod bot crash-loop hotfix)
+- **What:** the telegram Dockerfile's enumerated COPY omitted `printsense_commercial.py` while bot.py imports it at startup — the v3.151.6 deploy left `mira-bot-telegram` crash-looping on prod (`ModuleNotFoundError: printsense_commercial`, verified in container logs). Adds the file to the COPY line + the ruff-format pass on bot.py/printsense_commercial.py that the #2746 auto-merge raced past (Lint & Format is not a required check; the fix commit 7b71ec174 was stranded on the branch).
+- **Test:** 5 concierge tests pass post-format; ruff check + format --check clean on both files.
+
 ### v3.151.7 (2026-07-16) - feat(web): public PrintSense landing page + interest capture (platform PR-D)
 - **What:** `mira-web/src/routes/printsense.ts` — GET /printsense (FL-token styled, no hardcoded hex): honest positioning verbatim, the three synthetic demonstrations, a sample cited report incl. the `advanced_reasoning_unavailable` line, explicit can/cannot lists, confidentiality/retention, lead-magnet + managed-pilot offers, work-email interest form, "Try in Telegram" + complete-package CTAs. POST /printsense/interest: validated email -> leads.jsonl (CRM file — the ONLY place the email lives) + content-free funnel.jsonl event (test-asserted). No browser upload by design — the free surface stays the Telegram concierge.
 - **Test:** 3 bun tests (render honesty, email validation, lead-vs-analytics separation); existing mira-web suite 56 passed unaffected.
