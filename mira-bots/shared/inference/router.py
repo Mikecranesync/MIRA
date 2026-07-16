@@ -20,6 +20,7 @@ Uses httpx directly — no provider SDKs.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -94,9 +95,35 @@ def _parse_retry_after(response: httpx.Response) -> float:
         return 5.0
 
 
+def _json_parseable(text: str) -> bool:
+    """Fenced or bare JSON object/array parses -> structured output, never gibberish."""
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[1] if "\n" in t else t[3:]
+        t = t.rstrip()
+        if t.endswith("```"):
+            t = t[:-3]
+    t = t.strip()
+    if not t.startswith(("{", "[")):
+        return False
+    try:
+        json.loads(t)
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
 def _is_gibberish(text: str, threshold: float = 0.3) -> bool:
-    """Detect garbled vision model output (multilingual garbage, hallucination loops)."""
+    """Detect garbled vision model output (multilingual garbage, hallucination loops).
+
+    Valid JSON (fenced or bare) is accepted BEFORE the repetition heuristics:
+    JSON is structurally repetitive ('[],' etc.), so the token-repetition rule
+    false-positives on terse-but-correct structured replies (e.g. an honest
+    empty graph for a blurred page).
+    """
     if not text or len(text) < 20:
+        return False
+    if _json_parseable(text):
         return False
     non_ascii = sum(1 for c in text if ord(c) > 127)
     if non_ascii / len(text) > threshold:

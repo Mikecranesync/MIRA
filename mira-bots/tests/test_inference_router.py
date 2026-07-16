@@ -190,3 +190,38 @@ def test_fallback_when_disabled():
     content, usage = asyncio.run(r.complete([{"role": "user", "content": "test"}]))
     assert content == ""
     assert usage == {}
+
+
+# ---------------------------------------------------------------------------
+# _is_gibberish — the vision-output guard must accept structured JSON
+# (regression: Phase D 2026-07-16 — terse valid JSON vision replies were
+# discarded as gibberish by the token-repetition rule, so complete()
+# reported an empty cascade for pages whose raw content parsed cleanly)
+# ---------------------------------------------------------------------------
+
+from shared.inference.router import _is_gibberish  # noqa: E402
+
+
+def test_gibberish_accepts_terse_valid_json():
+    # empty-graph reply: '[],' repeats far above the 15% token threshold
+    text = ('{"package": {}, "devices": [], "terminals": [], "conductors": [], '
+            '"cables": [], "contacts": [], "power_domains": [], "pe_bonds": []}')
+    assert not _is_gibberish(text)
+
+
+def test_gibberish_accepts_fenced_json():
+    text = ('```json\n{"devices": [], "wires": [], "notes": [], "xrefs": [], '
+            '"unreadable": true, "package": {}, "terminals": []}\n```')
+    assert not _is_gibberish(text)
+
+
+def test_gibberish_flags_repetition_loop():
+    assert _is_gibberish("the same word " * 40)
+
+
+def test_gibberish_flags_non_ascii_garbage():
+    assert _is_gibberish("字母乱码" * 10)
+
+
+def test_gibberish_invalid_json_still_heuristic_checked():
+    assert _is_gibberish("{ broken " + "loop loop loop " * 20)
