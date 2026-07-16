@@ -13,9 +13,9 @@
     "sheet": "18",
     "sheet_of": "1706",
     "date": "11.07.2022",
-    "drawn_by": "Ascher",
+    "drawn_by": "[design engineer 2]",
     "sheet_navigation": "left edge '17', right edge '19' (this sheet 18)",
-    "evidence": "Title block: '31971', 'Sensor Control Unit 2', 'Statoren Temp.-Überwachung', '[site], USA', 'Kunde: [customer]', 'AP31971', 'Datum 11.07.2022', 'Bearb Ascher', '=UA2 +SCU2', 'Blatt 18 von 1706'",
+    "evidence": "Title block: '31971', 'Sensor Control Unit 2', 'Statoren Temp.-Überwachung', '[site], USA', 'Kunde: [customer]', 'AP31971', 'Datum 11.07.2022', 'Bearb [design engineer 2]', '=UA2 +SCU2', 'Blatt 18 von 1706'",
     "confidence": 0.9,
     "trust": "proposed"
   },
