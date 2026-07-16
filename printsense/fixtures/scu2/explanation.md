@@ -6,7 +6,7 @@
 
 ## 1. Title & Purpose
 
-This **is** drawing **AP31971** (doc 31971), **"Sensor Control Unit 2 V3.5"**, IEC 81346 designation **=LA2 +SCU2**. Project **"Hyper Launch"**, customer **Mack (Mack Rides)**, engineered by **INTRASYS (Innovative Transport Systeme)**, location **Orlando, FL, USA**.
+This **is** drawing **AP31971** (doc 31971), **"Sensor Control Unit 2 V3.5"**, IEC 81346 designation **=LA2 +SCU2**. Project **"Launch System"**, customer **[customer] ([customer] Rides)**, engineered by **INTRASYS (Innovative Transport Systeme)**, location **[site], USA**.
 
 Cabinet **+SCU2 is the middle cabinet of a three-cabinet daisy chain: +SCU1 → +SCU2 (this) → +SCU3.** Its job **is** threefold:
 

@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.148.1 (2026-07-15) - chore(printsense): neutralize customer/ride/site/project identifiers in fixture prose and eval artifacts
+- **Why:** the SCU2 fixture README, its gold-graph package fields, derived eval-output JSONs, and two historical CHANGELOG lines carried customer, ride, project, and site names from the source drawings. Those identifiers are confidential; the technical content does not depend on them.
+- **What:** replaces the identifiers with neutral descriptors ([customer]/[operator]/[site], "Launch System", "launch block-zone", "a ride-OEM ... wiring sheet") across tracked files under printsense/** and docs/CHANGELOG.md. No functional code changed; no benchmark meaning changed.
+- **Proof:** the frozen-corpus grade envelope for the SCU2 fixture is byte-identical before/after (score/letter/tier/verdict unchanged); `python -m printsense.grader_gate` PASS; full printsense suite green.
+- **Rollback:** revert the commit; content-only change.
+
 ### v3.148.0 (2026-07-15) - feat(plc-parser): parse Siemens AWL alarm exports
 - **Why:** the T7 controls corpus includes readable STEP 7 AWL fault data blocks with high-value HMI alarm text (`Alarm#### :BOOL ... // message`). This is directly useful for MIRA's fault dictionary and Drive Commander vocabulary without committing raw customer projects.
 - **What:** adds `siemens_awl` detection + parser support in `mira-plc-parser`, mapping exported AWL alarm comments into IR tags with line provenance so existing analysis surfaces fault, safety-review, and VFD candidates. Adds closed-format guidance for `.DNO` drive configs and regression coverage for `.RSS`, `.S7P`, `.DNO`, and sanitized AWL alarm fixtures.
@@ -89,7 +95,7 @@
 - **Rollback:** single squash-revert; config-only, no migrations.
 
 ### v3.133.0 (2026-07-12) - fix(vision): caption-aware print classification + grounded schematic prompt (never fabricate a device list)
-- **Why:** a real prod-bot turn — a MACK/InTraSys final-brake stator wiring sheet captioned "what types of devices are listed in this print?" — returned a fabricated ladder-logic device list (timers/counters/logic gates/IO modules) and a false "no safety-critical elements", on a coaster final brake. `_classify_photo` already routes a print to ELECTRICAL_PRINT when the vision model NAMES the drawing type (STRONG_PRINT_SIGNALS). The residual gap: when the model describes only the drawing's CONTENTS — a stator/RTD/sensor/terminals, all EQUIPMENT_FACE keywords — and does NOT name the drawing type, the photo misclassifies EQUIPMENT_PHOTO and falls through to the generic engine, which has no "don't invent a device taxonomy" guard. The technician's own caption ("...in this print?") was ignored.
+- **Why:** a real prod-bot turn — a ride-OEM final-brake stator wiring sheet captioned "what types of devices are listed in this print?" — returned a fabricated ladder-logic device list (timers/counters/logic gates/IO modules) and a false "no safety-critical elements", on a coaster final brake. `_classify_photo` already routes a print to ELECTRICAL_PRINT when the vision model NAMES the drawing type (STRONG_PRINT_SIGNALS). The residual gap: when the model describes only the drawing's CONTENTS — a stator/RTD/sensor/terminals, all EQUIPMENT_FACE keywords — and does NOT name the drawing type, the photo misclassifies EQUIPMENT_PHOTO and falls through to the generic engine, which has no "don't invent a device taxonomy" guard. The technician's own caption ("...in this print?") was ignored.
 - **What:** `_classify_photo` is now caption-aware — a caption saying print/schematic/diagram/wiring/one-line/ladder routes to the grounded ELECTRICAL_PRINT path (word-boundary matched, same `_kw_in` as the rest of the classifier) even when the vision summary trips an equipment keyword. Ordering preserved: nameplate + STRONG_PRINT_SIGNALS still win first (genuine nameplates and clearly-named drawings unaffected); the caption override only pre-empts the EQUIPMENT_FACE override. Separately, `_analyze_schematic_with_question`'s prompt is hardened to name only readable components, never emit a generic device taxonomy, never assume ladder logic, refuse honestly on unreadable images, and never claim "no safety-critical elements" without reading the drawing. New hermetic test file.
 - **Evidence:** Lint & Format + Static Analysis + Version Bump CI green; 4 new hermetic tests (pure string logic — the components-only summary → EQUIPMENT_PHOTO without a caption and ELECTRICAL_PRINT with one, a genuine nameplate stays NAMEPLATE) + tests/test_schematic_qa.py + tests/regime3_nameplate/test_classification.py run in CI Unit Tests.
 - **Note:** live end-to-end (does the cloud vision model now answer right on the real photo) is only verifiable on staging/prod — the vision endpoint isn't reachable from a feature session and CI can't run a vision model. The tests prove the routing/guard, not the model's answer. Ground-truth fixture: PR #2652.
@@ -934,10 +940,10 @@
 - Adds a CMMS health regression proving the Hub browser-facing CMMS URL remains `https://cmms.factorylm.com` and never exposes the internal Docker hostname `cmms-backend`.
 
 ### v3.42.4 (2026-06-25) - feat(hub): one-board command center status view
-- Adds a Command Center one-board status panel backed by `/api/hub/status`, showing conveyor cell and Stardust block-zone running, blocked, faulted, and stale states in a compact responsive grid.
+- Adds a Command Center one-board status panel backed by `/api/hub/status`, showing conveyor cell and launch block-zone running, blocked, faulted, and stale states in a compact responsive grid.
 
 ### v3.42.3 (2026-06-25) - feat(hub): tenant-scoped Hub status API
-- Adds `/api/hub/status` for tenant-scoped one-board Hub status cards, backed by `live_signal_cache` and a deterministic Stardust/conveyor signal summarizer with regression tests for tenant query scoping and demo-session fallback.
+- Adds `/api/hub/status` for tenant-scoped one-board Hub status cards, backed by `live_signal_cache` and a deterministic launch-zone/conveyor signal summarizer with regression tests for tenant query scoping and demo-session fallback.
 
 ### v3.42.2 (2026-06-25) - fix(hub): React hook lint cleanup
 - Cleans the reported Hub React hook lint violations in admin users, alerts, and asset detail documents by preserving hook order and moving initial data fetch state updates out of effect-body function calls.

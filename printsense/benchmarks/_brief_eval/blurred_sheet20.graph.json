@@ -3,7 +3,7 @@
     "drawing_number": "UNREADABLE",
     "drawing_number_evidence": "bottom-right title-block field shows a number resembling '31971' but too low-resolution to confirm digits",
     "manufacturer": "INTRASYS",
-    "location": "Orlando, FL, USA",
+    "location": "[site], USA",
     "title_block_note": "center title-block text appears to read 'Sensor Control Unit 1' but is not fully legible",
     "cabinet": null,
     "sheet": null,
@@ -107,9 +107,9 @@
       "resolution": "Close-up crops of line endpoints where continuation references would be printed."
     }
   ],
-  "cross_sheet_notes": "This is a photograph of a curled paper print on a workbench, not a clean scan. Only the manufacturer block (INTRASYS, Orlando, FL, USA) and the general layout (two dashed assembly boxes, top rail lines, red connection dots) are discernible. No device tags, wire numbers, terminals, or cross-references can be read with acceptable confidence, so nearly everything is deferred to 'unresolved'. A flat, high-resolution rescan is required before any grounded interpretation can be made.",
+  "cross_sheet_notes": "This is a photograph of a curled paper print on a workbench, not a clean scan. Only the manufacturer block (INTRASYS, [site], USA) and the general layout (two dashed assembly boxes, top rail lines, red connection dots) are discernible. No device tags, wire numbers, terminals, or cross-references can be read with acceptable confidence, so nearly everything is deferred to 'unresolved'. A flat, high-resolution rescan is required before any grounded interpretation can be made.",
   "brief": {
-    "sheet_title": "An INTRASYS (Orlando, FL, USA) control schematic whose center title-block text appears to read 'Sensor Control Unit 1', photographed as a curled paper print — most content is not legible.",
+    "sheet_title": "An INTRASYS ([site], USA) control schematic whose center title-block text appears to read 'Sensor Control Unit 1', photographed as a curled paper print — most content is not legible.",
     "purpose": "The drawing shows two boxed component groups (dashed-line assembly boundaries) fed by a pair of horizontal rail/supply lines across the top, with marked (red) connection points on the outer edge of each box. Beyond this general topology, the function cannot be stated because the internal designations, wire numbers, and terminal labels are not readable at this image quality. No control logic or signal function is legible enough to describe honestly.",
     "key_signals": [],
     "key_devices": [
