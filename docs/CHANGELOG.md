@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.150.4 (2026-07-16) - chore(privacy): regime3 golden labels — customer photo session moved to a gitignored local overlay
+- **Why:** the committed nameplate golden-label file carried a customer-project photo session (OEM/operator/project/drawing identifiers + a person name) in graded `ground_truth` fields and notes. Masking in place would FALSIFY functional truth (the photos visibly show those strings), so the whole session moves out instead.
+- **What:** the 9-case customer session is evicted to `real_photos.local.json` (gitignored; fixture merges it when present — absent overlay behaves exactly like missing photos). Committed file keeps 734 neutral cases; vendor names that are the OCR subject of neutral product photos are untouched (they ARE the ground truth). New salted-hash privacy test forbids the customer markers in the committed file forever + a merge-mechanism test.
+- **Test:** `tests/regime3_nameplate/` 27 passed, 1 skipped (env-gated); ruff clean on touched files.
 ### v3.150.3 (2026-07-16) - chore(privacy): printsense-scope residuals — engineer names, photo provenance, project/drawing tokens, benchmark-doc rename
 - **Why:** after the v3.148.1 scrub, printsense fixtures and eval artifacts still carried two engineer surnames (incl. OCR-uppercase variants), six phone-photo filenames + a glob (shoot provenance), one case-study doc with the project name (the last scope-term carrier on main) and drawing tokens, and one benchmark doc whose FILENAME embedded the drawing number.
 - **What:** surnames -> role placeholders across 13 files; photo filenames -> stable neutral labels; the case-study neutralized; the benchmark doc renamed to `scu2_sheet20_opto.md` with every live reference updated (incl. the privacy-guard allowlist). Deliberately-kept catalog tokens from the original scrub's declared scope are unchanged.
