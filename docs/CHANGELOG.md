@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.151.4 (2026-07-16) - feat(printsense): paid pilot operating package (commercial PR-5)
+- **What:** `printsense/pilot.py` — the internal pilot record: fixed positioning ("turns existing electrical prints into searchable, cited troubleshooting knowledge; does not replace engineering review or claim complete reconstruction"), explicit supported/unsupported capability lists (reconstruction listed UNSUPPORTED while gated), customer prerequisites, security/retention expectations (tenant-isolated CAS, hash-only logs, deletion on request, no training use), mandatory human-review requirement, acceptance criteria, processing-scope estimate, introductory pricing fields (unset by default — per deal), handoff report ref. Strict schema (extra=forbid).
+- **Test:** 3 tests; full printsense+proveit suite green; gate PASS.
+
 ### v3.151.3 (2026-07-16) - feat(printsense): conversion funnel + survey + pilot qualification (commercial PR-4)
 - **What:** `printsense/funnel.py` — 11-event taxonomy (intake_started ... pilot_won/lost), analytics that STRUCTURALLY cannot leak content (whitelisted prop keys; numeric/bool/short-token values only; content-shaped keys rejected at emit — test-proven), strict 5-question post-report survey (free text lives with the intake, never analytics), deterministic pilot qualification (interest + complete package + reviewer sign-off, with explicit refusal reasons).
 - **Test:** 4 tests incl. the content-leak guard and the qualification truth table.
