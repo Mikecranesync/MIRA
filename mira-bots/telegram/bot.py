@@ -1793,6 +1793,9 @@ def main():
     app.add_handler(CommandHandler("ps_privacy", printsense_commercial.ps_privacy_command))
     app.add_handler(CommandHandler("ps_survey", printsense_commercial.ps_survey_command))
     app.add_handler(CommandHandler("ps_review", printsense_commercial.ps_review_command))
+    app.add_handler(
+        CommandHandler("printsense_test", printsense_commercial.printsense_test_command)
+    )
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("drive", drive_command))
