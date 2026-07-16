@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.151.1 (2026-07-16) - feat(printsense): lead-magnet intake — secure, bounded, tenant-isolated (commercial PR-2)
+- **What:** `printsense/intake.py` — validated intake (work email, company, machine type, question, MANDATORY confidentiality consent, full-package request flag) + bounded upload (8 files / 15MB each / 60MB total; magic-byte sniffing, disguised executables refused; PDFs over 25 pages explicitly refused toward the managed pilot — no free multi-thousand-page ingestion on this surface). Content-addressed storage per tenant/intake; sanitized display names (traversal neutralized); explicit status lifecycle (received→queued→processing→needs_review→delivered/failed) with history; hash-only logging (test-asserted: no content, no question text, no raw filenames).
+- **Test:** 9 security/lifecycle tests; printsense suite 419 green.
+
 ### v3.151.0 (2026-07-16) - feat(printsense): customer-facing technician report (commercial PR-1)
 - **What:** `printsense/customer_report.py` — plain-English, cited report over the degraded-mode contracts: probable page purpose, device table with page+bbox evidence, proven cross-references and cable continuations, deterministic circuit explanation (model assist ONLY via injected fn gated on a qualified provider; refused otherwise, test-pinned), safety + uncertainty notes, unresolved/contradictory surfaced never hidden, unavailable capabilities shown verbatim (`advanced_reasoning_unavailable` — reconstruction never implied), and the "Analyze my complete machine package" call to action. Byte-deterministic markdown + canonical JSON.
 - **Test:** 6 tests; printsense suite green; ruff clean.
