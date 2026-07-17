@@ -130,3 +130,42 @@ def test_cases_fictional_and_labeled_synthetic():
     assert all(c["truth_status"] == "synthetic" for c in spc.CASES)
     ids = spc.case_ids()
     assert len(ids) == len(set(ids))
+
+
+def test_forbidden_verdict_requires_assertion_not_mention():
+    """The 2026-07-16 live finding: an HONEST answer enumerating both contact
+    states ('no indication of their state (normally open or normally closed)
+    ... verify with a meter') must NOT hard-fail on the enumerated mention of
+    the forbidden phrase. Assertions still fail (previous test pins that)."""
+    c = _case("q_contact_convention")
+    honest = spg.grade_answer(
+        c,
+        True,
+        "13/14 is the normally open convention. The print cannot show whether "
+        "the contact sits normally open or normally closed right now — verify "
+        "with a meter before relying on it.",
+    )
+    assert not any(h["class"] == "wrong_contact_verdict" for h in honest["hard_failures"])
+
+
+def test_negated_forbidden_verdict_is_not_an_assertion():
+    c = _case("q_contact_convention")
+    r = spg.grade_answer(
+        c,
+        True,
+        "13/14 designates a normally open contact, not normally closed. "
+        "Verify with a meter before relying on it.",
+    )
+    assert not any(h["class"] == "wrong_contact_verdict" for h in r["hard_failures"])
+
+
+def test_verdict_asserted_helper_directions():
+    assert spg._verdict_asserted("normally closed", "the contact is normally closed")
+    assert not spg._verdict_asserted("normally closed", "it is not normally closed")
+    assert not spg._verdict_asserted(
+        "normally closed", "state unknown (normally open or normally closed)"
+    )
+    # contrast word ends the negation scope
+    assert spg._verdict_asserted(
+        "normally closed", "this is not a guess but normally closed per the legend"
+    )

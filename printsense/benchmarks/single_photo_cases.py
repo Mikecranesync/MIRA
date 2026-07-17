@@ -285,6 +285,40 @@ def render_case_png(case: dict) -> bytes:
     draw = ImageDraw.Draw(img)
     draw.rectangle([40, 40, width - 40, 860], outline="black", width=3)
     draw.text((60, 55), f"BLATT {base['page']}  (synthetic test sheet)", fill="black")
+    # Deterministic ladder line-work so a LIVE vision model reliably reads the
+    # page as a schematic. Without it the sparse token sheets are ambiguous —
+    # the same image was described as "an empty electrical drawing" on one run
+    # and "not … an electrical drawing" on the next, making claim/fall-through
+    # nondeterministic. Fixed geometry only; drawn low on the page, clear of
+    # the token band. Expectations digest does not cover rendering.
+    left_rail, right_rail = 90, width - 90
+    draw.line([(left_rail, 560), (left_rail, 830)], fill="black", width=3)
+    draw.line([(right_rail, 560), (right_rail, 830)], fill="black", width=3)
+    # Real prints label their coils: stamp the sheet's first device-tag-shaped
+    # token beside the middle coil so a vision model describing the ladder
+    # naturally reads the tag too (without this, the line work crowded the
+    # floating token text out of scout's short description and answers stopped
+    # naming the tag).
+    tag_texts = [
+        t["text"]
+        for t in base["tokens"]
+        if "/" in t["text"] or t["text"][:1] in ("K", "Q", "F", "S")
+    ]
+    for rung_y in (620, 700, 780):
+        contact_x = left_rail + 160
+        coil_x = right_rail - 170
+        draw.line([(left_rail, rung_y), (contact_x, rung_y)], fill="black", width=2)
+        # NO-contact symbol: gap with two verticals
+        draw.line([(contact_x, rung_y - 12), (contact_x, rung_y + 12)], fill="black", width=2)
+        draw.line(
+            [(contact_x + 22, rung_y - 12), (contact_x + 22, rung_y + 12)], fill="black", width=2
+        )
+        draw.line([(contact_x + 22, rung_y), (coil_x, rung_y)], fill="black", width=2)
+        # coil symbol: circle, then wire to the right rail
+        draw.ellipse([coil_x, rung_y - 14, coil_x + 28, rung_y + 14], outline="black", width=2)
+        draw.line([(coil_x + 28, rung_y), (right_rail, rung_y)], fill="black", width=2)
+        if rung_y == 700 and tag_texts:
+            draw.text((coil_x - 10, rung_y - 34), tag_texts[0], fill="black")
     for tok in base["tokens"]:
         x0, y0 = tok["bbox"][0], tok["bbox"][1]
         draw.text((x0, y0 + 60), tok["text"], fill="black")
