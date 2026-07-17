@@ -1813,6 +1813,9 @@ def main():
             "printsense_grade_session", printsense_commercial.printsense_grade_session_command
         )
     )
+    app.add_handler(
+        CommandHandler("printsense_compare", printsense_commercial.printsense_compare_command)
+    )
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
     app.add_handler(CommandHandler("drive", drive_command))

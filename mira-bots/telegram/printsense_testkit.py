@@ -572,3 +572,186 @@ def _session_report(batches) -> str:
     L.append(f"recommended missing pages (from answers): {', '.join(refs) or 'none'}")
     L.append("")
     return "\n".join(L)
+
+
+# ── Phase 4: image-robustness matrix + /printsense_compare ───────────────────
+from printsense.benchmarks import robustness_grader as _r_grader  # noqa: E402
+from printsense.benchmarks import robustness_transforms as _r_tx  # noqa: E402
+
+# Live Lane-A bound: paid answer lane only runs these conditions per invocation
+# (one interpreter call each); Lane R (classification) is free and runs ALL.
+PHASE4_LIVE_ANSWER_CONDITIONS = ("rot90", "blur", "crop_partial", "glare")
+
+
+async def run_phase4(
+    *,
+    vision_process,
+    single_rung,
+    context,
+    mode: str = "live",
+    answer_conditions: tuple[str, ...] | None = None,
+) -> dict:
+    """Robustness matrix over the transformed parent page.
+
+    Lane R (every condition, free): the transformed image through the REAL
+    vision classify path — routed = classification says ELECTRICAL_PRINT.
+    Lane A (bounded subset): the transformed image through the REAL single-
+    photo rung; the metamorphic grader assigns full / degraded_honest /
+    hard_fail. The provider field is reported honestly — when the paid
+    interpreter falls back (e.g. quota), rows say so instead of pretending.
+    """
+    parent = _r_grader.parent_case()
+    base_png = _cases.render_case_png(parent)
+    question = parent["question"]
+    chosen = answer_conditions if answer_conditions is not None else PHASE4_LIVE_ANSWER_CONDITIONS
+    rows: list[dict] = []
+    for condition, family in _r_grader.CONDITIONS.items():
+        img = _r_tx.ALL_TRANSFORMS[condition](base_png)
+        b64 = base64.b64encode(img).decode()
+        routed = False
+        classification = "(error)"
+        try:
+            vd = await vision_process(b64, question)
+            classification = (vd or {}).get("classification") or "(none)"
+            routed = classification == "ELECTRICAL_PRINT"
+        except Exception as exc:  # noqa: BLE001 — a classify crash is a finding
+            classification = f"(classify error: {type(exc).__name__})"
+        row: dict = {
+            "condition": condition,
+            "family": family,
+            "routed": routed,
+            "classification": classification,
+        }
+        if condition in chosen:
+            cap = _CaptureUpdate(0)
+            t0 = time.monotonic()
+            try:
+                claimed = await single_rung(img, img, question, cap, context)
+            except Exception as exc:  # noqa: BLE001 — rung crash is a finding
+                claimed = False
+                cap.message.texts.append(f"(rung error: {type(exc).__name__})")
+            answer = _answer_from(cap.message.texts)
+            row.update(_r_grader.grade_answer_lane(condition, bool(claimed), answer))
+            row["latency_s"] = round(time.monotonic() - t0, 1)
+            low = (answer or "").lower()
+            row["provider"] = (
+                "paid-interpreter"
+                if (
+                    "according to" not in low
+                    and claimed
+                    and len(answer) > 0
+                    and _looks_interpreted(answer)
+                )
+                else ("fallback-cascade" if claimed else None)
+            )
+        rows.append(row)
+    return _r_grader.build_matrix(rows, mode=mode)
+
+
+def _looks_interpreted(answer: str) -> bool:
+    """Heuristic provider attribution for reporting ONLY (never grading): the
+    six-section cascade format means the free path answered; its absence on a
+    claimed turn means the paid interpreter's renderer did."""
+    return "what this appears to be" not in (answer or "").lower()
+
+
+async def run_phase4_live(update, context) -> None:
+    """The ``/printsense_test phase4`` body."""
+    import bot as _bot
+
+    env = await run_phase4(
+        vision_process=_bot.engine.vision.process,
+        single_rung=_bot._try_print_translator_reply,
+        context=context,
+        mode="live",
+    )
+    report_md = _r_grader.render_report(env)
+    report_json = _r_grader.stable_json(env)
+    for artifact in (report_md, report_json):
+        violations = _r_grader.audit_artifact(artifact)
+        if violations:
+            logger.warning("phase4 artifact audit failed: %s", violations)
+            await update.message.reply_text(
+                "PrintSense phase4 artifact failed its privacy self-audit — not sent."
+            )
+            return
+    await update.message.reply_text(_r_grader.phone_summary(env))
+    chat_id = update.effective_chat.id
+    await context.bot.send_document(
+        chat_id=chat_id,
+        document=io.BytesIO(report_json.encode("utf-8")),
+        filename="printsense_phase4.json",
+    )
+    await context.bot.send_document(
+        chat_id=chat_id,
+        document=io.BytesIO(report_md.encode("utf-8")),
+        filename="printsense_phase4.md",
+    )
+
+
+async def printsense_compare_command(update, context) -> None:
+    """``/printsense_compare`` (admin): grade the chat's most recent COMPLETED
+    2-photo batch as an original-vs-degraded pair. Runs the REAL single-photo
+    rung on each image separately and reports deterministic differences —
+    tags lost / newly claimed, state claims, honesty language, length drift.
+    Truth-free observations (live photos have no frozen truth)."""
+    import bot as _bot
+
+    chat_id = str(update.effective_chat.id)
+    conn = _marker_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, caption, photos_json, raw_photos_json FROM photo_batches "
+            "WHERE chat_id=? AND status='done' AND photo_count=2 "
+            "ORDER BY completed_at DESC LIMIT 1",
+            (chat_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        await update.message.reply_text(
+            "No completed 2-photo batch found for this chat — send the original "
+            "and the degraded photo as ONE album first, then /printsense_compare."
+        )
+        return
+    import json as _json
+
+    bid, caption, photos_json, raw_json = row
+    raws = _json.loads(raw_json or "[]") or _json.loads(photos_json)
+    question = caption or "What does this circuit do?"
+    answers = []
+    for b64 in raws[:2]:
+        img = base64.b64decode(b64)
+        cap = _CaptureUpdate(0)
+        try:
+            claimed = await _bot._try_print_translator_reply(img, img, question, cap, context)
+        except Exception:  # noqa: BLE001 — fail closed per side
+            claimed = False
+        answers.append(_answer_from(cap.message.texts) if claimed else "")
+    a, b = answers
+    tags_a, tags_b = _grader.extract_prose_tags(a), _grader.extract_prose_tags(b)
+    sa, sb = _grader._STATE_CLAIM_RE.search(a or ""), _grader._STATE_CLAIM_RE.search(b or "")
+    L = [
+        f"# /printsense_compare — batch {bid} (photo 1 = original, photo 2 = degraded)",
+        "",
+        f"- answered: photo1={'yes' if a else 'no'}, photo2={'yes' if b else 'no'}",
+        f"- tags lost on degraded: {', '.join(sorted(tags_a - tags_b)) or 'none'}",
+        f"- tags NEWLY CLAIMED on degraded (never-rule!): {', '.join(sorted(tags_b - tags_a)) or 'none'}",
+        f"- state claims: photo1={'YES ' + repr(sa.group(0)) if sa else 'none'}, "
+        f"photo2={'YES ' + repr(sb.group(0)) if sb else 'none'}",
+        f"- better-image request on degraded: "
+        f"{'yes' if _r_grader.BETTER_IMAGE_RE.search(b or '') else 'no'}",
+        f"- answer length: {len(a)} -> {len(b)}",
+        "",
+        "Truth-free observations — a judge may explain, never clear.",
+    ]
+    report = "\n".join(L)
+    if _grader.audit_artifact(report):
+        await update.message.reply_text("Compare report failed its privacy self-audit — not sent.")
+        return
+    await update.message.reply_text(f"Compared batch {bid}. Report attached.")
+    await context.bot.send_document(
+        chat_id=update.effective_chat.id,
+        document=io.BytesIO(report.encode("utf-8")),
+        filename="printsense_compare.md",
+    )
