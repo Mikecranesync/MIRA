@@ -1012,11 +1012,13 @@ async def _try_print_translator_reply(
     # Grounded answer: Anthropic PrintSynth interpreter first (deep, typed,
     # never-invent), else the OCR-verbatim cascade. Both live in
     # engine._grounded_print_reply, which always returns a display-ready string.
-    # Ack the ~30-60 s Anthropic interpretation so the tech isn't left staring at
+    # Ack the paid interpretation (typically ~1-2 min at medium effort; up to
+    # ~5 min on multi-page packages at high) so the tech isn't left staring at
     # a silent chat.
     if _print_interpreter_configured():
         await update.message.reply_text(
-            "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…"
+            "🔍 Reading your electrical print — a full interpretation usually "
+            "takes 1–2 minutes…"
         )
     interpret_b64 = base64.b64encode(raw_bytes).decode()
     async with typing_action(context, update.effective_chat.id):
