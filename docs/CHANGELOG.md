@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.155.1 (2026-07-17) - fix(kb): liveness heartbeat — a drained KB queue no longer reads as a dead cron (stops the kb_cron Telegram flood)
+
+- **Root cause:** `heartbeat_monitor.check_kb_cron_freshness` treats `manual_queue.json` mtime as the KB-growth cron's liveness signal (>24h stale ⇒ DOWN, `remediation_hint=kb_cron_stale`). Every run path bumped the mtime via `save_queue()` **except** the "No eligible entries" early-return — so once the queue drained, an *idle-but-healthy* cron read as a *dead* cron. The self-healer then "healed" it by re-running the cron (which again found nothing, so freshness never cleared) and escalated to Telegram **every run**; because `trigger_kb_cron` returns rc=0 it logged `healed`, so the crash-loop breaker (counts `heal_failed`) never tripped and the dedup never engaged → unbounded flood.
+- **Fix:** `kb_growth_cron.run_batch` now rewrites the queue unchanged (`save_queue`) on the no-eligible path, bumping the mtime so freshness reflects "the cron ran." A drained queue is a healthy steady state, not a stale cron. No behavior change when there is work to do (that path already persisted). Regression test `TestLivenessHeartbeat` in `test_kb_growth_cron.py` (red without the fix).
+- **Follow-up (separate issue, not in this PR):** the self-healer treats a heal that returns rc=0 as `healed` even when the post-recheck is still DOWN — so any "heal succeeds but service stays down" case (also `restart_container`/`disk_cleanup`) can flood without ever tripping the breaker. Should log `heal_failed` when the post-status recheck ≠ healthy.
+
 ### v3.155.0 (2026-07-17) - feat(printsense): Phase 4 — image-robustness matrix, /printsense_test phase4, /printsense_compare (testing program Phase 4)
 
 - `robustness_transforms.py`: 16 deterministic transforms (byte-identical reruns), rotation family (90/180/270) kept separate from quality family (skew, perspective, blur, glare, shadow, uneven light, lowres, jpeg q20, phone-screen, partial crop, obstructed, handwritten, missing title block).

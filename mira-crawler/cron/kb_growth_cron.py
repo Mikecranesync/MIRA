@@ -470,6 +470,16 @@ def run_batch() -> dict:
     if not eligible_idx:
         stats = _queue_stats(queue)
         _log(f"No eligible entries. Stats: {stats}")
+        # Liveness heartbeat: an idle/drained queue is a HEALTHY steady state,
+        # not a dead cron. The heartbeat_monitor freshness probe treats
+        # manual_queue.json mtime as "the cron is alive" (>24h stale = DOWN,
+        # remediation_hint=kb_cron_stale). Every other run path bumps the mtime
+        # via save_queue() (revive/_process_entry); this no-op path did not, so a
+        # drained queue read as a dead cron and the self-healer escalated to
+        # Telegram every run forever (it "healed" by re-running the cron, which
+        # again found nothing, so freshness never cleared). Re-write the queue
+        # unchanged so the mtime reflects that the cron ran.
+        save_queue(queue)
         return {"processed": [], "stats": stats, "started_at": _ts()}
 
     done_before = sum(1 for e in queue if e.get("status") == "done")
