@@ -1017,8 +1017,7 @@ async def _try_print_translator_reply(
     # a silent chat.
     if _print_interpreter_configured():
         await update.message.reply_text(
-            "🔍 Reading your electrical print — a full interpretation usually "
-            "takes 1–2 minutes…"
+            "🔍 Reading your electrical print — a full interpretation usually takes 1–2 minutes…"
         )
     interpret_b64 = base64.b64encode(raw_bytes).decode()
     async with typing_action(context, update.effective_chat.id):
