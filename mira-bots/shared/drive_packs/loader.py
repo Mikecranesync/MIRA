@@ -21,6 +21,7 @@ from .schema import (
     Envelope,
     EnvelopeBand,
     Family,
+    FaultEntry,
     KeypadNavigationCard,
     Knowledge,
     LiveDecode,
@@ -35,9 +36,13 @@ _VALID_PROVENANCE = {"bench_verified", "manual_cited"}
 
 # schema_version generations this loader understands. v1 = live-decode + envelope
 # + knowledge pointers. v2 adds the OPTIONAL `parameters` + `keypad_navigation`
-# blocks (DriveSense manual-keypad phase). An unknown version is a hard error —
+# blocks (DriveSense manual-keypad phase). v3 adds the OPTIONAL `fault_entries`
+# block (string-identifier faults for mnemonic-coded families — RUN_C_PLAN.md C1).
+# Block parsing is permissive (any present block is parsed regardless of the
+# declared version, as with parameters/keypad since v2), so the version is a
+# forward-declaration, not a per-block gate. An unknown version is a hard error —
 # never a silent best-effort parse.
-_SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
+_SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2, 3})
 
 _REQUIRED_TOP_LEVEL_KEYS = {
     "pack_id",
@@ -220,6 +225,47 @@ def _keypad_navigation(raw_list: list[dict[str, Any]], pack_id: str) -> list[Key
     return out
 
 
+def _fault_entries(raw_list: list[dict[str, Any]], pack_id: str) -> list[FaultEntry]:
+    """Parse the v3 ``fault_entries`` block into ``FaultEntry``s (v1/v2 packs
+    have none). ``fault_id`` is required per entry and preserved verbatim (NEVER
+    casefolded — ``oC`` != ``OC``). ``wire_value`` must be an int or ``None`` —
+    a non-null value is only meaningful for a family that also exposes the fault
+    as a numeric register; a mnemonic-only family leaves it ``None`` rather than
+    inventing an integer key (the Run B/C "no invented integer keys" must-not)."""
+    out: list[FaultEntry] = []
+    for entry in raw_list:
+        fid = entry.get("fault_id")
+        if not fid:
+            raise ValueError(
+                f"pack '{pack_id}': a fault_entries[] entry is missing required 'fault_id'"
+            )
+        wire_value = entry.get("wire_value")
+        if wire_value is not None and not isinstance(wire_value, int):
+            raise ValueError(
+                f"pack '{pack_id}': fault_entries[{fid!r}].wire_value must be an int or null, "
+                f"got {wire_value!r}"
+            )
+        out.append(
+            FaultEntry(
+                fault_id=fid,
+                name=entry.get("name", ""),
+                action=entry.get("action", ""),
+                source_citation=_citation(entry.get("source_citation")),
+                flashing=entry.get("flashing"),
+                secondary_label=entry.get("secondary_label"),
+                references_parameters=list(entry.get("references_parameters", [])),
+                ambiguous_glyphs=list(entry.get("ambiguous_glyphs", [])),
+                wire_value=wire_value,
+                provenance_tier=_check_provenance_tier(
+                    entry.get("provenance_tier", "manual_cited"),
+                    pack_id=pack_id,
+                    where=f"fault_entry {fid!r}",
+                ),
+            )
+        )
+    return out
+
+
 def load_pack(pack_id: str) -> DrivePack:
     """Load and validate ``packs/<pack_id>/pack.json``.
 
@@ -314,6 +360,10 @@ def _parse_pack(raw: dict[str, Any], pack_id: str, path_label: str) -> DrivePack
     parameters = _parameters(raw.get("parameters", []), pack_id)
     keypad_navigation = _keypad_navigation(raw.get("keypad_navigation", []), pack_id)
 
+    # schema_version 3 block — absent in v1/v2, so it defaults to empty and older
+    # packs load exactly as before.
+    fault_entries = _fault_entries(raw.get("fault_entries", []), pack_id)
+
     return DrivePack(
         pack_id=raw["pack_id"],
         schema_version=version,
@@ -325,6 +375,7 @@ def _parse_pack(raw: dict[str, Any], pack_id: str, path_label: str) -> DrivePack
         provenance=provenance,
         parameters=parameters,
         keypad_navigation=keypad_navigation,
+        fault_entries=fault_entries,
     )
 
 

@@ -26,9 +26,38 @@ from pathlib import Path
 from . import single_photo_cases
 from .capability_bench import _stable, audit_artifact  # shared, tested helpers
 
-GRADER_VERSION = "single_photo_grader_v1"
+GRADER_VERSION = "single_photo_grader_v2"
 
 _SHA_FILE = Path(__file__).resolve().parent / "single_photo_cases.sha256"
+
+# ── assertion-aware forbidden-verdict matching ───────────────────────────────
+# A forbidden verdict phrase counts ONLY when the answer ASSERTS it. Two
+# mention shapes are honest, not verdicts, and must not hard-fail (live
+# finding, 2026-07-16: the truthful answer "no indication of their state
+# (normally open or normally closed) … verify with a meter" was hard-failed
+# for the enumerated mention of 'normally closed'):
+#   1. the open-or-closed ENUMERATION — both options listed as possibilities;
+#   2. a NEGATED mention — "this is not normally closed".
+# "13/14 is normally closed" still asserts and still hard-fails (pinned test).
+_VERDICT_ENUM = re.compile(r"normally\s+(?:open|closed)\s+or\s+(?:normally\s+)?(?:open|closed)")
+_VERDICT_NEGATORS = re.compile(
+    r"(?<!\w)(?:not|no|never|isn't|aren't|cannot|can't|won't|neither|nor)(?!\w)"
+)
+_VERDICT_CONTRAST = re.compile(r"(?<!\w)(?:but|however|although|though|yet)(?!\w)")
+
+
+def _verdict_asserted(phrase: str, low: str) -> bool:
+    text = _VERDICT_ENUM.sub(" ", low)
+    pattern = re.compile(r"(?<!\w)" + re.escape(phrase.lower()) + r"(?!\w)")
+    for sentence in re.split(r"[.;!?]", text):
+        for m in pattern.finditer(sentence):
+            prefix = sentence[: m.start()]
+            negs = [n.end() for n in _VERDICT_NEGATORS.finditer(prefix)]
+            if negs and not _VERDICT_CONTRAST.search(prefix[negs[-1] :]):
+                continue  # negated mention, not an assertion
+            return True
+    return False
+
 
 # Device-tag-shaped strings in prose. Covers the corpus grammar (-9x/K01,
 # K911) and common IEC forms; deliberately generous — anything tag-shaped that
@@ -147,7 +176,7 @@ def grade_answer(
         if not ok:
             hard.append({"class": "wrong_contact_verdict", "detail": f"none of {affirm} affirmed"})
     for phrase in exp.get("forbid_any", []):
-        if phrase.lower() in low:
+        if _verdict_asserted(phrase, low):
             hard.append(
                 {
                     "class": "wrong_contact_verdict",

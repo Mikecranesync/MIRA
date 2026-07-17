@@ -122,3 +122,38 @@ def test_nameplate_by_ocr_fields_still_fires(vw):
         ["5HP", "480VAC", "60Hz", "1750RPM"],
     )
     assert r["type"] == "NAMEPLATE"
+
+
+# --- Negated mentions in vision prose must NOT count as signals (#2753 live
+# --- finding: "does not appear to be ... electrical drawing" classified as a
+# --- print at 0.75 and made the print path claim a plain gray photo) ---
+
+
+def test_negated_print_mention_does_not_classify_as_print(vw):
+    """The exact live-run description that mis-routed the non-print image."""
+    r = vw._classify_photo(
+        "the image shows a dark gray circle on a gradient gray background. "
+        "there are no visible indicators, labels, or text. it does not appear "
+        "to be a physical piece of equipment, electrical drawing, or computer "
+        "screen. the image is too ambiguous to provide further information.",
+        [],
+        "What does this circuit do?",
+    )
+    assert r["type"] != "ELECTRICAL_PRINT"
+
+
+def test_affirmed_print_mention_still_classifies_as_print(vw):
+    r = vw._classify_photo("this is a wiring diagram of a motor starter circuit.", [])
+    assert r["type"] == "ELECTRICAL_PRINT"
+
+
+def test_negation_scope_ends_at_contrast_word(vw):
+    """'not a photo BUT a ladder diagram' affirms the diagram."""
+    r = vw._classify_photo("this is not a photo of equipment but a ladder diagram.", [])
+    assert r["type"] == "ELECTRICAL_PRINT"
+
+
+def test_negated_nameplate_mention_does_not_classify_as_nameplate(vw):
+    """Same guard on the nameplate prose lane."""
+    r = vw._classify_photo("this is not a nameplate or rating plate, just a wall.", [])
+    assert r["type"] != "NAMEPLATE"

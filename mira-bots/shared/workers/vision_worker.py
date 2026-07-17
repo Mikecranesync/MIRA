@@ -200,6 +200,43 @@ def _kw_in(keyword: str, text: str) -> bool:
     return pattern.search(text) is not None
 
 
+_NEGATORS = re.compile(
+    r"(?<!\w)(?:not|no|never|isn't|aren't|doesn't|don't|didn't|cannot|can't|won't"
+    r"|without|unlikely|rather than|instead of)(?!\w)"
+)
+# A negation's scope ends at a contrast word: "not a photo but a schematic"
+# still affirms "schematic".
+_NEGATION_SCOPE_BREAKERS = re.compile(r"(?<!\w)(?:but|however|although|though|yet)(?!\w)")
+_SENTENCE_SPLIT = re.compile(r"[.;!?]")
+
+
+def _kw_affirmed(keyword: str, text: str) -> bool:
+    """True if ``keyword`` occurs in ``text`` OUTSIDE a negated clause.
+
+    Prose guard for vision-model descriptions: "does not appear to be an
+    electrical drawing" mentions the phrase but DENIES it — that mention must
+    not count as a classification signal (it mis-routed a plain gray photo to
+    the print path at 0.75 confidence). A mention is negated when a negator
+    token precedes it in the same sentence with no contrast word ("but",
+    "however", …) between them. OCR label lanes keep plain ``_kw_in`` — OCR
+    items are labels, not prose.
+    """
+    for sentence in _SENTENCE_SPLIT.split(text):
+        pattern = _KW_PATTERN_CACHE.get(keyword)
+        if pattern is None:
+            pattern = re.compile(r"(?<!\w)" + re.escape(keyword) + r"(?!\w)")
+            _KW_PATTERN_CACHE[keyword] = pattern
+        for m in pattern.finditer(sentence):
+            prefix = sentence[: m.start()]
+            neg_positions = [n.end() for n in _NEGATORS.finditer(prefix)]
+            if not neg_positions:
+                return True
+            last_neg = neg_positions[-1]
+            if _NEGATION_SCOPE_BREAKERS.search(prefix[last_neg:]):
+                return True
+    return False
+
+
 OCR_CLASSIFICATION_THRESHOLD = 10
 
 
@@ -427,18 +464,32 @@ class VisionWorker:
         """
         vision_lower = vision_result.lower()
         ocr_text_lower = " ".join(ocr_items).lower()
-        combined = vision_lower + " " + ocr_text_lower
 
         # Word-boundary matching (`_kw_in`) — "led" must not match "titled",
         # "drive" must not match "driver". NAMEPLATE_OCR_FIELDS keeps substring
         # matching below (units like "5HP"/"60Hz" sit adjacent to digits).
-        equip_matches = sum(1 for kw in EQUIPMENT_FACE_KEYWORDS if _kw_in(kw, combined))
-        print_matches = sum(1 for kw in PRINT_KEYWORDS if _kw_in(kw, combined))
-        nameplate_matches = sum(1 for kw in NAMEPLATE_KEYWORDS if _kw_in(kw, combined))
+        # Vision prose goes through `_kw_affirmed` so a DENIED mention ("does
+        # not appear to be an electrical drawing") never counts as a signal;
+        # OCR text stays on `_kw_in` (labels, not prose).
+        equip_matches = sum(
+            1
+            for kw in EQUIPMENT_FACE_KEYWORDS
+            if _kw_affirmed(kw, vision_lower) or _kw_in(kw, ocr_text_lower)
+        )
+        print_matches = sum(
+            1
+            for kw in PRINT_KEYWORDS
+            if _kw_affirmed(kw, vision_lower) or _kw_in(kw, ocr_text_lower)
+        )
+        nameplate_matches = sum(
+            1
+            for kw in NAMEPLATE_KEYWORDS
+            if _kw_affirmed(kw, vision_lower) or _kw_in(kw, ocr_text_lower)
+        )
 
         # Nameplate detection: vision model explicitly calls it a nameplate/data plate.
         # Check vision_lower first (high confidence); fall back to OCR (lower confidence).
-        if any(_kw_in(kw, vision_lower) for kw in NAMEPLATE_KEYWORDS):
+        if any(_kw_affirmed(kw, vision_lower) for kw in NAMEPLATE_KEYWORDS):
             conf = min(1.0, 0.7 + nameplate_matches * 0.05)
             return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
         if any(_kw_in(kw, ocr_text_lower) for kw in NAMEPLATE_KEYWORDS):
@@ -470,7 +521,7 @@ class VisionWorker:
         # regardless of which equipment it depicts. MUST precede the equipment-face
         # keywords: a "wiring diagram of a VFD drive" must not be forced to
         # EQUIPMENT_PHOTO by the word "drive". (The 91% mis-classification fix.)
-        if any(_kw_in(sig, vision_lower) for sig in STRONG_PRINT_SIGNALS):
+        if any(_kw_affirmed(sig, vision_lower) for sig in STRONG_PRINT_SIGNALS):
             conf = min(1.0, 0.7 + print_matches * 0.05)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 
@@ -486,7 +537,7 @@ class VisionWorker:
 
         # Equipment faceplate keywords (only when NO strong print signal above) —
         # a physical faceplate photo, never a drawing.
-        if any(_kw_in(kw, vision_lower) for kw in EQUIPMENT_FACE_KEYWORDS):
+        if any(_kw_affirmed(kw, vision_lower) for kw in EQUIPMENT_FACE_KEYWORDS):
             conf = min(1.0, 0.6 + equip_matches * 0.05)
             return {"type": "EQUIPMENT_PHOTO", "confidence": round(conf, 2)}
         if any(_kw_in(kw, ocr_text_lower) for kw in EQUIPMENT_FACE_KEYWORDS):
@@ -494,7 +545,7 @@ class VisionWorker:
             return {"type": "EQUIPMENT_PHOTO", "confidence": round(conf, 2)}
 
         # Weaker print keywords in the description — trust it.
-        if any(_kw_in(kw, vision_lower) for kw in PRINT_KEYWORDS):
+        if any(_kw_affirmed(kw, vision_lower) for kw in PRINT_KEYWORDS):
             conf = min(1.0, 0.6 + print_matches * 0.08)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 
