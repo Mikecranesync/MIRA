@@ -131,3 +131,39 @@ body.sun .ghost-btn   { border-width: 2px; border-color: #000; }
   background: #FFD27A;
   animation: fl-pulse 2.2s infinite;
 }
+
+/* ── DARK DATASHEET THEME — public marketing/datasheet surfaces ──────────
+ * Mirrors the canonical block in docs/design/factorylm-tokens.css (keep in
+ * sync). Used by the Drive Commander family/fault/parameter pages and the
+ * PrintSense landing. Doctrine: muted normal, ONE accent (brand orange,
+ * actions only), strong color reserved for state. Added 2026-07-17. */
+:root {
+  --fl-dark-bg: #0d0e11;
+  --fl-dark-bg-glass: rgba(13,14,17,.88); /* sticky-nav backdrop */
+  --fl-dark-surface: #13141a;
+  --fl-dark-surface-hi: #181a22;
+  --fl-dark-line: rgba(255,255,255,.07);
+  --fl-dark-line-hi: rgba(255,255,255,.12);
+
+  --fl-dark-ink: #e8eaf0;
+  --fl-dark-muted: rgba(255,255,255,.62);
+  --fl-dark-faint: rgba(255,255,255,.40);
+
+  --fl-dark-accent: #E67139;
+  --fl-dark-accent-hover: #f08a55;
+  --fl-dark-accent-tint: rgba(230,113,57,.10);
+  --fl-dark-accent-line: rgba(230,113,57,.38);
+
+  --fl-dark-ok: #2fbf71;
+  --fl-dark-ok-tint: rgba(47,191,113,.07);
+  --fl-dark-ok-line: rgba(47,191,113,.35);
+  --fl-dark-warn: #f0a000;
+  --fl-dark-warn-tint: rgba(240,160,0,.08);
+  --fl-dark-warn-line: rgba(240,160,0,.35);
+  --fl-dark-fault: #ff5d5d;
+  --fl-dark-fault-tint: rgba(255,93,93,.08);
+  --fl-dark-fault-line: rgba(255,93,93,.35);
+
+  --fl-dark-font: 'Inter', 'Helvetica Neue', -apple-system, sans-serif;
+  --fl-dark-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+}
