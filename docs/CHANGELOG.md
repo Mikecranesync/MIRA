@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.154.2 (2026-07-17) - fix(printsense): interpreter latency — medium effort on staging (bench-decided) + honest ack copy
+
+- Effort-ladder evidence (8-case phase-2 live bench, real rung, gpt-5.5): **high** = 6-8/8 floating, max 141-294s; **medium** = **8/8 twice, max ~94s**; **low** = 7/8 with an `unsupported_state_claim` honesty failure (disqualified). Prior case-study lane (§9, #2704 era) independently passed medium vs xhigh. Staging now runs `PRINT_VISION_EFFORT=medium` (Doppler stg; env wins, instantly reversible). Code default unchanged — prod effort stays an explicit owner choice per the never-silently-downgrade doctrine.
+- Telegram ack copy now matches reality: "usually takes 1–2 minutes" (was "~30–60 s"; measured up to 294s on multi-page packages at high).
+
 ### v3.154.1 (2026-07-17) - fix(ci): halve the PR critical path — parallelize Docker Build + Eval Offline, cache pip in Unit Tests
 
 - Measured (run 29576611599 + PR #2762 timeline): lint (30s) → Unit Tests (345s) → Docker Build (347s) was a ~12-minute SERIAL wall; everything else finishes inside ~2.5 min. `docker-build-check` and `test-eval-offline` now `needs: lint-and-type-check` (parallel with unit tests) — building never needed unit results; a red unit suite still fails the PR on its own check. Expected PR wall ≈ 6.3 min.
