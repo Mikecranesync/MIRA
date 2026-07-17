@@ -263,6 +263,9 @@ describe("siemens g120 pack — manual-verified truth pins", () => {
     expect(getParameter(pack, "p0605")!.related_faults).toContain("F07011");
     // rated-motor-data params are cited but not fault-linked (manual doesn't link them)
     expect(getParameter(pack, "p0304")!.related_faults).toEqual([]);
+  });
+});
+
 // ── De-slop invariants (2026-07-17) ──────────────────────────────────────
 // The public surface must stay on the shared dark-datasheet tokens with no
 // AI-slop markers: no emoji icons, no duplicated fault list, honest counts,
