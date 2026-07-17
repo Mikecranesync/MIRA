@@ -21,6 +21,8 @@ errors reply with the exception class name only.
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import io
 import logging
 import time
@@ -283,4 +285,290 @@ def _diagnostic_report(question: str, answer: str, latency_s: float, spy_usage: 
         answer or "(empty)",
         "",
     ]
+    return "\n".join(L)
+
+
+# ── Phase 3: multi-photo sessions + live session grading ─────────────────────
+from printsense.benchmarks import session_cases as _s_cases  # noqa: E402
+from printsense.benchmarks import session_grader as _s_grader  # noqa: E402
+
+PHASE3_LIVE_SESSION_IDS = _s_cases.PHASE3_LIVE_SESSION_IDS
+
+
+def _batch_record(caption: str, pages_b64: list[str]):
+    """A real PhotoBatchRecord shaped exactly like the worker dequeues."""
+    from shared.photo_batch_queue import PhotoBatchRecord
+
+    return PhotoBatchRecord(
+        id=0,
+        chat_id="0",
+        platform="printsense-test",
+        caption=caption,
+        photos_b64=pages_b64,
+        ack_message_id=None,
+        created_at=0.0,
+        raw_photos_b64=list(pages_b64),
+    )
+
+
+async def run_phase3(
+    album_rung,
+    mode: str = "live",
+    sessions: list[dict] | None = None,
+    usage_spy: RouterUsageSpy | None = None,
+) -> dict:
+    """Run session benchmarks through the REAL album rung
+    (``bot._try_multi_photo_printsense_reply``): per turn, build a real
+    ``PhotoBatchRecord`` from the session pages and grade the package reply
+    (or refusal) against the frozen expectations. Facts pinned by earlier
+    turns (``facts_keep``) carry forward as evidence-accumulation checks."""
+    chosen = sessions if sessions is not None else _s_cases.SESSIONS
+    session_results = []
+    answers: list[str] = []
+    for session in chosen:
+        kept: list[str] = []
+        turn_results = []
+        for turn in session["turns"]:
+            pages_b64 = [
+                base64.b64encode(_s_cases.render_page_png(k)).decode() for k in turn["pages"]
+            ]
+            rec = _batch_record(turn["caption"], pages_b64)
+            t0 = time.monotonic()
+            reply = await album_rung(rec)
+            latency = time.monotonic() - t0
+            usage = usage_spy.pop() if usage_spy else None
+            claimed = reply is not None
+            answers.append(reply or "")
+            turn_results.append(
+                _s_grader.grade_turn(
+                    turn,
+                    claimed,
+                    reply or "",
+                    kept_facts=kept,
+                    latency_s=latency,
+                    usage=usage,
+                )
+            )
+            kept.extend(f for f in turn["expect"].get("facts_keep", []) if f not in kept)
+        session_results.append(_s_grader.build_session_result(session, turn_results))
+    durability = await run_durability_probe()
+    dur_result = _s_grader.grade_durability(durability)
+    session_results.append(
+        _s_grader.build_session_result(
+            {"session_id": "s7_durability", "about": "restart survival (real queue)"},
+            [dur_result],
+        )
+    )
+    return _s_grader.build_envelope(
+        session_results, mode=mode, durability=durability, answers=answers
+    )
+
+
+async def run_durability_probe() -> dict:
+    """Production durability promise, probed against the REAL PhotoBatchQueue:
+    add a burst -> close the queue object -> reopen the same SQLite file (a
+    restart) -> recover_orphans -> dequeue -> the batch must be intact
+    (caption + crushed AND original full-res bytes)."""
+    import tempfile
+    from pathlib import Path as _P
+
+    from shared.photo_batch_queue import PhotoBatchQueue
+
+    tmp = _P(tempfile.mkdtemp(prefix="ps3_dur_")) / "queue.db"
+    probe = {"survived_restart": False, "raw_preserved": False, "caption_preserved": False}
+    try:
+        q1 = PhotoBatchQueue(str(tmp))
+        batch_id, _n = await q1.add_photo_to_burst(
+            chat_id="dur-chat",
+            platform="printsense-test",
+            caption="durability probe",
+            photo_b64="crushed-bytes",
+            raw_photo_b64="original-full-res-bytes",
+        )
+        await q1.close_burst(batch_id)
+        q1.close()  # simulated crash/restart: the process object is gone
+        q2 = PhotoBatchQueue(str(tmp))
+        await q2.recover_orphans()
+        rec = await asyncio.wait_for(q2.dequeue(), timeout=5.0)
+        probe["survived_restart"] = rec.photos_b64 == ["crushed-bytes"]
+        probe["raw_preserved"] = rec.raw_photos_b64 == ["original-full-res-bytes"]
+        probe["caption_preserved"] = rec.caption == "durability probe"
+        q2.close()
+    except Exception as exc:  # noqa: BLE001 — a broken probe IS the finding
+        probe["error"] = type(exc).__name__
+    return probe
+
+
+async def run_phase3_live(update, context) -> None:
+    """The ``/printsense_test phase3`` body: REAL album rung, real paid
+    interpreter, bounded to ``PHASE3_LIVE_SESSION_IDS`` (each batch turn is a
+    1-4 min package interpretation)."""
+    import bot as _bot
+
+    live_sessions = [s for s in _s_cases.SESSIONS if s["session_id"] in PHASE3_LIVE_SESSION_IDS]
+    spy = RouterUsageSpy()
+    spy.install(_bot.engine.router)
+    try:
+        env = await run_phase3(
+            _bot._try_multi_photo_printsense_reply,
+            mode="live",
+            sessions=live_sessions,
+            usage_spy=spy,
+        )
+    finally:
+        spy.restore()
+    report_md = _s_grader.render_report(env)
+    report_json = _s_grader.stable_envelope_json(env)
+    for artifact in (report_md, report_json):
+        violations = _s_grader.audit_artifact(artifact)
+        if violations:
+            logger.warning("phase3 artifact audit failed: %s", violations)
+            await update.message.reply_text(
+                "PrintSense phase3 artifact failed its privacy self-audit — not sent."
+            )
+            return
+    await update.message.reply_text(_s_grader.phone_summary(env))
+    chat_id = update.effective_chat.id
+    await context.bot.send_document(
+        chat_id=chat_id,
+        document=io.BytesIO(report_json.encode("utf-8")),
+        filename="printsense_phase3.json",
+    )
+    await context.bot.send_document(
+        chat_id=chat_id,
+        document=io.BytesIO(report_md.encode("utf-8")),
+        filename="printsense_phase3.md",
+    )
+
+
+# ── /printsense_grade_session — live session markers + truth-free grading ────
+_MARKER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS printsense_session_markers (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL,
+    kind    TEXT NOT NULL,
+    ts      REAL NOT NULL
+);
+"""
+
+
+def _marker_conn():
+    """Markers live in the SAME durable SQLite file as the photo queue, in a
+    testkit-owned table — surviving restarts exactly like the batches do."""
+    import sqlite3
+
+    import bot as _bot
+
+    conn = sqlite3.connect(_bot._PHOTO_QUEUE_DB_PATH, isolation_level=None)
+    conn.executescript(_MARKER_SCHEMA)
+    return conn
+
+
+async def printsense_grade_session_command(update, context) -> None:
+    """``/printsense_grade_session start|finish`` (admin): between the markers
+    the reviewer uses the bot NORMALLY (photos + captions). ``finish`` reads
+    the durable queue's completed batches for this chat in the window and
+    returns a truth-free deterministic report: per-batch latency, reply
+    presence, tags the answer asserted, unsupported state claims, honesty
+    markers, recommended missing pages. No frozen truth exists for live
+    photos, so violations are OBSERVATIONS for the reviewer — a judge may
+    explain, never clear."""
+    args = [a.lower() for a in (getattr(context, "args", None) or [])]
+    action = args[0] if args else ""
+    chat_id = str(update.effective_chat.id)
+    if action not in ("start", "finish"):
+        await update.message.reply_text("Usage: /printsense_grade_session start|finish")
+        return
+    conn = _marker_conn()
+    try:
+        if action == "start":
+            conn.execute(
+                "INSERT INTO printsense_session_markers (chat_id, kind, ts) VALUES (?,?,?)",
+                (chat_id, "start", time.time()),
+            )
+            await update.message.reply_text(
+                "Session recording started. Send prints + questions normally; "
+                "finish with /printsense_grade_session finish"
+            )
+            return
+        row = conn.execute(
+            "SELECT ts FROM printsense_session_markers WHERE chat_id=? AND kind='start' "
+            "ORDER BY ts DESC LIMIT 1",
+            (chat_id,),
+        ).fetchone()
+        if not row:
+            await update.message.reply_text(
+                "No open session — /printsense_grade_session start first."
+            )
+            return
+        start_ts = row[0]
+        conn.execute(
+            "INSERT INTO printsense_session_markers (chat_id, kind, ts) VALUES (?,?,?)",
+            (chat_id, "finish", time.time()),
+        )
+        batches = conn.execute(
+            "SELECT id, caption, photo_count, started_at, completed_at, reply_text, "
+            "error_message, status FROM photo_batches WHERE chat_id=? AND created_at>=? "
+            "ORDER BY created_at",
+            (chat_id, start_ts),
+        ).fetchall()
+        report = _session_report(batches)
+        violations = _grader.audit_artifact(report)
+        if violations:
+            await update.message.reply_text(
+                "Session report failed its privacy self-audit — not sent."
+            )
+            return
+        n_done = sum(1 for b in batches if b[7] == "done")
+        await update.message.reply_text(
+            f"Session graded: {len(batches)} batch(es), {n_done} completed. Report attached."
+        )
+        await context.bot.send_document(
+            chat_id=update.effective_chat.id,
+            document=io.BytesIO(report.encode("utf-8")),
+            filename="printsense_session.md",
+        )
+    finally:
+        conn.close()
+
+
+def _session_report(batches) -> str:
+    L = [
+        "# PrintSense live session — truth-free deterministic report",
+        "",
+        "No frozen truth exists for live photos: every line below is a",
+        "deterministic OBSERVATION for the reviewer (a judge may explain a",
+        "failure, never clear one).",
+        "",
+    ]
+    answers = []
+    for bid, caption, n, started, completed, reply, err, status in batches:
+        latency = round(completed - started, 1) if (started and completed) else None
+        L.append(f"## batch {bid} — {n} photo(s), status={status}, latency={latency}s")
+        L.append(f"- caption: {caption!r}")
+        if err:
+            L.append(f"- error: {err}")
+        if reply:
+            answers.append(reply)
+            tags = sorted(_grader.extract_prose_tags(reply))
+            L.append(f"- tags asserted: {', '.join(tags) or 'none'}")
+            m = _grader._STATE_CLAIM_RE.search(reply)
+            L.append(
+                "- unsupported state claim: " + (f"YES — {m.group(0)!r}" if m else "none detected")
+            )
+            low = reply.lower()
+            honesty = [
+                w
+                for w in ("not in view", "not visible", "unreadable", "cannot", "can't", "verify")
+                if w in low
+            ]
+            L.append(f"- honesty/verification language: {', '.join(honesty) or 'none detected'}")
+        else:
+            L.append("- reply: (none)")
+        L.append("")
+    from printsense.benchmarks import session_grader as _sg
+
+    refs = _sg.recommended_missing_pages(answers)
+    L.append(f"recommended missing pages (from answers): {', '.join(refs) or 'none'}")
+    L.append("")
     return "\n".join(L)
