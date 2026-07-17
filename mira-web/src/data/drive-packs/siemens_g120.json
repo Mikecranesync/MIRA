@@ -41,7 +41,7 @@
  "parameters": [
   {
    "parameter_id": "p0100",
-   "name": "IEC/NEMA motor standards",
+   "name": "IEC/NEMA mot stds",
    "purpose": "",
    "default": null,
    "range": null,
