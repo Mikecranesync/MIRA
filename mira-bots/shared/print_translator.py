@@ -28,6 +28,8 @@ existing vision classifier (`engine.vision`) and inference cascade
 
 from __future__ import annotations
 
+import re
+
 # no I/O, no DB, no network in this module — pure prompt/intent logic.
 
 # Print-explanation intent phrases (substring match on lowercased caption).
@@ -200,21 +202,79 @@ def is_theory_request(text: str) -> bool:
     return any(phrase in lowered for phrase in THEORY_INTENT_PHRASES)
 
 
+# ── messy-English question routing (owner direction, 2026-07-17) ─────────────
+# Technicians caption photos in normal, often terrible English — typos,
+# fragments, no punctuation, voice-to-text. The exact-phrase whitelist measured
+# 34% recall on a realistic messy-caption corpus
+# (printsense/benchmarks/messy_captions.py), silently sending two-thirds of
+# real questions to the generic engine. Routing is now SIGNAL logic:
+#
+#   route = QUESTION-signal AND (DOMAIN-signal OR DEICTIC-signal)
+#           OR "?" AND DOMAIN-signal
+#           OR TROUBLE-signal AND (DOMAIN-signal OR tag/pair)
+#           OR STRONG-DOMAIN alone ("normally open", a device tag, "X or Y"
+#              contact-state choice)
+#           OR any legacy PRINT_QUESTION_PHRASES hit (no regressions)
+#
+# Recall matters more than caption precision here: the ELECTRICAL_PRINT vision
+# classification (checked by the caller) is the real filter — a false-routed
+# caption on a non-print photo falls through unchanged. Negative controls
+# (small talk, scheduling, part requests) are pinned in the messy corpus.
+_Q_SIGNAL_RE = re.compile(
+    r"\b(what|whats|wat|why|where|were|how|which|when|explain|show me|trace|"
+    r"walk me|can (?:you|u)|could (?:you|u)|tell me|meaning|mean|help)\b"
+)
+_Q_LEAD_AUX_RE = re.compile(r"^(is|are|does|do|did|can|could|will|would|should)\b")
+_TROUBLE_RE = re.compile(
+    r"\b(wont|won't|not working|doesnt|doesn't|isnt|isn't|broken|stuck|"
+    r"tripped|faulted|no power|not energizing)\b"
+)
+_DEICTIC_RE = re.compile(r"\b(this|these|here|it)\b")
+_DOMAIN_RE = re.compile(
+    r"\b(print|schematic|diagram|drawing|circuit|wire|wiring|contact\w*|coil|"
+    r"terminal\w*|energiz\w*|sheet|page|photo|picture|relay|see|send)\b"
+)
+_TAG_RE = re.compile(r"(-?\d{1,3}/[a-z]\d{1,3}\b|\b[kqfsmxu]\d{1,3}\b)")
+_PAIR_RE = re.compile(r"\b\d{1,2}\s*[/\- ]\s*\d{1,2}\b")
+_STRONG_DOMAIN_RE = re.compile(
+    r"(normally\s+(open|closed)|\b(open|closed|no|nc)\s+or\s+(open|closed|no|nc)\b)"
+)
+# Equipment-identification questions ("what drive is this?") belong to the
+# nameplate -> drive-pack flow, not the print path — unless the caption ALSO
+# carries print context (a tag, a pair, a print-domain word), in which case it
+# is a print question about that equipment. Legacy phrases are checked before
+# this exclusion, so pre-existing routes ("what plc", "which plc") are untouched.
+_EQUIPMENT_ID_RE = re.compile(
+    r"\b(drive|vfd|plc|motor|nameplate|model|serial|part number|breaker|"
+    r"starter|overload|hmi|sensor)\b"
+)
+
+
 def is_print_question(text: str) -> bool:
     """True if the caption is any question/request about an electrical print.
 
-    Broader than ``is_theory_request``: also matches device/component inventory
-    ("what devices are listed in this print?"), wiring/tracing, and "what is
-    this <print/schematic/…>". This is what routes a print photo to the GROUNDED
-    interpreter instead of the free-form vision LLM. The ELECTRICAL_PRINT
-    classification (checked by the caller) is the real filter — this substring
-    match is a cheap pre-reject so the vision call is skipped for obviously
-    unrelated captions.
+    This is what routes a print photo to the GROUNDED interpreter instead of
+    the free-form vision LLM. Signal-based (see block comment above) so plain,
+    messy technician English routes — the ELECTRICAL_PRINT classification
+    (checked by the caller) remains the real is-it-a-print filter; this gate
+    only answers "is the tech asking something about the photo?".
     """
     if not text:
         return False
     lowered = text.lower()
-    return any(phrase in lowered for phrase in PRINT_QUESTION_PHRASES)
+    if any(phrase in lowered for phrase in PRINT_QUESTION_PHRASES):
+        return True  # legacy whitelist — everything that routed before still routes
+    domain = bool(_DOMAIN_RE.search(lowered) or _TAG_RE.search(lowered) or _PAIR_RE.search(lowered))
+    if _STRONG_DOMAIN_RE.search(lowered):
+        return True
+    if _EQUIPMENT_ID_RE.search(lowered) and not domain:
+        return False  # nameplate/drive-pack flow owns bare identification questions
+    question = bool(_Q_SIGNAL_RE.search(lowered) or _Q_LEAD_AUX_RE.search(lowered))
+    if question and (domain or _DEICTIC_RE.search(lowered)):
+        return True
+    if "?" in lowered and domain:
+        return True
+    return bool(_TROUBLE_RE.search(lowered) and domain)
 
 
 def _ocr_block(vision_data: dict) -> str:
