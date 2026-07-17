@@ -1,10 +1,18 @@
 # MIRA Release Notes
 
-### v3.153.2 (2026-07-17) - fix(printsense): route plain/terrible technician English to the print path (signal-based caption gate + messy corpus)
+### v3.153.3 (2026-07-17) - fix(printsense): route plain/terrible technician English to the print path (signal-based caption gate + messy corpus)
 
 - Owner direction: techs caption photos in normal, often terrible English — the exact-phrase caption gate measured **34% routing recall** on a realistic messy corpus ("wat does this do", "13/14 no or nc??", "k02 wont turn on" all silently fell to the generic engine). `is_print_question` is now signal logic (question/trouble/deictic/domain/tag/pair regexes; legacy phrase list retained as fallback) → **100% recall on the frozen corpus, 0 false-routes on negative controls**, equipment-identification captions ("what drive is this?") still yield to the nameplate→drive-pack flow unless print context is present.
 - New frozen lane: `printsense/benchmarks/messy_captions.py` (+`.sha256`) — 29 messy variants mapped to the Phase-2 cases + 4 negative controls, with a free deterministic `routing_report`. Pinned by `tests/printsense/test_messy_captions.py` (recall=1.0 floor, precision controls, nameplate no-steal, plausible-false-positive spot checks).
 - The ELECTRICAL_PRINT vision classification remains the real is-it-a-print filter; the gate only answers "is the tech asking about the photo?".
+
+### v3.153.2 (2026-07-17) - fix(drive-pack): correct multi-line fault-cell bleed in Magnetek dialect (action_x0 dominant-cluster)
+
+- **What:** Magnetek IMPULSE G+ Mini manual (pp.135-140) has fault rows where the Name/Description cell wraps across multiple lines; the wrap line sits past `action_x0` and previous parsing mis-binned it into the action column. Root cause: computing `action_x0` from the global minimum of step-number x-positions picked up stray "1."/"2." tokens in description cells (lower page y-positions), not the real action column's step numbers.
+- **Fix:** `magnetek_dialect._fault_columns()` now clusters step-number x-positions with a 5pt tolerance, picks the dominant cluster (the one with the most members), and uses that cluster's minimum to derive `action_x0`. The global min is no longer used. Stray description-embedded "1."/"2." at x=228.4 (2 members) are now outweighed by the real action steps at x=344 (33 members).
+- **Results (step 1):** Names for oH3/oH4/LL1/LL2 are now correct ("Motor Overheating 1/2", not the bled duplicates); actions for LL1/LL2/oH3/oL1 now correctly start with step "1." (not bled description text).
+- **Action inheritance (step 2):** oH4's action was initially empty (the source PDF has no action text in the right column for this row — it shares the action cell with oH3). Added shared-action propagation in `parse_magnetek_fault_page()`: when a group has no action and the previous group's name prefix matches (same first word), inherit the previous group's action. oH4 now correctly reads: "1. Check the motor rated current value, E02.01. 2. Increase cycle time or reduce the load." (inherited from oH3).
+- **Tests:** `test_magnetek_fault_bleed_audit.py` added with 3 functions, all passing. Baseline: 225 passed / 1 xfailed; after both fixes: 228 passed / 1 xfailed (0 failures). No regressions to other drives (GS10/PF40/PF525 pass their suites unchanged; Magnetek extractor changed only in `magnetek_dialect._fault_columns()` + `parse_magnetek_fault_page()`; full 77-entry/468-parameter manifest verified).
 
 ### v3.153.1 (2026-07-17) - fix(printsense): map OPENAI_API_KEY into the bot containers (completes the v3.153.0 provider swap)
 
