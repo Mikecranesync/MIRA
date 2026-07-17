@@ -311,12 +311,14 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - PRINTSENSE_COMMERCIAL_ROOT=${PRINTSENSE_COMMERCIAL_ROOT:-}
       - PRINTSENSE_REVIEWER_CHAT_IDS=${PRINTSENSE_REVIEWER_CHAT_IDS:-}
-      # ISOLATED Anthropic print-vision interpreter (PrintSense) — NOT part of the
-      # Groq->Cerebras->Together cascade below. The engine's print path calls it
-      # only when PRINT_VISION_PROVIDER=anthropic AND ANTHROPIC_API_KEY is set;
-      # otherwise it falls back to the No-Anthropic OCR cascade. Key in Doppler.
+      # ISOLATED paid print-vision interpreter (PrintSense) — NOT part of the
+      # Groq->Cerebras->Together cascade below. openai default since 2026-07-17
+      # (v3.153.0), anthropic retained behind the knob; the engine's print path
+      # calls it only when the active provider's key is set — otherwise it falls
+      # back to the free OCR cascade. Keys in Doppler (prd: human-only).
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-anthropic}
+      - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-openai}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}

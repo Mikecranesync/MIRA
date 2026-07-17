@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.153.1 (2026-07-17) - fix(printsense): map OPENAI_API_KEY into the bot containers (completes the v3.153.0 provider swap)
+
+- docker-compose.staging-vps.yml + docker-compose.saas.yml: the telegram bot's enumerated env block mapped ANTHROPIC_API_KEY but never OPENAI_API_KEY, so the swapped interpreter deployed `configured: False` on staging (caught by in-container verify). Added the mapping, flipped the compose-side PRINT_VISION_PROVIDER default to openai, refreshed the stale comments. Prod-inert until prd Doppler carries OPENAI_API_KEY (human-only).
+
 ### v3.153.0 (2026-07-17) - feat(printsense): OpenAI as the paid print-vision provider (owner swap; Anthropic retained behind the knob)
 
 - Mike funded OpenAI credits instead of Anthropic (2026-07-16): the ISOLATED paid print-interpreter seam (`printsense/interpret.py`) now defaults to `PRINT_VISION_PROVIDER=openai`, model `gpt-5.5` (latest dated mainline; `gpt-5.5-pro` is an explicit-choice knob, never a silent default). Anthropic path retained verbatim behind the provider knob.
