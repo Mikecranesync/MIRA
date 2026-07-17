@@ -6,7 +6,7 @@ PyYAML==6.0.3
 langfuse>=2.50.0,<3.0.0
 sqlalchemy>=2.0.50
 psycopg2-binary>=2.9.12
-deepeval>=4.0.5
+deepeval>=4.1.1
 praw>=7.8.1
 youtube-transcript-api>=1.2.4
 # PrintSense print interpreter (ISOLATED paid print-vision path only — NOT the
