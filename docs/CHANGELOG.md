@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.154.3 (2026-07-17) - fix(printsense): map PRINT_VISION_EFFORT/MODEL into the bot containers (completes v3.154.2)
+
+- Post-deploy in-container verify caught it (same class as the v3.153.1 key gap): the enumerated compose env blocks never passed `PRINT_VISION_EFFORT`, so the bench-decided stg `medium` sat in Doppler while the container ran the `xhigh` code default. Both compose files now map `PRINT_VISION_EFFORT` (default `xhigh` preserved) and `PRINT_VISION_MODEL` (empty = per-provider default).
+
 ### v3.154.2 (2026-07-17) - fix(printsense): interpreter latency — medium effort on staging (bench-decided) + honest ack copy
 
 - Effort-ladder evidence (8-case phase-2 live bench, real rung, gpt-5.5): **high** = 6-8/8 floating, max 141-294s; **medium** = **8/8 twice, max ~94s**; **low** = 7/8 with an `unsupported_state_claim` honesty failure (disqualified). Prior case-study lane (§9, #2704 era) independently passed medium vs xhigh. Staging now runs `PRINT_VISION_EFFORT=medium` (Doppler stg; env wins, instantly reversible). Code default unchanged — prod effort stays an explicit owner choice per the never-silently-downgrade doctrine.

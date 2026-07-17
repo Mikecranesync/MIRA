@@ -319,6 +319,9 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-openai}
+      # Interpreter tuning knobs (bench-decided; stg runs medium — see v3.154.2).
+      - PRINT_VISION_EFFORT=${PRINT_VISION_EFFORT:-xhigh}
+      - PRINT_VISION_MODEL=${PRINT_VISION_MODEL:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
