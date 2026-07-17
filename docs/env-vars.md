@@ -21,6 +21,8 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `OPENAI_API_KEY` | **Print-vision ONLY** (owner-authorized, isolated) — the PrintSense electrical-print interpreter (`printsense/interpret.py`) default provider since v3.153.0 (gpt-5.5, Responses API). **NOT** in the Groq→Cerebras→Together cascade. Inert unless `PRINT_VISION_PROVIDER=openai`. |
 | `ANTHROPIC_API_KEY` | **Print-vision ONLY** (owner-authorized, isolated) — the retained Claude path of the PrintSense interpreter. **NOT** in the cascade, which stays No-Anthropic per PR #610. Inert unless `PRINT_VISION_PROVIDER=anthropic`. |
 | `PRINT_VISION_PROVIDER` | mira-bot-telegram — selects the electrical-print interpreter: `openai` (default since v3.153.0; needs `OPENAI_API_KEY`) or `anthropic` (needs `ANTHROPIC_API_KEY`); anything else = the free OCR cascade. Optional tuning read by `printsense/interpret.py`: PRINT_VISION_MODEL (default gpt-5.5 / claude-opus-4-8 per provider), PRINT_VISION_EFFORT, PRINT_VISION_MAX_TOKENS. |
+| `PRINT_VISION_EFFORT` | mira-bot-telegram — interpreter reasoning effort. Code default `xhigh` (mapped to OpenAI `high`); **stg runs `medium`** (bench-decided v3.154.2: 8/8 twice at ~94s vs high's floating 6-8/8 at 141-294s). Prod = explicit owner choice. |
+| `PRINT_VISION_MODEL` | mira-bot-telegram — interpreter model override; empty = per-provider default (`gpt-5.5` / `claude-opus-4-8`). `gpt-5.5-pro` is the slower/pricier explicit knob. |
 | ~~`CLAUDE_MODEL`~~      | **REMOVED PR #610** — see above |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |
 | `PIPELINE_API_KEY`   | mira-pipeline (bearer auth), mira-core (OPENAI_API_KEYS) |
