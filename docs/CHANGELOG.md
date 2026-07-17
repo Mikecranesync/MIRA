@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.155.0 (2026-07-17) - feat(printsense): Phase 4 — image-robustness matrix, /printsense_test phase4, /printsense_compare (testing program Phase 4)
+
+- `robustness_transforms.py`: 16 deterministic transforms (byte-identical reruns), rotation family (90/180/270) kept separate from quality family (skew, perspective, blur, glare, shadow, uneven light, lowres, jpeg q20, phone-screen, partial crop, obstructed, handwritten, missing title block).
+- `robustness_grader.py` (+frozen `robustness_cases.sha256`): metamorphic verdicts — full / degraded_honest / hard_fail; NEVER rules (invented tags, state claims, asserted wrong verdicts) are the only failures (unsupported-claim threshold = 0); crop converts removed-region facts to unresolved; better-image requests count as honest degradation.
+- Testkit `run_phase4` (Lane R = free classification robustness over ALL conditions; Lane A = bounded answer lane through the real rung with honest provider attribution incl. quota fallback) + `/printsense_test phase4` matrix + `/printsense_compare` (original-vs-degraded pair diff from the chat's last 2-photo batch: tags lost / NEWLY CLAIMED, state claims, better-image requests).
+- Evidence: 505 printsense + 46 bot tests green; LIVE Lane R (free scout): **16/16 conditions still classify ELECTRICAL_PRINT — rotation 3/3, quality 13/13** → per spec, no OSD/rotation fallback implementation warranted on routing. Paid Lane A matrix runs when OpenAI credits return (currently 429 → clean cascade fallback).
+
 ### v3.154.3 (2026-07-17) - fix(printsense): map PRINT_VISION_EFFORT/MODEL into the bot containers (completes v3.154.2)
 
 - Post-deploy in-container verify caught it (same class as the v3.153.1 key gap): the enumerated compose env blocks never passed `PRINT_VISION_EFFORT`, so the bench-decided stg `medium` sat in Doppler while the container ran the `xhigh` code default. Both compose files now map `PRINT_VISION_EFFORT` (default `xhigh` preserved) and `PRINT_VISION_MODEL` (empty = per-provider default).
