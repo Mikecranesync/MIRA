@@ -1,17 +1,20 @@
-"""PrintSense interpretation — Anthropic Claude (multimodal) -> PrintSynth graph.
+"""PrintSense interpretation — paid multimodal model -> PrintSynth graph.
 
-This is the "multimodal Claude interpretation -> strict typed JSON" stage of the
-production pipeline. Claude reads the print image(s)/PDF and returns a
-``PrintSynthGraph``; MIRA owns validation, evidence, persistence, and approval.
+This is the "frontier multimodal interpretation -> strict typed JSON" stage of
+the production pipeline. The paid vision model reads the print image(s)/PDF and
+returns a ``PrintSynthGraph``; MIRA owns validation, evidence, persistence, and
+approval.
 
-⚠️ **ISOLATED, owner-authorized Anthropic reintroduction (print-vision ONLY).**
-Mike explicitly overrode the repo's No-Anthropic rule for the print interpreter
-(2026-07-12). This module is the *only* place Anthropic is called. It is **NOT**
-wired into ``mira-bots/shared/inference`` — the Groq -> Cerebras -> Together
-free-tier cascade stays No-Anthropic. Gated on
-``PRINT_VISION_PROVIDER=anthropic`` + ``ANTHROPIC_API_KEY`` (Doppler); inert
-without the key. The ``anthropic`` SDK (MIT) is imported lazily, so this module
-imports without it and tests mock the client.
+⚠️ **ISOLATED, owner-authorized PAID print-vision seam (print-vision ONLY).**
+Mike explicitly authorized a paid frontier-model exception for the print
+interpreter (Anthropic 2026-07-12; provider swapped to **OpenAI** 2026-07-16
+when Mike funded OpenAI credits instead). This module is the *only* place a
+paid frontier vision provider is called. It is **NOT** wired into
+``mira-bots/shared/inference`` — the Groq -> Cerebras -> Together free-tier
+cascade stays No-Anthropic/No-OpenAI. Gated on ``PRINT_VISION_PROVIDER``
+(``openai`` default | ``anthropic``) + that provider's key in Doppler; inert
+without the key. Both SDKs (Apache-2.0 / MIT) are imported lazily, so this
+module imports without them and tests mock the client.
 """
 
 from __future__ import annotations
@@ -25,10 +28,14 @@ from .models import PrintSynthGraph
 
 logger = logging.getLogger("printsense.interpret")
 
-# Owner decision (2026-07-12): default to the latest, most-capable Claude model
-# for print perception. Configurable, never silently downgraded for cost.
-DEFAULT_MODEL = os.getenv("PRINT_VISION_MODEL", "claude-opus-4-8")
-PROVIDER = os.getenv("PRINT_VISION_PROVIDER", "anthropic")
+PROVIDER = os.getenv("PRINT_VISION_PROVIDER", "openai")
+_PROVIDER_KEYS = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
+# Owner doctrine (2026-07-12, reaffirmed 2026-07-16): default to the latest,
+# most-capable mainline model for print perception. Configurable, never
+# silently downgraded for cost. (gpt-5.5-pro exists as a slower/pricier tier —
+# an explicit PRINT_VISION_MODEL choice, never a silent default.)
+_DEFAULT_MODELS = {"anthropic": "claude-opus-4-8", "openai": "gpt-5.5"}
+DEFAULT_MODEL = os.getenv("PRINT_VISION_MODEL") or _DEFAULT_MODELS.get(PROVIDER, "gpt-5.5")
 MAX_TOKENS = int(os.getenv("PRINT_VISION_MAX_TOKENS", "32000"))
 # xhigh is the best effort for reading-accuracy / self-verifying vision work on
 # Opus 4.8 (roadmap Phase 0.4); high was leaving perception on the table.
@@ -94,15 +101,37 @@ _SYSTEM = (
 
 
 class PrintVisionUnavailable(RuntimeError):
-    """The Anthropic print-vision provider is not configured (flag/key/SDK missing)."""
+    """The paid print-vision provider is not configured (flag/key/SDK missing)."""
+
+
+def is_configured() -> bool:
+    """Single source of truth for "may the paid print-vision path run?".
+
+    True when ``PRINT_VISION_PROVIDER`` names a supported provider AND that
+    provider's API key is present. bot/engine gate on this — never re-derive
+    the provider/key pairing at a call site.
+    """
+    key_var = _PROVIDER_KEYS.get(PROVIDER)
+    return bool(key_var and os.getenv(key_var))
 
 
 def _client():
-    """Build the isolated Anthropic client, or raise PrintVisionUnavailable."""
-    if PROVIDER != "anthropic":
-        raise PrintVisionUnavailable(f"PRINT_VISION_PROVIDER={PROVIDER!r} is not 'anthropic'")
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        raise PrintVisionUnavailable("ANTHROPIC_API_KEY is not set (add it to Doppler)")
+    """Build the isolated paid-vision client, or raise PrintVisionUnavailable."""
+    key_var = _PROVIDER_KEYS.get(PROVIDER)
+    if key_var is None:
+        raise PrintVisionUnavailable(
+            f"PRINT_VISION_PROVIDER={PROVIDER!r} is not a supported print-vision "
+            "provider ('openai' or 'anthropic')"
+        )
+    if not os.getenv(key_var):
+        raise PrintVisionUnavailable(f"{key_var} is not set (add it to Doppler)")
+    if PROVIDER == "openai":
+        try:
+            import openai  # noqa: PLC0415 — lazy Apache-2.0 SDK, isolated to this path
+        except ImportError as exc:  # pragma: no cover
+            raise PrintVisionUnavailable("the `openai` SDK is not installed") from exc
+        # Long-poll headroom: a full package graph can take minutes to generate.
+        return openai.OpenAI(timeout=900.0, max_retries=2)
     try:
         import anthropic  # noqa: PLC0415 — lazy MIT SDK, isolated to this path
     except ImportError as exc:  # pragma: no cover
@@ -138,6 +167,62 @@ def _first_text(message) -> str:
         if getattr(block, "type", None) == "text":
             return block.text
     raise ValueError("no text block in the Anthropic response")
+
+
+def _openai_effort(effort: str) -> str:
+    """Map the configured effort onto OpenAI's reasoning-effort scale."""
+    if effort in {"minimal", "low", "medium", "high"}:
+        return effort
+    return {"none": "minimal"}.get(effort, "high")  # xhigh/max/unknown -> high
+
+
+def _openai_blocks(pages: list[tuple[bytes, str]]) -> list[dict]:
+    blocks: list[dict] = []
+    for data, media_type in pages:
+        b64 = base64.standard_b64encode(data).decode("ascii")
+        if media_type == "application/pdf":
+            blocks.append(
+                {
+                    "type": "input_file",
+                    "filename": "print.pdf",
+                    "file_data": f"data:application/pdf;base64,{b64}",
+                }
+            )
+        else:
+            # detail=high: character-level tag reading is the whole job here.
+            blocks.append(
+                {
+                    "type": "input_image",
+                    "detail": "high",
+                    "image_url": f"data:{media_type};base64,{b64}",
+                }
+            )
+    return blocks
+
+
+def _openai_generate(client, model: str, pages: list[tuple[bytes, str]], prompt: str) -> str:
+    """One Responses-API call -> raw text. Reasoning only on models that take it."""
+    content = _openai_blocks(pages) + [{"type": "input_text", "text": prompt}]
+    kwargs: dict = {
+        "model": model,
+        "max_output_tokens": MAX_TOKENS,
+        "instructions": _SYSTEM,
+        "input": [{"role": "user", "content": content}],
+    }
+    if model.startswith(("gpt-5", "o3", "o4")):
+        kwargs["reasoning"] = {"effort": _openai_effort(EFFORT)}
+    response = client.responses.create(**kwargs)
+    text = getattr(response, "output_text", "") or ""
+    if not text:
+        raise ValueError("no output text in the OpenAI response")
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        logger.info(
+            "PRINT_OPENAI_USAGE input=%s output=%s",
+            getattr(usage, "input_tokens", None),
+            getattr(usage, "output_tokens", None),
+        )
+    return text
 
 
 def _strip_fences(raw: str) -> str:
@@ -188,27 +273,38 @@ def interpret_print(
     is sent (roadmap Phase 0.1/0.2); it is defensive, so bad bytes pass through.
     Every entity comes back ``trust="proposed"`` (or ``unresolved`` if the
     confidence gate demoted it). Raises :class:`PrintVisionUnavailable` when the
-    provider isn't configured; Anthropic API errors propagate (the SDK auto-retries
-    429/5xx).
+    provider isn't configured; provider API errors propagate (both SDKs
+    auto-retry 429/5xx).
     """
     client = _client()
     if preprocess:
         from . import preprocess as _pp  # noqa: PLC0415 -- lazy: Pillow/Tesseract optional
 
         pages = [_pp.prepare_print_image(data, mt) for data, mt in pages]
-    content: list[dict] = [_source_block(data, mt) for data, mt in pages]
-    content.append({"type": "text", "text": _user_prompt(package_context, question)})
-    # Adaptive thinking + xhigh effort for the hard perception task; stream because
-    # a full package graph can exceed the non-streaming max_tokens timeout guard.
-    with client.messages.stream(
-        model=model,
-        max_tokens=MAX_TOKENS,
-        system=_SYSTEM,
-        thinking={"type": "adaptive"},
-        output_config={"effort": EFFORT},
-        messages=[{"role": "user", "content": content}],
-    ) as stream:
-        message = stream.get_final_message()
-    data = json.loads(_strip_fences(_first_text(message)))
-    logger.info("PRINT_INTERPRETED model=%s devices=%d", model, len(data.get("devices") or []))
+    prompt = _user_prompt(package_context, question)
+    if PROVIDER == "openai":
+        raw = _openai_generate(client, model, pages, prompt)
+    else:
+        content: list[dict] = [_source_block(data, mt) for data, mt in pages]
+        content.append({"type": "text", "text": prompt})
+        # Adaptive thinking + xhigh effort for the hard perception task; stream
+        # because a full package graph can exceed the non-streaming max_tokens
+        # timeout guard.
+        with client.messages.stream(
+            model=model,
+            max_tokens=MAX_TOKENS,
+            system=_SYSTEM,
+            thinking={"type": "adaptive"},
+            output_config={"effort": EFFORT},
+            messages=[{"role": "user", "content": content}],
+        ) as stream:
+            message = stream.get_final_message()
+        raw = _first_text(message)
+    data = json.loads(_strip_fences(raw))
+    logger.info(
+        "PRINT_INTERPRETED provider=%s model=%s devices=%d",
+        PROVIDER,
+        model,
+        len(data.get("devices") or []),
+    )
     return _apply_confidence_gate(PrintSynthGraph.model_validate(data))

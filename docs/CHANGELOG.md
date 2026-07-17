@@ -1,5 +1,14 @@
 # MIRA Release Notes
 
+### v3.153.0 (2026-07-17) - feat(printsense): OpenAI as the paid print-vision provider (owner swap; Anthropic retained behind the knob)
+
+- Mike funded OpenAI credits instead of Anthropic (2026-07-16): the ISOLATED paid print-interpreter seam (`printsense/interpret.py`) now defaults to `PRINT_VISION_PROVIDER=openai`, model `gpt-5.5` (latest dated mainline; `gpt-5.5-pro` is an explicit-choice knob, never a silent default). Anthropic path retained verbatim behind the provider knob.
+- OpenAI call path: Responses API — `input_image` (detail=high) / `input_file` (PDF) blocks, system prompt as `instructions`, reasoning effort mapped (xhigh→high), 900s client timeout, usage logged. Same JSON-only contract, fence-stripping, confidence gate, and `trust=proposed` discipline as the Claude path.
+- `interpret.is_configured()` is the new single source of truth; `engine._interpret_print_anthropic_pages` gate and `bot._print_interpreter_configured()` both delegate to it (names keep their historical suffix; docstrings updated).
+- Provider doctrine intact: this seam is still the ONLY paid-model call site — the Groq→Cerebras→Together free cascade is untouched; capability registry gains `openai/gpt-5.5` as `untested` (fail-closed; qualification = signed provider_qualification probe run).
+- `openai>=1.66.0` (Apache-2.0) added to the telegram image requirements (lazy-imported, inert without the key).
+- Live proof: gpt-5.5 interpreted a phase-2 synthetic print in 54s → valid PrintSynthGraph, `-91/K01` read at 0.96 confidence.
+
 ### v3.152.1 (2026-07-17) - fix(printsense): assertion-aware classification+grading — negation guard, verdict assertions, prompt duties, print-like renders
 
 - vision_worker: negated prose mentions ("does not appear to be an electrical drawing") no longer count as classification signals — `_kw_affirmed` guards all vision-prose keyword lanes (live finding: a plain gray photo classified ELECTRICAL_PRINT 0.75 off a denial and the print path claimed it). OCR label lanes unchanged.

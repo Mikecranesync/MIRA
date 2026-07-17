@@ -12,23 +12,78 @@
   },
   "providers": {
     "groq/meta-llama/llama-4-scout-17b-16e-instruct": {
-      "device_inventory": {"status": "disqualified", "evidence": "2026-07-16 bake-off probe: complete-truth rack sheet recall 0.00", "date": "2026-07-16"},
-      "schema_reliability": {"status": "qualified", "evidence": "2026-07-16: 26/26 full-package + 3/3 probe schema-valid", "date": "2026-07-16"},
-      "cross_reference_extraction": {"status": "disqualified", "evidence": "2026-07-16: zero xrefs emitted, all probes + full package", "date": "2026-07-16"},
-      "system_reconstruction": {"status": "disqualified", "evidence": "2026-07-16 B7: xref-fed lanes 0.000", "date": "2026-07-16"}
+      "device_inventory": {
+        "status": "disqualified",
+        "evidence": "2026-07-16 bake-off probe: complete-truth rack sheet recall 0.00",
+        "date": "2026-07-16"
+      },
+      "schema_reliability": {
+        "status": "qualified",
+        "evidence": "2026-07-16: 26/26 full-package + 3/3 probe schema-valid",
+        "date": "2026-07-16"
+      },
+      "cross_reference_extraction": {
+        "status": "disqualified",
+        "evidence": "2026-07-16: zero xrefs emitted, all probes + full package",
+        "date": "2026-07-16"
+      },
+      "system_reconstruction": {
+        "status": "disqualified",
+        "evidence": "2026-07-16 B7: xref-fed lanes 0.000",
+        "date": "2026-07-16"
+      }
     },
     "gemini/gemini-2.5-flash": {
-      "device_inventory": {"status": "qualified", "evidence": "2026-07-16 bake-off: complete-truth rack sheet 1.00/1.00, repeatable x3", "date": "2026-07-16"},
-      "schema_reliability": {"status": "qualified", "evidence": "2026-07-16: 5/5 schema-valid with reasoning_effort=low + json_object", "date": "2026-07-16"},
-      "cross_reference_extraction": {"status": "disqualified", "evidence": "2026-07-16: zero xrefs at every thinking level incl. 40k-budget diagnostic", "date": "2026-07-16"},
-      "system_reconstruction": {"status": "disqualified", "evidence": "2026-07-16: gated out at probe (no xref emission)", "date": "2026-07-16"}
+      "device_inventory": {
+        "status": "qualified",
+        "evidence": "2026-07-16 bake-off: complete-truth rack sheet 1.00/1.00, repeatable x3",
+        "date": "2026-07-16"
+      },
+      "schema_reliability": {
+        "status": "qualified",
+        "evidence": "2026-07-16: 5/5 schema-valid with reasoning_effort=low + json_object",
+        "date": "2026-07-16"
+      },
+      "cross_reference_extraction": {
+        "status": "disqualified",
+        "evidence": "2026-07-16: zero xrefs at every thinking level incl. 40k-budget diagnostic",
+        "date": "2026-07-16"
+      },
+      "system_reconstruction": {
+        "status": "disqualified",
+        "evidence": "2026-07-16: gated out at probe (no xref emission)",
+        "date": "2026-07-16"
+      }
     },
     "anthropic/claude-opus": {
-      "device_inventory": {"status": "untested"},
-      "schema_reliability": {"status": "untested"},
-      "cross_reference_extraction": {"status": "untested"},
-      "system_reconstruction": {"status": "untested"},
+      "device_inventory": {
+        "status": "untested"
+      },
+      "schema_reliability": {
+        "status": "untested"
+      },
+      "cross_reference_extraction": {
+        "status": "untested"
+      },
+      "system_reconstruction": {
+        "status": "untested"
+      },
       "_note": "historical per-page A-band reference exists; formal qualification requires the 3-probe harness run once the lane is available again"
+    },
+    "openai/gpt-5.5": {
+      "device_inventory": {
+        "status": "untested"
+      },
+      "schema_reliability": {
+        "status": "untested"
+      },
+      "cross_reference_extraction": {
+        "status": "untested"
+      },
+      "system_reconstruction": {
+        "status": "untested"
+      },
+      "_note": "interpreter default provider since 2026-07-16 (Mike funded OpenAI instead of Anthropic); formal qualification = the 3-probe provider_qualification harness, operator-signed"
     }
   }
 }
