@@ -440,6 +440,9 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-openai}
+      # Interpreter tuning knobs (bench-decided; stg runs medium — see v3.154.2).
+      - PRINT_VISION_EFFORT=${PRINT_VISION_EFFORT:-xhigh}
+      - PRINT_VISION_MODEL=${PRINT_VISION_MODEL:-}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions
