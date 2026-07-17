@@ -75,11 +75,18 @@ _ENUM_LINE_RE = re.compile(r"^(?P<value>[0-9A-Fa-f]{1,2}):\s+(?P<meaning>.+?)(?:
 # Confusable print glyphs (documented in MAGNETEK_DIALECT.md §3). Detection
 # only — the identifier string itself is never altered.
 _CONFUSABLE = {
-    "o": "O0", "O": "o0", "0": "oO",
-    "l": "I1", "I": "l1", "1": "lI",
-    "v": "V", "V": "v",
-    "b": "B", "B": "b",
-    "r": "R", "R": "r",
+    "o": "O0",
+    "O": "o0",
+    "0": "oO",
+    "l": "I1",
+    "I": "l1",
+    "1": "lI",
+    "v": "V",
+    "V": "v",
+    "b": "B",
+    "B": "b",
+    "r": "R",
+    "R": "r",
 }
 
 _WIDE_RECT_MIN_WIDTH = 400.0  # full-width row separators measure ~504pt
@@ -161,6 +168,7 @@ def _fault_columns(body: list[Word]) -> tuple[float, float] | None:
     intervals = _occupied_intervals(body)
     if len(intervals) < 2:
         return None
+
     # The description column is the interval holding the MOST words — the
     # narrow code column can itself split into sub-intervals (the "CPF18 and"
     # conjunction words sit 4pt right of the code tokens on the real manual),
@@ -170,13 +178,34 @@ def _fault_columns(body: list[Word]) -> tuple[float, float] | None:
         return sum(1 for w in body if a - 0.5 <= w["x0"] <= b + 0.5)
 
     step_nums = [w["x0"] for w in body if _STEP_NUM_RE.fullmatch(w["text"])]
-    candidates = [iv for iv in intervals if not step_nums or iv[0] < min(step_nums) - 1.0]
+
+    # Compute action_x0 from the DOMINANT step-number cluster, not the global min.
+    # Stray "1."/"2." tokens in description cells lower on the page can be the global
+    # minimum but not the real action column. Cluster with tolerance, pick the cluster
+    # with the most members, use that cluster's min.
+    if step_nums:
+        step_nums_sorted = sorted(step_nums)
+        clusters = []
+        current_cluster = [step_nums_sorted[0]]
+        for x in step_nums_sorted[1:]:
+            if x - current_cluster[-1] <= 5.0:  # tolerance: 5pt
+                current_cluster.append(x)
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [x]
+        clusters.append(current_cluster)
+        dominant_cluster = max(clusters, key=len)
+        action_x0_base = min(dominant_cluster)
+    else:
+        action_x0_base = None
+
+    candidates = [iv for iv in intervals if action_x0_base is None or iv[0] < action_x0_base - 1.0]
     if not candidates:
         return None
     desc_interval = max(candidates[1:] or candidates, key=_word_count)
     desc_x0 = desc_interval[0] - _COL_MARGIN
-    if step_nums:
-        action_x0 = min(step_nums) - _COL_MARGIN
+    if action_x0_base is not None:
+        action_x0 = action_x0_base - _COL_MARGIN
     elif len(intervals) >= 3:
         action_x0 = intervals[-1][0] - _COL_MARGIN
     else:
@@ -272,9 +301,7 @@ def parse_magnetek_fault_page(page) -> list[dict[str, Any]]:
                 i += 1
                 joined = joined.rstrip() + " " + _line_text(left_lines[i])
             if pending_and is not None and not span_groups:
-                merged = _split_codes(
-                    pending_and["and_text"].rstrip() + " " + joined
-                )
+                merged = _split_codes(pending_and["and_text"].rstrip() + " " + joined)
                 if merged:
                     pending_and["codes"] = merged
                     pending_and.pop("and_text", None)
@@ -328,19 +355,36 @@ def parse_magnetek_fault_page(page) -> list[dict[str, Any]]:
             line_top = line[0]["top"]
             tgt = min(
                 targets,
-                key=lambda g: abs(g["top"] - line_top)
-                + (0.0 if line_top >= g["top"] - _LINE_TOL else 1000.0),
+                key=lambda g: (
+                    abs(g["top"] - line_top) + (0.0 if line_top >= g["top"] - _LINE_TOL else 1000.0)
+                ),
             )
             tgt["desc"].append(_line_text(line))
         for line in right_lines:
             line_top = line[0]["top"]
             tgt = min(
                 targets,
-                key=lambda g: abs(g["top"] - line_top)
-                + (0.0 if line_top >= g["top"] - _LINE_TOL else 1000.0),
+                key=lambda g: (
+                    abs(g["top"] - line_top) + (0.0 if line_top >= g["top"] - _LINE_TOL else 1000.0)
+                ),
             )
             tgt["action"].append(_line_text(line))
         groups.extend(span_groups)
+
+    # Propagate shared actions: when a group has no action text, inherit from the
+    # previous group if they share the same name (indicating a multi-row fault entry
+    # with a shared action cell, e.g., oH3 and oH4 "Motor Overheating 1/2").
+    for i, group in enumerate(groups):
+        if not group.get("action") and i > 0:
+            prev_group = groups[i - 1]
+            prev_desc = " ".join(prev_group["desc"]).strip()
+            prev_name = prev_desc.split(". ")[0].rstrip(".").strip() if prev_desc else ""
+            curr_desc = " ".join(group["desc"]).strip()
+            curr_name = curr_desc.split(". ")[0].rstrip(".").strip() if curr_desc else ""
+            # If the name prefix matches (e.g., "Motor Overheating" in both oH3 and oH4),
+            # inherit the previous group's action.
+            if prev_name and curr_name and prev_name.split()[0] == curr_name.split()[0]:
+                group["action"] = prev_group["action"][:]
 
     entries: list[dict[str, Any]] = []
     for group in groups:
@@ -397,9 +441,7 @@ def _param_header(words: list[Word]) -> tuple[float, dict[str, float]] | None:
         if not ({"Parameter", "Default", "Range", "Units", "Page"}.issubset(labels)):
             continue
         anchors = {
-            label.lower(): min(
-                (w["x0"] + w["x1"]) / 2.0 for w in header if w["text"] == label
-            )
+            label.lower(): min((w["x0"] + w["x1"]) / 2.0 for w in header if w["text"] == label)
             for label in ("Default", "Range", "Units", "Page")
         }
         return header_top, anchors
@@ -477,9 +519,7 @@ def parse_magnetek_param_page(page) -> list[dict[str, Any]]:
             # The trailing manual-page column may legitimately be a dash
             # (L03.20/N02.04/T01.05 in the real manual) — accept it as "no
             # cross-reference"; the citation page is the PDF page regardless.
-            if not name or not (
-                re.fullmatch(r"\d{1,3}", page_ref) or page_ref in ("-", "–", "")
-            ):
+            if not name or not (re.fullmatch(r"\d{1,3}", page_ref) or page_ref in ("-", "–", "")):
                 logger.info(
                     "magnetek-dialect: skipping malformed parameter row on p%s: %r",
                     page.page_number,
