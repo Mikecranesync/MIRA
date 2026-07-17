@@ -948,14 +948,18 @@ class Supervisor:
         question: str | None,
         vision_data: dict,
     ) -> str:
-        """ISOLATED Anthropic PrintSynth interpretation -> rendered Telegram reply.
+        """ISOLATED paid PrintSynth interpretation -> rendered Telegram reply.
 
-        Returns "" (caller falls back to the No-Anthropic cascade) when the
-        provider isn't configured: no ``printsense`` package in this image, no
-        ``ANTHROPIC_API_KEY``, ``PRINT_VISION_PROVIDER`` != anthropic, or the call
-        fails. Anthropic is confined to this method — the general cascade never
-        touches it. The blocking streamed call runs in a worker thread so the bot
-        event loop stays free during the ~30-60 s interpretation.
+        (Method name keeps its historical ``_anthropic`` suffix — it is the paid
+        print-vision seam; the provider is ``PRINT_VISION_PROVIDER``, OpenAI by
+        default since 2026-07-16, Anthropic retained behind the knob.)
+
+        Returns "" (caller falls back to the free cascade) when the provider
+        isn't configured: no ``printsense`` package in this image, provider/key
+        not set (``interpret.is_configured()``), or the call fails. The paid
+        provider is confined to this seam — the general cascade never touches
+        it. The blocking call runs in a worker thread so the bot event loop
+        stays free during the ~30-60 s interpretation.
         """
         pkg_ctx = {"drawing_type": (vision_data or {}).get("drawing_type")}
         return await self._interpret_print_anthropic_pages(
@@ -971,19 +975,19 @@ class Supervisor:
         question: str | None,
         package_context: dict | None = None,
     ) -> str:
-        """ISOLATED Anthropic PrintSynth interpretation for a print package.
+        """ISOLATED paid PrintSynth interpretation for a print package.
 
         The Telegram album path uses this to send multiple print photos as one
         ``interpret_print(pages=[...])`` package so cross-page references stay
         in the same typed graph. Returns "" when unavailable or failed so callers
-        can fall back to the no-Anthropic vision path.
+        can fall back to the free-cascade vision path.
         """
         try:
             from printsense import interpret, render
         except ImportError:
             return ""  # framework not shipped in this image -> cascade
-        if interpret.PROVIDER != "anthropic" or not os.getenv("ANTHROPIC_API_KEY"):
-            return ""  # inert without the flag + key
+        if not interpret.is_configured():
+            return ""  # inert without the provider flag + its key
         import base64
 
         pages: list[tuple[bytes, str]] = []

@@ -961,14 +961,17 @@ async def _try_wiring_intake_reply(
 # never persists anything — it reads the vision classification + OCR, calls
 # the inference cascade, and replies.
 def _print_interpreter_configured() -> bool:
-    """True when the isolated Anthropic PrintSynth interpreter is active
-    (``PRINT_VISION_PROVIDER=anthropic`` + ``ANTHROPIC_API_KEY``). Used only to
-    decide whether to ack the ~30-60 s interpretation; the engine re-checks
-    before calling Anthropic and falls back to the cascade when it's off.
+    """True when the isolated paid PrintSynth interpreter is active
+    (``PRINT_VISION_PROVIDER`` + that provider's key — ``interpret.is_configured()``
+    is the single source of truth). Used only to decide whether to ack the
+    ~30-60 s interpretation; the engine re-checks before calling the paid
+    provider and falls back to the cascade when it's off.
     """
-    return os.getenv("PRINT_VISION_PROVIDER", "anthropic") == "anthropic" and bool(
-        os.getenv("ANTHROPIC_API_KEY")
-    )
+    try:
+        from printsense import interpret  # noqa: PLC0415 — lazy, image may not ship it
+    except ImportError:
+        return False
+    return interpret.is_configured()
 
 
 async def _try_print_translator_reply(
