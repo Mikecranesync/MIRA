@@ -160,6 +160,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          # Latency: cache the 4 requirement sets (cold pip install was ~1-2
+          # min of every Unit Tests run).
+          cache: "pip"
+          cache-dependency-path: |
+            mira-core/mira-ingest/requirements.txt
+            mira-bots/telegram/requirements.txt
+            mira-bots/teams/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -447,7 +454,9 @@ jobs:
   test-eval-offline:
     name: Eval Offline
     runs-on: ubuntu-latest
-    needs: test-unit
+    # Latency: run parallel with test-unit (was needs: test-unit — artificial
+    # serialization; a red unit suite still fails the PR on its own check).
+    needs: lint-and-type-check
     steps:
       - uses: actions/checkout@v6
 
@@ -503,7 +512,11 @@ jobs:
   docker-build-check:
     name: Docker Build Check
     runs-on: ubuntu-latest
-    needs: test-unit
+    # Latency: run parallel with test-unit. The old needs: test-unit chained
+    # lint (30s) -> unit (~6 min) -> docker (~6 min) into a ~12-minute PR wall;
+    # building doesn't need unit results (trade: a failing-unit PR now also
+    # spends build minutes — wall time matters more, per owner 2026-07-17).
+    needs: lint-and-type-check
     steps:
       - uses: actions/checkout@v6
 

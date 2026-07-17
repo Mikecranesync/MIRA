@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.154.1 (2026-07-17) - fix(ci): halve the PR critical path — parallelize Docker Build + Eval Offline, cache pip in Unit Tests
+
+- Measured (run 29576611599 + PR #2762 timeline): lint (30s) → Unit Tests (345s) → Docker Build (347s) was a ~12-minute SERIAL wall; everything else finishes inside ~2.5 min. `docker-build-check` and `test-eval-offline` now `needs: lint-and-type-check` (parallel with unit tests) — building never needed unit results; a red unit suite still fails the PR on its own check. Expected PR wall ≈ 6.3 min.
+- `test-unit` setup-python gains a pip cache over the 4 requirement sets (cold installs were ~1-2 min per run).
+- No job/check names touched (branch-protection required checks unchanged).
+
 ### v3.154.0 (2026-07-17) - feat(printsense): Phase 3 — multi-photo session bench, /printsense_test phase3, /printsense_grade_session (testing program Phase 3)
 
 - `printsense/benchmarks/session_cases.py` (+`.sha256` frozen): 6 scripted multi-photo sessions over new synthetic pages (continuation crop→resolve, non-print-mix refusal, duplicates, out-of-order, German labels, conflicting revisions) + shared print renderer refactor (`draw_print_page`).
