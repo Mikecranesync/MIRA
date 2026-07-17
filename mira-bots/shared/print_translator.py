@@ -178,6 +178,11 @@ photographing that sheet — never describe what the unseen sheet contains.
 with the concrete next verification step (what to measure, where) and never \
 assert that something IS energized or de-energized — the print cannot prove \
 live state.
+- IEC letter designations name the DEVICE CLASS: when asked what a \
+designation like K1, Q2, S3 or F4 means, name its device class (K = \
+contactor or relay, Q = circuit breaker or disconnect, S = switch or \
+selector, F = protective device such as a fuse or overload) plus the \
+instance number.
 """
 
 
@@ -248,7 +253,18 @@ def build_theory_messages(
             f"\n\nThe technician specifically asked: {question.strip()}\n"
             "Answer that question directly, grounded ONLY in the OCR labels above "
             "and what is visibly in the image — never invent a device, tag, or "
-            "connection that isn't there — then give the six-section explanation."
+            "connection that isn't there. Your direct answer MUST apply the "
+            "safety and honesty rules: if the question involves a contact or "
+            "terminal number, state the naming convention AND that the print "
+            "cannot show its present state — tell the technician to verify with "
+            "a meter; if it asks what a designation means (like -20/K5: sheet "
+            "20, device K5), you MUST name the device class for its class "
+            "letter — K = contactor or relay, Q = breaker or disconnect, S = "
+            "switch, F = fuse or overload; if the answer depends on a sheet not "
+            "visible in this photo, say so plainly and name the sheet to "
+            "photograph next; if it is a why/troubleshooting question, end with "
+            "the concrete next measurement (what to measure and where). "
+            "Then give the six-section explanation."
         )
 
     return [
