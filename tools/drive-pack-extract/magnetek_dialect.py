@@ -371,6 +371,21 @@ def parse_magnetek_fault_page(page) -> list[dict[str, Any]]:
             tgt["action"].append(_line_text(line))
         groups.extend(span_groups)
 
+    # Propagate shared actions: when a group has no action text, inherit from the
+    # previous group if they share the same name (indicating a multi-row fault entry
+    # with a shared action cell, e.g., oH3 and oH4 "Motor Overheating 1/2").
+    for i, group in enumerate(groups):
+        if not group.get("action") and i > 0:
+            prev_group = groups[i - 1]
+            prev_desc = " ".join(prev_group["desc"]).strip()
+            prev_name = prev_desc.split(". ")[0].rstrip(".").strip() if prev_desc else ""
+            curr_desc = " ".join(group["desc"]).strip()
+            curr_name = curr_desc.split(". ")[0].rstrip(".").strip() if curr_desc else ""
+            # If the name prefix matches (e.g., "Motor Overheating" in both oH3 and oH4),
+            # inherit the previous group's action.
+            if prev_name and curr_name and prev_name.split()[0] == curr_name.split()[0]:
+                group["action"] = prev_group["action"][:]
+
     entries: list[dict[str, Any]] = []
     for group in groups:
         if not group.get("codes"):
