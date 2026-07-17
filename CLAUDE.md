@@ -26,7 +26,7 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **Cloud LLMs:** Groq + Cerebras + Together cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
+2. **Cloud LLMs:** Groq + Cerebras + Together cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic in the diagnostic cascade** (removed PR #610 — never reintroduce there). Sole owner-authorized carve-out: the PrintSynth print-vision interpreter (PR #2661) — print-photo vision only, never chat/diagnosis.
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.

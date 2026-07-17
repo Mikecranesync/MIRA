@@ -263,5 +263,63 @@ describe("siemens g120 pack — manual-verified truth pins", () => {
     expect(getParameter(pack, "p0605")!.related_faults).toContain("F07011");
     // rated-motor-data params are cited but not fault-linked (manual doesn't link them)
     expect(getParameter(pack, "p0304")!.related_faults).toEqual([]);
+// ── De-slop invariants (2026-07-17) ──────────────────────────────────────
+// The public surface must stay on the shared dark-datasheet tokens with no
+// AI-slop markers: no emoji icons, no duplicated fault list, honest counts,
+// and a real post-payment state.
+describe("de-slop invariants", () => {
+  const pack = getPack("powerflex-525")!;
+  const landing = renderDriveLandingPage(pack);
+
+  test("no emoji or pictograph icons anywhere in the rendered pages", () => {
+    const pages = [
+      landing,
+      renderFaultPage(pack, getFault(pack, "F5")!),
+      renderParameterPage(pack, listParameters(pack)[0]!),
+    ];
+    // Pictographs, dingbats, misc symbols — the emoji ranges + the old
+    // &#128274;/&#128279; entities.
+    const emoji = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]|&#12827\d;/u;
+    for (const html of pages) expect(emoji.test(html)).toBe(false);
+  });
+
+  test("landing renders each fault chip exactly once (no duplicate list)", () => {
+    const first = listFaults(pack)[0]!;
+    const href = `/drive-commander/${pack.modelSlug}/faults/${first.display}`;
+    const count = landing.split(`href="${href}"`).length - 1;
+    expect(count).toBe(1);
+  });
+
+  test("landing does not overclaim 'All N fault codes'", () => {
+    expect(landing).not.toMatch(/All \d+ .* fault codes/);
+    expect(landing).toContain("faults in this pack");
+  });
+
+  test("every fault chip carries a tag (no empty trailing span)", () => {
+    const chips = landing.match(/<a class="fault-chip"[\s\S]*?<\/a>/g) ?? [];
+    expect(chips.length).toBeGreaterThan(0);
+    for (const chipHtml of chips.filter((c) => c.includes("/faults/")))
+      expect(/class="tag[ "]/.test(chipHtml)).toBe(true);
+  });
+
+  test("colors come from tokens: /_tokens.css linked, no hex outside theme-color meta", () => {
+    expect(landing).toContain('href="/_tokens.css"');
+    const body = landing.replace(/<meta name="theme-color"[^>]*>/, "");
+    expect(/#[0-9a-fA-F]{6}\b/.test(body.replace(/#[\w-]+"/g, ""))).toBe(false);
+  });
+
+  test("?checkout=success renders a confirmation and hides the Pro sell", () => {
+    const paid = renderDriveLandingPage(pack, { checkout: "success" });
+    expect(paid).toContain("Payment confirmed");
+    expect(paid).not.toContain("Unlock Drive Commander Pro");
+    // plain load still sells Pro and shows no banner
+    expect(landing).toContain("Unlock Drive Commander Pro");
+    expect(landing).not.toContain("Payment confirmed");
+  });
+
+  test("?checkout=cancelled renders the quiet note", () => {
+    const cancelled = renderDriveLandingPage(pack, { checkout: "cancelled" });
+    expect(cancelled).toContain("Checkout cancelled");
+    expect(cancelled).toContain("Unlock Drive Commander Pro");
   });
 });
