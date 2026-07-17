@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.153.3 (2026-07-17) - fix(printsense): route plain/terrible technician English to the print path (signal-based caption gate + messy corpus)
+
+- Owner direction: techs caption photos in normal, often terrible English — the exact-phrase caption gate measured **34% routing recall** on a realistic messy corpus ("wat does this do", "13/14 no or nc??", "k02 wont turn on" all silently fell to the generic engine). `is_print_question` is now signal logic (question/trouble/deictic/domain/tag/pair regexes; legacy phrase list retained as fallback) → **100% recall on the frozen corpus, 0 false-routes on negative controls**, equipment-identification captions ("what drive is this?") still yield to the nameplate→drive-pack flow unless print context is present.
+- New frozen lane: `printsense/benchmarks/messy_captions.py` (+`.sha256`) — 29 messy variants mapped to the Phase-2 cases + 4 negative controls, with a free deterministic `routing_report`. Pinned by `tests/printsense/test_messy_captions.py` (recall=1.0 floor, precision controls, nameplate no-steal, plausible-false-positive spot checks).
+- The ELECTRICAL_PRINT vision classification remains the real is-it-a-print filter; the gate only answers "is the tech asking about the photo?".
+
 ### v3.153.2 (2026-07-17) - fix(drive-pack): correct multi-line fault-cell bleed in Magnetek dialect (action_x0 dominant-cluster)
 
 - **What:** Magnetek IMPULSE G+ Mini manual (pp.135-140) has fault rows where the Name/Description cell wraps across multiple lines; the wrap line sits past `action_x0` and previous parsing mis-binned it into the action column. Root cause: computing `action_x0` from the global minimum of step-number x-positions picked up stray "1."/"2." tokens in description cells (lower page y-positions), not the real action column's step numbers.
