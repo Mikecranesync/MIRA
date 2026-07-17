@@ -25,15 +25,39 @@ import asyncio
 import base64
 import io
 import logging
+import os
 import time
 
+from printsense import interpret as _interpret
 from printsense.benchmarks import single_photo_cases as _cases
 from printsense.benchmarks import single_photo_grader as _grader
 
 logger = logging.getLogger("mira.telegram.printsense_testkit")
 
 PHASE2_MAX_CASES = 8
-PHASE2_COST_CEILING_USD = 1.50
+BENCH_BUDGET_DEFAULT_USD = 1.50
+
+
+def bench_budget_usd() -> float:
+    """One paid-lane dollar budget for every phase (ZTA-2 spend law): metered
+    spend hard-stops at this ceiling. Env-tunable per run, never unbounded."""
+    raw = os.getenv("PRINT_BENCH_BUDGET_USD", "")
+    try:
+        return float(raw) if raw else BENCH_BUDGET_DEFAULT_USD
+    except ValueError:
+        logger.warning("PRINT_BENCH_BUDGET_USD=%r not a number; using default", raw)
+        return BENCH_BUDGET_DEFAULT_USD
+
+
+def _paid_usage(usage_spy: RouterUsageSpy | None) -> dict | None:
+    """Per-call usage for the cost meter (ZTA-1). The paid interpreter bypasses
+    the router, so its snapshot wins when present (it IS the metered spend);
+    the router spy covers the free-cascade fallback. Both are popped so stale
+    values never bleed into the next case. Reporting-only, never grading truth."""
+    interpreter_usage = _interpret.pop_last_usage()
+    spy_usage = usage_spy.pop() if usage_spy else None
+    return interpreter_usage or spy_usage
+
 
 _ACK_MARKER = "Reading your electrical print"
 
@@ -103,9 +127,11 @@ async def run_phase2(
     """Run the bounded Phase-2 benchmark through the REAL rung."""
     cases = (cases if cases is not None else _cases.CASES)[:PHASE2_MAX_CASES]
     results = []
+    budget = bench_budget_usd()
     spent = 0.0
+    _interpret.pop_last_usage()  # drop any stale snapshot from a prior run
     for case in cases:
-        if spent >= PHASE2_COST_CEILING_USD:
+        if spent >= budget:
             results.append(
                 {
                     "case_id": case["case_id"],
@@ -125,12 +151,25 @@ async def run_phase2(
         t0 = time.monotonic()
         claimed = await rung(png, png, case["question"], capture, context)
         latency = time.monotonic() - t0
-        usage = usage_spy.pop() if usage_spy else None
+        usage = _paid_usage(usage_spy)
         answer = _answer_from(capture.message.texts)
         result = _grader.grade_answer(case, bool(claimed), answer, latency_s=latency, usage=usage)
         spent += result.get("estimated_cost_usd") or 0.0
+        logger.info(
+            "PRINT_BENCH_SPEND lane=phase2 case=%s cost=$%.4f total=$%.4f budget=$%.2f",
+            case["case_id"],
+            result.get("estimated_cost_usd") or 0.0,
+            spent,
+            budget,
+        )
         results.append(result)
-    return _grader.build_envelope(results, mode=mode)
+    env = _grader.build_envelope(results, mode=mode)
+    env["budget"] = {
+        "budget_usd": budget,
+        "spent_usd": round(spent, 6),
+        "budget_stopped": any(r.get("status") == "budget_stop" for r in results),
+    }
+    return env
 
 
 async def run_phase2_live(update, context) -> None:
@@ -325,10 +364,25 @@ async def run_phase3(
     chosen = sessions if sessions is not None else _s_cases.SESSIONS
     session_results = []
     answers: list[str] = []
+    budget = bench_budget_usd()
+    spent = 0.0
+    budget_stopped = False
+    _interpret.pop_last_usage()  # drop any stale snapshot from a prior run
     for session in chosen:
+        if budget_stopped:
+            break
         kept: list[str] = []
         turn_results = []
         for turn in session["turns"]:
+            if spent >= budget:
+                budget_stopped = True
+                logger.warning(
+                    "PRINT_BENCH_SPEND lane=phase3 BUDGET_STOP session=%s total=$%.4f budget=$%.2f",
+                    session["session_id"],
+                    spent,
+                    budget,
+                )
+                break
             pages_b64 = [
                 base64.b64encode(_s_cases.render_page_png(k)).decode() for k in turn["pages"]
             ]
@@ -336,7 +390,7 @@ async def run_phase3(
             t0 = time.monotonic()
             reply = await album_rung(rec)
             latency = time.monotonic() - t0
-            usage = usage_spy.pop() if usage_spy else None
+            usage = _paid_usage(usage_spy)
             claimed = reply is not None
             answers.append(reply or "")
             turn_results.append(
@@ -349,8 +403,17 @@ async def run_phase3(
                     usage=usage,
                 )
             )
+            spent += turn_results[-1].get("estimated_cost_usd") or 0.0
+            logger.info(
+                "PRINT_BENCH_SPEND lane=phase3 session=%s cost=$%.4f total=$%.4f budget=$%.2f",
+                session["session_id"],
+                turn_results[-1].get("estimated_cost_usd") or 0.0,
+                spent,
+                budget,
+            )
             kept.extend(f for f in turn["expect"].get("facts_keep", []) if f not in kept)
-        session_results.append(_s_grader.build_session_result(session, turn_results))
+        if turn_results:
+            session_results.append(_s_grader.build_session_result(session, turn_results))
     durability = await run_durability_probe()
     dur_result = _s_grader.grade_durability(durability)
     session_results.append(
@@ -359,9 +422,15 @@ async def run_phase3(
             [dur_result],
         )
     )
-    return _s_grader.build_envelope(
+    env = _s_grader.build_envelope(
         session_results, mode=mode, durability=durability, answers=answers
     )
+    env["budget"] = {
+        "budget_usd": budget,
+        "spent_usd": round(spent, 6),
+        "budget_stopped": budget_stopped,
+    }
+    return env
 
 
 async def run_durability_probe() -> dict:
@@ -605,6 +674,10 @@ async def run_phase4(
     question = parent["question"]
     chosen = answer_conditions if answer_conditions is not None else PHASE4_LIVE_ANSWER_CONDITIONS
     rows: list[dict] = []
+    budget = bench_budget_usd()
+    spent = 0.0
+    budget_stopped = False
+    _interpret.pop_last_usage()  # drop any stale snapshot from a prior run
     for condition, family in _r_grader.CONDITIONS.items():
         img = _r_tx.ALL_TRANSFORMS[condition](base_png)
         b64 = base64.b64encode(img).decode()
@@ -623,6 +696,17 @@ async def run_phase4(
             "classification": classification,
         }
         if condition in chosen:
+            if spent >= budget:
+                budget_stopped = True
+                row["budget_stopped"] = True
+                logger.warning(
+                    "PRINT_BENCH_SPEND lane=phase4 BUDGET_STOP condition=%s total=$%.4f budget=$%.2f",
+                    condition,
+                    spent,
+                    budget,
+                )
+                rows.append(row)
+                continue
             cap = _CaptureUpdate(0)
             t0 = time.monotonic()
             try:
@@ -633,19 +717,41 @@ async def run_phase4(
             answer = _answer_from(cap.message.texts)
             row.update(_r_grader.grade_answer_lane(condition, bool(claimed), answer))
             row["latency_s"] = round(time.monotonic() - t0, 1)
-            low = (answer or "").lower()
-            row["provider"] = (
-                "paid-interpreter"
-                if (
-                    "according to" not in low
-                    and claimed
-                    and len(answer) > 0
-                    and _looks_interpreted(answer)
+            usage = _interpret.pop_last_usage()
+            if usage:
+                # Real attribution + real dollars (ZTA-1) when the paid
+                # interpreter actually ran; the format heuristic below is the
+                # reporting-only fallback for the free-cascade path.
+                row["provider"] = usage["provider"]
+                row["estimated_cost_usd"] = _grader.estimate_cost_usd(usage)
+                spent += row["estimated_cost_usd"]
+            else:
+                low = (answer or "").lower()
+                row["provider"] = (
+                    "paid-interpreter"
+                    if (
+                        "according to" not in low
+                        and claimed
+                        and len(answer) > 0
+                        and _looks_interpreted(answer)
+                    )
+                    else ("fallback-cascade" if claimed else None)
                 )
-                else ("fallback-cascade" if claimed else None)
+            logger.info(
+                "PRINT_BENCH_SPEND lane=phase4 condition=%s cost=$%.4f total=$%.4f budget=$%.2f",
+                condition,
+                row.get("estimated_cost_usd") or 0.0,
+                spent,
+                budget,
             )
         rows.append(row)
-    return _r_grader.build_matrix(rows, mode=mode)
+    env = _r_grader.build_matrix(rows, mode=mode)
+    env["budget"] = {
+        "budget_usd": budget,
+        "spent_usd": round(spent, 6),
+        "budget_stopped": budget_stopped,
+    }
+    return env
 
 
 def _looks_interpreted(answer: str) -> bool:

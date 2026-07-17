@@ -193,3 +193,68 @@ def test_strips_markdown_fences_openai(monkeypatch):
     monkeypatch.setattr(interpret, "_client", lambda: _fake_openai_client(fenced, seen))
     graph = interpret.interpret_print([(b"x", "image/jpeg")])
     assert graph.devices[0].tag == "-3/E1"
+
+
+# ── ZTA cost meter + spend guards (v3.156.0) ─────────────────────────────────
+
+
+class _FakeUsage:
+    def __init__(self, tin, tout):
+        self.input_tokens = tin
+        self.output_tokens = tout
+
+
+def test_usage_capture_pop_semantics():
+    interpret.pop_last_usage()  # clear any prior state
+    interpret._record_usage("openai", "gpt-5.5", _FakeUsage(1000, 2000))
+    usage = interpret.pop_last_usage()
+    assert usage == {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "input_tokens": 1000,
+        "output_tokens": 2000,
+    }
+    assert interpret.pop_last_usage() is None  # pop clears the slot
+
+
+def test_record_usage_ignores_none():
+    interpret.pop_last_usage()
+    interpret._record_usage("openai", "gpt-5.5", None)
+    assert interpret.pop_last_usage() is None
+
+
+def test_openai_call_records_usage(monkeypatch):
+    seen: dict = {}
+    client = _fake_openai_client(_CANNED, seen)
+    orig_create = client.responses.create
+
+    def create_with_usage(**kwargs):
+        response = orig_create(**kwargs)
+        response.usage = _FakeUsage(5000, 700)
+        return response
+
+    client.responses.create = create_with_usage
+    monkeypatch.setattr(interpret, "PROVIDER", "openai")
+    monkeypatch.setattr(interpret, "_client", lambda: client)
+    interpret.pop_last_usage()
+    interpret.interpret_print([(b"x", "image/jpeg")], model="gpt-5.5")
+    usage = interpret.pop_last_usage()
+    assert usage["provider"] == "openai" and usage["model"] == "gpt-5.5"
+    assert usage["input_tokens"] == 5000 and usage["output_tokens"] == 700
+
+
+def test_max_tokens_default_12k_and_empty_env_safe(monkeypatch):
+    import importlib
+
+    monkeypatch.delenv("PRINT_VISION_MAX_TOKENS", raising=False)
+    importlib.reload(interpret)
+    assert interpret.MAX_TOKENS == 12000
+    monkeypatch.setenv("PRINT_VISION_MAX_TOKENS", "")  # compose ${VAR:-} shape
+    importlib.reload(interpret)
+    assert interpret.MAX_TOKENS == 12000  # empty string must not crash import
+    monkeypatch.setenv("PRINT_VISION_MAX_TOKENS", "8000")
+    importlib.reload(interpret)
+    assert interpret.MAX_TOKENS == 8000
+    monkeypatch.delenv("PRINT_VISION_MAX_TOKENS", raising=False)
+    importlib.reload(interpret)
+    assert interpret.MAX_TOKENS == 12000
