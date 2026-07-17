@@ -1,5 +1,13 @@
 # MIRA Release Notes
 
+### v3.154.0 (2026-07-17) - feat(printsense): Phase 3 — multi-photo session bench, /printsense_test phase3, /printsense_grade_session (testing program Phase 3)
+
+- `printsense/benchmarks/session_cases.py` (+`.sha256` frozen): 6 scripted multi-photo sessions over new synthetic pages (continuation crop→resolve, non-print-mix refusal, duplicates, out-of-order, German labels, conflicting revisions) + shared print renderer refactor (`draw_print_page`).
+- `session_grader.py`: deterministic per-turn lanes (path/mentions/concepts/conflict-honesty/assertion-aware contradiction/fact-kept evidence accumulation/tag invention/state claims) + session envelope (recommended missing pages, latency, cost) + restart-survival grading.
+- Testkit `run_phase3` drives the REAL album rung (`bot._try_multi_photo_printsense_reply` → paid package interpreter) with real `PhotoBatchRecord`s; `run_durability_probe` exercises the REAL `PhotoBatchQueue` across a close/reopen restart.
+- Telegram: `/printsense_test phase3` (bounded: 2 sessions, ≤3 paid package calls) + `/printsense_grade_session start|finish` (markers in the durable queue DB; truth-free deterministic report over the reviewer's real batches).
+- Evidence: hermetic 495 printsense + 65 bot + 16 queue tests green; LIVE bounded run (gpt-5.5): **PASS 3/3 sessions, 4/4 turns, 0 hard failures** — continuation named missing sheet 89 honestly (149s), two-page package resolved it keeping proven facts (294s), non-print mix refused via the real gate (6s), queue restart survival with full-res bytes.
+
 ### v3.153.3 (2026-07-17) - fix(printsense): route plain/terrible technician English to the print path (signal-based caption gate + messy corpus)
 
 - Owner direction: techs caption photos in normal, often terrible English — the exact-phrase caption gate measured **34% routing recall** on a realistic messy corpus ("wat does this do", "13/14 no or nc??", "k02 wont turn on" all silently fell to the generic engine). `is_print_question` is now signal logic (question/trouble/deictic/domain/tag/pair regexes; legacy phrase list retained as fallback) → **100% recall on the frozen corpus, 0 false-routes on negative controls**, equipment-identification captions ("what drive is this?") still yield to the nameplate→drive-pack flow unless print context is present.
