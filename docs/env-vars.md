@@ -23,6 +23,8 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `PRINT_VISION_PROVIDER` | mira-bot-telegram — selects the electrical-print interpreter: `openai` (default since v3.153.0; needs `OPENAI_API_KEY`) or `anthropic` (needs `ANTHROPIC_API_KEY`); anything else = the free OCR cascade. Optional tuning read by `printsense/interpret.py`: PRINT_VISION_MODEL (default gpt-5.5 / claude-opus-4-8 per provider), PRINT_VISION_EFFORT, PRINT_VISION_MAX_TOKENS. |
 | `PRINT_VISION_EFFORT` | mira-bot-telegram — interpreter reasoning effort. Code default `xhigh` (mapped to OpenAI `high`); **stg runs `medium`** (bench-decided v3.154.2: 8/8 twice at ~94s vs high's floating 6-8/8 at 141-294s). Prod = explicit owner choice. |
 | `PRINT_VISION_MODEL` | mira-bot-telegram — interpreter model override; empty = per-provider default (`gpt-5.5` / `claude-opus-4-8`). `gpt-5.5-pro` is the slower/pricier explicit knob. |
+| `PRINT_VISION_MAX_TOKENS` | mira-bot-telegram — interpreter per-call output cap. Code default `12000` (ZTA-2, v3.156.0: bounds a runaway reasoning chain at ~$0.36/call on gpt-5.5 $30/M-output vs ~$0.96 at the old 32000); empty = code default. Truncation is grader-visible, never silent. |
+| `PRINT_BENCH_BUDGET_USD` | mira-bot-telegram — hard dollar budget for every paid PrintSense bench lane (`/printsense_test` phase2/3/4 + the local bench loop). Code default `1.50`; metered spend (ZTA-1 cost meter) hard-stops the lane at the ceiling. Empty = code default. |
 | ~~`CLAUDE_MODEL`~~      | **REMOVED PR #610** — see above |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |
 | `PIPELINE_API_KEY`   | mira-pipeline (bearer auth), mira-core (OPENAI_API_KEYS) |

@@ -223,8 +223,10 @@ def grade_answer(
     return _result(case, lanes, hard, latency_s, usage)
 
 
-# Free-tier cascade providers cost $0; Anthropic estimated at list price.
-_COST_PER_MTOK = {"anthropic": (3.0, 15.0)}
+# Free-tier cascade providers cost $0; paid providers estimated at list price
+# ($/Mtok input, $/Mtok output). openai = gpt-5.5 (2026-07-17); reasoning
+# tokens bill as output, which is why the meter matters (ZTA-1 spend law).
+_COST_PER_MTOK = {"anthropic": (3.0, 15.0), "openai": (5.0, 30.0)}
 
 
 def estimate_cost_usd(usage: dict | None) -> float:
@@ -336,6 +338,12 @@ def phone_summary(envelope: dict) -> str:
         f" | max latency: {e['latency_max_s']}s"
         f" | est cost: ${e['estimated_cost_usd']}"
     )
+    budget = e.get("budget")
+    if budget:
+        lines.append(
+            f"budget: ${budget['spent_usd']:.2f} spent of ${budget['budget_usd']:.2f}"
+            + (" — BUDGET STOP" if budget.get("budget_stopped") else "")
+        )
     fails = [r["case_id"] for r in e["results"] if r["status"] != "pass"]
     lines.append("failing cases: " + (", ".join(fails) or "none"))
     lines.append(f"{e['baseline']}")

@@ -443,6 +443,9 @@ services:
       # Interpreter tuning knobs (bench-decided; stg runs medium — see v3.154.2).
       - PRINT_VISION_EFFORT=${PRINT_VISION_EFFORT:-xhigh}
       - PRINT_VISION_MODEL=${PRINT_VISION_MODEL:-}
+      # ZTA spend guards (v3.156.0): per-call output cap + paid-lane $ budget.
+      - PRINT_VISION_MAX_TOKENS=${PRINT_VISION_MAX_TOKENS:-}
+      - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions
