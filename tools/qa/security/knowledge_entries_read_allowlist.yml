@@ -762,14 +762,14 @@ approved:
       FROM knowledge_entries
                   WHERE tenant_id = :tid
                   ORDER BY embedding <=> cast(:vec AS vector)
-  "mira-crawler/cron/kb_growth_cron.py:200":
+  "mira-crawler/cron/kb_growth_cron.py:253":
     approved_classification: TENANT-ONLY
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with conn.cursor() as cur:
                       cur.execute(
                           "SELECT 1 FROM knowledge_entries "
-  "mira-crawler/cron/kb_growth_cron.py:694":
+  "mira-crawler/cron/kb_growth_cron.py:747":
     approved_classification: TENANT-ONLY
     reason: "TODO: justify this read pattern"
     query_snippet: |
