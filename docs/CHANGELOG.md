@@ -1,5 +1,13 @@
 # MIRA Release Notes
 
+### v3.166.0 (2026-07-18) - fix(bots): OCR regime repair — Tesseract floor bridges into ocr_items/ocr_tokens; dead glm-ocr lane retired
+
+- **Tesseract floor now bridges into `ocr_items`/`ocr_tokens`** with `ocr_source` provenance on every photo turn (`vision_worker.py`) — closes the gap where the deterministic floor path never fed the print-eval token contract. The album-path vision fallback (`engine.py`, `shared/visual/demo.py`) now carries the same `ocr_tokens`/`ocr_source` shape. A refactored `parse_ocr_reply` (pure model-OCR reply parser) preserves leading-dash device tags in numbered lists.
+- **Dead glm-ocr lane retired**: model OCR now routes through the free cascade behind `OCR_MODEL_LANE` (default off) instead of a hardcoded glm-ocr call no provider serves.
+- **Boot-time OCR lane self-check** (`OCR_LANES` log line) + `/printsense_test ocr` phone status command report which OCR lane (tesseract/model/none) is live.
+- Compose + `docs/env-vars.md` rows for `OCR_MODEL_LANE` / `OCR_EXPECT_TESSERACT` across `mira-bots/docker-compose.yml`, `docker-compose.saas.yml`, `docker-compose.staging-vps.yml`.
+- New `printsense.xref_extractor.line_items()` — public OCR-token→evidence-strings helper backing the bridge. Design: `docs/plans/2026-07-18-ocr-regime-repair.md`.
+
 ### v3.165.1 (2026-07-18) - bench(print): Tower OP real-print benchmark pack — reproducible 12-case run of the production Telegram print path
 
 - New `tools/internet_print_test/benchmarks/2026-07-18-towerop/`: REPORT.md (verdict 1.7/10 mean, 0/12 clean passes, two judged lanes), cases.json (12 questions + expected truths), repo-relative `bench_submit.py` driver, `photos.manifest.json` (sha256 + Drive ids — PROPRIETARY Heege prints not committed), verbatim evidence for both lanes, and a README with the full re-run + judging protocol.
