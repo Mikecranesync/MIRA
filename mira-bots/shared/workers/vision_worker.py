@@ -1,13 +1,11 @@
 """Vision Worker — Photo analysis, OCR, and classification."""
 
 import base64
-import io
 import logging
 import os
 import re
 
 import httpx
-from PIL import Image
 
 from ..inference.router import InferenceRouter as _InferenceRouter
 
@@ -265,6 +263,17 @@ def parse_ocr_reply(raw: str) -> list[str]:
     return items
 
 
+def _tesseract_tokens_impl(image_bytes: bytes) -> list[dict]:
+    """Deterministic word boxes via the shared printsense adapter.
+
+    Raises printsense.xref_extractor.OcrUnavailable when the binary or
+    pytesseract is absent (local Windows dev) — callers degrade honestly.
+    """
+    from printsense.xref_extractor import ocr_tokens
+
+    return ocr_tokens(image_bytes)
+
+
 class VisionWorker:
     """Handles photo analysis: vision model + OCR + classification."""
 
@@ -279,34 +288,71 @@ class VisionWorker:
         Returns dict with keys:
             classification: 'ELECTRICAL_PRINT' | 'NAMEPLATE' | 'EQUIPMENT_PHOTO'
             vision_result: str (vision model description)
-            ocr_items: list[str] (glm-ocr extracted text items)
-            tesseract_text: str (Tesseract backup OCR)
+            ocr_items: list[str] (Tesseract floor + model-lane supplement, deduped)
+            ocr_tokens: list[dict] (Tesseract word boxes: {text, bbox, line}; [] when unavailable)
+            ocr_source: str ('tesseract' | 'tesseract+model' | 'model' | 'none')
+            tesseract_text: str (newline-joined Tesseract line strings from the same pass)
             drawing_type: str | None (only for ELECTRICAL_PRINT)
         """
         import asyncio
 
         vision_coro = self._call_vision(photo_b64, message)
         ocr_coro = self._call_ocr(photo_b64)
-        results = await asyncio.gather(vision_coro, ocr_coro, return_exceptions=True)
+
+        def _floor() -> list[dict]:
+            from printsense.xref_extractor import OcrUnavailable
+
+            try:
+                return _tesseract_tokens_impl(base64.b64decode(photo_b64))
+            except OcrUnavailable as exc:
+                logger.warning("tesseract floor unavailable: %s", exc)
+                return []
+            except Exception as exc:  # noqa: BLE001 — floor failure must not eat the turn
+                logger.warning("tesseract floor error: %s", exc)
+                return []
+
+        floor_coro = asyncio.to_thread(_floor)
+        results = await asyncio.gather(
+            vision_coro, ocr_coro, floor_coro, return_exceptions=True
+        )
 
         vision_result = results[0] if not isinstance(results[0], Exception) else message
-        ocr_items = results[1] if not isinstance(results[1], Exception) else []
+        model_items = results[1] if not isinstance(results[1], Exception) else []
+        ocr_tokens_ = results[2] if not isinstance(results[2], Exception) else []
 
         if isinstance(results[0], Exception):
             logger.error("Vision call failed: %s", results[0])
         if isinstance(results[1], Exception):
-            logger.warning("glm-ocr call failed: %s", results[1])
+            logger.warning("model-OCR lane failed: %s", results[1])
 
-        tesseract_text = self._ocr_extract(photo_b64)
+        from printsense.xref_extractor import line_items
+
+        floor_items = line_items(ocr_tokens_)
+        ocr_items = list(floor_items)
+        for item in model_items if isinstance(model_items, list) else []:
+            if item not in ocr_items:
+                ocr_items.append(item)
+
+        if floor_items and len(ocr_items) > len(floor_items):
+            ocr_source = "tesseract+model"
+        elif floor_items:
+            ocr_source = "tesseract"
+        elif ocr_items:
+            ocr_source = "model"
+        else:
+            ocr_source = "none"
+
+        tesseract_text = "\n".join(floor_items) if floor_items else ""
 
         classify_result = self._classify_photo(str(vision_result), ocr_items, message)
         classification = classify_result["type"]
         classify_confidence = classify_result["confidence"]
         logger.info(
-            "Photo classified as %s (confidence=%.2f, %d OCR items)",
+            "Photo classified as %s (confidence=%.2f, %d OCR items, ocr_source=%s)",
             classification,
             classify_confidence,
             len(ocr_items),
+            ocr_source,
         )
 
         drawing_type = None
@@ -320,7 +366,9 @@ class VisionWorker:
             "classification": classification,
             "classification_confidence": classify_confidence,
             "vision_result": vision_result,
-            "ocr_items": ocr_items if isinstance(ocr_items, list) else [],
+            "ocr_items": ocr_items,
+            "ocr_tokens": ocr_tokens_,
+            "ocr_source": ocr_source,
             "tesseract_text": tesseract_text,
             "drawing_type": drawing_type,
             "drawing_type_confidence": drawing_confidence,
@@ -424,19 +472,6 @@ class VisionWorker:
         if not content:
             return []
         return parse_ocr_reply(content)
-
-    def _ocr_extract(self, photo_b64: str) -> str:
-        """Run Tesseract OCR on image to extract text deterministically."""
-        try:
-            import pytesseract
-
-            image_bytes = base64.b64decode(photo_b64)
-            img = Image.open(io.BytesIO(image_bytes))
-            text = pytesseract.image_to_string(img, config="--psm 6")
-            return text.strip()
-        except Exception as e:
-            logger.warning("OCR extraction failed: %s", e)
-            return ""
 
     def _classify_photo(self, vision_result: str, ocr_items: list, caption: str = "") -> dict:
         """Classify photo as ELECTRICAL_PRINT, NAMEPLATE, or EQUIPMENT_PHOTO with confidence.

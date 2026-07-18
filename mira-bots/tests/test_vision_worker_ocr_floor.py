@@ -58,3 +58,69 @@ class TestModelOcrLane:
         with patch("shared.workers.vision_worker._inference_router") as router:
             router.complete = AsyncMock(return_value=("", {}))
             assert await _worker()._call_ocr("aGk=") == []
+
+
+_TOKENS = [
+    {"text": "-K17", "bbox": [640, 100, 700, 118], "line": (0, 1)},
+    {"text": "A1", "bbox": [644, 132, 660, 144], "line": (0, 2)},
+    {"text": "A2", "bbox": [666, 132, 682, 144], "line": (0, 2)},
+]
+
+
+def _patched_worker(monkeypatch, tokens=None, model_items=None):
+    """Worker with vision prose + tesseract adapter + model lane all stubbed."""
+    w = _worker()
+    monkeypatch.setattr(
+        "shared.workers.vision_worker.VisionWorker._call_vision",
+        AsyncMock(return_value="electrical drawing, ladder logic"),
+    )
+    if tokens is None:
+        from printsense.xref_extractor import OcrUnavailable
+
+        def _raise(_b):
+            raise OcrUnavailable("no binary")
+
+        monkeypatch.setattr("shared.workers.vision_worker._tesseract_tokens_impl", _raise)
+    else:
+        monkeypatch.setattr(
+            "shared.workers.vision_worker._tesseract_tokens_impl", lambda _b: tokens
+        )
+    monkeypatch.setattr(
+        "shared.workers.vision_worker.VisionWorker._call_ocr",
+        AsyncMock(return_value=model_items or []),
+    )
+    return w
+
+
+class TestOcrFloor:
+    @pytest.mark.asyncio
+    async def test_tesseract_floor_feeds_items_tokens_source(self, monkeypatch):
+        w = _patched_worker(monkeypatch, tokens=_TOKENS)
+        out = await w.process("aGk=", "what is this")
+        assert out["ocr_source"] == "tesseract"
+        assert out["ocr_tokens"] == _TOKENS
+        assert "-K17" in out["ocr_items"] and "A1 A2" in out["ocr_items"]
+        assert "-K17" in out["tesseract_text"]
+
+    @pytest.mark.asyncio
+    async def test_both_lanes_dead_is_honest_none(self, monkeypatch):
+        w = _patched_worker(monkeypatch, tokens=None, model_items=[])
+        out = await w.process("aGk=", "what is this")
+        assert out["ocr_source"] == "none"
+        assert out["ocr_items"] == [] and out["ocr_tokens"] == []
+        assert out["classification"]  # classification still works off vision prose
+
+    @pytest.mark.asyncio
+    async def test_model_lane_supplements_never_replaces(self, monkeypatch):
+        w = _patched_worker(monkeypatch, tokens=_TOKENS, model_items=["-F12", "-K17"])
+        out = await w.process("aGk=", "what is this")
+        assert out["ocr_source"] == "tesseract+model"
+        assert "-F12" in out["ocr_items"]           # model addition kept
+        assert out["ocr_items"].count("-K17") == 1  # deduped, floor first
+
+    @pytest.mark.asyncio
+    async def test_model_only_when_floor_unavailable(self, monkeypatch):
+        w = _patched_worker(monkeypatch, tokens=None, model_items=["-F12"])
+        out = await w.process("aGk=", "what is this")
+        assert out["ocr_source"] == "model"
+        assert out["ocr_items"] == ["-F12"] and out["ocr_tokens"] == []
