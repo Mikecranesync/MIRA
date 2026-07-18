@@ -387,10 +387,14 @@ class VisionWorker:
         return data["choices"][0]["message"]["content"]
 
     async def _call_ocr(self, photo_b64: str) -> list:
-        """Call glm-ocr for pure text extraction. Returns list of text items."""
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        """Model-OCR enrichment lane (OFF by default — the deterministic floor
+        is Tesseract, see ``process``). When ``OCR_MODEL_LANE=on``, sends the
+        numbered-list OCR prompt through the inference router (same cascade
+        as ``_call_vision``); free-tier VL models misread dense schematics
+        (2026-07-17 UNSEEN benchmark), so this lane supplements the floor —
+        it must never replace it."""
+        if os.environ.get("OCR_MODEL_LANE", "off").strip().lower() != "on":
+            return []
 
         messages = [
             {
@@ -416,22 +420,10 @@ class VisionWorker:
                 ],
             }
         ]
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.openwebui_url}/api/chat/completions",
-                headers=headers,
-                json={
-                    "model": os.environ.get("GLM_OCR_MODEL", "glm-ocr:latest"),
-                    "messages": messages,
-                    "options": {"temperature": 0.0},
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        raw = data["choices"][0]["message"]["content"]
-        return parse_ocr_reply(raw)
+        content, _usage = await _inference_router.complete(messages)
+        if not content:
+            return []
+        return parse_ocr_reply(content)
 
     def _ocr_extract(self, photo_b64: str) -> str:
         """Run Tesseract OCR on image to extract text deterministically."""

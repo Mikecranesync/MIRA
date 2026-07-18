@@ -1,6 +1,9 @@
 """OCR floor + provenance tests for VisionWorker (OCR-regime repair PR-A)."""
 
-from shared.workers.vision_worker import parse_ocr_reply
+import pytest
+from unittest.mock import AsyncMock, patch
+
+from shared.workers.vision_worker import VisionWorker, parse_ocr_reply
 
 
 class TestParseOcrReply:
@@ -24,3 +27,34 @@ class TestParseOcrReply:
 
     def test_empty(self):
         assert parse_ocr_reply("") == []
+
+
+def _worker() -> VisionWorker:
+    return VisionWorker("http://unused:9", "", "unused-model")
+
+
+class TestModelOcrLane:
+    @pytest.mark.asyncio
+    async def test_lane_off_by_default_no_network(self, monkeypatch):
+        monkeypatch.delenv("OCR_MODEL_LANE", raising=False)
+        with patch("shared.workers.vision_worker._inference_router") as router:
+            router.complete = AsyncMock()
+            assert await _worker()._call_ocr("aGk=") == []
+            router.complete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_lane_on_routes_through_router(self, monkeypatch):
+        monkeypatch.setenv("OCR_MODEL_LANE", "on")
+        with patch("shared.workers.vision_worker._inference_router") as router:
+            router.complete = AsyncMock(return_value=("1. -K17\n2. A1", {}))
+            items = await _worker()._call_ocr("aGk=")
+        assert items == ["-K17", "A1"]
+        (messages,), _ = router.complete.await_args
+        assert messages[0]["content"][0]["type"] == "image_url"
+
+    @pytest.mark.asyncio
+    async def test_lane_on_router_empty_returns_empty(self, monkeypatch):
+        monkeypatch.setenv("OCR_MODEL_LANE", "on")
+        with patch("shared.workers.vision_worker._inference_router") as router:
+            router.complete = AsyncMock(return_value=("", {}))
+            assert await _worker()._call_ocr("aGk=") == []
