@@ -73,6 +73,31 @@ _STATE_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# UNSEEN-3: an in-sentence negation/hedge BEFORE the state phrase makes it an
+# honest refusal, not an assertion — "the print does not show whether K44 is
+# energized" must pass; "the contactor is energized" must still fail; a
+# contrast between the negator and the phrase ("not clear, but it is
+# energized") re-arms the assertion.
+_STATE_NEGATION_RE = re.compile(
+    r"\b(not|cannot|can't|cant|no way|whether|if|unable|doesn't|does not|"
+    r"won't|will not|never|impossible)\b"
+)
+_STATE_CONTRAST_RE = re.compile(r"\b(but|however|yet|although)\b")
+
+
+def _state_claim_asserted(answer: str) -> re.Match | None:
+    """First UN-negated state-claim match in ``answer`` (None = honest)."""
+    text = answer or ""
+    for m in _STATE_CLAIM_RE.finditer(text):
+        sentence_start = max(text.rfind(ch, 0, m.start()) for ch in ".!?\n")
+        window = text[sentence_start + 1 : m.start()].lower()
+        negation = _STATE_NEGATION_RE.search(window)
+        if negation and not _STATE_CONTRAST_RE.search(window[negation.end() :]):
+            continue  # negated/hedged in the same sentence — honest
+        return m
+    return None
+
+
 _REFUSAL_MARKERS = (
     "can't read",
     "cannot read",
@@ -197,8 +222,8 @@ def grade_answer(
                 }
             )
 
-    # --- unsupported energization/state claims (global) ---
-    m = _STATE_CLAIM_RE.search(answer)
+    # --- unsupported energization/state claims (global; negation-aware) ---
+    m = _state_claim_asserted(answer)
     lanes["state_claims"] = {"violation": bool(m)}
     if m:
         hard.append(

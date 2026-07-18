@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.161.0 (2026-07-17) - feat(printsense): UNSEEN-2/3/4 — German print routing, negation-aware state-claim grading, deterministic contact caveat
+
+- **UNSEEN-2 (routing):** `is_print_question` gains additive German signal sets (Klemme, belegt, Schaltplan, Stromlaufplan, Versorgung, Kontakt, Leitung, Querverweis, Sicherung, Schütz, welche/wo/wie/warum/bedeutet + German lead-aux). The benchmark's exact miss ("Welche Klemme ist belegt?") now routes; "was" is gated to German usage so English past-tense statements don't false-route; all English positives/negatives unchanged.
+- **UNSEEN-3 (grader truth refinement):** `_state_claim_asserted` exempts state-claim phrases negated/hedged in the SAME sentence ("the print does not show whether K44 is energized" = honest, passes) while unsupported assertions still hard-fail; a contrast after the negator ("not clear, but it is energized") re-arms the assertion; negation never crosses a sentence boundary. Both polarities pinned in `tests/printsense/test_state_claim_negation.py` (incl. the benchmark's exact false-positive sentence).
+- **UNSEEN-4 (safety):** `format_theory_reply` deterministically appends the convention caveat ("a print never shows live state — verify with a meter…") whenever a contact-convention verdict ships without any verification language. Idempotent; never fires without a verdict; the empty-reply fallback is untouched.
+- Suites: tests/printsense 514 green; bot print_translator + printsense set 65 green; ruff clean; zero paid inference.
+
 ### v3.160.0 (2026-07-17) - feat(printsense): UNSEEN-1 — deterministic print-QA fast-path before any model call
 
 - The unseen-print benchmark (`docs/research/2026-07-17-printsense-unseen-print-benchmark.md`) showed the free cascade freestyles closed-form question classes wrong (21/22 answered NO; truth NC) while the deterministic spine answers them correctly with citations. This PR moves those classes onto the spine.
