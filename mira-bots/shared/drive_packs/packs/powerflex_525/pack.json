@@ -1,1357 +1,1366 @@
 {
-  "pack_id": "powerflex_525",
-  "schema_version": 2,
-  "family": {
-    "manufacturer": "Rockwell Automation",
-    "series": "PowerFlex 525",
-    "aliases": [
-      "powerflex 525",
-      "pf525",
-      "pf 525",
-      "powerflex 520-series",
-      "520-series"
-    ]
+ "pack_id": "powerflex_525",
+ "schema_version": 2,
+ "family": {
+  "manufacturer": "Rockwell Automation",
+  "series": "PowerFlex 525",
+  "aliases": [
+   "powerflex 525",
+   "pf525",
+   "pf 525",
+   "powerflex 520-series",
+   "520-series"
+  ]
+ },
+ "nameplate": {
+  "match_keywords": [
+   "powerflex 525",
+   "pf525",
+   "520-um001",
+   "25b"
+  ]
+ },
+ "live_decode": {
+  "status_bits": {},
+  "cmd_word": {},
+  "fault_codes": {
+   "0": "No Fault",
+   "2": "Auxiliary Input",
+   "3": "Power Loss",
+   "4": "UnderVoltage",
+   "5": "OverVoltage",
+   "6": "Motor Stalled",
+   "7": "Motor Overload",
+   "8": "Heatsink OvrTmp",
+   "9": "CC OvrTmp",
+   "12": "HW OverCurrent",
+   "13": "Ground Fault",
+   "15": "Load Loss",
+   "21": "Output Ph Loss",
+   "29": "Analog In Loss",
+   "33": "Auto Rstrt Tries",
+   "38": "Phase U to Gnd",
+   "39": "Phase V to Gnd",
+   "40": "Phase W to Gnd",
+   "41": "Phase UV Short",
+   "42": "Phase UW Short",
+   "43": "Phase VW Short",
+   "48": "Params Defaulted",
+   "59": "Safety Open",
+   "63": "SW OverCurrent",
+   "64": "Drive Overload",
+   "70": "Power Unit",
+   "71": "DSI Net Loss",
+   "72": "Opt Net Loss",
+   "73": "EN Net Loss",
+   "80": "Autotune Failure",
+   "81": "DSI Comm Loss",
+   "82": "Opt Comm Loss",
+   "83": "EN Comm Loss",
+   "91": "Encoder Loss",
+   "94": "Function Loss",
+   "100": "Parameter Chksum",
+   "101": "External Storage",
+   "105": "C Connect Err",
+   "106": "Incompat C-P",
+   "107": "Replaced C-P",
+   "109": "Mismatch C-P",
+   "110": "Keypad Membrane",
+   "111": "Safety Hardware",
+   "114": "uC Failure",
+   "122": "I/O Board Fail",
+   "125": "Flash Update Req",
+   "126": "NonRecoverablErr",
+   "127": "DSIFlashUpdatReq"
   },
-  "nameplate": {
-    "match_keywords": [
-      "powerflex 525",
-      "pf525",
-      "520-um001",
-      "25b"
-    ]
+  "registers": {}
+ },
+ "envelope": {},
+ "knowledge": {},
+ "provenance": {
+  "items": {
+   "live_decode.fault_codes": "manual_cited",
+   "parameters": "manual_cited"
   },
-  "live_decode": {
-    "status_bits": {},
-    "cmd_word": {},
-    "fault_codes": {
-      "0": "No Fault",
-      "2": "Auxiliary Input",
-      "3": "Power Loss",
-      "4": "UnderVoltage",
-      "5": "OverVoltage",
-      "6": "Motor Stalled",
-      "7": "Motor Overload",
-      "8": "Heatsink OvrTmp",
-      "9": "CC OvrTmp",
-      "12": "HW OverCurrent",
-      "13": "Ground Fault",
-      "15": "Load Loss",
-      "21": "Output Ph Loss",
-      "29": "Analog In Loss",
-      "33": "Auto Rstrt Tries",
-      "38": "Phase U to Gnd",
-      "39": "Phase V to Gnd",
-      "40": "Phase W to Gnd",
-      "41": "Phase UV Short",
-      "42": "Phase UW Short",
-      "43": "Phase VW Short",
-      "48": "Params Defaulted",
-      "59": "Safety Open",
-      "63": "SW OverCurrent",
-      "64": "Drive Overload",
-      "70": "Power Unit",
-      "71": "DSI Net Loss",
-      "72": "Opt Net Loss",
-      "73": "EN Net Loss",
-      "80": "Autotune Failure",
-      "81": "DSI Comm Loss",
-      "82": "Opt Comm Loss",
-      "83": "EN Comm Loss",
-      "91": "Encoder Loss",
-      "94": "Function Loss",
-      "100": "Parameter Chksum",
-      "101": "External Storage",
-      "105": "C Connect Err",
-      "106": "Incompat C-P",
-      "107": "Replaced C-P",
-      "109": "Mismatch C-P",
-      "110": "Keypad Membrane",
-      "111": "Safety Hardware",
-      "114": "uC Failure",
-      "122": "I/O Board Fail",
-      "125": "Flash Update Req",
-      "126": "NonRecoverablErr",
-      "127": "DSIFlashUpdatReq"
-    },
-    "registers": {}
-  },
-  "envelope": {},
-  "knowledge": {},
-  "provenance": {
-    "items": {
-      "live_decode.fault_codes": "manual_cited",
-      "parameters": "manual_cited"
-    },
-    "sources": [
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F000 No Fault — No fault present. —"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F002 Auxiliary Input 1 External trip (Auxiliary) input. • Verify communications"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F003 Power Loss 2"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F004 UnderVoltage 1"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F005 OverVoltage 1 overvoltage can also be caused by"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F006 Motor Stalled 1"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F007 Motor Overload 1 Internal electronic overload trip. does not exceed the current set by"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F008 Heatsink OvrTmp 1 temperature exceeds a has not exceeded the rated ambient"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F009 CC OvrTmp 1"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F012 HW OverCurrent 2 exceeded the hardware current"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F013 Ground Fault 1(2) been detected at one or more of the drive output terminals for a"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F015(3) Load Loss 2 and load."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F021 Output Ph Loss 1 Configure with A557 [Out Phas"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F029 Analog In Loss 1 has occurred. at inputs."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F033 Auto Rstrt Tries 2"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F038 Phase U to Gnd • Check the wiring between the drive"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F039 Phase V to Gnd A phase to ground fault has been and motor."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "161",
-        "excerpt": "F040 Phase W to Gnd motor in this phase. • Replace drive if fault cannot be"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F041 Phase UV Short • Check the motor and drive output"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F042 Phase UW Short Excessive current has been terminal wiring for a shorted"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F043 Phase VW Short output terminals. • Replace drive if fault cannot be"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F048 Params Defaulted 1"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F059(3) Safety Open 1 safety, verify and tighten jumper for I/O"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F063 SW OverCurrent 1 a time period greater than the and load."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F064 Drive Overload 2 Reduce load or extend Accel Time."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F070 Power Unit 2 • Cycle power."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F071 DSI Net Loss 2 communication link has been"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F072 Opt Net Loss 2 card’s remote network has been"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F073(3) EN Net Loss 2 EtherNet/IP adapter has been"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F080 Autotune Failure 2 Restart procedure."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F081 DSI Comm Loss 2 Action]."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F082 Opt Comm Loss 2 drive and the network option card"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "162",
-        "excerpt": "F083(3) EN Comm Loss 2"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F091(3) Encoder Loss 2 One of the 2 encoder channel A535 [Motor Fdbk Type] = 5 “Quad"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F094 Function Loss 2 is inactive, input to the"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F100 Parameter Chksum 2"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F101 External Storage 2"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F105 C Connect Err 2 settings. Do not remove or install the"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F106 Incompat C-P 2 does not support power modules • Change to a PowerFlex 523 control"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F107 Replaced C-P 2 recognize the power module. • Replace control module if changing"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F109 Mismatch C-P 2 to a different drive type power"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F110 Keypad Membrane 2 • Replace control module if fault"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F111(3) Safety Hardware 2 malfunction. One of the safety"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F114 uC Failure 2 Microprocessor failure."
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F122 I/O Board Fail 2 • Replace drive or control module if"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F125 Flash Update Req 2 corrupt, mismatched, or operation to attempt to load a valid set"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F126 NonRecoverablErr 2"
-      },
-      {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "163",
-        "excerpt": "F127 DSIFlashUpdatReq 2 drive is running using backup operation using DSI communications to"
-      }
-    ]
-  },
-  "parameters": [
-    {
-      "parameter_id": "P030",
-      "name": "Language",
-      "purpose": "Selects the language The setting Important: drive is power cycled.",
-      "value_meanings": [],
-      "default": "1",
-      "range": "1/15",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P030 Selects the language displayed. 8 = Reserved 1"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P031",
-      "name": "Motor NP Volts",
-      "purpose": "Sets the motor nameplate",
-      "value_meanings": [],
-      "default": "Based on Drive Rating",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P031 [Motor NP Volts]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P032",
-      "name": "Motor NP Hertz",
-      "purpose": "Sets the motor nameplate",
-      "value_meanings": [],
-      "default": "60",
-      "range": "15/500",
-      "unit": "Hz",
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P032 [Motor NP Hertz] 15/500 Hz"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P033",
-      "name": "Motor OL Current",
-      "purpose": "Sets the motor nameplate",
-      "value_meanings": [],
-      "default": "Based on Drive Rating",
-      "range": null,
-      "unit": null,
-      "related_faults": [
-        "F007"
-      ],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P033 0.1 A Based on Drive Rating"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P034",
-      "name": "Motor NP FLA",
-      "purpose": "Sets the motor nameplate",
-      "value_meanings": [],
-      "default": "Drive Rated Amps",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P034 0.1 A Drive Rated Amps"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P035",
-      "name": "Motor NP Poles",
-      "purpose": "Sets the number of",
-      "value_meanings": [],
-      "default": "4",
-      "range": "2/40",
-      "unit": "poles",
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P035 1 4"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P036",
-      "name": "Motor NP RPM",
-      "purpose": "Sets the rated nameplate",
-      "value_meanings": [],
-      "default": "1750",
-      "range": "0/24000",
-      "unit": "rpm",
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P036 [Motor NP RPM] 0/24000 rpm"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P037",
-      "name": "Motor NP Power",
-      "purpose": "Sets the motor nameplate regulator.",
-      "value_meanings": [],
-      "default": "Drive Rated Power",
-      "range": "0/4",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P037"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P039",
-      "name": "Torque Perf Mode",
-      "purpose": "Selects the motor control",
-      "value_meanings": [],
-      "default": "1",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P039 (2) Setting is available in PowerFlex 525 FRN 5.xxx 2 = “Economize”"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P040",
-      "name": "Autotune",
-      "purpose": "Enables a static (not (motor spinning) autotune.",
-      "value_meanings": [],
-      "default": "0",
-      "range": "0/2",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P040 [Autotune] 0/2 0 = “Ready/Idle”"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P041",
-      "name": "Accel Time 1",
-      "purpose": "Sets the time for the",
-      "value_meanings": [],
-      "default": "10.00",
-      "range": "0.00/600.00",
-      "unit": "s",
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "65",
-        "excerpt": "P041 Sets the time for the drive to accel from 0 Hz 0.01 s 10.00 s"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P042",
-      "name": "Decel Time 1",
-      "purpose": "Sets the time for the",
-      "value_meanings": [],
-      "default": "10.00",
-      "range": "0.00/600.00",
-      "unit": "s",
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "66",
-        "excerpt": "P042 Sets the time for the drive to decel from 0.01 s 10.00 s"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P043",
-      "name": "Minimum Freq",
-      "purpose": "Sets the lowest frequency",
-      "value_meanings": [],
-      "default": "0.00",
-      "range": "0.00/500.00",
-      "unit": "Hz",
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "66",
-        "excerpt": "P043 [Minimum Freq] 0.00/500.00 Hz"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P044",
-      "name": "Maximum Freq",
-      "purpose": "Sets the highest frequency",
-      "value_meanings": [],
-      "default": "60.00",
-      "range": "0.00/500.00",
-      "unit": "Hz",
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "66",
-        "excerpt": "P044 [Maximum Freq] 0.00/500.00 Hz"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P045",
-      "name": "Stop Mode",
-      "purpose": "Stop command for normal I/O Terminal Important: input. The stopping drive setting. The drive Important: that is installed between 11. Remove this jumper Terminal 01 as a stop",
-      "value_meanings": [],
-      "default": null,
-      "range": "1/5",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "66",
-        "excerpt": "P045 drive setting. 5= “Coast” 0"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P052",
-      "name": "Average kWh Cost",
-      "purpose": "Sets the average cost",
-      "value_meanings": [],
-      "default": null,
-      "range": "0.00/655.35",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "66",
-        "excerpt": "P052 Cost] 0.01 0.00"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "P053",
-      "name": "Reset To Defaults",
-      "purpose": "Resets parameters values. After a Reset this parameter returns",
-      "value_meanings": [],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [
-        "F101"
-      ],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "66",
-        "excerpt": "P053 this parameter returns to zero."
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "t091",
-      "name": "Anlg In 0-10V Lo",
-      "purpose": "Stop drive before changing this parameter. Sets the percentage (based on 10V) of input voltage applied to the 0…10V analog input that is used to represent P043 [Minimum Freq]. Analog inversion can be accomplished by setting this value larger than t092 [Anlg In 0-10V Hi]. If t093 [10V Bipolar Enbl] is set to 1 “Bi-Polar In”, this parameter is ignored.",
-      "value_meanings": [],
-      "default": "0.0%",
-      "range": "0.0/200.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "99",
-        "excerpt": "t091 [Anlg In 0-10V Lo] Related Parameters: P043, t092, t093"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "P043",
-        "t092",
-        "t093"
-      ]
-    },
-    {
-      "parameter_id": "t092",
-      "name": "Anlg In 0-10V Hi",
-      "purpose": "Stop drive before changing this parameter. Sets the percentage (based on 10V) of input voltage applied to the 0…10V analog input that is used to represent P044 [Maximum Freq]. Analog inversion can be accomplished by setting this value smaller than t091 [Anlg In 0-10V Lo]. If t093 [10V Bipolar Enbl] is set to 1 “Bi-Polar In”, the same value applies to positive and negative voltage.",
-      "value_meanings": [],
-      "default": "100.0%",
-      "range": "0.0/200.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "99",
-        "excerpt": "t092 [Anlg In 0-10V Hi] Related Parameters: P044, t091, t093"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "P044",
-        "t091",
-        "t093"
-      ]
-    },
-    {
-      "parameter_id": "t093",
-      "name": "10V Bipolar Enbl",
-      "purpose": "PF 525 PowerFlex 525 only Enables/disables bi-polar control. In bi-polar mode direction is commanded by the polarity of the voltage. If bi-polar control is enabled, P043 [Minimum Freq] and t091 [Anlg In 0-10V Lo] are ignored.",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "Uni-Polar In"
-        },
-        {
-          "value": "1",
-          "meaning": "Bi-Polar In"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "99",
-        "excerpt": "t093 [10V Bipolar Enbl] Related Parameters: t091, t092"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "t091",
-        "t092"
-      ]
-    },
-    {
-      "parameter_id": "t094",
-      "name": "Anlg In V Loss",
-      "purpose": "Sets the response to a loss of input. When the 0…10V input (or –10…+10V) is used for any reference, any input less than 1V is reported as a signal loss. Input must exceed 1.5V for the signal loss condition to end. If enabled, this function affects any input that is being used as a speed reference, PID reference or PID setpoint in the drive. Options 4 “Min Freq Ref”",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "Disabled"
-        },
-        {
-          "value": "1",
-          "meaning": "Fault (F29)"
-        },
-        {
-          "value": "2",
-          "meaning": "Stop"
-        },
-        {
-          "value": "3",
-          "meaning": "Zero Ref"
-        },
-        {
-          "value": "5",
-          "meaning": "Max Freq Ref"
-        },
-        {
-          "value": "6",
-          "meaning": "Key Freq Ref"
-        },
-        {
-          "value": "7",
-          "meaning": "MOP Freq Ref"
-        },
-        {
-          "value": "8",
-          "meaning": "Continu Last"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "99",
-        "excerpt": "t094 [Anlg In V Loss] Related Parameters: P043, P044, A426, A427"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "P043",
-        "P044",
-        "A426",
-        "A427"
-      ]
-    },
-    {
-      "parameter_id": "t095",
-      "name": "Anlg In4-20mA Lo",
-      "purpose": "Stop drive before changing this parameter. Sets the percentage (based on 4…20 mA) of input current applied to the 4…20 mA analog input that is used to represent P043 [Minimum Freq]. Analog inversion can be accomplished by setting this value larger than t096 [Anlg In4-20mA Hi].",
-      "value_meanings": [],
-      "default": "0.0%",
-      "range": "0.0/200.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "99",
-        "excerpt": "t095 [Anlg In4-20mA Lo] Related Parameters: P043, t096"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "P043",
-        "t096"
-      ]
-    },
-    {
-      "parameter_id": "t096",
-      "name": "Anlg In4-20mA Hi",
-      "purpose": "Stop drive before changing this parameter. Sets the percentage (based on 4…20 mA) of input current applied to the 4…20 mA analog input that is used to represent P044 [Maximum Freq]. Analog inversion can be accomplished by setting this value smaller than t095 [Anlg In4-20mA Lo].",
-      "value_meanings": [],
-      "default": "100.0%",
-      "range": "0.0/200.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "100",
-        "excerpt": "t096 [Anlg In4-20mA Hi] Related Parameters: P044, t095"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "P044",
-        "t095"
-      ]
-    },
-    {
-      "parameter_id": "t097",
-      "name": "Anlg In mA Loss",
-      "purpose": "Sets the response to a loss of input. When the 4…20 mA input is used for any reference, any input less than 2 mA is reported as a signal loss. Input must exceed 3 mA for the signal loss condition to end. If enabled, this function affects any input that is being used as a speed reference or PID reference or PID setpoint in the drive. Options 4 “Min Freq Ref”",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "Disabled"
-        },
-        {
-          "value": "1",
-          "meaning": "Fault (F29)"
-        },
-        {
-          "value": "2",
-          "meaning": "Stop"
-        },
-        {
-          "value": "3",
-          "meaning": "Zero Ref"
-        },
-        {
-          "value": "5",
-          "meaning": "Max Freq Ref"
-        },
-        {
-          "value": "6",
-          "meaning": "Key Freq Ref"
-        },
-        {
-          "value": "7",
-          "meaning": "MOP Freq Ref"
-        },
-        {
-          "value": "8",
-          "meaning": "Continu Last"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "100",
-        "excerpt": "t097 [Anlg In mA Loss] Related Parameters: P043, P044, A426, A427"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "P043",
-        "P044",
-        "A426",
-        "A427"
-      ]
-    },
-    {
-      "parameter_id": "t099",
-      "name": "Analog In Filter",
-      "purpose": "Sets the level of additional filtering of the analog input signals. The higher number increases filtering and decreases bandwidth. Each setting doubles the applied filtering (1 = 2x filter, 2= 4x filter, and so on). No additional filtering is applied when set to “0”. Values Min/Max: 0 /14",
-      "value_meanings": [],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "100",
-        "excerpt": "t099 [Analog In Filter] Related Parameters: t091, t092, t095, t096"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "t091",
-        "t092",
-        "t095",
-        "t096"
-      ]
-    },
-    {
-      "parameter_id": "t098",
-      "name": "Anlg Loss Delay",
-      "purpose": "Sets the length of time after power-up during which the drive detects no analog signal loss. Response to an analog signal loss is set in t094 or t097 [Analog In x Loss]. Values Min/Max: 0.0 /20.0 s",
-      "value_meanings": [],
-      "default": "0.0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "100",
-        "excerpt": "t098 [Anlg Loss Delay] Related Parameters: t094, t097"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "t094",
-        "t097"
-      ]
-    },
-    {
-      "parameter_id": "t100",
-      "name": "Sleep-Wake Sel",
-      "purpose": "Drive “sleeps” if the appropriate analog input drops below the set t101 [Sleep Level] for the time set in t102 [Sleep Time] and the drive is running. When entering sleep mode the drive ramps to zero and the run indicator on the keypad display flashes to indicate that the drive is in “sleep” mode. When the appropriate analog input rises above the set [Wake Level], the drive “wakes” and ramps to the commanded frequency. Inversion can be accomplished by setting [Sleep Level] to a higher setting than t103 [Wake Level]. ATTENTION: Enabling the Sleep-Wake function can cause unexpected machine operation during the Wake mode. Equipment damage and/or personal injury can result if this parameter is used in an inappropriate application. In addition, all applicable local, national, and international codes, standards, regulations or industry guidelines must be considered.",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "Disabled"
-        },
-        {
-          "value": "1",
-          "meaning": "0-10V Input"
-        },
-        {
-          "value": "2",
-          "meaning": "4-20mA Input"
-        },
-        {
-          "value": "3",
-          "meaning": "Command Freq"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "100",
-        "excerpt": "t100 [Sleep-Wake Sel] Related Parameters: t101, t102, t103"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "t101",
-        "t102",
-        "t103"
-      ]
-    },
-    {
-      "parameter_id": "t101",
-      "name": "Sleep Level",
-      "purpose": "Sets the analog input level that the drive must reach to enter sleep mode.",
-      "value_meanings": [],
-      "default": "10.0%",
-      "range": "0.0/100.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "101",
-        "excerpt": "t101 [Sleep Level]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "t102",
-      "name": "Sleep Time",
-      "purpose": "Sets the analog input time that the drive must stay below to enter sleep mode.",
-      "value_meanings": [],
-      "default": "0.0",
-      "range": "0.0/600.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "101",
-        "excerpt": "t102 [Sleep Time]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "t103",
-      "name": "Wake Level",
-      "purpose": "Sets the analog input level that the drive must reach to wake from sleep mode.",
-      "value_meanings": [],
-      "default": "15.0%",
-      "range": "0.0/100.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "101",
-        "excerpt": "t103 [Wake Level]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "t104",
-      "name": "Wake Time",
-      "purpose": "Sets the analog input time that the drive must stay above to wake from sleep mode.",
-      "value_meanings": [],
-      "default": "0.0",
-      "range": "0.0/600.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "101",
-        "excerpt": "t104 [Wake Time]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "t105",
-      "name": "Safety Open En",
-      "purpose": "PF 525 PowerFlex 525 only Sets the action when both safety inputs (Safety 1 and Safety 2) are disabled (de-energized – no power is applied).",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "FaultEnable"
-        },
-        {
-          "value": "1",
-          "meaning": "FaultDisable"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "101",
-        "excerpt": "t105 [Safety Open En]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "t106",
-      "name": "SafetyFlt RstCfg",
-      "purpose": "PF 525 PowerFlex 525 only (With FRN 5.xxx and later.) Sets the method of resetting fault F111 “Safety Hardware” either with a power cycle or fault clear operation.",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "PwrCycleRset"
-        },
-        {
-          "value": "1",
-          "meaning": "FltClr Reset"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "101",
-        "excerpt": "t106 [SafetyFlt RstCfg]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "C121",
-      "name": "Comm Write Mode",
-      "purpose": "Saves parameter values in active drive memory (RAM) or in drive nonvolatile memory (EEPROM). ATTENTION: If Automatic Drive Configuration (ADC) is used, this parameter must remain at its default value of 0 “Save”. IMPORTANT Parameter values set prior to setting 1 “RAM only” are saved in RAM.",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "Save"
-        },
-        {
-          "value": "1",
-          "meaning": "RAM only"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "102",
-        "excerpt": "C121 [Comm Write Mode]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "C122",
-      "name": "Cmd Stat Select",
-      "purpose": "PF 525 PowerFlex 525 only Selects velocity-specific or position/fibers-specific Command and Status Word bit definitions for use over a communication network. See Writing (06) Logic Command Data on page207 for more information. This parameter cannot be changed when an I/O connection is established through the communication adapter or the drive’s embedded EtherNet/IP port.",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "Velocity"
-        },
-        {
-          "value": "1",
-          "meaning": "Position"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "102",
-        "excerpt": "C122 [Cmd Stat Select]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "C123",
-      "name": "RS485 Data Rate",
-      "purpose": "Sets the communications rate (bits/second) for the RS-485 port. A reset or power cycle is required after selection is made.",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "1200"
-        },
-        {
-          "value": "1",
-          "meaning": "2400"
-        },
-        {
-          "value": "2",
-          "meaning": "4800"
-        },
-        {
-          "value": "3",
-          "meaning": "9600"
-        },
-        {
-          "value": "4",
-          "meaning": "19,200"
-        },
-        {
-          "value": "5",
-          "meaning": "38,400"
-        }
-      ],
-      "default": "3",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "102",
-        "excerpt": "C123 [RS485 Data Rate]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "C124",
-      "name": "RS485 Node Addr",
-      "purpose": "Sets the Modbus drive node number (address) for the RS-485 port if using a network connection. A reset or power cycle is required after selection is made.",
-      "value_meanings": [],
-      "default": "100",
-      "range": "1/247",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "102",
-        "excerpt": "C124 [RS485 Node Addr]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "C125",
-      "name": "Comm Loss Action",
-      "purpose": "Sets the drive's response to a loss of connection or excessive communication errors on the RS-485 port.",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "Fault"
-        },
-        {
-          "value": "1",
-          "meaning": "Coast Stop"
-        },
-        {
-          "value": "2",
-          "meaning": "Stop"
-        },
-        {
-          "value": "3",
-          "meaning": "Continu Last"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [
-        "F081",
-        "F082",
-        "F083"
-      ],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "102",
-        "excerpt": "C125 [Comm Loss Action] Related Parameters: P045"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "P045"
-      ]
-    },
-    {
-      "parameter_id": "C126",
-      "name": "Comm Loss Time",
-      "purpose": "Sets the time that the drive remains in communication loss with the RS-485 port before taking the action specified in C125 [Comm Loss Action]. See AppendixC for more information. IMPORTANT This setting is effective only if I/O that controls the drive is transmitted through the RS-485 port.",
-      "value_meanings": [],
-      "default": "5.0",
-      "range": "0.1/60.0",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "102",
-        "excerpt": "C126 [Comm Loss Time] Related Parameters: C125"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "C125"
-      ]
-    },
-    {
-      "parameter_id": "C127",
-      "name": "RS485 Format",
-      "purpose": "Determines the details that are related to the specific Modbus protocol used by the drive. A reset or power cycle is required after selection is made.",
-      "value_meanings": [
-        {
-          "value": "0",
-          "meaning": "RTU 8-N-1"
-        },
-        {
-          "value": "1",
-          "meaning": "RTU 8-E-1"
-        },
-        {
-          "value": "2",
-          "meaning": "RTU 8-O-1"
-        },
-        {
-          "value": "3",
-          "meaning": "RTU 8-N-2"
-        },
-        {
-          "value": "4",
-          "meaning": "RTU 8-E-2"
-        },
-        {
-          "value": "5",
-          "meaning": "RTU 8-O-2"
-        }
-      ],
-      "default": "0",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "103",
-        "excerpt": "C127 [RS485 Format]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "C128",
-      "name": "EN Addr Sel",
-      "purpose": "PF 525 PowerFlex 525 only Enables the IP address, subnet mask, and gateway address to be set with a BOOTP server. Identifies the connections that would be attempted on a reset or power cycle. A reset or power cycle is required after selection is made.",
-      "value_meanings": [
-        {
-          "value": "1",
-          "meaning": "Parameters"
-        },
-        {
-          "value": "2",
-          "meaning": "BOOTP"
-        }
-      ],
-      "default": "2",
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "103",
-        "excerpt": "C128 [EN Addr Sel] Related Parameters: C129…C132, C133…C136, C137…C140"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "C129…C132",
-        "C133…C136",
-        "C137…C140"
-      ]
-    },
-    {
-      "parameter_id": "C129",
-      "name": "EN IP Addr Cfg 1",
-      "purpose": "",
-      "value_meanings": [],
-      "default": null,
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "103",
-        "excerpt": "C129 [EN IP Addr Cfg 1] Related Parameters: C128"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": [
-        "C128"
-      ]
-    },
-    {
-      "parameter_id": "C130",
-      "name": "EN IP Addr Cfg 2",
-      "purpose": "",
-      "value_meanings": [],
-      "default": null,
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "103",
-        "excerpt": "C130 [EN IP Addr Cfg 2]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "C131",
-      "name": "EN IP Addr Cfg 3",
-      "purpose": "",
-      "value_meanings": [],
-      "default": null,
-      "range": null,
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "103",
-        "excerpt": "C131 [EN IP Addr Cfg 3]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    },
-    {
-      "parameter_id": "C132",
-      "name": "EN IP Addr Cfg 4",
-      "purpose": "PF 525 PowerFlex 525 only Sets the bytes in the IP address. A reset or power cycle is required after selection is made. 192.168.1.62 [EN IP Addr Cfg 1] [EN IP Addr Cfg 2] [EN IP Addr Cfg 3] [EN IP Addr Cfg 4] IMPORTANT C128 [EN Addr Sel] must be set to 1 “Parameters”.",
-      "value_meanings": [],
-      "default": "0",
-      "range": "0/255",
-      "unit": null,
-      "related_faults": [],
-      "source_citation": {
-        "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
-        "page": "103",
-        "excerpt": "C132 [EN IP Addr Cfg 4]"
-      },
-      "provenance_tier": "manual_cited",
-      "related_parameters": []
-    }
+  "sources": [
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F000 No Fault — No fault present. —"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F002 Auxiliary Input 1 External trip (Auxiliary) input. • Verify communications"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F003 Power Loss 2"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F004 UnderVoltage 1"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F005 OverVoltage 1 overvoltage can also be caused by"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F006 Motor Stalled 1"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F007 Motor Overload 1 Internal electronic overload trip. does not exceed the current set by"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F008 Heatsink OvrTmp 1 temperature exceeds a has not exceeded the rated ambient"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F009 CC OvrTmp 1"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F012 HW OverCurrent 2 exceeded the hardware current"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F013 Ground Fault 1(2) been detected at one or more of the drive output terminals for a"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F015(3) Load Loss 2 and load."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F021 Output Ph Loss 1 Configure with A557 [Out Phas"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F029 Analog In Loss 1 has occurred. at inputs."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F033 Auto Rstrt Tries 2"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F038 Phase U to Gnd • Check the wiring between the drive"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F039 Phase V to Gnd A phase to ground fault has been and motor."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "161",
+    "excerpt": "F040 Phase W to Gnd motor in this phase. • Replace drive if fault cannot be"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F041 Phase UV Short • Check the motor and drive output"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F042 Phase UW Short Excessive current has been terminal wiring for a shorted"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F043 Phase VW Short output terminals. • Replace drive if fault cannot be"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F048 Params Defaulted 1"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F059(3) Safety Open 1 safety, verify and tighten jumper for I/O"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F063 SW OverCurrent 1 a time period greater than the and load."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F064 Drive Overload 2 Reduce load or extend Accel Time."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F070 Power Unit 2 • Cycle power."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F071 DSI Net Loss 2 communication link has been"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F072 Opt Net Loss 2 card’s remote network has been"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F073(3) EN Net Loss 2 EtherNet/IP adapter has been"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F080 Autotune Failure 2 Restart procedure."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F081 DSI Comm Loss 2 Action]."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F082 Opt Comm Loss 2 drive and the network option card"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "162",
+    "excerpt": "F083(3) EN Comm Loss 2"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F091(3) Encoder Loss 2 One of the 2 encoder channel A535 [Motor Fdbk Type] = 5 “Quad"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F094 Function Loss 2 is inactive, input to the"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F100 Parameter Chksum 2"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F101 External Storage 2"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F105 C Connect Err 2 settings. Do not remove or install the"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F106 Incompat C-P 2 does not support power modules • Change to a PowerFlex 523 control"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F107 Replaced C-P 2 recognize the power module. • Replace control module if changing"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F109 Mismatch C-P 2 to a different drive type power"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F110 Keypad Membrane 2 • Replace control module if fault"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F111(3) Safety Hardware 2 malfunction. One of the safety"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F114 uC Failure 2 Microprocessor failure."
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F122 I/O Board Fail 2 • Replace drive or control module if"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F125 Flash Update Req 2 corrupt, mismatched, or operation to attempt to load a valid set"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F126 NonRecoverablErr 2"
+   },
+   {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "163",
+    "excerpt": "F127 DSIFlashUpdatReq 2 drive is running using backup operation using DSI communications to"
+   }
   ],
-  "keypad_navigation": []
+  "verification": {
+   "verified": "2026-07-17",
+   "audit": "issue #2777 — source-pinned truth audit",
+   "manual": "PowerFlex 520-Series AC Drive User Manual, publication 520-UM001O-EN-E (September 2025)",
+   "manual_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf",
+   "manual_sha256": "b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6",
+   "result": "48/48 fault names + 45/45 parameter id+name located on their cited printed pages (whitespace/case-normalized; manual line-wraps names). Fault table at manual p.161: F004=UnderVoltage, F005=OverVoltage, F007=Motor Overload confirmed verbatim.",
+   "notes": "P053 pack name 'Reset To Defaults' vs manual casing 'Reset to Defaults' — supported, cosmetic case variance only."
+  }
+ },
+ "parameters": [
+  {
+   "parameter_id": "P030",
+   "name": "Language",
+   "purpose": "Selects the language The setting Important: drive is power cycled.",
+   "value_meanings": [],
+   "default": "1",
+   "range": "1/15",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P030 Selects the language displayed. 8 = Reserved 1"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P031",
+   "name": "Motor NP Volts",
+   "purpose": "Sets the motor nameplate",
+   "value_meanings": [],
+   "default": "Based on Drive Rating",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P031 [Motor NP Volts]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P032",
+   "name": "Motor NP Hertz",
+   "purpose": "Sets the motor nameplate",
+   "value_meanings": [],
+   "default": "60",
+   "range": "15/500",
+   "unit": "Hz",
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P032 [Motor NP Hertz] 15/500 Hz"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P033",
+   "name": "Motor OL Current",
+   "purpose": "Sets the motor nameplate",
+   "value_meanings": [],
+   "default": "Based on Drive Rating",
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F007"
+   ],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P033 0.1 A Based on Drive Rating"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P034",
+   "name": "Motor NP FLA",
+   "purpose": "Sets the motor nameplate",
+   "value_meanings": [],
+   "default": "Drive Rated Amps",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P034 0.1 A Drive Rated Amps"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P035",
+   "name": "Motor NP Poles",
+   "purpose": "Sets the number of",
+   "value_meanings": [],
+   "default": "4",
+   "range": "2/40",
+   "unit": "poles",
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P035 1 4"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P036",
+   "name": "Motor NP RPM",
+   "purpose": "Sets the rated nameplate",
+   "value_meanings": [],
+   "default": "1750",
+   "range": "0/24000",
+   "unit": "rpm",
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P036 [Motor NP RPM] 0/24000 rpm"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P037",
+   "name": "Motor NP Power",
+   "purpose": "Sets the motor nameplate regulator.",
+   "value_meanings": [],
+   "default": "Drive Rated Power",
+   "range": "0/4",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P037"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P039",
+   "name": "Torque Perf Mode",
+   "purpose": "Selects the motor control",
+   "value_meanings": [],
+   "default": "1",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P039 (2) Setting is available in PowerFlex 525 FRN 5.xxx 2 = “Economize”"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P040",
+   "name": "Autotune",
+   "purpose": "Enables a static (not (motor spinning) autotune.",
+   "value_meanings": [],
+   "default": "0",
+   "range": "0/2",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P040 [Autotune] 0/2 0 = “Ready/Idle”"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P041",
+   "name": "Accel Time 1",
+   "purpose": "Sets the time for the",
+   "value_meanings": [],
+   "default": "10.00",
+   "range": "0.00/600.00",
+   "unit": "s",
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "65",
+    "excerpt": "P041 Sets the time for the drive to accel from 0 Hz 0.01 s 10.00 s"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P042",
+   "name": "Decel Time 1",
+   "purpose": "Sets the time for the",
+   "value_meanings": [],
+   "default": "10.00",
+   "range": "0.00/600.00",
+   "unit": "s",
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "66",
+    "excerpt": "P042 Sets the time for the drive to decel from 0.01 s 10.00 s"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P043",
+   "name": "Minimum Freq",
+   "purpose": "Sets the lowest frequency",
+   "value_meanings": [],
+   "default": "0.00",
+   "range": "0.00/500.00",
+   "unit": "Hz",
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "66",
+    "excerpt": "P043 [Minimum Freq] 0.00/500.00 Hz"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P044",
+   "name": "Maximum Freq",
+   "purpose": "Sets the highest frequency",
+   "value_meanings": [],
+   "default": "60.00",
+   "range": "0.00/500.00",
+   "unit": "Hz",
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "66",
+    "excerpt": "P044 [Maximum Freq] 0.00/500.00 Hz"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P045",
+   "name": "Stop Mode",
+   "purpose": "Stop command for normal I/O Terminal Important: input. The stopping drive setting. The drive Important: that is installed between 11. Remove this jumper Terminal 01 as a stop",
+   "value_meanings": [],
+   "default": null,
+   "range": "1/5",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "66",
+    "excerpt": "P045 drive setting. 5= “Coast” 0"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P052",
+   "name": "Average kWh Cost",
+   "purpose": "Sets the average cost",
+   "value_meanings": [],
+   "default": null,
+   "range": "0.00/655.35",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "66",
+    "excerpt": "P052 Cost] 0.01 0.00"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "P053",
+   "name": "Reset To Defaults",
+   "purpose": "Resets parameters values. After a Reset this parameter returns",
+   "value_meanings": [],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F101"
+   ],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "66",
+    "excerpt": "P053 this parameter returns to zero."
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "t091",
+   "name": "Anlg In 0-10V Lo",
+   "purpose": "Stop drive before changing this parameter. Sets the percentage (based on 10V) of input voltage applied to the 0…10V analog input that is used to represent P043 [Minimum Freq]. Analog inversion can be accomplished by setting this value larger than t092 [Anlg In 0-10V Hi]. If t093 [10V Bipolar Enbl] is set to 1 “Bi-Polar In”, this parameter is ignored.",
+   "value_meanings": [],
+   "default": "0.0%",
+   "range": "0.0/200.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "99",
+    "excerpt": "t091 [Anlg In 0-10V Lo] Related Parameters: P043, t092, t093"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "P043",
+    "t092",
+    "t093"
+   ]
+  },
+  {
+   "parameter_id": "t092",
+   "name": "Anlg In 0-10V Hi",
+   "purpose": "Stop drive before changing this parameter. Sets the percentage (based on 10V) of input voltage applied to the 0…10V analog input that is used to represent P044 [Maximum Freq]. Analog inversion can be accomplished by setting this value smaller than t091 [Anlg In 0-10V Lo]. If t093 [10V Bipolar Enbl] is set to 1 “Bi-Polar In”, the same value applies to positive and negative voltage.",
+   "value_meanings": [],
+   "default": "100.0%",
+   "range": "0.0/200.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "99",
+    "excerpt": "t092 [Anlg In 0-10V Hi] Related Parameters: P044, t091, t093"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "P044",
+    "t091",
+    "t093"
+   ]
+  },
+  {
+   "parameter_id": "t093",
+   "name": "10V Bipolar Enbl",
+   "purpose": "PF 525 PowerFlex 525 only Enables/disables bi-polar control. In bi-polar mode direction is commanded by the polarity of the voltage. If bi-polar control is enabled, P043 [Minimum Freq] and t091 [Anlg In 0-10V Lo] are ignored.",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "Uni-Polar In"
+    },
+    {
+     "value": "1",
+     "meaning": "Bi-Polar In"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "99",
+    "excerpt": "t093 [10V Bipolar Enbl] Related Parameters: t091, t092"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "t091",
+    "t092"
+   ]
+  },
+  {
+   "parameter_id": "t094",
+   "name": "Anlg In V Loss",
+   "purpose": "Sets the response to a loss of input. When the 0…10V input (or –10…+10V) is used for any reference, any input less than 1V is reported as a signal loss. Input must exceed 1.5V for the signal loss condition to end. If enabled, this function affects any input that is being used as a speed reference, PID reference or PID setpoint in the drive. Options 4 “Min Freq Ref”",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "Disabled"
+    },
+    {
+     "value": "1",
+     "meaning": "Fault (F29)"
+    },
+    {
+     "value": "2",
+     "meaning": "Stop"
+    },
+    {
+     "value": "3",
+     "meaning": "Zero Ref"
+    },
+    {
+     "value": "5",
+     "meaning": "Max Freq Ref"
+    },
+    {
+     "value": "6",
+     "meaning": "Key Freq Ref"
+    },
+    {
+     "value": "7",
+     "meaning": "MOP Freq Ref"
+    },
+    {
+     "value": "8",
+     "meaning": "Continu Last"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "99",
+    "excerpt": "t094 [Anlg In V Loss] Related Parameters: P043, P044, A426, A427"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "P043",
+    "P044",
+    "A426",
+    "A427"
+   ]
+  },
+  {
+   "parameter_id": "t095",
+   "name": "Anlg In4-20mA Lo",
+   "purpose": "Stop drive before changing this parameter. Sets the percentage (based on 4…20 mA) of input current applied to the 4…20 mA analog input that is used to represent P043 [Minimum Freq]. Analog inversion can be accomplished by setting this value larger than t096 [Anlg In4-20mA Hi].",
+   "value_meanings": [],
+   "default": "0.0%",
+   "range": "0.0/200.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "99",
+    "excerpt": "t095 [Anlg In4-20mA Lo] Related Parameters: P043, t096"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "P043",
+    "t096"
+   ]
+  },
+  {
+   "parameter_id": "t096",
+   "name": "Anlg In4-20mA Hi",
+   "purpose": "Stop drive before changing this parameter. Sets the percentage (based on 4…20 mA) of input current applied to the 4…20 mA analog input that is used to represent P044 [Maximum Freq]. Analog inversion can be accomplished by setting this value smaller than t095 [Anlg In4-20mA Lo].",
+   "value_meanings": [],
+   "default": "100.0%",
+   "range": "0.0/200.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "100",
+    "excerpt": "t096 [Anlg In4-20mA Hi] Related Parameters: P044, t095"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "P044",
+    "t095"
+   ]
+  },
+  {
+   "parameter_id": "t097",
+   "name": "Anlg In mA Loss",
+   "purpose": "Sets the response to a loss of input. When the 4…20 mA input is used for any reference, any input less than 2 mA is reported as a signal loss. Input must exceed 3 mA for the signal loss condition to end. If enabled, this function affects any input that is being used as a speed reference or PID reference or PID setpoint in the drive. Options 4 “Min Freq Ref”",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "Disabled"
+    },
+    {
+     "value": "1",
+     "meaning": "Fault (F29)"
+    },
+    {
+     "value": "2",
+     "meaning": "Stop"
+    },
+    {
+     "value": "3",
+     "meaning": "Zero Ref"
+    },
+    {
+     "value": "5",
+     "meaning": "Max Freq Ref"
+    },
+    {
+     "value": "6",
+     "meaning": "Key Freq Ref"
+    },
+    {
+     "value": "7",
+     "meaning": "MOP Freq Ref"
+    },
+    {
+     "value": "8",
+     "meaning": "Continu Last"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "100",
+    "excerpt": "t097 [Anlg In mA Loss] Related Parameters: P043, P044, A426, A427"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "P043",
+    "P044",
+    "A426",
+    "A427"
+   ]
+  },
+  {
+   "parameter_id": "t099",
+   "name": "Analog In Filter",
+   "purpose": "Sets the level of additional filtering of the analog input signals. The higher number increases filtering and decreases bandwidth. Each setting doubles the applied filtering (1 = 2x filter, 2= 4x filter, and so on). No additional filtering is applied when set to “0”. Values Min/Max: 0 /14",
+   "value_meanings": [],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "100",
+    "excerpt": "t099 [Analog In Filter] Related Parameters: t091, t092, t095, t096"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "t091",
+    "t092",
+    "t095",
+    "t096"
+   ]
+  },
+  {
+   "parameter_id": "t098",
+   "name": "Anlg Loss Delay",
+   "purpose": "Sets the length of time after power-up during which the drive detects no analog signal loss. Response to an analog signal loss is set in t094 or t097 [Analog In x Loss]. Values Min/Max: 0.0 /20.0 s",
+   "value_meanings": [],
+   "default": "0.0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "100",
+    "excerpt": "t098 [Anlg Loss Delay] Related Parameters: t094, t097"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "t094",
+    "t097"
+   ]
+  },
+  {
+   "parameter_id": "t100",
+   "name": "Sleep-Wake Sel",
+   "purpose": "Drive “sleeps” if the appropriate analog input drops below the set t101 [Sleep Level] for the time set in t102 [Sleep Time] and the drive is running. When entering sleep mode the drive ramps to zero and the run indicator on the keypad display flashes to indicate that the drive is in “sleep” mode. When the appropriate analog input rises above the set [Wake Level], the drive “wakes” and ramps to the commanded frequency. Inversion can be accomplished by setting [Sleep Level] to a higher setting than t103 [Wake Level]. ATTENTION: Enabling the Sleep-Wake function can cause unexpected machine operation during the Wake mode. Equipment damage and/or personal injury can result if this parameter is used in an inappropriate application. In addition, all applicable local, national, and international codes, standards, regulations or industry guidelines must be considered.",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "Disabled"
+    },
+    {
+     "value": "1",
+     "meaning": "0-10V Input"
+    },
+    {
+     "value": "2",
+     "meaning": "4-20mA Input"
+    },
+    {
+     "value": "3",
+     "meaning": "Command Freq"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "100",
+    "excerpt": "t100 [Sleep-Wake Sel] Related Parameters: t101, t102, t103"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "t101",
+    "t102",
+    "t103"
+   ]
+  },
+  {
+   "parameter_id": "t101",
+   "name": "Sleep Level",
+   "purpose": "Sets the analog input level that the drive must reach to enter sleep mode.",
+   "value_meanings": [],
+   "default": "10.0%",
+   "range": "0.0/100.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "101",
+    "excerpt": "t101 [Sleep Level]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "t102",
+   "name": "Sleep Time",
+   "purpose": "Sets the analog input time that the drive must stay below to enter sleep mode.",
+   "value_meanings": [],
+   "default": "0.0",
+   "range": "0.0/600.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "101",
+    "excerpt": "t102 [Sleep Time]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "t103",
+   "name": "Wake Level",
+   "purpose": "Sets the analog input level that the drive must reach to wake from sleep mode.",
+   "value_meanings": [],
+   "default": "15.0%",
+   "range": "0.0/100.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "101",
+    "excerpt": "t103 [Wake Level]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "t104",
+   "name": "Wake Time",
+   "purpose": "Sets the analog input time that the drive must stay above to wake from sleep mode.",
+   "value_meanings": [],
+   "default": "0.0",
+   "range": "0.0/600.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "101",
+    "excerpt": "t104 [Wake Time]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "t105",
+   "name": "Safety Open En",
+   "purpose": "PF 525 PowerFlex 525 only Sets the action when both safety inputs (Safety 1 and Safety 2) are disabled (de-energized – no power is applied).",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "FaultEnable"
+    },
+    {
+     "value": "1",
+     "meaning": "FaultDisable"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "101",
+    "excerpt": "t105 [Safety Open En]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "t106",
+   "name": "SafetyFlt RstCfg",
+   "purpose": "PF 525 PowerFlex 525 only (With FRN 5.xxx and later.) Sets the method of resetting fault F111 “Safety Hardware” either with a power cycle or fault clear operation.",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "PwrCycleRset"
+    },
+    {
+     "value": "1",
+     "meaning": "FltClr Reset"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "101",
+    "excerpt": "t106 [SafetyFlt RstCfg]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "C121",
+   "name": "Comm Write Mode",
+   "purpose": "Saves parameter values in active drive memory (RAM) or in drive nonvolatile memory (EEPROM). ATTENTION: If Automatic Drive Configuration (ADC) is used, this parameter must remain at its default value of 0 “Save”. IMPORTANT Parameter values set prior to setting 1 “RAM only” are saved in RAM.",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "Save"
+    },
+    {
+     "value": "1",
+     "meaning": "RAM only"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "102",
+    "excerpt": "C121 [Comm Write Mode]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "C122",
+   "name": "Cmd Stat Select",
+   "purpose": "PF 525 PowerFlex 525 only Selects velocity-specific or position/fibers-specific Command and Status Word bit definitions for use over a communication network. See Writing (06) Logic Command Data on page207 for more information. This parameter cannot be changed when an I/O connection is established through the communication adapter or the drive’s embedded EtherNet/IP port.",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "Velocity"
+    },
+    {
+     "value": "1",
+     "meaning": "Position"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "102",
+    "excerpt": "C122 [Cmd Stat Select]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "C123",
+   "name": "RS485 Data Rate",
+   "purpose": "Sets the communications rate (bits/second) for the RS-485 port. A reset or power cycle is required after selection is made.",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "1200"
+    },
+    {
+     "value": "1",
+     "meaning": "2400"
+    },
+    {
+     "value": "2",
+     "meaning": "4800"
+    },
+    {
+     "value": "3",
+     "meaning": "9600"
+    },
+    {
+     "value": "4",
+     "meaning": "19,200"
+    },
+    {
+     "value": "5",
+     "meaning": "38,400"
+    }
+   ],
+   "default": "3",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "102",
+    "excerpt": "C123 [RS485 Data Rate]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "C124",
+   "name": "RS485 Node Addr",
+   "purpose": "Sets the Modbus drive node number (address) for the RS-485 port if using a network connection. A reset or power cycle is required after selection is made.",
+   "value_meanings": [],
+   "default": "100",
+   "range": "1/247",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "102",
+    "excerpt": "C124 [RS485 Node Addr]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "C125",
+   "name": "Comm Loss Action",
+   "purpose": "Sets the drive's response to a loss of connection or excessive communication errors on the RS-485 port.",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "Fault"
+    },
+    {
+     "value": "1",
+     "meaning": "Coast Stop"
+    },
+    {
+     "value": "2",
+     "meaning": "Stop"
+    },
+    {
+     "value": "3",
+     "meaning": "Continu Last"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F081",
+    "F082",
+    "F083"
+   ],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "102",
+    "excerpt": "C125 [Comm Loss Action] Related Parameters: P045"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "P045"
+   ]
+  },
+  {
+   "parameter_id": "C126",
+   "name": "Comm Loss Time",
+   "purpose": "Sets the time that the drive remains in communication loss with the RS-485 port before taking the action specified in C125 [Comm Loss Action]. See AppendixC for more information. IMPORTANT This setting is effective only if I/O that controls the drive is transmitted through the RS-485 port.",
+   "value_meanings": [],
+   "default": "5.0",
+   "range": "0.1/60.0",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "102",
+    "excerpt": "C126 [Comm Loss Time] Related Parameters: C125"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "C125"
+   ]
+  },
+  {
+   "parameter_id": "C127",
+   "name": "RS485 Format",
+   "purpose": "Determines the details that are related to the specific Modbus protocol used by the drive. A reset or power cycle is required after selection is made.",
+   "value_meanings": [
+    {
+     "value": "0",
+     "meaning": "RTU 8-N-1"
+    },
+    {
+     "value": "1",
+     "meaning": "RTU 8-E-1"
+    },
+    {
+     "value": "2",
+     "meaning": "RTU 8-O-1"
+    },
+    {
+     "value": "3",
+     "meaning": "RTU 8-N-2"
+    },
+    {
+     "value": "4",
+     "meaning": "RTU 8-E-2"
+    },
+    {
+     "value": "5",
+     "meaning": "RTU 8-O-2"
+    }
+   ],
+   "default": "0",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "103",
+    "excerpt": "C127 [RS485 Format]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "C128",
+   "name": "EN Addr Sel",
+   "purpose": "PF 525 PowerFlex 525 only Enables the IP address, subnet mask, and gateway address to be set with a BOOTP server. Identifies the connections that would be attempted on a reset or power cycle. A reset or power cycle is required after selection is made.",
+   "value_meanings": [
+    {
+     "value": "1",
+     "meaning": "Parameters"
+    },
+    {
+     "value": "2",
+     "meaning": "BOOTP"
+    }
+   ],
+   "default": "2",
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "103",
+    "excerpt": "C128 [EN Addr Sel] Related Parameters: C129…C132, C133…C136, C137…C140"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "C129…C132",
+    "C133…C136",
+    "C137…C140"
+   ]
+  },
+  {
+   "parameter_id": "C129",
+   "name": "EN IP Addr Cfg 1",
+   "purpose": "",
+   "value_meanings": [],
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "103",
+    "excerpt": "C129 [EN IP Addr Cfg 1] Related Parameters: C128"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": [
+    "C128"
+   ]
+  },
+  {
+   "parameter_id": "C130",
+   "name": "EN IP Addr Cfg 2",
+   "purpose": "",
+   "value_meanings": [],
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "103",
+    "excerpt": "C130 [EN IP Addr Cfg 2]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "C131",
+   "name": "EN IP Addr Cfg 3",
+   "purpose": "",
+   "value_meanings": [],
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "103",
+    "excerpt": "C131 [EN IP Addr Cfg 3]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  },
+  {
+   "parameter_id": "C132",
+   "name": "EN IP Addr Cfg 4",
+   "purpose": "PF 525 PowerFlex 525 only Sets the bytes in the IP address. A reset or power cycle is required after selection is made. 192.168.1.62 [EN IP Addr Cfg 1] [EN IP Addr Cfg 2] [EN IP Addr Cfg 3] [EN IP Addr Cfg 4] IMPORTANT C128 [EN Addr Sel] must be set to 1 “Parameters”.",
+   "value_meanings": [],
+   "default": "0",
+   "range": "0/255",
+   "unit": null,
+   "related_faults": [],
+   "source_citation": {
+    "doc": "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)",
+    "page": "103",
+    "excerpt": "C132 [EN IP Addr Cfg 4]"
+   },
+   "provenance_tier": "manual_cited",
+   "related_parameters": []
+  }
+ ],
+ "keypad_navigation": []
 }

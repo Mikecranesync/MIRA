@@ -321,6 +321,45 @@ jobs:
         working-directory: mira-hub
         run: bun run test
 
+  mira-web-pack-tests:
+    # Deterministic mira-web subset guarding the Drive Commander pack truth +
+    # PrintSense landing (issue #2777). Scope note: the FULL mira-web bun suite
+    # is NOT run here — it is provably non-deterministic today (cross-file
+    # process.env pollution + env-dependent files; three consecutive full runs
+    # produce three different fail-sets). This subset was proven deterministic
+    # (3x identical: 70 pass / 0 fail, ~20 ms) and green on main. Intended to
+    # become a REQUIRED check once landed (see #2777).
+    name: mira-web pack tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: web
+        with:
+          filters: |
+            web:
+              - 'mira-web/**'
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.web.outputs.web == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install mira-web dependencies
+        if: steps.web.outputs.web == 'true'
+        working-directory: mira-web
+        run: bun install --frozen-lockfile
+
+      - name: Run deterministic pack-truth + landing suites
+        if: steps.web.outputs.web == 'true'
+        working-directory: mira-web
+        run: >
+          bun test
+          src/lib/__tests__/drive-commander.test.ts
+          src/__tests__/printsense-landing.test.ts
+          src/lib/__tests__/components.test.ts
+
   architecture-check:
     name: Architecture Check
     runs-on: ubuntu-latest
