@@ -119,3 +119,25 @@ def test_pageset_conversion_shape():
 def test_ocr_unavailable_is_explicit():
     with pytest.raises(x.OcrUnavailable):
         x.ocr_tokens(b"not-an-image")
+
+
+def test_line_items_joins_lines_and_keeps_singletons_deduped():
+    from printsense.xref_extractor import line_items
+
+    tokens = [
+        {"text": "A1", "bbox": [10, 10, 20, 18], "line": (0, 1)},
+        {"text": "A2", "bbox": [24, 10, 34, 18], "line": (0, 1)},
+        {"text": "-K17", "bbox": [40, 30, 70, 38], "line": (0, 2)},
+    ]
+    items = line_items(tokens)
+    assert "A1 A2" in items
+    assert "A1" in items and "A2" in items
+    assert "-K17" in items
+    assert items.count("-K17") == 1
+    assert items.index("A1 A2") < items.index("-K17")
+
+
+def test_line_items_empty():
+    from printsense.xref_extractor import line_items
+
+    assert line_items([]) == []
