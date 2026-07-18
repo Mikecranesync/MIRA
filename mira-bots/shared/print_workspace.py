@@ -42,6 +42,7 @@ from typing import Any
 
 from .visual.evidence_state import EvidenceState
 from .visual.models import AnswerClaim, AnswerEnvelope, Observation
+from .visual.question_resolution import resolve_question_focus
 from .visual.session_service import VisualSessionService
 from .visual.store import InMemoryVisualStore
 
@@ -368,6 +369,21 @@ async def ingest_print_photo(
         except Exception as exc:  # noqa: BLE001 — revision failure keeps the ingest
             logger.warning("print_workspace: revision bump failed (fail-open): %s", exc)
             revision = None
+
+        # Caption continuity (Package C): when the photo's caption names a tag
+        # this photo actually read ("What would energize K17?"), that tag
+        # becomes the workspace's last_entity — so the very next follow-up can
+        # say "its seal-in" / "why would it drop out?" without re-naming the
+        # tag. A caption that names nothing changes nothing (COALESCE).
+        try:
+            if new_ocr:
+                focus = resolve_question_focus(
+                    caption or "", None, [value for _, value in new_ocr]
+                ).focus_tag
+                if focus:
+                    set_workspace(chat_id, session_id, eff_tenant, last_entity=focus)
+        except Exception as exc:  # noqa: BLE001 — continuity is enrichment, never fatal
+            logger.warning("print_workspace: caption focus failed (fail-open): %s", exc)
 
         if result.status == "ok":
             status = "ingested"
