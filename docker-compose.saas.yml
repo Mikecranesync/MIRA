@@ -331,6 +331,8 @@ services:
       # ZTA spend guards (v3.156.0): per-call output cap + paid-lane $ budget.
       - PRINT_VISION_MAX_TOKENS=${PRINT_VISION_MAX_TOKENS:-}
       - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
+      # Per-turn $0 print autoeval (default ON; "0" disables). or-form parse in code.
+      - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
