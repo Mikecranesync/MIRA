@@ -316,8 +316,7 @@ def build_theory_messages(
     if det_lines:
         user_text += (
             "\n\nDeterministic decoded evidence (from cited code — trust these "
-            "over your own reading of the image):\n"
-            + "\n".join(f"- {line}" for line in det_lines)
+            "over your own reading of the image):\n" + "\n".join(f"- {line}" for line in det_lines)
         )
     if question and question.strip():
         user_text += (

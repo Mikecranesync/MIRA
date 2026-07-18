@@ -1023,9 +1023,7 @@ async def _try_print_translator_reply(
         try:
             det = _det_qa.try_deterministic_answer(caption, vision_data)
             if det:
-                logger.info(
-                    "PRINT_DETERMINISTIC_FASTPATH class=%s", det.get("question_class")
-                )
+                logger.info("PRINT_DETERMINISTIC_FASTPATH class=%s", det.get("question_class"))
                 await update.message.reply_text(det["reply_text"])
                 return True
             pack = _det_qa.extract_evidence(caption, vision_data)
