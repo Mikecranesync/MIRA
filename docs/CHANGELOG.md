@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.165.1 (2026-07-18) - bench(print): Tower OP real-print benchmark pack — reproducible 12-case run of the production Telegram print path
+
+- New `tools/internet_print_test/benchmarks/2026-07-18-towerop/`: REPORT.md (verdict 1.7/10 mean, 0/12 clean passes, two judged lanes), cases.json (12 questions + expected truths), repo-relative `bench_submit.py` driver, `photos.manifest.json` (sha256 + Drive ids — PROPRIETARY Heege prints not committed), verbatim evidence for both lanes, and a README with the full re-run + judging protocol.
+- Headline findings pinned in the report: the deterministic print-QA spine is inert on deployed surfaces (staging `OLLAMA_BASE_URL=disabled://` kills glm-ocr → 0 `ocr_items`; prod points at a nonexistent Ollama), `is_print_question` caption gate drops legit print questions (pawl/relay/LED-table vocabulary), LED-table pages misclassify as EQUIPMENT_PHOTO (#2713 fixtures), and the paid interpreter is quota-dead (OpenAI 429 on 12/12).
+
 ### v3.165.0 (2026-07-18) - feat(printsense): autoeval v2 — degenerate-output rules written by the first live garbage catch
 
 - **The flywheel's first full cycle**: Mike flagged two half-garbage staging replies; the v1 autoeval had graded both `ok` while RECORDING the evidence it couldn't act on (127 tag-shaped claims vs 0 OCR items; both outputs pinned at the 1200-token cap mid-enumeration `K1..K226` / `"A1".."A201"`). Those two turns are now regression fixtures and three deterministic rules (/usr/bin/bash, module-local regex — they run even when the grader import degrades):
