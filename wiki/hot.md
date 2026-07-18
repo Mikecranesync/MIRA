@@ -29,6 +29,7 @@ operational again after the Groq vision deprecation.
   `docs/plans/2026-07-18-print-autoeval-hook.md` (deterministic truth-free grading of every print
   reply, conversation_eval meta, flood-guarded ntfy P0 alerts; fold in open PR #2714). Awaiting
   build go. Also awaiting Mike: OpenAI dashboard cap, credits → paid Lane-A, Phase 5 thresholds.
+- **OCR regime keep-alive + runbook (v3.168.0, branch `feat/ocr-keepalive`):** deterministic Tesseract floor is provenance-tagged (`ocr_source`) end-to-end, autoeval P0 `ocr_floor_dead` pages on a dead floor, `ocr-lane-health` scheduled probe watches staging — lane map + failure-mode first moves at `docs/runbooks/ocr-regime.md`.
 
 ---
 

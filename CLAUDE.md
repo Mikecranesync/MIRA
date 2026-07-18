@@ -197,6 +197,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Claude Code v2.1+ defaults (Opus 4.7, xhigh, /effort, /autofix-pr, Routines):** `wiki/references/claude-code-v2.1.md`
 - **MIRA Routines (cloud-side scheduled work):** `wiki/references/routines.md`
 - **CodeGraph (semantic code index + MCP):** `wiki/references/codegraph.md` — usage rules in `.claude/rules/codegraph-usage.md`. Run `tools/codegraph-preflight.sh` before non-doc code work; trust the call-graph only after freshness passes. **Graphify is excluded from code navigation** (`.claude/rules/graphify-excluded.md`).
+- **OCR regime (floor/model/paid lanes, recall gate, keep-alive):** docs/runbooks/ocr-regime.md
 
 ---
 
