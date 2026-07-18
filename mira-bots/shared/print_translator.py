@@ -335,6 +335,16 @@ def build_theory_messages(
     """
     drawing_type = (vision_data or {}).get("drawing_type") or "electrical drawing"
     user_text = f"Drawing type: {drawing_type}\n\n{_ocr_block(vision_data)}"
+    # UNSEEN-1: deterministic evidence extracted by printsense.deterministic_qa
+    # (contact conventions, decoded designations, xref/wire tokens). Injected as
+    # grounding when the fast-path could not fully answer — these lines come
+    # from cited code, so they outrank the model's own reading of the image.
+    det_lines = (vision_data or {}).get("deterministic_evidence") or []
+    if det_lines:
+        user_text += (
+            "\n\nDeterministic decoded evidence (from cited code — trust these "
+            "over your own reading of the image):\n" + "\n".join(f"- {line}" for line in det_lines)
+        )
     if question and question.strip():
         user_text += (
             f"\n\nThe technician specifically asked: {question.strip()}\n"
