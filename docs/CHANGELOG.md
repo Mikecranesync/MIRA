@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.174.0 (2026-07-19) - feat(slack): Telegram fast-path parity — nameplate/wiring/drive-pack grounded fast-paths
+
+- Slack now runs the same four grounded fast-paths as Telegram via a new adapter-agnostic router (`shared/chat/fast_paths.py`) + shared per-conversation drive-context store (`shared/chat/drive_context.py`, per-thread on Slack): nameplate photo → cited drive-pack ID, wiring photo → `proposed` rows, wiring text → verified-only Q&A, drive-pack text continuity. Reads are cited/verified-only; writes are `approval_state='proposed'`; safety turns yield to the engine. Telegram unchanged (its shared-router migration is a separate PR).
+
 ### v3.173.0 (2026-07-19) - chore(bots): ruff-format drift cleanup — vision_worker.py + printsense_testkit.py
 
 - Pure `ruff format` (0.9.10, the CI pin) of the two drifted files — un-reds the non-required "Lint & Format" check that stayed red through the OCR-regime and routing merges. Recomputed after #2713 landed so the format covers the final file state. Zero semantic change; covering suites green.
