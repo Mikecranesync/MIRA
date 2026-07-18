@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.162.0 (2026-07-17) - feat(printsense): UNSEEN-5 — frozen generalization lane, classified reporting, scheduled zero-cost run
+
+- New `printsense/benchmarks/unseen_lane/` package: the BLATT-27 novel-content probe frozen with its own `unseen_lane.sha256` (case_id+question+expect), rendered via the SHARED `draw_print_page` renderer. README states the law: never used for calibration/prompts/fixtures/tuning (mechanically guarded); scores tracked separately from every seen lane (the seen-vs-unseen delta = the overfit metric); rotation replaces content wholesale, never promotes it into calibration.
+- Testkit `run_unseen_lane`: frozen corpus through the REAL rung with the `PRINT_BENCH_BUDGET_USD` hard-stop and per-directive classified reporting — safety-critical errors, invented tags, routing misses, **OCR identifier drift** (edit-distance-1 detector; catches the benchmark's real V7301←-W7301 misread), missing caveats, extraction misses, grader-false-positive suspects, **deterministic fast-path coverage** (claimed + zero usage = no model ran), provider histogram, and estimated cost. `/printsense_test unseen` (admin) + `unseen_phone_summary`.
+- `tools/unseen_lane_runner.py` + `.github/workflows/unseen-generalization-lane.yml` (weekly cron + dispatch): headless run on the free cascade with the paid provider STRUCTURALLY off (`PRINT_VISION_PROVIDER=none`, keys stripped before import); report-only (Phase 5 owns baselines) with a 90-day artifact.
+- Suites: tests/printsense 515 green (+6 corpus: digest frozen/tamper-detect/shape/truth-pool/render/clean-grade); bot set 23 green (+6 lane: zero-cost pass, drift detection, routing classification, budget stop, lev-1 unit, summary). Zero paid inference.
+
 ### v3.161.0 (2026-07-17) - feat(printsense): UNSEEN-2/3/4 — German print routing, negation-aware state-claim grading, deterministic contact caveat
 
 - **UNSEEN-2 (routing):** `is_print_question` gains additive German signal sets (Klemme, belegt, Schaltplan, Stromlaufplan, Versorgung, Kontakt, Leitung, Querverweis, Sicherung, Schütz, welche/wo/wie/warum/bedeutet + German lead-aux). The benchmark's exact miss ("Welche Klemme ist belegt?") now routes; "was" is gated to German usage so English past-tense statements don't false-route; all English positives/negatives unchanged.
