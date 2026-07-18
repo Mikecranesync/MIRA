@@ -183,11 +183,16 @@ TELEGRAM_POLL_PATTERN = "getUpdates"
 TELEGRAM_LOG_WINDOW_MIN = 5
 
 # KB Growth cron freshness — `manual_queue.json` mtime should be < 24h on a
-# healthy node (cron runs every 6h).
+# healthy node (cron runs every 6h). The probe MUST resolve the SAME path the
+# cron writes, or it reads a perpetually-stale orphan and reports DOWN forever
+# (#2782): the cron writes `MIRA_MANUAL_QUEUE_PATH` (default
+# `/var/lib/mira/manual_queue.json`, relocated 2026-07-11 #2562/#2639 to survive
+# `git checkout --force`), while this probe historically read a hard-coded
+# `/opt/mira/...` path (#1015) that nothing writes. Keep in sync with
+# `kb_growth_cron._QUEUE_PATH_DEFAULT` / `QUEUE_FILE`.
+_KB_QUEUE_DEFAULT = "/var/lib/mira/manual_queue.json"
 KB_QUEUE_PATHS = [
-    "/opt/mira/mira-crawler/cron/manual_queue.json",  # actual cron path
-    "/opt/mira/manual_queue.json",
-    "/opt/mira/mira-crawler/manual_queue.json",
+    os.environ.get("MIRA_MANUAL_QUEUE_PATH", _KB_QUEUE_DEFAULT),
 ]
 KB_STALE_AFTER_HOURS = 24
 
