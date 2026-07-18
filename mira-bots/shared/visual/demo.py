@@ -54,6 +54,8 @@ class _FakeVisionWorker:
                 "wire number 100",
                 "OL1 overload contact",
             ],
+            "ocr_tokens": [],
+            "ocr_source": "none",
             "tesseract_text": "",
             "drawing_type": "ladder logic diagram",
             "drawing_type_confidence": 0.7,

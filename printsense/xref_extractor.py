@@ -20,7 +20,8 @@ Two strictly separated layers:
 OCR itself is an adapter (:func:`ocr_tokens`) over Tesseract
 ``image_to_data``; when the binary/library is unavailable the caller gets an
 explicit :class:`OcrUnavailable` — degraded pipelines report a skipped stage,
-never a silent pass. Records serialize via :func:`stable_json` (canonical,
+never a silent pass, and tokens flatten to evidence strings via
+:func:`line_items`. Records serialize via :func:`stable_json` (canonical,
 byte-stable). Output integrates with pageset via :func:`to_pageset_xrefs`.
 """
 
@@ -106,6 +107,23 @@ def _join_lines(tokens: list[dict]) -> list[dict]:
         joined.append({"text": text, "bbox": bbox})
         joined.extend({"text": t["text"], "bbox": t["bbox"]} for t in toks)
     return joined
+
+
+def line_items(tokens: list[dict]) -> list[str]:
+    """OCR tokens -> flat evidence strings for ``vision_data['ocr_items']``.
+
+    Joined per-line strings first (so multi-token labels like ``A1 A2``
+    survive), then singleton tokens — the same coverage `_join_lines`
+    gives the lexical layer — order-stable and deduplicated.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for entry in _join_lines(tokens):
+        text = entry["text"].strip()
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+    return out
 
 
 def _confidence(base: float, text: str, bbox: list, page_width: int | None) -> tuple[float, list[str]]:

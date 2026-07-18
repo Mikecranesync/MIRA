@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import io as _io
+import json
 import logging
 import os
 import re
@@ -51,6 +52,7 @@ from shared.photo_handler import (
     preserve_first_meaningful_caption,
 )
 from shared.tenant.authorizer import Authorizer
+from shared.workers.vision_worker import ocr_lane_report
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 from start_command import start_command
@@ -140,6 +142,7 @@ engine = Supervisor(
     tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
     mcp_base_url=MCP_BASE_URL,
 )
+logger.info("OCR_LANES %s", json.dumps(ocr_lane_report()))
 
 # Multi-tenant infra (NeonDB-backed)
 ADMIN_TELEGRAM_IDS = os.environ.get("ADMIN_TELEGRAM_IDS", "")

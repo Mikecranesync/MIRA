@@ -108,3 +108,36 @@ async def test_internal_error_fails_closed(monkeypatch):
     assert msg == "PrintSense test failed: RuntimeError"  # class name only
     assert "/data" not in msg
     c.bot.send_document.assert_not_called()
+
+
+async def test_ocr_phase_awaits_run_ocr_report_live(monkeypatch):
+    """When args=['ocr'], the command must await printsense_testkit.run_ocr_report_live
+    and not invoke any of the phase1/2/3/4/unseen paths."""
+    import sys
+
+    # Mock run_ocr_report_live before importing printsense_testkit
+    class FakePrintsenseTestkit:
+        run_ocr_report_live = AsyncMock()
+        run_phase2_live = AsyncMock()
+        run_phase3_live = AsyncMock()
+        run_phase4_live = AsyncMock()
+        run_unseen_lane_live = AsyncMock()
+
+    fake_testkit = FakePrintsenseTestkit()
+    monkeypatch.setitem(sys.modules, "printsense_testkit", fake_testkit)
+
+    # Also mock cb.run_corpus to ensure phase1 path isn't taken
+    monkeypatch.setattr(cb, "run_corpus", AsyncMock())
+
+    u, c = _update(), _ctx(args=("ocr",))
+    await pc.printsense_test_command(u, c)
+
+    # Assert ocr path was taken
+    fake_testkit.run_ocr_report_live.assert_awaited_once_with(u, c)
+
+    # Assert other paths were NOT called
+    fake_testkit.run_phase2_live.assert_not_called()
+    fake_testkit.run_phase3_live.assert_not_called()
+    fake_testkit.run_phase4_live.assert_not_called()
+    fake_testkit.run_unseen_lane_live.assert_not_called()
+    cb.run_corpus.assert_not_called()

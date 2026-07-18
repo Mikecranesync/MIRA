@@ -1,13 +1,11 @@
 """Vision Worker — Photo analysis, OCR, and classification."""
 
 import base64
-import io
 import logging
 import os
 import re
 
 import httpx
-from PIL import Image
 
 from ..inference.router import InferenceRouter as _InferenceRouter
 
@@ -240,6 +238,92 @@ def _kw_affirmed(keyword: str, text: str) -> bool:
 OCR_CLASSIFICATION_THRESHOLD = 10
 
 
+def parse_ocr_reply(raw: str) -> list[str]:
+    """Model OCR reply -> clean text items (numbered list / markdown tolerant)."""
+    items = []
+    for line in raw.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("```") or line in ("{", "}", "[", "]"):
+            continue
+        if re.match(r"^[|:\-\s]+$", line):
+            continue
+        if line.startswith("|") and line.endswith("|"):
+            cells = [c.strip() for c in line.split("|") if c.strip()]
+            for cell in cells:
+                cell = re.sub(r"[*`]", "", cell).strip()
+                if cell and not cell.startswith("```"):
+                    items.append(cell)
+            continue
+        line = re.sub(r"[*`]", "", line)
+        # Numbering alternatives, in order: dot/paren ("1." / "2)"), dash-bullet (needs whitespace after the dash, e.g. "3 - x"), then bare "N ".
+        # A glued dash ("3 -K17") isn't dash-bullet (no space after "-"), so it falls to bare "N " and the IEC tag "-K17" survives.
+        cleaned = re.sub(r"^\d+[\.\)]\s*|^\d+\s+-\s+|^\d+\s+", "", line).strip()
+        if cleaned and not cleaned.startswith("```"):
+            items.append(cleaned)
+    return items
+
+
+def _tesseract_tokens_impl(image_bytes: bytes) -> list[dict]:
+    """Deterministic word boxes via the shared printsense adapter.
+
+    Raises printsense.xref_extractor.OcrUnavailable when the binary or
+    pytesseract is absent (local Windows dev) — callers degrade honestly.
+    """
+    from printsense.xref_extractor import ocr_tokens
+
+    return ocr_tokens(image_bytes)
+
+
+def _printsense_line_items(tokens: list) -> list:
+    """line_items via printsense when shipped; [] otherwise (slack/pipeline
+    images don't carry printsense/ — the floor is telegram-image-only until
+    image parity lands)."""
+    try:
+        from printsense.xref_extractor import line_items
+    except ImportError:
+        return []
+    return line_items(tokens)
+
+
+def _tesseract_version_impl() -> str:
+    import pytesseract
+
+    return str(pytesseract.get_tesseract_version())
+
+
+def ocr_lane_report() -> dict:
+    """One-shot health report for every OCR lane. Logged at bot boot and
+    rendered by /printsense_test ocr — the mechanism that makes a dead
+    floor loud instead of a per-turn WARNING nobody reads (the 2026-07
+    glm-ocr lane died silently for weeks)."""
+    expected = (os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0") == "1"
+    model_lane = (
+        "on"
+        if os.environ.get("OCR_MODEL_LANE", "off").strip().lower() == "on"
+        else "off"
+    )
+    try:
+        version: str | None = _tesseract_version_impl()
+        available = True
+    except Exception:  # noqa: BLE001 — absence is a report state, not an error
+        version = None
+        available = False
+    if available:
+        verdict = "ok"
+    elif expected:
+        verdict = "DEAD"
+    else:
+        verdict = "DEGRADED"
+    return {
+        "tesseract": {"available": available, "version": version},
+        "model_lane": model_lane,
+        "expected_floor": expected,
+        "verdict": verdict,
+    }
+
+
 class VisionWorker:
     """Handles photo analysis: vision model + OCR + classification."""
 
@@ -254,34 +338,78 @@ class VisionWorker:
         Returns dict with keys:
             classification: 'ELECTRICAL_PRINT' | 'NAMEPLATE' | 'EQUIPMENT_PHOTO'
             vision_result: str (vision model description)
-            ocr_items: list[str] (glm-ocr extracted text items)
-            tesseract_text: str (Tesseract backup OCR)
+            ocr_items: list[str] (Tesseract floor + model-lane supplement, deduped)
+            ocr_tokens: list[dict] (Tesseract word boxes: {text, bbox, line}; [] when unavailable)
+            ocr_source: str ('tesseract' | 'tesseract+model' | 'model' | 'none')
+            tesseract_text: str (newline-joined Tesseract line strings from the same pass)
             drawing_type: str | None (only for ELECTRICAL_PRINT)
         """
         import asyncio
 
         vision_coro = self._call_vision(photo_b64, message)
         ocr_coro = self._call_ocr(photo_b64)
-        results = await asyncio.gather(vision_coro, ocr_coro, return_exceptions=True)
+
+        def _floor() -> list[dict]:
+            try:
+                from printsense.xref_extractor import OcrUnavailable
+
+                return _tesseract_tokens_impl(base64.b64decode(photo_b64))
+            except ImportError as exc:
+                # printsense not shipped in this image (slack/mira-pipeline) —
+                # the floor is telegram-image-only until image parity lands.
+                logger.warning(
+                    "printsense not shipped in this image — OCR floor off: %s", exc
+                )
+                return []
+            except OcrUnavailable as exc:
+                logger.warning("tesseract floor unavailable: %s", exc)
+                return []
+            except Exception as exc:  # noqa: BLE001 — floor failure must not eat the turn
+                logger.warning("tesseract floor error: %s", exc)
+                return []
+
+        floor_coro = asyncio.to_thread(_floor)
+        results = await asyncio.gather(
+            vision_coro, ocr_coro, floor_coro, return_exceptions=True
+        )
 
         vision_result = results[0] if not isinstance(results[0], Exception) else message
-        ocr_items = results[1] if not isinstance(results[1], Exception) else []
+        model_items = results[1] if not isinstance(results[1], Exception) else []
+        ocr_tokens_ = results[2] if not isinstance(results[2], Exception) else []
 
         if isinstance(results[0], Exception):
             logger.error("Vision call failed: %s", results[0])
         if isinstance(results[1], Exception):
-            logger.warning("glm-ocr call failed: %s", results[1])
+            logger.warning("model-OCR lane failed: %s", results[1])
+        if isinstance(results[2], Exception):
+            logger.warning("tesseract floor task failed: %s", results[2])
 
-        tesseract_text = self._ocr_extract(photo_b64)
+        floor_items = _printsense_line_items(ocr_tokens_)
+        ocr_items = list(floor_items)
+        for item in model_items if isinstance(model_items, list) else []:
+            if item not in ocr_items:
+                ocr_items.append(item)
+
+        if floor_items and len(ocr_items) > len(floor_items):
+            ocr_source = "tesseract+model"
+        elif floor_items:
+            ocr_source = "tesseract"
+        elif ocr_items:
+            ocr_source = "model"
+        else:
+            ocr_source = "none"
+
+        tesseract_text = "\n".join(floor_items) if floor_items else ""
 
         classify_result = self._classify_photo(str(vision_result), ocr_items, message)
         classification = classify_result["type"]
         classify_confidence = classify_result["confidence"]
         logger.info(
-            "Photo classified as %s (confidence=%.2f, %d OCR items)",
+            "Photo classified as %s (confidence=%.2f, %d OCR items, ocr_source=%s)",
             classification,
             classify_confidence,
             len(ocr_items),
+            ocr_source,
         )
 
         drawing_type = None
@@ -295,7 +423,9 @@ class VisionWorker:
             "classification": classification,
             "classification_confidence": classify_confidence,
             "vision_result": vision_result,
-            "ocr_items": ocr_items if isinstance(ocr_items, list) else [],
+            "ocr_items": ocr_items,
+            "ocr_tokens": ocr_tokens_,
+            "ocr_source": ocr_source,
             "tesseract_text": tesseract_text,
             "drawing_type": drawing_type,
             "drawing_type_confidence": drawing_confidence,
@@ -362,10 +492,14 @@ class VisionWorker:
         return data["choices"][0]["message"]["content"]
 
     async def _call_ocr(self, photo_b64: str) -> list:
-        """Call glm-ocr for pure text extraction. Returns list of text items."""
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        """Model-OCR enrichment lane (OFF by default — the deterministic floor
+        is Tesseract, see ``process``). When ``OCR_MODEL_LANE=on``, sends the
+        numbered-list OCR prompt through the inference router (same cascade
+        as ``_call_vision``); free-tier VL models misread dense schematics
+        (2026-07-17 UNSEEN benchmark), so this lane supplements the floor —
+        it must never replace it."""
+        if os.environ.get("OCR_MODEL_LANE", "off").strip().lower() != "on":
+            return []
 
         messages = [
             {
@@ -391,60 +525,10 @@ class VisionWorker:
                 ],
             }
         ]
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.openwebui_url}/api/chat/completions",
-                headers=headers,
-                json={
-                    "model": os.environ.get("GLM_OCR_MODEL", "glm-ocr:latest"),
-                    "messages": messages,
-                    "options": {"temperature": 0.0},
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        raw = data["choices"][0]["message"]["content"]
-        items = []
-        for line in raw.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            # Skip code fence markers and bare JSON/markdown syntax
-            if line.startswith("```") or line in ("{", "}", "[", "]"):
-                continue
-            # Skip markdown table separator rows (|:---|:---|)
-            if re.match(r"^[|:\-\s]+$", line):
-                continue
-            # Extract content from markdown table rows (| cell | cell |)
-            if line.startswith("|") and line.endswith("|"):
-                cells = [c.strip() for c in line.split("|") if c.strip()]
-                for cell in cells:
-                    cell = re.sub(r"[*`]", "", cell).strip()
-                    if cell and not cell.startswith("```"):
-                        items.append(cell)
-                continue
-            # Strip markdown bold/italic/code markers from regular lines (not underscore)
-            line = re.sub(r"[*`]", "", line)
-            # Strip leading numbers, dots, dashes, parens
-            cleaned = re.sub(r"^\d+[\.\)\-\s]+", "", line).strip()
-            if cleaned and not cleaned.startswith("```"):
-                items.append(cleaned)
-        return items
-
-    def _ocr_extract(self, photo_b64: str) -> str:
-        """Run Tesseract OCR on image to extract text deterministically."""
-        try:
-            import pytesseract
-
-            image_bytes = base64.b64decode(photo_b64)
-            img = Image.open(io.BytesIO(image_bytes))
-            text = pytesseract.image_to_string(img, config="--psm 6")
-            return text.strip()
-        except Exception as e:
-            logger.warning("OCR extraction failed: %s", e)
-            return ""
+        content, _usage = await _inference_router.complete(messages)
+        if not content:
+            return []
+        return parse_ocr_reply(content)
 
     def _classify_photo(self, vision_result: str, ocr_items: list, caption: str = "") -> dict:
         """Classify photo as ELECTRICAL_PRINT, NAMEPLATE, or EQUIPMENT_PHOTO with confidence.

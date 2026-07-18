@@ -448,6 +448,10 @@ services:
       - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
       # Per-turn $0 print autoeval (default ON; "0" disables). or-form parse in code.
       - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
+      # Model-OCR enrichment lane (off by default; free cascade floor is Tesseract).
+      - OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}
+      # Boot self-check Tesseract floor: 1 in containers (required), 0 on local dev.
+      - OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions

@@ -418,9 +418,18 @@ async def printsense_test_command(update, context):
             logger.warning("printsense_test unseen failed: %s", type(exc).__name__)
             await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
         return
+    if phase == "ocr":
+        try:
+            import printsense_testkit
+
+            await printsense_testkit.run_ocr_report_live(update, context)
+        except Exception as exc:
+            logger.warning("printsense_test ocr failed: %s", type(exc).__name__)
+            await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
+        return
     if phase != "phase1":
         await update.message.reply_text(
-            "Usage: /printsense_test phase1|phase2|phase3|phase4|unseen"
+            "Usage: /printsense_test phase1|phase2|phase3|phase4|unseen|ocr"
         )
         return
     try:
