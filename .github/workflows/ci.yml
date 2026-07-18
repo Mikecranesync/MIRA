@@ -486,7 +486,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
 
       - name: Install dependencies
-        run: pip install pytest pydantic pillow pytesseract
+        # pytest-asyncio: recognizes the shared `asyncio_mode = "auto"` in
+        # pyproject.toml — without it pytest emits a PytestConfigWarning that
+        # some pytest versions escalate to exit 1 despite all tests passing
+        # (#2553; same guard as simlab-gate/architecture-check/drive-pack-extract-tests
+        # above — this standalone job needs its own copy of the safeguard).
+        run: pip install pytest pytest-asyncio pydantic pillow pytesseract
 
       - name: OCR recall gate (-s so the measured recall lands in the CI log for floor calibration)
         run: python -m pytest tests/printsense/test_ocr_recall_gate.py -q -s
