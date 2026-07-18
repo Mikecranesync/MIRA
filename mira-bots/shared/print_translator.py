@@ -248,6 +248,23 @@ _EQUIPMENT_ID_RE = re.compile(
     r"\b(drive|vfd|plc|motor|nameplate|model|serial|part number|breaker|"
     r"starter|overload|hmi|sensor)\b"
 )
+# ── German print-question routing (UNSEEN-2) ─────────────────────────────────
+# The unseen-print benchmark: "Welche Klemme ist belegt?" never routed — the
+# signal logic above is English-only while plants and prints are frequently
+# German. Additive German signal sets; every English negative control is
+# untouched (German small talk carries none of these). "was" is gated to
+# German usage ("was ist/bedeutet/macht/für") because it is also an English
+# past-tense verb.
+_Q_SIGNAL_DE_RE = re.compile(
+    r"\b(welche[rs]?|wo|wie|warum|wieso|zeig(?:e|en)?|erkl(?:ä|ae)r\w*|bedeutet)\b"
+    r"|\bwas\b(?=\s+(?:ist|bedeutet|macht|f(?:ü|ue)r)\b)"
+)
+_Q_LEAD_AUX_DE_RE = re.compile(r"^(ist|sind|hat|haben|kann|k(?:ö|oe)nnen|wird)\b")
+_DOMAIN_DE_RE = re.compile(
+    r"\b(klemme\w*|belegt|schaltplan|stromlaufplan|zeichnung|verdrahtung|"
+    r"leitung\w*|draht\w*|spule|kontakt\w*|versorgung|querverweis\w*|blatt|"
+    r"sicherung\w*|sch(?:ü|ue)tz\w*|relais)\b"
+)
 
 
 def is_print_question(text: str) -> bool:
@@ -264,12 +281,22 @@ def is_print_question(text: str) -> bool:
     lowered = text.lower()
     if any(phrase in lowered for phrase in PRINT_QUESTION_PHRASES):
         return True  # legacy whitelist — everything that routed before still routes
-    domain = bool(_DOMAIN_RE.search(lowered) or _TAG_RE.search(lowered) or _PAIR_RE.search(lowered))
+    domain = bool(
+        _DOMAIN_RE.search(lowered)
+        or _DOMAIN_DE_RE.search(lowered)
+        or _TAG_RE.search(lowered)
+        or _PAIR_RE.search(lowered)
+    )
     if _STRONG_DOMAIN_RE.search(lowered):
         return True
     if _EQUIPMENT_ID_RE.search(lowered) and not domain:
         return False  # nameplate/drive-pack flow owns bare identification questions
-    question = bool(_Q_SIGNAL_RE.search(lowered) or _Q_LEAD_AUX_RE.search(lowered))
+    question = bool(
+        _Q_SIGNAL_RE.search(lowered)
+        or _Q_LEAD_AUX_RE.search(lowered)
+        or _Q_SIGNAL_DE_RE.search(lowered)
+        or _Q_LEAD_AUX_DE_RE.search(lowered)
+    )
     if question and (domain or _DEICTIC_RE.search(lowered)):
         return True
     if "?" in lowered and domain:
@@ -347,14 +374,34 @@ FALLBACK_REPLY = (
 )
 
 
+# ── deterministic contact-state caveat (UNSEEN-4) ────────────────────────────
+# The unseen-print benchmark showed verdict-correct model answers dropping the
+# verify/measure caveat on novel phrasings. The caveat is a safety duty, not
+# content — appended deterministically whenever a contact-convention verdict
+# ships without any uncertainty/verification language.
+_CONTACT_VERDICT_RE = re.compile(r"normally\s+(open|closed)", re.IGNORECASE)
+_CAVEAT_MARKERS = ("verify", "measure", "meter", "convention only")
+CONTACT_STATE_CAVEAT = (
+    "⚠️ Convention only — a print never shows live state. Verify with the "
+    "circuit made safe and a meter before relying on it."
+)
+
+
 def format_theory_reply(raw: str, drawing_type: str | None = None) -> str:
     """Post-process the model's reply for Telegram.
 
     If ``raw`` is empty (all providers failed) return ``FALLBACK_REPLY``.
     Otherwise return ``raw`` unchanged — the prompt already enforces the
-    6-section format + hedged framing. Do NOT append a generic sentence, do
-    NOT fabricate content.
+    6-section format + hedged framing. Do NOT append generic prose, do NOT
+    fabricate content. The single sanctioned append is the deterministic
+    SAFETY caveat: a contact-convention verdict (\"normally open/closed\")
+    shipping without any verification language gets ``CONTACT_STATE_CAVEAT``
+    (UNSEEN-4) — a safety duty, not content.
     """
     if not raw:
         return FALLBACK_REPLY
+    if _CONTACT_VERDICT_RE.search(raw) and not any(
+        marker in raw.lower() for marker in _CAVEAT_MARKERS
+    ):
+        return raw + "\n\n" + CONTACT_STATE_CAVEAT
     return raw

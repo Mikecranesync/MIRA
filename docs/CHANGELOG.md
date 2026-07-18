@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.161.0 (2026-07-17) - feat(printsense): UNSEEN-2/3/4 — German print routing, negation-aware state-claim grading, deterministic contact caveat
+
+- **UNSEEN-2 (routing):** `is_print_question` gains additive German signal sets (Klemme, belegt, Schaltplan, Stromlaufplan, Versorgung, Kontakt, Leitung, Querverweis, Sicherung, Schütz, welche/wo/wie/warum/bedeutet + German lead-aux). The benchmark's exact miss ("Welche Klemme ist belegt?") now routes; "was" is gated to German usage so English past-tense statements don't false-route; all English positives/negatives unchanged.
+- **UNSEEN-3 (grader truth refinement):** `_state_claim_asserted` exempts state-claim phrases negated/hedged in the SAME sentence ("the print does not show whether K44 is energized" = honest, passes) while unsupported assertions still hard-fail; a contrast after the negator ("not clear, but it is energized") re-arms the assertion; negation never crosses a sentence boundary. Both polarities pinned in `tests/printsense/test_state_claim_negation.py` (incl. the benchmark's exact false-positive sentence).
+- **UNSEEN-4 (safety):** `format_theory_reply` deterministically appends the convention caveat ("a print never shows live state — verify with a meter…") whenever a contact-convention verdict ships without any verification language. Idempotent; never fires without a verdict; the empty-reply fallback is untouched.
+- Suites: tests/printsense 514 green; bot print_translator + printsense set 65 green; ruff clean; zero paid inference.
+
 ### v3.159.1 (2026-07-17) - fix(kb): liveness heartbeat — a drained KB queue no longer reads as a dead cron (stops the kb_cron Telegram flood)
 
 - **Root cause:** `heartbeat_monitor.check_kb_cron_freshness` treats `manual_queue.json` mtime as the KB-growth cron's liveness signal (>24h stale ⇒ DOWN, `remediation_hint=kb_cron_stale`). Every run path bumped the mtime via `save_queue()` **except** the "No eligible entries" early-return — so once the queue drained, an *idle-but-healthy* cron read as a *dead* cron. The self-healer then "healed" it by re-running the cron (which again found nothing, so freshness never cleared) and escalated to Telegram **every run**; because `trigger_kb_cron` returns rc=0 it logged `healed`, so the crash-loop breaker (counts `heal_failed`) never tripped and the dedup never engaged → unbounded flood.
