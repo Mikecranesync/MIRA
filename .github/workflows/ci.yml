@@ -491,7 +491,9 @@ jobs:
         # some pytest versions escalate to exit 1 despite all tests passing
         # (#2553; same guard as simlab-gate/architecture-check/drive-pack-extract-tests
         # above — this standalone job needs its own copy of the safeguard).
-        run: pip install pytest pytest-asyncio pydantic pillow pytesseract
+        # pyyaml: tests/conftest.py imports yaml at collection time; without it,
+        # pytest collection fails in this minimal env.
+        run: pip install pytest pytest-asyncio pyyaml pydantic pillow pytesseract
 
       - name: OCR recall gate (-s so the measured recall lands in the CI log for floor calibration)
         run: python -m pytest tests/printsense/test_ocr_recall_gate.py -q -s
