@@ -326,3 +326,52 @@ describe("de-slop invariants", () => {
     expect(cancelled).toContain("Unlock Drive Commander Pro");
   });
 });
+
+// ── PowerFlex truth pins (2026-07-17, issue #2777 audit) ─────────────────
+// Both packs passed the source-pinned audit against the hash-pinned Rockwell
+// manuals (520-UM001O-EN-E: 48/48 faults + 45/45 params page-exact;
+// 22B-UM001J-EN-E: 26/26 + 9/9). These pins hold the audited meanings so a
+// regenerated pack can never silently shift them (the G120 failure class).
+describe("powerflex packs — manual-verified truth pins (#2777)", () => {
+  test("PF525 fault meanings match 520-UM001 (p.161 fault table)", () => {
+    const p = getPack("powerflex-525")!;
+    expect(p.faultCodes["4"]).toBe("UnderVoltage");
+    expect(p.faultCodes["5"]).toBe("OverVoltage");
+    expect(p.faultCodes["7"]).toBe("Motor Overload");
+    expect(p.faultCodes["8"]).toBe("Heatsink OvrTmp");
+  });
+
+  test("PF40 fault meanings match 22B-UM001 (Table 10, p.93)", () => {
+    const p = getPack("powerflex-40")!;
+    expect(p.faultCodes["4"]).toBe("UnderVoltage");
+    expect(p.faultCodes["5"]).toBe("OverVoltage");
+    expect(p.faultCodes["12"]).toBe("HW OverCurrent");
+  });
+
+  test("audited pack shapes stay stable (counts + hash-pinned verification block)", () => {
+    const p525 = getPack("powerflex-525")!;
+    const p40 = getPack("powerflex-40")!;
+    expect(Object.keys(p525.faultCodes).length).toBe(48);
+    expect(listParameters(p525).length).toBe(45);
+    expect(Object.keys(p40.faultCodes).length).toBe(26);
+    expect(listParameters(p40).length).toBe(9);
+    // verification blocks recorded at the pack of record and vendored through
+    expect((powerflex525 as any).provenance.verification.manual_sha256).toBe(
+      "b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6",
+    );
+  });
+
+  test("negative: codes absent from BOTH manuals stay unsupported", () => {
+    // F999/F200/F055 verified absent from 520-UM001O and 22B-UM001J text
+    // layers (regex sweep of all F-number tokens). NOTE: the first draft of
+    // this pin used F100 — which IS a real PF525 fault (Parameter Chksum);
+    // the pin itself caught the from-memory error. Negatives must come from
+    // the manual sweep, never from memory.
+    for (const slug of ["powerflex-525", "powerflex-40"]) {
+      const p = getPack(slug)!;
+      for (const bogus of ["F999", "F200", "F055"]) {
+        expect(getFault(p, bogus)).toBeNull();
+      }
+    }
+  });
+});
