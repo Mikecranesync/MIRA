@@ -7,6 +7,10 @@
 - `engine._log_interaction` + `session_manager.log_interaction` gain the 5 provenance kwargs (pass-through). Persistence is best-effort behind the fail-open hook: a broken DB never touches the technician reply nor the conversation_eval capture (pinned by test).
 - Tests: `test_print_turn_persistence.py` (6 — schema idempotent + in-place upgrade + round-trip verbatim from the branch; theory-turn provenance incl. sha/route/fallback_reason on the REAL rung; deterministic-branch row; persistence-failure isolation). Suites: print/photo/engine set 355 green; autoeval 29 green.
 
+### v3.163.1 (2026-07-18) - diag(kb): db-inspect prod probes + queue_write logging for the KB-queue freshness incident (#2782)
+
+- Read-only diagnostic tooling that surfaced the #2782 root cause (probe read a `/opt/mira` orphan while the cron wrote `/var/lib/mira`; fixed in #2791/v3.162.4). Adds two `db-inspect.yml` prod-safe steps — KB-growth feeder inventory (`manual_cache` un-ingested) and `kb_cron` flood-source health (`system_health_log` freshness + heal/escalation timeline) — plus `queue_write` diagnostic logging in `kb_growth_cron.save_queue` (resolved path, inode, pre/post mtime, cwd, exe, module, pid, host; failures RAISE). No behavioral change. Bumps the line-keyed `knowledge_entries` read allowlist (`kb_growth_cron.py` :200→:253, :694→:747) shifted by the logging insert.
+
 ### v3.163.0 (2026-07-18) - feat(printsense): per-turn $0 auto-eval hook — every print reply graded, persisted, and P0-alerted
 
 - **Closes the print-path observability gap**: print-translator turns bypassed `engine.process()`, so they reached NEITHER eval pipeline (no `conversation_eval` row, no citation/groundedness gate) — the only live grading was manual (`/printsense_grade`). Now every delivered print reply is graded automatically, truth-free, at $0 (deterministic regex/set ops — no LLM judge per the zero-token spend law), and lands in `conversation_eval` with `meta.surface="print_translator"` + `meta.autoeval` (versioned contract for the future batch scorer; `auto_score` stays NULL). Design: `docs/plans/2026-07-18-print-autoeval-hook.md`.

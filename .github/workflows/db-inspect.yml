@@ -432,3 +432,76 @@ jobs:
            WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
            ORDER BY started_at DESC LIMIT 5;
           SQL
+
+      - name: KB-growth feeder inventory (manual_cache un-ingested) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. The kb_growth_cron hourly job DRAINS manual_queue.json but
+          # nothing SCHEDULED refills it — the queue is fed only by the one-shot
+          # `--hydrate-from-cache` (manual_cache -> queue) and queue_populate.py
+          # (allowlist -> queue). A drained queue ("No eligible entries") is the
+          # designed steady state, NOT a dead cron. This probe answers the real
+          # question: is there LATENT inventory a hydrate would surface, i.e. has
+          # KB growth silently stalled? (Context: 2026-07-17 kb_cron flood.)
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === manual_cache present? ===
+          SELECT EXISTS(SELECT 1 FROM information_schema.tables
+                        WHERE table_schema='public' AND table_name='manual_cache') AS manual_cache_present;
+
+          \echo === manual_cache totals ===
+          SELECT count(*) AS total_rows,
+                 count(*) FILTER (WHERE manual_url IS NOT NULL AND manual_url <> '') AS rows_with_url
+            FROM manual_cache;
+
+          \echo === LATENT WORK: manual_cache rows with a URL not yet in knowledge_entries.source_url ===
+          \echo === (this is what `--hydrate-from-cache` would append to manual_queue.json) ===
+          SELECT count(*) AS uningested_manuals
+            FROM manual_cache mc
+           WHERE mc.manual_url IS NOT NULL AND mc.manual_url <> ''
+             AND NOT EXISTS (SELECT 1 FROM knowledge_entries ke
+                              WHERE ke.source_url = mc.manual_url);
+
+          \echo === un-ingested by manufacturer (top 25) ===
+          SELECT coalesce(mc.manufacturer, '(none)') AS manufacturer, count(*) AS n
+            FROM manual_cache mc
+           WHERE mc.manual_url IS NOT NULL AND mc.manual_url <> ''
+             AND NOT EXISTS (SELECT 1 FROM knowledge_entries ke
+                              WHERE ke.source_url = mc.manual_url)
+           GROUP BY 1 ORDER BY n DESC LIMIT 25;
+          SQL
+
+      - name: kb_cron flood-source health (system_health_log) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. Confirms the 2026-07-17 kb_cron Telegram flood stopped after
+          # the liveness-heartbeat fix (#2769) deployed: freshness rows (category=data)
+          # should flip DOWN→healthy once a drained-queue run bumps manual_queue.json
+          # mtime, and heal/escalation rows (category=heal) should stop firing.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === kb_cron rows, last 3h (freshness + heal timeline, newest first) ===
+          SELECT ts, category, status, action_taken,
+                 left(details, 200) AS details, extra->>'escalated' AS escalated
+            FROM system_health_log
+           WHERE service = 'kb_cron' AND ts > now() - interval '3 hours'
+           ORDER BY ts DESC LIMIT 40;
+
+          \echo === kb_cron escalation count: before vs after 2026-07-18 00:24Z (deploy) ===
+          SELECT CASE WHEN ts < timestamptz '2026-07-18 00:24:00+00' THEN 'before_deploy'
+                      ELSE 'after_deploy' END AS window,
+                 count(*) AS heal_rows,
+                 count(*) FILTER (WHERE extra->>'escalated' = 'true') AS escalations
+            FROM system_health_log
+           WHERE service = 'kb_cron' AND category = 'heal'
+             AND ts > now() - interval '6 hours'
+           GROUP BY 1 ORDER BY 1;
+
+          \echo === latest kb_cron freshness verdict ===
+          SELECT ts, status, left(details, 80) AS details
+            FROM system_health_log
+           WHERE service = 'kb_cron' AND category = 'data'
+           ORDER BY ts DESC LIMIT 3;
+          SQL

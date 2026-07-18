@@ -175,12 +175,65 @@ def load_queue() -> list[dict]:
         return json.load(f)
 
 
+def _queue_write_identity() -> dict:
+    """Runtime identity for diagnosing writer/probe path drift (issue #2782).
+
+    The 2026-07-18 KB-freshness incident was the cron atomically writing its
+    real queue file (``MIRA_MANUAL_QUEUE_PATH``, default
+    ``/var/lib/mira/manual_queue.json``) while ``heartbeat_monitor`` probed a
+    stale hard-coded ``/opt/mira/...`` path — so a healthy write never advanced
+    the *probed* mtime. Emitting the resolved path + process identity makes that
+    drift visible in ``kb_growth.log`` without a prod shell.
+    """
+    import socket
+
+    try:
+        st = QUEUE_FILE.stat()
+        inode: int | None = st.st_ino
+        mtime_pre: float | None = st.st_mtime
+    except OSError:
+        inode, mtime_pre = None, None
+    return {
+        "path": str(QUEUE_FILE),
+        "inode": inode,
+        "mtime_pre": mtime_pre,
+        "cwd": os.getcwd(),
+        "exe": sys.executable,
+        "module": str(Path(__file__).resolve()),
+        "pid": os.getpid(),
+        "host": socket.gethostname(),
+    }
+
+
 def save_queue(queue: list[dict]) -> None:
-    """Atomic write — temp file + rename so a crash never leaves a half file."""
+    """Atomic write — temp file + rename so a crash never leaves a half file.
+
+    A write failure RAISES (never a silent no-op) so a failed mutation cannot be
+    mistaken for success by a caller that only checks the process return code.
+    Emits a one-line ``queue_write`` diagnostic (resolved path, inode, pre/post
+    mtime, cwd, exe, module, pid, host) — see ``_queue_write_identity`` / #2782.
+    """
+    diag = _queue_write_identity()
     tmp = QUEUE_FILE.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(queue, f, indent=2)
-    os.replace(tmp, QUEUE_FILE)
+    try:
+        with open(tmp, "w") as f:
+            json.dump(queue, f, indent=2)
+        os.replace(tmp, QUEUE_FILE)
+    except OSError as exc:
+        _log(
+            f"queue_write FAILED path={diag['path']} cwd={diag['cwd']} "
+            f"pid={diag['pid']} host={diag['host']} err={exc!r}"
+        )
+        raise
+    try:
+        mtime_post: float | None = QUEUE_FILE.stat().st_mtime
+    except OSError:
+        mtime_post = None
+    _log(
+        f"queue_write ok path={diag['path']} inode={diag['inode']} "
+        f"mtime {diag['mtime_pre']}->{mtime_post} cwd={diag['cwd']} "
+        f"exe={diag['exe']} module={diag['module']} pid={diag['pid']} host={diag['host']}"
+    )
 
 
 # ─── dedup against NeonDB ─────────────────────────────────────────────────────
