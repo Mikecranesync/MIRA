@@ -12,12 +12,12 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
 | `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — first in cascade, fastest) |
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
-| `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: **empty since v3.162.1** (Groq removed all vision models 2026-07-18; image requests skip Groq). Set only if Groq re-adds a vision model. |
+| `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: **empty since v3.162.2** (Groq removed all vision models 2026-07-18; image requests skip Groq). Set only if Groq re-adds a vision model. |
 | `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — second in cascade) |
 | `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: gpt-oss-120b |
 | `TOGETHERAI_API_KEY`     | mira-bots, mira-pipeline (Together AI — third in cascade; OpenAI-compatible) |
 | `TOGETHERAI_MODEL`       | mira-bots, mira-pipeline — default: meta-llama/Llama-3.3-70B-Instruct-Turbo |
-| `TOGETHERAI_VISION_MODEL`| mira-bots, mira-pipeline — default: **google/gemma-3n-E4B-it since v3.162.1** (the only serverless vision model on this Together account, verified live 2026-07-18; carries the free-path image cascade after the Groq vision deprecation). Empty-string env falls back to the default (`or`-form parse). |
+| `TOGETHERAI_VISION_MODEL`| mira-bots, mira-pipeline — default: **google/gemma-3n-E4B-it since v3.162.2** (the only serverless vision model on this Together account, verified live 2026-07-18; carries the free-path image cascade after the Groq vision deprecation). Empty-string env falls back to the default (`or`-form parse). |
 | `OPENAI_API_KEY` | **Print-vision ONLY** (owner-authorized, isolated) — the PrintSense electrical-print interpreter (`printsense/interpret.py`) default provider since v3.153.0 (gpt-5.5, Responses API). **NOT** in the Groq→Cerebras→Together cascade. Inert unless `PRINT_VISION_PROVIDER=openai`. |
 | `ANTHROPIC_API_KEY` | **Print-vision ONLY** (owner-authorized, isolated) — the retained Claude path of the PrintSense interpreter. **NOT** in the cascade, which stays No-Anthropic per PR #610. Inert unless `PRINT_VISION_PROVIDER=anthropic`. |
 | `PRINT_VISION_PROVIDER` | mira-bot-telegram — selects the electrical-print interpreter: `openai` (default since v3.153.0; needs `OPENAI_API_KEY`) or `anthropic` (needs `ANTHROPIC_API_KEY`); anything else = the free OCR cascade. Optional tuning read by `printsense/interpret.py`: PRINT_VISION_MODEL (default gpt-5.5 / claude-opus-4-8 per provider), PRINT_VISION_EFFORT, PRINT_VISION_MAX_TOKENS. |
