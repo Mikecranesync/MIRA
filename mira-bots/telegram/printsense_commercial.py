@@ -411,8 +411,7 @@ async def printsense_test_command(update, context):
             import printsense_testkit
 
             await update.message.reply_text(
-                "UNSEEN generalization lane running — free path only, $0; "
-                "a couple of minutes."
+                "UNSEEN generalization lane running — free path only, $0; a couple of minutes."
             )
             await printsense_testkit.run_unseen_lane_live(update, context)
         except Exception as exc:
