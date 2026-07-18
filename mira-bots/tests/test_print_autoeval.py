@@ -274,6 +274,14 @@ class TestOcrFloorDeadRule:
         )
         assert "ocr_floor_dead" not in _classes(r)
 
+    def test_fires_with_whitespace_padded_env(self, monkeypatch):
+        # Strip-normalized env read: whitespace must not prevent firing.
+        # Parity with vision_worker.ocr_lane_report() idiom.
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "1 ")
+        r = _eval("Some answer text.", vision_data=self._DEAD)
+        assert "ocr_floor_dead" in _classes(r)
+        assert r["severity"] == "P0"
+
 
 def test_format_alert_caps_and_omits_pii():
     r = _eval("The contactor is energized. " + "x" * 900)

@@ -243,7 +243,7 @@ def evaluate_print_turn(
     if (
         (vision_data or {}).get("classification") == "ELECTRICAL_PRINT"
         and (vision_data or {}).get("ocr_source") == "none"
-        and os.environ.get("OCR_EXPECT_TESSERACT", "0") == "1"
+        and (os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0") == "1"
     ):
         flags.append(
             {
