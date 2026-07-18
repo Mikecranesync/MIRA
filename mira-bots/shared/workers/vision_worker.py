@@ -259,7 +259,7 @@ def parse_ocr_reply(raw: str) -> list[str]:
                     items.append(cell)
             continue
         line = re.sub(r"[*`]", "", line)
-        cleaned = re.sub(r"^\d+[\.\)\-\s]+", "", line).strip()
+        cleaned = re.sub(r"^\d+[\.\)]\s*|^\d+\s+-\s+|^\d+\s+", "", line).strip()
         if cleaned and not cleaned.startswith("```"):
             items.append(cleaned)
     return items
