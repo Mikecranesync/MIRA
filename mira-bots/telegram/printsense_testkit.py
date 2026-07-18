@@ -26,6 +26,7 @@ import base64
 import io
 import logging
 import os
+import re
 import time
 
 from printsense import interpret as _interpret
@@ -860,4 +861,218 @@ async def printsense_compare_command(update, context) -> None:
         chat_id=update.effective_chat.id,
         document=io.BytesIO(report.encode("utf-8")),
         filename="printsense_compare.md",
+    )
+
+
+# ── UNSEEN generalization lane (UNSEEN-5) ────────────────────────────────────
+# Frozen novel-content probe (printsense/benchmarks/unseen_lane/) run through
+# the REAL single-photo rung on the FREE path. Scores are tracked separately
+# from every seen/calibration lane — the seen-vs-unseen delta is the overfit
+# metric. Zero paid inference: the scheduled runner disables the paid provider
+# structurally, and the PRINT_BENCH_BUDGET_USD hard-stop applies regardless.
+
+_UNSEEN_TAGISH_RE = re.compile(
+    r"-\d{1,3}/[A-Z]{1,2}\d{1,3}\b|(?<![\w/])-?[A-Z]{1,2}\d{3,6}(?::\d+)?\b"
+)
+
+
+def _unseen_tagish(text: str) -> set[str]:
+    return set(_UNSEEN_TAGISH_RE.findall(text or ""))
+
+
+def _lev1(a: str, b: str) -> bool:
+    """True when a and b differ by EXACTLY one edit (sub/ins/del)."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    return any(short == long_[:i] + long_[i + 1 :] for i in range(len(long_)))
+
+
+def _detect_identifier_drift(answer: str, truth_tokens: tuple[str, ...]) -> list[dict]:
+    """Tag-shaped strings in the answer one edit away from a page-truth token
+    (e.g. the benchmark's -W7301 misread as V7301) — OCR/vision letter drift."""
+    truth_norm = {t.lstrip("-"): t for t in truth_tokens}
+    drift: list[dict] = []
+    for token in sorted(_unseen_tagish(answer)):
+        norm = token.lstrip("-")
+        if norm in truth_norm:
+            continue
+        for t_norm, t_raw in truth_norm.items():
+            if _lev1(norm, t_norm):
+                drift.append({"answer_token": token, "truth_token": t_raw})
+                break
+    return drift
+
+
+def _classify_unseen_failures(results: list[dict], drift_total: int) -> dict:
+    by_class: dict[str, int] = {}
+    for r in results:
+        for h in r["hard_failures"]:
+            by_class[h["class"]] = by_class.get(h["class"], 0) + 1
+    honesty_markers = ("cannot", "can not", "does not show", "not show", "whether")
+    suspects = [
+        r["case_id"]
+        for r in results
+        if any(h["class"] == "unsupported_state_claim" for h in r["hard_failures"])
+        and any(m in (r.get("answer_excerpt") or "").lower() for m in honesty_markers)
+    ]
+    return {
+        "safety_critical": by_class.get("wrong_contact_verdict", 0)
+        + by_class.get("unsupported_state_claim", 0),
+        "invented_tags": by_class.get("prose_tag_invention", 0),
+        "routing_misses": by_class.get("path_wiring", 0),
+        "ocr_identifier_drift": drift_total,
+        "missing_caveats": by_class.get("missing_safety_language", 0),
+        "extraction_misses": by_class.get("missing_required_mention", 0),
+        "honesty_misses": by_class.get("missing_refusal_honesty", 0)
+        + by_class.get("refusal_violated", 0),
+        "grader_false_positive_suspects": suspects,
+    }
+
+
+async def run_unseen_lane(
+    rung,
+    context,
+    chat_id,
+    mode: str = "live",
+    usage_spy: RouterUsageSpy | None = None,
+) -> dict:
+    """Run the frozen UNSEEN corpus through the REAL rung; classify failures."""
+    from printsense.benchmarks.unseen_lane import cases as _u
+
+    png = _u.render_unseen_png()
+    budget = bench_budget_usd()
+    spent = 0.0
+    results: list[dict] = []
+    drift_records: list[dict] = []
+    deterministic = 0
+    providers: dict[str, int] = {}
+    _interpret.pop_last_usage()  # drop any stale snapshot from a prior run
+    for case in _u.UNSEEN_CASES:
+        if spent >= budget:
+            results.append(
+                {
+                    "case_id": case["case_id"],
+                    "question": case["question"],
+                    "status": "budget_stop",
+                    "lanes": {},
+                    "hard_failures": [],
+                    "latency_s": None,
+                    "provider": None,
+                    "model": None,
+                    "estimated_cost_usd": 0.0,
+                }
+            )
+            continue
+        capture = _CaptureUpdate(chat_id)
+        t0 = time.monotonic()
+        try:
+            claimed = await rung(png, png, case["question"], capture, context)
+        except Exception as exc:  # noqa: BLE001 — a rung crash is a lane finding
+            claimed = False
+            capture.message.texts.append(f"(rung error: {type(exc).__name__})")
+        latency = round(time.monotonic() - t0, 1)
+        usage = _paid_usage(usage_spy)
+        answer = _answer_from(capture.message.texts)
+        result = _grader.grade_answer(case, bool(claimed), answer, latency_s=latency, usage=usage)
+        result["answer_excerpt"] = (answer or "")[:400]
+        if claimed and answer and usage is None:
+            deterministic += 1
+            result["provider"] = "deterministic"
+        provider = result.get("provider") or ("(fell_through)" if not claimed else "(unknown)")
+        providers[provider] = providers.get(provider, 0) + 1
+        case_drift = _detect_identifier_drift(answer, _u.PAGE_TRUTH_TOKENS)
+        if case_drift:
+            drift_records.append({"case_id": case["case_id"], "drift": case_drift})
+        spent += result.get("estimated_cost_usd") or 0.0
+        logger.info(
+            "PRINT_BENCH_SPEND lane=unseen case=%s cost=$%.4f total=$%.4f budget=$%.2f",
+            case["case_id"],
+            result.get("estimated_cost_usd") or 0.0,
+            spent,
+            budget,
+        )
+        results.append(result)
+    hard = [{**h, "case_id": r["case_id"]} for r in results for h in r["hard_failures"]]
+    if not _u.expectations_frozen_ok():
+        hard.append(
+            {
+                "case_id": "(corpus)",
+                "class": "expectations_tampered",
+                "detail": "unseen-lane expectations do not match unseen_lane.sha256",
+            }
+        )
+    drift_total = sum(len(d["drift"]) for d in drift_records)
+    passed = sum(1 for r in results if r["status"] == "pass")
+    latencies = [r["latency_s"] for r in results if r.get("latency_s") is not None]
+    return {
+        "lane": "unseen_generalization",
+        "cases_version": _u.UNSEEN_VERSION,
+        "grader_version": _grader.GRADER_VERSION,
+        "mode": mode,
+        "digest_ok": _u.expectations_frozen_ok(),
+        "cases_total": len(results),
+        "cases_passed": passed,
+        "cases_failed": len(results) - passed,
+        "deterministic_fastpath_answers": deterministic,
+        "provider_histogram": providers,
+        "failure_classes": _classify_unseen_failures(results, drift_total),
+        "drift_records": drift_records,
+        "hard_failures": hard,
+        "latency_max_s": max(latencies) if latencies else None,
+        "estimated_cost_usd": round(sum(r.get("estimated_cost_usd") or 0 for r in results), 6),
+        "budget": {"budget_usd": budget, "spent_usd": round(spent, 6)},
+        "baseline": "none_approved (unseen lane; Phase 5 owns baselines)",
+        "results": results,
+    }
+
+
+def unseen_phone_summary(env: dict) -> str:
+    fc = env["failure_classes"]
+    return (
+        f"PrintSense UNSEEN lane ({env['mode']}): "
+        f"{env['cases_passed']}/{env['cases_total']} passed | "
+        f"deterministic fast-path: {env['deterministic_fastpath_answers']} | "
+        f"est ${env['estimated_cost_usd']}\n"
+        f"classes — safety:{fc['safety_critical']} invented:{fc['invented_tags']} "
+        f"routing:{fc['routing_misses']} drift:{fc['ocr_identifier_drift']} "
+        f"caveats:{fc['missing_caveats']} extraction:{fc['extraction_misses']} "
+        f"graderFP:{len(fc['grader_false_positive_suspects'])}\n"
+        f"providers: {env['provider_histogram']}\n{env['baseline']}"
+    )
+
+
+async def run_unseen_lane_live(update, context) -> None:
+    """The ``/printsense_test unseen`` body: REAL rung, free path, $0."""
+    import json as _json
+
+    import bot as _bot
+
+    spy = RouterUsageSpy()
+    spy.install(_bot.engine.router)
+    try:
+        env = await run_unseen_lane(
+            _bot._try_print_translator_reply,
+            context,
+            update.effective_chat.id,
+            mode="live",
+            usage_spy=spy,
+        )
+    finally:
+        spy.restore()
+    report_json = _json.dumps(env, sort_keys=True, indent=1, default=str)
+    violations = _grader.audit_artifact(report_json)
+    if violations:
+        logger.warning("unseen lane artifact audit failed: %s", violations)
+        await update.message.reply_text(
+            "PrintSense unseen-lane artifact failed its privacy self-audit — not sent."
+        )
+        return
+    await update.message.reply_text(unseen_phone_summary(env))
+    await context.bot.send_document(
+        chat_id=update.effective_chat.id,
+        document=io.BytesIO(report_json.encode("utf-8")),
+        filename="printsense_unseen_lane.json",
     )
