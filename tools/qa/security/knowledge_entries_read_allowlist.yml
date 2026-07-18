@@ -769,7 +769,7 @@ approved:
       with conn.cursor() as cur:
                       cur.execute(
                           "SELECT 1 FROM knowledge_entries "
-  "mira-crawler/cron/kb_growth_cron.py:684":
+  "mira-crawler/cron/kb_growth_cron.py:694":
     approved_classification: TENANT-ONLY
     reason: "TODO: justify this read pattern"
     query_snippet: |
