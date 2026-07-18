@@ -152,3 +152,79 @@ jobs:
           # required check; every real gate is verified passing above.
           gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash --admin
           echo "::notice::merged PR #$PR_NUMBER (live E2E + all checks green)."
+
+  ocr-lane-health:
+    name: OCR-lane health probe (staging bot)
+    # Reuses this workflow's existing schedule + workflow_dispatch triggers;
+    # deliberately excluded from the release-published trigger (that one is
+    # autopilot's own merge-on-publish path, unrelated to OCR-lane health).
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: staging # inherits VPS_SSH_KEY (same secret as deploy-staging.yml)
+    timeout-minutes: 5
+    steps:
+      - name: Guard — VPS_SSH_KEY present
+        id: sshkey
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "${VPS_SSH_KEY:-}" ]; then
+            echo "::notice::VPS_SSH_KEY absent — skipping OCR-lane health probe."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Mirrors deploy-staging.yml:40-45 exactly (same secret, same keyscan
+      # step) — this workflow has no ssh idiom of its own. See task-C2 brief
+      # amendment C2a: the plan's "mirror this workflow's ssh idiom" premise
+      # was wrong (this workflow is Doppler-token + Telethon, no ssh); the
+      # repo's real ssh idiom lives in deploy-staging.yml and is mirrored here.
+      - name: Set up SSH
+        if: steps.sshkey.outputs.ok == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Guard — VPS reachable via ssh
+        id: reach
+        if: steps.sshkey.outputs.ok == 'true'
+        run: |
+          if ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes \
+              root@165.245.138.91 "true" 2>/dev/null; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::VPS unreachable via ssh — skipping OCR-lane health probe (VPS reachability is the heartbeat monitor's job, not this probe's)."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Guard — staging bot container running
+        id: container
+        if: steps.reach.outputs.ok == 'true'
+        run: |
+          if ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 \
+              "docker ps --filter name=stg-mira-bot-telegram --filter status=running --format '{{.Names}}'" \
+              | grep -qx "stg-mira-bot-telegram"; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::staging stack stopped — probe skipped."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Real name/shape verified against mira-bots/shared/workers/vision_worker.py
+      # on this branch (task-C2 brief said to confirm before writing this):
+      # ocr_lane_report() at line 302 returns {"verdict": "ok"|"DEGRADED"|"DEAD", ...}.
+      # bot.py:55/145 already imports + calls it the same way at boot, so this
+      # import path is proven inside this exact container image. WORKDIR is /app
+      # (mira-bots/telegram/Dockerfile) with no compose-level working_dir override,
+      # so `docker exec` already defaults there — `-w /app` is added anyway to be
+      # explicit and immune to any future compose-level override.
+      - name: OCR-lane health probe
+        if: steps.container.outputs.ok == 'true'
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 'bash -s' << 'ENDSSH'
+          set -euo pipefail
+          docker exec -w /app stg-mira-bot-telegram python -c 'import json; from shared.workers.vision_worker import ocr_lane_report as r; rep = r(); print(json.dumps(rep)); raise SystemExit(0 if rep["verdict"] == "ok" else 1)'
+          ENDSSH
