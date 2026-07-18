@@ -30,6 +30,7 @@ without a live database.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -148,6 +149,23 @@ WHERE session_id = CAST(:session_id AS UUID) AND tenant_id = CAST(:tenant_id AS 
 ORDER BY created_at ASC
 """
 _ACTIVE_FILTER = "  AND evidence_state NOT IN ('REJECTED', 'SUPERSEDED')\n"
+
+# Narrow UPDATEs sanctioned by migration 063 ("Append + narrow UPDATE
+# (review_state / superseded_by / normalized_value). No DELETE." and
+# visual_session's current_revision); UPDATE is granted to factorylm_app.
+_SUPERSEDE_OBSERVATION_SQL = """
+UPDATE observation
+SET evidence_state = 'SUPERSEDED', superseded_by = CAST(:superseded_by AS UUID)
+WHERE observation_id = CAST(:observation_id AS UUID)
+  AND session_id = CAST(:session_id AS UUID)
+  AND tenant_id = CAST(:tenant_id AS UUID)
+"""
+
+_SET_CURRENT_REVISION_SQL = """
+UPDATE visual_session
+SET current_revision = CAST(:revision AS UUID), updated_at = now()
+WHERE session_id = CAST(:session_id AS UUID) AND tenant_id = CAST(:tenant_id AS UUID)
+"""
 
 _INSERT_QUESTION_SQL = """
 INSERT INTO visual_question (session_id, tenant_id, text, answer, next_best_evidence, safety_notes, asked_by)
@@ -404,6 +422,58 @@ class VisualSessionStore:
 
         return await _fail_open("load_observations", _run, default=[])
 
+    async def supersede_observation(
+        self,
+        session_id: str,
+        tenant_id: str,
+        observation_id: str,
+        *,
+        superseded_by: str,
+    ) -> bool:
+        if not session_id or not tenant_id or not observation_id or not superseded_by:
+            return False
+        url = os.environ.get(_NEON_URL_VAR)
+        if not url:
+            return False
+        params = {
+            "session_id": session_id,
+            "tenant_id": tenant_id,
+            "observation_id": observation_id,
+            "superseded_by": superseded_by,
+        }
+
+        def _run() -> bool:
+            engine = _engine(url)
+            from sqlalchemy import text as sql_text
+
+            with engine.connect() as conn:
+                conn.execute(sql_text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+                result = conn.execute(sql_text(_SUPERSEDE_OBSERVATION_SQL), params)
+                conn.commit()
+                return bool(result.rowcount)
+
+        return await _fail_open("supersede_observation", _run, default=False)
+
+    async def set_current_revision(self, session_id: str, tenant_id: str, revision: str) -> bool:
+        if not session_id or not tenant_id or not revision:
+            return False
+        url = os.environ.get(_NEON_URL_VAR)
+        if not url:
+            return False
+        params = {"session_id": session_id, "tenant_id": tenant_id, "revision": revision}
+
+        def _run() -> bool:
+            engine = _engine(url)
+            from sqlalchemy import text as sql_text
+
+            with engine.connect() as conn:
+                conn.execute(sql_text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+                result = conn.execute(sql_text(_SET_CURRENT_REVISION_SQL), params)
+                conn.commit()
+                return bool(result.rowcount)
+
+        return await _fail_open("set_current_revision", _run, default=False)
+
     async def record_answer(
         self,
         session_id: str,
@@ -633,6 +703,36 @@ class InMemoryVisualStore:
         ]
         out.sort(key=lambda o: o.created_at or "")
         return out
+
+    async def supersede_observation(
+        self,
+        session_id: str,
+        tenant_id: str,
+        observation_id: str,
+        *,
+        superseded_by: str,
+    ) -> bool:
+        obs = self._observations.get(observation_id)
+        if (
+            obs is None
+            or obs.session_id != session_id
+            or obs.tenant_id != tenant_id
+            or not superseded_by
+        ):
+            return False
+        self._observations[observation_id] = dataclasses.replace(
+            obs, evidence_state=EvidenceState.SUPERSEDED, superseded_by=superseded_by
+        )
+        return True
+
+    async def set_current_revision(self, session_id: str, tenant_id: str, revision: str) -> bool:
+        session = self._sessions.get(session_id)
+        if session is None or session.tenant_id != tenant_id or not revision:
+            return False
+        self._sessions[session_id] = dataclasses.replace(
+            session, current_revision=revision, updated_at=_now_iso()
+        )
+        return True
 
     async def record_answer(
         self,

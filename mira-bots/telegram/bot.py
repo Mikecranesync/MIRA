@@ -20,7 +20,14 @@ from admin_commands import (
 )
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import chat_tenant, print_autoeval, print_translator, tts, wiring_intake
+from shared import (
+    chat_tenant,
+    print_autoeval,
+    print_translator,
+    print_workspace,
+    tts,
+    wiring_intake,
+)
 from shared.chat.dispatcher import ChatDispatcher
 from shared.contextualization_intake import (
     hub_folder_upload_configured,
@@ -965,9 +972,10 @@ async def _try_wiring_intake_reply(
 # --- Print Translator: read-only LLM explanation of an electrical print,
 # NOT the wiring loop. See `shared/print_translator.py` module docstring for
 # the full grounding doctrine (OCR-only, hedged framing, no invention). This
-# fast path never writes to `wiring_connections`, never touches control, and
-# never persists anything — it reads the vision classification + OCR, calls
-# the inference cascade, and replies.
+# fast path never writes to `wiring_connections` and never touches control;
+# it reads the vision classification + OCR, calls the inference cascade,
+# replies, and then persists the turn into the per-chat print workspace
+# observation ledger (`shared/print_workspace.py` — best-effort, fail-open).
 def _print_interpreter_configured() -> bool:
     """True when the isolated paid PrintSynth interpreter is active
     (``PRINT_VISION_PROVIDER`` + that provider's key — ``interpret.is_configured()``
@@ -1141,6 +1149,49 @@ async def _autoeval_print_turn(
         logger.warning("PRINT_AUTOEVAL_ERROR %s", type(exc).__name__)
 
 
+async def _persist_print_workspace_turn(
+    update: Update,
+    *,
+    tenant_id: str,
+    raw_bytes: bytes,
+    vision_data: dict | None,
+    caption: str,
+    answer: str,
+) -> None:
+    """Persist a delivered print turn into the per-chat print workspace
+    (Package A spine). Best-effort and fail-open: the reply was already sent,
+    so a persistence failure is logged and swallowed — it must never eat,
+    duplicate, or delay-fail the turn. When a close-up superseded earlier
+    observations, a short enrichment ack tells the technician the print
+    model advanced."""
+    try:
+        outcome = await print_workspace.persist_print_turn(
+            chat_id=str(update.effective_chat.id),
+            tenant_id=tenant_id,
+            raw_bytes=raw_bytes,
+            vision_data=vision_data,
+            caption=caption,
+            answer=answer,
+        )
+        if outcome and outcome.superseded_ids:
+            await _reply_chunked(
+                update,
+                f"Close-up absorbed: {len(outcome.superseded_ids)} observations updated, "
+                "print model revision bumped.",
+            )
+    except Exception as exc:  # noqa: BLE001 — persistence never touches the turn
+        logger.warning("PRINT_WORKSPACE_PERSIST_ERROR %s", type(exc).__name__)
+
+
+def _print_workspace_tenant(update: Update) -> str:
+    """Tenant for print-workspace persistence — chat_tenant mapping when
+    available, else the literal ``"default"``. Never raises."""
+    try:
+        return chat_tenant.resolve(str(update.effective_user.id)) or "default"
+    except Exception:  # noqa: BLE001 — tenant resolution must never eat the turn
+        return "default"
+
+
 async def _try_print_translator_reply(
     raw_bytes: bytes,
     vision_bytes: bytes,
@@ -1153,9 +1204,12 @@ async def _try_print_translator_reply(
     devices are listed in this print?") -> a plain-English, OCR-grounded answer.
     Read-only generation — NO wiring DB writes, NO control writes. Captions are
     tie-breakers only; the image's visual classification decides whether to process
-    as a print. Falls through (returns ``False``) on vision classification error,
-    if the image is not ``ELECTRICAL_PRINT``, or if the caption is a wiring-intake
-    intent (routed to ``_try_wiring_intake_reply`` instead).
+    as a print. After the reply is delivered, the turn is persisted (best-effort,
+    fail-open) into the per-chat print-workspace observation ledger
+    (``shared/print_workspace.py``). Falls through (returns ``False``) on vision
+    classification error, if the image is not ``ELECTRICAL_PRINT``, or if the
+    caption is a wiring-intake intent (routed to ``_try_wiring_intake_reply``
+    instead).
 
     Classification runs on the small ``vision_bytes`` (fast, local qwen), but the
     Anthropic PrintSynth interpreter reads the FULL-RESOLUTION ``raw_bytes`` — the
@@ -1198,6 +1252,8 @@ async def _try_print_translator_reply(
     if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
         return False  # not a print → fall through unchanged (visual evidence wins)
 
+    tenant_id = _print_workspace_tenant(update)
+
     # UNSEEN-1 deterministic fast-path (zero tokens, before ANY model call):
     # closed-form question classes — contact conventions, designation meaning,
     # cross-reference and wire lookups — answered from the deterministic spine
@@ -1222,6 +1278,14 @@ async def _try_print_translator_reply(
                     t0=t0,
                     update=update,
                     raw_bytes=raw_bytes,
+                )
+                await _persist_print_workspace_turn(
+                    update,
+                    tenant_id=tenant_id,
+                    raw_bytes=raw_bytes,
+                    vision_data=vision_data,
+                    caption=caption,
+                    answer=det["reply_text"],
                 )
                 return True
             pack = _det_qa.extract_evidence(caption, vision_data)
@@ -1253,6 +1317,7 @@ async def _try_print_translator_reply(
             vision_data,
             str(update.effective_chat.id),
             interpret_b64=interpret_b64,
+            graph_sink=print_workspace.graph_sink_for(str(update.effective_chat.id)),
         )
     final_text = reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
     await _reply_chunked(update, final_text)
@@ -1264,6 +1329,14 @@ async def _try_print_translator_reply(
         t0=t0,
         update=update,
         raw_bytes=raw_bytes,
+    )
+    await _persist_print_workspace_turn(
+        update,
+        tenant_id=tenant_id,
+        raw_bytes=raw_bytes,
+        vision_data=vision_data,
+        caption=caption,
+        answer=final_text,
     )
     return True
 
@@ -1571,6 +1644,35 @@ async def _try_multi_photo_printsense_reply(rec: PhotoBatchRecord) -> str | None
             "pages": page_contexts,
         },
     )
+
+    # Persist each classified page into the chat's print workspace (Package A
+    # spine) — best-effort, fail-open, no enrichment ack on the batch path.
+    # The Q&A answer is recorded once (with the final page) rather than
+    # duplicated per page.
+    if reply:
+        try:
+            last_idx = len(rec.raw_photos_b64) - 1
+            for idx0, page_b64 in enumerate(rec.raw_photos_b64):
+                try:
+                    page_bytes = base64.b64decode(page_b64)
+                except Exception:  # noqa: BLE001 — skip an undecodable page
+                    continue
+                page_ctx = dict(page_contexts[idx0]) if idx0 < len(page_contexts) else {}
+                # Every page was vision-classified ELECTRICAL_PRINT above —
+                # carry that into the evidence row's source_type.
+                page_ctx.setdefault("classification", "ELECTRICAL_PRINT")
+                await print_workspace.persist_print_turn(
+                    chat_id=rec.chat_id,
+                    tenant_id="default",
+                    raw_bytes=page_bytes,
+                    vision_data=page_ctx,
+                    caption=rec.caption or "",
+                    answer=reply if idx0 == last_idx else "",
+                    page_ref=str(idx0 + 1),
+                )
+        except Exception as exc:  # noqa: BLE001 — persistence never touches the reply
+            logger.warning("PRINT_WORKSPACE_BATCH_PERSIST_ERROR %s", type(exc).__name__)
+
     return reply or None
 
 
