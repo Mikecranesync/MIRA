@@ -95,5 +95,6 @@ artifacts) is backlog item ZTA-3 in `docs/plans/2026-07-17-zero-token-audit-back
 - `docs/research/2026-07-16-kelsey-hightower-zero-token-architecture.md` — the source.
 - `docs/research/2026-07-17-printsense-inference-burn-study.md` — the evidence + price list.
 - `docs/plans/2026-07-17-zero-token-audit-backlog.md` — seam inventory + build backlog.
+- `docs/adr/0028-vision-zero-token-architecture.md` — Vision ZTA fleet, routing, and owned-model decision record.
 - `.claude/rules/fast-path-optimization.md` — the hybrid pattern at the adapter layer.
 - `.claude/rules/karpathy-principles.md` — evidence beats assertion; simplicity first.
