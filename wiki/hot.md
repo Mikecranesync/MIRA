@@ -1,3 +1,37 @@
+# Hot Cache — 2026-07-18 — UNSEEN stack + $0 vision fix + reply chunking ALL LIVE (v3.160.0→v3.162.3)
+
+Five PRs merged, staging+prod deployed, acceptance-verified. The PrintSense free path is fully
+operational again after the Groq vision deprecation.
+
+- **#2784/#2785/#2786 UNSEEN stack (v3.160.0–3.162.0):** deterministic print-QA fast-path BEFORE any
+  model call (`printsense/deterministic_qa.py`, hooked in `bot._try_print_translator_reply`); German
+  routing signals; negation-aware state-claim grading; deterministic contact caveat; frozen
+  `printsense/benchmarks/unseen_lane/` (never-calibrate law) + `/printsense_test unseen` + weekly
+  $0 workflow. Unseen benchmark 4/10 → 6/10 all-deterministic through a total model outage.
+- **#2788 $0 VISION FIX (v3.162.2):** Groq delisted ALL vision models → free photo classification was
+  dead fleet-wide. Fix: `GROQ_VISION_MODEL` defaults empty (skip, not 404); Together carries images
+  via **`google/gemma-3n-E4B-it`** — the ONLY serverless vision model on the account.
+  **QUALIFICATION LAW: Together catalog per-token pricing ≠ serverless access** (every
+  Qwen-VL/Llama-4/Kimi/GLM id rejects "non-serverless"; micro-probe any candidate id live before
+  shipping). Six hardcoded dead-id compose sites → `${GROQ_VISION_MODEL:-}` pass-throughs; the
+  `or`-form parse is load-bearing (compose `${VAR:-}` delivers empty strings). Verified in-container:
+  classify ELECTRICAL_PRINT 0.90 live via together/gemma at ~$0.0001/probe.
+- **#2792 reply chunking (v3.162.3):** gemma's verbose replies blew Telegram's 4096-char sendMessage
+  cap → 400 → silent turn death (caught by Mike's live poke). `bot._chunk_reply`/`_reply_chunked`
+  now split at 4000 on line boundaries, deliver in order, and surface residual failures instead of
+  swallowing them.
+- **Traps confirmed live this session:** gh CLI truncates big job logs (read the job ANNOTATION +
+  raw `api /logs` before calling a mid-run death a crash — a "flake" was a real assert in root
+  `tests/test_inference_router.py`); a PR-branch E2E smoke racing a main-merge prod deploy fails
+  with mass 502s (check `gh run list` for a concurrent Deploy-to-VPS, rerun after it settles);
+  grep BOTH test trees (`tests/` AND `mira-bots/tests/`) for pinned defaults.
+- **NEXT (designed, not built): per-turn $0 auto-eval hook** — full implementation plan at
+  `docs/plans/2026-07-18-print-autoeval-hook.md` (deterministic truth-free grading of every print
+  reply, conversation_eval meta, flood-guarded ntfy P0 alerts; fold in open PR #2714). Awaiting
+  build go. Also awaiting Mike: OpenAI dashboard cap, credits → paid Lane-A, Phase 5 thresholds.
+
+---
+
 # Hot Cache — 2026-06-25 — Hub one-board Command Center status view
 
 Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
