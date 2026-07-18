@@ -162,3 +162,18 @@ class TestOcrLaneReport:
 
         monkeypatch.setattr(vision_worker, "_tesseract_version_impl", _raise)
         assert vision_worker.ocr_lane_report()["verdict"] == "DEGRADED"
+
+    def test_empty_ocr_expect_tesseract_parses_as_not_expected(self, monkeypatch):
+        """Empty string from compose ${VAR:-} must parse as not-expected (== "0"),
+        not crash or become expected. When unavailable and not expected: DEGRADED."""
+        from shared.workers import vision_worker
+
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "")
+
+        def _raise():
+            raise RuntimeError("tesseract not installed")
+
+        monkeypatch.setattr(vision_worker, "_tesseract_version_impl", _raise)
+        report = vision_worker.ocr_lane_report()
+        assert report["expected_floor"] is False
+        assert report["verdict"] == "DEGRADED"
