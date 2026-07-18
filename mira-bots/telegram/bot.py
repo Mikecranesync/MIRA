@@ -983,6 +983,7 @@ def _schedule_print_autoeval(
     branch: str,
     t0: float,
     update: Update,
+    raw_bytes: bytes | None = None,
 ) -> None:
     """Fire-and-forget the per-turn print autoeval AFTER the reply is delivered.
 
@@ -1020,6 +1021,7 @@ def _schedule_print_autoeval(
                 interpreter_configured=_print_interpreter_configured(),
                 chat_id=str(update.effective_chat.id),
                 update=update,
+                raw_bytes=raw_bytes,
             )
         )
     except Exception as exc:  # noqa: BLE001 — observability never touches the turn
@@ -1037,6 +1039,7 @@ async def _autoeval_print_turn(
     interpreter_configured: bool,
     chat_id: str,
     update: Update,
+    raw_bytes: bytes | None = None,
 ) -> None:
     """Evaluate ($0, truth-free) → persist to conversation_eval → P0 ntfy push.
 
@@ -1078,6 +1081,44 @@ async def _autoeval_print_turn(
             response_time_ms=int(latency_s * 1000),
             meta=meta,
         )
+        # Print-turn persistence (2026-07-15 operator directive, supersedes
+        # PR #2714): every PrintSense request + full reply retrievable from
+        # the same SQLite `interactions` table as chat turns. This hook is
+        # the choke point the bot fast-path turns flow through (engine-path
+        # photo turns already log via engine.process). Provenance is derived
+        # at this layer: route from branch+provider, sha of the full-res
+        # input; `devices` stays None (the interpreter's graph isn't visible
+        # here — quota-dead paid path today). Best-effort, never raises.
+        try:
+            import hashlib as _hashlib
+
+            provider = (usage or {}).get("provider")
+            if branch == "deterministic_fastpath":
+                route, fallback_reason = "deterministic_fastpath", None
+            elif provider == "openai":
+                route, fallback_reason = "printsense", None
+            else:
+                route = "cascade"
+                fallback_reason = (
+                    "interpreter_fell_through"
+                    if interpreter_configured
+                    else "interpreter_not_configured"
+                )
+            engine._log_interaction(
+                chat_id,
+                question or "",
+                answer or "",
+                fsm_state="ELECTRICAL_PRINT",
+                intent="print",
+                has_photo=True,
+                response_time_ms=int(latency_s * 1000),
+                route=route,
+                model=(usage or {}).get("model"),
+                input_sha256=(_hashlib.sha256(raw_bytes).hexdigest() if raw_bytes else None),
+                fallback_reason=fallback_reason,
+            )
+        except Exception as exc:  # noqa: BLE001 — persistence is best-effort
+            logger.warning("PRINT_TURN_PERSIST_ERROR %s", type(exc).__name__)
         if print_autoeval.should_alert(result):
             classes = [f["class"] for f in result["flags"] if f["severity"] == "P0"]
             if print_autoeval.ALERT_LIMITER.allow(classes):
@@ -1154,6 +1195,7 @@ async def _try_print_translator_reply(
                     branch="deterministic_fastpath",
                     t0=t0,
                     update=update,
+                    raw_bytes=raw_bytes,
                 )
                 return True
             pack = _det_qa.extract_evidence(caption, vision_data)
@@ -1191,6 +1233,7 @@ async def _try_print_translator_reply(
         branch="theory",
         t0=t0,
         update=update,
+        raw_bytes=raw_bytes,
     )
     return True
 

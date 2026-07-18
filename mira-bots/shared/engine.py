@@ -6043,8 +6043,18 @@ class Supervisor:
         confidence: str = "",
         response_time_ms: int = 0,
         platform: str = "telegram",
+        route: str | None = None,
+        model: str | None = None,
+        devices: int | None = None,
+        input_sha256: str | None = None,
+        fallback_reason: str | None = None,
     ) -> None:
-        """Append-only log of every user/bot exchange for quality analysis."""
+        """Append-only log of every user/bot exchange for quality analysis.
+
+        The optional provenance fields (``route``/``model``/``devices``/
+        ``input_sha256``/``fallback_reason``) are populated by print turns so
+        "check the bot results" retrieves the full story without screenshots
+        (2026-07-15 operator directive)."""
         if fsm_state == "DIAGNOSIS_REVISION":
             fsm_state = "DIAGNOSIS"
         log_interaction(
@@ -6058,6 +6068,11 @@ class Supervisor:
             confidence=confidence,
             response_time_ms=response_time_ms,
             platform=platform,
+            route=route,
+            model=model,
+            devices=devices,
+            input_sha256=input_sha256,
+            fallback_reason=fallback_reason,
         )
 
     # ------------------------------------------------------------------

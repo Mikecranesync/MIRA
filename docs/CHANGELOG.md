@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.164.0 (2026-07-18) - feat(bots): print-turn persistence — every PrintSense request + full reply in interactions (supersedes PR #2714)
+
+- **Delivers the 2026-07-15 operator directive** ("check the bot results" must retrieve the exact user message + exact bot reply without screenshots): every print turn now lands in the SQLite `interactions` table with provenance — `route` (deterministic_fastpath / printsense / cascade), `model`, `input_sha256` of the full-res photo, `fallback_reason`, timing, full reply text. Guarded `ALTER TABLE` columns upgrade a prod db in place (session_manager delta verbatim from the superseded branch).
+- **Supersedes #2714**: that branch flipped engine.py line endings (whole-file diff) and its interpreter-gate plumbing predated the OpenAI swap (v3.153) — unlandable as-is. The write site is re-derived at the bot-layer autoeval hook (`_autoeval_print_turn`, v3.163.0) — the exact choke point the bot fast-path turns flow through (the original gap; engine-path photo turns already log via `engine.process`). `devices` stays NULL at this layer (the paid interpreter graph is not visible bot-side; quota-dead today) — documented simplification.
+- `engine._log_interaction` + `session_manager.log_interaction` gain the 5 provenance kwargs (pass-through). Persistence is best-effort behind the fail-open hook: a broken DB never touches the technician reply nor the conversation_eval capture (pinned by test).
+- Tests: `test_print_turn_persistence.py` (6 — schema idempotent + in-place upgrade + round-trip verbatim from the branch; theory-turn provenance incl. sha/route/fallback_reason on the REAL rung; deterministic-branch row; persistence-failure isolation). Suites: print/photo/engine set 355 green; autoeval 29 green.
+
 ### v3.163.0 (2026-07-18) - feat(printsense): per-turn $0 auto-eval hook — every print reply graded, persisted, and P0-alerted
 
 - **Closes the print-path observability gap**: print-translator turns bypassed `engine.process()`, so they reached NEITHER eval pipeline (no `conversation_eval` row, no citation/groundedness gate) — the only live grading was manual (`/printsense_grade`). Now every delivered print reply is graded automatically, truth-free, at $0 (deterministic regex/set ops — no LLM judge per the zero-token spend law), and lands in `conversation_eval` with `meta.surface="print_translator"` + `meta.autoeval` (versioned contract for the future batch scorer; `auto_score` stays NULL). Design: `docs/plans/2026-07-18-print-autoeval-hook.md`.
