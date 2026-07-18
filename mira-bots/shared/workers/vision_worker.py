@@ -240,6 +240,31 @@ def _kw_affirmed(keyword: str, text: str) -> bool:
 OCR_CLASSIFICATION_THRESHOLD = 10
 
 
+def parse_ocr_reply(raw: str) -> list[str]:
+    """Model OCR reply -> clean text items (numbered list / markdown tolerant)."""
+    items = []
+    for line in raw.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("```") or line in ("{", "}", "[", "]"):
+            continue
+        if re.match(r"^[|:\-\s]+$", line):
+            continue
+        if line.startswith("|") and line.endswith("|"):
+            cells = [c.strip() for c in line.split("|") if c.strip()]
+            for cell in cells:
+                cell = re.sub(r"[*`]", "", cell).strip()
+                if cell and not cell.startswith("```"):
+                    items.append(cell)
+            continue
+        line = re.sub(r"[*`]", "", line)
+        cleaned = re.sub(r"^\d+[\.\)\-\s]+", "", line).strip()
+        if cleaned and not cleaned.startswith("```"):
+            items.append(cleaned)
+    return items
+
+
 class VisionWorker:
     """Handles photo analysis: vision model + OCR + classification."""
 
@@ -406,32 +431,7 @@ class VisionWorker:
             data = resp.json()
 
         raw = data["choices"][0]["message"]["content"]
-        items = []
-        for line in raw.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            # Skip code fence markers and bare JSON/markdown syntax
-            if line.startswith("```") or line in ("{", "}", "[", "]"):
-                continue
-            # Skip markdown table separator rows (|:---|:---|)
-            if re.match(r"^[|:\-\s]+$", line):
-                continue
-            # Extract content from markdown table rows (| cell | cell |)
-            if line.startswith("|") and line.endswith("|"):
-                cells = [c.strip() for c in line.split("|") if c.strip()]
-                for cell in cells:
-                    cell = re.sub(r"[*`]", "", cell).strip()
-                    if cell and not cell.startswith("```"):
-                        items.append(cell)
-                continue
-            # Strip markdown bold/italic/code markers from regular lines (not underscore)
-            line = re.sub(r"[*`]", "", line)
-            # Strip leading numbers, dots, dashes, parens
-            cleaned = re.sub(r"^\d+[\.\)\-\s]+", "", line).strip()
-            if cleaned and not cleaned.startswith("```"):
-                items.append(cleaned)
-        return items
+        return parse_ocr_reply(raw)
 
     def _ocr_extract(self, photo_b64: str) -> str:
         """Run Tesseract OCR on image to extract text deterministically."""
