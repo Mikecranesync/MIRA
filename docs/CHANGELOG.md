@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.162.1 (2026-07-18) - fix(ask-api): block register-write instructions on kiosk read-only surface
+
+- Kiosk `/ask` now runs the generated reply through a read-only output guard before returning JSON to the Ignition HMI. Register/control-write guidance such as "write X to register", FC5/FC6/FC15/FC16, reset-via-register phrasing, and direct `set Pxx` parameter commands are replaced with a qualified-technician/OEM-site-procedure warning instead of being shown on the read-only kiosk.
+- The garage conveyor machine context no longer seeds Modbus write instructions (`FC06`, `write 2 to 0x2002`) into every kiosk request; it keeps PLC-owned register facts and points fault clearing at keypad STOP/RESET or approved site/OEM workflow.
+- Regression coverage: `tests/test_ask_api_readonly_guard.py` proves the old machine-context hazard is absent and that `/ask` sanitizes three representative register-write replies from the engine.
+
 ### v3.162.0 (2026-07-17) - feat(printsense): UNSEEN-5 — frozen generalization lane, classified reporting, scheduled zero-cost run
 
 - New `printsense/benchmarks/unseen_lane/` package: the BLATT-27 novel-content probe frozen with its own `unseen_lane.sha256` (case_id+question+expect), rendered via the SHARED `draw_print_page` renderer. README states the law: never used for calibration/prompts/fixtures/tuning (mechanically guarded); scores tracked separately from every seen lane (the seen-vs-unseen delta = the overfit metric); rotation replaces content wholesale, never promotes it into calibration.
