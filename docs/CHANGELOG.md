@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.159.0 (2026-07-17) - docs(audit): Drive Commander/PrintSense de-slop close-out + G120 truth correction record (v3.156.1-v3.158.0 sequence)
+
+- **CORRECTION:** the Siemens G120 pack shipped in #2621 was fabricated — fault meanings shifted (F30001 said "DC link overvoltage"; the manual says **Overcurrent**), F30006–F30010 and five parameters do not exist in the manual, and the v3.146.x-era claim "F30006 inverter overtemp … all grounded" was false. Rebuilt from the hash-pinned SINAMICS G120C List Manual (A5E33840768B AA, sha256 `82aad5dd…bcda268`) in #2773/#2776; **28/28 entries independently re-verified** against printed pages. Live: F30006 now returns the honest 404 "not in this pack".
+- Dark-datasheet design tokens (`--fl-dark-*`) + Drive Commander de-slop (single fault list, honest counts, SVG icons, flat CTA) + `?checkout=success` payment-confirmed state (#2772; hotfix #2775 for a test-file closer dropped in rebase — exposed that no required check runs the mira-web bun suite).
+- PrintSense landing rebuilt on the tokens: showcase structure (cited-answer hero, HELD/STOP cards, comparison, ladder) with the honest claims kept; invented stats removed; live lead-form round-trip verified (#2774).
+- Full audit record: `docs/audits/2026-07-17-drive-commander-printsense-deslop-closeout.md`. Follow-up: #2777 (source-pinned truth audit for every pack + promotion gate).
+
 ### v3.156.0 (2026-07-17) - feat(printsense): ZTA-1 cost meter + ZTA-2 budget hard-stop (spend law enforcement)
 
 - Enforces the zero-token-architecture spend law (`.claude/rules/zero-token-architecture.md`, PR #2768) after the 2026-07-16→17 $10 overnight burn (`docs/research/2026-07-17-printsense-inference-burn-study.md`).
