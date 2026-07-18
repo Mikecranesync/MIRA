@@ -367,6 +367,10 @@ services:
       - SESSION_RECORDING_PATH=/data/sessions
       - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
       - NTFY_TOPIC=${NTFY_TOPIC:-mira-factorylm-alerts}
+      # Model-OCR enrichment lane (off by default; free cascade floor is Tesseract).
+      - OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}
+      # Boot self-check Tesseract floor: 1 in containers (required), 0 on local dev.
+      - OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/mira-bridge/data/sessions:/data/sessions

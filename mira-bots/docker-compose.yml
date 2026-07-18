@@ -42,6 +42,7 @@ services:
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       TELEGRAM_REPORT_CHAT_ID: ${TELEGRAM_REPORT_CHAT_ID:-}
       OCR_MODEL_LANE: ${OCR_MODEL_LANE:-off}
+      OCR_EXPECT_TESSERACT: ${OCR_EXPECT_TESSERACT:-0}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
     volumes:
       - ../mira-bridge/data:/data:rw
