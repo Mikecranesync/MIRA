@@ -124,7 +124,7 @@ async def test_ocr_phase_awaits_run_ocr_report_live(monkeypatch):
         run_unseen_lane_live = AsyncMock()
 
     fake_testkit = FakePrintsenseTestkit()
-    sys.modules["printsense_testkit"] = fake_testkit
+    monkeypatch.setitem(sys.modules, "printsense_testkit", fake_testkit)
 
     # Also mock cb.run_corpus to ensure phase1 path isn't taken
     monkeypatch.setattr(cb, "run_corpus", AsyncMock())
@@ -141,6 +141,3 @@ async def test_ocr_phase_awaits_run_ocr_report_live(monkeypatch):
     fake_testkit.run_phase4_live.assert_not_called()
     fake_testkit.run_unseen_lane_live.assert_not_called()
     cb.run_corpus.assert_not_called()
-
-    # Cleanup
-    del sys.modules["printsense_testkit"]

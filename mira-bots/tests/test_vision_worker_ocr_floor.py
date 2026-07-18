@@ -1,5 +1,7 @@
 """OCR floor + provenance tests for VisionWorker (OCR-regime repair PR-A)."""
 
+import sys
+
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -124,6 +126,26 @@ class TestOcrFloor:
         out = await w.process("aGk=", "what is this")
         assert out["ocr_source"] == "model"
         assert out["ocr_items"] == ["-F12"] and out["ocr_tokens"] == []
+
+    @pytest.mark.asyncio
+    async def test_printsense_not_shipped_degrades_honestly(self, monkeypatch):
+        """Simulates the slack/mira-pipeline images: printsense/ isn't shipped
+        there (C1). No stub of _tesseract_tokens_impl — the real import path
+        must fail with ImportError and be caught inside process(), not raise
+        ModuleNotFoundError out of it and kill the photo turn."""
+        monkeypatch.setitem(sys.modules, "printsense", None)
+        monkeypatch.setitem(sys.modules, "printsense.xref_extractor", None)
+        monkeypatch.delenv("OCR_MODEL_LANE", raising=False)
+        monkeypatch.setattr(
+            "shared.workers.vision_worker.VisionWorker._call_vision",
+            AsyncMock(return_value="electrical drawing, ladder logic"),
+        )
+        w = _worker()
+        out = await w.process("aGk=", "what is this")
+        assert out["ocr_source"] == "none"
+        assert out["ocr_items"] == []
+        assert out["ocr_tokens"] == []
+        assert out["classification"]  # classification still works off vision prose
 
 
 class TestOcrLaneReport:

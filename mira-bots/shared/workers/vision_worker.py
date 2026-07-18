@@ -257,6 +257,8 @@ def parse_ocr_reply(raw: str) -> list[str]:
                     items.append(cell)
             continue
         line = re.sub(r"[*`]", "", line)
+        # Numbering alternatives, in order: dot/paren ("1." / "2)"), dash-bullet (needs whitespace after the dash, e.g. "3 - x"), then bare "N ".
+        # A glued dash ("3 -K17") isn't dash-bullet (no space after "-"), so it falls to bare "N " and the IEC tag "-K17" survives.
         cleaned = re.sub(r"^\d+[\.\)]\s*|^\d+\s+-\s+|^\d+\s+", "", line).strip()
         if cleaned and not cleaned.startswith("```"):
             items.append(cleaned)
@@ -272,6 +274,17 @@ def _tesseract_tokens_impl(image_bytes: bytes) -> list[dict]:
     from printsense.xref_extractor import ocr_tokens
 
     return ocr_tokens(image_bytes)
+
+
+def _printsense_line_items(tokens: list) -> list:
+    """line_items via printsense when shipped; [] otherwise (slack/pipeline
+    images don't carry printsense/ — the floor is telegram-image-only until
+    image parity lands)."""
+    try:
+        from printsense.xref_extractor import line_items
+    except ImportError:
+        return []
+    return line_items(tokens)
 
 
 def _tesseract_version_impl() -> str:
@@ -337,10 +350,17 @@ class VisionWorker:
         ocr_coro = self._call_ocr(photo_b64)
 
         def _floor() -> list[dict]:
-            from printsense.xref_extractor import OcrUnavailable
-
             try:
+                from printsense.xref_extractor import OcrUnavailable
+
                 return _tesseract_tokens_impl(base64.b64decode(photo_b64))
+            except ImportError as exc:
+                # printsense not shipped in this image (slack/mira-pipeline) —
+                # the floor is telegram-image-only until image parity lands.
+                logger.warning(
+                    "printsense not shipped in this image — OCR floor off: %s", exc
+                )
+                return []
             except OcrUnavailable as exc:
                 logger.warning("tesseract floor unavailable: %s", exc)
                 return []
@@ -364,9 +384,7 @@ class VisionWorker:
         if isinstance(results[2], Exception):
             logger.warning("tesseract floor task failed: %s", results[2])
 
-        from printsense.xref_extractor import line_items
-
-        floor_items = line_items(ocr_tokens_)
+        floor_items = _printsense_line_items(ocr_tokens_)
         ocr_items = list(floor_items)
         for item in model_items if isinstance(model_items, list) else []:
             if item not in ocr_items:

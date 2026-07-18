@@ -20,7 +20,8 @@ Two strictly separated layers:
 OCR itself is an adapter (:func:`ocr_tokens`) over Tesseract
 ``image_to_data``; when the binary/library is unavailable the caller gets an
 explicit :class:`OcrUnavailable` — degraded pipelines report a skipped stage,
-never a silent pass. Records serialize via :func:`stable_json` (canonical,
+never a silent pass, and tokens flatten to evidence strings via
+:func:`line_items`. Records serialize via :func:`stable_json` (canonical,
 byte-stable). Output integrates with pageset via :func:`to_pageset_xrefs`.
 """
 
