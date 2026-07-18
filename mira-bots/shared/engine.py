@@ -933,7 +933,9 @@ class Supervisor:
         raw = ""
         try:
             raw, usage = await self.router.complete(
-                messages, max_tokens=1200, session_id=str(chat_id)
+                messages,
+                max_tokens=int(os.environ.get("PRINT_THEORY_MAX_TOKENS") or "2000"),
+                session_id=str(chat_id),
             )
             if raw:
                 InferenceRouter.log_usage(usage)
