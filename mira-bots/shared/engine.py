@@ -901,6 +901,7 @@ class Supervisor:
         chat_id: str,
         *,
         interpret_b64: str | None = None,
+        graph_sink: Callable[[object], None] | None = None,
     ) -> str:
         """Grounded, display-ready answer for a classified ELECTRICAL_PRINT photo.
 
@@ -923,7 +924,7 @@ class Supervisor:
 
         # 1. Anthropic PrintSynth interpreter (primary, isolated, flag+key gated).
         reply = await self._interpret_print_anthropic(
-            interpret_b64 or photo_b64, question, vision_data
+            interpret_b64 or photo_b64, question, vision_data, graph_sink=graph_sink
         )
         if reply:
             return reply
@@ -947,6 +948,8 @@ class Supervisor:
         photo_b64: str,
         question: str | None,
         vision_data: dict,
+        *,
+        graph_sink: Callable[[object], None] | None = None,
     ) -> str:
         """ISOLATED paid PrintSynth interpretation -> rendered Telegram reply.
 
@@ -966,6 +969,7 @@ class Supervisor:
             photo_b64s=[photo_b64],
             question=question,
             package_context=pkg_ctx,
+            graph_sink=graph_sink,
         )
 
     async def _interpret_print_anthropic_pages(
@@ -974,6 +978,7 @@ class Supervisor:
         photo_b64s: list[str],
         question: str | None,
         package_context: dict | None = None,
+        graph_sink: Callable[[object], None] | None = None,
     ) -> str:
         """ISOLATED paid PrintSynth interpretation for a print package.
 
@@ -1008,6 +1013,14 @@ class Supervisor:
         except Exception as exc:  # noqa: BLE001 — any interp/API error -> cascade
             logger.warning("PRINT_ANTHROPIC_ERROR error=%s", exc)
             return ""
+        # Hand the typed graph to the optional sink (workspace persistence)
+        # before rendering discards it. The sink is observability/persistence
+        # only — a sink failure must never touch the reply.
+        if graph_sink is not None:
+            try:
+                graph_sink(graph)
+            except Exception as exc:  # noqa: BLE001 — sink never touches the reply
+                logger.warning("PRINT_GRAPH_SINK_ERROR error=%s", exc)
         return render.format_graph_for_telegram(graph)
 
     async def _analyze_schematic_with_question(

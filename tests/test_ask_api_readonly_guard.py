@@ -81,11 +81,15 @@ def _install_app_import_stubs(monkeypatch):
     ask_drive_pack = types.ModuleType("ask_api.drive_pack")
     ask_drive_pack.router = object()
 
+    ask_workspace = types.ModuleType("ask_api.workspace")
+    ask_workspace.router = object()
+
     monkeypatch.setitem(sys.modules, "fastapi", fastapi)
     monkeypatch.setitem(sys.modules, "pydantic", pydantic)
     monkeypatch.setitem(sys.modules, "shared.engine", shared_engine)
     monkeypatch.setitem(sys.modules, "shared.live_snapshot", shared_live_snapshot)
     monkeypatch.setitem(sys.modules, "ask_api.drive_pack", ask_drive_pack)
+    monkeypatch.setitem(sys.modules, "ask_api.workspace", ask_workspace)
     sys.modules.pop("ask_api.app", None)
 
 
