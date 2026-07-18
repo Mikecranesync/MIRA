@@ -1,6 +1,6 @@
 # FactoryLM / MIRA — North Star
 
-> **Canonical strategy. Updated 2026-07-11.** This document states the infrastructure wedge — the
+> **Canonical strategy. Updated 2026-07-18.** This document states the infrastructure wedge — the
 > context layer and grounded agent. The **first product wedge** (Phase 1) is **Drive Commander**, a
 > read-only VFD troubleshooting tool, per issue #2577, PR #2504, and ADR-0025. This NORTH_STAR is
 > the foundation that Drive Commander (and future services) are built on; read NORTH_STAR first to
@@ -15,6 +15,10 @@
 > **sharpening of this wedge, not a new one**; the context layer is still the lead. However, this
 > engine docs is now subordinate to the Drive Commander product execution; see ADR-0025 for
 > prioritization.
+>
+> **See also (2026-07-18):** ADR-0028 defines **Vision Zero-Token Architecture** for Visual
+> Technician, PrintSense, Drive Commander images, and the FactoryLM-owned model program. It is an
+> inference-cost and IP strategy under this wedge, not a new product wedge.
 
 ---
 
@@ -171,6 +175,41 @@ rules running **in-gateway, offline**) and one-tap explains it from the customer
 Read-only, always. (Status: live GS10 telemetry proven on bench; in-gateway diagnose seam built +
 tested — `83ea8e81`.)
 
+## Vision ZTA - the visual compiler and owned-model spine
+
+Vision work must follow the same North Star as the rest of MIRA: turn messy factory evidence into
+trusted context, then let the agent prove that context with cited answers. The strategy is **Vision
+Zero-Token Architecture**: infer locally only when the answer is not already known; verify it;
+compile it into deterministic artifacts; and never pay to reason through the same verified visual
+fact twice.
+
+This is not "replace every model call with a tiny local chatbot." It is a compiler flywheel:
+
+1. Secure intake, hash identity, and exact-result cache.
+2. Deterministic quality, rotation, crop, raster, dedup, page classification, and PrintSense grading.
+3. Local OCR/layout and verified pack/catalog/graph/regex/visual-similarity lookup.
+4. Local detector or small local VLM only for unresolved observations.
+5. Independent local reread or human review before promotion.
+6. Accepted facts compile into cache entries, OCR rules, drive/print packs, graph edges, exemplars,
+   detector labels, and regression fixtures.
+
+Paid vision APIs are **off by default**. A paid call is an explicit, budgeted, audited benchmark or
+operator exception, never an automatic fallback. Unresolved or contradictory identifiers go to review
+instead of being guessed.
+
+Fleet ownership is job-level, not cross-Mac model sharding. Alpha orchestrates, hashes, rasterizes,
+preprocesses, and grades. Bravo owns the fast interactive local VLM/OCR lane. **Charlie owns document
+OCR/layout, embeddings and visual-similarity indexing, batch corpus processing, benchmark/dataset
+curation, and only a resource-gated second VLM lane.** The VPS owns public ingress, tenant/session
+routing, job state, manifests, and cache metadata; it must not become a heavy vision host.
+
+The proprietary model program compounds the same loop. FactoryLM should own adapters, fine-tunes,
+OCR models, embedding/reranker pairs, detector datasets, model manifests, graders, and deterministic
+artifacts before dreaming about foundation-model pretraining. Do not train on private customer
+material without explicit consent; do not mix frozen benchmark cases into training; do not call a
+model "FactoryLM-owned" unless the owned base weights, adapters, datasets, graders, and deterministic
+artifacts are named separately.
+
 ## The flywheel + the moat
 
 1. We structure a plant → its **Maintenance Intelligence Namespace** is captured (assets, docs, tags,
@@ -201,6 +240,8 @@ seed — and prove it with a cited, scored answer?"** If not, it waits.
 
 - Reusable OEM manual parsing / tag auto-classification? **YES** — that *is* the loop.
 - Per-answer groundedness scoring surfaced to the user? **YES** — the differentiating knife.
+- Turning recurring visual interpretation into cache/rule/pack/graph/model artifacts? **YES** — that
+  is the Vision ZTA flywheel.
 - New chat adapter / pretty dashboard? **Only** if a paying plant or the ProveIt demo needs it.
 - Anything that writes to OT, or boils the whole-plant UNS before one asset works? **NO.**
 
@@ -216,3 +257,6 @@ seed — and prove it with a cited, scored answer?"** If not, it waits.
 5. **One storyline to February:** contextualize foreign data → cited diagnosis, proven on someone
    else's mess. Beta gate = ProveIt prerequisite = the same finish line.
 6. **Pricing:** one architecture, decided by Mike, then propagated (flagged above).
+7. **Vision ZTA:** visual inference is local-first, deterministic-first, review-before-paid, and
+   compile-to-artifact. FactoryLM-owned adapters/weights are a product moat only when provenance,
+   consent, evals, and rollback are recorded.
