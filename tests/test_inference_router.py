@@ -168,11 +168,16 @@ class TestCascadeComplete:
         assert content == ""
 
     async def test_image_request_uses_provider_with_vision_model(self):
-        """Groq has a vision model; Cerebras does not — image request should hit Groq."""
+        """Only the provider WITH a vision model gets image requests — the rest
+        are skipped. Groq's vision model comes from the env knob here: since the
+        2026-07-18 Groq vision deprecation there is no Groq vision default (the
+        default image carrier is Together — pinned in
+        mira-bots/tests/test_router_coverage.py::TestVisionModelConfig)."""
         env = {
             "INFERENCE_BACKEND": "cloud",
             "GROQ_API_KEY": "gsk_test",
             "CEREBRAS_API_KEY": "csk_test",
+            "GROQ_VISION_MODEL": "test/vision-model",
         }
         with patch.dict(os.environ, env, clear=True):
             router = InferenceRouter()
