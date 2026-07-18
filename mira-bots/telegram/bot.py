@@ -1009,6 +1009,30 @@ async def _try_print_translator_reply(
     if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
         return False  # not a print → fall through unchanged
 
+    # UNSEEN-1 deterministic fast-path (zero tokens, before ANY model call):
+    # closed-form question classes — contact conventions, designation meaning,
+    # cross-reference and wire lookups — answered from the deterministic spine
+    # with evidence + citation + caveat. Insufficient evidence → fall through
+    # to the model path below WITH the extracted evidence injected as
+    # grounding. See printsense/deterministic_qa.py + the fast-path rule.
+    try:
+        from printsense import deterministic_qa as _det_qa
+    except ImportError:
+        _det_qa = None
+    if _det_qa is not None:
+        try:
+            det = _det_qa.try_deterministic_answer(caption, vision_data)
+            if det:
+                logger.info("PRINT_DETERMINISTIC_FASTPATH class=%s", det.get("question_class"))
+                await update.message.reply_text(det["reply_text"])
+                return True
+            pack = _det_qa.extract_evidence(caption, vision_data)
+            if pack.get("lines"):
+                vision_data = dict(vision_data or {})
+                vision_data["deterministic_evidence"] = pack["lines"]
+        except Exception as e:  # noqa: BLE001 — deterministic layer never eats the turn
+            logger.warning("print deterministic fast-path error: %s", e)
+
     # Grounded answer: Anthropic PrintSynth interpreter first (deep, typed,
     # never-invent), else the OCR-verbatim cascade. Both live in
     # engine._grounded_print_reply, which always returns a display-ready string.
