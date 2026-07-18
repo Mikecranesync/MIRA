@@ -21,6 +21,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+# #2711: mask bot-token URL segments (httpx logs full token-bearing URLs).
+from shared.log_redaction import install_token_redaction  # noqa: E402
+
+install_token_redaction()
 logger = logging.getLogger("mira-slack")
 
 SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
