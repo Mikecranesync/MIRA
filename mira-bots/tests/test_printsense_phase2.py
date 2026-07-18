@@ -139,8 +139,20 @@ async def test_invented_tag_hard_fails(monkeypatch):
     assert any(h["class"] == "prose_tag_invention" for h in env["hard_failures"])
 
 
+def _fastpath_off(monkeypatch):
+    """UNSEEN-1 answers closed-form classes deterministically BEFORE the
+    cascade; these grader-detection tests script a BAD cascade reply, so the
+    fast-path is switched off to keep exercising the grader on the model path
+    (the fast-path's own behavior is covered in
+    test_printsense_deterministic_fastpath.py)."""
+    import printsense.deterministic_qa as dq
+
+    monkeypatch.setattr(dq, "try_deterministic_answer", lambda *a, **k: None)
+
+
 async def test_wrong_contact_verdict_hard_fails(monkeypatch):
     box = _script_providers(monkeypatch)
+    _fastpath_off(monkeypatch)
 
     async def wrong(messages, **kwargs):
         return ("No — 13/14 is a normally closed contact.", {"provider": "scripted"})
@@ -155,6 +167,7 @@ async def test_wrong_contact_verdict_hard_fails(monkeypatch):
 
 async def test_unsupported_state_claim_hard_fails(monkeypatch):
     box = _script_providers(monkeypatch)
+    _fastpath_off(monkeypatch)
 
     async def stateful(messages, **kwargs):
         return (
