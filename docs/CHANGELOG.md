@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.162.6 (2026-07-18) - fix(saas): persist PrintSense lead capture across deploys (mira-leads-data volume)
+
+- `mira-web` had **no volumes** in `docker-compose.saas.yml`, so `/data/printsense-leads/{leads,funnel}.jsonl` (written by `mira-web/src/routes/printsense.ts` since #2774) lived in the container's writable layer and was **wiped on every redeploy**. Verified live: after the 2026-07-17/18 auto-deploys the directory no longer existed in the container (`docker inspect` mounts = `[]`), and the 2026-07-17 live-verified test lead was gone. Any real leads captured in that ~2-day window are unrecoverable.
+- Fix: named volume `mira-leads-data:/data/printsense-leads` on the `mira-web` service. Lead + funnel JSONL now survive container recreation. This is the evidence stream Mike's next-work directive depends on — do not remove the mount.
+
 ### v3.162.5 (2026-07-18) - docs(zta): Vision ZTA ADR, North Star strategy, and fleet inventory probe
 
 - Added ADR-0028 for Vision Zero-Token Architecture and the FactoryLM-owned model program: deterministic/cache-first vision routing, local OCR/VLM lanes, human review before paid exceptions, content-addressed result identity, Charlie's document/corpus lane, benchmark gates, and the staged PR ladder.
@@ -27,7 +32,6 @@
 - **Fix:** `router.py` — Groq `vision_model` default → empty (image requests skip Groq instead of burning a guaranteed 404 + latency; env knob retained for re-enable), Together `vision_model` default → `google/gemma-3n-E4B-it` via the **`or`-form parse** (compose maps `${TOGETHERAI_VISION_MODEL:-}` which delivers an empty string in-container — the documented `${VAR:-}` trap, now pinned for string env too). Compose: the six hardcoded dead-id `GROQ_VISION_MODEL` sites (staging-vps mira-pipeline + mira-bot-telegram; saas anchor default + mira-pipeline/telegram/slack) → `${GROQ_VISION_MODEL:-}` pass-throughs. `docs/env-vars.md` rows updated.
 - Tests: `TestVisionModelConfig` in `mira-bots/tests/test_router_coverage.py` (7 new — Groq empty default incl. empty-string env, re-enable knob, Together gemma default incl. the empty-string compose trap, override knob, and the cascade-shape test: an image turn skips Groq/Cerebras and is served by Together). Hermetic, keyless. Suite 22 green; ruff 0.9.x clean.
 - Scope note: `OPENROUTER_VISION_MODEL` (saas anchor) still names the delisted scout id but belongs to the legacy OpenRouter path, not the cascade — untouched.
-
 ### v3.162.1 (2026-07-18) - fix(ask-api): block register-write instructions on kiosk read-only surface
 
 - Kiosk `/ask` now runs the generated reply through a read-only output guard before returning JSON to the Ignition HMI. Register/control-write guidance such as "write X to register", FC5/FC6/FC15/FC16, reset-via-register phrasing, and direct `set Pxx` parameter commands are replaced with a qualified-technician/OEM-site-procedure warning instead of being shown on the read-only kiosk.

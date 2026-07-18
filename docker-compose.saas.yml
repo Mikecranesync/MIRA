@@ -223,6 +223,12 @@ services:
       - INBOUND_HMAC_SECRET=${INBOUND_HMAC_SECRET:-}
       - MIRA_INGEST_URL=${MIRA_INGEST_URL:-http://mira-ingest-saas:8001}
       - INBOX_DOMAIN=${INBOX_DOMAIN:-factorylm.com}
+    volumes:
+      # PrintSense lead capture (src/routes/printsense.ts writes
+      # /data/printsense-leads/{leads,funnel}.jsonl). Without a volume the
+      # container's writable layer is wiped on every deploy — leads were
+      # lost to the 2026-07-17/18 redeploys. Keep this mount.
+      - mira-leads-data:/data/printsense-leads
     networks:
       - mira-net
       - cmms-ext
@@ -965,6 +971,7 @@ networks:
 
 volumes:
   mira-webui-data:
+  mira-leads-data:
   mira-redis-data:
   mira-chroma:
   mira-docs:
