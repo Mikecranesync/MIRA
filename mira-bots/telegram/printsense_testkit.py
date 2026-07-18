@@ -26,7 +26,6 @@ import base64
 import io
 import logging
 import os
-import re
 import time
 
 from printsense import interpret as _interpret
@@ -871,39 +870,13 @@ async def printsense_compare_command(update, context) -> None:
 # metric. Zero paid inference: the scheduled runner disables the paid provider
 # structurally, and the PRINT_BENCH_BUDGET_USD hard-stop applies regardless.
 
-_UNSEEN_TAGISH_RE = re.compile(
-    r"-\d{1,3}/[A-Z]{1,2}\d{1,3}\b|(?<![\w/])-?[A-Z]{1,2}\d{3,6}(?::\d+)?\b"
-)
-
-
-def _unseen_tagish(text: str) -> set[str]:
-    return set(_UNSEEN_TAGISH_RE.findall(text or ""))
-
-
-def _lev1(a: str, b: str) -> bool:
-    """True when a and b differ by EXACTLY one edit (sub/ins/del)."""
-    if a == b or abs(len(a) - len(b)) > 1:
-        return False
-    if len(a) == len(b):
-        return sum(x != y for x, y in zip(a, b)) == 1
-    short, long_ = (a, b) if len(a) < len(b) else (b, a)
-    return any(short == long_[:i] + long_[i + 1 :] for i in range(len(long_)))
-
-
-def _detect_identifier_drift(answer: str, truth_tokens: tuple[str, ...]) -> list[dict]:
-    """Tag-shaped strings in the answer one edit away from a page-truth token
-    (e.g. the benchmark's -W7301 misread as V7301) — OCR/vision letter drift."""
-    truth_norm = {t.lstrip("-"): t for t in truth_tokens}
-    drift: list[dict] = []
-    for token in sorted(_unseen_tagish(answer)):
-        norm = token.lstrip("-")
-        if norm in truth_norm:
-            continue
-        for t_norm, t_raw in truth_norm.items():
-            if _lev1(norm, t_norm):
-                drift.append({"answer_token": token, "truth_token": t_raw})
-                break
-    return drift
+# Promoted to printsense/benchmarks/single_photo_grader.py (2026-07-18) so the
+# per-turn autoeval (shared/print_autoeval.py) can use them without importing a
+# telegram module. Aliases keep every existing caller and test working.
+_UNSEEN_TAGISH_RE = _grader._UNSEEN_TAGISH_RE
+_unseen_tagish = _grader._unseen_tagish
+_lev1 = _grader._lev1
+_detect_identifier_drift = _grader.detect_identifier_drift
 
 
 def _classify_unseen_failures(results: list[dict], drift_total: int) -> dict:

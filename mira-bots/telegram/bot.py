@@ -19,7 +19,7 @@ from admin_commands import (
 )
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import chat_tenant, print_translator, tts, wiring_intake
+from shared import chat_tenant, print_autoeval, print_translator, tts, wiring_intake
 from shared.chat.dispatcher import ChatDispatcher
 from shared.contextualization_intake import (
     hub_folder_upload_configured,
@@ -975,6 +975,124 @@ def _print_interpreter_configured() -> bool:
     return interpret.is_configured()
 
 
+def _schedule_print_autoeval(
+    *,
+    question: str,
+    answer: str,
+    vision_data: dict | None,
+    branch: str,
+    t0: float,
+    update: Update,
+) -> None:
+    """Fire-and-forget the per-turn print autoeval AFTER the reply is delivered.
+
+    Usage attribution and latency are captured SYNCHRONOUSLY here — the paid
+    interpreter's usage lives in a module-global slot and PTB processes updates
+    sequentially, so yielding first would let the next turn clobber it. The
+    evaluation + persistence + alert then run as a task so the (2s log_turn +
+    10s push worst-case) I/O never holds the update loop. Never raises."""
+    import time as _time
+
+    try:
+        if not print_autoeval.enabled():
+            return
+        latency_s = _time.monotonic() - t0
+        usage = None
+        try:
+            from printsense import interpret as _interp
+
+            usage = _interp.pop_last_usage()
+        except Exception:  # noqa: BLE001 — attribution is best-effort telemetry
+            usage = None
+        if usage is None:
+            model_str = engine.router.last_model_for(str(update.effective_chat.id))
+            if model_str:
+                prov, _, mod = model_str.partition("/")
+                usage = {"provider": prov, "model": mod}
+        asyncio.create_task(
+            _autoeval_print_turn(
+                question=question,
+                answer=answer,
+                vision_data=vision_data,
+                usage=usage,
+                latency_s=latency_s,
+                branch=branch,
+                interpreter_configured=_print_interpreter_configured(),
+                chat_id=str(update.effective_chat.id),
+                update=update,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — observability never touches the turn
+        logger.warning("PRINT_AUTOEVAL_SCHEDULE_ERROR %s", exc)
+
+
+async def _autoeval_print_turn(
+    *,
+    question: str,
+    answer: str,
+    vision_data: dict | None,
+    usage: dict | None,
+    latency_s: float,
+    branch: str,
+    interpreter_configured: bool,
+    chat_id: str,
+    update: Update,
+) -> None:
+    """Evaluate ($0, truth-free) → persist to conversation_eval → P0 ntfy push.
+
+    Mirrors _capture_drive_pack_turn: called after the reply, fail-open, no LLM,
+    no behaviour change to the reply. Design: docs/plans/2026-07-18-print-autoeval-hook.md."""
+    try:
+        result = print_autoeval.evaluate_print_turn(
+            question,
+            answer,
+            vision_data,
+            usage,
+            latency_s,
+            branch=branch,
+            interpreter_configured=interpreter_configured,
+        )
+        logger.info(
+            "PRINT_AUTOEVAL severity=%s flags=%s branch=%s provider=%s cost=%s latency=%.1fs",
+            result["severity"],
+            [f["class"] for f in result["flags"]],
+            branch,
+            result.get("provider"),
+            result.get("estimated_cost_usd"),
+            latency_s,
+        )
+        meta: dict = {"surface": "print_translator", "autoeval": result}
+        try:
+            _uploader, _captured_at, tenant_id = _intake_meta(update)
+            if tenant_id:
+                meta["tenant_id"] = tenant_id
+        except Exception:  # noqa: BLE001 — tenant is optional metadata
+            pass
+        await log_turn(
+            chat_id=chat_id,
+            user_message=question or "",
+            bot_response=answer or "",
+            source="telegram",
+            intent="print_translator",
+            has_citations=(branch == "deterministic_fastpath"),
+            response_time_ms=int(latency_s * 1000),
+            meta=meta,
+        )
+        if print_autoeval.should_alert(result):
+            classes = [f["class"] for f in result["flags"] if f["severity"] == "P0"]
+            if print_autoeval.ALERT_LIMITER.allow(classes):
+                await send_push(
+                    message=print_autoeval.format_alert(result),
+                    title="MIRA PrintSense autoeval P0",
+                    priority="high",
+                    tags=["triangular_flag"],
+                )
+            else:
+                logger.warning("AUTOEVAL_ALERT_SUPPRESSED classes=%s", classes)
+    except Exception as exc:  # noqa: BLE001 — observability never raises
+        logger.warning("PRINT_AUTOEVAL_ERROR %s", type(exc).__name__)
+
+
 async def _try_print_translator_reply(
     raw_bytes: bytes,
     vision_bytes: bytes,
@@ -1000,6 +1118,9 @@ async def _try_print_translator_reply(
     if not print_translator.is_print_question(caption):
         return False  # cheap reject, no vision call
 
+    import time as _time
+
+    t0 = _time.monotonic()
     photo_b64 = base64.b64encode(vision_bytes).decode()
     try:
         vision_data = await engine.vision.process(photo_b64, caption)
@@ -1026,6 +1147,14 @@ async def _try_print_translator_reply(
             if det:
                 logger.info("PRINT_DETERMINISTIC_FASTPATH class=%s", det.get("question_class"))
                 await _reply_chunked(update, det["reply_text"])
+                _schedule_print_autoeval(
+                    question=caption,
+                    answer=det["reply_text"],
+                    vision_data=vision_data,
+                    branch="deterministic_fastpath",
+                    t0=t0,
+                    update=update,
+                )
                 return True
             pack = _det_qa.extract_evidence(caption, vision_data)
             if pack.get("lines"):
@@ -1053,9 +1182,15 @@ async def _try_print_translator_reply(
             str(update.effective_chat.id),
             interpret_b64=interpret_b64,
         )
-    await _reply_chunked(
-        update,
-        reply or print_translator.format_theory_reply("", vision_data.get("drawing_type")),
+    final_text = reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
+    await _reply_chunked(update, final_text)
+    _schedule_print_autoeval(
+        question=caption,
+        answer=final_text,
+        vision_data=vision_data,
+        branch="theory",
+        t0=t0,
+        update=update,
     )
     return True
 

@@ -126,6 +126,47 @@ def extract_prose_tags(text: str) -> set[str]:
     return set(_PROSE_TAG_RE.findall(text or ""))
 
 
+# ── identifier-drift detection (promoted from printsense_testkit 2026-07-18 so
+#    shared/print_autoeval can use it without importing a telegram module;
+#    testkit re-exports these names as aliases) ────────────────────────────────
+
+_UNSEEN_TAGISH_RE = re.compile(
+    r"-\d{1,3}/[A-Z]{1,2}\d{1,3}\b|(?<![\w/])-?[A-Z]{1,2}\d{3,6}(?::\d+)?\b"
+)
+
+
+def _unseen_tagish(text: str) -> set[str]:
+    return set(_UNSEEN_TAGISH_RE.findall(text or ""))
+
+
+def _lev1(a: str, b: str) -> bool:
+    """True when a and b differ by EXACTLY one edit (sub/ins/del)."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    return any(short == long_[:i] + long_[i + 1 :] for i in range(len(long_)))
+
+
+def detect_identifier_drift(answer: str, truth_tokens: tuple[str, ...]) -> list[dict]:
+    """Tag-shaped strings in the answer one edit away from a reference token
+    (e.g. -W7301 misread as V7301) — OCR/vision letter drift. The reference set
+    is page truth in the frozen lanes, or the live photo's own OCR items in the
+    per-turn autoeval."""
+    truth_norm = {t.lstrip("-"): t for t in truth_tokens}
+    drift: list[dict] = []
+    for token in sorted(_unseen_tagish(answer)):
+        norm = token.lstrip("-")
+        if norm in truth_norm:
+            continue
+        for t_norm, t_raw in truth_norm.items():
+            if _lev1(norm, t_norm):
+                drift.append({"answer_token": token, "truth_token": t_raw})
+                break
+    return drift
+
+
 def grade_answer(
     case: dict,
     claimed: bool,
