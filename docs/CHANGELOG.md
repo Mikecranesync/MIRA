@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.167.0 (2026-07-18) - feat(printsense): OCR recall bench + CI recall gate over golden-corpus truth
+
+- **New `printsense/benchmarks/ocr_recall_bench.py`**: $0, deterministic Tesseract recall vs the golden-corpus fixture truth (`printsense.benchmarks.golden_corpus.CASES`, rendered via the public `single_photo_cases.draw_print_page`) — recall = found/expected token strings (whitespace-normalized, uppercased) in `line_items(ocr_tokens(...))`. CLI (`py -m printsense.benchmarks.ocr_recall_bench [--case ID]`) exits 3 with a clear message when Tesseract is unavailable; `--psm` is reserved-not-implemented (no sweep has shown >=0.1 recall spread yet).
+- **New `tests/printsense/test_ocr_recall_gate.py`**: per-case CI gate over the two richest, most token-dense golden-corpus pages (`iec_contactor_control`, `estop_safety_chain`) — skips (never fails) where Tesseract is absent, so local/Windows dev and the existing hermetic PrintSense unit-test step are unaffected. `RECALL_FLOOR = 0.60` is the documented starting floor; calibrate upward to (first-CI-run measured recall - 0.10) once real Tesseract numbers land — the test prints the measured recall unconditionally so the number is visible in the CI log.
+- **New `ocr-recall-gate` CI job** (`.github/workflows/ci.yml`): installs `tesseract-ocr` via apt plus pytest/pydantic/pillow/pytesseract, then runs the gate test with `-s` so the calibration print reaches the log. Existing jobs/checks untouched.
+- **Fixture amendment**: the OCR-regime-repair plan's Task B1 originally specified `printsense.benchmarks.persistent_qa_fixture`, which exists only on an unmerged sibling branch (#2798). This bench uses the already-merged, truth-frozen `golden_corpus.py` instead — same `{"text","bbox","line"}` token contract, so the `recall()` interface is unchanged from the plan.
+
 ### v3.166.0 (2026-07-18) - fix(bots): OCR regime repair — Tesseract floor bridges into ocr_items/ocr_tokens; dead glm-ocr lane retired
 
 - **Tesseract floor now bridges into `ocr_items`/`ocr_tokens`** with `ocr_source` provenance on every photo turn (`vision_worker.py`) — closes the gap where the deterministic floor path never fed the print-eval token contract. The album-path vision fallback (`engine.py`, `shared/visual/demo.py`) now carries the same `ocr_tokens`/`ocr_source` shape. A refactored `parse_ocr_reply` (pure model-OCR reply parser) preserves leading-dash device tags in numbered lists.

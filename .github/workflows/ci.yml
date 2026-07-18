@@ -464,6 +464,33 @@ jobs:
         # + docs/drive-commander/pack-reliability-benchmark.md. Deterministic, no LLM.
         run: python tools/drive-pack-extract/scorecard.py --json-only --ci
 
+  ocr-recall-gate:
+    name: OCR Recall Gate
+    runs-on: ubuntu-latest
+    # Task B1, docs/plans/2026-07-18-ocr-regime-repair.md PR-B. Real Tesseract recall
+    # vs the golden-corpus fixture truth (printsense/benchmarks/ocr_recall_bench.py) —
+    # the one CI job where an actual Tesseract/render/config regression can be caught.
+    # The "PrintSense interpreter + grader gate" step in the Unit Tests job (above)
+    # deliberately omits pytesseract and still collects this test file; it skips
+    # cleanly there. pydantic is required here even though no step imports it
+    # directly: importing anything under printsense. pulls in printsense/__init__.py
+    # -> printsense/models.py, which is pydantic-backed.
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install tesseract-ocr
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
+      - name: Install dependencies
+        run: pip install pytest pydantic pillow pytesseract
+
+      - name: OCR recall gate (-s so the measured recall lands in the CI log for floor calibration)
+        run: python -m pytest tests/printsense/test_ocr_recall_gate.py -q -s
+
   license-check:
     name: License Check
     runs-on: ubuntu-latest
