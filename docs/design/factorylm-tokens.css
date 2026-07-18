@@ -55,4 +55,47 @@
   --fl-pad: 12px;
   --fl-shadow: 0 1px 2px rgba(0,0,0,.06);
   --fl-shadow-pop: 0 4px 14px rgba(0,0,0,.25);
+
+  /* ── DARK DATASHEET THEME — public marketing/datasheet surfaces ─────────
+   * The ONE sanctioned dark look (Drive Commander family pages, PrintSense
+   * landing, future public technical pages). Same doctrine as the light
+   * workspace: muted-gray normal, ONE accent for actions/selection, strong
+   * color reserved for state. Never mix these with the light workspace
+   * tokens on the same surface. Added 2026-07-17 (de-slop pass). */
+
+  /* dark surfaces */
+  --fl-dark-bg: #0d0e11;
+  --fl-dark-bg-glass: rgba(13,14,17,.88); /* sticky-nav backdrop */
+  --fl-dark-surface: #13141a;
+  --fl-dark-surface-hi: #181a22;
+  --fl-dark-line: rgba(255,255,255,.07);
+  --fl-dark-line-hi: rgba(255,255,255,.12);
+
+  /* dark text */
+  --fl-dark-ink: #e8eaf0;
+  --fl-dark-muted: rgba(255,255,255,.62);
+  --fl-dark-faint: rgba(255,255,255,.40);
+
+  /* dark accent — brand orange (actions/selection ONLY, never status).
+   * Matches mira-web --fl-orange-500 so marketing and workspace share one
+   * brand accent; also frees amber for its state job (warning). */
+  --fl-dark-accent: #E67139;
+  --fl-dark-accent-hover: #f08a55;
+  --fl-dark-accent-tint: rgba(230,113,57,.10);
+  --fl-dark-accent-line: rgba(230,113,57,.38);
+
+  /* dark STATE colors — status/abnormal only, never decoration */
+  --fl-dark-ok: #2fbf71;          /* grounded / cited / pass / paid */
+  --fl-dark-ok-tint: rgba(47,191,113,.07);
+  --fl-dark-ok-line: rgba(47,191,113,.35);
+  --fl-dark-warn: #f0a000;        /* held / caution */
+  --fl-dark-warn-tint: rgba(240,160,0,.08);
+  --fl-dark-warn-line: rgba(240,160,0,.35);
+  --fl-dark-fault: #ff5d5d;       /* stop / escalate / fault */
+  --fl-dark-fault-tint: rgba(255,93,93,.08);
+  --fl-dark-fault-line: rgba(255,93,93,.35);
+
+  /* dark type (marketing stacks) */
+  --fl-dark-font: 'Inter', 'Helvetica Neue', -apple-system, sans-serif;
+  --fl-dark-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
 }

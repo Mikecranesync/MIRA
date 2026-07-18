@@ -170,6 +170,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **mira-hub migrations** — see `.claude/rules/mira-hub-migrations.md` (tenancy is mid-migration to UUID-only — `session.ts` 401s non-UUID tenants; `cmms_equipment.tenant_id` is `TEXT`, kg/Hub is `UUID`; match the column you join to, RLS compares in-type, `GRANT … TO factorylm_app`, drop policy+GiST index before `ALTER COLUMN TYPE`; **read the real error and reproduce with a tenant that can actually authenticate (UUID), not a slug**).
 - **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
 - **One-pipeline ingest law** — see `.claude/rules/one-pipeline-ingest.md` (every source enters via `mira-relay/ingest_contract.py` → `ingest_batch`; no transport forks its own normalizer/allowlist/persistence/batch-shape/enforcement; enforced by `tests/test_architecture.py` Contract 5).
+- **Zero-token architecture (spend law)** — see `.claude/rules/zero-token-architecture.md` (paid inference = budget-declared validation of the artifact under development ONLY — never a dev/debug tool; Claude fixes developmental issues against hermetic fixtures; stable reasoning gets promoted to versioned deterministic artifacts with declared invalidation triggers; backlog `docs/plans/2026-07-17-zero-token-audit-backlog.md`).
 - **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (run `tools/codegraph-preflight.sh` before non-doc code work; `codegraph_context` / `codegraph_impact` before grep + Read; trust the call-graph only after freshness passes).
 - **Graphify excluded from code navigation** — see `.claude/rules/graphify-excluded.md` (CodeGraph is the single code-nav graph; the orchestrator-pulse product KG is a separate, allowed artifact).
 - **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
@@ -199,7 +200,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - ❌ **Auto-promote `proposed` → `verified`** in the knowledge graph.
 - ❌ **Replace SCADA, replace CMMS, or expose arbitrary PLC writes.** That's out of scope. See `.claude/skills/mira-saas-scope-guard/SKILL.md`.
 - ❌ **Add a LangChain/n8n abstraction over the LLM call** (PRD §4).
-- ❌ **Reintroduce Anthropic as a provider** — removed PR #610, never reintroduce. Cascade is Groq → Cerebras → Together.
+- ❌ **Reintroduce Anthropic into the diagnostic cascade** — removed PR #610, never reintroduce there. Cascade is Groq → Cerebras → Together. (Sole owner-authorized carve-out: PrintSynth print-vision interpretation, PR #2661 — vision on print photos only, never a chat/diagnosis provider.)
 - ❌ **Skip the screenshot rule** for visible mira-web UI changes.
 - ❌ **Cross environment boundaries** — no prod `psql`, no direct VPS `docker compose`, no feature-branch traffic to `@FactoryLM_Diagnose`, no hand-edited prod schema. See `docs/environments.md`.
 

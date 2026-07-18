@@ -36,7 +36,10 @@ _PROVIDER_KEYS = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
 # an explicit PRINT_VISION_MODEL choice, never a silent default.)
 _DEFAULT_MODELS = {"anthropic": "claude-opus-4-8", "openai": "gpt-5.5"}
 DEFAULT_MODEL = os.getenv("PRINT_VISION_MODEL") or _DEFAULT_MODELS.get(PROVIDER, "gpt-5.5")
-MAX_TOKENS = int(os.getenv("PRINT_VISION_MAX_TOKENS", "32000"))
+# ZTA-2 (spend law): 12k bounds a runaway reasoning chain at ~$0.36/call on
+# gpt-5.5 ($30/M output) instead of ~$0.96 at 32k. medium-effort 8/8 runs fit
+# comfortably; truncation is grader-visible, never silent.
+MAX_TOKENS = int(os.getenv("PRINT_VISION_MAX_TOKENS") or "12000")
 # xhigh is the best effort for reading-accuracy / self-verifying vision work on
 # Opus 4.8 (roadmap Phase 0.4); high was leaving perception on the table.
 EFFORT = os.getenv("PRINT_VISION_EFFORT", "xhigh")
@@ -44,6 +47,32 @@ EFFORT = os.getenv("PRINT_VISION_EFFORT", "xhigh")
 # confidence below this is demoted to UNREADABLE/unresolved. An honest "unreadable"
 # beats a low-confidence guess -- the grader punishes confident misreads.
 CONF_GATE = float(os.getenv("PRINT_VISION_CONF_GATE", "0.55"))
+
+# ZTA-1 cost meter: reporting-only snapshot of the most recent interpreter
+# call's token usage. The photo batch worker runs interpreter calls serially
+# (concurrency=1), so a module-level slot is race-free in practice; treat it
+# as best-effort telemetry for bench envelopes, never grading truth.
+_LAST_USAGE: dict | None = None
+
+
+def _record_usage(provider: str, model: str, usage) -> None:
+    global _LAST_USAGE
+    if usage is None:
+        return
+    _LAST_USAGE = {
+        "provider": provider,
+        "model": model,
+        "input_tokens": getattr(usage, "input_tokens", None) or 0,
+        "output_tokens": getattr(usage, "output_tokens", None) or 0,
+    }
+
+
+def pop_last_usage() -> dict | None:
+    """Return and clear the most recent interpreter call's token usage."""
+    global _LAST_USAGE
+    usage, _LAST_USAGE = _LAST_USAGE, None
+    return usage
+
 
 _SYSTEM = (
     "You are a senior industrial-controls engineer and maintenance electrician "
@@ -217,6 +246,7 @@ def _openai_generate(client, model: str, pages: list[tuple[bytes, str]], prompt:
         raise ValueError("no output text in the OpenAI response")
     usage = getattr(response, "usage", None)
     if usage is not None:
+        _record_usage("openai", model, usage)
         logger.info(
             "PRINT_OPENAI_USAGE input=%s output=%s",
             getattr(usage, "input_tokens", None),
@@ -299,6 +329,7 @@ def interpret_print(
             messages=[{"role": "user", "content": content}],
         ) as stream:
             message = stream.get_final_message()
+        _record_usage("anthropic", model, getattr(message, "usage", None))
         raw = _first_text(message)
     data = json.loads(_strip_fences(raw))
     logger.info(
