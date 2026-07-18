@@ -7,8 +7,8 @@ Resolves which ledger entity a follow-up text turn is about:
   2. a child/contact alias ("K17.1" ↔ "K17", "X2:4" ↔ "-X2") via the
      designations decoder when available, with a deterministic strip-the-
      trailing-suffix prefix match as the always-on fallback;
-  3. a pronoun/device-noun reference ("it", "this relay", "the contactor",
-     German "es") resolved to the workspace's ``last_entity``.
+  3. a pronoun/device-noun reference ("it", "its", "this relay", "the
+     contactor", German "es") resolved to the workspace's ``last_entity``.
 
 Pure and fail-open: no I/O, no model calls; the optional
 ``printsense.designations`` import is lazy and any failure inside it falls
@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 
 _TAG_RE = re.compile(r"[-+]?[A-Za-z]{1,3}\d{1,4}(?:\.\d{1,3})*(?::\d{1,3})?")
-_PRONOUN_RE = re.compile(r"\b(it|this|that|these|those|es)\b", re.IGNORECASE)
+_PRONOUN_RE = re.compile(r"\b(it|its|this|that|these|those|es)\b", re.IGNORECASE)
 _DEVICE_NOUN_RE = re.compile(
     r"\b(?:the|that|this)\s+(relay|contactor|coil|contact|breaker|fuse|overload|"
     r"switch|solenoid|valve|motor|device|terminal)\b",
