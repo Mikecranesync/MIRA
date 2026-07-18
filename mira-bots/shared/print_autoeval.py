@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from collections import deque
 from collections.abc import Sequence
@@ -27,9 +28,44 @@ from .print_translator import _CAVEAT_MARKERS, _CONTACT_VERDICT_RE
 
 logger = logging.getLogger("mira-print-autoeval")
 
-AUTOEVAL_VERSION = 1
+AUTOEVAL_VERSION = 2
 
 _DETAIL_CAP = 160  # chars — flag details are model-output snippets, keep them short
+
+# Device-tag-shaped tokens for the degenerate-output rules (quoted or bare:
+# K44, "A201"). Deliberately local to this module — looser than the grader's
+# prose-tag regex, because the 2026-07-18 live garbage wrote quoted "A1","A2"…
+# runs the grader regex never counted.
+_ENUM_TOKEN_RE = re.compile(r'"?([A-Z]{1,2})(\d{1,3})"?')
+
+# 15+ consecutively-incrementing members of one family is not an answer — it is
+# a small-model repetition loop (live-hit 2026-07-18: K1..K226 and "A1".."A201",
+# both truncated at the token cap, both graded ok by v1). A real reply citing a
+# handful of devices never forms a run this long.
+_ENUM_MIN_RUN = 15
+
+# Volume tripwire: this many tag-shaped claims against ZERO OCR items is
+# damning on its own, even though item-level invention can't be checked.
+_TAG_FLOOD_MIN = 20
+
+_TRUNCATION_MIN_LEN = 2000  # only long replies can be cap-truncation suspects
+_TRUNCATION_TAIL_CHARS = (",", ";", ":", "-", "(", '"')
+
+
+def _longest_consecutive_run(answer: str) -> tuple[str, int]:
+    """(family, longest strictly-consecutive ascending run) across tag families,
+    in order of appearance — e.g. 'K1, K2, … K226' → ('K', 226)."""
+    by_family: dict[str, list[int]] = {}
+    for fam, num in _ENUM_TOKEN_RE.findall(answer or ""):
+        by_family.setdefault(fam, []).append(int(num))
+    best_fam, best_run = "", 0
+    for fam, nums in by_family.items():
+        run = 1
+        for prev, cur in zip(nums, nums[1:]):
+            run = run + 1 if cur == prev + 1 else 1
+            if run > best_run:
+                best_fam, best_run = fam, run
+    return best_fam, best_run
 
 
 def enabled() -> bool:
@@ -155,6 +191,46 @@ def evaluate_print_turn(
                 "class": "missing_caveat",
                 "severity": "P1",
                 "detail": "contact verdict without verification language",
+            }
+        )
+
+    # ── degenerate-output rules (v2, from the 2026-07-18 live garbage turns —
+    #    module-local regex, so they run even when the grader import degrades) ─
+    enum_fam, enum_run = _longest_consecutive_run(answer)
+    if enum_run >= _ENUM_MIN_RUN:
+        # P0 — runaway enumeration: the model is counting, not answering.
+        flags.append(
+            {
+                "class": "degenerate_enumeration",
+                "severity": "P0",
+                "detail": _cap(f"{enum_fam}-family run of {enum_run} consecutive tags"),
+            }
+        )
+
+    tagish_count = len(set(_ENUM_TOKEN_RE.findall(answer)))
+    tag_claims = max(prose_tag_count, tagish_count)
+    if not ocr_items and tag_claims >= _TAG_FLOOD_MIN:
+        # P1 — the volume alone is damning: dozens of tag-shaped claims with
+        # ZERO OCR items read from the photo. Item-level invention still can't
+        # be checked (that lane stays in `skipped`) — this fires on the ratio.
+        flags.append(
+            {
+                "class": "tag_flood_without_ocr",
+                "severity": "P1",
+                "detail": _cap(f"{tag_claims} tag-shaped claims vs 0 OCR items"),
+            }
+        )
+
+    tail = answer.rstrip()
+    if len(answer) >= _TRUNCATION_MIN_LEN and tail and tail[-1] in _TRUNCATION_TAIL_CHARS:
+        # P1 — long reply ending mid-list/mid-clause: almost certainly cut at
+        # the token cap (both live garbage turns ended "…K226," at exactly the
+        # 1200-token max). The technician got an incomplete answer.
+        flags.append(
+            {
+                "class": "cap_truncation",
+                "severity": "P1",
+                "detail": _cap(f"len={len(answer)} ends {tail[-12:]!r}"),
             }
         )
 

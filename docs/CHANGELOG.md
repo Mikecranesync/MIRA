@@ -1,5 +1,13 @@
 # MIRA Release Notes
 
+### v3.165.0 (2026-07-18) - feat(printsense): autoeval v2 — degenerate-output rules written by the first live garbage catch
+
+- **The flywheel's first full cycle**: Mike flagged two half-garbage staging replies; the v1 autoeval had graded both `ok` while RECORDING the evidence it couldn't act on (127 tag-shaped claims vs 0 OCR items; both outputs pinned at the 1200-token cap mid-enumeration `K1..K226` / `"A1".."A201"`). Those two turns are now regression fixtures and three deterministic rules (/usr/bin/bash, module-local regex — they run even when the grader import degrades):
+- **P0 `degenerate_enumeration`** — ≥15 consecutively-incrementing tags of one family (quoted or bare) = a repetition loop, not an answer. Fires on both live turns; pushes ntfy.
+- **P1 `tag_flood_without_ocr`** — ≥20 tag-shaped claims against ZERO OCR items: the volume is damning even though item-level invention stays unchecked (`skipped` unchanged).
+- **P1 `cap_truncation`** — ≥2000-char reply ending mid-list/mid-clause (`,;:-("`) = cut at the token cap; the technician got an incomplete answer.
+- `AUTOEVAL_VERSION` 1→2. Tests: 9 new in `test_print_autoeval.py` incl. the live-garbage replica asserting all three classes fire where v1 said ok; quoted-run variant; non-consecutive and short-list negatives; flood-with-OCR negative; proper-ending negative. Suites: autoeval/hook/persistence 44 green, tests/printsense 536 green.
+
 ### v3.164.0 (2026-07-18) - feat(bots): print-turn persistence — every PrintSense request + full reply in interactions (supersedes PR #2714)
 
 - **Delivers the 2026-07-15 operator directive** ("check the bot results" must retrieve the exact user message + exact bot reply without screenshots): every print turn now lands in the SQLite `interactions` table with provenance — `route` (deterministic_fastpath / printsense / cascade), `model`, `input_sha256` of the full-res photo, `fallback_reason`, timing, full reply text. Guarded `ALTER TABLE` columns upgrade a prod db in place (session_manager delta verbatim from the superseded branch).
