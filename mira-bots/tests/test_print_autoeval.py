@@ -160,6 +160,71 @@ class TestEnabledKnob:
         assert print_autoeval.enabled() is True
 
 
+class TestDegenerateOutputRules:
+    """v2 rules written by the 2026-07-18 live garbage turns: two answers
+    degenerated into K1..K226 / "A1".."A201" enumeration, truncated at the
+    token cap, with 0 OCR items — and v1 graded both ok."""
+
+    def test_enumeration_run_is_p0(self):
+        answer = "Contactors shown: " + ", ".join(f"K{i}" for i in range(1, 21)) + "."
+        r = _eval(answer, ocr_items=["-27/K44"])
+        assert "degenerate_enumeration" in _classes(r)
+        assert r["severity"] == "P0"
+
+    def test_quoted_enumeration_fires_too(self):
+        answer = "Components: " + ", ".join(f'"A{i}"' for i in range(1, 18)) + "."
+        r = _eval(answer, ocr_items=["-27/K44"])
+        assert "degenerate_enumeration" in _classes(r)
+
+    def test_short_legit_list_does_not_fire(self):
+        r = _eval("K1 and K2 interlock with K3. Verify with a meter.", ocr_items=["K1", "K2", "K3"])
+        assert "degenerate_enumeration" not in _classes(r)
+
+    def test_non_consecutive_tags_do_not_fire(self):
+        answer = "Refs: " + ", ".join(f"K{i}" for i in range(1, 80, 4)) + " appear."
+        r = _eval(answer, ocr_items=["K1"])
+        assert "degenerate_enumeration" not in _classes(r)
+
+    def test_tag_flood_without_ocr_is_p1(self):
+        tags = [f"{fam}{n}" for fam, n in zip("KMSFRQXUKMSFRQXUKMSFRQXU", range(3, 99, 4))]
+        r = _eval("Devices: " + ", ".join(tags) + " are present.", ocr_items=[])
+        assert "tag_flood_without_ocr" in _classes(r)
+        assert "degenerate_enumeration" not in _classes(r)  # no consecutive run
+
+    def test_no_flood_when_ocr_present(self):
+        tags = [f"K{n}" for n in range(3, 99, 4)]
+        r = _eval("Devices: " + ", ".join(tags) + " are present.", ocr_items=["K3"])
+        assert "tag_flood_without_ocr" not in _classes(r)
+
+    def test_cap_truncation_on_long_reply_ending_mid_list(self):
+        answer = ("This print shows a control circuit. " * 60) + "Also K224, K225, K226,"
+        assert len(answer) >= 2000
+        r = _eval(answer, ocr_items=["K1"])
+        assert "cap_truncation" in _classes(r)
+
+    def test_no_truncation_flag_on_proper_ending(self):
+        answer = ("This print shows a control circuit. " * 60) + "Verify with a meter."
+        r = _eval(answer, ocr_items=["K1"])
+        assert "cap_truncation" not in _classes(r)
+
+    def test_live_garbage_replica_now_fully_flagged(self):
+        """The exact 2026-07-18 shape: prose prefix, runaway consecutive run,
+        trailing comma at the cap, zero OCR items — v1 said ok; v2 says P0
+        with all three classes."""
+        answer = (
+            "**1. What this appears to be**\n\nAccording to this print, this is a "
+            "circuit diagram for the inputs PLC. Several contactors are shown, "
+            "such as " + ", ".join(f"K{i}" for i in range(1, 400)) + ","
+        )
+        assert len(answer) >= 2000  # the live answers were 4KB+
+        r = _eval(answer, ocr_items=[])
+        classes = _classes(r)
+        assert r["severity"] == "P0"
+        assert "degenerate_enumeration" in classes
+        assert "tag_flood_without_ocr" in classes
+        assert "cap_truncation" in classes
+
+
 def test_format_alert_caps_and_omits_pii():
     r = _eval("The contactor is energized. " + "x" * 900)
     msg = print_autoeval.format_alert(r)
