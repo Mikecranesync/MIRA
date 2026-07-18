@@ -1857,6 +1857,8 @@ class Supervisor:
                         "classification_confidence": 0.0,
                         "vision_result": "unclear",
                         "ocr_items": [],
+                        "ocr_tokens": [],
+                        "ocr_source": "none",
                         "tesseract_text": "",
                         "drawing_type": None,
                         "drawing_type_confidence": 0.0,
