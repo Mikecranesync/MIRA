@@ -274,6 +274,43 @@ def _tesseract_tokens_impl(image_bytes: bytes) -> list[dict]:
     return ocr_tokens(image_bytes)
 
 
+def _tesseract_version_impl() -> str:
+    import pytesseract
+
+    return str(pytesseract.get_tesseract_version())
+
+
+def ocr_lane_report() -> dict:
+    """One-shot health report for every OCR lane. Logged at bot boot and
+    rendered by /printsense_test ocr — the mechanism that makes a dead
+    floor loud instead of a per-turn WARNING nobody reads (the 2026-07
+    glm-ocr lane died silently for weeks)."""
+    expected = (os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0") == "1"
+    model_lane = (
+        "on"
+        if os.environ.get("OCR_MODEL_LANE", "off").strip().lower() == "on"
+        else "off"
+    )
+    try:
+        version: str | None = _tesseract_version_impl()
+        available = True
+    except Exception:  # noqa: BLE001 — absence is a report state, not an error
+        version = None
+        available = False
+    if available:
+        verdict = "ok"
+    elif expected:
+        verdict = "DEAD"
+    else:
+        verdict = "DEGRADED"
+    return {
+        "tesseract": {"available": available, "version": version},
+        "model_lane": model_lane,
+        "expected_floor": expected,
+        "verdict": verdict,
+    }
+
+
 class VisionWorker:
     """Handles photo analysis: vision model + OCR + classification."""
 
@@ -324,6 +361,8 @@ class VisionWorker:
             logger.error("Vision call failed: %s", results[0])
         if isinstance(results[1], Exception):
             logger.warning("model-OCR lane failed: %s", results[1])
+        if isinstance(results[2], Exception):
+            logger.warning("tesseract floor task failed: %s", results[2])
 
         from printsense.xref_extractor import line_items
 

@@ -124,3 +124,41 @@ class TestOcrFloor:
         out = await w.process("aGk=", "what is this")
         assert out["ocr_source"] == "model"
         assert out["ocr_items"] == ["-F12"] and out["ocr_tokens"] == []
+
+
+class TestOcrLaneReport:
+    def test_report_shape_when_floor_unavailable(self, monkeypatch):
+        from shared.workers import vision_worker
+
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "1")
+        monkeypatch.delenv("OCR_MODEL_LANE", raising=False)
+
+        def _raise():
+            raise RuntimeError("tesseract not installed")
+
+        monkeypatch.setattr(vision_worker, "_tesseract_version_impl", _raise)
+        report = vision_worker.ocr_lane_report()
+        assert report["tesseract"]["available"] is False
+        assert report["model_lane"] == "off"
+        assert report["expected_floor"] is True
+        assert report["verdict"] == "DEAD"
+
+    def test_report_ok(self, monkeypatch):
+        from shared.workers import vision_worker
+
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "1")
+        monkeypatch.setattr(vision_worker, "_tesseract_version_impl", lambda: "5.3.0")
+        report = vision_worker.ocr_lane_report()
+        assert report["tesseract"] == {"available": True, "version": "5.3.0"}
+        assert report["verdict"] == "ok"
+
+    def test_not_expected_is_degraded_not_dead(self, monkeypatch):
+        from shared.workers import vision_worker
+
+        monkeypatch.delenv("OCR_EXPECT_TESSERACT", raising=False)
+
+        def _raise():
+            raise RuntimeError("no binary")
+
+        monkeypatch.setattr(vision_worker, "_tesseract_version_impl", _raise)
+        assert vision_worker.ocr_lane_report()["verdict"] == "DEGRADED"

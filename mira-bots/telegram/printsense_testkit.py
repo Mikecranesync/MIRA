@@ -1049,3 +1049,27 @@ async def run_unseen_lane_live(update, context) -> None:
         document=io.BytesIO(report_json.encode("utf-8")),
         filename="printsense_unseen_lane.json",
     )
+
+
+# ── Boot-time OCR lane self-check (`/printsense_test ocr`) ───────────────────
+
+
+def ocr_phone_summary(report: dict) -> str:
+    """Render ``vision_worker.ocr_lane_report()`` as a one-line phone summary,
+    verdict first — mirrors ``unseen_phone_summary``'s formatting convention."""
+    t = report["tesseract"]
+    tesseract_part = (
+        f"tesseract {t['version']}" if t["available"] else "tesseract unavailable"
+    )
+    model_part = f"model lane {report['model_lane']}"
+    floor_part = "floor expected" if report["expected_floor"] else "floor optional"
+    return f"OCR: {report['verdict']} — {tesseract_part}, {model_part}, {floor_part}"
+
+
+async def run_ocr_report_live(update, context) -> None:
+    """The ``/printsense_test ocr`` body: one-shot health report for every OCR
+    lane (``shared.workers.vision_worker.ocr_lane_report``) — read-only, no
+    state changes, no documents; a single phone-readable line."""
+    from shared.workers.vision_worker import ocr_lane_report
+
+    await update.message.reply_text(ocr_phone_summary(ocr_lane_report()))
