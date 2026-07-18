@@ -176,9 +176,13 @@ def _build_providers() -> list[_Provider]:
                 api_key=groq_key,
                 model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
                 timeout=30.0,
-                vision_model=os.getenv(
-                    "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
-                ),
+                # Groq removed ALL vision-capable models on 2026-07-18 (llama-4
+                # scout/maverick delisted; /v1/models lists nothing multimodal),
+                # so the default is empty — image requests skip Groq instead of
+                # burning a guaranteed 404 + latency on every photo turn. The
+                # env knob stays so ops can re-enable without a deploy if Groq
+                # ever re-adds a vision model.
+                vision_model=os.getenv("GROQ_VISION_MODEL") or "",
             )
         )
 
@@ -203,13 +207,16 @@ def _build_providers() -> list[_Provider]:
                 api_key=together_key,
                 model=os.getenv("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
                 timeout=30.0,
-                # No default vision model: Together's serverless catalog has no
-                # stable text+vision model on this account, so image requests stay
-                # on Groq's vision model. Set TOGETHERAI_VISION_MODEL to add one.
-                # (Default text model is serverless pay-per-token, covered by the
-                # account's free credits; the -Turbo-Free variant is not serverless
-                # on this account.)
-                vision_model=os.getenv("TOGETHERAI_VISION_MODEL", ""),
+                # google/gemma-3n-E4B-it is the ONLY vision-capable model this
+                # account can reach serverless (verified live 2026-07-18: every
+                # Qwen-VL / Llama-4 / Kimi / GLM-4.5V id in the catalog rejects
+                # with "non-serverless model" — including the per-token-priced
+                # ones, so catalog pricing does NOT imply serverless access).
+                # Same free-credits basis as the default text model above. The
+                # `or` form is load-bearing: compose maps
+                # ${TOGETHERAI_VISION_MODEL:-}, which delivers an EMPTY STRING
+                # in-container; a plain getenv default would leave vision dead.
+                vision_model=os.getenv("TOGETHERAI_VISION_MODEL") or "google/gemma-3n-E4B-it",
             )
         )
 
