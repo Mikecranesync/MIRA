@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import contextlib
 import io as _io
 import logging
 import os
@@ -1024,7 +1025,7 @@ async def _try_print_translator_reply(
             det = _det_qa.try_deterministic_answer(caption, vision_data)
             if det:
                 logger.info("PRINT_DETERMINISTIC_FASTPATH class=%s", det.get("question_class"))
-                await update.message.reply_text(det["reply_text"])
+                await _reply_chunked(update, det["reply_text"])
                 return True
             pack = _det_qa.extract_evidence(caption, vision_data)
             if pack.get("lines"):
@@ -1052,10 +1053,60 @@ async def _try_print_translator_reply(
             str(update.effective_chat.id),
             interpret_b64=interpret_b64,
         )
-    await update.message.reply_text(
-        reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
+    await _reply_chunked(
+        update,
+        reply or print_translator.format_theory_reply("", vision_data.get("drawing_type")),
     )
     return True
+
+
+def _chunk_reply(text: str, limit: int = 4000) -> list[str]:
+    """Split a reply into Telegram-deliverable chunks (hard API cap: 4096).
+
+    Splits on line boundaries so sections stay intact — for line-structured
+    text, joining the chunks with "\\n" reproduces the original. A single line
+    longer than the limit is hard-split (the split points become message
+    boundaries); no characters are ever dropped.
+    """
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for line in text.split("\n"):
+        while len(line) > limit:  # pathological single line — hard split
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(line[:limit])
+            line = line[limit:]
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) > limit:
+            chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+async def _reply_chunked(update: Update, text: str) -> None:
+    """Deliver a reply of any length; a delivery failure is logged, never silent.
+
+    The theory path's model reply can exceed Telegram's 4096-char sendMessage
+    cap (live-hit 2026-07-18: a 1068-token gemma reply 400'd and the turn died
+    silently after the ack). Chunk, and surface any residual send error to the
+    technician instead of eating it.
+    """
+    try:
+        for chunk in _chunk_reply(text):
+            await update.message.reply_text(chunk)
+    except Exception as e:  # noqa: BLE001 — delivery failure must be visible
+        logger.warning("print reply delivery failed: %s", e)
+        with contextlib.suppress(Exception):
+            await update.message.reply_text(
+                "⚠️ I built an answer but couldn't deliver it. Try a narrower question."
+            )
 
 
 async def _dispatch_single_photo(
