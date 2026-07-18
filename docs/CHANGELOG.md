@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.162.4 (2026-07-18) - fix(crawler): align kb_cron freshness probe to the writer path (#2782)
+
+- `heartbeat_monitor.KB_QUEUE_PATHS` now resolves the **same** path the cron writes — `MIRA_MANUAL_QUEUE_PATH` (default `/var/lib/mira/manual_queue.json`, where #2562/#2639 relocated the queue to survive `git checkout --force`) — instead of the hard-coded `/opt/mira/mira-crawler/cron/manual_queue.json` orphan (#1015) that nothing writes. That orphan made `check_kb_cron_freshness` read a perpetually-stale file → `kb_cron` reported `DOWN` forever → the self-healer re-ran the cron every 15 min and (pre-#2770) flooded Telegram. Prod telemetry proved the mechanism: the probed mtime aged linearly with wall-clock (220h→229h) while the self-healer's cron runs bumped `/var/lib/mira`, not the probed file.
+- Regression lock: `mira-crawler/tests/test_kb_queue_path_alignment.py` now asserts writer↔probe convergence (default + `MIRA_MANUAL_QUEUE_PATH` override) and that the `/opt` orphan is gone from the probe list (previously an `xfail` characterizing the broken state).
+- Diagnostic tooling (db-inspect prod probes + `queue_write` logging) that surfaced the root cause ships separately in #2778.
+
 ### v3.162.3 (2026-07-18) - fix(bots): chunk print replies at Telegram's 4096-char cap — long theory answers no longer die silently
 
 - **Live-caught by Mike's first post-v3.162.2 phone poke:** the vision fix worked end-to-end (classify `ELECTRICAL_PRINT` 0.90 via `together/gemma-3n`, paid path 429 → free cascade composed a 1068-token answer) — and then the single `sendMessage` **400'd on Telegram's 4096-char cap and the turn died silently** after the ack (no retry, no log, no delivery). Scout's shorter replies never tripped this; gemma is more verbose, so the missing chunking became load-bearing.
