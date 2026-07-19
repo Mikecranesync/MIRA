@@ -11,6 +11,7 @@ from chat_adapter import SlackChatAdapter
 from pdf_handler import ingest_pdf
 from PIL import Image
 from shared.chat.dispatcher import ChatDispatcher
+from shared.chat.fast_paths import try_fast_paths
 from shared.conversation_logger import log_turn, measure_ms
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
@@ -169,6 +170,22 @@ async def handle_message(event, say, client):
 
     if not normalized.text and not any(a.kind == "image" for a in normalized.attachments):
         return  # nothing to process
+
+    # Grounded fast-paths (parity with Telegram): nameplate→drive-pack,
+    # wiring intake, wiring Q&A, drive continuity. Returns None → fall through.
+    fp_resp = await try_fast_paths(normalized, engine)
+    if fp_resp is not None:
+        await say(text=fp_resp.text, thread_ts=thread)
+        await log_turn(
+            chat_id=str(event.get("channel", "")),
+            user_message=normalized.text or "",
+            bot_response=fp_resp.text or "",
+            source="slack",
+            intent="fast_path",
+            has_citations=("[Source:" in (fp_resp.text or "")),
+            response_time_ms=0,
+        )
+        return
 
     try:
         import time as _time

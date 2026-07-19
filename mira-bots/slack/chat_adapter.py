@@ -56,7 +56,7 @@ class SlackChatAdapter:
             user_id="",  # resolved later by identity service
             external_user_id=event.get("user", ""),
             external_channel_id=event.get("channel", ""),
-            external_thread_id=event.get("thread_ts", ""),
+            external_thread_id=event.get("thread_ts", event.get("ts", "")),
             text=event.get("text", ""),
             attachments=attachments,
             event_type=event_type,
