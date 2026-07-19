@@ -217,6 +217,25 @@ def test_dense_led_diagnostic_table_routes_to_print_not_equipment(vw, ocr_count,
     assert r["type"] == "ELECTRICAL_PRINT", r
 
 
+@pytest.mark.parametrize(
+    "ocr_count,expect_type",
+    [(49, "EQUIPMENT_PHOTO"), (50, "ELECTRICAL_PRINT")],
+    ids=["49-items-below-threshold", "50-items-at-threshold"],
+)
+def test_dense_table_ocr_threshold_boundary(vw, ocr_count, expect_type):
+    """Pins the DENSE_TABLE_OCR_THRESHOLD boundary: 49 items stays equipment,
+    50 items classifies as print. The threshold discriminates overwhelming OCR
+    density (indicator of a reference/diagnostic page) from moderate faceplate
+    labels."""
+    from shared.workers.vision_worker import DENSE_TABLE_OCR_THRESHOLD
+
+    items = _synthetic_led_table_ocr_items(ocr_count)
+    r = vw._classify_photo(_LED_DIAGNOSTIC_TABLE_DESC, ocr_items=items, caption="")
+    assert r["type"] == expect_type, f"expected {expect_type}, got {r['type']}"
+    # Sanity check: constant is 50
+    assert DENSE_TABLE_OCR_THRESHOLD == 50
+
+
 def test_moderate_equipment_photo_ocr_count_stays_equipment_photo(vw):
     """Guards against an overcorrection: a real equipment photo with a
     faceplate's worth of readable labels (well below the dense-table

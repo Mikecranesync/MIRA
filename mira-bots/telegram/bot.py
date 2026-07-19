@@ -1147,11 +1147,11 @@ async def _try_print_translator_reply(
     """Print Translator: an electrical-print photo + any print QUESTION (explain
     / theory of operation, OR a device / wiring / tracing question like "what
     devices are listed in this print?") -> a plain-English, OCR-grounded answer.
-    Read-only generation — NO wiring DB writes, NO control writes. Falls through
-    (returns ``False``) for any caption that isn't a print question, and for
-    photos the vision worker does NOT classify as ``ELECTRICAL_PRINT`` — so
-    non-print photos and the existing nameplate/drive and wiring-intake flows are
-    untouched.
+    Read-only generation — NO wiring DB writes, NO control writes. Captions are
+    tie-breakers only; the image's visual classification decides whether to process
+    as a print. Falls through (returns ``False``) on vision classification error,
+    if the image is not ``ELECTRICAL_PRINT``, or if the caption is a wiring-intake
+    intent (routed to ``_try_wiring_intake_reply`` instead).
 
     Classification runs on the small ``vision_bytes`` (fast, local qwen), but the
     Anthropic PrintSynth interpreter reads the FULL-RESOLUTION ``raw_bytes`` — the
