@@ -206,7 +206,18 @@ def _build_providers() -> list[_Provider]:
                 api_url="https://api.together.xyz/v1/chat/completions",
                 api_key=together_key,
                 model=os.getenv("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
-                timeout=30.0,
+                # Together is the LAST text-cascade provider AND the ONLY vision
+                # provider (no fallback exists for vision). The 2026-07-19 bench
+                # measured successful theory calls at 13.9-28.6s, with 2/10 runs
+                # crossing the old hardcoded 30s and losing an already-computed
+                # answer to "together timeout after 30s" — the #2804 2000-token
+                # theory budget + #2805 evidence-contract prompt ate the old
+                # margin. Raised to 90s. The `or` form is MANDATORY: compose maps
+                # ${TOGETHERAI_TIMEOUT:-}, which delivers an EMPTY STRING
+                # in-container; a bare float(os.getenv(...)) on "" raises and
+                # crash-loops the bot at import (same trap as
+                # TOGETHERAI_VISION_MODEL below — this has bitten the repo twice).
+                timeout=float(os.getenv("TOGETHERAI_TIMEOUT") or "90"),
                 # google/gemma-3n-E4B-it is the ONLY vision-capable model this
                 # account can reach serverless (verified live 2026-07-18: every
                 # Qwen-VL / Llama-4 / Kimi / GLM-4.5V id in the catalog rejects

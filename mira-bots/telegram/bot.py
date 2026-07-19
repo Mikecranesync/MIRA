@@ -1170,11 +1170,15 @@ async def _try_print_translator_reply(
     # surgical; the print path itself is unchanged in cost.
     #
     # ONE caption carve-out survives, and it is flow OWNERSHIP, not
-    # classification: an explicit wiring-intake command/question ("CV-101 add
-    # this wiring") belongs to `_try_wiring_intake_reply`, which runs before us
-    # in `_dispatch_single_photo`. The image still decides WHAT the photo is;
-    # this only decides WHICH print-consuming flow the user explicitly invoked.
-    if wiring_intake.parse_wiring_intent(caption or "").kind != "none":
+    # classification: an explicit wiring-INTAKE command ("CV-101 add this
+    # wiring") belongs to `_try_wiring_intake_reply`, which runs before us in
+    # `_dispatch_single_photo`. The image still decides WHAT the photo is;
+    # this only decides WHICH print-consuming flow the user explicitly
+    # invoked. Narrowed to kind=="intake" only (bench case c04, 2026-07-19):
+    # a wiring-phrased QUESTION ("...wired to...") accompanying a print photo
+    # is NOT an intake command — it must stay here so the image can decide;
+    # declining it pre-vision silently killed real print questions.
+    if wiring_intake.parse_wiring_intent(caption or "").kind == "intake":
         return False  # wiring intake owns it — no vision call needed here
 
     import time as _time

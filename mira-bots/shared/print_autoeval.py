@@ -150,6 +150,83 @@ def _false_absence_phrase(answer: str) -> str | None:
     return None
 
 
+# Module-coordinate grammar for wrong-row / cross-module table lookups
+# (asked_module_unresolved rule, below). IEC-ish module refs as used on PLC
+# I/O tables: "X4.4", "X6.3", "X9" (the trailing group is optional so a bare
+# module also matches, though real questions almost always give the dotted
+# form).
+_MODULE_REF_RE = re.compile(r"\bX\d+(?:\.\d+)?\b")
+# An element/LED index near a module ref turns a bare mention into a specific
+# row coordinate: "LED 5", "element(s) 5", "elem 5", "input 5", "elements
+# 5-8" / "elements 5 through 8".
+_ELEMENT_INDEX_RE = re.compile(
+    r"\b(?:LEDs?|elements?|elems?|inputs?)\s+\d+"
+    r"(?:\s*(?:-|through)\s*\d+)?\b",
+    re.IGNORECASE,
+)
+# Char gap between a module ref and the nearest element/LED index for the two
+# to read as one coordinate ("module X9.4 LED 5") instead of two unrelated
+# mentions in a long message — same bounded-radius idiom as
+# _ABSENCE_GUARD_RADIUS_CHARS above.
+_ASKED_COORDINATE_RADIUS_CHARS = 40
+
+# Honest inability phrasing for a table-row lookup specifically — wider than
+# _g._REFUSAL_MARKERS (grader-scoped to whole-print refusals; misses
+# "couldn't"). A reply under the length floor is also treated as an honest
+# non-assertion — too short to be a confident wrong-row quote.
+_ASKED_HONEST_MARKERS = (
+    "couldn't",
+    "could not",
+    "can't locate",
+    "cannot locate",
+    "not able to",
+    "unable to",
+    "try again",
+    "clearer photo",
+)
+_ASKED_ANSWER_MIN_LEN = 20
+
+
+def _asked_module_ref(question: str) -> str | None:
+    """The module coordinate the technician asked about, iff an element/LED
+    index sits within ``_ASKED_COORDINATE_RADIUS_CHARS`` of it — else
+    ``None``. Both parts are required: a bare module mention alone does not
+    arm the rule (a general "what is X9.4?" question has no single row to
+    get wrong). When more than one module ref qualifies, the one closest to
+    an element index wins — that's the coordinate the question is actually
+    asking a row-lookup about."""
+    text = question or ""
+    elements = [m.span() for m in _ELEMENT_INDEX_RE.finditer(text)]
+    if not elements:
+        return None
+    best_ref, best_gap = None, None
+    for mod in _MODULE_REF_RE.finditer(text):
+        gap = min(_span_gap(mod.span(), el) for el in elements)
+        if best_gap is None or gap < best_gap:
+            best_ref, best_gap = mod.group(0), gap
+    if best_ref is not None and best_gap <= _ASKED_COORDINATE_RADIUS_CHARS:
+        return best_ref
+    return None
+
+
+def _module_ref_mentioned(ref: str, text: str) -> bool:
+    """Case-insensitive containment check for ``ref`` in ``text``, tolerant
+    of a leading '-' (some prints render module refs as "-X4.4") and guarded
+    against a longer/more-specific ref swallowing a shorter one ("X9.4"
+    matching inside "X9.41" or "X9.4.1")."""
+    pattern = re.compile(r"(?<![\w.-])-?" + re.escape(ref) + r"(?!\d|\.\d)", re.IGNORECASE)
+    return bool(pattern.search(text or ""))
+
+
+def _is_honest_asked_refusal(answer: str, low: str) -> bool:
+    """True when ``answer`` reads as an honest "couldn't find that row" reply
+    (or is too short to be a confident assertion) rather than a confident,
+    possibly wrong-row, lookup claim."""
+    if len(answer) < _ASKED_ANSWER_MIN_LEN:
+        return True
+    return any(mk in low for mk in _ASKED_HONEST_MARKERS)
+
+
 def enabled() -> bool:
     """Default-ON kill switch. Compose maps ``${PRINT_AUTOEVAL_ENABLED:-}``,
     which delivers an EMPTY STRING in-container — the ``or``-form makes empty
@@ -351,6 +428,35 @@ def evaluate_print_turn(
                     "detail": _cap(absence_phrase),
                 }
             )
+
+    # P1 — wrong-row / cross-module table lookup: the question named a
+    # module+element coordinate (Tower OP 2026-07-19: asked X4.4 LED 5, the
+    # reply confidently quoted the X4.3 LED 1 row and never mentioned X4.4;
+    # asked X6.3 elements 5-8, the reply presented X6.1/X6.2 row text as the
+    # answer). Nothing is claimed absent and every quoted phrase can be
+    # verbatim-real print text, so false_absence_claim structurally cannot
+    # catch this — a confident WRONG-ROW fact is the most dangerous failure
+    # class on the board. Deterministic v1 core: fire only when the asked
+    # module ref is nowhere in the answer AND the row was actually findable
+    # in the OCR evidence (an honestly-unfindable row belongs to the
+    # absence rule above, not this one).
+    asked_ref = _asked_module_ref(question)
+    if asked_ref is not None:
+        ocr_evidence = " ".join(ocr_items)
+        tesseract_text = (vision_data or {}).get("tesseract_text") or ""
+        if tesseract_text:
+            ocr_evidence = f"{ocr_evidence} {tesseract_text}"
+        if _module_ref_mentioned(asked_ref, ocr_evidence) and not _module_ref_mentioned(
+            asked_ref, answer
+        ):
+            if not _is_honest_asked_refusal(answer, low):
+                flags.append(
+                    {
+                        "class": "asked_module_unresolved",
+                        "severity": "P1",
+                        "detail": _cap(f"asked {asked_ref}, never mentioned in answer"),
+                    }
+                )
 
     refusal = False
     safety_language = False

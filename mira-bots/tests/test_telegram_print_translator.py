@@ -169,9 +169,7 @@ class TestPrintTranslatorFallsThrough:
         update = _mock_update(caption="what drive is this?")
         context = MagicMock()
 
-        vision_process = AsyncMock(
-            side_effect=_mock_vision_process("NAMEPLATE")
-        )
+        vision_process = AsyncMock(side_effect=_mock_vision_process("NAMEPLATE"))
         monkeypatch.setattr(bot.engine.vision, "process", vision_process)
         mock_complete = _mock_router_complete()
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
@@ -459,12 +457,8 @@ class TestVisualFirstFastPath:
         ["", "Analyze this equipment photo", "what is this?", "tell me what this means"],
         ids=["no-caption", "equipment-caption", "what-is-this", "tell-me"],
     )
-    async def test_classified_print_reaches_interpreter_despite_caption(
-        self, monkeypatch, caption
-    ):
-        monkeypatch.setattr(
-            bot.engine.vision, "process", _mock_vision_process("ELECTRICAL_PRINT")
-        )
+    async def test_classified_print_reaches_interpreter_despite_caption(self, monkeypatch, caption):
+        monkeypatch.setattr(bot.engine.vision, "process", _mock_vision_process("ELECTRICAL_PRINT"))
         grounded = AsyncMock(return_value="GROUNDED-INTERPRETATION")
         monkeypatch.setattr(bot.engine, "_grounded_print_reply", grounded)
         update = _mock_update(caption=caption)
@@ -488,9 +482,7 @@ class TestVisualFirstFastPath:
     async def test_equipment_photo_with_print_caption_falls_through(self, monkeypatch):
         """Visual evidence wins at the bot layer too: a photo classified
         EQUIPMENT_PHOTO falls through unchanged even if the caption says print."""
-        monkeypatch.setattr(
-            bot.engine.vision, "process", _mock_vision_process("EQUIPMENT_PHOTO")
-        )
+        monkeypatch.setattr(bot.engine.vision, "process", _mock_vision_process("EQUIPMENT_PHOTO"))
         grounded = AsyncMock(return_value="GROUNDED")
         monkeypatch.setattr(bot.engine, "_grounded_print_reply", grounded)
         update = _mock_update(caption="Explain this print")
@@ -501,3 +493,54 @@ class TestVisualFirstFastPath:
 
         assert handled is False
         assert grounded.await_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Wiring carve-out boundary (bench case c04, 2026-07-19): the carve-out at the
+# top of `_try_print_translator_reply` must decline ONLY explicit wiring-
+# INTAKE commands, not wiring-phrased QUESTIONS. The bug: the old condition
+# fired on `kind != "none"`, which also matched `kind == "question"`, so a
+# real print question phrased with wiring vocabulary ("...wired to...") was
+# declined pre-vision and the print translator never ran.
+# ---------------------------------------------------------------------------
+
+
+class TestWiringCarveOutBoundary:
+    @pytest.mark.asyncio
+    async def test_wiring_question_caption_reaches_vision_classification(self, monkeypatch):
+        """A wiring-phrased QUESTION caption (parse_wiring_intent kind=='question')
+        must NOT be declined by the carve-out — it proceeds to vision
+        classification so the image can decide."""
+        caption = (
+            "Which PLC input is the car-on-TDC (top dead center) switch for "
+            "car No.1 wired to, and what is the switch designation?"
+        )
+        update = _mock_update(caption=caption)
+        context = MagicMock()
+
+        vision_process = AsyncMock(side_effect=_mock_vision_process("NAMEPLATE"))
+        monkeypatch.setattr(bot.engine.vision, "process", vision_process)
+
+        await bot._try_print_translator_reply(
+            b"fake-image-data", b"fake-image-data", caption, update, context
+        )
+
+        vision_process.assert_awaited()  # carve-out did not decline pre-vision
+
+    @pytest.mark.asyncio
+    async def test_wiring_intake_caption_still_declined_before_vision(self, monkeypatch):
+        """An explicit wiring-INTAKE caption (parse_wiring_intent kind=='intake')
+        still returns False before any vision call — intake flow ownership
+        is preserved."""
+        update = _mock_update(caption="CV-101 add this wiring")
+        context = MagicMock()
+
+        vision_process = AsyncMock()
+        monkeypatch.setattr(bot.engine.vision, "process", vision_process)
+
+        result = await bot._try_print_translator_reply(
+            b"fake-image-data", b"fake-image-data", "CV-101 add this wiring", update, context
+        )
+
+        assert result is False
+        vision_process.assert_not_awaited()

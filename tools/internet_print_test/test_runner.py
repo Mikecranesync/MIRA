@@ -18,6 +18,7 @@ if str(_HERE) not in sys.path:
 import mailer  # noqa: E402
 import runner  # noqa: E402
 import safety  # noqa: E402
+import submit  # noqa: E402
 
 # ── dry-run: no side effects ──────────────────────────────────────────────────
 
@@ -377,3 +378,99 @@ def test_runner_hands_the_graph_to_the_judge(tmp_path, monkeypatch):
     graph = {"devices": [{"tag": "ENC"}]}
     _run_with_graph(tmp_path, monkeypatch, graph, "judge-graph", judge=_cap_judge)
     assert captured["graph"] == graph
+
+
+# ── submit.py pure helpers: ack-strip + full-reply concat (bench capture   ────
+# honesty, Fix L4a) — a reply split across multiple Telegram messages must
+# keep every chunk, and the pre-processing ack must never be mistaken for
+# content (or vice versa). No network, no Telegram: exercises the helpers
+# directly against synthetic message lists.
+
+
+def test_split_ack_and_join_keep_every_chunk_after_an_ack():
+    ack = submit._PRINT_ACK_PREFIX + " a full interpretation usually takes 1-2 minutes…"
+    messages = [ack, "chunk one", "chunk two"]
+
+    stripped_ack, answer = submit._split_ack(messages)
+    assert stripped_ack == ack
+    assert answer == ["chunk one", "chunk two"]
+    assert submit._join_reply_messages(messages) == "chunk one\n\nchunk two"
+
+
+def test_split_ack_with_a_single_chunk_after_the_ack():
+    ack = submit._PRINT_ACK_PREFIX + " a full interpretation usually takes 1-2 minutes…"
+    messages = [ack, "the only answer chunk"]
+
+    stripped_ack, answer = submit._split_ack(messages)
+    assert stripped_ack == ack
+    assert answer == ["the only answer chunk"]
+    assert submit._join_reply_messages(messages) == "the only answer chunk"
+
+
+def test_split_ack_no_ack_edge_case_keeps_position_zero_as_content():
+    # The deterministic fast-path and the no-interpreter-configured path
+    # never send the ack — position 0 must NOT be mistaken for one there.
+    messages = ["first real chunk", "second real chunk"]
+
+    stripped_ack, answer = submit._split_ack(messages)
+    assert stripped_ack is None
+    assert answer == messages
+    assert submit._join_reply_messages(messages) == "first real chunk\n\nsecond real chunk"
+
+
+def test_join_reply_messages_empty_list_is_none():
+    assert submit._join_reply_messages([]) is None
+
+
+def test_split_ack_does_not_false_positive_on_similar_looking_content():
+    # A real answer that happens to start with similar words to the ack must
+    # not be stripped — the match is a strict prefix check against the full
+    # ack constant (emoji included), not a loose keyword match.
+    messages = ["Reading the schematic requires tracing L1 to the coil.", "second chunk"]
+
+    stripped_ack, answer = submit._split_ack(messages)
+    assert stripped_ack is None
+    assert answer == messages
+
+
+# ── submit.py pure helpers: decline_reason derivation (Fix L4b) ───────────────
+# Two different declines (the wiring-intake carve-out vs. an ordinary
+# non-print classification) were previously indistinguishable in the capture.
+
+
+def test_decline_reason_is_none_when_handled():
+    assert (
+        submit._decline_reason(handled=True, classification="ELECTRICAL_PRINT", caption="x") is None
+    )
+    assert submit._decline_reason(handled=True, classification=None, caption="") is None
+
+
+def test_decline_reason_classified_non_print():
+    reason = submit._decline_reason(
+        handled=False, classification="NAMEPLATE", caption="what is this"
+    )
+    assert reason == "classified_NAMEPLATE"
+
+
+def test_decline_reason_wiring_intake_carveout_when_no_classification_captured():
+    # bot.py's wiring-intake check runs BEFORE the vision call, so a real
+    # intake caption never produces a captured classification.
+    reason = submit._decline_reason(
+        handled=False, classification=None, caption="CV-101 add this wiring"
+    )
+    assert reason == "wiring_intake_carveout"
+
+
+def test_decline_reason_pre_vision_decline_for_anything_else():
+    reason = submit._decline_reason(
+        handled=False, classification=None, caption="Explain this print"
+    )
+    assert reason == "pre_vision_decline"
+
+
+def test_decline_reason_distinguishes_the_two_no_classification_causes():
+    intake = submit._decline_reason(handled=False, classification=None, caption="add this wiring")
+    other = submit._decline_reason(handled=False, classification=None, caption="")
+    assert intake == "wiring_intake_carveout"
+    assert other == "pre_vision_decline"
+    assert intake != other  # previously indistinguishable — see module docstring
