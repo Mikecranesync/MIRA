@@ -204,7 +204,7 @@ def _asked_module_ref(question: str) -> str | None:
         gap = min(_span_gap(mod.span(), el) for el in elements)
         if best_gap is None or gap < best_gap:
             best_ref, best_gap = mod.group(0), gap
-    if best_ref is not None and best_gap <= _ASKED_COORDINATE_RADIUS_CHARS:
+    if best_gap is not None and best_gap <= _ASKED_COORDINATE_RADIUS_CHARS:
         return best_ref
     return None
 
