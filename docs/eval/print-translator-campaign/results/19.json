@@ -1,0 +1,44 @@
+{
+  "id": 19,
+  "oem": "Schneider Electric",
+  "document": "ATV340 Wiring Manual (NVE97896)",
+  "url": "https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&p_Doc_Ref=NVE97896",
+  "manifest_page_ref": "Wiring diagram section (p. 3–5)",
+  "print_type": "VFD power & signal wiring",
+  "standard": "IEC 61800-5-1",
+  "category": "VFD",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 0,
+  "image_sha256": "1c9e2e7748093413ce75d596b83dbcf39fb304b6b96a3f6d0cb09c0c4585a54e",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:09:38.129227+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.85,
+    "drawing_type": "wiring diagram",
+    "drawing_type_confidence": 0.65,
+    "vision_result": "The image displays an electrical wiring diagram for ATV340 S1, S2 & S3. The diagram is divided into two sections: Power and Control, detailing connections and configurations for ATV340 components. No physical equipment or indicators are shown; it's a technical drawing.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 306,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "1. **What this appears to be**\n* This appears to be a wiring diagram for ATV340 devices, specifically S1, S2, and S3 configurations.\n\n2. **Main visible components**\n* The diagram shows power and control sections.\n* Power section:\n\t+ Three-phase power input\n\t+ Motor output\n\t+ Braking resistor (optional)\n* Control section:\n\t* ATV340 device\n\t* HMI (Human-Machine Interface)\n\t* PLC (Programmable Logic Controller)\n\t* Encoder (ENC)\n\t* Various digital and analog I/O connections\n\n3. **Plain-English theory of operation**\n* The ATV340 device appears to be a variable speed drive or motor controller.\n* The power section shows a three-phase input and a motor output.\n* The control section shows connections to a PLC, HMI, and encoder.\n* The encoder likely provides feedback for motor speed control.\n* The PLC likely provides control signals to the ATV340.\n\n4. **What must be true for it to work**\n* Power supply must be connected to the three-phase input.\n* Motor must be connected to the motor output.\n* Control signals must be provided from the PLC.\n* Encoder must be connected and providing feedback.\n\n5. **What would stop it from working**\n* Open circuit in power supply or motor output.\n* Missing or incorrect control signals from PLC.\n* Encoder not connected or not providing feedback.\n\n6. **Unclear or unreadable items**\n* Nothing major unreadable."
+}

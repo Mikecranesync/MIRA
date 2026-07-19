@@ -233,13 +233,20 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-staging}
       - VISION_MODEL=qwen2.5vl:7b
       - INFERENCE_BACKEND=cloud
+      # CMMS work-order-history evidence (#2445). Default OFF — zero behavior
+      # change until ENABLE_WO_EVIDENCE=1 (Doppler factorylm/stg). Staging runs
+      # shared.engine.Supervisor, so it needs these to exercise Step 2.
+      - ENABLE_WO_EVIDENCE=${ENABLE_WO_EVIDENCE:-0}
+      - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
+      - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
-      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=gpt-oss-120b
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
@@ -323,6 +330,7 @@ services:
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-gpt-oss-120b}
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
       - HUB_CMMS_API_URL=http://stg-atlas-api:8080
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
@@ -395,6 +403,8 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_STG}
+      - PRINTSENSE_COMMERCIAL_ROOT=${PRINTSENSE_COMMERCIAL_ROOT:-}
+      - PRINTSENSE_REVIEWER_CHAT_IDS=${PRINTSENSE_REVIEWER_CHAT_IDS:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=disabled://staging
       - OPENWEBUI_API_KEY=
@@ -405,13 +415,20 @@ services:
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=disabled://staging
       - INFERENCE_BACKEND=cloud
+      # CMMS work-order-history evidence (#2445). Default OFF — zero behavior
+      # change until ENABLE_WO_EVIDENCE=1 (Doppler factorylm/stg). Staging runs
+      # shared.engine.Supervisor, so it needs these to exercise Step 2.
+      - ENABLE_WO_EVIDENCE=${ENABLE_WO_EVIDENCE:-0}
+      - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
+      - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
-      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=gpt-oss-120b
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://stg-mira-mcp:8001
@@ -419,6 +436,28 @@ services:
       - SESSION_RECORDING_PATH=/data/sessions
       - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
       - NTFY_TOPIC=${NTFY_TOPIC:-mira-staging-alerts}
+      # ISOLATED paid print-vision interpreter (PrintSense) — openai default
+      # since 2026-07-17 (v3.153.0), anthropic retained behind the knob. Inert
+      # until the active provider's key is set in Doppler factorylm/stg — until
+      # then the print path uses the free OCR cascade.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-openai}
+      # Interpreter tuning knobs (bench-decided; stg runs medium — see v3.154.2).
+      - PRINT_VISION_EFFORT=${PRINT_VISION_EFFORT:-xhigh}
+      - PRINT_VISION_MODEL=${PRINT_VISION_MODEL:-}
+      # ZTA spend guards (v3.156.0): per-call output cap + paid-lane $ budget.
+      - PRINT_VISION_MAX_TOKENS=${PRINT_VISION_MAX_TOKENS:-}
+      - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
+      # Per-turn $0 print autoeval (default ON; "0" disables). or-form parse in code.
+      - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
+      # Model-OCR enrichment lane (off by default; free cascade floor is Tesseract).
+      - OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}
+      # Boot self-check Tesseract floor: 1 in containers (required), 0 on local dev.
+      - OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}
+      # Free-cascade print-theory reply cap (was hardcoded 1200; two 2026-07-18
+      # live turns truncated mid-sentence at that cap). Read at call time.
+      - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions
@@ -460,6 +499,32 @@ services:
     memswap_limit: 256m
     depends_on:
       - mira-hub
+
+  # ── OCR / text extraction — staging mirror of prod `mira-tika`
+  #    (docker-compose.saas.yml). Stock pinned image, no build. Lets the
+  #    crawler needs_ocr → OCR drain path (#2539/#2548) be proven in staging.
+  #    Staging SHARES the prod host, so it publishes on 9999 (prod's mira-tika
+  #    owns host 9998); the container port stays 9998. Isolated on staging-net.
+  #    Host-safe staging value: TIKA_URL=http://localhost:9999 in factorylm/stg.
+  mira-tika:
+    image: apache/tika:3.1.0.0-full
+    container_name: stg-mira-tika
+    mem_limit: 1g
+    memswap_limit: 1g
+    ports:
+      - "127.0.0.1:9999:9998"
+    networks:
+      - staging-net
+    restart: unless-stopped
+    healthcheck:
+      # apache/tika image has no curl/wget — probe the Tika port with a bash
+      # /dev/tcp TCP connect (image is Ubuntu-based, so /bin/bash exists).
+      # The old curl test always failed → false "(unhealthy)" while Tika worked.
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/9998'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   staging-net:

@@ -261,13 +261,46 @@ class TestCeleryConfig:
 
         assert app.main == "mira_crawler"
 
-    def test_beat_schedule_removed(self):
-        """Beat schedule was removed — Trigger.dev Cloud owns all scheduling."""
+    def test_beat_schedule_profiles(self):
+        """Beat schedule exists and matches the active CELERY_BEAT_PROFILE.
+
+        Default profile: the intent-monitor trio + the tag-diff historizer +
+        run-diff historizer + the synthetic-dogfood cycle. The
+        'synthetic-dogfood' profile is the cycle alone. (The bulk of ingest
+        scheduling is still owned by Trigger.dev Cloud — these are the loops
+        kept self-contained in Celery Beat.)
+        """
+        import importlib
+
         import celeryconfig as cfg
 
-        assert not hasattr(cfg, "beat_schedule"), (
-            "beat_schedule must not exist in celeryconfig — scheduling is owned by Trigger.dev Cloud"
-        )
+        # Default profile.
+        with patch.dict("os.environ", {}, clear=False):
+            import os
+
+            os.environ.pop("CELERY_BEAT_PROFILE", None)
+            importlib.reload(cfg)
+            assert hasattr(cfg, "beat_schedule")
+            default_keys = set(cfg.beat_schedule.keys())
+            assert {
+                "reddit-intent-scan",
+                "youtube-intent-scan",
+                "intent-daily-digest",
+                "tag-diff-historizer",
+                "historize-runs",
+                "synthetic-dogfood-cycle",
+            } <= default_keys
+
+        # synthetic-dogfood profile: only the cycle.
+        with patch.dict("os.environ", {"CELERY_BEAT_PROFILE": "synthetic-dogfood"}):
+            importlib.reload(cfg)
+            assert set(cfg.beat_schedule.keys()) == {"synthetic-dogfood-cycle"}
+
+        # Restore the default-profile module state for any later importers.
+        import os
+
+        os.environ.pop("CELERY_BEAT_PROFILE", None)
+        importlib.reload(cfg)
 
     def test_task_routes(self):
         import celeryconfig as cfg

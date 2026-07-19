@@ -36,6 +36,12 @@ from .dialogue_tracker import (
     DISPATCH_SLOT_DONT_KNOW,
     track_turn,
 )
+from .drive_packs import (
+    answer_fault_code,
+    answer_question,
+    extract_pack_fault_codes,
+    resolve_pack,
+)
 from .fallback_responses import (
     GENERIC_ENGINE_ERROR,
     INFERENCE_EXHAUSTED,
@@ -72,7 +78,8 @@ from .integrations.pm_suggestions import (
     is_pm_acceptance,
     suggest_followup_pm,
 )
-from .live_snapshot import STALE, render_status_block
+from .interlock_context import build_interlock_answer, fetch_interlocks
+from .live_snapshot import STALE, render_machine_evidence
 from .live_snapshot import normalize as normalize_live_tags
 from .models.work_order import (
     UNSWorkOrder,
@@ -91,6 +98,7 @@ from .photo_handler import (
     load_session_photo,
     save_session_photo,
 )
+from .quota import QUOTA_BLOCK_MESSAGE, check_quota
 from .response_formatter import (
     _VISION_PROSE_PREFIX_RE,
     deduplicate_options,  # noqa: F401 — re-exported for test_conversation_continuity.py
@@ -108,6 +116,7 @@ from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
 from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
+from .wo_evidence import recall_work_orders as _recall_work_orders
 from .workers.nameplate_worker import NameplateWorker
 from .workers.photo_ingest_worker import propose_from_nameplate
 from .workers.plc_worker import PLCWorker
@@ -323,6 +332,12 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
         # substring heuristics spuriously flag repeated tag-name patterns.
         "tag_query",
         "status_summary",
+        # 2026-07-06: drive-pack fast-path replies are composed verbatim from
+        # a pack's fault/parameter cards (shared.drive_packs.ask.answer_question)
+        # — templated, pack-grounded text, not LLM free text. Repeated
+        # boilerplate ("VIEW-ONLY", citation blocks) trips the same n-gram /
+        # substring heuristics as tag_query/status_summary above.
+        "drive_pack",
     }
 )
 
@@ -376,6 +391,26 @@ _LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
 # MIRA_CTX_SIGNALS_ENABLED=1.
 _CTX_SIGNALS_ENABLED = os.getenv("MIRA_CTX_SIGNALS_ENABLED", "0") == "1"
 _CTX_SIGNALS_TIMEOUT_S = float(os.getenv("MIRA_CTX_SIGNALS_TIMEOUT_S", "3.0"))
+
+# Interlock-context enrichment — the CONSUME side of the interlock flywheel
+# (docs/north-star/interlock-flywheel-audit.md). Additive, OFF by default. When
+# on, recalls VERIFIED kg_relationships interlock edges (USED_IN_LOGIC / CAUSES)
+# under the resolved UNS path — the previously-invisible approved logic the
+# answer path never read — and injects an [APPROVED INTERLOCK LOGIC] block so MIRA
+# can explain *why a machine won't move*. Best-effort: "" on any miss. Enabled by
+# MIRA_INTERLOCK_CONTEXT_ENABLED=1.
+_INTERLOCK_CONTEXT_ENABLED = os.getenv("MIRA_INTERLOCK_CONTEXT_ENABLED", "0") == "1"
+_INTERLOCK_CONTEXT_TIMEOUT_S = float(os.getenv("MIRA_INTERLOCK_CONTEXT_TIMEOUT_S", "3.0"))
+
+# Work-order-history evidence (additive, OFF by default). When on, the diagnosis
+# path recalls recent CMMS work orders for the CONFIRMED asset from the Hub
+# NeonDB (work_orders JOIN cmms_equipment — the store hub_neon.py writes to) and
+# injects them as CITABLE evidence lines. Best-effort: "" on any miss (flag off,
+# no tenant/asset, NeonDB unreachable) — the diagnosis path is byte-for-byte
+# unchanged. Same wrap-don't-rewrite pattern as the ctx-signals block.
+_WO_EVIDENCE_ENABLED = os.getenv("ENABLE_WO_EVIDENCE", "0") == "1"
+_WO_EVIDENCE_TIMEOUT_S = float(os.getenv("MIRA_WO_EVIDENCE_TIMEOUT_S", "3.0"))
+_WO_EVIDENCE_LIMIT = int(os.getenv("MIRA_WO_EVIDENCE_LIMIT", "5"))
 
 # Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
 # answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
@@ -858,6 +893,125 @@ class Supervisor:
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
 
+    async def _grounded_print_reply(
+        self,
+        photo_b64: str,
+        question: str | None,
+        vision_data: dict,
+        chat_id: str,
+        *,
+        interpret_b64: str | None = None,
+    ) -> str:
+        """Grounded, display-ready answer for a classified ELECTRICAL_PRINT photo.
+
+        Anthropic PrintSynth interpreter FIRST (deep, typed, never-invent — only
+        when configured), else the No-Anthropic grounded cascade
+        (``print_translator`` over Groq -> Cerebras -> Together). Always returns a
+        display-ready string — the cascade's ``format_theory_reply`` yields a
+        graceful fallback even on an empty provider result — so a print question is
+        never left unanswered.
+
+        ``interpret_b64`` is the FULL-RESOLUTION image for the Anthropic
+        interpreter — the bot passes the raw Telegram bytes so Claude's 2576 px
+        high-res vision budget is used, NOT the 1024 px ``photo_b64`` crushed for
+        the local qwen classifier (roadmap Phase 0.1). Defaults to ``photo_b64``
+        when a caller has no full-res image to hand (e.g. the FSM path), which is
+        the prior behavior. The cascade fallback stays on ``photo_b64`` — the local
+        vision models want the small image.
+        """
+        from . import print_translator
+
+        # 1. Anthropic PrintSynth interpreter (primary, isolated, flag+key gated).
+        reply = await self._interpret_print_anthropic(
+            interpret_b64 or photo_b64, question, vision_data
+        )
+        if reply:
+            return reply
+
+        # 2. Grounded cascade fallback (No-Anthropic vision path).
+        messages = print_translator.build_theory_messages(photo_b64, vision_data, question=question)
+        raw = ""
+        try:
+            raw, usage = await self.router.complete(
+                messages,
+                max_tokens=int(os.environ.get("PRINT_THEORY_MAX_TOKENS") or "2000"),
+                session_id=str(chat_id),
+            )
+            if raw:
+                InferenceRouter.log_usage(usage)
+        except Exception as exc:  # noqa: BLE001 — never eat the turn
+            logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
+            raw = ""
+        return print_translator.format_theory_reply(raw, (vision_data or {}).get("drawing_type"))
+
+    async def _interpret_print_anthropic(
+        self,
+        photo_b64: str,
+        question: str | None,
+        vision_data: dict,
+    ) -> str:
+        """ISOLATED paid PrintSynth interpretation -> rendered Telegram reply.
+
+        (Method name keeps its historical ``_anthropic`` suffix — it is the paid
+        print-vision seam; the provider is ``PRINT_VISION_PROVIDER``, OpenAI by
+        default since 2026-07-16, Anthropic retained behind the knob.)
+
+        Returns "" (caller falls back to the free cascade) when the provider
+        isn't configured: no ``printsense`` package in this image, provider/key
+        not set (``interpret.is_configured()``), or the call fails. The paid
+        provider is confined to this seam — the general cascade never touches
+        it. The blocking call runs in a worker thread so the bot event loop
+        stays free during the ~30-60 s interpretation.
+        """
+        pkg_ctx = {"drawing_type": (vision_data or {}).get("drawing_type")}
+        return await self._interpret_print_anthropic_pages(
+            photo_b64s=[photo_b64],
+            question=question,
+            package_context=pkg_ctx,
+        )
+
+    async def _interpret_print_anthropic_pages(
+        self,
+        *,
+        photo_b64s: list[str],
+        question: str | None,
+        package_context: dict | None = None,
+    ) -> str:
+        """ISOLATED paid PrintSynth interpretation for a print package.
+
+        The Telegram album path uses this to send multiple print photos as one
+        ``interpret_print(pages=[...])`` package so cross-page references stay
+        in the same typed graph. Returns "" when unavailable or failed so callers
+        can fall back to the free-cascade vision path.
+        """
+        try:
+            from printsense import interpret, render
+        except ImportError:
+            return ""  # framework not shipped in this image -> cascade
+        if not interpret.is_configured():
+            return ""  # inert without the provider flag + its key
+        import base64
+
+        pages: list[tuple[bytes, str]] = []
+        for b64 in photo_b64s:
+            try:
+                pages.append((base64.b64decode(b64), "image/jpeg"))
+            except Exception:  # noqa: BLE001 — bad b64 -> cascade
+                return ""
+        try:
+            graph = await asyncio.to_thread(
+                interpret.interpret_print,
+                pages,
+                package_context=package_context or {},
+                question=question,
+            )
+        except interpret.PrintVisionUnavailable:
+            return ""
+        except Exception as exc:  # noqa: BLE001 — any interp/API error -> cascade
+            logger.warning("PRINT_ANTHROPIC_ERROR error=%s", exc)
+            return ""
+        return render.format_graph_for_telegram(graph)
+
     async def _analyze_schematic_with_question(
         self,
         photo_b64: str,
@@ -910,7 +1064,23 @@ class Supervisor:
             "Be specific. Use the actual designations from the drawing. "
             "Explain in terms a maintenance technician would understand. "
             "If you cannot read a label or value clearly, say so — do not "
-            "guess. Keep the reply under 350 words; bullet lists are fine."
+            "guess.\n\n"
+            "CRITICAL — never fabricate a device inventory:\n"
+            "- Name ONLY components whose labels/designations you can actually "
+            "read on this drawing. Do NOT output a generic device taxonomy "
+            "(timers, counters, logic gates, I/O modules, PLC blocks, relay "
+            "coils) unless those exact elements are visibly labelled here.\n"
+            "- Do NOT assume this is ladder logic or a PLC program. Most field "
+            "drawings are power/wiring/interconnection schematics; identify the "
+            "type only from what you can actually see.\n"
+            "- If the image is too unclear to read the device labels (glare, "
+            "moiré, low resolution, a photo of a screen), say exactly that and "
+            "ask for a closer, flatter photo or the source PDF — an honest "
+            "'I can't read this clearly' beats a confident guess.\n"
+            "- Never claim 'no safety-critical elements' unless you can "
+            "positively read the whole drawing; absence of a readable label is "
+            "NOT absence of a hazard.\n\n"
+            "Keep the reply under 350 words; bullet lists are fine."
         )
 
         user_text = (
@@ -1196,6 +1366,23 @@ class Supervisor:
         # Per-call tenant flows through method params (tenant_id → process_full,
         # workers, and the decision-trace) — NOT stashed on self, which a
         # concurrent tenant would overwrite across this turn's awaits.
+        # Plan/quota gate (audit issue #1) — the ONE enforcement point every
+        # adapter (Telegram/Slack/Ignition/web) inherits. Flag-gated behind
+        # ENFORCE_PLAN_QUOTA (default OFF — no DB call, no behavior change) and
+        # fail-open on any error or missing tenant. Runs BEFORE inference so a
+        # blocked tenant costs zero LLM calls; does not touch the UNS gate,
+        # greeting, or safety paths (those live inside process_full).
+        quota_tenant = tenant_id or self.tenant_id or None
+        quota_allowed, quota_reason = await check_quota(quota_tenant)
+        if not quota_allowed:
+            logger.warning(
+                "QUOTA_BLOCKED chat_id=%s tenant_id=%s platform=%s reason=%s",
+                chat_id,
+                quota_tenant,
+                platform,
+                quota_reason,
+            )
+            return QUOTA_BLOCK_MESSAGE
         # Read-only live-tag snapshot — gated on a confirmed asset (see helper).
         message = self._maybe_attach_live_snapshot(chat_id, message, live_tags, platform)
 
@@ -1520,7 +1707,11 @@ class Supervisor:
             uns_base = uns_ctx.get("uns_path") or ""
             ts = datetime.now(timezone.utc).isoformat()
             snapshots = normalize_live_tags(live_tags, uns_base, source=platform, ts=ts)
-            block = render_status_block(snapshots)
+            # Attach the structured Live Machine Evidence section (decoded values
+            # + deterministic assessment + separation instruction) — the Python
+            # mirror of the Hub machine-context packet. Same gated, best-effort,
+            # read-only text-preamble mechanism as before.
+            block = render_machine_evidence(snapshots)
             if not block:
                 return message
             n_stale = sum(1 for s in snapshots if s.quality == STALE)
@@ -1668,6 +1859,8 @@ class Supervisor:
                         "classification_confidence": 0.0,
                         "vision_result": "unclear",
                         "ocr_items": [],
+                        "ocr_tokens": [],
+                        "ocr_source": "none",
                         "tesseract_text": "",
                         "drawing_type": None,
                         "drawing_type_confidence": 0.0,
@@ -1778,6 +1971,11 @@ class Supervisor:
         ``state["context"]["uns_context"]["source"]`` so downstream consumers
         (decision trace, audits) can see the turn's provenance. See process().
         """
+        # Boundary normalization: adapters send strings, but a captionless photo
+        # from a non-Telegram caller may arrive as None — the pipeline's regex
+        # guards assume str (guardrails.py). Normalize once at the entry point.
+        message = message or ""
+
         # Resolve tenant per call — chat_tenant LRU cache makes this cheap
         resolved_tenant = resolve_tenant(chat_id) or self.rag.tenant_id
 
@@ -2064,6 +2262,79 @@ class Supervisor:
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
 
+            # Drive-pack fast-path (2026-07-06) — deterministic, pack-grounded
+            # answer for a text question that explicitly names a drive MIRA has
+            # a pack for (e.g. "what does CE10 mean on my gs10"). Placed AFTER
+            # the safety short-circuit above (safety always wins) and BEFORE
+            # the router-exclusive dispatches below — this fast-path must never
+            # pre-empt the safety stop. resolve_pack() is a pure text match over
+            # pack aliases/keywords (shared/drive_packs/loader.py); a non-match,
+            # or a match whose question doesn't map to real pack content
+            # (answer_question().matched is False), falls through to the
+            # existing routing/RAG path completely unchanged — a false-positive
+            # resolve_pack() match is harmless by construction. See ADR-0025 +
+            # shared/drive_packs/ask.py for the pack-grounded-only contract
+            # (never a generic LLM answer, never a guess).
+            #
+            # Match on the technician's QUESTION ONLY (2026-07-12) — never on
+            # attached context blocks. The kiosk /ask path composes
+            # MACHINE_CONTEXT + status block + "[QUESTION]\n<q>" (ask_api/app.py),
+            # and MACHINE_CONTEXT embeds the full GS10 fault-code TABLE
+            # ("4=GFF ground fault; 12=Lvd; …") — so matching the whole message
+            # made answer_question() hit the first table mnemonic (GFF) on EVERY
+            # kiosk turn, hijacking unrelated questions to the GFF card. Same
+            # class of risk for the Ignition "[LIVE TAGS …]…[END LIVE TAGS]"
+            # preamble (mira-pipeline/ignition_chat.py). Strip both; a message
+            # with no marker is already a bare question.
+            _dp_question = message
+            if "[QUESTION]\n" in _dp_question:
+                _dp_question = _dp_question.rsplit("[QUESTION]\n", 1)[-1]
+            if "[END LIVE TAGS]" in _dp_question:
+                _dp_question = _dp_question.rsplit("[END LIVE TAGS]", 1)[-1]
+            _dp_pack = resolve_pack(_dp_question)
+            if _dp_pack is not None:
+                _dp_answer = answer_question(_dp_pack.pack_id, _dp_question)
+                if _dp_answer.matched:
+                    _dp_seen: set[tuple[str, str]] = set()
+                    _dp_cite_parts: list[str] = []
+                    for _c in _dp_answer.citations:
+                        _doc = _c.get("doc", "")
+                        _page = _c.get("page", "")
+                        _key = (_doc, _page)
+                        if not _doc or _key in _dp_seen:
+                            continue
+                        _dp_seen.add(_key)
+                        _dp_cite_parts.append(
+                            f"[Source: {_doc} p.{_page}]" if _page else f"[Source: {_doc}]"
+                        )
+                    reply = _dp_answer.answer
+                    if _dp_cite_parts:
+                        reply = f"{reply}\n\n{' '.join(_dp_cite_parts)}"
+                    # Static-vs-live label: a drive-pack answer is manual-cited
+                    # pack intelligence, NEVER a live telemetry read
+                    # (DrivePackAnswer.live_telemetry is always False — see
+                    # shared/drive_packs/ask.py). If this turn ALSO carries a
+                    # live snapshot, say so explicitly so a static pack answer is
+                    # never conflated with a live read. Two live-preamble markers
+                    # reach the engine: the kiosk/conveyor "[LIVE CONVEYOR STATUS]"
+                    # block (_maybe_attach_live_snapshot) and the Ignition
+                    # direct-connection "[LIVE TAGS …]" preamble
+                    # (mira-pipeline/ignition_chat.py::_format_tag_preamble) — cover both.
+                    if _LIVE_STATUS_HEADER in message or "[LIVE TAGS" in message:
+                        reply = f"(Static pack reference — not from live telemetry.)\n\n{reply}"
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(
+                        reply,
+                        "high",
+                        trace_id,
+                        state.get("state", "IDLE"),
+                        dispatch_kind="drive_pack",
+                    )
+                # else: matched=False — the question doesn't map to this pack's
+                # fault/parameter content; fall through to the existing
+                # routing/RAG flow below unchanged.
+
             # Router-exclusive dispatches — intents the keyword classifier doesn't handle
             if _router_intent == "log_work_order":
                 return await self._handle_wo_request(chat_id, message, state, trace_id)
@@ -2320,20 +2591,21 @@ class Supervisor:
                 ctx["drawing_type"] = vision_data["drawing_type"]
                 state["context"] = ctx
 
-                # If the technician sent a real question with the schematic,
-                # send image + question to the vision LLM for circuit analysis.
-                # Otherwise (just the default "Analyze this equipment photo"
-                # caption) keep the OCR-label preview + prompt-for-question.
+                # Visual-first routing (operator directive 2026-07-15): a photo
+                # the vision worker classified as an ELECTRICAL_PRINT ALWAYS gets
+                # the grounded interpretation — Anthropic PrintSynth first (deep,
+                # typed, never-invent), else the OCR-verbatim cascade. Captions
+                # are weak evidence: a real question is forwarded to the
+                # interpreter; an empty caption or the bot's own default caption
+                # means "interpret the whole sheet" (question=None). The live
+                # 2026-07-15 phone test proved a technician typing the literal
+                # default caption otherwise got only the thin OCR-label preview.
                 has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
-                reply = ""
-                if has_real_question:
-                    reply = await self._analyze_schematic_with_question(
-                        photo_b64=photo_b64,
-                        question=message,
-                        vision_data=vision_data,
-                        chat_id=chat_id,
-                    )
+                question = message if has_real_question else None
+                reply = await self._grounded_print_reply(photo_b64, question, vision_data, chat_id)
                 if not reply:
+                    # Fail-safe only — the grounded path is display-ready even on
+                    # provider failure, but never leave a print unanswered.
                     reply = self._build_print_reply(vision_data)
                     if not has_real_question:
                         reply += "\n\nWhat would you like to know about this circuit?"
@@ -2472,6 +2744,61 @@ class Supervisor:
             )
 
             if has_fault_indicators:
+                # Photo→pack fast-path (the OCR-code → drive-pack bridge): if we
+                # already know WHICH drive this is — resolved from the identified
+                # ASSET, never inferred from the code (a bare code is ambiguous
+                # across vendors) — and the OCR shows a fault code that drive
+                # documents, answer from the pack: cited, deterministic,
+                # read-only. Any miss (no pack, no code, or code not documented)
+                # falls through to the generic RAG auto-diagnose below, unchanged.
+                # extract_pack_fault_codes() is the gate that rejects bare OCR
+                # numerals ("5 A"); see shared/drive_packs/ask.py +
+                # .claude/rules/direct-connection-uns-certified.md (grounded only).
+                #
+                # Safety precedence: NEVER let this fast-path pre-empt a hazard.
+                # If the OCR/vision text carries a safety keyword (arc flash,
+                # smoke, ...), skip the pack answer entirely and fall through so
+                # a cited fault answer can never mask the safety path — mirrors
+                # the text drive-pack fast-path, which sits AFTER the safety
+                # short-circuit, and the vision-safety bypass above (~L2489).
+                _photo_safety = any(kw in ocr_text or kw in vision_text for kw in SAFETY_KEYWORDS)
+                _pf_pack = (
+                    None if _photo_safety else resolve_pack(state.get("asset_identified", "") or "")
+                )
+                if _pf_pack is not None:
+                    _pf_ocr = " ".join(ocr_items)
+                    for _pf_code in extract_pack_fault_codes(_pf_pack, _pf_ocr):
+                        _pf_ans = answer_fault_code(_pf_pack.pack_id, _pf_code)
+                        if not _pf_ans.matched:
+                            continue
+                        _pf_seen: set[tuple[str, str]] = set()
+                        _pf_cites: list[str] = []
+                        for _c in _pf_ans.citations:
+                            _doc = _c.get("doc", "")
+                            _page = _c.get("page", "")
+                            if not _doc or (_doc, _page) in _pf_seen:
+                                continue
+                            _pf_seen.add((_doc, _page))
+                            _pf_cites.append(
+                                f"[Source: {_doc} p.{_page}]" if _page else f"[Source: {_doc}]"
+                            )
+                        # Echo the code we READ off the photo so a human catches
+                        # an OCR misread before trusting the answer.
+                        _pf_reply = (
+                            f"I read fault code {_pf_code} off the photo.\n\n{_pf_ans.answer}"
+                        )
+                        if _pf_cites:
+                            _pf_reply = f"{_pf_reply}\n\n{' '.join(_pf_cites)}"
+                        self._record_exchange(chat_id, state, message, _pf_reply)
+                        tl_flush()
+                        return self._make_result(
+                            _pf_reply,
+                            "high",
+                            trace_id,
+                            state.get("state", "IDLE"),
+                            dispatch_kind="drive_pack",
+                        )
+
                 # Auto-diagnose: inject fault context into message and route to RAG
                 asset = state.get("asset_identified", "this equipment")
                 fault_items = [
@@ -3562,6 +3889,144 @@ class Supervisor:
         lines.append("---\n")
         return "\n".join(lines)
 
+    # ------------------------------------------------------------------
+    # Interlock-context enrichment — consume side of the interlock flywheel
+    # (additive, flag-gated). Surfaces approved kg_relationships interlock edges.
+    # ------------------------------------------------------------------
+    async def _build_interlock_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort approved-interlock context for the confirmed asset.
+
+        Recalls VERIFIED interlock edges (USED_IN_LOGIC / CAUSES) from
+        kg_relationships under the asset's UNS subtree — the human-approved logic
+        the answer path historically never read — and renders them as grounded,
+        citable context. When a live tag snapshot is present on the turn, also
+        assembles the "why it won't move" explanation. Returns "" on any miss
+        (flag off, no asset/tenant, DB unreachable, nothing verified). Never
+        raises — diagnosis must be unaffected when interlock context is absent.
+        """
+        if not _INTERLOCK_CONTEXT_ENABLED or not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            uns_path = resolve_uns_path(asset).uns_path
+            if not uns_path:
+                return ""
+            ltree_prefix = uns_path.replace("/", ".")
+            edges = await asyncio.wait_for(
+                asyncio.to_thread(fetch_interlocks, tenant_id, ltree_prefix),
+                timeout=_INTERLOCK_CONTEXT_TIMEOUT_S,
+            )
+            if not edges:
+                return ""  # nothing verified -> no approved context -> no block
+            live = ((state.get("context") or {}).get("session_context") or {}).get(
+                "tag_state"
+            ) or {}
+            answer = build_interlock_answer(edges, live, asset) if live else None
+            return self._format_interlock_context(edges, answer)
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("INTERLOCK_CONTEXT miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_interlock_context(edges: list, answer: dict | None = None) -> str:
+        """Render recalled interlock edges (+ optional live explanation) as a
+        compact prompt block. Never raises; "" when there are no edges."""
+        if not edges:
+            return ""
+        lines = ["\n--- APPROVED INTERLOCK LOGIC (verified relationships; grounded, citable) ---"]
+        for e in edges[:12]:
+            loc = ""
+            for ev in getattr(e, "evidence", None) or []:
+                if ev.get("location"):
+                    loc = f"  [{ev.get('type') or 'evidence'}: {ev['location']}]"
+                    break
+            lines.append(f"  {e.source} -[{e.relationship_type}]-> {e.target}{loc}")
+        if answer and answer.get("why"):
+            lines.append(f"Why not moving: {answer['why']}")
+            checks = answer.get("next_checks") or []
+            if checks:
+                lines.append("Suggested checks: " + "; ".join(checks[:3]))
+        lines.append("---\n")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Work-order-history evidence (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_wo_evidence_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort CMMS work-order history for the confirmed asset.
+
+        Recalls recent Hub work_orders rows for the asset and renders them as a
+        labeled, CITABLE evidence block for prompt injection. Returns "" on any
+        miss (flag off, no tenant/asset, DB unreachable). Never raises -- the
+        diagnosis path must be unaffected when the CMMS store is absent.
+        """
+        if not _WO_EVIDENCE_ENABLED:
+            return ""
+        if not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            try:
+                uns_path = resolve_uns_path(asset).uns_path or ""
+            except Exception:  # noqa: BLE001 -- fall back to name-only matching
+                uns_path = ""
+            ltree_prefix = uns_path.replace("/", ".") if uns_path else None
+            wos = await asyncio.wait_for(
+                _recall_work_orders(
+                    tenant_id, asset, uns_path=ltree_prefix, limit=_WO_EVIDENCE_LIMIT
+                ),
+                timeout=_WO_EVIDENCE_TIMEOUT_S,
+            )
+            return self._format_wo_evidence(wos)
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("WO_EVIDENCE miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_wo_evidence(wos: list[dict]) -> str:
+        """Render work-order rows as a compact citable-evidence block.
+
+        Defensive: tolerates missing/extra keys and never raises. Only fields
+        read from the DB are rendered -- nothing is invented. Empty input
+        returns "".
+        """
+        if not wos:
+            return ""
+        lines: list[str] = []
+        for w in wos[:_WO_EVIDENCE_LIMIT]:
+            if not isinstance(w, dict):
+                continue
+            num = str(w.get("work_order_number") or "").strip()
+            title = str(w.get("title") or "").strip()
+            if not num or not title:
+                continue
+            created = w.get("created_at")
+            date = ""
+            try:
+                date = created.date().isoformat() if created else ""
+            except AttributeError:
+                date = str(created)[:10] if created else ""
+            status = str(w.get("status") or "").strip()
+            head = f"  [WO {num}]" + (f" {date}" if date else "")
+            if status:
+                head += f" ({status})"
+            head += f": {title}"
+            detail = str(w.get("resolution") or w.get("fault_description") or "").strip()
+            if detail:
+                head += f" -- {detail[:200]}"
+            lines.append(head)
+        if not lines:
+            return ""
+        return (
+            "\n--- WORK ORDER HISTORY (CMMS; citable -- cite as [WO <number>]) ---\n"
+            + "\n".join(lines)
+            + "\n---\n"
+        )
+
     async def _call_with_correction(
         self,
         message: str,
@@ -3586,7 +4051,15 @@ class Supervisor:
         kg_context = await self._build_kg_context(state, tenant_id)
         live_context = await self._build_live_data_context(state)
         ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
-        extra_context = kg_context + live_context + ctx_signals_context
+        interlock_context = await self._build_interlock_context(state, tenant_id)
+        wo_evidence_context = await self._build_wo_evidence_context(state, tenant_id)
+        extra_context = (
+            kg_context
+            + live_context
+            + ctx_signals_context
+            + interlock_context
+            + wo_evidence_context
+        )
 
         for attempt in range(max_attempts):
             try:
@@ -5579,8 +6052,18 @@ class Supervisor:
         confidence: str = "",
         response_time_ms: int = 0,
         platform: str = "telegram",
+        route: str | None = None,
+        model: str | None = None,
+        devices: int | None = None,
+        input_sha256: str | None = None,
+        fallback_reason: str | None = None,
     ) -> None:
-        """Append-only log of every user/bot exchange for quality analysis."""
+        """Append-only log of every user/bot exchange for quality analysis.
+
+        The optional provenance fields (``route``/``model``/``devices``/
+        ``input_sha256``/``fallback_reason``) are populated by print turns so
+        "check the bot results" retrieves the full story without screenshots
+        (2026-07-15 operator directive)."""
         if fsm_state == "DIAGNOSIS_REVISION":
             fsm_state = "DIAGNOSIS"
         log_interaction(
@@ -5594,6 +6077,11 @@ class Supervisor:
             confidence=confidence,
             response_time_ms=response_time_ms,
             platform=platform,
+            route=route,
+            model=model,
+            devices=devices,
+            input_sha256=input_sha256,
+            fallback_reason=fallback_reason,
         )
 
     # ------------------------------------------------------------------

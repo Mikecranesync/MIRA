@@ -5,6 +5,8 @@
  * Degree is precomputed server-side so the client just maps nodeVal.
  */
 
+import { canonicalizeRelationshipType } from "./canonical-relationship-type";
+
 export interface EntityRow {
   id: string;
   entity_type: string;
@@ -81,7 +83,12 @@ export function buildGraphPayload(entities: EntityRow[], rels: RelRow[]): GraphP
     const link: GraphLink = {
       source: r.source_id,
       target: r.target_id,
-      type: r.relationship_type,
+      // Display-layer canonicalization only: folds lowercase writer output
+      // (e.g. relationship_proposals' `has_component`) and the UPPERCASE
+      // canonical form (kg_relationships' `HAS_COMPONENT`) into one label so
+      // the graph doesn't show the same edge type twice. Never touches the
+      // underlying row / write path.
+      type: canonicalizeRelationshipType(r.relationship_type),
       confidence: r.confidence ?? 1,
       state: r.approval_state ?? "verified",
     };

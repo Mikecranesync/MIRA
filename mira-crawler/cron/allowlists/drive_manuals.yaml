@@ -1,0 +1,42 @@
+# Drive Commander — curated manual allowlist (Phase 4, issue #2562).
+#
+# Version-controlled fuel for the kb_growth queue. `queue_populate.py` reads this
+# file and appends eligible, deduped, provenance-stamped entries to
+# mira-crawler/cron/manual_queue.json — the SAFE alternative to hand-editing the
+# queue or scraping. DriveSense-relevant VFD manuals only.
+#
+# RULES (see docs/runbooks/drive-manual-queue-population.md):
+#   - Add entries deliberately, in small batches. Never bulk-scrape into this file.
+#   - Every entry MUST carry provenance: url, vendor, model (required) + family,
+#     type, trust_status, queue_reason.
+#   - trust_status: `curated` (a human vetted this exact URL) or `discovered`
+#     (came from an automated source; lower trust).
+#   - Verify each url resolves to a real PDF (200/206 application/pdf) for the
+#     pipeline UA before adding — the populator does NOT fetch; a dead URL just
+#     fails gracefully in the cron (failed_retryable → failed), it won't pollute.
+#
+# Provenance fields become part of each queue entry so every manual is auditable
+# back to why/when/how it was queued.
+
+manuals:
+  - url: https://cdn.automationdirect.com/static/manuals/gs20m/gs20m.pdf
+    vendor: AutomationDirect
+    family: GS20
+    model: GS20
+    type: installation_manual
+    trust_status: curated
+    queue_reason: "DriveSense GS-series VFD user manual (Phase 4 tiny allowlist)"
+
+  - url: https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf
+    vendor: Rockwell Automation
+    family: PowerFlex 520-series
+    model: PowerFlex 525
+    type: installation_manual
+    trust_status: curated
+    queue_reason: "DriveSense PowerFlex 525 user manual (Phase 4 tiny allowlist)"
+
+# ── Known-stale, DO NOT re-add until the correct URL is verified ──────────────
+# AutomationDirect GS10 (`gs10m.pdf`, the sources.yaml URL) returns 404 for the
+# pipeline UA as of 2026-07-08 — AutomationDirect moved/renamed it. Find the
+# current GS10 manual path, verify it serves `application/pdf` to UA
+# `MIRA-KB/1.0`, then add it here with trust_status: curated.

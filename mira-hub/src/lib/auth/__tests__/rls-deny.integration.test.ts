@@ -24,7 +24,7 @@ function makeSession(tenantId: string, userId = "u_test"): Session {
   return {
     userId,
     tenantId,
-    role: "member",
+    role: "viewer",
     exp: Date.now() / 1000 + 3600,
   };
 }

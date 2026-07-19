@@ -1,5 +1,6 @@
 import { withTenantContext } from "@/lib/tenant-context";
 import { applyHubProposalTransition, type QueryClient } from "@/lib/proposal-transition";
+import { normalizeTagPath } from "@/lib/normalize-tag-path";
 
 /**
  * Decide an `ai_suggestions` proposal (the non-edge accept path the offline PLC chain needs).
@@ -22,7 +23,29 @@ import { applyHubProposalTransition, type QueryClient } from "@/lib/proposal-tra
  *      materialized: the typed table must not hold an invented type. Enrich types via the CCW
  *      variables CSV (parser correlate path), then re-import.
  *
- * On `reject`: transition status → 'rejected'. No entity is created.
+ *      T5 (master plan) bridge: when a tag_mapping DOES materialize, also upsert `approved_tags`
+ *      (mig 035) so the tag is immediately ingestible by the relay allowlist — no follow-up SQL.
+ *      See `docs/discovery/integration-seams-register.md` Seam 6 ("PLC-import proposals never
+ *      became ingest-approved"). `source_system` provenance: the PLC-import `ai_suggestions`
+ *      payload (`plc-proposals.ts::plcReportToSuggestions`) carries no explicit source-system field
+ *      (verified by reading the extractedData shape) — it is always an offline L5X/CSV parse, and
+ *      'ignition' is the only live producer the relay allowlist gates today
+ *      (`mira-relay/tag_ingest.py`'s VALID set is {ignition, plc_bridge, relay, simulator}), so we
+ *      default to 'ignition' and record the bridge's provenance in `notes` rather than inventing a
+ *      new source_system value.
+ *
+ *   4. For a `drive_pack_update` proposal (mig 062), ENQUEUE a build+grade instead of just
+ *      flipping status. The extractor+grader is a Python CLI
+ *      (`tools/drive-pack-extract/registry/update_candidate.py`); the Hub must NOT shell out to it
+ *      synchronously inside the HTTP request. So accept writes a durable "build requested" marker
+ *      onto the suggestion's own `extracted_data` (no new table — the row IS the queue), and a
+ *      separate Python drain worker (`drain_build_requests.py`) invokes the CLI, which produces a
+ *      staged `candidates/<family>/` + grading report. It NEVER promotes into the live
+ *      `mira-bots/shared/drive_packs/packs/` tree — auto-promotion is forbidden (trust doctrine,
+ *      ADR-0025, `.claude/rules/train-before-deploy.md`). #2544.
+ *
+ * On `reject`: transition status → 'rejected'. No entity is created; `approved_tags` is untouched;
+ * no build is enqueued.
  *
  * The other non-edge suggestion types (`component_profile`, `uns_confirmation`, `namespace_move`)
  * remain status-only here.
@@ -108,6 +131,42 @@ export function mapTagDataType(raw: unknown): string | null {
   return TAG_DATA_TYPE_MAP[key] ?? null;
 }
 
+// T5 bridge decision (see module docstring): PLC-import tag_mapping proposals carry no
+// source_system field. 'ignition' is the only live producer of the relay's approved_tags
+// allowlist today; a future connector-specific source_system can be threaded through
+// `extracted_data` once one exists.
+const APPROVED_TAGS_SOURCE_SYSTEM = "ignition";
+
+/**
+ * T5 bridge: upsert `approved_tags` (mig 035) for a tag_mapping proposal that materialized a
+ * `tag_entities` row, so the tag is ingestible by the relay allowlist with zero manual SQL.
+ * `source_tag_path` is the raw, pre-UNS symbol the PLC export used to name the tag (the same value
+ * `tag_entities.symbolic_name`/`source_address` stores) — the natural allowlist key, since
+ * `approved_tags` gates on the RAW path, not the resolved UNS path. Idempotent via
+ * ON CONFLICT (tenant_id, source_system, source_tag_path): re-accepting (or a re-import that
+ * re-approves the same raw tag) re-enables the row rather than erroring or duplicating.
+ */
+async function upsertApprovedTag(
+  c: QueryClient,
+  tenantId: string,
+  sourceTagPath: string,
+  unsPath: string,
+): Promise<void> {
+  const normalizedTagPath = normalizeTagPath(sourceTagPath);
+  await c.query(
+    `INSERT INTO approved_tags
+       (tenant_id, source_system, source_tag_path, normalized_tag_path, uns_path, enabled, notes)
+     VALUES ($1::uuid, $2, $3, $4, $5::ltree, true, $6)
+     ON CONFLICT (tenant_id, source_system, source_tag_path) DO UPDATE
+       SET enabled = true,
+           normalized_tag_path = EXCLUDED.normalized_tag_path,
+           uns_path = COALESCE(EXCLUDED.uns_path, approved_tags.uns_path),
+           notes = COALESCE(approved_tags.notes, EXCLUDED.notes),
+           updated_at = now()`,
+    [tenantId, APPROVED_TAGS_SOURCE_SYSTEM, sourceTagPath, normalizedTagPath, unsPath, "plc_import_bridge"],
+  );
+}
+
 async function createTagEntity(
   c: QueryClient,
   tenantId: string,
@@ -149,7 +208,45 @@ async function createTagEntity(
     [tenantId, unsPath, symbolic, dataType, symbolic, JSON.stringify(evidence)],
   );
   const rows = res.rows as { id: string }[];
-  return rows[0]?.id ?? null;
+  const entityId = rows[0]?.id ?? null;
+
+  // T5 bridge: the tag_entities row materialized — feed the ingest allowlist too.
+  if (entityId) {
+    await upsertApprovedTag(c, tenantId, symbolic, unsPath);
+  }
+
+  return entityId;
+}
+
+/**
+ * Enqueue a drive-pack build+grade for an accepted `drive_pack_update` suggestion by writing a
+ * durable "build requested" marker onto the suggestion's own `extracted_data`. The row IS the
+ * queue — no new table. A Python drain worker
+ * (`tools/drive-pack-extract/registry/drain_build_requests.py`) reads rows where
+ * `status='accepted'` AND `build_requested=true` AND `build_status='requested'`, runs
+ * `update_candidate.py` (generator + grader as subprocesses), and flips `build_status` off
+ * `requested` when done — so a marker is drained at most once. The worker only stages a
+ * `candidates/<family>/` + grading report; it never promotes to the live `packs/` tree.
+ *
+ * This is a data annotation, not a status transition, so it does NOT go through the ADR-0017
+ * helper (which governs the `status` column). Idempotent by `|| jsonb_build_object(...)`; a second
+ * decide is already blocked by the `status='pending'` guard in {@link decideSuggestion}.
+ */
+async function markDrivePackBuildRequested(
+  c: QueryClient,
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  await c.query(
+    `UPDATE ai_suggestions
+        SET extracted_data = COALESCE(extracted_data, '{}'::jsonb)
+            || jsonb_build_object(
+                 'build_requested', true,
+                 'build_requested_at', now(),
+                 'build_status', 'requested')
+      WHERE id = $1 AND tenant_id = $2::uuid`,
+    [id, tenantId],
+  );
 }
 
 export async function decideSuggestion(
@@ -187,6 +284,9 @@ export async function decideSuggestion(
         entityId = await createKgEntity(c, tenantId, data);
       } else if (s.suggestion_type === "tag_mapping") {
         entityId = await createTagEntity(c, tenantId, data);
+      } else if (s.suggestion_type === "drive_pack_update") {
+        // Not a KG/tag entity — enqueue a build+grade (no auto-promote). #2544.
+        await markDrivePackBuildRequested(c, tenantId, id);
       }
     }
 

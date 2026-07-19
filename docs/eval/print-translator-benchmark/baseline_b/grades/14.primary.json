@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "case_id": "14",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 16,
+    "power_control_flow": 17,
+    "sequence_interlocks_logic": 12,
+    "evidence_grounding_unsupported_claims": 15,
+    "technician_usefulness_clarity": 8
+  },
+  "total": 78,
+  "deductions": [
+    {
+      "claim": "Outputs (Y0-Y17) are connected to external devices like motors or indicators.",
+      "evidence": "The output terminal strip only shows point labels (Y0-Y17) and an unlabeled row of bracket ('L') symbols under the heading 'OUTPUT point wiring'; no motor, indicator, or any specific load device is named or drawn anywhere on the page.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Describe the output points as connecting to unspecified field loads/devices, since no motor or indicator is actually depicted or labeled.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Omission — the response never names the common terminals (C0-C4) or the power/ground terminals (G, LG, 0V, 24V, AC(L), AC(N)) printed on the terminal strips.",
+      "evidence": "The top terminal-block legend row clearly prints 'G', 'LG', '0V', 'AC(L)', 'AC(N)', '24V' and 'C0' through 'C4' alongside the X/Y point labels; the input block similarly labels C0-C4.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Note the common and power/ground terminal designations visible on the strips in addition to the X/Y point ranges.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The PLC has twenty AC input channels... Sixteen relay contact outputs... [generic connect-external-devices description with no mention of isolation]",
+      "evidence": "The two schematics labeled 'Equivalent Input Circuit' and 'Equivalent Output Circuit' explicitly show an 'Optical Isolator' symbol (input side) and a dashed boundary separating 'Internal module circuitry' from the field wiring (output side) — the central 'how power flows / how it works' fact these diagrams convey. The candidate's explanation never mentions that field power is isolated from PLC logic.",
+      "category": "power_control_flow",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Mention that the equivalent circuits show the field-side wiring is optically/electrically isolated from the PLC's internal logic circuitry.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The D0-06AR PLC appears to operate by connecting external devices to its input and output terminals. Inputs (X0-X23) are connected to external sensors or switches. Outputs (Y0-Y17) are connected to external devices...",
+      "evidence": "The page contains no ladder logic, no permissive/interlock wiring, and no state-transition information — it is exclusively a terminal wiring, ratings, and derating specification page. The response never states that no sequence/interlock/logic content is present on this print, leaving a 'theory of operation' section that implies operating-sequence coverage the drawing does not actually contain.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 8,
+      "severity": "material",
+      "correction": "State explicitly that this page shows only physical I/O wiring, terminal assignments, and electrical ratings — it contains no ladder logic, interlocks, or operating-sequence information, so none can be described from this evidence.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable based on the provided image and OCR labels.",
+      "evidence": "The case's context notes confirm OCR was unavailable for this case (the candidate was grounded on the image alone). The response asserts it relied on 'OCR labels' that were never supplied, misrepresenting its own evidentiary basis.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "State that the terminal labels are legible in the image; do not claim OCR labels were provided or used when none were supplied.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Outputs (Y0-Y17) are connected to external devices like motors or indicators.",
+      "evidence": "No motor or indicator is drawn, labeled, or referenced anywhere on the page; only unlabeled bracket symbols and generic point terminals appear on the output side.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Describe outputs as connecting to unspecified field loads rather than naming specific device types that are not shown.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "6. Unclear or unreadable items — Nothing major appears to be unreadable based on the provided image and OCR labels.",
+      "evidence": "The terminal-strip labels (twenty input points, sixteen output points, four commons per side) are printed in small, dense rows; a technician-usefulness-focused answer would flag that these small labels should be field-verified against the physical unit's silkscreen rather than asserting full clarity outright.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Advise the technician to field-verify the small terminal labels against the physical unit rather than declaring nothing unclear.",
+      "confidence": "low"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "medium",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "No invented safety devices/components, no reversed sequence, no dangerous troubleshooting advice, and no confirmed-fact assertions about genuinely illegible content — so no hard-failure condition fires. The main weaknesses are (1) a false claim of OCR-label support that was not actually provided (context_notes confirm OCR unavailable for this case), (2) shallow power/control-flow depth that omits the isolation concept the two equivalent-circuit schematics exist to convey, and (3) a generic 'theory of operation' that never acknowledges this print contains zero ladder-logic/interlock/sequence content, which is the largest single deduction. medium confidence reflects judgment calls on how much credit a sequence/interlock category deserves when the underlying print genuinely offers none."
+}

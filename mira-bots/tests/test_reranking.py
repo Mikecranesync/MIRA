@@ -313,6 +313,9 @@ class TestKbStatusStash:
                 "equipment_type": "",
                 "source_type": "",
                 "metadata": {},
+                # Cosine-comparable vector evidence (carries the RRF merge's stream
+                # tag) so it qualifies as supporting coverage (#2384).
+                "retrieval_streams": ["vector"],
             },
         ]
         state = _base_state()

@@ -17,12 +17,16 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 
 const TENANT_ID = "tenant-aaaa-bbbb";
+// role:"owner" so the namespace.admin capability gate (#2360/#578) passes — the
+// onboarding wizard is admin/owner only; these tests cover wizard behavior, not
+// RBAC (the matrix is unit-tested in src/lib/__tests__/capabilities.test.ts).
 const goodSession = {
   userId: "user_1",
   tenantId: TENANT_ID,
   email: "x@y",
   status: "trial",
   trialExpiresAt: null,
+  role: "owner",
 };
 
 beforeEach(() => {

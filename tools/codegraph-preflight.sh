@@ -28,6 +28,11 @@ cd "$REPO_ROOT" || exit 2
 CG=(npx -y @colbymchenry/codegraph)
 TASK="${1:-}"
 
+# Freshness helpers (cg_newer_indexed_sources) — excludes generated / dependency
+# / cache / nested-worktree paths so build artifacts don't produce false STALE.
+# shellcheck source=tools/codegraph-freshness.sh
+. "$SCRIPT_DIR/codegraph-freshness.sh"
+
 # Shared modules: a codegraph_impact is required before editing any of these.
 SHARED_RE='engine\.py|inference/router\.py|uns_resolver\.py|citation_compliance\.py|guardrails\.py|crawler/ingest/uns\.py|mira-mcp/server\.py'
 
@@ -68,10 +73,11 @@ STALE=0
 # (a) any indexed-language source file newer than the index db. This is
 # precise: a docs-only commit won't flag the CODE index stale, but a
 # checkout/merge (git stamps files at checkout time) or an uncommitted edit
-# will. `-print -quit` stops at the first hit, so it's fast.
-NEWER="$(find . \( -name '*.py' -o -name '*.ts' -o -name '*.tsx' \) -newer "$DB" \
-  -not -path './node_modules/*' -not -path './.codegraph/*' -not -path './.git/*' \
-  -print -quit 2>/dev/null)"
+# will. cg_newer_indexed_sources excludes generated / dependency / cache /
+# nested-worktree paths (`.next/`, `node_modules/`, `.audit-worktrees/`, …) that
+# CodeGraph never indexes — otherwise a Next.js build or an ad-hoc worktree
+# produces a false STALE verdict on an index that is actually current.
+NEWER="$(cg_newer_indexed_sources "$DB" . 2>/dev/null | head -1)"
 if [ -n "$NEWER" ]; then
   echo "- **Freshness:** ⚠ source files are newer than the index (e.g. \`${NEWER#./}\`) — re-sync before trusting call edges"
   STALE=1

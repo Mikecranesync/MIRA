@@ -28,7 +28,11 @@ import { createInterface } from 'node:readline';
 import { loadPlaywright, newRunDir, instrument, SAMPLE_PDF } from './lib.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const AUTH_STATE = join(REPO_ROOT, 'dogfood-output', '.auth', 'app-state.json');
+// Default to the legacy single-account state; set QA_AUTH_STATE to point at a
+// specific RBAC persona's saved session (e.g. dogfood-output/.auth/carlos-state.json).
+const AUTH_STATE = process.env.QA_AUTH_STATE
+  ? resolve(process.env.QA_AUTH_STATE)
+  : join(REPO_ROOT, 'dogfood-output', '.auth', 'app-state.json');
 
 function arg(name, def) {
   const i = process.argv.indexOf(`--${name}`);

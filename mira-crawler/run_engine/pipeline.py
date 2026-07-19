@@ -140,9 +140,12 @@ def run_historization(
             stopped_at=run.stopped_at,
             duration_seconds=run.duration_seconds,
             status=status,
+            tenant_id=tenant_id,
         )
         if diffs:
-            diffs_written += store.insert_diffs(diffs, run_id=run.run_id)
+            diffs_written += store.insert_diffs(
+                diffs, run_id=run.run_id, tenant_id=tenant_id
+            )
         if status == "anomalous":
             anomalous_runs += 1
         runs_closed += 1

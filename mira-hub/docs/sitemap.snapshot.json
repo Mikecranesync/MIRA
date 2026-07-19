@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 62,
-    "apiRoutes": 149
+    "apiRoutes": 155
   },
   "pages": [
     "/admin",
@@ -86,7 +86,10 @@
     "/api/assets/[id]/context",
     "/api/assets/[id]/documents",
     "/api/assets/[id]/enrich",
+    "/api/assets/[id]/machine-memory",
+    "/api/assets/[id]/machine-memory/stream",
     "/api/assets/[id]/qr",
+    "/api/assets/[id]/signal-history",
     "/api/assets/[id]/signals",
     "/api/assets/[id]/validation-qa",
     "/api/assets/[id]/validation-qa/[qaId]/verdict",
@@ -114,6 +117,7 @@
     "/api/cmms/health",
     "/api/cmms/sso",
     "/api/cmms/stats",
+    "/api/command-center/commissioning",
     "/api/command-center/display",
     "/api/command-center/display/[id]",
     "/api/command-center/gateways",
@@ -176,6 +180,7 @@
     "/api/me",
     "/api/mira/ask",
     "/api/namespace/files/[id]",
+    "/api/namespace/files/[id]/verify",
     "/api/namespace/node",
     "/api/namespace/node/[id]",
     "/api/namespace/node/[id]/chat",
@@ -202,6 +207,7 @@
     "/api/sessions/[id]",
     "/api/sessions/confirm",
     "/api/suggestions/[id]/decide",
+    "/api/suggestions/drive-pack-candidate",
     "/api/team",
     "/api/uns/browse",
     "/api/uns/subtree",

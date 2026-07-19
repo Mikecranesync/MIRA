@@ -1,0 +1,31 @@
+{
+  "id": 11,
+  "oem": "Banner Engineering",
+  "document": "ES-FL-2A Safety Light Curtain (Product Code 46262)",
+  "url": "https://info.bannerengineering.com/cs/groups/public/documents/literature/46262.pdf",
+  "manifest_page_ref": "Wiring diagram & connector pinout",
+  "print_type": "Safety sensor terminal wiring",
+  "standard": "ISO 13850/EN 418 + EN 954-1 Cat.4",
+  "category": "Safety Relays",
+  "rendered_page_number": 4,
+  "image_path": "docs/eval/print-translator-campaign/images/11.png",
+  "run_timestamp_utc": "2026-07-10T12:11:38.844344+00:00",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "caption": "Describe the theory of operation.",
+  "image_sha256": "88588738a0ba7211a16171c30b4f011553148fb42572b42ded936433fb006f4e",
+  "drawing_type": "wiring diagram",
+  "ocr_item_count": 0,
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 373,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "response": "## **1. What this appears to be**\nThis appears to be a technical diagram for an E-Stop Safety Relay, specifically showing the hookup of an ES-FL-2A Emergency Stop Monitoring Safety Relay.\n\n## **2. Main visible components**\n- The main device shown is the ES-FL-2A safety relay.\n- There is an Emergency Stop Switch.\n- A Reset Switch is visible.\n- Master Stop Control Elements (MSC1 and MSC2) are indicated.\n- Arc suppressors are noted.\n\n## **3. Plain-English theory of operation**\n- The Emergency Stop Switch, when activated (e.g., pressed), appears to interrupt the circuit, likely stopping the machinery.\n- The ES-FL-2A safety relay seems to monitor the state of the Emergency Stop Switch and the Master Stop Control Elements.\n- When the Emergency Stop Switch is reset and the Master Stop Control Elements are in their proper state, the safety relay allows the system to operate.\n- The Reset Switch is used to reset the safety relay after an emergency stop.\n\n## **4. What must be true for it to work**\n- The Emergency Stop Switch must be in the \"run\" position (not pressed).\n- The Master Stop Control Elements (MSC1 and MSC2) must be functioning correctly.\n- The Reset Switch must be in a state that allows the safety relay to reset properly.\n\n## **5. What would stop it from working**\n- If the Emergency Stop Switch is activated (pressed), the system will stop.\n- If MSC1 or MSC2 fails or is not properly connected, the safety relay may not function correctly.\n- If the Reset Switch is not properly reset after an emergency stop, the system may not restart.\n\n## **6. Unclear or unreadable items**\n- Nothing major appears to be unreadable in the provided image."
+}

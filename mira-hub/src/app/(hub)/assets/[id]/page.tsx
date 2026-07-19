@@ -11,6 +11,7 @@ import {
 import { AssetChat } from "@/components/AssetChat";
 import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
 import { AssetValidateTab } from "@/components/AssetValidateTab";
+import { MachineMemoryCard } from "@/components/MachineMemoryCard";
 import { QrCodeModal } from "@/components/qr-code-modal";
 import { UploadPicker, type PickResult } from "@/components/UploadPicker";
 import { Badge } from "@/components/ui/badge";
@@ -242,7 +243,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       ) : (
         <div className="px-4 md:px-6 py-5 max-w-3xl">
-          {activeTab === "overview"      && <OverviewTab asset={asset} onAskMira={() => setActiveTab("ask")} />}
+          {activeTab === "overview"      && <OverviewTab asset={asset} assetId={id} onAskMira={() => setActiveTab("ask")} />}
           {activeTab === "activity"      && <ActivityTab />}
           {activeTab === "workorders"    && <WorkOrdersTab />}
           {activeTab === "documents"     && <DocumentsTab assetId={id} assetTag={asset.tag} />}
@@ -264,7 +265,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
 }
 
 /* ─── Overview Tab ──────────────────────────────────────────────────── */
-function OverviewTab({ asset, onAskMira }: { asset: typeof ASSETS["1"]; onAskMira: () => void }) {
+function OverviewTab({ asset, assetId, onAskMira }: { asset: typeof ASSETS["1"]; assetId: string; onAskMira: () => void }) {
   const t = useTranslations("assets");
   return (
     <div className="space-y-4">
@@ -299,6 +300,8 @@ function OverviewTab({ asset, onAskMira }: { asset: typeof ASSETS["1"]; onAskMir
           </div>
         ))}
       </div>
+
+      <MachineMemoryCard assetId={assetId} />
     </div>
   );
 }

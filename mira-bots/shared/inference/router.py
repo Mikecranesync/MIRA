@@ -20,6 +20,7 @@ Uses httpx directly — no provider SDKs.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -94,9 +95,35 @@ def _parse_retry_after(response: httpx.Response) -> float:
         return 5.0
 
 
+def _json_parseable(text: str) -> bool:
+    """Fenced or bare JSON object/array parses -> structured output, never gibberish."""
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[1] if "\n" in t else t[3:]
+        t = t.rstrip()
+        if t.endswith("```"):
+            t = t[:-3]
+    t = t.strip()
+    if not t.startswith(("{", "[")):
+        return False
+    try:
+        json.loads(t)
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
 def _is_gibberish(text: str, threshold: float = 0.3) -> bool:
-    """Detect garbled vision model output (multilingual garbage, hallucination loops)."""
+    """Detect garbled vision model output (multilingual garbage, hallucination loops).
+
+    Valid JSON (fenced or bare) is accepted BEFORE the repetition heuristics:
+    JSON is structurally repetitive ('[],' etc.), so the token-repetition rule
+    false-positives on terse-but-correct structured replies (e.g. an honest
+    empty graph for a blurred page).
+    """
     if not text or len(text) < 20:
+        return False
+    if _json_parseable(text):
         return False
     non_ascii = sum(1 for c in text if ord(c) > 127)
     if non_ascii / len(text) > threshold:
@@ -149,9 +176,13 @@ def _build_providers() -> list[_Provider]:
                 api_key=groq_key,
                 model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
                 timeout=30.0,
-                vision_model=os.getenv(
-                    "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
-                ),
+                # Groq removed ALL vision-capable models on 2026-07-18 (llama-4
+                # scout/maverick delisted; /v1/models lists nothing multimodal),
+                # so the default is empty — image requests skip Groq instead of
+                # burning a guaranteed 404 + latency on every photo turn. The
+                # env knob stays so ops can re-enable without a deploy if Groq
+                # ever re-adds a vision model.
+                vision_model=os.getenv("GROQ_VISION_MODEL") or "",
             )
         )
 
@@ -175,14 +206,28 @@ def _build_providers() -> list[_Provider]:
                 api_url="https://api.together.xyz/v1/chat/completions",
                 api_key=together_key,
                 model=os.getenv("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
-                timeout=30.0,
-                # No default vision model: Together's serverless catalog has no
-                # stable text+vision model on this account, so image requests stay
-                # on Groq's vision model. Set TOGETHERAI_VISION_MODEL to add one.
-                # (Default text model is serverless pay-per-token, covered by the
-                # account's free credits; the -Turbo-Free variant is not serverless
-                # on this account.)
-                vision_model=os.getenv("TOGETHERAI_VISION_MODEL", ""),
+                # Together is the LAST text-cascade provider AND the ONLY vision
+                # provider (no fallback exists for vision). The 2026-07-19 bench
+                # measured successful theory calls at 13.9-28.6s, with 2/10 runs
+                # crossing the old hardcoded 30s and losing an already-computed
+                # answer to "together timeout after 30s" — the #2804 2000-token
+                # theory budget + #2805 evidence-contract prompt ate the old
+                # margin. Raised to 90s. The `or` form is MANDATORY: compose maps
+                # ${TOGETHERAI_TIMEOUT:-}, which delivers an EMPTY STRING
+                # in-container; a bare float(os.getenv(...)) on "" raises and
+                # crash-loops the bot at import (same trap as
+                # TOGETHERAI_VISION_MODEL below — this has bitten the repo twice).
+                timeout=float(os.getenv("TOGETHERAI_TIMEOUT") or "90"),
+                # google/gemma-3n-E4B-it is the ONLY vision-capable model this
+                # account can reach serverless (verified live 2026-07-18: every
+                # Qwen-VL / Llama-4 / Kimi / GLM-4.5V id in the catalog rejects
+                # with "non-serverless model" — including the per-token-priced
+                # ones, so catalog pricing does NOT imply serverless access).
+                # Same free-credits basis as the default text model above. The
+                # `or` form is load-bearing: compose maps
+                # ${TOGETHERAI_VISION_MODEL:-}, which delivers an EMPTY STRING
+                # in-container; a plain getenv default would leave vision dead.
+                vision_model=os.getenv("TOGETHERAI_VISION_MODEL") or "google/gemma-3n-E4B-it",
             )
         )
 

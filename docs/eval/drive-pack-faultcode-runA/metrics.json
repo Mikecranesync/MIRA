@@ -1,0 +1,41 @@
+{
+  "run": "A",
+  "subject": "IMPULSE G+ Mini (crane/hoist VFD, mnemonic fault codes)",
+  "executed_utc": "2026-07-14T04:18:21Z",
+  "repo_commit": "db1177c90adc37c86e00d41dd79ac275754a1b84",
+  "python": "3.12.13",
+  "schema_repaired": false,
+  "fallback_enabled": false,
+  "extraction_improved": false,
+  "gplus_mini_source_material_present": false,
+  "gplus_mini_resolves_to_pack": false,
+  "shipped_packs": [
+    "durapulse_gs10",
+    "powerflex_40",
+    "powerflex_525"
+  ],
+  "probe_mnemonic_tokens_total": 12,
+  "raw_tokens_captured_by_schema": 0,
+  "fault_codes_deterministically_resolved": 0,
+  "fault_codes_via_fallback": 0,
+  "fault_codes_unresolved": 12,
+  "pct_deterministic": 0.0,
+  "pct_fallback": 0.0,
+  "pct_unresolved": 100.0,
+  "gplus_mini_pack_coverage_pct": 0.0,
+  "field_level_gate_error": "pack 'impulse_gplus_mini': non-numeric key 'oC' in live_decode.fault_codes \u2014 wire enum tables must be int-keyed",
+  "pack_level_gate_error": "pack 'impulse_gplus_mini': non-numeric key 'oC' in live_decode.fault_codes \u2014 wire enum tables must be int-keyed",
+  "pack_loads_at_all": false,
+  "hard_failures": 0,
+  "citation_accuracy": null,
+  "latency_ms": null,
+  "token_cost": 0,
+  "compat_sensitive_readers": [
+    "mira-bots/shared/live_snapshot.py:48  (_FAULT_CODES: dict[int,str] = _GS10_PACK.live_decode.fault_codes)",
+    "mira-bots/shared/drive_packs/loader.py:275  (_int_keyed gate \u2014 produces this floor)",
+    "mira-bots/shared/drive_packs/cards.py:89  (provenance read)",
+    "mira-bots/shared/drive_packs/cards.py:93  (for code, name in pack.live_decode.fault_codes.items())",
+    "mira-bots/shared/drive_packs/template_reader.py  (numeric fault_code keying; mirrors docs/migrations/002_fault_codes.sql)"
+  ],
+  "abstraction_leak": "GS10 already smuggles mnemonic identity into the VALUE string under an INT key (e.g. '21' -> 'oL overload', '58' -> 'CE10 modbus timeout'); mnemonic identity has no first-class field today, so dict[int,str] is already a leaky abstraction even for a 'supported' drive."
+}

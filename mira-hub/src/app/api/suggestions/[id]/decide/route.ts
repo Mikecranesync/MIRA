@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { decideSuggestion } from "@/lib/suggestion-accept";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  // Deciding an ai_suggestions proposal (verify→creates a verified kg_entities row
+  // served by i3X) is the same admin governance action as /api/proposals/[id]/decide
+  // (CLAUDE.md / ADR-0017: proposed→verified is an admin action). #2360/#578.
+  const denied = requireCapability(ctx, "proposals.decide");
+  if (denied) return denied;
 
   const { id } = await params;
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {

@@ -1,0 +1,59 @@
+{
+  "case_id": "20",
+  "ocr_source": "cascade_vision_transcription_proxy_not_production_glm_ocr",
+  "oem": "WEG",
+  "document": "CFW-11W Frequency Inverter Manual (static.weg.net)",
+  "url": "static.weg.net/medias/downloadcenter/hae/h83/WEG-10004699316-13871637-r00-CFW11-W-users-manual-en.pdf",
+  "category": "VFD",
+  "question": "Describe the theory of operation.",
+  "source_image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\20.png",
+  "source_image_sha256": "bfb7993a62f25f394aed67c7786529a2603efcba1ad97ee5fbb4b9a64db5064f",
+  "run_timestamp_utc": "2026-07-10T10:23:16.847840+00:00",
+  "mode": "baseline_b_ocr_grounded",
+  "ocr_items": [
+    "3.2.1 General Wiring Diagram",
+    "UC11",
+    "CC11",
+    "HMI",
+    "IFSC",
+    "UP11",
+    "+UD",
+    "-UD",
+    "U",
+    "V",
+    "W",
+    "MOTOR",
+    "XC90",
+    "XC25A",
+    "XC25B",
+    "XU",
+    "XV",
+    "XW",
+    "XVent",
+    "24 Vcc",
+    "24 Vdc",
+    "Figure 3.6: General wiring diagram",
+    "3"
+  ],
+  "ocr_proxy_usage": {
+    "input_tokens": 2566,
+    "output_tokens": 104,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "ocr_proxy_raw_response": "[\"3.2.1 General Wiring Diagram\", \"UC11\", \"CC11\", \"HMI\", \"IFSC\", \"UP11\", \"+UD\", \"-UD\", \"U\", \"V\", \"W\", \"MOTOR\", \"XC90\", \"XC25A\", \"XC25B\", \"XU\", \"XV\", \"XW\", \"XVent\", \"24 Vcc\", \"24 Vdc\", \"Figure 3.6: General wiring diagram\", \"3\"]",
+  "messages_ocr_block": "Drawing type: electrical drawing\n\nOCR labels extracted from the drawing (ground truth — use these verbatim, do not invent new labels):\n- 3.2.1 General Wiring Diagram\n- UC11\n- CC11\n- HMI\n- IFSC\n- UP11\n- +UD\n- -UD\n- U\n- V\n- W\n- MOTOR\n- XC90\n- XC25A\n- XC25B\n- XU\n- XV\n- XW\n- XVent\n- 24 Vcc\n- 24 Vdc\n- Figure 3.6: General wiring diagram\n- 3",
+  "router_usage": {
+    "input_tokens": 2916,
+    "output_tokens": 624,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "translator_reply": "## 1. **What this appears to be**\nThis appears to be a general wiring diagram for an electrical control system, specifically a motor control circuit. The diagram is labeled as \"3.2.1 General Wiring Diagram\" and is identified as \"Figure 3.6: General wiring diagram\".\n\n## 2. **Main visible components**\nThe main visible components in this diagram are:\n- A human-machine interface (HMI) labeled as **UC11** and **CC11**.\n- An **IFSC** component connected to the HMI.\n- Three **UP11** components, each with multiple connections.\n- A **MOTOR** component.\n- Various connections and terminals labeled with designations such as **+UD**, **-UD**, **U**, **V**, **W**, **XC90**, **XC25A**, **XC25B**, **XU**, **XV**, **XW**, and **XVent**.\n\n## 3. **Plain-English theory of operation**\nAccording to this print, the HMI (**UC11**) appears to be connected to the **IFSC** component, which is then connected to three **UP11** components. Each **UP11** component seems to be connected to the **MOTOR** through **U**, **V**, and **W** connections. The **UP11** components also have connections labeled **+UD** and **-UD**, which likely represent a DC power supply. The **XVent** connections and the **24 Vdc** labels suggest that there is a ventilation system and a 24-volt DC power supply involved. The **XC90**, **XC25A**, and **XC25B** labels likely represent connectors or terminals.\n\n## 4. **What must be true for it to work**\nFor this system to work, the following must be true:\n- The **HMI (UC11)** must be properly connected to the **IFSC**.\n- The **IFSC** must be properly connected to the **UP11** components.\n- The **UP11** components must be properly connected to the **MOTOR** through **U**, **V**, and **W** connections.\n- The **+UD** and **-UD** connections must be properly powered.\n- The **24 Vdc** power supply must be functioning.\n\n## 5. **What would stop it from working**\nThe following could stop the system from working:\n- A break in the **+UD** or **-UD** power lines.\n- A faulty **HMI (UC11)**, **IFSC**, or **UP11** component.\n- A faulty **MOTOR**.\n- A loose or broken connection at any of the terminals (e.g., **XC90**, **XC25A**, **XC25B**, **XU**, **XV**, **XW**, **XVent**).\n\n## 6. **Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image. All labels and connections seem clear based on the OCR data provided.",
+  "invented_label_check": {
+    "still_present": true,
+    "tokens_found": [
+      "XC90"
+    ]
+  }
+}

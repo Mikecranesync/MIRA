@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import sys
-
-sys.path.insert(0, "mira-bots")
-sys.path.insert(0, "mira-bots/slack")
-sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
-
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from chat_adapter import SlackChatAdapter
-from shared.chat.types import NormalizedAttachment, NormalizedChatResponse, ResponseBlock
+
+_tests_dir = Path(__file__).resolve().parent
+if str(_tests_dir) not in sys.path:
+    sys.path.insert(0, str(_tests_dir))
+
+from slack_test_imports import load_slack_chat_adapter
+
+_chat_adapter = load_slack_chat_adapter()
+SlackChatAdapter = _chat_adapter.SlackChatAdapter
+NormalizedAttachment = _chat_adapter.NormalizedAttachment
+NormalizedChatResponse = _chat_adapter.NormalizedChatResponse
+ResponseBlock = __import__("shared.chat.types", fromlist=["ResponseBlock"]).ResponseBlock
 
 # ---------------------------------------------------------------------------
 # Fixtures

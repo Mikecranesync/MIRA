@@ -1,0 +1,15 @@
+📐 Electrical print
+
+🔧 Devices (2)
+• UNREADABLE — assembly/module (dashed boundary, left) (Left dashed rectangle enclosing a group of components with small labels; individual designations not legible at this resolution.) · conf 0.30
+• UNREADABLE — assembly/module (dashed boundary, right) (Right dashed rectangle enclosing a group of components with small labels and a red connection dot on its right edge; designations not legible.) · conf 0.30
+
+🧩 2 terminal(s): UNREADABLE, UNREADABLE
+
+⚠️ Couldn't read (retake or crop closer):
+• Drawing number in bottom-right title block (looks like '31971' — digits unconfirmed).
+• Sheet/equipment title (possibly 'Sensor Control Unit 1' — unconfirmed).
+• All device tags, wire numbers (-W####), and terminal designations inside and between the two dashed boxes.
+• Top rail/supply line labels and any cross-sheet references.
+
+🔎 Proposed interpretation from the drawing — not yet field-verified. Reply to confirm or correct any item.

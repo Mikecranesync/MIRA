@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **62** (8 dynamic) |
-| API routes | **149** (43 dynamic) |
+| API routes | **155** (47 dynamic) |
 
 ## Pages (62)
 
@@ -80,7 +80,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (149)
+## API routes (155)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -101,7 +101,10 @@
 | `/api/assets/[id]/context` | dynamic | `api/assets/[id]/context/route.ts` |
 | `/api/assets/[id]/documents` | dynamic | `api/assets/[id]/documents/route.ts` |
 | `/api/assets/[id]/enrich` | dynamic | `api/assets/[id]/enrich/route.ts` |
+| `/api/assets/[id]/machine-memory` | dynamic | `api/assets/[id]/machine-memory/route.ts` |
+| `/api/assets/[id]/machine-memory/stream` | dynamic | `api/assets/[id]/machine-memory/stream/route.ts` |
 | `/api/assets/[id]/qr` | dynamic | `api/assets/[id]/qr/route.ts` |
+| `/api/assets/[id]/signal-history` | dynamic | `api/assets/[id]/signal-history/route.ts` |
 | `/api/assets/[id]/signals` | dynamic | `api/assets/[id]/signals/route.ts` |
 | `/api/assets/[id]/validation-qa` | dynamic | `api/assets/[id]/validation-qa/route.ts` |
 | `/api/assets/[id]/validation-qa/[qaId]/verdict` | dynamic | `api/assets/[id]/validation-qa/[qaId]/verdict/route.ts` |
@@ -129,6 +132,7 @@
 | `/api/cmms/health` | static | `api/cmms/health/route.ts` |
 | `/api/cmms/sso` | static | `api/cmms/sso/route.ts` |
 | `/api/cmms/stats` | static | `api/cmms/stats/route.ts` |
+| `/api/command-center/commissioning` | static | `api/command-center/commissioning/route.ts` |
 | `/api/command-center/display` | static | `api/command-center/display/route.ts` |
 | `/api/command-center/display/[id]` | dynamic | `api/command-center/display/[id]/route.ts` |
 | `/api/command-center/gateways` | static | `api/command-center/gateways/route.ts` |
@@ -191,6 +195,7 @@
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |
 | `/api/namespace/files/[id]` | dynamic | `api/namespace/files/[id]/route.ts` |
+| `/api/namespace/files/[id]/verify` | dynamic | `api/namespace/files/[id]/verify/route.ts` |
 | `/api/namespace/node` | static | `api/namespace/node/route.ts` |
 | `/api/namespace/node/[id]` | dynamic | `api/namespace/node/[id]/route.ts` |
 | `/api/namespace/node/[id]/chat` | dynamic | `api/namespace/node/[id]/chat/route.ts` |
@@ -217,6 +222,7 @@
 | `/api/sessions/[id]` | dynamic | `api/sessions/[id]/route.ts` |
 | `/api/sessions/confirm` | static | `api/sessions/confirm/route.ts` |
 | `/api/suggestions/[id]/decide` | dynamic | `api/suggestions/[id]/decide/route.ts` |
+| `/api/suggestions/drive-pack-candidate` | static | `api/suggestions/drive-pack-candidate/route.ts` |
 | `/api/team` | static | `api/team/route.ts` |
 | `/api/uns/browse` | static | `api/uns/browse/route.ts` |
 | `/api/uns/subtree` | static | `api/uns/subtree/route.ts` |

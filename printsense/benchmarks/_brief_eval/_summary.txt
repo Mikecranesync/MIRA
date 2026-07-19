@@ -1,0 +1,6 @@
+sheet16: brief=YES signals=10 unresolved=4
+sheet18: brief=YES signals=5 unresolved=4
+sheet20: brief=YES signals=6 unresolved=4 | GRADE 93.0/A misreads=0 devF1=0.8 wireF1=1.0
+sheet5: brief=YES signals=12 unresolved=5
+unrelated: brief=YES signals=9 unresolved=5
+blurred_sheet20: brief=YES signals=0 unresolved=4

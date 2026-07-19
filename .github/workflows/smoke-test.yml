@@ -63,11 +63,20 @@ jobs:
         working-directory: mira-hub
         run: npx playwright install chromium --with-deps
 
+      # NON-BLOCKING checkout gate: the checkout→Stripe assertions in
+      # money-path.spec.ts and signup-flow.spec.ts are intentionally SKIPPED
+      # until there is a sellable product. There is no live Stripe SKU for
+      # anonymous trial entry yet, so /api/checkout/session returns
+      # /pricing?checkout=error — gating on it would jam every deploy for a
+      # product we can't sell. To re-enable the gate once checkout is live,
+      # set SMOKE_CHECKOUT_CHECK to "1" on both steps below.
+      # See wayfinder #2577 / Drive Commander money-slice (backlog DC-H/I/J).
       - name: Run smoke tests
         working-directory: mira-hub
         env:
           WEB_URL: https://factorylm.com
           HUB_URL: https://app.factorylm.com
+          SMOKE_CHECKOUT_CHECK: "" # off until a sellable product exists; set "1" to re-enable
         run: npx playwright test --config playwright.smoke.config.ts
 
       - name: Run signup money-path tests (pricing → trial CTA → checkout → magic link)
@@ -75,6 +84,7 @@ jobs:
         env:
           WEB_URL: https://factorylm.com
           HUB_URL: https://app.factorylm.com
+          SMOKE_CHECKOUT_CHECK: "" # off until a sellable product exists; set "1" to re-enable
         run: npx playwright test --config playwright.signup.config.ts
 
       - name: Upload failure screenshots

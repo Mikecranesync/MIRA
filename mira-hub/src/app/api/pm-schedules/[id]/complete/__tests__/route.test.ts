@@ -23,12 +23,16 @@ import { withTenantContext } from "@/lib/tenant-context";
 const VALID_UUID = "11111111-2222-3333-4444-555555555555";
 const TENANT_ID = "00000000-0000-0000-0000-0000000000d1";
 
+// role:"owner" so the pm_schedules.complete capability gate (#2360/#578) passes
+// — these tests cover PM-completion behavior, not RBAC (the matrix is unit-tested
+// in src/lib/__tests__/capabilities.test.ts).
 const goodSession = {
   userId: "u_1",
   tenantId: TENANT_ID,
   email: "x@y",
   status: "trial",
   trialExpiresAt: null,
+  role: "owner",
 };
 
 const makeReq = () =>

@@ -88,6 +88,25 @@ except Exception:  # pragma: no cover - shared not importable in this context
     _route_intent = None  # type: ignore[assignment]
 
 
+# Deterministic live-tag assessment (the same one the engine path + Hub packet
+# produce). Defensive import — degrades to no assessment if shared/ isn't
+# mounted, so a missing module never changes the endpoint's default behavior.
+try:
+    from shared.live_snapshot import assess_from_paths as _assess_from_paths
+except Exception:  # pragma: no cover - shared not importable in this context
+    _assess_from_paths = None  # type: ignore[assignment]
+
+# Analog assessment via the explicit per-tag scaling contract (Drive Commander
+# follow-up #2). Same defensive import — a missing module leaves the enum/bool
+# assessment and preamble untouched.
+try:
+    from shared.live_snapshot import assess_analog_from_paths as _assess_analog_from_paths
+    from shared.wire_scaling import from_jsonb as _tag_scaling_from_jsonb
+except Exception:  # pragma: no cover - shared not importable in this context
+    _assess_analog_from_paths = None  # type: ignore[assignment]
+    _tag_scaling_from_jsonb = None  # type: ignore[assignment]
+
+
 async def _is_asset_specific(question: str) -> bool:
     """True when ``question`` is asset-specific troubleshooting (so a turn with
     no UNS identifier must be rejected). Uses the engine's own intent classifier.
@@ -262,7 +281,7 @@ async def _enrich_tag_snapshot_with_semantics(
             with _engine.connect() as conn:
                 rows = conn.execute(
                     text(
-                        "SELECT source_address, units, data_type "
+                        "SELECT source_address, units, data_type, scaling "
                         "FROM tag_entities "
                         "WHERE tenant_id::text = :tid "
                         "  AND source_address = ANY(:paths) "
@@ -276,8 +295,15 @@ async def _enrich_tag_snapshot_with_semantics(
         logger.debug("_enrich_tag_snapshot: DB unavailable, enrichment skipped")
         return tag_snapshot
 
+    # `scaling` (JSONB, the per-tag scaling contract — see shared.wire_scaling)
+    # rides alongside units/data_type so the analog assessment can read it; it is
+    # NOT rendered in the preamble (only units/data_type are).
     enrichment: dict[str, dict[str, Any]] = {
-        row[0]: {k: v for k, v in {"units": row[1], "data_type": row[2]}.items() if v is not None}
+        row[0]: {
+            k: v
+            for k, v in {"units": row[1], "data_type": row[2], "scaling": row[3]}.items()
+            if v is not None
+        }
         for row in rows
         if row[0]
     }
@@ -411,6 +437,82 @@ def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
         engine.dispose()
 
 
+# ── Drive-pack asset binding (#2527 UNS follow-up) ───────────────────────────
+# Resolve the connected asset's manufacturer/model so a panel bound to a GS10
+# answers "what does CE10 mean?" WITHOUT the technician typing "gs10". The
+# descriptor is folded into the engine message (in the handler) so the
+# deterministic drive-pack fast-path (shared/engine.py, #2526) resolves the
+# pack; it also grounds general RAG to the right vendor. Read-only, best-effort,
+# tenant-scoped. `::text` on the tenant compare avoids a UUID-cast error on a
+# legacy slug tenant (cmms_equipment.tenant_id is TEXT — matches on either side).
+_DRIVE_INFO_SQL = """
+SELECT e.manufacturer, e.model_number
+FROM cmms_equipment e
+LEFT JOIN installed_component_instances ici
+  ON ici.asset_id = e.id
+WHERE e.tenant_id::text = :tid
+  AND (
+        e.id::text = :token
+     OR trim(both '_' from regexp_replace(lower(trim(e.equipment_number)), '[^a-z0-9]+', '_', 'g')) = :slug
+     OR lower(e.equipment_number) = lower(:token)
+     OR ici.plc_tag = :token
+  )
+LIMIT 1
+"""
+
+
+def _drive_info_from_conn(conn, tenant_id: str, token: str) -> Optional[str]:
+    """Resolve an Ignition asset token → "manufacturer model" descriptor, or None.
+
+    The pure resolution seam (no engine/secret setup) so the query + params are
+    unit-testable with a fake connection. Mirrors `_agent_state_from_conn` but
+    reads `cmms_equipment.manufacturer`/`model_number` directly. Returns None
+    when nothing matches or the row carries no make/model.
+    """
+    from sqlalchemy import text
+
+    row = conn.execute(
+        text(_DRIVE_INFO_SQL),
+        {"tid": tenant_id, "token": token, "slug": _slug(token)},
+    ).fetchone()
+    if not row:
+        return None
+    parts = [str(p).strip() for p in (row[0], row[1]) if p and str(p).strip()]
+    return " ".join(parts) if parts else None
+
+
+def _lookup_drive_info(tenant_id: str, token: str) -> Optional[str]:
+    """Best-effort "manufacturer model" for a connected asset, or None.
+
+    Unlike `_lookup_agent_state` (which raises so the gate can fail open), this
+    is purely additive enrichment: ANY failure (no DB, bad token, query error)
+    returns None so the turn proceeds with an un-enriched message. Never raises
+    — it must never break an Ignition chat turn.
+    """
+    if not token:
+        return None
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        return None
+    try:
+        from sqlalchemy import NullPool, create_engine
+
+        engine = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        try:
+            with engine.connect() as conn:
+                return _drive_info_from_conn(conn, tenant_id, token)
+        finally:
+            engine.dispose()
+    except Exception:
+        logger.debug("IGNITION_CHAT drive_info lookup failed (best-effort skip)", exc_info=True)
+        return None
+
+
 def _mark_deployed(tenant_id: str, asset_id: str) -> bool:
     """Best-effort: flip an approved agent to 'deployed' on first live turn.
 
@@ -493,7 +595,58 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
             req.tag_snapshot or {}, tenant_id
         )
         preamble = _format_tag_preamble(enriched_snapshot, asset_id)
-        message = f"{preamble}\n\n{question}" if preamble else question
+        # A deterministic assessment from the scaling-immune enum/bool signals
+        # (fault / comms / cmd / status) — the same one the engine path (#2478)
+        # and the Hub packet (#2476) produce, adapted to the Ignition wire form.
+        # Analog values (freq/current/dc_bus) are shown in the preamble but never
+        # re-scaled here (ambiguous wire scaling). Best-effort: never breaks chat.
+        assessment = None
+        if _assess_from_paths is not None:
+            try:
+                assessment = _assess_from_paths(req.tag_snapshot or {})
+            except Exception:  # pragma: no cover - defensive
+                assessment = None
+
+        # Analog assessment — ONLY for tags carrying an explicit, verified scaling
+        # contract (tag_entities.scaling). Unknown/missing scaling ⇒ no card ⇒ the
+        # value is still shown in the preamble but not (mis)interpreted. The raw
+        # wire values live on the enriched snapshot alongside the scaling.
+        analog_assessment = None
+        if _assess_analog_from_paths is not None and _tag_scaling_from_jsonb is not None:
+            try:
+                scaling_by_path = {
+                    path: _tag_scaling_from_jsonb(entry.get("scaling"), unit=entry.get("units"))
+                    for path, entry in enriched_snapshot.items()
+                    if isinstance(entry, dict)
+                }
+                analog_assessment = _assess_analog_from_paths(enriched_snapshot, scaling_by_path)
+            except Exception:  # pragma: no cover - defensive
+                analog_assessment = None
+
+        # Bind the drive pack to the connected asset (#2527 UNS follow-up):
+        # resolve the asset's manufacturer/model and fold it into the message so
+        # the engine's drive-pack fast-path answers a bare "what does CE10 mean?"
+        # for a GS10-bound panel WITHOUT the technician naming the drive. Only
+        # for direct-connection turns (an asset identifier is present); purely
+        # additive + best-effort (never breaks chat). Placed in the message (not
+        # the retrieval query) so it never pollutes RAG recall.
+        _drive_token = asset_id or _asset_context_token(req.asset_context)
+        asset_descriptor = _lookup_drive_info(tenant_id, _drive_token) if _drive_token else None
+        asset_line = f"Asset: {asset_descriptor}" if asset_descriptor else None
+
+        if preamble:
+            evidence = [preamble]
+            if assessment:
+                evidence.append(f"Assessment: {assessment}")
+            if analog_assessment:
+                evidence.append(analog_assessment)
+            evidence.append(
+                "In your answer, clearly separate: (1) this LIVE evidence, (2) "
+                "asset/manual context, (3) your inference, and (4) the recommended next checks."
+            )
+            message = "\n\n".join(([asset_line] if asset_line else []) + evidence + [question])
+        else:
+            message = "\n\n".join(([asset_line] if asset_line else []) + [question])
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
 

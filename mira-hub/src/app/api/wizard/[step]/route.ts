@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { slugify, sitePath, linePath } from "@/lib/uns";
 
@@ -94,6 +95,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ step: s
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "namespace.admin");
+  if (denied) return denied;
   const { step } = await params;
   if (!isStep(step)) return NextResponse.json({ error: "unknown step" }, { status: 400 });
 

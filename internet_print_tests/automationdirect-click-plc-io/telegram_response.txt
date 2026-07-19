@@ -1,0 +1,31 @@
+📋 Manual page 3-31 (CLICK PLC Hardware User Manual, Ch. 3) showing generic DC input and DC output wiring methods between PLC I/O points and field devices.
+
+This page teaches how to wire CLICK PLC DC I/O to field devices, not a specific machine. The DC input point is drawn as an opto-coupler with dual (anti-parallel) diodes, so it can be wired either sinking or sourcing. Example 1: an NPN (open-collector) sensor that sinks current is paired with a PLC input wired sourcing, with an external DC supply feeding the Common terminal. Example 2: a PNP (open-emitter) sensor that sources current is paired with a PLC input wired sinking, and no extra module supply is needed because the field loop already sources current. Example 3 (output side): a PLC DC output wired sinking drives a field-device load with a sourcing input, powered by a 20-28 VDC supply. Stated ranges: DC inputs ~+12-24 VDC, DC outputs ~+5-24 VDC.
+
+🔑 Signals
+• NPN sensor output signal into the PLC (sensor sinks, PLC sources)
+• PNP sensor output signal into the PLC (sensor sources, PLC sinks)
+• PLC output signal to the field-device load (PLC sinks to Common)
+• Supply power to PLC Common / field loop (input examples)
+• 20-28 VDC loop power for the output example
+
+🔧 Devices
+• Generic PLC DC input point (dual-diode opto-coupler, wireable sinking or sourcing) (PLC DC Input)
+• Open-collector NPN field sensor (sinking) (DC NPN Sensor (Sinking))
+• Open-emitter PNP field sensor (sourcing) (DC PNP Sensor (Sourcing))
+• PLC DC output point (sinking, transistor/MOSFET) (PLC DC Output)
+• Field-device load with a sourcing input (Field Device)
+• External DC supply for input loop (Supply)
+• 20-28 VDC supply for output loop (20-28 VDC)
+
+🩺 If you're chasing a fault
+… (more — reply "map")
+
+❓ Couldn't confirm (verify on the sheet):
+• No device tags, wire numbers, terminal numbers, or PLC channel addresses are printed — this is a generic method illustration.
+• No specific CLICK module part number is identified for the illustrated I/O points.
+
+⚠️ Voltages printed on this page: DC inputs typically +12-24 VDC, DC outputs typically +5-24 VDC, and the output example uses a 20-28 VDC supply — no higher/AC levels are shown, and this is a generic reference, not proof of your actual field conditions. For continuity/resistance checks on wiring, de-energize, lock out, and verify absence of voltage first. For live signal/voltage checks on the low-voltage DC loops, use appropriately rated meters and follow energized-work procedures. The drawing does not establish the real installed voltage of your specific panel.
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply "map" for the full terminal and wire list.

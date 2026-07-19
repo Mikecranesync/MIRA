@@ -92,6 +92,7 @@ import { decryptSecret, verifyTotp, findRecoveryCodeIndex } from "./lib/mfa.js";
 import {
   createCheckoutSession,
   createDirectCheckoutSession,
+  createDriveCommanderCheckoutSession,
   createPortalSession,
   constructWebhookEvent,
 } from "./lib/stripe.js";
@@ -99,6 +100,11 @@ import {
   activateHubUserByEmail,
   expireHubUserByEmail,
 } from "./lib/hub-user-activation.js";
+import {
+  recordPendingHubProvisioning,
+  markHubProvisioningDoneByEmail,
+  reconcilePendingHubProvisioning,
+} from "./lib/hub-provisioning-queue.js";
 import { FAULT_CODES } from "./data/fault-codes.js";
 import { BLOG_POSTS } from "./data/blog-posts.js";
 import { buildSitemapXml } from "./lib/sitemap.js";
@@ -115,6 +121,14 @@ import {
   ensureConnectSchema,
 } from "./lib/connect.js";
 import { FEATURES, renderFeaturePage } from "./lib/feature-renderer.js";
+import { getPack, getFault, getParameter } from "./lib/drive-pack-data.js";
+import {
+  renderDriveLandingPage,
+  renderFaultPage,
+  renderFaultNotFound,
+  renderParameterPage,
+  renderParameterNotFound,
+} from "./lib/drive-commander-renderer.js";
 import {
   getLiveFaultCodes,
   getLiveBlogPosts,
@@ -128,6 +142,7 @@ import { adminPages, adminApi } from "./routes/admin/qr-print.js";
 import { qrAnalytics } from "./routes/admin/qr-analytics.js";
 import { adminChannelPages, adminChannelApi } from "./routes/admin/channels.js";
 import { qrTest } from "./routes/qr-test.js";
+import { printsensePage } from "./routes/printsense.js";
 import { inbox } from "./routes/inbox.js";
 import { mfa } from "./routes/mfa.js";
 import { probeStateRoute } from "./routes/probe-state.js";
@@ -200,6 +215,7 @@ app.use("*", async (c, next) => {
 });
 
 // QR scan routes — /m/:asset_tag (auth optional), /m/:asset_tag/choose, /m/:asset_tag/report
+app.route("/", printsensePage); // GET /printsense + POST /printsense/interest (PR-D)
 app.route("/m", mChooser);     // GET /m/:asset_tag/choose[?set_pref=...]
 app.route("/m", mReport);      // GET /m/:asset_tag/report
 app.route("/m", mRegister);    // GET /m/:asset_tag/register (auto-register form)
@@ -539,6 +555,38 @@ app.get("/feature/:slug", (c) => {
   return c.html(renderFeaturePage(feature));
 });
 
+// ---------------------------------------------------------------------------
+// Drive Commander — public, indexable pack pages (AB-1: PowerFlex 525)
+//   GET /drive-commander/:model                -> landing (fault-code library)
+//   GET /drive-commander/:model/faults/:code   -> cited fault page
+// Content is served from a vendored, committed pack (src/data/drive-packs/*.json);
+// every answer is cited from the pack — no generic AI. No auth; free tier only.
+// ---------------------------------------------------------------------------
+app.get("/drive-commander/:model", (c) => {
+  const pack = getPack(c.req.param("model"));
+  if (!pack) return c.notFound();
+  // Stripe checkout returns here with ?checkout=success|cancelled.
+  return c.html(
+    renderDriveLandingPage(pack, { checkout: c.req.query("checkout") }),
+  );
+});
+
+app.get("/drive-commander/:model/faults/:code", (c) => {
+  const pack = getPack(c.req.param("model"));
+  if (!pack) return c.notFound();
+  const fault = getFault(pack, c.req.param("code"));
+  if (!fault) return c.html(renderFaultNotFound(pack, c.req.param("code")), 404);
+  return c.html(renderFaultPage(pack, fault));
+});
+
+app.get("/drive-commander/:model/parameters/:pid", (c) => {
+  const pack = getPack(c.req.param("model"));
+  if (!pack) return c.notFound();
+  const param = getParameter(pack, c.req.param("pid"));
+  if (!param) return c.html(renderParameterNotFound(pack, c.req.param("pid")), 404);
+  return c.html(renderParameterPage(pack, param));
+});
+
 // Static demo work orders for unauthenticated hero ticker
 app.get("/demo/work-orders", (c) =>
   c.json([
@@ -701,6 +749,11 @@ app.post("/api/register", async (c) => {
           atlasRole: "USER",
         });
         c.header("Set-Cookie", buildSessionCookie(token));
+        // A paying customer touched us — sweep any queued Hub provisioning
+        // (e.g. they paid before registering on the Hub). Fire-and-forget.
+        reconcilePendingHubProvisioning({ email }).catch((err) =>
+          console.error("[register] Hub provisioning reconcile failed:", err),
+        );
         captureServerEvent({
           event: "register_submitted",
           distinctId: existing.id,
@@ -920,6 +973,13 @@ app.get("/api/magic/login", async (c) => {
     }).catch(() => {});
 
     c.header("Set-Cookie", buildSessionCookie(sessionToken));
+
+    // Login is a natural retry point for the Stripe → Hub bridge: if this
+    // tenant paid before their hub_users row existed, land it now.
+    reconcilePendingHubProvisioning({ email: tenant.email }).catch((err) =>
+      console.error("[magic-link/login] Hub provisioning reconcile failed:", err),
+    );
+
     return c.redirect(`/sample?token=${encodeURIComponent(sessionToken)}`, 302);
   } catch (err) {
     console.error("[magic-link/login] Error:", err);
@@ -952,6 +1012,21 @@ function magicLinkErrorPage(msg: string): string {
 
 // Direct checkout — no email required, Stripe collects it. Used by pricing page buttons.
 app.get("/api/checkout/session", async (c) => {
+  const product = c.req.query("product");
+  if (product === "drive-commander-pro") {
+    // Graceful until the price is provisioned: fall back to the pricing page
+    // instead of an error redirect (the funnel ships ahead of the SKU).
+    if (!process.env.STRIPE_DRIVE_COMMANDER_PRICE_ID) {
+      return c.redirect("/pricing?product=drive-commander-pro", 303);
+    }
+    try {
+      const url = await createDriveCommanderCheckoutSession();
+      return c.redirect(url, 303);
+    } catch (err) {
+      console.error("[checkout/session] drive-commander error:", err);
+      return c.redirect("/pricing?product=drive-commander-pro&checkout=error", 303);
+    }
+  }
   try {
     const url = await createDirectCheckoutSession();
     return c.redirect(url, 303);
@@ -1074,6 +1149,58 @@ app.post("/api/stripe/webhook", async (c) => {
     case "checkout.session.completed": {
       const session = event.data.object;
 
+      // Drive Commander Pro (individual $29/mo) — record the purchase and STOP.
+      // This is NOT a CMMS team tenant: no tier activation, no Atlas, no Hub
+      // provisioning. Entitlement delivery is tracked separately.
+      if (session.metadata?.product === "drive-commander-pro") {
+        const dcEmail = session.customer_details?.email || "";
+        const dcCustomer = typeof session.customer === "string"
+          ? session.customer
+          : session.customer?.id || "";
+        const dcSubscription = typeof session.subscription === "string"
+          ? session.subscription
+          : session.subscription?.id || "";
+        console.log(
+          "[stripe-webhook] Drive Commander Pro purchase:",
+          dcEmail, dcCustomer, dcSubscription
+        );
+        let dcTenant = dcEmail ? await findTenantByEmail(dcEmail) : null;
+        if (!dcTenant && dcEmail) {
+          const newId = crypto.randomUUID();
+          await createTenant({
+            id: newId,
+            email: dcEmail,
+            company: dcEmail.split("@")[1] || "unknown",
+            firstName: "",
+            tier: "drive_commander_pro",
+            atlasPassword: "",
+            atlasCompanyId: 0,
+            atlasUserId: 0,
+          });
+          dcTenant = await findTenantById(newId);
+        }
+        if (dcTenant) {
+          await updateTenantStripe(dcTenant.id, dcCustomer, dcSubscription);
+          if (dcTenant.tier !== "active") {
+            await updateTenantTier(dcTenant.id, "drive_commander_pro");
+          }
+          void recordAuditEvent({
+            tenantId: dcTenant.id,
+            actorType: "system",
+            actorId: "stripe.webhook",
+            action: "drive_commander_pro.purchased",
+            resource: dcSubscription,
+            metadata: { customer_id: dcCustomer, subscription_id: dcSubscription },
+          });
+          captureServerEvent({
+            event: "drive_commander_purchase",
+            distinctId: dcTenant.id,
+            properties: { subscription_id: dcSubscription },
+          });
+        }
+        break;
+      }
+
       const customerId = typeof session.customer === "string"
         ? session.customer
         : session.customer?.id || "";
@@ -1149,8 +1276,38 @@ app.post("/api/stripe/webhook", async (c) => {
           result.matched,
           tenant.email,
         );
+        if (result.matched > 0) {
+          // A prior delivery of this event may have queued a pending
+          // record — this pass landed, so close it out.
+          await markHubProvisioningDoneByEmail(tenant.email, "activate");
+        } else {
+          // Paid before registering on the Hub. Queue a durable retry;
+          // idempotent on the Stripe event id, so redeliveries no-op.
+          await recordPendingHubProvisioning({
+            stripeEventId: event.id,
+            email: tenant.email,
+            tenantId,
+            kind: "activate",
+            lastError: "hub_user_not_found",
+          });
+          console.warn(
+            "[stripe-webhook] Hub user missing for %s — queued for reconcile",
+            tenant.email,
+          );
+        }
       } catch (err) {
         console.error("[stripe-webhook] Hub user activation failed:", err);
+        try {
+          await recordPendingHubProvisioning({
+            stripeEventId: event.id,
+            email: tenant.email,
+            tenantId,
+            kind: "activate",
+            lastError: err instanceof Error ? err.message : String(err),
+          });
+        } catch (queueErr) {
+          console.error("[stripe-webhook] Failed to queue Hub retry:", queueErr);
+        }
       }
 
       const result = await finalizeActivation(tenant, {
@@ -1236,8 +1393,30 @@ app.post("/api/stripe/webhook", async (c) => {
             result.matched,
             churnedTenantEmail,
           );
+          if (result.matched > 0) {
+            await markHubProvisioningDoneByEmail(churnedTenantEmail, "expire");
+          } else {
+            await recordPendingHubProvisioning({
+              stripeEventId: event.id,
+              email: churnedTenantEmail,
+              tenantId: tenantId ?? null,
+              kind: "expire",
+              lastError: "hub_user_not_found",
+            });
+          }
         } catch (err) {
           console.error("[stripe-webhook] Hub user expiry failed:", err);
+          try {
+            await recordPendingHubProvisioning({
+              stripeEventId: event.id,
+              email: churnedTenantEmail,
+              tenantId: tenantId ?? null,
+              kind: "expire",
+              lastError: err instanceof Error ? err.message : String(err),
+            });
+          } catch (queueErr) {
+            console.error("[stripe-webhook] Failed to queue Hub retry:", queueErr);
+          }
         }
       }
       break;
@@ -1377,6 +1556,26 @@ app.get("/api/admin/activation-health", async (c) => {
      ORDER BY created_at DESC
      LIMIT 100`;
   return c.json({ count: stuck.length, tenants: stuck });
+});
+
+// Retry queued Stripe → Hub provisioning records (see
+// lib/hub-provisioning-queue.ts). Internal — hit from cron, e.g.
+//   curl -X POST -H "x-admin-token: $PLG_ADMIN_TOKEN" \
+//     https://factorylm.com/api/admin/hub-provisioning/reconcile
+// Idempotent: completed rows leave the queue; replays are no-ops.
+app.post("/api/admin/hub-provisioning/reconcile", async (c) => {
+  const token = c.req.header("x-admin-token");
+  if (!token || token !== ADMIN_TOKEN()) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  try {
+    const result = await reconcilePendingHubProvisioning();
+    console.log("[hub-provisioning] Admin reconcile:", result);
+    return c.json(result);
+  } catch (err) {
+    console.error("[hub-provisioning] Admin reconcile failed:", err);
+    return c.json({ error: "reconcile failed" }, 500);
+  }
 });
 
 // Query quota (active subscribers only)

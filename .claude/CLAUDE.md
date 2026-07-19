@@ -170,6 +170,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **mira-hub migrations** — see `.claude/rules/mira-hub-migrations.md` (tenancy is mid-migration to UUID-only — `session.ts` 401s non-UUID tenants; `cmms_equipment.tenant_id` is `TEXT`, kg/Hub is `UUID`; match the column you join to, RLS compares in-type, `GRANT … TO factorylm_app`, drop policy+GiST index before `ALTER COLUMN TYPE`; **read the real error and reproduce with a tenant that can actually authenticate (UUID), not a slug**).
 - **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
 - **One-pipeline ingest law** — see `.claude/rules/one-pipeline-ingest.md` (every source enters via `mira-relay/ingest_contract.py` → `ingest_batch`; no transport forks its own normalizer/allowlist/persistence/batch-shape/enforcement; enforced by `tests/test_architecture.py` Contract 5).
+- **Zero-token architecture (spend law)** — see `.claude/rules/zero-token-architecture.md` (paid inference = budget-declared validation of the artifact under development ONLY — never a dev/debug tool; Claude fixes developmental issues against hermetic fixtures; stable reasoning gets promoted to versioned deterministic artifacts with declared invalidation triggers; backlog `docs/plans/2026-07-17-zero-token-audit-backlog.md`).
 - **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (run `tools/codegraph-preflight.sh` before non-doc code work; `codegraph_context` / `codegraph_impact` before grep + Read; trust the call-graph only after freshness passes).
 - **Graphify excluded from code navigation** — see `.claude/rules/graphify-excluded.md` (CodeGraph is the single code-nav graph; the orchestrator-pulse product KG is a separate, allowed artifact).
 - **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
@@ -177,6 +178,8 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **FactoryLM UI style** — every front end (mira-contextualizer, mira-plc-parser `gui/`, mira-hub, mira-web, Ignition Perspective) uses the shared design tokens (`docs/design/factorylm-tokens.css`): flat/modern, muted-normal + color-for-state, never hardcode a hex. See `.claude/rules/ui-style.md` + skill `factorylm-ui-style` + runbook `docs/design/factorylm-style.md`.
 - **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
 - **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
+- **Sub-agent worktree isolation** — any parallel-dispatched sub-agent that Edits/Writes files runs in its own git worktree (or has confirmed there's no foreign WIP in the shared checkout it could clobber). See `.claude/rules/subagent-worktree-isolation.md`.
+- **Dangerous commands** — before `rm -rf`, `git reset --hard`, or any other irreversible command, print the resolved absolute path/target and confirm it matches intent before executing. See `.claude/rules/dangerous-commands-safety.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
 ## Testing expectations
@@ -197,7 +200,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - ❌ **Auto-promote `proposed` → `verified`** in the knowledge graph.
 - ❌ **Replace SCADA, replace CMMS, or expose arbitrary PLC writes.** That's out of scope. See `.claude/skills/mira-saas-scope-guard/SKILL.md`.
 - ❌ **Add a LangChain/n8n abstraction over the LLM call** (PRD §4).
-- ❌ **Reintroduce Anthropic as a provider** — removed PR #610, never reintroduce. Cascade is Groq → Cerebras → Together.
+- ❌ **Reintroduce Anthropic into the diagnostic cascade** — removed PR #610, never reintroduce there. Cascade is Groq → Cerebras → Together. (Sole owner-authorized carve-out: PrintSynth print-vision interpretation, PR #2661 — vision on print photos only, never a chat/diagnosis provider.)
 - ❌ **Skip the screenshot rule** for visible mira-web UI changes.
 - ❌ **Cross environment boundaries** — no prod `psql`, no direct VPS `docker compose`, no feature-branch traffic to `@FactoryLM_Diagnose`, no hand-edited prod schema. See `docs/environments.md`.
 
@@ -220,8 +223,11 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/karpathy-principles.md` — coding behavior
 - `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
 - `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
+- `.claude/rules/subagent-worktree-isolation.md` — parallel-dispatched sub-agents isolate via git worktree before touching files
+- `.claude/rules/dangerous-commands-safety.md` — print + confirm the resolved path before `rm -rf`/`git reset --hard`/etc.
 - `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read + trust model + preflight + blind spots
 - `.claude/rules/graphify-excluded.md` — Graphify excluded from code navigation (CodeGraph is the single code-nav graph)
+- `.claude/rules/fast-path-optimization.md` — when a feature is a Supervisor fast-path vs a fork (read-only, reuses seams, falls through, no writes, citation-compliant)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
 - `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into

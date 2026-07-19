@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "case_id": "17",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 12,
+    "power_control_flow": 8,
+    "sequence_interlocks_logic": 8,
+    "evidence_grounding_unsupported_claims": 18,
+    "technician_usefulness_clarity": 7
+  },
+  "total": 63,
+  "deductions": [
+    {
+      "claim": "Main visible components include: A circuit breaker or fuse / A DC reactor (optional) / A brake resistor (optional) / A motor ... (list omits the main power terminal designators)",
+      "evidence": "The main circuit terminal strip at the top of the drawing is explicitly labeled R/L1, S/L2, T/L3 (AC input), DC-, DC+/+1, +2/B1, B2 (DC bus/reactor/brake-resistor terminals), and U/T1, V/T2, W/T3 (motor output) with open-circle 'main circuit terminal' symbols per the legend. None of these terminal tags are named anywhere in the response.",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "List the main AC input terminals (R/L1, S/L2, T/L3), DC bus terminals (DC-, DC+/+1, +2/B1, B2), and motor output terminals (U/T1, V/T2, W/T3) as visible, labeled components.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Analog multi-function output terminals (listed) — but the analog INPUT section is never mentioned.",
+      "evidence": "The lower-left block is clearly labeled with terminals '+10 V', 'AI1', 'AI2', 'ACM' and shows an external 5 kΩ potentiometer schematic with pins '3/2/1' feeding AI1, plus a DIP-style range selector for AI2 (0-10V / 0-20mA / 4-20mA). None of this is mentioned.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Include the analog input terminals (AI1, AI2, ACM, +10V) and the optional 5 kΩ speed potentiometer as visible components.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The drive also has a communication card and a USB port. (RS-485/Modbus terminal block omitted)",
+      "evidence": "A separate labeled block shows an RJ-style connector with 'SGND', 'SG+  Modbus RS-485', 'SG-' terminals, clearly legible and distinct from the Option Slot/USB Port block. Not mentioned anywhere in the response.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Note the SG+/SG-/SGND Modbus RS-485 terminal block as a visible component.",
+      "confidence": "high"
+    },
+    {
+      "claim": "According to this print, the circuit appears to control a motor using a drive.",
+      "evidence": "This is the response's only statement about power flow. The print explicitly shows 1φ/3φ line power entering through the breaker/fuse (with an optional MC contactor + surge-absorber protective circuit) at R/L1, S/L2, T/L3, passing through the drive, an optional DC reactor and brake resistor on the DC bus (DC-, DC+/+1, +2/B1, B2), and out to the motor via U/T1, V/T2, W/T3. None of this actual current path is explained despite the components being listed by name.",
+      "category": "power_control_flow",
+      "points_deducted": 8,
+      "severity": "material",
+      "correction": "Explain that line power enters at R/L1, S/L2, T/L3 through the breaker/fuse (and optional MC contactor), is processed by the drive, and drives the motor via U/T1, V/T2, W/T3; the DC bus terminals support an optional external DC reactor or brake resistor for regenerative braking.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(No mention of the protective MC/SA circuit or its documented function.)",
+      "evidence": "The shaded note box on the print states verbatim: 'It is recommended that you install a protective circuit at R1C – R1 to protect the system from damage. When a fault occurs, the MC contact switches to ON to shut off the power and protect the power system.' This is a directly legible, explicit power-flow interlock statement the response never addresses despite generically listing 'Multi-function relay output terminals'.",
+      "category": "power_control_flow",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Explain the optional protective circuit: on a drive fault, the R1C-R1 relay output can energize an external MC contactor coil to remove line power to the drive.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(No explanation of FWD/REV/multi-step-speed command sequence or of STO1/STO2 as a dual-channel safety interlock.)",
+      "evidence": "DI1/FWD and DI2/REV are labeled 'FWD/STOP' and 'REV/STOP'; DI3-DI6 are labeled 'Multi-step speed 1' through 'Multi-step speed 4'. Separately, two distinct switch/contact symbols inside the Safety PLC circuit break STO1 and STO2 independently (a dual-channel Safe-Torque-Off arrangement) — none of this sequence/interlock logic is described; the response only lists DI1-DI7/STO1/STO2 as terminal names without explaining what governs run/stop, direction, speed selection, or the STO permissive.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 8,
+      "severity": "material",
+      "correction": "Describe that DI1/FWD and DI2/REV command run direction, DI3-DI6 select preset speeds, and that STO1/STO2 form a dual-channel Safe-Torque-Off interlock — the drive should not produce torque unless the Safety PLC allows both channels to close.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(No mention of the fault-triggered shutdown interlock documented in the note text.)",
+      "evidence": "Per the same note box referenced above, the drawing documents an explicit fault-interlock behavior ('When a fault occurs, the MC contact switches to ON to shut off the power') that is squarely a 'sequence/interlock' concept the response omits entirely.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 4,
+      "severity": "minor",
+      "correction": "Note the documented fault interlock: a drive fault trips the R1C-R1 relay, which switches the external MC contactor to remove main power.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable.",
+      "evidence": "Several elements are small, dense print requiring close inspection to confirm — the protective-circuit note text inside the shaded box, the '*1'/'*2' footnotes, the NPN/PNP sink-source selector icon, and the AI2 0-20mA/4-20mA/0-10V range-selector diagram. An unqualified 'nothing is unreadable' statement overstates legibility confidence without any caveat, even though the content ultimately is decipherable at full resolution.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Qualify the legibility claim, e.g. 'terminal labels are legible; some small footnote text and configuration-switch icons require zooming in to confirm.'",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Overall explanation prioritizes generic prerequisites/failure-mode bullets over the print's two most troubleshooting-relevant facts.",
+      "evidence": "The print's most operationally significant, explicitly-documented content for a technician diagnosing a 'drive won't run' or fault condition is the STO1/STO2 dual-channel safety interlock and the MC protective fault-shutdown circuit (both captioned in the print itself) — neither is surfaced, reducing the practical value of the explanation for the exact failure modes this print is built to support.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Lead the practical guidance with the STO interlock and MC protective-circuit behavior, since these directly explain why a drive would refuse to run or trip a fault per this print.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Print is a well-scanned manual page (DURApulse GS20/GS20X Full I/O Wiring Diagram, AutomationDirect Ch.2 p.2-38) with almost all terminal labels legible at the provided resolution. Candidate correctly recognized every component it named (no invented devices/tags/terminals) and appropriately hedged its 'what must be true / what would stop it' sections as inference rather than fact. Its main weakness is coverage, not fabrication: it skips the main AC-input/DC-bus/motor-output power path, the analog input block, the RS-485 Modbus terminals, and — most consequentially — the two interlock/sequence facts the print itself calls out in writing (the MC protective fault-shutdown circuit, and the dual-channel STO1/STO2 safety permissive). No hard-failure condition is met: nothing invented, no reversed sequence, no dangerous advice, and the 'nothing unreadable' overstatement does not rise to false-certainty-about-specific-content since the print is in fact largely legible."
+}
