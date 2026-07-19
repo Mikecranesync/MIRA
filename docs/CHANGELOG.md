@@ -3,6 +3,7 @@
 ### v3.176.4 (2026-07-19) - fix(slack): keep print follow-ups on visual context
 
 - Slack print uploads now persist `ELECTRICAL_PRINT` state before slow print interpretation can time out, remember first-turn print photos with a 1-based turn marker, and route follow-up questions back through the saved visual PrintSense context before generic RAG/diagnose routing can answer from stale manuals.
+- Eval Offline CI now keeps the adversarial overlong payload cases but gives them short pytest IDs, preventing huge 10k/100k-character payloads from flooding the GitHub Actions log and aborting the job before the suite can finish.
 
 ### v3.176.3 (2026-07-19) - fix(slack): ship Telegram PrintSense/OCR backend parity
 
