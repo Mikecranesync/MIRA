@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.176.6 (2026-07-19) - fix(slack): fall back to plain text when Block Kit is rejected
+
+- Slack replies now retry as plain text in the same thread when `chat.postMessage` rejects generated Block Kit with `invalid_blocks`, so long PrintSense answers are still visible instead of silently disappearing after "Analyzing equipment...".
+
 ### v3.176.5 (2026-07-19) - fix(slack): preserve electrical-print answers through quality gate
 
 - Slack electrical-print follow-ups now mark `ELECTRICAL_PRINT` as a trusted dispatch kind after the saved-image print handler claims the turn, preventing schematic answers with repeated symbols like `M1`, `K1`, or contactor labels from being replaced by the generic quality-gate rephrase fallback.
