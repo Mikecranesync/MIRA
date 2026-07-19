@@ -277,9 +277,7 @@ async def test_render_outgoing_retries_plain_text_when_blocks_invalid(adapter):
         posted_payloads.append(json or {})
         mock_resp = MagicMock()
         mock_resp.json.return_value = (
-            {"ok": False, "error": "invalid_blocks"}
-            if len(posted_payloads) == 1
-            else {"ok": True}
+            {"ok": False, "error": "invalid_blocks"} if len(posted_payloads) == 1 else {"ok": True}
         )
         return mock_resp
 
@@ -299,6 +297,22 @@ async def test_render_outgoing_retries_plain_text_when_blocks_invalid(adapter):
         "thread_ts": "T001",
         "text": response.text,
     }
+
+
+def test_render_slack_splits_long_plain_text_into_valid_sections():
+    """Long engine answers must not exceed Slack's section text limit."""
+    long_answer = "M1 is powered through contactor K10.\n\n" + ("Check the circuit path. " * 180)
+
+    payload = _chat_adapter.render_slack(NormalizedChatResponse(text=long_answer))
+
+    section_texts = [
+        block["text"]["text"]
+        for block in payload["blocks"]
+        if block.get("type") == "section" and "text" in block
+    ]
+    assert len(section_texts) > 1
+    assert "".join(section_texts) == long_answer
+    assert all(1 <= len(text) <= 3000 for text in section_texts)
 
 
 # ---------------------------------------------------------------------------

@@ -138,6 +138,14 @@ def probe_configured_ollama(target: dict, *, timeout: int = 4) -> str:
     return "unreachable" if not errors else "unreachable; " + "; ".join(errors)
 
 
+def _aux_probe_timeout(timeout: int | float) -> float:
+    try:
+        value = float(timeout)
+    except (TypeError, ValueError):
+        value = 8.0
+    return max(0.25, min(1.0, value / 8.0))
+
+
 def probe_target(node_id: str, target: dict, *, local_node: str | None, timeout: int) -> dict:
     payload = build_remote_probe_body()
     base = {
@@ -149,19 +157,43 @@ def probe_target(node_id: str, target: dict, *, local_node: str | None, timeout:
     if node_id == local_node:
         cmd, kwargs = ["sh", "-s"], {"input": payload}
     else:
-        cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ssh_destination(node_id, target), "sh", "-s"]
+        cmd = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=5",
+            ssh_destination(node_id, target),
+            "sh",
+            "-s",
+        ]
         kwargs = {"input": payload}
     try:
-        cp = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, **kwargs)
+        cp = subprocess.run(
+            cmd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            **kwargs,
+        )
     except Exception as exc:
         return {**base, "status": "unreachable", "error": str(exc), "facts": {}}
     if cp.returncode != 0:
-        return {**base, "status": "unreachable", "error": (cp.stderr or cp.stdout).strip(), "facts": {}}
+        return {
+            **base,
+            "status": "unreachable",
+            "error": (cp.stderr or cp.stdout).strip(),
+            "facts": {},
+        }
     try:
         facts = json.loads(cp.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError) as exc:
         return {**base, "status": "error", "error": f"unparseable probe output: {exc}", "facts": {}}
-    facts["ollama_api_configured_address"] = probe_configured_ollama(target)
+    facts["ollama_api_configured_address"] = probe_configured_ollama(
+        target,
+        timeout=_aux_probe_timeout(timeout),
+    )
     return {**base, "status": "ok", "facts": facts}
 
 
@@ -231,9 +263,23 @@ def render_markdown(results: list[dict], *, title_date: str) -> str:
             continue
         facts = result.get("facts") or {}
         for key in (
-            "cpu", "memory_free", "external_volumes", "docker", "docker_info", "colima",
-            "ollama_version", "ollama_models", "ollama_api_configured_address", "python",
-            "tesseract", "paddleocr", "mlx", "mlx_vlm", "gpu", "listening_tcp", "load",
+            "cpu",
+            "memory_free",
+            "external_volumes",
+            "docker",
+            "docker_info",
+            "colima",
+            "ollama_version",
+            "ollama_models",
+            "ollama_api_configured_address",
+            "python",
+            "tesseract",
+            "paddleocr",
+            "mlx",
+            "mlx_vlm",
+            "gpu",
+            "listening_tcp",
+            "load",
         ):
             detail = _detail(facts.get(key))
             lines.append(f"- {key}:{detail}" if detail.startswith("\n") else f"- {key}: {detail}")
@@ -268,8 +314,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     targets = load_targets(args.network)
-    wanted = list(targets) if args.targets == "all" else [x.strip() for x in args.targets.split(",")]
-    results = [probe_target(node_id, targets[node_id], local_node=args.local_node, timeout=args.timeout) for node_id in wanted]
+    wanted = (
+        list(targets) if args.targets == "all" else [x.strip() for x in args.targets.split(",")]
+    )
+    results = [
+        probe_target(node_id, targets[node_id], local_node=args.local_node, timeout=args.timeout)
+        for node_id in wanted
+    ]
     text = (
         dumps_json(results)
         if args.json

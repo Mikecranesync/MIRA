@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.177.2 (2026-07-19) - fix(slack): split long Block Kit section text
+
+- Slack rendering now splits long plain-text engine answers into multiple valid mrkdwn section blocks before posting, keeping PrintSense explanations under Slack's 3000-character section limit so production replies do not need the `invalid_blocks` plain-text retry path for normal long answers.
+- The Vision ZTA fleet inventory probe now bounds the advisory configured-address Ollama check relative to the CLI timeout so the ambient-python shell-entrypoint CI test cannot overrun its 12s wrapper when runner networking blackholes configured Tailscale/LAN addresses.
+
 ### v3.177.1 (2026-07-19) - feat(printsense): PRINT_THEORY_STYLE=slim — raw-conditions theory prompt for strong vision models
 
 - New `PRINT_THEORY_STYLE` knob (default `full`, or-form): `slim` swaps the print-theory cascade prompt to the raw-probe shape — question-first, quote-printed-text-exactly, honest-absence-with-redirect, live-state meter caveat, "add nothing beyond what the question needs" — keeping deterministic decoded evidence but dropping the OCR block, the evidence-contract clause, and the six-section template.
