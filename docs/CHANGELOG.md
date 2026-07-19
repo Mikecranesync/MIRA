@@ -1,5 +1,18 @@
 # MIRA Release Notes
 
+### v3.176.6 (2026-07-19) - fix(slack): fall back to plain text when Block Kit is rejected
+
+- Slack replies now retry as plain text in the same thread when `chat.postMessage` rejects generated Block Kit with `invalid_blocks`, so long PrintSense answers are still visible instead of silently disappearing after "Analyzing equipment...".
+
+### v3.176.5 (2026-07-19) - fix(slack): preserve electrical-print answers through quality gate
+
+- Slack electrical-print follow-ups now mark `ELECTRICAL_PRINT` as a trusted dispatch kind after the saved-image print handler claims the turn, preventing schematic answers with repeated symbols like `M1`, `K1`, or contactor labels from being replaced by the generic quality-gate rephrase fallback.
+
+### v3.176.4 (2026-07-19) - fix(slack): keep print follow-ups on visual context
+
+- Slack print uploads now persist `ELECTRICAL_PRINT` state before slow print interpretation can time out, remember first-turn print photos with a 1-based turn marker, and route follow-up questions back through the saved visual PrintSense context before generic RAG/diagnose routing can answer from stale manuals.
+- Eval Offline CI now keeps the adversarial overlong payload cases but gives them short pytest IDs, preventing huge 10k/100k-character payloads from flooding the GitHub Actions log and aborting the job before the suite can finish.
+
 ### v3.176.3 (2026-07-19) - fix(slack): ship Telegram PrintSense/OCR backend parity
 
 - Slack image uploads now preserve `platform="slack"` into `Supervisor.process`, so Slack turns are logged and traced as Slack instead of falling through the engine's Telegram default while still using the shared image/PrintSense path.

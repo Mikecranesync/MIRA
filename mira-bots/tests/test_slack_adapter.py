@@ -249,6 +249,58 @@ async def test_render_outgoing_with_blocks(adapter):
     assert posted_payload.get("thread_ts") == "T001"
 
 
+@pytest.mark.asyncio
+async def test_render_outgoing_retries_plain_text_when_blocks_invalid(adapter):
+    """A bad Block Kit render must not drop the engine's answer in Slack."""
+    response = NormalizedChatResponse(
+        text="M1 is powered through contactor K1.\n\nCheck the overload before restart.",
+        blocks=[
+            ResponseBlock(kind="paragraph", data={"text": "M1 is powered through contactor K1."})
+        ],
+    )
+
+    from shared.chat.types import NormalizedChatEvent
+
+    event = NormalizedChatEvent(
+        event_id="e3",
+        platform="slack",
+        tenant_id="T123",
+        user_id="",
+        external_user_id="U456",
+        external_channel_id="C789",
+        external_thread_id="T001",
+    )
+
+    posted_payloads = []
+
+    async def mock_post(url, headers=None, json=None, **kwargs):
+        posted_payloads.append(json or {})
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = (
+            {"ok": False, "error": "invalid_blocks"}
+            if len(posted_payloads) == 1
+            else {"ok": True}
+        )
+        return mock_resp
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=mock_post)
+        mock_client_cls.return_value = mock_client
+
+        await adapter.render_outgoing(response, event)
+
+    assert len(posted_payloads) == 2
+    assert "blocks" in posted_payloads[0]
+    assert posted_payloads[1] == {
+        "channel": "C789",
+        "thread_ts": "T001",
+        "text": response.text,
+    }
+
+
 # ---------------------------------------------------------------------------
 # download_attachment
 # ---------------------------------------------------------------------------
