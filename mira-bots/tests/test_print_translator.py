@@ -217,9 +217,7 @@ class TestIsPrintQuestion:
     def test_what_devices_are_listed_regression(self):
         # The exact caption that hit the free-form LLM and hallucinated
         # ("ladder logic / timers / counters") — must now route to grounded.
-        assert (
-            print_translator.is_print_question("what devices are listed in this print?") is True
-        )
+        assert print_translator.is_print_question("what devices are listed in this print?") is True
 
     def test_theory_phrases_still_match(self):
         assert print_translator.is_print_question("explain this print") is True
@@ -363,3 +361,67 @@ class TestPrintTheoryMaxTokensEnvTunable:
             "B64DATA", "explain this print", _print_vision_data(), "chat-1"
         )
         assert supervisor.router.complete.await_args.kwargs["max_tokens"] == 2000
+
+
+# ── PRINT_THEORY_FULL_RES — full-resolution image to the cascade theory call ─
+#
+# Production crushes photos to 1024 px for the local classifier and reused
+# that crush for the cascade theory call. The R5-alpha probe (2026-07-19)
+# measured serverless big-vision models (MiniMax-M3) reading dense table rows
+# correctly at full resolution that the crushed image loses. The knob sends
+# the caller's full-res bytes (interpret_b64 — already plumbed for the paid
+# interpreter) to build_theory_messages instead. Default OFF.
+
+
+class TestPrintTheoryFullRes:
+    @pytest.mark.asyncio
+    async def test_knob_on_uses_full_res_when_available(self, supervisor, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_FULL_RES", "1")
+        await supervisor._grounded_print_reply(
+            "CRUSHED64",
+            "explain this print",
+            _print_vision_data(),
+            "chat-1",
+            interpret_b64="FULLRES64",
+        )
+        sent = str(supervisor.router.complete.await_args.args[0])
+        assert "FULLRES64" in sent
+        assert "CRUSHED64" not in sent
+
+    @pytest.mark.asyncio
+    async def test_knob_off_keeps_crushed_image(self, supervisor, monkeypatch):
+        monkeypatch.delenv("PRINT_THEORY_FULL_RES", raising=False)
+        await supervisor._grounded_print_reply(
+            "CRUSHED64",
+            "explain this print",
+            _print_vision_data(),
+            "chat-1",
+            interpret_b64="FULLRES64",
+        )
+        sent = str(supervisor.router.complete.await_args.args[0])
+        assert "CRUSHED64" in sent
+        assert "FULLRES64" not in sent
+
+    @pytest.mark.asyncio
+    async def test_knob_on_without_full_res_falls_back_to_crushed(self, supervisor, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_FULL_RES", "1")
+        await supervisor._grounded_print_reply(
+            "CRUSHED64", "explain this print", _print_vision_data(), "chat-1"
+        )
+        sent = str(supervisor.router.complete.await_args.args[0])
+        assert "CRUSHED64" in sent
+
+    @pytest.mark.asyncio
+    async def test_knob_empty_string_is_off(self, supervisor, monkeypatch):
+        """Compose ${PRINT_THEORY_FULL_RES:-} delivers "" in-container — off."""
+        monkeypatch.setenv("PRINT_THEORY_FULL_RES", "")
+        await supervisor._grounded_print_reply(
+            "CRUSHED64",
+            "explain this print",
+            _print_vision_data(),
+            "chat-1",
+            interpret_b64="FULLRES64",
+        )
+        sent = str(supervisor.router.complete.await_args.args[0])
+        assert "CRUSHED64" in sent
+        assert "FULLRES64" not in sent

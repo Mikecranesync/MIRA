@@ -1002,7 +1002,19 @@ class Supervisor:
             return reply
 
         # 2. Grounded cascade fallback (No-Anthropic vision path).
-        messages = print_translator.build_theory_messages(photo_b64, vision_data, question=question)
+        # PRINT_THEORY_FULL_RES=1 sends the caller's full-resolution image to
+        # the cascade theory call instead of the 1024 px classifier crush. The
+        # R5-alpha probe (2026-07-19) showed serverless big-vision models
+        # reading dense table rows correctly at full resolution that the
+        # crushed image loses. Default OFF: the small free models the cascade
+        # was tuned on want the small image. Or-form parse (compose ${VAR:-}
+        # delivers an empty string in-container).
+        theory_b64 = photo_b64
+        if (os.environ.get("PRINT_THEORY_FULL_RES") or "").strip().lower() in ("1", "true", "on"):
+            theory_b64 = interpret_b64 or photo_b64
+        messages = print_translator.build_theory_messages(
+            theory_b64, vision_data, question=question
+        )
         raw = ""
         try:
             raw, usage = await self.router.complete(
