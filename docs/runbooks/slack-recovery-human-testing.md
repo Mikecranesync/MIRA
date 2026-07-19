@@ -1,8 +1,9 @@
 # Slack Recovery Human Testing Guide
 
-Use this guide after deploying the Slack recovery change to production for human validation of `mira-maintenance-agent`.
+Use this guide after deploying the Slack recovery change to production for human validation of the canonical `FactoryLM` Slack app in the `FactoryLM` workspace.
 
 Companion rollback runbook: `docs/runbooks/slack-recovery-rollback.md`.
+System map: `docs/runbooks/slack-production-system-map.md`.
 
 ## Scope
 
@@ -15,6 +16,16 @@ This test proves the production Slack bot can:
 - fail in a diagnosable way without printing secrets or message bodies.
 
 Do not use staging for this pass. Staging intentionally does not run the shared production Slack bot token.
+
+Canonical production Slack target:
+
+- Workspace: `FactoryLM` (`factorylm.slack.com`, team `T0AK2CU16T1`)
+- App/DM: `FactoryLM` (`auth.test` username `factorylm`)
+- Bot user ID: `U0AM3EZBSNQ`
+- Bot ID: `B0ALXRE4CDU`
+- Shared test channel: `#all-factorylm` (`C0AKBEL8C4T`)
+
+Do not use the `MIRA` workspace app `mira-maintenance-agent (local)` for production acceptance. That app is a separate local/dev install, not the app authenticated by production Doppler `factorylm/prd`.
 
 ## Before Testing
 
@@ -35,13 +46,14 @@ curl -sS https://app.factorylm.com/api/health
 
 ```bash
 doppler run --project factorylm --config prd -- \
-  python3.12 mira-bots/slack/doctor.py --expected-user-id "${SLACK_EXPECTED_BOT_USER_ID:-U0B3V3QLUFP}"
+  env PYTHONPATH=mira-bots:mira-bots/slack \
+  python3.12 mira-bots/slack/doctor.py --expected-user-id "${SLACK_EXPECTED_BOT_USER_ID:-U0AM3EZBSNQ}"
 ```
 
 Healthy shape:
 
 ```json
-{"app_token_ok": true, "bot_token_ok": true, "expected_user_id": "U0B3V3QLUFP", "ok": true, "team_id": "T...", "user_id": "U0B3V3QLUFP"}
+{"app_token_ok": true, "bot_id": "B0ALXRE4CDU", "bot_token_ok": true, "expected_user_id": "U0AM3EZBSNQ", "ok": true, "team": "FactoryLM", "team_id": "T0AK2CU16T1", "user_id": "U0AM3EZBSNQ"}
 ```
 
 ## Test Matrix
@@ -50,20 +62,20 @@ Record the Slack timestamp, channel/DM, prompt, and observed response for every 
 
 | ID | Surface | Action | Expected Result |
 |---|---|---|---|
-| S1 | DM | DM `hello` to `mira-maintenance-agent`. | Bot replies in the DM thread with a normal MIRA response or context question. No silent drop. |
+| S1 | DM | DM `hello` to `FactoryLM` in the `FactoryLM` workspace. | Bot replies in the DM thread with a normal MIRA response or context question. No silent drop. |
 | S2 | DM | Ask `what can you help with?` | Bot replies without requiring asset confirmation for the general question. |
-| S3 | `#all-mira` | Mention the app: `@mira-maintenance-agent hello`. | Bot replies in thread. |
-| S4 | `#all-factorylm` | Mention the app: `@mira-maintenance-agent hello`. | Bot replies in thread. |
+| S3 | `#all-factorylm` | Mention the app: `@FactoryLM hello`. | Bot replies in thread. |
+| S4 | Local/dev guard | Open the `MIRA` workspace only to confirm `mira-maintenance-agent (local)` is not being used as the production target. | No production pass/fail is recorded against the local/dev app. |
 | S5 | Slash command | Run `/mira-help`. | Command returns the Slack command/help summary. |
 | S6 | Image fast path | Upload an equipment/nameplate photo with a short caption. | Bot posts `Analyzing equipment...`, then a grounded fast-path response or a clear fallback. |
 | S7 | PDF path | Upload a small non-sensitive PDF manual or sample PDF. | Bot posts `Processing PDF...`, then a success/failure message in thread. |
-| S8 | Allowlist guard | Mention the app in a channel that should not be allowed, if one is configured and safe to use. | Bot stays quiet; operator logs show `channel_not_allowed` without message text. |
+| S8 | Allowlist guard | Mention the app in a channel that should not be allowed, if `SLACK_ALLOWED_CHANNELS` is configured and safe to use. | Bot stays quiet; operator logs show `channel_not_allowed` without message text. Skip this while the production allowlist is unset. |
 
 ## Pass Criteria
 
 Pass for human testing when:
 
-- S1, S3, S4, and S5 respond within a normal Slack wait window;
+- S1, S3, and S5 respond within a normal Slack wait window;
 - S6 and S7 either complete or return actionable error text instead of hanging;
 - no response includes Slack token values, websocket URLs, or raw environment dumps;
 - the bot does not respond outside the allowed channel set when `SLACK_ALLOWED_CHANNELS` is configured;
@@ -79,6 +91,7 @@ Pass for human testing when:
 | `/mira-help` fails but messages work | slash command registration/dashboard config | Verify the Slack dashboard command target and app install. |
 | Photo/PDF path fails only | file permissions or Slack file download auth | Check for safe error text; verify file download scopes. |
 | Doctor reports `bot_user_id_mismatch` | Doppler token points at the wrong Slack app | Fix `SLACK_BOT_TOKEN` or `SLACK_EXPECTED_BOT_USER_ID`, then redeploy `mira-bot-slack`. |
+| `mira-maintenance-agent (local)` fails in the MIRA workspace | Local/dev app config | Do not fail production acceptance. Test the `FactoryLM` app in `factorylm.slack.com`, or open a separate local/dev incident. |
 
 ## Rollback Trigger
 
