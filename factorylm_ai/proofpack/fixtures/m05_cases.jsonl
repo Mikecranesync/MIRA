@@ -1,0 +1,21 @@
+{"case_id": "c01", "text": "can you look at this wiring photo and tell me what K1 does", "expected_route": "printsense_photo"}
+{"case_id": "c02", "text": "i got a print of the panel layout, need help reading it", "expected_route": "printsense_photo"}
+{"case_id": "c03", "text": "the gs10 is faultin agian, showin a code on it", "expected_route": "drive_fault_photo"}
+{"case_id": "c04", "text": "drive keeps tripping every hour or so, not sure why", "expected_route": "drive_fault_photo"}
+{"case_id": "c05", "text": "can u send the whole pdf manual for the powerflex", "expected_route": "full_pdf_package"}
+{"case_id": "c06", "text": "need the full doc package for this motor before i start", "expected_route": "full_pdf_package"}
+{"case_id": "c07", "text": "whats the spec on the max current for this breaker", "expected_route": "prd_request"}
+{"case_id": "c08", "text": "i need a prd for the new nameplate reader feature", "expected_route": "prd_request"}
+{"case_id": "c09", "text": "can u write me a claude prompt for this task", "expected_route": "code_prompt_request"}
+{"case_id": "c10", "text": "generate the code prompt for the new bot feature", "expected_route": "code_prompt_request"}
+{"case_id": "c11", "text": "thats wrong, the sensor is actually npn not pnp", "expected_route": "feedback_event"}
+{"case_id": "c12", "text": "the answer u gave was incorrect, please fix it", "expected_route": "feedback_event"}
+{"case_id": "c13", "text": "wat does this do", "expected_route": "unknown"}
+{"case_id": "c14", "text": "hey can u help me real quick", "expected_route": "unknown"}
+{"case_id": "c15", "text": "idk whats goin on with the machine today", "expected_route": "unknown"}
+{"case_id": "c16", "text": "show me the wiring drawing for the estop circuit", "expected_route": "printsense_photo"}
+{"case_id": "c17", "text": "vfd throwing an error code i cant read", "expected_route": "drive_fault_photo"}
+{"case_id": "c18", "text": "pls send the pdf for the panel", "expected_route": "full_pdf_package"}
+{"case_id": "c19", "text": "whats the spec sheet look like for this relay", "expected_route": "prd_request"}
+{"case_id": "c20", "text": "write a prompt so claude can explain this error code chart", "expected_route": "code_prompt_request"}
+{"case_id": "c21", "text": "attaching the wiring print for panel 3, can u check it", "expected_route": "printsense_photo"}

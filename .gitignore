@@ -284,3 +284,8 @@ mira-crawler/cron/manual_queue.json
 
 # regime3 golden-label local overlays (customer-project cases live local-only)
 tests/regime3_nameplate/golden_labels/**/*.local.json
+
+# factorylm_ai local data (never commit)
+factorylm_ai/data/
+factorylm_ai/proofpack/reports/
+.venv-flmai/

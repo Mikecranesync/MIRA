@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/task_outputs/m05_output.schema.json",
+  "title": "M05IntentRouterOutput",
+  "description": "ZTA task M05 (text intent router) chat output -- the Phase A route decision (handoff doc S7 'User Sends Anything'). Model: LiquidAI/LFM2.5-8B-A1B (Together). Prompt: factorylm_ai/tasks/prompts/m05_intent_router_v1.txt.",
+  "type": "object",
+  "properties": {
+    "route": {
+      "type": "string",
+      "enum": [
+        "printsense_photo",
+        "drive_fault_photo",
+        "cabinet_photo",
+        "full_pdf_package",
+        "prd_request",
+        "code_prompt_request",
+        "feedback_event",
+        "unknown"
+      ]
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "required_next_step": {
+      "type": "string",
+      "enum": [
+        "classify_image",
+        "extract_pdf_package",
+        "draft_prd",
+        "generate_code_prompt",
+        "log_feedback_event",
+        "ask_clarifying_question"
+      ]
+    },
+    "should_ask_clarification": { "type": "boolean" }
+  },
+  "required": ["route", "confidence", "required_next_step", "should_ask_clarification"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "route": "printsense_photo",
+      "confidence": 0.9,
+      "required_next_step": "classify_image",
+      "should_ask_clarification": false
+    },
+    {
+      "route": "unknown",
+      "confidence": 0.3,
+      "required_next_step": "ask_clarifying_question",
+      "should_ask_clarification": true
+    }
+  ]
+}
