@@ -2602,9 +2602,7 @@ class Supervisor:
                 # default caption otherwise got only the thin OCR-label preview.
                 has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
                 question = message if has_real_question else None
-                reply = await self._grounded_print_reply(
-                    photo_b64, question, vision_data, chat_id
-                )
+                reply = await self._grounded_print_reply(photo_b64, question, vision_data, chat_id)
                 if not reply:
                     # Fail-safe only — the grounded path is display-ready even on
                     # provider failure, but never leave a print unanswered.

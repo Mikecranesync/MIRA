@@ -1,9 +1,18 @@
 # MIRA Release Notes
 
-### v3.174.0 (2026-07-19) - bench(print): Tower OP pack — driver depth fix + post-#2800 comparison run
+### v3.175.0 (2026-07-19) - bench(print): Tower OP pack — driver depth fix + two comparison runs
 
 - **`bench_submit.py` `parents[3]` → `parents[4]`**: from its committed depth the driver resolved REPO to `tools/`, so the README's re-run loop failed on `import submit` for every case — the pack's reproducibility promise was broken as-committed (discovered by the first real re-run; a depth-corrected copy was used that night).
 - **`RERUN-2026-07-19-post-2800.md`**: the first comparison run per the pack's own protocol — 12/12 sha256-verified photos through merged main (post-#2800), $0 cascade, 12 independent vision judges. Headline: evidence pipeline fixed (ocr_items 0 → 18-75; classification 0.60 → 0.85) but answers flat (mean 1.0 vs 1.7 baseline); no baseline failure class disappeared; one new class (garbled-OCR laundering); autoeval fired 3 live P0s in-run. The per-class table drove #2713's revival and #2805.
+- **`RERUN2-2026-07-19-post-2713-2805.md`**: second comparison run (main `2ff4e78e1`, both needle-movers live): the routing wall broke — 11/12 cases reach vision (was 7/12; ex-caption-gate c06/c08 and ex-misclass c11/c12 all answer), #2805's `false_absence_claim` fired live 4×, measurement-corrected mean 1.0 flat vs rerun1 → synthesis isolated as the sole bottleneck. Carries the code-confirmed next-round levers (L1–L7): narrow the `bot.py` wiring carve-out (`kind != "none"` silently drops wiring-phrased print questions pre-vision — c04's new drop), make the dense-table override outrank `NAMEPLATE_OCR_FIELDS` unit-vocabulary at high density (c10: ~170-item LED table read as NAMEPLATE on native V/Hz table content), add a Together vision timeout knob (`router.py` hardcodes 30.0s; 2/10 theory calls lost with successes measured at 25.7–28.6s), bench capture fixes (`final_text` = concatenated reply chunks — a split reply's correct answer went ungraded; decline-reason field; provider mislabel), a wrong-row/cross-module lookup autoeval rule (c11/c12 fixtures attached), the clean PR-F empirical case, and a c06 truth-set correction (honest absence + redirect is the only correct answer — S21/S22 are not on that sheet).
+
+### v3.174.0 (2026-07-19) - feat(slack): Telegram fast-path parity — nameplate/wiring/drive-pack grounded fast-paths
+
+- Slack now runs the same four grounded fast-paths as Telegram via a new adapter-agnostic router (`shared/chat/fast_paths.py`) + shared per-conversation drive-context store (`shared/chat/drive_context.py`, per-thread on Slack): nameplate photo → cited drive-pack ID, wiring photo → `proposed` rows, wiring text → verified-only Q&A, drive-pack text continuity. Reads are cited/verified-only; writes are `approval_state='proposed'`; safety turns yield to the engine. Telegram unchanged (its shared-router migration is a separate PR).
+
+### v3.173.0 (2026-07-19) - chore(bots): ruff-format drift cleanup — vision_worker.py + printsense_testkit.py
+
+- Pure `ruff format` (0.9.10, the CI pin) of the two drifted files — un-reds the non-required "Lint & Format" check that stayed red through the OCR-regime and routing merges. Recomputed after #2713 landed so the format covers the final file state. Zero semantic change; covering suites green.
 
 ### v3.172.0 (2026-07-18) - fix(bots): visual-first photo routing — image decides, captions are tie-breakers
 
