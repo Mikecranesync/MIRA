@@ -1138,3 +1138,10 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 - Scorecard: 47/57 passing (82%) — from 2026-06-27T2229 run
 - Action: issue-filed (commented on #1876)
 - Multi-file cluster hard stop: failures span engine.py (8 fixtures, FSM state mismatches) + guardrails.py/prompts (1 fixture, gs3_ground_fault keyword miss). Autopatch skipped; next steps in issue comment.
+
+## eval-fixer run — 2026-07-19
+- Scorecard: 47/57 passing (82%) — from 2026-07-19T0322 run; in the normal 44–51 band, **0 regressions flagged.**
+- Action: issue-filed (comment on rolling tracker #1876). **This wiki entry was committed to a fresh `origin/main`-based branch** (`docs/eval-fixer-2026-07-19`) because the working checkout was **334 commits behind main** — main's `hot.md` ends at 2026-06-27, so every eval-fixer entry 06-28 → 07-18 is **stranded** on the stale grab-bag branch and never reached main. This is the #2759 stranding bug, worse than realized (~3 weeks of reports lost to main).
+- No patch: same #2759 structurally-unsatisfiable gate — 10 failures / 10 patchable but the watchdog emits **3 file_clusters** (engine.py, guardrails.py, active.yaml; each `cp_keyword_match` statically maps to guardrails.py+active.yaml), tripping the multi-cluster hard stop.
+- Honest decomposition of the 10: **3 provider-timeout flakes** (`gs10_overcurrent_01`, `pf520_hw_overcurrent_17`, `vfd_abb_01_acs580_fault_2310` — all ended on the "taking longer than usual" placeholder, inflating the count, NOT content bugs); **5 engine.py FSM over-qualify-by-one-state** (`pf525_f004_02` Q2→DIAGNOSIS, `vague_opener_05` & `asset_change_08` & `abbreviation_10` Q1→Q2, `self_critique_34` IDLE→Q1); **2 KB/keyword misses** (`gs3_ground_fault_14` KB-miss honesty fallback, `vfd_siemens_04_v20_startup` generic+KB-gap).
+- Highest-leverage human fix remains the engine.py FSM pacing cluster; the #2759 watchdog-gate fix and the wiki-stranding fix both still outstanding.
