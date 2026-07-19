@@ -462,6 +462,7 @@ services:
       # live turns truncated mid-sentence at that cap). Read at call time.
       - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
       - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
+      - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions

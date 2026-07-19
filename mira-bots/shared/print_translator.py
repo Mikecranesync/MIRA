@@ -28,6 +28,7 @@ existing vision classifier (`engine.vision`) and inference cascade
 
 from __future__ import annotations
 
+import os
 import re
 
 # no I/O, no DB, no network in this module — pure prompt/intent logic.
@@ -304,6 +305,18 @@ def is_print_question(text: str) -> bool:
     return bool(_TROUBLE_RE.search(lowered) and domain)
 
 
+SLIM_THEORY_SYSTEM_PROMPT = """\
+You are answering a maintenance technician's question about the electrical \
+print in the photo. Answer ONLY from what is printed on the sheet; quote \
+printed text and device tags exactly as shown. If the sheet does not contain \
+the answer, say so plainly and name the sheet or document that would. \
+A print never shows live machine state — if the question touches present \
+state (energized, contact open/closed), say the technician must verify with \
+a meter. Do not describe schematic-software UI chrome. Be direct and \
+concise: answer the question first, and add nothing beyond what the \
+question needs — no filler sections, no component inventories."""
+
+
 def _ocr_block(vision_data: dict) -> str:
     """The OCR ground-truth block.
 
@@ -338,6 +351,40 @@ def build_theory_messages(
     visible image, never inventing a device/tag/connection.
     """
     drawing_type = (vision_data or {}).get("drawing_type") or "electrical drawing"
+    # PRINT_THEORY_STYLE=slim (default "full", or-form): the R5 loop
+    # (2026-07-19, ROUND5 report) measured the full template — OCR block +
+    # evidence contract + six-section format — actively degrading strong
+    # vision models: fabricating verbosity around correct direct answers
+    # (21-26 invented-tag entries vs ~0 raw) and reasoning burned past the
+    # router's retry cap, while the raw 3-sentence instruction scored the
+    # series-best 8.54. Slim reproduces the raw conditions through the
+    # production path; the deterministic autoeval still audits every reply
+    # post-hoc, and format_theory_reply's contact-state caveat still applies.
+    style = (os.environ.get("PRINT_THEORY_STYLE") or "full").strip().lower()
+    if style == "slim":
+        parts = [f"Drawing type: {drawing_type}"]
+        det_lines = (vision_data or {}).get("deterministic_evidence") or []
+        if det_lines:
+            parts.append(
+                "Deterministic decoded evidence (from cited code — trust these "
+                "over your own reading of the image):\n"
+                + "\n".join(f"- {line}" for line in det_lines)
+            )
+        q = (question or "").strip()
+        parts.append(f"QUESTION: {q}" if q else "Explain what this print shows, briefly.")
+        return [
+            {"role": "system", "content": SLIM_THEORY_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                    },
+                    {"type": "text", "text": "\n\n".join(parts)},
+                ],
+            },
+        ]
     user_text = f"Drawing type: {drawing_type}\n\n{_ocr_block(vision_data)}"
     # Evidence contract (Task E1, from the Tower OP re-bench): always present
     # so it binds even without a question. Attacks three observed failures —

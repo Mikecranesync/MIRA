@@ -425,3 +425,65 @@ class TestPrintTheoryFullRes:
         sent = str(supervisor.router.complete.await_args.args[0])
         assert "CRUSHED64" in sent
         assert "FULLRES64" not in sent
+
+
+# ── PRINT_THEORY_STYLE=slim — raw-conditions prompt for strong vision models ─
+#
+# The R5 loop (2026-07-19) measured the full template (OCR block + evidence
+# contract + six-section format) degrading strong vision models: fabricating
+# verbosity around correct direct answers and reasoning burned past the
+# router's retry cap, while the raw 3-sentence instruction scored the
+# series-best 8.54. Slim reproduces raw conditions through production.
+
+
+class TestPrintTheoryStyleSlim:
+    def _msgs(self, question="what does K1 do?"):
+        return print_translator.build_theory_messages(
+            "B64IMG", _print_vision_data(), question=question
+        )
+
+    def test_default_full_keeps_template(self, monkeypatch):
+        monkeypatch.delenv("PRINT_THEORY_STYLE", raising=False)
+        msgs = self._msgs()
+        assert msgs[0]["content"] == print_translator.THEORY_SYSTEM_PROMPT
+        text = msgs[1]["content"][1]["text"]
+        assert "OCR labels extracted" in text
+        assert "Evidence discipline" in text
+
+    def test_empty_string_knob_is_full(self, monkeypatch):
+        """Compose ${PRINT_THEORY_STYLE:-} delivers "" in-container — full."""
+        monkeypatch.setenv("PRINT_THEORY_STYLE", "")
+        msgs = self._msgs()
+        assert msgs[0]["content"] == print_translator.THEORY_SYSTEM_PROMPT
+
+    def test_slim_drops_template_keeps_question(self, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_STYLE", "slim")
+        msgs = self._msgs("what feeds this control unit?")
+        assert msgs[0]["content"] == print_translator.SLIM_THEORY_SYSTEM_PROMPT
+        text = msgs[1]["content"][1]["text"]
+        assert "QUESTION: what feeds this control unit?" in text
+        assert "OCR labels extracted" not in text
+        assert "Evidence discipline" not in text
+        assert "six" not in text.lower()
+        # image still first content block, same wire shape as full
+        assert msgs[1]["content"][0]["type"] == "image_url"
+        assert "B64IMG" in msgs[1]["content"][0]["image_url"]["url"]
+
+    def test_slim_keeps_deterministic_evidence(self, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_STYLE", "slim")
+        vd = {**_print_vision_data(), "deterministic_evidence": ["13-14 = NO contact"]}
+        msgs = print_translator.build_theory_messages("B64IMG", vd, question="is 13-14 NO?")
+        text = msgs[1]["content"][1]["text"]
+        assert "13-14 = NO contact" in text
+        assert "Deterministic decoded evidence" in text
+
+    def test_slim_without_question_asks_for_brief_explain(self, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_STYLE", "slim")
+        msgs = self._msgs(question=None)
+        text = msgs[1]["content"][1]["text"]
+        assert "Explain what this print shows, briefly." in text
+
+    def test_slim_system_carries_safety_floor(self):
+        s = print_translator.SLIM_THEORY_SYSTEM_PROMPT
+        assert "verify with" in s and "meter" in s
+        assert "never shows live" in s
