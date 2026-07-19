@@ -338,6 +338,11 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
         # boilerplate ("VIEW-ONLY", citation blocks) trips the same n-gram /
         # substring heuristics as tag_query/status_summary above.
         "drive_pack",
+        # 2026-07-19: electrical-print replies are grounded to the saved print
+        # image before this dispatch kind is set. Schematic answers naturally
+        # repeat symbols/labels (M1, K1, contactor), which can trip the generic
+        # repetition gate and replace the useful print answer with a rephrase.
+        "ELECTRICAL_PRINT",
     }
 )
 

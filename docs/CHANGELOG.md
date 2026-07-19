@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.176.5 (2026-07-19) - fix(slack): preserve electrical-print answers through quality gate
+
+- Slack electrical-print follow-ups now mark `ELECTRICAL_PRINT` as a trusted dispatch kind after the saved-image print handler claims the turn, preventing schematic answers with repeated symbols like `M1`, `K1`, or contactor labels from being replaced by the generic quality-gate rephrase fallback.
+
 ### v3.176.4 (2026-07-19) - fix(slack): keep print follow-ups on visual context
 
 - Slack print uploads now persist `ELECTRICAL_PRINT` state before slow print interpretation can time out, remember first-turn print photos with a 1-based turn marker, and route follow-up questions back through the saved visual PrintSense context before generic RAG/diagnose routing can answer from stale manuals.
