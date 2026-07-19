@@ -75,8 +75,9 @@ def test_visible_print_routes_to_print_regardless_of_caption(vw, caption):
 
 def test_equipment_photo_not_hijacked_by_print_caption(vw):
     """kit-06 with 'Explain this print': visual equipment evidence must win."""
-    r = vw._classify_photo(_CABINET_DESC, ocr_items=["Micro820", "2080-LC20-20QBB"],
-                           caption="Explain this print")
+    r = vw._classify_photo(
+        _CABINET_DESC, ocr_items=["Micro820", "2080-LC20-20QBB"], caption="Explain this print"
+    )
     assert r["type"] == "EQUIPMENT_PHOTO", r
 
 
@@ -245,6 +246,85 @@ def test_moderate_equipment_photo_ocr_count_stays_equipment_photo(vw):
     items = _synthetic_led_table_ocr_items(20)
     r = vw._classify_photo(_LED_DIAGNOSTIC_TABLE_DESC, ocr_items=items, caption="")
     assert r["type"] == "EQUIPMENT_PHOTO", r
+
+
+# --------------------------------------------------------------------------- #
+# c10-class regression (2026-07-19 Tower OP bench re-benchmark): a PLC LED-
+# reference table page (~170 OCR items) carried a handful of voltage/frequency
+# call-outs ("24 V", "10 Hz", "voltage") as NATIVE TABLE CONTENT, not a
+# nameplate — yet the NAMEPLATE_OCR_FIELDS unit-vocabulary branch (>=3 hits)
+# ran BEFORE the DENSE_TABLE_OCR_THRESHOLD check and claimed it NAMEPLATE at
+# 0.67 confidence, so the dense-table rescue above never ran. Fixed with a
+# ratio-aware guard (NAMEPLATE_FIELD_DENSITY_THRESHOLD): at dense-table volume
+# the unit-field branch only claims the photo if plate vocabulary proper is
+# ALSO present, or the hit density is itself plate-like (~0.15+). All
+# fixtures below are 100% FICTIONAL, per the c11/c12 convention above — no
+# real print text.
+# --------------------------------------------------------------------------- #
+
+
+def _salted_led_table_items(n: int, salt: tuple) -> list:
+    """``n`` fictional LED-table OCR items (`_synthetic_led_table_ocr_items`)
+    with the first ``len(salt)`` entries replaced by unit-vocabulary strings —
+    mirrors the c10 case: native table content that happens to carry a few
+    voltage/frequency call-outs alongside the fictional LED/module refs."""
+    items = _synthetic_led_table_ocr_items(n)
+    for i, value in enumerate(salt):
+        items[i] = value
+    return items
+
+
+# 4 items -> 3 distinct NAMEPLATE_OCR_FIELDS hits ("hz", "vac", "voltage"),
+# the same shape as the real c10 page's ~4 hits in ~170 items.
+_C10_UNIT_VOCAB_SALT = ("24 V", "10 Hz", "480 VAC", "voltage")
+
+
+def test_dense_led_table_salted_with_unit_vocabulary_routes_to_print(vw):
+    """c10-class regression: a dense LED/diagnostic table whose native
+    content happens to include a few voltage/frequency call-outs must still
+    classify ELECTRICAL_PRINT via the DENSE_TABLE_OCR_THRESHOLD signal — the
+    low hit DENSITY (3 hits in 170 items, ~0.018) must not let the
+    NAMEPLATE_OCR_FIELDS branch claim it ahead of the density check."""
+    items = _salted_led_table_items(170, _C10_UNIT_VOCAB_SALT)
+    r = vw._classify_photo(_LED_DIAGNOSTIC_TABLE_DESC, ocr_items=items, caption="")
+    assert r["type"] == "ELECTRICAL_PRINT", r
+
+
+def test_true_nameplate_unit_fields_below_dense_threshold_still_nameplate(vw):
+    """Below DENSE_TABLE_OCR_THRESHOLD the unit-field branch is UNCHANGED: a
+    genuine VFD/motor nameplate with a dozen readable fields and >=3 unit
+    hits still classifies NAMEPLATE, whatever the vision model calls it."""
+    items = [
+        "ABC Drives Inc",
+        "Model AC100",
+        "HP 5",
+        "Volts 480",
+        "Hz 60",
+        "Amps 12",
+        "Enclosure NEMA 4",
+        "Serial No 12345",
+        "RPM 1750",
+        "Frequency 60",
+        "Catalog No X100",
+        "Made in USA",
+    ]
+    r = vw._classify_photo(
+        "a metal identification tag mounted on the drive housing",
+        ocr_items=items,
+        caption="",
+    )
+    assert r["type"] == "NAMEPLATE", r
+
+
+def test_dense_true_nameplate_with_plate_vocabulary_still_nameplate(vw):
+    """Adversarial case (protection preserved): a dense (>=50 item) page whose
+    OCR carries plate vocabulary proper ("Rating Plate") must still classify
+    NAMEPLATE — the density guard only narrows the unit-field branch; it must
+    never override an explicit nameplate/rating-plate/data-plate mention."""
+    items = _synthetic_led_table_ocr_items(60)
+    items[0] = "Rating Plate"
+    r = vw._classify_photo(_LED_DIAGNOSTIC_TABLE_DESC, ocr_items=items, caption="")
+    assert r["type"] == "NAMEPLATE", r
 
 
 # --------------------------------------------------------------------------- #

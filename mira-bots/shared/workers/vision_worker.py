@@ -290,6 +290,21 @@ SCHEMATIC_TAG_THRESHOLD = 3
 # STRONG_PRINT_SIGNALS and the schematic-tag grammar already do.
 DENSE_TABLE_OCR_THRESHOLD = 50
 
+# Guards the NAMEPLATE_OCR_FIELDS unit-vocabulary branch (>=3 hits, above) at
+# dense-table volume — bench regression 2026-07-19, c10: a ~170-item PLC
+# LED-reference table carried "24 V"/"10 Hz"/"(25 Hz)"/"voltage" as native
+# table content, hitting >=3 NAMEPLATE_OCR_FIELDS and returning NAMEPLATE
+# before the DENSE_TABLE_OCR_THRESHOLD check above ever ran. At
+# len(ocr_items) >= DENSE_TABLE_OCR_THRESHOLD, the unit-field branch requires
+# EITHER plate vocabulary proper (NAMEPLATE_KEYWORDS — checked earlier,
+# unconditional on density) OR a hit density at/above this ratio. Derived
+# from the two real data points: a genuine VFD spec plate is ~3+ hits in ~a
+# dozen OCR items (~0.25+); the c10 table is ~4 hits in ~170 items (~0.02).
+# 0.15 sits with margin below a real plate and well above the table case.
+# Below the dense threshold this guard does not apply — unit-field NAMEPLATE
+# detection is unchanged.
+NAMEPLATE_FIELD_DENSITY_THRESHOLD = 0.15
+
 
 def parse_ocr_reply(raw: str) -> list[str]:
     """Model OCR reply -> clean text items (numbered list / markdown tolerant)."""
@@ -636,10 +651,23 @@ class VisionWorker:
         # VFD and motor nameplates are often printed labels that vision models describe
         # using the equipment name ("drive", "controller") rather than "nameplate".
         # (Substring match on purpose — "5HP"/"480VAC"/"60Hz" abut digits.)
+        #
+        # Density-gated at dense-table volume (see NAMEPLATE_FIELD_DENSITY_THRESHOLD
+        # docstring, c10 regression): a handful of unit-field hits scattered across
+        # 50+ OCR items is table content, not a plate, unless plate vocabulary
+        # proper is also present. Below the dense threshold this branch is
+        # unchanged from before.
         ocr_field_hits = sum(1 for f in NAMEPLATE_OCR_FIELDS if f in ocr_text_lower)
         if ocr_field_hits >= 3:
-            conf = min(1.0, 0.55 + ocr_field_hits * 0.04)
-            return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
+            is_dense = len(ocr_items) >= DENSE_TABLE_OCR_THRESHOLD
+            field_density = (ocr_field_hits / len(ocr_items)) if ocr_items else 0.0
+            if (
+                not is_dense
+                or nameplate_matches > 0
+                or field_density >= NAMEPLATE_FIELD_DENSITY_THRESHOLD
+            ):
+                conf = min(1.0, 0.55 + ocr_field_hits * 0.04)
+                return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
 
         # Vision structural detection: "table with specifications" or "specifications for"
         # catches VFD spec labels described by vision models using the equipment name
