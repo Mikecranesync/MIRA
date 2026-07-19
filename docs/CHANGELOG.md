@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.177.3 (2026-07-19) - fix(slack): extend print follow-up timeout budget
+
+- `mira-bot-slack` now receives `MIRA_PROCESS_TIMEOUT=${MIRA_PROCESS_TIMEOUT:-60}` in production and local Slack compose, matching the live 2026-07-19 smoke where the full PrintSense follow-up completed in 40.8s after the saved Slack print photo loaded while OpenAI was quota-limited and Together handled the fallback.
+
 ### v3.177.2 (2026-07-19) - fix(slack): split long Block Kit section text
 
 - Slack rendering now splits long plain-text engine answers into multiple valid mrkdwn section blocks before posting, keeping PrintSense explanations under Slack's 3000-character section limit so production replies do not need the `invalid_blocks` plain-text retry path for normal long answers.
