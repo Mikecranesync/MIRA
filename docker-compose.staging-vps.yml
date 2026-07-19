@@ -463,6 +463,7 @@ services:
       - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
       - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
       - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
+      - PRINT_THEORY_VERIFY=${PRINT_THEORY_VERIFY:-}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions

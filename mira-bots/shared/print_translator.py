@@ -317,6 +317,48 @@ concise: answer the question first, and add nothing beyond what the \
 question needs — no filler sections, no component inventories."""
 
 
+VERIFY_SYSTEM_PROMPT = """\
+You are a print-verification editor. You receive a photo of an electrical \
+print and a DRAFT answer another reader wrote about it. Your only job is to \
+verify the draft against what is actually printed on the sheet and return \
+the corrected answer:
+1. Re-check every device tag, label, value, terminal, and quoted text in \
+the draft against the sheet; fix any misquote so it matches the printed \
+text exactly.
+2. Delete any claim you cannot see printed on the sheet.
+3. If a printed label tier, contact number, or cross-reference sits \
+directly on or above a device the draft is about and the draft omitted it, \
+add it, quoted verbatim.
+4. Change nothing else. Keep the draft's structure, tone, and length. \
+Return ONLY the corrected answer text — no commentary about your edits."""
+
+
+def build_verify_messages(photo_b64: str, draft: str, question: str | None = None) -> list[dict]:
+    """``[system, user(image + draft)]`` for the ``PRINT_THEORY_VERIFY`` pass.
+
+    Same wire shape as ``build_theory_messages`` (image block first) so the
+    router's vision-model selection applies identically.
+    """
+    parts = []
+    q = (question or "").strip()
+    if q:
+        parts.append(f"The technician's question was: {q}")
+    parts.append(f"DRAFT ANSWER TO VERIFY AGAINST THE SHEET:\n{draft}")
+    return [
+        {"role": "system", "content": VERIFY_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{photo_b64}"},
+                },
+                {"type": "text", "text": "\n\n".join(parts)},
+            ],
+        },
+    ]
+
+
 def _ocr_block(vision_data: dict) -> str:
     """The OCR ground-truth block.
 

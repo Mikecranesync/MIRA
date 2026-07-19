@@ -75,3 +75,25 @@ Spend-law compliance: every metered phase was the bounded acceptance test of a n
 ## Evidence
 
 Session-522d4a0e scratchpad: `qual-r5/alpha/{kimi,minimax}/c*.json` · `qual-r5/kimi8k/c*.json` · `qual-r5/laneBETA/` + `run5.log` · `qual-r5/laneGAMMA/` + `run6.log` · `alpha-verdicts.json` / `kimi-full-verdicts.json` / `beta-verdicts.json` / `gamma-verdicts.json` (verbatim panel JSON). CHARLIE: `~/towerop/out-r5/`, `out-r6/`, `run5.log`, `run6.log`, `run_bench5.sh`, `run_bench6.sh` (with the spend guard). Photos sha256 12/12 verified (same custody chain as rounds 3–4). Branch `fix/router-reasoning-burn` @ `5f887e01` (PR #2819). Round-4 context: `ROUND4-2026-07-19-together-qualification.md` (PR #2818).
+
+
+---
+
+## ADDENDUM 2 (same day, third directive: "do what you would do to get this up to the next intelligence level"): PRINT_THEORY_VERIFY — generate→verify beats the raw ceiling
+
+**The build (PR #2826, v3.178.0):** `PRINT_THEORY_VERIFY=1` — after a non-empty theory draft, ONE self-verification pass re-reads the sheet against the draft (fix misquotes to printed text, delete claims not visible, add printed tiers/contacts/xrefs omitted on the asked device, change nothing else). Falls through on any failure — draft never lost. Eight hermetic tests; composes with the delta knob trio.
+
+**R5-epsilon acceptance run** (delta config + verify; $0.3721, in-script guard stopped the round after c11 — c12 unmeasured; 12 blind judges on the 11 measured):
+
+| Case-matched (11 cases) | delta | **epsilon** |
+|---|---|---|
+| Mean | 7.59 | **8.55 (+0.96)** |
+| Passes | 6 | **8** |
+
+**Per-case deltas:** c04 **3→10** (the column-shift misread that survived every prior configuration — the verify re-read corrected I5.1→I6.1 and X5,1.3→X5,2.3, judged a clean 10); c08 6.5→9.5 (wrong volunteered terminal DELETED); c07 7→9 (labels quoted verbatim); c06 4→6; unchanged: c01 9, c02 9.5, c05 10, c10 10, c11 9.5. **Regressions, both instruction-wording defects:** c03 6→5 (the "add omitted tiers" clause made the model SWAP tiers — torque-limitation replaced braking-relay instead of accumulating both); c09 9→6.5 (the verifier ADDED a wrong attribution — "240V at Q2" where the layout shows Q4.C — the editor prompt lacks "never add new connections/attributions; only printed labels directly on the asked device").
+
+**Projected full-12 (c12 at delta's 9.5): ≈8.63 — the first configuration to EXCEED the measured raw model ceiling (8.54), through the full production path.** Verify mechanism health: 11/11 applied, 0 empty, 0 errors, 0 burns. Cost: verify roughly +65% tokens/round (the second full-res image upload dominates) — $0.37 vs delta's $0.23 ceiling.
+
+**Next bounded iteration (needs a fresh declaration, ~$0.40):** two verify-prompt wording fixes — (1) "add missing tiers WITHOUT removing any function label the draft already named" (c03), (2) "NEVER add a new connection, terminal, or attribution the draft did not contain; additions are limited to printed label text directly on the asked device" (c09) — then re-run. If both regressions convert while the four fixes hold, the projection is ≈9.2. The 9/10 goal is, for the first time, within a single wording iteration's reach.
+
+**Ledger for this directive:** $0.3721 (guard-stopped $0.02 past the $0.35 line by per-case check granularity — reported actual). Program total across three directives: ≈$2.42 ceiling-priced. 86 blind judges total.

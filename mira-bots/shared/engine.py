@@ -1032,6 +1032,39 @@ class Supervisor:
         except Exception as exc:  # noqa: BLE001 — never eat the turn
             logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
             raw = ""
+        # PRINT_THEORY_VERIFY=1 (or-form, default off): one self-verification
+        # pass — the vision model re-reads the sheet against its own draft
+        # (fix misquotes to the printed text, delete claims it cannot see
+        # printed, add printed tiers/contacts/cross-refs it omitted on the
+        # asked device). R5-delta's remaining defect classes (a wrong
+        # volunteered terminal, a paraphrased label, a column-shift trace, a
+        # dropped header tier) are second-look errors by construction.
+        # Fall-through on ANY failure or empty result — the draft is never
+        # lost and the turn is never eaten.
+        if raw and (os.environ.get("PRINT_THEORY_VERIFY") or "").strip().lower() in (
+            "1",
+            "true",
+            "on",
+        ):
+            try:
+                v_messages = print_translator.build_verify_messages(
+                    theory_b64, raw, question=question
+                )
+                v_raw, v_usage = await self.router.complete(
+                    v_messages,
+                    max_tokens=int(os.environ.get("PRINT_THEORY_MAX_TOKENS") or "2000"),
+                    session_id=str(chat_id),
+                )
+                if v_raw:
+                    logger.info(
+                        "PRINT_VERIFY_APPLIED len_before=%d len_after=%d", len(raw), len(v_raw)
+                    )
+                    InferenceRouter.log_usage(v_usage)
+                    raw = v_raw
+                else:
+                    logger.info("PRINT_VERIFY_EMPTY — keeping draft")
+            except Exception as exc:  # noqa: BLE001 — verification must never eat the turn
+                logger.warning("PRINT_VERIFY_ERROR error=%s — keeping draft", exc)
         return print_translator.format_theory_reply(raw, (vision_data or {}).get("drawing_type"))
 
     async def _interpret_print_anthropic(
