@@ -9,6 +9,11 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `PRINTSENSE_REVIEWER_CHAT_IDS` | mira-bot-telegram — comma-separated Telegram chat ids allowed the admin `/ps_review` reviewer commands (empty = reviewer surface disabled) |
 | `SLACK_BOT_TOKEN`    | mira-bot-slack                       |
 | `SLACK_APP_TOKEN`    | mira-bot-slack (Socket Mode)         |
+| `SLACK_SIGNING_SECRET` | mira-bot-slack - optional; retained for request-verification/OAuth-era compatibility. Socket Mode runtime requires `SLACK_APP_TOKEN`. |
+| `SLACK_ALLOWED_CHANNELS` | mira-bot-slack - optional comma-separated Slack channel IDs. If set, the bot ignores other channels and logs `channel_not_allowed` without message bodies. |
+| `SLACK_EXPECTED_BOT_USER_ID` | mira-bot-slack - optional non-secret startup diagnostic. If set, startup logs an error when Slack `auth.test` returns a different bot user id. |
+| `SLACK_CLIENT_ID` | mira-hub - Slack OAuth client id for the FactoryLM Hub channel connector. |
+| `SLACK_CLIENT_SECRET` | mira-hub - Slack OAuth client secret for the FactoryLM Hub channel connector callback. |
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
 | `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — first in cascade, fastest) |
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
