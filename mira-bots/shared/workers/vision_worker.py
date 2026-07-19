@@ -345,9 +345,7 @@ def _tesseract_tokens_impl(image_bytes: bytes) -> list[dict]:
 
 
 def _printsense_line_items(tokens: list) -> list:
-    """line_items via printsense when shipped; [] otherwise (slack/pipeline
-    images don't carry printsense/ — the floor is telegram-image-only until
-    image parity lands)."""
+    """line_items via printsense when shipped; [] otherwise for lean images."""
     try:
         from printsense.xref_extractor import line_items
     except ImportError:
