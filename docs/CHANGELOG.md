@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.176.5 (2026-07-19) - fix(inference): reasoning-model handling in the cascade router
+
+- The router now strips `<think>` chain-of-thought blocks from every provider reply (closed blocks removed; an unterminated block — the cap-hit-mid-reasoning signature — yields no visible content) and applies the same strip on the rate-limit inline retry path.
+- New reasoning-burn recovery: when a reply has empty visible content AND burn evidence (completion tokens at the cap, a `reasoning_content` field, or think markup), the router retries that provider ONCE with `LLM_REASONING_RETRY_MAX_TOKENS` headroom (default 8192, `0` disables, or-form parsed) before cascading on. Genuinely empty replies are not retried.
+- Why: Tower OP round 4 (2026-07-19) measured the failure — with `TOGETHERAI_VISION_MODEL=moonshotai/Kimi-K2.6`, 20/22 production calls returned HTTP 200 with the entire 1024/2000-token budget burned on reasoning and zero visible content, so the cascade shipped the deterministic fallback on all 12 bench cases while the same model answered photo-exactly on a raw call.
+- Compose env blocks (`mira-bots/docker-compose.yml`, staging, staging-vps, saas) map the new knob at every `TOGETHERAI_TIMEOUT` site; `docs/env-vars.md` documents it; `mira-bots/tests/test_router_reasoning.py` pins strip semantics, burn detection, single-retry, knob or-form, and the no-retry-on-plain-empty rule.
+
 ### v3.176.4 (2026-07-19) - fix(slack): keep print follow-ups on visual context
 
 - Slack print uploads now persist `ELECTRICAL_PRINT` state before slow print interpretation can time out, remember first-turn print photos with a 1-based turn marker, and route follow-up questions back through the saved visual PrintSense context before generic RAG/diagnose routing can answer from stale manuals.
