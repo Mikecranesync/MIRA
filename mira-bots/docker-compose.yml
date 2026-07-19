@@ -60,14 +60,25 @@ services:
       retries: 3
 
   slack-bot:
+    profiles: ["slack-dev"]
     build:
-      context: .
-      dockerfile: slack/Dockerfile
+      context: ..
+      dockerfile: mira-bots/slack/Dockerfile
     container_name: mira-bot-slack
     environment:
       <<: *bot-common-env
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
       SLACK_APP_TOKEN: ${SLACK_APP_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PRINT_VISION_PROVIDER: ${PRINT_VISION_PROVIDER:-openai}
+      PRINT_VISION_EFFORT: ${PRINT_VISION_EFFORT:-xhigh}
+      PRINT_VISION_MODEL: ${PRINT_VISION_MODEL:-}
+      PRINT_VISION_MAX_TOKENS: ${PRINT_VISION_MAX_TOKENS:-}
+      PRINT_BENCH_BUDGET_USD: ${PRINT_BENCH_BUDGET_USD:-}
+      PRINT_AUTOEVAL_ENABLED: ${PRINT_AUTOEVAL_ENABLED:-}
+      PRINT_THEORY_MAX_TOKENS: ${PRINT_THEORY_MAX_TOKENS:-2000}
+      OCR_MODEL_LANE: ${OCR_MODEL_LANE:-off}
+      OCR_EXPECT_TESSERACT: ${OCR_EXPECT_TESSERACT:-0}
     volumes:
       - ../mira-bridge/data:/data:rw
     networks:
