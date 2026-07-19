@@ -158,6 +158,37 @@ class TestBuildTheoryMessages:
         assert "item-79" in text
         assert "item-80" not in text
 
+    # ── evidence contract (Task E1) ──────────────────────────────────────────
+    # Tower OP re-bench failures this locks down: (c05) a reply asserted part
+    # numbers "not explicitly labeled in this view" while ocr_items held a
+    # garbled fragment of them; (c03/c09) garbled OCR strings imported into
+    # replies as if real tags; (general) answers never said which OCR
+    # evidence they used. Always-present (bound even without a question).
+
+    def test_user_text_carries_evidence_quoting_clause(self):
+        messages = print_translator.build_theory_messages(
+            "B64", self._vision_data(["K10 contactor"])
+        )
+        text = messages[1]["content"][1]["text"]
+        assert "Evidence discipline" in text
+        assert "Evidence:" in text
+
+    def test_user_text_carries_garbled_token_discipline_clause(self):
+        messages = print_translator.build_theory_messages(
+            "B64", self._vision_data(["K10 contactor"])
+        )
+        text = messages[1]["content"][1]["text"]
+        assert "unverified artifact" in text
+        assert "not cleanly legible in THIS photo" in text
+
+    def test_user_text_carries_absence_claim_discipline_clause(self):
+        messages = print_translator.build_theory_messages(
+            "B64", self._vision_data(["K10 contactor"])
+        )
+        text = messages[1]["content"][1]["text"]
+        assert "Never claim a label or value is not labeled" in text
+        assert "sheet not visible in this photo" in text
+
 
 # ── format_theory_reply ──────────────────────────────────────────────────────
 
@@ -321,3 +352,13 @@ class TestPrintTheoryMaxTokensEnvTunable:
             "B64DATA", "explain this print", _print_vision_data(), "chat-1"
         )
         assert supervisor.router.complete.await_args.kwargs["max_tokens"] == 2000
+    def test_evidence_contract_clauses_present_alongside_question(self):
+        """The three contract elements bind even WITH a question — they live
+        in the always-present block, not the question-only extension."""
+        messages = print_translator.build_theory_messages(
+            "B64", self._vd(), question="is K5 shorted?"
+        )
+        text = messages[1]["content"][1]["text"]
+        assert "Evidence discipline" in text
+        assert "unverified artifact" in text
+        assert "Never claim a label or value is not labeled" in text

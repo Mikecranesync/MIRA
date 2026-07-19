@@ -328,13 +328,40 @@ def build_theory_messages(
     """Build the ``[system, user(image+text)]`` messages for ``router.complete``.
 
     ``user`` text = ``"Drawing type: <drawing_type or 'electrical drawing'>"``
-    followed by the OCR ground-truth block from ``_ocr_block``. When ``question``
-    is given (a specific technician question about the print), it is appended so
-    the grounded reply answers it directly — still ONLY from the OCR labels + the
+    followed by the OCR ground-truth block from ``_ocr_block``, then the
+    always-present evidence-contract clause (quote OCR evidence verbatim;
+    treat garbled tokens as unverified artifacts, not real tags; never claim
+    a label is absent without checking the OCR block first — distinct from
+    the honest sheet-not-visible case). When ``question`` is given (a
+    specific technician question about the print), it is appended so the
+    grounded reply answers it directly — still ONLY from the OCR labels + the
     visible image, never inventing a device/tag/connection.
     """
     drawing_type = (vision_data or {}).get("drawing_type") or "electrical drawing"
     user_text = f"Drawing type: {drawing_type}\n\n{_ocr_block(vision_data)}"
+    # Evidence contract (Task E1, from the Tower OP re-bench): always present
+    # so it binds even without a question. Attacks three observed failures —
+    # (c05) a reply asserted part numbers "not explicitly labeled in this
+    # view" while its own ocr_items held a garbled fragment of them; (c03/c09)
+    # garbled OCR strings imported into replies as if they were real tags;
+    # (general) answers never said which OCR evidence they used.
+    user_text += (
+        "\n\nEvidence discipline: whenever your answer relies on an OCR "
+        "label, quote it verbatim from the OCR block above (e.g. "
+        "\"Evidence: 'K10 contactor'\") so the technician can verify the "
+        "source token. Treat any OCR token that does not parse as a "
+        "plausible device tag or value as an unverified artifact — never "
+        "present a garbled OCR fragment as if it were a real device tag. "
+        "If a label you need is present only as a garbled fragment, say it "
+        "is present but not cleanly legible in THIS photo and suggest a "
+        "closer, straighter photo — never say it is not labeled. Never "
+        "claim a label or value is not labeled, not specified, not "
+        "indicated, or not marked on this print without first checking "
+        "whether it is present (even garbled) in the OCR block above — "
+        "that is different from the print depending on a sheet not "
+        "visible in this photo, which you should still say plainly when "
+        "true, naming the sheet to photograph next."
+    )
     # UNSEEN-1: deterministic evidence extracted by printsense.deterministic_qa
     # (contact conventions, decoded designations, xref/wire tokens). Injected as
     # grounding when the fast-path could not fully answer — these lines come

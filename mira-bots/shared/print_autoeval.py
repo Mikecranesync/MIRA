@@ -51,6 +51,31 @@ _TAG_FLOOD_MIN = 20
 _TRUNCATION_MIN_LEN = 2000  # only long replies can be cap-truncation suspects
 _TRUNCATION_TAIL_CHARS = (",", ";", ":", "-", "(", '"')
 
+# LABEL-absence claim (false_absence_claim rule, Task E1 — the c05 Tower-OP
+# failure: "The part numbers are not explicitly labeled in this view." while
+# ocr_items held a garbled fragment of the exact part number). Two families:
+#   (a) bare "not (explicitly) labeled/specified/indicated/marked"
+#   (b) "no part number(s) (is/are) visible/shown/given"
+# "visible"/"shown"/"given" appear ONLY inside the anchored family (b) — never
+# as a bare "not visible"/"not shown" alternative in (a) — because that would
+# also match the honest, REQUIRED sheet-absence phrasing this rule must not
+# fire on ("depends on a sheet not visible in this photo", "name the sheet to
+# photograph next" — see build_theory_messages's evidence-contract clause).
+_LABEL_ABSENCE_RE = re.compile(
+    r"not\s+(?:explicitly\s+)?(?:labeled|specified|indicated|marked)\b"
+    r"|no\s+part\s+numbers?\s*(?:is|are)?\s*(?:visible|shown|given)\b",
+    re.IGNORECASE,
+)
+# The honest, required exclusion. A per-sentence negative guard (see
+# _false_absence_phrase) keeps this from suppressing a genuine false-absence
+# claim elsewhere in the same reply, while still protecting a single sentence
+# that composites both ("not specified because the sheet isn't visible").
+_SHEET_ABSENCE_RE = re.compile(
+    r"sheet\s+not\s+visible|not\s+visible\s+in\s+this\s+photo|photograph\s+next",
+    re.IGNORECASE,
+)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
 
 def _longest_consecutive_run(answer: str) -> tuple[str, int]:
     """(family, longest strictly-consecutive ascending run) across tag families,
@@ -66,6 +91,20 @@ def _longest_consecutive_run(answer: str) -> tuple[str, int]:
             if run > best_run:
                 best_fam, best_run = fam, run
     return best_fam, best_run
+
+
+def _false_absence_phrase(answer: str) -> str | None:
+    """The matched LABEL-absence phrase, iff some sentence makes that claim
+    WITHOUT also carrying the honest sheet-absence phrasing in the SAME
+    sentence — else ``None``. Per-sentence (not whole-reply) scoping so a
+    genuine false claim about a label can't be masked by an unrelated,
+    honest sheet caveat elsewhere in a long reply, while a single sentence
+    that composites both reads as one honest claim, not a false one."""
+    for sentence in _SENTENCE_SPLIT_RE.split(answer or ""):
+        match = _LABEL_ABSENCE_RE.search(sentence)
+        if match and not _SHEET_ABSENCE_RE.search(sentence):
+            return match.group(0)
+    return None
 
 
 def enabled() -> bool:
@@ -252,6 +291,23 @@ def evaluate_print_turn(
                 "detail": _cap("ocr_source=none while OCR_EXPECT_TESSERACT=1"),
             }
         )
+
+    # P1 — the reply claims a label/value is absent from the print without
+    # having checked the OCR ground-truth block first (Tower OP c05: a
+    # garbled fragment of the exact part number was sitting in ocr_items the
+    # whole time). Quality tripwire, not pager-grade — mirrors missing_caveat's
+    # P1, not the P0 lanes above. Empty/absent ocr_items is excluded: that
+    # absence claim may be honest with nothing to check it against.
+    if ocr_items:
+        absence_phrase = _false_absence_phrase(answer)
+        if absence_phrase:
+            flags.append(
+                {
+                    "class": "false_absence_claim",
+                    "severity": "P1",
+                    "detail": _cap(absence_phrase),
+                }
+            )
 
     refusal = False
     safety_language = False
