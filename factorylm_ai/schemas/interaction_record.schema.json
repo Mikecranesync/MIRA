@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/interaction_record.schema.json",
+  "title": "InteractionRecord",
+  "description": "One technician-facing interaction (one turn or one session) captured by the flywheel. feedback_event and training_record trace back to interactions via source_interaction_ids. Built by factorylm_ai.flywheel.records.new_interaction_record().",
+  "type": "object",
+  "properties": {
+    "interaction_id": { "type": "string", "minLength": 1 },
+    "ts": { "type": "string", "minLength": 1 },
+    "channel": { "type": "string", "minLength": 1, "description": "e.g. telegram, slack, proofpack." },
+    "tenant_id": { "type": ["string", "null"] },
+    "input_kind": { "type": "string", "minLength": 1, "description": "e.g. text, photo, pdf." },
+    "input_text": { "type": ["string", "null"] },
+    "input_hashes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "sha256 hash of each raw input (text and/or image) for this interaction."
+    },
+    "route": { "type": ["string", "null"], "description": "M05 route decision, if routed." },
+    "model_runs": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "References into model_runs.jsonl (task/provider/model/input_hash) for every call this interaction made. Deliberately unconstrained beyond object-shaped — see registry/schema notes."
+    },
+    "final_text": { "type": ["string", "null"], "description": "The text actually shown to the technician, if any." },
+    "human_rating": {
+      "type": "string",
+      "enum": ["accepted", "corrected", "rejected", "unknown"]
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["draft", "approved", "rejected"]
+    },
+    "sensitive": { "type": "boolean" },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": [
+    "interaction_id", "ts", "channel", "tenant_id", "input_kind", "input_text",
+    "input_hashes", "route", "model_runs", "final_text",
+    "human_rating", "review_status", "sensitive", "tags"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "interaction_id": "int_0001",
+      "ts": "2026-07-19T00:00:00Z",
+      "channel": "telegram",
+      "tenant_id": null,
+      "input_kind": "photo",
+      "input_text": "what is this relay",
+      "input_hashes": ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85"],
+      "route": "printsense_photo",
+      "model_runs": [
+        {"task": "M01", "provider": "mock", "model": "mock/m01", "input_hash": "e3b0c4"}
+      ],
+      "final_text": "K1 is shown on sheet 6.",
+      "human_rating": "accepted",
+      "review_status": "approved",
+      "sensitive": false,
+      "tags": ["print_translator"]
+    },
+    {
+      "interaction_id": "int_0002",
+      "ts": "2026-07-19T00:01:30Z",
+      "channel": "proofpack",
+      "tenant_id": "9d1f8f0a-2222-4b3c-8a11-000000000001",
+      "input_kind": "text",
+      "input_text": null,
+      "input_hashes": [],
+      "route": null,
+      "model_runs": [],
+      "final_text": null,
+      "human_rating": "unknown",
+      "review_status": "draft",
+      "sensitive": true,
+      "tags": []
+    }
+  ]
+}

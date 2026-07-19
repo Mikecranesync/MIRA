@@ -1,0 +1,30 @@
+# M07 — Dense Retriever embedding input contract (ZTA task M07)
+#
+# This is NOT a prompt. M07 calls the provider's embeddings endpoint
+# directly (ModelRequest(input_kind="embedding", embed_inputs=[...])) - no
+# chat message, no system instruction, nothing to str.format(). This file
+# exists so the input contract lives next to the other task prompts instead
+# of only in code comments. factorylm_ai.tasks.get_task("M07").prompt_file
+# is None on purpose - render_prompt("M07", ...) raises ValueError.
+
+Provider: intfloat/multilingual-e5-large-instruct (Together serverless -
+the ONLY serverless embedding model on the platform as of the 2026-07-19
+recon; see docs/zta/together-liquid-model-strategy.md).
+
+Hard input cap: factorylm_ai.tasks.EMBED_MAX_INPUT_TOKENS = 514 tokens per
+input string (the e5 model's context limit). A chunk longer than that MUST
+be split before it reaches ModelRequest.embed_inputs - this module does not
+truncate or chunk for you. See factorylm_ai/flywheel/splits.py for the
+chunking/dedup helpers used elsewhere in the flywheel, and apply the same
+discipline for any M07 caller: measure, chunk to the cap, then embed each
+chunk.
+
+Asymmetric instruction convention: e5-instruct models are trained on a
+query/passage distinction - queries and passages are embedded differently.
+A live M07 caller should prefix short queries with an instruction (e.g.
+"query: ...") and leave corpus passages unprefixed (e.g. "passage: ..."),
+per the model's card. Do not embed queries and passages identically.
+
+No output_schema: TaskSpec.output_schema is None for M07. The result of an
+M07 call is ModelResponse.embeddings (list of float vectors), not a JSON
+object validated against a task_outputs schema.

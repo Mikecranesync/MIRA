@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/task_outputs/m09_output.schema.json",
+  "title": "M09ToolSelectorOutput",
+  "description": "ZTA task M09 (tool-selection technician agent) chat output. The model must call a tool, never answer from memory -- answered_from_memory records whether it complied. Model: openai/gpt-oss-20b (Together). Prompt: factorylm_ai/tasks/prompts/m09_tool_selector_v1.txt.",
+  "type": "object",
+  "properties": {
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "arguments": { "type": "object" }
+        },
+        "required": ["name", "arguments"],
+        "additionalProperties": false
+      }
+    },
+    "rationale": { "type": "string", "minLength": 1 },
+    "answered_from_memory": { "type": "boolean" }
+  },
+  "required": ["tool_calls", "rationale", "answered_from_memory"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "tool_calls": [{ "name": "search_print_pages", "arguments": { "query": "K1" } }],
+      "rationale": "lookup before answering",
+      "answered_from_memory": false
+    },
+    {
+      "tool_calls": [{ "name": "lookup_wiring_db", "arguments": { "query": "K1" } }],
+      "rationale": "selected lookup_wiring_db based on case text",
+      "answered_from_memory": false
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/promotion_decision.schema.json",
+  "title": "PromotionDecision",
+  "description": "The recorded outcome of factorylm_ai.promotion.check_promotion() for one candidate model/adapter on one task. geometry_involved and task=='M09' gate whether fabricated_coordinates_pass / tool_call_accuracy are required for 'allowed' to be true — that cross-field logic lives in promotion.py, not in this schema (this schema only enforces per-field shape).",
+  "type": "object",
+  "properties": {
+    "decision_id": { "type": "string", "minLength": 1 },
+    "candidate": { "type": "string", "minLength": 1, "description": "Model id or adapter id being evaluated for promotion." },
+    "task": { "type": "string", "minLength": 1 },
+    "ts": { "type": "string", "minLength": 1 },
+    "frozen_benchmark_pass": { "type": "boolean" },
+    "json_validity_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "no_evidence_refusal_pass": { "type": "boolean" },
+    "geometry_involved": { "type": "boolean" },
+    "fabricated_coordinates_pass": { "type": ["boolean", "null"] },
+    "tool_call_accuracy": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "cost_report_present": { "type": "boolean" },
+    "latency_report_present": { "type": "boolean" },
+    "rollback": {
+      "type": "object",
+      "properties": {
+        "previous_default": { "type": "string", "minLength": 1 },
+        "revert_procedure": { "type": "string", "minLength": 1 }
+      },
+      "required": ["previous_default", "revert_procedure"],
+      "additionalProperties": true
+    },
+    "decided_by": { "type": "string", "minLength": 1 },
+    "allowed": { "type": "boolean" }
+  },
+  "required": [
+    "decision_id", "candidate", "task", "ts",
+    "frozen_benchmark_pass", "json_validity_rate", "no_evidence_refusal_pass",
+    "geometry_involved", "fabricated_coordinates_pass", "tool_call_accuracy",
+    "cost_report_present", "latency_report_present", "rollback", "decided_by", "allowed"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "decision_id": "pd_0001",
+      "candidate": "LiquidAI/LFM2.5-8B-A1B",
+      "task": "M05",
+      "ts": "2026-07-19T00:10:00Z",
+      "frozen_benchmark_pass": true,
+      "json_validity_rate": 0.99,
+      "no_evidence_refusal_pass": true,
+      "geometry_involved": false,
+      "fabricated_coordinates_pass": null,
+      "tool_call_accuracy": null,
+      "cost_report_present": true,
+      "latency_report_present": true,
+      "rollback": {
+        "previous_default": "mock/m05",
+        "revert_procedure": "set FACTORYLM_AI_PROVIDER=mock and redeploy"
+      },
+      "decided_by": "mike",
+      "allowed": true
+    },
+    {
+      "decision_id": "pd_0002",
+      "candidate": "openai/gpt-oss-20b",
+      "task": "M09",
+      "ts": "2026-07-19T00:12:00Z",
+      "frozen_benchmark_pass": true,
+      "json_validity_rate": 0.995,
+      "no_evidence_refusal_pass": true,
+      "geometry_involved": true,
+      "fabricated_coordinates_pass": false,
+      "tool_call_accuracy": 0.82,
+      "cost_report_present": true,
+      "latency_report_present": true,
+      "rollback": {
+        "previous_default": "mock/m09",
+        "revert_procedure": "set FACTORYLM_AI_PROVIDER=mock and redeploy"
+      },
+      "decided_by": "mike",
+      "allowed": false
+    }
+  ]
+}

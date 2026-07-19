@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/task_outputs/m10_output.schema.json",
+  "title": "M10AnswerContractOutput",
+  "description": "ZTA task M10 (evidence-gated answer writer) chat output -- the 9-field answer contract (handoff doc Phase D). No evidence, no claim: an empty/insufficient evidence array must produce a refusal (not_proven populated, evidence empty). Model: LiquidAI/LFM2.5-8B-A1B (Together; escalation openai/gpt-oss-20b). Prompt: factorylm_ai/tasks/prompts/m10_answer_contract_v1.txt.",
+  "type": "object",
+  "properties": {
+    "direct_answer": { "type": "string", "minLength": 1 },
+    "shown_on_drawing": { "type": "array", "items": { "type": "string" } },
+    "derived_from_drawing": { "type": "array", "items": { "type": "string" } },
+    "technician_confirmed": { "type": "array", "items": { "type": "string" } },
+    "not_proven": { "type": "array", "items": { "type": "string" } },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ocr",
+              "technician_confirmation",
+              "manual_citation",
+              "cross_reference",
+              "work_order"
+            ]
+          },
+          "ref": { "type": "string", "minLength": 1 }
+        },
+        "required": ["kind", "ref"],
+        "additionalProperties": false
+      }
+    },
+    "overlay_geometry": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref": { "type": "string", "minLength": 1 },
+          "bbox": { "type": "array", "items": { "type": "number" } }
+        },
+        "required": ["ref", "bbox"],
+        "additionalProperties": false
+      },
+      "description": "Only populated when evidence includes located coordinates worth highlighting back on the source image; never fabricated."
+    },
+    "next_checks": { "type": "array", "items": { "type": "string" } },
+    "safety_notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": [
+    "direct_answer",
+    "shown_on_drawing",
+    "derived_from_drawing",
+    "technician_confirmed",
+    "not_proven",
+    "evidence",
+    "overlay_geometry",
+    "next_checks",
+    "safety_notes"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "direct_answer": "K1 is shown on sheet 6.",
+      "shown_on_drawing": ["K1 coil at D1"],
+      "derived_from_drawing": [],
+      "technician_confirmed": [],
+      "not_proven": [],
+      "evidence": [{ "kind": "ocr", "ref": "K1" }],
+      "overlay_geometry": [],
+      "next_checks": ["verify at the panel"],
+      "safety_notes": []
+    },
+    {
+      "direct_answer": "X4 terminal 17 carries wire 51 from K1:A1.",
+      "shown_on_drawing": ["wire 51 from K1:A1 to X4:17"],
+      "derived_from_drawing": ["K1 is energized when wire 51 is live"],
+      "technician_confirmed": [],
+      "not_proven": [],
+      "evidence": [{ "kind": "ocr", "ref": "X4:17" }],
+      "overlay_geometry": [],
+      "next_checks": ["verify continuity at X4:17"],
+      "safety_notes": ["de-energize before probing X4:17"]
+    },
+    {
+      "direct_answer": "I can't answer that from the provided evidence.",
+      "shown_on_drawing": [],
+      "derived_from_drawing": [],
+      "technician_confirmed": [],
+      "not_proven": ["the requested claim"],
+      "evidence": [],
+      "overlay_geometry": [],
+      "next_checks": ["gather more evidence before answering"],
+      "safety_notes": []
+    }
+  ]
+}

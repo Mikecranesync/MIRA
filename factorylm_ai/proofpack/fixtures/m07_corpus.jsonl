@@ -1,0 +1,35 @@
+{"kind": "chunk", "chunk_id": "c01", "text": "Relay K1 is a 24VDC control relay with one normally-open and one normally-closed contact. Coil terminals are A1 and A2. The NO contact is rated 10A resistive at 250VAC."}
+{"kind": "chunk", "chunk_id": "c02", "text": "K2 is an ice-cube style plug-in relay mounted in an 11-pin socket on the DIN rail. Pins 2 and 10 are the coil; pins 1, 4, 5, 8, 9, 12 are the contact set."}
+{"kind": "chunk", "chunk_id": "c03", "text": "Relay coils should be suppressed with a flyback diode or RC snubber when switched by a PLC output, to protect the transistor output from inductive kickback."}
+{"kind": "chunk", "chunk_id": "c04", "text": "K3 is a control relay used to seal in the start pushbutton circuit. Its normally-open auxiliary contact holds the coil energized after the pushbutton is released."}
+{"kind": "chunk", "chunk_id": "c05", "text": "A latching relay retains its last switched state without continuous coil power, useful for maintaining an alarm state through a momentary power loss."}
+{"kind": "chunk", "chunk_id": "c06", "text": "Relay contact ratings de-rate with inductive loads; a 10A resistive contact may only safely switch 2-3A on a small motor or solenoid load."}
+{"kind": "chunk", "chunk_id": "c07", "text": "The GS10 variable frequency drive accepts a 0-10V or 4-20mA speed reference on terminals VR and ACM, and a run-forward contact closure on terminal FWD."}
+{"kind": "chunk", "chunk_id": "c08", "text": "VFD parameter P09.03 sets the Modbus communication timeout; if no valid frame is received within that window the drive trips a communication fault."}
+{"kind": "chunk", "chunk_id": "c09", "text": "PowerFlex 525 drives display fault codes on the integrated keypad; for example F0004 indicates an output ground fault detected during a run command."}
+{"kind": "chunk", "chunk_id": "c10", "text": "A VFD's DC bus voltage should read approximately 320V when idle on a 230V single-phase input, per the bench baseline recorded for this drive."}
+{"kind": "chunk", "chunk_id": "c11", "text": "Drive acceleration and deceleration ramp times are set independently; a short decel ramp on a high-inertia load can trip an overvoltage fault."}
+{"kind": "chunk", "chunk_id": "c12", "text": "Skip frequencies are programmed into a VFD to avoid running a motor continuously at a resonant frequency that causes mechanical vibration."}
+{"kind": "chunk", "chunk_id": "c13", "text": "An inductive proximity switch detects metal targets without contact; a PNP output sources current to the load when the target is sensed."}
+{"kind": "chunk", "chunk_id": "c14", "text": "NPN proximity sensors sink current to common when triggered, and require a pull-up resistor on the PLC input if the input card is not a sourcing type."}
+{"kind": "chunk", "chunk_id": "c15", "text": "Sensing distance for an 18mm inductive proximity switch is typically 5-8mm for mild steel, and less for non-ferrous metals like aluminum."}
+{"kind": "chunk", "chunk_id": "c16", "text": "A normally-open proximity switch outputs 0V (or open) with no target present, and switches to the supply voltage when the target enters range."}
+{"kind": "chunk", "chunk_id": "c17", "text": "Proximity switches used for conveyor jam detection are mounted so the sensing face is perpendicular to the product's direction of travel."}
+{"kind": "chunk", "chunk_id": "c18", "text": "Capacitive proximity sensors can detect non-metallic targets like plastic or liquid level, unlike inductive sensors which require a metal target."}
+{"kind": "chunk", "chunk_id": "c19", "text": "Terminal strip X4 carries the field wiring between the PLC I/O card and the panel-mounted pushbuttons; each terminal is numbered to match the wire number."}
+{"kind": "chunk", "chunk_id": "c20", "text": "Wire 51 runs from relay K1 terminal A1 to terminal block X4 position 17, carrying the 24VDC control signal for the start circuit."}
+{"kind": "chunk", "chunk_id": "c21", "text": "Ground terminal blocks are bonded to the panel backplate and should show continuity to earth ground of less than 1 ohm."}
+{"kind": "chunk", "chunk_id": "c22", "text": "Fused terminal blocks combine a disconnect and a fuse holder in one DIN-rail terminal, simplifying field-wiring troubleshooting."}
+{"kind": "chunk", "chunk_id": "c23", "text": "Terminal block X3 position 9 carries the fused 120VAC control power distributed to the pilot lights and selector switches mounted on the door."}
+{"kind": "chunk", "chunk_id": "c24", "text": "Double-level terminal blocks stack two independent circuits in the same DIN-rail footprint, saving panel space on dense wiring jobs."}
+{"kind": "chunk", "chunk_id": "c25", "text": "Cross-reference numbers printed above a terminal block point to the sheet and grid location where the other end of that wire is drawn."}
+{"kind": "question", "question_id": "q01", "text": "What terminals does relay K1 use for its coil?", "known_correct_chunk_ids": ["c01"]}
+{"kind": "question", "question_id": "q02", "text": "Where is wire 51 connected between K1 and the terminal strip?", "known_correct_chunk_ids": ["c20"]}
+{"kind": "question", "question_id": "q03", "text": "What does VFD parameter P09.03 control?", "known_correct_chunk_ids": ["c08"]}
+{"kind": "question", "question_id": "q04", "text": "What fault code means an output ground fault on a PowerFlex 525?", "known_correct_chunk_ids": ["c09"]}
+{"kind": "question", "question_id": "q05", "text": "What is the idle DC bus voltage on this drive?", "known_correct_chunk_ids": ["c10"]}
+{"kind": "question", "question_id": "q06", "text": "How does a PNP proximity sensor output current?", "known_correct_chunk_ids": ["c13"]}
+{"kind": "question", "question_id": "q07", "text": "Why would you add a pull-up resistor for a proximity sensor?", "known_correct_chunk_ids": ["c14"]}
+{"kind": "question", "question_id": "q08", "text": "What is the typical sensing distance for an 18mm inductive sensor on steel?", "known_correct_chunk_ids": ["c15"]}
+{"kind": "question", "question_id": "q09", "text": "What is the resistance requirement for a ground terminal block bond?", "known_correct_chunk_ids": ["c21"]}
+{"kind": "question", "question_id": "q10", "text": "What do cross-reference numbers above a terminal block indicate?", "known_correct_chunk_ids": ["c25"]}

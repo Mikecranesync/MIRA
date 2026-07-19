@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/feedback_event.schema.json",
+  "title": "FeedbackEvent",
+  "description": "A human signal (correction, approval, rejection, or benchmark flag) attached to an interaction_record. Built by factorylm_ai.flywheel.records.new_feedback_event(). Correction feedback is the seed for training_record and eval_case creation.",
+  "type": "object",
+  "properties": {
+    "feedback_id": { "type": "string", "minLength": 1 },
+    "ts": { "type": "string", "minLength": 1 },
+    "interaction_id": { "type": "string", "minLength": 1 },
+    "kind": {
+      "type": "string",
+      "enum": ["correction", "approval", "rejection", "benchmark_flag"]
+    },
+    "text": { "type": "string" },
+    "corrected_fields": {
+      "type": ["object", "null"],
+      "description": "Free-form {field_name: corrected_value} map when kind=correction, else null."
+    },
+    "reviewer": { "type": ["string", "null"] }
+  },
+  "required": ["feedback_id", "ts", "interaction_id", "kind", "text", "corrected_fields", "reviewer"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "feedback_id": "fb_0001",
+      "ts": "2026-07-19T00:02:00Z",
+      "interaction_id": "int_0001",
+      "kind": "correction",
+      "text": "K1 is actually on sheet 7, not 6.",
+      "corrected_fields": {"shown_on_drawing": ["K1 coil at D1, sheet 7"]},
+      "reviewer": "mike"
+    },
+    {
+      "feedback_id": "fb_0002",
+      "ts": "2026-07-19T00:03:00Z",
+      "interaction_id": "int_0001",
+      "kind": "approval",
+      "text": "",
+      "corrected_fields": null,
+      "reviewer": null
+    }
+  ]
+}
