@@ -75,14 +75,37 @@ class SlackChatAdapter:
 
         try:
             async with httpx.AsyncClient(timeout=15) as client:
+                headers = {"Authorization": f"Bearer {self.bot_token}"}
                 resp = await client.post(
                     "https://slack.com/api/chat.postMessage",
-                    headers={"Authorization": f"Bearer {self.bot_token}"},
+                    headers=headers,
                     json=payload,
                 )
                 data = resp.json()
-                if not data.get("ok"):
-                    logger.warning("Slack postMessage error: %s", data.get("error"))
+                error = data.get("error")
+                if data.get("ok"):
+                    return
+                logger.warning("Slack postMessage error: %s", error)
+                if error != "invalid_blocks" or not payload.get("blocks"):
+                    return
+
+                fallback = {
+                    "channel": event.external_channel_id,
+                    "text": response.text,
+                }
+                if event.external_thread_id:
+                    fallback["thread_ts"] = event.external_thread_id
+                retry = await client.post(
+                    "https://slack.com/api/chat.postMessage",
+                    headers=headers,
+                    json=fallback,
+                )
+                retry_data = retry.json()
+                if not retry_data.get("ok"):
+                    logger.warning(
+                        "Slack postMessage plain-text retry error: %s",
+                        retry_data.get("error"),
+                    )
         except Exception as exc:
             logger.error("render_outgoing failed: %s", exc)
 

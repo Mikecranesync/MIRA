@@ -175,6 +175,7 @@ class TestQualityGateBypass:
         assert "dont_know" in _TRUSTED_DISPATCH_KINDS
         assert "cmms_pending" in _TRUSTED_DISPATCH_KINDS
         assert "session_followup" in _TRUSTED_DISPATCH_KINDS
+        assert "ELECTRICAL_PRINT" in _TRUSTED_DISPATCH_KINDS
 
     @pytest.mark.asyncio
     async def test_apply_quality_gate_bypasses_action_request(self, supervisor):
@@ -190,6 +191,39 @@ class TestQualityGateBypass:
             dispatch_kind="action_request",
         )
         assert result == bad_reply, "trusted dispatch_kind must bypass the gate"
+
+    @pytest.mark.asyncio
+    async def test_apply_quality_gate_bypasses_electrical_print_followup(self, supervisor):
+        """Electrical-print replies are already constrained to the saved print image.
+
+        Schematic answers naturally repeat symbols like M1, K1, contactor, and
+        terminal labels, so the generic repetition gate must not replace them
+        with a rephrase fallback after the print handler has selected this path.
+        """
+        from shared import quality_gate
+
+        print_reply = (
+            "According to this print, M1 is powered through contactor K1. "
+            "The M1 contactor feeds M1 after the control circuit closes K1."
+        )
+        with patch(
+            "shared.quality_gate.evaluate",
+            new=AsyncMock(
+                return_value=quality_gate.GateResult(
+                    verdict="fail",
+                    reasons=["repeated_substring"],
+                    elapsed_ms=0.5,
+                )
+            ),
+        ):
+            with patch("shared.quality_gate.is_enabled", return_value=True):
+                result = await supervisor._apply_quality_gate(
+                    chat_id="test-chat",
+                    message="which contactor powers M1",
+                    reply=print_reply,
+                    dispatch_kind="ELECTRICAL_PRINT",
+                )
+                assert result == print_reply
 
     @pytest.mark.asyncio
     async def test_apply_quality_gate_runs_for_default_dispatch(self, supervisor):
