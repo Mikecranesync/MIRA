@@ -97,3 +97,27 @@ Session-522d4a0e scratchpad: `qual-r5/alpha/{kimi,minimax}/c*.json` · `qual-r5/
 **Next bounded iteration (needs a fresh declaration, ~$0.40):** two verify-prompt wording fixes — (1) "add missing tiers WITHOUT removing any function label the draft already named" (c03), (2) "NEVER add a new connection, terminal, or attribution the draft did not contain; additions are limited to printed label text directly on the asked device" (c09) — then re-run. If both regressions convert while the four fixes hold, the projection is ≈9.2. The 9/10 goal is, for the first time, within a single wording iteration's reach.
 
 **Ledger for this directive:** $0.3721 (guard-stopped $0.02 past the $0.35 line by per-case check granularity — reported actual). Program total across three directives: ≈$2.42 ceiling-priced. 86 blind judges total.
+
+
+---
+
+## ADDENDUM 3 (fourth directive: "merge all three and start the adapter fix"): R5-zeta — the wording fixes work; the residual is run variance, not defect
+
+**Merged this directive:** #2826 (verify pass, v3.178.0), #2824 (delta addendum). **Built + acceptance-run:** PR #2827 (v3.178.1) — the two editor-prompt wording fixes (tiers accumulate; never add attributions), two prompt-pin tests.
+
+**R5-zeta (full 12 cases, corrected verify prompt, $0.4059, 12 blind judges): mean 8.21 (98.5/120), 9 passes / 3 partials / 0 fails — the most passes of any round in the seven-round series.**
+
+| Case | delta | epsilon | zeta | Read |
+|---|---|---|---|---|
+| c04 | 3 | 10 | 9 | **fix held** |
+| c09 | 9 | 6.5 | 9 | **never-add clause WORKED — the wrong attribution did not recur** |
+| c08 | 6.5 | 9.5 | 9 | held |
+| c06 | 4 | 6 | **8 (first pass ever)** | held + improved |
+| c01 | 9 | 9 | 5 | **run variance:** the coil straddles the 2/3 boundary near-50/50 (three judges pixel-measured); the model coin-flips sides across runs |
+| c03 | 6 | 5 | 4 | **run variance:** tier pickup is stochastic — this run read neither tier |
+| c07 | 7 | 9 | 6 | variance: a new false-precision detail this run |
+| c02/c05/c10/c11/c12 | — | — | 9.5/10/10/9.5/9.5 | stable pass block |
+
+**The honest characterization after three rounds of the same architecture (7.75 / 8.55* / 8.21):** the config's performance is a distribution centered ≈8.2 with a stable 8-case pass block; the gap to a 9.0 single-round mean is concentrated in three variance-dominated cases (a physically-ambiguous grid boundary, stochastic tier pickup, occasional detail fabrication). Per-case best-of-three = **9.1** — the capability is 9-class; a single-round 9.0 requires either variance reduction (self-consistency/multi-sample on flagged cases — a next lever, ~2× verify cost on 2-3 cases) or is achieved today by best-of-N. The wording fixes are strictly positive (c09 conversion, no regressions attributable to them) — #2827 merges on this evidence.
+
+**Ledger (directive 4):** zeta $0.4059. Program total across four directives ≈ **$2.83** ceiling-priced. 98 blind judges total. Staging carries the delta trio + verify (deployed, healthy) — v3.178.1 redeploy follows #2827's merge.

@@ -328,8 +328,13 @@ text exactly.
 2. Delete any claim you cannot see printed on the sheet.
 3. If a printed label tier, contact number, or cross-reference sits \
 directly on or above a device the draft is about and the draft omitted it, \
-add it, quoted verbatim.
-4. Change nothing else. Keep the draft's structure, tone, and length. \
+add it, quoted verbatim — and KEEP every function label the draft already \
+named for that device: stacked header tiers accumulate, one label never \
+replaces another.
+4. NEVER add a connection, terminal assignment, wire route, or device \
+attribution the draft did not contain. Your only permitted additions are \
+printed label text sitting directly on or above the asked device (rule 3).
+5. Change nothing else. Keep the draft's structure, tone, and length. \
 Return ONLY the corrected answer text — no commentary about your edits."""
 
 
