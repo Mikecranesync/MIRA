@@ -73,6 +73,37 @@ class TestBuildProviders:
         assert providers[1].model == "llama-3.1-70b"
 
 
+class TestTogetherTimeout:
+    """Together is the LAST text-cascade provider AND the ONLY vision provider
+    (no fallback) — its timeout is env-configurable (default 90s, raised from a
+    hardcoded 30s after the 2026-07-19 bench lost 2/10 already-computed answers
+    to a 30s timeout). Groq/Cerebras stay hardcoded at 30.0 — not covered here."""
+
+    def test_default_ninety_when_unset(self):
+        env = {"TOGETHERAI_API_KEY": "tog_test"}
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        together = next(p for p in providers if p.name == "together")
+        assert together.timeout == 90.0
+
+    def test_env_override(self):
+        env = {"TOGETHERAI_API_KEY": "tog_test", "TOGETHERAI_TIMEOUT": "45"}
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        together = next(p for p in providers if p.name == "together")
+        assert together.timeout == 45.0
+
+    def test_empty_string_falls_back_to_default(self):
+        # docker compose ${TOGETHERAI_TIMEOUT:-} maps an unset var to an EMPTY
+        # STRING in-container, not an absent key — float("") raises, so this
+        # must fall back to the default rather than crash-loop the bot.
+        env = {"TOGETHERAI_API_KEY": "tog_test", "TOGETHERAI_TIMEOUT": ""}
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        together = next(p for p in providers if p.name == "together")
+        assert together.timeout == 90.0
+
+
 class TestRouterEnabled:
     def test_enabled_with_cloud_backend_and_keys(self):
         env = {"INFERENCE_BACKEND": "cloud", "GROQ_API_KEY": "gsk_test"}

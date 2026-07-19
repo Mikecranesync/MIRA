@@ -40,6 +40,7 @@ x-staging-env: &staging-env
   CEREBRAS_MODEL: ${CEREBRAS_MODEL:-gpt-oss-120b}
   TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
   TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+  TOGETHERAI_TIMEOUT: ${TOGETHERAI_TIMEOUT:-}
   TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   # Open WebUI is not deployed in staging; this dummy is referenced but not hit
   # for text-only flows because RAGWorker retrieves via neon_recall.

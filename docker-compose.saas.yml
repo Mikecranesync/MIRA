@@ -29,6 +29,7 @@ x-bot-common-env: &bot-common-env
   CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
   TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
   TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+  TOGETHERAI_TIMEOUT: ${TOGETHERAI_TIMEOUT:-}
   TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
   LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
@@ -275,6 +276,7 @@ services:
       - CEREBRAS_MODEL=gpt-oss-120b
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
@@ -364,6 +366,7 @@ services:
       - CEREBRAS_MODEL=gpt-oss-120b
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -424,6 +427,7 @@ services:
       - CEREBRAS_MODEL=gpt-oss-120b
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -774,6 +778,7 @@ services:
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-gpt-oss-120b}
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
       # Atlas CMMS live stats — internal docker URL via shared cmms network.
       # Public cmms.factorylm.com nginx only proxies /auth/ + /api/ + /license/
       # to the Spring backend; /work-orders/*, /assets/*, /preventive-maintenances/*
