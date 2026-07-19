@@ -1,6 +1,6 @@
 # Slack Recovery Rollback Runbook
 
-Use this if the Slack recovery deploy makes `mira-maintenance-agent` worse or leaves the bot unresponsive after the acceptance probes.
+Use this if the Slack recovery deploy makes `mira-maintenance-agent` worse or leaves the bot unresponsive after the acceptance probes in `docs/runbooks/slack-recovery-human-testing.md`.
 
 ## Rules
 
