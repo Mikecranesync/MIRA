@@ -56,9 +56,9 @@ _NULL_BYTES = [
 ]
 
 _OVERLONG = [
-    "A" * 10_000,
-    "motor tripped " * 1_000,
-    "x" * 100_000,
+    pytest.param("A" * 10_000, id="a_10k"),
+    pytest.param("motor tripped " * 1_000, id="motor_tripped_1k"),
+    pytest.param("x" * 100_000, id="x_100k"),
 ]
 
 

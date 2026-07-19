@@ -1,5 +1,24 @@
 # MIRA Release Notes
 
+### v3.176.6 (2026-07-19) - fix(slack): fall back to plain text when Block Kit is rejected
+
+- Slack replies now retry as plain text in the same thread when `chat.postMessage` rejects generated Block Kit with `invalid_blocks`, so long PrintSense answers are still visible instead of silently disappearing after "Analyzing equipment...".
+
+### v3.176.5 (2026-07-19) - fix(slack): preserve electrical-print answers through quality gate
+
+- Slack electrical-print follow-ups now mark `ELECTRICAL_PRINT` as a trusted dispatch kind after the saved-image print handler claims the turn, preventing schematic answers with repeated symbols like `M1`, `K1`, or contactor labels from being replaced by the generic quality-gate rephrase fallback.
+
+### v3.176.4 (2026-07-19) - fix(slack): keep print follow-ups on visual context
+
+- Slack print uploads now persist `ELECTRICAL_PRINT` state before slow print interpretation can time out, remember first-turn print photos with a 1-based turn marker, and route follow-up questions back through the saved visual PrintSense context before generic RAG/diagnose routing can answer from stale manuals.
+- Eval Offline CI now keeps the adversarial overlong payload cases but gives them short pytest IDs, preventing huge 10k/100k-character payloads from flooding the GitHub Actions log and aborting the job before the suite can finish.
+
+### v3.176.3 (2026-07-19) - fix(slack): ship Telegram PrintSense/OCR backend parity
+
+- Slack image uploads now preserve `platform="slack"` into `Supervisor.process`, so Slack turns are logged and traced as Slack instead of falling through the engine's Telegram default while still using the shared image/PrintSense path.
+- Production and CI `mira-bot-slack` builds now use repo-root context, copy repo-root `printsense/`, install `pytesseract` + the PrintSense typed/interpreter deps, receive the same PrintSense/OCR env knobs as Telegram, and healthcheck the real `printsense`/`pytesseract`/`ocr_lane_report()` import path.
+- Local `mira-bots/docker-compose.yml` Slack is now opt-in under the `slack-dev` profile and uses the same root-context image, reducing the chance of a stale local Socket Mode consumer competing with production again.
+
 ### v3.176.1 (2026-07-19) - fix(autoeval): pyright Optional narrowing in asked_module_unresolved helper
 
 - `_asked_module_ref` guarded `best_gap <= radius` behind `best_ref is not None` — pyright can't couple the two (reportOptionalOperand; failed the main-push Type check after #2810's admin merge during the Actions event outage). Narrow on `best_gap` instead; the pair is always set together, behavior identical, 61 autoeval tests unchanged.
