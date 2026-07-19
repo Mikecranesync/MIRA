@@ -133,6 +133,102 @@ def test_unprefixed_tokens_alone_are_not_enough(vw):
 
 
 # --------------------------------------------------------------------------- #
+# c11/c12-class regression (2026-07-18 Tower OP bench re-benchmark): two real
+# LED/diagnostic-table print pages classified EQUIPMENT_PHOTO despite 184 and
+# 156 real OCR items available. The source photos are PROPRIETARY (Heege PLC
+# LED-code reference sheets) and are never checked in — the fixtures below are
+# 100% FICTIONAL, following the same "9x-series" synthetic-tag convention used
+# for committed print fixtures elsewhere in this repo (see
+# printsense/benchmarks/golden_corpus.py's K9xx/Q9xx/S9xx/X9xx tags,
+# truth_status="synthetic"). No real Heege wording appears below.
+#
+# Failure mechanism (why NEITHER existing print-layout signal saves this
+# class): the vision model describes the page's CONTENTS — "a PLC module's
+# LED status-indicator reference table" — which is exactly the vocabulary in
+# EQUIPMENT_FACE_KEYWORDS ("led", "plc", "indicator", "fault"), and that check
+# fires (on both the vision text AND the OCR text, since the OCR items also
+# say "LED") BEFORE the weak OCR_CLASSIFICATION_THRESHOLD tiebreaker (position
+# 10 in _classify_photo) ever runs. The module references use a dotted
+# "X9.N" form, not a -/+ prefixed IEC designator, so PR #2713's schematic-tag
+# grammar (_ocr_schematic_tag_hits) doesn't fire either — confirmed by
+# test_catalog_text_does_not_trip_tag_grammar-style reasoning, see
+# test_led_table_ocr_does_not_trip_tag_grammar below.
+# --------------------------------------------------------------------------- #
+
+_LED_DIAGNOSTIC_TABLE_DESC = (
+    "A printed reference page for a PLC expansion module, showing a table of "
+    "LED status indicators with their color states and a fault or diagnostic "
+    "meaning listed for each position."
+)
+
+_LED_MEANINGS = (
+    "Error: runtime fault detected",
+    "Warning: input out of range",
+    "OK: normal operation",
+    "Error: communication timeout",
+    "Warning: battery low",
+    "OK: standby",
+)
+
+
+def _synthetic_led_table_ocr_items(n: int) -> list[str]:
+    """``n`` fictional OCR items mirroring the real bench cases' density —
+    cycles fictional 9x-series module refs ("X9.4"), LED-position descriptors
+    ("LED 5 (IG)"), and generic fictional fault/status meanings. Every token
+    is synthetic; none of it is real Heege text, and none of it matches the
+    IEC designator grammar (dotted form, no leading -/+ or sheet/device
+    slash)."""
+    items: list[str] = []
+    for i in range(n):
+        bucket = i % 3
+        if bucket == 0:
+            items.append(f"X9.{i % 24 + 1}")
+        elif bucket == 1:
+            items.append(f"LED {i % 24 + 1} ({'IG' if i % 2 else 'R'})")
+        else:
+            items.append(_LED_MEANINGS[i % len(_LED_MEANINGS)])
+    return items
+
+
+def test_led_table_ocr_does_not_trip_tag_grammar():
+    """Sanity pin for the failure mechanism: the dotted 9x-series module refs
+    must NOT read as IEC schematic tags — otherwise this fixture would pass
+    for the wrong reason (PR #2713's existing rescue, not the density fix)."""
+    from shared.workers.vision_worker import _ocr_schematic_tag_hits
+
+    hits, prefixed = _ocr_schematic_tag_hits(_synthetic_led_table_ocr_items(184))
+    assert hits == 0 and prefixed == 0
+
+
+@pytest.mark.parametrize(
+    "ocr_count,caption",
+    [(184, ""), (156, "Analyze this equipment photo")],
+    ids=["c11-184-items-no-caption", "c12-156-items-equipment-caption"],
+)
+def test_dense_led_diagnostic_table_routes_to_print_not_equipment(vw, ocr_count, caption):
+    """Pins the c11/c12 Tower OP bench regression dead: a diagnostic/LED-table
+    page with overwhelming OCR density must classify ELECTRICAL_PRINT even
+    though both the vision description and the OCR text itself carry heavy
+    EQUIPMENT_FACE_KEYWORDS vocabulary (led/plc/indicator/fault) — the exact
+    class PR #2713 exists to fix, that its shipped signals (STRONG_PRINT_
+    SIGNALS, schematic-tag grammar) don't yet cover."""
+    items = _synthetic_led_table_ocr_items(ocr_count)
+    r = vw._classify_photo(_LED_DIAGNOSTIC_TABLE_DESC, ocr_items=items, caption=caption)
+    assert r["type"] == "ELECTRICAL_PRINT", r
+
+
+def test_moderate_equipment_photo_ocr_count_stays_equipment_photo(vw):
+    """Guards against an overcorrection: a real equipment photo with a
+    faceplate's worth of readable labels (well below the dense-table
+    threshold) must still classify EQUIPMENT_PHOTO — the fix is a density
+    signal for OVERWHELMING counts, not a general OCR-count override of
+    vision equipment evidence."""
+    items = _synthetic_led_table_ocr_items(20)
+    r = vw._classify_photo(_LED_DIAGNOSTIC_TABLE_DESC, ocr_items=items, caption="")
+    assert r["type"] == "EQUIPMENT_PHOTO", r
+
+
+# --------------------------------------------------------------------------- #
 # Layer 2 — engine: a classified print ALWAYS gets the grounded reply
 # --------------------------------------------------------------------------- #
 
