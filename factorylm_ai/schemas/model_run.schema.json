@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/model_run.schema.json",
+  "title": "ModelRun",
+  "description": "One telemetry record for a single provider call. Mirrors factorylm_ai.telemetry.ModelRun exactly, field for field — every JSONL line in factorylm_ai/data/runs/model_runs.jsonl validates against this.",
+  "type": "object",
+  "properties": {
+    "ts": { "type": "string", "minLength": 1, "description": "ISO-8601 timestamp of the call." },
+    "provider": { "type": "string", "minLength": 1, "description": "mock | together | local_liquid." },
+    "model": { "type": "string", "minLength": 1, "description": "The model id that actually answered." },
+    "adapter": { "type": ["string", "null"], "description": "LoRA/adapter id when serving fine-tuned, else null." },
+    "task": { "type": "string", "minLength": 1, "description": "Task id, e.g. M01..M13." },
+    "input_hash": { "type": "string", "minLength": 1 },
+    "prompt_version": { "type": "string", "minLength": 1 },
+    "schema_version": { "type": "string", "minLength": 1 },
+    "latency_ms": { "type": "integer", "minimum": 0 },
+    "input_tokens": { "type": "integer", "minimum": 0 },
+    "output_tokens": { "type": "integer", "minimum": 0 },
+    "estimated_cost_usd": { "type": "number", "minimum": 0 },
+    "json_valid": { "type": "boolean" },
+    "evidence_required": { "type": "boolean" },
+    "evidence_present": { "type": "boolean" },
+    "human_rating": {
+      "type": "string",
+      "enum": ["accepted", "corrected", "rejected", "unknown"]
+    }
+  },
+  "required": [
+    "ts", "provider", "model", "adapter", "task",
+    "input_hash", "prompt_version", "schema_version",
+    "latency_ms", "input_tokens", "output_tokens", "estimated_cost_usd",
+    "json_valid", "evidence_required", "evidence_present", "human_rating"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "ts": "2026-07-19T00:00:00Z",
+      "provider": "mock",
+      "model": "mock/m01",
+      "adapter": null,
+      "task": "M01",
+      "input_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85",
+      "prompt_version": "m01_vision_intake_v1",
+      "schema_version": "1",
+      "latency_ms": 1,
+      "input_tokens": 42,
+      "output_tokens": 18,
+      "estimated_cost_usd": 0.0,
+      "json_valid": true,
+      "evidence_required": false,
+      "evidence_present": true,
+      "human_rating": "unknown"
+    },
+    {
+      "ts": "2026-07-19T00:05:12Z",
+      "provider": "together",
+      "model": "meta-llama/Llama-3.2-3B-Instruct:factorylm_intent_router:ft-123",
+      "adapter": "factorylm_intent_router",
+      "task": "M05",
+      "input_hash": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6a",
+      "prompt_version": "m05_intent_router_v1",
+      "schema_version": "1",
+      "latency_ms": 640,
+      "input_tokens": 128,
+      "output_tokens": 40,
+      "estimated_cost_usd": 0.0000696,
+      "json_valid": true,
+      "evidence_required": false,
+      "evidence_present": false,
+      "human_rating": "corrected"
+    }
+  ]
+}

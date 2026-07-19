@@ -73,7 +73,9 @@ jobs:
             mira-bots/telegram/ \
             mira-bots/slack/ \
             mira-core/mira-ingest/ \
-            mira-mcp/
+            mira-mcp/ \
+            factorylm_ai/ \
+            tests/factorylm_ai/
 
       - name: Format check
         run: |
@@ -82,7 +84,9 @@ jobs:
             mira-bots/telegram/ \
             mira-bots/slack/ \
             mira-core/mira-ingest/ \
-            mira-mcp/
+            mira-mcp/ \
+            factorylm_ai/ \
+            tests/factorylm_ai/
 
       - name: Type check
         run: pyright
@@ -266,6 +270,18 @@ jobs:
         run: |
           pip install pydantic pillow
           pytest tests/printsense/ -v
+
+      - name: FactoryLM AI model-lab tests (hermetic, mock provider, no network)
+        # Guards factorylm_ai/ — the ZTA model lab: the provider network
+        # double-gate (TOGETHERAI_API_KEY + FACTORYLM_AI_ALLOW_NETWORK, neither
+        # set in CI so the Together provider structurally cannot be reached),
+        # the BudgetGuard spend law incl. the fine-tune $-precheck, the
+        # fail-closed artifact registry + promotion gate, flywheel export
+        # refusals (approval/sensitivity/holdout), and the proofpack dry-run.
+        # Root tests/ is not collected wholesale, so this dir is named
+        # explicitly (like the steps above). httpx comes from the telegram
+        # requirements installed at job start.
+        run: pytest tests/factorylm_ai/ -v
 
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
