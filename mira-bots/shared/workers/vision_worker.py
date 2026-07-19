@@ -293,17 +293,19 @@ def _tesseract_version_impl() -> str:
     return str(pytesseract.get_tesseract_version())
 
 
+def _model_lane_on() -> bool:
+    """OCR_MODEL_LANE=on gate, shared by ocr_lane_report() and _call_ocr() —
+    off by default; the deterministic floor is Tesseract."""
+    return os.environ.get("OCR_MODEL_LANE", "off").strip().lower() == "on"
+
+
 def ocr_lane_report() -> dict:
     """One-shot health report for every OCR lane. Logged at bot boot and
     rendered by /printsense_test ocr — the mechanism that makes a dead
     floor loud instead of a per-turn WARNING nobody reads (the 2026-07
     glm-ocr lane died silently for weeks)."""
     expected = (os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0") == "1"
-    model_lane = (
-        "on"
-        if os.environ.get("OCR_MODEL_LANE", "off").strip().lower() == "on"
-        else "off"
-    )
+    model_lane = "on" if _model_lane_on() else "off"
     try:
         version: str | None = _tesseract_version_impl()
         available = True
@@ -498,7 +500,7 @@ class VisionWorker:
         as ``_call_vision``); free-tier VL models misread dense schematics
         (2026-07-17 UNSEEN benchmark), so this lane supplements the floor —
         it must never replace it."""
-        if os.environ.get("OCR_MODEL_LANE", "off").strip().lower() != "on":
+        if not _model_lane_on():
             return []
 
         messages = [

@@ -234,6 +234,25 @@ def evaluate_print_turn(
             }
         )
 
+    # P0 — the OCR floor was expected up (OCR_EXPECT_TESSERACT=1) but this
+    # print turn ran with it dead (ocr_source="none") on an electrical print —
+    # every tag-grounding lane above silently degrades when this happens.
+    # Page it instead of letting it rot for weeks (PR-A landed ocr_source on
+    # vision_data; this is the PR-C keep-alive). Absent ocr_source (pre-PR-A
+    # rows) or a falsy/absent env var must NOT fire — backward compatible.
+    if (
+        (vision_data or {}).get("classification") == "ELECTRICAL_PRINT"
+        and (vision_data or {}).get("ocr_source") == "none"
+        and (os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0") == "1"
+    ):
+        flags.append(
+            {
+                "class": "ocr_floor_dead",
+                "severity": "P0",
+                "detail": _cap("ocr_source=none while OCR_EXPECT_TESSERACT=1"),
+            }
+        )
+
     refusal = False
     safety_language = False
     if _g is not None:

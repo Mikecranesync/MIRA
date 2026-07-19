@@ -19,11 +19,11 @@ pytest.importorskip("pydantic")
 from shared import print_autoeval  # noqa: E402
 
 
-def _eval(answer, ocr_items=None, usage=None, **kw):
+def _eval(answer, ocr_items=None, usage=None, vision_data=None, **kw):
     return print_autoeval.evaluate_print_turn(
         "test question",
         answer,
-        {"ocr_items": ocr_items or []},
+        vision_data if vision_data is not None else {"ocr_items": ocr_items or []},
         usage,
         1.5,
         **kw,
@@ -223,6 +223,64 @@ class TestDegenerateOutputRules:
         assert "degenerate_enumeration" in classes
         assert "tag_flood_without_ocr" in classes
         assert "cap_truncation" in classes
+
+
+class TestOcrFloorDeadRule:
+    """v2 rule (PR-C keep-alive): a print turn ran with a dead OCR floor
+    (ocr_source="none") while the floor was expected up
+    (OCR_EXPECT_TESSERACT=1) — pages P0 through the existing autoeval alert
+    pipeline instead of rotting silently like the 2026-07 glm-ocr lane did."""
+
+    _DEAD = {"classification": "ELECTRICAL_PRINT", "ocr_items": [], "ocr_source": "none"}
+
+    def test_dead_floor_is_p0_when_expected(self, monkeypatch):
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "1")
+        r = _eval("Some answer text.", vision_data=self._DEAD)
+        assert "ocr_floor_dead" in _classes(r)
+        assert r["severity"] == "P0"
+
+    def test_does_not_fire_when_env_absent(self, monkeypatch):
+        monkeypatch.delenv("OCR_EXPECT_TESSERACT", raising=False)
+        r = _eval("Some answer text.", vision_data=self._DEAD)
+        assert "ocr_floor_dead" not in _classes(r)
+
+    def test_does_not_fire_when_ocr_source_absent(self, monkeypatch):
+        # Backward compatible: rows/turns captured before PR-A have no
+        # ocr_source key at all — must not fire.
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "1")
+        r = _eval(
+            "Some answer text.",
+            vision_data={"classification": "ELECTRICAL_PRINT", "ocr_items": []},
+        )
+        assert "ocr_floor_dead" not in _classes(r)
+
+    def test_does_not_fire_when_floor_healthy(self, monkeypatch):
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "1")
+        r = _eval(
+            "Some answer text.",
+            vision_data={
+                "classification": "ELECTRICAL_PRINT",
+                "ocr_items": [],
+                "ocr_source": "tesseract",
+            },
+        )
+        assert "ocr_floor_dead" not in _classes(r)
+
+    def test_does_not_fire_when_not_electrical_print(self, monkeypatch):
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "1")
+        r = _eval(
+            "Some answer text.",
+            vision_data={"classification": "NAMEPLATE", "ocr_items": [], "ocr_source": "none"},
+        )
+        assert "ocr_floor_dead" not in _classes(r)
+
+    def test_fires_with_whitespace_padded_env(self, monkeypatch):
+        # Strip-normalized env read: whitespace must not prevent firing.
+        # Parity with vision_worker.ocr_lane_report() idiom.
+        monkeypatch.setenv("OCR_EXPECT_TESSERACT", "1 ")
+        r = _eval("Some answer text.", vision_data=self._DEAD)
+        assert "ocr_floor_dead" in _classes(r)
+        assert r["severity"] == "P0"
 
 
 def test_format_alert_caps_and_omits_pii():
