@@ -30,6 +30,7 @@ x-bot-common-env: &bot-common-env
   TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
   TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
   TOGETHERAI_TIMEOUT: ${TOGETHERAI_TIMEOUT:-}
+  LLM_REASONING_RETRY_MAX_TOKENS: ${LLM_REASONING_RETRY_MAX_TOKENS:-}
   TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
   LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
@@ -277,6 +278,7 @@ services:
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
@@ -338,6 +340,7 @@ services:
       # Free-cascade print-theory reply cap (was hardcoded 1200; two 2026-07-18
       # live turns truncated mid-sentence at that cap). Read at call time.
       - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
+      - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -367,6 +370,7 @@ services:
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -417,6 +421,7 @@ services:
       - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
       - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
       - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
+      - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -441,6 +446,7 @@ services:
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -800,6 +806,7 @@ services:
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       # Atlas CMMS live stats — internal docker URL via shared cmms network.
       # Public cmms.factorylm.com nginx only proxies /auth/ + /api/ + /license/
       # to the Spring backend; /work-orders/*, /assets/*, /preventive-maintenances/*

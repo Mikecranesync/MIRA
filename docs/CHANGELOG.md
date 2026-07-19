@@ -1,5 +1,13 @@
 # MIRA Release Notes
 
+### v3.176.7 (2026-07-19) - fix(inference): reasoning-model handling in the cascade router
+
+- The router now strips `<think>` chain-of-thought blocks from every provider reply (closed blocks removed; an unterminated block — the cap-hit-mid-reasoning signature — yields no visible content) and applies the same strip on the rate-limit inline retry path.
+- New reasoning-burn recovery: when a reply has empty visible content AND burn evidence (completion tokens at the cap, a `reasoning_content` field, or think markup), the router retries that provider ONCE with `LLM_REASONING_RETRY_MAX_TOKENS` headroom (default 8192, `0` disables, or-form parsed) before cascading on. Genuinely empty replies are not retried.
+- Why: Tower OP round 4 (2026-07-19) measured the failure — with `TOGETHERAI_VISION_MODEL=moonshotai/Kimi-K2.6`, 20/22 production calls returned HTTP 200 with the entire 1024/2000-token budget burned on reasoning and zero visible content, so the cascade shipped the deterministic fallback on all 12 bench cases while the same model answered photo-exactly on a raw call.
+- Compose env blocks (`mira-bots/docker-compose.yml`, staging, staging-vps, saas) map the new knob at every `TOGETHERAI_TIMEOUT` site; `docs/env-vars.md` documents it; `mira-bots/tests/test_router_reasoning.py` pins strip semantics, burn detection, single-retry, knob or-form, and the no-retry-on-plain-empty rule.
+- New `PRINT_THEORY_FULL_RES` knob (default off): the print-theory cascade call can send the caller's full-resolution image (`interpret_b64`, already plumbed for the paid interpreter) instead of the 1024 px classifier crush — the R5-alpha probe measured big-vision models reading dense table rows correctly at full resolution that the crush loses. Compose-mapped at the `PRINT_THEORY_MAX_TOKENS` sites; four hermetic tests in `test_print_translator.py`.
+
 ### v3.176.6 (2026-07-19) - fix(slack): fall back to plain text when Block Kit is rejected
 
 - Slack replies now retry as plain text in the same thread when `chat.postMessage` rejects generated Block Kit with `invalid_blocks`, so long PrintSense answers are still visible instead of silently disappearing after "Analyzing equipment...".
