@@ -219,7 +219,10 @@ class SlackRuntime:
             _log_event_decision(event, decision="ignored", reason="bot_event")
             return
 
-        if self.settings.allowed_channels and event.get("channel") not in self.settings.allowed_channels:
+        if (
+            self.settings.allowed_channels
+            and event.get("channel") not in self.settings.allowed_channels
+        ):
             _log_event_decision(event, decision="ignored", reason="channel_not_allowed")
             return
 

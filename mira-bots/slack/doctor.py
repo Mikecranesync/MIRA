@@ -66,7 +66,9 @@ async def run_from_env(expected_user_id: str = "") -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--expected-user-id", default=os.environ.get("SLACK_EXPECTED_BOT_USER_ID", ""))
+    parser.add_argument(
+        "--expected-user-id", default=os.environ.get("SLACK_EXPECTED_BOT_USER_ID", "")
+    )
     args = parser.parse_args()
     return asyncio.run(run_from_env(args.expected_user_id))
 
