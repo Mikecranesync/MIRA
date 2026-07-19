@@ -7,17 +7,16 @@ from pathlib import Path
 
 import pytest
 
-_repo_root = Path(__file__).resolve().parents[2]
-if str(_repo_root) not in sys.path:
-    sys.path.insert(0, str(_repo_root))
-if str(_repo_root / "mira-bots" / "slack") not in sys.path:
-    sys.path.insert(0, str(_repo_root / "mira-bots" / "slack"))
+_tests_dir = Path(__file__).resolve().parent
+if str(_tests_dir) not in sys.path:
+    sys.path.insert(0, str(_tests_dir))
+
+from slack_test_imports import load_slack_doctor
 
 
 @pytest.mark.asyncio
 async def test_doctor_reports_identity_without_tokens_or_socket_url(capsys):
-    import bot
-    import doctor
+    bot, doctor = load_slack_doctor()
 
     settings = bot.SlackSettings(
         bot_token="xoxb-test-secret",
@@ -56,8 +55,7 @@ async def test_doctor_reports_identity_without_tokens_or_socket_url(capsys):
 
 @pytest.mark.asyncio
 async def test_doctor_fails_on_expected_user_mismatch(capsys):
-    import bot
-    import doctor
+    bot, doctor = load_slack_doctor()
 
     settings = bot.SlackSettings(
         bot_token="xoxb-test-secret",

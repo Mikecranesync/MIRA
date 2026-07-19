@@ -11,17 +11,15 @@ from pathlib import Path
 import pytest
 
 _repo_root = Path(__file__).resolve().parents[2]
-if str(_repo_root) not in sys.path:
-    sys.path.insert(0, str(_repo_root))
-if str(_repo_root / "mira-bots" / "slack") not in sys.path:
-    sys.path.insert(0, str(_repo_root / "mira-bots" / "slack"))
+_tests_dir = Path(__file__).resolve().parent
+if str(_tests_dir) not in sys.path:
+    sys.path.insert(0, str(_tests_dir))
+
+from slack_test_imports import load_slack_bot
 
 
 def _import_bot():
-    sys.modules.pop("bot", None)
-    import bot
-
-    return bot
+    return load_slack_bot()
 
 
 def test_bot_module_imports_without_slack_env():
@@ -130,3 +128,18 @@ def test_ignore_decision_logged_without_body(caplog):
     assert "channel_not_allowed" in out
     assert "C2" in out
     assert "do not log this" not in out
+
+
+def test_import_helper_restores_existing_top_level_bot_module():
+    sentinel = object()
+    original = sys.modules.get("bot")
+    sys.modules["bot"] = sentinel
+    try:
+        bot = _import_bot()
+        assert bot.__name__ == "mira_slack_bot_under_test"
+        assert sys.modules["bot"] is sentinel
+    finally:
+        if original is None:
+            sys.modules.pop("bot", None)
+        else:
+            sys.modules["bot"] = original
