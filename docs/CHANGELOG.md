@@ -15,6 +15,32 @@
 - **`docs/zta/factorylm-ai-model-lab.md`** (architecture: the Infer→Capture→Review→Convert→Split→Train→Benchmark→Promote→Export→Run loop, package map, env vars, how to run tests/proofpack, the lab-vs-production relationship statement) and **`docs/zta/together-liquid-model-strategy.md`** (the 2026-07-19 recon: Together's catalog-vs-serverless-access gap, the confirmed-cheap model table, fine-tuning economics — training is a few dollars but there is NO serverless LoRA serving, only a $5.49/hr dedicated-endpoint burst or local vLLM/llama.cpp — and the Liquid LFM Open License v1.0 verdict, flagged as a policy decision for Mike since it is Apache-2.0-*derived*, not literally Apache/MIT).
 - Repo-law compliance: every env read uses the `os.getenv("X") or "default"` or-form (compose `${VAR:-}` empty-string trap); zero network in tests (mock provider only; Together construction/calls refuse without both `TOGETHERAI_API_KEY` and `FACTORYLM_AI_ALLOW_NETWORK`); no new dependencies (httpx only, hand-rolled JSON-Schema subset instead of `jsonschema`); `factorylm_ai/data/`, `factorylm_ai/proofpack/reports/`, `.venv-flmai/` gitignored; `factorylm_ai` added to `pyrightconfig.json`'s `include`.
 - Tests: `tests/factorylm_ai/` (new, `test_flm_ai_*` repo-unique basenames) — providers, budget/pricing, telemetry, schemas, registry, tasks, flywheel, proofpack, and the promotion gate (27 cases: the schema's own all-pass/blocked examples, every individual gate threshold, geometry/M09 conditional gates, malformed-decision fail-closed paths) — ruff- and pyright-clean, zero network.
+### v3.176.7 (2026-07-19) - fix(inference): reasoning-model handling in the cascade router
+
+- The router now strips `<think>` chain-of-thought blocks from every provider reply (closed blocks removed; an unterminated block — the cap-hit-mid-reasoning signature — yields no visible content) and applies the same strip on the rate-limit inline retry path.
+- New reasoning-burn recovery: when a reply has empty visible content AND burn evidence (completion tokens at the cap, a `reasoning_content` field, or think markup), the router retries that provider ONCE with `LLM_REASONING_RETRY_MAX_TOKENS` headroom (default 8192, `0` disables, or-form parsed) before cascading on. Genuinely empty replies are not retried.
+- Why: Tower OP round 4 (2026-07-19) measured the failure — with `TOGETHERAI_VISION_MODEL=moonshotai/Kimi-K2.6`, 20/22 production calls returned HTTP 200 with the entire 1024/2000-token budget burned on reasoning and zero visible content, so the cascade shipped the deterministic fallback on all 12 bench cases while the same model answered photo-exactly on a raw call.
+- Compose env blocks (`mira-bots/docker-compose.yml`, staging, staging-vps, saas) map the new knob at every `TOGETHERAI_TIMEOUT` site; `docs/env-vars.md` documents it; `mira-bots/tests/test_router_reasoning.py` pins strip semantics, burn detection, single-retry, knob or-form, and the no-retry-on-plain-empty rule.
+- New `PRINT_THEORY_FULL_RES` knob (default off): the print-theory cascade call can send the caller's full-resolution image (`interpret_b64`, already plumbed for the paid interpreter) instead of the 1024 px classifier crush — the R5-alpha probe measured big-vision models reading dense table rows correctly at full resolution that the crush loses. Compose-mapped at the `PRINT_THEORY_MAX_TOKENS` sites; four hermetic tests in `test_print_translator.py`.
+
+### v3.176.6 (2026-07-19) - fix(slack): fall back to plain text when Block Kit is rejected
+
+- Slack replies now retry as plain text in the same thread when `chat.postMessage` rejects generated Block Kit with `invalid_blocks`, so long PrintSense answers are still visible instead of silently disappearing after "Analyzing equipment...".
+
+### v3.176.5 (2026-07-19) - fix(slack): preserve electrical-print answers through quality gate
+
+- Slack electrical-print follow-ups now mark `ELECTRICAL_PRINT` as a trusted dispatch kind after the saved-image print handler claims the turn, preventing schematic answers with repeated symbols like `M1`, `K1`, or contactor labels from being replaced by the generic quality-gate rephrase fallback.
+
+### v3.176.4 (2026-07-19) - fix(slack): keep print follow-ups on visual context
+
+- Slack print uploads now persist `ELECTRICAL_PRINT` state before slow print interpretation can time out, remember first-turn print photos with a 1-based turn marker, and route follow-up questions back through the saved visual PrintSense context before generic RAG/diagnose routing can answer from stale manuals.
+- Eval Offline CI now keeps the adversarial overlong payload cases but gives them short pytest IDs, preventing huge 10k/100k-character payloads from flooding the GitHub Actions log and aborting the job before the suite can finish.
+
+### v3.176.3 (2026-07-19) - fix(slack): ship Telegram PrintSense/OCR backend parity
+
+- Slack image uploads now preserve `platform="slack"` into `Supervisor.process`, so Slack turns are logged and traced as Slack instead of falling through the engine's Telegram default while still using the shared image/PrintSense path.
+- Production and CI `mira-bot-slack` builds now use repo-root context, copy repo-root `printsense/`, install `pytesseract` + the PrintSense typed/interpreter deps, receive the same PrintSense/OCR env knobs as Telegram, and healthcheck the real `printsense`/`pytesseract`/`ocr_lane_report()` import path.
+- Local `mira-bots/docker-compose.yml` Slack is now opt-in under the `slack-dev` profile and uses the same root-context image, reducing the chance of a stale local Socket Mode consumer competing with production again.
 
 ### v3.176.1 (2026-07-19) - fix(autoeval): pyright Optional narrowing in asked_module_unresolved helper
 

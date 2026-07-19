@@ -30,6 +30,7 @@ x-bot-common-env: &bot-common-env
   TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
   TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
   TOGETHERAI_TIMEOUT: ${TOGETHERAI_TIMEOUT:-}
+  LLM_REASONING_RETRY_MAX_TOKENS: ${LLM_REASONING_RETRY_MAX_TOKENS:-}
   TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
   LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
@@ -277,6 +278,7 @@ services:
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
@@ -338,6 +340,7 @@ services:
       # Free-cascade print-theory reply cap (was hardcoded 1200; two 2026-07-18
       # live turns truncated mid-sentence at that cap). Read at call time.
       - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
+      - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -367,6 +370,7 @@ services:
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -394,8 +398,8 @@ services:
 
   mira-bot-slack:
     build:
-      context: ./mira-bots
-      dockerfile: slack/Dockerfile
+      context: .
+      dockerfile: mira-bots/slack/Dockerfile
     container_name: mira-bot-slack
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -405,6 +409,19 @@ services:
       - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-}
       - SLACK_ALLOWED_CHANNELS=${SLACK_ALLOWED_CHANNELS:-}
       - SLACK_EXPECTED_BOT_USER_ID=${SLACK_EXPECTED_BOT_USER_ID:-}
+      # ISOLATED paid print-vision interpreter (PrintSense) — NOT part of the
+      # Groq->Cerebras->Together cascade below. Mirrors mira-bot-telegram so
+      # Slack electrical-print photos and follow-ups use the same backend lane.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-openai}
+      - PRINT_VISION_EFFORT=${PRINT_VISION_EFFORT:-xhigh}
+      - PRINT_VISION_MODEL=${PRINT_VISION_MODEL:-}
+      - PRINT_VISION_MAX_TOKENS=${PRINT_VISION_MAX_TOKENS:-}
+      - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
+      - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
+      - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
+      - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -429,10 +446,13 @@ services:
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
+      - OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}
+      - OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/mira-bridge/data/sessions:/data/sessions
@@ -442,7 +462,13 @@ services:
     mem_limit: 512m
     memswap_limit: 512m
     healthcheck:
-      test: ["CMD", "python", "-c", "import slack_bolt"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import slack_bolt, printsense, pytesseract; from shared.workers.vision_worker import ocr_lane_report; assert ocr_lane_report()['verdict'] == 'ok'",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -780,6 +806,7 @@ services:
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
       - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       # Atlas CMMS live stats — internal docker URL via shared cmms network.
       # Public cmms.factorylm.com nginx only proxies /auth/ + /api/ + /license/
       # to the Spring backend; /work-orders/*, /assets/*, /preventive-maintenances/*

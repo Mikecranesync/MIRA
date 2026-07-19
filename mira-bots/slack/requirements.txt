@@ -2,7 +2,14 @@ slack-bolt==1.*
 aiohttp>=3.9
 httpx==0.27.*
 Pillow>=12.0
+pytesseract>=0.3.13
 PyYAML==6.0.3
 langfuse>=2.50.0,<3.0.0
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
+# PrintSense print interpreter (same isolated print-vision lane as Telegram).
+# SDKs are lazy-imported and inert unless PRINT_VISION_PROVIDER plus that
+# provider's key are set; pydantic backs the typed PrintSynth graph.
+pydantic>=2.0
+anthropic>=0.116.0
+openai>=1.66.0

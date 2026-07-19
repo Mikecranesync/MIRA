@@ -51,6 +51,40 @@ _SERIAL_RE = re.compile(
 # Warn when any LLM call exceeds this threshold — indicates context bloat
 _LATENCY_WARN_MS = int(os.getenv("MIRA_LATENCY_WARN_MS", "15000"))
 
+# Reasoning-model handling. Models like Kimi-K2.6 and LFM2.5 emit chain-of-
+# thought in <think> blocks (or a separate reasoning_content field) and can
+# burn the ENTIRE max_tokens budget thinking — returning HTTP 200 with empty
+# visible content (Tower OP round 4, 2026-07-19: 20/22 such calls at the 1024
+# and 2000 caps). The cascade treated that as EMPTY_RESPONSE and fell through
+# to the deterministic fallback, so a capable model produced 0 usable replies.
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_reasoning(text: str) -> str:
+    """Return the visible (non-reasoning) part of a model reply.
+
+    Closed <think>...</think> blocks are removed. An unterminated <think>
+    (the cap-hit-mid-reasoning signature) has no visible answer after it, so
+    everything from the marker on is dropped.
+    """
+    if not text:
+        return ""
+    out = _THINK_RE.sub("", text)
+    lower = out.lower()
+    if "<think>" in lower:
+        out = out[: lower.index("<think>")]
+    return out.strip()
+
+
+def _reasoning_retry_max_tokens() -> int:
+    """Token cap for the single reasoning-burn retry (0 disables the retry).
+
+    Or-form parse: docker compose ``${LLM_REASONING_RETRY_MAX_TOKENS:-}`` maps
+    an unset var to an EMPTY STRING in-container, which must fall back to the
+    default instead of crashing int().
+    """
+    return int(os.getenv("LLM_REASONING_RETRY_MAX_TOKENS") or "8192")
+
 
 def get_system_prompt() -> str:
     """Load system prompt from prompts/diagnose/active.yaml with a 60s TTL cache.
@@ -460,46 +494,78 @@ class InferenceRouter:
         }
 
         try:
-            t0 = time.monotonic()
-            async with httpx.AsyncClient(timeout=provider.timeout) as client:
-                resp = await client.post(provider.api_url, headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            # Up to two attempts: the requested cap, then — only when the first
+            # attempt was a reasoning burn (tokens consumed, no visible content)
+            # — one retry with headroom so the model can finish thinking AND
+            # emit the answer. A genuinely empty reply is not retried.
+            attempt_caps = [max_tokens]
+            content = ""
+            usage_dict: dict = {}
+            for attempt_idx, attempt_cap in enumerate(attempt_caps):
+                payload["max_tokens"] = attempt_cap
+                t0 = time.monotonic()
+                async with httpx.AsyncClient(timeout=provider.timeout) as client:
+                    resp = await client.post(provider.api_url, headers=headers, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-            content = data["choices"][0]["message"]["content"]
-            usage = data.get("usage", {})
-            usage_dict = {
-                "input_tokens": usage.get("prompt_tokens", 0),
-                "output_tokens": usage.get("completion_tokens", 0),
-                "provider": provider.name,
-                "model": f"{provider.name}/{model}",
-            }
+                message = data["choices"][0]["message"]
+                raw_content = message.get("content") or ""
+                content = _strip_reasoning(raw_content)
+                usage = data.get("usage", {})
+                usage_dict = {
+                    "input_tokens": usage.get("prompt_tokens", 0),
+                    "output_tokens": usage.get("completion_tokens", 0),
+                    "provider": provider.name,
+                    "model": f"{provider.name}/{model}",
+                }
 
-            logger.info(
-                "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
-                provider.name,
-                model,
-                elapsed_ms,
-                usage_dict["input_tokens"],
-                usage_dict["output_tokens"],
-            )
-            if elapsed_ms > _LATENCY_WARN_MS:
-                logger.warning(
-                    "SLOW_LLM_CALL provider=%s latency_ms=%d input_tokens=%d — "
-                    "consider trimming context",
+                logger.info(
+                    "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
                     provider.name,
+                    model,
                     elapsed_ms,
                     usage_dict["input_tokens"],
+                    usage_dict["output_tokens"],
+                )
+                if elapsed_ms > _LATENCY_WARN_MS:
+                    logger.warning(
+                        "SLOW_LLM_CALL provider=%s latency_ms=%d input_tokens=%d — "
+                        "consider trimming context",
+                        provider.name,
+                        elapsed_ms,
+                        usage_dict["input_tokens"],
+                    )
+
+                self.write_api_usage(
+                    session_id=session_id,
+                    usage=usage_dict,
+                    model=f"{provider.name}/{model}",
+                    has_image=has_image,
+                    response_time_ms=elapsed_ms,
                 )
 
-            self.write_api_usage(
-                session_id=session_id,
-                usage=usage_dict,
-                model=f"{provider.name}/{model}",
-                has_image=has_image,
-                response_time_ms=elapsed_ms,
-            )
+                if content:
+                    break
+
+                retry_cap = _reasoning_retry_max_tokens()
+                burned = (
+                    usage_dict["output_tokens"] >= attempt_cap
+                    or bool(message.get("reasoning_content"))
+                    or "<think>" in raw_content.lower()
+                )
+                if attempt_idx == 0 and burned and retry_cap > attempt_cap:
+                    logger.warning(
+                        "REASONING_BURN provider=%s model=%s output=%d cap=%d — "
+                        "retrying once with max_tokens=%d",
+                        provider.name,
+                        model,
+                        usage_dict["output_tokens"],
+                        attempt_cap,
+                        retry_cap,
+                    )
+                    attempt_caps.append(retry_cap)
 
             return content, usage_dict
 
@@ -525,7 +591,7 @@ class InferenceRouter:
                         r2 = await rc.post(provider.api_url, headers=headers, json=payload)
                         r2.raise_for_status()
                         d2 = r2.json()
-                    return d2["choices"][0]["message"]["content"], {
+                    return _strip_reasoning(d2["choices"][0]["message"]["content"] or ""), {
                         "input_tokens": d2.get("usage", {}).get("prompt_tokens", 0),
                         "output_tokens": d2.get("usage", {}).get("completion_tokens", 0),
                         "provider": provider.name,

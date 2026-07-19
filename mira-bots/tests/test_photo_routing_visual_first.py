@@ -21,6 +21,7 @@ the vision worker and the grounded-reply method.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 
 sys.path.insert(0, "mira-bots")
@@ -401,3 +402,91 @@ async def test_classified_print_always_gets_grounded_reply(supervisor, caption, 
         else grounded.await_args.args[1]
     )
     assert passed_question == expect_question
+
+
+@pytest.mark.asyncio
+async def test_print_upload_persists_print_state_before_slow_interpretation_timeout(
+    supervisor, monkeypatch
+):
+    """A slow paid print lane must not lose the classified print session.
+
+    The live Slack failure was: image upload classified ELECTRICAL_PRINT, the
+    expensive interpretation timed out, then the follow-up started from IDLE.
+    Persisting the print state before the slow call keeps the next turn routed
+    to the print path.
+    """
+    import shared.engine as engine_mod
+
+    chat_id = "slack:C123:thread-timeout"
+    supervisor.vision.process = AsyncMock(return_value=_print_vision_data())
+    supervisor._extract_schematic = AsyncMock(return_value=None)
+    supervisor._save_session_photo = MagicMock(return_value="")
+
+    async def _slow_print_reply(*_args, **_kwargs):
+        await asyncio.sleep(1)
+        return "late print answer"
+
+    supervisor._grounded_print_reply = AsyncMock(side_effect=_slow_print_reply)
+    monkeypatch.setattr(engine_mod, "_PROCESS_TIMEOUT", 0.01)
+
+    reply = await supervisor.process(
+        chat_id,
+        "Explain this print to me",
+        photo_b64="Zm9vYmFy",
+        platform="slack",
+    )
+
+    assert reply == engine_mod.TIMEOUT_WARNING
+    loaded = supervisor._load_state(chat_id)
+    assert loaded["state"] == "ELECTRICAL_PRINT"
+    assert loaded["context"]["drawing_type"] == "wiring diagram"
+    assert loaded["context"]["photo_turn"] == 1
+
+
+@pytest.mark.asyncio
+async def test_print_followup_reuses_saved_photo_for_grounded_visual_reply(supervisor):
+    """Text follow-ups in a print session should stay visual, not OCR-only."""
+    chat_id = "slack:C123:thread-followup"
+    supervisor._save_state(
+        chat_id,
+        {
+            "state": "ELECTRICAL_PRINT",
+            "asset_identified": _STARTER_PRINT_DESC[:120],
+            "context": {
+                "photo_turn": 1,
+                "ocr_items": [],
+                "ocr_text": "",
+                "drawing_type": "wiring diagram",
+                "history": [],
+            },
+            "exchange_count": 1,
+            "fault_category": None,
+            "final_state": None,
+        },
+    )
+    supervisor._load_session_photo = MagicMock(return_value="saved-print-photo")
+    grounded = AsyncMock(return_value="M1 is powered through contactor K2.1.")
+    supervisor._grounded_print_reply = grounded
+    supervisor.print_.process = AsyncMock(side_effect=AssertionError("OCR-only worker was used"))
+
+    with (
+        patch(
+            "shared.engine.route_intent",
+            new=AsyncMock(
+                return_value={
+                    "intent": "continue_current",
+                    "confidence": 0.95,
+                    "reasoning": "question is about the current print",
+                }
+            ),
+        ),
+        patch("shared.engine.classify_intent", return_value="industrial"),
+    ):
+        result = await supervisor.process_full(chat_id, "which contactor powers M1")
+
+    assert "M1 is powered through contactor K2.1" in result["reply"]
+    grounded.assert_awaited_once()
+    assert grounded.await_args.args[0] == "saved-print-photo"
+    assert grounded.await_args.args[1] == "which contactor powers M1"
+    assert grounded.await_args.args[2]["drawing_type"] == "wiring diagram"
+    assert supervisor.print_.process.await_count == 0
