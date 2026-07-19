@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.176.4 (2026-07-19) - fix(slack): keep print follow-ups on visual context
+
+- Slack print uploads now persist `ELECTRICAL_PRINT` state before slow print interpretation can time out, remember first-turn print photos with a 1-based turn marker, and route follow-up questions back through the saved visual PrintSense context before generic RAG/diagnose routing can answer from stale manuals.
+
 ### v3.176.3 (2026-07-19) - fix(slack): ship Telegram PrintSense/OCR backend parity
 
 - Slack image uploads now preserve `platform="slack"` into `Supervisor.process`, so Slack turns are logged and traced as Slack instead of falling through the engine's Telegram default while still using the shared image/PrintSense path.
