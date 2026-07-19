@@ -360,6 +360,50 @@ class TestFalseAbsenceClaimRule:
         )
         assert "false_absence_claim" not in _classes(r)
 
+    # ── review fix wave: adjacent-sentence guard window (Finding 1) ────────
+
+    def test_two_sentence_honest_composite_does_not_fire(self):
+        """The same honest composite as
+        test_same_sentence_absence_and_sheet_language_does_not_fire, but
+        split across two sentences by a period instead of "because" — the
+        real two-sentence phrasing the same-sentence-only guard used to miss
+        (review finding: this used to fire, wrongly)."""
+        r = _eval(
+            "The part number is not specified. "
+            "This is because the sheet is not visible in this photo.",
+            ocr_items=["xSi-MErHO"],
+        )
+        assert "false_absence_claim" not in _classes(r)
+
+    def test_far_apart_honest_caveat_still_fires(self):
+        """The guard window must not over-suppress: a false claim with an
+        honest sheet-absence mention several sentences later (not the
+        adjacent/tight composite above) must still fire."""
+        r = _eval(
+            "The part numbers are not explicitly labeled in this view. "
+            "The relay coils are wired through the top terminal block. "
+            "The contactor auxiliary contacts feed back to the PLC input card. "
+            "Verify continuity with a meter before assuming a signal path. "
+            "Separately, the answer to your other question about sheet 89 "
+            "depends on a sheet not visible in this photo.",
+            ocr_items=["xSi-MErHO"],
+        )
+        assert "false_absence_claim" in _classes(r)
+
+    # ── review fix wave: hedge/contraction breadth (Finding 2) ─────────────
+
+    def test_fires_on_arent_contraction(self):
+        r = _eval("The ratings aren't labeled on this print.", ocr_items=["K44"])
+        assert "false_absence_claim" in _classes(r)
+
+    def test_fires_on_bare_unlabeled_form(self):
+        r = _eval("The part numbers are unlabeled.", ocr_items=["K44"])
+        assert "false_absence_claim" in _classes(r)
+
+    def test_fires_on_clearly_adverb_variant(self):
+        r = _eval("The device rating is not clearly labeled on this drawing.", ocr_items=["K44"])
+        assert "false_absence_claim" in _classes(r)
+
 
 def test_format_alert_caps_and_omits_pii():
     r = _eval("The contactor is energized. " + "x" * 900)

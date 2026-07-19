@@ -53,28 +53,51 @@ _TRUNCATION_TAIL_CHARS = (",", ";", ":", "-", "(", '"')
 
 # LABEL-absence claim (false_absence_claim rule, Task E1 — the c05 Tower-OP
 # failure: "The part numbers are not explicitly labeled in this view." while
-# ocr_items held a garbled fragment of the exact part number). Two families:
-#   (a) bare "not (explicitly) labeled/specified/indicated/marked"
-#   (b) "no part number(s) (is/are) visible/shown/given"
+# ocr_items held a garbled fragment of the exact part number). Three families:
+#   (a) "not/isn't/aren't/wasn't/weren't (adverb?) labeled/specified/indicated/marked"
+#       — adverb is one of explicitly/clearly/specifically/directly/fully,
+#       optional; the negator accepts the bare word or its n't contraction
+#       (straight or curly apostrophe) so "aren't labeled" / "isn't specified"
+#       don't escape (review fix wave, Finding 2).
+#   (b) "no part number(s) (is/are) visible/shown/given" — anchored to "part
+#       number(s)" specifically. Left EXACTLY as shipped in Task E1 — do not
+#       widen this anchor into a bare "not visible/shown" form (that's a
+#       parked follow-up with its own guard interplay).
+#   (c) bare "unlabeled"/"unspecified"/"unmarked" (review fix wave, Finding
+#       2) — no negator needed, the "un-" prefix already carries it.
 # "visible"/"shown"/"given" appear ONLY inside the anchored family (b) — never
 # as a bare "not visible"/"not shown" alternative in (a) — because that would
 # also match the honest, REQUIRED sheet-absence phrasing this rule must not
 # fire on ("depends on a sheet not visible in this photo", "name the sheet to
 # photograph next" — see build_theory_messages's evidence-contract clause).
 _LABEL_ABSENCE_RE = re.compile(
-    r"not\s+(?:explicitly\s+)?(?:labeled|specified|indicated|marked)\b"
-    r"|no\s+part\s+numbers?\s*(?:is|are)?\s*(?:visible|shown|given)\b",
+    r"(?:not|isn['’]t|aren['’]t|wasn['’]t|weren['’]t)\s+"
+    r"(?:(?:explicitly|clearly|specifically|directly|fully)\s+)?"
+    r"(?:labeled|specified|indicated|marked)\b"
+    r"|no\s+part\s+numbers?\s*(?:is|are)?\s*(?:visible|shown|given)\b"
+    r"|\b(?:unlabeled|unspecified|unmarked)\b",
     re.IGNORECASE,
 )
-# The honest, required exclusion. A per-sentence negative guard (see
-# _false_absence_phrase) keeps this from suppressing a genuine false-absence
-# claim elsewhere in the same reply, while still protecting a single sentence
-# that composites both ("not specified because the sheet isn't visible").
+# The honest, required exclusion. A character-radius guard (see
+# _false_absence_phrase / _ABSENCE_GUARD_RADIUS_CHARS) keeps this from
+# suppressing a genuine false-absence claim separated from any honest sheet
+# caveat by more than the radius — including one many sentences away in a
+# long reply — while still protecting a same-sentence or tight two-sentence
+# composite ("not specified. This is because the sheet isn't visible...").
 _SHEET_ABSENCE_RE = re.compile(
     r"sheet\s+not\s+visible|not\s+visible\s+in\s+this\s+photo|photograph\s+next",
     re.IGNORECASE,
 )
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+# Chars between a LABEL-absence match and the nearest SHEET-absence match for
+# the latter to exculpate the former (review fix wave, Finding 1 — the
+# same-sentence-only guard wrongly fired on real two-sentence phrasing).
+# Measured, not guessed: the reviewed honest two-sentence composite ("not
+# specified. This is because the sheet is not visible in this photo.") has a
+# 31-char gap between matches; a real two-sentence reply where the second
+# sentence is an unrelated, honest caveat ("...in this view. Separately, the
+# answer depends on a sheet not visible in this photo.") — which must still
+# fire — has a 51-char gap. 40 sits between the two with margin either side.
+_ABSENCE_GUARD_RADIUS_CHARS = 40
 
 
 def _longest_consecutive_run(answer: str) -> tuple[str, int]:
@@ -93,16 +116,36 @@ def _longest_consecutive_run(answer: str) -> tuple[str, int]:
     return best_fam, best_run
 
 
+def _span_gap(a: tuple[int, int], b: tuple[int, int]) -> int:
+    """Character distance between two (start, end) spans; 0 if they overlap
+    or touch. Order-independent (works regardless of which span comes first)."""
+    a_start, a_end = a
+    b_start, b_end = b
+    if a_end <= b_start:
+        return b_start - a_end
+    if b_end <= a_start:
+        return a_start - b_end
+    return 0
+
+
 def _false_absence_phrase(answer: str) -> str | None:
-    """The matched LABEL-absence phrase, iff some sentence makes that claim
-    WITHOUT also carrying the honest sheet-absence phrasing in the SAME
-    sentence — else ``None``. Per-sentence (not whole-reply) scoping so a
-    genuine false claim about a label can't be masked by an unrelated,
-    honest sheet caveat elsewhere in a long reply, while a single sentence
-    that composites both reads as one honest claim, not a false one."""
-    for sentence in _SENTENCE_SPLIT_RE.split(answer or ""):
-        match = _LABEL_ABSENCE_RE.search(sentence)
-        if match and not _SHEET_ABSENCE_RE.search(sentence):
+    """The matched LABEL-absence phrase, iff no honest sheet-absence phrasing
+    appears within _ABSENCE_GUARD_RADIUS_CHARS characters of it — else
+    ``None``. Character-radius (not same-sentence) scoping so a genuine false
+    claim about a label can't be masked by an unrelated, honest sheet caveat
+    that sits materially further away — including one many sentences away in
+    a long reply — while a same-sentence or tight two-sentence honest
+    composite ("not specified. This is because the sheet isn't visible...")
+    still reads as one honest claim, not a false one. Both regexes run
+    against the full, untruncated text (never a sliced window), so a long
+    sheet-absence phrase can never be cut off mid-match by the radius."""
+    text = answer or ""
+    sheet_spans = [m.span() for m in _SHEET_ABSENCE_RE.finditer(text)]
+    for match in _LABEL_ABSENCE_RE.finditer(text):
+        exculpated = any(
+            _span_gap(match.span(), s) <= _ABSENCE_GUARD_RADIUS_CHARS for s in sheet_spans
+        )
+        if not exculpated:
             return match.group(0)
     return None
 
