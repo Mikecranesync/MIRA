@@ -22,6 +22,25 @@ QA_BASE_URL=http://host:port tools/crew/dogfood/judge.sh
 Output: `qa/dogfood/latest-report.md` (the report) + raw transcripts under
 `dogfood-output/qa-runs/dogfood-<ts>/` (evidence; not required reading).
 
+The scheduled Bravo runner also appends structured events to
+`dogfood-output/runner-ledger.jsonl`. A ledger row records the runner, status,
+sources checked, personas, counts, evidence path, and next action. This is the
+machine-readable proof that a GREEN was a real check, not an empty-source
+all-clear.
+
+## Customer-use browser pass
+
+`tools/crew/customer-use/runner.mjs` opens the Hub with saved persona sessions
+and browses like a customer. It catches blank pages, auth redirects, browser
+errors, failed requests, and missing customer-facing page language. It writes
+`report.md`, `observations.json`, screenshots, and a ledger event.
+
+```bash
+node tools/crew/customer-use/runner.mjs --persona all
+node tools/crew/customer-use/runner.mjs --persona carlos --strict
+DOGFOOD_CUSTOMER_USE=0 bash tools/crew/dogfood/scheduled_run.sh  # skip browser pass
+```
+
 ## The four paths (`checks/*.check`)
 
 | Check | Question it answers |

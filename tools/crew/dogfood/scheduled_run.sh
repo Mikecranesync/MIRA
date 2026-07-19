@@ -39,7 +39,8 @@ OUT="$REPO/dogfood-output/qa-runs/dogfood-scheduled-$TS"
 mkdir -p "$OUT"
 exec > >(tee -a "$OUT/run.log") 2>&1
 
-echo "[dogfood] start $TS  HEAD=$(git rev-parse --short HEAD 2>/dev/null)  base=$QA_BASE_URL"
+HEAD_SHORT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "[dogfood] start $TS  HEAD=$HEAD_SHORT  base=$QA_BASE_URL"
 
 DRUN=(doppler run --project factorylm --config stg --)
 
@@ -88,6 +89,96 @@ echo "[dogfood] done rc=$rc — report: qa/dogfood/latest-report.md  evidence: $
 # Append a one-line trend entry so a human can skim the history without opening reports.
 verdict="$(grep -m1 -oE 'Overall: (GREEN|YELLOW|RED)' qa/dogfood/latest-report.md 2>/dev/null || echo 'Overall: ?')"
 printf '%s  %s  (run %s)\n' "$TS" "$verdict" "$(basename "$OUT")" >> "$REPO/qa/dogfood/history.log"
+
+# Append a structured runner-ledger event so automation can distinguish a real
+# all-clear from a source failure. Best-effort: never hide the judge result.
+LEDGER="${DOGFOOD_LEDGER_PATH:-$REPO/dogfood-output/runner-ledger.jsonl}"
+if command -v python3 >/dev/null 2>&1; then
+  if ! python3 - "$LEDGER" "$TS" "$verdict" "$rc" "$OUT" "$QA_BASE_URL" "$HEAD_SHORT" "$REPO/qa/dogfood/latest-report.md" <<'PY'
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ledger, ts, verdict, rc, out, base_url, head, report = sys.argv[1:]
+report_path = Path(report)
+text = report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else ""
+ts_match = re.match(r"(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})Z", ts)
+started_at = f"{ts_match.group(1)}T{ts_match.group(2)}:{ts_match.group(3)}:{ts_match.group(4)}Z" if ts_match else ts
+
+match = re.search(r"Overall:\s*(GREEN|YELLOW|RED)", verdict)
+status = match.group(1).lower() if match else "infra"
+if rc != "0":
+    status = "infra"
+
+counts = {}
+count_match = re.search(r"(\d+) red.*?(\d+) yellow.*?(\d+) green.*?(\d+) infra", text, re.S)
+if count_match:
+    counts = {
+        "red": int(count_match.group(1)),
+        "yellow": int(count_match.group(2)),
+        "green": int(count_match.group(3)),
+        "infra": int(count_match.group(4)),
+    }
+
+if status == "red":
+    next_action = "Open qa/dogfood/latest-report.md and fix the Top blockers path first"
+elif status == "yellow":
+    next_action = "Triage degraded dogfood paths and add missing checks"
+elif status == "infra":
+    next_action = "Inspect run.log, persona minting, and staging health before trusting dogfood verdicts"
+else:
+    next_action = ""
+
+event = {
+    "runner": "dogfood_judge",
+    "status": status,
+    "checked": ["seed-synthetic-users", "persona-session-mint", "dogfood product paths"],
+    "evidence_path": out,
+    "counts": counts,
+    "personas": ["carlos", "dana", "operator", "plantmgr", "cfo", "scheduler", "isolation"],
+    "unable_sources": [str(report_path)] if status == "infra" and not text else [],
+    "next_action": next_action,
+    "run_id": os.path.basename(out),
+    "started_at": started_at,
+    "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    "base_url": base_url,
+    "head": head,
+}
+
+target = Path(ledger)
+target.parent.mkdir(parents=True, exist_ok=True)
+with target.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps(event, sort_keys=True) + "\n")
+PY
+  then
+    echo "[dogfood] WARN ledger append failed (non-fatal)"
+  fi
+else
+  echo "[dogfood] WARN python3 not found; runner ledger skipped (non-fatal)"
+fi
+
+# 4) Run customer-use browser work packs with the saved persona sessions. This
+# catches blank pages, auth redirects, browser errors, and missing customer-facing
+# language while behaving like a logged-in customer. Non-fatal: the judge remains
+# the exit-code owner, and this pass writes its own ledger event.
+if [ "${DOGFOOD_CUSTOMER_USE:-1}" = "1" ]; then
+  CUSTOMER_OUT="$OUT/customer-use"
+  if "${DRUN[@]}" node tools/crew/customer-use/runner.mjs \
+      --persona "${DOGFOOD_CUSTOMER_PERSONAS:-all}" \
+      --base "$QA_BASE_URL" \
+      --auth-dir "$REPO/dogfood-output/.auth" \
+      --out-dir "$CUSTOMER_OUT" \
+      --ledger "$LEDGER"; then
+    echo "[dogfood] customer-use browser pass complete: $CUSTOMER_OUT/report.md"
+  else
+    echo "[dogfood] WARN customer-use browser pass failed (non-fatal)"
+  fi
+else
+  echo "[dogfood] customer-use browser pass skipped (DOGFOOD_CUSTOMER_USE=0)"
+fi
 
 # Post the verdict to the rolling-status issue (Phase 2 — GitHub-side observability +
 # the heartbeat producer). Best-effort: a failed post must NEVER fail the run.

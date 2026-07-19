@@ -1,12 +1,8 @@
-"""Safety Alert Runner — runs inside mira-bot-telegram container at 10:00 UTC daily.
+"""Safety Alert Runner - scheduled inside the Telegram bot container.
 
-Scans the local MIRA SQLite DB (`interactions`) for safety-intent turns in the
-last window and pushes a digest to the OPS ALERT bot (staging), never the prod
-user-facing bot. Grounded in real logged interactions — invents nothing. Sends a
-short all-clear when there were none (daily safety visibility + liveness).
-
-Crontab (managed by install_crons.sh):
-  0 10 * * *  docker exec mira-bot-telegram python3 /app/agents/safety_alert_runner.py
+Scans the MIRA SQLite interactions table for safety activity and pushes a digest
+to the ops alert bot. DB/source failures are reported explicitly; they are never
+treated as "no safety events".
 """
 
 from __future__ import annotations
@@ -20,6 +16,11 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+AGENT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(AGENT_DIR))
+
+from runner_ledger import append_event, parse_utc_timestamp
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -28,7 +29,6 @@ logging.basicConfig(
 logger = logging.getLogger("safety_alert")
 
 DB_PATH = Path(os.environ.get("MIRA_DB_PATH", "/data/mira.db"))
-# Safety digest goes to the alert bot (staging), never @FactoryLM_Diagnose.
 BOT_TOKEN = (
     os.environ.get("TELEGRAM_ALERT_BOT_TOKEN")
     or os.environ.get("TELEGRAM_BOT_TOKEN_STG")
@@ -43,50 +43,93 @@ WINDOW_HOURS = int(os.environ.get("SAFETY_ALERT_WINDOW_HOURS", "24"))
 MAX_LIST = int(os.environ.get("SAFETY_ALERT_MAX_LIST", "8"))
 
 
-def gather_safety_events(db: sqlite3.Connection, since_hours: int) -> list[dict]:
-    """Safety-intent / SAFETY_ALERT turns in the window. [] on any query error
-    (schema drift must not crash the agent)."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
+def _utc_now(now: datetime | None = None) -> datetime:
+    value = now or datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def inspect_safety_events(
+    db: sqlite3.Connection,
+    since_hours: int,
+    now: datetime | None = None,
+) -> tuple[list[dict], str | None]:
+    cutoff = _utc_now(now) - timedelta(hours=since_hours)
     try:
         db.row_factory = sqlite3.Row
         rows = db.execute(
             "SELECT chat_id, intent, fsm_state, created_at FROM interactions "
-            "WHERE created_at >= ? AND (intent = 'safety' OR fsm_state = 'SAFETY_ALERT') "
-            "ORDER BY created_at DESC",
-            (cutoff,),
+            "ORDER BY created_at DESC"
         ).fetchall()
-        return [dict(r) for r in rows]
     except Exception as exc:  # noqa: BLE001
-        logger.warning("safety query skipped: %s", exc)
-        return []
+        reason = f"safety query failed: {exc}"
+        logger.warning(reason)
+        return [], reason
+
+    events: list[dict] = []
+    for raw_row in rows:
+        row = dict(raw_row)
+        created_at = parse_utc_timestamp(row.get("created_at"))
+        if created_at is None or created_at < cutoff:
+            continue
+        if row.get("intent") == "safety" or row.get("fsm_state") == "SAFETY_ALERT":
+            events.append(row)
+
+    events.sort(
+        key=lambda event: parse_utc_timestamp(event.get("created_at"))
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    return events, None
 
 
-def build_message(events: list[dict], window_hours: int, max_list: int = MAX_LIST) -> str:
+def gather_safety_events(db: sqlite3.Connection, since_hours: int) -> list[dict]:
+    events, _source_error = inspect_safety_events(db, since_hours)
+    return events
+
+
+def build_message(
+    events: list[dict],
+    window_hours: int,
+    max_list: int = MAX_LIST,
+    source_error: str | None = None,
+) -> str:
+    if source_error:
+        return "\n".join(
+            [
+                "Unable to inspect safety events.",
+                f"Source: interactions at {DB_PATH}",
+                f"Reason: {source_error}",
+            ]
+        )
     if not events:
-        return f"✓ No safety events in the last {window_hours}h."
-    n = len(events)
-    techs = len({e.get("chat_id") for e in events if e.get("chat_id")})
+        return f"OK: Checked interactions; no safety events in the last {window_hours}h."
+
+    count = len(events)
+    techs = len({event.get("chat_id") for event in events if event.get("chat_id")})
     lines = [
-        f"🛑 *{n} safety event{'s' if n != 1 else ''}* in {window_hours}h "
-        f"· {techs} tech{'s' if techs != 1 else ''}"
+        f"*{count} safety event{'s' if count != 1 else ''}* in {window_hours}h "
+        f"- {techs} tech{'s' if techs != 1 else ''}"
     ]
-    for e in events[:max_list]:
-        ts = (str(e.get("created_at") or ""))[:16].replace("T", " ")
-        who = str(e.get("chat_id") or "?")[-6:]
-        lines.append(f"• {ts} — tech …{who}")
-    if n > max_list:
-        lines.append(f"…and {n - max_list} more")
-    lines.append("\n⚠️ Review in CMMS / conversation logs.")
+    for event in events[:max_list]:
+        timestamp = str(event.get("created_at") or "")[:16].replace("T", " ")
+        who = str(event.get("chat_id") or "?")[-6:]
+        lines.append(f"- {timestamp} - tech ...{who}")
+    if count > max_list:
+        lines.append(f"...and {count - max_list} more")
+    lines.append("")
+    lines.append("Review in CMMS / conversation logs.")
     return "\n".join(lines)
 
 
 def send_telegram(message: str) -> bool:
     if not BOT_TOKEN or not CHAT_ID:
-        logger.warning("alert bot token/chat not set — skipping push")
+        logger.warning("alert bot token/chat not set - skipping push")
         return False
     try:
         now = datetime.now().strftime("%H:%M")
-        full = f"🛑 *Linda (Safety)* — {now}\n\n{message}"
+        full = f"*Linda (Safety)* - {now}\n\n{message}"
         payload = json.dumps(
             {
                 "chat_id": CHAT_ID,
@@ -110,21 +153,39 @@ def send_telegram(message: str) -> bool:
 def main() -> None:
     logger.info("Safety alert starting")
     events: list[dict] = []
+    source_error: str | None = None
     if DB_PATH.exists():
         try:
             db = sqlite3.connect(str(DB_PATH))
-            events = gather_safety_events(db, WINDOW_HOURS)
+            events, source_error = inspect_safety_events(db, WINDOW_HOURS)
             db.close()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("DB open failed (%s) — treating as no events", exc)
+            source_error = f"DB open failed: {exc}"
+            logger.warning(source_error)
     else:
-        logger.warning("DB not found at %s — treating as no events", DB_PATH)
+        source_error = f"DB not found at {DB_PATH}"
+        logger.warning(source_error)
 
-    logger.info("safety events: %d", len(events))
-    if not send_telegram(build_message(events, WINDOW_HOURS)):
+    logger.info("safety events: %d source_error=%s", len(events), bool(source_error))
+    try:
+        append_event(
+            runner="safety_alert",
+            status="infra" if source_error else ("red" if events else "green"),
+            checked=["interactions"],
+            evidence_path=str(DB_PATH),
+            counts={"events": len(events)},
+            unable_sources=[str(DB_PATH)] if source_error else [],
+            next_action="Restore interactions DB before trusting safety all-clear"
+            if source_error
+            else "",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ledger append failed: %s", exc)
+
+    if not send_telegram(build_message(events, WINDOW_HOURS, source_error=source_error)):
         logger.warning("push failed")
         sys.exit(1)
-    logger.info("Safety alert sent ✓")
+    logger.info("Safety alert sent")
 
 
 if __name__ == "__main__":

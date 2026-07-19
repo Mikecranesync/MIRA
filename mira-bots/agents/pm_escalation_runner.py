@@ -1,11 +1,8 @@
-"""PM Escalation Runner — runs inside mira-bot-telegram container at 12:00 UTC daily.
+"""PM Escalation Runner - scheduled inside the Telegram bot container.
 
-Queries `pm_schedules` (NeonDB) via shared.pm_scheduler.get_due_pms for due /
-overdue PMs and pushes a digest to the OPS ALERT bot (staging), never the prod
-user-facing bot. Grounded entirely in real pm_schedules rows — invents nothing.
-
-Crontab (managed by install_crons.sh):
-  0 12 * * *  docker exec mira-bot-telegram python3 /app/agents/pm_escalation_runner.py
+Queries pm_schedules via shared.pm_scheduler.get_due_pms and pushes a digest to
+the ops alert bot. Source failures are reported explicitly; they are never
+treated as "no PMs due".
 """
 
 from __future__ import annotations
@@ -18,9 +15,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Make `shared` importable both in the container (/app/shared) and in local dev
-# (mira-bots/shared) — the parent of this file's dir is /app or mira-bots/.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+AGENT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(AGENT_DIR))
+sys.path.insert(0, str(AGENT_DIR.parent))
+
+from runner_ledger import append_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,8 +28,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pm_escalation")
 
-# Ops digest goes to the alert bot (staging), never @FactoryLM_Diagnose. Falls
-# back to the old prod vars only if the alert channel is unwired.
 BOT_TOKEN = (
     os.environ.get("TELEGRAM_ALERT_BOT_TOKEN")
     or os.environ.get("TELEGRAM_BOT_TOKEN_STG")
@@ -45,19 +42,24 @@ TENANT_ID = os.environ.get("MIRA_TENANT_ID") or None
 MAX_LIST = int(os.environ.get("PM_ESCALATION_MAX_LIST", "10"))
 
 
-def fetch_due_pms() -> list[dict]:
-    """Real due/overdue PMs from NeonDB via the shared scheduler. [] on any error
-    (never invents PM data)."""
+def inspect_due_pms() -> tuple[list[dict], str | None]:
     try:
         from shared.pm_scheduler import get_due_pms
     except Exception as exc:  # noqa: BLE001
-        logger.warning("pm_scheduler import failed (%s) — no PM data", exc)
-        return []
+        reason = f"pm_scheduler import failed: {exc}"
+        logger.warning(reason)
+        return [], reason
     try:
-        return get_due_pms(TENANT_ID)
+        return list(get_due_pms(TENANT_ID) or []), None
     except Exception as exc:  # noqa: BLE001
-        logger.warning("get_due_pms failed: %s", exc)
-        return []
+        reason = f"get_due_pms failed: {exc}"
+        logger.warning(reason)
+        return [], reason
+
+
+def fetch_due_pms() -> list[dict]:
+    pms, _source_error = inspect_due_pms()
+    return pms
 
 
 def _overdue_days(next_due_at: str | None) -> int | None:
@@ -76,46 +78,61 @@ def _due_label(pm: dict) -> str:
     od = _overdue_days(pm.get("next_due_at"))
     if od is not None and od > 0:
         return f"overdue {od}d"
-    thr, cur = pm.get("meter_threshold"), pm.get("meter_current")
+    threshold = pm.get("meter_threshold")
+    current = pm.get("meter_current")
     if (
         pm.get("trigger_type") in ("meter", "calendar_or_meter")
-        and thr is not None
-        and cur is not None
-        and cur >= thr
+        and threshold is not None
+        and current is not None
+        and current >= threshold
     ):
-        return f"meter {int(cur)}/{int(thr)}"
+        return f"meter {int(current)}/{int(threshold)}"
     return "due now"
 
 
-def build_message(pms: list[dict], max_list: int = MAX_LIST) -> str:
+def build_message(
+    pms: list[dict],
+    max_list: int = MAX_LIST,
+    source_error: str | None = None,
+) -> str:
+    if source_error:
+        return "\n".join(
+            [
+                "Unable to inspect PM schedule.",
+                "Source: shared.pm_scheduler.get_due_pms",
+                f"Reason: {source_error}",
+            ]
+        )
     if not pms:
-        return "✓ No PMs due right now."
-    crit = sum(1 for p in pms if (p.get("criticality") or "").lower() == "critical")
+        return "OK: No PMs due right now."
+
+    critical_count = sum(1 for p in pms if (p.get("criticality") or "").lower() == "critical")
     header = f"*{len(pms)} PM{'s' if len(pms) != 1 else ''} due*"
-    if crit:
-        header += f" · {crit} critical"
+    if critical_count:
+        header += f" - {critical_count} critical"
+
     lines = [header]
-    for p in pms[:max_list]:
+    for pm in pms[:max_list]:
         label = (
-            " ".join(x for x in [p.get("manufacturer"), p.get("model_number")] if x)
-            or p.get("equipment_id")
+            " ".join(x for x in [pm.get("manufacturer"), pm.get("model_number")] if x)
+            or pm.get("equipment_id")
             or "unknown asset"
         )
-        task = (p.get("task") or "PM task").strip()
-        star = "🔴 " if (p.get("criticality") or "").lower() == "critical" else ""
-        lines.append(f"{star}• `{label}` — {task} ({_due_label(p)})")
+        task = (pm.get("task") or "PM task").strip()
+        prefix = "CRITICAL - " if (pm.get("criticality") or "").lower() == "critical" else "- "
+        lines.append(f"{prefix}`{label}`: {task} ({_due_label(pm)})")
     if len(pms) > max_list:
-        lines.append(f"…and {len(pms) - max_list} more")
+        lines.append(f"...and {len(pms) - max_list} more")
     return "\n".join(lines)
 
 
 def send_telegram(message: str) -> bool:
     if not BOT_TOKEN or not CHAT_ID:
-        logger.warning("alert bot token/chat not set — skipping push")
+        logger.warning("alert bot token/chat not set - skipping push")
         return False
     try:
         now = datetime.now().strftime("%H:%M")
-        full = f"🔧 *PM Scheduler* — {now}\n\n{message}"
+        full = f"*PM Scheduler* - {now}\n\n{message}"
         payload = json.dumps(
             {
                 "chat_id": CHAT_ID,
@@ -136,14 +153,37 @@ def send_telegram(message: str) -> bool:
         return False
 
 
+def _ledger_status(pms: list[dict], source_error: str | None) -> str:
+    if source_error:
+        return "infra"
+    if any((p.get("criticality") or "").lower() == "critical" for p in pms):
+        return "red"
+    if pms:
+        return "yellow"
+    return "green"
+
+
 def main() -> None:
     logger.info("PM escalation starting")
-    pms = fetch_due_pms()
-    logger.info("due PMs: %d", len(pms))
-    if not send_telegram(build_message(pms)):
+    pms, source_error = inspect_due_pms()
+    logger.info("due PMs: %d source_error=%s", len(pms), bool(source_error))
+    try:
+        append_event(
+            runner="pm_escalation",
+            status=_ledger_status(pms, source_error),
+            checked=["pm_schedules"],
+            evidence_path="shared.pm_scheduler.get_due_pms",
+            counts={"due_pms": len(pms)},
+            unable_sources=["pm_schedules"] if source_error else [],
+            next_action="Restore PM schedule source before trusting PM all-clear" if source_error else "",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ledger append failed: %s", exc)
+
+    if not send_telegram(build_message(pms, source_error=source_error)):
         logger.warning("push failed")
         sys.exit(1)
-    logger.info("PM escalation sent ✓")
+    logger.info("PM escalation sent")
 
 
 if __name__ == "__main__":
