@@ -452,6 +452,9 @@ services:
       - OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}
       # Boot self-check Tesseract floor: 1 in containers (required), 0 on local dev.
       - OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}
+      # Free-cascade print-theory reply cap (was hardcoded 1200; two 2026-07-18
+      # live turns truncated mid-sentence at that cap). Read at call time.
+      - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions

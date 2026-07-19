@@ -1,11 +1,23 @@
 """Tests for `shared/print_translator.py` — pure intent + prompt logic.
 
 No I/O, no DB, no network — mirrors the module under test.
+
+The final section (`TestPrintTheoryMaxTokensEnvTunable`) additionally covers
+`shared/engine.py::Supervisor._grounded_print_reply`'s use of
+`PRINT_THEORY_MAX_TOKENS` — the one call site that turns this module's
+messages into a router request. Still no real I/O: the worker fleet and
+router are mocked (idiom borrowed from test_engine_general_question.py /
+test_engine_drive_pack_fastpath.py).
 """
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from shared import print_translator
+from shared.engine import Supervisor
 
 
 # ── is_theory_request ────────────────────────────────────────────────────────
@@ -239,3 +251,73 @@ class TestBuildTheoryMessagesWithQuestion:
         messages = print_translator.build_theory_messages("B64", self._vd(), question="   ")
         text = messages[1]["content"][1]["text"]
         assert "specifically asked" not in text
+
+
+# ── PRINT_THEORY_MAX_TOKENS — env-tunable grounded-cascade cap ──────────────
+#
+# `_grounded_print_reply`'s free-cascade fallback call to router.complete()
+# hardcoded max_tokens=1200; two 2026-07-18 live turns truncated mid-sentence
+# at exactly that cap. The cap is now read from PRINT_THEORY_MAX_TOKENS at
+# CALL TIME (not import time), default 2000, guarded with `or "2000"` for the
+# empty-string shape docker-compose's ${VAR:-} interpolation delivers
+# in-container.
+
+
+@pytest.fixture
+def supervisor(tmp_path):
+    """Supervisor with the worker fleet + router mocked — no network."""
+    db_path = str(tmp_path / "print_theory_cap.db")
+    with patch.dict("os.environ", {"INFERENCE_BACKEND": "local"}):
+        with patch("shared.engine.VisionWorker"):
+            with patch("shared.engine.NameplateWorker"):
+                with patch("shared.engine.RAGWorker"):
+                    with patch("shared.engine.PrintWorker"):
+                        with patch("shared.engine.PLCWorker"):
+                            with patch("shared.engine.NemotronClient"):
+                                with patch("shared.engine.InferenceRouter"):
+                                    sup = Supervisor(
+                                        db_path=db_path,
+                                        openwebui_url="http://localhost:3000",
+                                        api_key="test-key",
+                                        collection_id="test-collection",
+                                    )
+    sup.router = MagicMock()
+    sup.router.complete = AsyncMock(return_value=("A canned explanation.", {}))
+    return sup
+
+
+def _print_vision_data():
+    return {
+        "classification": "ELECTRICAL_PRINT",
+        "ocr_items": ["K10 contactor"],
+        "drawing_type": "ladder logic",
+    }
+
+
+class TestPrintTheoryMaxTokensEnvTunable:
+    @pytest.mark.asyncio
+    async def test_env_var_set_is_passed_through(self, supervisor, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_MAX_TOKENS", "2222")
+        await supervisor._grounded_print_reply(
+            "B64DATA", "explain this print", _print_vision_data(), "chat-1"
+        )
+        assert supervisor.router.complete.await_args.kwargs["max_tokens"] == 2222
+
+    @pytest.mark.asyncio
+    async def test_env_var_unset_defaults_to_2000(self, supervisor, monkeypatch):
+        monkeypatch.delenv("PRINT_THEORY_MAX_TOKENS", raising=False)
+        await supervisor._grounded_print_reply(
+            "B64DATA", "explain this print", _print_vision_data(), "chat-1"
+        )
+        assert supervisor.router.complete.await_args.kwargs["max_tokens"] == 2000
+
+    @pytest.mark.asyncio
+    async def test_env_var_empty_string_defaults_to_2000(self, supervisor, monkeypatch):
+        """Compose ${VAR:-} interpolation delivers an empty string in-container
+        — the mandatory `or "2000"` guard must catch it (a bare
+        int(os.environ.get("PRINT_THEORY_MAX_TOKENS", "2000")) crashes on "")."""
+        monkeypatch.setenv("PRINT_THEORY_MAX_TOKENS", "")
+        await supervisor._grounded_print_reply(
+            "B64DATA", "explain this print", _print_vision_data(), "chat-1"
+        )
+        assert supervisor.router.complete.await_args.kwargs["max_tokens"] == 2000

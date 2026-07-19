@@ -333,6 +333,9 @@ services:
       - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
       # Per-turn $0 print autoeval (default ON; "0" disables). or-form parse in code.
       - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
+      # Free-cascade print-theory reply cap (was hardcoded 1200; two 2026-07-18
+      # live turns truncated mid-sentence at that cap). Read at call time.
+      - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
