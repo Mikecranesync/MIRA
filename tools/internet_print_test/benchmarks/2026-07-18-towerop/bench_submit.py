@@ -13,7 +13,7 @@ prints a one-line summary. Each chat_id gets its own scratch sqlite.
 import asyncio, json, os, sys, time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[3]
+REPO = Path(__file__).resolve().parents[4]
 os.chdir(REPO)
 sys.path.insert(0, str(REPO / "tools" / "internet_print_test"))
 photo, question, chat_id, out = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
