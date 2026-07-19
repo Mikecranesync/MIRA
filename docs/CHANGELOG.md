@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.176.3 (2026-07-19) - fix(slack): ship Telegram PrintSense/OCR backend parity
+
+- Slack image uploads now preserve `platform="slack"` into `Supervisor.process`, so Slack turns are logged and traced as Slack instead of falling through the engine's Telegram default while still using the shared image/PrintSense path.
+- Production and CI `mira-bot-slack` builds now use repo-root context, copy repo-root `printsense/`, install `pytesseract` + the PrintSense typed/interpreter deps, receive the same PrintSense/OCR env knobs as Telegram, and healthcheck the real `printsense`/`pytesseract`/`ocr_lane_report()` import path.
+- Local `mira-bots/docker-compose.yml` Slack is now opt-in under the `slack-dev` profile and uses the same root-context image, reducing the chance of a stale local Socket Mode consumer competing with production again.
+
 ### v3.176.1 (2026-07-19) - fix(autoeval): pyright Optional narrowing in asked_module_unresolved helper
 
 - `_asked_module_ref` guarded `best_gap <= radius` behind `best_ref is not None` — pyright can't couple the two (reportOptionalOperand; failed the main-push Type check after #2810's admin merge during the Actions event outage). Narrow on `best_gap` instead; the pair is always set together, behavior identical, 61 autoeval tests unchanged.

@@ -629,9 +629,11 @@ jobs:
         run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-telegram:scan
 
       - name: Build mira-bot-slack
+        # Build context is the repo root (`.`) to match docker-compose.saas.yml
+        # and the Slack Dockerfile's PrintSense/OCR COPY paths.
         run: |
           docker buildx build \
-            -f mira-bots/slack/Dockerfile mira-bots/ \
+            -f mira-bots/slack/Dockerfile . \
             --cache-from type=gha,scope=mira-slack \
             --cache-to type=gha,mode=max,scope=mira-slack \
             -t mira-slack:scan --load

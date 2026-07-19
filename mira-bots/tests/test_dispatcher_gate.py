@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 from shared.chat.dispatcher import ChatDispatcher
-from shared.chat.types import NormalizedChatEvent
+from shared.chat.types import NormalizedAttachment, NormalizedChatEvent
 from shared.identity.service import IdentityService, MiraUser
 
 
@@ -61,6 +61,51 @@ async def test_known_user_passes_to_engine(fake_engine):
     call_kwargs = fake_engine.process.await_args.kwargs
     assert call_kwargs.get("tenant_id") == "t_acme"
     assert call_kwargs.get("mira_user_id") == "u1"
+
+
+@pytest.mark.asyncio
+async def test_slack_image_turn_preserves_platform_and_photo_for_engine(fake_engine):
+    """Slack images must enter the same shared engine path as Telegram photos.
+
+    The platform kwarg is part of the engine's interaction telemetry and
+    decision traces; without it Slack turns are recorded as telegram by the
+    Supervisor default, hiding the real backend path during incident review.
+    """
+    identity = MagicMock(spec=IdentityService)
+    identity.lookup_only = MagicMock(
+        return_value=MiraUser(id="u-slack", tenant_id="t_acme", display_name="A", email="a@x")
+    )
+    disp = ChatDispatcher(fake_engine, identity_service=identity)
+    event = NormalizedChatEvent(
+        event_id="e-slack-image",
+        platform="slack",
+        tenant_id="T123",
+        user_id="",
+        external_user_id="U456",
+        external_channel_id="C789",
+        external_thread_id="1714000000.000100",
+        text="which contactor powers M1",
+        attachments=[
+            NormalizedAttachment(
+                kind="image",
+                mime_type="image/jpeg",
+                filename="print.jpg",
+                url="https://files.slack.com/print.jpg",
+                data=b"PRINT_IMAGE",
+            )
+        ],
+        event_type="mention",
+        raw={},
+    )
+
+    resp = await disp.dispatch(event)
+
+    assert resp.text == "OK reply"
+    fake_engine.process.assert_awaited_once()
+    call_kwargs = fake_engine.process.await_args.kwargs
+    assert call_kwargs["platform"] == "slack"
+    assert call_kwargs["chat_id"] == "slack:C789:1714000000.000100"
+    assert call_kwargs["photo_b64"] == "UFJJTlRfSU1BR0U="
 
 
 @pytest.mark.asyncio
