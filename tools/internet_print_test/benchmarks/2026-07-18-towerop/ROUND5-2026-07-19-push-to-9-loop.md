@@ -75,3 +75,31 @@ Spend-law compliance: every metered phase was the bounded acceptance test of a n
 ## Evidence
 
 Session-522d4a0e scratchpad: `qual-r5/alpha/{kimi,minimax}/c*.json` · `qual-r5/kimi8k/c*.json` · `qual-r5/laneBETA/` + `run5.log` · `qual-r5/laneGAMMA/` + `run6.log` · `alpha-verdicts.json` / `kimi-full-verdicts.json` / `beta-verdicts.json` / `gamma-verdicts.json` (verbatim panel JSON). CHARLIE: `~/towerop/out-r5/`, `out-r6/`, `run5.log`, `run6.log`, `run_bench5.sh`, `run_bench6.sh` (with the spend guard). Photos sha256 12/12 verified (same custody chain as rounds 3–4). Branch `fix/router-reasoning-burn` @ `5f887e01` (PR #2819). Round-4 context: `ROUND4-2026-07-19-together-qualification.md` (PR #2818).
+
+---
+
+## ADDENDUM (same day, second budget declaration $0.60): Options C + A executed — R5-delta = 7.75, best production round of the series
+
+Mike approved the merge flow + "the next run to resolve all these issues." Executed: the full merge train (#2813, #2818, #2819 v3.176.7, #2816 v3.177.0, #2823 v3.177.1) and the C→A sequence.
+
+**Option C (prompt probes for the two blocking cases, $0.1065):** NEGATIVE on both — prompting does not fix them. The tick-counting instruction made MiniMax show its work and resolve BOTH axes backwards (fail 2; judge's pixel-ruler puts K1 definitively at 3/E), and sent Kimi into full-8192 burns on both probes (careful-work instructions amplify its reasoning runaway — Kimi is prompt-fragile: minimal prompt or nothing). The completeness clause achieved perfect tier extraction but inverted the synthesized conclusion (partial 5). Both blockers are model limits, not prompt gaps.
+
+**Option A (PR #2823, `PRINT_THEORY_STYLE=slim`, v3.177.1, merged):** the raw-conditions prompt through production — question-first, quote-exact, honest-absence, live-state caveat; keeps deterministic decoded evidence; drops the OCR block / evidence contract / six-section template. Six hermetic tests; default `full` (zero behavior change until the knob is set).
+
+**R5-delta (production on CHARLIE: MiniMax-M3 + router fix + `slim` + `PRINT_THEORY_FULL_RES=1`, $0.2258, 12 blind judges):**
+
+| | Mean | Pass | Partial | Fail | Invented tags |
+|---|---|---|---|---|---|
+| **R5-delta** | **7.75** | **7** | 5 | **0** | **0** |
+| prior production best (beta) | 5.25 | 4 | 5 | 3 | 26 |
+| pre-loop baseline (r3) | 1.9 | 1 | 1 | 10 | ~600 |
+
+12/12 cascade answers, zero reasoning burns, zero empty replies, zero stock fallbacks — series-firsts all four. **c01 PASSED 9/10** ("column 3, row E", judge-re-verified by tilt-corrected pixel interpolation) — the case no prior configuration ever passed; full-res + slim did what targeted prompting could not. The slim prompt eliminated both template-tax failure modes outright: fabricating verbosity (26→0 invented-tag entries) and reasoning burns (4→0).
+
+**Where the remaining 1.25-to-9.0 lives (five single-defect partials):** c03 6 (drops the co-equal "torque limitation (R1)" tier — survived even the explicit completeness instruction), c04 3 (column-shift misread I5.1 vs I6.1 — persistent across every configuration), c06 4 (honest absence held, redirect imprecise), c07 7 (label paraphrase "circuits" vs the printed abbreviation), c08 6.5 (one of four volunteered terminal citations wrong). These are model-precision limits of current Together serverless vision on phone photos; candidate next levers are code-side (deterministic xref/tier append from OCR where legible; a volunteered-detail verifier against Tesseract) — proposed, not built.
+
+**Iteration verdict: 9/10 still not reached; production moved 4.1× over the pre-loop baseline (1.9 → 7.75) and to within 0.8 of the measured raw model ceiling (8.54).** Spend: $0.3323 of the $0.60 declaration ($0.27 unspent — no valid change remained to test; re-running an unchanged config is banned re-validation). Combined program spend: $2.05 across both declarations ($2.00 + $0.60), ceiling-priced.
+
+**Recommended production state after this addendum:** flip staging to `TOGETHERAI_VISION_MODEL=MiniMaxAI/MiniMax-M3` + `PRINT_THEORY_STYLE=slim` + `PRINT_THEORY_FULL_RES=1` for the phone test — all three knobs are merged, default-off, and delta is the direct evidence for exactly this configuration.
+
+Evidence: session-522d4a0e scratchpad `qual-r5/optionC/`, `qual-r5/laneDELTA/` + `run7.log`, `delta-verdicts.json`; CHARLIE `~/towerop/out-r7/`. Judged by 14 more blind sonnet judges (75 total across the program).
