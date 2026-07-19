@@ -341,6 +341,7 @@ services:
       # live turns truncated mid-sentence at that cap). Read at call time.
       - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
       - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
+      - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -422,6 +423,7 @@ services:
       - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
       - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
       - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
+      - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}

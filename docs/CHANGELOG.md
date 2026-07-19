@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.177.1 (2026-07-19) - feat(printsense): PRINT_THEORY_STYLE=slim — raw-conditions theory prompt for strong vision models
+
+- New `PRINT_THEORY_STYLE` knob (default `full`, or-form): `slim` swaps the print-theory cascade prompt to the raw-probe shape — question-first, quote-printed-text-exactly, honest-absence-with-redirect, live-state meter caveat, "add nothing beyond what the question needs" — keeping deterministic decoded evidence but dropping the OCR block, the evidence-contract clause, and the six-section template.
+- Why: the R5 loop (ROUND5-2026-07-19-push-to-9-loop.md) measured the full template actively degrading strong vision models on the Tower OP bench — 21-26 invented-tag entries of fabricating verbosity around correct direct answers (vs ~0 in the raw lane) and reasoning burned past the router's 8192 retry cap — while the identical models under the raw 3-sentence instruction scored the series-best 8.54/10. Slim reproduces raw conditions through the production path; the deterministic autoeval and `format_theory_reply`'s contact-state caveat still audit every reply.
+- Compose-mapped at the `PRINT_THEORY_FULL_RES` sites; `docs/env-vars.md` row; six hermetic tests in `test_print_translator.py` (default-full pin, empty-string trap, template-drop, deterministic-evidence retention, no-question variant, safety-floor pin).
+
 ### v3.177.0 (2026-07-19) - feat(zta): factorylm_ai model lab — provider-agnostic runtime (mock/Together/Liquid-placeholder), ZTA record schemas + artifact registry, budget-capped Together proof pack (dry-run default), feedback->training JSONL exporter, benchmark-before-assist promotion gate; docs/zta strategy + architecture
 
 - **New top-level package `factorylm_ai/`** — the ZTA model lab: a provider-agnostic AI runtime + artifact factory that proves model behaviors against Together AI (behind explicit env flags, budget-capped, dry-run default) and treats Liquid/local as a future edge-runtime candidate, then converts successful interactions into reusable artifacts. Nothing in this package is wired into a customer-facing path — the production chat path stays `mira-bots/shared/inference/router.py` (Groq→Cerebras→Together) and `printsense/interpret.py` (the paid print interpreter) unchanged; graduation out of the lab requires benchmark pass → promotion gate → an explicit follow-up PR.
