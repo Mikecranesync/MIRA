@@ -578,3 +578,21 @@ class TestPrintTheoryVerify:
         )
         assert supervisor.router.complete.await_count == 1
         assert out == print_translator.FALLBACK_REPLY
+
+
+class TestVerifyPromptWording:
+    """R5-epsilon regressions pinned (2026-07-19): c03 6->5 — the add-tiers
+    clause let the verifier SWAP header tiers instead of accumulating; c09
+    9->6.5 — the verifier ADDED a wrong attribution (Q2 vs Q4.C) that the
+    draft never contained. Both are editor-prompt wording defects; these pins
+    keep the two clauses from regressing."""
+
+    def test_tiers_accumulate_clause_present(self):
+        s = print_translator.VERIFY_SYSTEM_PROMPT
+        assert "KEEP every function label the draft already" in s
+        assert "one label never" in s and "replaces another" in s
+
+    def test_never_add_attribution_clause_present(self):
+        s = print_translator.VERIFY_SYSTEM_PROMPT
+        assert "NEVER add a connection, terminal assignment, wire route, or device" in s
+        assert "only permitted additions are" in s

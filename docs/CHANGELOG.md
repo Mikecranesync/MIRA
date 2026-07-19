@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.178.1 (2026-07-19) - fix(printsense): verify-pass editor prompt — tiers accumulate, never add attributions
+
+- Two wording fixes to `VERIFY_SYSTEM_PROMPT`, each pinning an R5-epsilon judged regression: rule 3 now requires stacked header tiers to ACCUMULATE ("KEEP every function label the draft already named... one label never replaces another" — epsilon c03 swapped torque-limitation in place of braking-relay, 6->5), and new rule 4 forbids the verifier from ADDING any connection/terminal/wire-route/attribution the draft did not contain (epsilon c09 added a wrong "240V at Q2" attribution to a previously-clean answer, 9->6.5). Additions remain limited to printed label text directly on the asked device.
+- Two prompt-pin tests in `test_print_translator.py`.
+
 ### v3.178.0 (2026-07-19) - feat(printsense): PRINT_THEORY_VERIFY — self-verification second pass for the print-theory cascade
 
 - New `PRINT_THEORY_VERIFY` knob (default off, or-form): after a non-empty theory draft, the vision model re-reads the sheet against its own draft under a verification-editor prompt — fix every misquoted tag/label/value/terminal to the printed text, delete claims not visible on the sheet, add printed header tiers/contact numbers/cross-references omitted on the asked device, change nothing else. Falls through on any failure or empty result: the draft is never lost, the turn is never eaten.
