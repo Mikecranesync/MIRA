@@ -27,6 +27,7 @@ def test_prod_compose_runs_slack_socket_mode_bot():
     assert "PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}" in env
     assert "PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}" in env
     assert "PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}" in env
+    assert "MIRA_PROCESS_TIMEOUT=${MIRA_PROCESS_TIMEOUT:-60}" in env
     assert "OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}" in env
     assert "OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}" in env
     assert svc["restart"] == "unless-stopped"
@@ -49,6 +50,7 @@ def test_local_compose_slack_is_dev_profile_and_root_context():
     assert env["OPENAI_API_KEY"] == "${OPENAI_API_KEY:-}"
     assert env["PRINT_VISION_PROVIDER"] == "${PRINT_VISION_PROVIDER:-openai}"
     assert env["PRINT_THEORY_MAX_TOKENS"] == "${PRINT_THEORY_MAX_TOKENS:-2000}"
+    assert env["MIRA_PROCESS_TIMEOUT"] == "${MIRA_PROCESS_TIMEOUT:-60}"
     assert env["OCR_MODEL_LANE"] == "${OCR_MODEL_LANE:-off}"
 
 
