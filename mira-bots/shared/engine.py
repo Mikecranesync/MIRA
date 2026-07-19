@@ -873,7 +873,7 @@ class Supervisor:
         if photo_turn <= 0:
             return None
 
-        turns_since_photo = state["exchange_count"] - photo_turn
+        turns_since_photo = max(0, state["exchange_count"] - photo_turn)
         if turns_since_photo >= PHOTO_MEMORY_TURNS:
             self._clear_session_photo(chat_id)
             ctx.pop("photo_turn", None)
@@ -892,6 +892,79 @@ class Supervisor:
 
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
+
+    @staticmethod
+    def _print_vision_context_from_state(state: dict) -> dict:
+        """Rebuild the print vision context persisted with an ELECTRICAL_PRINT session."""
+        ctx = state.get("context") or {}
+        last_print = ctx.get("last_print_vision") if isinstance(ctx, dict) else None
+        if isinstance(last_print, dict):
+            vision_data = dict(last_print)
+        else:
+            vision_data = {
+                "classification": "ELECTRICAL_PRINT",
+                "vision_result": state.get("asset_identified", ""),
+                "ocr_items": ctx.get("ocr_items", []),
+                "tesseract_text": ctx.get("ocr_text", ""),
+                "drawing_type": ctx.get("drawing_type") or "electrical drawing",
+                "confidence": "medium",
+            }
+        vision_data.setdefault("classification", "ELECTRICAL_PRINT")
+        vision_data.setdefault("ocr_items", ctx.get("ocr_items", []))
+        vision_data.setdefault("tesseract_text", ctx.get("ocr_text", ""))
+        vision_data.setdefault("drawing_type", ctx.get("drawing_type") or "electrical drawing")
+        return vision_data
+
+    async def _handle_electrical_print_followup(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+    ) -> dict:
+        """Answer a text follow-up while preserving the visual print context."""
+        ctx = state.get("context") or {}
+        session_photo = self._load_recent_session_photo(chat_id, state)
+        if session_photo:
+            vision_data = self._print_vision_context_from_state(state)
+            reply = await self._grounded_print_reply(session_photo, message, vision_data, chat_id)
+            if not reply:
+                reply = self._build_print_reply(vision_data)
+            formatted = reply
+        else:
+            try:
+                raw = await self.print_.process(message, state)
+            except Exception as e:
+                logger.error(
+                    "PRINT_WORKER_ERROR chat_id=%s error=%s",
+                    chat_id,
+                    e,
+                    exc_info=True,
+                )
+                self._save_state(chat_id, state)
+                return self._make_result(GENERIC_ENGINE_ERROR, "none", trace_id)
+            parsed = self._parse_response(raw)
+            print_intent = classify_intent(message)
+            reply = check_output(parsed["reply"], print_intent, has_photo=False)
+            parsed["reply"] = reply
+            formatted = self._format_reply(parsed, user_message=message)
+
+        state["state"] = "ELECTRICAL_PRINT"
+        state["exchange_count"] += 1
+        history = ctx.get("history", [])
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": reply})
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
+        ctx["history"] = history
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        return self._make_result(
+            formatted,
+            self._infer_confidence(formatted),
+            trace_id,
+            "ELECTRICAL_PRINT",
+        )
 
     async def _grounded_print_reply(
         self,
@@ -2262,6 +2335,16 @@ class Supervisor:
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
 
+            if state.get("state") == "ELECTRICAL_PRINT":
+                result = await self._handle_electrical_print_followup(
+                    chat_id,
+                    message,
+                    state,
+                    trace_id,
+                )
+                tl_flush()
+                return result
+
             # Drive-pack fast-path (2026-07-06) — deterministic, pack-grounded
             # answer for a text question that explicitly names a drive MIRA has
             # a pack for (e.g. "what does CE10 mean on my gs10"). Placed AFTER
@@ -2537,7 +2620,7 @@ class Supervisor:
             ctx["ocr_text"] = vision_data["tesseract_text"]
             ctx["ocr_items"] = vision_data["ocr_items"]
             # Track which turn the photo was sent on
-            ctx["photo_turn"] = state["exchange_count"]
+            ctx["photo_turn"] = state["exchange_count"] + 1
             state["context"] = ctx
             # Store a concise asset identifier, not the full vision description.
             # The LLM regurgitates the full text on every turn if we store the paragraph.
@@ -2589,7 +2672,16 @@ class Supervisor:
             elif vision_data["classification"] == "ELECTRICAL_PRINT":
                 state["state"] = "ELECTRICAL_PRINT"
                 ctx["drawing_type"] = vision_data["drawing_type"]
+                ctx["last_print_vision"] = {
+                    "classification": "ELECTRICAL_PRINT",
+                    "vision_result": vision_data.get("vision_result", ""),
+                    "ocr_items": vision_data.get("ocr_items", []),
+                    "tesseract_text": vision_data.get("tesseract_text", ""),
+                    "drawing_type": vision_data.get("drawing_type") or "electrical drawing",
+                    "confidence": vision_data.get("confidence", ""),
+                }
                 state["context"] = ctx
+                self._save_state(chat_id, state)
 
                 # Visual-first routing (operator directive 2026-07-15): a photo
                 # the vision worker classified as an ELECTRICAL_PRINT ALWAYS gets
@@ -2675,41 +2767,15 @@ class Supervisor:
 
         # Electrical print follow-up (text question in ELECTRICAL_PRINT state)
         if state.get("state") == "ELECTRICAL_PRINT" and not photo_b64:
-            try:
-                with tl_span(t, "print_worker"):
-                    raw = await self.print_.process(message, state)
-            except Exception as e:
-                logger.error(
-                    "PRINT_WORKER_ERROR chat_id=%s error=%s",
+            with tl_span(t, "print_worker"):
+                result = await self._handle_electrical_print_followup(
                     chat_id,
-                    e,
-                    exc_info=True,
+                    message,
+                    state,
+                    trace_id,
                 )
-                self._save_state(chat_id, state)
-                tl_flush()
-                return self._make_result(GENERIC_ENGINE_ERROR, "none", trace_id)
-            parsed = self._parse_response(raw)
-            # Output guardrail for print worker
-            print_intent = classify_intent(message)
-            parsed["reply"] = check_output(parsed["reply"], print_intent, has_photo=False)
-            state["exchange_count"] += 1
-            ctx = state.get("context") or {}
-            history = ctx.get("history", [])
-            history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": parsed["reply"]})
-            if len(history) > HISTORY_LIMIT:
-                history = history[-HISTORY_LIMIT:]
-            ctx["history"] = history
-            state["context"] = ctx
-            self._save_state(chat_id, state)
-            formatted = self._format_reply(parsed, user_message=message)
             tl_flush()
-            return self._make_result(
-                formatted,
-                self._infer_confidence(formatted),
-                trace_id,
-                "ELECTRICAL_PRINT",
-            )
+            return result
 
         # Photo with no specific intent → check for visible fault indicators first
         # (Skip for photo-as-answer: active session photos go straight to RAG)
