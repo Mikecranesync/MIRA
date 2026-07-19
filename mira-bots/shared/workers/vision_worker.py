@@ -274,6 +274,22 @@ def _ocr_schematic_tag_hits(ocr_items: list) -> tuple[int, int]:
 # on layout evidence alone.
 SCHEMATIC_TAG_THRESHOLD = 3
 
+# Overwhelming OCR density, on its own, is STRONG layout evidence a page is a
+# printed sheet/table rather than a physical device face — deliberately much
+# higher than OCR_CLASSIFICATION_THRESHOLD (10, a WEAK tiebreaker only reached
+# when nothing else matched; see the "OCR count alone must NOT override the
+# vision model's classification" note in _classify_photo). Bench regression
+# (2026-07-18 Tower OP re-benchmark, c11/c12): two real LED/diagnostic-table
+# print pages carried 156 and 184 OCR items yet classified EQUIPMENT_PHOTO,
+# because their dense reference tables are described using the SAME
+# vocabulary as EQUIPMENT_FACE_KEYWORDS ("led", "plc", "indicator", "fault")
+# and their module references (e.g. "X9.4") don't match the IEC schematic-tag
+# grammar above. No genuine single-device faceplate/nameplate photo carries
+# anywhere near this many distinct OCR items, so this threshold is safe to
+# treat as STRONG evidence — outranking EQUIPMENT_FACE_KEYWORDS the same way
+# STRONG_PRINT_SIGNALS and the schematic-tag grammar already do.
+DENSE_TABLE_OCR_THRESHOLD = 50
+
 
 def parse_ocr_reply(raw: str) -> list[str]:
     """Model OCR reply -> clean text items (numbered list / markdown tolerant)."""
@@ -658,6 +674,20 @@ class VisionWorker:
         tag_hits, tag_prefixed = _ocr_schematic_tag_hits(ocr_items)
         if tag_hits >= SCHEMATIC_TAG_THRESHOLD and tag_prefixed >= 1:
             conf = min(1.0, 0.6 + tag_hits * 0.04)
+            return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
+
+        # Overwhelming OCR density (LAYOUT evidence, same tier as the schematic-
+        # tag grammar above — bench regression 2026-07-18, c11/c12: LED/
+        # diagnostic-table print pages at 156-184 OCR items). A page densely
+        # covered in 50+ distinct OCR items is a printed sheet/table, never a
+        # single device's faceplate — even when the vision description and the
+        # OCR text both carry EQUIPMENT_FACE_KEYWORDS vocabulary ("led", "plc",
+        # "indicator", "fault" are exactly what a LED-reference table's own
+        # content says). Deliberately checked BEFORE EQUIPMENT_FACE_KEYWORDS,
+        # unlike the weak OCR_CLASSIFICATION_THRESHOLD tiebreaker further below
+        # which stays a last resort for genuinely ambiguous, lower-density cases.
+        if len(ocr_items) >= DENSE_TABLE_OCR_THRESHOLD:
+            conf = min(1.0, 0.6 + len(ocr_items) * 0.001)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 
         # Equipment faceplate keywords (only when NO strong print signal above) —
