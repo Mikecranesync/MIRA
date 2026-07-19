@@ -244,11 +244,11 @@ OCR_CLASSIFICATION_THRESHOLD = 10
 # of these. Anchored full-token patterns — an OCR item must BE a tag, not merely
 # contain one — so long catalog strings can never false-positive.
 _SCHEMATIC_TAG_PATTERNS = [
-    re.compile(r"^[+-][A-Z]{1,3}\d{1,4}$", re.IGNORECASE),        # -M1, -B2, +S1
+    re.compile(r"^[+-][A-Z]{1,3}\d{1,4}$", re.IGNORECASE),  # -M1, -B2, +S1
     re.compile(r"^-?[A-Z]{0,3}\d{1,3}/[A-Z]{1,3}\d{1,4}$", re.IGNORECASE),  # -20/A10
-    re.compile(r"^-?W\d{2,5}$", re.IGNORECASE),                    # -W5497
-    re.compile(r"^\d{1,3}\.\d{1,2}$"),                             # 15.7 (sheet.column)
-    re.compile(r"^[A-Z]{1,3}\d{1,4}$", re.IGNORECASE),             # PT100, M1 (unprefixed)
+    re.compile(r"^-?W\d{2,5}$", re.IGNORECASE),  # -W5497
+    re.compile(r"^\d{1,3}\.\d{1,2}$"),  # 15.7 (sheet.column)
+    re.compile(r"^[A-Z]{1,3}\d{1,4}$", re.IGNORECASE),  # PT100, M1 (unprefixed)
 ]
 _PREFIXED_TAG = re.compile(r"^[+-]|/")
 
@@ -412,9 +412,7 @@ class VisionWorker:
             except ImportError as exc:
                 # printsense not shipped in this image (slack/mira-pipeline) —
                 # the floor is telegram-image-only until image parity lands.
-                logger.warning(
-                    "printsense not shipped in this image — OCR floor off: %s", exc
-                )
+                logger.warning("printsense not shipped in this image — OCR floor off: %s", exc)
                 return []
             except OcrUnavailable as exc:
                 logger.warning("tesseract floor unavailable: %s", exc)
@@ -424,9 +422,7 @@ class VisionWorker:
                 return []
 
         floor_coro = asyncio.to_thread(_floor)
-        results = await asyncio.gather(
-            vision_coro, ocr_coro, floor_coro, return_exceptions=True
-        )
+        results = await asyncio.gather(vision_coro, ocr_coro, floor_coro, return_exceptions=True)
 
         vision_result = results[0] if not isinstance(results[0], Exception) else message
         model_items = results[1] if not isinstance(results[1], Exception) else []
