@@ -151,7 +151,45 @@ def test_summarize_ollama_tags_lists_model_names():
 
     summary = inventory_fleet.summarize_ollama_tags("http://example/api/tags", payload)
 
-    assert summary == "http://example/api/tags => qwen2.5vl:7b, glm-ocr:latest, nomic-embed-text:latest"
+    assert (
+        summary
+        == "http://example/api/tags => qwen2.5vl:7b, glm-ocr:latest, nomic-embed-text:latest"
+    )
+
+
+def test_probe_target_bounds_configured_ollama_probe_timeout(monkeypatch):
+    class Completed:
+        returncode = 0
+        stdout = '{"hostname":"ci-runner"}\n'
+        stderr = ""
+
+    def fake_run(*args, **kwargs):
+        assert kwargs["timeout"] == 8
+        return Completed()
+
+    seen = {}
+
+    def fake_probe(target, *, timeout=4):
+        seen["target"] = target
+        seen["timeout"] = timeout
+        return "unreachable"
+
+    monkeypatch.setattr(inventory_fleet.subprocess, "run", fake_run)
+    monkeypatch.setattr(inventory_fleet, "probe_configured_ollama", fake_probe)
+
+    result = inventory_fleet.probe_target(
+        "charlie",
+        {
+            "role": "kb-host",
+            "addresses": {"tailscale": "100.70.49.126", "lan": "192.168.1.12"},
+        },
+        local_node="charlie",
+        timeout=8,
+    )
+
+    assert result["status"] == "ok"
+    assert result["facts"]["ollama_api_configured_address"] == "unreachable"
+    assert seen["timeout"] <= 1.0
 
 
 def test_shell_entrypoint_delegates_to_python_inventory():
