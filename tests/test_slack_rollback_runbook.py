@@ -21,7 +21,9 @@ def test_slack_human_testing_guide_covers_core_probes_and_rollback():
 
     for probe in (
         "DM `hello`",
-        "#all-mira",
+        "FactoryLM",
+        "factorylm.slack.com",
+        "U0AM3EZBSNQ",
         "#all-factorylm",
         "/mira-help",
         "Upload an equipment/nameplate photo",
@@ -29,4 +31,26 @@ def test_slack_human_testing_guide_covers_core_probes_and_rollback():
     ):
         assert probe in text
     assert "docs/runbooks/slack-recovery-rollback.md" in text
+    assert "docs/runbooks/slack-production-system-map.md" in text
     assert "Do not use staging" in text
+
+
+def test_slack_system_map_pins_canonical_production_identity():
+    text = (ROOT / "docs/runbooks/slack-production-system-map.md").read_text()
+
+    for expected in (
+        "FactoryLM",
+        "factorylm.slack.com",
+        "T0AK2CU16T1",
+        "U0AM3EZBSNQ",
+        "B0ALXRE4CDU",
+        "#all-factorylm",
+        "C0AKBEL8C4T",
+        "mira-maintenance-agent (local)",
+        "mira-gaq9414.slack.com",
+        "SLACK_CLIENT_ID",
+        "SLACK_CLIENT_SECRET",
+        "SLACK_WEBHOOK_URL",
+        "Socket Mode",
+    ):
+        assert expected in text

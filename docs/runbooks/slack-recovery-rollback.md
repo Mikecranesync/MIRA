@@ -1,6 +1,6 @@
 # Slack Recovery Rollback Runbook
 
-Use this if the Slack recovery deploy makes `mira-maintenance-agent` worse or leaves the bot unresponsive after the acceptance probes in `docs/runbooks/slack-recovery-human-testing.md`.
+Use this if the Slack recovery deploy makes the canonical production `FactoryLM` Slack app worse or leaves the bot unresponsive after the acceptance probes in `docs/runbooks/slack-recovery-human-testing.md`.
 
 ## Rules
 
@@ -46,13 +46,14 @@ Run the doctor under Doppler. It prints token status and Slack identity only, ne
 
 ```bash
 doppler run --project factorylm --config prd -- \
-  python3.12 mira-bots/slack/doctor.py --expected-user-id "${SLACK_EXPECTED_BOT_USER_ID:-U0B3V3QLUFP}"
+  env PYTHONPATH=mira-bots:mira-bots/slack \
+  python3.12 mira-bots/slack/doctor.py --expected-user-id "${SLACK_EXPECTED_BOT_USER_ID:-U0AM3EZBSNQ}"
 ```
 
 Expected healthy shape:
 
 ```json
-{"app_token_ok": true, "bot_token_ok": true, "expected_user_id": "U0B3V3QLUFP", "ok": true, "team_id": "T...", "user_id": "U0B3V3QLUFP"}
+{"app_token_ok": true, "bot_id": "B0ALXRE4CDU", "bot_token_ok": true, "expected_user_id": "U0AM3EZBSNQ", "ok": true, "team": "FactoryLM", "team_id": "T0AK2CU16T1", "user_id": "U0AM3EZBSNQ"}
 ```
 
 If `bot_user_id_mismatch` appears, rollback code may not help. Fix the Doppler value for `SLACK_BOT_TOKEN` or `SLACK_EXPECTED_BOT_USER_ID`, then redeploy `mira-bot-slack`.
@@ -61,9 +62,10 @@ If `bot_user_id_mismatch` appears, rollback code may not help. Fix the Doppler v
 
 Ask Mike to test:
 
-- DM `hello` to `mira-maintenance-agent`.
-- Mention the app in `#all-mira`.
-- Mention the app in `#all-factorylm`.
+- DM `hello` to `FactoryLM` in `factorylm.slack.com`.
+- Mention `@FactoryLM hello` in `#all-factorylm`.
 - Run `/mira-help`.
+
+If only `mira-maintenance-agent (local)` in the separate `MIRA` workspace is failing, rollback production only after proving production `FactoryLM` is also worse. Otherwise handle the local/dev app as a separate configuration issue.
 
 Rollback is complete only when the bot is at least as responsive as it was before the recovery deploy, or the remaining failure is proven to be Slack dashboard/Doppler config rather than code.
