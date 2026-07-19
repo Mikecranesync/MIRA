@@ -487,3 +487,94 @@ class TestPrintTheoryStyleSlim:
         s = print_translator.SLIM_THEORY_SYSTEM_PROMPT
         assert "verify with" in s and "meter" in s
         assert "never shows live" in s
+
+
+# ── PRINT_THEORY_VERIFY — self-verification second pass ──────────────────────
+#
+# R5-delta (2026-07-19) left five single-defect partials, four of which are
+# second-look errors (misquoted terminal, paraphrased label, column-shift
+# trace, dropped header tier). The verify pass re-reads the sheet against the
+# model's own draft. Doctrine: fall-through on ANY failure — the draft is
+# never lost, the turn is never eaten.
+
+
+class TestBuildVerifyMessages:
+    def test_shape_and_content(self):
+        msgs = print_translator.build_verify_messages(
+            "B64IMG", "K1 is at 3/E.", question="where is K1?"
+        )
+        assert msgs[0]["content"] == print_translator.VERIFY_SYSTEM_PROMPT
+        assert msgs[1]["content"][0]["type"] == "image_url"
+        assert "B64IMG" in msgs[1]["content"][0]["image_url"]["url"]
+        text = msgs[1]["content"][1]["text"]
+        assert "The technician's question was: where is K1?" in text
+        assert "DRAFT ANSWER TO VERIFY AGAINST THE SHEET:\nK1 is at 3/E." in text
+
+    def test_no_question_variant(self):
+        msgs = print_translator.build_verify_messages("B64IMG", "draft text")
+        text = msgs[1]["content"][1]["text"]
+        assert "technician's question" not in text
+        assert "DRAFT ANSWER TO VERIFY" in text
+
+
+class TestPrintTheoryVerify:
+    @pytest.mark.asyncio
+    async def test_verify_on_second_call_replaces_draft(self, supervisor, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_VERIFY", "1")
+        supervisor.router.complete = AsyncMock(
+            side_effect=[("draft with K5,3 typo", {}), ("corrected with X4,3.2", {})]
+        )
+        out = await supervisor._grounded_print_reply(
+            "B64DATA", "which relays?", _print_vision_data(), "chat-1"
+        )
+        assert supervisor.router.complete.await_count == 2
+        assert "corrected with X4,3.2" in out
+        # second call's messages carry the draft
+        second_msgs = supervisor.router.complete.await_args_list[1].args[0]
+        assert "draft with K5,3 typo" in str(second_msgs)
+
+    @pytest.mark.asyncio
+    async def test_verify_empty_keeps_draft(self, supervisor, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_VERIFY", "1")
+        supervisor.router.complete = AsyncMock(side_effect=[("the draft", {}), ("", {})])
+        out = await supervisor._grounded_print_reply(
+            "B64DATA", "q?", _print_vision_data(), "chat-1"
+        )
+        assert supervisor.router.complete.await_count == 2
+        assert "the draft" in out
+
+    @pytest.mark.asyncio
+    async def test_verify_exception_keeps_draft(self, supervisor, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_VERIFY", "1")
+        supervisor.router.complete = AsyncMock(
+            side_effect=[("the draft", {}), RuntimeError("boom")]
+        )
+        out = await supervisor._grounded_print_reply(
+            "B64DATA", "q?", _print_vision_data(), "chat-1"
+        )
+        assert "the draft" in out
+
+    @pytest.mark.asyncio
+    async def test_knob_off_single_call(self, supervisor, monkeypatch):
+        monkeypatch.delenv("PRINT_THEORY_VERIFY", raising=False)
+        supervisor.router.complete = AsyncMock(return_value=("only call", {}))
+        await supervisor._grounded_print_reply("B64DATA", "q?", _print_vision_data(), "chat-1")
+        assert supervisor.router.complete.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_knob_empty_string_off(self, supervisor, monkeypatch):
+        """Compose ${PRINT_THEORY_VERIFY:-} delivers "" in-container — off."""
+        monkeypatch.setenv("PRINT_THEORY_VERIFY", "")
+        supervisor.router.complete = AsyncMock(return_value=("only call", {}))
+        await supervisor._grounded_print_reply("B64DATA", "q?", _print_vision_data(), "chat-1")
+        assert supervisor.router.complete.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_no_verify_when_draft_empty(self, supervisor, monkeypatch):
+        monkeypatch.setenv("PRINT_THEORY_VERIFY", "1")
+        supervisor.router.complete = AsyncMock(return_value=("", {}))
+        out = await supervisor._grounded_print_reply(
+            "B64DATA", "q?", _print_vision_data(), "chat-1"
+        )
+        assert supervisor.router.complete.await_count == 1
+        assert out == print_translator.FALLBACK_REPLY

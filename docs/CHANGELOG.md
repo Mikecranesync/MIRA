@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.178.0 (2026-07-19) - feat(printsense): PRINT_THEORY_VERIFY — self-verification second pass for the print-theory cascade
+
+- New `PRINT_THEORY_VERIFY` knob (default off, or-form): after a non-empty theory draft, the vision model re-reads the sheet against its own draft under a verification-editor prompt — fix every misquoted tag/label/value/terminal to the printed text, delete claims not visible on the sheet, add printed header tiers/contact numbers/cross-references omitted on the asked device, change nothing else. Falls through on any failure or empty result: the draft is never lost, the turn is never eaten.
+- Why: R5-delta (ROUND5 addendum) reached 7.75/10 — best production round of the series — with five single-defect partials left, four of which are second-look errors by construction (a wrong volunteered terminal, a paraphrased label, a column-shift wire-trace, a dropped co-equal header tier). Generate→verify-against-source is the next architectural step the R5 evidence points at.
+- Uses the same image the theory call used (composes with `PRINT_THEORY_FULL_RES`) and the same `PRINT_THEORY_MAX_TOKENS` cap; compose-mapped at the `PRINT_THEORY_STYLE` sites; env-vars row; eight hermetic tests (message shape, question/no-question, replace-on-success, keep-draft-on-empty/exception, knob off/empty-string, no-verify-on-empty-draft).
+
 ### v3.177.3 (2026-07-19) - fix(slack): extend print follow-up timeout budget
 
 - `mira-bot-slack` now receives `MIRA_PROCESS_TIMEOUT=${MIRA_PROCESS_TIMEOUT:-60}` in production and local Slack compose, matching the live 2026-07-19 smoke where the full PrintSense follow-up completed in 40.8s after the saved Slack print photo loaded while OpenAI was quota-limited and Together handled the fallback.
