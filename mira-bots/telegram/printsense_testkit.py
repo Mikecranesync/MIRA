@@ -1058,9 +1058,7 @@ def ocr_phone_summary(report: dict) -> str:
     """Render ``vision_worker.ocr_lane_report()`` as a one-line phone summary,
     verdict first — mirrors ``unseen_phone_summary``'s formatting convention."""
     t = report["tesseract"]
-    tesseract_part = (
-        f"tesseract {t['version']}" if t["available"] else "tesseract unavailable"
-    )
+    tesseract_part = f"tesseract {t['version']}" if t["available"] else "tesseract unavailable"
     model_part = f"model lane {report['model_lane']}"
     floor_part = "floor expected" if report["expected_floor"] else "floor optional"
     return f"OCR: {report['verdict']} — {tesseract_part}, {model_part}, {floor_part}"

@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.173.0 (2026-07-19) - chore(bots): ruff-format drift cleanup — vision_worker.py + printsense_testkit.py
+
+- Pure `ruff format` (0.9.10, the CI pin) of the two drifted files — un-reds the non-required "Lint & Format" check that stayed red through the OCR-regime and routing merges. Recomputed after #2713 landed so the format covers the final file state. Zero semantic change; covering suites green.
+
 ### v3.172.0 (2026-07-18) - fix(bots): visual-first photo routing — image decides, captions are tie-breakers
 
 - Revives PR #2713: live phone test 2026-07-15 found the Bulletin 509 starter print captioned "Analyze this equipment photo" (also the bot's DEFAULT caption for captionless photos) got the thin OCR-label preview instead of the PrintSense interpretation — three layers enforced the caption's authority over the image, all three fixed. `bot.py::_try_print_translator_reply` classifies FIRST and routes on it (the one surviving caption check is flow OWNERSHIP — an explicit wiring-intake command still belongs to `_try_wiring_intake_reply`). `engine.py::Supervisor.process_full`'s ELECTRICAL_PRINT branch always grounds a classified print (`question=None` for an empty/default caption, the caption verbatim otherwise) instead of gating on `has_real_question`; adds `message = message or ""` boundary normalization. `vision_worker.py::_classify_photo` demotes the caption to a TIE-BREAKER, checked only after all visual and OCR/layout evidence; adds IEC/DIN schematic-tag grammar (`_ocr_schematic_tag_hits`, `SCHEMATIC_TAG_THRESHOLD=3`) recognizing designators (`-M1`, `-B1`, `-X1`, `-W5497`, `-20/A10`, `15.7`, bare `PT100`) as LAYOUT evidence a page is a drawing, replacing the old caption pre-empt. Priority: visual evidence -> OCR/layout evidence -> caption tie-break.
