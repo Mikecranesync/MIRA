@@ -19,9 +19,9 @@ pytest.importorskip("pydantic")
 from shared import print_autoeval  # noqa: E402
 
 
-def _eval(answer, ocr_items=None, usage=None, vision_data=None, **kw):
+def _eval(answer, ocr_items=None, usage=None, vision_data=None, question="test question", **kw):
     return print_autoeval.evaluate_print_turn(
-        "test question",
+        question,
         answer,
         vision_data if vision_data is not None else {"ocr_items": ocr_items or []},
         usage,
@@ -403,6 +403,78 @@ class TestFalseAbsenceClaimRule:
     def test_fires_on_clearly_adverb_variant(self):
         r = _eval("The device rating is not clearly labeled on this drawing.", ocr_items=["K44"])
         assert "false_absence_claim" in _classes(r)
+
+
+class TestAskedModuleUnresolvedRule:
+    """The 2026-07-19 Tower OP re-benchmark blind spot: false_absence_claim
+    structurally cannot catch a wrong-row lookup — nothing is claimed absent
+    and every quoted phrase can be verbatim-real print text, but the row
+    belongs to a DIFFERENT module. Two live shapes: asked X4.4 LED 5, got the
+    X4.3 LED 1 row with no mention of X4.4 at all; asked X6.3 elements 5-8,
+    got X6.1/X6.2 row text presented as the answer. Fixtures use fictional
+    9x-series module refs (X9.3/X9.4) per repo convention — never real print
+    content."""
+
+    _Q = "What does it mean when module X9.4 LED 5 flashes?"
+    _WRONG_ROW_ANSWER = (
+        "Looking at the table, X9.3 LED 1 flashing indicates a communication "
+        "fault on that input channel. Cycle power to clear it."
+    )
+
+    def test_fires_on_wrong_row_answer(self):
+        r = _eval(self._WRONG_ROW_ANSWER, ocr_items=["X9.4", "X9.3"], question=self._Q)
+        assert "asked_module_unresolved" in _classes(r)
+        flag = next(f for f in r["flags"] if f["class"] == "asked_module_unresolved")
+        assert flag["severity"] == "P1"
+        assert flag["detail"]  # names the asked ref, not blank
+
+    def test_severity_p1_and_no_p0_leak(self):
+        r = _eval(self._WRONG_ROW_ANSWER, ocr_items=["X9.4", "X9.3"], question=self._Q)
+        assert r["severity"] == "P1"
+        assert not any(f["severity"] == "P0" for f in r["flags"])
+
+    def test_silent_when_answer_mentions_asked_ref(self):
+        answer = "X9.4 LED 5 flashing indicates a communication fault on that input."
+        r = _eval(answer, ocr_items=["X9.4", "X9.3"], question=self._Q)
+        assert "asked_module_unresolved" not in _classes(r)
+
+    def test_silent_on_honest_refusal(self):
+        answer = "I couldn't read that table row — send a clearer photo."
+        r = _eval(answer, ocr_items=["X9.4"], question=self._Q)
+        assert "asked_module_unresolved" not in _classes(r)
+
+    def test_silent_when_no_coordinate_in_question(self):
+        r = _eval(
+            self._WRONG_ROW_ANSWER,
+            ocr_items=["X9.4", "X9.3"],
+            question="what does this print show?",
+        )
+        assert "asked_module_unresolved" not in _classes(r)
+
+    def test_silent_when_evidence_lacks_asked_ref(self):
+        r = _eval(self._WRONG_ROW_ANSWER, ocr_items=["X9.3"], question=self._Q)
+        assert "asked_module_unresolved" not in _classes(r)
+
+    def test_silent_on_bare_module_mention_without_element_index(self):
+        """Both parts are required to arm — a general "what is X9.4?"
+        question has no single row to get wrong."""
+        r = _eval(
+            "X9.4 is a digital input module on this rack.",
+            ocr_items=["X9.4"],
+            question="What is module X9.4 used for?",
+        )
+        assert "asked_module_unresolved" not in _classes(r)
+
+    def test_case_insensitive_dash_tolerant_mention_suppresses(self):
+        answer = "Per the table, -x9.4 led 5 indicates a comm fault on that channel."
+        r = _eval(answer, ocr_items=["X9.4", "X9.3"], question=self._Q)
+        assert "asked_module_unresolved" not in _classes(r)
+
+    def test_fires_on_elements_range_phrasing(self):
+        q = "For module X9.4, what do elements 5-8 lighting together mean?"
+        answer = "On X9.3, elements 1-4 lighting together mean a network fault upstream."
+        r = _eval(answer, ocr_items=["X9.4", "X9.3"], question=q)
+        assert "asked_module_unresolved" in _classes(r)
 
 
 def test_format_alert_caps_and_omits_pii():
