@@ -283,6 +283,128 @@ class TestOcrFloorDeadRule:
         assert r["severity"] == "P0"
 
 
+class TestFalseAbsenceClaimRule:
+    """Task E1: the reply claims a label/value is absent from the print
+    without having checked the OCR ground-truth block first — tonight's
+    Tower OP c05 failure ("The part numbers are not explicitly labeled in
+    this view." while ocr_items held a garbled fragment of the exact part
+    number, xSi-MErHO <- XS1-N18PC410). MUST NOT fire on the honest,
+    required sheet-absence phrasing ("depends on a sheet not visible in
+    this photo") — that stays as-is per the prompt contract."""
+
+    _C05_ANSWER = "The part numbers are not explicitly labeled in this view."
+
+    def test_c05_shape_fires_p1(self):
+        r = _eval(self._C05_ANSWER, ocr_items=["xSi-MErHO"])
+        assert "false_absence_claim" in _classes(r)
+        flag = next(f for f in r["flags"] if f["class"] == "false_absence_claim")
+        assert flag["severity"] == "P1"
+        assert flag["detail"]  # the matched absence phrase, not blank
+
+    def test_silent_when_ocr_items_empty(self):
+        r = _eval(self._C05_ANSWER, ocr_items=[])
+        assert "false_absence_claim" not in _classes(r)
+
+    def test_silent_on_honest_sheet_absence(self):
+        r = _eval(
+            "The answer depends on a sheet not visible in this photo.",
+            ocr_items=["-27/K44"],
+        )
+        assert "false_absence_claim" not in _classes(r)
+
+    def test_silent_when_no_absence_phrase(self):
+        r = _eval(
+            "This sheet shows a start/stop circuit. Verify with a meter.",
+            ocr_items=["-27/K44"],
+        )
+        assert "false_absence_claim" not in _classes(r)
+
+    def test_severity_stays_p1_and_existing_rules_unaffected(self):
+        r = _eval(self._C05_ANSWER, ocr_items=["xSi-MErHO"])
+        assert r["severity"] == "P1"
+        assert not any(f["severity"] == "P0" for f in r["flags"])
+        assert _classes(r) == ["false_absence_claim"]  # nothing else on this input
+
+    def test_fires_on_no_part_numbers_visible_phrasing(self):
+        r = _eval("No part numbers are visible on this sheet.", ocr_items=["Q1.2-Q12.2"])
+        assert "false_absence_claim" in _classes(r)
+
+    def test_fires_on_not_specified_phrasing(self):
+        r = _eval("The device rating is not specified on this print.", ocr_items=["K44"])
+        assert "false_absence_claim" in _classes(r)
+
+    def test_fires_on_not_indicated_and_not_marked_phrasings(self):
+        r1 = _eval("The torque rating is not indicated on this print.", ocr_items=["K44"])
+        r2 = _eval("The wire gauge is not marked on this drawing.", ocr_items=["K44"])
+        assert "false_absence_claim" in _classes(r1)
+        assert "false_absence_claim" in _classes(r2)
+
+    def test_mixed_reply_still_fires_on_its_own_sentence(self):
+        """A genuine false-absence claim must not be masked by an unrelated,
+        honest sheet caveat elsewhere in the same reply (per-sentence, not
+        whole-reply, scoping — see _false_absence_phrase)."""
+        r = _eval(
+            "The part numbers are not explicitly labeled in this view. "
+            "Separately, the answer depends on a sheet not visible in this photo.",
+            ocr_items=["xSi-MErHO"],
+        )
+        assert "false_absence_claim" in _classes(r)
+
+    def test_same_sentence_absence_and_sheet_language_does_not_fire(self):
+        """When the SAME sentence carries both, it reads as one honest
+        composite claim ("not specified because the sheet isn't visible")
+        rather than a false claim about content that was actually there."""
+        r = _eval(
+            "The part number is not specified because the sheet is not visible in this photo.",
+            ocr_items=["xSi-MErHO"],
+        )
+        assert "false_absence_claim" not in _classes(r)
+
+    # ── review fix wave: adjacent-sentence guard window (Finding 1) ────────
+
+    def test_two_sentence_honest_composite_does_not_fire(self):
+        """The same honest composite as
+        test_same_sentence_absence_and_sheet_language_does_not_fire, but
+        split across two sentences by a period instead of "because" — the
+        real two-sentence phrasing the same-sentence-only guard used to miss
+        (review finding: this used to fire, wrongly)."""
+        r = _eval(
+            "The part number is not specified. "
+            "This is because the sheet is not visible in this photo.",
+            ocr_items=["xSi-MErHO"],
+        )
+        assert "false_absence_claim" not in _classes(r)
+
+    def test_far_apart_honest_caveat_still_fires(self):
+        """The guard window must not over-suppress: a false claim with an
+        honest sheet-absence mention several sentences later (not the
+        adjacent/tight composite above) must still fire."""
+        r = _eval(
+            "The part numbers are not explicitly labeled in this view. "
+            "The relay coils are wired through the top terminal block. "
+            "The contactor auxiliary contacts feed back to the PLC input card. "
+            "Verify continuity with a meter before assuming a signal path. "
+            "Separately, the answer to your other question about sheet 89 "
+            "depends on a sheet not visible in this photo.",
+            ocr_items=["xSi-MErHO"],
+        )
+        assert "false_absence_claim" in _classes(r)
+
+    # ── review fix wave: hedge/contraction breadth (Finding 2) ─────────────
+
+    def test_fires_on_arent_contraction(self):
+        r = _eval("The ratings aren't labeled on this print.", ocr_items=["K44"])
+        assert "false_absence_claim" in _classes(r)
+
+    def test_fires_on_bare_unlabeled_form(self):
+        r = _eval("The part numbers are unlabeled.", ocr_items=["K44"])
+        assert "false_absence_claim" in _classes(r)
+
+    def test_fires_on_clearly_adverb_variant(self):
+        r = _eval("The device rating is not clearly labeled on this drawing.", ocr_items=["K44"])
+        assert "false_absence_claim" in _classes(r)
+
+
 def test_format_alert_caps_and_omits_pii():
     r = _eval("The contactor is energized. " + "x" * 900)
     msg = print_autoeval.format_alert(r)
