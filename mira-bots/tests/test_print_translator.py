@@ -283,6 +283,17 @@ class TestBuildTheoryMessagesWithQuestion:
         text = messages[1]["content"][1]["text"]
         assert "specifically asked" not in text
 
+    def test_evidence_contract_clauses_present_alongside_question(self):
+        """The three contract elements bind even WITH a question — they live
+        in the always-present block, not the question-only extension."""
+        messages = print_translator.build_theory_messages(
+            "B64", self._vd(), question="is K5 shorted?"
+        )
+        text = messages[1]["content"][1]["text"]
+        assert "Evidence discipline" in text
+        assert "unverified artifact" in text
+        assert "Never claim a label or value is not labeled" in text
+
 
 # ── PRINT_THEORY_MAX_TOKENS — env-tunable grounded-cascade cap ──────────────
 #
@@ -352,13 +363,3 @@ class TestPrintTheoryMaxTokensEnvTunable:
             "B64DATA", "explain this print", _print_vision_data(), "chat-1"
         )
         assert supervisor.router.complete.await_args.kwargs["max_tokens"] == 2000
-    def test_evidence_contract_clauses_present_alongside_question(self):
-        """The three contract elements bind even WITH a question — they live
-        in the always-present block, not the question-only extension."""
-        messages = print_translator.build_theory_messages(
-            "B64", self._vd(), question="is K5 shorted?"
-        )
-        text = messages[1]["content"][1]["text"]
-        assert "Evidence discipline" in text
-        assert "unverified artifact" in text
-        assert "Never claim a label or value is not labeled" in text
