@@ -11,14 +11,16 @@ Pillow but deliberately omits pytesseract (see its comment in ci.yml) — this
 file is the one place in CI where a real Tesseract recall regression can be
 caught.
 
-RECALL_FLOOR is calibrated evidence, not a guess. Task B1 of the OCR-regime
-plan says: set it to (measured - 0.10) at implementation time. This machine
-has no tesseract binary at all (confirmed:
-``pytesseract.get_tesseract_version()`` raises ``TesseractNotFoundError``), so
-no measurement was possible before this file was written — 0.60 is kept as
-the documented starting floor from the plan. CALIBRATE UPWARD after the first
-CI run: the ``ocr-recall-gate`` job runs pytest with ``-s`` specifically so
-the ``print()`` below lands in the CI log for that purpose.
+Floors are calibrated evidence, not guesses (measured - 0.10 per the plan).
+CALIBRATED 2026-07-19 from the first real tesseract runs (CI run 29667433659
+measured 0.00 at native render scale — the fixture pages' PIL default font is
+unreadable to Tesseract at 1x; the bench now upscales 4x, see
+``ocr_recall_bench._OCR_SCALE``): iec_contactor_control measured 0.75 → floor
+0.65; estop_safety_chain measured 0.50 → floor 0.40 (persistent misses are the
+hyphen-leading device tags and A1). Per-case floors, so a regression on the
+stronger case can't hide under a single weakest-case constant. The
+``ocr-recall-gate`` job runs pytest with ``-s`` so the ``print()`` below lands
+in the CI log for future recalibration.
 """
 
 from __future__ import annotations
@@ -29,11 +31,16 @@ pytest.importorskip("pydantic")  # printsense/__init__.py imports printsense.mod
 
 from printsense.xref_extractor import OcrUnavailable  # noqa: E402
 
-RECALL_FLOOR = 0.60  # ADJUST at calibration time to (measured - 0.10); see module docstring.
+# Calibrated (measured - 0.10) from the first real CI tesseract run at 4x
+# render scale; see module docstring. Raise-only on recalibration.
+RECALL_FLOORS = {
+    "iec_contactor_control": 0.65,  # measured 0.75 (6/8; misses -91/K01, A1)
+    "estop_safety_chain": 0.40,  # measured 0.50 (3/6; misses -93/S01, -93/K02, A1)
+}
 
 # The same two golden_corpus cases ocr_recall_bench.py iterates by default —
 # see that module's docstring for the case-selection rationale.
-_CASE_IDS = ["iec_contactor_control", "estop_safety_chain"]
+_CASE_IDS = list(RECALL_FLOORS)
 
 
 def _case(case_id: str) -> dict:
@@ -60,4 +67,4 @@ def test_fixture_recall_floor(case_id):
         f"[ocr-recall] case={case_id} recall={r['recall']:.2f} "
         f"({r['found']}/{r['expected']}) missing={r['missing']}"
     )
-    assert r["recall"] >= RECALL_FLOOR, f"OCR recall regressed for {case_id}: {r}"
+    assert r["recall"] >= RECALL_FLOORS[case_id], f"OCR recall regressed for {case_id}: {r}"

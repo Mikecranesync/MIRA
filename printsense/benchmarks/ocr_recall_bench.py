@@ -58,6 +58,14 @@ import sys
 # rationale in the module docstring above.
 DEFAULT_CASE_IDS = ["iec_contactor_control", "estop_safety_chain"]
 
+# Upscale factor applied to the rendered page before OCR. At native 1x the
+# fixture pages use PIL's tiny default bitmap font and Tesseract reads
+# essentially nothing (first real CI run measured recall=0.00 on both cases;
+# 2026-07-19). 4x LANCZOS recovers 0.75/0.50; 5x measured identical, so 4x
+# is the calibrated choice. This scales the BENCH's copy of the render only —
+# the guarded fixture renderer is untouched.
+_OCR_SCALE = 4
+
 
 def _norm(s: str) -> str:
     return " ".join(s.split()).upper()
@@ -88,6 +96,16 @@ def recall(base: dict, psm: int | None = None) -> dict:
     from printsense.xref_extractor import line_items, ocr_tokens
 
     png = draw_print_page(base)
+    if _OCR_SCALE > 1:
+        import io
+
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(png))
+        img = img.resize((img.width * _OCR_SCALE, img.height * _OCR_SCALE), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png = buf.getvalue()
     tokens = ocr_tokens(png)
     found_set = {_norm(t) for t in line_items(tokens)}
     expected = [t["text"] for t in base["tokens"]]
