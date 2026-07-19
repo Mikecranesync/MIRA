@@ -1147,11 +1147,11 @@ async def _try_print_translator_reply(
     """Print Translator: an electrical-print photo + any print QUESTION (explain
     / theory of operation, OR a device / wiring / tracing question like "what
     devices are listed in this print?") -> a plain-English, OCR-grounded answer.
-    Read-only generation — NO wiring DB writes, NO control writes. Falls through
-    (returns ``False``) for any caption that isn't a print question, and for
-    photos the vision worker does NOT classify as ``ELECTRICAL_PRINT`` — so
-    non-print photos and the existing nameplate/drive and wiring-intake flows are
-    untouched.
+    Read-only generation — NO wiring DB writes, NO control writes. Captions are
+    tie-breakers only; the image's visual classification decides whether to process
+    as a print. Falls through (returns ``False``) on vision classification error,
+    if the image is not ``ELECTRICAL_PRINT``, or if the caption is a wiring-intake
+    intent (routed to ``_try_wiring_intake_reply`` instead).
 
     Classification runs on the small ``vision_bytes`` (fast, local qwen), but the
     Anthropic PrintSynth interpreter reads the FULL-RESOLUTION ``raw_bytes`` — the
@@ -1159,8 +1159,23 @@ async def _try_print_translator_reply(
     wasted (roadmap Phase 0.1). ``interpret.prepare_print_image`` then auto-uprights
     and resizes it to the 2576 px vision budget.
     """
-    if not print_translator.is_print_question(caption):
-        return False  # cheap reject, no vision call
+    # Visual-first routing (operator directive 2026-07-15): the IMAGE decides.
+    # The old caption pre-reject (`is_print_question(caption)`) meant a print
+    # with no caption — or a misleading one like the bot's own default
+    # "Analyze this equipment photo" — never reached the interpreter (proved
+    # live on the Bulletin 509 sheet). Classification runs first; captions only
+    # shape the QUESTION forwarded to the interpreter. Cost note: for non-print
+    # photos this adds one local qwen classify before the engine's own (the
+    # engine re-classifies on fall-through) — accepted to keep the dispatch
+    # surgical; the print path itself is unchanged in cost.
+    #
+    # ONE caption carve-out survives, and it is flow OWNERSHIP, not
+    # classification: an explicit wiring-intake command/question ("CV-101 add
+    # this wiring") belongs to `_try_wiring_intake_reply`, which runs before us
+    # in `_dispatch_single_photo`. The image still decides WHAT the photo is;
+    # this only decides WHICH print-consuming flow the user explicitly invoked.
+    if wiring_intake.parse_wiring_intent(caption or "").kind != "none":
+        return False  # wiring intake owns it — no vision call needed here
 
     import time as _time
 
@@ -1173,7 +1188,7 @@ async def _try_print_translator_reply(
         return False  # a vision hiccup shouldn't eat the turn — fall through
 
     if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
-        return False  # not a print → fall through unchanged
+        return False  # not a print → fall through unchanged (visual evidence wins)
 
     # UNSEEN-1 deterministic fast-path (zero tokens, before ANY model call):
     # closed-form question classes — contact conventions, designation meaning,
@@ -1219,10 +1234,14 @@ async def _try_print_translator_reply(
             "🔍 Reading your electrical print — a full interpretation usually takes 1–2 minutes…"
         )
     interpret_b64 = base64.b64encode(raw_bytes).decode()
+    # Captions are weak evidence: a real caption rides along as the technician's
+    # question; an empty caption or the bot's own default means "interpret the
+    # whole sheet" (question=None). Mirrors the engine's ELECTRICAL_PRINT branch.
+    question = caption if caption and caption != DEFAULT_PHOTO_CAPTION else None
     async with typing_action(context, update.effective_chat.id):
         reply = await engine._grounded_print_reply(
             photo_b64,
-            caption,
+            question,
             vision_data,
             str(update.effective_chat.id),
             interpret_b64=interpret_b64,

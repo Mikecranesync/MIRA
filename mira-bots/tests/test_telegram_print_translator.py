@@ -161,12 +161,17 @@ class TestPrintTranslatorFallsThrough:
 
     @pytest.mark.asyncio
     async def test_non_theory_caption_falls_through_without_vision_call(self, monkeypatch):
-        """'what drive is this?' -> False immediately, vision NOT called
-        (cheap reject), router NOT called. Guards the nameplate/drive flow."""
+        """UPDATED 2026-07-15 (operator directive: visual-first routing): a
+        non-print caption no longer cheap-rejects — the photo is CLASSIFIED
+        (one local vision call), and a non-print classification falls through
+        to the nameplate/drive flow unchanged. The old assertion that vision
+        was never called encoded the caption gate that hid real prints."""
         update = _mock_update(caption="what drive is this?")
         context = MagicMock()
 
-        vision_process = AsyncMock()
+        vision_process = AsyncMock(
+            side_effect=_mock_vision_process("NAMEPLATE")
+        )
         monkeypatch.setattr(bot.engine.vision, "process", vision_process)
         mock_complete = _mock_router_complete()
         monkeypatch.setattr(bot.engine.router, "complete", mock_complete)
@@ -177,8 +182,8 @@ class TestPrintTranslatorFallsThrough:
 
         assert result is False
         update.message.reply_text.assert_not_called()
-        vision_process.assert_not_awaited()
-        mock_complete.assert_not_awaited()
+        vision_process.assert_awaited()  # visual-first: the image was consulted
+        mock_complete.assert_not_awaited()  # but no LLM spend on a fall-through
 
     @pytest.mark.asyncio
     async def test_wiring_intake_caption_not_claimed(self, monkeypatch):
@@ -438,3 +443,61 @@ class TestLLMFailure:
         assert result is True
         update.message.reply_text.assert_called_once()
         assert update.message.reply_text.call_args[0][0] == print_translator.FALLBACK_REPLY
+
+
+# ---------------------------------------------------------------------------
+# Visual-first fast path (operator directive 2026-07-15): classification, not
+# the caption, decides whether the print translator handles a photo. The live
+# phone test proved the caption pre-reject wrong: a Bulletin 509 print
+# captioned "Analyze this equipment photo" never reached the interpreter.
+# ---------------------------------------------------------------------------
+
+
+class TestVisualFirstFastPath:
+    @pytest.mark.parametrize(
+        "caption",
+        ["", "Analyze this equipment photo", "what is this?", "tell me what this means"],
+        ids=["no-caption", "equipment-caption", "what-is-this", "tell-me"],
+    )
+    async def test_classified_print_reaches_interpreter_despite_caption(
+        self, monkeypatch, caption
+    ):
+        monkeypatch.setattr(
+            bot.engine.vision, "process", _mock_vision_process("ELECTRICAL_PRINT")
+        )
+        grounded = AsyncMock(return_value="GROUNDED-INTERPRETATION")
+        monkeypatch.setattr(bot.engine, "_grounded_print_reply", grounded)
+        update = _mock_update(caption=caption)
+        context = MagicMock()
+
+        handled = await bot._try_print_translator_reply(
+            b"raw-bytes", b"vision-bytes", caption, update, context
+        )
+
+        assert handled is True
+        assert grounded.await_count == 1
+        # empty/default-ish captions become question=None (interpret the sheet);
+        # real questions pass through verbatim
+        passed_question = grounded.await_args.args[1]
+        if caption in ("", "Analyze this equipment photo"):
+            assert passed_question is None
+        else:
+            assert passed_question == caption
+        update.message.reply_text.assert_awaited()  # a reply reached the user
+
+    async def test_equipment_photo_with_print_caption_falls_through(self, monkeypatch):
+        """Visual evidence wins at the bot layer too: a photo classified
+        EQUIPMENT_PHOTO falls through unchanged even if the caption says print."""
+        monkeypatch.setattr(
+            bot.engine.vision, "process", _mock_vision_process("EQUIPMENT_PHOTO")
+        )
+        grounded = AsyncMock(return_value="GROUNDED")
+        monkeypatch.setattr(bot.engine, "_grounded_print_reply", grounded)
+        update = _mock_update(caption="Explain this print")
+
+        handled = await bot._try_print_translator_reply(
+            b"raw", b"vis", "Explain this print", update, MagicMock()
+        )
+
+        assert handled is False
+        assert grounded.await_count == 0
