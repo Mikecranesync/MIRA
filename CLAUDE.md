@@ -192,6 +192,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 - **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
 - **Debugging & verification conventions:** `.claude/rules/debugging-conventions.md` — multi-cause perf debugging; verify schema/API paths before guessing
+- **Materialized Evidence & recall-first architecture (North Star amendment 2026-07-20):** `docs/architecture/materialized-evidence.md` (5 layers) + `.claude/rules/materialized-evidence.md` (15 rules) + `docs/adr/0029-materialized-evidence.md` + inventory `docs/architecture/materialized-evidence-inventory.md`. Infer once, materialize every expensive discovery as durable typed versioned evidence, recall unless the evidence changed; the seed is `printsense/cas.py` (generalize, don't duplicate).
 - **Environments doctrine (dev / staging / prod):** `docs/environments.md`
 - **Enforcement layer:** `docs/specs/enforcement-layer-spec.md` — Playwright audit, write-path round-trip, enum drift, spec staleness, PR template, NeonDB canary
 - **Claude Code v2.1+ defaults (Opus 4.7, xhigh, /effort, /autofix-pr, Routines):** `wiki/references/claude-code-v2.1.md`
