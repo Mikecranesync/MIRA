@@ -19,6 +19,7 @@ from .hashing import (
     sha256_bytes,
     with_hashes,
 )
+from .invalidation import InvalidationResult, invalidate
 from .registry import (
     InMemoryRegistry,
     MaterializationRegistry,
@@ -69,4 +70,6 @@ __all__ = [
     "RegistryError",
     "StatusOverlay",
     "resolve_recall",
+    "invalidate",
+    "InvalidationResult",
 ]
