@@ -5,6 +5,9 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+### Changed
+- CI/CD required-checks accuracy (`.github/workflows/ci.yml`): the `CI` workflow no longer uses a `pull_request`-level `paths-ignore` (which left required checks stuck "Pending" and phantom-blocked docs-only PRs — the recurring `--admin` pain). It now always runs on PRs to main; a new `changes` filter job lets the heavy jobs (`test-unit`, `test-eval-offline`, `docker-build-check`, `ocr-recall-gate`, `simlab-gate`, `drive-pack-extract-tests`) self-skip on docs-only PRs (a skipped JOB reports "Success", so nothing blocks). Adds a single **`CI Gate`** aggregator job (`if: always()`) that fails iff any gated correctness job (`migration-order-check`, `lint-and-type-check`, `test-unit`, `mira-hub-unit`, `mira-web-pack-tests`, `architecture-check`, `license-check`, `sast-semgrep`, `sast-bandit`) failed or was cancelled — the one context intended to replace the current hand-picked required set in branch protection, so real correctness/security checks actually gate merges. Branch-protection flip is a separate, deliberate step once `CI Gate` is proven green. (v3.182.5)
+
 ### Fixed
 - Classification-fallback floor (ROUND 4 defect #2): when the vision model returns no usable signal (call failed or empty), `VisionWorker._classify_photo` now declines to an explicit `UNKNOWN` + `decline_reason` instead of fabricating a confident `EQUIPMENT_PHOTO` from OCR keyword scraps — strong vision-independent LAYOUT/OCR evidence still classifies. The engine routes `UNKNOWN` to an evidence-based decline (show the OCR it could read, ask for a clearer photo), never the equipment-diagnosis path. Adds structured `decline_reason` on every print-synthesis-failure branch and privacy-safe route/model/reason provenance through the existing `_log_interaction` capture layer. (v3.179.1)
 

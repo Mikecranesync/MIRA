@@ -7,13 +7,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# paths-ignore: docs-only changes skip the whole workflow.
-# The list below covers prose (markdown, wiki), the .claude config tree, and
-# image-only changes. Any PR or push that also touches code outside these
-# paths runs the full pipeline normally. Main pushes are always post-merge
-# (code flows through PRs), so a docs-only main push has no code to test —
-# the safety-net intent is preserved: any code-touching main push triggers
-# the full pipeline regardless of path filter.
+# Trigger policy — asymmetric on purpose:
+#   push:         docs-only pushes skip the whole workflow (post-merge, nothing
+#                 to test) via `paths-ignore`.
+#   pull_request: NO `paths-ignore`. A workflow skipped by a path filter leaves
+#                 its check contexts stuck "Pending", which BLOCKS any REQUIRED
+#                 check on a docs-only PR forever (GitHub's skipped-workflow rule
+#                 — the recurring "phantom check" / `--admin` pain). Instead this
+#                 workflow always runs on PRs to main and each expensive job
+#                 self-skips via the `changes` filter job below. A skipped JOB
+#                 reports "Success", so a docs-only PR sails through the required
+#                 `CI Gate` without running heavy work. See `changes` + `ci-gate`.
 on:
   push:
     branches: [main, dev]
@@ -28,17 +32,33 @@ on:
       - '**/*.gif'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'wiki/**'
-      - '**/*.md'
-      - '.claude/**'
-      - '**/*.webp'
-      - '**/*.png'
-      - '**/*.jpg'
-      - '**/*.gif'
 
 jobs:
+  # Detects whether any non-docs file changed, so heavy jobs can self-skip on
+  # docs-only PRs (skipped JOB => "Success" => never blocks the required gate),
+  # replacing the old workflow-level `paths-ignore` that stranded docs PRs.
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!wiki/**'
+              - '!**/*.md'
+              - '!.claude/**'
+              - '!**/*.webp'
+              - '!**/*.png'
+              - '!**/*.jpg'
+              - '!**/*.gif'
+
   migration-order-check:
     name: Migration Order Check
     runs-on: ubuntu-latest
@@ -157,7 +177,8 @@ jobs:
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
-    needs: lint-and-type-check
+    needs: [lint-and-type-check, changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -413,6 +434,8 @@ jobs:
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     # Phase P0 of the SimLab platform-oracle plan. The deterministic, no-LLM
     # rubric grader is a merge gate: a diagnostic / UNS / citation regression on
     # any of the six juice-bottling scenarios goes red here and blocks merge.
@@ -454,6 +477,8 @@ jobs:
   drive-pack-extract-tests:
     name: Drive Pack Extract Tests
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     # PR-A extractor + PR-B grading self-tests (ADR-0025 / docs/drive-commander/). OFFLINE ONLY —
     # runs against the committed synthetic fixture (fixtures/pf_sample.pdf, ~4KB, no licensed
     # manual content). Grading a real manual with grade.py is a documented LOCAL command
@@ -483,6 +508,8 @@ jobs:
   ocr-recall-gate:
     name: OCR Recall Gate
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     # Task B1, docs/plans/2026-07-18-ocr-regime-repair.md PR-B. Real Tesseract recall
     # vs the golden-corpus fixture truth (printsense/benchmarks/ocr_recall_bench.py) —
     # the one CI job where an actual Tesseract/render/config regression can be caught.
@@ -545,7 +572,8 @@ jobs:
     runs-on: ubuntu-latest
     # Latency: run parallel with test-unit (was needs: test-unit — artificial
     # serialization; a red unit suite still fails the PR on its own check).
-    needs: lint-and-type-check
+    needs: [lint-and-type-check, changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -605,7 +633,8 @@ jobs:
     # lint (30s) -> unit (~6 min) -> docker (~6 min) into a ~12-minute PR wall;
     # building doesn't need unit results (trade: a failing-unit PR now also
     # spends build minutes — wall time matters more, per owner 2026-07-17).
-    needs: lint-and-type-check
+    needs: [lint-and-type-check, changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -695,3 +724,53 @@ jobs:
             echo "::error::mira-pipeline image failed 'import main' — a module imported by main.py is missing from the image (check Dockerfile COPYs). This is the 2026-06-02 outage class (ModuleNotFoundError at startup)."
             exit 1
           fi
+
+  # ── Required merge gate ────────────────────────────────────────────────────
+  # ONE aggregated status context to require in branch protection, instead of
+  # pinning a brittle hand-picked list of individual job names. Because it always
+  # runs (`if: always()`), it reports on EVERY PR to main — including docs-only
+  # PRs, where the heavy gated jobs self-skip to "Success" via the `changes`
+  # filter. It fails iff any gated job FAILED or was CANCELLED (skipped and
+  # success both pass), so it can never phantom-block a docs PR.
+  #
+  # Gated (must pass to merge): migration-order-check, lint-and-type-check,
+  #   test-unit, mira-hub-unit, mira-web-pack-tests, architecture-check,
+  #   license-check, sast-semgrep, sast-bandit.
+  # Intentionally NOT in the gate yet (stay visible; promote once reliable):
+  #   secrets-scan (gitleaks license/rate flakes), docker-build-check (trivy
+  #   drive-by CVE flakes + ~6 min), and the heavy quality gates simlab-gate /
+  #   ocr-recall-gate / drive-pack-extract-tests / test-eval-offline.
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - migration-order-check
+      - lint-and-type-check
+      - test-unit
+      - mira-hub-unit
+      - mira-web-pack-tests
+      - architecture-check
+      - license-check
+      - sast-semgrep
+      - sast-bandit
+    steps:
+      - name: Require all gated jobs to pass (skipped is allowed)
+        run: |
+          results='${{ join(needs.*.result, ",") }}'
+          echo "gated job results: $results"
+          bad=0
+          IFS=','
+          for r in $results; do
+            case "$r" in
+              failure|cancelled)
+                echo "::error::a gated CI job did not pass (result: $r)"
+                bad=1
+                ;;
+            esac
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "CI Gate: FAIL — one or more gated jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "CI Gate: PASS — all gated jobs passed or were skipped."
