@@ -1,5 +1,12 @@
 # MIRA Release Notes
 
+### v3.179.0 (2026-07-19) - feat(legoland): AWL ingest pack — T7 ride PLC sources → citable knowledge chunks
+
+- `tools/legoland/awl_chunks.py`: pure offline transform on the ProveIt pattern. Walks a corpus tree of exported Siemens STEP 7 AWL sources and emits `knowledge_entries` rows (no embed, no DB writes — the infra-gated insert comes later). Two chunk shapes: **fault/alarm glossaries** from DATA_BLOCKs (reuses the merged `mira-plc-parser` siemens_awl parser for `Alarm####` blocks; adds a generic commented-STRUCT-member fallback that covers Aquazone's German `Flt10 : BOOL ; //fault Bridge Sensor 1` DBs and Technic's `T_0_A1_FAULT : S5TIME:=S5T#2000MS` setpoint DBs — the initializer IS the setpoint) and **logic-block network chunks** from FB/OB sources (title + engineer comments + referenced cabinet-sheet-device symbols, the print↔PLC join key).
+- Grounding: `enterprise.legoland.site.florida.area.<ride>.equipment.<station>.plc_block.<block>` — built exclusively with the canonical `mira-crawler/ingest/uns.py` builders. Rows are `is_private=true` per the knowledge_entries tenant-scoping law; ids hash (tenant | uns_path | content) so re-runs de-dup and the same block on two rides stays two rows.
+- Honesty: the `report` CLI names every file that yields no chunks (`files_empty`). Real-corpus dry run against the T7 drive: 50 files → 114 glossary + 146 network chunks → 259 rows across aquazone/chima/technic_test_track; the only empty files are 3 Chima instance-DB initializer dumps (verified content-free).
+- 13 tests on synthetic fixtures (`tests/legoland/`); the proprietary ride corpus never enters the repo.
+
 ### v3.178.1 (2026-07-19) - fix(printsense): verify-pass editor prompt — tiers accumulate, never add attributions
 
 - Two wording fixes to `VERIFY_SYSTEM_PROMPT`, each pinning an R5-epsilon judged regression: rule 3 now requires stacked header tiers to ACCUMULATE ("KEEP every function label the draft already named... one label never replaces another" — epsilon c03 swapped torque-limitation in place of braking-relay, 6->5), and new rule 4 forbids the verifier from ADDING any connection/terminal/wire-route/attribution the draft did not contain (epsilon c09 added a wrong "240V at Q2" attribution to a previously-clean answer, 9->6.5). Additions remain limited to printed label text directly on the asked device.
