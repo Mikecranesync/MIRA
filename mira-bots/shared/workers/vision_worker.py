@@ -500,8 +500,7 @@ class VisionWorker:
         if classification == "UNKNOWN" and vision_decline_reason:
             decline_reason = vision_decline_reason
         logger.info(
-            "Photo classified as %s (confidence=%.2f, %d OCR items, "
-            "ocr_source=%s, vision_ok=%s%s)",
+            "Photo classified as %s (confidence=%.2f, %d OCR items, ocr_source=%s, vision_ok=%s%s)",
             classification,
             classify_confidence,
             len(ocr_items),

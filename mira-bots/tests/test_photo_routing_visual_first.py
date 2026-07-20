@@ -436,9 +436,7 @@ async def test_unknown_classification_declines_not_equipment_path(supervisor):
     grounded = AsyncMock(return_value="SHOULD-NOT-RUN")
     supervisor._grounded_print_reply = grounded
 
-    result = await supervisor.process_full(
-        "chat-unknown", "explain this", photo_b64="Zm9vYmFy"
-    )
+    result = await supervisor.process_full("chat-unknown", "explain this", photo_b64="Zm9vYmFy")
 
     assert grounded.await_count == 0, "must not fabricate a print interpretation"
     assert result.get("next_state") != "ASSET_IDENTIFIED"

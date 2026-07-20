@@ -74,9 +74,7 @@ def test_caption_cannot_rescue_a_dead_vision_call(vw):
     """A print-ish caption must NOT drag a signalless photo into ELECTRICAL_PRINT
     when vision failed — a caption alone is the weakest evidence and cannot
     stand in for a dead vision call. Decline instead."""
-    r = vw._classify_photo(
-        "", ocr_items=["A", "B"], caption="explain this print", vision_ok=False
-    )
+    r = vw._classify_photo("", ocr_items=["A", "B"], caption="explain this print", vision_ok=False)
     assert r["type"] == "UNKNOWN", r
 
 
