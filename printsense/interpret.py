@@ -74,6 +74,32 @@ def pop_last_usage() -> dict | None:
     return usage
 
 
+def record_sampled_usage(
+    provider: str | None,
+    model: str | None,
+    input_tokens: int,
+    output_tokens: int,
+) -> None:
+    """Record ALREADY-SUMMED token usage from a multi-sample print turn.
+
+    The free-cascade self-consistency loop (``PRINT_THEORY_SELF_CONSISTENCY`` in
+    ``mira-bots/shared/engine.py::_grounded_print_reply``) samples the
+    theory(+verify) chain N times; each ``router.complete`` returns its own
+    per-call usage. This writes the summed total into the same ``_LAST_USAGE``
+    slot the paid path uses, so a bench envelope reads the cost of ALL samples
+    via :func:`pop_last_usage` — not just the last call. Best-effort telemetry,
+    never grading truth (see ``_LAST_USAGE``); the free cascade never touches the
+    paid ``_record_usage`` object-shaped path, so this dict-shaped setter exists.
+    """
+    global _LAST_USAGE
+    _LAST_USAGE = {
+        "provider": provider,
+        "model": model,
+        "input_tokens": int(input_tokens),
+        "output_tokens": int(output_tokens),
+    }
+
+
 _SYSTEM = (
     "You are a senior industrial-controls engineer and maintenance electrician "
     "interpreting an electrical print (schematic, wiring diagram, PLC I/O map, "

@@ -596,3 +596,186 @@ class TestVerifyPromptWording:
         s = print_translator.VERIFY_SYSTEM_PROMPT
         assert "NEVER add a connection, terminal assignment, wire route, or device" in s
         assert "only permitted additions are" in s
+
+
+# ── PRINT_THEORY_SELF_CONSISTENCY — deterministic self-consistency sampling ───
+#
+# ROUND5 Addendum 3 (2026-07-19): the R5 architecture is a distribution centered
+# ~8.2; the residual to a 9.0 single-round mean is run variance on three cases (a
+# near-ambiguous grid boundary, stochastic tier pickup, a fresh false-precision
+# detail). N>=2 samples the theory(+verify) chain and reconciles to the medoid —
+# no LLM judge — dropping the idiosyncratic outlier and keeping the majority
+# reading. N<2 is the single-pass path, unchanged; any sample failure falls
+# through; the turn is never eaten.
+
+
+class TestReconcilePrintSamples:
+    def test_empty_returns_empty_not_agreed(self):
+        assert print_translator.reconcile_print_samples([]) == ("", False)
+
+    def test_single_candidate_returns_it_agreed(self):
+        assert print_translator.reconcile_print_samples(["only one"]) == ("only one", True)
+
+    def test_agreement_drops_the_minority_coin_flip(self):
+        # Two runs read column 3, one coin-flips to column 2 -> the majority
+        # reading is the medoid; the minority is dropped.
+        chosen, agreed = print_translator.reconcile_print_samples(
+            ["K1 is at column 3 row E", "K1 sits at column 3 row E", "K1 is at column 2"]
+        )
+        assert "column 3" in chosen
+        assert "column 2" not in chosen
+        assert agreed is True
+
+    def test_medoid_suppresses_a_one_sample_fabrication(self):
+        # A fresh false-precision detail appears in ONLY one sample -> the medoid
+        # (most central) is a clean sample without it.
+        clean = "S19 monitors the lifting rope per gondola"
+        chosen, agreed = print_translator.reconcile_print_samples(
+            [clean, clean, clean + " rated 240V at Q2 exactly"]
+        )
+        assert chosen == clean  # the fabrication-carrying sample is not selected
+        assert "240V" not in chosen
+        assert agreed is True
+
+    def test_disagreement_returns_deterministic_first_not_agreed(self):
+        # Three mutually-disjoint answers: no majority. The medoid ties and breaks
+        # to the lowest index (the earliest sample) -> deterministic; agreed False.
+        chosen, agreed = print_translator.reconcile_print_samples(
+            ["alpha alpha", "bravo bravo", "charlie charlie"]
+        )
+        assert chosen == "alpha alpha"
+        assert agreed is False
+
+
+class TestPrintSelfConsistency:
+    @staticmethod
+    def _scrub_paid_keys(monkeypatch):
+        # $0 safety: keep the paid PrintSynth interpreter inert (is_configured()
+        # is False without a key) so _grounded_print_reply uses the mocked router
+        # cascade only — never a real provider. Mirrors the CI env (no keys).
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("PRINT_THEORY_VERIFY", raising=False)
+
+    @pytest.mark.asyncio
+    async def test_default_off_unset_is_single_sample(self, supervisor, monkeypatch):
+        self._scrub_paid_keys(monkeypatch)
+        monkeypatch.delenv("PRINT_THEORY_SELF_CONSISTENCY", raising=False)
+        supervisor.router.complete = AsyncMock(return_value=("only call", {}))
+        await supervisor._grounded_print_reply("B64", "q?", _print_vision_data(), "chat-1")
+        assert supervisor.router.complete.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_default_off_empty_string_is_single_sample(self, supervisor, monkeypatch):
+        """Compose ${PRINT_THEORY_SELF_CONSISTENCY:-} delivers "" in-container — off."""
+        self._scrub_paid_keys(monkeypatch)
+        monkeypatch.setenv("PRINT_THEORY_SELF_CONSISTENCY", "")
+        supervisor.router.complete = AsyncMock(return_value=("only call", {}))
+        await supervisor._grounded_print_reply("B64", "q?", _print_vision_data(), "chat-1")
+        assert supervisor.router.complete.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_n_equals_1_is_single_sample(self, supervisor, monkeypatch):
+        self._scrub_paid_keys(monkeypatch)
+        monkeypatch.setenv("PRINT_THEORY_SELF_CONSISTENCY", "1")
+        supervisor.router.complete = AsyncMock(return_value=("only call", {}))
+        await supervisor._grounded_print_reply("B64", "q?", _print_vision_data(), "chat-1")
+        assert supervisor.router.complete.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_n3_samples_three_times_and_reconciles_majority(self, supervisor, monkeypatch):
+        self._scrub_paid_keys(monkeypatch)
+        monkeypatch.setenv("PRINT_THEORY_SELF_CONSISTENCY", "3")
+        supervisor.router.complete = AsyncMock(
+            side_effect=[
+                ("K1 is at column 3 row E", {}),
+                ("K1 sits at column 3 row E", {}),
+                ("K1 is at column 2", {}),
+            ]
+        )
+        out = await supervisor._grounded_print_reply(
+            "B64", "where is K1?", _print_vision_data(), "chat-1"
+        )
+        assert (
+            supervisor.router.complete.await_count == 3
+        )  # one theory call per sample (verify off)
+        assert "column 3" in out
+        assert "column 2" not in out  # minority coin-flip dropped
+
+    @pytest.mark.asyncio
+    async def test_disagreement_returns_deterministic_first_sample(self, supervisor, monkeypatch):
+        self._scrub_paid_keys(monkeypatch)
+        monkeypatch.setenv("PRINT_THEORY_SELF_CONSISTENCY", "3")
+        supervisor.router.complete = AsyncMock(
+            side_effect=[("alpha alpha", {}), ("bravo bravo", {}), ("charlie charlie", {})]
+        )
+        out = await supervisor._grounded_print_reply("B64", "q?", _print_vision_data(), "chat-1")
+        assert supervisor.router.complete.await_count == 3
+        assert "alpha" in out  # medoid ties -> lowest index -> first sample
+
+    @pytest.mark.asyncio
+    async def test_a_sample_error_falls_through_to_survivors(self, supervisor, monkeypatch):
+        self._scrub_paid_keys(monkeypatch)
+        monkeypatch.setenv("PRINT_THEORY_SELF_CONSISTENCY", "3")
+        supervisor.router.complete = AsyncMock(
+            side_effect=[("good one alpha", {}), RuntimeError("boom"), ("good one beta", {})]
+        )
+        out = await supervisor._grounded_print_reply("B64", "q?", _print_vision_data(), "chat-1")
+        assert supervisor.router.complete.await_count == 3
+        assert out != print_translator.FALLBACK_REPLY  # survivors still reconcile
+        assert "good one" in out
+
+    @pytest.mark.asyncio
+    async def test_all_samples_fail_yields_fallback_never_eats_turn(self, supervisor, monkeypatch):
+        self._scrub_paid_keys(monkeypatch)
+        monkeypatch.setenv("PRINT_THEORY_SELF_CONSISTENCY", "2")
+        supervisor.router.complete = AsyncMock(side_effect=[RuntimeError("x"), RuntimeError("y")])
+        out = await supervisor._grounded_print_reply("B64", "q?", _print_vision_data(), "chat-1")
+        assert supervisor.router.complete.await_count == 2
+        assert out == print_translator.FALLBACK_REPLY
+
+    @pytest.mark.asyncio
+    async def test_usage_sums_across_samples(self, supervisor, monkeypatch):
+        # pop_last_usage() must reflect the SUM across samples so a bench envelope
+        # prices the whole multi-sample turn. importorskip: recording is
+        # best-effort, gated on printsense being importable in this env.
+        interpret = pytest.importorskip("printsense.interpret")
+        self._scrub_paid_keys(monkeypatch)
+        monkeypatch.setenv("PRINT_THEORY_SELF_CONSISTENCY", "3")
+        interpret.pop_last_usage()  # clear any stale slot
+        supervisor.router.complete = AsyncMock(
+            side_effect=[
+                (
+                    "s1",
+                    {
+                        "input_tokens": 100,
+                        "output_tokens": 10,
+                        "provider": "together",
+                        "model": "m",
+                    },
+                ),
+                (
+                    "s2",
+                    {
+                        "input_tokens": 200,
+                        "output_tokens": 20,
+                        "provider": "together",
+                        "model": "m",
+                    },
+                ),
+                (
+                    "s3",
+                    {
+                        "input_tokens": 300,
+                        "output_tokens": 30,
+                        "provider": "together",
+                        "model": "m",
+                    },
+                ),
+            ]
+        )
+        await supervisor._grounded_print_reply("B64", "q?", _print_vision_data(), "chat-1")
+        usage = interpret.pop_last_usage()
+        assert usage is not None
+        assert usage["input_tokens"] == 600  # 100 + 200 + 300
+        assert usage["output_tokens"] == 60  # 10 + 20 + 30
