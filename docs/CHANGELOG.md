@@ -1,5 +1,13 @@
 # MIRA Release Notes
 
+### v3.180.0 (2026-07-20) - feat(zta): factorylm_ai DPO exporter + create_finetune_job training_method — unblocks the recommended $4 fine-tune path ($0, armed not launched)
+
+- `factorylm_ai.flywheel.export.export_together_dpo_jsonl` — the DPO sibling of the SFT exporter. Writes approved **preference** records (`messages` prompt + `preferred_output`/`non_preferred_output` assistant completions) to Together's OpenAI-compatible LoRA-DPO JSONL shape (`{input:{messages}, preferred_output, non_preferred_output}` — exactly the form the pre-built `dpo_pairs.jsonl` uses). Same write-gate guarantees as the SFT path: fails CLOSED on any unapproved record (`ExportRefused`), refuses any half-pair (new `PreferencePairInvalid`), **never** writes the holdout split, drops sensitive/tenant records unless `include_tenant_sensitive=True`, and redacts PII in the prompt **and both completions** before a byte hits disk. No network call.
+- `factorylm_ai.providers.together.create_finetune_job` gains a `training_method` param (`"sft"` default | `"dpo"`), validated before the budget precheck and network gate, and threaded into the `POST /fine-tunes` payload. The BudgetGuard precheck-before-network spend law is unchanged.
+- `factorylm_ai.pricing.FT_LORA_DPO_USD_PER_MTOK_LE16B = 0.54` added (the SFT-only build had assumed this constant; strategy §2.1 table).
+- **Fine-tune stays ARMED, NOT launched.** This is the `$0` enablement of the DPO path only — any actual job is Mike-gated, metered, and requires a fresh dollar declaration.
+- Tests: 6 DPO-export cases (happy-path preference shape, refuse-unapproved, refuse-half-pair, never-write-holdout, skip-sensitive/tenant, redact-prompt+both-completions), 2 provider cases (invalid method → ValueError before spend; `dpo` accepted + still network-gated), 1 pricing case. Full `factorylm_ai` suite: 298 pass.
+
 ### v3.178.1 (2026-07-19) - fix(printsense): verify-pass editor prompt — tiers accumulate, never add attributions
 
 - Two wording fixes to `VERIFY_SYSTEM_PROMPT`, each pinning an R5-epsilon judged regression: rule 3 now requires stacked header tiers to ACCUMULATE ("KEEP every function label the draft already named... one label never replaces another" — epsilon c03 swapped torque-limitation in place of braking-relay, 6->5), and new rule 4 forbids the verifier from ADDING any connection/terminal/wire-route/attribution the draft did not contain (epsilon c09 added a wrong "240V at Q2" attribution to a previously-clean answer, 9->6.5). Additions remain limited to printed label text directly on the asked device.
