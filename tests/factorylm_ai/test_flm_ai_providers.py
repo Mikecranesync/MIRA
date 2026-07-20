@@ -292,6 +292,49 @@ async def test_create_finetune_job_budget_precheck_precedes_network_gate(
     assert guard.spent_usd == 0.0  # nothing recorded — the POST never happened
 
 
+async def test_create_finetune_job_rejects_invalid_training_method(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bad training_method is a shape error caught BEFORE the budget precheck
+    and the network gate — nothing is spent, no HTTP happens."""
+    monkeypatch.delenv("TOGETHERAI_API_KEY", raising=False)
+    monkeypatch.delenv("FACTORYLM_AI_ALLOW_NETWORK", raising=False)
+    monkeypatch.setattr(httpx, "AsyncClient", _ExplodingAsyncClient)
+    with pytest.raises(ValueError, match="training_method"):
+        await together_module.create_finetune_job(
+            "file-id",
+            "some/model",
+            suffix="factorylm_test",
+            budget=BudgetGuard(cap_usd=100.0),
+            est_training_tokens=500_000,
+            training_method="rlhf",
+        )
+
+
+async def test_create_finetune_job_dpo_method_accepted_and_gated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """training_method='dpo' with the DPO rate is accepted (no ValueError) and
+    still stops at the network gate — the payload is built but no POST fires."""
+    from factorylm_ai.pricing import FT_LORA_DPO_USD_PER_MTOK_LE16B
+
+    monkeypatch.delenv("TOGETHERAI_API_KEY", raising=False)
+    monkeypatch.delenv("FACTORYLM_AI_ALLOW_NETWORK", raising=False)
+    monkeypatch.setattr(httpx, "AsyncClient", _ExplodingAsyncClient)
+    guard = BudgetGuard(cap_usd=100.0)
+    with pytest.raises(NetworkDisabledError):
+        await together_module.create_finetune_job(
+            "file-id",
+            "some/model",
+            suffix="factorylm_dpo",
+            budget=guard,
+            est_training_tokens=500_000,
+            usd_per_mtok=FT_LORA_DPO_USD_PER_MTOK_LE16B,
+            training_method="dpo",
+        )
+    assert guard.spent_usd == 0.0  # network gate fired before record()
+
+
 def test_together_download_finetune_note_is_pure_and_mentions_no_serverless() -> None:
     note = together_module.download_finetune_note("ft-12345")
     assert "ft-12345" in note

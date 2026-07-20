@@ -15,7 +15,12 @@ from typing import Any
 
 import pytest
 
-from factorylm_ai.flywheel.export import ExportRefused, export_together_jsonl
+from factorylm_ai.flywheel.export import (
+    ExportRefused,
+    PreferencePairInvalid,
+    export_together_dpo_jsonl,
+    export_together_jsonl,
+)
 from factorylm_ai.flywheel.records import (
     new_eval_case,
     new_feedback_event,
@@ -569,3 +574,110 @@ def test_export_creates_out_dir_and_deterministic_key_order(tmp_path: Path) -> N
 
     assert out_dir.exists()
     assert list(written.keys()) == ["train", "dev", "test"]
+
+
+# ---------------------------------------------------------------------------
+# export.py — DPO preference exporter (export_together_dpo_jsonl)
+# ---------------------------------------------------------------------------
+
+
+def _dpo_record(**overrides: Any) -> dict[str, Any]:
+    """A DPO preference record — a plain dict (NOT a training_record; the SFT
+    schema forbids the preference fields). Prompt in ``messages``; the pair in
+    ``preferred_output`` / ``non_preferred_output`` as assistant messages."""
+    base: dict[str, Any] = dict(
+        record_id="dpo-1",
+        messages=[
+            {"role": "user", "content": "which contactor powers M1?"},
+        ],
+        preferred_output=[{"role": "assistant", "content": "K2.1 powers M1 (sheet 6)."}],
+        non_preferred_output=[{"role": "assistant", "content": "Probably K5, not sure."}],
+        split="train",
+        sensitive=False,
+        tenant_id=None,
+        approved_by="mike",
+    )
+    base.update(overrides)
+    return base
+
+
+def test_dpo_export_happy_path_writes_together_preference_shape(tmp_path: Path) -> None:
+    out_dir = tmp_path / "dpo"
+    written = export_together_dpo_jsonl([_dpo_record()], str(out_dir))
+    assert list(written.keys()) == ["train", "dev", "test"]
+    line = json.loads(Path(written["train"]).read_text(encoding="utf-8").strip())
+    assert set(line.keys()) == {"input", "preferred_output", "non_preferred_output"}
+    assert line["input"]["messages"][0]["content"] == "which contactor powers M1?"
+    assert line["preferred_output"][0]["role"] == "assistant"
+    assert "K2.1" in line["preferred_output"][0]["content"]
+    assert "K5" in line["non_preferred_output"][0]["content"]
+
+
+def test_dpo_export_refuses_unapproved_and_writes_nothing(tmp_path: Path) -> None:
+    out_dir = tmp_path / "dpo"
+    with pytest.raises(ExportRefused):
+        export_together_dpo_jsonl(
+            [_dpo_record(), _dpo_record(record_id="dpo-bad", approved_by=None)], str(out_dir)
+        )
+    assert not out_dir.exists()
+
+
+def test_dpo_export_refuses_half_pair_and_writes_nothing(tmp_path: Path) -> None:
+    out_dir = tmp_path / "dpo"
+    with pytest.raises(PreferencePairInvalid):
+        export_together_dpo_jsonl(
+            [_dpo_record(), _dpo_record(record_id="dpo-half", non_preferred_output=[])],
+            str(out_dir),
+        )
+    assert not out_dir.exists()
+
+
+def test_dpo_export_never_writes_holdout(tmp_path: Path) -> None:
+    out_dir = tmp_path / "dpo"
+    written = export_together_dpo_jsonl(
+        [_dpo_record(record_id="dpo-train"), _dpo_record(record_id="dpo-hold", split="holdout")],
+        str(out_dir),
+    )
+    assert set(written) == {"train", "dev", "test"}
+    assert not (out_dir / "holdout.jsonl").exists()
+    assert Path(written["train"]).read_text(encoding="utf-8").strip() != ""
+
+
+def test_dpo_export_skips_sensitive_and_tenant_by_default(tmp_path: Path) -> None:
+    default_dir = tmp_path / "default"
+    export_together_dpo_jsonl(
+        [
+            _dpo_record(record_id="dpo-ok"),
+            _dpo_record(record_id="dpo-sens", sensitive=True),
+            _dpo_record(record_id="dpo-ten", tenant_id="9d1f8f0a-2222-4b3c-8a11-000000000001"),
+        ],
+        str(default_dir),
+    )
+    lines = (default_dir / "train.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1  # only the non-sensitive, non-tenant record
+
+    included_dir = tmp_path / "included"
+    export_together_dpo_jsonl(
+        [
+            _dpo_record(record_id="dpo-ok"),
+            _dpo_record(record_id="dpo-sens", sensitive=True),
+        ],
+        str(included_dir),
+        include_tenant_sensitive=True,
+    )
+    lines2 = (included_dir / "train.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines2) == 2
+
+
+def test_dpo_export_redacts_pii_in_prompt_and_both_completions(tmp_path: Path) -> None:
+    rec = _dpo_record(
+        messages=[{"role": "user", "content": "gateway at 192.168.4.28 down"}],
+        preferred_output=[{"role": "assistant", "content": "check MAC 00:1B:44:11:3A:B7"}],
+        non_preferred_output=[{"role": "assistant", "content": "serial X4J-99201 is bad"}],
+    )
+    out_dir = tmp_path / "dpo"
+    written = export_together_dpo_jsonl([rec], str(out_dir))
+    blob = Path(written["train"]).read_text(encoding="utf-8")
+    assert "192.168.4.28" not in blob and "[IP]" in blob
+    assert "00:1B:44:11:3A:B7" not in blob and "[MAC]" in blob
+    assert "X4J-99201" not in blob and "[SN]" in blob

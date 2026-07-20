@@ -18,6 +18,7 @@ PRICING_AS_OF = "2026-07-19"
 DEDICATED_H100_USD_PER_HOUR = 5.49
 BATCH_DISCOUNT = 0.5  # flat 50% off serverless, text models only, no vision
 FT_LORA_SFT_USD_PER_MTOK_LE16B = 0.48  # LoRA SFT, base models <= 16B params
+FT_LORA_DPO_USD_PER_MTOK_LE16B = 0.54  # LoRA DPO, base models <= 16B params (strategy §2.1 table)
 FT_MIN_JOB_USD = 4.00
 
 # Conservative fallback for a model with no PRICING entry — deliberately

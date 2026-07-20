@@ -118,3 +118,15 @@ def test_pricing_table_has_all_addendum_models() -> None:
 def test_pricing_embedding_model_has_zero_output_price() -> None:
     _price_in, price_out = PRICING["intfloat/multilingual-e5-large-instruct"]
     assert price_out == 0.0
+
+
+def test_ft_lora_dpo_rate_exists_and_exceeds_sft() -> None:
+    """The DPO fine-tune rate is defined (the SFT-only build assumed it) and, per
+    the strategy §2.1 table, is slightly above the LoRA-SFT rate."""
+    from factorylm_ai.pricing import (
+        FT_LORA_DPO_USD_PER_MTOK_LE16B,
+        FT_LORA_SFT_USD_PER_MTOK_LE16B,
+    )
+
+    assert FT_LORA_DPO_USD_PER_MTOK_LE16B == 0.54
+    assert FT_LORA_DPO_USD_PER_MTOK_LE16B > FT_LORA_SFT_USD_PER_MTOK_LE16B

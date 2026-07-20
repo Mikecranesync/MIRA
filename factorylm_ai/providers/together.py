@@ -467,6 +467,7 @@ async def create_finetune_job(
     n_epochs: int = 3,
     lora: bool = True,
     usd_per_mtok: float = FT_LORA_SFT_USD_PER_MTOK_LE16B,
+    training_method: str = "sft",
 ) -> dict[str, Any]:
     """Create a Together fine-tune job. ``POST /fine-tunes`` off the v1 base.
 
@@ -486,6 +487,14 @@ async def create_finetune_job(
     per-model rate for larger/specialty bases (see pricing tables in
     ``docs/zta/together-liquid-model-strategy.md``).
 
+    ``training_method`` selects the fine-tune objective: ``"sft"`` (default) or
+    ``"dpo"``. For a DPO job, pass ``training_method="dpo"`` and the DPO rate
+    ``usd_per_mtok=FT_LORA_DPO_USD_PER_MTOK_LE16B`` (0.54, <=16B), and give it a
+    preference training file produced by
+    :func:`factorylm_ai.flywheel.export.export_together_dpo_jsonl`. The cost path
+    is otherwise identical (same $4.00 floor, same BudgetGuard precheck-before-
+    network gate).
+
     ``n_epochs=3`` (not Together's own platform default of 1) matches the
     fine-tuning economics worked example in
     ``docs/zta/together-liquid-model-strategy.md`` (500 records x 1k tokens x
@@ -493,6 +502,10 @@ async def create_finetune_job(
     deliberate, documented choice for this helper, not a copy of the
     platform default.
     """
+    if training_method not in ("sft", "dpo"):
+        raise ValueError(
+            f"create_finetune_job: training_method must be 'sft' or 'dpo', got {training_method!r}"
+        )
     est_usd = max(
         FT_MIN_JOB_USD,
         (est_training_tokens * n_epochs / 1_000_000) * usd_per_mtok,
@@ -506,6 +519,7 @@ async def create_finetune_job(
         "lora": lora,
         "suffix": suffix,
         "n_evals": 0,
+        "training_method": training_method,
     }
     data, _elapsed_ms = await _http_post_json(
         _FINETUNE_ENDPOINT, api_key, payload, _timeout_seconds()
