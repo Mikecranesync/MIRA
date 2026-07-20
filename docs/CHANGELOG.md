@@ -1,3 +1,13 @@
+### v3.182.0 (2026-07-20) - feat(materialized-evidence): typed evidence contract (PR C of the North Star amendment)
+
+- New isolated, dependency-light `materialized_evidence/` package — the vendor-neutral typed contract for the Materialized Evidence layer (doctrine in PR A / `docs/architecture/materialized-evidence.md` / ADR-0029). `EvidenceManifest` (Appendix C fields), `EvidenceRecord`, `RecallQuery`/`RecallResult`, controlled-vocabulary enums (`DatasetType`, `RecomputeDecision`, `TrustStatus`, `StageStatus`, `StaleState`, `ApprovalStatus`, `RecallOutcome`), a minimal stdlib-only `validate_manifest`, and content-addressed `hashing` (order-independent dataset `content_hash`, idempotent `with_hashes`, hash-field-excluding `manifest_hash`).
+- Enforces the doctrine at the contract level: inference lineage is required when a model produced a dataset (rule 6); a `trusted`/`approved` dataset must carry `approval_refs` — no self-promotion (rule 9). Frozen dataclasses, no new deps.
+- Stores/resolves/wires nothing (registry = PR D, resolver = PR E) — pure contract. 11 hermetic tests (round-trip, hash stability, dedup, idempotence, validator teeth); ruff + pyright clean. Run: `PYTHONPATH=. pytest materialized_evidence/tests/`.
+- VERSION restack vs concurrent PRs expected at merge.
+
+- Two wording fixes to `VERIFY_SYSTEM_PROMPT`, each pinning an R5-epsilon judged regression: rule 3 now requires stacked header tiers to ACCUMULATE ("KEEP every function label the draft already named... one label never replaces another" — epsilon c03 swapped torque-limitation in place of braking-relay, 6->5), and new rule 4 forbids the verifier from ADDING any connection/terminal/wire-route/attribution the draft did not contain (epsilon c09 added a wrong "240V at Q2" attribution to a previously-clean answer, 9->6.5). Additions remain limited to printed label text directly on the asked device.
+- Two prompt-pin tests in `test_print_translator.py`.
+
 # MIRA Release Notes
 
 ### v3.181.0 (2026-07-20) - feat(zta): factorylm_ai DPO exporter + create_finetune_job training_method — unblocks the recommended $4 fine-tune path ($0, armed not launched)
