@@ -1,3 +1,10 @@
+### v3.182.3 (2026-07-20) - feat(materialized-evidence): prompt-version + force_recompute resolver controls (PR E.1)
+
+- `RecallQuery` += `allowed_prompt_versions: list[str]` (mirrors `allowed_producer_versions`) and `force_recompute: bool = False`. Both default to no-op — existing callers unaffected.
+- Makes the two previously-unreachable Appendix E reason codes emittable: a candidate whose recorded `prompt_contract_version` is not permitted → `recomputed_prompt_changed` (a DISTINCT provenance event — never collapsed into `recomputed_algorithm_changed`; the prompt gate sits in Gate 4 right after the producer check). The prompt gate applies only to model-produced datasets (the validator guarantees `prompt_contract_version` presence for those — no absence ambiguity).
+- `force_recompute=True` returns `recompute / recomputed_human_requested`, applied after the tenant/environment boundary (tenant-scoped `registry.find`) and before any reuse evaluation, deterministically bypassing exact reuse, partial reuse, and conflict selection — while referencing NO candidate (cannot weaken tenant or environment isolation).
+- Stacked on PR E (#2839). 50 hermetic tests total (38 prior + 12 controls: allowed/disallowed prompt, prompt≠algorithm, backward-compat, model-only prompt gate, force over exact/partial/multiple, force outcome, tenant + env isolation under force, deterministic gate order). ruff + pyright clean. VERSION restack expected at merge.
+
 ### v3.182.2 (2026-07-20) - feat(materialized-evidence): recall resolver (PR E of the North Star amendment)
 
 - `materialized_evidence/resolver.py` — `resolve_recall(query, registry)` applies the PRD Appendix E compatibility gates IN ORDER: (1) tenancy + environment, (2) source identity, (3) output contract (schema + completeness), (4) producer version, (5) trust/approval + freshness, (6) integrity (manifest/content hash + parent availability). The first gate a candidate fails determines its verdict.
