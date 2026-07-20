@@ -1,6 +1,11 @@
 # MIRA Release Notes
 
-### v3.178.1 (2026-07-19) - fix(printsense): verify-pass editor prompt — tiers accumulate, never add attributions
+### v3.179.0 (2026-07-20) - feat(drive-commander): benchmark program (Lane A harness + grader) + architecture/capability/spec/baseline/ZTA docs
+
+- New `docs/drive_commander/`: ARCHITECTURE_MAP, CAPABILITY_MATRIX, BENCHMARK_SPEC (6 lanes, 10 hard gates, 100-pt rubric, blind judging), BASELINE_REPORT, ZTA_CODIFICATION_PLAN — a PrintSense-rigor benchmark program for Drive Commander, verified against origin/main by a 4-agent read-only recon + a 137-test offline baseline.
+- New `tools/drive_commander_bench/`: runnable Lane-A deterministic harness (`runner.py`) + sha256-frozen corpus (truth seeded only from the human-verified `test_drive_pack_truth_pins.py` #2777) + a deterministic grader with teeth (`test_bench.py`, 7 self-tests). Lane A = **16/16 PASS, grade A, 100% zero-token, $0**.
+- Honest findings (not fixed here — proposed): D1 mnemonic-only `fault_entries` (v3) parsed but consumed by zero answer/card code → unreachable; D2 read-only gate allowed-keys excludes `fault_entries`; D3 non-GS10 fault cards cite all pack sources, not per-fault. All share one root (v2 answer path has no per-fault mnemonic record). Runtime-servable families = GS10/PF40/PF525 only (G120 is public-web-only and was fabricated→rebuilt; Magnetek is a staged candidate).
+- No production code changed; no metered inference; $0. VERSION restack vs a concurrent PrintSense PR expected at merge.
 
 - Two wording fixes to `VERIFY_SYSTEM_PROMPT`, each pinning an R5-epsilon judged regression: rule 3 now requires stacked header tiers to ACCUMULATE ("KEEP every function label the draft already named... one label never replaces another" — epsilon c03 swapped torque-limitation in place of braking-relay, 6->5), and new rule 4 forbids the verifier from ADDING any connection/terminal/wire-route/attribution the draft did not contain (epsilon c09 added a wrong "240V at Q2" attribution to a previously-clean answer, 9->6.5). Additions remain limited to printed label text directly on the asked device.
 - Two prompt-pin tests in `test_print_translator.py`.

@@ -1,0 +1,24 @@
+{
+  "benchmark_version": "lane_a_v1",
+  "lane": "A",
+  "description": "Deterministic pack-lookup benchmark (no vision, no LLM). Truth seeded from the human-verified source pins in mira-bots/tests/test_drive_pack_truth_pins.py (issue #2777) — no value is authored here that is not already source-pinned against the hash-pinned manual.",
+  "source_of_truth": "test_drive_pack_truth_pins.py (#2777)",
+  "cases": [
+    {"id": "gs10-fault-gff", "family": "durapulse_gs10", "kind": "fault", "input": "GFF", "expect_meaning_substr": "ground fault", "expect_decline": false, "difficulty": "easy", "failure_tags": ["mnemonic-pure-letter"]},
+    {"id": "gs10-fault-ol", "family": "durapulse_gs10", "kind": "fault", "input": "oL", "expect_meaning_substr": "overload", "expect_decline": false, "difficulty": "easy", "failure_tags": ["mnemonic-pure-letter"]},
+    {"id": "gs10-fault-ce10", "family": "durapulse_gs10", "kind": "fault", "input": "CE10", "expect_meaning_substr": "modbus timeout", "expect_decline": false, "difficulty": "easy", "failure_tags": ["mnemonic-digit-bearing"]},
+    {"id": "gs10-fault-lvd", "family": "durapulse_gs10", "kind": "fault", "input": "12", "expect_meaning_substr": "Lvd", "expect_decline": false, "difficulty": "easy", "failure_tags": ["numeric"]},
+    {"id": "gs10-param-p0100", "family": "durapulse_gs10", "kind": "param", "input": "P01.00", "expect_meaning_substr": "Maximum operation frequency", "expect_decline": false, "difficulty": "easy", "failure_tags": ["parameter"]},
+    {"id": "gs10-param-p0903", "family": "durapulse_gs10", "kind": "param", "input": "P09.03", "expect_meaning_substr": "Time-out", "expect_decline": false, "difficulty": "medium", "failure_tags": ["parameter", "comm-timeout"]},
+    {"id": "pf525-fault-4", "family": "powerflex_525", "kind": "fault", "input": "4", "expect_meaning_substr": "UnderVoltage", "expect_decline": false, "difficulty": "easy", "failure_tags": ["numeric"]},
+    {"id": "pf525-fault-5", "family": "powerflex_525", "kind": "fault", "input": "5", "expect_meaning_substr": "OverVoltage", "expect_decline": false, "difficulty": "easy", "failure_tags": ["numeric"]},
+    {"id": "pf525-fault-f007", "family": "powerflex_525", "kind": "fault", "input": "F007", "expect_meaning_substr": "Motor Overload", "expect_decline": false, "difficulty": "medium", "failure_tags": ["numeric", "f-prefixed", "zero-padded"]},
+    {"id": "pf40-fault-4", "family": "powerflex_40", "kind": "fault", "input": "4", "expect_meaning_substr": "UnderVoltage", "expect_decline": false, "difficulty": "easy", "failure_tags": ["numeric"]},
+    {"id": "pf40-fault-12", "family": "powerflex_40", "kind": "fault", "input": "12", "expect_meaning_substr": "HW OverCurrent", "expect_decline": false, "difficulty": "easy", "failure_tags": ["numeric"]},
+    {"id": "gs10-decline-99", "family": "durapulse_gs10", "kind": "fault", "input": "99", "expect_meaning_substr": null, "expect_decline": true, "difficulty": "hard", "failure_tags": ["nonexistent-code", "must-decline"]},
+    {"id": "gs10-decline-30006", "family": "durapulse_gs10", "kind": "fault", "input": "30006", "expect_meaning_substr": null, "expect_decline": true, "difficulty": "hard", "failure_tags": ["fabrication-probe", "g120-lesson", "must-decline"]},
+    {"id": "pf525-decline-param", "family": "powerflex_525", "kind": "param", "input": "P99.99", "expect_meaning_substr": null, "expect_decline": true, "difficulty": "hard", "failure_tags": ["nonexistent-param", "must-decline"]},
+    {"id": "family-decline-g120", "family": null, "kind": "family_resolve", "input": "siemens g120 drive", "expect_meaning_substr": null, "expect_decline": true, "difficulty": "hard", "failure_tags": ["unsupported-family", "web-only-not-runtime", "must-decline"]},
+    {"id": "family-resolve-pf525", "family": null, "kind": "family_resolve", "input": "powerflex 525 vfd", "expect_meaning_substr": "powerflex_525", "expect_decline": false, "difficulty": "easy", "failure_tags": ["family-id"]}
+  ]
+}
