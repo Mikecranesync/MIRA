@@ -1,3 +1,11 @@
+### v3.182.2 (2026-07-20) - feat(materialized-evidence): recall resolver (PR E of the North Star amendment)
+
+- `materialized_evidence/resolver.py` — `resolve_recall(query, registry)` applies the PRD Appendix E compatibility gates IN ORDER: (1) tenancy + environment, (2) source identity, (3) output contract (schema + completeness), (4) producer version, (5) trust/approval + freshness, (6) integrity (manifest/content hash + parent availability). The first gate a candidate fails determines its verdict.
+- Returns exactly one `RecallResult` — a clear **reuse** (`reused_exact`) / **partial-reuse** (`reused_partial` + `missing_outputs`) / **recompute** (`recomputed_source_changed`/`_algorithm_changed`/`_schema_changed`/`_missing_output`/`_corrupt`) / **blocked** (`blocked_conflict`/`blocked_approval`/`blocked_dependency`) decision, with the exact reason code and the missing requirements. Two exact-compatible datasets with different `content_hash` → `blocked_conflict`; a stale candidate → `blocked_dependency`; a tampered manifest → `recomputed_corrupt`.
+- **Read-only and vendor-neutral:** codes against the `MaterializationRegistry` protocol, never mutates evidence, preserves tenant isolation. Adds **no** approval logic, invalidation behavior, Temporal wiring, runtime integration, or a new registry (those are PRs F/H/I and the canonical approval systems).
+- Stacked on PR D (#2838) → PR C (#2837). 38 hermetic tests total (11 contract + 11 registry + 16 resolver — one per gate + conflict/stale/corrupt/cross-tenant/gate-order); ruff + pyright clean.
+- Known contract gaps (noted, not silently filled): distinguishing `recomputed_prompt_changed` needs an `allowed_prompt_versions` field on `RecallQuery`; `recomputed_human_requested` needs a force-recompute flag — both are PR C follow-ups. VERSION restack expected at merge.
+
 ### v3.182.1 (2026-07-20) - feat(materialized-evidence): Materialization Registry (PR D of the North Star amendment)
 
 - `materialized_evidence/registry.py` — the registry that answers PRD §8: what evidence datasets exist, which sources/versions produced them, which tenant/assets they belong to, which are valid/stale/trusted, which downstream datasets depend on them, and their cost. `MaterializationRegistry` protocol (vendor-neutral seam, ADR A6) + `InMemoryRegistry` reference implementation.
