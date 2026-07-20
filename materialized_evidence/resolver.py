@@ -47,6 +47,7 @@ _FAILURE_PRIORITY = (
     RecomputeDecision.RECOMPUTED_CORRUPT,
     RecomputeDecision.RECOMPUTED_SCHEMA_CHANGED,
     RecomputeDecision.RECOMPUTED_ALGORITHM_CHANGED,
+    RecomputeDecision.RECOMPUTED_PROMPT_CHANGED,
     RecomputeDecision.RECOMPUTED_SOURCE_CHANGED,
     RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
 )
@@ -59,9 +60,11 @@ _DECISION_TO_OUTCOME = {
     RecomputeDecision.BLOCKED_APPROVAL: RecallOutcome.NONE,
     RecomputeDecision.RECOMPUTED_SOURCE_CHANGED: RecallOutcome.NONE,
     RecomputeDecision.RECOMPUTED_ALGORITHM_CHANGED: RecallOutcome.NONE,
+    RecomputeDecision.RECOMPUTED_PROMPT_CHANGED: RecallOutcome.NONE,
     RecomputeDecision.RECOMPUTED_SCHEMA_CHANGED: RecallOutcome.NONE,
     RecomputeDecision.RECOMPUTED_MISSING_OUTPUT: RecallOutcome.NONE,
     RecomputeDecision.RECOMPUTED_CORRUPT: RecallOutcome.NONE,
+    RecomputeDecision.RECOMPUTED_HUMAN_REQUESTED: RecallOutcome.NONE,
 }
 
 
@@ -123,6 +126,20 @@ def _evaluate(query: RecallQuery, registry: MaterializationRegistry, m: Evidence
             "fail", m, RecomputeDecision.RECOMPUTED_ALGORITHM_CHANGED,
             f"producer_version {m.producer_version!r} not in allowed {query.allowed_producer_versions}",
         )
+    # Gate 4 (cont.) — prompt-contract version: a DISTINCT provenance event from a
+    # producer change, so it never collapses into recomputed_algorithm_changed.
+    # Applies only to model-produced datasets — a non-model dataset's output does
+    # not depend on a prompt, and the validator guarantees a model-produced dataset
+    # carries prompt_contract_version (rule 6), so there is no absence ambiguity.
+    if (
+        query.allowed_prompt_versions
+        and m.model_provider
+        and m.prompt_contract_version not in query.allowed_prompt_versions
+    ):
+        return _Verdict(
+            "fail", m, RecomputeDecision.RECOMPUTED_PROMPT_CHANGED,
+            f"prompt_contract_version {m.prompt_contract_version!r} not in allowed {query.allowed_prompt_versions}",
+        )
 
     # Gate 5 — trust and approval (+ freshness)
     if m.approval_status.value == "revoked":
@@ -155,6 +172,20 @@ def _evaluate(query: RecallQuery, registry: MaterializationRegistry, m: Evidence
 def resolve_recall(query: RecallQuery, registry: MaterializationRegistry) -> RecallResult:
     """Decide reuse vs recompute for ``query`` against ``registry`` (Appendix E)."""
     candidates = registry.find(tenant_id=query.tenant_id, dataset_type=query.dataset_type)
+
+    # Explicit operator-requested recomputation. The tenant boundary is established
+    # by the tenant-scoped ``registry.find`` above; this result is confined to the
+    # query's tenant + environment and references NO candidate — it never inspects,
+    # selects, or acts on any materialization. It is applied here, before any reuse
+    # evaluation, so it deterministically bypasses exact reuse, partial reuse, and
+    # conflict selection.
+    if query.force_recompute:
+        return RecallResult(
+            outcome=RecallOutcome.NONE,
+            reason="operator-requested fresh computation (force_recompute)",
+            recompute_decision=RecomputeDecision.RECOMPUTED_HUMAN_REQUESTED,
+        )
+
     verdicts = [_evaluate(query, registry, m) for m in candidates]
 
     exact_ok = [v for v in verdicts if v.kind == "exact_ok"]

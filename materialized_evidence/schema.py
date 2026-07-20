@@ -226,11 +226,16 @@ class RecallQuery:
     asset_scope: str | None = None
     required_schema: tuple[str, str] | None = None  # (schema_name, schema_version)
     allowed_producer_versions: list[str] = field(default_factory=list)
+    allowed_prompt_versions: list[str] = field(default_factory=list)
     allowed_trust_states: list[TrustStatus] = field(default_factory=list)
     required_completeness: float | str | None = None
     requested_capability: str | None = None
     freshness_policy: str | None = None
     environment: Environment = Environment.DEV
+    # explicit operator control: force a fresh computation, bypassing all reuse
+    # (still confined to this query's tenant + environment). Empty/False defaults
+    # preserve existing behavior for callers unaware of these fields.
+    force_recompute: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return _enum_safe(asdict(self))
