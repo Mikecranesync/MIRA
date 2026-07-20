@@ -1177,6 +1177,39 @@ Every PR must report:
 
 ---
 
+## 23. Multi-surface adapter architecture — Telegram / Teams / Slack / WhatsApp (amendment, 2026-07-20)
+
+> **Framing:** this is a **future-surface architecture requirement**, not V1 scope. V1 remains the **shared Hub React viewer**. Telegram is **V3**. Teams, Slack, and WhatsApp follow later as **adapter-specific PRs** (after V1/V3), each a thin adapter over the existing contracts — never a fork.
+
+The shared-workspace principle (§1) already anticipates thin-client parity. This amendment fixes the **implementation model per messaging surface** so later adapters cannot drift into platform-specific intelligence.
+
+### 23.1 Per-surface launch + return model
+
+| Surface | Launch model | Result return | Identity |
+|---|---|---|---|
+| **Telegram** | **Embedded Mini App** (in-Telegram HTML5 workspace, §11) | streams in the Mini App **and** posts back into the chat | `initData` HMAC + one-time launch token → `VisualPrincipal` (§10.1) |
+| **Teams** | **Embedded tab / dialog** (Teams tab or task-module/dialog hosting the same workspace) | renders in the tab/dialog **and** returns to the Teams conversation | Teams SSO/Entra token → server-verified → `VisualPrincipal` |
+| **Slack** | **Button opens an authenticated FactoryLM workspace** (link-out to the Hub workspace, not an in-Slack canvas) | **result returns to the originating thread** | Slack OAuth/identity → server-verified → `VisualPrincipal` |
+| **WhatsApp** | **Signed FactoryLM link** (opens the workspace in the browser) | **result returns to WhatsApp** (message back to the conversation) | signed, short-lived, single-use link → server-verified → `VisualPrincipal` |
+
+Whatever the launch shell, **FactoryLM owns identity, evidence, storage, and inference**; the surface is only a launch + conversation-return surface (§2.1 generalized to all four).
+
+### 23.2 Hard invariants (all four surfaces)
+
+1. **One contract spine.** All four reuse the **same** `VisualSession`, `region_of_interest` (ROI), `FocusedVisualRequest`, and `AnswerEnvelope` contracts. No surface introduces its own region table, request shape, or answer envelope.
+2. **No platform-specific annotation engines.** The shared viewer/annotation component and the normalized-original coordinate contract (`factorylm.visual-region.v1`, §6) are identical on every surface. A box drawn on WhatsApp and a box drawn in Teams produce the same canonical geometry.
+3. **No weaker or uncited answer paths.** Every surface renders the **same approved-context, evidence-grounded, cited answer** through the existing pipeline (§8) with the same grounding / honest-decline / safety gates. No surface gets a "quick, uncited" reply path.
+4. **Cross-surface session continuity.** A session started on any surface **reopens on any other surface without losing marks, evidence, or history.** The `VisualSession` + ROI + observation/claim ledger is the single source of truth; surfaces are thin clients that hydrate from it.
+5. **Server-owned trust.** No surface chooses tenant, storage URI, model, pack trust state, or approval state (§7). Cross-tenant IDs return not-found (§15). Bot/service tokens never reach a surface client.
+
+### 23.3 What this does NOT authorize
+
+- It does **not** add Teams/Slack/WhatsApp to V1 or V3. Those remain the Hub viewer (V1) and the Telegram Mini App (V3).
+- It does **not** create per-surface inference, per-surface prompts, or per-surface evidence stores.
+- Each new surface is a **thin adapter PR** that: authenticates the surface to a `VisualPrincipal`, launches the shared workspace, and wires the return-to-conversation seam — reusing every contract above unchanged.
+
+---
+
 ## Appendix A — Architecture diagram
 
 ```mermaid
