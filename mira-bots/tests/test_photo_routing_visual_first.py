@@ -404,6 +404,109 @@ async def test_classified_print_always_gets_grounded_reply(supervisor, caption, 
     assert passed_question == expect_question
 
 
+def _unknown_vision_data(ocr_items=None) -> dict:
+    """Vision worker could not classify the photo (call failed / empty) — the
+    classification-fallback floor returns UNKNOWN instead of a fabricated
+    EQUIPMENT_PHOTO (ROUND 4 defect #2)."""
+    return {
+        "classification": "UNKNOWN",
+        "classification_confidence": 0.0,
+        "vision_ok": False,
+        "decline_reason": "vision_error",
+        "vision_result": "",
+        "ocr_items": ocr_items or [],
+        "ocr_tokens": [],
+        "ocr_source": "none" if not ocr_items else "model",
+        "tesseract_text": "",
+        "drawing_type": None,
+        "drawing_type_confidence": 0.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_unknown_classification_declines_not_equipment_path(supervisor):
+    """A photo the vision worker could not classify must decline with an
+    evidence-based fallback — surface the OCR it could read, ask for a clearer
+    photo — NOT be routed to the equipment ASSET_IDENTIFIED diagnosis path on a
+    fabricated class (ROUND 4 defect #2)."""
+    supervisor.vision.process = AsyncMock(
+        return_value=_unknown_vision_data(ocr_items=["PLC", "MODULE", "PAGE 3"])
+    )
+    supervisor._save_session_photo = MagicMock(return_value="")
+    grounded = AsyncMock(return_value="SHOULD-NOT-RUN")
+    supervisor._grounded_print_reply = grounded
+
+    result = await supervisor.process_full("chat-unknown", "explain this", photo_b64="Zm9vYmFy")
+
+    assert grounded.await_count == 0, "must not fabricate a print interpretation"
+    assert result.get("next_state") != "ASSET_IDENTIFIED"
+    assert "PLC" in result["reply"] or "MODULE" in result["reply"]
+    assert result["confidence"] == "low"
+    assert result.get("dispatch_kind") == "dont_know"
+    # §11 #2/#3: the decline reason rides the result into the capture layer.
+    assert result.get("fallback_reason") == "vision_error"
+    assert result.get("route") == "classify_decline"
+
+
+@pytest.mark.asyncio
+async def test_unknown_with_no_ocr_uses_photo_failure_message(supervisor):
+    """UNKNOWN with no OCR to show → the standard PHOTO_FAILURE re-send ask,
+    still low-confidence and NOT the equipment path."""
+    from shared.fallback_responses import PHOTO_FAILURE
+
+    supervisor.vision.process = AsyncMock(return_value=_unknown_vision_data(ocr_items=[]))
+    supervisor._save_session_photo = MagicMock(return_value="")
+
+    result = await supervisor.process_full("chat-unknown-2", "", photo_b64="Zm9vYmFy")
+
+    assert result.get("next_state") != "ASSET_IDENTIFIED"
+    assert result["reply"] == PHOTO_FAILURE
+    assert result["confidence"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_grounded_print_reply_records_empty_synthesis_reason(supervisor):
+    """§11 #2/#3: when the whole cascade returns empty, the observe dict carries
+    a structured fallback_reason so the turn is never silently a fallback."""
+    supervisor._interpret_print_anthropic = AsyncMock(return_value="")  # → cascade
+    supervisor.router.complete = AsyncMock(return_value=("", {}))  # empty synthesis
+    observe: dict = {}
+
+    await supervisor._grounded_print_reply(
+        "Zm9vYmFy",
+        None,
+        {"drawing_type": "wiring diagram", "ocr_items": [], "vision_result": "x"},
+        "chat-obs-1",
+        observe=observe,
+    )
+
+    assert observe.get("route") == "grounded_cascade"
+    assert observe.get("fallback_reason") == "empty_synthesis"
+
+
+@pytest.mark.asyncio
+async def test_grounded_print_reply_records_provider_error_reason(supervisor):
+    """A provider exception in the cascade is recorded as provider_error (not a
+    silent empty)."""
+    supervisor._interpret_print_anthropic = AsyncMock(return_value="")
+
+    async def _boom(*a, **k):
+        raise RuntimeError("cascade down")
+
+    supervisor.router.complete = AsyncMock(side_effect=_boom)
+    observe: dict = {}
+
+    await supervisor._grounded_print_reply(
+        "Zm9vYmFy",
+        None,
+        {"drawing_type": "wiring diagram", "ocr_items": [], "vision_result": "x"},
+        "chat-obs-2",
+        observe=observe,
+    )
+
+    assert observe.get("fallback_reason") == "provider_error"
+
+
 @pytest.mark.asyncio
 async def test_print_upload_persists_print_state_before_slow_interpretation_timeout(
     supervisor, monkeypatch

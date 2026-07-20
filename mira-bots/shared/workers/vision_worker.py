@@ -405,6 +405,11 @@ class VisionWorker:
 
         Returns dict with keys:
             classification: 'ELECTRICAL_PRINT' | 'NAMEPLATE' | 'EQUIPMENT_PHOTO'
+                | 'UNKNOWN' (vision gave no usable signal — caller should decline
+                with an evidence-based fallback, not a fabricated diagnosis)
+            vision_ok: bool (False when the vision call failed or was empty)
+            decline_reason: str | None ('vision_error' | 'vision_empty' when
+                classification is UNKNOWN, else None)
             vision_result: str (vision model description)
             ocr_items: list[str] (Tesseract floor + model-lane supplement, deduped)
             ocr_tokens: list[dict] (Tesseract word boxes: {text, bbox, line}; [] when unavailable)
@@ -441,6 +446,20 @@ class VisionWorker:
         model_items = results[1] if not isinstance(results[1], Exception) else []
         ocr_tokens_ = results[2] if not isinstance(results[2], Exception) else []
 
+        # Did the vision model give the classifier a usable signal? A failed call
+        # or empty content means NO — and we must not let the caption (which
+        # `vision_result` falls back to above) masquerade as vision prose in
+        # `_classify_photo`. See the classification-fallback floor there.
+        if isinstance(results[0], Exception):
+            vision_ok = False
+            vision_decline_reason = "vision_error"
+        elif not str(results[0]).strip():
+            vision_ok = False
+            vision_decline_reason = "vision_empty"
+        else:
+            vision_ok = True
+            vision_decline_reason = None
+
         if isinstance(results[0], Exception):
             logger.error("Vision call failed: %s", results[0])
         if isinstance(results[1], Exception):
@@ -465,15 +484,29 @@ class VisionWorker:
 
         tesseract_text = "\n".join(floor_items) if floor_items else ""
 
-        classify_result = self._classify_photo(str(vision_result), ocr_items, message)
+        # When vision is unusable, feed the classifier an empty vision string
+        # (never the caption fallback) so its vision-prose branches can't fire
+        # on caption text, and flag vision_ok=False so the weak fallback tail
+        # declines to UNKNOWN instead of a fabricated EQUIPMENT_PHOTO.
+        classify_vision_text = str(vision_result) if vision_ok else ""
+        classify_result = self._classify_photo(
+            classify_vision_text, ocr_items, message, vision_ok=vision_ok
+        )
         classification = classify_result["type"]
         classify_confidence = classify_result["confidence"]
+        # Prefer the specific reason (vision_error vs vision_empty) over the
+        # classifier's generic "vision_unavailable".
+        decline_reason = classify_result.get("decline_reason")
+        if classification == "UNKNOWN" and vision_decline_reason:
+            decline_reason = vision_decline_reason
         logger.info(
-            "Photo classified as %s (confidence=%.2f, %d OCR items, ocr_source=%s)",
+            "Photo classified as %s (confidence=%.2f, %d OCR items, ocr_source=%s, vision_ok=%s%s)",
             classification,
             classify_confidence,
             len(ocr_items),
             ocr_source,
+            vision_ok,
+            f", decline_reason={decline_reason}" if decline_reason else "",
         )
 
         drawing_type = None
@@ -486,6 +519,8 @@ class VisionWorker:
         return {
             "classification": classification,
             "classification_confidence": classify_confidence,
+            "vision_ok": vision_ok,
+            "decline_reason": decline_reason,
             "vision_result": vision_result,
             "ocr_items": ocr_items,
             "ocr_tokens": ocr_tokens_,
@@ -594,10 +629,27 @@ class VisionWorker:
             return []
         return parse_ocr_reply(content)
 
-    def _classify_photo(self, vision_result: str, ocr_items: list, caption: str = "") -> dict:
-        """Classify photo as ELECTRICAL_PRINT, NAMEPLATE, or EQUIPMENT_PHOTO with confidence.
+    def _classify_photo(
+        self,
+        vision_result: str,
+        ocr_items: list,
+        caption: str = "",
+        vision_ok: bool = True,
+    ) -> dict:
+        """Classify photo as ELECTRICAL_PRINT, NAMEPLATE, EQUIPMENT_PHOTO, or UNKNOWN.
 
-        Returns {"type": str, "confidence": float}.
+        Returns {"type": str, "confidence": float} — plus "decline_reason" (str)
+        when type is UNKNOWN.
+
+        ``vision_ok`` records whether the vision model produced a usable signal.
+        When it is False (the call failed or returned empty content — see
+        ``process``), the weak fallback tail must NOT manufacture a confident
+        ``EQUIPMENT_PHOTO`` out of OCR keyword scraps or the low-confidence
+        default (ROUND 4 defect #2). Strong, vision-independent LAYOUT/OCR
+        evidence (dense-table, IEC schematic-tag grammar, OCR-structural
+        nameplate fields) still classifies normally; anything weaker declines to
+        an explicit UNKNOWN so the caller can offer an evidence-based fallback
+        instead of a fabricated diagnosis.
 
         Equipment faceplates (overload relays, VFDs, PLCs) often have 10+ readable
         labels, so OCR count alone must NOT override the vision model's classification.
@@ -711,6 +763,24 @@ class VisionWorker:
         if len(ocr_items) >= DENSE_TABLE_OCR_THRESHOLD:
             conf = min(1.0, 0.6 + len(ocr_items) * 0.001)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
+
+        # Classification-fallback floor (ROUND 4 defect #2). Every branch below
+        # this point is a WEAK fallback that leans on vision-prose keywords, a
+        # single scraped OCR keyword, a low OCR count, the caption, or the
+        # bare default. When the vision model gave us no usable signal
+        # (``vision_ok`` False — call failed or returned empty content) those
+        # branches would fabricate a confident-ish EQUIPMENT_PHOTO / print out
+        # of nothing, silently promoting a fallback to a model-qualified answer
+        # (the naive 0/12 on Tower OP). The strong, vision-independent LAYOUT
+        # and OCR-structural branches above have already had their chance, so
+        # decline explicitly and let the caller offer an evidence-based
+        # fallback (show what OCR read, ask for a clearer photo) instead.
+        if not vision_ok:
+            return {
+                "type": "UNKNOWN",
+                "confidence": 0.0,
+                "decline_reason": "vision_unavailable",
+            }
 
         # Equipment faceplate keywords (only when NO strong print signal above) —
         # a physical faceplate photo, never a drawing.

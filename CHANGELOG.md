@@ -5,6 +5,9 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+### Fixed
+- Classification-fallback floor (ROUND 4 defect #2): when the vision model returns no usable signal (call failed or empty), `VisionWorker._classify_photo` now declines to an explicit `UNKNOWN` + `decline_reason` instead of fabricating a confident `EQUIPMENT_PHOTO` from OCR keyword scraps — strong vision-independent LAYOUT/OCR evidence still classifies. The engine routes `UNKNOWN` to an evidence-based decline (show the OCR it could read, ask for a clearer photo), never the equipment-diagnosis path. Adds structured `decline_reason` on every print-synthesis-failure branch and privacy-safe route/model/reason provenance through the existing `_log_interaction` capture layer. (v3.179.1)
+
 ### Added
 - Siemens STEP 7 AWL alarm-source intake for `mira-plc-parser`: exported `Alarm#### :BOOL ... // message` fault blocks now parse into IR tags with line provenance, feeding existing fault/safety/VFD analysis. Also adds closed-format guidance for `.DNO` drive config files.
 - Factory Difference Engine demo + Fault Intelligence bricks (`demo/factory_difference_engine/`: deterministic Connect→Pick→Prove→Explain→Learn pipeline, fault_dictionary extractor over SimLab manual fault tables, fault→difference-bundle join, fault report renderer; 29 tests under `tests/simlab/`) — landed from `feat/proveit-difference-engine-demo`, which sat unmerged while inventories described it as built (machine-pack discovery correction). Unblocks Machine Pack plan Phase 0 / PR-0.4 (GS10_FAULT_CODES fold-in) and Phase 6 (evidence chain).
