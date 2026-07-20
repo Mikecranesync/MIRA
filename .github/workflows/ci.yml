@@ -58,6 +58,8 @@ jobs:
               - '!**/*.png'
               - '!**/*.jpg'
               - '!**/*.gif'
+      - name: INJECTED FAILURE (verification only — must be removed)
+        run: exit 1
 
   actionlint:
     name: actionlint
