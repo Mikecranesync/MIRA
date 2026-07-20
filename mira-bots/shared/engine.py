@@ -979,8 +979,15 @@ class Supervisor:
         chat_id: str,
         *,
         interpret_b64: str | None = None,
+        observe: dict | None = None,
     ) -> str:
         """Grounded, display-ready answer for a classified ELECTRICAL_PRINT photo.
+
+        ``observe`` (optional mutable dict) collects privacy-safe synthesis
+        provenance — ``route`` (which path answered), ``fallback_reason`` (why a
+        synthesis branch declined), ``verify_outcome`` — for the caller to feed
+        into ``_log_interaction``. Reason codes / route names only; never page
+        content. No behavior change when omitted.
 
         Anthropic PrintSynth interpreter FIRST (deep, typed, never-invent — only
         when configured), else the No-Anthropic grounded cascade
@@ -999,12 +1006,16 @@ class Supervisor:
         """
         from . import print_translator
 
+        obs = observe if observe is not None else {}
+
         # 1. Anthropic PrintSynth interpreter (primary, isolated, flag+key gated).
         reply = await self._interpret_print_anthropic(
             interpret_b64 or photo_b64, question, vision_data
         )
         if reply:
+            obs["route"] = "print_vision_primary"
             return reply
+        obs["route"] = "grounded_cascade"
 
         # 2. Grounded cascade fallback (No-Anthropic vision path).
         # PRINT_THEORY_FULL_RES=1 sends the caller's full-resolution image to
@@ -1032,6 +1043,7 @@ class Supervisor:
         except Exception as exc:  # noqa: BLE001 — never eat the turn
             logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
             raw = ""
+            obs["fallback_reason"] = "provider_error"
         # PRINT_THEORY_VERIFY=1 (or-form, default off): one self-verification
         # pass — the vision model re-reads the sheet against its own draft
         # (fix misquotes to the printed text, delete claims it cannot see
@@ -1061,10 +1073,26 @@ class Supervisor:
                     )
                     InferenceRouter.log_usage(v_usage)
                     raw = v_raw
+                    obs["verify_outcome"] = "applied"
                 else:
                     logger.info("PRINT_VERIFY_EMPTY — keeping draft")
+                    obs["verify_outcome"] = "empty"
             except Exception as exc:  # noqa: BLE001 — verification must never eat the turn
                 logger.warning("PRINT_VERIFY_ERROR error=%s — keeping draft", exc)
+                obs["verify_outcome"] = "error"
+        # Empty synthesis after the cascade (and any verify pass) → the reply
+        # will be format_theory_reply's graceful FALLBACK_REPLY. Record the
+        # decline reason if a more specific one (provider_error) wasn't already
+        # set, so the turn is never silently a fallback.
+        if not raw:
+            obs.setdefault("fallback_reason", "empty_synthesis")
+        logger.info(
+            "PRINT_SYNTHESIS_OUTCOME route=%s fallback_reason=%s verify=%s empty=%s",
+            obs.get("route"),
+            obs.get("fallback_reason"),
+            obs.get("verify_outcome"),
+            not bool(raw),
+        )
         return print_translator.format_theory_reply(raw, (vision_data or {}).get("drawing_type"))
 
     async def _interpret_print_anthropic(
@@ -1359,6 +1387,11 @@ class Supervisor:
         next_state: str | None = None,
         dispatch_kind: str = "",
         citation_evidence: dict | None = None,
+        *,
+        route: str | None = None,
+        model: str | None = None,
+        input_sha256: str | None = None,
+        fallback_reason: str | None = None,
     ) -> dict:
         """Build a standard process_full() result dict.
 
@@ -1380,6 +1413,14 @@ class Supervisor:
             "next_state": next_state,
             "dispatch_kind": dispatch_kind,
             "_citation_evidence": citation_evidence,
+            # Print-turn observability provenance (privacy-safe: route/model
+            # names + reason codes only, never page content) — read by
+            # process()'s _log_interaction so "check the bot results" shows the
+            # full synthesis story. None on turns that don't set them.
+            "route": route,
+            "model": model,
+            "input_sha256": input_sha256,
+            "fallback_reason": fallback_reason,
         }
 
     @staticmethod
@@ -1571,6 +1612,10 @@ class Supervisor:
             has_photo=bool(photo_b64),
             response_time_ms=elapsed_ms,
             platform=platform,
+            route=result.get("route"),
+            model=result.get("model"),
+            input_sha256=result.get("input_sha256"),
+            fallback_reason=result.get("fallback_reason"),
         )
         # Phase 9 — decision trace (observational, fire-and-forget). Scheduled
         # AFTER the reply is built so it adds zero latency to the user response,
@@ -2744,7 +2789,10 @@ class Supervisor:
                 # default caption otherwise got only the thin OCR-label preview.
                 has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
                 question = message if has_real_question else None
-                reply = await self._grounded_print_reply(photo_b64, question, vision_data, chat_id)
+                print_observe: dict = {}
+                reply = await self._grounded_print_reply(
+                    photo_b64, question, vision_data, chat_id, observe=print_observe
+                )
                 if not reply:
                     # Fail-safe only — the grounded path is display-ready even on
                     # provider failure, but never leave a print unanswered.
@@ -2782,6 +2830,8 @@ class Supervisor:
                     self._infer_confidence(reply),
                     trace_id,
                     "ELECTRICAL_PRINT",
+                    route=print_observe.get("route"),
+                    fallback_reason=print_observe.get("fallback_reason"),
                 )
             elif vision_data["classification"] == "NAMEPLATE":
                 reply = await self._handle_nameplate(
@@ -2801,6 +2851,45 @@ class Supervisor:
                     "high",
                     trace_id,
                     "ASSET_IDENTIFIED",
+                )
+            elif vision_data["classification"] == "UNKNOWN":
+                # ROUND 4 defect #2: the vision model returned no usable signal
+                # (decline_reason below) and no strong LAYOUT/OCR evidence
+                # carried the page. Decline with an evidence-based fallback —
+                # surface whatever OCR could read and ask for a clearer photo —
+                # instead of routing to the equipment-diagnosis path on a
+                # fabricated classification. Never promote a fallback to a
+                # model-qualified answer.
+                decline_reason = vision_data.get("decline_reason") or "vision_unavailable"
+                _ocr_items = vision_data.get("ocr_items") or []
+                logger.info(
+                    "PHOTO_CLASSIFY_UNKNOWN chat_id=%s decline_reason=%s ocr_items=%d",
+                    chat_id,
+                    decline_reason,
+                    len(_ocr_items),
+                )
+                if _ocr_items:
+                    preview = ", ".join(str(i) for i in _ocr_items[:8])
+                    reply = (
+                        "I couldn't get a clear read on that photo — the image "
+                        "analysis didn't return a usable description. Here's the "
+                        f"text I could pull off it: {preview}. Could you resend a "
+                        "sharper, well-lit shot of the whole page or nameplate? "
+                        "Or tell me the equipment and fault and I'll help from there."
+                    )
+                else:
+                    reply = PHOTO_FAILURE
+                state["exchange_count"] += 1
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(
+                    reply,
+                    "low",
+                    trace_id,
+                    state.get("state"),
+                    dispatch_kind="dont_know",
+                    route="classify_decline",
+                    fallback_reason=decline_reason,
                 )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
