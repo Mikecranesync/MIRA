@@ -50,6 +50,11 @@ class StatusOverlay:
     stale_reasons: list[str] = field(default_factory=list)
     at: str | None = None  # RFC3339; caller stamps (no Date.now here)
     actor: str | None = None
+    # invalidation provenance (PR F) — enough to reconstruct why this went stale
+    trigger: str | None = None  # the originating invalidation cause
+    origin_dataset_version_id: str | None = None  # the directly-invalidated dataset
+    via_parent: str | None = None  # the upstream parent that propagated staleness here
+    propagation: str = "direct"  # "direct" | "propagated"
 
 
 @runtime_checkable
@@ -71,9 +76,19 @@ class MaterializationRegistry(Protocol):
     def downstream_of(self, dataset_version_id: str, *, tenant_id: str) -> list[EvidenceManifest]: ...
     def lineage(self, dataset_version_id: str, *, tenant_id: str) -> dict: ...
     def mark_stale(
-        self, dataset_version_id: str, reasons: list[str], *, tenant_id: str, at: str | None = None
+        self,
+        dataset_version_id: str,
+        reasons: list[str],
+        *,
+        tenant_id: str,
+        at: str | None = None,
+        trigger: str | None = None,
+        origin_dataset_version_id: str | None = None,
+        via_parent: str | None = None,
+        propagation: str = "direct",
     ) -> StatusOverlay: ...
     def effective_stale_state(self, dataset_version_id: str, *, tenant_id: str) -> StaleState: ...
+    def status_overlays(self, dataset_version_id: str, *, tenant_id: str) -> list[StatusOverlay]: ...
 
 
 class InMemoryRegistry:
@@ -104,19 +119,47 @@ class InMemoryRegistry:
         self._manifests[manifest.dataset_version_id] = manifest  # idempotent on same hash
 
     def mark_stale(
-        self, dataset_version_id: str, reasons: list[str], *, tenant_id: str, at: str | None = None
+        self,
+        dataset_version_id: str,
+        reasons: list[str],
+        *,
+        tenant_id: str,
+        at: str | None = None,
+        trigger: str | None = None,
+        origin_dataset_version_id: str | None = None,
+        via_parent: str | None = None,
+        propagation: str = "direct",
     ) -> StatusOverlay:
-        """Record a stale transition as an overlay (never mutates the manifest)."""
+        """Record a stale transition as an overlay (never mutates the manifest).
+
+        Idempotent per trigger: if this dataset already carries an overlay for the
+        same ``trigger``, the existing overlay is returned and no duplicate is
+        appended — so repeating the same invalidation adds no semantic change."""
         if self.get(dataset_version_id, tenant_id=tenant_id) is None:
             raise RegistryError(f"unknown or cross-tenant dataset_version_id: {dataset_version_id}")
+        if trigger is not None:
+            for existing in self._overlays.get(dataset_version_id, []):
+                if existing.trigger == trigger:
+                    return existing
         overlay = StatusOverlay(
             dataset_version_id=dataset_version_id,
             stale_state=StaleState.STALE,
             stale_reasons=list(reasons),
             at=at,
+            trigger=trigger,
+            origin_dataset_version_id=origin_dataset_version_id,
+            via_parent=via_parent,
+            propagation=propagation,
         )
         self._overlays.setdefault(dataset_version_id, []).append(overlay)
         return overlay
+
+    def status_overlays(self, dataset_version_id: str, *, tenant_id: str) -> list[StatusOverlay]:
+        """The append-only status-transition history for a dataset version (tenant-
+        isolated). Used for provenance inspection and idempotence checks."""
+        if self.get(dataset_version_id, tenant_id=tenant_id) is None:
+            raise RegistryError(f"unknown or cross-tenant dataset_version_id: {dataset_version_id}")
+        return list(self._overlays.get(dataset_version_id, []))
 
     # ── reads (all tenant-isolated) ─────────────────────────────────────────────
 

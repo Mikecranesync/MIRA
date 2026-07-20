@@ -1,3 +1,13 @@
+### v3.182.4 (2026-07-20) - feat(materialized-evidence): dependency invalidation engine (PR F of the North Star amendment)
+
+- `materialized_evidence/invalidation.py` — `invalidate(registry, dataset_version_id, *, tenant_id, trigger)` turns the Appendix F matrix into executable behavior: marks the target stale (**direct**) and propagates staleness transitively to every downstream dependent (**propagated**) via the registry's `parent_dataset_versions` lineage.
+- **Graph-safe:** own BFS with a visited set (cycle-safe, no infinite recursion/iteration), deduped + sorted edges (deterministic), handles diamonds/fan-out/disconnected/missing nodes without duplicate effects. **Idempotent per trigger** (a re-run appends no duplicate overlay — `mark_stale` returns the existing overlay for the same trigger).
+- **Isolation:** propagation never crosses tenant or environment boundaries — edges are built only from same-tenant (`find`) + same-environment manifests, so malformed cross-boundary edges are neither followed, revealed, nor mutated.
+- **Immutable boundary:** appends only to the registry's mutable `StatusOverlay` (extended additively with `trigger`/`origin_dataset_version_id`/`via_parent`/`propagation`); never edits evidence, manifests, content hashes, payloads, or history (tests assert byte-identical manifests + unchanged content/manifest hashes). Adds `mark_stale` provenance params + a `status_overlays` reader to the registry protocol.
+- **Provenance:** each stale transition records the originating trigger, the directly-invalidated origin, the upstream parent that propagated it, and direct-vs-propagated.
+- **Resolver integration (separation of concerns):** the invalidator does not call the resolver and vice-versa; after a node is marked stale, the existing resolver independently returns `blocked / blocked_dependency` (proven by test).
+- Explicitly NOT included: recomputation execution, job scheduling, Temporal, queues, runtime wiring, auto-regeneration, approval, human-review UI, new registry, deletion/GC. Stacked on PR E.1 (#2840). 71 hermetic tests total (25 invalidation + 46 prior); ruff + pyright clean. VERSION restack expected at merge.
+
 ### v3.182.3 (2026-07-20) - feat(materialized-evidence): prompt-version + force_recompute resolver controls (PR E.1)
 
 - `RecallQuery` += `allowed_prompt_versions: list[str]` (mirrors `allowed_producer_versions`) and `force_recompute: bool = False`. Both default to no-op — existing callers unaffected.
