@@ -5,6 +5,9 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+### Added
+- PrintSense Visual Focus Workspace **PR V0** (contract-only): freeze `factorylm.visual-region.v1` annotation contract (`mira-bots/shared/visual/region_schema.py` + JSON Schema mirror) with normalized-original geometry, the six primitives, deterministic canonicalization, region materialization key, and lossless mapping onto the existing `region_of_interest` ledger (no second ROI table). Commits the PRD + a dependency-free proof page. 26 geometry tests. No runtime wiring, no DB, no merge/deploy without authorization. (v3.183.0)
+
 ### Fixed
 - Classification-fallback floor (ROUND 4 defect #2): when the vision model returns no usable signal (call failed or empty), `VisionWorker._classify_photo` now declines to an explicit `UNKNOWN` + `decline_reason` instead of fabricating a confident `EQUIPMENT_PHOTO` from OCR keyword scraps — strong vision-independent LAYOUT/OCR evidence still classifies. The engine routes `UNKNOWN` to an evidence-based decline (show the OCR it could read, ask for a clearer photo), never the equipment-diagnosis path. Adds structured `decline_reason` on every print-synthesis-failure branch and privacy-safe route/model/reason provenance through the existing `_log_interaction` capture layer. (v3.179.1)
 
