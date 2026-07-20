@@ -31,7 +31,7 @@ on:
       - '**/*.jpg'
       - '**/*.gif'
   pull_request:
-    branches: [main]
+    branches: [main, 'test/**']
 
 jobs:
   # Detects whether any non-docs file changed, so heavy jobs can self-skip on
