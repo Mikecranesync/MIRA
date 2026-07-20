@@ -59,6 +59,24 @@ jobs:
               - '!**/*.jpg'
               - '!**/*.gif'
 
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # Workflow-correctness gate, moved in-tree from the standalone actionlint.yml
+    # (removed) so it runs on EVERY PR to main and is part of the CI Gate. Catches
+    # the parse / schema / expression errors GitHub rejects at load time — e.g.
+    # the single-quotes-only expression rule that made the CI Gate itself fail to
+    # register. NOT gated by `changes`: it must run on docs-only PRs too (a bad
+    # workflow edit can hide in an otherwise docs-only PR). `-shellcheck=` disables
+    # the embedded shellcheck (run-block nits); .sh files are shellchecked apart.
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color -shellcheck=
+
   migration-order-check:
     name: Migration Order Check
     runs-on: ubuntu-latest
@@ -729,13 +747,21 @@ jobs:
   # ONE aggregated status context to require in branch protection, instead of
   # pinning a brittle hand-picked list of individual job names. Because it always
   # runs (`if: always()`), it reports on EVERY PR to main — including docs-only
-  # PRs, where the heavy gated jobs self-skip to "Success" via the `changes`
-  # filter. It fails iff any gated job FAILED or was CANCELLED (skipped and
-  # success both pass), so it can never phantom-block a docs PR.
+  # PRs, where the ONE heavy gated job (test-unit) self-skips via the `changes`
+  # filter while the fast correctness jobs still run.
   #
-  # Gated (must pass to merge): migration-order-check, lint-and-type-check,
-  #   test-unit, mira-hub-unit, mira-web-pack-tests, architecture-check,
-  #   license-check, sast-semgrep, sast-bandit.
+  # FAIL-CLOSED evaluation (no blanket "skipped == pass"):
+  #   * `changes` MUST succeed — a broken filter can never let the gate pass
+  #     (otherwise a failed `changes` could masquerade as "code unchanged").
+  #   * Every always-run gated job MUST equal `success` — `skipped`/`cancelled`
+  #     are NOT accepted.
+  #   * `test-unit` may be `skipped` ONLY when `changes` succeeded AND
+  #     `changes.outputs.code == 'false'` (a genuine docs-only PR). When code
+  #     changed it MUST equal `success`.
+  #
+  # Gated (must pass to merge): actionlint, migration-order-check,
+  #   lint-and-type-check, test-unit, mira-hub-unit, mira-web-pack-tests,
+  #   architecture-check, license-check, sast-semgrep, sast-bandit.
   # Intentionally NOT in the gate yet (stay visible; promote once reliable):
   #   secrets-scan (gitleaks license/rate flakes), docker-build-check (trivy
   #   drive-by CVE flakes + ~6 min), and the heavy quality gates simlab-gate /
@@ -745,6 +771,8 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs:
+      - changes
+      - actionlint
       - migration-order-check
       - lint-and-type-check
       - test-unit
@@ -755,22 +783,68 @@ jobs:
       - sast-semgrep
       - sast-bandit
     steps:
-      - name: Require all gated jobs to pass (skipped is allowed)
+      - name: Evaluate gate (fail-closed)
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE_CHANGED: ${{ needs.changes.outputs.code }}
+          ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
+          MIGRATION_RESULT: ${{ needs.migration-order-check.result }}
+          LINT_RESULT: ${{ needs.lint-and-type-check.result }}
+          TEST_UNIT_RESULT: ${{ needs.test-unit.result }}
+          HUB_UNIT_RESULT: ${{ needs.mira-hub-unit.result }}
+          WEB_PACK_RESULT: ${{ needs.mira-web-pack-tests.result }}
+          ARCH_RESULT: ${{ needs.architecture-check.result }}
+          LICENSE_RESULT: ${{ needs.license-check.result }}
+          SEMGREP_RESULT: ${{ needs.sast-semgrep.result }}
+          BANDIT_RESULT: ${{ needs.sast-bandit.result }}
         run: |
-          results='${{ join(needs.*.result, ',') }}'
-          echo "gated job results: $results"
-          bad=0
-          IFS=','
-          for r in $results; do
-            case "$r" in
-              failure|cancelled)
-                echo "::error::a gated CI job did not pass (result: $r)"
-                bad=1
-                ;;
+          fail=0
+
+          # Fail-closed on the filter itself: if `changes` did not succeed we
+          # cannot trust CODE_CHANGED, so the gate must NOT pass.
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::changes job did not succeed (result: '$CHANGES_RESULT') — failing closed"
+            fail=1
+          fi
+          echo "changes: result='$CHANGES_RESULT' code='$CODE_CHANGED'"
+
+          # Jobs that must ALWAYS equal success (they never self-skip). `skipped`,
+          # `cancelled`, `failure` all fail the gate — no automatic skip pass.
+          require_success() {
+            if [ "$2" != "success" ]; then
+              echo "::error::$1 must succeed (result: '$2')"
+              fail=1
+            else
+              echo "$1: success"
+            fi
+          }
+          require_success actionlint            "$ACTIONLINT_RESULT"
+          require_success migration-order-check "$MIGRATION_RESULT"
+          require_success lint-and-type-check   "$LINT_RESULT"
+          require_success mira-hub-unit         "$HUB_UNIT_RESULT"
+          require_success mira-web-pack-tests   "$WEB_PACK_RESULT"
+          require_success architecture-check    "$ARCH_RESULT"
+          require_success license-check         "$LICENSE_RESULT"
+          require_success sast-semgrep          "$SEMGREP_RESULT"
+          require_success sast-bandit           "$BANDIT_RESULT"
+
+          # test-unit: the only gated job allowed to skip, and ONLY on a genuine
+          # docs-only PR (changes succeeded AND code did not change).
+          if [ "$CODE_CHANGED" = "true" ]; then
+            require_success test-unit "$TEST_UNIT_RESULT"
+          elif [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "false" ]; then
+            case "$TEST_UNIT_RESULT" in
+              success|skipped) echo "test-unit: '$TEST_UNIT_RESULT' (allowed — docs-only PR)" ;;
+              *) echo "::error::test-unit must be success or skipped on a docs-only PR (result: '$TEST_UNIT_RESULT')"; fail=1 ;;
             esac
-          done
-          if [ "$bad" -ne 0 ]; then
-            echo "CI Gate: FAIL — one or more gated jobs failed or were cancelled."
+          else
+            # changes failed or CODE_CHANGED is not a clean true/false — do not
+            # excuse test-unit; it must have actually succeeded.
+            require_success test-unit "$TEST_UNIT_RESULT"
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "CI Gate: FAIL"
             exit 1
           fi
-          echo "CI Gate: PASS — all gated jobs passed or were skipped."
+          echo "CI Gate: PASS"
