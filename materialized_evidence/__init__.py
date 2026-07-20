@@ -25,6 +25,7 @@ from .registry import (
     RegistryError,
     StatusOverlay,
 )
+from .resolver import resolve_recall
 from .schema import (
     SCHEMA_CONTRACT_VERSION,
     ApprovalStatus,
@@ -67,4 +68,5 @@ __all__ = [
     "MaterializationRegistry",
     "RegistryError",
     "StatusOverlay",
+    "resolve_recall",
 ]
