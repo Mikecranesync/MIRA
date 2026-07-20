@@ -210,6 +210,44 @@ material without explicit consent; do not mix frozen benchmark cases into traini
 model "FactoryLM-owned" unless the owned base weights, adapters, datasets, graders, and deterministic
 artifacts are named separately.
 
+## Materialized Evidence and Recall-First Architecture
+
+MIRA works with industrial datasets whose processing cost may be measured in hours, days, or
+substantial model expense — multi-thousand-page print packages, hundreds of equipment photos, hours
+of machine video, PLC projects, years of historian signals. These do not fit a context window, and
+verifying them can itself cost another expensive pass. So the **dataset — not the chat session — is
+the unit of machine memory.**
+
+This is the same loop the Vision ZTA section states, generalized to *all* expensive industrial work:
+once MIRA has inspected a manual, drawing, photo, video, PLC export, log, or sensor dataset, the
+resulting discovery must become **durable, typed, versioned, searchable evidence.** MIRA must recall
+compatible prior evidence before recomputing it.
+
+Expensive stages must materialize reusable outputs carrying source hashes, lineage, schemas, producer
+versions (including model + prompt version where inference was used), approval state, known gaps, and
+cost metadata. **Intermediate stages are preserved** so a failed or changed downstream stage never
+forces reprocessing the whole source. Recompute only when the relevant source evidence or a
+dependency actually changed — and then only the affected descendants, never the unaffected 2,999
+pages.
+
+Three stores, three jobs, never conflated: **Materialized Evidence** preserves what MIRA discovered
+(including candidates and unresolved conflicts — not yet trusted). **Capability Packs** contain what
+FactoryLM has validated and promoted into reliable, versioned capability. **Temporal** coordinates the
+long-running work that moves evidence through extraction, review, compilation, and promotion — it
+passes identifiers and hashes, it does not store the industrial source. A model never promotes its own
+output to trusted truth; human review does, through the existing approval systems.
+
+The permanent rule, extending "infer once, validate, export, run without inference":
+
+> **Infer once. Materialize every expensive discovery. Validate and approve stable truth. Compile it
+> into Capability Packs. Recall it unless the evidence changed.**
+
+Or, plainly: **do not make the machine pay twice for the same understanding.** Doctrine is operational
+in `.claude/rules/materialized-evidence.md`; the layer architecture is `docs/architecture/materialized-evidence.md`;
+the platform decisions are `docs/adr/0029-materialized-evidence.md`. The seed already exists —
+`printsense/cas.py` is a content-addressed, producer-version-keyed derivation cache; this amendment
+generalizes it into a platform layer rather than replacing it.
+
 ## The flywheel + the moat
 
 1. We structure a plant → its **Maintenance Intelligence Namespace** is captured (assets, docs, tags,
