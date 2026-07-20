@@ -1,6 +1,12 @@
 # MIRA Release Notes
 
-### v3.178.1 (2026-07-19) - fix(printsense): verify-pass editor prompt — tiers accumulate, never add attributions
+### v3.179.0 (2026-07-20) - feat(drive-packs): consume v3 fault_entries — mnemonic-coded drives now answerable
+
+- Fixes the Drive Commander benchmark's D1/D2/D3/D4 defect cluster (docs/drive_commander/DRIVE_COMMANDER_BASELINE_REPORT.md): the v3 `fault_entries` block (string-keyed, case-sensitive, per-fault citation — built for mnemonic-coded crane VFDs like Magnetek `oC`/`LL1`/`bb`) was parsed by the loader but consumed by **zero** answer/card code, so a mnemonic-only pack answered nothing.
+- `ask.py` now reads `fault_entries` in `answer_fault_code` (primary code lookup / photo bridge), `answer_question` (free-text chat), and `extract_pack_fault_codes` (OCR gate). Matching is case-SENSITIVE (`oC` ≠ `OC`, D4), uses the entry's OWN `source_citation` (per-fault, not the pack-wide list, D3), and matches a numeric `wire_value` when present. Pure-letter ids stay explicit-only from OCR (same English-word collision safety as the v2 mnemonics); digit-bearing ids (`LL1`, `BE0`) auto-extract.
+- `test_drive_packs_readonly.py`: `fault_entries` added to the allowed top-level pack keys (D2) so a v3 pack can be promoted without failing the read-only gate.
+- **Purely additive — zero current-production impact:** all three live packs (GS10/PF40/PF525) are schema_version 2 with no `fault_entries`, so the int-keyed path is byte-for-byte unchanged (145 drive-pack tests pass = 137 prior + 8 new).
+- VERSION restack vs concurrent PrintSense/benchmark PRs expected at merge.
 
 - Two wording fixes to `VERIFY_SYSTEM_PROMPT`, each pinning an R5-epsilon judged regression: rule 3 now requires stacked header tiers to ACCUMULATE ("KEEP every function label the draft already named... one label never replaces another" — epsilon c03 swapped torque-limitation in place of braking-relay, 6->5), and new rule 4 forbids the verifier from ADDING any connection/terminal/wire-route/attribution the draft did not contain (epsilon c09 added a wrong "240V at Q2" attribution to a previously-clean answer, 9->6.5). Additions remain limited to printed label text directly on the asked device.
 - Two prompt-pin tests in `test_print_translator.py`.

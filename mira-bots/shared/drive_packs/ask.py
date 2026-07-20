@@ -35,7 +35,7 @@ from typing import Any
 
 from .cards import DiagnosticCard, build_cards
 from .loader import load_pack
-from .schema import Citation, DrivePack, KeypadNavigationCard, ParameterCard
+from .schema import Citation, DrivePack, FaultEntry, KeypadNavigationCard, ParameterCard
 
 # A parameter id token in free text: dotted GS10 "P09.03" or PowerFlex "A105"/"C125".
 _PARAM_ID_RE = re.compile(r"\b[A-Za-z]\d{2}\.\d{2}\b|\b[A-Za-z]{1,3}\d{2,3}\b")
@@ -168,6 +168,65 @@ def _param_answer(pack: DrivePack, param: ParameterCard) -> tuple[str, list[dict
     return "\n".join(lines), [_cite(c) for c in citations]
 
 
+def _match_fault_entry(pack: DrivePack, token: str) -> FaultEntry | None:
+    """Match a v3 ``FaultEntry`` by ``token`` — the reachable lookup for
+    mnemonic-coded drives.
+
+    Order: (1) case-SENSITIVE exact ``fault_id`` (``oC`` and ``OC`` are DISTINCT
+    codes and must never be casefolded together — schema RUN_C decision #4);
+    (2) a numeric ``wire_value`` match when the token is numeric AND exactly one
+    entry carries that wire value; (3) an UNAMBIGUOUS case-insensitive match —
+    OCR robustness, used ONLY when a single case-variant exists so it can't
+    collapse two distinct codes. Returns ``None`` on no/ambiguous match — never
+    guesses."""
+    t = (token or "").strip()
+    if not t:
+        return None
+    exact = pack.fault_entry(t, case_sensitive=True)
+    if exact is not None:
+        return exact
+    numeric = re.fullmatch(r"[Ff]?0*(\d{1,3})", t)
+    if numeric:
+        code = int(numeric.group(1))
+        wired = [e for e in pack.fault_entries if e.wire_value == code]
+        if len(wired) == 1:
+            return wired[0]
+    target = t.casefold()
+    insensitive = [e for e in pack.fault_entries if e.fault_id.casefold() == target]
+    return insensitive[0] if len(insensitive) == 1 else None
+
+
+def _fault_entry_answer(pack: DrivePack, entry: FaultEntry) -> tuple[str, list[dict[str, str]]]:
+    """Compose a cited, VIEW-ONLY answer from a v3 ``FaultEntry``.
+
+    Uses the entry's OWN ``source_citation`` (per-fault provenance — not the
+    pack-wide source list), and surfaces any documented related parameters +
+    view-only keypad steps, exactly like :func:`_fault_answer`. Read-only, no
+    guess: text is the manufacturer's own ``action`` string."""
+    label = f"{entry.fault_id} — {entry.name}" if entry.name else entry.fault_id
+    lines = [f"{pack.family.series} fault {label} (per the {pack.family.series} manual)."]
+    if entry.action:
+        lines.append("First checks (VIEW-ONLY — do not change any setting): " + entry.action)
+    citations: list[Citation] = []
+    if entry.source_citation and entry.source_citation.doc:
+        citations.append(entry.source_citation)
+    for pid in entry.references_parameters:
+        param = next((p for p in pack.parameters if p.parameter_id == pid), None)
+        if param is None:
+            continue
+        lines.append(f"Related parameter: {param.parameter_id} [{param.name}] — {param.purpose}")
+        citations.append(param.source_citation)
+        keypad = _keypad_for(pack, param.parameter_id)
+        if keypad:
+            lines.append(
+                f"To VIEW {param.parameter_id} on the keypad: "
+                + " ".join(keypad.keypad_steps)
+                + f" {keypad.view_only_warning}"
+            )
+            citations.append(keypad.source_citation)
+    return "\n".join(lines), [_cite(c) for c in citations]
+
+
 def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
     """Answer ``question`` grounded ONLY in the ``pack_id`` drive pack. Never
     falls back to a generic answer; an unmatched question is reported honestly."""
@@ -210,6 +269,13 @@ def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
             answer, citations = _fault_answer(pack, mnemonic, card)
             return _result("fault", answer, citations)
 
+    # 1b) a v3 fault_entries mnemonic in the question (oC, LL1, BE0) — case-
+    #     SENSITIVE (oC and OC are distinct codes; never casefolded together).
+    for entry in pack.fault_entries:
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(entry.fault_id)}(?![A-Za-z0-9])", question):
+            answer, citations = _fault_entry_answer(pack, entry)
+            return _result("fault", answer, citations)
+
     # 2) an explicit parameter id in the question (P09.03)
     params_by_id = {p.parameter_id.upper(): p for p in pack.parameters}
     for token in _PARAM_ID_RE.findall(question):
@@ -228,7 +294,10 @@ def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
                 return _result("parameter", answer, citations)
 
     # no fault/parameter matched — honest, pack-scoped, never a generic guess
-    mnemonics = sorted({_fault_mnemonic(c) for c in cards if _fault_mnemonic(c)})
+    mnemonics = sorted(
+        {_fault_mnemonic(c) for c in cards if _fault_mnemonic(c)}
+        | {e.fault_id for e in pack.fault_entries}
+    )
     param_ids = sorted(p.parameter_id for p in pack.parameters)
     covered = (f" It covers faults: {', '.join(mnemonics)}." if mnemonics else "") + (
         f" Parameters: {', '.join(param_ids)}." if param_ids else ""
@@ -279,6 +348,18 @@ def extract_pack_fault_codes(pack: DrivePack, text: str) -> list[str]:
         if lead not in seen and re.search(rf"\b{re.escape(lead.upper())}\b", upper):
             seen.add(lead)
             found.append(lead)
+
+    # 1b) digit-bearing v3 fault_entries ids that are real codes (LL1, BE0, CE10),
+    #     matched CASE-SENSITIVELY as whole-word tokens. Pure-letter fault_ids
+    #     (oC, GF, bb) stay EXPLICIT-ONLY — the same OCR-collision safety as the
+    #     v2 mnemonics above (a pure-letter code would false-hit English text).
+    for entry in pack.fault_entries:
+        fid = entry.fault_id
+        if not _CODE_LIKE_MNEMONIC_RE.fullmatch(fid):
+            continue
+        if fid not in seen and re.search(rf"\b{re.escape(fid)}\b", text):
+            seen.add(fid)
+            found.append(fid)
 
     # 2) numeric codes that carry a fault context and are real codes in the pack
     for match in _NUM_FAULT_CONTEXT_RE.finditer(text):
@@ -340,6 +421,25 @@ def answer_fault_code(pack_id: str, token: str) -> DrivePackAnswer:
     cards = build_cards(pack, template_reader=_template_reader(pack_id))
     family = pack.family.series
     t = (token or "").strip()
+
+    # v3 mnemonic-coded fault entries (string fault_id, case-sensitive, per-fault
+    # citation). Additive: v1/v2 packs carry no fault_entries, so this is skipped
+    # and the int-keyed lookup below is byte-for-byte unchanged.
+    if pack.fault_entries:
+        entry = _match_fault_entry(pack, t)
+        if entry is not None:
+            answer, citations = _fault_entry_answer(pack, entry)
+            return DrivePackAnswer(
+                pack_id=pack.pack_id,
+                resolved=True,
+                schema_version=pack.schema_version,
+                family=family,
+                matched=True,
+                matched_kind="fault",
+                answer=answer,
+                citations=citations,
+                answer_source="drive_pack",
+            )
 
     target: DiagnosticCard | None = None
     display = t

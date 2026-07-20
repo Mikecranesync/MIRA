@@ -244,6 +244,7 @@ _ALLOWED_TOP_LEVEL_PACK_KEYS = {
     "provenance",
     "parameters",
     "keypad_navigation",
+    "fault_entries",
 }
 
 
