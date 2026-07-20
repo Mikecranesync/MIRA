@@ -47,6 +47,13 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # `every`: a file counts as "code" only if it matches EVERY pattern —
+          # i.e. it's under `**` AND none of the doc/image exclusions. With the
+          # default `some` quantifier, `**` alone matches every file (negations
+          # don't subtract), so `code` would ALWAYS be true and docs-only PRs
+          # would never skip the heavy jobs. Verified: without this, a docs-only
+          # PR ran Unit Tests.
+          predicate-quantifier: 'every'
           filters: |
             code:
               - '**'
