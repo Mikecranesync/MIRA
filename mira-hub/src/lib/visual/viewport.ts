@@ -48,6 +48,11 @@ export function clamp(n: number, lo: number, hi: number): number {
   return n < lo ? lo : n > hi ? hi : n;
 }
 
+/** True only for a finite number strictly greater than zero (guards NaN/∞). */
+function isPositiveFinite(n: number): boolean {
+  return Number.isFinite(n) && n > 0;
+}
+
 /** Clamp a normalized point into the unit square `[0,1] x [0,1]`. */
 export function clampNormalized(p: NormalizedPoint): NormalizedPoint {
   return { x: clamp(p.x, 0, 1), y: clamp(p.y, 0, 1) };
@@ -66,7 +71,15 @@ export function fitRect(
   container: Size,
   image: Size,
 ): { x: number; y: number; width: number; height: number } {
-  if (image.width <= 0 || image.height <= 0 || container.width <= 0 || container.height <= 0) {
+  // Degenerate OR non-finite dimensions (NaN/Infinity from a bad image-size
+  // prop) collapse to a zero rect, so screenToNormalized returns {0,0} rather
+  // than propagating NaN into a geometry that would throw on canonicalization.
+  if (
+    !isPositiveFinite(image.width) ||
+    !isPositiveFinite(image.height) ||
+    !isPositiveFinite(container.width) ||
+    !isPositiveFinite(container.height)
+  ) {
     return { x: 0, y: 0, width: 0, height: 0 };
   }
   const scale = Math.min(container.width / image.width, container.height / image.height);

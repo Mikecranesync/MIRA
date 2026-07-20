@@ -101,6 +101,7 @@ export default function VisualWorkspace({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [imageReady, setImageReady] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const panLast = useRef<ScreenPoint | null>(null);
 
   const imageSize = useMemo<Size>(
@@ -114,8 +115,12 @@ export default function VisualWorkspace({
   }, [state.annotations, onAnnotationsChange]);
 
   // Load the image (display only; coordinate math uses the natural size prop).
+  // A failed load (broken/404 evidence URL) is handled gracefully — the canvas
+  // stays usable for annotation and a muted notice is shown — never a crash.
   useEffect(() => {
     setImageReady(false);
+    setImageError(false);
+    imageRef.current = null;
     if (typeof window === "undefined") return;
     const img = new window.Image();
     img.decoding = "async";
@@ -123,9 +128,14 @@ export default function VisualWorkspace({
       imageRef.current = img;
       setImageReady(true);
     };
+    img.onerror = () => {
+      imageRef.current = null;
+      setImageError(true);
+    };
     img.src = imageSrc;
     return () => {
       img.onload = null;
+      img.onerror = null;
     };
   }, [imageSrc]);
 
@@ -378,6 +388,19 @@ export default function VisualWorkspace({
           onPointerCancel={onPointerUp}
           onWheel={onWheel}
         />
+        {imageError && (
+          <div
+            role="status"
+            className="pointer-events-none absolute inset-x-0 top-2 mx-auto w-fit rounded-lg px-3 py-1.5 text-xs"
+            style={{
+              backgroundColor: "var(--surface-0)",
+              color: "var(--foreground-muted)",
+              border: "1px solid var(--border-default)",
+            }}
+          >
+            Could not load the image — you can still mark regions.
+          </div>
+        )}
       </div>
     </div>
   );

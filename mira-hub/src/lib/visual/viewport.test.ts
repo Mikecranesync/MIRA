@@ -60,6 +60,27 @@ describe("fitRect letterboxing", () => {
       height: 0,
     });
   });
+
+  it("returns a zero rect for non-finite / negative dimensions (no NaN leak)", () => {
+    const ZERO = { x: 0, y: 0, width: 0, height: 0 };
+    for (const bad of [
+      { width: NaN, height: 900 },
+      { width: 1600, height: NaN },
+      { width: Infinity, height: 900 },
+      { width: -1600, height: 900 },
+    ]) {
+      expect(fitRect(CONTAINER, bad)).toEqual(ZERO);
+    }
+    // A bad container is handled too.
+    expect(fitRect({ width: NaN, height: 600 }, { width: 1600, height: 900 })).toEqual(ZERO);
+  });
+
+  it("a non-finite image size maps any screen point to normalized (0,0), never NaN", () => {
+    const p = screenToNormalized({ x: 400, y: 300 }, CONTAINER, { width: NaN, height: 900 });
+    expect(Number.isNaN(p.x)).toBe(false);
+    expect(Number.isNaN(p.y)).toBe(false);
+    expect(p).toEqual({ x: 0, y: 0 });
+  });
 });
 
 describe("screen <-> normalized round-trip", () => {
