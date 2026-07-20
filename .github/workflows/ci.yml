@@ -757,7 +757,7 @@ jobs:
     steps:
       - name: Require all gated jobs to pass (skipped is allowed)
         run: |
-          results='${{ join(needs.*.result, ",") }}'
+          results='${{ join(needs.*.result, ',') }}'
           echo "gated job results: $results"
           bad=0
           IFS=','
