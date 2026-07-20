@@ -319,6 +319,11 @@ async def submit_image(raw_bytes: bytes, caption: str, *, chat_id: str = "intern
         ),
         "effort": _interp.EFFORT,
         "max_tokens": _interp.MAX_TOKENS,
+        # SUMMED free-cascade token usage of a PRINT_THEORY_SELF_CONSISTENCY run:
+        # the engine records the total across all samples into the interpret slot
+        # (drained above), surfaced here so a best-of-N bench envelope can price
+        # the whole multi-sample turn. None on single-sample / paid-interpreter runs.
+        "self_consistency_usage": _last_interpreter_usage if not interpreter_used else None,
         "latency_s": latency,
         "error": error,
     }

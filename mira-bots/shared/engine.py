@@ -979,8 +979,15 @@ class Supervisor:
         chat_id: str,
         *,
         interpret_b64: str | None = None,
+        observe: dict | None = None,
     ) -> str:
         """Grounded, display-ready answer for a classified ELECTRICAL_PRINT photo.
+
+        ``observe`` (optional mutable dict) collects privacy-safe synthesis
+        provenance — ``route`` (which path answered), ``fallback_reason`` (why a
+        synthesis branch declined), ``verify_outcome`` — for the caller to feed
+        into ``_log_interaction``. Reason codes / route names only; never page
+        content. No behavior change when omitted.
 
         Anthropic PrintSynth interpreter FIRST (deep, typed, never-invent — only
         when configured), else the No-Anthropic grounded cascade
@@ -999,12 +1006,16 @@ class Supervisor:
         """
         from . import print_translator
 
+        obs = observe if observe is not None else {}
+
         # 1. Anthropic PrintSynth interpreter (primary, isolated, flag+key gated).
         reply = await self._interpret_print_anthropic(
             interpret_b64 or photo_b64, question, vision_data
         )
         if reply:
+            obs["route"] = "print_vision_primary"
             return reply
+        obs["route"] = "grounded_cascade"
 
         # 2. Grounded cascade fallback (No-Anthropic vision path).
         # PRINT_THEORY_FULL_RES=1 sends the caller's full-resolution image to
@@ -1017,55 +1028,142 @@ class Supervisor:
         theory_b64 = photo_b64
         if (os.environ.get("PRINT_THEORY_FULL_RES") or "").strip().lower() in ("1", "true", "on"):
             theory_b64 = interpret_b64 or photo_b64
-        messages = print_translator.build_theory_messages(
-            theory_b64, vision_data, question=question
-        )
-        raw = ""
-        try:
-            raw, usage = await self.router.complete(
-                messages,
-                max_tokens=int(os.environ.get("PRINT_THEORY_MAX_TOKENS") or "2000"),
-                session_id=str(chat_id),
+
+        async def _sample() -> tuple[str, list[dict]]:
+            """One theory(+verify) chain -> (reply, [per-call usage]). Never raises.
+
+            Reproduces the single-pass behavior exactly: a theory draft, then the
+            optional ``PRINT_THEORY_VERIFY`` second pass that re-reads the sheet
+            against the draft. Fall-through on ANY router failure or empty result
+            — the draft is never lost, the turn is never eaten.
+            """
+            sample_usages: list[dict] = []
+            messages = print_translator.build_theory_messages(
+                theory_b64, vision_data, question=question
             )
-            if raw:
-                InferenceRouter.log_usage(usage)
-        except Exception as exc:  # noqa: BLE001 — never eat the turn
-            logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
-            raw = ""
-        # PRINT_THEORY_VERIFY=1 (or-form, default off): one self-verification
-        # pass — the vision model re-reads the sheet against its own draft
-        # (fix misquotes to the printed text, delete claims it cannot see
-        # printed, add printed tiers/contacts/cross-refs it omitted on the
-        # asked device). R5-delta's remaining defect classes (a wrong
-        # volunteered terminal, a paraphrased label, a column-shift trace, a
-        # dropped header tier) are second-look errors by construction.
-        # Fall-through on ANY failure or empty result — the draft is never
-        # lost and the turn is never eaten.
-        if raw and (os.environ.get("PRINT_THEORY_VERIFY") or "").strip().lower() in (
-            "1",
-            "true",
-            "on",
-        ):
+            reply = ""
             try:
-                v_messages = print_translator.build_verify_messages(
-                    theory_b64, raw, question=question
-                )
-                v_raw, v_usage = await self.router.complete(
-                    v_messages,
+                reply, usage = await self.router.complete(
+                    messages,
                     max_tokens=int(os.environ.get("PRINT_THEORY_MAX_TOKENS") or "2000"),
                     session_id=str(chat_id),
                 )
-                if v_raw:
-                    logger.info(
-                        "PRINT_VERIFY_APPLIED len_before=%d len_after=%d", len(raw), len(v_raw)
+                if reply:
+                    InferenceRouter.log_usage(usage)
+                    sample_usages.append(usage)
+            except Exception as exc:  # noqa: BLE001 — never eat the turn
+                logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
+                reply = ""
+                obs["fallback_reason"] = "provider_error"
+            # PRINT_THEORY_VERIFY=1 (or-form, default off): one self-verification
+            # pass — the vision model re-reads the sheet against its own draft
+            # (fix misquotes to the printed text, delete claims it cannot see
+            # printed, add printed tiers/contacts/cross-refs it omitted on the
+            # asked device). R5-delta's remaining defect classes (a wrong
+            # volunteered terminal, a paraphrased label, a column-shift trace, a
+            # dropped header tier) are second-look errors by construction.
+            if reply and (os.environ.get("PRINT_THEORY_VERIFY") or "").strip().lower() in (
+                "1",
+                "true",
+                "on",
+            ):
+                try:
+                    v_messages = print_translator.build_verify_messages(
+                        theory_b64, reply, question=question
                     )
-                    InferenceRouter.log_usage(v_usage)
-                    raw = v_raw
-                else:
-                    logger.info("PRINT_VERIFY_EMPTY — keeping draft")
-            except Exception as exc:  # noqa: BLE001 — verification must never eat the turn
-                logger.warning("PRINT_VERIFY_ERROR error=%s — keeping draft", exc)
+                    v_raw, v_usage = await self.router.complete(
+                        v_messages,
+                        max_tokens=int(os.environ.get("PRINT_THEORY_MAX_TOKENS") or "2000"),
+                        session_id=str(chat_id),
+                    )
+                    if v_raw:
+                        logger.info(
+                            "PRINT_VERIFY_APPLIED len_before=%d len_after=%d",
+                            len(reply),
+                            len(v_raw),
+                        )
+                        InferenceRouter.log_usage(v_usage)
+                        sample_usages.append(v_usage)
+                        reply = v_raw
+                        obs["verify_outcome"] = "applied"
+                    else:
+                        logger.info("PRINT_VERIFY_EMPTY — keeping draft")
+                        obs["verify_outcome"] = "empty"
+                except Exception as exc:  # noqa: BLE001 — verification must never eat the turn
+                    logger.warning("PRINT_VERIFY_ERROR error=%s — keeping draft", exc)
+                    obs["verify_outcome"] = "error"
+            return reply, sample_usages
+
+        # PRINT_THEORY_SELF_CONSISTENCY=N (or-form, default 0/1 = off): sample the
+        # theory(+verify) chain N times and reconcile DETERMINISTICALLY to the
+        # consensus (medoid) reply — variance reduction on the handful of runs
+        # that coin-flip a near-ambiguous reading or fabricate a fresh
+        # false-precision detail (ROUND5 Addendum 3, 2026-07-19). No LLM judge.
+        # Any sample error is skipped (fall through); if every sample fails the
+        # reply is empty and format_theory_reply yields the graceful fallback —
+        # the turn is never eaten. N<2 is the single-pass path, unchanged.
+        samples_n = int(os.environ.get("PRINT_THEORY_SELF_CONSISTENCY") or "0")
+        if samples_n >= 2:
+            candidates: list[str] = []
+            usages: list[dict] = []
+            for _i in range(samples_n):
+                try:
+                    reply_i, usages_i = await _sample()
+                except Exception as exc:  # noqa: BLE001 — a sample must never eat the turn
+                    logger.warning("PRINT_SELF_CONSISTENCY_SAMPLE_ERROR error=%s", exc)
+                    continue
+                usages.extend(usages_i)
+                if reply_i:
+                    candidates.append(reply_i)
+            if candidates:
+                raw, agreed = print_translator.reconcile_print_samples(candidates)
+                logger.info(
+                    "PRINT_SELF_CONSISTENCY samples=%d/%d agreed=%s",
+                    len(candidates),
+                    samples_n,
+                    agreed,
+                )
+                self._record_self_consistency_usage(usages)
+            else:
+                raw = ""
+        else:
+            raw, _ = await _sample()
+        # Empty synthesis after the cascade (and any verify pass) → the reply
+        # will be format_theory_reply's graceful FALLBACK_REPLY. Record the
+        # decline reason if a more specific one (provider_error) wasn't already
+        # set, so the turn is never silently a fallback.
+        if not raw:
+            obs.setdefault("fallback_reason", "empty_synthesis")
+        logger.info(
+            "PRINT_SYNTHESIS_OUTCOME route=%s fallback_reason=%s verify=%s empty=%s",
+            obs.get("route"),
+            obs.get("fallback_reason"),
+            obs.get("verify_outcome"),
+            not bool(raw),
+        )
         return print_translator.format_theory_reply(raw, (vision_data or {}).get("drawing_type"))
+
+    def _record_self_consistency_usage(self, usages: list[dict]) -> None:
+        """Best-effort: record the SUMMED token usage of a self-consistency print
+        turn into ``printsense.interpret.pop_last_usage``'s slot, so a bench
+        envelope reads the total cost of ALL samples (not one call).
+
+        Best-effort telemetry only — ``printsense`` may not be shipped in this
+        image, and the slot never grades truth; never raises, never eats the turn.
+        """
+        if not usages:
+            return
+        try:
+            from printsense import interpret
+
+            total_in = sum(int(u.get("input_tokens") or 0) for u in usages)
+            total_out = sum(int(u.get("output_tokens") or 0) for u in usages)
+            last = usages[-1]
+            interpret.record_sampled_usage(
+                last.get("provider"), last.get("model"), total_in, total_out
+            )
+        except Exception as exc:  # noqa: BLE001 — telemetry must never eat the turn
+            logger.warning("PRINT_SELF_CONSISTENCY_USAGE_ERROR error=%s", exc)
 
     async def _interpret_print_anthropic(
         self,
@@ -1359,6 +1457,11 @@ class Supervisor:
         next_state: str | None = None,
         dispatch_kind: str = "",
         citation_evidence: dict | None = None,
+        *,
+        route: str | None = None,
+        model: str | None = None,
+        input_sha256: str | None = None,
+        fallback_reason: str | None = None,
     ) -> dict:
         """Build a standard process_full() result dict.
 
@@ -1380,6 +1483,14 @@ class Supervisor:
             "next_state": next_state,
             "dispatch_kind": dispatch_kind,
             "_citation_evidence": citation_evidence,
+            # Print-turn observability provenance (privacy-safe: route/model
+            # names + reason codes only, never page content) — read by
+            # process()'s _log_interaction so "check the bot results" shows the
+            # full synthesis story. None on turns that don't set them.
+            "route": route,
+            "model": model,
+            "input_sha256": input_sha256,
+            "fallback_reason": fallback_reason,
         }
 
     @staticmethod
@@ -1571,6 +1682,10 @@ class Supervisor:
             has_photo=bool(photo_b64),
             response_time_ms=elapsed_ms,
             platform=platform,
+            route=result.get("route"),
+            model=result.get("model"),
+            input_sha256=result.get("input_sha256"),
+            fallback_reason=result.get("fallback_reason"),
         )
         # Phase 9 — decision trace (observational, fire-and-forget). Scheduled
         # AFTER the reply is built so it adds zero latency to the user response,
@@ -2744,7 +2859,10 @@ class Supervisor:
                 # default caption otherwise got only the thin OCR-label preview.
                 has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
                 question = message if has_real_question else None
-                reply = await self._grounded_print_reply(photo_b64, question, vision_data, chat_id)
+                print_observe: dict = {}
+                reply = await self._grounded_print_reply(
+                    photo_b64, question, vision_data, chat_id, observe=print_observe
+                )
                 if not reply:
                     # Fail-safe only — the grounded path is display-ready even on
                     # provider failure, but never leave a print unanswered.
@@ -2782,6 +2900,8 @@ class Supervisor:
                     self._infer_confidence(reply),
                     trace_id,
                     "ELECTRICAL_PRINT",
+                    route=print_observe.get("route"),
+                    fallback_reason=print_observe.get("fallback_reason"),
                 )
             elif vision_data["classification"] == "NAMEPLATE":
                 reply = await self._handle_nameplate(
@@ -2801,6 +2921,45 @@ class Supervisor:
                     "high",
                     trace_id,
                     "ASSET_IDENTIFIED",
+                )
+            elif vision_data["classification"] == "UNKNOWN":
+                # ROUND 4 defect #2: the vision model returned no usable signal
+                # (decline_reason below) and no strong LAYOUT/OCR evidence
+                # carried the page. Decline with an evidence-based fallback —
+                # surface whatever OCR could read and ask for a clearer photo —
+                # instead of routing to the equipment-diagnosis path on a
+                # fabricated classification. Never promote a fallback to a
+                # model-qualified answer.
+                decline_reason = vision_data.get("decline_reason") or "vision_unavailable"
+                _ocr_items = vision_data.get("ocr_items") or []
+                logger.info(
+                    "PHOTO_CLASSIFY_UNKNOWN chat_id=%s decline_reason=%s ocr_items=%d",
+                    chat_id,
+                    decline_reason,
+                    len(_ocr_items),
+                )
+                if _ocr_items:
+                    preview = ", ".join(str(i) for i in _ocr_items[:8])
+                    reply = (
+                        "I couldn't get a clear read on that photo — the image "
+                        "analysis didn't return a usable description. Here's the "
+                        f"text I could pull off it: {preview}. Could you resend a "
+                        "sharper, well-lit shot of the whole page or nameplate? "
+                        "Or tell me the equipment and fault and I'll help from there."
+                    )
+                else:
+                    reply = PHOTO_FAILURE
+                state["exchange_count"] += 1
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(
+                    reply,
+                    "low",
+                    trace_id,
+                    state.get("state"),
+                    dispatch_kind="dont_know",
+                    route="classify_decline",
+                    fallback_reason=decline_reason,
                 )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
