@@ -19,6 +19,12 @@ from .hashing import (
     sha256_bytes,
     with_hashes,
 )
+from .registry import (
+    InMemoryRegistry,
+    MaterializationRegistry,
+    RegistryError,
+    StatusOverlay,
+)
 from .schema import (
     SCHEMA_CONTRACT_VERSION,
     ApprovalStatus,
@@ -57,4 +63,8 @@ __all__ = [
     "record_hash",
     "sha256_bytes",
     "with_hashes",
+    "InMemoryRegistry",
+    "MaterializationRegistry",
+    "RegistryError",
+    "StatusOverlay",
 ]
