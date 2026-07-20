@@ -536,3 +536,66 @@ def format_theory_reply(raw: str, drawing_type: str | None = None) -> str:
     ):
         return raw + "\n\n" + CONTACT_STATE_CAVEAT
     return raw
+
+
+# ── self-consistency reconciliation (PRINT_THEORY_SELF_CONSISTENCY) ───────────
+# When the free print-theory cascade is sampled N>=2 times (variance reduction on
+# the handful of runs that coin-flip a near-ambiguous reading or fabricate a
+# fresh false-precision detail — ROUND5 Addendum 3, 2026-07-19), the N candidate
+# replies are reconciled DETERMINISTICALLY here — no LLM judge, pure text.
+#
+# The consensus reply is the MEDOID: the candidate that agrees most with the
+# others (max total token-set Jaccard similarity). The medoid IS majority
+# agreement by construction — an idiosyncratic outlier (a detail present in one
+# sample; a minority coin-flip on a near-50/50 boundary) is by definition the
+# least central and is not selected, so a 2-of-3 majority reading wins and a lone
+# fabrication is dropped. Ties break to the lowest index (the earliest sample) so
+# the result is fully deterministic across runs.
+_SC_TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Jaccard floor at which two prose answers are treated as saying the same thing.
+# Used ONLY for the agreement/disagreement LOG signal — the returned reply is the
+# medoid either way (the best single answer regardless of whether a strict
+# majority converged); this threshold never changes which reply is selected.
+_SC_AGREEMENT_THRESHOLD = 0.5
+
+
+def _sc_token_set(text: str) -> frozenset[str]:
+    return frozenset(_SC_TOKEN_RE.findall(text.lower()))
+
+
+def _sc_jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+    union = a | b
+    if not union:
+        return 1.0
+    return len(a & b) / len(union)
+
+
+def reconcile_print_samples(candidates: list[str]) -> tuple[str, bool]:
+    """Deterministically reconcile N print-theory samples into one consensus reply.
+
+    Returns ``(chosen, agreed)``. ``chosen`` is the medoid — the candidate that
+    agrees most with the others (max total token-set Jaccard), which suppresses an
+    idiosyncratic outlier (a fresh false-precision detail in one sample; a minority
+    coin-flip on a near-ambiguous reading). Ties break to the lowest index so the
+    result is stable across runs. ``agreed`` is True iff a strict majority of
+    candidates fall within ``_SC_AGREEMENT_THRESHOLD`` Jaccard of the medoid — a
+    self-consistency signal for logging that does NOT change ``chosen``. Pure text:
+    no LLM, no network. Empty list -> ``("", False)``; one candidate -> ``(it, True)``.
+    """
+    if not candidates:
+        return "", False
+    if len(candidates) == 1:
+        return candidates[0], True
+    bags = [_sc_token_set(c) for c in candidates]
+    n = len(candidates)
+    best_idx = 0
+    best_score = -1.0
+    for i in range(n):
+        score = sum(_sc_jaccard(bags[i], bags[j]) for j in range(n) if j != i)
+        if score > best_score:
+            best_score = score
+            best_idx = i
+    cluster = sum(
+        1 for j in range(n) if _sc_jaccard(bags[best_idx], bags[j]) >= _SC_AGREEMENT_THRESHOLD
+    )
+    return candidates[best_idx], cluster * 2 > n
