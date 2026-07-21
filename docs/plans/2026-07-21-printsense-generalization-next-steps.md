@@ -110,5 +110,7 @@ Call the generalized-print milestone achieved only when:
 - **Safety-warning elevation: DONE** (v3.186.0). Deterministic verbatim-from-OCR detector +
   prompt instruction (both styles) + `format_theory_reply` backstop + `missing_safety_warning`
   autoeval tripwire. +14 hermetic tests, 195 green, ruff clean.
-- **Phase 2 — benchmark report: PENDING.**
+- **Phase 2 — benchmark report: DONE** — `docs/benchmarks/2026-07-21-printsense-internet-print-generalization.md`
+  (exact claim + defensible framing + config id + 5 URLs/SHA-256/timestamps + per-case grades + honest
+  method notes: hand-graded because the judge was broken at run time, now fixed).
 - **Phase 3 — 10 boundary-probing classes: PENDING** (metered, within the remaining ~$0.43 of the $0.50 cap).
