@@ -53,7 +53,11 @@ class FileRegistry(InMemoryRegistry):
         }
         self._snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._snapshot_path.with_suffix(self._snapshot_path.suffix + ".tmp")
-        tmp.write_text(json.dumps(data, sort_keys=True, ensure_ascii=False), "utf-8")
+        payload = json.dumps(data, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        with open(tmp, "wb") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())  # durable before the atomic replace (survive a crash between the two)
         os.replace(tmp, self._snapshot_path)
 
     # -- writes (persist only after the in-memory mutation succeeds) -----------
