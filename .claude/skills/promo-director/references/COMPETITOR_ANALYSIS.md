@@ -1,8 +1,29 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-07-21
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-07-21
+
+### Most actionable change for MIRA playbook
+Augury's "Industrial AI Workforce" pivot (May 2026) directly encroaches on the industrial AI agent frame. Augury now claims "AI agents as digital partners for each manufacturing role" — the same territory MIRA is building toward. MIRA's defensible counter: FactoryLM works on ANY UNS or sensor stack (hardware-agnostic), and every answer cites the customer's own manuals and work-order history, not Augury's proprietary sensor telemetry.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Root Cause Analysis (GA Mar 2026) + Report Builder AI (Apr 2026) + AI Procedure Recommendations (May 2026): structured failure analysis (problem → cause → corrective action) + natural-language report building, natively in the CMMS. No dedicated YouTube launch video found [transcript not verified]. Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-april-2026. Pattern: MaintainX now does structured diagnostic analysis inside the work order — directly adjacent to MIRA's grounded-answer territory. Competitive alert.
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" platform launch (May 18, 2026). Press release: https://www.prnewswire.com/news-releases/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce-302773828.html. CEO + CPT video interview at AVEVA World Milan (Jul 13-17, 2026): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [Machine Design feature; no standalone Augury YouTube confirmed]. New product: Augury Threads (collaborative annotation over machine data). Partner stack: AVEVA CONNECT + Google Gemini. **STYLE DRIFT**: moved from "sensor + ML → predict failures" to "AI agents as digital partners for reliability, maintenance, and ops roles." Key claim: "bridge the gap from insight to action." New category vocabulary: "workforce" not "monitoring."
+
+**B2B SaaS / dev-tools**
+- **Cursor** — Compile 2026 opening keynote (Jun 16, 2026, Fort Mason SF). First real promotional video from a previously video-light company. URL: https://www.youtube.com/watch?v=fWa7uxyhVDE (Michael Truell, ~45 min). Announced: own 1.5T-param model trained from scratch, Origin (new Git platform, fall 2026 launch), iOS mobile app for managing always-on agents. VO register: founder. Footage: on-stage conference. CTA: soft brand. Pattern: first-conference-as-brand-launch mirrors Figma Config / Stripe Sessions playbook; signals Cursor shifting from changelog-driven to story-driven GTM. Note: parent company Anysphere reportedly acquired by SpaceX/xAI ($60B all-stock deal).
+- **Figma** — Config 2026 keynote (Jun 24, 2026). URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w (~3.3M views). Presenter: CEO Dylan Field. Opening hook: "Code is not the opposite of design. Code is material for design." Announced: Code Layers (live code on canvas alongside design), Figma Motion (native animation + 3D), Figma Agent (connectors to Notion/Slack/GitHub/Atlassian). VO register: founder. Footage: on-stage keynote (Moscone Center). CTA: awareness. New framing pattern: "the tool is the material" — positions the product as substrate not surface. Transfer to MIRA: "Context is not separate from the diagnosis. Context is the material of diagnosis."
+- **Notion** — 3.6: External Agents + Notion Agents iOS app (Jul 1 & Jul 8, 2026). Video recap: https://www.youtube.com/watch?v=bpYCtImhB08. Multi-agent orchestration: "bring multiple agents into a single UI to automate entire workflows end-to-end." Agents now manage Outlook inbox/calendar, work with PPTX/XLSX/DOCX. Evolution: single-agent ("you assign, it does") → multi-agent ("agents coordinate workflows for you"). New hook candidate for MIRA: "Not one expert — a coordinated team."
+- **Stripe Sessions 2026** — opening keynote (Apr 30, 2026; full video published May 19, 2026). URL: https://www.youtube.com/watch?v=Nadf3MdJS-8 (opening), https://www.youtube.com/watch?v=lIsHZfRl2zw (full). 288 new products. Theme: "building economic infrastructure for AI." Agentic Commerce Suite: agent wallets via Link, Meta + Google partnerships, Checkout Studio. Streaming payments: per-token micropayments (Tempo blockchain + Metronome). Conference-at-scale with "infrastructure" not "features" as the positioning anchor. [Cache entry previously had URL only; detail added here.]
 
 ---
 
@@ -88,6 +109,14 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**2026 product expansions (no dedicated video found — blog/help-center only):**
+- Root Cause Analysis GA (Mar 2026): structured problem → cause → corrective action analysis directly inside work orders; https://www.getmaintainx.com/blog/prevent-recurring-failures-with-maintainx-root-cause-analysis
+- Report Builder AI (Apr 2026): natural-language report queries ("Which parts are low on stock?", "Who completed the most work orders this year?"). Enterprise + CoPilot plan. Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-april-2026
+- AI Procedure Recommendations + Sub Work Orders (May 2026): AI attaches right procedure at work order creation; sub-orders for complex multi-step jobs. Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026
+- Research report: "AI Goes Mainstream on the Factory Floor" (May 5, 2026); https://www.businesswire.com/news/home/20260505457914/en/AI-Goes-Mainstream-on-the-Factory-Floor-MaintainX-Report-Finds
+
+**Pattern note (2026 update):** MaintainX has moved from knowledge-retrieval CMMS (2025) to structured diagnostic analysis (2026). Root Cause Analysis inside the work order directly overlaps with MIRA's grounded-answer capability. The "AI does the diagnosis, you confirm the corrective action" loop is no longer a MIRA-exclusive claim.
+
 ---
 
 ### Fiix
@@ -144,7 +173,19 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**Pattern note (2025):** Augury ran a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+
+**Industrial AI Workforce launch (May 18, 2026)**
+- Press release: https://www.prnewswire.com/news-releases/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce-302773828.html
+- Product page: https://www.augury.com/industrial-ai/
+- Machine Design video interview (AVEVA World Milan, Jul 13-17, 2026): https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [no standalone Augury YouTube video confirmed; Machine Design hosted]
+- Interview subjects: CEO Elan Greenberg + CPT Anoop Mohan
+- Core claim: "role-specific AI agents built to work alongside reliability engineers, maintenance schedulers, operations leaders, and executives"
+- Tech stack: Augury Machine Health sensors + AVEVA CONNECT operational data + Google Gemini reasoning layer
+- New product: Augury Threads — collaborative annotation / knowledge-sharing tool over machine data
+- New category vocabulary: "workforce" replaces "monitoring"; "bridge insight to action" replaces "predict failures"
+
+**Pattern note (2026 update):** Augury has pivoted from hardware-first predictive-maintenance vendor to "Industrial AI Workforce" multi-agent platform. This is the most significant competitive framing shift observed this cycle. Augury's weak point: the AI agents depend on Augury proprietary sensors; customers on other sensor stacks or with no IoT hardware cannot access the workforce. MIRA's counter: sensor-agnostic, OEM-manual-native, works on any UNS.
 
 ---
 
@@ -254,9 +295,15 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 opening keynote (Apr 30, 2026; full video published May 19, 2026)**
+- URL: https://www.youtube.com/watch?v=Nadf3MdJS-8 (opening), https://www.youtube.com/watch?v=lIsHZfRl2zw (full), https://www.youtube.com/watch?v=e13-s0p1tfE (live stream), https://www.youtube.com/watch?v=8F4XyWYqZi8 (12-min summary)
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0
+- Theme: "building economic infrastructure for AI"
+- Scale: 288 new products and features
+- Key launches: Agentic Commerce Suite (agent wallets via Link; Meta + Google partnerships; Checkout Studio), streaming payments (per-token micropayments via Tempo blockchain + Metronome), Stripe Projects (developer/agent-driven service purchasing), Radar expanded to token theft + free trial abuse
+- VO register: founder (Patrick Collison + team)
+- CTA: soft — "available now" for specific features within keynote
+- Pattern note: "infrastructure for AI" positioning rather than feature marketing. Stripe does not claim AI makes payments smarter — it claims Stripe IS the economic layer AI agents run on. Scale + breadth (288 products) as the proof form.
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -308,14 +355,26 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 ### Cursor
 
-**Product trajectory (all video-light)**
+**Product trajectory (video-light through Apr 2026)**
 - Channel: https://www.youtube.com/@cursor_ai
 - Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
 - Cursor 3.0 (Apr 2, 2026): Agents Window
 - Cursor 3.1 (Apr 13, 2026): Tiled Layout
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
-- No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+- Changelog-driven growth; no standalone promo video through Apr 2026.
+
+**Compile 2026 opening keynote (Jun 16, 2026)**
+- URL: https://www.youtube.com/watch?v=fWa7uxyhVDE (Michael Truell, co-founder & CEO)
+- Also: https://www.youtube.com/watch?v=soFRGd2xNuU (conference recap), https://www.youtube.com/watch?v=-Exfie3VepY (alternate cut)
+- Length: ~45 min full keynote
+- Opening hook: traces Cursor's path from editor → AI agent → full software work system [transcript not verified]
+- Footage style: on-stage conference (Fort Mason SF, one-day invite-only event)
+- VO register: founder
+- CTA: soft brand
+- Key announcements: 1.5T-param in-house model (from scratch), Origin (new Git platform, fall 2026), iOS mobile app for always-on agent management
+- Note: parent company Anysphere reportedly acquired by SpaceX/xAI all-stock deal (~$60B); Origin will compete with GitHub
+- Pattern note: **Cursor's first conference is its video inflection point.** The Compile format (one-day invite, curated community) mirrors Figma Config and Stripe Sessions — signals a deliberate shift from changelog-driven to story-driven GTM. Worth tracking whether Cursor now sustains regular video output.
 
 ---
 
@@ -340,6 +399,12 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.6: External Agents + Notion Agents iOS app (Jul 1 & Jul 8, 2026)**
+- Video recap: https://www.youtube.com/watch?v=bpYCtImhB08
+- Key launch: External Agents — bring multiple third-party agents into a single Notion UI to automate full workflows end-to-end; agents now manage Outlook inbox/calendar and work with PPTX/XLSX/DOCX files
+- Notion Agents iOS: use agents from mobile; agents coordinate without the user present
+- Pattern evolution: the 3.0 framing ("you assign, agent does") extends to multi-agent orchestration ("agents coordinate for you, across tools"). New hook candidate: "Not one expert on call. A coordinated team, always on."
+
 ---
 
 ### Figma
@@ -354,6 +419,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (Jun 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w (~3.3M views)
+- Presenter: CEO Dylan Field
+- Opening hook: "Code is not the opposite of design. Code is material for design."
+- Launches: Code Layers (live interactive code on canvas), Figma Motion (native animation + 3D), Shader fills, Figma Agent (connectors to Notion/Slack/GitHub/Atlassian/Hex), Weave Tools, Generative Plugins
+- Footage style: on-stage keynote (Moscone Center)
+- VO register: founder
+- CTA: none explicit; awareness
+- Pattern note: "the tool is the material" framing positions the product as substrate rather than layer. Strong hook structure for professional-tool marketing: name what your audience thinks is the enemy of your product, then reframe it as the product's raw material. Transfer to MIRA: "Data chaos is not the enemy of factory intelligence. It is the raw material FactoryLM turns into cited answers."
 
 ---
 
@@ -385,6 +460,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "The tool is the material" — reframe the perceived enemy as raw material | Figma Config 2026: "Code is not the opposite of design. Code is material for design." | "Data chaos is not the enemy of factory intelligence. It is the raw material FactoryLM turns into cited answers." |
+| Single-agent → multi-agent orchestration evolution | Notion 3.6: "bring multiple agents into a single UI to automate entire workflows end-to-end" | "Not one maintenance expert on call. A coordinated team — always on, always cited." |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +472,7 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. In 2026, further added structured Root Cause Analysis + natural-language reporting — moving into diagnostic territory.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury** (most significant 2026 shift): moved from "sensor + ML → predict failures" dual-track (technical videos + third-party credibility) to "Industrial AI Workforce" multi-agent platform (May 2026). Category vocabulary flipped from "monitoring" to "workforce." Now claims role-specific AI agents for reliability engineers, maintenance schedulers, and ops leaders. Dependency on Augury proprietary hardware is the moat gap MIRA can exploit.
+- **Cursor**: from changelog-only GTM (no promo videos through Apr 2026) to conference-keynote launch (Compile, Jun 2026). Video-light company crossed the video inflection point.
