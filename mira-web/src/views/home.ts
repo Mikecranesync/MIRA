@@ -1,12 +1,5 @@
 import { head } from "../lib/head.js";
-import {
-  btnPrimary,
-  btnGhost,
-  trustBand,
-  compareBlock,
-  stateBadge,
-  stopCard,
-} from "../lib/components.js";
+import { btnGhost, btnPrimary, trustBand } from "../lib/components.js";
 import { navbar, footer } from "./_topbar.js";
 
 const OEMS = [
@@ -20,7 +13,7 @@ const OEMS = [
   "Honeywell",
 ];
 
-const ORG_AND_SITE_LD = {
+const ORG_AND_PRODUCTS_LD = {
   "@context": "https://schema.org",
   "@graph": [
     {
@@ -50,38 +43,33 @@ const ORG_AND_SITE_LD = {
     },
     {
       "@type": "SoftwareApplication",
-      "@id": "https://factorylm.com/#app",
-      name: "MIRA — Maintenance Intelligence & Resource Assistant",
+      "@id": "https://factorylm.com/#printsense",
+      name: "PrintSense",
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web, Telegram, Slack",
-      url: "https://factorylm.com/",
-      description: "FactoryLM is a maintenance digital transformation firm. We map your assets, manuals, PLC context, and technician knowledge into a structured Maintenance Intelligence Namespace. MIRA — our AI execution layer — runs on top.",
-      offers: [
-        {
-          "@type": "Offer",
-          name: "Maintenance Assessment",
-          price: "500",
-          priceCurrency: "USD",
-          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "one-time" },
-          url: "https://factorylm.com/buy",
+      url: "https://factorylm.com/printsense",
+      description:
+        "Electrical-print intelligence that lets technicians send a print page or package, ask questions, and receive cited explanations with declared uncertainty.",
+      publisher: { "@id": "https://factorylm.com/#org" },
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://factorylm.com/#drive-commander",
+      name: "Drive Commander",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      url: "https://factorylm.com/drive-commander/siemens-g120",
+      description:
+        "Cited drive fault, parameter, keypad, and troubleshooting intelligence for supported VFD families.",
+      offers: {
+        "@type": "Offer",
+        price: "29",
+        priceCurrency: "USD",
+        priceSpecification: {
+          "@type": "UnitPriceSpecification",
+          unitText: "MONTH",
         },
-        {
-          "@type": "Offer",
-          name: "Pilot — One-Line Transformation",
-          price: "2000",
-          priceCurrency: "USD",
-          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per month, 3-month minimum" },
-          url: "https://factorylm.com/buy",
-        },
-        {
-          "@type": "Offer",
-          name: "Operating Layer",
-          price: "499",
-          priceCurrency: "USD",
-          priceSpecification: { "@type": "UnitPriceSpecification", unitText: "per plant per month" },
-          url: "https://factorylm.com/buy",
-        },
-      ],
+      },
       publisher: { "@id": "https://factorylm.com/#org" },
     },
   ],
@@ -90,480 +78,145 @@ const ORG_AND_SITE_LD = {
 function hero(): string {
   return `<section class="fl-hero" aria-labelledby="fl-hero-h1">
   <div class="fl-hero-inner">
-    <p class="fl-hero-eyebrow">The Maintenance Knowledge Layer</p>
-    <h1 id="fl-hero-h1" class="fl-hero-h1">FactoryLM</h1>
-    <h2 class="fl-hero-h2">Cited troubleshooting answers from your manuals, assets, and fault history.</h2>
-    <h3 class="fl-hero-h3">Without rebuilding your CMMS.</h3>
-    <p class="fl-hero-sub">Your manuals are in filing cabinets. Your fault history is in someone's head. Your PLC tags don't match your asset names — so generic AI guesses. We structure all of it into a Maintenance Intelligence Namespace — the AI-ready infrastructure <strong>MIRA</strong> runs on — then MIRA answers technicians with citations.</p>
+    <p class="fl-hero-eyebrow">Industrial troubleshooting intelligence</p>
+    <h1 id="fl-hero-h1" class="fl-hero-h1">Understand drive faults and electrical prints faster.</h1>
+    <p class="fl-hero-sub">FactoryLM gives technicians two direct products: <strong>PrintSense</strong> for chatting with electrical prints and <strong>Drive Commander</strong> for cited drive fault and parameter answers. Start with the problem in front of you. Expand into MIRA when your team needs a plant-wide knowledge layer.</p>
     <div class="fl-hero-cta">
-      ${btnPrimary("Book $500 Assessment", { href: "/buy", cta: "hero-assessment" })}
-      ${btnGhost("Try a sample MIRA answer", { href: "https://app.factorylm.com/quickstart", cta: "hero-demo" })}
+      ${btnPrimary("Open PrintSense", { href: "/printsense", cta: "hero-printsense" })}
+      ${btnGhost("Open Drive Commander", { href: "/drive-commander/siemens-g120", cta: "hero-drive-commander" })}
     </div>
-    <p class="fl-hero-cta-foot">Most plants start with the $500 on-site assessment — you leave with a written gap report and a namespace blueprint. Already a customer? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
-    <div class="fl-hero-screenshot" aria-hidden="true">
-      <img
-        src="/images/hero-fault-lookup-cartoon.jpg"
-        alt="Comic split-panel: on the left, a plant's maintenance world is chaos — manuals in filing cabinets, mismatched PLC tags, tribal knowledge on a whiteboard. On the right, the same plant after structuring — assets named, manuals indexed, MIRA answering a question with citations."
-        class="fl-hero-screenshot-img"
-        width="1400"
-        height="800"
-        loading="eager"
-        fetchpriority="high"
-        decoding="async"
-      >
-    </div>
+    <p class="fl-hero-cta-foot">No assessment required to try the products. FactoryLM services are available when you need package review, integrations, or plant-wide rollout.</p>
   </div>
 </section>`;
 }
 
-function projectCardRow(): string {
-  const cards = [
-    {
-      kind: "Assessment",
-      title: "1. Assessment — $500",
-      body: "We walk your floor (in person or remote). Score your Maintenance AI Readiness. Deliver a written gap report and a namespace blueprint. Takes 1 day.",
-      glyph: "📋",
-    },
-    {
-      kind: "Pilot",
-      title: "2. Pilot — $2–5K/mo",
-      body: "We structure one line: nameplates scanned, manuals indexed, PLC tags mapped, PMs extracted, fault history captured. MIRA goes live on that scope. 3-month minimum.",
-      glyph: "🛠",
-    },
-    {
-      kind: "Operating Layer",
-      title: "3. Operating Layer — $499/mo",
-      body: "MIRA in production across the plant. Telegram + web + CMMS write-back. Quarterly namespace audits. Continuous structuring as new assets come online.",
-      glyph: "⚙️",
-    },
-  ];
-  const cardsHtml = cards
-    .map(
-      (c) => `<article class="fl-project-card" aria-label="${c.kind}">
-    <div class="fl-project-card-glyph" aria-hidden="true">${c.glyph}</div>
-    <h3 class="fl-project-card-h">${c.title}</h3>
-    <p class="fl-project-card-body">${c.body}</p>
-  </article>`
-    )
-    .join("\n  ");
-  return `<section class="fl-section" aria-labelledby="fl-projects-h">
-  <h2 id="fl-projects-h" class="fl-section-h">Three ways we work with you.</h2>
-  <p class="fl-section-sub">Start with the assessment. Most plants don't need everything at once.</p>
-  <div class="fl-project-row">
-  ${cardsHtml}
-  </div>
-</section>`;
-}
-
-function compareSection(): string {
-  return `<section class="fl-section" aria-labelledby="fl-compare-h">
-  <h2 id="fl-compare-h" class="fl-section-h">Why generic AI fails on the floor.</h2>
-  <p class="fl-section-sub">Same question. The difference is whether your maintenance world has been structured.</p>
-  ${compareBlock(
-    "Why is the Powerflex 755 tripping F005 at 1,200 RPM?",
-    "Generic AI (no namespace)",
-    "F005 is typically caused by undervoltage at the input or a brownout condition. Check incoming line voltage and confirm your PLC tag mapping.",
-    "No plant context. No manual citation. No history. Hallucination risk.",
-    "MIRA (on a structured namespace)",
-    "F005 on this drive (Asset POW-755-A12) means DC bus undervoltage. Last 7 days show 4 trips at the same RPM band, all overnight. Manual §6.2 says to check the bus capacitor bank — your 2024-12-14 PM noted bulging on cap 3.",
-    ["Manual §6.2 (PowerFlex 755)", "PM 2024-12-14", "Trips: last 7 d"]
-  )}
-</section>`;
-}
-
-function cartoonRow(): string {
-  // Three placeholder divs that feature-cartoons.js mounts SVG demos into.
-  // The script self-installs styles for `.cartoon-demo` and child classes.
-  // Lede copy is intentionally short — the cartoons carry the storytelling.
-  const cells = [
-    {
-      id: "cartoon-fd",
-      heading: "Structured asset hierarchy",
-      lede: "Machine → sub-component → motor → relay. Every nameplate scanned, every manual bound to the asset it serves.",
-      label: "Asset hierarchy demonstration",
-    },
-    {
-      id: "cartoon-cmms",
-      heading: "PLC tags reconciled to assets",
-      lede: "LINE3_VFD1_CURRENT now knows it lives on Asset POW-755-A12. AI can finally cross the IT/OT gap.",
-      label: "PLC tag reconciliation demonstration",
-    },
-    {
-      id: "cartoon-vv",
-      heading: "Tribal knowledge captured",
-      lede: "Senior tech's voice notes become structured RCA records. The 30-year fault history doesn't retire with them.",
-      label: "Tribal knowledge capture demonstration",
-    },
-  ];
-  const cellsHtml = cells
-    .map(
-      (c) => `<div class="fl-cartoon-cell">
-    <h3 class="fl-cartoon-h">${c.heading}</h3>
-    <p class="fl-cartoon-lede">${c.lede}</p>
-    <div id="${c.id}" class="cartoon-demo" role="region" aria-label="${c.label}" tabindex="0"></div>
-  </div>`
-    )
-    .join("\n  ");
-  return `<section class="fl-section fl-cartoons" aria-labelledby="fl-cartoons-h">
-  <h2 id="fl-cartoons-h" class="fl-section-h">What we structure during a pilot.</h2>
-  <p class="fl-section-sub">The Maintenance Intelligence Namespace — the foundation AI needs.</p>
-  <div class="fl-cartoon-row">
-  ${cellsHtml}
-  </div>
-</section>`;
-}
-
-function featureStrip(): string {
-  const stopHtml = stopCard(
-    "Voltage above safe range",
-    "MIRA detected 480 V on a 240 V branch via the photo you sent at 02:14. Do not energize. Verify with a meter before any next step.",
-    [
-      { label: "Acknowledge", href: "#" },
-      { label: "Call supervisor", href: "#" },
-    ]
-  );
-  return `<section class="fl-section fl-feature-strip" aria-labelledby="fl-feature-h">
-  <h2 id="fl-feature-h" class="fl-section-h">Built for the floor.</h2>
-  <p class="fl-section-sub">Every document gets a state. Every safety signal gets a stop.</p>
-  <div class="fl-feature-grid">
-    <div class="fl-state-row" role="group" aria-label="Document states">
-      ${stateBadge("indexed")}
-      ${stateBadge("partial")}
-      ${stateBadge("failed")}
-      ${stateBadge("superseded")}
-    </div>
-    <div class="fl-feature-stop">
-      ${stopHtml}
-    </div>
-  </div>
-</section>`;
-}
-
-function howItWorks(): string {
-  const steps = [
-    { n: "1", h: "Scan assets &amp; nameplates", b: "Every machine, sub-component, and motor — captured with its nameplate, in person or from a photo." },
-    { n: "2", h: "Bind manuals to assets", b: "OEM manuals, wiring diagrams, and datasheets indexed and attached to the asset they serve." },
-    { n: "3", h: "Map fault history, CMMS &amp; PLC tags", b: "Work-order history and PLC tag names reconciled to the right asset — the IT/OT gap, closed." },
-    { n: "4", h: "Ask MIRA", b: "A technician asks a fault-code or troubleshooting question in Slack, Telegram, or the web." },
-    { n: "5", h: "MIRA cites the source", b: "Every answer points to the manual section, fault-history entry, or PLC tag that grounds it." },
-    { n: "6", h: "Draft PMs &amp; work orders", b: "Validated answers become PM suggestions and work-order drafts — synced to your CMMS." },
-  ];
-  const cards = steps
-    .map(
-      (s) => `<article class="fl-project-card" aria-label="Step ${s.n}">
-    <div class="fl-project-card-glyph" aria-hidden="true">${s.n}</div>
-    <h3 class="fl-project-card-h">${s.h}</h3>
-    <p class="fl-project-card-body">${s.b}</p>
-  </article>`
-    )
-    .join("\n  ");
-  return `<section class="fl-section" aria-labelledby="fl-how-h">
-  <h2 id="fl-how-h" class="fl-section-h">How it works.</h2>
-  <p class="fl-section-sub">Structure first, answers second. The namespace is what makes the AI trustworthy.</p>
-  <div class="fl-project-row">
-  ${cards}
-  </div>
-</section>`;
-}
-
-function buyerFit(): string {
-  const forList = [
-    "Maintenance managers",
-    "Plant managers",
-    "Reliability engineers",
-    "Controls engineers &amp; integrators",
-  ];
-  const notList = [
-    "Teams with no manual or document access to structure",
-    "Buyers looking for a standalone CMMS replacement",
-    "Anyone expecting autonomous safety decisions — MIRA escalates, it doesn't act",
-  ];
-  const li = (items: string[]) => items.map((i) => `<li>${i}</li>`).join("\n      ");
-  return `<section class="fl-section" aria-labelledby="fl-fit-h">
-  <h2 id="fl-fit-h" class="fl-section-h">Who it's for.</h2>
-  <p class="fl-section-sub">We'd rather tell you up front. See the full list on <a href="/limitations" data-cta="fit-limitations">Limitations</a>.</p>
-  <div class="fl-fit-grid">
-    <div class="fl-fit-col fl-fit-for">
-      <h3 class="fl-fit-h3">Built for</h3>
-      <ul class="fl-fit-list">
-      ${li(forList)}
+function productCards(): string {
+  return `<section class="fl-section" aria-labelledby="fl-products-h">
+  <p class="fl-kicker">Two products. One clear front door.</p>
+  <h2 id="fl-products-h" class="fl-section-h">Start with the technician's question.</h2>
+  <div class="fl-product-grid">
+    <article class="fl-product-card fl-product-card-primary" aria-label="PrintSense">
+      <p class="fl-product-label">Electrical prints</p>
+      <h3>PrintSense</h3>
+      <p class="fl-product-promise">Send a print page, photo set, or package. Ask how the circuit works, where a signal goes, or what to check next.</p>
+      <ul>
+        <li>Plain-English circuit and system explanations</li>
+        <li>Page, location, device, wire, and cross-reference evidence</li>
+        <li>Continuing conversation about the same machine</li>
+        <li>Unreadable or uncertain areas declared instead of guessed</li>
       </ul>
-    </div>
-    <div class="fl-fit-col fl-fit-not">
-      <h3 class="fl-fit-h3">Not the right fit (yet)</h3>
-      <ul class="fl-fit-list">
-      ${li(notList)}
+      <div class="fl-card-actions">
+        ${btnPrimary("Try PrintSense", { href: "/printsense", cta: "product-printsense" })}
+        <span>Self-serve entry through Telegram today; web workspace is the product direction.</span>
+      </div>
+    </article>
+    <article class="fl-product-card" aria-label="Drive Commander">
+      <p class="fl-product-label">Variable-frequency drives</p>
+      <h3>Drive Commander</h3>
+      <p class="fl-product-promise">Look up a supported drive fault and get the meaning, related parameters, reset workflow, and manual evidence.</p>
+      <ul>
+        <li>Free cited fault pages for supported drive families</li>
+        <li>Pro troubleshooting, wiring, commissioning, and keypad guidance</li>
+        <li>Manufacturer-pack evidence instead of generic AI answers</li>
+        <li>$29/month or $197/year</li>
       </ul>
-    </div>
+      <div class="fl-card-actions">
+        ${btnPrimary("See Siemens G120", { href: "/drive-commander/siemens-g120", cta: "product-drive-commander" })}
+        <span>Buy Pro from the live Drive Commander checkout.</span>
+      </div>
+    </article>
   </div>
 </section>`;
 }
 
-function pricingTeaser(): string {
-  return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-pricing-h">
-  <h2 id="fl-pricing-h" class="fl-section-h">Start with a $500 assessment.</h2>
-  <p class="fl-section-sub">We come to your floor. You leave with a gap report and a namespace blueprint. No software demo. No AI hype.</p>
+function productFlow(): string {
+  return `<section class="fl-section fl-flow" aria-labelledby="fl-flow-h">
+  <p class="fl-kicker">Product hierarchy</p>
+  <h2 id="fl-flow-h" class="fl-section-h">Solve one problem first. Expand only when it earns trust.</h2>
+  <div class="fl-flow-grid">
+    <article><span>1</span><h3>PrintSense or Drive Commander</h3><p>Immediate technician value from the print or drive in front of them.</p></article>
+    <article><span>2</span><h3>MIRA</h3><p>Persistent team memory across manuals, prints, assets, fault history, Telegram, Slack, and web.</p></article>
+    <article><span>3</span><h3>FactoryLM platform</h3><p>Plant-wide integrations, namespace structuring, CMMS workflows, telemetry, and rollout support.</p></article>
+  </div>
+</section>`;
+}
+
+function trustSection(): string {
+  return `<section class="fl-section" aria-labelledby="fl-trust-h">
+  <p class="fl-kicker">Grounded by design</p>
+  <h2 id="fl-trust-h" class="fl-section-h">Answers should show their work.</h2>
+  <div class="fl-proof-grid">
+    <article><h3>Cited</h3><p>Claims point back to a manual, print page, region, parameter, or stored evidence record.</p></article>
+    <article><h3>Honest</h3><p>Unreadable text, missing pages, conflicting identifiers, and unsupported conclusions remain visible.</p></article>
+    <article><h3>Read-only</h3><p>The products explain and escalate. They do not energize equipment, change parameters, or replace qualified review.</p></article>
+  </div>
+</section>`;
+}
+
+function expansionCta(): string {
+  return `<section class="fl-section fl-expansion" aria-labelledby="fl-expansion-h">
+  <p class="fl-kicker">Need more than a standalone product?</p>
+  <h2 id="fl-expansion-h" class="fl-section-h">Bring the proven workflow into your plant.</h2>
+  <p>FactoryLM can connect PrintSense and Drive Commander to your manuals, equipment records, PLC context, telemetry, CMMS, and technician channels. An assessment is optional sales assistance—not the front door.</p>
   <div class="fl-hero-cta">
-    ${btnPrimary("Book Your Assessment", { href: "/buy", cta: "pricing-teaser-primary" })}
-    ${btnGhost("Talk to Mike", { href: "mailto:mike@factorylm.com", cta: "pricing-teaser-secondary" })}
+    ${btnPrimary("View product pricing", { href: "/pricing", cta: "expansion-pricing" })}
+    ${btnGhost("Talk about a plant rollout", { href: "mailto:mike@factorylm.com?subject=FactoryLM%20plant%20rollout", cta: "expansion-contact" })}
   </div>
 </section>`;
 }
 
 const PAGE_STYLES = `
-/* Page-specific styles for the home view. Dark theme tokens are
-   inherited from /_dark-theme.css (linked from <head>) so this block
-   only carries layout and typography rules unique to the home page. */
-
-.fl-topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: var(--fl-sp-4) var(--fl-sp-6);
-  background: var(--fl-card-0);
-  border-bottom: 1px solid var(--fl-rule-200);
-  gap: var(--fl-sp-6);
-}
-.fl-topbar-brand {
-  font-weight: 600; color: var(--fl-navy-900); text-decoration: none;
-  font-size: var(--fl-type-lg); letter-spacing: var(--fl-ls-tight);
-}
-.fl-topbar-nav { display: flex; gap: var(--fl-sp-6); }
-.fl-topbar-nav a {
-  color: var(--fl-ink-900); text-decoration: none;
-  font-size: var(--fl-type-base);
-}
-.fl-topbar-nav a:hover { color: var(--fl-navy-900); text-decoration: underline; }
-
-.fl-hero {
-  padding: var(--fl-sp-10) var(--fl-sp-6);
-  background: linear-gradient(180deg, var(--fl-sky-100) 0%, var(--fl-bg-50) 100%);
-  text-align: center;
-}
-.fl-hero-inner { max-width: 880px; margin: 0 auto; }
-.fl-hero-eyebrow {
-  text-transform: uppercase;
-  letter-spacing: var(--fl-ls-caps);
-  font-size: var(--fl-type-xs);
-  color: var(--fl-muted-600);
-  margin-bottom: var(--fl-sp-4);
-}
-.fl-hero-h1 {
-  font-size: var(--fl-type-4xl);
-  letter-spacing: var(--fl-ls-tight);
-  color: var(--fl-navy-900);
-  margin-bottom: var(--fl-sp-2);
-}
-.fl-hero-h2 {
-  font-size: var(--fl-type-3xl);
-  letter-spacing: var(--fl-ls-tight);
-  color: var(--fl-ink-900);
-  font-weight: 500;
-  margin-bottom: var(--fl-sp-2);
-}
-.fl-hero-h3 {
-  font-size: var(--fl-type-xl);
-  color: var(--fl-orange-600);
-  font-weight: 500;
-  margin-bottom: var(--fl-sp-5);
-}
-.fl-hero-sub {
-  font-size: var(--fl-type-md);
-  color: var(--fl-muted-600);
-  max-width: 720px;
-  margin: 0 auto var(--fl-sp-8);
-  line-height: 1.55;
-}
-.fl-hero-cta {
-  display: flex; gap: var(--fl-sp-4); justify-content: center; flex-wrap: wrap;
-}
-.fl-hero-cta-foot {
-  text-align: center;
-  font-size: var(--fl-type-xs);
-  color: var(--fl-muted-600);
-  margin-top: var(--fl-sp-3);
-}
-
-/* Mobile sticky CTA — visible only ≤720px so it doesn't double up with the
-   above-the-fold buttons on desktop. Bottom-anchored, full-width minus a
-   small inset, large tap target. Hidden when JS isn't present is fine —
-   it's a plain anchor, no script required. */
-.fl-mobile-cta {
-  display: none;
-}
-@media (max-width: 720px) {
-  .fl-mobile-cta {
-    display: block;
-    position: fixed;
-    left: var(--fl-sp-4);
-    right: var(--fl-sp-4);
-    bottom: var(--fl-sp-4);
-    z-index: 50;
-    background: var(--fl-orange-600);
-    color: #fff;
-    text-align: center;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: var(--fl-type-base);
-    padding: var(--fl-sp-4) var(--fl-sp-5);
-    border-radius: var(--fl-radius-pill);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.10);
-  }
-  .fl-mobile-cta:active { transform: translateY(1px); }
-  /* Bottom-page padding so the sticky CTA doesn't sit on top of the footer */
-  body { padding-bottom: 72px; }
-}
-
-.fl-section {
-  max-width: 1080px; margin: 0 auto;
-  padding: var(--fl-sp-10) var(--fl-sp-6);
-}
-.fl-section-h {
-  font-size: var(--fl-type-2xl);
-  color: var(--fl-navy-900);
-  text-align: center;
-  margin-bottom: var(--fl-sp-2);
-}
-.fl-section-sub {
-  text-align: center; color: var(--fl-muted-600);
-  margin-bottom: var(--fl-sp-8); font-size: var(--fl-type-md);
-}
-
-.fl-project-row {
-  display: grid; gap: var(--fl-sp-5);
-  grid-template-columns: 1fr;
-}
-@media (min-width: 720px) {
-  .fl-project-row { grid-template-columns: repeat(3, 1fr); }
-}
-.fl-project-card {
-  background: var(--fl-card-0);
-  border: 1px solid var(--fl-rule-200);
-  border-radius: var(--fl-radius-lg);
-  padding: var(--fl-sp-6);
-  box-shadow: var(--fl-shadow-sm);
-}
-.fl-project-card-glyph { font-size: var(--fl-type-3xl); margin-bottom: var(--fl-sp-3); }
-.fl-project-card-h {
-  font-size: var(--fl-type-lg); color: var(--fl-navy-900);
-  margin-bottom: var(--fl-sp-2);
-}
-.fl-project-card-body { color: var(--fl-muted-600); line-height: 1.5; }
-
-.fl-cartoon-row {
-  display: grid; gap: var(--fl-sp-6);
-  grid-template-columns: 1fr;
-}
-@media (min-width: 880px) {
-  .fl-cartoon-row { grid-template-columns: repeat(3, 1fr); }
-}
-.fl-cartoon-cell {
-  display: flex; flex-direction: column; gap: var(--fl-sp-2);
-}
-.fl-cartoon-h {
-  font-size: var(--fl-type-lg);
-  color: var(--fl-navy-900);
-  margin: 0;
-}
-.fl-cartoon-lede {
-  color: var(--fl-muted-600);
-  font-size: var(--fl-type-base);
-  line-height: 1.5;
-  margin: 0 0 var(--fl-sp-2);
-}
-@media (min-width: 880px) {
-  /* Keep cartoon top edges aligned even when ledes wrap differently */
-  .fl-cartoon-lede { min-height: 3.5em; }
-}
-
-.fl-feature-grid {
-  display: grid; gap: var(--fl-sp-6);
-  grid-template-columns: 1fr;
-}
-@media (min-width: 880px) {
-  .fl-feature-grid { grid-template-columns: 1fr 1fr; align-items: center; }
-}
-.fl-state-row {
-  display: flex; flex-wrap: wrap; gap: var(--fl-sp-3);
-  justify-content: center;
-}
-
-.fl-hero-screenshot {
-  margin-top: var(--fl-sp-10);
-  border-radius: var(--fl-radius-lg);
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.10);
-  border: 1px solid var(--fl-rule-200);
-  max-width: 960px;
-  margin-left: auto;
-  margin-right: auto;
-}
-.fl-hero-screenshot-img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.fl-pricing-teaser { text-align: center; }
-
-.fl-fit-grid {
-  display: grid; gap: var(--fl-sp-5);
-  grid-template-columns: 1fr;
-}
-@media (min-width: 720px) {
-  .fl-fit-grid { grid-template-columns: 1fr 1fr; }
-}
-.fl-fit-col {
-  background: var(--fl-card-0);
-  border: 1px solid var(--fl-rule-200);
-  border-radius: var(--fl-radius-lg);
-  padding: var(--fl-sp-6);
-  box-shadow: var(--fl-shadow-sm);
-}
-.fl-fit-h3 {
-  font-size: var(--fl-type-lg); color: var(--fl-navy-900);
-  margin-bottom: var(--fl-sp-4);
-}
-.fl-fit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--fl-sp-3); }
-.fl-fit-list li { color: var(--fl-muted-600); line-height: 1.5; padding-left: var(--fl-sp-5); position: relative; }
-.fl-fit-for .fl-fit-list li::before { content: "✓"; position: absolute; left: 0; color: var(--fl-good, var(--fl-navy-900)); font-weight: 700; }
-.fl-fit-not .fl-fit-list li::before { content: "—"; position: absolute; left: 0; color: var(--fl-muted-600); font-weight: 700; }
-
-.fl-footer {
-  border-top: 1px solid var(--fl-rule-200);
-  background: var(--fl-card-0);
-  padding: var(--fl-sp-8) var(--fl-sp-6);
-}
-.fl-footer-inner {
-  max-width: 1080px; margin: 0 auto;
-  display: flex; flex-wrap: wrap; gap: var(--fl-sp-5);
-  align-items: center; justify-content: space-between;
-}
-.fl-footer-brand { color: var(--fl-muted-600); font-size: var(--fl-type-sm); }
-.fl-footer-links { display: flex; gap: var(--fl-sp-5); list-style: none; }
-.fl-footer-links a {
-  color: var(--fl-ink-900); text-decoration: none; font-size: var(--fl-type-sm);
-}
-.fl-footer-links a:hover { color: var(--fl-navy-900); text-decoration: underline; }
-.fl-sun-toggle {
-  background: transparent;
-  border: 1px solid var(--fl-rule-200);
-  border-radius: var(--fl-radius-pill);
-  padding: var(--fl-sp-2) var(--fl-sp-4);
-  font-size: var(--fl-type-sm);
-  cursor: pointer;
-  color: var(--fl-ink-900);
-}
-.fl-sun-toggle:hover { border-color: var(--fl-navy-900); }
+.fl-topbar{display:flex;align-items:center;justify-content:space-between;padding:var(--fl-sp-4) var(--fl-sp-6);background:var(--fl-card-0);border-bottom:1px solid var(--fl-rule-200);gap:var(--fl-sp-5)}
+.fl-topbar-brand{font-weight:700;color:var(--fl-navy-900);text-decoration:none;font-size:var(--fl-type-lg)}
+.fl-topbar-nav{display:flex;gap:var(--fl-sp-5);align-items:center}
+.fl-topbar-nav a{color:var(--fl-ink-900);text-decoration:none;font-size:var(--fl-type-sm)}
+.fl-topbar-nav a:hover{color:var(--fl-orange-600);text-decoration:underline}
+.fl-topbar-cta{display:flex;gap:var(--fl-sp-3);align-items:center}
+.fl-hero{padding:var(--fl-sp-10) var(--fl-sp-6);background:linear-gradient(180deg,var(--fl-sky-100),var(--fl-bg-50));text-align:center}
+.fl-hero-inner{max-width:900px;margin:0 auto}
+.fl-hero-eyebrow,.fl-kicker{text-transform:uppercase;letter-spacing:var(--fl-ls-caps);font-size:var(--fl-type-xs);color:var(--fl-orange-600);font-weight:700;margin-bottom:var(--fl-sp-3)}
+.fl-hero-h1{font-size:clamp(2.2rem,6vw,4.5rem);line-height:1.02;letter-spacing:var(--fl-ls-tight);color:var(--fl-navy-900);margin-bottom:var(--fl-sp-5)}
+.fl-hero-sub{font-size:var(--fl-type-md);color:var(--fl-muted-600);max-width:760px;margin:0 auto var(--fl-sp-7);line-height:1.65}
+.fl-hero-cta{display:flex;gap:var(--fl-sp-4);justify-content:center;flex-wrap:wrap}
+.fl-hero-cta-foot{font-size:var(--fl-type-xs);color:var(--fl-muted-600);margin-top:var(--fl-sp-4)}
+.fl-section{max-width:1080px;margin:0 auto;padding:var(--fl-sp-10) var(--fl-sp-6)}
+.fl-section-h{font-size:var(--fl-type-2xl);color:var(--fl-navy-900);margin-bottom:var(--fl-sp-6);max-width:760px}
+.fl-product-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--fl-sp-6)}
+.fl-product-card,.fl-proof-grid article,.fl-flow-grid article{background:var(--fl-card-0);border:1px solid var(--fl-rule-200);border-radius:var(--fl-radius-lg);padding:var(--fl-sp-6);box-shadow:var(--fl-shadow-sm)}
+.fl-product-card-primary{border-color:var(--fl-orange-600)}
+.fl-product-label{font-size:var(--fl-type-xs);text-transform:uppercase;letter-spacing:var(--fl-ls-caps);color:var(--fl-orange-600);font-weight:700}
+.fl-product-card h3{font-size:var(--fl-type-2xl);color:var(--fl-navy-900);margin:var(--fl-sp-2) 0 var(--fl-sp-3)}
+.fl-product-promise{font-size:var(--fl-type-md);color:var(--fl-ink-900);line-height:1.55}
+.fl-product-card ul{margin:var(--fl-sp-5) 0;padding-left:var(--fl-sp-5);color:var(--fl-muted-600);display:grid;gap:var(--fl-sp-2)}
+.fl-card-actions{display:flex;flex-direction:column;align-items:flex-start;gap:var(--fl-sp-3)}
+.fl-card-actions span{font-size:var(--fl-type-xs);color:var(--fl-muted-600)}
+.fl-flow{border-top:1px solid var(--fl-rule-200);border-bottom:1px solid var(--fl-rule-200)}
+.fl-flow-grid,.fl-proof-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--fl-sp-5)}
+.fl-flow-grid span{display:inline-flex;width:32px;height:32px;border-radius:50%;align-items:center;justify-content:center;background:var(--fl-sky-100);color:var(--fl-navy-900);font-weight:700}
+.fl-flow-grid h3,.fl-proof-grid h3{font-size:var(--fl-type-lg);color:var(--fl-navy-900);margin:var(--fl-sp-3) 0 var(--fl-sp-2)}
+.fl-flow-grid p,.fl-proof-grid p,.fl-expansion p{color:var(--fl-muted-600);line-height:1.6}
+.fl-expansion{text-align:center}
+.fl-expansion .fl-section-h{margin-left:auto;margin-right:auto}
+.fl-expansion>p{max-width:720px;margin:0 auto var(--fl-sp-6)}
+.fl-footer{border-top:1px solid var(--fl-rule-200);background:var(--fl-card-0);padding:var(--fl-sp-8) var(--fl-sp-6)}
+.fl-footer-inner{max-width:1080px;margin:0 auto;display:flex;flex-wrap:wrap;gap:var(--fl-sp-5);align-items:center;justify-content:space-between}
+.fl-footer-brand{color:var(--fl-muted-600);font-size:var(--fl-type-sm)}
+.fl-footer-links{display:flex;gap:var(--fl-sp-5);list-style:none}
+.fl-footer-links a{color:var(--fl-ink-900);text-decoration:none;font-size:var(--fl-type-sm)}
+.fl-sun-toggle{background:transparent;border:1px solid var(--fl-rule-200);border-radius:var(--fl-radius-pill);padding:var(--fl-sp-2) var(--fl-sp-4);font-size:var(--fl-type-sm);cursor:pointer;color:var(--fl-ink-900)}
+@media(max-width:900px){.fl-product-grid,.fl-flow-grid,.fl-proof-grid{grid-template-columns:1fr}.fl-topbar-nav{display:none}}
+@media(max-width:640px){.fl-topbar{padding:var(--fl-sp-3) var(--fl-sp-4)}.fl-topbar-cta .fl-btn-ghost{display:none}.fl-hero,.fl-section{padding-left:var(--fl-sp-4);padding-right:var(--fl-sp-4)}}
 `;
 
 export function renderHome(reqUrl?: string): string {
   const headHtml = head(
     {
-      title: "FactoryLM — Maintenance Digital Transformation",
+      title: "FactoryLM — PrintSense and Drive Commander",
       description:
-        "We turn messy maintenance reality — manuals in filing cabinets, mismatched PLC tags, tribal knowledge — into a structured Maintenance Intelligence Namespace. Then MIRA, our AI execution layer, makes it actionable. $500 assessment to start.",
+        "Chat with electrical prints using PrintSense, or get cited drive fault and parameter answers with Drive Commander. FactoryLM is the expansion platform behind both products.",
       canonical: "https://factorylm.com/",
       ogImage: "https://factorylm.com/og-image.png",
-      jsonLd: ORG_AND_SITE_LD,
+      jsonLd: ORG_AND_PRODUCTS_LD,
     },
     reqUrl
   );
@@ -579,19 +232,14 @@ export function renderHome(reqUrl?: string): string {
   ${navbar({ currentPath: "/" })}
   <main>
     ${hero()}
-    ${trustBand("68,000+ chunks of OEM documentation indexed", OEMS)}
-    ${projectCardRow()}
-    ${compareSection()}
-    ${howItWorks()}
-    ${cartoonRow()}
-    ${featureStrip()}
-    ${buyerFit()}
-    ${pricingTeaser()}
+    ${trustBand("Industrial documentation and drive intelligence across leading OEMs", OEMS)}
+    ${productCards()}
+    ${productFlow()}
+    ${trustSection()}
+    ${expansionCta()}
   </main>
   ${footer()}
-  <a href="/buy" class="fl-mobile-cta" data-cta="mobile-sticky-assessment">Book $500 Assessment</a>
   <script src="/sun-toggle.js"></script>
-  <script src="/feature-cartoons.js" defer></script>
 </body>
 </html>`;
 }
