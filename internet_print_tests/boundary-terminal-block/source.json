@@ -1,0 +1,25 @@
+{
+  "test_id": "boundary-terminal-block",
+  "source_url": "https://productguides.aucotec.com/Documentation/EBWebhelp/jkprrv-ezk_1WH-ttrupkgatznnq/using_eb/english_pdf/configuration_terminal_block_diagram.pdf",
+  "publisher": "AUCOTEC AG",
+  "title": "Engineering Base: Configuration of Terminal Block Diagram",
+  "sheet": "Standard Terminal Block Diagram",
+  "equipment_type": "terminal-strip interconnection",
+  "standard": "IEC 61082 / IEC 60445",
+  "category": "terminal_block",
+  "why_selected": "Boundary class 3: terminal-strip interconnection (numbered terminals, field/panel wire designations).",
+  "access_date_utc": "2026-07-21T07:47:17Z",
+  "original_sha256": "d10eef1ecb97ec6f09ee30d3d4c292e016c7b52c9b75028cee6e38db095c97d6",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://productguides.aucotec.com/Documentation/EBWebhelp/jkprrv-ezk_1WH-ttrupkgatznnq/using_eb/english_pdf/configuration_terminal_block_diagram.pdf",
+    "final_url": "https://productguides.aucotec.com/Documentation/EBWebhelp/jkprrv-ezk_1WH-ttrupkgatznnq/using_eb/english_pdf/configuration_terminal_block_diagram.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 1704064,
+    "host": "productguides.aucotec.com"
+  },
+  "license_note": "public source (vendor CDN) \u2014 original ownership retained by publisher; retained for testing only"
+}

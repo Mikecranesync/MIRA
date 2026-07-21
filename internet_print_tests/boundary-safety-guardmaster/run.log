@@ -1,0 +1,15 @@
+2026-07-21 03:53:32,522 INFO fetching https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/safety-wd001_-en-p.pdf
+2026-07-21 03:53:33,577 INFO fetched 8288352 bytes (application/pdf)
+2026-07-21 03:53:33,922 INFO rendered PDF page 57 @ 200 dpi -> 149354 bytes PNG
+2026-07-21 03:53:33,925 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:54:51,189 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=76.49s
+2026-07-21 03:54:51,280 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-safety-guardmaster — Next-Gen Guardmaster Safety Relay (GSR) Wiring Diagram (SAFETY-WD001) — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (8,288,352 B)
+  [attach] tested_page.png (149,354 B)
+  [attach] report.html (8,549 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (10,419 B)
+HTML: 1,951 chars

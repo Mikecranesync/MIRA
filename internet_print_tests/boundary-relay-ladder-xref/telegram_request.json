@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-relay-ladder-xref",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "53fdb7ad6190c83cf5a37dd45f500ed4806f44c27df6aa0574faeb54dbee05b8",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

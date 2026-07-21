@@ -1,0 +1,15 @@
+2026-07-21 03:47:37,749 INFO fetching https://lagos.udg.mx/sites/default/files/adjuntos/transparenciasneumaticaeng.pdf
+2026-07-21 03:47:39,702 INFO fetched 1252567 bytes (application/pdf)
+2026-07-21 03:47:39,852 INFO rendered PDF page 18 @ 200 dpi -> 107639 bytes PNG
+2026-07-21 03:47:39,855 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:48:28,258 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=47.6s
+2026-07-21 03:48:28,330 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-pneumatic-iso1219 — Fundamentals of Pneumatics (TP101) — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (1,252,567 B)
+  [attach] tested_page.png (107,639 B)
+  [attach] report.html (6,837 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (8,213 B)
+HTML: 1,863 chars

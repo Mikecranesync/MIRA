@@ -1,0 +1,29 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.85,
+  "drawing_type": "schematic",
+  "vision_description": "electrical drawing — hydraulic schematic diagram (page 16 of Toro University Technical Training on Hydraulic Systems), showing pump, filter, directional valve, and cylinder symbols with explanatory text.",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": null,
+  "final_text": "This is page **16** of a **Toro University Technical Training** document titled **\"Hydraulic Systems\"**, showing a **\"Complete Hydraulic Schematic\"**.\n\n**Printed description on the sheet:**\n> \"Here we have a simple hydraulic schematic using the symbols that we discussed and how they are used in a complete schematic. You can see that we have a hydraulic pump which gets it's fluid from the reservoir, pulls the fluid through the filter than sends it to the valve. The valve directs the oil to the hydraulic cylinder.\"\n\n**Components shown in the schematic (per the printed text):**\n- **Reservoir** — fluid source (tank symbol at bottom)\n- **Filter** — fluid passes through it after the reservoir (diamond symbol)\n- **Hydraulic pump** —",
+  "final_text_last_chunk": "This is page **16** of a **Toro University Technical Training** document titled **\"Hydraulic Systems\"**, showing a **\"Complete Hydraulic Schematic\"**.\n\n**Printed description on the sheet:**\n> \"Here we have a simple hydraulic schematic using the symbols that we discussed and how they are used in a complete schematic. You can see that we have a hydraulic pump which gets it's fluid from the reservoir, pulls the fluid through the filter than sends it to the valve. The valve directs the oil to the hydraulic cylinder.\"\n\n**Components shown in the schematic (per the printed text):**\n- **Reservoir** — fluid source (tank symbol at bottom)\n- **Filter** — fluid passes through it after the reservoir (diamond symbol)\n- **Hydraulic pump** —",
+  "all_messages": [
+    "This is page **16** of a **Toro University Technical Training** document titled **\"Hydraulic Systems\"**, showing a **\"Complete Hydraulic Schematic\"**.\n\n**Printed description on the sheet:**\n> \"Here we have a simple hydraulic schematic using the symbols that we discussed and how they are used in a complete schematic. You can see that we have a hydraulic pump which gets it's fluid from the reservoir, pulls the fluid through the filter than sends it to the valve. The valve directs the oil to the hydraulic cylinder.\"\n\n**Components shown in the schematic (per the printed text):**\n- **Reservoir** — fluid source (tank symbol at bottom)\n- **Filter** — fluid passes through it after the reservoir (diamond symbol)\n- **Hydraulic pump** —"
+  ],
+  "map_text": null,
+  "graph": null,
+  "interpreter_used": false,
+  "provider": "together",
+  "model": "together/MiniMaxAI/MiniMax-M3",
+  "interpreter_provider": "",
+  "interpreter_model": "gpt-5.5",
+  "decline_reason": null,
+  "effort": "medium",
+  "max_tokens": 12000,
+  "self_consistency_usage": null,
+  "latency_s": 56.64,
+  "error": null
+}

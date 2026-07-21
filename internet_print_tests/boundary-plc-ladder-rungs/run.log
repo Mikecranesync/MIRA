@@ -1,0 +1,15 @@
+2026-07-21 03:46:37,248 INFO fetching https://my.ece.utah.edu/~ece3510/Ladder%20Logic%20Fundamentals%20PLC%20tutorial.pdf
+2026-07-21 03:46:39,092 INFO fetched 257406 bytes (application/pdf)
+2026-07-21 03:46:39,827 INFO rendered PDF page 3 @ 200 dpi -> 169191 bytes PNG
+2026-07-21 03:46:39,831 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:47:14,868 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=33.98s
+2026-07-21 03:47:14,969 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-plc-ladder-rungs — Ladder Logic Fundamentals (PLC tutorial) — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (257,406 B)
+  [attach] tested_page.png (169,191 B)
+  [attach] report.html (6,619 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (7,617 B)
+HTML: 1,858 chars

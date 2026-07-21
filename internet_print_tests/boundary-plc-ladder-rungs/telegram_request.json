@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-plc-ladder-rungs",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "3f49ff10d4848cd0e3e513df69ebfb7023c4a96d0a2702da88f985c0b2618696",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

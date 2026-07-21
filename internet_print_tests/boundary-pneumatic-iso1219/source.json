@@ -1,0 +1,25 @@
+{
+  "test_id": "boundary-pneumatic-iso1219",
+  "source_url": "https://lagos.udg.mx/sites/default/files/adjuntos/transparenciasneumaticaeng.pdf",
+  "publisher": "Festo Didactic (mirrored, Univ. de Guadalajara)",
+  "title": "Fundamentals of Pneumatics (TP101)",
+  "sheet": "5/2 double-pilot valve speed-control circuit",
+  "equipment_type": "pneumatic circuit",
+  "standard": "DIN ISO 1219",
+  "category": "pneumatic",
+  "why_selected": "Boundary class 6: ISO 1219 pneumatic circuit (double-acting cylinder, flow controls, 5/2 DCV, 3/2 PBs).",
+  "access_date_utc": "2026-07-21T07:47:39Z",
+  "original_sha256": "10a598553cf90422c8fd995f8c9685f37ac6d13f85ce528183cc4d97c8e6712c",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://lagos.udg.mx/sites/default/files/adjuntos/transparenciasneumaticaeng.pdf",
+    "final_url": "https://lagos.udg.mx/sites/default/files/adjuntos/transparenciasneumaticaeng.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 1252567,
+    "host": "lagos.udg.mx"
+  },
+  "license_note": "public source (university mirror of Festo TP101) \u2014 retained for testing only"
+}

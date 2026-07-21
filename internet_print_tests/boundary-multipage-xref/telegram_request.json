@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-multipage-xref",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "c500377bf63002c3843e19122654fe07463aa8557362a858b43cf67faeca3da8",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

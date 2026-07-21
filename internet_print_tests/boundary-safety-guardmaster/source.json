@@ -1,0 +1,25 @@
+{
+  "test_id": "boundary-safety-guardmaster",
+  "source_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/safety-wd001_-en-p.pdf",
+  "publisher": "Rockwell Automation",
+  "title": "Next-Gen Guardmaster Safety Relay (GSR) Wiring Diagram (SAFETY-WD001)",
+  "sheet": "Fig 27 scanner + 800F E-stop + 440R-D22R2 DI relay + Kinetix (monitored manual reset)",
+  "equipment_type": "safety relay / E-stop",
+  "standard": "IEC 60204-1 / ISO 13849-1 PLd Cat 3 / IEC 62061 SIL CL2 / NFPA 79",
+  "category": "safety_relay",
+  "why_selected": "Boundary class 8: safety-relay/E-stop hookup with explicit monitored-manual-reset + printed ATTENTION hazard box (NOT the Banner ES-FL-2A). Tests the new safety-warning elevation.",
+  "access_date_utc": "2026-07-21T07:53:33Z",
+  "original_sha256": "074f983a2d7efb9ca780396c9633b6f7d8167029ad70c9c67f047855cdbbfb0a",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/safety-wd001_-en-p.pdf",
+    "final_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/safety-wd001_-en-p.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 8288352,
+    "host": "literature.rockwellautomation.com"
+  },
+  "license_note": "public source (Rockwell literature CDN) \u2014 retained for testing only"
+}

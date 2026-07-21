@@ -8,7 +8,7 @@
   "standard": "ISO 13850 / EN 418",
   "category": "safety_relay",
   "why_selected": "Dual-channel E-stop monitoring safety relay (K1/K2, S13-S34/13-24) \u2014 a functional-safety loop, the hardest class for an interpreter to read without inventing a Performance Level. Page 4 is the campaign-verified rendered schematic page (corpus_manifest.md first-10, entry #11). Publicly published on info.bannerengineering.com; provenance verified 2026-07-10 (206 application/pdf). Caption chosen to satisfy the production print_translator.is_print_question() gate (an initial 'Explain this safety circuit\u2026' phrasing was gate-rejected \u2014 see CAMPAIGN_SUMMARY gate finding).",
-  "access_date_utc": "2026-07-13T14:23:10Z",
+  "access_date_utc": "2026-07-21T07:57:19Z",
   "original_sha256": "51d7f43177b840657e8ef155ac2d6d6dc5ab554c27b6dd86c05926bc07476587",
   "original_ext": "pdf",
   "download": {

@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-hydraulic",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "4268f15b1065c8ff275cf683f96a43d42af8ba71b664ace9ac0501d585b4c5f9",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

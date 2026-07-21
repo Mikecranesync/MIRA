@@ -1,0 +1,15 @@
+2026-07-21 03:51:30,910 INFO fetching https://pdhacademy.com/wp-content/uploads/2023/08/462-Piping-and-Instrumentation-Diagrams.pdf
+2026-07-21 03:51:34,055 INFO fetched 3136182 bytes (application/pdf)
+2026-07-21 03:51:34,362 INFO rendered PDF page 20 @ 200 dpi -> 440401 bytes PNG
+2026-07-21 03:51:34,367 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:52:32,680 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=57.49s
+2026-07-21 03:52:32,759 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-pid-isa — Piping and Instrumentation Diagrams (Course 462) — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (3,136,182 B)
+  [attach] tested_page.png (440,401 B)
+  [attach] report.html (7,905 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (9,649 B)
+HTML: 1,862 chars

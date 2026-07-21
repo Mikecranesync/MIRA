@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-safety-guardmaster",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "e0650545bfd4a5ad2021514934dcc28d27a45c68760622f5d44c5e65ae402810",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

@@ -1,0 +1,25 @@
+{
+  "test_id": "boundary-panel-layout",
+  "source_url": "https://hybridplc.org/wp-content/uploads/chap9_S.pdf",
+  "publisher": "HybridPLC",
+  "title": "Chapter 9: Planning the Panel",
+  "sheet": "Fig 9-22 populated back-panel layout",
+  "equipment_type": "control-panel back-panel arrangement",
+  "standard": "UL 508A / NFPA 79 practice (no single drawing standard)",
+  "category": "panel_layout",
+  "why_selected": "Boundary class 4: mechanical back-panel arrangement (ducts, starters, PLC rack, terminal strips) \u2014 not a wiring schematic.",
+  "access_date_utc": "2026-07-21T07:51:06Z",
+  "original_sha256": "ba120603ca1e188b68ac910f1c24b7a4c68771dfec70a67dd577867ebd085f7b",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://hybridplc.org/wp-content/uploads/chap9_S.pdf",
+    "final_url": "https://hybridplc.org/wp-content/uploads/chap9_S.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 4060853,
+    "host": "hybridplc.org"
+  },
+  "license_note": "public source (WordPress) \u2014 original ownership retained by publisher; retained for testing only"
+}

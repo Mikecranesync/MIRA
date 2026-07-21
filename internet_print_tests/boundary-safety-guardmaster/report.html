@@ -1,0 +1,98 @@
+<!doctype html><meta charset=utf-8><title>boundary-safety-guardmaster</title><body style='font:14px system-ui;max-width:60rem;margin:2rem'><p># MIRA Print Translator Test — boundary-safety-guardmaster</p><p></p><p>## 1. Source &amp; drawing metadata</p><p>- Publisher: Rockwell Automation</p><p>- Title: Next-Gen Guardmaster Safety Relay (GSR) Wiring Diagram (SAFETY-WD001)</p><p>- Sheet: Fig 27 scanner + 800F E-stop + 440R-D22R2 DI relay + Kinetix (monitored manual reset)</p><p>- Equipment: safety relay / E-stop</p><p>- Standard: IEC 60204-1 / ISO 13849-1 PLd Cat 3 / IEC 62061 SIL CL2 / NFPA 79</p><p>- Category: safety_relay</p><p>- Source URL: https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/safety-wd001_-en-p.pdf</p><p>- Access date (UTC): 2026-07-21T07:53:33Z</p><p>- Original sha256: `074f983a2d7efb9ca780396c9633b6f7d8167029ad70c9c67f047855cdbbfb0a`</p><p></p><p>## 2. Why selected
+Boundary class 8: safety-relay/E-stop hookup with explicit monitored-manual-reset + printed ATTENTION hazard box (NOT the Banner ES-FL-2A). Tests the new safety-warning elevation.</p><p></p><p>## 3. Exact Telegram bot response (verbatim, unmodified)</p><p></p><p># Figure 27 — SafeZone Mini Laser Scanner, E-stop, and DI Safety Relay with Kinetix 350 Drive
+
+This wiring diagram shows how a **SafeZone Mini laser scanner** (catalog **442L-SFZNMN**, cable **442L-ACABL210**), an **E-stop** (**800FM-MT44** / **800F-MX02S**), and a **DI safety relay** (**440R-D22R2**) are interconnected to provide dual-channel safety stop inputs to a **Kinetix 350 drive**, with status fed back to a PLC.
+
+## Power
+- **+24V DC** rail feeds: SafeZone Mini Brown wire, DI relay **A1**, Kinetix 350 terminal **1 (+24V DC)**, and PLC input modules.
+- **24V DC Com** rail returns: SafeZone Mini Blue wire, DI relay **A2**, Kinetix 350 terminal **2 (Com)**, and PLC commons.
+
+## SafeZone Mini wiring
+- **Brown** → +24V DC
+- **Blue** → 24V DC Com
+- **Shield** → chassis ground
+- **White (Warning Field)** → drives the **Warning Field** lamp
+- **Pink** and **Gray** → dual-channel OSSDs into DI relay terminals **S12** and **S22**
+
+## E-stop wiring
+The 800FM-MT44 / 800F-MX02S E-stop contacts land on DI relay terminals **S11** and **S21** (the two safety input channels).
+
+## DI Safety Relay (440R-D22R2)
+- **Inputs:** S11/S21 from E-stop; S12/S22 from SafeZone Mini OSSDs.
+- **Monitoring loop:** **S34** ties back to **S32** (EDM/loopback).
+- **Reset:** momentary **Reset** pushbutton wired between **S34** and **Y32** (with L11/L12 in the reset circuit).
+- **Logic selector:** rotary switch on the front of the relay (positions 0–8) — set per application.
+- **Safety outputs:** contact pairs **13/14** and **23/24** go to the Kinetix 350 safety inputs.
+
+## Kinetix 350 Drive connections
+- **L1, L2, L3** — three-phase power input.
+- **1** +24V DC, **2** Com — control power.
+- **3 Status** — status output to PLC input module.
+- **4 Safety Input 1** — fed from DI relay contact 13/14.
+- **5 Safety Common** — common for safety inputs.
+- **6 Safety Input 2** — fed from DI relay contact 23/24.
+- Motor **M** on the drive output.
+
+## PLC I/O shown (catalog options)
+- **Inputs:** 1756-IB16, 1769-IQ16, 1746-IB16, 1734-IB4, 1793-IB6 (and 1756-IV16, 1769-IV16, 1746-IV16, 1734-IV4, 1793-IV16 variants).
+- **Outputs:** 1756-OB16, 1769-OB8, 1746-OB4, 1734-OB2, 1793-OB4.
+- The PLC processor monitors the Kinetix 350 **Status** output and the DI relay state.
+
+## How it works (function)
+Either the E-stop or a SafeZone Mini field breach opens both safety channels into the DI relay, which drops out contacts 13/14 and 23/24, removing the safety enable at Kinetix 350 terminals 4 and 6 and stopping the drive. The Reset button restores operation only after both channels re-close and the EDM loop (S34–S32) is healthy.
+
+---
+
+**Note:** This print shows wiring only — it does not indicate present contact state. Verify any &quot;is it closed/energized&quot; question with a meter at the terminals listed above. The DI relay **LOGIC** switch position must be set per the 440R-D22R2 installation instructions (not specified on this sheet).
+
+No DANGER / WARNING / CAUTION boxes, hard prohibitions, or required reset/isolation/bypass instructions are printed on this sheet, so no safety section is required.</p><p></p><p>- classification: **ELECTRICAL_PRINT** (conf 0.85)</p><p>- interpreter used (Anthropic PrintSynth): **False**</p><p>- model: together/MiniMaxAI/MiniMax-M3 · effort medium · latency 76.49s</p><p></p><p>## 4. LLM judge grade (PROVISIONAL, qualitative — not technician approval until Mike calibrates)</p><p>- score: **None/100** (None)</p><p>- hard failure: **None**</p><p>- summary: None</p><p></p><p>## 5. Verified strengths</p><p></p><p>## 6. Suspected errors / hallucinations</p><p></p><p>## 7. Items requiring technician review</p><p></p><p>## 8. Build &amp; runtime
+- commit: `003f53820a5ccf1ea9c7b5bc0d24dc2e517e2fb0` · branch: feat/printsense-generalization · version: 3.186.0
+- judge model: None · run: 2026-07-21T07:54:51Z</p><p>
+## 9. Source URL
+https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/safety-wd001_-en-p.pdf</p><h2>Verbatim response</h2><pre style='white-space:pre-wrap;border:1px solid #ccc;padding:1rem'># Figure 27 — SafeZone Mini Laser Scanner, E-stop, and DI Safety Relay with Kinetix 350 Drive
+
+This wiring diagram shows how a **SafeZone Mini laser scanner** (catalog **442L-SFZNMN**, cable **442L-ACABL210**), an **E-stop** (**800FM-MT44** / **800F-MX02S**), and a **DI safety relay** (**440R-D22R2**) are interconnected to provide dual-channel safety stop inputs to a **Kinetix 350 drive**, with status fed back to a PLC.
+
+## Power
+- **+24V DC** rail feeds: SafeZone Mini Brown wire, DI relay **A1**, Kinetix 350 terminal **1 (+24V DC)**, and PLC input modules.
+- **24V DC Com** rail returns: SafeZone Mini Blue wire, DI relay **A2**, Kinetix 350 terminal **2 (Com)**, and PLC commons.
+
+## SafeZone Mini wiring
+- **Brown** → +24V DC
+- **Blue** → 24V DC Com
+- **Shield** → chassis ground
+- **White (Warning Field)** → drives the **Warning Field** lamp
+- **Pink** and **Gray** → dual-channel OSSDs into DI relay terminals **S12** and **S22**
+
+## E-stop wiring
+The 800FM-MT44 / 800F-MX02S E-stop contacts land on DI relay terminals **S11** and **S21** (the two safety input channels).
+
+## DI Safety Relay (440R-D22R2)
+- **Inputs:** S11/S21 from E-stop; S12/S22 from SafeZone Mini OSSDs.
+- **Monitoring loop:** **S34** ties back to **S32** (EDM/loopback).
+- **Reset:** momentary **Reset** pushbutton wired between **S34** and **Y32** (with L11/L12 in the reset circuit).
+- **Logic selector:** rotary switch on the front of the relay (positions 0–8) — set per application.
+- **Safety outputs:** contact pairs **13/14** and **23/24** go to the Kinetix 350 safety inputs.
+
+## Kinetix 350 Drive connections
+- **L1, L2, L3** — three-phase power input.
+- **1** +24V DC, **2** Com — control power.
+- **3 Status** — status output to PLC input module.
+- **4 Safety Input 1** — fed from DI relay contact 13/14.
+- **5 Safety Common** — common for safety inputs.
+- **6 Safety Input 2** — fed from DI relay contact 23/24.
+- Motor **M** on the drive output.
+
+## PLC I/O shown (catalog options)
+- **Inputs:** 1756-IB16, 1769-IQ16, 1746-IB16, 1734-IB4, 1793-IB6 (and 1756-IV16, 1769-IV16, 1746-IV16, 1734-IV4, 1793-IV16 variants).
+- **Outputs:** 1756-OB16, 1769-OB8, 1746-OB4, 1734-OB2, 1793-OB4.
+- The PLC processor monitors the Kinetix 350 **Status** output and the DI relay state.
+
+## How it works (function)
+Either the E-stop or a SafeZone Mini field breach opens both safety channels into the DI relay, which drops out contacts 13/14 and 23/24, removing the safety enable at Kinetix 350 terminals 4 and 6 and stopping the drive. The Reset button restores operation only after both channels re-close and the EDM loop (S34–S32) is healthy.
+
+---
+
+**Note:** This print shows wiring only — it does not indicate present contact state. Verify any &quot;is it closed/energized&quot; question with a meter at the terminals listed above. The DI relay **LOGIC** switch position must be set per the 440R-D22R2 installation instructions (not specified on this sheet).
+
+No DANGER / WARNING / CAUTION boxes, hard prohibitions, or required reset/isolation/bypass instructions are printed on this sheet, so no safety section is required.</pre></body>

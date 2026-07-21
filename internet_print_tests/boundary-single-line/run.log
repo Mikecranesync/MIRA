@@ -1,0 +1,2 @@
+2026-07-21 03:48:28,331 INFO fetching https://s3.amazonaws.com/suncam/docs/469.pdf
+2026-07-21 03:48:28,457 WARNING skip: robots.txt disallows fetching https://s3.amazonaws.com/suncam/docs/469.pdf

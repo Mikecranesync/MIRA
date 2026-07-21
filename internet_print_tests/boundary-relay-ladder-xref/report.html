@@ -1,0 +1,66 @@
+<!doctype html><meta charset=utf-8><title>boundary-relay-ladder-xref</title><body style='font:14px system-ui;max-width:60rem;margin:2rem'><p># MIRA Print Translator Test — boundary-relay-ladder-xref</p><p></p><p>## 1. Source &amp; drawing metadata</p><p>- Publisher: Square D Company</p><p>- Title: Wiring Diagrams (File 0140, 1967 ed.)</p><p>- Sheet: 3-wire elementary control (holding contact)</p><p>- Equipment: relay ladder control circuit</p><p>- Standard: NEMA ICS elementary/ladder (JIC)</p><p>- Category: relay_ladder</p><p>- Source URL: https://archive.org/download/Square-d-wiring/Wiring%20Diagrams.pdf</p><p>- Access date (UTC): 2026-07-21T07:50:28Z</p><p>- Original sha256: `70dc072fb8e691cae9e37ecb601a8e613326fb95053babd903f41dd110bab567`</p><p></p><p>## 2. Why selected
+Boundary class 1: relay ladder elementary control (START/STOP holding, CRs). 1967 ed cross-sheet callouts are lighter than the modern book (Schneider portal 403).</p><p></p><p>## 3. Exact Telegram bot response (verbatim, unmodified)</p><p></p><p>This is **Square D Company, &quot;Wiring Diagrams — Typical Control Circuit Elementary Diagrams,&quot; dated January 1967, Page 5.** It shows six numbered 3-wire motor starter control schemes (Diagrams 3–8), each with a schematic and a brief printed description.
+
+**Diagram 3 — 3 Wire Control with Pilot Light to Indicate when Motor is Running**
+Circuit: L1 → STOP → START → M (starter coil) → O.L.&#x27;S → L2, with an M auxiliary contact sealing across START and a pilot light (R) wired in parallel with the M coil.
+Printed note: *&quot;A pilot light can be wired in parallel with the starter coil to indicate when the starter is energized and thus show that the motor is running.&quot;*
+
+**Diagram 4 — 3 Wire Control with Pilot Light to Indicate when Motor is Stopped**
+Same basic 3-wire circuit, but the pilot light (G) is fed through a normally closed M auxiliary contact.
+Printed note: *&quot;A pilot light may be required to indicate when the motor is stopped. This can be done by wiring a normally closed auxiliary contact on the starter in series with the pilot light as shown. When the starter is deenergized, the pilot light is on. When the starter picks up, the auxiliary contact opens, turning off the light.&quot;*
+
+**Diagram 5 — 3 Wire Control with Push-To-Test Pilot Light to Indicate when Motor is Running**
+Pilot light (R) is wired through a TEST pushbutton so the bulb can be checked independently of the motor state.
+Printed note: *&quot;When the motor running pilot light is not lit, there may be doubt as to whether the circuit is open or whether the pilot light bulb is burned out. The push-to-test pilot light enables the testing of the bulb simply by pushing on the color cap.&quot;*
+
+**Diagram 6 — 3 Wire Control with Illuminated Push Button to Indicate when Motor is Running**
+Combines the START button and pilot light (R) into one device. Printed note on the diagram: *&quot;✱ PUSHING ON PILOT LIGHT OPERATES START CONTACTS.&quot;*
+Printed description: *&quot;The illuminated push button combines a start button and a pilot light in one unit. Pressing the pilot light lens operates the start contacts. Space is saved by requiring only a two unit push button station instead of three.&quot;*
+
+**Diagram 7 — 3 Wire Control with Fused Control Circuit Transformer**
+Adds a step-down transformer (PRI / X1 SEC X2) with a fuse on the ungrounded secondary side; secondary may be grounded &quot;IF USED.&quot;
+Printed note: *&quot;A step down transformer can be used to provide a control circuit voltage lower than line voltage for reasons of operator safety. One side of the transformer secondary can be grounded when conditions permit. Short circuit protection for the transformer and control circuit is provided by a fuse in the ungrounded side of the transformer secondary.&quot;*
+
+**Diagram 8 — 3 Wire Control with Fused Control Circuit Transformer and Control Relay**
+Same transformer scheme as Diagram 7, but a CR (control relay) contact on the line side handles the high-VA starter coil, allowing a smaller transformer.
+Printed note: *&quot;A starter coil with a high volt-ampere rating may require a control transformer of considerable size. A control relay and a transformer with a low VA rating can be connected so that the normally open relay contact controls the starter coil on the primary or line side. Square D Size 5 Form FT starters use this scheme.&quot;*
+
+**Common elements across all six:** L1/L2 power rails, a normally-closed STOP, a normally-open START, an M sealing contact, the M starter coil, and O.L.&#x27;S (overload contacts) in series with the coil.
+
+No DANGER / WARNING / CAUTION boxes, hard prohibitions, or required reset/isolation/bypass instructions are printed on this sheet, so no safety section is required.
+
+⚠️ Convention only — a print never shows live state. Verify with the circuit made safe and a meter before relying on it.</p><p></p><p>- classification: **ELECTRICAL_PRINT** (conf 0.8)</p><p>- interpreter used (Anthropic PrintSynth): **False**</p><p>- model: together/MiniMaxAI/MiniMax-M3 · effort medium · latency 27.59s</p><p></p><p>## 4. LLM judge grade (PROVISIONAL, qualitative — not technician approval until Mike calibrates)</p><p>- score: **None/100** (None)</p><p>- hard failure: **None**</p><p>- summary: None</p><p></p><p>## 5. Verified strengths</p><p></p><p>## 6. Suspected errors / hallucinations</p><p></p><p>## 7. Items requiring technician review</p><p></p><p>## 8. Build &amp; runtime
+- commit: `003f53820a5ccf1ea9c7b5bc0d24dc2e517e2fb0` · branch: feat/printsense-generalization · version: 3.186.0
+- judge model: None · run: 2026-07-21T07:51:04Z</p><p>
+## 9. Source URL
+https://archive.org/download/Square-d-wiring/Wiring%20Diagrams.pdf</p><h2>Verbatim response</h2><pre style='white-space:pre-wrap;border:1px solid #ccc;padding:1rem'>This is **Square D Company, &quot;Wiring Diagrams — Typical Control Circuit Elementary Diagrams,&quot; dated January 1967, Page 5.** It shows six numbered 3-wire motor starter control schemes (Diagrams 3–8), each with a schematic and a brief printed description.
+
+**Diagram 3 — 3 Wire Control with Pilot Light to Indicate when Motor is Running**
+Circuit: L1 → STOP → START → M (starter coil) → O.L.&#x27;S → L2, with an M auxiliary contact sealing across START and a pilot light (R) wired in parallel with the M coil.
+Printed note: *&quot;A pilot light can be wired in parallel with the starter coil to indicate when the starter is energized and thus show that the motor is running.&quot;*
+
+**Diagram 4 — 3 Wire Control with Pilot Light to Indicate when Motor is Stopped**
+Same basic 3-wire circuit, but the pilot light (G) is fed through a normally closed M auxiliary contact.
+Printed note: *&quot;A pilot light may be required to indicate when the motor is stopped. This can be done by wiring a normally closed auxiliary contact on the starter in series with the pilot light as shown. When the starter is deenergized, the pilot light is on. When the starter picks up, the auxiliary contact opens, turning off the light.&quot;*
+
+**Diagram 5 — 3 Wire Control with Push-To-Test Pilot Light to Indicate when Motor is Running**
+Pilot light (R) is wired through a TEST pushbutton so the bulb can be checked independently of the motor state.
+Printed note: *&quot;When the motor running pilot light is not lit, there may be doubt as to whether the circuit is open or whether the pilot light bulb is burned out. The push-to-test pilot light enables the testing of the bulb simply by pushing on the color cap.&quot;*
+
+**Diagram 6 — 3 Wire Control with Illuminated Push Button to Indicate when Motor is Running**
+Combines the START button and pilot light (R) into one device. Printed note on the diagram: *&quot;✱ PUSHING ON PILOT LIGHT OPERATES START CONTACTS.&quot;*
+Printed description: *&quot;The illuminated push button combines a start button and a pilot light in one unit. Pressing the pilot light lens operates the start contacts. Space is saved by requiring only a two unit push button station instead of three.&quot;*
+
+**Diagram 7 — 3 Wire Control with Fused Control Circuit Transformer**
+Adds a step-down transformer (PRI / X1 SEC X2) with a fuse on the ungrounded secondary side; secondary may be grounded &quot;IF USED.&quot;
+Printed note: *&quot;A step down transformer can be used to provide a control circuit voltage lower than line voltage for reasons of operator safety. One side of the transformer secondary can be grounded when conditions permit. Short circuit protection for the transformer and control circuit is provided by a fuse in the ungrounded side of the transformer secondary.&quot;*
+
+**Diagram 8 — 3 Wire Control with Fused Control Circuit Transformer and Control Relay**
+Same transformer scheme as Diagram 7, but a CR (control relay) contact on the line side handles the high-VA starter coil, allowing a smaller transformer.
+Printed note: *&quot;A starter coil with a high volt-ampere rating may require a control transformer of considerable size. A control relay and a transformer with a low VA rating can be connected so that the normally open relay contact controls the starter coil on the primary or line side. Square D Size 5 Form FT starters use this scheme.&quot;*
+
+**Common elements across all six:** L1/L2 power rails, a normally-closed STOP, a normally-open START, an M sealing contact, the M starter coil, and O.L.&#x27;S (overload contacts) in series with the coil.
+
+No DANGER / WARNING / CAUTION boxes, hard prohibitions, or required reset/isolation/bypass instructions are printed on this sheet, so no safety section is required.
+
+⚠️ Convention only — a print never shows live state. Verify with the circuit made safe and a meter before relying on it.</pre></body>

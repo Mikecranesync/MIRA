@@ -1,0 +1,25 @@
+{
+  "test_id": "boundary-multipage-xref",
+  "source_url": "https://wiredwhite.com/wp-content/uploads/2025/10/IEC-Schematic-Learning-Resource-VER1.1.pdf",
+  "publisher": "WiredWhite",
+  "title": "IEC Schematic Learning Resource VER1.1",
+  "sheet": "DOL control circuits (page 6) \u2014 coils K1-K4; power main contacts on page 3 (NOT in this view)",
+  "equipment_type": "IEC DOL motor control",
+  "standard": "IEC 60204-1 / IEC 60617 (/sheet.gridref xref)",
+  "category": "multipage_xref",
+  "why_selected": "Boundary class 10: cross-page reasoning. Only the control sheet (p6) is submitted; the power contacts it switches are on p3 (not shown). Tests HONEST 'that sheet is not in view' behavior vs fabrication.",
+  "access_date_utc": "2026-07-21T07:48:31Z",
+  "original_sha256": "b316c5db01b3eff8165f807751a9c447d201967cf77a431971d8379d868b19d1",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://wiredwhite.com/wp-content/uploads/2025/10/IEC-Schematic-Learning-Resource-VER1.1.pdf",
+    "final_url": "https://wiredwhite.com/wp-content/uploads/2025/10/IEC-Schematic-Learning-Resource-VER1.1.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 2805991,
+    "host": "wiredwhite.com"
+  },
+  "license_note": "public source (WordPress) \u2014 retained for testing only"
+}

@@ -1,15 +1,12 @@
-2026-07-13 10:23:08,798 INFO fetching https://info.bannerengineering.com/cs/groups/public/documents/literature/46262.pdf
-2026-07-13 10:23:10,650 INFO fetched 1861755 bytes (application/pdf)
-2026-07-13 10:23:10,923 INFO rendered PDF page 4 @ 200 dpi -> 300124 bytes PNG
-2026-07-13 10:23:10,925 INFO submitting through the real handler (bot._try_print_translator_reply)…
-2026-07-13 10:25:17,133 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=True latency=125.97s
-2026-07-13 10:25:17,133 INFO running independent multimodal judge…
-2026-07-13 10:27:06,733 INFO email package built:
+2026-07-21 03:58:26,100 INFO regrade: reusing saved tested_page.png + telegram_response.json
+2026-07-21 03:58:26,149 INFO running independent multimodal judge…
+2026-07-21 03:58:57,985 INFO email package built:
 TO: harperhousebuyers@gmail.com
-SUBJECT: MIRA Print Translator Test — banner-esfl-estop-relay — ES-FL-2A E-Stop Monitoring Safety Relay (46262) — 85/100
+SUBJECT: MIRA Print Translator Test — banner-esfl-estop-relay — ES-FL-2A E-Stop Monitoring Safety Relay (46262) — 88/100
 ATTACHMENTS:
   [attach] original.pdf (1,861,755 B)
   [attach] tested_page.png (300,124 B)
-  [attach] report.html (11,074 B)
-  [attach] telegram_response.json (36,014 B)
-HTML: 10,862 chars
+  [attach] report.html (8,582 B)
+  [attach] judge_1.json (6,600 B)
+  [attach] telegram_response.json (7,430 B)
+HTML: 2,466 chars

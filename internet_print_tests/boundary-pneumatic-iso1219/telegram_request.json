@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-pneumatic-iso1219",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "c978590b1e41b5c038f403d7c021cc0b461e594226681919aceabb143f22ad08",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

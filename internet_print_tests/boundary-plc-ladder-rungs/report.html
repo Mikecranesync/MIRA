@@ -1,0 +1,60 @@
+<!doctype html><meta charset=utf-8><title>boundary-plc-ladder-rungs</title><body style='font:14px system-ui;max-width:60rem;margin:2rem'><p># MIRA Print Translator Test — boundary-plc-ladder-rungs</p><p></p><p>## 1. Source &amp; drawing metadata</p><p>- Publisher: University of Utah ECE 3510</p><p>- Title: Ladder Logic Fundamentals (PLC tutorial)</p><p>- Sheet: 3-rung example program</p><p>- Equipment: PLC ladder logic</p><p>- Standard: IEC 61131-3 ladder</p><p>- Category: plc_ladder</p><p>- Source URL: https://my.ece.utah.edu/~ece3510/Ladder%20Logic%20Fundamentals%20PLC%20tutorial.pdf</p><p>- Access date (UTC): 2026-07-21T07:46:39Z</p><p>- Original sha256: `c9f9a1c1bd5d236ce4dbd7ef62803b291f2501b425474ef2c3a23667f738bd3e`</p><p></p><p>## 2. Why selected
+Boundary class 2: PLC rungs (contacts left, coils right) — a different visual grammar than field wiring.</p><p></p><p>## 3. Exact Telegram bot response (verbatim, unmodified)</p><p></p><p>This print is a training slide (MET 382, dated 1/14/2008, page 4 of &quot;Ladder Logic Fundamentals&quot;) titled **&quot;Anatomy of a Ladder Program (cont&#x27;d)&quot;**. It is not a working machine schematic — it is an instructional diagram showing the structure of a ladder logic program.
+
+**Top slide — &quot;A 3-rung example ladder program&quot;:**
+
+- **Rung 0** — comment: *&quot;Use standard start/stop logic to control system start bit&quot;*
+  - Inputs: `Start` (I_PB0, `&lt;Local:6:I.Data.0&gt;`), `Stop` (I_PB1, `&lt;Local:6:I.Data.1&gt;`), `RSView_Stop`, `RSView_Start`, `B_System_On` (sealing contact)
+  - Output: `B_System_On`
+
+- **Rung 1** — comment: *&quot;Control the dropline motor and the green stack light&quot;*
+  - Input: `B_System_On`
+  - Outputs: `Motor` (O_Motor, `&lt;Local:3:O.Data[11].0&gt;`) and `Stack light - Green` (O_Green_Stack_LT, `&lt;Local:3:O.Data[21].&gt;`)
+
+- **Rung 2** — comment: *&quot;Control Product Stop #1&quot;*
+  - Inputs: `B_System_On`, `Photoeye 2` (I_PE2, `&lt;Local:3:I.Data[0].2&gt;`), `Photoeye 3` (I_PE3, `&lt;Local:3:I.Data[1].0&gt;`), `Shot pin down sensor` (I_Shot_Pin_Down, `&lt;Local:3:I.Data[5].0&gt;`), `Product Stop 2` (O_PS2, `&lt;Local:3:O.Data[3].2&gt;`), `Product Stop 1` (O_PS1, `&lt;Local:3:O.Data[3].3&gt;`)
+  - Output (branch): `Product Stop 1` (O_PS1, `&lt;Local:3:O.Data[3].3&gt;`)
+
+**Bottom slide — annotated version of Rung 0**, labeling the parts of a ladder instruction:
+
+- **Rung Number** — the &quot;0&quot; at the left rail
+- **Rung Comment** — *&quot;Use standard start/stop logic to control system start bit&quot;*
+- **Description assigned to alias tag** — e.g., the word &quot;Start&quot;
+- **Alias tag pointing to base address** — e.g., `I_PB0`
+- **Base address** — e.g., `&lt;Local:6:I.Data.0&gt;`
+- **Input Instruction** — the contact symbol on the rung
+
+In short, the print teaches the reader how to read a ladder rung by identifying its number, comment, alias tag, base address, and instruction type, using a 3-rung example that latches a system-on bit, then drives a motor/light, then sequences product stops via photoeyes and a shot-pin sensor.
+
+No DANGER / WARNING / CAUTION boxes, hard prohibitions, or reset/isolation/bypass instructions are printed on this sheet, so no safety section is required.</p><p></p><p>- classification: **ELECTRICAL_PRINT** (conf 0.9)</p><p>- interpreter used (Anthropic PrintSynth): **False**</p><p>- model: together/MiniMaxAI/MiniMax-M3 · effort medium · latency 33.98s</p><p></p><p>## 4. LLM judge grade (PROVISIONAL, qualitative — not technician approval until Mike calibrates)</p><p>- score: **None/100** (None)</p><p>- hard failure: **None**</p><p>- summary: None</p><p></p><p>## 5. Verified strengths</p><p></p><p>## 6. Suspected errors / hallucinations</p><p></p><p>## 7. Items requiring technician review</p><p></p><p>## 8. Build &amp; runtime
+- commit: `003f53820a5ccf1ea9c7b5bc0d24dc2e517e2fb0` · branch: feat/printsense-generalization · version: 3.186.0
+- judge model: None · run: 2026-07-21T07:47:14Z</p><p>
+## 9. Source URL
+https://my.ece.utah.edu/~ece3510/Ladder%20Logic%20Fundamentals%20PLC%20tutorial.pdf</p><h2>Verbatim response</h2><pre style='white-space:pre-wrap;border:1px solid #ccc;padding:1rem'>This print is a training slide (MET 382, dated 1/14/2008, page 4 of &quot;Ladder Logic Fundamentals&quot;) titled **&quot;Anatomy of a Ladder Program (cont&#x27;d)&quot;**. It is not a working machine schematic — it is an instructional diagram showing the structure of a ladder logic program.
+
+**Top slide — &quot;A 3-rung example ladder program&quot;:**
+
+- **Rung 0** — comment: *&quot;Use standard start/stop logic to control system start bit&quot;*
+  - Inputs: `Start` (I_PB0, `&lt;Local:6:I.Data.0&gt;`), `Stop` (I_PB1, `&lt;Local:6:I.Data.1&gt;`), `RSView_Stop`, `RSView_Start`, `B_System_On` (sealing contact)
+  - Output: `B_System_On`
+
+- **Rung 1** — comment: *&quot;Control the dropline motor and the green stack light&quot;*
+  - Input: `B_System_On`
+  - Outputs: `Motor` (O_Motor, `&lt;Local:3:O.Data[11].0&gt;`) and `Stack light - Green` (O_Green_Stack_LT, `&lt;Local:3:O.Data[21].&gt;`)
+
+- **Rung 2** — comment: *&quot;Control Product Stop #1&quot;*
+  - Inputs: `B_System_On`, `Photoeye 2` (I_PE2, `&lt;Local:3:I.Data[0].2&gt;`), `Photoeye 3` (I_PE3, `&lt;Local:3:I.Data[1].0&gt;`), `Shot pin down sensor` (I_Shot_Pin_Down, `&lt;Local:3:I.Data[5].0&gt;`), `Product Stop 2` (O_PS2, `&lt;Local:3:O.Data[3].2&gt;`), `Product Stop 1` (O_PS1, `&lt;Local:3:O.Data[3].3&gt;`)
+  - Output (branch): `Product Stop 1` (O_PS1, `&lt;Local:3:O.Data[3].3&gt;`)
+
+**Bottom slide — annotated version of Rung 0**, labeling the parts of a ladder instruction:
+
+- **Rung Number** — the &quot;0&quot; at the left rail
+- **Rung Comment** — *&quot;Use standard start/stop logic to control system start bit&quot;*
+- **Description assigned to alias tag** — e.g., the word &quot;Start&quot;
+- **Alias tag pointing to base address** — e.g., `I_PB0`
+- **Base address** — e.g., `&lt;Local:6:I.Data.0&gt;`
+- **Input Instruction** — the contact symbol on the rung
+
+In short, the print teaches the reader how to read a ladder rung by identifying its number, comment, alias tag, base address, and instruction type, using a 3-rung example that latches a system-on bit, then drives a motor/light, then sequences product stops via photoeyes and a shot-pin sensor.
+
+No DANGER / WARNING / CAUTION boxes, hard prohibitions, or reset/isolation/bypass instructions are printed on this sheet, so no safety section is required.</pre></body>

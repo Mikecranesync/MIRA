@@ -1,0 +1,23 @@
+This is page 31 of a textbook/manual chapter titled **"Ch 9 Planning the Panel"**, not a working electrical print. It illustrates how AutoCAD Electrical software links panel layouts to schematic drawings.
+
+**Figure 9-22 — "Creating a Panel Layout using AutoCADD Electrical"**
+A panel layout drawing showing:
+- A "24\" FLUORESCENT LIGHT FIXTURE" at the top
+- Multiple "2\" x 4\" WIRING DUCT" sections
+- A "CROSS WIRE BREAKER"
+- A "RACK B" populated with PLC modules tagged PLC1500, PLC1502, PLC1500A, PLC1502A, PLC1500B, PLC1502B
+- Terminal block columns labeled TB, TB-1, TS-1A, TS-1B
+- An "EDGE OF ENCLOSURE" marker
+
+**Figure 9-23 — "Checking for Missing Components"**
+A schematic with a dialog box titled "SURF : CR407 refs" listing MFG / CAT / SH.REF / INST.LOC(TYP) entries (e.g., "P 4 407 MCAB5 K1,K2", "NO 4 411 MCAB5", "NC 4 633 MCAB5"). The schematic shows three safety-relay branches:
+- MCAB5 CR406 — "SAFETY RELAY NO.1" — "NO 410 NC"
+- MCAB5 CR407 — "SAFETY RELAY NO.2" — "NO 411,633 NC"
+- MCAB5 CR408 — "SAFETY RELAY NO.3" — "NO NC"
+- OPSTA3 LT409 with terminals X1, X2, labeled "SAFETY OKAY"
+- Wire numbers 407A and 408A
+
+**Printed explanatory text (verbatim):**
+> "The figure above shows an example of a panel layout. As components are changed in one drawing, they are automatically updated in all associated drawings. This effectively increases drafting productivity. Checking for missing components is eliminated since there is a link between parts on schematic drawings and panel layout drawings."
+
+**Note:** This page is instructional documentation about CAD software behavior — it does not depict a specific machine's wiring, so it cannot answer questions about a real panel's live state, wire routing, or component specifications. For those, refer to the project's actual panel-layout and schematic drawings.

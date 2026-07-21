@@ -1,0 +1,25 @@
+{
+  "test_id": "boundary-hydraulic",
+  "source_url": "https://media.toro.com/toroumaterials/pdf/09169sl.pdf",
+  "publisher": "Toro University Technical Training",
+  "title": "Hydraulic Systems",
+  "sheet": "Complete Hydraulic Schematic",
+  "equipment_type": "hydraulic circuit",
+  "standard": "ISO 1219 / ANSI / JIC fluid-power symbols",
+  "category": "hydraulic",
+  "why_selected": "Boundary class 7: complete hydraulic circuit (pump, filter, DCV, relief valve, cylinder).",
+  "access_date_utc": "2026-07-21T07:52:34Z",
+  "original_sha256": "05e459841212f091e168faae3c4defe883d78c4801009a2b141b0a5268197cf7",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://media.toro.com/toroumaterials/pdf/09169sl.pdf",
+    "final_url": "https://media.toro.com/toroumaterials/pdf/09169sl.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 3363050,
+    "host": "media.toro.com"
+  },
+  "license_note": "public source (Toro media CDN) \u2014 retained for testing only"
+}

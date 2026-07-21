@@ -1,0 +1,25 @@
+{
+  "test_id": "boundary-plc-ladder-rungs",
+  "source_url": "https://my.ece.utah.edu/~ece3510/Ladder%20Logic%20Fundamentals%20PLC%20tutorial.pdf",
+  "publisher": "University of Utah ECE 3510",
+  "title": "Ladder Logic Fundamentals (PLC tutorial)",
+  "sheet": "3-rung example program",
+  "equipment_type": "PLC ladder logic",
+  "standard": "IEC 61131-3 ladder",
+  "category": "plc_ladder",
+  "why_selected": "Boundary class 2: PLC rungs (contacts left, coils right) \u2014 a different visual grammar than field wiring.",
+  "access_date_utc": "2026-07-21T07:46:39Z",
+  "original_sha256": "c9f9a1c1bd5d236ce4dbd7ef62803b291f2501b425474ef2c3a23667f738bd3e",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://my.ece.utah.edu/~ece3510/Ladder%20Logic%20Fundamentals%20PLC%20tutorial.pdf",
+    "final_url": "https://my.ece.utah.edu/~ece3510/Ladder%20Logic%20Fundamentals%20PLC%20tutorial.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 257406,
+    "host": "my.ece.utah.edu"
+  },
+  "license_note": "public source (.edu) \u2014 original ownership retained by publisher; retained for testing only"
+}

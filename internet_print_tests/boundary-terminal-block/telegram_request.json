@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-terminal-block",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "ba364c3d53677ced06043ead52b4f81b373ac8e11322de837f30b4094ac1be97",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

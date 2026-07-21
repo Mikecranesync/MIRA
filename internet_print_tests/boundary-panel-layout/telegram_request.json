@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-panel-layout",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "0f9df283215cd94afc9335acfc31cf6109ea071d7918b1d4036aeebfd5e0e4a4",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

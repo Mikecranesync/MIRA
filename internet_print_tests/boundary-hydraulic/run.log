@@ -1,0 +1,15 @@
+2026-07-21 03:52:32,760 INFO fetching https://media.toro.com/toroumaterials/pdf/09169sl.pdf
+2026-07-21 03:52:34,683 INFO fetched 3363050 bytes (application/pdf)
+2026-07-21 03:52:34,972 INFO rendered PDF page 17 @ 200 dpi -> 141737 bytes PNG
+2026-07-21 03:52:34,975 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:53:32,436 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=56.64s
+2026-07-21 03:53:32,520 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-hydraulic — Hydraulic Systems — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (3,363,050 B)
+  [attach] tested_page.png (141,737 B)
+  [attach] report.html (3,428 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (3,166 B)
+HTML: 1,828 chars

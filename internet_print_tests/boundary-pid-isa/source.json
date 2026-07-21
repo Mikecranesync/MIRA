@@ -1,0 +1,25 @@
+{
+  "test_id": "boundary-pid-isa",
+  "source_url": "https://pdhacademy.com/wp-content/uploads/2023/08/462-Piping-and-Instrumentation-Diagrams.pdf",
+  "publisher": "PDH Academy (source EPA-600, public domain)",
+  "title": "Piping and Instrumentation Diagrams (Course 462)",
+  "sheet": "Fig 15 cryogenic O2 P&ID",
+  "equipment_type": "P&ID",
+  "standard": "ANSI/ISA-5.1",
+  "category": "pid",
+  "why_selected": "Boundary class 5: ISA-5.1 P&ID (instrument bubbles PIC/FT/LT/AT, control valves, process lines) \u2014 a process, not an electrical, drawing.",
+  "access_date_utc": "2026-07-21T07:51:34Z",
+  "original_sha256": "5667f9d7d117e67cc7faa69aa95bb844feaecb85640cc2795c899ed743cab972",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://pdhacademy.com/wp-content/uploads/2023/08/462-Piping-and-Instrumentation-Diagrams.pdf",
+    "final_url": "https://pdhacademy.com/wp-content/uploads/2023/08/462-Piping-and-Instrumentation-Diagrams.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 3136182,
+    "host": "pdhacademy.com"
+  },
+  "license_note": "public source (WordPress; EPA public-domain figure) \u2014 retained for testing only"
+}

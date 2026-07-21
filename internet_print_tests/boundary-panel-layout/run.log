@@ -1,0 +1,15 @@
+2026-07-21 03:51:04,883 INFO fetching https://hybridplc.org/wp-content/uploads/chap9_S.pdf
+2026-07-21 03:51:06,492 INFO fetched 4060853 bytes (application/pdf)
+2026-07-21 03:51:06,735 INFO rendered PDF page 30 @ 200 dpi -> 353588 bytes PNG
+2026-07-21 03:51:06,738 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:51:30,823 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=23.32s
+2026-07-21 03:51:30,908 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-panel-layout — Chapter 9: Planning the Panel — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (4,060,853 B)
+  [attach] tested_page.png (353,588 B)
+  [attach] report.html (6,124 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (6,672 B)
+HTML: 1,853 chars

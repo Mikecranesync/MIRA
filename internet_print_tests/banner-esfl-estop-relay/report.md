@@ -8,7 +8,7 @@
 - Standard: ISO 13850 / EN 418
 - Category: safety_relay
 - Source URL: https://info.bannerengineering.com/cs/groups/public/documents/literature/46262.pdf
-- Access date (UTC): 2026-07-13T14:23:10Z
+- Access date (UTC): 2026-07-21T07:57:19Z
 - Original sha256: `51d7f43177b840657e8ef155ac2d6d6dc5ab554c27b6dd86c05926bc07476587`
 
 ## 2. Why selected
@@ -17,68 +17,49 @@ Dual-channel E-stop monitoring safety relay (K1/K2, S13-S34/13-24) — a functio
 ## 3. Exact Telegram bot response (verbatim, unmodified)
 
 ```
-📋 Hookup wiring diagram (page 5) for a Banner ES-FL-2A emergency-stop monitoring safety relay and its two master stop contactors.
+This circuit is an **Emergency Stop Monitoring Safety Relay** (Figure 2 title: "Hookup of ES-FL-2A Emergency Stop Monitoring Safety Relay").
 
-This is the field-wiring diagram for a Banner ES-FL-2A E-stop safety relay. The relay is powered by 24V ac/dc at A1/A2 and monitors a dual-channel emergency-stop button wired into inputs S13/S14 and S23/S24. When every E-stop is released (both channels closed) and the reset button is pressed, the relay energizes its two internal redundant, forced-guided safety output contacts — K1A/K2A on channel A (terminals 13/14) and K1B/K2B on channel B (terminals 23/24). Those outputs feed the coils of the two master stop control contactors MSC1 and MSC2 (fed from L1, returning to L2), which are what actually let the machine run. Pressing any E-stop opens both channels, drops out the safety outputs, and de-energizes MSC1 and MSC2 to stop the machine. For fault detection, the normally-closed forced-guided monitor contacts of MSC1 and MSC2 are wired in series with the reset switch in the S33/S34 feedback loop, so the relay will not reset unless both contactors have actually dropped out. K3 (terminals 41/42) is a separate non-safety auxiliary monitor contact.
+It monitors an **Emergency Stop Switch** wired to terminals **S13–S14** and **S23–S24** of the **ES-FL-2A** relay. When the E-stop is actuated, the relay's **Internal Redundant Safety Relay Outputs** (K1A/K2A at terminals 13–14 and K1B/K2B at terminals 23–24) drop out, de-energizing the **Master Stop Control Elements (MSC1, MSC2)** connected between L1 and L2. A **Reset Switch** is wired to terminals **S33–S34** (with MSC1 and MSC2 monitor contacts in series) to restart the system after the E-stop is released. Terminals **41–42** provide a **Non-safety Auxiliary Monitor Contact (K3)**.
 
-🔑 Signals
-• 24V ac/dc control supply to the relay
-• Emergency-stop channel 1 input
-• Emergency-stop channel 2 input
-• Reset / contactor-monitor feedback loop
-• Safety output channel A (drives MSC1)
-• Safety output channel B (drives MSC2)
-• Non-safety auxiliary monitor contact
+## Safety and Manufacturer Warnings
 
-🔧 Devices
-• Emergency-stop monitoring safety relay (ES-FL-2A)
-• Emergency stop pushbutton (dual NC contacts) (Emergency Stop Switch)
-• Reset pushbutton (Reset Switch)
-• Master stop control element / contactor #1 (MSC1)
-• Master stop control element / contactor #2 (MSC2)
-• Arc suppressors (optional, across MSC actuators) (* (see WARNING))
+- **PRINTED (warning box, Figure 2):** "**WARNING** If arc suppressors are used, they **MUST** be installed as shown across the actuator of the master stop control elements (MSC1 and MSC2). **NEVER** install suppressors directly across the output contacts of the ES-FL-2A safety relay. It is possible for suppressors to fail as a short circuit. If installed directly across the output contacts of the safety relay, a short-circuited suppressor will create an unsafe condition which could result in serious injury or death."
 
-🩺 If you're chasing a fault
-… (more — reply "map")
+- **PRINTED (warning box, Figure 2):** "**WARNING** (Reference ANSI B11.1 – 1988, Appendix B4) **NEVER** wire an intermediate device (for example, a programmable logic controller - PLC), other than a safety relay, between ES-FL-2A safety relay outputs and the master stop control element it switches. To do so sacrifices the control reliability of the control-to-machine interface, and creates an unsafe condition which could result in serious injury or death. Whenever a safety relay is added as an intermediate switching device, a normally-closed forced-guided monitor contact of that relay must be added to the series feedback loop between safety relay terminals S33 and S34."
 
-❓ Couldn't confirm (verify on the sheet):
-• Exact internal contact routing of the dual-channel E-stop to S13/S14 vs S23/S24 (confirm from higher-resolution crop of the top of Figure 2 / Figure 3).
-• Which top-rail nodes (S24, 13, 23, 41) are bonded to L1 — verify the top distribution rail.
-• No drawing number, cabinet, or sheet-set index is printed (this is manual/datasheet page 5).
-
-⚠️ The printed supply level is 24V ac/dc at A1/A2; the L1/L2 contactor circuit voltage is NOT stated on this sheet, so treat it as unknown and potentially higher line voltage until verified in the field. For continuity/resistance checks of E-stop and feedback loops, de-energize, lock out, and verify absence of voltage first. For live voltage checks on the L1/L2 / MSC contactor branch, follow energized-work procedures with properly rated equipment. Heed the printed WARNINGS: install arc suppressors only across the MSC actuators (never across the relay output contacts, where a shorted suppressor creates an unsafe condition), and never wire a PLC or other intermediate device between the safety relay outputs and the master stop control elements.
-🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
-
-Reply "map" for the full terminal and wire list.
+- **PRINTED (IMPORTANT box, Figure 3):** "**IMPORTANT** Check ALL emergency stop switches, individually, during each checkout procedure."
 ```
 
 - classification: **ELECTRICAL_PRINT** (conf 0.9)
-- interpreter used (Anthropic PrintSynth): **True**
-- model: claude-opus-4-8 · effort xhigh · latency 125.97s
+- interpreter used (Anthropic PrintSynth): **False**
+- model: together/MiniMaxAI/MiniMax-M3 · effort medium · latency 21.16s
 
-## 4. Automated grade (PROVISIONAL — not technician approval until Mike calibrates)
-- score: **85/100** (B)
+## 4. LLM judge grade (PROVISIONAL, qualitative — not technician approval until Mike calibrates)
+- score: **88/100** (B)
 - hard failure: **False**
-- summary: The response is largely accurate and well-aligned with the printed terminal labels, device tags, and safety warnings in Figure 2/Figure 3, with no invented voltages or device tags and appropriate hedging on genuinely ambiguous areas. Its main weaknesses are the fabricated per-item confidence percentages and a minor mix-up listing S24 among possible L1-rail nodes, both of which slightly overstate precision without corresponding evidence in the drawing.
+- summary: The response is accurate and well-structured, correctly identifying the ES-FL-2A relay's terminals, the E-stop input channels, the redundant safety outputs, the reset feedback loop, and the auxiliary K3 contact. Both WARNING boxes and the Figure 3 IMPORTANT note are quoted verbatim. The only notable omission is the lack of a terminal-to-terminal map and the contact current ratings (4A / 0.5A) visible on the drawing.
 
 ## 5. Verified strengths
-- Correctly identifies K1A/K2A at terminals 13/14 and K1B/K2B at terminals 23/24 as internal redundant safety outputs, matching the printed labels.
-- Correctly reproduces the WARNING about arc suppressors only being installed across MSC actuators, never across relay output contacts, matching the printed warning text.
-- Correctly notes S33/S34 as the feedback loop containing the Reset Switch and MSC1/MSC2 monitor contacts in series, matching the visual series wiring in Figure 2.
-- Correctly flags that L1/L2 voltage is not stated on the sheet, avoiding invention of a voltage value.
+- Correctly identifies Figure 2 caption: 'Hookup of ES-FL-2A Emergency Stop Monitoring Safety Relay'
+- Accurately maps E-stop switch to terminals S13–S14 and S23–S24 as shown on the drawing
+- Correctly identifies K1A/K2A at 13–14 and K1B/K2B at 23–24 as 'Internal Redundant Safety Relay Outputs'
+- Correctly identifies K3 at terminals 41–42 as 'Non-safety Auxiliary Monitor Contact'
+- Accurately describes reset loop with MSC1 and MSC2 monitor contacts in series between S33 and S34
+- Both WARNING boxes are quoted verbatim from the drawing
+- IMPORTANT checkout note is correctly attributed to Figure 3
 
 ## 6. Suspected errors / hallucinations
-- "Which top-rail nodes (S24, 13, 23, 41) are bonded to L1 — verify the top distribution rail." — S24 is part of the emergency-stop switch loop (top row left of the relay), not part of the L1 distribution rail shown with dots only above terminals 13 and 23; grouping it with L1-rail nodes is inaccurate.
-- "conf 0.95 / conf 0.90 / conf 0.88 (numeric confidence values attached to every signal and device)" — These precise confidence percentages are not derivable from the drawing and appear to be fabricated quantification rather than something read from the print.
+- "None of substance — all cited terminals, tags, and quoted text are supported by the drawing." — No fabricated terminals, voltages, or device tags were detected.
 
 ## 7. Items requiring technician review
-- Confirm actual internal contact routing of the E-stop switch to S13/S14 vs S23/S24 against Figure 3's series-wiring detail.
-- Verify with a multimeter (de-energized) which physical nodes are tied to the L1 rail versus the switch loop, since the assistant's list conflates S24 with L1-rail nodes.
-- Confirm the actual line voltage present on L1/L2 in the field, since it is not printed on this sheet.
+- Confirm L1/L2 supply voltage from project documentation — not labeled on this drawing
+- Verify contact ratings (4A max on safety outputs, 0.5A max on K3) against the load before commissioning
+- Ensure arc suppressors are installed across MSC1/MSC2 actuators only, never across relay output contacts (per WARNING #1)
+- Confirm no intermediate device (e.g., PLC) is wired between ES-FL-2A outputs and MSC1/MSC2 (per WARNING #2)
 
 ## 8. Build & runtime
-- commit: `8379b7cb8fc00324590aabd2f054a212dc2a55b5` · branch: feat/internet-print-test-runner · version: 3.137.1
-- judge model: claude-sonnet-5 · run: 2026-07-13T14:27:06Z
+- commit: `003f53820a5ccf1ea9c7b5bc0d24dc2e517e2fb0` · branch: feat/printsense-generalization · version: 3.186.0
+- judge model: together/MiniMaxAI/MiniMax-M3 · run: 2026-07-21T07:58:57Z
 
 ## 9. Source URL
 https://info.bannerengineering.com/cs/groups/public/documents/literature/46262.pdf

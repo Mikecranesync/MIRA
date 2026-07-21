@@ -1,0 +1,15 @@
+2026-07-21 03:48:28,459 INFO fetching https://wiredwhite.com/wp-content/uploads/2025/10/IEC-Schematic-Learning-Resource-VER1.1.pdf
+2026-07-21 03:48:31,006 INFO fetched 2805991 bytes (application/pdf)
+2026-07-21 03:48:31,211 INFO rendered PDF page 6 @ 200 dpi -> 212476 bytes PNG
+2026-07-21 03:48:31,214 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:49:41,848 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=69.84s
+2026-07-21 03:49:41,911 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-multipage-xref — IEC Schematic Learning Resource VER1.1 — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (2,805,991 B)
+  [attach] tested_page.png (212,476 B)
+  [attach] report.html (7,897 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (9,184 B)
+HTML: 1,882 chars

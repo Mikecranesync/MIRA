@@ -1,0 +1,27 @@
+{
+  "test_id": "boundary-relay-ladder-xref",
+  "source_url": "https://archive.org/download/Square-d-wiring/Wiring%20Diagrams.pdf",
+  "publisher": "Square D Company",
+  "title": "Wiring Diagrams (File 0140, 1967 ed.)",
+  "sheet": "3-wire elementary control (holding contact)",
+  "equipment_type": "relay ladder control circuit",
+  "standard": "NEMA ICS elementary/ladder (JIC)",
+  "category": "relay_ladder",
+  "why_selected": "Boundary class 1: relay ladder elementary control (START/STOP holding, CRs). 1967 ed cross-sheet callouts are lighter than the modern book (Schneider portal 403).",
+  "access_date_utc": "2026-07-21T07:50:28Z",
+  "original_sha256": "70dc072fb8e691cae9e37ecb601a8e613326fb95053babd903f41dd110bab567",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://archive.org/download/Square-d-wiring/Wiring%20Diagrams.pdf",
+    "final_url": "https://dn760100.eu.archive.org/0/items/Square-d-wiring/Wiring%20Diagrams.pdf",
+    "redirect_chain": [
+      "https://archive.org/download/Square-d-wiring/Wiring%20Diagrams.pdf"
+    ],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 17472788,
+    "host": "archive.org"
+  },
+  "license_note": "public source (archive.org) \u2014 original ownership retained by publisher; retained for testing only"
+}

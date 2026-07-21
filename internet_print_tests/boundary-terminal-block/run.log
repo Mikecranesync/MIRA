@@ -1,0 +1,15 @@
+2026-07-21 03:47:14,971 INFO fetching https://productguides.aucotec.com/Documentation/EBWebhelp/jkprrv-ezk_1WH-ttrupkgatznnq/using_eb/english_pdf/configuration_terminal_block_diagram.pdf
+2026-07-21 03:47:17,780 INFO fetched 1704064 bytes (application/pdf)
+2026-07-21 03:47:18,038 INFO rendered PDF page 16 @ 200 dpi -> 285246 bytes PNG
+2026-07-21 03:47:18,042 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:47:37,671 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=18.81s
+2026-07-21 03:47:37,747 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-terminal-block — Engineering Base: Configuration of Terminal Block Diagram — ungraded
+ATTACHMENTS:
+  [attach] original.pdf (1,704,064 B)
+  [attach] tested_page.png (285,246 B)
+  [attach] report.html (5,668 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (6,099 B)
+HTML: 1,942 chars

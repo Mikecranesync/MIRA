@@ -1,0 +1,7 @@
+{
+  "test_id": "boundary-pid-isa",
+  "caption": "Explain this print.",
+  "tested_page_sha256": "3d904626628282994f60588a24407fc40815dc503de5ee76ec7d72471079285b",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

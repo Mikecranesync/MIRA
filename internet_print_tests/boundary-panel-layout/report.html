@@ -1,0 +1,50 @@
+<!doctype html><meta charset=utf-8><title>boundary-panel-layout</title><body style='font:14px system-ui;max-width:60rem;margin:2rem'><p># MIRA Print Translator Test — boundary-panel-layout</p><p></p><p>## 1. Source &amp; drawing metadata</p><p>- Publisher: HybridPLC</p><p>- Title: Chapter 9: Planning the Panel</p><p>- Sheet: Fig 9-22 populated back-panel layout</p><p>- Equipment: control-panel back-panel arrangement</p><p>- Standard: UL 508A / NFPA 79 practice (no single drawing standard)</p><p>- Category: panel_layout</p><p>- Source URL: https://hybridplc.org/wp-content/uploads/chap9_S.pdf</p><p>- Access date (UTC): 2026-07-21T07:51:06Z</p><p>- Original sha256: `ba120603ca1e188b68ac910f1c24b7a4c68771dfec70a67dd577867ebd085f7b`</p><p></p><p>## 2. Why selected
+Boundary class 4: mechanical back-panel arrangement (ducts, starters, PLC rack, terminal strips) — not a wiring schematic.</p><p></p><p>## 3. Exact Telegram bot response (verbatim, unmodified)</p><p></p><p>This is page 31 of a textbook/manual chapter titled **&quot;Ch 9 Planning the Panel&quot;**, not a working electrical print. It illustrates how AutoCAD Electrical software links panel layouts to schematic drawings.
+
+**Figure 9-22 — &quot;Creating a Panel Layout using AutoCADD Electrical&quot;**
+A panel layout drawing showing:
+- A &quot;24\&quot; FLUORESCENT LIGHT FIXTURE&quot; at the top
+- Multiple &quot;2\&quot; x 4\&quot; WIRING DUCT&quot; sections
+- A &quot;CROSS WIRE BREAKER&quot;
+- A &quot;RACK B&quot; populated with PLC modules tagged PLC1500, PLC1502, PLC1500A, PLC1502A, PLC1500B, PLC1502B
+- Terminal block columns labeled TB, TB-1, TS-1A, TS-1B
+- An &quot;EDGE OF ENCLOSURE&quot; marker
+
+**Figure 9-23 — &quot;Checking for Missing Components&quot;**
+A schematic with a dialog box titled &quot;SURF : CR407 refs&quot; listing MFG / CAT / SH.REF / INST.LOC(TYP) entries (e.g., &quot;P 4 407 MCAB5 K1,K2&quot;, &quot;NO 4 411 MCAB5&quot;, &quot;NC 4 633 MCAB5&quot;). The schematic shows three safety-relay branches:
+- MCAB5 CR406 — &quot;SAFETY RELAY NO.1&quot; — &quot;NO 410 NC&quot;
+- MCAB5 CR407 — &quot;SAFETY RELAY NO.2&quot; — &quot;NO 411,633 NC&quot;
+- MCAB5 CR408 — &quot;SAFETY RELAY NO.3&quot; — &quot;NO NC&quot;
+- OPSTA3 LT409 with terminals X1, X2, labeled &quot;SAFETY OKAY&quot;
+- Wire numbers 407A and 408A
+
+**Printed explanatory text (verbatim):**
+&gt; &quot;The figure above shows an example of a panel layout. As components are changed in one drawing, they are automatically updated in all associated drawings. This effectively increases drafting productivity. Checking for missing components is eliminated since there is a link between parts on schematic drawings and panel layout drawings.&quot;
+
+**Note:** This page is instructional documentation about CAD software behavior — it does not depict a specific machine&#x27;s wiring, so it cannot answer questions about a real panel&#x27;s live state, wire routing, or component specifications. For those, refer to the project&#x27;s actual panel-layout and schematic drawings.</p><p></p><p>- classification: **ELECTRICAL_PRINT** (conf 0.95)</p><p>- interpreter used (Anthropic PrintSynth): **False**</p><p>- model: together/MiniMaxAI/MiniMax-M3 · effort medium · latency 23.32s</p><p></p><p>## 4. LLM judge grade (PROVISIONAL, qualitative — not technician approval until Mike calibrates)</p><p>- score: **None/100** (None)</p><p>- hard failure: **None**</p><p>- summary: None</p><p></p><p>## 5. Verified strengths</p><p></p><p>## 6. Suspected errors / hallucinations</p><p></p><p>## 7. Items requiring technician review</p><p></p><p>## 8. Build &amp; runtime
+- commit: `003f53820a5ccf1ea9c7b5bc0d24dc2e517e2fb0` · branch: feat/printsense-generalization · version: 3.186.0
+- judge model: None · run: 2026-07-21T07:51:30Z</p><p>
+## 9. Source URL
+https://hybridplc.org/wp-content/uploads/chap9_S.pdf</p><h2>Verbatim response</h2><pre style='white-space:pre-wrap;border:1px solid #ccc;padding:1rem'>This is page 31 of a textbook/manual chapter titled **&quot;Ch 9 Planning the Panel&quot;**, not a working electrical print. It illustrates how AutoCAD Electrical software links panel layouts to schematic drawings.
+
+**Figure 9-22 — &quot;Creating a Panel Layout using AutoCADD Electrical&quot;**
+A panel layout drawing showing:
+- A &quot;24\&quot; FLUORESCENT LIGHT FIXTURE&quot; at the top
+- Multiple &quot;2\&quot; x 4\&quot; WIRING DUCT&quot; sections
+- A &quot;CROSS WIRE BREAKER&quot;
+- A &quot;RACK B&quot; populated with PLC modules tagged PLC1500, PLC1502, PLC1500A, PLC1502A, PLC1500B, PLC1502B
+- Terminal block columns labeled TB, TB-1, TS-1A, TS-1B
+- An &quot;EDGE OF ENCLOSURE&quot; marker
+
+**Figure 9-23 — &quot;Checking for Missing Components&quot;**
+A schematic with a dialog box titled &quot;SURF : CR407 refs&quot; listing MFG / CAT / SH.REF / INST.LOC(TYP) entries (e.g., &quot;P 4 407 MCAB5 K1,K2&quot;, &quot;NO 4 411 MCAB5&quot;, &quot;NC 4 633 MCAB5&quot;). The schematic shows three safety-relay branches:
+- MCAB5 CR406 — &quot;SAFETY RELAY NO.1&quot; — &quot;NO 410 NC&quot;
+- MCAB5 CR407 — &quot;SAFETY RELAY NO.2&quot; — &quot;NO 411,633 NC&quot;
+- MCAB5 CR408 — &quot;SAFETY RELAY NO.3&quot; — &quot;NO NC&quot;
+- OPSTA3 LT409 with terminals X1, X2, labeled &quot;SAFETY OKAY&quot;
+- Wire numbers 407A and 408A
+
+**Printed explanatory text (verbatim):**
+&gt; &quot;The figure above shows an example of a panel layout. As components are changed in one drawing, they are automatically updated in all associated drawings. This effectively increases drafting productivity. Checking for missing components is eliminated since there is a link between parts on schematic drawings and panel layout drawings.&quot;
+
+**Note:** This page is instructional documentation about CAD software behavior — it does not depict a specific machine&#x27;s wiring, so it cannot answer questions about a real panel&#x27;s live state, wire routing, or component specifications. For those, refer to the project&#x27;s actual panel-layout and schematic drawings.</pre></body>

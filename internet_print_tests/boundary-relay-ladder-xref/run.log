@@ -1,0 +1,15 @@
+2026-07-21 03:50:22,320 INFO fetching https://archive.org/download/Square-d-wiring/Wiring%20Diagrams.pdf
+2026-07-21 03:50:28,850 INFO fetched 17472788 bytes (application/pdf)
+2026-07-21 03:50:36,367 INFO rendered PDF page 6 @ 200 dpi -> 2538009 bytes PNG
+2026-07-21 03:50:36,381 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-21 03:51:04,787 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=False latency=27.59s
+2026-07-21 03:51:04,881 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — boundary-relay-ladder-xref — Wiring Diagrams (File 0140, 1967 ed.) — ungraded
+ATTACHMENTS:
+  [DROPPED] original.pdf (17,472,788 B) — over attachment budget — source URL is in the email body
+  [attach] tested_page.png (2,538,009 B)
+  [attach] report.html (9,894 B)
+  [attach] judge_1.json (32 B)
+  [attach] telegram_response.json (12,531 B)
+HTML: 2,061 chars
