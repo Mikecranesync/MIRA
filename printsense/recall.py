@@ -69,6 +69,57 @@ class RecallInfo:
     avoided_cost_usd: float | None = None
 
 
+def lookup_recall(
+    pages: list[tuple[bytes, str]],
+    *,
+    registry: MaterializationRegistry,
+    cas: CAS,
+    tenant_id: str = "local",
+    environment: Environment = Environment.DEV,
+    model: str = DEFAULT_MODEL,
+    preprocess: bool = True,
+    producer_extra: str | None = None,
+) -> tuple[PrintSynthGraph, RecallInfo] | None:
+    """Return a stored ``(graph, RecallInfo)`` for an EXACT recall hit, else ``None``.
+
+    The recall-only half of :func:`interpret_print_with_recall`: it never computes and
+    never catches — the caller decides how a lookup error falls through (the bridge
+    logs + computes; the production gate logs ``PRINT_RECALL_LOOKUP_FAILED`` + computes).
+    This lets the production gate do a lockless first lookup + a per-key double-check
+    without paying the model on a miss.
+    """
+    page_hashes = sorted(sha256_bytes(data) for data, _mt in pages)
+    query = RecallQuery(
+        tenant_id=tenant_id,
+        dataset_type=DatasetType.PRINT_INTERPRETATION,
+        source_hashes=page_hashes,
+        required_schema=(SCHEMA_NAME, _schema_version()),
+        allowed_producer_versions=[_producer_version(model, preprocess, producer_extra)],
+        environment=environment,
+    )
+    result = resolve_recall(query, registry)
+    if result.outcome != RecallOutcome.EXACT or not result.selected_versions:
+        return None
+    dvid = result.selected_versions[0]
+    m = registry.get(dvid, tenant_id=tenant_id)
+    if m is None or not m.storage_ref:
+        return None
+    graph = _load_graph(cas, m.storage_ref)
+    logger.info(
+        "PRINT_RECALL_HIT dvid=%s avoided_compute_ms=%s avoided_cost_usd=%s",
+        dvid,
+        m.compute_time_ms,
+        m.provider_cost_usd,
+    )
+    return graph, RecallInfo(
+        outcome=result.outcome.value,
+        recalled=True,
+        dataset_version_id=dvid,
+        avoided_compute_ms=m.compute_time_ms,
+        avoided_cost_usd=m.provider_cost_usd,
+    )
+
+
 def interpret_print_with_recall(
     pages: list[tuple[bytes, str]],
     *,
@@ -99,33 +150,18 @@ def interpret_print_with_recall(
 
     # 1) recall attempt — a lookup error must never break interpretation.
     try:
-        query = RecallQuery(
+        hit = lookup_recall(
+            pages,
+            registry=registry,
+            cas=cas,
             tenant_id=tenant_id,
-            dataset_type=DatasetType.PRINT_INTERPRETATION,
-            source_hashes=page_hashes,
-            required_schema=(SCHEMA_NAME, schema_version),
-            allowed_producer_versions=[producer_version],
             environment=environment,
+            model=model,
+            preprocess=preprocess,
+            producer_extra=producer_extra,
         )
-        result = resolve_recall(query, registry)
-        if result.outcome == RecallOutcome.EXACT and result.selected_versions:
-            dvid = result.selected_versions[0]
-            m = registry.get(dvid, tenant_id=tenant_id)
-            if m is not None and m.storage_ref:
-                graph = _load_graph(cas, m.storage_ref)
-                logger.info(
-                    "PRINT_RECALL_HIT dvid=%s avoided_compute_ms=%s avoided_cost_usd=%s",
-                    dvid,
-                    m.compute_time_ms,
-                    m.provider_cost_usd,
-                )
-                return graph, RecallInfo(
-                    outcome=result.outcome.value,
-                    recalled=True,
-                    dataset_version_id=dvid,
-                    avoided_compute_ms=m.compute_time_ms,
-                    avoided_cost_usd=m.provider_cost_usd,
-                )
+        if hit is not None:
+            return hit
     except Exception:
         logger.warning("recall lookup failed; computing fresh", exc_info=True)
 
