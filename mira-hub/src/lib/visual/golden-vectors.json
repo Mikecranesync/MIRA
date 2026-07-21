@@ -1,0 +1,638 @@
+{
+  "schema_id": "factorylm.visual-region.v1",
+  "geometry_types": [
+    "point",
+    "rect",
+    "ellipse",
+    "polygon",
+    "polyline",
+    "freehand"
+  ],
+  "origins": [
+    "user",
+    "system"
+  ],
+  "coordinate_space": "normalized_original",
+  "precision": 6,
+  "canonical": [
+    {
+      "name": "point_mid",
+      "input": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.5
+      },
+      "output": {
+        "type": "point",
+        "coordinate_space": "normalized_original",
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "name": "point_origin",
+      "input": {
+        "type": "point",
+        "x": 0.0,
+        "y": 0.0
+      },
+      "output": {
+        "type": "point",
+        "coordinate_space": "normalized_original",
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "name": "point_corner",
+      "input": {
+        "type": "point",
+        "x": 1.0,
+        "y": 1.0
+      },
+      "output": {
+        "type": "point",
+        "coordinate_space": "normalized_original",
+        "x": 1.0,
+        "y": 1.0
+      }
+    },
+    {
+      "name": "point_rounds_to_6dp",
+      "input": {
+        "type": "point",
+        "x": 0.12345678,
+        "y": 0.87654321
+      },
+      "output": {
+        "type": "point",
+        "coordinate_space": "normalized_original",
+        "x": 0.123457,
+        "y": 0.876543
+      }
+    },
+    {
+      "name": "point_strips_extra_keys",
+      "input": {
+        "type": "point",
+        "x": 0.3,
+        "y": 0.3,
+        "bogus": "ignored",
+        "width": 0.9
+      },
+      "output": {
+        "type": "point",
+        "coordinate_space": "normalized_original",
+        "x": 0.3,
+        "y": 0.3
+      }
+    },
+    {
+      "name": "rect_basic",
+      "input": {
+        "type": "rect",
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.3,
+        "height": 0.4
+      },
+      "output": {
+        "type": "rect",
+        "coordinate_space": "normalized_original",
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.3,
+        "height": 0.4
+      }
+    },
+    {
+      "name": "rect_full_page",
+      "input": {
+        "type": "rect",
+        "x": 0.0,
+        "y": 0.0,
+        "width": 1.0,
+        "height": 1.0
+      },
+      "output": {
+        "type": "rect",
+        "coordinate_space": "normalized_original",
+        "x": 0.0,
+        "y": 0.0,
+        "width": 1.0,
+        "height": 1.0
+      }
+    },
+    {
+      "name": "rect_explicit_space",
+      "input": {
+        "type": "rect",
+        "coordinate_space": "normalized_original",
+        "x": 0.25,
+        "y": 0.25,
+        "width": 0.5,
+        "height": 0.5
+      },
+      "output": {
+        "type": "rect",
+        "coordinate_space": "normalized_original",
+        "x": 0.25,
+        "y": 0.25,
+        "width": 0.5,
+        "height": 0.5
+      }
+    },
+    {
+      "name": "ellipse_basic",
+      "input": {
+        "type": "ellipse",
+        "x": 0.2,
+        "y": 0.2,
+        "width": 0.2,
+        "height": 0.1
+      },
+      "output": {
+        "type": "ellipse",
+        "coordinate_space": "normalized_original",
+        "x": 0.2,
+        "y": 0.2,
+        "width": 0.2,
+        "height": 0.1
+      }
+    },
+    {
+      "name": "polygon_triangle",
+      "input": {
+        "type": "polygon",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.9,
+            0.1
+          ],
+          [
+            0.5,
+            0.9
+          ]
+        ]
+      },
+      "output": {
+        "type": "polygon",
+        "coordinate_space": "normalized_original",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.9,
+            0.1
+          ],
+          [
+            0.5,
+            0.9
+          ]
+        ]
+      }
+    },
+    {
+      "name": "polyline_two_pts",
+      "input": {
+        "type": "polyline",
+        "points": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0
+          ]
+        ]
+      },
+      "output": {
+        "type": "polyline",
+        "coordinate_space": "normalized_original",
+        "points": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0
+          ]
+        ]
+      }
+    },
+    {
+      "name": "freehand_path",
+      "input": {
+        "type": "freehand",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.1234567,
+            0.2
+          ],
+          [
+            0.3,
+            0.3
+          ]
+        ]
+      },
+      "output": {
+        "type": "freehand",
+        "coordinate_space": "normalized_original",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.123457,
+            0.2
+          ],
+          [
+            0.3,
+            0.3
+          ]
+        ]
+      }
+    }
+  ],
+  "storage": [
+    {
+      "name": "rect_to_bbox",
+      "v1": {
+        "type": "rect",
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.3,
+        "height": 0.4
+      },
+      "stored": {
+        "type": "bbox",
+        "x": 0.1,
+        "y": 0.2,
+        "w": 0.3,
+        "h": 0.4
+      },
+      "roundtrip": {
+        "type": "rect",
+        "coordinate_space": "normalized_original",
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.3,
+        "height": 0.4
+      }
+    },
+    {
+      "name": "ellipse_passthrough",
+      "v1": {
+        "type": "ellipse",
+        "x": 0.2,
+        "y": 0.2,
+        "width": 0.2,
+        "height": 0.1
+      },
+      "stored": {
+        "type": "ellipse",
+        "coordinate_space": "normalized_original",
+        "x": 0.2,
+        "y": 0.2,
+        "width": 0.2,
+        "height": 0.1
+      },
+      "roundtrip": {
+        "type": "ellipse",
+        "coordinate_space": "normalized_original",
+        "x": 0.2,
+        "y": 0.2,
+        "width": 0.2,
+        "height": 0.1
+      }
+    },
+    {
+      "name": "polygon_passthrough",
+      "v1": {
+        "type": "polygon",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.9,
+            0.1
+          ],
+          [
+            0.5,
+            0.9
+          ]
+        ]
+      },
+      "stored": {
+        "type": "polygon",
+        "coordinate_space": "normalized_original",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.9,
+            0.1
+          ],
+          [
+            0.5,
+            0.9
+          ]
+        ]
+      },
+      "roundtrip": {
+        "type": "polygon",
+        "coordinate_space": "normalized_original",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.9,
+            0.1
+          ],
+          [
+            0.5,
+            0.9
+          ]
+        ]
+      }
+    }
+  ],
+  "validate_ok": [
+    {
+      "schema": "factorylm.visual-region.v1",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "schema": "factorylm.visual-region.v1",
+      "origin": "user",
+      "geometry": {
+        "type": "rect",
+        "x": 0.1,
+        "y": 0.1,
+        "width": 0.2,
+        "height": 0.2
+      }
+    },
+    {
+      "schema": "factorylm.visual-region.v1",
+      "origin": "system",
+      "region_id": "r-123",
+      "evidence_id": "e-9",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.9,
+            0.1
+          ],
+          [
+            0.5,
+            0.9
+          ]
+        ]
+      }
+    }
+  ],
+  "validate_err": [
+    {
+      "name": "bad_schema",
+      "region": {
+        "schema": "wrong",
+        "geometry": {
+          "type": "point",
+          "x": 0.1,
+          "y": 0.1
+        }
+      },
+      "message_contains": "schema must be 'factorylm.visual-region."
+    },
+    {
+      "name": "missing_schema",
+      "region": {
+        "geometry": {
+          "type": "point",
+          "x": 0.1,
+          "y": 0.1
+        }
+      },
+      "message_contains": "schema must be 'factorylm.visual-region."
+    },
+    {
+      "name": "bad_origin",
+      "region": {
+        "schema": "factorylm.visual-region.v1",
+        "origin": "robot",
+        "geometry": {
+          "type": "point",
+          "x": 0.1,
+          "y": 0.1
+        }
+      },
+      "message_contains": "origin 'robot' not in ('user', 'system')"
+    },
+    {
+      "name": "missing_geometry",
+      "region": {
+        "schema": "factorylm.visual-region.v1"
+      },
+      "message_contains": "region missing 'geometry'"
+    }
+  ],
+  "geometry_err": [
+    {
+      "name": "unknown_type",
+      "geometry": {
+        "type": "blob",
+        "x": 0.1,
+        "y": 0.1
+      },
+      "message_contains": "geometry.type 'blob' not in ('point', 'r"
+    },
+    {
+      "name": "coord_over_1",
+      "geometry": {
+        "type": "point",
+        "x": 1.5,
+        "y": 0.1
+      },
+      "message_contains": "point.x: 1.5 out of normalized range [0,"
+    },
+    {
+      "name": "coord_negative",
+      "geometry": {
+        "type": "point",
+        "x": -0.01,
+        "y": 0.1
+      },
+      "message_contains": "point.x: -0.01 out of normalized range ["
+    },
+    {
+      "name": "rect_exceeds_bounds",
+      "geometry": {
+        "type": "rect",
+        "x": 0.8,
+        "y": 0.1,
+        "width": 0.5,
+        "height": 0.1
+      },
+      "message_contains": "rect: box exceeds original bounds (x+wid"
+    },
+    {
+      "name": "wrong_space",
+      "geometry": {
+        "type": "point",
+        "coordinate_space": "screen_px",
+        "x": 0.1,
+        "y": 0.1
+      },
+      "message_contains": "coordinate_space 'screen_px' != 'normali"
+    },
+    {
+      "name": "polygon_too_few",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.2,
+            0.2
+          ]
+        ]
+      },
+      "message_contains": "polygon: needs >= 3 points, got 2"
+    },
+    {
+      "name": "polyline_too_few",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            0.1,
+            0.1
+          ]
+        ]
+      },
+      "message_contains": "polyline: needs >= 2 points, got 1"
+    },
+    {
+      "name": "points_empty",
+      "geometry": {
+        "type": "freehand",
+        "points": []
+      },
+      "message_contains": "freehand: 'points' must be a non-empty l"
+    },
+    {
+      "name": "point_not_pair",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            0.1,
+            0.1
+          ],
+          [
+            0.2
+          ]
+        ]
+      },
+      "message_contains": "polyline: point 1 must be [x, y]"
+    }
+  ],
+  "mat_key": [
+    {
+      "name": "baseline",
+      "args": {
+        "tenant_id": "t-1",
+        "evidence_original_hash": "abc123",
+        "geometry": {
+          "type": "rect",
+          "x": 0.1,
+          "y": 0.2,
+          "width": 0.3,
+          "height": 0.4
+        },
+        "question_contract_version": "q.v1",
+        "output_schema": "answer.v1",
+        "producer_version": "p.v1",
+        "prompt_contract_version": "prompt.v1",
+        "dependency_versions": {
+          "vision": "1.0",
+          "pack": "2.0"
+        }
+      },
+      "key": "344245dcd7c0990a74a1dfae3c52c43c66dcfa29a038f7b1cbf927e6a2fc5636"
+    },
+    {
+      "name": "dep_order_irrelevant",
+      "args": {
+        "tenant_id": "t-1",
+        "evidence_original_hash": "abc123",
+        "geometry": {
+          "type": "rect",
+          "x": 0.1,
+          "y": 0.2,
+          "width": 0.3,
+          "height": 0.4
+        },
+        "question_contract_version": "q.v1",
+        "output_schema": "answer.v1",
+        "producer_version": "p.v1",
+        "prompt_contract_version": "prompt.v1",
+        "dependency_versions": {
+          "pack": "2.0",
+          "vision": "1.0"
+        }
+      },
+      "key": "344245dcd7c0990a74a1dfae3c52c43c66dcfa29a038f7b1cbf927e6a2fc5636"
+    },
+    {
+      "name": "no_deps",
+      "args": {
+        "tenant_id": "t-2",
+        "evidence_original_hash": "def456",
+        "geometry": {
+          "type": "point",
+          "x": 0.5,
+          "y": 0.5
+        },
+        "question_contract_version": "q.v1",
+        "output_schema": "answer.v1",
+        "producer_version": "p.v1",
+        "prompt_contract_version": "prompt.v1",
+        "dependency_versions": null
+      },
+      "key": "ff194e51c7c696e55c4bc1a7e6ec18b8bd239f574b0b2ad80a12433f4a6887c1"
+    }
+  ]
+}

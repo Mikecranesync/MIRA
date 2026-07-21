@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -94,11 +95,34 @@ def _tested_page(original: bytes, mime: str | None, page: int, dpi: int, td: Pat
         from run import render_page  # reuse PyMuPDF renderer
 
         (td / "original.pdf").write_bytes(original)
+        # Best-effort page-count guard: a full vendor catalog (hundreds of pages) is a wrong
+        # source for a single wiring sheet — SKIP it rather than silently render page 0 of a cover.
+        max_pages = int(os.getenv("PRINT_MAX_PDF_PAGES") or "600")
+        try:
+            import fitz  # PyMuPDF — same lib render_page uses
+
+            with fitz.open(td / "original.pdf") as _doc:
+                n_pages = _doc.page_count
+            if n_pages > max_pages:
+                raise SkipError(f"PDF has {n_pages} pages (> {max_pages}) — looks like a full "
+                                "catalog, not a wiring sheet; pick a leaner source")
+            if page >= n_pages:
+                raise SkipError(f"requested page {page} out of range (PDF has {n_pages} pages)")
+        except SkipError:
+            raise
+        except Exception as e:  # noqa: BLE001 — page-count probe is best-effort, never blocks a valid render
+            log.warning("page-count probe failed (%s) — proceeding to render", e)
         png = render_page(td / "original.pdf", page, dpi=dpi, fmt="png")
         log.info("rendered PDF page %d @ %d dpi -> %d bytes PNG", page, dpi, len(png))
         return png
     # Already an image: it IS the tested page.
     return original
+
+
+class SkipError(Exception):
+    """A source that can't be tested for a benign, expected reason (robots.txt disallow,
+    oversized/slow download, too many pages). Recorded as a typed ``skip:`` — NOT a failure,
+    so one bad URL never fails the exit code or terminates an unattended batch."""
 
 
 def _deterministic_grade(td: Path, result: dict, log) -> dict | None:
@@ -136,6 +160,11 @@ def _deterministic_report_lines(grade: dict | None) -> list[str]:
 def _grade_and_deliver(td: Path, source_json: dict, result: dict, tested: bytes, args, row: dict, log) -> None:
     """Deterministic grader → judge → report → email. Shared by the normal run and --regrade (mutates `row`)."""
     grade = _deterministic_grade(td, result, log)
+    # Preserve the deterministic checks as their own artifact (plan requirement — every case keeps
+    # image + response + deterministic checks + judge + latency + cost).
+    (td / "deterministic_grade.json").write_text(
+        json.dumps(grade if grade is not None else {"deterministic_grade": "unavailable"},
+                   indent=2, ensure_ascii=False), encoding="utf-8")
     graph = result.get("graph")
     final_text = result.get("final_text")
     jr = {"judge_error": "skipped"}
@@ -242,6 +271,12 @@ def run_one(src: dict, args) -> dict:
                      result.get("handled"), result.get("classification"), result.get("interpreter_used"), result.get("latency_s"))
 
         _grade_and_deliver(td, source_json, result, tested, args, row, log)
+    except (safety.FetchError, SkipError) as e:
+        # Benign, expected: robots-disallow / oversized-or-slow / too-many-pages. A typed SKIP
+        # (not a failure) so it never fails the exit code or halts an unattended batch.
+        log.warning("skip: %s", e)
+        row["status"] = f"skip: {e}"
+        row["skip"] = True
     except Exception as e:  # noqa: BLE001 — record the failure, preserve partial evidence
         log.exception("run failed")
         row["status"] = f"error: {type(e).__name__}: {e}"
@@ -482,10 +517,15 @@ def main(argv=None) -> int:
     rows = [run_one(s, args) for s in sources]
     _write_index(rows)
     ok = sum(1 for r in rows if r["status"] == "ok")
-    print(f"\n=== {ok}/{len(rows)} ok — index at {TESTS_ROOT/'index.md'} ===")
+    skipped = sum(1 for r in rows if str(r.get("status", "")).startswith("skip:"))
+    errored = sum(1 for r in rows if str(r.get("status", "")).startswith("error:"))
+    print(f"\n=== {ok}/{len(rows)} ok · {skipped} skipped · {errored} error — index at {TESTS_ROOT/'index.md'} ===")
     for r in rows:
         print(f"  {r['test_id']}: {r['status']} score={r.get('score')} hard_fail={r.get('hard_failure')} email={r.get('email')}")
-    return 0 if ok == len(rows) else 1
+    # Exit non-zero ONLY on a genuine error. Skips (robots/oversized) are expected and must
+    # never fail an unattended batch (plan success gate: "rerun unattended without one URL
+    # terminating the batch").
+    return 1 if errored else 0
 
 
 if __name__ == "__main__":
