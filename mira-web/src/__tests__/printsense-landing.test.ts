@@ -60,7 +60,7 @@ test("one page, multi-photo, and complete packages are one product continuum", a
   expect(html).toContain("MULTI-PHOTO");
   expect(html).toContain("COMPLETE PACKAGE");
   expect(html).toContain("A conversation, not a one-time report.");
-  expect(html).toContain("Continuing machine conversation");
+  expect(html).toContain("keep asking questions while PrintSense builds page relationships");
   expect(html).toContain("PrintSense stands alone. FactoryLM expands it.");
 });
 
