@@ -465,6 +465,11 @@ services:
       - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
       - PRINT_THEORY_VERIFY=${PRINT_THEORY_VERIFY:-}
       - PRINT_THEORY_SELF_CONSISTENCY=${PRINT_THEORY_SELF_CONSISTENCY:-}
+      # Production recall gate (v3.184.0): identical print turns reuse a stored
+      # interpretation with no model call. Default OFF; enable in factorylm/stg to
+      # phone-test recall on staging. Store under /mira-db/print_recall (mounted below).
+      - PRINT_RECALL_ENABLED=${PRINT_RECALL_ENABLED:-}
+      - PRINT_RECALL_ENV=${PRINT_RECALL_ENV:-staging}
     volumes:
       - /opt/mira-staging/data:/mira-db
       - /opt/mira-staging/data/sessions:/data/sessions

@@ -14,8 +14,12 @@ no second resolver/normalizer, and on ANY registry/CAS error **falls through to 
 plain interpretation** — a recall bug can never break a print interpretation. It
 writes evidence records (materialization) but performs no control writes.
 
-The recall key **excludes** the technician question: the PrintSynthGraph is a
-complete, question-independent interpretation, so it is reused across questions.
+By default the recall key **excludes** the technician question (the CLI treats the
+PrintSynthGraph as a complete, question-independent interpretation and reuses it
+across questions). The production path, where the paid prompt IS shaped by the
+question + OCR/package context, passes those inputs through ``producer_extra`` so
+the key covers every graph-affecting input — a behavior-preserving gate that never
+serves a graph computed for one question/context in answer to another.
 """
 
 from __future__ import annotations
@@ -49,6 +53,12 @@ logger = logging.getLogger("printsense.recall")
 
 SCHEMA_NAME = "PrintSynthGraph"
 PROMPT_CONTRACT_VERSION = "printsynth-system-v1"
+# Producer cache version — **BUMP whenever a graph-affecting change is made to the paid
+# interpreter contract**: the system/user prompt, preprocessing, the model-call shape, or
+# how pages are packaged. Bumping invalidates all prior recall entries, so a changed
+# producer never serves a stale graph. Distinct from PROMPT_CONTRACT_VERSION (recorded on
+# the manifest as lineage) and _schema_version() (which auto-tracks the output schema).
+PRODUCER_CACHE_VERSION = "v1"
 PRODUCER_NAME = "printsense.interpret.interpret_print"
 _CAS_KIND = "printsynth"
 _STORAGE_PREFIX = f"printsense-cas:{_CAS_KIND}:"
@@ -65,6 +75,57 @@ class RecallInfo:
     avoided_cost_usd: float | None = None
 
 
+def lookup_recall(
+    pages: list[tuple[bytes, str]],
+    *,
+    registry: MaterializationRegistry,
+    cas: CAS,
+    tenant_id: str = "local",
+    environment: Environment = Environment.DEV,
+    model: str = DEFAULT_MODEL,
+    preprocess: bool = True,
+    producer_extra: str | None = None,
+) -> tuple[PrintSynthGraph, RecallInfo] | None:
+    """Return a stored ``(graph, RecallInfo)`` for an EXACT recall hit, else ``None``.
+
+    The recall-only half of :func:`interpret_print_with_recall`: it never computes and
+    never catches — the caller decides how a lookup error falls through (the bridge
+    logs + computes; the production gate logs ``PRINT_RECALL_LOOKUP_FAILED`` + computes).
+    This lets the production gate do a lockless first lookup + a per-key double-check
+    without paying the model on a miss.
+    """
+    page_hashes = sorted(sha256_bytes(data) for data, _mt in pages)
+    query = RecallQuery(
+        tenant_id=tenant_id,
+        dataset_type=DatasetType.PRINT_INTERPRETATION,
+        source_hashes=page_hashes,
+        required_schema=(SCHEMA_NAME, _schema_version()),
+        allowed_producer_versions=[_producer_version(model, preprocess, producer_extra)],
+        environment=environment,
+    )
+    result = resolve_recall(query, registry)
+    if result.outcome != RecallOutcome.EXACT or not result.selected_versions:
+        return None
+    dvid = result.selected_versions[0]
+    m = registry.get(dvid, tenant_id=tenant_id)
+    if m is None or not m.storage_ref:
+        return None
+    graph = _load_graph(cas, m.storage_ref)
+    logger.info(
+        "PRINT_RECALL_HIT dvid=%s avoided_compute_ms=%s avoided_cost_usd=%s",
+        dvid,
+        m.compute_time_ms,
+        m.provider_cost_usd,
+    )
+    return graph, RecallInfo(
+        outcome=result.outcome.value,
+        recalled=True,
+        dataset_version_id=dvid,
+        avoided_compute_ms=m.compute_time_ms,
+        avoided_cost_usd=m.provider_cost_usd,
+    )
+
+
 def interpret_print_with_recall(
     pages: list[tuple[bytes, str]],
     *,
@@ -75,6 +136,7 @@ def interpret_print_with_recall(
     question: str | None = None,
     model: str = DEFAULT_MODEL,
     preprocess: bool = True,
+    producer_extra: str | None = None,
     interpret_fn=None,
 ) -> tuple[PrintSynthGraph, RecallInfo]:
     """Interpret ``pages``, reusing prior evidence when the same print was already
@@ -82,40 +144,30 @@ def interpret_print_with_recall(
 
     ``interpret_fn`` defaults to the real (paid) ``interpret_print``; inject a fake
     in tests to keep the whole path free.
+
+    ``producer_extra`` (optional) folds extra graph-affecting inputs into the recall
+    key — the production caller passes ``canonical_json({question, package_context})``
+    so recall is behavior-preserving. ``None`` (the CLI default) keeps the legacy
+    page-only key unchanged.
     """
     page_hashes = sorted(sha256_bytes(data) for data, _mt in pages)
-    producer_version = _producer_version(model, preprocess)
+    producer_version = _producer_version(model, preprocess, producer_extra)
     schema_version = _schema_version()
 
     # 1) recall attempt — a lookup error must never break interpretation.
     try:
-        query = RecallQuery(
+        hit = lookup_recall(
+            pages,
+            registry=registry,
+            cas=cas,
             tenant_id=tenant_id,
-            dataset_type=DatasetType.PRINT_INTERPRETATION,
-            source_hashes=page_hashes,
-            required_schema=(SCHEMA_NAME, schema_version),
-            allowed_producer_versions=[producer_version],
             environment=environment,
+            model=model,
+            preprocess=preprocess,
+            producer_extra=producer_extra,
         )
-        result = resolve_recall(query, registry)
-        if result.outcome == RecallOutcome.EXACT and result.selected_versions:
-            dvid = result.selected_versions[0]
-            m = registry.get(dvid, tenant_id=tenant_id)
-            if m is not None and m.storage_ref:
-                graph = _load_graph(cas, m.storage_ref)
-                logger.info(
-                    "PRINT_RECALL_HIT dvid=%s avoided_compute_ms=%s avoided_cost_usd=%s",
-                    dvid,
-                    m.compute_time_ms,
-                    m.provider_cost_usd,
-                )
-                return graph, RecallInfo(
-                    outcome=result.outcome.value,
-                    recalled=True,
-                    dataset_version_id=dvid,
-                    avoided_compute_ms=m.compute_time_ms,
-                    avoided_cost_usd=m.provider_cost_usd,
-                )
+        if hit is not None:
+            return hit
     except Exception:
         logger.warning("recall lookup failed; computing fresh", exc_info=True)
 
@@ -155,10 +207,26 @@ def _schema_version() -> str:
     return sha256_bytes(schema.encode("utf-8"))[:12]
 
 
-def _producer_version(model: str, preprocess: bool) -> str:
-    # NOT the question — the graph is question-independent. Bumping the trailing
-    # version invalidates recall when the preprocess/producer contract changes.
-    return f"{PROVIDER}|{model}|pp={int(preprocess)}|v1"
+def canonical_json(obj) -> str:
+    """Deterministic JSON for recall keys: sorted mapping keys, preserved list
+    order, preserved unicode (no ``\\uXXXX`` escapes), preserved ``null``, and
+    compact separators. Equal inputs always serialize equal; unequal inputs never
+    collide on formatting alone. The production caller folds the question +
+    package context through this into ``producer_extra``."""
+    return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+
+
+def _producer_version(model: str, preprocess: bool, extra: str | None = None) -> str:
+    # Base (``extra=None``) is the CLI's question-independent key: the same print
+    # reuses one graph across questions. Bumping the trailing version invalidates
+    # recall when the preprocess/producer contract changes.
+    base = f"{PROVIDER}|{model}|pp={int(preprocess)}|{PRODUCER_CACHE_VERSION}"
+    # ``extra`` folds the caller's graph-affecting inputs (the production path
+    # passes canonical(question + package_context)) into the key so a graph
+    # computed for one question/context is never served for another.
+    if extra:
+        base = f"{base}|x={sha256_bytes(extra.encode('utf-8'))[:16]}"
+    return base
 
 
 def _load_graph(cas: CAS, storage_ref: str) -> PrintSynthGraph:
