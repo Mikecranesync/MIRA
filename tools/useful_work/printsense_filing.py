@@ -17,7 +17,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal, Protocol
 
-from printsense.models import PrintSynthGraph
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from printsense.models import PrintSynthGraph  # noqa: E402
 
 RUNNER_ID = "printsense_filing_worker"
 MANIFEST_NAME = "source_manifest.json"
@@ -219,7 +223,7 @@ def _finish_result(
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        with path.open("r", encoding="utf-8-sig") as handle:
             data = json.load(handle)
     except FileNotFoundError as exc:
         raise ValueError(f"required file missing: {path.name}") from exc

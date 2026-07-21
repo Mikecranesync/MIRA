@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -233,6 +234,34 @@ def test_dry_run_resolves_and_reports_without_attaching(tmp_path: Path):
     assert "dry-run" in result.next_action.lower()
 
 
+def test_package_json_accepts_utf8_bom_from_windows_tools(tmp_path: Path):
+    package = _write_package(
+        tmp_path,
+        manifest={
+            "schema": "factorylm.printsense_source_manifest.v1",
+            "tenant_id": "tenant-1",
+            "target": {"node_id": "node-1"},
+            "files": [{"filename": "SCU2-sheet-20.pdf", "local_path": "SCU2-sheet-20.pdf"}],
+        },
+        source_files={"SCU2-sheet-20.pdf": b"%PDF-pretend"},
+    )
+    (package / "grade.json").write_text(
+        json.dumps({"import_verdict": "PASS", "score": 94, "hard_failures": []}),
+        encoding="utf-8-sig",
+    )
+
+    result = run_printsense_filing(
+        package,
+        hub_client=FakeHubClient(),
+        evidence_root=tmp_path / "evidence",
+        ledger_path=tmp_path / "runner-ledger.jsonl",
+        dry_run=True,
+    )
+
+    assert result.status == "yellow"
+    assert result.counts["dry_run_files_ready"] == 1
+
+
 def test_pdf_kept_but_not_indexed_is_not_green(tmp_path: Path):
     package = _write_package(
         tmp_path,
@@ -374,3 +403,39 @@ def test_cli_dry_run_outputs_machine_readable_result(tmp_path: Path, capsys):
     assert payload["run_id"] == "cli-run"
     assert payload["status"] == "yellow"
     assert payload["counts"]["dry_run_files_ready"] == 1
+
+
+def test_script_dry_run_invocation_imports_repo_modules(tmp_path: Path):
+    package = _write_package(
+        tmp_path,
+        manifest={
+            "schema": "factorylm.printsense_source_manifest.v1",
+            "tenant_id": "tenant-1",
+            "target": {"node_id": "node-1"},
+            "files": [{"filename": "SCU2-sheet-20.pdf", "local_path": "SCU2-sheet-20.pdf"}],
+        },
+        source_files={"SCU2-sheet-20.pdf": b"%PDF-pretend"},
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "useful_work" / "printsense_filing.py"),
+            str(package),
+            "--evidence-root",
+            str(tmp_path / "evidence"),
+            "--ledger",
+            str(tmp_path / "runner-ledger.jsonl"),
+            "--run-id",
+            "script-run",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["run_id"] == "script-run"
+    assert payload["status"] == "yellow"
