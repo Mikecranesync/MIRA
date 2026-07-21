@@ -1,0 +1,47 @@
+name: Staging recall logs (read-only)
+
+# One-off, READ-ONLY diagnostic. SSHes to the staging VPS (same key/host as
+# deploy-staging) and prints the PrintSense recall evidence from the staging bot
+# container: the PRINT_RECALL_* env, the recall log lines, and the
+# PRINT_MATERIALIZED count. NO mutation — only `docker inspect` / `docker logs`
+# reads. Triggered by pushing the `ops/staging-recall-logs` branch; never merged
+# to main. deploy-staging only auto-runs on push to staging/release/*, so this
+# branch push does NOT redeploy (which would recreate the container and lose the
+# phone-test logs).
+
+on:
+  push:
+    branches:
+      - ops/staging-recall-logs
+
+jobs:
+  logs:
+    name: Fetch staging recall evidence (read-only)
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 6
+    steps:
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Container env — PRINT_RECALL (read-only)
+        run: |
+          echo "===== container PRINT_RECALL env ====="
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 \
+            "docker inspect stg-mira-bot-telegram --format '{{json .Config.Env}}' 2>&1 | tr ',' '\n' | grep -E 'PRINT_RECALL' || echo 'NO_PRINT_RECALL_ENV'"
+
+      - name: Recall log lines (read-only)
+        run: |
+          echo "===== recall log lines (last 150 matching) ====="
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 \
+            "docker logs stg-mira-bot-telegram --tail 2500 2>&1 | grep -E 'PRINT_RECALL|PRINT_MATERIALIZED|avoided_compute_ms|PRINT_ANTHROPIC_ERROR|Traceback|Exception' | tail -150 || echo 'NO_MATCHING_LINES'"
+
+      - name: PRINT_MATERIALIZED count (read-only)
+        run: |
+          echo "===== PRINT_MATERIALIZED count ====="
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91 \
+            "docker logs stg-mira-bot-telegram --tail 5000 2>&1 | grep -c PRINT_MATERIALIZED || true"
