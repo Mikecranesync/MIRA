@@ -31,6 +31,17 @@ def test_bot_image_ships_recall_packages(dockerfile: Path):
     assert "COPY printsense/" in text, (
         f"{dockerfile} must COPY printsense/ — printsense.recall needs it"
     )
+    # ADR-0031 PR 2: provider hardening ships with the bots.
+    assert "COPY factorylm_ai/" in text, (
+        f"{dockerfile} must COPY factorylm_ai/ — the provider registry, typed "
+        "capability codes, and (PR 4) readiness command live there; without it "
+        "the PR-3 Together interpreter and readiness silently disable"
+    )
+    assert "COPY config/providers/" in text, (
+        f"{dockerfile} must COPY config/providers/ — the approved-provider "
+        "policy (FR-9) is fail-closed: a missing file turns into "
+        "PROVIDER_NOT_APPROVED at runtime"
+    )
 
 
 def test_recall_packages_import_clean():
@@ -38,3 +49,5 @@ def test_recall_packages_import_clean():
     # the packages are import-clean here is the other half of the packaging guarantee.
     assert importlib.import_module("materialized_evidence")
     assert importlib.import_module("printsense.recall")
+    assert importlib.import_module("factorylm_ai.provider_registry")
+    assert importlib.import_module("factorylm_ai.capability_codes")

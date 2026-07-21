@@ -1,3 +1,12 @@
+### v3.191.0 (2026-07-21) - feat(hardening): PR 2 — canonical provider registry + network gate (ADR-0031)
+
+- **`factorylm_ai/provider_registry.py`** — ONE owner for provider names, key envs, base URLs, default models, timeouts; call-time resolution (fixes the import-freeze class); the two Together hosts carried as explicit data (`cascade_url` = legacy `.xyz` the proven cascade uses, `canonical_url` = `.ai` for typed/lab calls — unification is Phase E, never a refactor side effect); `resolve`/`require_key` raise typed codes; `registry_report()` is redacted (key_present only); `approved_policy`/`task_policy`/`model_approved` consume `config/providers/approved.yml` FAIL-CLOSED (missing/malformed policy = PROVIDER_NOT_APPROVED).
+- **`factorylm_ai/network_gate.py`** — canonical `FACTORYLM_NETWORK_MODE=enabled|disabled`; legacy mapping (`INFERENCE_BACKEND=cloud` ⇒ enabled, `FACTORYLM_AI_ALLOW_NETWORK` truthy ⇒ enabled); canonical wins; explicitly contradictory legacy values raise `INVALID_CONFIGURATION`; one-shot deprecation log; unset ⇒ disabled (CI/tests are network-off by construction).
+- **Router parity is contract-tested, not runtime-imported** — the cascade router ships in images without `factorylm_ai` (pipeline), so instead of a risky import, `tests/factorylm_ai/test_provider_registry.py` pins `router._build_providers()` output (urls/models/timeouts/env-overrides/or-form fallbacks) to the registry: drift = CI-red. Full import-consumption lands with the Phase-E host unification (ADR migration-adapter clause).
+- **`factorylm_ai/providers/together.py`** now consumes the registry (canonical host + default chat model) and the canonical network gate — first duplicate-default removal.
+- **Bot images ship the hardening**: both bot Dockerfiles `COPY factorylm_ai/` + `COPY config/providers/` (needed by PR 3's Together interpreter + PR 4 readiness); `test_docker_recall_packaging.py` extended to guard both COPYs + import-cleanliness.
+- Tests: +19 hermetic ($0); the two PR-2 xfail markers in the PR-1 contract suite are now real passing tests. No production behavior change (gate semantics identical under every env combination shipped in compose).
+
 ### v3.190.0 (2026-07-21) - feat(hardening): PrintSense Provider & OCR Hardening PR 1 — capability contracts (ADR-0031)
 
 PR 1 of the 8-PR provider/OCR hardening ladder (owner PRD; ADR `docs/adr/0031-printsense-provider-ocr-hardening.md`). Contracts only — ZERO runtime behavior change.
