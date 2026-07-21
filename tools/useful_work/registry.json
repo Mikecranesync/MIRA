@@ -1,0 +1,36 @@
+{
+  "printsense_filing_worker": {
+    "id": "printsense_filing_worker",
+    "owner_persona": "Dana",
+    "queue": "printsense_filing",
+    "cadence": "on_backlog_or_daily",
+    "input_sources": [
+      "printsense.graph_json",
+      "printsense.grade_json",
+      "printsense.source_manifest",
+      "approved_source_manifest",
+      "hub_namespace"
+    ],
+    "allowed_writes": [
+      "hub_node_file_attachment",
+      "review_packet",
+      "runner_ledger_event",
+      "candidate_finding"
+    ],
+    "forbidden_writes": [
+      "kg_verified_promotion",
+      "printsense_fact_verification",
+      "plc_write",
+      "scada_control",
+      "billing_change",
+      "destructive_delete"
+    ],
+    "evidence_required": [
+      "review_packet",
+      "runner_ledger_event",
+      "attached_upload_ids_or_stop_reason"
+    ],
+    "verification_pack": "stardust_document_visibility",
+    "status": "draft"
+  }
+}

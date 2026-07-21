@@ -1103,3 +1103,18 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 - Scorecard: 47/57 passing (82%) — from 2026-06-27T2229 run
 - Action: issue-filed (commented on #1876)
 - Multi-file cluster hard stop: failures span engine.py (8 fixtures, FSM state mismatches) + guardrails.py/prompts (1 fixture, gs3_ground_fault keyword miss). Autopatch skipped; next steps in issue comment.
+# Hot Cache - 2026-07-21 - Automated useful-work PRD + PrintSense filing worker
+
+Branch `codex/dogfood-useful-work` shipped commit `660725f90` for the first slice of automated
+agent useful work. Added `docs/product/automated-agent-useful-work-prd.md` plus
+`tools/useful_work/printsense_filing.py`: an exact-manifest PrintSense package filing worker
+that validates `graph.json`/`grade.json`, requires explicit tenant + node target, blocks failed
+PrintSense imports, blocks path escape, writes review packets + runner ledger events, and can
+dry-run by default. Commit mode uses Hub session-cookie auth and reports Hub failures as `infra`.
+Live Google Drive fetch is intentionally not implemented in this slice; `drive_file_id` stops as
+`approved_external_source_connector` unavailable until an approved connector/policy exception exists.
+Verification: `py -3 -m ruff check tools/useful_work tests/useful_work tools/__init__.py` green;
+`py -3 -m pytest tests/useful_work/test_printsense_filing.py tests/test_ops_agent_runners.py`
+green (26 passed).
+
+---
