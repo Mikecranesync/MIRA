@@ -14,8 +14,12 @@ no second resolver/normalizer, and on ANY registry/CAS error **falls through to 
 plain interpretation** — a recall bug can never break a print interpretation. It
 writes evidence records (materialization) but performs no control writes.
 
-The recall key **excludes** the technician question: the PrintSynthGraph is a
-complete, question-independent interpretation, so it is reused across questions.
+By default the recall key **excludes** the technician question (the CLI treats the
+PrintSynthGraph as a complete, question-independent interpretation and reuses it
+across questions). The production path, where the paid prompt IS shaped by the
+question + OCR/package context, passes those inputs through ``producer_extra`` so
+the key covers every graph-affecting input — a behavior-preserving gate that never
+serves a graph computed for one question/context in answer to another.
 """
 
 from __future__ import annotations
@@ -75,6 +79,7 @@ def interpret_print_with_recall(
     question: str | None = None,
     model: str = DEFAULT_MODEL,
     preprocess: bool = True,
+    producer_extra: str | None = None,
     interpret_fn=None,
 ) -> tuple[PrintSynthGraph, RecallInfo]:
     """Interpret ``pages``, reusing prior evidence when the same print was already
@@ -82,9 +87,14 @@ def interpret_print_with_recall(
 
     ``interpret_fn`` defaults to the real (paid) ``interpret_print``; inject a fake
     in tests to keep the whole path free.
+
+    ``producer_extra`` (optional) folds extra graph-affecting inputs into the recall
+    key — the production caller passes ``canonical_json({question, package_context})``
+    so recall is behavior-preserving. ``None`` (the CLI default) keeps the legacy
+    page-only key unchanged.
     """
     page_hashes = sorted(sha256_bytes(data) for data, _mt in pages)
-    producer_version = _producer_version(model, preprocess)
+    producer_version = _producer_version(model, preprocess, producer_extra)
     schema_version = _schema_version()
 
     # 1) recall attempt — a lookup error must never break interpretation.
@@ -155,10 +165,26 @@ def _schema_version() -> str:
     return sha256_bytes(schema.encode("utf-8"))[:12]
 
 
-def _producer_version(model: str, preprocess: bool) -> str:
-    # NOT the question — the graph is question-independent. Bumping the trailing
-    # version invalidates recall when the preprocess/producer contract changes.
-    return f"{PROVIDER}|{model}|pp={int(preprocess)}|v1"
+def canonical_json(obj) -> str:
+    """Deterministic JSON for recall keys: sorted mapping keys, preserved list
+    order, preserved unicode (no ``\\uXXXX`` escapes), preserved ``null``, and
+    compact separators. Equal inputs always serialize equal; unequal inputs never
+    collide on formatting alone. The production caller folds the question +
+    package context through this into ``producer_extra``."""
+    return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+
+
+def _producer_version(model: str, preprocess: bool, extra: str | None = None) -> str:
+    # Base (``extra=None``) is the CLI's question-independent key: the same print
+    # reuses one graph across questions. Bumping the trailing version invalidates
+    # recall when the preprocess/producer contract changes.
+    base = f"{PROVIDER}|{model}|pp={int(preprocess)}|v1"
+    # ``extra`` folds the caller's graph-affecting inputs (the production path
+    # passes canonical(question + package_context)) into the key so a graph
+    # computed for one question/context is never served for another.
+    if extra:
+        base = f"{base}|x={sha256_bytes(extra.encode('utf-8'))[:16]}"
+    return base
 
 
 def _load_graph(cas: CAS, storage_ref: str) -> PrintSynthGraph:
