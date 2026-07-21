@@ -89,6 +89,32 @@ class TestTagGrounding:
         assert "ocr_identifier_drift" in r["skipped"]
 
 
+class TestTagFloodOcrCapability:
+    # 25 distinct tag tokens across 5 interspersed families → tagish_count 25 (>= _TAG_FLOOD_MIN
+    # 20) but max consecutive same-family run 1 (< _ENUM_MIN_RUN 15), so this trips tag_flood
+    # WITHOUT tripping degenerate_enumeration.
+    _FLOOD = "Terminals: " + " ".join(
+        f"{fam}{n}" for n in range(1, 6) for fam in ("K", "M", "X", "Q", "R")
+    )
+
+    def test_tag_flood_fires_when_ocr_capability_present(self):
+        # OCR ran (available) but read nothing — the genuine "flood without OCR" signal.
+        r = _eval(self._FLOOD, vision_data={"ocr_items": [], "ocr_available": True})
+        assert "tag_flood_without_ocr" in _classes(r)
+        assert "degenerate_enumeration" not in _classes(r)
+
+    def test_tag_flood_fires_when_ocr_available_absent_backward_compat(self):
+        # Pre-field rows have no ocr_available key → default treated as available → still fires.
+        r = _eval(self._FLOOD, vision_data={"ocr_items": []})
+        assert "tag_flood_without_ocr" in _classes(r)
+
+    def test_tag_flood_suppressed_when_ocr_capability_unavailable(self):
+        # Tesseract not installed: a correct dense reading must NOT be flagged (2026-07-21 ATV340).
+        r = _eval(self._FLOOD, vision_data={"ocr_items": [], "ocr_available": False})
+        assert "tag_flood_without_ocr" not in _classes(r)
+        assert "tag_flood_without_ocr" in r["skipped"]
+
+
 class TestCaveatTripwire:
     def test_verdict_without_caveat_is_p1(self):
         r = _eval("Contact 13/14 is normally open.")

@@ -392,6 +392,27 @@ def ocr_lane_report() -> dict:
     }
 
 
+_OCR_AVAILABLE_CACHE: bool | None = None
+
+
+def _ocr_capability_available() -> bool:
+    """Whether the Tesseract OCR floor is installed in THIS process (cached — one probe).
+
+    Surfaced on vision_data as ``ocr_available`` so downstream graders can tell
+    "OCR ran and read nothing" (available=True, real signal) apart from "OCR
+    could not run at all" (available=False) — e.g. the autoeval ``tag_flood_without_ocr``
+    lane must not fire when the OCR capability is simply absent (a correct dense
+    reading would otherwise trip a false positive). Defaults True (safe) if unknowable."""
+    global _OCR_AVAILABLE_CACHE
+    if _OCR_AVAILABLE_CACHE is None:
+        try:
+            _tesseract_version_impl()
+            _OCR_AVAILABLE_CACHE = True
+        except Exception:  # noqa: BLE001 — absence is a state, not an error
+            _OCR_AVAILABLE_CACHE = False
+    return _OCR_AVAILABLE_CACHE
+
+
 class VisionWorker:
     """Handles photo analysis: vision model + OCR + classification."""
 
@@ -525,6 +546,7 @@ class VisionWorker:
             "ocr_items": ocr_items,
             "ocr_tokens": ocr_tokens_,
             "ocr_source": ocr_source,
+            "ocr_available": _ocr_capability_available(),
             "tesseract_text": tesseract_text,
             "drawing_type": drawing_type,
             "drawing_type_confidence": drawing_confidence,

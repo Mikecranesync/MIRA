@@ -368,7 +368,13 @@ def evaluate_print_turn(
 
     tagish_count = len(set(_ENUM_TOKEN_RE.findall(answer)))
     tag_claims = max(prose_tag_count, tagish_count)
-    if not ocr_items and tag_claims >= _TAG_FLOOD_MIN:
+    # Suppress when the OCR CAPABILITY is explicitly unavailable (tesseract not installed):
+    # with no floor, EVERY accurate dense schematic reads as "many tags, 0 OCR" and would
+    # false-positive (observed on the correct ATV340 in the 2026-07-21 no-OCR bench). Only a
+    # genuine 0-items-WITH-OCR-present run is the damning signal this lane is for. `ocr_available`
+    # absent (pre-field rows) defaults to available=True → backward compatible.
+    ocr_capability_off = (vision_data or {}).get("ocr_available") is False
+    if not ocr_items and tag_claims >= _TAG_FLOOD_MIN and not ocr_capability_off:
         # P1 — the volume alone is damning: dozens of tag-shaped claims with
         # ZERO OCR items read from the photo. Item-level invention still can't
         # be checked (that lane stays in `skipped`) — this fires on the ratio.
@@ -379,6 +385,8 @@ def evaluate_print_turn(
                 "detail": _cap(f"{tag_claims} tag-shaped claims vs 0 OCR items"),
             }
         )
+    elif not ocr_items and tag_claims >= _TAG_FLOOD_MIN and ocr_capability_off:
+        skipped.append("tag_flood_without_ocr")
 
     tail = answer.rstrip()
     if len(answer) >= _TRUNCATION_MIN_LEN and tail and tail[-1] in _TRUNCATION_TAIL_CHARS:
