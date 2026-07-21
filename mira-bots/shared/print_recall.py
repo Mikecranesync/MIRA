@@ -23,6 +23,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import sys
 import threading
 from pathlib import Path
 
@@ -154,9 +155,10 @@ def _get_cas():
 
 
 def _lock_fd(fd: int) -> None:
-    try:
-        import fcntl  # noqa: PLC0415
-    except ImportError:
+    # sys.platform branching (not try/except) so a static type checker narrows to the
+    # right stdlib module per platform — fcntl on POSIX, msvcrt on Windows — and never
+    # flags the other's symbols.
+    if sys.platform == "win32":
         import msvcrt  # noqa: PLC0415
         import time as _t  # noqa: PLC0415
 
@@ -168,19 +170,21 @@ def _lock_fd(fd: int) -> None:
             except OSError:
                 _t.sleep(0.02)
     else:
+        import fcntl  # noqa: PLC0415
+
         fcntl.flock(fd, fcntl.LOCK_EX)
 
 
 def _unlock_fd(fd: int) -> None:
-    try:
-        import fcntl  # noqa: PLC0415
-    except ImportError:
+    if sys.platform == "win32":
         import msvcrt  # noqa: PLC0415
 
         with contextlib.suppress(OSError):
             os.lseek(fd, 0, os.SEEK_SET)
             msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
     else:
+        import fcntl  # noqa: PLC0415
+
         with contextlib.suppress(OSError):
             fcntl.flock(fd, fcntl.LOCK_UN)
 
