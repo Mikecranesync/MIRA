@@ -113,4 +113,10 @@ Call the generalized-print milestone achieved only when:
 - **Phase 2 — benchmark report: DONE** — `docs/benchmarks/2026-07-21-printsense-internet-print-generalization.md`
   (exact claim + defensible framing + config id + 5 URLs/SHA-256/timestamps + per-case grades + honest
   method notes: hand-graded because the judge was broken at run time, now fixed).
-- **Phase 3 — 10 boundary-probing classes: PENDING** (metered, within the remaining ~$0.43 of the $0.50 cap).
+- **Phase 3 — 10 boundary-probing classes: DONE** — 10 classes added to `sources.json` (`boundary-*`),
+  9 answered + 1 robots-skip; complete before/after report at
+  `docs/benchmarks/2026-07-21-printsense-generalization-boundary-report.md`. Boundaries found: fine
+  base-address misread on a PLC screenshot, a short truncation the autoeval missed, an autoeval P0
+  false-positive on quoted narrative. All infra fixes + the safety lane validated LIVE (judge 88/B on
+  the free cascade; robots skip → exit 0; 17.4/8.3 MB fetched under the deadline; Banner warnings now
+  surfaced verbatim). Milestone gate NOT yet met (1 unsupported-claim failure; 14 of 15 prints). ~$0.16 total.
