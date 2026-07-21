@@ -129,3 +129,32 @@ Every test mocks the paid boundary; zero real model calls. Matrix per the build 
 (recall key, gate enablement/fall-through, per-key single-flight, failure-by-phase,
 corrupt registry, missing CAS object, engine seam byte-identical render, packaging
 import).
+
+## Review corrections (2026-07-21) — supersede the design above where they differ
+
+Live review found two merge-blocking gaps + two hardening items; fixed on-branch:
+
+1. **Ordered multipage identity.** The original key sorted page hashes, so `[A,B]` and
+   `[B,A]` recalled each other — wrong, since page order is graph-affecting. The
+   production `producer_extra` now folds an **ordered** page signature
+   `[{sha256, media_type}, …]` (via `_build_producer_extra`); the resolver's
+   `source_hashes` stays a sorted SET, but the ordered sequence lives in the producer
+   identity, so reversed pages (or a changed media type) recompute. The single-flight
+   `_recall_key` is derived from that same `producer_extra`, so it never coalesces
+   reversed packages or different questions. `producer_extra=None` keeps the CLI key.
+2. **Cross-process per-key single-flight.** `_KeyedLocks` only coordinated threads in
+   one process; two containers could both pay. Added a kernel-backed per-key lock file
+   `<recall_dir>/locks/<key>.lock` (`fcntl.flock` on POSIX, `msvcrt` byte-range on
+   Windows dev — both auto-released on crash) as **phase 3**, spanning the final lookup
+   + paid compute + persist. Lock order: per-key (in-process `_KEYED`, then cross-process
+   file lock) OUTER, registry snapshot lock INNER (during `register`) — never reversed;
+   the paid call is never held under the snapshot lock; distinct keys use distinct lock
+   files so different prints compute concurrently. Proven by a **real subprocess test**
+   (two processes, shared `PRINT_RECALL_DIR`, filesystem call ledger, blocking fake) →
+   one paid call; plus a distinct-keys test proving concurrent (overlapping) execution.
+3. **`PRINT_RECALL_ENV` validation.** An invalid value no longer silently falls back to
+   `DEV`; `enabled()` returns `False` (recall off, ordinary paid path) and logs
+   `PRINT_RECALL_ENV_INVALID` once — never mislabels prod data as dev.
+4. **Named producer-cache version.** The inline `v1` is now `PRODUCER_CACHE_VERSION` in
+   `printsense/recall.py`, documented: bump on any graph-affecting prompt/interpreter
+   contract change to invalidate recall.

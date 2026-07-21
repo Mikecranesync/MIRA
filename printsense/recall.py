@@ -53,6 +53,12 @@ logger = logging.getLogger("printsense.recall")
 
 SCHEMA_NAME = "PrintSynthGraph"
 PROMPT_CONTRACT_VERSION = "printsynth-system-v1"
+# Producer cache version — **BUMP whenever a graph-affecting change is made to the paid
+# interpreter contract**: the system/user prompt, preprocessing, the model-call shape, or
+# how pages are packaged. Bumping invalidates all prior recall entries, so a changed
+# producer never serves a stale graph. Distinct from PROMPT_CONTRACT_VERSION (recorded on
+# the manifest as lineage) and _schema_version() (which auto-tracks the output schema).
+PRODUCER_CACHE_VERSION = "v1"
 PRODUCER_NAME = "printsense.interpret.interpret_print"
 _CAS_KIND = "printsynth"
 _STORAGE_PREFIX = f"printsense-cas:{_CAS_KIND}:"
@@ -214,7 +220,7 @@ def _producer_version(model: str, preprocess: bool, extra: str | None = None) ->
     # Base (``extra=None``) is the CLI's question-independent key: the same print
     # reuses one graph across questions. Bumping the trailing version invalidates
     # recall when the preprocess/producer contract changes.
-    base = f"{PROVIDER}|{model}|pp={int(preprocess)}|v1"
+    base = f"{PROVIDER}|{model}|pp={int(preprocess)}|{PRODUCER_CACHE_VERSION}"
     # ``extra`` folds the caller's graph-affecting inputs (the production path
     # passes canonical(question + package_context)) into the key so a graph
     # computed for one question/context is never served for another.

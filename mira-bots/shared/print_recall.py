@@ -41,6 +41,7 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 _imports_ok_cache: bool | None = None
 _unavailable_warned = False
+_env_warned = False
 
 
 def _flag_on() -> bool:
@@ -72,9 +73,11 @@ def _imports_ok() -> bool:
 
 
 def enabled() -> bool:
-    """True when PRINT_RECALL_ENABLED is set AND the recall package is importable. The
-    engine checks this before every print interpretation; default OFF."""
-    return _flag_on() and _imports_ok()
+    """True when PRINT_RECALL_ENABLED is set, the recall package is importable, AND
+    PRINT_RECALL_ENV is valid. The engine checks this before every print interpretation;
+    default OFF. An invalid PRINT_RECALL_ENV disables recall (rather than mislabeling
+    stored data) — see ``_resolve_env``."""
+    return _flag_on() and _imports_ok() and _resolve_env() is not None
 
 
 # ── store location / identity ───────────────────────────────────────────────────
@@ -91,15 +94,39 @@ def _recall_dir() -> Path:
     return Path(db).parent / "print_recall"
 
 
-def _env():
-    """Truthful deployment environment for stored manifests — never hardcode DEV in prod."""
+def _resolve_env():
+    """The deployment `Environment`, or `None` if `PRINT_RECALL_ENV` is set to an
+    invalid value. An invalid value is a config error we refuse to paper over: recall
+    is disabled rather than silently recording (say) production materializations as
+    development data. Unset -> DEV (the saas.yml compose supplies `prod` in-container).
+    Warns once per process on an invalid value; the value is an env label, not a secret."""
+    global _env_warned
     from materialized_evidence import Environment  # noqa: PLC0415
 
-    val = os.getenv(_ENV_ENV, "dev").strip().lower()
+    raw = os.getenv(_ENV_ENV)
+    if raw is None or not raw.strip():
+        return Environment.DEV
+    val = raw.strip().lower()
     try:
         return Environment(val)
     except ValueError:
-        return Environment.DEV
+        if not _env_warned:
+            _env_warned = True
+            logger.warning(
+                "PRINT_RECALL_ENV_INVALID value=%r — recall disabled (refusing to mislabel "
+                "stored data); valid values: dev|staging|prod",
+                val,
+            )
+        return None
+
+
+def _env():
+    """A guaranteed `Environment` for materialization. `enabled()` has already rejected
+    an invalid `PRINT_RECALL_ENV`, so this is reached only with a valid value; the
+    `or DEV` is a defensive floor, never a silent prod->dev relabel on the live path."""
+    from materialized_evidence import Environment  # noqa: PLC0415
+
+    return _resolve_env() or Environment.DEV
 
 
 _cas_singleton = None
@@ -119,34 +146,73 @@ def _get_cas():
 
 # ── cross-process-safe registry ─────────────────────────────────────────────────
 
-# Windows dev has no fcntl and is single-process there, so an in-process lock is a
-# correct fallback. In the Linux container fcntl.flock gives true cross-process
-# advisory locking, so telegram + slack (separate containers, shared /mira-db) never
-# clobber each other's snapshot.
-_WIN_SNAPSHOT_LOCK = threading.Lock()
+# A kernel-backed exclusive file lock: fcntl.flock on POSIX (the Linux containers, where
+# telegram + slack share /mira-db) and an msvcrt byte-range lock on Windows dev. Both are
+# real cross-process locks that the kernel releases automatically if the holder crashes —
+# so there is no stale lock file to reap. Used for BOTH the per-key single-flight lock and
+# the short registry-snapshot lock.
+
+
+def _lock_fd(fd: int) -> None:
+    try:
+        import fcntl  # noqa: PLC0415
+    except ImportError:
+        import msvcrt  # noqa: PLC0415
+        import time as _t  # noqa: PLC0415
+
+        while True:  # LK_NBLCK + poll == a blocking acquire (LK_LOCK gives up after ~10s)
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                return
+            except OSError:
+                _t.sleep(0.02)
+    else:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+
+
+def _unlock_fd(fd: int) -> None:
+    try:
+        import fcntl  # noqa: PLC0415
+    except ImportError:
+        import msvcrt  # noqa: PLC0415
+
+        with contextlib.suppress(OSError):
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def _os_exclusive_lock(lock_path: Path):
+    """Blocking, kernel-backed exclusive lock keyed on ``lock_path``. Auto-released by the
+    kernel on holder crash. Distinct lock files never serialize each other."""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        if os.fstat(fd).st_size == 0:
+            os.write(fd, b"\0")  # msvcrt byte-range locking needs a byte present
+        _lock_fd(fd)
+        yield
+    finally:
+        _unlock_fd(fd)
+        os.close(fd)
 
 
 @contextlib.contextmanager
 def _snapshot_lock(snapshot_path: Path):
-    lock_path = str(snapshot_path) + ".lock"
-    Path(lock_path).parent.mkdir(parents=True, exist_ok=True)
-    try:
-        import fcntl  # noqa: PLC0415
-    except ImportError:
-        _WIN_SNAPSHOT_LOCK.acquire()
-        try:
-            yield
-        finally:
-            _WIN_SNAPSHOT_LOCK.release()
-        return
-    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+    """The short registry-snapshot lock (INNER lock — held only for the ms-scale
+    re-hydrate + persist, never across a paid call)."""
+    with _os_exclusive_lock(Path(str(snapshot_path) + ".lock")):
         yield
-    finally:
-        with contextlib.suppress(Exception):
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+
+
+def _key_lock_path(key: str) -> Path:
+    """Per-recall-key cross-process single-flight lock file (one file per key, so distinct
+    keys compute concurrently)."""
+    return _recall_dir() / "locks" / f"{key}.lock"
 
 
 _xproc_cls = None
@@ -234,12 +300,37 @@ class _KeyedLocks:
 _KEYED = _KeyedLocks()
 
 
-def _recall_key(page_hashes, model, preprocess, producer_extra) -> str:
+def _ordered_pages(pages) -> list[dict]:
+    """An ORDER- and media-type-sensitive page signature. Reversed pages or a changed
+    media type are a different print — page order affects cross-references and context,
+    and media type is passed to the interpreter, so both shape the graph."""
     from printsense.cas import sha256_bytes  # noqa: PLC0415
 
-    material = "|".join(
-        [*page_hashes, str(model), str(int(bool(preprocess))), producer_extra or ""]
+    return [{"sha256": sha256_bytes(data), "media_type": mt} for data, mt in pages]
+
+
+def _build_producer_extra(question, package_context, pages) -> str:
+    """The production producer identity folded into the recall key: question + package
+    context + the ordered page signature. The resolver's ``source_hashes`` stays a sorted
+    SET; the ORDERED sequence lives here, so ``[A,B]`` and ``[B,A]`` never recall each other."""
+    from printsense.recall import canonical_json  # noqa: PLC0415
+
+    return canonical_json(
+        {
+            "question": question,
+            "package_context": package_context,
+            "ordered_pages": _ordered_pages(pages),
+        }
     )
+
+
+def _recall_key(producer_extra, model, preprocess) -> str:
+    """The per-key single-flight / logging key — the FULL recall identity (producer_extra
+    already carries ordered pages + question + context), so it never coalesces reversed
+    packages or different questions onto one paid call."""
+    from printsense.cas import sha256_bytes  # noqa: PLC0415
+
+    material = "|".join([str(model), str(int(bool(preprocess))), producer_extra])
     return sha256_bytes(material.encode("utf-8"))
 
 
@@ -261,16 +352,10 @@ def interpret_with_recall(*, pages, question, package_context, model, preprocess
     falls through to a plain paid interpretation (the interpreter's OWN failure
     propagates, but never a second model call). Callers gate on ``enabled()`` first.
     """
-    from printsense.cas import sha256_bytes  # noqa: PLC0415
-    from printsense.recall import (  # noqa: PLC0415
-        canonical_json,
-        interpret_print_with_recall,
-        lookup_recall,
-    )
+    from printsense.recall import interpret_print_with_recall, lookup_recall  # noqa: PLC0415
 
-    producer_extra = canonical_json({"question": question, "package_context": package_context})
-    page_hashes = sorted(sha256_bytes(data) for data, _mt in pages)
-    key = _recall_key(page_hashes, model, preprocess, producer_extra)
+    producer_extra = _build_producer_extra(question, package_context, pages)
+    key = _recall_key(producer_extra, model, preprocess)
     cas = _get_cas()
     env = _env()
 
@@ -307,10 +392,10 @@ def interpret_with_recall(*, pages, question, package_context, model, preprocess
         _log_hit(info, key, len(pages))
         return graph
 
-    # phase 2 — per-key single-flight: one paid call per identical concurrent request
+    # phase 2 — in-process per-key single-flight (double-check under the lock)
     with _KEYED.acquire(key):
         try:
-            hit = _lookup()  # double-check under the lock (a peer may have just stored)
+            hit = _lookup()
         except Exception:  # noqa: BLE001
             logger.warning("PRINT_RECALL_LOOKUP_FAILED phase=2 key=%s", key[:12], exc_info=True)
             hit = None
@@ -318,18 +403,35 @@ def interpret_with_recall(*, pages, question, package_context, model, preprocess
             graph, info = hit
             _log_hit(info, key, len(pages))
             return graph
-        graph, info = interpret_print_with_recall(
-            pages,
-            registry=_open_registry_fresh(),
-            cas=cas,
-            tenant_id=TENANT,
-            environment=env,
-            question=question,
-            model=model,
-            preprocess=preprocess,
-            producer_extra=producer_extra,
-            interpret_fn=_bound,
-        )
+        # phase 3 — CROSS-process per-key single-flight. This lock spans the final
+        # lookup + paid compute + persist, so a peer container (telegram vs slack,
+        # sharing /mira-db) never double-pays for the same key. Lock order: per-key
+        # (in-process _KEYED, then this cross-process lock) OUTER, registry snapshot lock
+        # INNER (taken during register) — never the reverse. The paid call is NOT held
+        # under the snapshot lock, and distinct keys use distinct lock files, so different
+        # prints still compute concurrently.
+        with _os_exclusive_lock(_key_lock_path(key)):
+            try:
+                hit = _lookup()
+            except Exception:  # noqa: BLE001
+                logger.warning("PRINT_RECALL_LOOKUP_FAILED phase=3 key=%s", key[:12], exc_info=True)
+                hit = None
+            if hit is not None:
+                graph, info = hit
+                _log_hit(info, key, len(pages))
+                return graph
+            graph, info = interpret_print_with_recall(
+                pages,
+                registry=_open_registry_fresh(),
+                cas=cas,
+                tenant_id=TENANT,
+                environment=env,
+                question=question,
+                model=model,
+                preprocess=preprocess,
+                producer_extra=producer_extra,
+                interpret_fn=_bound,
+            )
     if info.recalled:
         _log_hit(info, key, len(pages))
     elif info.dataset_version_id:

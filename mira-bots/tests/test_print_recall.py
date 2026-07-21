@@ -273,3 +273,64 @@ def test_snapshot_write_is_atomic_and_valid(gate):
     assert reg_path.exists()
     json.loads(reg_path.read_text("utf-8"))  # atomic write left a valid, parseable snapshot
     assert not reg_path.with_suffix(".json.tmp").exists()  # no temp file left behind
+
+
+# ── ordered multipage identity (blocker 1) ──────────────────────────────────────
+
+
+def test_reversed_pages_recompute(gate):
+    fake, calls = _counting()
+    ab = [(b"page-A", "image/jpeg"), (b"page-B", "image/jpeg")]
+    ba = [(b"page-B", "image/jpeg"), (b"page-A", "image/jpeg")]
+    _call(gate, fake, pages=ab)
+    _call(gate, fake, pages=ba)
+    assert calls["n"] == 2  # page ORDER is graph-affecting -> reversed != same print
+
+
+def test_same_order_multipage_recalls(gate):
+    fake, calls = _counting()
+    ab = [(b"page-A", "image/jpeg"), (b"page-B", "image/jpeg")]
+    _call(gate, fake, pages=ab)
+    _call(gate, fake, pages=[(b"page-A", "image/jpeg"), (b"page-B", "image/jpeg")])
+    assert calls["n"] == 1  # identical ordered package -> recall
+
+
+def test_single_flight_key_carries_full_ordered_identity(gate):
+    # The per-key single-flight/logging key must separate reversed pages AND different
+    # questions (else concurrent requests would coalesce onto the wrong graph).
+    ab = [(b"A", "image/jpeg"), (b"B", "image/jpeg")]
+    ba = [(b"B", "image/jpeg"), (b"A", "image/jpeg")]
+
+    def k(question, pages):
+        return gate._recall_key(gate._build_producer_extra(question, {}, pages), "m1", True)
+
+    assert k("q", ab) != k("q", ba)  # reversed pages -> different key
+    assert k("q", ab) != k("other", ab)  # different question -> different key
+    assert k("q", ab) == k("q", list(ab))  # identical inputs -> same key (coalesce)
+
+
+def test_media_type_difference_recomputes(gate):
+    fake, calls = _counting()
+    _call(gate, fake, pages=[(b"page-A", "image/jpeg")])
+    _call(gate, fake, pages=[(b"page-A", "application/pdf")])
+    assert calls["n"] == 2  # media type is passed to the interpreter -> graph-affecting
+
+
+# ── env-var validation hardening (never record prod as dev) ──────────────────────
+
+
+def test_invalid_env_disables_recall_with_warning(monkeypatch, caplog):
+    monkeypatch.setenv("PRINT_RECALL_ENABLED", "1")
+    monkeypatch.setenv("PRINT_RECALL_ENV", "prahd")  # typo -> invalid enum value
+    print_recall._imports_ok_cache = None
+    print_recall._env_warned = False
+    with caplog.at_level("WARNING"):
+        assert print_recall.enabled() is False  # disable rather than mislabel the data
+    assert any("PRINT_RECALL_ENV_INVALID" in r.getMessage() for r in caplog.records)
+
+
+def test_valid_env_enables_recall(monkeypatch):
+    monkeypatch.setenv("PRINT_RECALL_ENABLED", "1")
+    monkeypatch.setenv("PRINT_RECALL_ENV", "staging")
+    print_recall._imports_ok_cache = None
+    assert print_recall.enabled() is True
