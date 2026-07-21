@@ -369,7 +369,9 @@ def evaluate_print_turn(
                 {
                     "class": "missing_safety_warning",
                     "severity": "P1",
-                    "detail": _cap(f"OCR shows printed warning not surfaced: {warn_signals[0][:60]}"),
+                    "detail": _cap(
+                        f"OCR shows printed warning not surfaced: {warn_signals[0][:60]}"
+                    ),
                 }
             )
     except Exception:  # noqa: BLE001 — a helper-import failure must not break the hook

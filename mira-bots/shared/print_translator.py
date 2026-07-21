@@ -595,8 +595,9 @@ def _safety_warnings_block(signals: list[str]) -> str:
     )
 
 
-def format_theory_reply(raw: str, drawing_type: str | None = None,
-                        vision_data: dict | None = None) -> str:
+def format_theory_reply(
+    raw: str, drawing_type: str | None = None, vision_data: dict | None = None
+) -> str:
     """Post-process the model's reply for Telegram.
 
     If ``raw`` is empty (all providers failed) return ``FALLBACK_REPLY``.
