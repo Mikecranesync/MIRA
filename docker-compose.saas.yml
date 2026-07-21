@@ -344,6 +344,11 @@ services:
       - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
       - PRINT_THEORY_VERIFY=${PRINT_THEORY_VERIFY:-}
       - PRINT_THEORY_SELF_CONSISTENCY=${PRINT_THEORY_SELF_CONSISTENCY:-}
+      # Production recall gate (v3.184.0): identical print turns reuse a stored
+      # interpretation with no model call. Default OFF; enable via Doppler (stg
+      # first, then prd). Store lives under /mira-db/print_recall (mounted volume).
+      - PRINT_RECALL_ENABLED=${PRINT_RECALL_ENABLED:-}
+      - PRINT_RECALL_ENV=${PRINT_RECALL_ENV:-prod}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -428,6 +433,11 @@ services:
       - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
       - PRINT_THEORY_VERIFY=${PRINT_THEORY_VERIFY:-}
       - PRINT_THEORY_SELF_CONSISTENCY=${PRINT_THEORY_SELF_CONSISTENCY:-}
+      # Production recall gate (v3.184.0): identical print turns reuse a stored
+      # interpretation with no model call. Default OFF; enable via Doppler (stg
+      # first, then prd). Store lives under /mira-db/print_recall (mounted volume).
+      - PRINT_RECALL_ENABLED=${PRINT_RECALL_ENABLED:-}
+      - PRINT_RECALL_ENV=${PRINT_RECALL_ENV:-prod}
       - MIRA_PROCESS_TIMEOUT=${MIRA_PROCESS_TIMEOUT:-60}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080

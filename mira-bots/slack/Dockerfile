@@ -10,6 +10,11 @@ COPY mira-bots/shared/ ./shared/
 # inert unless PRINT_VISION_PROVIDER plus the active provider key are set; when
 # unset, the engine falls back to the free OCR/cascade path.
 COPY printsense/ ./printsense/
+# The pure Materialized Evidence layer (contract/registry/recall resolver). The
+# engine's production recall gate (shared/print_recall.py) imports it; without this
+# COPY the import fails and recall silently disables (falls back to paying the model
+# every print turn). Guarded by mira-bots/tests/test_docker_recall_packaging.py.
+COPY materialized_evidence/ ./materialized_evidence/
 COPY mira-bots/prompts/ ./prompts/
 COPY mira-bots/slack/bot.py mira-bots/slack/chat_adapter.py mira-bots/slack/pdf_handler.py mira-bots/slack/doctor.py ./
 COPY VERSION .
