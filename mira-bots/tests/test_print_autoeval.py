@@ -509,3 +509,26 @@ def test_format_alert_caps_and_omits_pii():
     assert len(msg) <= 500
     assert "test question" not in msg  # no question text in a public topic
     assert "best-effort attribution" in msg
+
+
+class TestMissingSafetyWarning:
+    _WARN_VD = {"ocr_items": ["WARNING never wire a PLC between the relay outputs and the MSC"]}
+
+    def test_fires_when_ocr_warning_not_surfaced(self):
+        r = _eval("This is an E-stop safety relay. Terminals 13-14 switch MSC1.",
+                  vision_data=self._WARN_VD)
+        assert "missing_safety_warning" in _classes(r)
+
+    def test_clean_when_reply_surfaces_the_section(self):
+        r = _eval("E-stop relay.\n\n## Safety and Manufacturer Warnings\n- PRINTED: WARNING ...",
+                  vision_data=self._WARN_VD)
+        assert "missing_safety_warning" not in _classes(r)
+
+    def test_no_flag_when_no_printed_warning(self):
+        r = _eval("A normal control circuit.", vision_data={"ocr_items": ["K1", "M2"]})
+        assert "missing_safety_warning" not in _classes(r)
+
+    def test_no_flag_when_no_ocr(self):
+        # No OCR → no detectable printed warning; the prompt-driven section is the lane.
+        r = _eval("E-stop relay, no section.", vision_data={"ocr_items": []})
+        assert "missing_safety_warning" not in _classes(r)

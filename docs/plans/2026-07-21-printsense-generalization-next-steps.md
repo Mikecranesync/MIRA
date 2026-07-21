@@ -107,6 +107,8 @@ Call the generalized-print milestone achieved only when:
 - **Phase 1 — infra fixes: DONE** (v3.185.0). judge→free cascade; connect + total-fetch-deadline +
   size cap; typed `SKIP` excluded from the failure exit; max-PDF-pages guard; `deterministic_grade.json`
   artifact; `tag_flood_without_ocr` suppressed when `ocr_available` is False. +6 hermetic tests, 102 green, ruff clean.
+- **Safety-warning elevation: DONE** (v3.186.0). Deterministic verbatim-from-OCR detector +
+  prompt instruction (both styles) + `format_theory_reply` backstop + `missing_safety_warning`
+  autoeval tripwire. +14 hermetic tests, 195 green, ruff clean.
 - **Phase 2 — benchmark report: PENDING.**
 - **Phase 3 — 10 boundary-probing classes: PENDING** (metered, within the remaining ~$0.43 of the $0.50 cap).
-- **Safety-warning elevation: PENDING** (product change to the print answer + a warnings lane).

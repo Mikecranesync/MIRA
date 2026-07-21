@@ -353,6 +353,28 @@ def evaluate_print_turn(
             }
         )
 
+    # P1 — printed safety-warning elevation (2026-07-21): the photo's OWN OCR
+    # shows a printed DANGER/WARNING/CAUTION or hard prohibition, but the
+    # delivered reply carries no safety-warnings section. format_theory_reply's
+    # deterministic backstop should have surfaced it verbatim — this firing means
+    # that safety duty regressed on the delivered answer. Fires ONLY when OCR is
+    # present (no OCR → no detectable printed warning; the prompt-driven section
+    # is the only lane there, correctly un-audited by this deterministic check).
+    try:
+        from shared import print_translator as _pt
+
+        warn_signals = _pt.printed_warning_signals(vision_data)
+        if warn_signals and not _pt._reply_has_safety_section(answer):
+            flags.append(
+                {
+                    "class": "missing_safety_warning",
+                    "severity": "P1",
+                    "detail": _cap(f"OCR shows printed warning not surfaced: {warn_signals[0][:60]}"),
+                }
+            )
+    except Exception:  # noqa: BLE001 — a helper-import failure must not break the hook
+        skipped.append("missing_safety_warning")
+
     # ── degenerate-output rules (v2, from the 2026-07-18 live garbage turns —
     #    module-local regex, so they run even when the grader import degrades) ─
     enum_fam, enum_run = _longest_consecutive_run(answer)
