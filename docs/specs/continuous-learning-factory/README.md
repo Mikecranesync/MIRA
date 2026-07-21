@@ -70,6 +70,14 @@ Examples in [`examples/`](examples/) are grounded in the AN-GS-021 GS-series VFD
 
 The approved review-round decisions (gold caps, split ratios, lineage-key format, provider allowlist, registry home, eval adapter) are recorded in [ADR-0030 § "Encoded decisions"](../../adr/0030-continuous-learning-factory.md).
 
+## Surfaces / consumers
+
+The CLF is the **factory**; delivery **surfaces** consume it. A surface reuses the CORE + FLYWHEEL and adds only what the factory lacks — never a second region / evidence / grading / approval abstraction. Surfaces ship as additive PRs layered on the ladder below.
+
+| Surface | What it is | Net-new only (everything else reused) |
+|---|---|---|
+| [**Print of the Day**](surfaces/print-of-day.md) · [verbatim PRD](surfaces/print-of-day-prd.md) | Private daily email learning flywheel — one hard, verifiable print/day → **blind** PrintSense run → grade + independent judge → verify → claim ledger + corrected explanation + full YouTube script → **one email to Mike** → promote only on his approval. | daily controlled-random **selector** + diversity memory · **email package** · **YouTube script** generator · `factorylm.print-of-day.v1` **case manifest** · per-case **review lifecycle** (wraps the per-(page,config) state machine, promotes via the gold matrix) · **public-video clearance** |
+
 ## PR ladder
 
 PR 0 (this) → 1 corpus registry → 2 finish gold-std PR4 + commit Together judge + independence field → 3 extend `grade_case` validators + freeze AN-GS-021 p4 regression → 4 judge independence + disagreement engine → 5 review queue on `visual-region.v1` → 6 scheduler + budgets (staging-first) → 7 gold + frozen benchmarks + leakage guard → 8 rule miner → 9 training export → 10 first narrow LoRA. **Merge nothing without explicit approval.**

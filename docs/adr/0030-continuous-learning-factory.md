@@ -7,6 +7,8 @@
 
 Full specs: [`docs/specs/continuous-learning-factory/`](../specs/continuous-learning-factory/README.md).
 
+**First delivery surface:** [Print of the Day](../specs/continuous-learning-factory/surfaces/print-of-day.md) — a private daily email learning flywheel on top of the factory (reconciled 2026-07-21; docs-only, no production behavior change). It reuses the CORE + FLYWHEEL and adds only a daily selector, an email package, a YouTube script generator, the `factorylm.print-of-day.v1` case manifest, a per-case review lifecycle, and a public-video clearance. See § "Delivery surfaces".
+
 ---
 
 ## Context
@@ -81,3 +83,9 @@ These resolve the "remaining decisions" from the PR 0 review. They are **approve
 ## PR ladder
 
 PR 0 (this) → PR 1 corpus registry → PR 2 finish gold-std PR4 + commit Together judge + independence field → PR 3 extend `grade_case` validators + freeze AN-GS-021 p4 regression → PR 4 judge independence + disagreement engine → PR 5 review queue on `visual-region.v1` → PR 6 scheduler + budgets (staging-first) → PR 7 gold + frozen benchmarks + leakage guard → PR 8 rule miner → PR 9 training export → PR 10 first narrow LoRA. **Merge nothing without explicit approval.**
+
+## Delivery surfaces
+
+The PR ladder builds the **factory**. **Delivery surfaces** consume it and ship as additive PRs *layered on* the ladder — each reuses the CORE + FLYWHEEL and never forks a factory stage (region, evidence, grading, approval).
+
+- **Print of the Day** (first surface) — [`docs/specs/continuous-learning-factory/surfaces/print-of-day.md`](../specs/continuous-learning-factory/surfaces/print-of-day.md) (reconciliation) + [`surfaces/print-of-day-prd.md`](../specs/continuous-learning-factory/surfaces/print-of-day-prd.md) (verbatim PRD). A private daily email learning flywheel: one hard, verifiable print/day → **blind** PrintSense run → deterministic grade + independent judge → verify → claim ledger + corrected explanation + full YouTube script → **one email to Mike** → promote into gold/rule/test/public-candidate **only on his approval**. Reuses `runner.py` / `grade_case()` / `judge()` / `factorylm.visual-region.v1` / CAS + `materialized_evidence` / `print_recall` / the corpus registry (PR 1) / the scheduler (PR 6) / gold + leakage (PR 7) / the `ai_suggestions` approval rail. **Net-new (the only greenfield):** a controlled-random selector + diversity memory, an email package, a YouTube script generator, the `factorylm.print-of-day.v1` case-aggregate manifest, a per-case review lifecycle (**wraps** the per-(page,config) state machine; promotes via the promotion-policy matrix), and a public-video clearance. Four schema decisions are recorded (review-event = `correction-event.v1`; claim-ledger extends `eval-result.v1`; case machine wraps, not replaces; selector consumes the registry) and resolved at the POTD build PRs — **docs-only until then** (PRD §25 Phase 0–7).
