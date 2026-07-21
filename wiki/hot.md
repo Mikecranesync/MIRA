@@ -1118,3 +1118,17 @@ Verification: `py -3 -m ruff check tools/useful_work tests/useful_work tools/__i
 green (26 passed).
 
 ---
+# Hot Cache - 2026-07-21 - Useful-work PrintSense filing real run
+
+Branch `codex/dogfood-useful-work`. The PrintSense filing worker has now passed a real local-Hub
+commit run against Doppler dev Neon: `real-run-20260721-061527` provisioned tenant
+`72aa563d-0ce1-40cb-9a7f-7c8d1c6a873d`, node `32d0e03a-6558-43b5-8e9d-886912df8cc0`
+(`enterprise.beta_gate_folder_1784628599854`), attached `zephyr-zx9000-service-manual.pdf`, and Hub
+reported it indexed (`attached=1`, `indexed=1`, status `green`). Evidence lives in temp:
+`C:\Users\hharp\AppData\Local\Temp\mira-real-useful-work-bd32a1ce8266423ea6e313c1dd779d67\real-run-20260721-061527`.
+Real-run flushed two integration bugs now fixed/tested: direct script imports need repo-root bootstrap,
+and Hub node file POST must use canonical `/files/` because local Hub runs with `trailingSlash: true`.
+Do not upload the local `_stardust_batch` raw photos: its manifest is explicit local-only; use redacted
+fixtures or an operator-approved Drive/Hub target.
+
+---

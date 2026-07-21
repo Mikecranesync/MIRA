@@ -4,13 +4,19 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 USEFUL_WORK_DIR = ROOT / "tools" / "useful_work"
 if str(USEFUL_WORK_DIR) not in sys.path:
     sys.path.insert(0, str(USEFUL_WORK_DIR))
 
-from printsense_filing import HubAttachmentRequest, main, run_printsense_filing
+from printsense_filing import (
+    HttpHubNodeAttachmentClient,
+    HubAttachmentRequest,
+    main,
+    run_printsense_filing,
+)
 from registry import load_registry
 
 
@@ -439,3 +445,45 @@ def test_script_dry_run_invocation_imports_repo_modules(tmp_path: Path):
     payload = json.loads(result.stdout)
     assert payload["run_id"] == "script-run"
     assert payload["status"] == "yellow"
+
+
+def test_http_hub_client_posts_to_canonical_trailing_slash_route(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"ok": True, "indexed": True, "uploadId": "upload-1", "chunkCount": 1}
+
+    class FakeClient:
+        def __init__(self, timeout: float):
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+        def post(self, url, *, headers, files):
+            calls.append({"url": url, "headers": headers, "files": files})
+            return FakeResponse()
+
+    monkeypatch.setitem(sys.modules, "httpx", SimpleNamespace(Client=FakeClient))
+
+    client = HttpHubNodeAttachmentClient("http://hub.test/hub", session_cookie="next-auth.session-token=abc")
+    result = client.attach_file(
+        HubAttachmentRequest(
+            tenant_id="tenant-1",
+            node_id="node-1",
+            filename="manual.pdf",
+            content=b"%PDF",
+            content_type="application/pdf",
+        )
+    )
+
+    assert result["uploadId"] == "upload-1"
+    assert calls[0]["url"] == "http://hub.test/hub/api/namespace/node/node-1/files/"
+    assert calls[0]["headers"] == {"Cookie": "next-auth.session-token=abc"}

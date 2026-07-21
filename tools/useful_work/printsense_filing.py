@@ -496,7 +496,7 @@ class HttpHubNodeAttachmentClient:
         files = {
             "file": (request.filename, request.content, request.content_type),
         }
-        url = f"{self.base_url}/api/namespace/node/{request.node_id}/files"
+        url = f"{self.base_url}/api/namespace/node/{request.node_id}/files/"
         with httpx.Client(timeout=self.timeout) as client:
             response = client.post(url, headers=headers, files=files)
             response.raise_for_status()
