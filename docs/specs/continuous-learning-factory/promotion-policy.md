@@ -26,13 +26,18 @@ Policy for ADR-0030 principles 4, 5, 8, 9. PR 0 defines the **matrix**; enforcem
 |---|---|---|---|
 | `DETERMINISTIC_PROOF` | `DETERMINISTIC_PROOF` | yes — a proof is not an opinion | none |
 | `HUMAN_REVIEW` | `HUMAN_REVIEW` | yes — with recorded `approved_by` | none |
-| `INDEPENDENT_JUDGE` | `INDEPENDENT_PROVIDER_MODEL` | yes | ≤ 0.9 |
-| `INDEPENDENT_JUDGE` | `DIFFERENT_MODEL_SAME_PROVIDER` | **candidate only** — needs human confirm | ≤ 0.8 |
-| — | `SAME_MODEL_DIFFERENT_RUN` | **no** | ≤ 0.7 |
-| — | `SELF_CONSISTENCY_ONLY` | **no** | ≤ 0.6 |
+| `INDEPENDENT_JUDGE` | `INDEPENDENT_PROVIDER_MODEL` | yes | ≤ 0.90 |
+| `INDEPENDENT_JUDGE` | `DIFFERENT_MODEL_SAME_PROVIDER` | **candidate only** — needs human confirm | ≤ 0.80 |
+| — | `SAME_MODEL_DIFFERENT_RUN` | **no** | ≤ 0.60 |
+| — | `SELF_CONSISTENCY_ONLY` | **no** | ≤ 0.60 |
+
+These caps are the **approved conservative policy** (ADR-0030, encoded 2026-07-21). An automated mechanism may never exceed its row's cap, and only `HUMAN_REVIEW` or `DETERMINISTIC_PROOF` may authorize `gold` once every other gate (rights, evidence, deterministic verdict, leakage) passes.
+
+> **Model agreement with itself is supporting evidence, not independent proof.**
 
 Consequences:
 - The AN-GS-021 case (interpreter and judge both MiniMax-M3) is `SELF_CONSISTENCY_ONLY` → **cannot auto-promote**. It reaches `gold` only via a `HUMAN_REVIEW` approval (as its example shows), never by the model agreeing with itself.
+- `SAME_MODEL_DIFFERENT_RUN` is capped at the **same 0.60** as self-consistency: a second run of the same model is a re-roll, not an independent check — it never auto-promotes either.
 - A model **never** promotes its own output to gold. Self-training on unverified guesses is structurally impossible: the only paths to `gold` are a human, a proof, or a genuinely independent provider+model.
 
 ## Training eligibility is a *third* gate

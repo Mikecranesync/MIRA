@@ -52,6 +52,17 @@ Exactly one owner per concern. New concerns are the only greenfield surfaces.
 9. **No blurred proposal objects.** `relationship_proposal`, `gold_answer_approval`, and `deterministic_rule_approval` are **separately typed** proposal classes with their own validation policies. See [`promotion-policy.md`](../specs/continuous-learning-factory/promotion-policy.md).
 10. **Deterministic-first, model-fallback; nothing merges without approval; staging before prod.**
 
+## Encoded decisions (review round, 2026-07-21)
+
+These resolve the "remaining decisions" from the PR 0 review. They are **approved policy**, recorded here and in the linked docs; **no runtime code is added for them in PR 0**.
+
+1. **Gold authorization caps (conservative).** `INDEPENDENT_PROVIDER_MODEL` ≤ 0.90; `DIFFERENT_MODEL_SAME_PROVIDER` candidate-only ≤ 0.80; `SAME_MODEL_DIFFERENT_RUN` and `SELF_CONSISTENCY_ONLY` ≤ 0.60 and **never auto-gold**; only `HUMAN_REVIEW` / `DETERMINISTIC_PROOF` may authorize gold once all other gates pass. **Model agreement with itself is supporting evidence, not independent proof.** ([`promotion-policy.md`](../specs/continuous-learning-factory/promotion-policy.md))
+2. **Dataset partitions (target policy).** Partition by `document_lineage_key`: `train` 70% / `validation` 15% / `test` 10% / permanent `held_out` benchmark 5%. The held-out benchmark is quarantined — never used for prompt tuning, rule development, model selection, training, or threshold calibration. Ratio enforcement is PR 7. ([`data-rights-and-leakage.md`](../specs/continuous-learning-factory/data-rights-and-leakage.md))
+3. **Lineage key format.** Public: `<manufacturer>:<document-number>` (`automationdirect:an-gs-021`). Tenant-private: registry-assigned `tenant:<tenant-id>:document:<uuid>`, minted once; source/revision hashes are stored *under* the stable key. Never use a bare content hash as the lineage id (it forks on every revision). ([`data-rights-and-leakage.md`](../specs/continuous-learning-factory/data-rights-and-leakage.md))
+4. **Approved-provider allowlist (fail closed).** A checked-in, repo-controlled allowlist with columns `provider · model · allowed_data_classification · allowed_purposes · approval_owner · effective_date`. Unlisted/expired ⇒ deny. Runtime allowlist + loader are PR 6. ([`approved-providers.md`](../specs/continuous-learning-factory/approved-providers.md))
+5. **Corpus registry home.** **Neon Postgres with tenant-level RLS** owns registry *metadata* — rights, lineage, state, split assignments, and queries. **CAS / durable object storage** (`printsense/cas.py` + `materialized_evidence/`) owns the *bytes* — original documents, page renders, crops, evidence bundles, and large result payloads. PR 1 implements this boundary; the registry stores content-addresses/pointers, not blobs.
+6. **Evaluation-result integration is adapter-first.** `runner output → eval-result.v1 adapter → schema validation → registry`. The existing `tools/internet_print_test/runner.py` is **not** rewritten to emit `eval-result.v1` directly in the first runtime PR; an adapter maps its current output and validates before persistence.
+
 ## Migration & compatibility notes
 
 - **No migrations in PR 0.** All artifacts are new JSON documents under content-addressed / durable paths; no existing table or file is altered. Future runtime PRs (registry, gold store) will introduce their own additive migrations dev→staging→prod via `apply-migrations.yml` (`.claude/rules/mira-hub-migrations.md`).

@@ -32,7 +32,7 @@ So a tightened budget degrades *coverage of new work*, never the correctness of 
 
 ## Provider fallback preserves capability + independence metadata
 
-When the primary provider is unavailable (the real, recurring case — both paid lanes were credit-exhausted on 2026-07-19, and only `MiniMaxAI/MiniMax-M3` was serverless on Together), fallback is allowed **only** to a provider/model on the **approved list**, and the fallback is **recorded**:
+When the primary provider is unavailable (the real, recurring case — both paid lanes were credit-exhausted on 2026-07-19, and only `MiniMaxAI/MiniMax-M3` was serverless on Together), fallback is allowed **only** to a provider/model on the fail-closed **approved allowlist** ([`approved-providers.md`](approved-providers.md)), and the fallback is **recorded**:
 
 - The resulting `eval-result.v1` records the *actual* `interpreter.provider`/`interpreter.model`.
 - The `judge-independence.v1` `independence_class` is recomputed for the pair that actually ran. If interpreter and judge collapse to the same model (the MiniMax-M3 reality), the class is `SELF_CONSISTENCY_ONLY` and `gold_eligible=false` — the loop keeps producing candidates, but none auto-promote. Capability is preserved; **the independence downgrade is never hidden.**

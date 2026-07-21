@@ -41,12 +41,38 @@ A single manual rendered at 200 dpi and 300 dpi, cropped, rotated, or lightly au
 4. Leakage checks run on `document_lineage_key`, never on `page_id`. `page-render.v1` and `eval-result.v1` both carry the lineage key so the guard has it everywhere.
 5. **Frozen benchmark rows** (PR 7) pin `held_out` lineages that are never eligible for training export, so the regression set cannot be contaminated by the training set.
 
+### Approved split ratios (target policy)
+
+Assignment is by `document_lineage_key` hash (never by page). The **approved target policy** (ADR-0030, encoded 2026-07-21) is:
+
+| Split | Share | Purpose |
+|---|---|---|
+| `train` | **70%** | training exports (rights-cleared lineages only) |
+| `validation` | **15%** | model selection, threshold calibration, rule development |
+| `test` | **10%** | ordinary held-back evaluation |
+| `held_out` | **5%** | **permanent benchmark — quarantined** |
+
+The **permanent held-out benchmark is separate from ordinary `test` data** and may **never** be used for: prompt tuning, rule development, model selection, training, or threshold calibration. It exists only to measure regression on truly unseen lineages, so a number that moves there is real. `validation`/`test` may inform tuning; `held_out` may not — that is the whole point of quarantining it.
+
+Exact ratio enforcement (the hashing bucket boundaries, the quarantine guard) is implemented in **PR 7**, not now. PR 0 records these as the approved target policy — no runtime code.
+
+### Lineage key format (decided)
+
+`document_lineage_key` is the stable identity a lineage keeps across every revision/render/crop/augmentation. Its format is fixed:
+
+- **Public documents** — a readable, stable key: `<manufacturer-slug>:<document-number-slug>` (e.g. `automationdirect:an-gs-021`).
+- **Tenant-private documents** — a **registry-assigned** stable key: `tenant:<tenant-id>:document:<uuid>`, minted once at first registration. The `<uuid>` is registry-generated, not derived from content.
+
+Source bytes and each revision are stored as **hash associations under that stable lineage key** (`source_sha256`, per-revision hashes), **not** as the key itself. **Never use the latest content hash alone as the lineage identifier** — a new revision changes the content hash, which would fork one lineage into two and let a v2 leak into a different split than v1 (rule 3 above). The content hash identifies *bytes*; the lineage key identifies the *document across time*.
+
 ### What the leakage guard (PR 7) must catch
 
 - ❌ Two records with the same `document_lineage_key` in different `split_assignment`s.
 - ❌ A `training_eligibility="eligible"` record whose lineage is on the validation/test side.
 - ❌ A split computed from `page_id`/`page_sha256` instead of `document_lineage_key`.
 - ❌ A superseding revision assigned a fresh lineage key (would split a lineage across partitions).
+- ❌ A `held_out` lineage touched by prompt tuning, rule development, model selection, training, or threshold calibration.
+- ❌ A `document_lineage_key` set to a bare content hash (forks a lineage on every revision).
 
 ## Cross-tenant
 

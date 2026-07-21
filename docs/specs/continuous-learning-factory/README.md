@@ -63,9 +63,12 @@ Examples in [`examples/`](examples/) are grounded in the AN-GS-021 GS-series VFD
 |---|---|
 | [`state-machine.md`](state-machine.md) | Idempotent, replayable transitions; stale-input invalidation. |
 | [`cost-governor.md`](cost-governor.md) | Budget fails safe — pauses, never silently downgrades the model. |
-| [`promotion-policy.md`](promotion-policy.md) | Which independence class may promote to gold; typed proposals. |
-| [`data-rights-and-leakage.md`](data-rights-and-leakage.md) | Rights fail closed; document-level leakage partitioning. |
+| [`approved-providers.md`](approved-providers.md) | Fail-closed, repo-controlled model allowlist (provider+model+classification+purpose). |
+| [`promotion-policy.md`](promotion-policy.md) | Which independence class may promote to gold; typed proposals; conservative caps. |
+| [`data-rights-and-leakage.md`](data-rights-and-leakage.md) | Rights fail closed; document-level leakage partitioning; split ratios; lineage-key format. |
 | [`threat-privacy.md`](threat-privacy.md) | Threat model, tenant isolation, PII, poisoning, self-training. |
+
+The approved review-round decisions (gold caps, split ratios, lineage-key format, provider allowlist, registry home, eval adapter) are recorded in [ADR-0030 § "Encoded decisions"](../../adr/0030-continuous-learning-factory.md).
 
 ## PR ladder
 
