@@ -1,3 +1,7 @@
+### v3.184.1 (2026-07-21) - fix(print-recall): staging compose passthrough for PRINT_RECALL_ENABLED
+
+- `docker-compose.staging-vps.yml` (`stg-mira-bot-telegram`) now passes `PRINT_RECALL_ENABLED` + `PRINT_RECALL_ENV` (default `staging`) through to the container. v3.184.0 added the passthrough only to `saas.yml` (prod), so a Doppler `factorylm/stg` flag never reached the staging bot — recall could not be enabled or phone-tested on staging. The recall store lives under the already-mounted `/mira-db/print_recall`. Default OFF (dark behavior unchanged); this only makes the staging enablement path reachable.
+
 ### v3.184.0 (2026-07-21) - feat(print-recall): recall-gate the PRODUCTION print path (Telegram/Slack)
 
 - **PR G made real on the product.** PR G (v3.183.0) recall-gated the paid PrintSense `interpret_print` on the CLI only — inert on the real product. This wires the gate into the one production seam `engine._interpret_print_anthropic_pages` (both the single-photo path and the album worker funnel through it), so an identical print turn on Telegram/Slack is interpreted ONCE and recalled thereafter with **no model call**. Default OFF (`PRINT_RECALL_ENABLED`).
