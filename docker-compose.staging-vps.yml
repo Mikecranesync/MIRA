@@ -306,6 +306,8 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
+      # Visual Focus Workspace (PR V2): optional HMAC secret for signed evidence-view tokens (fail-closed when unset).
+      - VISUAL_EVIDENCE_SIGNING_SECRET=${VISUAL_EVIDENCE_SIGNING_SECRET:-}
       - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
       # SLACK_BOT_TOKEN is intentionally omitted — the prod bot polls with the
       # same token and a second connection would dual-poll. The hub status

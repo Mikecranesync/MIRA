@@ -14,6 +14,7 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `SLACK_EXPECTED_BOT_USER_ID` | mira-bot-slack - optional non-secret startup diagnostic. If set, startup logs an error when Slack `auth.test` returns a different bot user id. |
 | `SLACK_CLIENT_ID` | mira-hub - Slack OAuth client id for the FactoryLM Hub channel connector. |
 | `SLACK_CLIENT_SECRET` | mira-hub - Slack OAuth client secret for the FactoryLM Hub channel connector callback. |
+| `VISUAL_EVIDENCE_SIGNING_SECRET` | mira-hub - optional HMAC secret (>=16 chars) for short-lived tenant-bound signed evidence-view tokens (Visual Focus Workspace PR V2, `src/lib/visual/signed-url.ts`). Unset = signed-token path disabled (fail-closed); the cookie-authenticated Hub path works regardless. Will be shared by the PR V3 Telegram launch token. |
 
 Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN` in Doppler `factorylm/prd` authenticate to the `FactoryLM` workspace (`T0AK2CU16T1`) as bot user `U0AM3EZBSNQ` / bot id `B0ALXRE4CDU`. `SLACK_EXPECTED_BOT_USER_ID=U0AM3EZBSNQ` is set in prod for drift detection. `SLACK_ALLOWED_CHANNELS` is currently unset; do not set it to only `C0AKBEL8C4T` while DM testing is required, because the Slack adapter currently applies the allowlist before distinguishing DMs from shared channels.
 

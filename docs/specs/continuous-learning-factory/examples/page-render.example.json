@@ -1,0 +1,16 @@
+{
+  "schema": "factorylm.clf.page-render.v1",
+  "page_id": "automationdirect-an-gs-021:p4",
+  "source_id": "automationdirect-an-gs-021",
+  "document_lineage_key": "automationdirect:an-gs-021",
+  "source_page_number": 4,
+  "page_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "render_dpi": 200,
+  "rotation": 0,
+  "crop": null,
+  "preprocess_version": "printsense.preprocess.v1",
+  "ocr": { "engine": "tesseract", "version": null, "text_present": false },
+  "visual_quality_score": 0.9,
+  "detected_page_type": "schematic",
+  "classifier": { "provider": "together", "model": "MiniMaxAI/MiniMax-M3" }
+}

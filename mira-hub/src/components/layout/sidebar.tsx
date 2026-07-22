@@ -10,7 +10,7 @@ import {
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
   Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon, HelpCircle, Cpu,
-  Layers, Sparkles, Gauge, Network, Upload,
+  Layers, Sparkles, Gauge, Network, Upload, Focus,
 } from "lucide-react";
 import { restartTour } from "@/components/onboarding/tour";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Activity, MessageSquare, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
-  Cpu, Layers, Sparkles, Gauge, Network, Upload,
+  Cpu, Layers, Sparkles, Gauge, Network, Upload, Focus,
 };
 
 type NavItemProps = {
@@ -114,6 +114,7 @@ export function Sidebar() {
       "assets":        t("assets"),
       "workorders":    "CMMS",
       "scan":          "Scan",
+      "visual":        "Visual Workspace",
       "settings":      "Settings",
       "conversations": t("conversations"),
       "alerts":        t("alerts"),
