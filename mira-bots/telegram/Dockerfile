@@ -17,6 +17,14 @@ COPY printsense/ ./printsense/
 # COPY the import fails and recall silently disables (falls back to paying the model
 # every print turn). Guarded by mira-bots/tests/test_docker_recall_packaging.py.
 COPY materialized_evidence/ ./materialized_evidence/
+# Provider registry + typed capability codes (ADR-0031 PR 2): the shared
+# provider configuration the PR-3 Together interpreter and PR-4 readiness
+# consume. Import-safe (env read at call time, network hard-gated); the
+# approved-provider POLICY rides in config/providers/. Guarded by
+# mira-bots/tests/test_docker_recall_packaging.py — dropping either COPY
+# silently reverts provider hardening.
+COPY factorylm_ai/ ./factorylm_ai/
+COPY config/providers/ ./config/providers/
 COPY mira-bots/prompts/ ./prompts/
 # Ops-agent runners invoked via `docker exec … python3 /app/agents/*.py` from the
 # install_crons.sh crontab (morning_brief 09:00, safety_alert 10:00, pm_escalation

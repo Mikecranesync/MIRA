@@ -140,14 +140,12 @@ def test_capability_schema_rejects_missing_verdict_and_bad_probe() -> None:
 # ── Future ladder behavior (xfail strict — markers removed as PRs land) ────
 
 
-@pytest.mark.xfail(reason="PR 2: shared provider registry", strict=True)
 def test_provider_registry_module_exists() -> None:
     from factorylm_ai import provider_registry  # noqa: F401
 
     assert hasattr(provider_registry, "resolve")
 
 
-@pytest.mark.xfail(reason="PR 2: canonical network gate", strict=True)
 def test_network_gate_module_exists() -> None:
     from factorylm_ai import network_gate
 

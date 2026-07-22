@@ -31,6 +31,7 @@ import httpx
 
 from ..budget import BudgetGuard
 from ..pricing import FT_LORA_SFT_USD_PER_MTOK_LE16B, FT_MIN_JOB_USD, estimate_cost
+from ..provider_registry import PROVIDERS as _REGISTRY
 from .base import (
     ModelProvider,
     ModelRequest,
@@ -42,7 +43,10 @@ from .base import (
 
 logger = logging.getLogger("factorylm-ai")
 
-_BASE_URL = "https://api.together.ai/v1"
+# Canonical host comes from the shared provider registry (ADR-0031 PR 2) —
+# ONE place owns it. The registry also carries the cascade's legacy .xyz host
+# separately; see provider_registry.ProviderSpec.
+_BASE_URL = _REGISTRY["together"].canonical_url
 _CHAT_ENDPOINT = "/chat/completions"
 _EMBEDDINGS_ENDPOINT = "/embeddings"
 _RERANK_ENDPOINT = "/rerank"
@@ -52,7 +56,7 @@ _FINETUNE_ENDPOINT = "/fine-tunes"
 # Defensive fallbacks only — in normal operation the tasks layer always
 # resolves `req.model` from TaskSpec.default_models["together"] before
 # building the ModelRequest (see factorylm_ai/tasks/__init__.py).
-_DEFAULT_CHAT_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+_DEFAULT_CHAT_MODEL = _REGISTRY["together"].text_model_default
 _DEFAULT_EMBED_MODEL = "intfloat/multilingual-e5-large-instruct"
 
 _RETRY_CAP_SECONDS = 30.0
@@ -60,7 +64,12 @@ _DEFAULT_RETRY_SECONDS = 5.0
 
 
 def _network_allowed() -> bool:
-    return (os.getenv("FACTORYLM_AI_ALLOW_NETWORK") or "").lower() in {"1", "true"}
+    # Canonical gate (ADR-0031 §6.2): FACTORYLM_NETWORK_MODE wins; the legacy
+    # FACTORYLM_AI_ALLOW_NETWORK and INFERENCE_BACKEND=cloud both map to
+    # enabled; contradictory legacy values raise INVALID_CONFIGURATION.
+    from factorylm_ai.network_gate import network_enabled
+
+    return network_enabled()
 
 
 def _api_key() -> str:
