@@ -123,6 +123,7 @@ def run(args: argparse.Namespace) -> int:
         code = getattr(exc, "code", "INTERPRET_FAILED") or "INTERPRET_FAILED"
         return _fail(report, code, str(exc))
     usage = interpret.pop_last_usage() or {}
+    recovery = interpret.pop_last_recovery() or {}
     extraction_path = out_dir / "extraction.json"
     extraction_path.write_text(graph.model_dump_json(indent=2), encoding="utf-8")
     graded_page_sha = selected_page_sha  # graded page IS the interpreted page
@@ -161,6 +162,17 @@ def run(args: argparse.Namespace) -> int:
         degraded.append("readiness_degraded")
     if usage.get("fallback_attempts"):
         degraded.append("provider_fallback_occurred")
+    # A JSON-repaired response is visible as degraded and blocked from automatic
+    # gold promotion (dense-sheet robustness, POTD directive) — never silent.
+    if recovery.get("repair_attempted"):
+        degraded.append("json_repaired")
+    if recovery.get("truncated"):
+        degraded.append("output_truncated")
+    # The missing independent judge is a NON-silent degradation, not a quiet
+    # downgrade: it blocks gold and is recorded here (production-activation
+    # blocker — see docs/tech-debt/2026-07-22-potd-judge-packaging-blocker.md).
+    if judge_result.get("judge_error"):
+        degraded.append("judge_unavailable")
 
     evidence = CaseEvidence(
         case_id=args.case,
@@ -199,6 +211,9 @@ def run(args: argparse.Namespace) -> int:
         graded_page_sha=graded_page_sha,
         fallback_attempts=usage.get("fallback_attempts", []),
         degraded=degraded,
+        recovery=recovery or None,
+        valid_output=True,  # interpret_print raised otherwise
+        graded=bool(args.rubric),  # a ground-truth rubric makes the run graded
     )
     manifest = build_manifest(
         evidence, [extraction_path, out_dir / "grade.json", out_dir / "judge.json", image_path]
@@ -228,6 +243,9 @@ def run(args: argparse.Namespace) -> int:
         "run_id": evidence.run_id,
         "manifest": str(manifest_path),
         "gold_eligible": manifest["gold_eligible"],
+        "eligibility": manifest["eligibility"],
+        "recovery": manifest.get("recovery"),
+        "degraded": manifest.get("degraded", []),
         "send_requested": bool(args.send),
         "send_blocked_by": blocking,
         "email": None,
@@ -266,9 +284,7 @@ def run(args: argparse.Namespace) -> int:
     md = report_render.render_markdown(tmp_vm, manifest, corrected_interpretation="")
     report_sha = report_render.report_version_hash(md)
     (out_dir / "report.md").write_text(md, encoding="utf-8")
-    (out_dir / "report.html").write_text(
-        report_render.render_html(tmp_vm, md), encoding="utf-8"
-    )
+    (out_dir / "report.html").write_text(report_render.render_html(tmp_vm, md), encoding="utf-8")
     vm = view_model.build_view_model(
         manifest,
         recipient=recipient,

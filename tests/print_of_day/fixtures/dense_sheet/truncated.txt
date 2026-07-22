@@ -1,0 +1,1 @@
+{"package": {"drawing_no": "31971", "cabinet": "SCU2"}, "devices": [{"tag": "-5/A101", "type": "module", "confidence": 0.9, "trust": "proposed"}, {"tag": "-6/A10

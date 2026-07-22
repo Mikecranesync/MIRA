@@ -53,6 +53,31 @@
     "artifact_sha256": { "type": "object" },
     "degraded": { "type": "array", "items": { "type": "string" } },
     "email": { "type": ["object", "null"] },
+    "recovery": {
+      "type": ["object", "null"],
+      "properties": {
+        "requested_max_tokens": { "type": ["integer", "null"] },
+        "finish_reason": { "type": ["string", "null"] },
+        "raw_sha256": { "type": ["string", "null"] },
+        "repair_attempted": { "type": "boolean" },
+        "repair_method": { "type": "string" },
+        "validation_result": { "type": "string" },
+        "truncated": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "eligibility": {
+      "type": "object",
+      "properties": {
+        "state": { "type": "string" },
+        "runtime_eligible": { "type": "boolean" },
+        "gold_candidate": { "type": "boolean" },
+        "approved_gold": { "type": "boolean" },
+        "approved_by": { "type": ["string", "null"] },
+        "blockers": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
     "gold_eligible": { "type": "boolean" }
   },
   "required": [
@@ -108,6 +133,23 @@
       },
       "degraded": [],
       "email": null,
+      "recovery": {
+        "requested_max_tokens": 4000,
+        "finish_reason": "stop",
+        "raw_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "repair_attempted": false,
+        "repair_method": "none",
+        "validation_result": "valid",
+        "truncated": false
+      },
+      "eligibility": {
+        "state": "gold_candidate",
+        "runtime_eligible": true,
+        "gold_candidate": true,
+        "approved_gold": false,
+        "approved_by": null,
+        "blockers": []
+      },
       "gold_eligible": true
     }
   ]

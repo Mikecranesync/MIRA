@@ -30,10 +30,13 @@ from ``config/providers/approved.yml`` (fail-closed via the registry).
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
 
+from . import output_budget as _ob
+from .json_recovery import recover_json_object
 from .models import PrintSynthGraph
 
 logger = logging.getLogger("printsense.interpret")
@@ -90,6 +93,14 @@ def _policy() -> str:
 # gpt-5.5 ($30/M output) instead of ~$0.96 at 32k. medium-effort 8/8 runs fit
 # comfortably; truncation is grader-visible, never silent.
 MAX_TOKENS = int(os.getenv("PRINT_VISION_MAX_TOKENS") or "12000")
+# Absolute bounded maximum for density-aware output budgeting (2026-07-22 dense-
+# sheet robustness). A truncated dense sheet may escalate its output budget up to
+# this ceiling and NO higher — never a blind per-call bump. Default is the same
+# 12k spend bound; the container's smaller base (PRINT_VISION_MAX_TOKENS=4000)
+# escalates toward this only when a call actually truncates.
+MAX_TOKENS_CEILING = int(
+    os.getenv("PRINT_VISION_MAX_TOKENS_CEILING") or str(max(MAX_TOKENS, 12000))
+)
 # xhigh is the best effort for reading-accuracy / self-verifying vision work on
 # Opus 4.8 (roadmap Phase 0.4); high was leaving perception on the table.
 EFFORT = os.getenv("PRINT_VISION_EFFORT", "xhigh")
@@ -136,6 +147,44 @@ def pop_last_usage() -> dict | None:
     global _LAST_USAGE
     usage, _LAST_USAGE = _LAST_USAGE, None
     return usage
+
+
+# Recovery/robustness provenance for the most recent interpret_print call
+# (2026-07-22 dense-sheet robustness). Same best-effort, serial-worker contract
+# as _LAST_USAGE. The POTD manifest persists this so a repaired response is
+# visible as degraded and blocked from automatic gold promotion.
+_LAST_RECOVERY: dict | None = None
+
+
+def pop_last_recovery() -> dict | None:
+    """Return and clear the most recent interpret call's recovery provenance:
+    requested_max_tokens, finish_reason, raw_sha256, repair_attempted,
+    repair_method, validation_result, truncated."""
+    global _LAST_RECOVERY
+    rec, _LAST_RECOVERY = _LAST_RECOVERY, None
+    return rec
+
+
+def _recovery_prov(
+    requested_max_tokens: int,
+    finish_reason: str | None,
+    raw_sha256: str,
+    *,
+    attempted: bool,
+    method: str,
+    valid: bool,
+    truncated: bool,
+) -> dict:
+    """The FR-5 recovery provenance record (persisted in the POTD manifest)."""
+    return {
+        "requested_max_tokens": requested_max_tokens,
+        "finish_reason": finish_reason,
+        "raw_sha256": raw_sha256,
+        "repair_attempted": attempted,
+        "repair_method": method,
+        "validation_result": "valid" if valid else "invalid",
+        "truncated": truncated,
+    }
 
 
 def record_sampled_usage(
@@ -412,8 +461,14 @@ def _together_http_post(url: str, headers: dict, payload: dict, timeout: float) 
     return httpx.post(url, headers=headers, json=payload, timeout=timeout)
 
 
-def _together_generate(model: str, pages: list[tuple[bytes, str]], prompt: str) -> str:
+def _together_generate(
+    model: str, pages: list[tuple[bytes, str]], prompt: str, max_tokens: int | None = None
+) -> tuple[str, str | None]:
     """One OpenAI-compatible chat/completions call to the CANONICAL Together host.
+
+    Returns ``(raw_text, finish_reason)``. ``finish_reason == "length"`` means the
+    model hit the output-token ceiling (truncation) — the density-aware caller
+    uses it to decide whether to escalate the budget.
 
     Never the general chat router (ADR-0031 §6.3): the typed interpreter
     addresses Together directly through the shared provider registry. Raises
@@ -446,7 +501,7 @@ def _together_generate(model: str, pages: list[tuple[bytes, str]], prompt: str) 
     content.append({"type": "text", "text": prompt})
     payload: dict = {
         "model": model,
-        "max_tokens": MAX_TOKENS,
+        "max_tokens": int(max_tokens or MAX_TOKENS),
         "messages": [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": content},
@@ -494,7 +549,9 @@ def _together_generate(model: str, pages: list[tuple[bytes, str]], prompt: str) 
 
     body = response.json()
     choices = body.get("choices") or []
-    message = (choices[0] or {}).get("message") or {} if choices else {}
+    first_choice = (choices[0] or {}) if choices else {}
+    message = first_choice.get("message") or {}
+    finish_reason = first_choice.get("finish_reason")
     raw = (message.get("content") or "").strip()
     # Reasoning models may put everything in reasoning_content and leave
     # content empty — that is an EMPTY visible response, not output.
@@ -515,7 +572,7 @@ def _together_generate(model: str, pages: list[tuple[bytes, str]], prompt: str) 
         _U.output_tokens,
         latency_ms,
     )
-    return raw
+    return raw, finish_reason
 
 
 def _strip_fences(raw: str) -> str:
@@ -608,18 +665,26 @@ def _check_model_approved(provider: str, model: str, policy: str) -> bool:
 
 
 def _generate_with_provider(
-    provider: str, model: str, pages: list[tuple[bytes, str]], prompt: str, client=None
-) -> str:
+    provider: str,
+    model: str,
+    pages: list[tuple[bytes, str]],
+    prompt: str,
+    client=None,
+    max_tokens: int | None = None,
+) -> tuple[str, str | None]:
     """Dispatch one generation call on an EXPLICIT provider branch.
 
-    An unknown provider is a hard error here — the pre-ADR-0031 code routed
-    every non-openai value into the Anthropic branch, which is exactly the
-    silent-misrouting defect this function removes.
+    Returns ``(raw_text, finish_reason)``; ``finish_reason`` is ``"length"`` on a
+    truncated response, else the provider's stop reason or ``None``. An unknown
+    provider is a hard error here — the pre-ADR-0031 code routed every non-openai
+    value into the Anthropic branch, which is exactly the silent-misrouting
+    defect this function removes.
     """
+    budget = int(max_tokens or MAX_TOKENS)
     if provider == "together":
-        return _together_generate(model, pages, prompt)
+        return _together_generate(model, pages, prompt, budget)
     if provider == "openai":
-        return _openai_generate(client, model, pages, prompt)
+        return _openai_generate(client, model, pages, prompt), None
     if provider == "anthropic":
         content: list[dict] = [_source_block(data, mt) for data, mt in pages]
         content.append({"type": "text", "text": prompt})
@@ -628,7 +693,7 @@ def _generate_with_provider(
         # timeout guard.
         with client.messages.stream(
             model=model,
-            max_tokens=MAX_TOKENS,
+            max_tokens=budget,
             system=_SYSTEM,
             thinking={"type": "adaptive"},
             output_config={"effort": EFFORT},
@@ -636,7 +701,9 @@ def _generate_with_provider(
         ) as stream:
             message = stream.get_final_message()
         _record_usage("anthropic", model, getattr(message, "usage", None))
-        return _first_text(message)
+        stop = getattr(message, "stop_reason", None)
+        finish = "length" if stop in ("max_tokens", "length") else stop
+        return _first_text(message), finish
     raise PrintVisionUnavailable(
         f"PRINT_VISION_PROVIDER={provider!r} is not a supported print-vision "
         "provider ('openai', 'anthropic', or 'together')",
@@ -676,6 +743,84 @@ def _network_gate_check(provider: str) -> None:
         )
 
 
+def _recover_or_escalate(first_raw, first_finish, regen, ladder):
+    """Parse the model output into a validated dict, applying — in order — the
+    clean path, bounded JSON recovery, and density-aware budget escalation.
+
+    ``regen(budget)`` re-runs generation on the active provider at ``budget`` and
+    returns ``(raw, finish_reason)``; ``ladder`` is the bounded budget sequence
+    (``output_budget.budget_ladder``) whose first rung already produced
+    ``first_raw``. Returns ``(data, recovery_provenance)``. Raises
+    ``INVALID_MODEL_JSON`` (no recoverable object) or ``PRINTSYNTH_VALIDATION_FAILED``
+    (well-formed JSON of the wrong shape — escalation cannot fix that). Every
+    branch is bounded by the finite ladder; there is no unbounded retry.
+    """
+    from factorylm_ai.capability_codes import (  # noqa: PLC0415
+        INVALID_MODEL_JSON,
+        PRINTSYNTH_VALIDATION_FAILED,
+        CapabilityError,
+    )
+
+    best: tuple[dict, dict] | None = None  # a repaired-but-truncated fallback
+    raw, finish = first_raw, first_finish
+    for idx, budget in enumerate(ladder):
+        if idx > 0:
+            raw, finish = regen(budget)
+        raw_sha = hashlib.sha256((raw or "").encode("utf-8")).hexdigest()
+
+        # 1. Clean path — bare/fenced object that parses directly.
+        try:
+            clean_data = json.loads(_first_json_object(raw))
+        except (ValueError, json.JSONDecodeError):
+            clean_data = None
+        if clean_data is not None:
+            try:
+                PrintSynthGraph.model_validate(clean_data)
+            except Exception as exc:  # noqa: BLE001
+                # well-formed JSON, wrong shape: a bigger budget won't fix it.
+                raise CapabilityError(
+                    PRINTSYNTH_VALIDATION_FAILED,
+                    f"model JSON failed PrintSynth validation: {exc}",
+                ) from exc
+            return clean_data, _recovery_prov(
+                budget, finish, raw_sha, attempted=False, method="none", valid=True, truncated=False
+            )
+
+        # 2. Bounded recovery — structural repair only, schema-validated.
+        rec = recover_json_object(raw, validate=PrintSynthGraph.model_validate)
+        if rec.valid and rec.recovered is not None:
+            prov = _recovery_prov(
+                budget,
+                finish,
+                raw_sha,
+                attempted=rec.repair_attempted,
+                method=rec.method,
+                valid=True,
+                truncated=rec.truncated,
+            )
+            if not rec.truncated:
+                return rec.recovered, prov  # structural fix, no data dropped
+            best = (rec.recovered, prov)  # data was dropped — try a bigger budget
+            if budget >= ladder[-1]:
+                return best  # ceiling reached; accept the degraded truncated result
+            continue
+
+        # 3. Escalate only on a truncation signal, and only within the ceiling.
+        looks_truncated = finish == "length" or rec.truncated
+        if looks_truncated and budget < ladder[-1]:
+            continue
+        if best is not None:
+            return best
+        raise CapabilityError(
+            INVALID_MODEL_JSON,
+            f"model output was not JSON after bounded recovery: {rec.detail}",
+        )
+
+    if best is not None:
+        return best
+    raise CapabilityError(INVALID_MODEL_JSON, "model output was not JSON (budget ladder exhausted)")
+
+
 def interpret_print(
     pages: list[tuple[bytes, str]],
     *,
@@ -702,14 +847,11 @@ def interpret_print(
     in order and every attempt lands in the attribution slot
     (:func:`pop_last_usage` → ``fallback_attempts``). Execution failures (bad
     JSON, schema, empty output) are typed ``CapabilityError``s and NEVER fall
-    back — a provider that answered garbage is not "unavailable".
+    back — a provider that answered garbage is not "unavailable". Bad/incomplete
+    JSON first goes through bounded structural recovery + density-aware budget
+    escalation (:func:`_recover_or_escalate`); ``INVALID_MODEL_JSON`` is raised
+    only when no schema-valid object can be recovered within the token ceiling.
     """
-    from factorylm_ai.capability_codes import (  # noqa: PLC0415 — lazy; see _check_model_approved
-        INVALID_MODEL_JSON,
-        PRINTSYNTH_VALIDATION_FAILED,
-        CapabilityError,
-    )
-
     requested = _provider()
     policy = _policy()
     candidates = [requested] if policy == "strict" else _fallback_candidates(requested)
@@ -720,8 +862,17 @@ def interpret_print(
         pages = [_pp.prepare_print_image(data, mt) for data, mt in pages]
     prompt = _user_prompt(package_context, question)
 
+    # Density-aware output budget (2026-07-22 dense-sheet robustness): a coarse
+    # signal (post-preprocess image bytes) picks the first rung; a truncated
+    # response escalates along the bounded ladder up to MAX_TOKENS_CEILING — never
+    # a blind per-call bump.
+    density_signal = sum(len(data) for data, _ in pages)
+    ladder = _ob.budget_ladder(MAX_TOKENS, MAX_TOKENS_CEILING, _ob.density_class(density_signal))
+
     attempts: list[dict] = []
     raw: str | None = None
+    first_finish: str | None = None
+    active_client = None
     active_provider = requested
     active_model = model or default_model(requested)
     for candidate in candidates:
@@ -730,8 +881,10 @@ def interpret_print(
             _network_gate_check(candidate)
             client = _client(candidate)  # availability gate (key/support) — typed raise
             _check_model_approved(candidate, candidate_model, policy)
-            raw = _generate_with_provider(candidate, candidate_model, pages, prompt, client)
-            active_provider, active_model = candidate, candidate_model
+            raw, first_finish = _generate_with_provider(
+                candidate, candidate_model, pages, prompt, client, max_tokens=ladder[0]
+            )
+            active_provider, active_model, active_client = candidate, candidate_model, client
             break
         except PrintVisionUnavailable as exc:
             attempts.append(
@@ -758,21 +911,21 @@ def interpret_print(
     if attempts and _LAST_USAGE is not None:
         _LAST_USAGE["fallback_attempts"] = attempts
 
-    try:
-        data = json.loads(_first_json_object(raw))
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise CapabilityError(INVALID_MODEL_JSON, f"model output was not JSON: {exc}") from exc
+    global _LAST_RECOVERY
+
+    def _regen(budget: int) -> tuple[str, str | None]:
+        return _generate_with_provider(
+            active_provider, active_model, pages, prompt, active_client, max_tokens=budget
+        )
+
+    data, _LAST_RECOVERY = _recover_or_escalate(raw, first_finish, _regen, ladder)
     logger.info(
-        "PRINT_INTERPRETED provider=%s model=%s devices=%d fallback_attempts=%d",
+        "PRINT_INTERPRETED provider=%s model=%s devices=%d fallback_attempts=%d repair=%s",
         active_provider,
         active_model,
         len(data.get("devices") or []),
         len(attempts),
+        _LAST_RECOVERY.get("repair_method"),
     )
-    try:
-        graph = PrintSynthGraph.model_validate(data)
-    except Exception as exc:
-        raise CapabilityError(
-            PRINTSYNTH_VALIDATION_FAILED, f"model JSON failed PrintSynth validation: {exc}"
-        ) from exc
+    graph = PrintSynthGraph.model_validate(data)  # already schema-valid via recovery
     return _apply_confidence_gate(graph)

@@ -124,7 +124,13 @@ def _derive_verdict(
         return VERDICT_CORRECTION_REQUIRED, True
     if not ocr.get("available", False) and ocr.get("required", False):
         return VERDICT_HOLD, True
-    if manifest.get("gold_eligible"):
+    # Authoritative three-state eligibility (2026-07-22): only a graded, clean,
+    # un-repaired, judged run is a gold candidate. An ungraded or JSON-repaired
+    # run is runtime-eligible but HELD for review. Fall back to the legacy
+    # structural bool on older manifests that predate the eligibility block.
+    elig = manifest.get("eligibility") or {}
+    gold = elig.get("gold_candidate") if elig else manifest.get("gold_eligible")
+    if gold:
         return VERDICT_GOLD_CANDIDATE, False
     return VERDICT_HOLD, True
 

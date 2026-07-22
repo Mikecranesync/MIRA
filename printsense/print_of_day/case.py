@@ -18,9 +18,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .eligibility import classify_eligibility
 from .provenance import Provenance, artifact_hashes
 
 MANIFEST_SCHEMA = "factorylm.print-of-day.v1"
+
+APPROVED_PROVIDER = "together"
+APPROVED_MODEL = "MiniMaxAI/MiniMax-M3"
 
 
 @dataclass
@@ -44,6 +48,11 @@ class CaseEvidence:
     degraded: list[str] = field(default_factory=list)
     email: dict[str, Any] | None = None
     gold_eligible: bool = False
+    # dense-sheet robustness (2026-07-22):
+    recovery: dict[str, Any] | None = None  # interpret JSON-recovery provenance
+    valid_output: bool = True  # interpret produced a schema-valid graph
+    graded: bool = False  # a ground-truth rubric was supplied (else ungraded)
+    eligibility: dict[str, Any] = field(default_factory=dict)  # three-state (authoritative)
 
     def to_dict(self) -> dict:
         return {
@@ -64,6 +73,8 @@ class CaseEvidence:
             "artifact_sha256": self.artifact_sha256,
             "degraded": self.degraded,
             "email": self.email,
+            "recovery": self.recovery,
+            "eligibility": self.eligibility,
             "gold_eligible": self.gold_eligible,
         }
 
@@ -82,9 +93,38 @@ def gold_eligible(evidence: CaseEvidence) -> bool:
     )
 
 
+def classify(evidence: CaseEvidence) -> dict:
+    """The authoritative three-state eligibility for this case (runtime_eligible /
+    gold_candidate / approved_gold). A repaired or ungraded run is runtime-eligible
+    but never a gold candidate (2026-07-22 dense-sheet robustness, POTD directive)."""
+    prov = evidence.provider or {}
+    grade = evidence.grader or {}
+    approved_pair = (
+        prov.get("resolved") == APPROVED_PROVIDER and prov.get("model") == APPROVED_MODEL
+    )
+    grade_ok = (
+        grade.get("import_verdict") == "PASS"
+        and not grade.get("hard_failures")
+        and not grade.get("safety_critical_misreads")
+    )
+    return classify_eligibility(
+        valid_output=evidence.valid_output,
+        approved_pair=approved_pair,
+        ocr_ok=bool((evidence.ocr or {}).get("available")),
+        page_match=evidence.selected_page_sha == evidence.graded_page_sha,
+        repaired=bool((evidence.recovery or {}).get("repair_attempted")),
+        degraded=bool(evidence.degraded),
+        graded=evidence.graded,
+        grade_ok=bool(grade_ok),
+        judge_ok=not (evidence.judge or {}).get("judge_error"),
+    )
+
+
 def build_manifest(evidence: CaseEvidence, artifact_paths: list[str | Path]) -> dict:
-    """Finalize the manifest: stamp artifact hashes + gold eligibility."""
+    """Finalize the manifest: stamp artifact hashes, the three-state eligibility,
+    and the legacy structural ``gold_eligible`` bool (kept for back-compat)."""
     evidence.artifact_sha256 = artifact_hashes(artifact_paths)
+    evidence.eligibility = classify(evidence)
     evidence.gold_eligible = gold_eligible(evidence)
     return evidence.to_dict()
 
