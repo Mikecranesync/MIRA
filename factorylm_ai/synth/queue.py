@@ -19,6 +19,7 @@ import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from . import state_machine as sm
 from .contracts import JOB_FIELDS, JobRecord
@@ -28,7 +29,17 @@ _IN_PROGRESS = "in_progress"
 _DONE = "done"
 
 _TIME_COLS = ("created_at", "started_at", "finished_at", "lease_expires_at")
+_INT_COLS = ("attempt_count", "reconciliation_count")
 _COLS = (*JOB_FIELDS, "worker_id", "labels")
+
+# Only one AUTOMATIC reconciliation pass is permitted (§8.5 / review fix 5);
+# further rework must be a new linked case revision.
+RECONCILIATION_LIMIT = 1
+
+
+class ReconciliationLimitExceeded(RuntimeError):
+    """Raised when a job would enter reconciliation more than once — the case must
+    be re-created as a new linked revision instead (review fix 5)."""
 
 
 class SynthQueue:
@@ -46,11 +57,11 @@ class SynthQueue:
             f"{c} REAL"
             if c in _TIME_COLS
             else f"{c} INTEGER"
-            if c == "attempt_count"
+            if c in _INT_COLS
             else f"{c} TEXT PRIMARY KEY"
             if c == "job_id"
             else f"{c} TEXT UNIQUE"
-            if c == "idempotency_key"
+            if c == "execution_key"
             else f"{c} TEXT"
             for c in _COLS
         )
@@ -130,10 +141,20 @@ class SynthQueue:
                 raise PermissionError(f"worker {worker_id} does not hold the lease on {job_id}")
             sm.validate_transition(job["stage"], dst)
             terminal = sm.is_terminal(dst)
+            recon = job["reconciliation_count"] or 0
+            if dst == sm.RECONCILIATION_PENDING:
+                # only one automatic reconciliation; a second must be a new
+                # linked case revision, not a re-loop (review fix 5).
+                if recon >= RECONCILIATION_LIMIT:
+                    raise ReconciliationLimitExceeded(
+                        f"{job_id} already reconciled {recon} time(s); create a new linked case revision"
+                    )
+                recon += 1
             fields = {
                 "stage": dst,
                 "status": _DONE if terminal else _PENDING,
                 "attempt_count": 0,
+                "reconciliation_count": recon,
                 "worker_id": None,
                 "lease_expires_at": None,
                 "finished_at": now if terminal else job["finished_at"],
@@ -250,10 +271,11 @@ class SynthQueue:
 
 
 def _hydrate(row: sqlite3.Row) -> JobRecord:
-    d = dict(row)
-    labels = json.loads(d.pop("labels") or "{}")
-    d.pop("worker_id", None)
-    job = JobRecord(**{k: d.get(k) for k in JOB_FIELDS if k in JobRecord.__dataclass_fields__})
+    d: dict[str, Any] = dict(row)
+    labels = json.loads(d.get("labels") or "{}")
+    # index (not .get) so the required-str fields type as Any, not Any | None
+    kwargs: dict[str, Any] = {k: d[k] for k in JOB_FIELDS}
+    job = JobRecord(**kwargs)
     job.labels = labels
     return job
 

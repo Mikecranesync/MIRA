@@ -2,11 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "factorylm_ai/schemas/synth_job.schema.json",
   "title": "SyntheticFlywheelJob",
-  "description": "One synthetic-interaction-flywheel job (addendum §12). The durable per-job provenance record: identity, source lineage, FSM stage/status, attempt/lease, and the content-address hashes of every stage's input/output. Written in the minimal schema subset of factorylm_ai/schemas/validate.py.",
+  "description": "One synthetic-interaction-flywheel job (addendum §12 + review fixes). The durable per-job provenance record: case vs execution identity, FSM stage/status, attempt/lease/reconciliation counters, and the content-address hashes of every stage's input/output. EVERY persisted field is declared and additionalProperties is false; drift between this schema, the JobRecord dataclass, and the SQLite columns is CI-tested. Written in the minimal schema subset of factorylm_ai/schemas/validate.py.",
   "type": "object",
   "properties": {
     "job_id": { "type": "string", "minLength": 1 },
     "case_id": { "type": "string", "minLength": 1 },
+    "case_key": { "type": "string", "minLength": 1 },
+    "execution_key": { "type": "string", "minLength": 1 },
+    "case_version": { "type": ["string", "null"] },
+    "supersedes_case_key": { "type": ["string", "null"] },
+    "reconciliation_count": { "type": "integer", "minimum": 0 },
     "source_type": {
       "type": "string",
       "enum": ["real_user", "owner_generated", "synthetic_benchmark", "simulated_fault", "public_document_case"]
@@ -25,7 +30,7 @@
     },
     "status": { "type": "string", "enum": ["pending", "in_progress", "done"] },
     "attempt_count": { "type": "integer", "minimum": 0 },
-    "idempotency_key": { "type": "string", "minLength": 1 },
+    "idempotency_key": { "type": ["string", "null"] },
     "input_hash": { "type": ["string", "null"] },
     "evidence_hash": { "type": ["string", "null"] },
     "answer_key_hash": { "type": ["string", "null"] },
@@ -38,22 +43,29 @@
     "model_version": { "type": ["string", "null"] },
     "rights_status": { "type": ["string", "null"] },
     "split": { "type": ["string", "null"] },
-    "created_at": { "type": ["number", "string", "null"] },
-    "started_at": { "type": ["number", "string", "null"] },
-    "finished_at": { "type": ["number", "string", "null"] },
-    "lease_expires_at": { "type": ["number", "string", "null"] },
+    "created_at": { "type": ["number", "null"] },
+    "started_at": { "type": ["number", "null"] },
+    "finished_at": { "type": ["number", "null"] },
+    "lease_expires_at": { "type": ["number", "null"] },
     "error_code": { "type": ["string", "null"] },
-    "error_detail": { "type": ["string", "null"] }
+    "error_detail": { "type": ["string", "null"] },
+    "labels": { "type": "object" }
   },
   "required": [
-    "job_id", "case_id", "source_type", "source_id", "document_lineage_key",
-    "target_surface", "stage", "status", "attempt_count", "idempotency_key"
+    "job_id", "case_id", "case_key", "execution_key", "reconciliation_count",
+    "source_type", "source_id", "document_lineage_key", "target_surface",
+    "stage", "status", "attempt_count"
   ],
-  "additionalProperties": true,
+  "additionalProperties": false,
   "examples": [
     {
       "job_id": "0123456789abcdef0123456789abcdef",
       "case_id": "synth-ps-000123",
+      "case_key": "case_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "execution_key": "exec_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "case_version": "v1",
+      "supersedes_case_key": null,
+      "reconciliation_count": 0,
       "source_type": "public_document_case",
       "source_id": "rockwell-509-nema-starter#p12",
       "document_lineage_key": "gi-wd005",
@@ -61,7 +73,7 @@
       "stage": "DISCOVERED",
       "status": "pending",
       "attempt_count": 0,
-      "idempotency_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "idempotency_key": "exec_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "input_hash": null,
       "evidence_hash": null,
       "answer_key_hash": null,
@@ -71,7 +83,7 @@
       "prompt_version": null,
       "model_provider": null,
       "model_id": null,
-      "model_version": null,
+      "model_version": "base",
       "rights_status": "training_allowed",
       "split": "train",
       "created_at": 1753000000.0,
@@ -79,7 +91,8 @@
       "finished_at": null,
       "lease_expires_at": null,
       "error_code": null,
-      "error_detail": null
+      "error_detail": null,
+      "labels": {}
     }
   ]
 }
