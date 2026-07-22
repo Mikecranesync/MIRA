@@ -12,6 +12,7 @@ Pure + deterministic. No I/O, no network.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 
 from factorylm_ai.governance import eligibility as el
@@ -57,6 +58,20 @@ def build_corpus_source(
             "policy_ref": policy_ref,
         },
     }
+
+
+def canonical_document_uuid(value: object) -> str:
+    """Validate + canonicalize a registry document/pack UUID for a tenant lineage key.
+
+    The document slot of ``tenant:<id>:document:<uuid>`` must be a real registry UUID, not a
+    content hash. A 64-hex hash (or any non-UUID) is rejected here so it can't be smuggled
+    into that slot and bypass the bare-content-hash guard on the whole key."""
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise ValueError(
+            f"tenant document id must be a UUID (got {value!r}); a content hash is not a lineage id"
+        ) from exc
 
 
 def frozen_lineage_key(source: str, ident: str) -> str:

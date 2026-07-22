@@ -23,7 +23,7 @@ from factorylm_ai.governance.rights import (
     LICENSE_UNKNOWN,
 )
 
-from .source_candidate import SourceCandidate, build_corpus_source
+from .source_candidate import SourceCandidate, build_corpus_source, canonical_document_uuid
 
 SOURCE_SYSTEM = "printsense"
 
@@ -58,7 +58,8 @@ def printsense_candidate(record: dict) -> SourceCandidate:
         doc_uuid = record.get("document_uuid")
         if not doc_uuid:
             raise ValueError("tenant PrintSense record needs a document_uuid for its lineage key")
-        lineage = ln.tenant_lineage_key(str(tenant_id), str(doc_uuid))
+        doc_uuid = canonical_document_uuid(doc_uuid)  # reject a content hash in the document slot
+        lineage = ln.tenant_lineage_key(str(tenant_id), doc_uuid)
         confidentiality = record.get("confidentiality_class") or "customer-private"
         corpus_source = build_corpus_source(
             license_class=LICENSE_CUSTOMER_PRIVATE,

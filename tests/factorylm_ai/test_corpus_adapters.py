@@ -124,6 +124,17 @@ def test_printsense_tenant_without_uuid_raises() -> None:
         printsense_candidate({"record_id": "t", "tenant_id": "acme-co"})
 
 
+def test_printsense_tenant_rejects_content_hash_as_document_uuid() -> None:
+    # a 64-hex content hash must not be smuggled into the tenant document slot
+    with pytest.raises(ValueError):
+        printsense_candidate({"record_id": "t", "tenant_id": "acme-co", "document_uuid": "a" * 64})
+    # any non-UUID string is rejected too
+    with pytest.raises(ValueError):
+        printsense_candidate(
+            {"record_id": "t", "tenant_id": "acme-co", "document_uuid": "not-a-uuid"}
+        )
+
+
 def test_printsense_public_without_document_raises() -> None:
     with pytest.raises(ValueError):
         printsense_candidate({"record_id": "p", "manufacturer": "acme"})
@@ -135,6 +146,7 @@ def test_drive_commander_pack_hash_is_evidence_not_lineage() -> None:
         {
             "pack_id": "b" * 64,
             "manufacturer": "AutomationDirect",
+            "document_number": "GS10-UM",
             "drive_model": "GS10",
             "manifest": {
                 "license_class": "public-eval-and-train",
@@ -143,16 +155,36 @@ def test_drive_commander_pack_hash_is_evidence_not_lineage() -> None:
         }
     )
     assert c.evidence_id == "b" * 64
-    assert c.document_lineage_key == ln.public_lineage_key("AutomationDirect", "GS10")
+    # lineage comes from the real document number, not the drive model (which is metadata)
+    assert c.document_lineage_key == ln.public_lineage_key("AutomationDirect", "GS10-UM")
+    assert c.metadata["drive_model"] == "GS10"
     assert not ln.is_bare_content_hash(c.document_lineage_key)
 
 
 def test_drive_commander_shared_pack_rights_fail_closed_without_manifest() -> None:
     c = drive_commander_candidate(
-        {"pack_id": "c" * 64, "manufacturer": "AutomationDirect", "drive_model": "GS10"}
+        {"pack_id": "c" * 64, "manufacturer": "AutomationDirect", "document_number": "GS10-UM"}
     )
     assert c.rights.training_allowed is False
     assert rc.TRAINING_NOT_ALLOWED in c.check().codes
+
+
+def test_drive_commander_shared_requires_document_not_drive_model() -> None:
+    # a drive model alone is not a lineage key — it would collapse distinct manuals/revisions
+    with pytest.raises(ValueError):
+        drive_commander_candidate(
+            {"pack_id": "c" * 64, "manufacturer": "AutomationDirect", "drive_model": "GS10"}
+        )
+    # an explicit manual_id is accepted
+    c = drive_commander_candidate(
+        {
+            "pack_id": "c" * 64,
+            "manufacturer": "AutomationDirect",
+            "manual_id": "gs10-um-rev-c",
+            "drive_model": "GS10",
+        }
+    )
+    assert c.document_lineage_key == ln.public_lineage_key("AutomationDirect", "gs10-um-rev-c")
 
 
 def test_drive_commander_tenant_pack_is_sensitive_and_not_cross_tenant() -> None:
@@ -175,6 +207,14 @@ def test_drive_commander_tenant_pack_is_sensitive_and_not_cross_tenant() -> None
 def test_drive_commander_tenant_pack_without_uuid_raises() -> None:
     with pytest.raises(ValueError):
         drive_commander_candidate({"pack_id": "f" * 64, "tenant_id": "acme-co"})
+
+
+def test_drive_commander_tenant_rejects_content_hash_as_pack_uuid() -> None:
+    # the pack-id is a content hash; it must never become the document slot of the lineage
+    with pytest.raises(ValueError):
+        drive_commander_candidate({"tenant_id": "acme-co", "pack_uuid": "b" * 64})
+    with pytest.raises(ValueError):
+        drive_commander_candidate({"tenant_id": "acme-co", "pack_uuid": "GS10-pack"})
 
 
 # ── PR 2C: MIRA + SimLab ─────────────────────────────────────────────────────
@@ -221,6 +261,20 @@ def test_frozen_benchmark_generic_source_visible_in_metadata() -> None:
     assert c.metadata["origin"] == "mira"
 
 
+def test_simlab_metadata_cannot_override_authoritative_provenance() -> None:
+    # a record cannot disguise synthetic material as real by overriding the provenance keys
+    c = simlab_candidate(
+        {
+            "scenario_id": "s1",
+            "metadata": {"synthetic": False, "origin": "acme-real-plant", "ident": "spoof", "x": 1},
+        }
+    )
+    assert c.metadata["synthetic"] is True
+    assert c.metadata["origin"] == "simlab"
+    assert c.metadata["ident"] == "s1"
+    assert c.metadata["x"] == 1  # non-authoritative user metadata is preserved
+
+
 # ── shared SourceCandidate invariants ────────────────────────────────────────
 def test_bare_content_hash_lineage_is_rejected_at_construction() -> None:
     with pytest.raises(ValueError):
@@ -232,6 +286,23 @@ def test_bare_content_hash_lineage_is_rejected_at_construction() -> None:
                 license_class="public-eval-and-train", confidentiality_class="public"
             ),
         )
+
+
+def test_uppercase_and_mixed_case_bare_hash_rejected_as_lineage() -> None:
+    # the bare-hash guard is case-insensitive — uppercase/mixed 64-hex is still a hash
+    assert ln.is_bare_content_hash("A" * 64)
+    assert ln.is_bare_content_hash("aB" * 32)
+    assert ln.is_bare_content_hash("a" * 64)  # lowercase still caught (regression)
+    for bad in ("A" * 64, "aB" * 32):
+        with pytest.raises(ValueError):
+            SourceCandidate(
+                source_system="x",
+                record_id="r",
+                document_lineage_key=bad,
+                corpus_source=build_corpus_source(
+                    license_class="public-eval-and-train", confidentiality_class="public"
+                ),
+            )
 
 
 def test_missing_lineage_fails_closed_at_gate() -> None:

@@ -5,11 +5,15 @@ content-hash pack-id. That pack-id is an **evidence** identifier — it is NEVER
 key (a content hash forks the lineage every time the pack is rebuilt).
 
 * **Shared / public packs** (a pack derived from a published OEM drive manual) get a
-  ``<manufacturer-slug>:<document-number-slug>`` lineage key. Their rights **fail closed**
-  unless the pack ``manifest`` explicitly declares a resolved, trainable license.
-* **Tenant packs** get a ``tenant:<tenant-id>:document:<pack-uuid>`` lineage key and default
-  to ``sensitive=True``, customer-private, non-cross-tenant-reusable — a tenant's drive
-  pack is not shared-corpus material.
+  ``<manufacturer-slug>:<document-number-slug>`` lineage key from a real ``document_number``
+  / ``manual_id`` — NEVER from ``drive_model`` (which would collapse distinct manuals and
+  revisions of one drive family into a single lineage). ``drive_model`` is metadata only.
+  Their rights **fail closed** unless the pack ``manifest`` explicitly declares a resolved,
+  trainable license.
+* **Tenant packs** get a ``tenant:<tenant-id>:document:<pack-uuid>`` lineage key (the pack
+  uuid is validated as a real UUID, so a content hash cannot be smuggled into the document
+  slot) and default to ``sensitive=True``, customer-private, non-cross-tenant-reusable — a
+  tenant's drive pack is not shared-corpus material.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from factorylm_ai.governance.rights import (
     LICENSE_UNKNOWN,
 )
 
-from .source_candidate import SourceCandidate, build_corpus_source
+from .source_candidate import SourceCandidate, build_corpus_source, canonical_document_uuid
 
 SOURCE_SYSTEM = "drive_commander"
 
@@ -41,9 +45,9 @@ def _evidence_id(pack: dict) -> str | None:
 def drive_commander_candidate(pack: dict) -> SourceCandidate:
     """Build a governance candidate from a Drive Commander pack descriptor.
 
-    Raises ``ValueError`` only for structurally un-representable input (a tenant pack with
-    no pack uuid, or a shared pack with no manufacturer/document number). Undeclared rights
-    are lowered as unknown/unresolved and fail closed at the gate."""
+    Raises ``ValueError`` for structurally un-representable input (a tenant pack with no/invalid
+    pack uuid, or a shared pack with no manufacturer + document_number/manual_id). Undeclared
+    rights are lowered as unknown/unresolved and fail closed at the gate."""
     record_id = str(pack.get("record_id") or pack.get("id") or _evidence_id(pack) or "")
     evidence_id = _evidence_id(pack)
     tenant_id = pack.get("tenant_id")
@@ -52,7 +56,8 @@ def drive_commander_candidate(pack: dict) -> SourceCandidate:
         pack_uuid = pack.get("pack_uuid") or pack.get("document_uuid")
         if not pack_uuid:
             raise ValueError("tenant Drive Commander pack needs a pack_uuid for its lineage key")
-        lineage = ln.tenant_lineage_key(str(tenant_id), str(pack_uuid))
+        pack_uuid = canonical_document_uuid(pack_uuid)  # reject a content hash in the document slot
+        lineage = ln.tenant_lineage_key(str(tenant_id), pack_uuid)
         confidentiality = pack.get("confidentiality_class") or "customer-private"
         corpus_source = build_corpus_source(
             license_class=LICENSE_CUSTOMER_PRIVATE,
@@ -82,10 +87,13 @@ def drive_commander_candidate(pack: dict) -> SourceCandidate:
 
     # Shared / public pack — rights fail closed unless the manifest grants otherwise.
     manufacturer = pack.get("manufacturer")
-    document_number = pack.get("document_number") or pack.get("drive_model")
+    # A drive model (e.g. "GS10") is NOT a document lineage — it would collapse every manual
+    # and revision of that family into one lineage. Require a real document/manual id.
+    document_number = pack.get("document_number") or pack.get("manual_id")
     if not manufacturer or not document_number:
         raise ValueError(
-            "shared Drive Commander pack needs manufacturer + document_number/drive_model"
+            "shared Drive Commander pack needs manufacturer + document_number/manual_id "
+            "(drive_model is not a lineage key)"
         )
     lineage = ln.public_lineage_key(str(manufacturer), str(document_number))
 
@@ -119,5 +127,9 @@ def drive_commander_candidate(pack: dict) -> SourceCandidate:
         tenant_id=None,
         confidentiality_class=str(manifest.get("confidentiality_class") or "public"),
         evidence_id=evidence_id,
-        metadata={"scope": "shared", "pack_kind": pack.get("pack_kind")},
+        metadata={
+            "scope": "shared",
+            "pack_kind": pack.get("pack_kind"),
+            "drive_model": pack.get("drive_model"),  # kept for context, never used as lineage
+        },
     )

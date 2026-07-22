@@ -44,7 +44,7 @@ LEGACY_SPLIT_MAP: dict[str, str] = {
     "eval": SPLIT_TEST,
 }
 
-_BARE_HASH = re.compile(r"^[a-f0-9]{64}$")
+_BARE_HASH = re.compile(r"^[0-9a-fA-F]{64}$")  # case-insensitive: uppercase hex is still a hash
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 

@@ -38,11 +38,13 @@ def frozen_benchmark_candidate(
         evaluation_allowed=True,
         public_export_allowed=True,
     )
+    # User metadata merges FIRST; the authoritative provenance keys are set LAST so a record
+    # can never override synthetic/origin/ident (e.g. claim synthetic=False to look real).
     metadata = {
+        **(record.get("metadata") or {}),
         "synthetic": True,
         "origin": source,
         "ident": ident,
-        **(record.get("metadata") or {}),
     }
     return SourceCandidate(
         source_system=source,
