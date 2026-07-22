@@ -1,3 +1,16 @@
+### v3.207.0 (2026-07-22) - feat(synth): synthetic-flywheel contracts + durable job state machine (PR A)
+
+PR A of the Autonomous Synthetic Interaction Flywheel addendum (parent: technician-grounding LoRA program, `docs/zta/2026-07-22-technician-lora-phase0-reconciliation.md` §7). The **deterministic substrate only** — no agents, no network, no scheduling (those are PR B-E). All import-safe, hermetic, fail-closed.
+
+- **`factorylm_ai/synth/rejection_codes.py`** — the shared machine-readable rejection vocabulary (addendum §19 superset of PR 1's), defined once so both the export-eligibility gate and the synthetic critic consume it. Typed `Rejection(code, detail)`; `REVIEW_NOT_REJECT` codes route to human review rather than outright reject.
+- **`factorylm_ai/synth/state_machine.py`** — the §11 job FSM (16 states). Only declared transitions are legal; `validate_transition` fail-closes so **no stage silently skips a failed predecessor**. Terminal states never exit; DEAD_LETTER is reachable from any working state (retry exhaustion).
+- **`factorylm_ai/synth/contracts.py`** — source classes (real vs synthetic families, never conflated), the §14 synthetic labeling, the §12 `JobRecord`, a stable `idempotency_key`, and the **answer-key-independence law (§15)**: a key derived from the target model / a second prompt / an agent's intuition is rejected `ANSWER_KEY_WEAK` — the anti-self-training guard, fail-closed.
+- **`factorylm_ai/synth/queue.py`** — a restart-safe SQLite (WAL) durable queue: idempotent enqueue, atomic worker leases (`BEGIN IMMEDIATE` single-writer claim), lease expiry + crash recovery, per-stage bounded retries → dead-letter, validated + audited transitions, resume-after-interruption. Injectable clock for deterministic lease tests.
+- **`factorylm_ai/schemas/synth_job.schema.json`** — the §12 job-record contract (validator subset) + a validating example.
+- Tests: +17 hermetic ($0) in `tests/factorylm_ai/test_synth.py` — legal/illegal transitions, terminal exits, dead-letter reachability, idempotent enqueue / duplicate suppression, retry→dead-letter, lease expiry recovery, restart-safe durability, synthetic labeling, and the answer-key-independence law. Full `factorylm_ai` suite green; ruff clean.
+
+Reuses the parent governance owners (no second schema/benchmark/visual-region contract); Mike remains sole gold/paid/promotion/deploy authority. No paid calls, no scheduling, no production change.
+
 ### v3.206.0 (2026-07-22) - feat(printsense): POTD judge packaging + independence — identity-honest, gold-gating
 
 Closes the judge production-activation blocker from PR #2870 / the 2026-07-22 benchmark: the free-cascade judge did not run in the POTD container (`No module named 'shared'`) and its independence was never verified. Packages the minimal judge dependency, makes the judge's identity + independence explicit, and gold-gates on it. Stacked on #2870; **unmerged**. No production change, no PR-8, no schedules, no removal of human approval.
