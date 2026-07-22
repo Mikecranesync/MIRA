@@ -1,0 +1,56 @@
+# Approved provider/model policy — PrintSense Provider & OCR Hardening (ADR-0031).
+#
+# Repo-controlled POLICY (FR-9): which providers/models each controlled task may
+# use, and what fallback is permitted. Secrets stay in Doppler; identifiers and
+# policy live here in Git. Consumed (from PR 2 onward) by
+# factorylm_ai/provider_registry.py; until then it is a validated contract
+# (tests/factorylm_ai/test_provider_ocr_contracts.py).
+#
+# Distinct from printsense/providers/capabilities.json — that file is
+# evidence-signed capability QUALIFICATION (which provider has proven a
+# capability); this file is owner-approved AUTHORIZATION (which providers a
+# task is allowed to use at all). Aligned with the CLF approved-providers spec
+# (docs/specs/continuous-learning-factory/approved-providers.md, PR #2857,
+# unmerged — this file is the runtime-consumed subset).
+#
+# Changing this file is a policy change: it requires owner review like any
+# other PR, and the provider registry treats absence from this file as
+# PROVIDER_NOT_APPROVED (fail closed).
+
+schema: factorylm.approved-providers.v1
+
+printsense_interpreter:
+  # The canonical operational PrintSense interpreter (PRD §3). OpenAI and
+  # Anthropic remain explicit owner-authorized benchmark alternatives — they
+  # are approved here so a configured rollback works, but they are never a
+  # silent fallback (fallback: false).
+  required_provider: together
+  allowed_models:
+    together:
+      - MiniMaxAI/MiniMax-M3
+    openai:
+      - gpt-5.5
+    anthropic:
+      - claude-opus-4-8
+  fallback: false
+
+printsense_judge:
+  # The internet-print judge runs on the approved free cascade (v3.185.0
+  # repoint — tools/internet_print_test/judge.py). Independence is recorded,
+  # not required: same-model verdicts are provisional.
+  allowed_providers:
+    - groq
+    - cerebras
+    - together
+  independence_required_for_gold: false
+  provisional_only_when_same_model: true
+
+print_of_the_day:
+  # Controlled daily run (PR 6): strict, no fallback, Together/MiniMax only.
+  required_provider: together
+  allowed_models:
+    together:
+      - MiniMaxAI/MiniMax-M3
+  fallback: false
+  require_ocr: true
+  require_clean_worktree: true
