@@ -65,19 +65,20 @@ def package_summary(pkg: EmailPackage) -> str:
     return "\n".join(lines)
 
 
-def send(pkg: EmailPackage) -> dict:
-    """Send via Resend. Returns {sent, status, id/error}. Requires RESEND_API_KEY (Doppler)."""
-    api_key = os.getenv("RESEND_API_KEY", "")
-    if not api_key:
-        return {"sent": False, "status": None, "error": "RESEND_API_KEY not set (load via Doppler)"}
-
+def build_payload(pkg: EmailPackage, text: str | None = None) -> dict:
+    """Pure Resend payload from a package. Additive over the original inline dict:
+    threads per-attachment inline ``content_id`` (PRD 13.5) and an optional
+    plain-text ``text`` part (FR-9). Existing callers set neither, so behavior is
+    unchanged for them."""
     attachments = []
     for a in pkg.attachments:
         if not a["included"]:
             continue
-        data = Path(a["path"]).read_bytes()
-        attachments.append({"filename": a["filename"], "content": base64.b64encode(data).decode()})
-
+        entry = {"filename": a["filename"],
+                 "content": base64.b64encode(Path(a["path"]).read_bytes()).decode()}
+        if a.get("content_id"):
+            entry["content_id"] = a["content_id"]
+        attachments.append(entry)
     payload = {
         "from": RESEND_FROM,
         "to": [pkg.recipient],
@@ -85,6 +86,18 @@ def send(pkg: EmailPackage) -> dict:
         "html": pkg.html,
         "attachments": attachments,
     }
+    if text is not None:
+        payload["text"] = text
+    return payload
+
+
+def send(pkg: EmailPackage, text: str | None = None) -> dict:
+    """Send via Resend. Returns {sent, status, id/error}. Requires RESEND_API_KEY (Doppler)."""
+    api_key = os.getenv("RESEND_API_KEY", "")
+    if not api_key:
+        return {"sent": False, "status": None, "error": "RESEND_API_KEY not set (load via Doppler)"}
+
+    payload = build_payload(pkg, text=text)
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.post(RESEND_ENDPOINT,
