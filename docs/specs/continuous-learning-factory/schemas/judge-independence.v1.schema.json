@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm.clf.judge-independence.v1",
+  "title": "FactoryLM CLF Judge Independence v1",
+  "description": "Classifies how independent a judge (or approval mechanism) is from the interpreter that produced the answer. gold_eligible is DERIVED from promotion-policy.md — only authorized classes may promote a candidate to gold. Provider capability is probed dynamically because serverless availability changes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "independence_class"],
+  "properties": {
+    "schema": { "const": "factorylm.clf.judge-independence.v1" },
+    "independence_class": {
+      "enum": [
+        "INDEPENDENT_PROVIDER_MODEL",
+        "DIFFERENT_MODEL_SAME_PROVIDER",
+        "SAME_MODEL_DIFFERENT_RUN",
+        "SELF_CONSISTENCY_ONLY",
+        "HUMAN_REVIEW",
+        "DETERMINISTIC_PROOF"
+      ],
+      "description": "AN-GS-021 = SELF_CONSISTENCY_ONLY (interpreter and judge both MiniMax-M3, the only serverless Together vision lane)."
+    },
+    "judge_provider": { "type": ["string", "null"] },
+    "judge_model": { "type": ["string", "null"] },
+    "interpreter_provider": { "type": ["string", "null"] },
+    "interpreter_model": { "type": ["string", "null"] },
+    "gold_eligible": {
+      "type": "boolean",
+      "default": false,
+      "description": "DERIVED by promotion-policy.md, not asserted freely. SELF_CONSISTENCY_ONLY and SAME_MODEL_DIFFERENT_RUN are gold_eligible=false."
+    },
+    "confidence_cap": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "policy-imposed ceiling; SELF_CONSISTENCY_ONLY caps confidence and forbids auto-gold"
+    },
+    "run_id": { "type": ["string", "null"] }
+  }
+}

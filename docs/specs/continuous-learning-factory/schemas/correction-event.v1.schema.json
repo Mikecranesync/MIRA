@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm.clf.correction-event.v1",
+  "title": "FactoryLM CLF Correction Event v1",
+  "description": "An IMMUTABLE human review action. Append-only: a revision is a new event linking to prior_correction_id, never an edit. Regions are referenced by factorylm.visual-region.v1 region_id — this schema NEVER redefines geometry (requirement 1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "correction_id", "run_id", "at", "actor", "action"],
+  "properties": {
+    "schema": { "const": "factorylm.clf.correction-event.v1" },
+    "correction_id": { "type": "string" },
+    "run_id": { "type": "string", "description": "FK -> eval-result.v1.run_id (the result being corrected)" },
+    "at": { "type": "string", "description": "RFC3339" },
+    "actor": { "type": "string", "description": "reviewer id / mechanism" },
+    "action": { "enum": ["accept", "reject", "needs_expert", "edit"] },
+    "corrected_answer": { "type": ["string", "null"] },
+    "structured_facts": { "type": ["object", "null"], "additionalProperties": true },
+    "error_labels": { "type": "array", "items": { "type": "string" } },
+    "region_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "region_id of factorylm.visual-region.v1 instances the reviewer drew/adjusted (owned by mira-bots/shared/visual, #2843/#2846). Linked, never inlined."
+    },
+    "prior_correction_id": { "type": ["string", "null"], "description": "append-only chain; null for the first" },
+    "immutable": { "const": true }
+  }
+}

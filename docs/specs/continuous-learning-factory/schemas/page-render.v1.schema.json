@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm.clf.page-render.v1",
+  "title": "FactoryLM CLF Rendered Page Manifest v1",
+  "description": "Page identity, distinct from document identity. Carries document_lineage_key so leakage control partitions by lineage, never by page. Large PDFs are ingested as resumable per-page records (one page = one manifest); a completed page is never reprocessed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "page_id", "source_id", "document_lineage_key", "source_page_number", "page_sha256", "render_dpi", "preprocess_version"],
+  "properties": {
+    "schema": { "const": "factorylm.clf.page-render.v1" },
+    "page_id": { "type": "string" },
+    "source_id": { "type": "string", "description": "FK -> corpus-source.v1.source_id" },
+    "document_lineage_key": { "type": "string", "description": "carried from the source; the split key" },
+    "source_page_number": { "type": "integer", "minimum": 0, "description": "0-based, matches runner --page" },
+    "page_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "hash of the RENDERED page bytes" },
+    "render_dpi": { "type": "integer", "minimum": 1 },
+    "rotation": { "type": "integer", "description": "degrees applied (0/90/180/270)", "default": 0 },
+    "crop": { "type": ["object", "null"], "additionalProperties": true },
+    "preprocess_version": { "type": "string" },
+    "ocr": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "engine": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "text_present": { "type": "boolean", "default": false }
+      }
+    },
+    "visual_quality_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "detected_page_type": {
+      "enum": ["schematic", "terminal_plan", "panel_layout", "cable_schedule", "io_sheet", "title_block", "bom", "legend", "unreadable", "irrelevant", "unknown"],
+      "default": "unknown"
+    },
+    "classifier": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": { "provider": { "type": ["string", "null"] }, "model": { "type": ["string", "null"] } }
+    }
+  }
+}

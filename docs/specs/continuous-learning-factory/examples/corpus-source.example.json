@@ -1,0 +1,31 @@
+{
+  "schema": "factorylm.clf.corpus-source.v1",
+  "source_id": "automationdirect-an-gs-021",
+  "source_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "source_type": "pdf",
+  "manufacturer": "AutomationDirect",
+  "document_number": "AN-GS-021",
+  "revision": null,
+  "document_lineage_key": "automationdirect:an-gs-021",
+  "supersedes": null,
+  "license_class": "public-eval-only",
+  "tenant_id": null,
+  "confidentiality_class": "public",
+  "rights": {
+    "rights_resolved": true,
+    "training_allowed": false,
+    "evaluation_allowed": true,
+    "public_export_allowed": false,
+    "cross_tenant_reuse_allowed": false,
+    "derivatives_retained": false,
+    "policy_ref": "public AutomationDirect technical-support illustration (AS IS)"
+  },
+  "page_count": 16,
+  "provenance": {
+    "source_url": "https://support.automationdirect.com/docs/an-gs-021.pdf",
+    "retrieved_at": "2026-07-21T06:16:38Z",
+    "robots_ok": true,
+    "acquired_by": "internet_print_test.runner"
+  },
+  "ingested_at": "2026-07-21T06:16:38Z"
+}
