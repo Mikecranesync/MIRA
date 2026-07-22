@@ -251,13 +251,51 @@ def run(args: argparse.Namespace) -> int:
     if blocking:
         return _fail(report, "SEND_GATE_BLOCKED", ",".join(blocking))
 
+    # Build the ONE view model + render the canonical report and the mobile-first
+    # verdict-first email (v2) from it (email-review PRD §13.3/§19).
+    report["stage"] = "render"
+    from printsense.print_of_day import email_render, report_render, view_model  # noqa: PLC0415
+
+    blind_summary = " ".join(
+        e.detail or e.tag for e in graph.all_entities() if e.tag and e.tag != "UNREADABLE"
+    )[:600]
+    # Report is rendered first so the email can reference its version + hash.
+    tmp_vm = view_model.build_view_model(
+        manifest, recipient=recipient, title=args.title or args.case, blind_summary=blind_summary
+    )
+    md = report_render.render_markdown(tmp_vm, manifest, corrected_interpretation="")
+    report_sha = report_render.report_version_hash(md)
+    (out_dir / "report.md").write_text(md, encoding="utf-8")
+    (out_dir / "report.html").write_text(
+        report_render.render_html(tmp_vm, md), encoding="utf-8"
+    )
+    vm = view_model.build_view_model(
+        manifest,
+        recipient=recipient,
+        title=args.title or args.case,
+        blind_summary=blind_summary,
+        report_sha256=report_sha,
+        report_url=args.report_url or "",
+    )
+
     # Send exactly once.
     report["stage"] = "send"
     import mailer  # noqa: PLC0415 — sibling under internet_print_test
 
-    subject = f"Print of the Day — {args.case}"
-    html = f"<h1>Print of the Day: {args.case}</h1><p>Grade: {grade.get('letter')}</p>"
-    pkg = mailer.build_package(subject, html, recipient, [manifest_path, image_path])
+    # FR-15: verify the print attachment exists, is non-empty, matches the hash.
+    att_problems = mailer.verify_attachments(
+        [image_path], {image_path.name: manifest["artifact_sha256"].get("print.png", "")}
+    )
+    if att_problems:
+        return _fail(report, "MAILER_NOT_READY", f"attachment verification: {att_problems}")
+
+    subject = email_render.subject(vm)
+    html = email_render.render_html(vm, image_cid="print")
+    text = email_render.render_text(vm)
+    pkg = mailer.build_package(subject, html, recipient, [manifest_path, out_dir / "report.md"])
+    pkg.text = text
+    pkg.inline_images = [{"cid": "print", "path": str(image_path)}]
+    report["dedup_key"] = vm.dedup_key
     send_result = mailer.send(pkg)
     if not send_result.get("sent"):
         return _fail(report, "MAILER_NOT_READY", str(send_result.get("error")))
@@ -284,6 +322,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--question", default=None)
     p.add_argument("--rubric", default=None)
     p.add_argument("--source-url", default=None)
+    p.add_argument("--title", default=None, help="human print title for the email subject")
+    p.add_argument("--report-url", default=None, help="authenticated full-report URL (Phase 2)")
     p.add_argument("--recipient", default=None)
     p.add_argument("--environment", default=None)
     p.add_argument("--out", default=None)
