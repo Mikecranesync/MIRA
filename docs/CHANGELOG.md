@@ -1,3 +1,17 @@
+### v3.208.0 (2026-07-22) - feat(governance): lineage-safe splits + fail-closed rights + training-eligibility gate (PR 1)
+
+PR 1 of the technician-grounding LoRA program (parent: `docs/zta/2026-07-22-technician-lora-phase0-reconciliation.md`). The **governance foundation** both ladders sit on, encoded as the approved CLF policy (`docs/specs/continuous-learning-factory/`) — greenfield modules under `factorylm_ai/governance/` that do NOT rewrite the do-not-touch seams (`flywheel/splits.py`, `export.py`, `records.py`+schema), so no existing test changes. Pure + fail-closed; no network, no paid calls, no production change.
+
+- **`governance/lineage.py`** — lineage-safe splits per ADR-0030: assignment by `document_lineage_key` hash (never page/render/crop), ratios **70/15/10/5** → `train/validation/test/held_out`, every revision/render/crop/paraphrase of a lineage sharing the key (so a lineage never straddles splits), the canonical vocabulary with a legacy map (`dev→validation`, `holdout→held_out`), public (`<mfr>:<doc>`) and tenant (`tenant:<id>:document:<uuid>`) key formats, and a guard that rejects a **bare content hash** used as a lineage key.
+- **`governance/rights.py`** — fail-closed rights resolution over `corpus-source.v1`: `rights_resolved=false` or any absent flag ⇒ denied; `public-eval-only`/`unknown` licenses can never train even with the flag set. One `RightsStatus`, read by every gate.
+- **`governance/eligibility.py`** — the pre-export training-eligibility gate where **`approved_by`/gold alone is insufficient**: a record is eligible only when schema-valid + real lineage + `gold` + resolved `training_allowed` + train-side (not held_out/validation/test/frozen) + validation-passed + safety-clear + provenance-present + sensitive/tenant policy passed. Returns the full typed rejection set (shared `governance/rejection_codes.py`).
+- **`governance/splits.py`** — per-lineage split grouping (siblings always together) + the leakage guard catching the policy's violations (one lineage in >1 split → `LINEAGE_SPLIT_COLLISION`; eligible record on eval/held_out side; bare-hash key).
+- **`governance/manifest.py`** — reproducible, order-independent corpus manifest hashing (same eligible inputs → same `manifest_sha256`), no wall-clock.
+- Added `LINEAGE_SPLIT_COLLISION` to the shared rejection vocabulary.
+- Tests: +25 hermetic ($0) in `tests/factorylm_ai/test_governance.py` — deterministic ratio-shaped splits, revision/render/crop keep one split, bare-hash rejection, legacy-name canonicalization, sibling grouping, fail-closed rights (missing/unresolved/unknown/public-eval-only), the three-gate eligibility (approval-without-rights AND rights-without-approval both ineligible, held-out/eval-side/frozen/sensitive-tenant/safety/contradiction/provenance), the leakage guard, and reproducible manifests. Full `factorylm_ai` suite green (401); ruff + Pyright clean.
+
+Reuses the parent governance owners; Mike remains sole gold/paid/promotion/deploy authority. Next: PR 2A/B/C corpus adapters feeding these gates.
+
 ### v3.207.0 (2026-07-22) - feat(synth): synthetic-flywheel contracts + durable job state machine (PR A)
 
 PR A of the Autonomous Synthetic Interaction Flywheel addendum (parent: technician-grounding LoRA program, `docs/zta/2026-07-22-technician-lora-phase0-reconciliation.md` §7). The **deterministic substrate only** — no agents, no network, no scheduling (those are PR B-E). All import-safe, hermetic, fail-closed.
