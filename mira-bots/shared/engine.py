@@ -1232,7 +1232,7 @@ class Supervisor:
                     pages=pages,
                     question=question,
                     package_context=package_context or {},
-                    model=interpret.DEFAULT_MODEL,
+                    model=None,  # call-time default (ADR-0031): interpret resolves provider+model
                     preprocess=True,
                     interpret_fn=interpret.interpret_print,
                 )
