@@ -68,3 +68,30 @@ Exit gates: no corpus build until PR 1 green; no upload until Phase-3 paid-minim
 ✓ No duplicate subsystem proposed — every change maps to one canonical owner or a named new module. ✓ No paid calls, no production change. ✓ All assumptions classified VERIFIED / STALE / GAP (Together API field names flagged STALE-until-verified). ✓ File-ownership + do-not-touch declared. ✓ Spend law confirmed.
 
 **Next:** PR 1 (the governance foundation). Nothing merges, deploys, or spends without Mike.
+
+## 7. Addendum — Autonomous Synthetic Interaction Flywheel (reconciled)
+
+Second PRD (uploaded 2026-07-22): a scheduled system that generates evidence-grounded synthetic technician interactions to exercise the learning stack when organic traffic is low. **A deterministic orchestrator owns scheduling/state/rights/cost/promotion; bounded schema-constrained agents run only where language judgment is needed.** The system may autonomously select sources, generate questions, run targets blind, grade, propose corrections, and build review reports — but **never** declares gold, approves safety-sensitive advice, starts a paid job, promotes/deploys a model, or trains on unresolved-rights/confidential material. Mike is the sole gold/paid/promotion/deploy authority.
+
+**Reconciliation with the parent ladder + live main:**
+- **Reuses the same canonical owners** as PR 1 (flywheel records/eligibility/export/splits/rights/registry/budget/promotion) — the synthetic flywheel is a *producer* of candidate records into the PR-1 governance substrate, not a second corpus schema, benchmark framework, or visual-region contract (all explicitly non-goals §4).
+- **Shared vocabularies, defined once.** The addendum's §19 rejection codes are a **superset** of PR 1's (`RIGHTS_UNRESOLVED, TRAINING_NOT_ALLOWED, NOT_GOLD, LINEAGE_MISSING, LINEAGE_ON_EVAL_SIDE, HELD_OUT, FROZEN_EVAL, SENSITIVE_TENANT, VALIDATION_FAILED, PROVENANCE_MISSING, AGENT_DISAGREEMENT, SAFETY_REVIEW_REQUIRED, ANSWER_KEY_WEAK, DUPLICATE, NEAR_DUPLICATE, SCHEMA_INVALID`). Define the enum **once** (a shared module) and have both PR 1 export-eligibility and the synthetic critic consume it.
+- **Durable job state machine ← existing CLF spec.** The addendum §11 states + §23 reliability requirements map onto `docs/specs/continuous-learning-factory/state-machine.md` (idempotent-by-content-address, single-writer-per-`work_key`, replayable) — which is **spec-only, unimplemented** today. PR A implements it, reusing the proven `mira-bots/shared/print_recall.py` lock pattern (in-process + cross-process file lock spanning compute+persist) and `printsense/cas.py` content addressing rather than inventing a queue.
+- **Answer-key independence (§15) = the ground-truth law.** A synthetic training candidate's answer key must be independent of the target response (deterministic pack / SimLab / frozen benchmark / human correction / verified evidence) — never the same model, a second prompt to it, or an agent's intuition. This is the anti-self-training rule the parent PRD §4 already forbids; the critic fails closed on missing answer-key evidence.
+- **Separate budget.** The synthetic-flywheel agent budget is **separate** from the one-job ≤$5 fine-tune budget; it reuses `budget.py` (`BudgetGuard`, pre-network precheck) with its own daily/monthly cap and per-agent token caps.
+
+**Addendum PR ladder (PR A–G), stacked on the parent PR 1 governance foundation:**
+
+| PR | Purpose | Paid | Prod |
+|---|---|---:|---:|
+| **PR A** | Synthetic contracts + durable job state machine + queue (source enum, job schema, state machine, idempotency, lineage, answer-key contract, synthetic labeling, shared rejection codes). **No agents/network/scheduling.** | $0 | none |
+| **PR B** | Source adapters → one common source-candidate shape (PrintSense/PotD, Drive Commander packs, SimLab/RCA, frozen benchmark, real-interaction ingestion). No agent execution. | $0 | none |
+| **PR C** | Bounded technician-question generator (strict JSON, prompt versioning) + blind target runner + answer-key-isolation tests + per-case cost controls + dry-run fixtures. | metered agent (capped) | none |
+| **PR D** | Evidence Critic + claim ledger + safety flags + rejection codes + ≤1 reconciliation pass + agent-disagreement handling; hermetic tests with mocked providers. | metered agent (capped) | none |
+| **PR E** | Nightly scheduled workflow (≤4 cases, ≤1/lineage, ≤1 retry/stage) + daily one-case review package + weekly corpus/benchmark job + retry/dead-letter reporting + no-duplicate-email. No paid training. | metered (capped) | none |
+| **PR F** | Gold-export integration — approved synthetic records flow through the PR-1 eligibility + lineage-safe split + manifest + leakage/held-out gates; synthetic origin preserved. | $0 | none |
+| **PR G** | Training-readiness proof (corpus report, real-vs-synthetic composition, independent-lineage count, rights report, cost estimate, frozen-benchmark baseline, base-vs-tools) + explicit manual authorization gate. **No paid job.** | $0 | none |
+
+**Sequencing:** PR 1 (parent governance) provides the shared eligibility/split/lineage/rejection-code substrate → PR A builds the synthetic state/queue on it → PR B–E produce candidates → PR F routes approved candidates into export → PR G proves readiness. The parent PR 4 (Together orchestration) + the single ≤$5 paid job remain milestone-triggered on Mike's explicit go. **Initial content target (Phase-3 gate, tightened by the addendum §26):** ≥100 eligible approved records, ≥20 independent lineages, ≥5 held-out lineages, ≥20 uncertainty/refusal/correction, ≥15 safety-sensitive, PrintSense+Drive Commander+SimLab/MIRA represented, no unresolved rights / held-out / frozen-eval contamination, synthetic composition disclosed, base-vs-tools benchmark complete, est cost ≤$5.
+
+Non-goals honored throughout: no autonomous paid training/promotion/deploy/publish, no second schema/benchmark/visual-region contract, no open-ended agent loops, no near-duplicate volume inflation (optimize for *independent lineages*, not record count).
