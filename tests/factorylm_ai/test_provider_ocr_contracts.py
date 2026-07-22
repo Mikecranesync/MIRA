@@ -152,7 +152,6 @@ def test_network_gate_module_exists() -> None:
     assert hasattr(network_gate, "network_enabled")
 
 
-@pytest.mark.xfail(reason="PR 3: together is a supported PrintSense provider", strict=True)
 def test_interpret_supports_together(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PRINT_VISION_PROVIDER", "together")
     monkeypatch.setenv("TOGETHERAI_API_KEY", "unit-test-not-real")
@@ -169,9 +168,6 @@ def test_interpret_supports_together(monkeypatch: pytest.MonkeyPatch) -> None:
         importlib.reload(interpret)
 
 
-@pytest.mark.xfail(
-    reason="PR 3: provider resolution is call-time, not frozen at import", strict=True
-)
 def test_interpret_provider_not_frozen_at_import(monkeypatch: pytest.MonkeyPatch) -> None:
     import importlib
 
