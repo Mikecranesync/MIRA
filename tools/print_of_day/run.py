@@ -232,6 +232,15 @@ def run(args: argparse.Namespace) -> int:
         "send_blocked_by": blocking,
         "email": None,
         "provenance": prov.to_dict(),
+        # Metered-spend evidence: the interpret call's token usage (the only
+        # material cost; readiness probes are token-tiny). Keys always present.
+        "usage": {
+            "provider": usage.get("provider"),
+            "model": usage.get("model"),
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+            "endpoint_class": usage.get("endpoint_class"),
+        },
     }
 
     if not args.send:
