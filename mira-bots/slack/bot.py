@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import io as _io
+import json
 import logging
 import os
 import re
@@ -546,6 +547,15 @@ async def main() -> None:
     app = create_app(runtime)
     await runtime.log_startup_auth_identity(app)
     handler = AsyncSocketModeHandler(app, settings.app_token)
+    # OCR floor boot self-check — parity with the Telegram bot (ADR-0031 §6.5:
+    # Telegram and Slack enforce the same OCR health contract; Slack previously
+    # never logged this, so a dead floor was silent here).
+    try:
+        from shared.workers.vision_worker import ocr_lane_report  # noqa: PLC0415
+
+        logger.info("OCR_LANES %s", json.dumps(ocr_lane_report()))
+    except Exception as exc:  # noqa: BLE001 — a probe failure must not kill boot
+        logger.warning("OCR_LANES probe failed: %s", exc)
     logger.info("MIRA Slack bot started (Socket Mode)")
     await handler.start_async()
 

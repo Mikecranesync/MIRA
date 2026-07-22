@@ -152,6 +152,22 @@ def test_network_gate_module_exists() -> None:
     assert hasattr(network_gate, "network_enabled")
 
 
+def test_interpret_supports_together(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRINT_VISION_PROVIDER", "together")
+    monkeypatch.setenv("TOGETHERAI_API_KEY", "unit-test-not-real")
+    import importlib
+
+    import printsense.interpret as interpret
+
+    importlib.reload(interpret)
+    try:
+        assert interpret.is_configured() is True
+        assert "together" in getattr(interpret, "_PROVIDER_KEYS", {})
+    finally:
+        monkeypatch.delenv("PRINT_VISION_PROVIDER")
+        importlib.reload(interpret)
+
+
 def test_interpret_provider_not_frozen_at_import(monkeypatch: pytest.MonkeyPatch) -> None:
     import importlib
 
@@ -166,7 +182,6 @@ def test_interpret_provider_not_frozen_at_import(monkeypatch: pytest.MonkeyPatch
     assert interpret.is_configured() is False
 
 
-@pytest.mark.xfail(reason="PR 4: readiness command", strict=True)
 def test_readiness_module_exists() -> None:
     from factorylm_ai import readiness
 
