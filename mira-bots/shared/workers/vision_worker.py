@@ -370,7 +370,12 @@ def ocr_lane_report() -> dict:
     rendered by /printsense_test ocr — the mechanism that makes a dead
     floor loud instead of a per-turn WARNING nobody reads (the 2026-07
     glm-ocr lane died silently for weeks)."""
-    expected = (os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0") == "1"
+    # ADR-0031 §6.5: OCR_REQUIRE_TESSERACT is the canonical knob; legacy
+    # OCR_EXPECT_TESSERACT keeps working through the migration. Either being
+    # "1" makes a missing floor DEAD (readiness-failing) instead of DEGRADED.
+    expected = (os.environ.get("OCR_REQUIRE_TESSERACT", "").strip() or "0") == "1" or (
+        os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0"
+    ) == "1"
     model_lane = "on" if _model_lane_on() else "off"
     try:
         version: str | None = _tesseract_version_impl()

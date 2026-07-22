@@ -458,6 +458,7 @@ services:
       - OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}
       # Boot self-check Tesseract floor: 1 in containers (required), 0 on local dev.
       - OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}
+      - OCR_REQUIRE_TESSERACT=${OCR_REQUIRE_TESSERACT:-}
       # Free-cascade print-theory reply cap (was hardcoded 1200; two 2026-07-18
       # live turns truncated mid-sentence at that cap). Read at call time.
       - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
@@ -479,7 +480,16 @@ services:
     mem_limit: 512m
     memswap_limit: 512m
     healthcheck:
-      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
+      # ADR-0031 FR-3: process alive AND the OCR floor verdict is ok — the same
+      # contract the Slack healthcheck enforces (tesseract ships in the image; a
+      # dead floor now flips the container unhealthy instead of degrading silently).
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py' && python -c \"import printsense, pytesseract; from shared.workers.vision_worker import ocr_lane_report; assert ocr_lane_report()['verdict'] == 'ok'\"",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
