@@ -107,6 +107,11 @@ def classify(evidence: CaseEvidence) -> dict:
         and not grade.get("hard_failures")
         and not grade.get("safety_critical_misreads")
     )
+    judge = evidence.judge or {}
+    # An independent, valid judge is required for gold. gold_blocked captures
+    # unavailable / self-review / missing-identity / invalid-verdict; fall back to
+    # the legacy judge_error signal for manifests without the richer judge block.
+    judge_ok = not judge.get("gold_blocked", bool(judge.get("judge_error")))
     return classify_eligibility(
         valid_output=evidence.valid_output,
         approved_pair=approved_pair,
@@ -116,7 +121,7 @@ def classify(evidence: CaseEvidence) -> dict:
         degraded=bool(evidence.degraded),
         graded=evidence.graded,
         grade_ok=bool(grade_ok),
-        judge_ok=not (evidence.judge or {}).get("judge_error"),
+        judge_ok=judge_ok,
     )
 
 

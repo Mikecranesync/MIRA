@@ -146,6 +146,14 @@ def _pipeline_health(manifest: dict) -> dict[str, Any]:
         messages.append(
             f"Independent LLM judge unavailable; hand review required ({judge['judge_error']})."
         )
+    elif judge.get("gold_blocked"):
+        # ran, but not independent/valid enough for gold — honest, gold-blocking
+        judge_state = "reduced_independence"
+        messages.append(
+            "Independent judge did not qualify for gold "
+            f"(independence={judge.get('independence')}, model={judge.get('judge_model')}); "
+            "human review required."
+        )
     ocr_state = "ok"
     if not ocr.get("available"):
         ocr_state = "unavailable"
@@ -153,8 +161,10 @@ def _pipeline_health(manifest: dict) -> dict[str, Any]:
     if manifest.get("degraded"):
         messages.extend(str(d) for d in manifest["degraded"])
 
-    if judge_state == "manual_fallback" or manifest.get("degraded"):
-        status = PIPELINE_MANUAL_REVIEW if judge_state == "manual_fallback" else PIPELINE_DEGRADED
+    if judge_state in ("manual_fallback", "reduced_independence"):
+        status = PIPELINE_MANUAL_REVIEW
+    elif manifest.get("degraded"):
+        status = PIPELINE_DEGRADED
     elif ocr_state == "unavailable":
         status = PIPELINE_DEGRADED
     else:

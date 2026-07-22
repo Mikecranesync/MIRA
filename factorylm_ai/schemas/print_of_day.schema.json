@@ -45,7 +45,29 @@
       "additionalProperties": true
     },
     "grader": { "type": "object" },
-    "judge": { "type": "object" },
+    "judge": {
+      "type": "object",
+      "properties": {
+        "requested_provider": { "type": ["string", "null"] },
+        "requested_model": { "type": ["string", "null"] },
+        "policy": { "type": ["string", "null"] },
+        "judge_provider": { "type": ["string", "null"] },
+        "judge_model": { "type": ["string", "null"] },
+        "judge_usage": { "type": ["object", "null"] },
+        "independence": { "type": ["string", "null"] },
+        "independence_class": { "type": ["string", "null"] },
+        "self_review": { "type": ["boolean", "null"] },
+        "identity_verified": { "type": ["boolean", "null"] },
+        "prompt_sha256": { "type": ["string", "null"] },
+        "raw_sha256": { "type": ["string", "null"] },
+        "validation_status": { "type": ["string", "null"] },
+        "provisional": { "type": ["boolean", "null"] },
+        "judge_error": { "type": ["string", "null"] },
+        "gold_blocked": { "type": ["boolean", "null"] },
+        "gold_block_reasons": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
     "source_url": { "type": ["string", "null"] },
     "selected_page_sha": { "type": ["string", "null"] },
     "graded_page_sha": { "type": ["string", "null"] },
@@ -121,7 +143,23 @@
         "confident_misreads": []
       },
       "judge": {
-        "judge_independence": "reduced_same_cascade"
+        "requested_provider": "free_cascade",
+        "requested_model": null,
+        "policy": "strict",
+        "judge_provider": "together",
+        "judge_model": "google/gemma-3n-E4B-it",
+        "judge_usage": { "input_tokens": 900, "output_tokens": 300 },
+        "independence": "reduced_same_cascade",
+        "independence_class": "reduced_same",
+        "self_review": false,
+        "identity_verified": true,
+        "prompt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "raw_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "validation_status": "valid",
+        "provisional": true,
+        "judge_error": null,
+        "gold_blocked": false,
+        "gold_block_reasons": []
       },
       "source_url": "https://example.com/prints/powerflex-523-control-io.pdf",
       "selected_page_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

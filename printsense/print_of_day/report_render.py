@@ -64,6 +64,7 @@ def render_markdown(
     provider = manifest.get("provider", {})
     grade = manifest.get("grader", {})
     ocr = manifest.get("ocr", {})
+    judge = manifest.get("judge", {})
     health = vm.pipeline_health
 
     def _claim_rows(status: str) -> str:
@@ -157,7 +158,15 @@ def render_markdown(
             f"- responded model: {provider.get('responded_model')}\n"
             f"- endpoint: {provider.get('endpoint_class')}\n"
             f"- grader import_verdict: {grade.get('import_verdict')}\n"
-            f"- tesseract: {ocr.get('tesseract_version')} · pytesseract: {ocr.get('pytesseract_version')}",
+            f"- tesseract: {ocr.get('tesseract_version')} · pytesseract: {ocr.get('pytesseract_version')}\n"
+            f"- judge requested/returned: {judge.get('requested_model') or judge.get('requested_provider')} "
+            f"→ {judge.get('judge_provider')} / {judge.get('judge_model')}\n"
+            f"- judge independence: **{judge.get('independence')}** (class {judge.get('independence_class')}, "
+            f"self_review={judge.get('self_review')}, identity_verified={judge.get('identity_verified')})\n"
+            f"- judge validation: {judge.get('validation_status')} · provisional: {judge.get('provisional')} · "
+            f"gold_blocked: {judge.get('gold_blocked')}\n"
+            f"- judge usage: {judge.get('judge_usage')}\n"
+            f"- judge prompt_sha256: `{judge.get('prompt_sha256')}` · raw_sha256: `{judge.get('raw_sha256')}`",
         )
     )
     parts.append(
