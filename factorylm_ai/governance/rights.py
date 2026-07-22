@@ -2,16 +2,15 @@
 
 Rights FAIL CLOSED: ``rights_resolved=false`` OR any flag absent ⇒ the capability
 is denied. ``license_class`` of ``unknown`` also denies training. Only an explicit
-``true`` on a resolved manifest grants a discretionary capability. This is the one
-place the `corpus-source.v1` rights object is interpreted; every governance gate
-reads a :class:`RightsStatus` from here rather than poking the raw dict.
+``true`` on a resolved manifest with a named license grants a discretionary
+capability. This is the one place the `corpus-source.v1` rights object is
+interpreted; every governance gate reads a :class:`RightsStatus` from here
+rather than poking the raw dict.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-CORPUS_SOURCE_SCHEMA = "factorylm.clf.corpus-source.v1"
 
 LICENSE_PUBLIC_EVAL_ONLY = "public-eval-only"
 LICENSE_PUBLIC_EVAL_AND_TRAIN = "public-eval-and-train"
@@ -20,9 +19,7 @@ LICENSE_SYNTHETIC = "synthetic"
 LICENSE_UNKNOWN = "unknown"
 
 # License classes that can EVER permit training (still gated by the rights flags).
-_TRAINABLE_LICENSES: frozenset[str] = frozenset(
-    {LICENSE_PUBLIC_EVAL_AND_TRAIN, LICENSE_CUSTOMER_PRIVATE, LICENSE_SYNTHETIC}
-)
+_TRAINABLE_LICENSES: frozenset[str] = frozenset({LICENSE_PUBLIC_EVAL_AND_TRAIN, LICENSE_SYNTHETIC})
 
 
 @dataclass(frozen=True)
@@ -62,24 +59,24 @@ def _flag(rights: dict, name: str) -> bool:
 def resolve_rights(corpus_source: dict) -> RightsStatus:
     """Interpret a `corpus-source.v1` dict into a fail-closed :class:`RightsStatus`.
 
-    Any missing rights object, unresolved rights, or unknown license denies
-    training regardless of the individual flags."""
+    Any missing rights object, unresolved rights, or unknown license denies every
+    discretionary capability regardless of the individual flags."""
     rights = corpus_source.get("rights") or {}
     resolved = _flag(rights, "rights_resolved")
     license_class = corpus_source.get("license_class", LICENSE_UNKNOWN) or LICENSE_UNKNOWN
+    named_license = license_class != LICENSE_UNKNOWN
+    usable = resolved and named_license
 
     # training requires: resolved rights AND the explicit flag AND a trainable license.
-    training = (
-        resolved and _flag(rights, "training_allowed") and license_class in _TRAINABLE_LICENSES
-    )
-    evaluation = resolved and _flag(rights, "evaluation_allowed")
+    training = usable and _flag(rights, "training_allowed") and license_class in _TRAINABLE_LICENSES
+    evaluation = usable and _flag(rights, "evaluation_allowed")
     return RightsStatus(
         rights_resolved=resolved,
         training_allowed=training,
         evaluation_allowed=evaluation,
-        public_export_allowed=resolved and _flag(rights, "public_export_allowed"),
-        cross_tenant_reuse_allowed=resolved and _flag(rights, "cross_tenant_reuse_allowed"),
-        derivatives_retained=resolved and _flag(rights, "derivatives_retained"),
+        public_export_allowed=usable and _flag(rights, "public_export_allowed"),
+        cross_tenant_reuse_allowed=usable and _flag(rights, "cross_tenant_reuse_allowed"),
+        derivatives_retained=usable and _flag(rights, "derivatives_retained"),
         license_class=license_class,
         confidentiality_class=corpus_source.get("confidentiality_class", "unknown") or "unknown",
         policy_ref=rights.get("policy_ref"),

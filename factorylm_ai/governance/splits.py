@@ -1,10 +1,12 @@
-"""Lineage-safe split assignment + the leakage guard (CLF data-rights law).
+"""Lineage-safe split assignment + record-set leakage checks (CLF data-rights law).
 
 Splits are assigned **per lineage**, so every sibling (revision/page/crop/
 rotation/paraphrase) of one ``document_lineage_key`` lands in the SAME partition —
 by construction, a lineage can never straddle train/validation/test/held_out.
-The guard :func:`find_leakage` re-checks an already-assigned record set for the
-six violations the policy enumerates, returning typed governance rejections.
+The guard :func:`find_leakage` re-checks the violations visible in an
+already-assigned record set, returning typed governance rejections. Registry-only
+violations (for example a superseding revision minted with a fresh lineage key)
+must be enforced where source metadata is registered.
 
 Pure + deterministic. Operates on light dicts (``document_lineage_key``, ``split``,
 optional ``training_eligibility`` / ``record_id``) so it does not couple to the
@@ -38,14 +40,24 @@ def group_and_split(records: list[dict]) -> list[dict]:
     return out
 
 
+def training_split_rejection(split: str, *, subject: str = "lineage") -> rc.Rejection | None:
+    """Return why ``split`` is not training-exportable, or ``None`` when it is train."""
+    split = ln.canonical_split(split)
+    if not ln.is_known_split(split):
+        return rc.Rejection(rc.SPLIT_INVALID, f"{subject} has unknown split={split!r}")
+    if ln.is_quarantined(split):
+        return rc.Rejection(rc.HELD_OUT, f"{subject} is on the permanent held-out benchmark")
+    if not ln.is_train_side(split):
+        return rc.Rejection(rc.LINEAGE_ON_EVAL_SIDE, f"{subject} split={split} (not train)")
+    return None
+
+
 def find_leakage(records: list[dict]) -> list[rc.Rejection]:
-    """Detect the six leakage violations in an assigned record set. Empty ⇒ clean.
+    """Detect record-set leakage violations in an assigned record set. Empty ⇒ clean.
 
     Checks: (a) one lineage in >1 split, (b) an ``eligible`` record on the
     validation/test/held_out side, (c) a bare-content-hash lineage key, (d) a
-    ``held_out`` lineage marked training-eligible. (Superseding-revision-fresh-key
-    and page-based splitting are prevented upstream by the lineage-key contract +
-    per-lineage assignment.)"""
+    ``held_out`` lineage marked training-eligible."""
     rej: list[rc.Rejection] = []
     by_lineage: dict[str, set[str]] = {}
     for r in records:
@@ -64,14 +76,10 @@ def find_leakage(records: list[dict]) -> list[rc.Rejection]:
             )
         by_lineage.setdefault(key, set()).add(split)
 
-        if elig and ln.is_quarantined(split):
-            rej.append(
-                rc.Rejection(rc.HELD_OUT, f"held_out lineage {key} marked training-eligible")
-            )
-        elif elig and not ln.is_train_side(split):
-            rej.append(
-                rc.Rejection(rc.LINEAGE_ON_EVAL_SIDE, f"eligible lineage {key} on split {split}")
-            )
+        if elig:
+            split_rej = training_split_rejection(split, subject=f"eligible lineage {key}")
+            if split_rej:
+                rej.append(split_rej)
 
     for key, splits in by_lineage.items():
         real = {s for s in splits if s}

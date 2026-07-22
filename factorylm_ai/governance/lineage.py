@@ -26,7 +26,6 @@ SPLIT_HELD_OUT = "held_out"
 ALL_SPLITS: tuple[str, ...] = (SPLIT_TRAIN, SPLIT_VALIDATION, SPLIT_TEST, SPLIT_HELD_OUT)
 
 TRAIN_SIDE: frozenset[str] = frozenset({SPLIT_TRAIN})
-EVAL_SIDE: frozenset[str] = frozenset({SPLIT_VALIDATION, SPLIT_TEST, SPLIT_HELD_OUT})
 # Quarantined: unusable for training, selection, tuning, calibration, rule dev.
 QUARANTINED: frozenset[str] = frozenset({SPLIT_HELD_OUT})
 
@@ -95,6 +94,10 @@ def assign_split(document_lineage_key: str) -> str:
 
 def is_train_side(split: str) -> bool:
     return canonical_split(split) in TRAIN_SIDE
+
+
+def is_known_split(split: str) -> bool:
+    return canonical_split(split) in ALL_SPLITS
 
 
 def is_quarantined(split: str) -> bool:

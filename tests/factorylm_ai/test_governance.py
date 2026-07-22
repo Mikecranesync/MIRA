@@ -6,7 +6,8 @@ splits, a revision keeps its lineage, crop/render/page never change the split,
 held-out is never trainable, public-eval-only is not trainable, unknown rights
 fail closed, customer-private is excluded, approval-without-rights and
 rights-without-approval are both ineligible, unsupported safety / unresolved
-contradictions are excluded, and repeated runs produce identical manifests.
+contradictions are excluded, invalid splits fail closed, and repeated runs
+produce identical manifests.
 """
 
 from __future__ import annotations
@@ -111,6 +112,29 @@ def test_unknown_license_fails_closed() -> None:
     assert resolve_rights(_source(license_class="unknown")).training_allowed is False
 
 
+def test_unknown_license_denies_every_discretionary_right() -> None:
+    r = resolve_rights(
+        _source(
+            license_class="unknown",
+            training_allowed=True,
+            evaluation_allowed=True,
+            public_export_allowed=True,
+            cross_tenant_reuse_allowed=True,
+        )
+    )
+    assert r.to_dict() == {
+        "rights_resolved": True,
+        "training_allowed": False,
+        "evaluation_allowed": False,
+        "public_export_allowed": False,
+        "cross_tenant_reuse_allowed": False,
+        "derivatives_retained": False,
+        "license_class": "unknown",
+        "confidentiality_class": "public",
+        "policy_ref": None,
+    }
+
+
 def test_resolved_train_license_grants_training() -> None:
     assert resolve_rights(_source()).training_allowed is True
 
@@ -129,7 +153,7 @@ def _inp(**over) -> el.EligibilityInput:
         frozen_eval=over.pop("frozen_eval", False),
         sensitive=over.pop("sensitive", False),
         tenant_id=over.pop("tenant_id", None),
-        confidentiality_class=over.pop("confidentiality_class", "public"),
+        confidentiality_class=over.pop("confidentiality_class", None),
     )
     kw.update(over)
     return el.EligibilityInput(**kw)
@@ -160,6 +184,12 @@ def test_held_out_never_trainable() -> None:
 
 def test_validation_test_side_is_ineligible() -> None:
     assert rc.LINEAGE_ON_EVAL_SIDE in el.check_training_eligibility(_inp(split="validation")).codes
+
+
+def test_invalid_split_is_a_distinct_rejection() -> None:
+    r = el.check_training_eligibility(_inp(split="banana"))
+    assert rc.SPLIT_INVALID in r.codes
+    assert rc.LINEAGE_ON_EVAL_SIDE not in r.codes
 
 
 def test_unresolved_rights_fail_closed() -> None:
@@ -203,6 +233,19 @@ def test_customer_private_and_tenant_are_excluded() -> None:
         rc.SENSITIVE_TENANT
         in el.check_training_eligibility(_inp(confidentiality_class="customer-confidential")).codes
     )
+    customer_private = _inp(
+        rights=resolve_rights(_source(license_class="customer-private", training_allowed=True))
+    )
+    assert rc.SENSITIVE_TENANT in el.check_training_eligibility(customer_private).codes
+    customer_confidential_from_rights = _inp(
+        rights=resolve_rights(
+            _source(
+                license_class="public-eval-and-train",
+                confidentiality_class="customer-confidential",
+            )
+        )
+    )
+    assert rc.SENSITIVE_TENANT in el.check_training_eligibility(customer_confidential_from_rights).codes
     # a tenant record without cross-tenant reuse rights is excluded from a shared corpus
     assert rc.SENSITIVE_TENANT in el.check_training_eligibility(_inp(tenant_id="t1")).codes
     ok_tenant = _inp(
@@ -293,3 +336,26 @@ def test_manifest_is_reproducible_regardless_of_order() -> None:
     assert (
         mf.corpus_manifest(recs2, dataset_version="v0")["manifest_sha256"] != m1["manifest_sha256"]
     )
+
+
+def test_manifest_is_reproducible_when_record_ids_collide() -> None:
+    recs = [
+        {
+            "record_id": "dup",
+            "document_lineage_key": "m:d2",
+            "split": "train",
+            "content_hash": "h2",
+            "training_eligibility": "eligible",
+        },
+        {
+            "record_id": "dup",
+            "document_lineage_key": "m:d1",
+            "split": "train",
+            "content_hash": "h1",
+            "training_eligibility": "eligible",
+        },
+    ]
+    m1 = mf.corpus_manifest(recs, dataset_version="v0")
+    m2 = mf.corpus_manifest(list(reversed(recs)), dataset_version="v0")
+    assert m1["manifest_sha256"] == m2["manifest_sha256"]
+    assert m1["entries"] == m2["entries"]
