@@ -135,24 +135,29 @@ def run(args: argparse.Namespace) -> int:
     grade = grade_case(extraction_path, rubric_path=args.rubric)
     (out_dir / "grade.json").write_text(json.dumps(grade, indent=2), encoding="utf-8")
 
-    # 5. Judge (best-effort; never blocks the bundle).
+    # 5. Independent judge — identity-honest, gold-gating (never self-judges).
     report["stage"] = "judge"
-    judge_result: dict = {}
-    try:
-        import judge as judge_mod  # noqa: PLC0415 — sibling under internet_print_test
+    from printsense.print_of_day import judge_runtime  # noqa: PLC0415
 
-        judge_result = (
-            judge_mod.judge(
-                image_bytes=pages[0][0],
-                response_text=graph.model_dump_json(),
-                map_text=None,
-                source_meta={"interpreter_model": usage.get("model")},
-                media_type=media,
-            )
-            or {}
+    interp_provider = cap["provider"].get("resolved")
+    interp_model = usage.get("model") or cap["provider"].get("model")
+    try:
+        judge_result = judge_runtime.run_judge(
+            image_bytes=pages[0][0],
+            response_text=graph.model_dump_json(),
+            source_meta={"interpreter_model": interp_model, "source_url": args.source_url},
+            interpreter_provider=interp_provider,
+            interpreter_model=interp_model,
+            graph=None,
+            media_type=media,
         )
-    except Exception as exc:  # noqa: BLE001 — judge is advisory
-        judge_result = {"judge_error": f"{type(exc).__name__}: {exc}"}
+    except Exception as exc:  # noqa: BLE001 — judge must never break the bundle
+        judge_result = {
+            "judge_error": f"{type(exc).__name__}: {exc}",
+            "validation_status": "error",
+            "gold_blocked": True,
+            "provisional": True,
+        }
     (out_dir / "judge.json").write_text(json.dumps(judge_result, indent=2), encoding="utf-8")
 
     # 6. Evidence manifest — the directive's required provenance set.
@@ -168,11 +173,17 @@ def run(args: argparse.Namespace) -> int:
         degraded.append("json_repaired")
     if recovery.get("truncated"):
         degraded.append("output_truncated")
-    # The missing independent judge is a NON-silent degradation, not a quiet
-    # downgrade: it blocks gold and is recorded here (production-activation
-    # blocker — see docs/tech-debt/2026-07-22-potd-judge-packaging-blocker.md).
-    if judge_result.get("judge_error"):
-        degraded.append("judge_unavailable")
+    # A non-independent / unavailable judge is a NON-silent degradation that
+    # blocks gold — never a quiet downgrade (POTD judge-independence directive).
+    if judge_result.get("gold_blocked"):
+        indep = judge_result.get("independence")
+        degraded.append(
+            {
+                "unavailable": "judge_unavailable",
+                "same_model": "judge_self_review",
+                "unknown_identity": "judge_identity_unverified",
+            }.get(indep, "judge_verdict_unusable")
+        )
 
     evidence = CaseEvidence(
         case_id=args.case,
@@ -201,10 +212,24 @@ def run(args: argparse.Namespace) -> int:
             "safety_critical_misreads": grade.get("safety_critical_misreads", []),
         },
         judge={
-            "judge_model": judge_result.get("judge_model"),
+            # Full identity + independence + integrity evidence (POTD directive):
+            "requested_provider": judge_result.get("requested_provider"),
+            "requested_model": judge_result.get("requested_model"),
+            "policy": judge_result.get("policy"),
             "judge_provider": judge_result.get("judge_provider"),
-            "judge_independence": judge_result.get("judge_independence"),
+            "judge_model": judge_result.get("judge_model"),
+            "judge_usage": judge_result.get("judge_usage"),
+            "independence": judge_result.get("independence"),
+            "independence_class": judge_result.get("independence_class"),
+            "self_review": judge_result.get("self_review"),
+            "identity_verified": judge_result.get("identity_verified"),
+            "prompt_sha256": judge_result.get("prompt_sha256"),
+            "raw_sha256": judge_result.get("raw_sha256"),
+            "validation_status": judge_result.get("validation_status"),
+            "provisional": judge_result.get("provisional", True),
             "judge_error": judge_result.get("judge_error"),
+            "gold_blocked": judge_result.get("gold_blocked"),
+            "gold_block_reasons": judge_result.get("gold_block_reasons", []),
         },
         source_url=args.source_url,
         selected_page_sha=selected_page_sha,
@@ -245,6 +270,7 @@ def run(args: argparse.Namespace) -> int:
         "gold_eligible": manifest["gold_eligible"],
         "eligibility": manifest["eligibility"],
         "recovery": manifest.get("recovery"),
+        "judge": manifest.get("judge"),
         "degraded": manifest.get("degraded", []),
         "send_requested": bool(args.send),
         "send_blocked_by": blocking,

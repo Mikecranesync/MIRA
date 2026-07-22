@@ -37,6 +37,15 @@ COPY materialized_evidence/ ./materialized_evidence/
 COPY tools/internet_print_test/ ./tools/internet_print_test/
 COPY tools/print_of_day/ ./tools/print_of_day/
 COPY tools/canary_fixtures/ ./tools/canary_fixtures/
+# The MINIMAL free-cascade judge dependency (independent judge). The import
+# closure of shared.inference.router is exactly these three files (stdlib +
+# httpx + yaml, both already installed) — NOT the whole bot. WORKDIR /app is on
+# sys.path[0], so `import shared.inference.router` resolves. Verified: router.py
+# imports only stdlib + httpx + yaml, and both __init__.py are empty; the judge
+# does not call get_system_prompt(), so mira-bots/prompts is not required.
+COPY mira-bots/shared/__init__.py ./shared/__init__.py
+COPY mira-bots/shared/inference/__init__.py ./shared/inference/__init__.py
+COPY mira-bots/shared/inference/router.py ./shared/inference/router.py
 COPY VERSION .
 # No .git in the image: a built container has no live git. Its identity is the
 # baked IMAGE_REVISION (below), which the provenance gate treats as the
@@ -56,7 +65,17 @@ ENV IMAGE_REVISION=$GIT_SHA \
     OCR_REQUIRE_TESSERACT=1 \
     PRINT_VISION_PROVIDER=together \
     PRINT_VISION_MODEL=MiniMaxAI/MiniMax-M3 \
-    PRINT_PROVIDER_POLICY=strict
+    PRINT_PROVIDER_POLICY=strict \
+    INFERENCE_BACKEND=cloud \
+    POTD_JUDGE_PROVIDER=free_cascade \
+    POTD_JUDGE_MODEL="" \
+    POTD_JUDGE_POLICY=strict
+# The judge runs on the free cascade (Groq→Cerebras→Together vision), which needs
+# INFERENCE_BACKEND=cloud + free-cascade keys at RUNTIME (GROQ/CEREBRAS/
+# TOGETHERAI_API_KEY, injected via staging/prod Doppler — never baked). The
+# interpreter stays MiniMax-M3; the judge PREFERS a different model (Together's
+# only serverless vision model, google/gemma-3n-E4B-it, is different from
+# MiniMax-M3, so it is never self-review). POTD_JUDGE_MODEL may pin/verify it.
 
 # Default: readiness self-check. The real run is invoked with args by the
 # scheduler; production activation is NOT part of this image's default entry.
