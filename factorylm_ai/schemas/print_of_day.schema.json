@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/print_of_day.schema.json",
+  "title": "PrintOfDayCaseManifest",
+  "description": "factorylm.print-of-day.v1 — the per-case evidence manifest for a controlled Print of the Day run (ADR-0031 PR 6, CLF POTD surface §17). An INDEX over reused factory outputs plus the runtime provenance every controlled artifact must carry: provider/model identity, image revision, git SHA, OCR state, grader state, judge state, and artifact hashes. Written in the minimal schema subset of factorylm_ai/schemas/validate.py.",
+  "type": "object",
+  "properties": {
+    "schema": { "type": "string", "enum": ["factorylm.print-of-day.v1"] },
+    "case_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "environment": { "type": "string", "minLength": 1 },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "git_sha": { "type": ["string", "null"] },
+        "git_dirty": { "type": ["boolean", "null"] },
+        "image_revision": { "type": ["string", "null"] },
+        "allow_dirty": { "type": "boolean" }
+      },
+      "required": ["git_sha", "git_dirty", "image_revision", "allow_dirty"],
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "properties": {
+        "requested": { "type": "string" },
+        "resolved": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "endpoint_class": { "type": ["string", "null"] },
+        "responded_model": { "type": ["string", "null"] }
+      },
+      "required": ["requested", "resolved", "model"],
+      "additionalProperties": true
+    },
+    "ocr": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "tesseract_version": { "type": ["string", "null"] },
+        "pytesseract_version": { "type": ["string", "null"] }
+      },
+      "required": ["required", "available"],
+      "additionalProperties": true
+    },
+    "grader": { "type": "object" },
+    "judge": { "type": "object" },
+    "source_url": { "type": ["string", "null"] },
+    "selected_page_sha": { "type": ["string", "null"] },
+    "graded_page_sha": { "type": ["string", "null"] },
+    "fallback_attempts": { "type": "array", "items": { "type": "object" } },
+    "artifact_sha256": { "type": "object" },
+    "degraded": { "type": "array", "items": { "type": "string" } },
+    "email": { "type": ["object", "null"] },
+    "gold_eligible": { "type": "boolean" }
+  },
+  "required": [
+    "schema", "case_id", "run_id", "generated_at", "environment",
+    "provenance", "provider", "ocr", "grader", "judge",
+    "selected_page_sha", "graded_page_sha", "fallback_attempts",
+    "artifact_sha256", "degraded", "gold_eligible"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "schema": "factorylm.print-of-day.v1",
+      "case_id": "potd-003",
+      "run_id": "potd-003-20260721T090000Z",
+      "generated_at": "2026-07-21T09:00:00Z",
+      "environment": "staging",
+      "provenance": {
+        "git_sha": "0123456789abcdef0123456789abcdef01234567",
+        "git_dirty": false,
+        "image_revision": "0123456789abcdef0123456789abcdef01234567",
+        "allow_dirty": false
+      },
+      "provider": {
+        "requested": "together",
+        "resolved": "together",
+        "model": "MiniMaxAI/MiniMax-M3",
+        "endpoint_class": "serverless",
+        "responded_model": "MiniMaxAI/MiniMax-M3"
+      },
+      "ocr": {
+        "required": true,
+        "available": true,
+        "tesseract_version": "5.5.0",
+        "pytesseract_version": "0.3.13"
+      },
+      "grader": {
+        "letter": "A",
+        "import_verdict": "PASS",
+        "hard_failures": [],
+        "safety_critical_misreads": [],
+        "confident_misreads": []
+      },
+      "judge": {
+        "judge_independence": "reduced_same_cascade"
+      },
+      "source_url": "https://example.com/prints/powerflex-523-control-io.pdf",
+      "selected_page_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "graded_page_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fallback_attempts": [],
+      "artifact_sha256": {
+        "print.png": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "extraction.json": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "degraded": [],
+      "email": null,
+      "gold_eligible": true
+    }
+  ]
+}

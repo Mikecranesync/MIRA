@@ -329,6 +329,15 @@ jobs:
         # requirements installed at job start.
         run: pytest tests/factorylm_ai/ -v
 
+      - name: Print of the Day tests (hermetic, no network, no docker)
+        # Guards printsense/print_of_day/ + tools/print_of_day/ (ADR-0031 PR 6):
+        # the provenance gates (git SHA / dirty / revision mismatch), the
+        # fail-closed readiness gate (Together+MiniMax-M3 + Tesseract, no silent
+        # substitution), the §19.3 send gate, duplicate-send protection, and the
+        # manifest provenance + Dockerfile packaging contract. Root tests/ is not
+        # collected wholesale, so this dir is named explicitly.
+        run: pytest tests/print_of_day/ -v
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only
