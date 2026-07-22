@@ -35,7 +35,7 @@ jobs:
     name: Crew hermetic tests (runner + judge + gate)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ubuntu-latest ships shellcheck + python3 + bash 5; the suites need nothing else.
       - name: ShellCheck (warnings + errors) on crew scripts

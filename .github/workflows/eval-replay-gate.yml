@@ -36,7 +36,7 @@ jobs:
     name: Keyless replay gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Guard BEFORE any heavy setup so the inert path is cheap. hashFiles
       # returns '' when the store is absent (today) — the gate run is skipped.

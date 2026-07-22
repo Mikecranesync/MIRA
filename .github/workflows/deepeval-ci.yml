@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Dependabot PRs cannot read `secrets.GROQ_API_KEY` (security default —
       # only `dependabot` secrets are exposed). The offline DeepEval suite
