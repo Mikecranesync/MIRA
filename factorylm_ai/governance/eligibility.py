@@ -26,7 +26,8 @@ from dataclasses import dataclass, field
 
 from . import lineage as ln
 from . import rejection_codes as rc
-from .rights import RightsStatus
+from . import splits as sp
+from .rights import LICENSE_CUSTOMER_PRIVATE, RightsStatus
 
 GOLD = "gold"
 SAFETY_CLEAR = "clear"
@@ -51,7 +52,7 @@ class EligibilityInput:
     frozen_eval: bool = False
     sensitive: bool = False
     tenant_id: str | None = None
-    confidentiality_class: str = "public"
+    confidentiality_class: str | None = None
 
 
 @dataclass
@@ -107,10 +108,9 @@ def check_training_eligibility(inp: EligibilityInput) -> EligibilityResult:
     # gate 4 — lineage side / quarantine / frozen.
     if inp.frozen_eval:
         rej.append(rc.Rejection(rc.FROZEN_EVAL, "frozen eval-only row"))
-    if ln.is_quarantined(split):
-        rej.append(rc.Rejection(rc.HELD_OUT, "lineage is on the permanent held-out benchmark"))
-    elif not ln.is_train_side(split):
-        rej.append(rc.Rejection(rc.LINEAGE_ON_EVAL_SIDE, f"lineage split={split} (not train)"))
+    split_rej = sp.training_split_rejection(split)
+    if split_rej:
+        rej.append(split_rej)
 
     # gate 5 — validation (unresolved contradictions fail here).
     if not inp.validation_passed:
@@ -127,11 +127,13 @@ def check_training_eligibility(inp: EligibilityInput) -> EligibilityResult:
     # gate 8 — sensitive / tenant. Customer-private stays private by default; a
     # tenant record needs explicit cross-tenant reuse rights to enter a shared corpus.
     tenant_blocked = inp.tenant_id is not None and not inp.rights.cross_tenant_reuse_allowed
-    if inp.sensitive or tenant_blocked or inp.confidentiality_class == _TENANT_CONFIDENTIAL:
+    confidentiality_class = inp.confidentiality_class or inp.rights.confidentiality_class
+    customer_private = inp.rights.license_class == LICENSE_CUSTOMER_PRIVATE
+    if inp.sensitive or tenant_blocked or customer_private or confidentiality_class != "public":
         rej.append(
             rc.Rejection(
                 rc.SENSITIVE_TENANT,
-                f"sensitive/tenant record (conf={inp.confidentiality_class}, tenant={inp.tenant_id})",
+                f"sensitive/tenant record (conf={confidentiality_class}, tenant={inp.tenant_id})",
             )
         )
 
