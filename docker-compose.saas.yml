@@ -792,6 +792,8 @@ services:
       # Slack — both bot-token shortcut and full OAuth are supported by the route
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
       - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
+      # Visual Focus Workspace (PR V2): optional HMAC secret for signed evidence-view tokens (fail-closed when unset).
+      - VISUAL_EVIDENCE_SIGNING_SECRET=${VISUAL_EVIDENCE_SIGNING_SECRET:-}
       - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
       # Microsoft 365 / Teams (single Azure app covers both)
       - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}

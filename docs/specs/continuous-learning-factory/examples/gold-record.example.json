@@ -1,0 +1,33 @@
+{
+  "schema": "factorylm.clf.gold-record.v1",
+  "gold_id": "gold-an-gs-021-p4-001",
+  "run_id": "url-d82eba78cf",
+  "document_lineage_key": "automationdirect:an-gs-021",
+  "split_assignment": "test",
+  "corrected_answer": "GS-series VFD control-terminal sheet: run switch DI1/FWD<->DCM; EchoSpan 4-20mA sensor (+)->AI2, (-)->ACM, AI2 DIP set to 4-20mA; STO1/STO2 jumpered. Only AI2's range DIP is drawn.",
+  "structured_facts": { "ai2_dip": "4-20mA", "echospan": { "pos": "AI2", "neg": "ACM" } },
+  "error_labels": [],
+  "evidence_status": { "completeness": "partial" },
+  "deterministic_status": "not_run",
+  "judge_status": { "schema": "factorylm.clf.judge-independence.v1", "independence_class": "HUMAN_REVIEW" },
+  "human_review": { "reviewer": "reviewer:mike", "agreement": 1.0, "at": "2026-07-21T12:05:00Z" },
+  "gold_status": "gold",
+  "training_eligibility": "ineligible",
+  "approval": {
+    "mechanism": "HUMAN_REVIEW",
+    "independence_class": "HUMAN_REVIEW",
+    "actor": "reviewer:mike",
+    "proposal_id": "gap-an-gs-021-p4-001",
+    "at": "2026-07-21T12:05:00Z"
+  },
+  "lineage": {
+    "source_id": "automationdirect-an-gs-021",
+    "page_id": "automationdirect-an-gs-021:p4",
+    "region_refs": ["region-an-gs-021-p4-ai2-dip"],
+    "raw_result_id": "url-d82eba78cf",
+    "validator_findings_id": null,
+    "judge_result_id": "url-d82eba78cf",
+    "correction_event_id": "corr-an-gs-021-p4-001",
+    "approving_actor": "reviewer:mike"
+  }
+}

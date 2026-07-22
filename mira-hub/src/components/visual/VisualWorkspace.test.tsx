@@ -45,6 +45,31 @@ describe("VisualWorkspace static render", () => {
     expect(html).toMatch(/aria-pressed="true"[\s\S]*?>Highlight<\/button>/);
   });
 
+  it("seeds persisted annotations via initialAnnotations (PR V2)", () => {
+    const html = render({
+      initialAnnotations: [
+        {
+          id: "99999999-8888-7777-6666-555555555555", // server region_id (UUID)
+          tool: "box",
+          geometry: {
+            type: "rect",
+            coordinate_space: "normalized_original",
+            x: 0.25,
+            y: 0.25,
+            width: 0.5,
+            height: 0.25,
+          },
+        },
+        {
+          id: "11111111-2222-3333-4444-555555555555",
+          tool: "point",
+          geometry: { type: "point", coordinate_space: "normalized_original", x: 0.5, y: 0.5 },
+        },
+      ],
+    });
+    expect(html).toContain("2 regions");
+  });
+
   it("disables Undo/Redo/Clear on an empty workspace and shows 0 regions", () => {
     const html = render();
     expect((html.match(/disabled=""/g) ?? []).length).toBeGreaterThanOrEqual(3);

@@ -1,0 +1,39 @@
+{
+  "schema": "factorylm.clf.eval-result.v1",
+  "run_id": "url-d82eba78cf",
+  "case_id": "automationdirect-an-gs-021-p4",
+  "source_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "page_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "document_lineage_key": "automationdirect:an-gs-021",
+  "interpreter": {
+    "provider": "together",
+    "model": "MiniMaxAI/MiniMax-M3",
+    "prompt_version": null,
+    "preprocess_version": "printsense.preprocess.v1",
+    "latency_ms": 35290,
+    "cost_usd": 0.0
+  },
+  "judge": {
+    "schema": "factorylm.clf.judge-independence.v1",
+    "independence_class": "SELF_CONSISTENCY_ONLY",
+    "judge_provider": "together",
+    "judge_model": "MiniMaxAI/MiniMax-M3",
+    "gold_eligible": false
+  },
+  "deterministic": { "import_verdict": "UNKNOWN", "blockers": [], "checks": [] },
+  "claims": [],
+  "score": 82,
+  "hard_failures": [],
+  "evidence_status": { "completeness": "partial", "regions_present": false, "citation_integrity": "unchecked" },
+  "review_status": "unreviewed",
+  "gold_status": "candidate",
+  "training_eligibility": "ineligible",
+  "error_labels": ["unsupported_ai1_dip_assertion", "unsupported_functional_name_sto", "over_precision_dedicated_fwd_rev"],
+  "lineage": {
+    "source_id": "automationdirect-an-gs-021",
+    "page_id": "automationdirect-an-gs-021:p4",
+    "region_refs": [],
+    "correction_event_ids": []
+  },
+  "created_at": "2026-07-21T06:17:15Z"
+}

@@ -60,6 +60,13 @@ export interface VisualWorkspaceProps {
   imageHeight: number;
   /** Tool selected on mount. */
   initialTool?: Tool;
+  /**
+   * Annotations to seed the workspace with on mount (e.g. persisted
+   * region_of_interest rows — PR V2). Read once; the component stays
+   * uncontrolled, so remount (change `key`) to re-seed. Server ids (UUIDs)
+   * never collide with the client-generated `r<N>` ids.
+   */
+  initialAnnotations?: Annotation[];
   /** Called whenever the committed annotation set changes. */
   onAnnotationsChange?: (annotations: Annotation[]) => void;
   className?: string;
@@ -86,13 +93,26 @@ export default function VisualWorkspace({
   imageWidth,
   imageHeight,
   initialTool = "box",
+  initialAnnotations,
   onAnnotationsChange,
   className,
   ariaLabel = "Annotation canvas",
 }: VisualWorkspaceProps) {
-  const [state, dispatch] = useReducer(workspaceReducer, {
-    ...initialWorkspaceState,
-    tool: initialTool,
+  const [state, dispatch] = useReducer(workspaceReducer, undefined, () => {
+    const seeded = initialAnnotations ?? [];
+    // Start client id numbering above any seeded `r<N>` id so a re-seeded
+    // draft set can never collide (server rows use UUID ids and never match).
+    let nextId = 1;
+    for (const a of seeded) {
+      const m = /^r(\d+)$/.exec(a.id);
+      if (m) nextId = Math.max(nextId, Number(m[1]) + 1);
+    }
+    return {
+      ...initialWorkspaceState,
+      tool: initialTool,
+      annotations: seeded,
+      nextId,
+    };
   });
   const [viewport, setViewport] = useState<ViewportState>(DEFAULT_VIEWPORT);
   const [containerSize, setContainerSize] = useState<Size>({ width: 0, height: 0 });

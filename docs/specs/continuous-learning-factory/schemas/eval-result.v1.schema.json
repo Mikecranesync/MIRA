@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm.clf.eval-result.v1",
+  "title": "FactoryLM CLF Evaluation Result v1",
+  "description": "One evaluation run of one page. A SUPERSET of the fields tools/internet_print_test/runner.py already emits — existing runs validate once the additive fields default. CRITICAL: evidence status is SEPARATE from approval status. Good provenance never implies correctness; distinct fields for evidence completeness, deterministic validation, judge outcome, human review, gold status, and training eligibility.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "run_id", "case_id", "source_sha256", "page_sha256", "interpreter", "gold_status"],
+  "properties": {
+    "schema": { "const": "factorylm.clf.eval-result.v1" },
+    "run_id": { "type": "string" },
+    "case_id": { "type": "string" },
+    "source_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "page_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "document_lineage_key": { "type": ["string", "null"] },
+    "interpreter": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "prompt_version": { "type": ["string", "null"] },
+        "preprocess_version": { "type": ["string", "null"] },
+        "latency_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "cost_usd": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "judge": { "$comment": "an instance of factorylm.clf.judge-independence.v1, or null when --no-judge", "type": ["object", "null"] },
+    "deterministic": {
+      "$comment": "output of printsense.grade_case.grade_case()",
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "import_verdict": { "enum": ["SAFE", "UNSAFE", "UNKNOWN", null] },
+        "blockers": { "type": ["array", "null"], "items": { "type": "string" } },
+        "checks": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+      }
+    },
+    "claims": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+    "hard_failures": { "type": "array", "items": { "type": "string" } },
+    "evidence_status": {
+      "type": "object",
+      "description": "PROVENANCE quality — independent of correctness/approval",
+      "additionalProperties": false,
+      "properties": {
+        "completeness": { "enum": ["complete", "partial", "missing", "unknown"], "default": "unknown" },
+        "regions_present": { "type": "boolean", "default": false },
+        "citation_integrity": { "enum": ["ok", "mismatch", "unchecked"], "default": "unchecked" }
+      }
+    },
+    "review_status": { "enum": ["unreviewed", "in_review", "reviewed"], "default": "unreviewed" },
+    "gold_status": { "enum": ["candidate", "gold", "rejected", "needs_review"], "default": "candidate" },
+    "training_eligibility": { "enum": ["ineligible", "eligible", "excluded"], "default": "ineligible" },
+    "error_labels": { "type": "array", "items": { "type": "string" }, "description": "error-taxonomy classes (see promotion-policy / gold-standard §4)" },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "source_id": { "type": ["string", "null"] },
+        "page_id": { "type": ["string", "null"] },
+        "region_refs": { "type": "array", "items": { "type": "string" }, "$comment": "region_id of factorylm.visual-region.v1 instances" },
+        "correction_event_ids": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "created_at": { "type": ["string", "null"], "description": "RFC3339 stamped by caller" }
+  }
+}

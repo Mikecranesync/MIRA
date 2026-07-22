@@ -1,0 +1,11 @@
+{
+  "schema": "factorylm.clf.judge-independence.v1",
+  "independence_class": "SELF_CONSISTENCY_ONLY",
+  "judge_provider": "together",
+  "judge_model": "MiniMaxAI/MiniMax-M3",
+  "interpreter_provider": "together",
+  "interpreter_model": "MiniMaxAI/MiniMax-M3",
+  "gold_eligible": false,
+  "confidence_cap": 0.6,
+  "run_id": "url-d82eba78cf"
+}

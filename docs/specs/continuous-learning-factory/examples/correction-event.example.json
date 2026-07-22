@@ -1,0 +1,14 @@
+{
+  "schema": "factorylm.clf.correction-event.v1",
+  "correction_id": "corr-an-gs-021-p4-001",
+  "run_id": "url-d82eba78cf",
+  "at": "2026-07-21T12:00:00Z",
+  "actor": "reviewer:mike",
+  "action": "edit",
+  "corrected_answer": "Only AI2 shows a range DIP switch on this sheet; AI1's range configuration is not drawn. STO1/STO2 show a jumper; the function is not spelled out on this sheet.",
+  "structured_facts": { "ai1_dip_shown": false, "ai2_dip_shown": true },
+  "error_labels": ["unsupported_ai1_dip_assertion", "unsupported_functional_name_sto"],
+  "region_refs": ["region-an-gs-021-p4-ai2-dip"],
+  "prior_correction_id": null,
+  "immutable": true
+}
