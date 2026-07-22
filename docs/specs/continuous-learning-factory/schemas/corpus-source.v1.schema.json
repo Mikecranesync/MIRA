@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm.clf.corpus-source.v1",
+  "title": "FactoryLM CLF Corpus Source + Rights Manifest v1",
+  "description": "A registered corpus source. Rights FAIL CLOSED: any consumer treats a missing/unknown right as false (see data-rights-and-leakage.md). document_lineage_key is the split key — all revisions/renders/crops/augmentations of the same lineage share it and must never cross train/val/test.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source_id", "source_sha256", "source_type", "document_lineage_key", "license_class", "rights"],
+  "properties": {
+    "schema": { "const": "factorylm.clf.corpus-source.v1" },
+    "source_id": { "type": "string", "description": "stable id" },
+    "source_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source_type": { "enum": ["pdf", "image", "package", "synthetic"] },
+    "manufacturer": { "type": ["string", "null"] },
+    "document_number": { "type": ["string", "null"] },
+    "revision": { "type": ["string", "null"], "description": "unknown when null" },
+    "document_lineage_key": {
+      "type": "string",
+      "description": "SPLIT KEY. Stable across all revisions/renders/crops/augmentations of the same source lineage. Leakage guard partitions on THIS, never on page or render."
+    },
+    "supersedes": { "type": ["string", "null"], "description": "source_id of a prior revision this replaces" },
+    "license_class": {
+      "enum": ["public-eval-only", "public-eval-and-train", "customer-private", "synthetic", "unknown"],
+      "description": "unknown => fail closed (see rights_resolved)"
+    },
+    "tenant_id": { "type": ["string", "null"] },
+    "confidentiality_class": { "enum": ["public", "internal", "customer-confidential", "unknown"], "default": "unknown" },
+    "rights": {
+      "type": "object",
+      "description": "FAIL CLOSED. rights_resolved=false OR any flag absent => treat as false. Only an explicit true grants the capability.",
+      "additionalProperties": false,
+      "required": ["rights_resolved", "training_allowed", "evaluation_allowed", "public_export_allowed", "cross_tenant_reuse_allowed", "derivatives_retained"],
+      "properties": {
+        "rights_resolved": { "type": "boolean", "default": false, "description": "false => unknown => deny all discretionary capabilities" },
+        "training_allowed": { "type": "boolean", "default": false },
+        "evaluation_allowed": { "type": "boolean", "default": false, "description": "true only when the source policy explicitly permits evaluation" },
+        "public_export_allowed": { "type": "boolean", "default": false },
+        "cross_tenant_reuse_allowed": { "type": "boolean", "default": false },
+        "derivatives_retained": { "type": "boolean", "default": false },
+        "policy_ref": { "type": ["string", "null"], "description": "citation for the rights decision (license url / permission record id)" }
+      }
+    },
+    "page_count": { "type": ["integer", "null"], "minimum": 0 },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "source_url": { "type": ["string", "null"] },
+        "retrieved_at": { "type": ["string", "null"], "description": "RFC3339" },
+        "robots_ok": { "type": ["boolean", "null"] },
+        "acquired_by": { "type": ["string", "null"] }
+      }
+    },
+    "ingested_at": { "type": ["string", "null"], "description": "RFC3339 (stamped by caller; no wall-clock in pure builders)" }
+  }
+}
