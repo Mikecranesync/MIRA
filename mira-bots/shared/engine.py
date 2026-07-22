@@ -1141,7 +1141,9 @@ class Supervisor:
             obs.get("verify_outcome"),
             not bool(raw),
         )
-        return print_translator.format_theory_reply(raw, (vision_data or {}).get("drawing_type"))
+        return print_translator.format_theory_reply(
+            raw, (vision_data or {}).get("drawing_type"), vision_data=vision_data
+        )
 
     def _record_self_consistency_usage(self, usages: list[dict]) -> None:
         """Best-effort: record the SUMMED token usage of a self-consistency print
