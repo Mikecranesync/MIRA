@@ -245,7 +245,10 @@ def test_customer_private_and_tenant_are_excluded() -> None:
             )
         )
     )
-    assert rc.SENSITIVE_TENANT in el.check_training_eligibility(customer_confidential_from_rights).codes
+    assert (
+        rc.SENSITIVE_TENANT
+        in el.check_training_eligibility(customer_confidential_from_rights).codes
+    )
     # a tenant record without cross-tenant reuse rights is excluded from a shared corpus
     assert rc.SENSITIVE_TENANT in el.check_training_eligibility(_inp(tenant_id="t1")).codes
     ok_tenant = _inp(
