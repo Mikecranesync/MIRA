@@ -101,37 +101,57 @@ def _live_text_probe(provider) -> str:
         return "failed"
 
 
-# 1x1 white PNG. The vision probe asks the model to read it — a deterministic
-# no-copyright fixture; the pass condition is a non-empty on-topic reply, the
-# richer known-token fixture lands with the PR-5 canary.
-_PROBE_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4//8/AwAI/AL+"
-    "hc2vsQAAAABJRU5ErkJggg=="
+# Known-token vision fixture — the SAME committed image the PR-5 canary uses
+# (tools/canary_fixtures/vision_canary.png, printed text "MIRA CANARY 7"). A
+# meaningful vision probe must make the model READ real text; a 1x1 blank pixel
+# + "describe this" is not a valid probe (a vision model legitimately returns
+# nothing, a FALSE negative — the defect the PR-7 staging activation surfaced).
+_VISION_FIXTURE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "tools",
+    "canary_fixtures",
+    "vision_canary.png",
 )
+_VISION_TOKENS = ("canary", "7")
+# Reasoning-vision models (MiniMax-M3) can spend a small budget entirely on
+# reasoning — 4096 is the measured-safe headroom (R5 program).
+_VISION_PROBE_MAX_TOKENS = 4096
 
 
 def _live_vision_probe(provider, model: str) -> str:
-    """'ok'|'failed' — one tiny vision call on the CONFIGURED model. --live only."""
+    """'ok'|'failed' — one known-token vision read on the CONFIGURED model.
+
+    Passes only when the model READS the fixture's printed tokens back (proving
+    real perception, not a generic "an image with text" reply). --live only.
+    """
+    import base64  # noqa: PLC0415
+
     import httpx  # noqa: PLC0415
 
+    try:
+        with open(_VISION_FIXTURE, "rb") as fh:
+            b64 = base64.standard_b64encode(fh.read()).decode("ascii")
+    except OSError:
+        return "failed"
     try:
         resp = httpx.post(
             f"{provider.spec.canonical_url}/chat/completions",
             headers={"Authorization": f"Bearer {provider.api_key}"},
             json={
                 "model": model,
-                "max_tokens": 64,
+                "max_tokens": _VISION_PROBE_MAX_TOKENS,
                 "messages": [
                     {
                         "role": "user",
                         "content": [
                             {
                                 "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{_PROBE_PNG_B64}"},
+                                "image_url": {"url": f"data:image/png;base64,{b64}"},
                             },
                             {
                                 "type": "text",
-                                "text": "Describe this image in a few words.",
+                                "text": "Read the text printed in this image and reply "
+                                "with it verbatim, nothing else.",
                             },
                         ],
                     }
@@ -139,8 +159,11 @@ def _live_vision_probe(provider, model: str) -> str:
             },
             timeout=provider.timeout,
         )
+        if resp.status_code != 200:
+            return "failed"
         content = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
-        return "ok" if resp.status_code == 200 and content.strip() else "failed"
+        lowered = content.lower()
+        return "ok" if all(tok in lowered for tok in _VISION_TOKENS) else "failed"
     except Exception:  # noqa: BLE001
         return "failed"
 
