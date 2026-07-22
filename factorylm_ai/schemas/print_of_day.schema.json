@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/print_of_day.schema.json",
+  "title": "PrintOfDayCaseManifest",
+  "description": "factorylm.print-of-day.v1 — the per-case evidence manifest for a controlled Print of the Day run (ADR-0031 PR 6, CLF POTD surface §17). An INDEX over reused factory outputs plus the runtime provenance every controlled artifact must carry: provider/model identity, image revision, git SHA, OCR state, grader state, judge state, and artifact hashes. Written in the minimal schema subset of factorylm_ai/schemas/validate.py.",
+  "type": "object",
+  "properties": {
+    "schema": { "type": "string", "enum": ["factorylm.print-of-day.v1"] },
+    "case_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "environment": { "type": "string", "minLength": 1 },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "git_sha": { "type": ["string", "null"] },
+        "git_dirty": { "type": ["boolean", "null"] },
+        "image_revision": { "type": ["string", "null"] },
+        "allow_dirty": { "type": "boolean" }
+      },
+      "required": ["git_sha", "git_dirty", "image_revision", "allow_dirty"],
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "properties": {
+        "requested": { "type": "string" },
+        "resolved": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "endpoint_class": { "type": ["string", "null"] },
+        "responded_model": { "type": ["string", "null"] }
+      },
+      "required": ["requested", "resolved", "model"],
+      "additionalProperties": true
+    },
+    "ocr": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "tesseract_version": { "type": ["string", "null"] },
+        "pytesseract_version": { "type": ["string", "null"] }
+      },
+      "required": ["required", "available"],
+      "additionalProperties": true
+    },
+    "grader": { "type": "object" },
+    "judge": { "type": "object" },
+    "source_url": { "type": ["string", "null"] },
+    "selected_page_sha": { "type": ["string", "null"] },
+    "graded_page_sha": { "type": ["string", "null"] },
+    "fallback_attempts": { "type": "array", "items": { "type": "object" } },
+    "artifact_sha256": { "type": "object" },
+    "degraded": { "type": "array", "items": { "type": "string" } },
+    "email": { "type": ["object", "null"] },
+    "gold_eligible": { "type": "boolean" }
+  },
+  "required": [
+    "schema", "case_id", "run_id", "generated_at", "environment",
+    "provenance", "provider", "ocr", "grader", "judge",
+    "selected_page_sha", "graded_page_sha", "fallback_attempts",
+    "artifact_sha256", "degraded", "gold_eligible"
+  ],
+  "additionalProperties": true
+}
