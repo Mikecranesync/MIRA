@@ -300,14 +300,410 @@
     "techv0-cv101-070": [
       "NOT_GOLD",
       "APPROVAL_MISSING"
+    ],
+    "techv0-drive-001": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-002": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-003": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-004": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-005": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-006": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-007": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-008": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-009": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-010": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-011": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-012": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-013": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-014": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-015": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-016": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-017": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-018": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-019": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-020": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-021": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-022": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-023": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-024": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-025": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-026": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-027": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-028": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-029": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-030": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-031": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-032": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-033": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-034": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-035": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-036": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-037": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-038": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-039": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-040": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-041": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-042": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-043": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-044": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-045": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "HELD_OUT",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-046": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-047": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-048": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-049": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-050": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-051": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-052": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-053": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-054": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-055": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-056": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-057": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-058": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-059": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-060": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-061": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-062": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-063": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-064": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-065": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-066": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-067": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-068": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-069": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-drive-070": [
+      "NOT_GOLD",
+      "TRAINING_NOT_ALLOWED",
+      "APPROVAL_MISSING"
     ]
   },
   "code_counts": {
-    "APPROVAL_MISSING": 70,
-    "NOT_GOLD": 70,
-    "SAFETY_REVIEW_REQUIRED": 20
+    "APPROVAL_MISSING": 140,
+    "HELD_OUT": 25,
+    "NOT_GOLD": 140,
+    "SAFETY_REVIEW_REQUIRED": 39,
+    "TRAINING_NOT_ALLOWED": 70
   },
   "eligible_count": 0,
-  "rejected_count": 70,
+  "rejected_count": 140,
   "schema": "factorylm.technician-dataset.rejection-report.v1"
 }

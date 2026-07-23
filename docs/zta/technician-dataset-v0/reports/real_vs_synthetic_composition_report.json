@@ -1,7 +1,7 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
   "origin_counts": {
-    "human_corrected": 70
+    "human_corrected": 140
   },
   "real_or_human_corrected_pct": 1.0,
   "schema": "factorylm.technician-dataset.composition.v1",
