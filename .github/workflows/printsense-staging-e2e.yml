@@ -84,7 +84,7 @@ jobs:
 
       - name: Checkout PR branch (E2E code + committed corpus)
         if: steps.guard.outputs.run == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.PR_BRANCH }}
 

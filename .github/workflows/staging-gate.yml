@@ -75,7 +75,7 @@ jobs:
     environment: staging
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Scope check (#1680): the engine eval only catches diagnostic/retrieval/
       # cascade regressions, so it adds no signal for docs-only / CI-only /

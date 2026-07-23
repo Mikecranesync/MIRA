@@ -53,7 +53,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # When the operator dispatches with skip_staging_gate=true, the gate
       # verification is bypassed. CLAUDE.md says "file a follow-up PR within

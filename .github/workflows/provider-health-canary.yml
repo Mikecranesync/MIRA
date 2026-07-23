@@ -51,7 +51,7 @@ jobs:
       issues: write          # open / comment the provider-incident issue on exit 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v6

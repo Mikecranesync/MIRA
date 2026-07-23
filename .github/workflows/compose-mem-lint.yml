@@ -37,7 +37,7 @@ jobs:
     # ADVISORY: flip to `false` (or remove) once the 50+ backlog is fixed.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
