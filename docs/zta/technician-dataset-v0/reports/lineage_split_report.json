@@ -1,6 +1,6 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
-  "candidate_training_lineage_count": 6,
+  "candidate_training_lineage_count": 8,
   "held_out_lineage_count": 5,
   "held_out_lineages": [
     "factorylm:cv-101-e-004",
@@ -12,7 +12,7 @@
   "lineage_count": 32,
   "lineages": {
     "automationdirect:gs10-um": {
-      "candidate_count": 0,
+      "candidate_count": 20,
       "rights_decisions": [
         "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED"
       ],
@@ -435,7 +435,7 @@
       "target_record_count": 0
     },
     "rockwell-automation:22b-um001j-en-e": {
-      "candidate_count": 0,
+      "candidate_count": 25,
       "rights_decisions": [
         "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
         "HELD_OUT_EVALUATION_ONLY"
@@ -452,7 +452,7 @@
       "target_record_count": 25
     },
     "rockwell-automation:520-um001o-en-e": {
-      "candidate_count": 0,
+      "candidate_count": 25,
       "rights_decisions": [
         "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED"
       ],
@@ -474,11 +474,13 @@
     "validation": 1
   },
   "training_lineages": [
+    "automationdirect:gs10-um",
     "factorylm:cv-101-e-001",
     "factorylm:cv-101-e-005",
     "factorylm:cv-101-e-006",
     "factorylm:cv-101-e-007",
     "factorylm:cv-101-e-008",
-    "factorylm:cv-101-e-009"
+    "factorylm:cv-101-e-009",
+    "rockwell-automation:520-um001o-en-e"
   ]
 }

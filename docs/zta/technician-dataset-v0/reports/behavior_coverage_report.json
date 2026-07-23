@@ -1,20 +1,21 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
   "interaction_type_counts": {
-    "correction": 11,
-    "diagnostic": 33,
-    "refusal": 10,
-    "uncertainty": 16
+    "correction": 24,
+    "diagnostic": 64,
+    "refusal": 19,
+    "uncertainty": 33
   },
-  "record_count": 70,
-  "safety_sensitive_count": 20,
+  "record_count": 140,
+  "safety_sensitive_count": 39,
   "schema": "factorylm.technician-dataset.behavior-coverage.v1",
   "source_counts": {
+    "drive_commander": 70,
     "printsense": 70
   },
   "target_comparison": {
     "drive_commander": {
-      "actual": 0,
+      "actual": 70,
       "target": 70
     },
     "printsense": {
@@ -22,17 +23,17 @@
       "target": 110
     },
     "records": {
-      "actual": 70,
+      "actual": 140,
       "target": 180
     },
     "safety_sensitive": {
-      "actual": 20,
+      "actual": 39,
       "target": 25
     },
     "valued_interactions": {
-      "actual": 37,
+      "actual": 76,
       "target": 30
     }
   },
-  "valued_interaction_count": 37
+  "valued_interaction_count": 76
 }

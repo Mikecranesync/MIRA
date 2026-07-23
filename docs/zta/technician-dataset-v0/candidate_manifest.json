@@ -492,9 +492,499 @@
       "record_id": "techv0-cv101-070",
       "split": "train",
       "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "6b4bfefb333ac51d49e5184422eafd387cd48d01faccbae002420f288492e565",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-001",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1a53bdc0e145d8f97b83b51ab09f403e56138239f2885ccf99e3707b7baf7393",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-002",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "26bba1a91ef3121cfeed1f900e53785d94e93b5f4c11cfa1d47d255b75ec6ef5",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-003",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "cef593a16dd542e1c584667953c8b985d71cab557c13ba5b3ee230ce37e078a2",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-004",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "300b5055659b77ab5b1b0e914602aa46bb78bba9546afdefbdd7d21d03354e1a",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-005",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "bbb54edb78b4e9c1bf671a962e7b8032b1da125172a5599753f885a75a39ee04",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-006",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "492e2c7f45434bbe877d45a0df3b789d7e425044188dc5c2a88d568a878f97a7",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-007",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "60babcf3dbc114b0e3b96d493f05eea43c844888a666a64f46e307cd3acdeacd",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-008",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "141461932223583ee5e2b55a106c43f700137157da9231eb6d5ed7957c9b5a5a",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-009",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f9c25dfd75276189119e39164a6432d1019b29b81b0249cb84f976c5885ad0c4",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-010",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1f2e4d5aa6e06d11362a84e77a200113bd75669c2fa5a1c49b2c7d9edcfd6615",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-011",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d9ebcb92fa0a6975af86fb0e93061c1e66c60918f77728ef0198ec5dfa109905",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-012",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8dde79a8eae8205c078a5e70f3d48bf9f9881cc534cddabcdf29f177c864a41c",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-013",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "06ebb018664a11dc502c15c1bc939866ffab414acda0dbe587bd6dcf5954310a",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-014",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b5b28b6142b4777d225f34b3e86232a6829a16e69eb44fb7ce30a90cd1e10f4d",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-015",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "90e3964fa64ea8a106f3791ef807f6b84b97e9d0709bd542ca46b01dc588dfbe",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-016",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "832338376b188dc5ce2309d090dddb513335b57b0506dc0b6a7e65dde7c8a923",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-017",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "678c6bbed92ec42ef9fb9ab60b27e7f37312ed38caa72d5dc47a668c7100457b",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-018",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "28fcbde15461787927ec3a3d7d188129b8d20d789ee3dda4b7d36816361fae22",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-019",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "7c42217f79fd687b16043a0f623d29ce8e0487315d844c06105b933b23fcbb10",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv0-drive-020",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0e1b3b0b71342fff9d1e51c7946dfa98634beec9d3cdb5a89935933bb7abb833",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-021",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "914465e19a08cd25af2cde34369fe7c1b8e3dca3104b458b22b608c13abb3713",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-022",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a2ee38f8d77702c00980f05dd7074ec344185033ba180d4378295e614746c0de",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-023",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d136e71ecb3e29787e762fa83d79e05dc4459c6fb3ce8fab9bf5eb2d794b1e8c",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-024",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "128ff8bdffbda3b22e356dd4877d6daea1122a1dfcda3956687663db84bf8097",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-025",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "10a5b11f1291bdd36491e6589ff3f6b7b41e0ec69c71e75b44dbf6b2c11b0db1",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-026",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "bf5918b1ea407ddc8c9da4db4eae6966c3c14df38292bf070ca6c7a558e529a0",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-027",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b5cd14af9a17cfc95a81437c396b2efaa2b898ae3c4a5fc1d3a54d40fcc0300d",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-028",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "deaf99898127de42ccb0d38a9ecd490e48ffc3c2e850e901be3d6b6413bfadad",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-029",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8704f769d8664ba01f2298ac2e8d89480b3b4fbf1d8626eee5cc76ed596fba08",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-030",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "611304b97ffcad727da6bba20da09f1a0eb2a5c85a6efc306c573a7d45ee9a0f",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-031",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "7490cd3e8ae3a47f928405add9e032c2054078335b65c68687202a14fbe077b2",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-032",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "9d3b609e346887969a81d739b8f2fbe1e993e8f1af90ace68f504e79a3a663b1",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-033",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d2f7f96b221963902d4c007d67cf780923ab1de983643db5aeb22355a1fc9f7b",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-034",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "6ea86f1f55652769e98fe63f4a7e271f91d22a413754642d52974cdf79502a29",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-035",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d071d68c33f56b63343709edd25ed2c677ad41ef26dbc537138e48bf058371b7",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-036",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "6832f2502c5c386657ab568521121ea8583c039d9f44c9e879c3bb745be0d69d",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-037",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "11619ea509c771d160d1199245a9ac7ced605da448930add244b4ddc40376ccb",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-038",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "559df9280447b344eef78e315d03b4bbbeb054220dc2d026e06da0979ef422d4",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-039",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "466ffe3128632df55af89dea0228b0c33406ee0d6dc69de0fa906ebdf6c5496c",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-040",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "15531d47c93cf0f06746e9f690579b1393625acd2f549c35dfb0d38fdec1237f",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-041",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "82684c343579b2fd146108ecc7ed6d3d506656743ab71f70df8162abf91ebbd3",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-042",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b4bce61bcfb95b26e022fcdcde9e227a1a0a731065511b2af59a3d23c65213cf",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-043",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e5b10144159ec971df91fe3ec90989a21f21fd92b27e998fd9c42502520ed0bd",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-044",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f4cc4aabcab62cbecb940fbc95bd4f9fde8f59322377a97f374143b790f50011",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv0-drive-045",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e60970cbab76e8f439e9d8c3dc6007f25c49931000164f996f0af99c6d4afa34",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-046",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "cfcdfecbcf0c4508b5708e41eb48b1c00b42e03b92de597a77535f6365f8c7e0",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-047",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ea67e4746b7cfc3257f0b23ba207c0c6af960968628b3c79ee99efb7e5be3ecd",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-048",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "00c02d2474e1b365fc0877bfedc429e880861c4809714dd86bfc4c80c4e4ce6f",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-049",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "991fb520d7f0588157bfcf25a44c3542a410a6b46aa8f01bf85476aa9312fe00",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-050",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b3a9dcee65356a4b19295af10890c554edb006181be9fa76570458e832a3e218",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-051",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "609e2c3639d4b221d2b60f39df9ccf4e88988c61a26186ea51761cc21f0128df",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-052",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "fea3b5854be036c7dc76418675a97892cf9e4dc55832ab3945ecd5c67251ae4f",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-053",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "3206ab3c1bb36fc6e236ad096d10af001a7c0835702f034ba0f082674a7ddb24",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-054",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2a465cdee53a9e2cb1e053ac6f43e4766732e2badef73fb877d46bd7f333e2ea",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-055",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "281db1fa6415b9bd1ed88ad85200a6fae986c02a7318f4b0281384086f54f1e6",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-056",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "57d79ee767abb3aad823393e787a03e29ad9467b0169169e6a355b3551ffbba6",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-057",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1f6be5087d7eabcbb62b2c1431867d9caa85748861ae85f0010214bb34f407c0",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-058",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "bba3d45241349e423f6383ab1b9e52aae4ce73e6b8e72aa35d9122efdd802f81",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-059",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "cb32d673bfb70674d19d4eb5aa6b256ef710b6a36dbe8fd69f074b677ae3b609",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-060",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a370e87bea4e4c55824041e201aab758b47e2de2fe6647f0fc547001a94c6888",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-061",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "473a30e8d67fdd33cd953a58513df10c9f90c92a0f2b356c46af990539281192",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-062",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "4c13f8ce8c829268528712a94b82e2cf3612b317d632b55b187b5903ad921289",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-063",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f7ac352e465a736fe66dd727ac0615417cca07531268506446369935f86523c4",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-064",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "cbc86308fbb52735f643a5a2a846605d27487b52d6744991e90b73839e84d604",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-065",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "c3c9442db742c6295f40419f740f3ccbf954fbc9d8107babcd7a2162b76489b4",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-066",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0da6d9cff6e1c4d5213fe4f0f48c5939e72c466862bd5c57ffff9f67a4ea64bf",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-067",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b326a073a94f3a795eb5840da01349cc2922db9a5115dcaa476d9904a9bcf4f5",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-068",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8ced356e3641b6558a4cbab6f5dc7e263ee627f8a7e62f5bf07d850f333b4b3f",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-069",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "5914102e91cdf5a0bd0dacaf265b74eed545a3de70aa5de17e3aeabf049dc533",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv0-drive-070",
+      "split": "train",
+      "training_eligibility": "ineligible"
     }
   ],
-  "manifest_sha256": "f2661be5c85084fcaf65dfb7a4f62fc2ffa06c7e73518431f3b0e90d8fb1308b",
-  "record_count": 70,
+  "manifest_sha256": "438376715d319acfedb986ae3693f5ef10773b53519b7273520ef5bb7af88f1c",
+  "record_count": 140,
   "schema": "factorylm.technician-dataset.candidate-manifest.v1"
 }
