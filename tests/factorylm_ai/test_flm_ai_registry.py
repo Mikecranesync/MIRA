@@ -6,6 +6,7 @@ factorylm_ai/data/registry.jsonl. No network.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -126,7 +127,21 @@ def test_list_no_filter_returns_all_latest(registry: ArtifactRegistry):
 
 def test_list_filters_by_artifact_type(registry: ArtifactRegistry):
     registry.register(_artifact(artifact_id="a1", artifact_type="prompt_version"))
-    registry.register(_artifact(artifact_id="a2", artifact_type="adapter"))
+    registry.register(
+        _artifact(
+            artifact_id="a2",
+            artifact_type="adapter",
+            source_file_hashes=["manifest-hash"],
+            metadata={
+                "job_id": "ft-123",
+                "base_model": "Qwen/Qwen3.5-9B",
+                "output_model": "factorylm/tech",
+                "dataset_version": "v0.1",
+                "dataset_manifest_hash": "manifest-hash",
+                "hyperparams": {"n_epochs": 3},
+            },
+        )
+    )
     registry.register(_artifact(artifact_id="a3", artifact_type="prompt_version"))
 
     prompts = registry.list(artifact_type="prompt_version")
@@ -199,6 +214,28 @@ def test_allow_runtime_blocked_after_benchmark_regresses(registry: ArtifactRegis
     registry.register(_artifact(review_status="approved", benchmark_status="regression"))
     with pytest.raises(PromotionBlocked):
         registry.allow_runtime("art_0001")
+
+
+def test_allow_runtime_blocks_legacy_adapter_without_metadata(tmp_path: Path):
+    path = tmp_path / "registry.jsonl"
+    legacy_adapter = {
+        "artifact_id": "adapter:legacy",
+        "artifact_type": "adapter",
+        "version": "ft-legacy",
+        "source_interaction_ids": [],
+        "source_file_hashes": [],
+        "tenant_id": None,
+        "created_at": "2026-07-19T00:00:00Z",
+        "created_by": "mike",
+        "review_status": "approved",
+        "benchmark_status": "pass",
+        "runtime_allowed": False,
+    }
+    path.write_text(json.dumps(legacy_adapter) + "\n", encoding="utf-8")
+    registry = ArtifactRegistry(path=str(path))
+
+    with pytest.raises(PromotionBlocked, match="adapter metadata"):
+        registry.allow_runtime("adapter:legacy")
 
 
 # ---------------------------------------------------------------------------
