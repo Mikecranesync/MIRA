@@ -1,0 +1,4 @@
+interface:
+  display_name: "FactoryLM Context Bridge"
+  short_description: "Use FactoryLM context tools safely from coding agents."
+  default_prompt: "Use the FactoryLM context bridge to inspect approved factory context before answering or implementing external AI integrations."

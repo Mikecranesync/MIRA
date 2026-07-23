@@ -206,6 +206,10 @@ wiki/.smart-env/
 
 # Third-party AI tool runtime dirs (local config, not code)
 .agents/
+!.agents/
+!.agents/skills/
+!.agents/skills/factorylm-context-bridge/
+!.agents/skills/factorylm-context-bridge/**
 .codex/
 .serena/
 
