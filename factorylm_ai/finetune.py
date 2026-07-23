@@ -408,23 +408,52 @@ class PaidAuthorizationVerifier(Protocol):
 
 
 class PaidAuthorizationLedger:
-    """Append-only trusted ledger with atomic per-authorization consumption."""
+    """Append-only trusted ledger with atomic per-authorization consumption.
+
+    Issuing the exact same active authorization twice is an idempotent no-op so
+    callers can safely retry receipt persistence. Reusing an authorization ID
+    with any changed field, or after a consumed/revoked terminal event, is
+    rejected; every new approval must use a new authorization ID.
+    """
 
     def __init__(self, path: str | Path, *, lock_timeout_seconds: float = 5.0) -> None:
         self.path = Path(path)
         self.lock_timeout_seconds = lock_timeout_seconds
 
     def record_authorized(self, authorization: PaidEventAuthorization) -> None:
-        self._append(
-            {
-                "schema_version": TRUSTED_AUTHORIZATION_LEDGER_SCHEMA_VERSION,
-                "event": "authorized",
-                "authorization_id": authorization.authorization_id,
-                "authorization": authorization.trusted_receipt_dict(),
-                "receipt_hash": _sha256_json(authorization.trusted_receipt_dict()),
-                "recorded_at": datetime.now(UTC).isoformat(),
-            }
-        )
+        with self._locked(authorization.authorization_id):
+            state = self._state_for(authorization.authorization_id)
+            latest = state["latest"]
+            if latest is not None and latest.get("event") == "consumed":
+                raise PaidAuthorizationRejected(
+                    f"authorization {authorization.authorization_id!r} rejected: already consumed"
+                )
+            if latest is not None and latest.get("event") == "revoked":
+                raise PaidAuthorizationRejected(
+                    f"authorization {authorization.authorization_id!r} rejected: revoked"
+                )
+            if state["receipt_conflict"]:
+                raise PaidAuthorizationRejected(
+                    f"authorization {authorization.authorization_id!r} rejected: trusted receipt mismatch"
+                )
+            trusted = authorization.trusted_receipt_dict()
+            authorized = state["authorized"]
+            if authorized is not None:
+                if authorized.get("authorization") == trusted:
+                    return
+                raise PaidAuthorizationRejected(
+                    f"authorization {authorization.authorization_id!r} rejected: trusted receipt mismatch"
+                )
+            self._append_unlocked(
+                {
+                    "schema_version": TRUSTED_AUTHORIZATION_LEDGER_SCHEMA_VERSION,
+                    "event": "authorized",
+                    "authorization_id": authorization.authorization_id,
+                    "authorization": trusted,
+                    "receipt_hash": _sha256_json(trusted),
+                    "recorded_at": datetime.now(UTC).isoformat(),
+                }
+            )
 
     def record_revoked(self, authorization_id: str, *, reason: str) -> None:
         self._append(
@@ -462,10 +491,6 @@ class PaidAuthorizationLedger:
             state = self._state_for(authorization.authorization_id)
             authorized = state["authorized"]
             latest = state["latest"]
-            if authorized is None:
-                raise PaidAuthorizationRejected(
-                    f"authorization {authorization.authorization_id!r} rejected: unknown"
-                )
             if latest is not None and latest.get("event") == "revoked":
                 raise PaidAuthorizationRejected(
                     f"authorization {authorization.authorization_id!r} rejected: revoked"
@@ -473,6 +498,14 @@ class PaidAuthorizationLedger:
             if latest is not None and latest.get("event") == "consumed":
                 raise PaidAuthorizationRejected(
                     f"authorization {authorization.authorization_id!r} rejected: already consumed"
+                )
+            if state["receipt_conflict"]:
+                raise PaidAuthorizationRejected(
+                    f"authorization {authorization.authorization_id!r} rejected: trusted receipt mismatch"
+                )
+            if authorized is None:
+                raise PaidAuthorizationRejected(
+                    f"authorization {authorization.authorization_id!r} rejected: unknown"
                 )
             trusted = authorized.get("authorization")
             if trusted != authorization.trusted_receipt_dict():
@@ -522,21 +555,37 @@ class PaidAuthorizationLedger:
     def _state_for(self, authorization_id: str) -> dict[str, Any]:
         authorized: dict[str, Any] | None = None
         latest: dict[str, Any] | None = None
+        terminal: dict[str, Any] | None = None
+        receipt_conflict = False
         for record in self._read_all():
             if record.get("authorization_id") != authorization_id:
                 continue
             if record.get("event") == "authorized":
-                authorized = record
-                latest = record
+                if authorized is None:
+                    authorized = record
+                    latest = record
+                elif authorized.get("authorization") != record.get("authorization"):
+                    receipt_conflict = True
+                if terminal is None:
+                    latest = authorized
             elif record.get("event") in {"revoked", "consumed"}:
+                terminal = record
                 latest = record
-        return {"authorized": authorized, "latest": latest}
+        return {
+            "authorized": authorized,
+            "latest": terminal or latest,
+            "receipt_conflict": receipt_conflict,
+        }
 
     def _append(self, record: dict[str, Any]) -> None:
         with self._locked(str(record.get("authorization_id") or "ledger")):
             self._append_unlocked(record)
 
     def _append_unlocked(self, record: dict[str, Any]) -> None:
+        with self._append_locked():
+            self._write_record_unlocked(record)
+
+    def _write_record_unlocked(self, record: dict[str, Any]) -> None:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as f:
@@ -550,6 +599,10 @@ class PaidAuthorizationLedger:
             ) from exc
 
     def _read_all(self) -> list[dict[str, Any]]:
+        with self._append_locked():
+            return self._read_all_unlocked()
+
+    def _read_all_unlocked(self) -> list[dict[str, Any]]:
         if not self.path.exists():
             return []
         if not self.path.is_file():
@@ -572,13 +625,33 @@ class PaidAuthorizationLedger:
         return rows
 
     def _locked(self, authorization_id: str) -> "_LedgerLock":
-        return _LedgerLock(self.path, authorization_id, timeout_seconds=self.lock_timeout_seconds)
+        return _LedgerLock(
+            self.path,
+            authorization_id,
+            namespace="auth",
+            timeout_seconds=self.lock_timeout_seconds,
+        )
+
+    def _append_locked(self) -> "_LedgerLock":
+        return _LedgerLock(
+            self.path,
+            "global",
+            namespace="append",
+            timeout_seconds=self.lock_timeout_seconds,
+        )
 
 
 class _LedgerLock:
-    def __init__(self, ledger_path: Path, authorization_id: str, *, timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        ledger_path: Path,
+        authorization_id: str,
+        *,
+        namespace: str,
+        timeout_seconds: float,
+    ) -> None:
         safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", authorization_id) or "ledger"
-        self.lock_path = ledger_path.with_name(f"{ledger_path.name}.{safe_id}.lock")
+        self.lock_path = ledger_path.with_name(f"{ledger_path.name}.{namespace}.{safe_id}.lock")
         self.timeout_seconds = timeout_seconds
         self._fd: int | None = None
 

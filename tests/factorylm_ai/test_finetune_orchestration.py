@@ -292,6 +292,14 @@ def _trusted_ledger(
     return ledger
 
 
+def _ledger_rows(ledger: PaidAuthorizationLedger) -> list[dict[str, Any]]:
+    return [
+        json.loads(line)
+        for line in ledger.path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
 def _endpoint_payload() -> dict[str, Any]:
     return {
         "model": "factorylm/technician-v0",
@@ -582,6 +590,115 @@ def test_trusted_authorization_ledger_concurrent_consumers_allow_exactly_one(
 
     assert results.count(True) == 1
     assert results.count(False) == 1
+
+
+def test_trusted_authorization_id_cannot_be_reauthorized_after_consumption(
+    tmp_path: Path,
+) -> None:
+    request = _canonical_request()
+    auth = _authorization(request_hash=request.request_hash)
+    ledger = _trusted_ledger(tmp_path, auth)
+    ledger.verify_and_consume(
+        auth,
+        request=request,
+        provider="together",
+        action=ACTION_CREATE_FINETUNE_JOB,
+        max_approved_cost=5.0,
+        currency="USD",
+        consumer_ref="test:first",
+        now="2026-07-23T00:00:00+00:00",
+    )
+
+    with pytest.raises(PaidAuthorizationRejected, match="already consumed"):
+        ledger.record_authorized(auth)
+    with pytest.raises(PaidAuthorizationRejected, match="already consumed"):
+        ledger.verify_and_consume(
+            auth,
+            request=request,
+            provider="together",
+            action=ACTION_CREATE_FINETUNE_JOB,
+            max_approved_cost=5.0,
+            currency="USD",
+            consumer_ref="test:reuse",
+            now="2026-07-23T00:00:00+00:00",
+        )
+
+
+def test_trusted_authorization_id_cannot_be_reauthorized_after_revocation(
+    tmp_path: Path,
+) -> None:
+    request = _canonical_request()
+    auth = _authorization(request_hash=request.request_hash)
+    ledger = _trusted_ledger(tmp_path, auth)
+    ledger.record_revoked(auth.authorization_id, reason="operator cancelled")
+
+    with pytest.raises(PaidAuthorizationRejected, match="revoked"):
+        ledger.record_authorized(auth)
+    with pytest.raises(PaidAuthorizationRejected, match="revoked"):
+        ledger.verify_and_consume(
+            auth,
+            request=request,
+            provider="together",
+            action=ACTION_CREATE_FINETUNE_JOB,
+            max_approved_cost=5.0,
+            currency="USD",
+            consumer_ref="test:revoked",
+            now="2026-07-23T00:00:00+00:00",
+        )
+
+
+def test_trusted_authorization_duplicate_id_with_modified_receipt_is_rejected(
+    tmp_path: Path,
+) -> None:
+    request = _canonical_request()
+    auth = _authorization(request_hash=request.request_hash)
+    ledger = _trusted_ledger(tmp_path, auth)
+    modified = _authorization(
+        authorization_id=auth.authorization_id,
+        request_hash=request.request_hash,
+        receipt_ref="s3://receipts/modified-paid-auth.json",
+    )
+
+    with pytest.raises(PaidAuthorizationRejected, match="trusted receipt mismatch"):
+        ledger.record_authorized(modified)
+
+
+def test_trusted_authorization_exact_duplicate_issuance_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    request = _canonical_request()
+    auth = _authorization(request_hash=request.request_hash)
+    ledger = _trusted_ledger(tmp_path, auth)
+
+    ledger.record_authorized(auth)
+
+    rows = _ledger_rows(ledger)
+    assert [row["event"] for row in rows] == ["authorized"]
+
+
+def test_trusted_authorization_concurrent_writes_preserve_jsonl_records(
+    tmp_path: Path,
+) -> None:
+    request = _canonical_request()
+    ledger = PaidAuthorizationLedger(path=tmp_path / "paid-authorizations.jsonl")
+    authorizations = [
+        _authorization(
+            authorization_id=f"auth-{idx}",
+            request_hash=request.request_hash,
+            receipt_ref=f"s3://receipts/auth-{idx}.json",
+        )
+        for idx in range(40)
+    ]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(ledger.record_authorized, authorizations))
+
+    rows = _ledger_rows(ledger)
+    assert len(rows) == len(authorizations)
+    assert {row["authorization_id"] for row in rows} == {
+        auth.authorization_id for auth in authorizations
+    }
+    assert all(row["event"] == "authorized" for row in rows)
 
 
 async def test_create_finetune_job_requires_paid_authorization_before_http(

@@ -33,4 +33,9 @@ Paid Together actions require:
 - atomic single-use consumption before the paid HTTP request;
 - append-only audit evidence with no secret material.
 
+Authorization IDs are never reused for new approvals. Persisting the exact same
+active authorization receipt again is an idempotent no-op for retry safety; a
+changed receipt or any reauthorization attempt after `consumed` or `revoked` is
+rejected and must use a new `authorization_id`.
+
 If the trusted verifier or ledger is unavailable, the action fails closed.
