@@ -1,186 +1,69 @@
-# MIRA Beta Readiness — Audit Lenses
+# MIRA Beta Readiness — Audit Lenses (compact scorecard)
 
-**Updated:** 2026-06-09 (autonomous BRAVO session)
-**Gate:** A stranger uploads their own equipment manual, asks a real troubleshooting
-question, and gets a grounded answer with citations from that manual — with zero
-manual fixing. Tracked by `tests/beta/beta_ready_upload_retrieval_citation.py`
-(xfail, env-driven) and `docs/plans/2026-06-07-path-to-beta.md`.
+**Updated:** 2026-06-17 (D9 run — Lens D eval & test health).
 
-Each lens is **RED** (gate flow broken) / **YELLOW** (works, rough edges) /
-**GREEN** (solid). Findings carry `[severity]` and `[beta-path: yes/no]`. Every
-non-obvious claim was corroborated against current `main` — false positives are
-called out explicitly, because an audit that ships unverified findings is worse
-than no audit.
+**Gate:** a stranger signs up on app.factorylm.com, uses MIRA's grounded chat, and nothing
+breaks, leaks, or lies. Literal test: `tests/beta/beta_ready_upload_retrieval_citation.py`
+— **xfail REMOVED 2026-06-17 (#2077); now a real assertion, ran GREEN end-to-end, CI-enforced
+by `.github/workflows/beta-gate.yml`** (staging Neon, real stranger provisioning) +
+`docs/plans/2026-06-07-path-to-beta.md`.
 
----
+**Beta-readiness == production == `origin/main`.** Every lens audits `origin/main`, not the
+working tree. ⚠️ This run: freshness-guard exit 3 (STALE) — HEAD `feat/hub-e2e-ci` is **7
+commits behind** origin/main @14fe2732 and `tests/` DIFFERS from the tree, so the Lens D audit
+read `git show origin/main:…` (deploy truth), not the working tree. origin/main unchanged since
+C9 this morning (same @14fe2732). Findings below are vs origin/main.
 
-## Lens A — The gate path itself: **GREEN (code-complete), env-gated to flip the test**
-
-The literal gate test is `xfail(strict=True)` and **environment-driven**: it
-flips green only when an operator points `BETA_GATE_UPLOAD_URL` /
-`BETA_GATE_CHAT_URL` / `BETA_GATE_TENANT` / `BETA_GATE_API_KEY` at a **dev or
-staging** surface (never prod) and the gap is closed. Without that env it records
-the expected xfail. So "flip the gate green" is **not autonomously achievable** —
-it needs operator-provisioned dev/staging endpoints + secrets.
-
-What an autonomous session *can* prove — and did — is that the **code path is
-complete end-to-end**:
-
-| Stage | Symbol | File:line | Verified |
-|---|---|---|---|
-| Upload (node-attach door) | `POST /api/namespace/node/[id]/files` → `ingestPdfToNode` | `mira-hub/src/lib/node-knowledge-ingest.ts:60` | ✅ writes `knowledge_entries` `ingest_route='v2'`, `metadata.node_id`, generated `content_tsv` (lines 105–130) |
-| Retrieval (read side) | `retrieveNodeChunks` | `mira-hub/src/lib/manual-rag.ts:154` | ✅ `SELECT … FROM knowledge_entries WHERE ingest_route='v2' AND metadata->>'node_id' = ANY(...)` BM25 ranked |
-| Citation | `buildGroundedContext` / `appendManualContext` | `mira-hub/src/lib/manual-rag.ts:194` | ✅ numbers chunks `[n]` for the model to cite |
-| Wiring | NodeChat route calls retrieve + append | `mira-hub/src/app/api/namespace/node/[id]/chat/route.ts:262,284` | ✅ |
-
-**Write side and read side match** (`ingest_route='v2'` + `metadata.node_id` on
-both). PR #1592 (`folder = brain`) closed the node-attach door; PR #1807
-(`lane/upload-retrieval-gate`, open) hardens natural-question BM25 + makes the
-gate harness speak NodeChat.
-
-**Owed to operator to actually flip the gate test:**
-1. A dev/staging Hub URL with the node-attach upload + NodeChat reachable.
-2. `BETA_GATE_*` env vars (upload URL, chat URL, tenant uuid, api key) set against it.
-3. Then run `pytest tests/beta/beta_ready_upload_retrieval_citation.py -v` — when it
-   PASSES, the strict-xfail flips the suite RED, which is the signal to remove the
-   marker and declare the gate met.
-
----
-
-## Lens B — Hub functional readiness (#1825): **YELLOW**
-
-Gate flow exists and is wired (signup → onboarding wizard → node create → attach
-PDF → NodeChat cited answer). Blockers are build/dependency state and one
-governance pattern, **not** gate logic.
-
-| Sev | Beta-path | Finding | File:line | Note / fix |
+| Lens | Status | Last audited | Top finding (1 line) | Next action (1 line) |
 |---|---|---|---|---|
-| P1 | no | ADR-0017 not honored: proposal decision does raw `UPDATE … SET status` / `SET approval_state` instead of a `proposal-transition` helper (which doesn't exist yet) | `mira-hub/src/app/api/proposals/[id]/decide/route.ts:92–100,136–144` | Real debt. Needs the helper built first (`mira-hub/lib/proposal-transition.ts`) — that's a **decision + build**, not a 1-line fix. Log, don't rush. |
-| P2 | no | Health/readiness endpoint recomputes per request (no cache) | `mira-hub/src/app/api/readiness/route.ts` | Fine for beta demo; cache later. |
-| P3 | no | `tsc --noEmit` shows ~60 errors, **mostly Next.js auto-generated `.next/.../validator.ts` internal-type noise**; a couple real (`withTenantContext` callback generic typing in node `files/route.ts`) | `mira-hub/.next/...`, `files/route.ts:57,123,159` | Largely build-state, not regressions. `skipLibCheck` / `npm run build` in CI is the real signal. |
+| **A** Hub security & auth | 🟢 GREEN | 2026-06-16 (A9) | 13 hub/web commits since A8, 0 new unguarded route, 0 weakened auth; only new external script-src origin = www.dropbox.com (Chooser triad behind nonce) | Keep Dropbox-only; no CDN-wildcard creep in `buildCsp`. |
+| **B** Hub functional readiness | 🟡 YELLOW *(was GREEN @B8)* | 2026-06-17 (B9) | **P1 LEAK (beta-path):** `/api/knowledge/search` (#2044) reads `knowledge_entries` with no `is_private`/tenant filter → any tenant can full-text-search another tenant's private uploaded manuals (#1833 class). ADR-0017 clean; tsc clean. | Ship staged patch `patches/2026-06-17-B9-knowledge-search-isprivate-leak.patch` (adds `AND is_private = false` to both queries) via PR off main. |
+| **C** Engine integrity | 🟢 GREEN | 2026-06-17 (C9) | NOT frozen this cycle: 2 commits since C8 — #2045 troubleshooting-session lifecycle (FIRST new engine NeonDB **write** surface) + #2075 PF-shorthand RAG expansion — both invariant-safe; all 5 invariants re-verified intact; new write path lands **tenant-safe** (explicit `AND tenant_id=CAST(:tenant_id AS UUID)` on every UPDATE + RLS dual-setting matched to mig-019 policy + fail-open + no read surface) → no write-leak | Re-verify after any `engine.py`/`troubleshooting_session.py` change; confirm nightly KG ingests the new write surface (absent @14fe2732 graph). |
+| **D** Eval & test health | 🟡 YELLOW *(held, strengthened)* | 2026-06-17 (D9) | **HEADLINE:** #2077 flipped the literal North Star release gate `xfail→enforced` + it RAN GREEN end-to-end (stranger uploaded fixture manual via real `/files/` door → `[1]`-cited "GS10 oC = overcurrent", zero manual fixing) + CI-enforced by `beta-gate.yml` on **staging Neon** → **closes D8 blocker #3**. Still YELLOW: offline scorecard slipped 50/57→**49/57** (hot.md eval-fixer 2026-06-17, +1 ground-fault KB miss; 0 beta-critical fails) + #1858 vendor-strip replay seam still INERT (store `.gitignore:241` unrecorded, **6-cycle** founder carry). | Founder records replay store (6-cycle carry) OR ship D8 `replay-gate-require-both-stores` patch (re-verified `--check` clean); make `beta-gate.yml` cover engine-side citation paths (path-filter excludes `mira-bots/shared/`). |
+| **E** Promotion pipeline | 🟢 GREEN | 2026-06-15 (E8) | Staging real (compose + `@MiraStaging_bot`); deploy-vps double-gated (staging-gate + smoke); migration head 053; #1970 version counter + rollback checkpoint | Make `version-gate.yml` a required branch-protection check; clear E-lens doc-drift. |
+| **F** Beta-blocker ledger | 🟢 GREEN | 2026-06-15 (F8) | North Star YES on deploy truth; #1901 onboarding upload→ask gate merged + staging usable; sharpest residual = that gate has **NO CI regression test** (onboarding-validate config gates 0 workflows) | Wire onboarding-validate into deploy-blocking smoke (`patches/2026-06-15-F8-wire-onboarding-validate-ci.md`). |
 
-**Corrected false alarms (verified against main):**
-- ❌ "missing `unpdf` module / build fails" — **local `node_modules` state**, not a
-  code bug. `npm ci` resolves. The package-lock sync is owned by PR #1820 / #1855.
-- ❌ "onboarding wizard endpoints not found / progress not persisted" — **they
-  exist**: `mira-hub/src/app/api/wizard/[step]/route.ts` (the `[step]` dynamic
-  segment handles `company`/`site`/`line`/`finish`); onboarding page GETs saved
-  state (`page.tsx:59`) and POSTs each step (`:91`) + finish (`:110`). Persistence
-  is wired. Not a blocker.
-
----
-
-## Lens C — Engine integrity (#1826): **GREEN on citation + gate enforcement**
-
-The two "citation bypass" P1s flagged by the first-pass audit are **false
-positives** — refuted by the engine's central enforcement architecture.
-
-**The H4 citation enforcer is a central wrapper, not a per-branch call.**
-`process()` runs:
-```
-result = await process_full(...)             # ALL FSM branches return reply into result["reply"]
-reply  = await _apply_quality_gate(..., result["reply"], ...)   # engine.py:1190
-reply  = await _enforce_citation_rewrite(reply, ...)            # engine.py:1201 (#1659, merged PR #1840)
-reply  = enforce_citation_or_gap_admission(reply)              # engine.py:1209  ← every reply passes here
-```
-ELECTRICAL_PRINT (`engine.py:2249`) and session-followup (`engine.py:3430`) return
-their reply **into `result["reply"]` inside `process_full`**, which then flows
-through 1190→1209. The `_check_citation_compliance()` calls at 2593/3423 are
-*additional observational logging* inside those branches — not the enforcement
-point the first-pass audit mistook them for.
-
-**Production confirmation:** the only direct `process_full()` callers are tests;
-every adapter (`mira-pipeline/main.py:659`, `mira-pipeline/ignition_chat.py:481`)
-calls `engine.process()` → the 1209 enforcer. So **every production reply is
-citation-enforced**.
-
-| Sev | Beta-path | Finding | File:line | Verdict |
-|---|---|---|---|---|
-| — | — | ELECTRICAL_PRINT "uncited bypass" | `engine.py:2249` | **FALSE POSITIVE** — flows through central enforcer at 1209 |
-| — | — | session-followup "missing H4" | `engine.py:3430` | **FALSE POSITIVE** — flows through central enforcer at 1209 |
-| P3 | no | Engine doesn't itself reject a `source="direct_connection"` turn lacking a `uns_path` — rejection lives at the `ignition_chat.py` endpoint (PR #1844) | `engine.py:5361–5404` | Real but **not yet needed**: Ignition (only live direct surface) rejects at the endpoint. A *new* direct surface must carry its own reject. Defensive engine-level guard is a nice-to-have, not a blocker. |
-
-UNS chat-gate correctly fires (confidence>0, `_should_fire_uns_gate`) and correctly
-skips for `source="direct_connection"` (`engine.py:5396`). Groundedness scoring +
-low-groundedness episode tracking intact on the RAG path.
+**Overall:** 4 GREEN / 2 YELLOW (unchanged counts — D held YELLOW). **North Star event:** D9
+found the literal beta-readiness gate flipped from `xfail` to an **enforced assertion that ran
+GREEN end-to-end** (#2077) and is now a real CI job (`beta-gate.yml`, staging Neon, real stranger
+provisioning + cleanup) — the central "can a stranger upload→ask→get a cited answer" claim is
+now machine-proven on every beta-chain PR + weekly, not just asserted. D stays YELLOW because
+that flip touches neither YELLOW reason: the offline scorecard slipped 1 (50→49/57, 0
+beta-critical) and the #1858 vendor-strip replay seam is still inert. The #1 blocker remains the
+B9 `/api/knowledge/search` cross-tenant READ leak (#2044) — patch staged, unmerged.
 
 ---
 
-## Lens D — Eval & test health (#1827): **YELLOW — safety is clean; FSM/retrieval eval cluster needs live-key verification**
+## Top 3 beta blockers right now
 
-**Premise correction (eval health is NOT declining):** the issue cites a single
-"46/57 (81%)". In reality the offline scorecard **oscillates 38–50/57 across
-recent nights** under live-inference variance — it is not a fixed number:
-- 2026-06-08 → **50/57** (`tests/eval/runs/2026-06-08T0229-offline-text.md`, per #1788)
-- 2026-06-09 → **48/57** (latest reported; `2026-06-09T0045-offline-text.md`, per #1843)
-- 2026-06-04 → 38/57 (`2026-06-04T1221-offline-text.md`, the low end)
+1. **[P1 LEAK · beta-path] `/api/knowledge/search` cross-tenant content leak.** Behind
+   `sessionOr401` but ignores `ctx.tenantId`; both BM25 + ILIKE queries hit `knowledge_entries`
+   with no `is_private` filter, returning `content` snippets across the hybrid corpus →
+   leaks other tenants' private uploaded-manual snippets/titles/source_urls. Reachable from the
+   `(hub)/knowledge/manuals` UI. **Next:** `git checkout -b fix/knowledge-search-isprivate-leak
+   origin/main && git apply -p1 wiki/orchestrator/patches/2026-06-17-B9-knowledge-search-isprivate-leak.patch`
+   (verified `--check` clean), add tenant-isolation route test, PR.
+2. **[P2 · beta-path · NARROWED] Onboarding *UI walkthrough* still has 0 CI coverage.** The
+   upload→ask→cite **functional chain** is now CI-covered by `beta-gate.yml` (#2077) — but the
+   `onboarding-validate`/`onboarding-walkthrough`/`command-center` Playwright configs still gate
+   **0 workflows on origin/main**; the `hub-e2e.yml` that would wire them is untracked
+   `feat/hub-e2e-ci` WIP, not merged (the very branch this audit's HEAD sits on — do not trust the
+   working tree). **Next:** ship `patches/2026-06-15-F8-wire-onboarding-validate-ci.md` or merge
+   `hub-e2e.yml` so the onboarding UI flow regresses in CI, not just the chain.
+3. **[P2 · eval] #1858 vendor-strip (`cp_citation_vendor_relevance`) is the one diagnostic
+   invariant with no operable PR-time CI guard.** `eval-replay-gate.yml` single-file `hashFiles`
+   skips because the replay store is `.gitignore`'d/unrecorded (`.gitignore:241`) → 6-cycle
+   founder carry; offline scorecard also slipped 50→49/57 (a 2nd ground-fault KB miss, 0
+   beta-critical). **Next (operator):** record the replay store (D4 runbook) — OR ship
+   `patches/2026-06-15-D8-replay-gate-require-both-stores.patch` (re-verified `--check` clean).
 
-So the **latest reported pass rate is 48/57** — ~the same band as the issue's 46/57,
-i.e. normal oscillation, **not a regression**. (Local `main` tree only has runs
-through 2026-06-04 committed; the 06-08/06-09 numbers are the authoritative ones in
-#1788/#1843.)
+**Closed since C9:** ~~[P1 · gate] Literal gate test can't flip without dev/staging env~~ —
+**CLOSED 2026-06-17 (#2077)**: `beta-gate.yml` builds a Hub on staging Neon, provisions a real
+stranger, runs the gate with `BETA_GATE_*` set, and it ran GREEN end-to-end. The old operator
+step is now an automated CI job (Mon cron + dispatch + beta-chain PRs).
 
-**Safety-keyword question — ANSWERED: no real gap.** The "4 safety failures" from
-the adversarial-review triage were **LLM-router false positives** (the
-`conversation_router.safety_concern` path firing `SAFETY_ALERT` on fixtures with no
-safety keywords), **not** missed escalations. Already fixed (commits f59bce64 /
-e97fa8b3, merged 2026-06-09). The deterministic detector is sound:
-- `tests/test_safety_coverage.py` — **94/94 pass** (all SAFETY_KEYWORDS + educational-bypass + hot-work + routine-non-safety).
-- `mira-bots/tests/test_conversation_router_sanitize.py` — router PII-sanitizes before POST.
-
-| Cluster | Count | Beta-blocking | Example fixtures |
-|---|---|---|---|
-| FSM stuck at `AWAITING_UNS_CONFIRMATION` | ~5–13 | **yes** (gate-adjacent) | `vague_opener_05`, `asset_change_08`, `abbreviation_heavy_10` |
-| Manual-doc retrieval stuck in `ASSET_IDENTIFIED` (no doc + no IDLE) | ~5 | **yes** | `vfd_danfoss_02_aqua_drive_manual`, `vfd_siemens_02_micromaster_manual` |
-| Vendor/model keyword miss in final reply | ~8 | **yes** (citation-adjacent) | `yaskawa_out_of_kb_04`, `danfoss` (missing `FC 202`) |
-| Stale fixture assertions / classifier variance | ~4 | no | `pf520_hw_overcurrent_17` (forbidden-kw), `yaskawa_a1000_ov_23` |
-
-**Why these aren't clean autonomous fixes:** the failures are **stochastic**
-(50–67% oscillation under live inference) and require an offline-eval run **with
-live provider keys** to verify any fix doesn't regress the rest. Per
-`.claude/rules/session-discipline.md §2` (regression-recheck) and
-`debugging-conventions.md`, claiming a fix without a full before/after eval run
-would be evidence-free. These are **operator/daytime work with the eval harness**,
-not a one-shot autonomous PR. Recommend: triage `vfd_danfoss_02` / `micromaster`
-(manual-doc-stuck) first — that cluster is closest to the gate.
-
----
-
-## Lens F — Beta-blocker ledger (#1829): ranked top blockers
-
-Each has an exact next action. "Owned" = an open PR or session already on it.
-
-| # | Blocker | Sev | Next action (exact) | Owner |
-|---|---|---|---|---|
-| 1 | Gate test can't be flipped without dev/staging env | P0* | Provision dev/staging Hub + set `BETA_GATE_*`, run the gate test | **operator** (env/secrets) |
-| 2 | E2E smoke red on main (`npm ci` package-lock `mnemonist`) | P0 | Merge **PR #1855** (`fix/ci-smoke-bun-install`) + **#1820** (lockfile sync) | owned (#1855/#1820) |
-| 3 | Natural-question BM25 retrieval hardening + gate harness speaks NodeChat | P1 | Review/merge **PR #1807** (`lane/upload-retrieval-gate`) | owned (#1807) |
-| 4 | Eval: manual-doc retrieval stuck (`ASSET_IDENTIFIED`, no doc/IDLE) | P1 | Repro `vfd_danfoss_02_aqua_drive_manual` with live keys; fix doc-fetch→IDLE transition; full eval re-run | daytime + eval harness |
-| 5 | Eval: FSM stuck at `AWAITING_UNS_CONFIRMATION` (~5 cases) | P1 | Repro `vague_opener_05`; check confirmation routing/fallback; full eval re-run | daytime + eval harness |
-| 6 | Blind upload doors still OW-KB-only (#1806) | P1 | **Design decision** (wire-to-v2-via-inbox-node vs deprecate) — see #1806 | **operator decision** |
-| 7 | ADR-0017 proposal-transition helper missing; raw `UPDATE SET status` | P2 | Build `mira-hub/lib/proposal-transition.ts`, refactor `proposals/[id]/decide` | decision + build |
-| 8 | `test_photo_query_embeds_with_asset_context` red on main (#1786 re-regressed) | P2 | Re-fix the photo-embed asset-context fallback | unowned (separate issue) |
-| 9 | Engine-level direct-connection reject guard (defense-in-depth) | P3 | Add `uns_required` reject in engine when `source=direct_connection` & no `uns_path` | nice-to-have |
-| 10 | #961 P0 500 on `GET /api/uploads/` | P3 | **Stale** — handler now exists (401/503/200, not 500). Recommend close-with-evidence | recommend close |
-
-`P0*` = release-gating but operator-only (not a code fix).
-
----
-
-## What this session changed
-
-- Verified the gate code path is complete end-to-end (Lens A).
-- Refuted two engine "citation bypass" P1s as false positives (Lens C) — saved an
-  unnecessary edit to the most sensitive shared module.
-- Corrected the scorecard premise: eval health oscillates 38–50/57 (latest
-  reported 48/57, 2026-06-09) — **not declining**; and spot-confirmed safety has
-  **no real gap** (`tests/test_safety_coverage.py` 94/94; fix commits
-  f59bce64/e97fa8b3 verified to exist) (Lens D).
-- Confirmed onboarding persistence + the blind-door reality (#1806 needs a
-  decision, not a wire).
-- Produced this ledger (Lens F).
-
-No engine/RAG/classifier code was changed — the audits surfaced no clean,
-offline-verifiable, surgical beta-path fix that isn't already owned by an open PR,
-a design decision, or a live-eval task. That is the honest outcome; the durable
-deliverable is this readiness map.
+## Standing (non-stranger-reachable, tracked)
+- Canary reverse-drift: `proposal_state_drift.sql` has only 2 forward-only checks; terminal-vs-stale-pending
+  drift uncovered (**7-cycle stall**; staged `patches/2026-06-10-canary-reverse-drift-check.patch`).
+- tsc nit: 2 stale `@ts-expect-error` (TS2578) in `rls-deny.integration.test.ts:55`,
+  `sitemap-drift.test.ts:3` — would fail a strict `tsc`/`next build`; 2-line removal, test-only P3.

@@ -1,0 +1,18 @@
+--- a/mira-hub/src/app/api/knowledge/search/route.ts
++++ b/mira-hub/src/app/api/knowledge/search/route.ts
+@@ -65,6 +65,7 @@
+          ts_rank_cd(content_tsv, plainto_tsquery('english', $1)) AS rank
+        FROM knowledge_entries
+        WHERE content_tsv @@ plainto_tsquery('english', $1)
++         AND is_private = false
+        ORDER BY source_url, rank DESC
+        LIMIT $2`,
+       [q, limit],
+@@ -99,6 +100,7 @@
+            OR model_number ILIKE $1
+            OR metadata->>'title' ILIKE $1
+          )
++           AND is_private = false
+          ORDER BY source_url
+          LIMIT $2`,
+         [`%${q}%`, remaining * 3],

@@ -111,6 +111,13 @@ MQTT path is emit-only (no subscriber = foreign-feed gap). Live values already c
 
 # Hot Cache — 2026-06-12 — PLC laptop
 
+## eval-fixer run — 2026-06-17
+- Scorecard: 49/57 passing (86%) — 8 failures across 3 file clusters
+- Action: issue-filed (autopatch skipped — multi-file clusters)
+- Pattern A (6 fixtures, engine.py): FSM over-qualification — engine not advancing Q1→Q2→DIAGNOSIS with sufficient detail; also `self_critique_34` IDLE regression
+- Pattern B (2 fixtures, guardrails.py+prompts): Ground fault KB miss — GS3 PROCEED unlock broken + PF525 F13 RAG timeout
+- Commented on rolling tracker #1876
+
 ## Session — 2026-06-13 (Trends V2 layer-1 CORRECTED — built on the REAL Prog_init)
 
 **Mike caught a version mismatch mid-walkthrough; verified against the live CCW project.**
