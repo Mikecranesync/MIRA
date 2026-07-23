@@ -1,4 +1,4 @@
-python-telegram-bot==21.*
+python-telegram-bot==22.*
 httpx==0.28.*
 Pillow>=12.2.0
 pytesseract>=0.3.13
