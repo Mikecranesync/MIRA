@@ -1,3 +1,7 @@
+### v3.210.3 (2026-07-23) - fix(dataset): derive trainable-source representation from records, not a cached field (PR 3)
+
+Follow-up to the v3.210.2 adversarial-review fixes, from a merge-readiness re-review of finding 1. The `trainable_source_representation` check trusted `DatasetV0.source_systems` (a cached field), so a hand-built `DatasetV0` could set `source_systems={"printsense","drive_commander"}` while every eligible record was PrintSense and still get `PAID_GATE_PASS` — the same "a source is represented without an eligible record for it" hole finding 1 flagged, via a cached field instead of a rejected record. The gate now **derives** the trainable sources from the eligible records themselves (`{r.source_system for r in dataset.eligible}`) — the same re-derive-from-records discipline already used by `all_records_dataset_eligible` — and the `evidence.eligible_source_systems` report reflects the derived set. Pure hardening: identical behavior for any assembled `DatasetV0` (where the field already equals the derived set), strictly safer for hand-built ones. No threshold changed. +1 regression test (`test_source_representation_ignores_cached_source_systems_field`); full `factorylm_ai` suite **464 green**; ruff + Pyright clean.
+
 ### v3.210.2 (2026-07-23) - fix(dataset): close paid-gate false-passes from adversarial review (PR 3)
 
 Four adversarial-review findings against `db91d398`, two of them reproduced false-passes. All hermetic ($0); gate stays evidence-only; each fix has a regression test that first reproduced the hole.

@@ -433,6 +433,37 @@ def test_source_representation_not_satisfied_by_rejected_drive_commander() -> No
     assert not report.passed and "trainable_source_representation" in report.blocking
 
 
+def test_source_representation_ignores_cached_source_systems_field() -> None:
+    # ADVERSARIAL FINDING 1 (hand-built bypass): the gate must DERIVE trainable sources from the
+    # eligible records, never trust a cached DatasetV0.source_systems that could be faked. Here
+    # every eligible record is PrintSense but the cached field claims drive_commander too.
+    docs = _train_docs(20)
+    recs: list[DatasetRecord] = []
+    idx = 0
+    for doc in docs:
+        for _ in range(6):
+            recs.append(
+                _eligible_record(
+                    doc=doc,
+                    rid=f"r-{idx}",
+                    interaction_type="uncertainty" if idx < 24 else None,
+                    tags=(SAFETY_SENSITIVE_TAG,) if idx < 18 else (),
+                )
+            )
+            idx += 1
+    ds = DatasetV0(
+        dataset_version="v0",
+        eligible=recs,
+        rejected=[],
+        manifest={},
+        source_systems={"printsense", "drive_commander"},  # a lie — no eligible DC record exists
+    )
+    assert {r.source_system for r in ds.eligible} == {"printsense"}
+    report = evaluate_paid_gate(ds, **_pass_kwargs())
+    assert not report.passed and "trainable_source_representation" in report.blocking
+    assert report.to_dict()["evidence"]["eligible_source_systems"] == ["printsense"]
+
+
 def test_paid_gate_blocks_when_frozen_benchmark_baseline_missing() -> None:
     ds = _passing_dataset()
     report = evaluate_paid_gate(

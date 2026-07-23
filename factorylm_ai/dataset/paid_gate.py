@@ -297,8 +297,11 @@ def evaluate_paid_gate(
         )
     )
 
-    # 9. Trainable source representation — measured over the ELIGIBLE set only.
-    present = dataset.source_systems
+    # 9. Trainable source representation — DERIVED from the eligible records themselves, never
+    # the cached `dataset.source_systems` field (a hand-built DatasetV0 could set that field to
+    # claim a source its eligible set does not actually contain). Same re-derive-from-records
+    # discipline as `all_records_dataset_eligible` above.
+    present = {r.source_system for r in dataset.eligible}
     missing_required = sorted(REQUIRED_TRAINABLE_SOURCES - present)
     checks.append(
         GateCheck(
@@ -378,7 +381,7 @@ def evaluate_paid_gate(
         "frozen_benchmark_baseline_ref": readiness.frozen_benchmark_baseline_ref,
         "synthetic_composition_report_ref": readiness.synthetic_composition_report_ref,
         "base_vs_tools_benchmark_ref": readiness.base_vs_tools_benchmark_ref,
-        "eligible_source_systems": sorted(dataset.source_systems),
+        "eligible_source_systems": sorted(present),
         "est_cost_usd": round(est, 4),
         "model_support": model_support.to_dict() if model_support is not None else None,
     }
