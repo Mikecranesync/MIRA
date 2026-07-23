@@ -25,6 +25,8 @@ servers:
       tenant:
         default: acme
         description: Customer subdomain
+  - url: https://sandbox.factorylm.com/api/v1
+    description: Shared sandbox tenant (test keys, mira_test_…; data reset nightly)
 security:
   - bearerAuth: []
 tags:
@@ -57,6 +59,10 @@ tags:
   - name: Customer Settings
   - name: Auth
     description: SSO via SAML + OIDC + SCIM (MIRA differentiator)
+  - name: Knowledge Graph
+    description: Unified Namespace, KG entities/relationships, evidence-backed AI proposals, readiness (MIRA differentiator)
+  - name: Ingest
+    description: Public ingest substrate — documents, photos, CMMS records, SCADA/historian time-series
   - name: Feedback
 
 paths:
@@ -233,12 +239,172 @@ paths:
   /feedback:
     post: { tags: [Feedback] }
 
+  # ── Chat & diagnostics (mira-pipeline surface) ──────────────────────────────
+  /chat:
+    post:
+      tags: [Chat]
+      summary: Grounded maintenance chat (tenant-scoped, BYO-LLM)
+      description: |
+        General (non-asset-scoped) grounded chat. Every answer is grounded in the
+        tenant's UNS / manuals / work-order history and carries `[Source: ...]`
+        citations. Set `stream: true` for an SSE token stream.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ChatRequest" } } }
+      responses:
+        "200":
+          description: SSE stream (stream=true) or JSON (stream=false)
+          content:
+            text/event-stream: {}
+            application/json: { schema: { $ref: "#/components/schemas/ChatResponse" } }
+  /chat/completions:
+    post:
+      tags: [Chat]
+      summary: OpenAI-compatible chat completions
+      description: |
+        Drop-in `/v1/chat/completions` compatible endpoint. Point any OpenAI SDK
+        at `https://{tenant}.factorylm.com/api/v1` with a MIRA key as the API key.
+        MIRA grounds the completion in the tenant's maintenance context and appends
+        citations. `model` selects the backing LLM (BYO-LLM cascade).
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/OpenAIChatRequest" } } }
+      responses:
+        "200":
+          description: Chat completion (OpenAI shape); SSE deltas when stream=true
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/OpenAIChatResponse" } }
+            text/event-stream: {}
+  /models:
+    get:
+      tags: [Chat]
+      summary: List available models (OpenAI-compatible)
+      responses: { "200": { description: OK } }
+  /knowledge/search:
+    get:
+      tags: [Knowledge Graph]
+      summary: BM25 + semantic search over the tenant knowledge base
+      parameters:
+        - { name: q,        in: query, required: true, schema: { type: string } }
+        - { name: assetId,  in: query, schema: { type: string } }
+        - { name: faultCode, in: query, schema: { type: string } }
+        - { name: limit,    in: query, schema: { type: integer, default: 10, maximum: 50 } }
+      responses: { "200": { description: Ranked chunks with source citations } }
+
+  # ── Unified Namespace + Knowledge Graph (MIRA differentiator) ───────────────
+  /namespace/tree:
+    get:
+      tags: [Knowledge Graph]
+      summary: Browse the enterprise UNS as a nested tree
+      parameters:
+        - { name: root,          in: query, schema: { type: string, example: "enterprise.acme.packaging" } }
+        - { name: depth,         in: query, schema: { type: integer, default: 3 } }
+        - { name: kind,          in: query, schema: { type: string } }
+        - { name: approvalState, in: query, schema: { type: string, enum: [proposed, verified, rejected, needs_review] } }
+      responses: { "200": { description: UNS tree } }
+  /namespace/nodes/{unsPath}:
+    parameters: [{ name: unsPath, in: path, required: true, schema: { type: string }, description: "ltree dot-path, e.g. enterprise.acme.packaging.line3.cv_101" }]
+    get: { tags: [Knowledge Graph], summary: Resolve one UNS node + its relationships, responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/NotFound" } } }
+  /kg/entities:
+    get:
+      tags: [Knowledge Graph]
+      summary: List knowledge-graph entities (kg_entities)
+      parameters:
+        - { name: kind,          in: query, schema: { type: string } }
+        - { name: approvalState, in: query, schema: { type: string, enum: [proposed, verified, rejected, needs_review] } }
+        - { name: limit,  in: query, schema: { type: integer, default: 50, maximum: 500 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses: { "200": { description: Paginated entities } }
+  /kg/relationships:
+    get:
+      tags: [Knowledge Graph]
+      summary: List evidence-backed relationships (kg_relationships)
+      parameters:
+        - { name: sourceId, in: query, schema: { type: string } }
+        - { name: targetId, in: query, schema: { type: string } }
+        - { name: relationshipType, in: query, schema: { type: string } }
+        - { name: approvalState, in: query, schema: { type: string, enum: [proposed, verified, rejected, needs_review] } }
+      responses: { "200": { description: Paginated relationships } }
+  /kg/proposals:
+    get:
+      tags: [Knowledge Graph]
+      summary: "List pending AI suggestions (ai_suggestions; 6 suggestion_type values)"
+      description: "For suggestion_type=kg_edge the payload embeds the backing relationship_proposals + relationship_evidence rows."
+      parameters:
+        - { name: suggestionType, in: query, schema: { type: string, enum: [kg_entity, kg_edge, doc_link, fault_code, pm_schedule, parts_list] } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, accepted, rejected] } }
+      responses: { "200": { description: Paginated AISuggestions } }
+  /kg/proposals/{id}/decide:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [Knowledge Graph]
+      summary: "Approve or reject an AI suggestion (ADMIN only — never auto-verified)"
+      description: |
+        Promotion `proposed → verified` is an explicit admin/technician action,
+        routed through the ADR-0017 status-transition helper. Returns 403 for a
+        non-admin caller and 409 if the suggestion was already decided.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [decision], properties: { decision: { type: string, enum: [approve, reject] }, note: { type: string } } } } }
+      responses: { "200": { description: Decided }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { description: Already decided } }
+  /readiness:
+    get: { tags: [Knowledge Graph], summary: Namespace readiness levels + score, responses: { "200": { description: OK } } }
+  /readiness/recalculate:
+    post: { tags: [Knowledge Graph], summary: Recalculate readiness for a subtree (async), responses: { "202": { description: Accepted } } }
+
+  # ── Public Ingest API ("Twilio for maintenance data") ───────────────────────
+  /ingest/documents:
+    post:
+      tags: [Ingest]
+      summary: Ingest a manual / PDF (multipart). Chunked, UNS-tagged, deduped, citable.
+      parameters: [{ name: Idempotency-Key, in: header, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary }, assetTag: { type: string }, unsPath: { type: string } } } } }
+      responses: { "202": { description: "Ingest job queued", content: { application/json: { schema: { $ref: "#/components/schemas/IngestJob" } } } } }
+  /ingest/documents/url:
+    post: { tags: [Ingest], summary: Ingest a document by URL, responses: { "202": { description: Queued } } }
+  /ingest/photos:
+    post: { tags: [Ingest], summary: Ingest equipment photo(s), responses: { "202": { description: Queued } } }
+  /ingest/cmms:
+    post: { tags: [Ingest], summary: Bulk push CMMS records (assets / work orders / fault events), responses: { "202": { description: Queued } } }
+  /ingest/timeseries:
+    post: { tags: [Ingest], summary: Push SCADA/historian readings (VQT batch), responses: { "202": { description: Queued } } }
+  /ingest/jobs:
+    get: { tags: [Ingest], summary: List ingest jobs, responses: { "200": { description: OK } } }
+  /ingest/jobs/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [Ingest], summary: Get ingest job status, responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/IngestJob" } } } }, "404": { $ref: "#/components/responses/NotFound" } } }
+
+  # ── Sensors: telemetry ingest (FFT lives above under Sensors tag) ───────────
+  /sensors/{id}/readings:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [Sensors], summary: Batch-ingest time-series readings, responses: { "202": { description: Accepted } } }
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: "Opaque string — see Authentication"
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Key lacks the required scope/role (e.g. read-only key on a write, or non-admin decide)
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Resource not found (or not visible to this tenant)
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    ValidationError:
+      description: Request body failed validation
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    RateLimited:
+      description: Rate limit exceeded — see the Retry-After header
+      headers:
+        Retry-After: { schema: { type: integer }, description: Seconds to wait }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
     Asset:
       type: object
@@ -310,6 +476,9 @@ components:
       type: object
       properties:
         content: { type: string }
+        citations:
+          type: array
+          items: { type: object, properties: { label: { type: string }, sourceUrl: { type: string }, page: { type: integer, nullable: true } } }
         usage:
           type: object
           properties:
@@ -318,3 +487,68 @@ components:
             totalTokens:  { type: integer }
             model:        { type: string }
             costUsd:      { type: number }
+    OpenAIChatRequest:
+      type: object
+      required: [model, messages]
+      description: OpenAI chat-completions-compatible request.
+      properties:
+        model:    { type: string, example: "mira-grounded" }
+        messages:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role:    { type: string, enum: [system, user, assistant] }
+              content: { type: string }
+        stream:      { type: boolean, default: false }
+        temperature: { type: number, default: 0.2 }
+    OpenAIChatResponse:
+      type: object
+      description: OpenAI chat-completions-compatible response (non-streaming).
+      properties:
+        id:      { type: string }
+        object:  { type: string, example: "chat.completion" }
+        created: { type: integer }
+        model:   { type: string }
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:         { type: integer }
+              message:       { type: object, properties: { role: { type: string }, content: { type: string } } }
+              finish_reason: { type: string }
+        usage:
+          type: object
+          properties:
+            prompt_tokens:     { type: integer }
+            completion_tokens: { type: integer }
+            total_tokens:      { type: integer }
+    IngestJob:
+      type: object
+      required: [id, kind, status, createdAt]
+      properties:
+        id:         { type: string }
+        kind:       { type: string, enum: [document, photo, cmms, timeseries] }
+        status:     { type: string, enum: [queued, processing, indexed, failed] }
+        sourceUrl:  { type: string, nullable: true }
+        unsPath:    { type: string, nullable: true }
+        chunkCount: { type: integer, nullable: true }
+        accepted:   { type: integer, nullable: true }
+        rejected:   { type: integer, nullable: true }
+        error:      { type: string, nullable: true }
+        createdAt:  { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      description: Standard error envelope returned by every 4xx/5xx response.
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:      { type: string, example: "validation_error", description: "Stable machine-readable code — see errors.md" }
+            message:   { type: string, example: "field 'manufacturer' is required" }
+            requestId: { type: string, description: "Echo of the X-Request-Id header for support" }
+            details:   { type: array, items: { type: object }, description: "Per-field validation details, when applicable" }

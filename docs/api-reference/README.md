@@ -118,28 +118,42 @@ Common codes:
 
 ---
 
-## Resource index
+## The four surfaces
 
-| Resource | Mirrors f7i.ai endpoint? | Status | Page |
-|---|---|---|---|
-| [Assets](./assets.md) | yes — plus nested hierarchy | in progress | ✅ drafted |
-| [Components](./components.md) | yes | planned | |
-| [Work Orders](./work-orders.md) | yes — plus sub-resources | in progress | ✅ drafted |
-| [PM Procedures](./pms.md) | yes — safety-first | planned | |
-| [Maintenance Strategies](./maintenance-strategies.md) | yes — 7 types | planned | |
-| [Failure Codes](./failure-codes.md) | **ISO 14224-aligned** (their edge → ours) | planned | |
-| [Parts & Inventory](./inventory.md) | yes — ABC/XYZ | planned | |
-| [Purchase Orders](./purchase-orders.md) | yes — threshold approvals | planned | |
-| [External Events](./external-events.md) | yes — SCADA/ERP/MES/weather | planned | |
-| [Notifications](./notifications.md) | yes | planned | |
-| [Webhooks](./webhooks.md) | **NEW — they don't have this** | in progress | ✅ drafted |
-| [Sensors & FFT](./sensors.md) | yes — vibration peak detection | planned | |
-| [Documents](./documents.md) | yes | planned | |
-| [Chat](./chat.md) | **streaming + BYO-LLM (their chat is GET-only)** | in progress | ✅ drafted |
-| [Templates](./templates.md) | yes — open YAML catalog | planned | |
-| [Customer Settings](./customer-settings.md) | yes | planned | |
-| [Auth (SSO/SAML/OIDC)](./auth.md) | **NEW — they don't have SSO** | planned | |
-| [Feedback](./feedback.md) | yes | planned | |
+The public API spans four surfaces, all tenant-scoped and behind the same API key:
+
+| Surface | What it is | Where |
+|---|---|---|
+| **REST** | The resource API below — assets, work orders, PMs, parts, the knowledge graph. | `https://{tenant}.factorylm.com/api/v1` |
+| **Chat** | Grounded maintenance chat, incl. an **OpenAI-compatible** `/chat/completions`. | [Chat](./chat.md) |
+| **Ingest** | Push documents, photos, CMMS records, and SCADA time-series in. | [Ingest](./ingest.md) |
+| **MCP** | The same API exposed as Model Context Protocol tools for AI agents. | [MCP Tools](./mcp.md) |
+
+`openapi.yaml` in this directory is the **single source of truth**; every page below is generated from / kept in sync with it.
+
+## Guides
+
+- [Getting started](./getting-started.md) — your first authenticated request in 5 minutes
+- [Authentication](#authentication) · [Errors](./errors.md) · [Pagination](#pagination) · [Rate limits](#rate-limits) · [Versioning](#versioning)
+- [SDKs & client libraries](./sdks.md) — TypeScript (`@factorylm/mira-sdk`) + Python (`mira`)
+- [Webhooks](./webhooks.md) — outbound events + signature verification
+- [Changelog](./changelog.md)
+
+## Resource reference
+
+| Resource | Notes | Page |
+|---|---|---|
+| Assets & components | Unbounded `Site → Area → Asset → Component` hierarchy | [assets.md](./assets.md) ✅ |
+| Work Orders | 7-state lifecycle + safety gate | [work-orders.md](./work-orders.md) ✅ |
+| PM Procedures | Calendar / meter / condition triggers, safety-first | [pm-procedures.md](./pm-procedures.md) ✅ |
+| Parts, Inventory & POs | ABC/XYZ, multi-vendor, threshold approvals | [parts-inventory.md](./parts-inventory.md) ✅ |
+| Failure Codes | ISO 14224-aligned taxonomy | [failure-codes.md](./failure-codes.md) ✅ |
+| Sensors & FFT | Telemetry + vibration peak classification | [sensors.md](./sensors.md) ✅ |
+| Knowledge Graph & UNS | Namespace, entities, evidence-backed AI proposals, readiness | [knowledge-graph.md](./knowledge-graph.md) ✅ |
+| Chat | Streaming + BYO-LLM + OpenAI-compatible | [chat.md](./chat.md) ✅ |
+| Ingest | Documents / photos / CMMS / time-series | [ingest.md](./ingest.md) ✅ |
+| MCP tools | Agent-native access to the surface above | [mcp.md](./mcp.md) ✅ |
+| Maintenance Strategies · External Events · Notifications · Documents · Templates · Customer Settings · Auth (SAML/OIDC/SCIM) · Feedback | Long-tail resources | Specified in [`openapi.yaml`](./openapi.yaml) |
 
 ---
 
