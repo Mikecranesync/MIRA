@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import time
 from collections.abc import Awaitable, Callable
@@ -36,9 +37,16 @@ from ..budget import BudgetGuard
 from ..finetune import (
     ACTION_CREATE_FINETUNE_JOB,
     ACTION_TEMPORARY_ENDPOINT_BENCHMARK,
+    DEFAULT_CURRENCY,
+    DEFAULT_TOGETHER_PROVIDER,
     FineTuneApprovalEvidence,
+    PaidAuthorizationRejected,
+    PaidAuthorizationUnavailable,
+    PaidAuthorizationVerifier,
     PaidEventAuthorization,
     TogetherPriceEstimate,
+    canonical_finetune_request,
+    canonical_paid_action_request_hash,
 )
 from ..pricing import estimate_cost, estimate_finetune_cost
 from ..provider_registry import PROVIDERS as _REGISTRY
@@ -100,6 +108,7 @@ def _require_paid_event_authorization(
     action: str,
     dataset_manifest_hash: str,
     model: str,
+    request_hash: str,
     spend_cap_usd: float,
 ) -> None:
     auth = _extract_authorization(evidence)
@@ -109,10 +118,13 @@ def _require_paid_event_authorization(
             "A metered fine-tune or temporary endpoint requires Mike's explicit approval receipt."
         )
     blockers = auth.blockers_for(
+        provider=DEFAULT_TOGETHER_PROVIDER,
         action=action,
         dataset_manifest_hash=dataset_manifest_hash,
         model=model,
+        request_hash=request_hash,
         spend_cap_usd=spend_cap_usd,
+        currency=DEFAULT_CURRENCY,
     )
     if blockers:
         raise PaidEventNotAuthorized(
@@ -123,6 +135,7 @@ def _require_paid_event_authorization(
 def _require_finetune_approval(
     evidence: FineTuneApprovalEvidence | None,
     *,
+    request: Any,
     dataset_manifest_hash: str,
     model: str,
     spend_cap_usd: float,
@@ -138,6 +151,7 @@ def _require_finetune_approval(
         action=ACTION_CREATE_FINETUNE_JOB,
         dataset_manifest_hash=dataset_manifest_hash,
         model=model,
+        request=request,
         spend_cap_usd=spend_cap_usd,
         local_estimate_usd=local_estimate_usd,
         local_training_tokens=local_training_tokens,
@@ -148,6 +162,56 @@ def _require_finetune_approval(
             "together create_finetune_job refused: incomplete fine-tune approval evidence: "
             f"{', '.join(blockers)}"
         )
+
+
+def _consume_paid_event_authorization(
+    evidence: FineTuneApprovalEvidence | PaidEventAuthorization | None,
+    *,
+    authorization_verifier: PaidAuthorizationVerifier | None,
+    request: Any | None = None,
+    request_hash: str | None = None,
+    action: str,
+    dataset_manifest_hash: str,
+    model: str,
+    spend_cap_usd: float,
+    consumer_ref: str,
+) -> dict[str, Any]:
+    expected_hash = request.request_hash if request is not None else request_hash
+    if not expected_hash:
+        raise PaidEventNotAuthorized(f"{action} refused: missing canonical request hash")
+    _require_paid_event_authorization(
+        evidence,
+        action=action,
+        dataset_manifest_hash=dataset_manifest_hash,
+        model=model,
+        request_hash=expected_hash,
+        spend_cap_usd=spend_cap_usd,
+    )
+    if authorization_verifier is None:
+        raise PaidEventNotAuthorized(
+            f"{action} refused: missing trusted paid-authorization verifier"
+        )
+    auth = _extract_authorization(evidence)
+    if auth is None:
+        raise PaidEventNotAuthorized(f"{action} refused: missing paid authorization")
+    try:
+        state = authorization_verifier.verify_and_consume(
+            auth,
+            request=request,
+            request_hash=expected_hash,
+            provider=DEFAULT_TOGETHER_PROVIDER,
+            action=action,
+            max_approved_cost=spend_cap_usd,
+            currency=DEFAULT_CURRENCY,
+            consumer_ref=consumer_ref,
+        )
+    except PaidAuthorizationUnavailable as exc:
+        raise PaidEventNotAuthorized(
+            f"{action} refused: authorization verifier unavailable: {exc}"
+        ) from exc
+    except PaidAuthorizationRejected as exc:
+        raise PaidEventNotAuthorized(f"{action} refused: {exc}") from exc
+    return state.to_dict()
 
 
 def _network_allowed() -> bool:
@@ -376,12 +440,21 @@ async def _http_get_bytes(
     return resp.content
 
 
-async def _http_delete(endpoint: str, api_key: str, timeout: float) -> None:
+async def _http_delete(
+    endpoint: str,
+    api_key: str,
+    timeout: float,
+    *,
+    absent_ok: bool = False,
+) -> int:
     url = f"{_BASE_URL}{endpoint}"
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.delete(url, headers={"Authorization": f"Bearer {api_key}"})
+    if absent_ok and resp.status_code == 404:
+        return resp.status_code
     if resp.status_code >= 400:
         raise _build_http_error(endpoint, resp)
+    return resp.status_code
 
 
 @dataclass(frozen=True)
@@ -714,6 +787,7 @@ async def create_finetune_job(
     est_training_tokens: int,
     dataset_manifest_hash: str | None = None,
     approval_evidence: FineTuneApprovalEvidence | None = None,
+    authorization_verifier: PaidAuthorizationVerifier | None = None,
     validation_file: str | None = None,
     est_validation_tokens: int = 0,
     n_epochs: int = 3,
@@ -769,9 +843,31 @@ async def create_finetune_job(
         n_evals=n_evals,
         method=training_method,
     )
+    canonical_request = canonical_finetune_request(
+        training_file_id=training_file_id,
+        validation_file=validation_file,
+        model=model,
+        suffix=suffix,
+        n_epochs=n_epochs,
+        n_evals=n_evals,
+        n_checkpoints=n_checkpoints,
+        seed=seed,
+        train_on_inputs=train_on_inputs,
+        packing=packing,
+        learning_rate=learning_rate,
+        lora_r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        lora_trainable_modules=lora_trainable_modules,
+        lora=lora,
+        training_method=training_method,
+    )
     together_est_usd = (
         approval_evidence.together_estimate.estimated_total_price
-        if approval_evidence is not None and approval_evidence.together_estimate is not None
+        if approval_evidence is not None
+        and approval_evidence.together_estimate is not None
+        and isinstance(approval_evidence.together_estimate.estimated_total_price, int | float)
+        and math.isfinite(float(approval_evidence.together_estimate.estimated_total_price))
         else est_usd
     )
     recorded_est_usd = max(est_usd, together_est_usd)
@@ -783,6 +879,7 @@ async def create_finetune_job(
         )
     _require_finetune_approval(
         approval_evidence,
+        request=canonical_request,
         dataset_manifest_hash=dataset_manifest_hash,
         model=model,
         spend_cap_usd=budget.cap_usd,
@@ -790,39 +887,17 @@ async def create_finetune_job(
         local_training_tokens=est_training_tokens,
         local_validation_tokens=est_validation_tokens,
     )
-    method_payload: dict[str, Any] = {"method": training_method}
-    if train_on_inputs is not None:
-        method_payload["train_on_inputs"] = train_on_inputs
-    type_payload: dict[str, Any] = {"type": "Lora" if lora else "Full"}
-    if lora:
-        if lora_r is not None:
-            type_payload["lora_r"] = lora_r
-        if lora_alpha is not None:
-            type_payload["lora_alpha"] = lora_alpha
-        if lora_dropout is not None:
-            type_payload["lora_dropout"] = lora_dropout
-        if lora_trainable_modules is not None:
-            type_payload["lora_trainable_modules"] = lora_trainable_modules
-
-    payload: dict[str, Any] = {
-        "training_file": training_file_id,
-        "model": model,
-        "n_epochs": n_epochs,
-        "n_evals": n_evals,
-        "suffix": suffix,
-        "training_method": method_payload,
-        "training_type": type_payload,
-    }
-    if validation_file is not None:
-        payload["validation_file"] = validation_file
-    if n_checkpoints is not None:
-        payload["n_checkpoints"] = n_checkpoints
-    if packing is not None:
-        payload["packing"] = packing
-    if learning_rate is not None:
-        payload["learning_rate"] = learning_rate
-    if seed is not None:
-        payload["random_seed"] = seed
+    _consume_paid_event_authorization(
+        approval_evidence,
+        authorization_verifier=authorization_verifier,
+        request=canonical_request,
+        action=ACTION_CREATE_FINETUNE_JOB,
+        dataset_manifest_hash=dataset_manifest_hash,
+        model=model,
+        spend_cap_usd=budget.cap_usd,
+        consumer_ref=f"fine-tune:{canonical_request.request_hash}",
+    )
+    payload = canonical_request.create_payload()
     data, _elapsed_ms = await _http_post_json(
         _FINETUNE_ENDPOINT, api_key, payload, _timeout_seconds()
     )
@@ -835,10 +910,19 @@ async def estimate_finetune_price(
     model: str,
     *,
     receipt_ref: str,
+    suffix: str | None = None,
     validation_file: str | None = None,
     n_epochs: int = 3,
     n_evals: int = 0,
+    n_checkpoints: int | None = None,
+    seed: int | None = None,
     train_on_inputs: bool | str | None = None,
+    packing: bool | None = None,
+    learning_rate: float | None = None,
+    lora_r: int | None = None,
+    lora_alpha: int | None = None,
+    lora_dropout: float | None = None,
+    lora_trainable_modules: str | None = None,
     lora: bool = True,
     training_method: str = "sft",
 ) -> TogetherPriceEstimate:
@@ -853,23 +937,36 @@ async def estimate_finetune_price(
             f"estimate_finetune_price: training_method must be 'sft' or 'dpo', got {training_method!r}"
         )
     api_key = _require_network()
-    method_payload: dict[str, Any] = {"method": training_method}
-    if train_on_inputs is not None:
-        method_payload["train_on_inputs"] = train_on_inputs
-    payload: dict[str, Any] = {
-        "training_file": training_file_id,
-        "model": model,
-        "n_epochs": n_epochs,
-        "n_evals": n_evals,
-        "training_method": method_payload,
-        "training_type": {"type": "Lora" if lora else "Full"},
-    }
-    if validation_file is not None:
-        payload["validation_file"] = validation_file
-    data, _elapsed_ms = await _http_post_json(
-        _FINETUNE_ESTIMATE_ENDPOINT, api_key, payload, _timeout_seconds()
+    canonical_request = canonical_finetune_request(
+        training_file_id=training_file_id,
+        validation_file=validation_file,
+        model=model,
+        suffix=suffix,
+        n_epochs=n_epochs,
+        n_evals=n_evals,
+        n_checkpoints=n_checkpoints,
+        seed=seed,
+        train_on_inputs=train_on_inputs,
+        packing=packing,
+        learning_rate=learning_rate,
+        lora_r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        lora_trainable_modules=lora_trainable_modules,
+        lora=lora,
+        training_method=training_method,
     )
-    return TogetherPriceEstimate.from_response(data, receipt_ref=receipt_ref)
+    data, _elapsed_ms = await _http_post_json(
+        _FINETUNE_ESTIMATE_ENDPOINT,
+        api_key,
+        canonical_request.estimate_payload(),
+        _timeout_seconds(),
+    )
+    return TogetherPriceEstimate.from_response(
+        data,
+        receipt_ref=receipt_ref,
+        request=canonical_request,
+    )
 
 
 async def get_finetune_job(job_id: str) -> dict[str, Any]:
@@ -936,10 +1033,15 @@ async def _get_dedicated_endpoint(endpoint_id: str) -> dict[str, Any]:
     return await _http_get_json(f"{_ENDPOINTS_ENDPOINT}/{endpoint_id}", api_key, _timeout_seconds())
 
 
-async def _delete_dedicated_endpoint(endpoint_id: str) -> None:
+async def _delete_dedicated_endpoint(endpoint_id: str) -> int:
     """Delete a dedicated endpoint to stop billing."""
     api_key = _require_network()
-    await _http_delete(f"{_ENDPOINTS_ENDPOINT}/{endpoint_id}", api_key, _timeout_seconds())
+    return await _http_delete(
+        f"{_ENDPOINTS_ENDPOINT}/{endpoint_id}",
+        api_key,
+        _timeout_seconds(),
+        absent_ok=True,
+    )
 
 
 def _endpoint_id(endpoint: dict[str, Any]) -> str:
@@ -995,8 +1097,9 @@ async def _delete_and_verify_endpoint(
     ledger: TogetherEndpointLeaseLedger,
 ) -> None:
     try:
-        await _delete_dedicated_endpoint(endpoint_id)
-        await _verify_dedicated_endpoint_deleted(endpoint_id)
+        delete_status = await _delete_dedicated_endpoint(endpoint_id)
+        if delete_status != 404:
+            await _verify_dedicated_endpoint_deleted(endpoint_id)
     except Exception as exc:
         ledger.record_delete_unverified(endpoint_id, str(exc))
         if isinstance(exc, EndpointCleanupError):
@@ -1005,6 +1108,17 @@ async def _delete_and_verify_endpoint(
             f"Together endpoint {endpoint_id!r} deletion not verified: {exc}"
         ) from exc
     ledger.record_deleted_verified(endpoint_id)
+
+
+async def _best_effort_delete_endpoint_without_ledger(endpoint_id: str) -> str:
+    try:
+        delete_status = await _delete_dedicated_endpoint(endpoint_id)
+        if delete_status == 404:
+            return "delete_status=404 already_absent"
+        await _verify_dedicated_endpoint_deleted(endpoint_id)
+        return f"delete_status={delete_status} verified_absent"
+    except Exception as exc:
+        return f"cleanup_failed={exc}"
 
 
 async def wait_for_dedicated_endpoint_ready(
@@ -1032,6 +1146,7 @@ async def run_temporary_endpoint_benchmark(
     est_endpoint_usd: float,
     dataset_manifest_hash: str | None = None,
     approval_evidence: FineTuneApprovalEvidence | PaidEventAuthorization | None = None,
+    authorization_verifier: PaidAuthorizationVerifier | None = None,
     endpoint_ledger_path: str | Path | None = None,
     poll_interval_seconds: float = 60.0,
     timeout_seconds: float = 600.0,
@@ -1051,25 +1166,42 @@ async def run_temporary_endpoint_benchmark(
             "together temporary endpoint benchmark refused: missing dataset_manifest_hash"
         )
     model = str(create_payload.get("model") or "")
-    _require_paid_event_authorization(
+    endpoint_request_hash = canonical_paid_action_request_hash(
+        provider=DEFAULT_TOGETHER_PROVIDER,
+        action=ACTION_TEMPORARY_ENDPOINT_BENCHMARK,
+        payload=create_payload,
+    )
+    _consume_paid_event_authorization(
         approval_evidence,
+        authorization_verifier=authorization_verifier,
+        request_hash=endpoint_request_hash,
         action=ACTION_TEMPORARY_ENDPOINT_BENCHMARK,
         dataset_manifest_hash=dataset_manifest_hash,
         model=model,
         spend_cap_usd=budget.cap_usd,
+        consumer_ref=f"temporary-endpoint:{endpoint_request_hash}",
     )
     auth = _extract_authorization(approval_evidence)
     ledger = TogetherEndpointLeaseLedger(endpoint_ledger_path)
     endpoint = await _create_dedicated_endpoint(create_payload)
     endpoint_id = _endpoint_id(endpoint)
     endpoint_name = _endpoint_name(endpoint)
-    ledger.record_created(
-        endpoint_id=endpoint_id,
-        endpoint_name=endpoint_name,
-        create_payload=create_payload,
-        authorization_id=auth.authorization_id if auth is not None else "",
-    )
+    try:
+        ledger.record_created(
+            endpoint_id=endpoint_id,
+            endpoint_name=endpoint_name,
+            create_payload=create_payload,
+            authorization_id=auth.authorization_id if auth is not None else "",
+        )
+    except Exception as ledger_exc:
+        cleanup_outcome = await _best_effort_delete_endpoint_without_ledger(endpoint_id)
+        raise EndpointCleanupError(
+            "Together endpoint lease record_created failed after endpoint creation; "
+            f"endpoint_id={endpoint_id!r}; original_error={ledger_exc}; "
+            f"cleanup_outcome={cleanup_outcome}"
+        ) from ledger_exc
     result: Any = None
+    original_exc: BaseException | None = None
     try:
         ready = await wait_for_dedicated_endpoint_ready(
             endpoint_id,
@@ -1078,9 +1210,19 @@ async def run_temporary_endpoint_benchmark(
         )
         endpoint_name = _endpoint_name(ready) or endpoint_name
         result = await benchmark(endpoint_name)
+    except BaseException as exc:
+        original_exc = exc
+        raise
     finally:
         try:
             await _delete_and_verify_endpoint(endpoint_id, ledger=ledger)
+        except Exception as cleanup_exc:
+            if original_exc is not None:
+                raise EndpointCleanupError(
+                    f"Together endpoint {endpoint_id!r} cleanup failed after original "
+                    f"error {original_exc!r}: {cleanup_exc}"
+                ) from original_exc
+            raise
         finally:
             budget.record(est_endpoint_usd)
     return TemporaryEndpointRun(

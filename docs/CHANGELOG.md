@@ -1,3 +1,15 @@
+### v3.211.2 (2026-07-23) - security(factorylm-ai): bind paid Together authorization to trusted request receipts
+
+Follow-up hardening for PR `#2881`. Pure code/tests/docs only: no Together call, no upload, no fine-tune job, no endpoint, no production deploy, no spend.
+
+- **Paid authorization is trusted and single-use.** Added an append-only `PaidAuthorizationLedger` with per-authorization file locks, trusted stored receipts, revocation, durable consumed events, and fail-closed verifier errors. `create_finetune_job` and temporary endpoint benchmarks now require successful atomic consumption before any paid Together HTTP request.
+- **Fine-tune estimates bind exact requests.** Added versioned canonical request JSON plus `sha256:` hashes covering training/validation file IDs, model, suffix, epochs/evals/checkpoints, seed, packing, learning rate, method, and LoRA/full training type. Together estimate receipts and paid authorizations must reference the same request hash.
+- **Endpoint cleanup is failure-safe.** If endpoint creation returns an id and lease persistence fails, the code immediately attempts best-effort deletion and raises with endpoint id plus cleanup outcome. DELETE `204` is success, DELETE `404` is accepted as already absent, and cleanup errors preserve original benchmark failures.
+- **Dry-run evidence is reviewable.** `FinetuneDryRunPreflight.to_dict()` now emits manifest/request hashes, paid-gate report, model/auth/estimate receipts, verification state, endpoint lifecycle plan, wire-verification reference, blockers/warnings, and explicit no-execution flags without leaking bearer/API-token material.
+- **Together policy exception is explicit.** Added `docs/zta/together-governed-cloud-exception.md` and linked it from the root cloud constraint.
+
+Regression coverage: trusted-ledger forged/unknown/expired/revoked/consumed/concurrent cases, request hash determinism and material-field invalidation, estimate/request mismatch, endpoint ledger-write cleanup, DELETE 204/404 handling, cleanup-error preservation, and dry-run evidence/no-secret/no-side-effect assertions.
+
 ### v3.211.1 (2026-07-23) - fix(factorylm-ai): harden paid Together execution gates
 
 Focused post-merge hardening for `#2879` + `#2880`. Pure code/tests/docs only: no Together call, no upload, no job, no endpoint, no production deploy, no spend.
