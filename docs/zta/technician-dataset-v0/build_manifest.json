@@ -1,8 +1,8 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
   "built_at": "2026-07-23T00:00:00Z",
-  "candidate_count": 140,
-  "candidate_manifest_sha256": "438376715d319acfedb986ae3693f5ef10773b53519b7273520ef5bb7af88f1c",
+  "candidate_count": 180,
+  "candidate_manifest_sha256": "2face5d13b65ed68dcaf1aea71db2fc7d7f1cea0b534fb1e95ca26f0004f674d",
   "dry_run": {
     "authorization_consumed": false,
     "deployment_occurred": false,
@@ -24,6 +24,7 @@
     "rejection_report": "docs\\zta\\technician-dataset-v0\\reports\\rejection_report.json",
     "review_cv101": "docs\\zta\\technician-dataset-v0\\review-packages\\cv101_review_package.md",
     "review_drive": "docs\\zta\\technician-dataset-v0\\review-packages\\drive_review_package.md",
+    "review_printsense": "docs\\zta\\technician-dataset-v0\\review-packages\\printsense_review_package.md",
     "rights_report": "docs\\zta\\technician-dataset-v0\\reports\\rights_report.json",
     "source_registry": "docs\\zta\\technician-dataset-v0\\source_registry.json"
   },

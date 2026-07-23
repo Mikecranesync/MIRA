@@ -70,7 +70,7 @@
   "build_id": "2026-07-23-technician-dataset-v0",
   "candidate_training_allowed_counts": {
     "false": 70,
-    "true": 70
+    "true": 110
   },
   "policy": "No candidate is trainable until the existing governance gate passes and Mike sets record-level gold/approval. OEM-derived Drive Commander packs remain training-blocked in this build.",
   "registry_source_count": 34,
