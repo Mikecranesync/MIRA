@@ -37,10 +37,12 @@ class RejectedRecord:
 class DatasetV0:
     """The assembled dataset: the eligible training records, the rejects, and the manifest.
 
-    ``source_systems`` is the set of corpus adapters the build *considered* (over every input
-    record, eligible or not) — readiness source-composition evidence. It defaults to an empty
-    set so a hand-built ``DatasetV0`` (e.g. in a test) is still constructible without it; a gate
-    fed such a dataset simply fails the source-representation check closed."""
+    ``source_systems`` is the set of corpus adapters present in the **eligible** (trainable) set
+    ONLY — a rejected record does NOT count toward source representation, or a rejected Drive
+    Commander record with unresolved rights could satisfy the trainable-source requirement while
+    the actual training set is all PrintSense. It defaults to an empty set so a hand-built
+    ``DatasetV0`` (e.g. in a test) is still constructible without it; a gate fed such a dataset
+    fails the source-representation check closed."""
 
     dataset_version: str
     eligible: list[DatasetRecord]
@@ -105,11 +107,11 @@ def assemble_dataset_v0(records: list[DatasetRecord], *, dataset_version: str = 
     rejected: list[RejectedRecord] = []
     source_systems: set[str] = set()
     for r in records:
-        source_systems.add(r.source_system)
         result = r.eligibility()
         approved = bool(r.approved_by)
         if result.eligible and approved:
             eligible.append(r)
+            source_systems.add(r.source_system)  # only trainable records count
             continue
         codes = list(result.codes)
         if not approved:
