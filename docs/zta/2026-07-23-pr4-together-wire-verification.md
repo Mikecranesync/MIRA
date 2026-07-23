@@ -33,10 +33,10 @@ Verified monitoring/checkpoint endpoints:
 Verified endpoint lifecycle:
 
 - Dedicated endpoints are billable while running.
-- A temporary benchmark path must be budget-prechecked, explicitly authorized, and delete the endpoint in `finally`.
-- PR 4 exposes only the budgeted temporary benchmark wrapper publicly; low-level endpoint create/get/delete helpers are private.
+- A temporary benchmark path must be budget-prechecked, carry durable paid-event authorization evidence, require `inactive_timeout`, persist the endpoint id immediately, delete the endpoint in `finally`, and verify deletion before reporting `deleted=True`.
+- PR 4 exposes only the budgeted temporary benchmark wrapper and idempotent orphan cleanup publicly; low-level endpoint create/get/delete helpers are private.
 
 Remaining live gate:
 
-- Before a real paid event, Mike must provide a `paid_event_authorization_ref`.
-- The dry-run package must include the dataset gate report, token/cost preflight, model-support evidence, and this wire-verification note.
+- Before a real paid event, Mike must provide durable `PaidEventAuthorization` evidence bound to the action, dataset manifest hash, model, spend cap, issuer, expiration, receipt, and unused single-use status.
+- The dry-run package must include the dataset gate PASS report, manifest hash, model-support receipt, authorization receipt, local token/cost preflight, Together `/fine-tunes/estimate-price` receipt, and this wire-verification note.

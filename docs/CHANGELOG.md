@@ -1,3 +1,16 @@
+### v3.211.1 (2026-07-23) - fix(factorylm-ai): harden paid Together execution gates
+
+Focused post-merge hardening for `#2879` + `#2880`. Pure code/tests/docs only: no Together call, no upload, no job, no endpoint, no production deploy, no spend.
+
+- **Paid authorization is durable evidence, not a string.** Fine-tune/job and endpoint paid paths now validate a `PaidEventAuthorization` receipt bound to action, dataset manifest, model, spend cap, Mike-issued provenance, expiration, and single-use status.
+- **Paid pricing is fixed policy.** Removed caller-controlled fine-tune rate overrides; SFT/DPO estimates use the reviewed module constants only.
+- **Dry-run approval requires the full package.** Upload/job readiness now blocks unless the dataset paid gate passed, manifest hash is present, model-support receipt is present, authorization receipt is present, local estimate exists, and Together `/fine-tunes/estimate-price` evidence is present and compatible.
+- **Budget alone no longer flips paid intent.** `would_upload` and `would_create_job` are true only when every typed blocker is absent.
+- **Endpoint cleanup is ledgered and verified.** Temporary endpoint runs require `inactive_timeout`, persist the endpoint id immediately, verify deletion before returning `deleted=True`, and expose idempotent orphan cleanup over the lease ledger.
+- **Local token counts are explicitly rough.** The JSONL counter now adds a safety factor over chars/4, and paid execution still requires Together's authoritative estimate.
+
+Regression coverage: adversarial tests for forged authorization, manipulated rates, incomplete evidence, estimate mismatch, deletion verification failure, and orphan recovery. Verification: full `tests/factorylm_ai` suite (`489 passed`), Ruff, and Pyright green.
+
 ### v3.211.0 (2026-07-23) - feat(factorylm-ai): governed Together orchestration dry-run preflight (PR 4)
 
 PR 4 of the technician-grounding LoRA program. Pure orchestration/control-plane code only: no upload, no network execution, no paid calls, no training job, no endpoint, no production deploy.
