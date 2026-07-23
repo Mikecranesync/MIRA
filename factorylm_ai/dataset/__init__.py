@@ -18,28 +18,37 @@ from __future__ import annotations
 from .assemble import DatasetV0, RejectedRecord, assemble_dataset_v0
 from .paid_gate import (
     COST_CAP_USD,
+    MIN_HELD_OUT_LINEAGES,
     MIN_LINEAGES,
     MIN_RECORDS,
+    MIN_SAFETY_SENSITIVE,
     MIN_VALUED_INTERACTIONS,
     GateCheck,
+    ModelSupportEvidence,
     PaidGateReport,
+    ReadinessEvidence,
     estimate_finetune_cost,
     evaluate_paid_gate,
 )
-from .record import VALUED_INTERACTION_TYPES, DatasetRecord
+from .record import SAFETY_SENSITIVE_TAG, VALUED_INTERACTION_TYPES, DatasetRecord
 
 __all__ = [
     "DatasetRecord",
     "VALUED_INTERACTION_TYPES",
+    "SAFETY_SENSITIVE_TAG",
     "DatasetV0",
     "RejectedRecord",
     "assemble_dataset_v0",
     "PaidGateReport",
     "GateCheck",
+    "ReadinessEvidence",
+    "ModelSupportEvidence",
     "evaluate_paid_gate",
     "estimate_finetune_cost",
     "MIN_RECORDS",
     "MIN_LINEAGES",
     "MIN_VALUED_INTERACTIONS",
+    "MIN_HELD_OUT_LINEAGES",
+    "MIN_SAFETY_SENSITIVE",
     "COST_CAP_USD",
 ]

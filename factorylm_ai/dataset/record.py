@@ -20,6 +20,11 @@ from factorylm_ai.governance import eligibility as el
 # — not just confident answers.
 VALUED_INTERACTION_TYPES: frozenset[str] = frozenset({"uncertainty", "refusal", "correction"})
 
+# An explicit tag marking a training example as safety-sensitive (LOTO / arc-flash / confined
+# space / energized work). The readiness gate counts these by this tag ONLY — never by
+# free-form inference over the message text, which would be unauditable.
+SAFETY_SENSITIVE_TAG = "safety-sensitive"
+
 
 @dataclass(frozen=True)
 class DatasetRecord:
@@ -41,6 +46,12 @@ class DatasetRecord:
         return self.candidate.record_id
 
     @property
+    def source_system(self) -> str:
+        """The corpus adapter this example came from (``printsense`` / ``drive_commander`` /
+        ``simlab`` / ``mira`` …) — used for readiness source-composition evidence."""
+        return self.candidate.source_system
+
+    @property
     def document_lineage_key(self) -> str | None:
         return self.candidate.document_lineage_key
 
@@ -53,6 +64,11 @@ class DatasetRecord:
 
     def is_valued_interaction(self) -> bool:
         return (self.interaction_type or "") in VALUED_INTERACTION_TYPES
+
+    def is_safety_sensitive(self) -> bool:
+        """Safety-sensitive only when explicitly tagged :data:`SAFETY_SENSITIVE_TAG` — the
+        readiness gate never infers this from free-form message text."""
+        return SAFETY_SENSITIVE_TAG in self.tags
 
     def content_hash(self) -> str:
         """A stable hash of the training content — the manifest's per-record content address
@@ -68,12 +84,19 @@ class DatasetRecord:
         return (chars + 3) // 4
 
     def to_manifest_entry(self) -> dict:
-        """The identity/governance fields the corpus manifest hashes over."""
+        """The identity/governance fields the corpus manifest hashes over.
+
+        ``content_hash`` is ALWAYS the hash of the training content (``messages``): the
+        manifest is a fingerprint of what would be trained on, so changed ``messages`` MUST
+        change the manifest even when the source's ``evidence_id`` is unchanged. The source
+        evidence id is kept separately (``source_evidence_id``) for provenance — it is NOT the
+        content address, because one source document can yield many distinct training examples."""
         return {
             "record_id": self.record_id,
             "document_lineage_key": self.document_lineage_key,
             "split": self.candidate.assigned_split(),
-            "content_hash": self.candidate.evidence_id or self.content_hash(),
+            "content_hash": self.content_hash(),
+            "source_evidence_id": self.candidate.evidence_id,
             "training_eligibility": self.eligibility().training_eligibility,
         }
 
