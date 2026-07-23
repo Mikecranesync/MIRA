@@ -1,0 +1,24 @@
+{
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "built_at": "2026-07-23T00:00:00Z",
+  "candidate_count": 0,
+  "candidate_manifest_sha256": "cfd060b6846643f200f6bb0f383502f84692b10b8137bdb36d8dd9047742c1f1",
+  "dry_run": {
+    "authorization_consumed": false,
+    "deployment_occurred": false,
+    "dry_run": true,
+    "endpoint_created": false,
+    "executed": false,
+    "fine_tune_job_created": false,
+    "spend_occurred": false,
+    "upload_occurred": false
+  },
+  "files": {
+    "inventory_report": "docs\\zta\\technician-dataset-v0\\inventory_report.md",
+    "lineage_plan": "docs\\zta\\technician-dataset-v0\\reports\\lineage_split_report.json",
+    "source_registry": "docs\\zta\\technician-dataset-v0\\source_registry.json"
+  },
+  "phase3_paid_gate_passed": false,
+  "phase3_paid_gate_verdict": "PAID_GATE_BLOCKED",
+  "schema": "factorylm.technician-dataset.build-manifest.v1"
+}
