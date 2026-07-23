@@ -1,0 +1,22 @@
+{
+  "base_only": {
+    "reason": "No paid or live model calls are allowed in this build.",
+    "status": "not_executed"
+  },
+  "base_plus_tools": {
+    "reason": "The review package provides deterministic answer keys; model benchmarking remains a later approved run.",
+    "status": "local_harness_placeholder",
+    "tool_sources": [
+      "machine-print-pack/examples/cv-101/data",
+      "tools/drive-pack-extract/gold"
+    ]
+  },
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "execution": "not_run_paid_or_live",
+  "frozen_case_refs": [
+    "docs/eval/print-translator-benchmark/BASELINE_A_FROZEN.md",
+    "docs/eval/visual-technician-corpus/README.md"
+  ],
+  "network_calls": false,
+  "schema": "factorylm.technician-dataset.base-vs-tools-benchmark.v1"
+}
