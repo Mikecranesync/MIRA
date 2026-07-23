@@ -617,6 +617,12 @@ def _build_uns_path(
         return None
 
     family = product_family
+    # The family-marker model fallback (see resolve_uns_path) can set model
+    # equal to the family token for openers like "GS20 OC". Both occupy
+    # distinct path slots, so without this guard the path doubles the segment
+    # (.../automationdirect/gs20/gs20/...). Drop the duplicate.
+    if model and family and model.lower() == family.lower():
+        model = None
     if fault_code:
         # fault_code_path handles the "no model" fallback internally
         return _uns.fault_code_path(manufacturer, fault_code, model=model, family=family)
@@ -860,6 +866,15 @@ def resolve_uns_path(
         # If the alias IS the manufacturer (e.g. "siemens"), no family. If
         # alias is a model token from FAMILY_FROM_ALIAS we already populated.
         product_family = None
+
+    # When the alias matched a family-marker (gs10, gs20, powerflex, micromaster,
+    # sinamics, fr-e/a/d/f, aqua drive) AND no separate model token was extracted,
+    # fall back to the family token as the model. The family token IS the model
+    # class for these aliases — without this, confidence stays at 0.5 (mfr only)
+    # and engine.py never sets state["asset_identified"], which loops the UNS
+    # Confirmation Gate on every turn. See #1572 cluster 1.
+    if model is None and family_token:
+        model = family_token
 
     uns_path = _build_uns_path(mfr, product_family, model, fault_code, category)
 
