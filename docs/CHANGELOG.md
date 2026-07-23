@@ -1,3 +1,15 @@
+### v3.210.4 (2026-07-23) - fix(dataset): reject invalid training examples and require auditable paid-gate evidence
+
+Post-merge hardening from the final adversarial review of `#2878`. Pure dataset/paid-gate code only: no network, no spend, no upload, no training.
+
+- **Training examples now require valid chat content.** `DatasetRecord` validates `messages` as a non-empty chat list with supported roles, non-empty string content, and at least one user + assistant message. `assemble_dataset_v0` rejects invalid examples with `MESSAGE_INVALID`, and `evaluate_paid_gate` re-checks `all_records_message_valid` so hand-built datasets cannot smuggle empty training rows into a PASS.
+- **Held-out readiness evidence blocks instead of crashing.** Invalid held-out lineage keys (empty strings, bare hashes, or malformed keys that make split assignment raise) now return a failed `min_held_out_lineages` check instead of raising out of the gate.
+- **Model-support evidence is stricter.** Target model/provider checks remain, and confirmations now require a non-future ISO `checked_at` plus a `receipt_ref` for the live-check artifact. Caller-built "supported" evidence without a receipt no longer passes.
+- **`DatasetV0.source_systems` is derived, not cached.** The constructor-settable source-system field is removed; the property always derives from eligible records, matching the paid gate's re-derive-from-records policy.
+- **Fixed policy estimator.** `estimate_finetune_cost` no longer exposes caller-overridable epochs/rate knobs; it uses the frozen module constants.
+
+Regression coverage: dataset tests 35 -> 42. Verification: `ruff check`, `ruff format --check`, Pyright on touched dataset files, focused dataset tests, and full `tests/factorylm_ai` suite (`471 passed`) are green.
+
 ### v3.210.3 (2026-07-23) - fix(dataset): derive trainable-source representation from records, not a cached field (PR 3)
 
 Follow-up to the v3.210.2 adversarial-review fixes, from a merge-readiness re-review of finding 1. The `trainable_source_representation` check trusted `DatasetV0.source_systems` (a cached field), so a hand-built `DatasetV0` could set `source_systems={"printsense","drive_commander"}` while every eligible record was PrintSense and still get `PAID_GATE_PASS` — the same "a source is represented without an eligible record for it" hole finding 1 flagged, via a cached field instead of a rejected record. The gate now **derives** the trainable sources from the eligible records themselves (`{r.source_system for r in dataset.eligible}`) — the same re-derive-from-records discipline already used by `all_records_dataset_eligible` — and the `evidence.eligible_source_systems` report reflects the derived set. Pure hardening: identical behavior for any assembled `DatasetV0` (where the field already equals the derived set), strictly safer for hand-built ones. No threshold changed. +1 regression test (`test_source_representation_ignores_cached_source_systems_field`); full `factorylm_ai` suite **464 green**; ruff + Pyright clean.
