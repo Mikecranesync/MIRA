@@ -1,0 +1,313 @@
+{
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "by_record": {
+    "techv0-cv101-001": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-002": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-003": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-004": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-005": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-006": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-007": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-008": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-009": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-010": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-011": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-012": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-013": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-014": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-015": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-016": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-017": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-018": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-019": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-020": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-021": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-022": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-023": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-024": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-025": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-026": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-027": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-028": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-029": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-030": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-031": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-032": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-033": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-034": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-035": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-036": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-037": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-038": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-039": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-040": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-041": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-042": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-043": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-044": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-045": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-046": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-047": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-048": [
+      "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-049": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-050": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-051": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-052": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-053": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-054": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-055": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-056": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-057": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-058": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-059": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-060": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-061": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-062": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-063": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-064": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-065": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-066": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-067": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-068": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-069": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ],
+    "techv0-cv101-070": [
+      "NOT_GOLD",
+      "APPROVAL_MISSING"
+    ]
+  },
+  "code_counts": {
+    "APPROVAL_MISSING": 70,
+    "NOT_GOLD": 70,
+    "SAFETY_REVIEW_REQUIRED": 20
+  },
+  "eligible_count": 0,
+  "rejected_count": 70,
+  "schema": "factorylm.technician-dataset.rejection-report.v1"
+}
