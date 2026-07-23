@@ -1,0 +1,477 @@
+{
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "candidate_training_lineage_count": 0,
+  "held_out_lineage_count": 5,
+  "held_out_lineages": [
+    "factorylm:cv-101-e-004",
+    "factorylm:factorylm-print-style-025",
+    "factorylm:public-domain-print-031",
+    "factorylm:technician-review-011",
+    "rockwell-automation:22b-um001j-en-e"
+  ],
+  "lineage_count": 32,
+  "lineages": {
+    "automationdirect:gs10-um": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED"
+      ],
+      "source_ids": [
+        "drive-durapulse_gs10"
+      ],
+      "source_systems": [
+        "drive_commander"
+      ],
+      "split": "train",
+      "target_record_count": 20
+    },
+    "factorylm:cv-101-e-001": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "cv101-e-001"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 8
+    },
+    "factorylm:cv-101-e-002": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "cv101-e-002"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "validation",
+      "target_record_count": 0
+    },
+    "factorylm:cv-101-e-003": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "cv101-e-003"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "test",
+      "target_record_count": 0
+    },
+    "factorylm:cv-101-e-004": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
+        "HELD_OUT_EVALUATION_ONLY"
+      ],
+      "source_ids": [
+        "cv101-e-004",
+        "heldout-01"
+      ],
+      "source_systems": [
+        "printsense",
+        "benchmark"
+      ],
+      "split": "held_out",
+      "target_record_count": 0
+    },
+    "factorylm:cv-101-e-005": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "cv101-e-005"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 14
+    },
+    "factorylm:cv-101-e-006": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "cv101-e-006"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 14
+    },
+    "factorylm:cv-101-e-007": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "cv101-e-007"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 12
+    },
+    "factorylm:cv-101-e-008": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "cv101-e-008"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 12
+    },
+    "factorylm:cv-101-e-009": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "cv101-e-009"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 10
+    },
+    "factorylm:factorylm-print-style-002": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-01"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 3
+    },
+    "factorylm:factorylm-print-style-004": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-02"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 3
+    },
+    "factorylm:factorylm-print-style-005": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-03"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 3
+    },
+    "factorylm:factorylm-print-style-006": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-04"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 3
+    },
+    "factorylm:factorylm-print-style-009": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-05"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 3
+    },
+    "factorylm:factorylm-print-style-010": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-06"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 3
+    },
+    "factorylm:factorylm-print-style-011": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-07"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-012": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-08"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-013": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-09"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-015": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-10"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-018": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-11"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-019": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-12"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-020": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-13"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-021": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-14"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-022": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-15"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-023": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-16"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-024": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+      ],
+      "source_ids": [
+        "printsense-owned-17"
+      ],
+      "source_systems": [
+        "printsense"
+      ],
+      "split": "train",
+      "target_record_count": 2
+    },
+    "factorylm:factorylm-print-style-025": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "HELD_OUT_EVALUATION_ONLY"
+      ],
+      "source_ids": [
+        "heldout-03"
+      ],
+      "source_systems": [
+        "benchmark"
+      ],
+      "split": "held_out",
+      "target_record_count": 0
+    },
+    "factorylm:public-domain-print-031": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "HELD_OUT_EVALUATION_ONLY"
+      ],
+      "source_ids": [
+        "heldout-04"
+      ],
+      "source_systems": [
+        "benchmark"
+      ],
+      "split": "held_out",
+      "target_record_count": 0
+    },
+    "factorylm:technician-review-011": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "HELD_OUT_EVALUATION_ONLY"
+      ],
+      "source_ids": [
+        "heldout-05"
+      ],
+      "source_systems": [
+        "benchmark"
+      ],
+      "split": "held_out",
+      "target_record_count": 0
+    },
+    "rockwell-automation:22b-um001j-en-e": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
+        "HELD_OUT_EVALUATION_ONLY"
+      ],
+      "source_ids": [
+        "drive-powerflex_40",
+        "heldout-02"
+      ],
+      "source_systems": [
+        "drive_commander",
+        "benchmark"
+      ],
+      "split": "held_out",
+      "target_record_count": 25
+    },
+    "rockwell-automation:520-um001o-en-e": {
+      "candidate_count": 0,
+      "rights_decisions": [
+        "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED"
+      ],
+      "source_ids": [
+        "drive-powerflex_525"
+      ],
+      "source_systems": [
+        "drive_commander"
+      ],
+      "split": "train",
+      "target_record_count": 25
+    }
+  },
+  "schema": "factorylm.technician-dataset.lineage-split-report.v1",
+  "split_counts": {
+    "held_out": 5,
+    "test": 1,
+    "train": 25,
+    "validation": 1
+  },
+  "training_lineages": []
+}
