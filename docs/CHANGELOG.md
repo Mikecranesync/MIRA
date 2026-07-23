@@ -1,3 +1,17 @@
+### v3.211.0 (2026-07-23) - feat(factorylm-ai): governed Together orchestration dry-run preflight (PR 4)
+
+PR 4 of the technician-grounding LoRA program. Pure orchestration/control-plane code only: no upload, no network execution, no paid calls, no training job, no endpoint, no production deploy.
+
+- **Dry-run preflight is turnkey.** New `factorylm_ai.finetune` counts local JSONL training/validation files with a conservative tokenizer-free estimate, calculates Together fine-tune spend across epochs/evals, checks a `BudgetGuard`, and emits a report that says whether upload/job creation would be allowed.
+- **Together fine-tune creation now has the Phase-4 knobs.** `create_finetune_job` accepts `validation_file`, eval/checkpoint counts, seed, packing, train-on-inputs, learning rate, and LoRA r/alpha/dropout/trainable modules, then builds the current Together `training_method`/`training_type` payload shape while preserving budget-precheck-before-network-gate behavior.
+- **Monitoring and checkpoint helpers are present.** Added events, checkpoints, and real checkpoint download helpers for `/fine-tunes/{id}/events`, `/fine-tunes/{id}/checkpoints`, and `/finetune/download`.
+- **Paid-event authorization is explicit.** Even with network enabled and a budget that passes, `create_finetune_job` and the temporary endpoint benchmark refuse without a `paid_event_authorization_ref`.
+- **Temporary endpoint lifecycle is fail-closed.** Added private create/get/delete endpoint helpers plus `run_temporary_endpoint_benchmark`, which prechecks endpoint budget, requires authorization, deletes the endpoint in `finally`, and records estimated exposure only after teardown is attempted.
+- **Adapter artifacts carry required job metadata.** `ZtaArtifact` now supports optional `metadata`, and adapter rows must include job id, base/output model, dataset version, manifest hash, and hyperparams without changing the human-only runtime promotion gate.
+- **Together wire shape is documented.** Added `docs/zta/2026-07-23-pr4-together-wire-verification.md` with the official endpoints and fields checked on 2026-07-23.
+
+Tests: +10 hermetic PR-4 tests; full `factorylm_ai` suite **474 green**; ruff + Pyright clean. The paid LoRA job remains blocked until the dry-run package is reviewed and Mike explicitly says go.
+
 ### v3.210.4 (2026-07-23) - fix(dataset): reject invalid training examples and require auditable paid-gate evidence
 
 Post-merge hardening from the final adversarial review of `#2878`. Pure dataset/paid-gate code only: no network, no spend, no upload, no training.

@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +55,7 @@ class ZtaArtifact:
     review_status: str  # draft | approved | rejected | superseded
     benchmark_status: str  # untested | pass | fail | regression
     runtime_allowed: bool
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class PromotionBlocked(Exception):
@@ -66,6 +67,27 @@ class PromotionBlocked(Exception):
 
 def _gates_pass(a: ZtaArtifact) -> bool:
     return a.review_status == _APPROVED_REVIEW and a.benchmark_status == _PASSED_BENCHMARK
+
+
+def _adapter_metadata_errors(a: ZtaArtifact) -> list[str]:
+    if a.artifact_type != "adapter":
+        return []
+    errors: list[str] = []
+    required_strings = (
+        "job_id",
+        "base_model",
+        "output_model",
+        "dataset_version",
+        "dataset_manifest_hash",
+    )
+    for key in required_strings:
+        if not isinstance(a.metadata.get(key), str) or not a.metadata.get(key):
+            errors.append(f"metadata.{key} must be a non-empty string")
+    if not isinstance(a.metadata.get("hyperparams"), dict):
+        errors.append("metadata.hyperparams must be an object")
+    if not a.source_file_hashes:
+        errors.append("source_file_hashes must include the dataset manifest hash")
+    return errors
 
 
 def _default_registry_path() -> Path:
@@ -86,6 +108,7 @@ def _from_record(record: dict[str, Any]) -> ZtaArtifact:
         review_status=record["review_status"],
         benchmark_status=record["benchmark_status"],
         runtime_allowed=record["runtime_allowed"],
+        metadata=dict(record.get("metadata") or {}),
     )
 
 
@@ -114,6 +137,12 @@ class ArtifactRegistry:
         if errors:
             raise SchemaError(
                 f"artifact {a.artifact_id!r} failed schema validation: {'; '.join(errors)}"
+            )
+        metadata_errors = _adapter_metadata_errors(a)
+        if metadata_errors:
+            raise SchemaError(
+                f"adapter metadata for {a.artifact_id!r} is incomplete: "
+                f"{'; '.join(metadata_errors)}"
             )
         if a.runtime_allowed and not _gates_pass(a):
             raise PromotionBlocked(
@@ -169,6 +198,12 @@ class ArtifactRegistry:
                 f"review_status={current.review_status!r} "
                 f"benchmark_status={current.benchmark_status!r} "
                 "(requires review_status='approved' AND benchmark_status='pass')"
+            )
+        metadata_errors = _adapter_metadata_errors(current)
+        if metadata_errors:
+            raise PromotionBlocked(
+                f"artifact {artifact_id!r} cannot be promoted: adapter metadata is incomplete: "
+                f"{'; '.join(metadata_errors)}"
             )
         promoted = replace(current, runtime_allowed=True)
         record = asdict(promoted)

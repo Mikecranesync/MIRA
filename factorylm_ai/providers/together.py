@@ -24,13 +24,15 @@ import json
 import logging
 import os
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from ..budget import BudgetGuard
-from ..pricing import FT_LORA_SFT_USD_PER_MTOK_LE16B, FT_MIN_JOB_USD, estimate_cost
+from ..pricing import FT_LORA_SFT_USD_PER_MTOK_LE16B, estimate_cost, estimate_finetune_cost
 from ..provider_registry import PROVIDERS as _REGISTRY
 from .base import (
     ModelProvider,
@@ -52,6 +54,8 @@ _EMBEDDINGS_ENDPOINT = "/embeddings"
 _RERANK_ENDPOINT = "/rerank"
 _FILES_ENDPOINT = "/files/upload"
 _FINETUNE_ENDPOINT = "/fine-tunes"
+_FINETUNE_DOWNLOAD_ENDPOINT = "/finetune/download"
+_ENDPOINTS_ENDPOINT = "/endpoints"
 
 # Defensive fallbacks only — in normal operation the tasks layer always
 # resolves `req.model` from TaskSpec.default_models["together"] before
@@ -61,6 +65,18 @@ _DEFAULT_EMBED_MODEL = "intfloat/multilingual-e5-large-instruct"
 
 _RETRY_CAP_SECONDS = 30.0
 _DEFAULT_RETRY_SECONDS = 5.0
+
+
+class PaidEventNotAuthorized(ProviderError):
+    """Raised when a billable Together operation lacks Mike's authorization ref."""
+
+
+def _require_paid_event_authorization(ref: str | None, *, action: str) -> None:
+    if not isinstance(ref, str) or not ref.strip():
+        raise PaidEventNotAuthorized(
+            f"{action} refused: missing paid_event_authorization_ref. "
+            "A metered fine-tune or temporary endpoint requires Mike's explicit approval."
+        )
 
 
 def _network_allowed() -> bool:
@@ -256,6 +272,53 @@ async def _http_post_json(
         data = resp.json()
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     return data, elapsed_ms
+
+
+async def _http_get_json(
+    endpoint: str,
+    api_key: str,
+    timeout: float,
+    *,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    url = f"{_BASE_URL}{endpoint}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"}, params=params)
+    if resp.status_code >= 400:
+        raise _build_http_error(endpoint, resp)
+    data = resp.json()
+    return data if isinstance(data, dict) else {}
+
+
+async def _http_get_bytes(
+    endpoint: str,
+    api_key: str,
+    timeout: float,
+    *,
+    params: dict[str, Any] | None = None,
+) -> bytes:
+    url = f"{_BASE_URL}{endpoint}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"}, params=params)
+    if resp.status_code >= 400:
+        raise _build_http_error(endpoint, resp)
+    return resp.content
+
+
+async def _http_delete(endpoint: str, api_key: str, timeout: float) -> None:
+    url = f"{_BASE_URL}{endpoint}"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.delete(url, headers={"Authorization": f"Bearer {api_key}"})
+    if resp.status_code >= 400:
+        raise _build_http_error(endpoint, resp)
+
+
+@dataclass(frozen=True)
+class TemporaryEndpointRun:
+    endpoint_id: str
+    endpoint_name: str
+    benchmark_result: Any
+    deleted: bool
 
 
 class TogetherProvider(ModelProvider):
@@ -473,7 +536,20 @@ async def create_finetune_job(
     suffix: str,
     budget: BudgetGuard,
     est_training_tokens: int,
+    paid_event_authorization_ref: str | None = None,
+    validation_file: str | None = None,
+    est_validation_tokens: int = 0,
     n_epochs: int = 3,
+    n_evals: int = 0,
+    n_checkpoints: int | None = None,
+    seed: int | None = None,
+    train_on_inputs: bool | str | None = None,
+    packing: bool | None = None,
+    learning_rate: float | None = None,
+    lora_r: int | None = None,
+    lora_alpha: int | None = None,
+    lora_dropout: float | None = None,
+    lora_trainable_modules: str | None = None,
     lora: bool = True,
     usd_per_mtok: float = FT_LORA_SFT_USD_PER_MTOK_LE16B,
     training_method: str = "sft",
@@ -515,21 +591,52 @@ async def create_finetune_job(
         raise ValueError(
             f"create_finetune_job: training_method must be 'sft' or 'dpo', got {training_method!r}"
         )
-    est_usd = max(
-        FT_MIN_JOB_USD,
-        (est_training_tokens * n_epochs / 1_000_000) * usd_per_mtok,
+    est_usd = estimate_finetune_cost(
+        training_tokens=est_training_tokens,
+        validation_tokens=est_validation_tokens,
+        epochs=n_epochs,
+        n_evals=n_evals,
+        usd_per_mtok=usd_per_mtok,
+        method=training_method,
     )
     budget.precheck(est_usd)
     api_key = _require_network()
+    _require_paid_event_authorization(
+        paid_event_authorization_ref, action="together create_finetune_job"
+    )
+    method_payload: dict[str, Any] = {"method": training_method}
+    if train_on_inputs is not None:
+        method_payload["train_on_inputs"] = train_on_inputs
+    type_payload: dict[str, Any] = {"type": "Lora" if lora else "Full"}
+    if lora:
+        if lora_r is not None:
+            type_payload["lora_r"] = lora_r
+        if lora_alpha is not None:
+            type_payload["lora_alpha"] = lora_alpha
+        if lora_dropout is not None:
+            type_payload["lora_dropout"] = lora_dropout
+        if lora_trainable_modules is not None:
+            type_payload["lora_trainable_modules"] = lora_trainable_modules
+
     payload: dict[str, Any] = {
         "training_file": training_file_id,
         "model": model,
         "n_epochs": n_epochs,
-        "lora": lora,
+        "n_evals": n_evals,
         "suffix": suffix,
-        "n_evals": 0,
-        "training_method": training_method,
+        "training_method": method_payload,
+        "training_type": type_payload,
     }
+    if validation_file is not None:
+        payload["validation_file"] = validation_file
+    if n_checkpoints is not None:
+        payload["n_checkpoints"] = n_checkpoints
+    if packing is not None:
+        payload["packing"] = packing
+    if learning_rate is not None:
+        payload["learning_rate"] = learning_rate
+    if seed is not None:
+        payload["random_seed"] = seed
     data, _elapsed_ms = await _http_post_json(
         _FINETUNE_ENDPOINT, api_key, payload, _timeout_seconds()
     )
@@ -540,12 +647,159 @@ async def create_finetune_job(
 async def get_finetune_job(job_id: str) -> dict[str, Any]:
     """Poll a fine-tune job's status. ``GET /fine-tunes/{job_id}``."""
     api_key = _require_network()
-    url = f"{_BASE_URL}{_FINETUNE_ENDPOINT}/{job_id}"
-    async with httpx.AsyncClient(timeout=_timeout_seconds()) as client:
-        resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
-    if resp.status_code >= 400:
-        raise _build_http_error(_FINETUNE_ENDPOINT, resp)
-    return resp.json()
+    return await _http_get_json(f"{_FINETUNE_ENDPOINT}/{job_id}", api_key, _timeout_seconds())
+
+
+async def get_finetune_events(job_id: str) -> dict[str, Any]:
+    """List a fine-tune job's events. ``GET /fine-tunes/{job_id}/events``."""
+    api_key = _require_network()
+    return await _http_get_json(
+        f"{_FINETUNE_ENDPOINT}/{job_id}/events", api_key, _timeout_seconds()
+    )
+
+
+async def list_finetune_checkpoints(job_id: str) -> dict[str, Any]:
+    """List a fine-tune job's checkpoints. ``GET /fine-tunes/{job_id}/checkpoints``."""
+    api_key = _require_network()
+    return await _http_get_json(
+        f"{_FINETUNE_ENDPOINT}/{job_id}/checkpoints", api_key, _timeout_seconds()
+    )
+
+
+async def download_finetune_checkpoint(
+    job_id: str,
+    out_path: str | Path,
+    *,
+    checkpoint: str = "adapter",
+    checkpoint_step: int | None = None,
+) -> Path:
+    """Download a completed fine-tune checkpoint to ``out_path``.
+
+    Uses Together's ``GET /finetune/download`` endpoint. ``checkpoint`` is
+    ignored by the API when ``checkpoint_step`` is supplied.
+    """
+    api_key = _require_network()
+    params: dict[str, Any] = {"ft_id": job_id}
+    if checkpoint_step is not None:
+        params["checkpoint_step"] = checkpoint_step
+    else:
+        params["checkpoint"] = checkpoint
+    content = await _http_get_bytes(
+        _FINETUNE_DOWNLOAD_ENDPOINT, api_key, _timeout_seconds(), params=params
+    )
+    p = Path(out_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(content)
+    return p
+
+
+async def _create_dedicated_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
+    """Create a dedicated endpoint. Behind the canonical network gate."""
+    api_key = _require_network()
+    data, _elapsed_ms = await _http_post_json(
+        _ENDPOINTS_ENDPOINT, api_key, dict(payload), _timeout_seconds()
+    )
+    return data
+
+
+async def _get_dedicated_endpoint(endpoint_id: str) -> dict[str, Any]:
+    """Retrieve a dedicated endpoint by id."""
+    api_key = _require_network()
+    return await _http_get_json(f"{_ENDPOINTS_ENDPOINT}/{endpoint_id}", api_key, _timeout_seconds())
+
+
+async def _delete_dedicated_endpoint(endpoint_id: str) -> None:
+    """Delete a dedicated endpoint to stop billing."""
+    api_key = _require_network()
+    await _http_delete(f"{_ENDPOINTS_ENDPOINT}/{endpoint_id}", api_key, _timeout_seconds())
+
+
+def _endpoint_id(endpoint: dict[str, Any]) -> str:
+    endpoint_id = endpoint.get("id") or endpoint.get("endpoint_id")
+    if not endpoint_id:
+        raise ProviderError("together endpoint response had no id")
+    return str(endpoint_id)
+
+
+def _endpoint_name(endpoint: dict[str, Any]) -> str:
+    return str(endpoint.get("name") or endpoint.get("model") or endpoint.get("endpoint") or "")
+
+
+def _endpoint_ready(endpoint: dict[str, Any]) -> bool:
+    status = endpoint.get("status")
+    if isinstance(status, dict):
+        ready_replicas = status.get("readyReplicas") or status.get("ready_replicas") or 0
+        if isinstance(ready_replicas, int) and ready_replicas > 0:
+            return True
+        status_text = str(
+            status.get("state") or status.get("status") or status.get("message") or ""
+        )
+    else:
+        status_text = str(status or endpoint.get("state") or "")
+    status_text = status_text.lower()
+    return any(token in status_text for token in ("ready", "running", "started"))
+
+
+async def wait_for_dedicated_endpoint_ready(
+    endpoint_id: str,
+    *,
+    poll_interval_seconds: float = 60.0,
+    timeout_seconds: float = 600.0,
+) -> dict[str, Any]:
+    """Poll a dedicated endpoint until it is ready or the timeout expires."""
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        endpoint = await _get_dedicated_endpoint(endpoint_id)
+        if _endpoint_ready(endpoint):
+            return endpoint
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Together endpoint {endpoint_id!r} was not ready in time")
+        await asyncio.sleep(poll_interval_seconds)
+
+
+async def run_temporary_endpoint_benchmark(
+    create_payload: dict[str, Any],
+    benchmark: Callable[[str], Awaitable[Any]],
+    *,
+    budget: BudgetGuard,
+    est_endpoint_usd: float,
+    paid_event_authorization_ref: str | None = None,
+    poll_interval_seconds: float = 60.0,
+    timeout_seconds: float = 600.0,
+) -> TemporaryEndpointRun:
+    """Create a temporary endpoint, benchmark it, and always delete it.
+
+    ``est_endpoint_usd`` is prechecked before any network call. The endpoint is
+    deleted in ``finally`` even when the benchmark raises.
+    """
+    budget.precheck(est_endpoint_usd)
+    _require_network()
+    _require_paid_event_authorization(
+        paid_event_authorization_ref, action="together temporary endpoint benchmark"
+    )
+    endpoint = await _create_dedicated_endpoint(create_payload)
+    endpoint_id = _endpoint_id(endpoint)
+    endpoint_name = _endpoint_name(endpoint)
+    result: Any = None
+    try:
+        ready = await wait_for_dedicated_endpoint_ready(
+            endpoint_id,
+            poll_interval_seconds=poll_interval_seconds,
+            timeout_seconds=timeout_seconds,
+        )
+        endpoint_name = _endpoint_name(ready) or endpoint_name
+        result = await benchmark(endpoint_name)
+    finally:
+        try:
+            await _delete_dedicated_endpoint(endpoint_id)
+        finally:
+            budget.record(est_endpoint_usd)
+    return TemporaryEndpointRun(
+        endpoint_id=endpoint_id,
+        endpoint_name=endpoint_name,
+        benchmark_result=result,
+        deleted=True,
+    )
 
 
 def download_finetune_note(job_id: str) -> str:

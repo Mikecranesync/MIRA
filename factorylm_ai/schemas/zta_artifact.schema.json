@@ -21,7 +21,12 @@
       "type": "string",
       "enum": ["untested", "pass", "fail", "regression"]
     },
-    "runtime_allowed": { "type": "boolean" }
+    "runtime_allowed": { "type": "boolean" },
+    "metadata": {
+      "type": "object",
+      "description": "Optional artifact-specific provenance. Adapter artifacts record Together job id, base model, output model, dataset version, and hyperparameters here.",
+      "additionalProperties": true
+    }
   },
   "required": [
     "artifact_id", "artifact_type", "version",
