@@ -33,7 +33,7 @@ pricing policy.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 from factorylm_ai.governance import lineage as ln
 from factorylm_ai.pricing import FT_LORA_SFT_USD_PER_MTOK_LE16B, FT_MIN_JOB_USD
@@ -66,28 +66,25 @@ VERDICT_BLOCKED = "PAID_GATE_BLOCKED"
 
 def estimate_finetune_cost(
     train_tokens: int,
-    *,
-    epochs: int = DEFAULT_EPOCHS,
-    rate_usd_per_mtok: float = FT_LORA_SFT_USD_PER_MTOK_LE16B,
 ) -> float:
     """Conservative LoRA-SFT cost estimate for a base ``<= 16B`` (e.g. ``Qwen/Qwen3.5-9B``).
 
     Together bills per token processed across all epochs; a job is floored at
     :data:`~factorylm_ai.pricing.FT_MIN_JOB_USD`. Over-estimation is deliberate — the cost
     check must fail closed, never a false pass."""
-    raw = (max(0, train_tokens) * max(1, epochs) / 1_000_000) * rate_usd_per_mtok
+    raw = (max(0, train_tokens) * DEFAULT_EPOCHS / 1_000_000) * FT_LORA_SFT_USD_PER_MTOK_LE16B
     return max(FT_MIN_JOB_USD, raw)
 
 
-def _is_iso_timestamp(value: object) -> bool:
-    """True when ``value`` is a parseable ISO-8601 timestamp string (``Z`` accepted)."""
+def _parse_iso_timestamp(value: object) -> datetime | None:
+    """Parse an ISO-8601 timestamp string (``Z`` accepted), or return ``None``."""
     if not isinstance(value, str) or not value:
-        return False
+        return None
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return True
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
     except ValueError:
-        return False
+        return None
 
 
 @dataclass(frozen=True)
@@ -115,7 +112,10 @@ class ReadinessEvidence:
         keys = self.held_out_lineage_keys
         if not keys or len(set(keys)) != len(keys):
             return False
-        return all(ln.assign_split(k) == ln.SPLIT_HELD_OUT for k in keys)
+        try:
+            return all(ln.assign_split(k) == ln.SPLIT_HELD_OUT for k in keys)
+        except ValueError:
+            return False
 
     def held_out_count(self) -> int:
         return len(self.unique_held_out_keys())
@@ -126,8 +126,8 @@ class ModelSupportEvidence:
     """Provenance that the *target* base model's serverless FT support was actually checked.
 
     A bare ``supported=True`` is not evidence — the check passes only when the evidence names the
-    intended paid-event target (``together`` + ``Qwen/Qwen3.5-9B``), carries a parseable ISO
-    ``checked_at``, and used a recognized ``method`` (or supplies a ``receipt_ref``). Pure: this
+    intended paid-event target (``together`` + ``Qwen/Qwen3.5-9B``), carries a parseable non-future
+    ISO ``checked_at``, and includes a ``receipt_ref`` for the live-check artifact. Pure: this
     records the result of a check; it does NOT perform one (the live probe is PR 4)."""
 
     model_id: str
@@ -145,10 +145,13 @@ class ModelSupportEvidence:
             return f"wrong model {self.model_id!r} (target {TARGET_MODEL_ID!r})"
         if self.provider != TARGET_PROVIDER:
             return f"wrong provider {self.provider!r} (target {TARGET_PROVIDER!r})"
-        if not _is_iso_timestamp(self.checked_at):
+        checked_at = _parse_iso_timestamp(self.checked_at)
+        if checked_at is None:
             return f"checked_at {self.checked_at!r} is not an ISO timestamp"
-        if self.method not in ALLOWED_MODEL_CHECK_METHODS and not self.receipt_ref:
-            return f"method {self.method!r} not recognized and no receipt_ref"
+        if checked_at > datetime.now(UTC):
+            return f"checked_at {self.checked_at!r} is in the future"
+        if not self.receipt_ref:
+            return "receipt_ref missing"
         return None
 
     def is_confirmed(self) -> bool:
@@ -226,6 +229,18 @@ def evaluate_paid_gate(
             if not invalid
             else f"{len(invalid)} 'eligible' record(s) are NOT dataset-eligible: "
             f"{[r.record_id for r in invalid]}",
+        )
+    )
+
+    invalid_messages = dataset.invalid_message_records()
+    checks.append(
+        GateCheck(
+            "all_records_message_valid",
+            not invalid_messages,
+            "every eligible record has valid chat training messages"
+            if not invalid_messages
+            else f"{len(invalid_messages)} 'eligible' record(s) have invalid messages: "
+            f"{[r.record_id for r in invalid_messages]}",
         )
     )
 

@@ -8,13 +8,13 @@ PR-1 :func:`factorylm_ai.governance.manifest.corpus_manifest`). Pure — no I/O,
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from factorylm_ai.governance import manifest as mf
 from factorylm_ai.governance import rejection_codes as rc
 from factorylm_ai.governance import splits as sp
 
-from .record import DatasetRecord
+from .record import MESSAGE_INVALID, DatasetRecord
 
 # A dataset-layer reason (not a governance code): the source is eligible but the example was
 # never human-approved for export.
@@ -37,18 +37,15 @@ class RejectedRecord:
 class DatasetV0:
     """The assembled dataset: the eligible training records, the rejects, and the manifest.
 
-    ``source_systems`` is the set of corpus adapters present in the **eligible** (trainable) set
-    ONLY — a rejected record does NOT count toward source representation, or a rejected Drive
-    Commander record with unresolved rights could satisfy the trainable-source requirement while
-    the actual training set is all PrintSense. It defaults to an empty set so a hand-built
-    ``DatasetV0`` (e.g. in a test) is still constructible without it; a gate fed such a dataset
-    fails the source-representation check closed."""
+    ``source_systems`` is derived from the **eligible** (trainable) set ONLY — a rejected record
+    does NOT count toward source representation, or a rejected Drive Commander record with
+    unresolved rights could satisfy the trainable-source requirement while the actual training set
+    is all PrintSense."""
 
     dataset_version: str
     eligible: list[DatasetRecord]
     rejected: list[RejectedRecord]
     manifest: dict
-    source_systems: set[str] = field(default_factory=set)
 
     @property
     def record_count(self) -> int:
@@ -71,6 +68,10 @@ class DatasetV0:
         """Eligible training examples explicitly tagged safety-sensitive."""
         return sum(1 for r in self.eligible if r.is_safety_sensitive())
 
+    @property
+    def source_systems(self) -> set[str]:
+        return {r.source_system for r in self.eligible}
+
     def invalid_eligible_records(self) -> list[DatasetRecord]:
         """Eligible records that do NOT actually satisfy :meth:`DatasetRecord.is_dataset_eligible`.
 
@@ -78,6 +79,10 @@ class DatasetV0:
         constructed by hand. The paid gate re-checks this so a hand-assembled dataset cannot
         smuggle unapproved or governance-ineligible content past the counts/rights/splits."""
         return [r for r in self.eligible if not r.is_dataset_eligible()]
+
+    def invalid_message_records(self) -> list[DatasetRecord]:
+        """Eligible records whose chat payload is not valid training content."""
+        return [r for r in self.eligible if not r.messages_valid()]
 
     def leakage(self) -> list[rc.Rejection]:
         """Run the PR-1 leakage guard over the eligible set (empty ⇒ clean)."""
@@ -105,17 +110,18 @@ def assemble_dataset_v0(records: list[DatasetRecord], *, dataset_version: str = 
     only thing missing is the human approval."""
     eligible: list[DatasetRecord] = []
     rejected: list[RejectedRecord] = []
-    source_systems: set[str] = set()
     for r in records:
         result = r.eligibility()
         approved = bool(r.approved_by)
-        if result.eligible and approved:
+        message_errors = r.message_validation_errors()
+        if result.eligible and approved and not message_errors:
             eligible.append(r)
-            source_systems.add(r.source_system)  # only trainable records count
             continue
         codes = list(result.codes)
         if not approved:
             codes.append(APPROVAL_MISSING)
+        if message_errors:
+            codes.append(MESSAGE_INVALID)
         rejected.append(RejectedRecord(record_id=r.record_id, codes=codes, approved=approved))
 
     manifest = mf.corpus_manifest(
@@ -126,5 +132,4 @@ def assemble_dataset_v0(records: list[DatasetRecord], *, dataset_version: str = 
         eligible=eligible,
         rejected=rejected,
         manifest=manifest,
-        source_systems=source_systems,
     )

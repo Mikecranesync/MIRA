@@ -19,6 +19,8 @@ from factorylm_ai.governance import eligibility as el
 # floor of these so the dataset teaches calibrated uncertainty / honest refusal / correction
 # — not just confident answers.
 VALUED_INTERACTION_TYPES: frozenset[str] = frozenset({"uncertainty", "refusal", "correction"})
+VALID_MESSAGE_ROLES: frozenset[str] = frozenset({"system", "user", "assistant"})
+MESSAGE_INVALID = "MESSAGE_INVALID"
 
 # An explicit tag marking a training example as safety-sensitive (LOTO / arc-flash / confined
 # space / energized work). The readiness gate counts these by this tag ONLY — never by
@@ -59,8 +61,42 @@ class DatasetRecord:
         return self.candidate.check()
 
     def is_dataset_eligible(self) -> bool:
-        """Governance-eligible AND human-approved."""
-        return self.eligibility().eligible and bool(self.approved_by)
+        """Governance-eligible AND human-approved AND valid chat training content."""
+        return self.eligibility().eligible and bool(self.approved_by) and self.messages_valid()
+
+    def message_validation_errors(self) -> list[str]:
+        """Human-readable reasons this record is not valid chat training content."""
+        if not isinstance(self.messages, list) or not self.messages:
+            return ["messages must be a non-empty list"]
+
+        errors: list[str] = []
+        has_user = False
+        has_assistant = False
+        for idx, message in enumerate(self.messages):
+            if not isinstance(message, dict):
+                errors.append(f"message {idx} must be an object")
+                continue
+
+            role = message.get("role")
+            content = message.get("content")
+            if role not in VALID_MESSAGE_ROLES:
+                errors.append(f"message {idx} has invalid role={role!r}")
+            elif role == "user":
+                has_user = True
+            elif role == "assistant":
+                has_assistant = True
+
+            if not isinstance(content, str) or not content.strip():
+                errors.append(f"message {idx} has empty content")
+
+        if not has_user:
+            errors.append("messages must include at least one user message")
+        if not has_assistant:
+            errors.append("messages must include at least one assistant message")
+        return errors
+
+    def messages_valid(self) -> bool:
+        return not self.message_validation_errors()
 
     def is_valued_interaction(self) -> bool:
         return (self.interaction_type or "") in VALUED_INTERACTION_TYPES

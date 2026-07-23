@@ -157,7 +157,7 @@ def _model_support(
     provider: str = "together",
     checked_at: str = "2026-07-22T00:00:00+00:00",
     method: str = "serverless-catalog",
-    receipt_ref: str | None = None,
+    receipt_ref: str | None = "s3://receipts/together-qwen.json",
 ) -> ModelSupportEvidence:
     return ModelSupportEvidence(
         model_id=model_id,
@@ -209,6 +209,39 @@ def test_assemble_partitions_eligible_and_rejected() -> None:
     assert rc.TRAINING_NOT_ALLOWED in by_id["e1"].codes
     assert APPROVAL_MISSING in by_id["u1"].codes and by_id["u1"].approved is False
     assert "g1" not in by_id
+
+
+def test_assemble_rejects_empty_training_messages() -> None:
+    good_source = _eligible_record(doc=_train_docs(1)[0], rid="empty-msg")
+    empty_messages = DatasetRecord(
+        candidate=good_source.candidate,
+        messages=[],
+        approved_by="mike",
+        interaction_type="refusal",
+    )
+
+    ds = assemble_dataset_v0([empty_messages])
+
+    assert ds.eligible == []
+    assert ds.rejected[0].record_id == "empty-msg"
+    assert "MESSAGE_INVALID" in ds.rejected[0].codes
+
+
+def test_assemble_rejects_messages_without_user_and_assistant_content() -> None:
+    good_source = _eligible_record(doc=_train_docs(1)[0], rid="bad-msg")
+    bad_messages = DatasetRecord(
+        candidate=good_source.candidate,
+        messages=[
+            {"role": "system", "content": "policy"},
+            {"role": "assistant", "content": "   "},
+        ],
+        approved_by="mike",
+    )
+
+    ds = assemble_dataset_v0([bad_messages])
+
+    assert ds.eligible == []
+    assert "MESSAGE_INVALID" in ds.rejected[0].codes
 
 
 def test_assemble_manifest_is_reproducible_regardless_of_order() -> None:
@@ -370,6 +403,27 @@ def test_paid_gate_blocks_governance_ineligible_record_smuggled_into_eligible() 
     assert not report.passed and "all_records_dataset_eligible" in report.blocking
 
 
+def test_paid_gate_blocks_invalid_messages_smuggled_into_eligible() -> None:
+    ds = _passing_dataset()
+    bad = DatasetRecord(
+        candidate=ds.eligible[0].candidate,
+        messages=[],
+        approved_by="mike",
+        interaction_type=ds.eligible[0].interaction_type,
+        tags=ds.eligible[0].tags,
+    )
+    tampered = DatasetV0(
+        dataset_version=ds.dataset_version,
+        eligible=[bad, *ds.eligible[1:]],
+        rejected=ds.rejected,
+        manifest=ds.manifest,
+    )
+
+    report = evaluate_paid_gate(tampered, **_pass_kwargs())
+
+    assert not report.passed and "all_records_message_valid" in report.blocking
+
+
 # ── paid gate: readiness-evidence checks ─────────────────────────────────────
 def test_paid_gate_blocks_on_too_few_held_out_lineages() -> None:
     ds = _passing_dataset()
@@ -386,6 +440,15 @@ def test_paid_gate_blocks_on_invalid_held_out_keys() -> None:
     assert ln.assign_split(train_key) == "train"
     bad = (*_held_out_keys(5), train_key)  # 6 keys, but one is train-split
     report = evaluate_paid_gate(ds, **_pass_kwargs(readiness=_readiness(held_out_lineage_keys=bad)))
+    assert not report.passed and "min_held_out_lineages" in report.blocking
+
+
+def test_paid_gate_blocks_invalid_held_out_keys_without_raising() -> None:
+    ds = _passing_dataset()
+    report = evaluate_paid_gate(
+        ds, **_pass_kwargs(readiness=_readiness(held_out_lineage_keys=("", "a" * 64)))
+    )
+
     assert not report.passed and "min_held_out_lineages" in report.blocking
 
 
@@ -433,10 +496,7 @@ def test_source_representation_not_satisfied_by_rejected_drive_commander() -> No
     assert not report.passed and "trainable_source_representation" in report.blocking
 
 
-def test_source_representation_ignores_cached_source_systems_field() -> None:
-    # ADVERSARIAL FINDING 1 (hand-built bypass): the gate must DERIVE trainable sources from the
-    # eligible records, never trust a cached DatasetV0.source_systems that could be faked. Here
-    # every eligible record is PrintSense but the cached field claims drive_commander too.
+def test_source_representation_uses_derived_source_systems() -> None:
     docs = _train_docs(20)
     recs: list[DatasetRecord] = []
     idx = 0
@@ -451,14 +511,9 @@ def test_source_representation_ignores_cached_source_systems_field() -> None:
                 )
             )
             idx += 1
-    ds = DatasetV0(
-        dataset_version="v0",
-        eligible=recs,
-        rejected=[],
-        manifest={},
-        source_systems={"printsense", "drive_commander"},  # a lie — no eligible DC record exists
-    )
-    assert {r.source_system for r in ds.eligible} == {"printsense"}
+    ds = DatasetV0(dataset_version="v0", eligible=recs, rejected=[], manifest={})
+
+    assert ds.source_systems == {"printsense"}
     report = evaluate_paid_gate(ds, **_pass_kwargs())
     assert not report.passed and "trainable_source_representation" in report.blocking
     assert report.to_dict()["evidence"]["eligible_source_systems"] == ["printsense"]
@@ -527,7 +582,25 @@ def test_paid_gate_blocks_on_invalid_checked_at_timestamp() -> None:
 
 def test_paid_gate_blocks_on_unrecognized_method_without_receipt() -> None:
     ds = _passing_dataset()
-    report = evaluate_paid_gate(ds, **_pass_kwargs(model_support=_model_support(method="trust-me")))
+    report = evaluate_paid_gate(
+        ds, **_pass_kwargs(model_support=_model_support(method="trust-me", receipt_ref=None))
+    )
+    assert not report.passed and "model_support_confirmed" in report.blocking
+
+
+def test_paid_gate_blocks_on_future_model_support_timestamp() -> None:
+    ds = _passing_dataset()
+    report = evaluate_paid_gate(
+        ds, **_pass_kwargs(model_support=_model_support(checked_at="2099-01-01T00:00:00Z"))
+    )
+
+    assert not report.passed and "model_support_confirmed" in report.blocking
+
+
+def test_paid_gate_blocks_model_support_without_receipt_ref() -> None:
+    ds = _passing_dataset()
+    report = evaluate_paid_gate(ds, **_pass_kwargs(model_support=_model_support(receipt_ref=None)))
+
     assert not report.passed and "model_support_confirmed" in report.blocking
 
 
@@ -540,7 +613,12 @@ def test_paid_gate_accepts_unrecognized_method_with_receipt_ref() -> None:
 
 def test_paid_gate_passes_with_complete_model_support_evidence() -> None:
     ds = _passing_dataset()
-    report = evaluate_paid_gate(ds, **_pass_kwargs(model_support=_model_support()))
+    report = evaluate_paid_gate(
+        ds,
+        **_pass_kwargs(
+            model_support=_model_support(receipt_ref="s3://receipts/together-qwen.json")
+        ),
+    )
     assert report.passed and report.blocking == [], report.to_dict()
 
 
@@ -580,7 +658,13 @@ def test_paid_gate_report_includes_auditable_evidence_refs() -> None:
     assert ev["held_out_lineage_count"] >= 5
 
 
+def test_dataset_source_systems_is_derived_from_eligible_records() -> None:
+    ds = _passing_dataset()
+
+    assert ds.source_systems == {r.source_system for r in ds.eligible}
+
+
 # ── cost estimator ───────────────────────────────────────────────────────────
 def test_finetune_cost_is_floored_and_scales() -> None:
     assert estimate_finetune_cost(1_000) == 4.00  # FT_MIN_JOB_USD floor
-    assert estimate_finetune_cost(50_000_000, epochs=3) > 5.00
+    assert estimate_finetune_cost(50_000_000) > 5.00
