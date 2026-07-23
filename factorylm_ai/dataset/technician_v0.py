@@ -1550,6 +1550,12 @@ def _sheet_for_terminal(row: dict[str, str]) -> str:
     device = row["Device"]
     terminal = row["Terminal"]
     text = " ".join(row.values()).lower()
+    if device in {"B1", "S0", "S2", "SS1"}:
+        return "E-005"
+    if device in {"PL1", "PL2"}:
+        return "E-006"
+    if device == "X1":
+        return "E-008"
     if device == "PLC1" and terminal.startswith("I-"):
         return "E-005"
     if device == "PLC1" and terminal.startswith("O-"):

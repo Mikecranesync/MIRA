@@ -1,8 +1,8 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
   "built_at": "2026-07-23T00:00:00Z",
-  "candidate_count": 0,
-  "candidate_manifest_sha256": "cfd060b6846643f200f6bb0f383502f84692b10b8137bdb36d8dd9047742c1f1",
+  "candidate_count": 70,
+  "candidate_manifest_sha256": "f2661be5c85084fcaf65dfb7a4f62fc2ffa06c7e73518431f3b0e90d8fb1308b",
   "dry_run": {
     "authorization_consumed": false,
     "deployment_occurred": false,
@@ -14,8 +14,16 @@
     "upload_occurred": false
   },
   "files": {
+    "behavior_coverage": "docs\\zta\\technician-dataset-v0\\reports\\behavior_coverage_report.json",
+    "candidate_jsonl": "docs\\zta\\technician-dataset-v0\\candidate_dataset.jsonl",
+    "candidate_manifest": "docs\\zta\\technician-dataset-v0\\candidate_manifest.json",
+    "composition": "docs\\zta\\technician-dataset-v0\\reports\\real_vs_synthetic_composition_report.json",
+    "duplicate_leakage": "docs\\zta\\technician-dataset-v0\\reports\\duplicate_leakage_report.json",
     "inventory_report": "docs\\zta\\technician-dataset-v0\\inventory_report.md",
     "lineage_plan": "docs\\zta\\technician-dataset-v0\\reports\\lineage_split_report.json",
+    "rejection_report": "docs\\zta\\technician-dataset-v0\\reports\\rejection_report.json",
+    "review_cv101": "docs\\zta\\technician-dataset-v0\\review-packages\\cv101_review_package.md",
+    "rights_report": "docs\\zta\\technician-dataset-v0\\reports\\rights_report.json",
     "source_registry": "docs\\zta\\technician-dataset-v0\\source_registry.json"
   },
   "phase3_paid_gate_passed": false,
