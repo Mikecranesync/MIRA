@@ -982,9 +982,289 @@
       "record_id": "techv0-drive-070",
       "split": "train",
       "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f525f7694f1920da86175cf7bc850abadf51be00117c9d0015da489104242c1f",
+      "document_lineage_key": "factorylm:factorylm-print-style-002",
+      "record_id": "techv0-ps-style-001",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "02dc4167bc7cc8532b37623affb790d7496883a72bf0a6dcf336fa3a087fde0d",
+      "document_lineage_key": "factorylm:factorylm-print-style-002",
+      "record_id": "techv0-ps-style-002",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f0b656202dea9e97156f621e306f2323cfbc5e0569990073364791de8a223603",
+      "document_lineage_key": "factorylm:factorylm-print-style-002",
+      "record_id": "techv0-ps-style-003",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d0548d358e303c9311858923e836c99e7a064453a3c8102253a46725bbabec65",
+      "document_lineage_key": "factorylm:factorylm-print-style-004",
+      "record_id": "techv0-ps-style-004",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d5d3f47edba2a231172378829069f07913e00561d2bedc2670100af2944c8268",
+      "document_lineage_key": "factorylm:factorylm-print-style-004",
+      "record_id": "techv0-ps-style-005",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b806a752de9763b0fbecf48f5ac62e64af11900e4e03e13228e64402506cf460",
+      "document_lineage_key": "factorylm:factorylm-print-style-004",
+      "record_id": "techv0-ps-style-006",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d473c3337f356683a99d4aa70b0f425aeef20ff23a722b5a7fd074323e90bb30",
+      "document_lineage_key": "factorylm:factorylm-print-style-005",
+      "record_id": "techv0-ps-style-007",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "64b846005056746c35ccbca3500050b5b25f48dd8898721e0a45917705e3701c",
+      "document_lineage_key": "factorylm:factorylm-print-style-005",
+      "record_id": "techv0-ps-style-008",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e35f863e6f8182e7023b68f24b125d3940b21de5d68ef798bcbf13e534864472",
+      "document_lineage_key": "factorylm:factorylm-print-style-005",
+      "record_id": "techv0-ps-style-009",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "bdd016ca473924c0e087904baf188e90aa556dd2b172a62cb79c76acab33e7a0",
+      "document_lineage_key": "factorylm:factorylm-print-style-006",
+      "record_id": "techv0-ps-style-010",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d07bf125a6341470078e519e59770381e4cf7f492f6f26a90aa2dbe38cb52e44",
+      "document_lineage_key": "factorylm:factorylm-print-style-006",
+      "record_id": "techv0-ps-style-011",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ef74ddf9a01c27783aa25a1cb2ddb5cb5418a78558f3fa4010d76666a6566b2d",
+      "document_lineage_key": "factorylm:factorylm-print-style-006",
+      "record_id": "techv0-ps-style-012",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8c52e2e297636d44ca34007dad2c4d5d1365a00559c96ee5bb0ca68ba4cc4a7a",
+      "document_lineage_key": "factorylm:factorylm-print-style-009",
+      "record_id": "techv0-ps-style-013",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "08ada7ea10c1846e6109f01c4d0cf9d8d58df0410a13ea5f2aedf7de5e8ec630",
+      "document_lineage_key": "factorylm:factorylm-print-style-009",
+      "record_id": "techv0-ps-style-014",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "818b38753a43e5365969e104c695e6c78927fbd984fbdd796c1ab6e304840cfb",
+      "document_lineage_key": "factorylm:factorylm-print-style-009",
+      "record_id": "techv0-ps-style-015",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d64dd9add0390a3b7443c1b22e3d6463da07d925b1f7031d118e500914836d08",
+      "document_lineage_key": "factorylm:factorylm-print-style-010",
+      "record_id": "techv0-ps-style-016",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "681d8f77fcd4f6677e4e91fa2f87aa54fab7e9482fe13b03e1e93de6c78b97bd",
+      "document_lineage_key": "factorylm:factorylm-print-style-010",
+      "record_id": "techv0-ps-style-017",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "bb219ffc311f78d1291e8fea16988237cde4d7226d5b57377696af368233f280",
+      "document_lineage_key": "factorylm:factorylm-print-style-010",
+      "record_id": "techv0-ps-style-018",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "6f63bd307e5e908b56d29f5231670a3468b8b67fede3a78aaad1f97decd719dc",
+      "document_lineage_key": "factorylm:factorylm-print-style-011",
+      "record_id": "techv0-ps-style-019",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "bd1ad9383a0f0488bd2751d9f031012704b1fed06f2c06c701df26a3d43a2509",
+      "document_lineage_key": "factorylm:factorylm-print-style-011",
+      "record_id": "techv0-ps-style-020",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b070565d975a61f4538d28686b2ae034fad16d308cd9c1b162c438b17a0d127d",
+      "document_lineage_key": "factorylm:factorylm-print-style-012",
+      "record_id": "techv0-ps-style-021",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "5e5419259eb9cef8d2514f2a1169f42f631a63e8c7505633fbc96dd5956d824f",
+      "document_lineage_key": "factorylm:factorylm-print-style-012",
+      "record_id": "techv0-ps-style-022",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1e4482568b8ccda4a6b7f3f5a053e3e945e6cd413327d508fb2080c708e8eb3f",
+      "document_lineage_key": "factorylm:factorylm-print-style-013",
+      "record_id": "techv0-ps-style-023",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "4eb51a683ccda8bc1eb47574d3108cc481da5f578e5efa7c89413c2bae291527",
+      "document_lineage_key": "factorylm:factorylm-print-style-013",
+      "record_id": "techv0-ps-style-024",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "757687ef42d1b49a31b860bd64c9fded808876a244e5a5010cd3ef07ac4c1d2f",
+      "document_lineage_key": "factorylm:factorylm-print-style-015",
+      "record_id": "techv0-ps-style-025",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8ad6cb08bae63f55fdbd0706aa070dddb6d4864be10f9a572b7c497d5d3de91f",
+      "document_lineage_key": "factorylm:factorylm-print-style-015",
+      "record_id": "techv0-ps-style-026",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a8ef8dc9f0dc46a6b5849382e1d251c9938ca60f771eab5ea2eb97eb87cb3085",
+      "document_lineage_key": "factorylm:factorylm-print-style-018",
+      "record_id": "techv0-ps-style-027",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "431e58ba1f065ca36b3f5a920281c0ccbd6ab96b3c663e8692de0c5ef48f86ec",
+      "document_lineage_key": "factorylm:factorylm-print-style-018",
+      "record_id": "techv0-ps-style-028",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "7e023222cf9d394ea6101cfd0149058e98ed2d5b35f81a55a1f40efbf5690a2a",
+      "document_lineage_key": "factorylm:factorylm-print-style-019",
+      "record_id": "techv0-ps-style-029",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "03e9f3ed0b4338372330dc4e29124becb6725758e06c05b3087a618665ca1647",
+      "document_lineage_key": "factorylm:factorylm-print-style-019",
+      "record_id": "techv0-ps-style-030",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "15cff3deb6204384d1ac38102acd03149681d49d867b613f24d6ea6f3127a1f8",
+      "document_lineage_key": "factorylm:factorylm-print-style-020",
+      "record_id": "techv0-ps-style-031",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "70a5f9e488caf1a6a6668ba79e8adfe387cda82ade99565c5203448240fd4002",
+      "document_lineage_key": "factorylm:factorylm-print-style-020",
+      "record_id": "techv0-ps-style-032",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "49d9470a346fcc1fbae08fa27d8fdc418cb614dd7149f9d5657728f9ea95d461",
+      "document_lineage_key": "factorylm:factorylm-print-style-021",
+      "record_id": "techv0-ps-style-033",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "90c9e6b271fd366528d274ce2b3fb71bbe876353f4f278c5b1e0b3aa9faaefc6",
+      "document_lineage_key": "factorylm:factorylm-print-style-021",
+      "record_id": "techv0-ps-style-034",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2898000e35eaeebd52c46f1911974f2e7d2cbe56f66cc6c8fd2f40c6dbbcf261",
+      "document_lineage_key": "factorylm:factorylm-print-style-022",
+      "record_id": "techv0-ps-style-035",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e25b26810af89ee6b5b63be3eadc1a3d6cafc9d7ba07b1eb516a564d7b56afac",
+      "document_lineage_key": "factorylm:factorylm-print-style-022",
+      "record_id": "techv0-ps-style-036",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b37c6da21deaddc4e0005e26c82dcb95fbb6a014d18df5b6fcf0ded97e08d726",
+      "document_lineage_key": "factorylm:factorylm-print-style-023",
+      "record_id": "techv0-ps-style-037",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0eea4c0e371b0411f8b99cf2a7b3dbf9e58f1185a7ea090d03c14e6e016f98d4",
+      "document_lineage_key": "factorylm:factorylm-print-style-023",
+      "record_id": "techv0-ps-style-038",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "fdec616e7a425f211491d3e7bbcdc729161219298d6f2a4ce38431203e919d32",
+      "document_lineage_key": "factorylm:factorylm-print-style-024",
+      "record_id": "techv0-ps-style-039",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "50e5d02ad73a422068e96e393c60027a87ed507bce4f696dbc9c1dea34e0bf79",
+      "document_lineage_key": "factorylm:factorylm-print-style-024",
+      "record_id": "techv0-ps-style-040",
+      "split": "train",
+      "training_eligibility": "ineligible"
     }
   ],
-  "manifest_sha256": "438376715d319acfedb986ae3693f5ef10773b53519b7273520ef5bb7af88f1c",
-  "record_count": 140,
+  "manifest_sha256": "2face5d13b65ed68dcaf1aea71db2fc7d7f1cea0b534fb1e95ca26f0004f674d",
+  "record_count": 180,
   "schema": "factorylm.technician-dataset.candidate-manifest.v1"
 }

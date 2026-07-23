@@ -1,6 +1,6 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
-  "candidate_training_lineage_count": 8,
+  "candidate_training_lineage_count": 25,
   "held_out_lineage_count": 5,
   "held_out_lineages": [
     "factorylm:cv-101-e-004",
@@ -155,7 +155,7 @@
       "target_record_count": 10
     },
     "factorylm:factorylm-print-style-002": {
-      "candidate_count": 0,
+      "candidate_count": 3,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -169,7 +169,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-004": {
-      "candidate_count": 0,
+      "candidate_count": 3,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -183,7 +183,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-005": {
-      "candidate_count": 0,
+      "candidate_count": 3,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -197,7 +197,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-006": {
-      "candidate_count": 0,
+      "candidate_count": 3,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -211,7 +211,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-009": {
-      "candidate_count": 0,
+      "candidate_count": 3,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -225,7 +225,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-010": {
-      "candidate_count": 0,
+      "candidate_count": 3,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -239,7 +239,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-011": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -253,7 +253,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-012": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -267,7 +267,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-013": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -281,7 +281,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-015": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -295,7 +295,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-018": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -309,7 +309,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-019": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -323,7 +323,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-020": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -337,7 +337,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-021": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -351,7 +351,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-022": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -365,7 +365,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-023": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -379,7 +379,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-024": {
-      "candidate_count": 0,
+      "candidate_count": 2,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -481,6 +481,23 @@
     "factorylm:cv-101-e-007",
     "factorylm:cv-101-e-008",
     "factorylm:cv-101-e-009",
+    "factorylm:factorylm-print-style-002",
+    "factorylm:factorylm-print-style-004",
+    "factorylm:factorylm-print-style-005",
+    "factorylm:factorylm-print-style-006",
+    "factorylm:factorylm-print-style-009",
+    "factorylm:factorylm-print-style-010",
+    "factorylm:factorylm-print-style-011",
+    "factorylm:factorylm-print-style-012",
+    "factorylm:factorylm-print-style-013",
+    "factorylm:factorylm-print-style-015",
+    "factorylm:factorylm-print-style-018",
+    "factorylm:factorylm-print-style-019",
+    "factorylm:factorylm-print-style-020",
+    "factorylm:factorylm-print-style-021",
+    "factorylm:factorylm-print-style-022",
+    "factorylm:factorylm-print-style-023",
+    "factorylm:factorylm-print-style-024",
     "rockwell-automation:520-um001o-en-e"
   ]
 }

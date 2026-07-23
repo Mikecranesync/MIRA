@@ -4,6 +4,6 @@
   "held_out_records_marked_eligible": [],
   "leakage_clean": true,
   "lineage_split_collisions": {},
-  "record_count": 140,
+  "record_count": 180,
   "schema": "factorylm.technician-dataset.duplicate-leakage.v1"
 }
