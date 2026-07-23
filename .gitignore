@@ -230,6 +230,9 @@ tools/monday-marketplace-setup/.chrome-profile/
 staging_results.json
 tools/staging_results.json
 
+# Langfuse trace export — unsanitized customer data, never commit
+tools/langfuse-export/
+
 # CodeGraph local index (machine-specific, regenerable via `npx @colbymchenry/codegraph index`)
 .codegraph/
 
