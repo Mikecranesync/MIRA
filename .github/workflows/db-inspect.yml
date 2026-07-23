@@ -431,6 +431,30 @@ jobs:
             FROM machine_state_window
            WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
            ORDER BY started_at DESC LIMIT 5;
+
+          \echo === latency probe: collector PUSH cadence (distinct ingest batches, last 60s — gap = push interval) ===
+          SELECT ingested_at,
+                 count(*) AS tags_in_batch,
+                 ingested_at - lag(ingested_at) OVER (ORDER BY ingested_at) AS gap_since_prev
+            FROM (
+              SELECT DISTINCT ingested_at
+                FROM tag_events
+               WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+                 AND ingested_at > now() - interval '60 seconds'
+            ) b
+            JOIN tag_events e USING (ingested_at)
+           WHERE e.tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+           GROUP BY ingested_at
+           ORDER BY ingested_at DESC LIMIT 20;
+
+          \echo === latency probe: per-tag freshness (live_signal_cache, oldest first — includes the 250ms fast-scan tags + any stale ghosts) ===
+          SELECT plc_tag,
+                 now() - last_seen_at    AS seen_age,
+                 now() - last_changed_at AS changed_age,
+                 last_value_numeric, last_value_bool
+            FROM live_signal_cache
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+           ORDER BY last_seen_at ASC NULLS FIRST LIMIT 40;
           SQL
 
       - name: KB-growth feeder inventory (manual_cache un-ingested) — READ-ONLY
