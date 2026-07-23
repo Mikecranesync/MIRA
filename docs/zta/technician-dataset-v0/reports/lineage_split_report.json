@@ -1,6 +1,6 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
-  "candidate_training_lineage_count": 0,
+  "candidate_training_lineage_count": 6,
   "held_out_lineage_count": 5,
   "held_out_lineages": [
     "factorylm:cv-101-e-004",
@@ -26,7 +26,7 @@
       "target_record_count": 20
     },
     "factorylm:cv-101-e-001": {
-      "candidate_count": 0,
+      "candidate_count": 8,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -85,7 +85,7 @@
       "target_record_count": 0
     },
     "factorylm:cv-101-e-005": {
-      "candidate_count": 0,
+      "candidate_count": 14,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -99,7 +99,7 @@
       "target_record_count": 14
     },
     "factorylm:cv-101-e-006": {
-      "candidate_count": 0,
+      "candidate_count": 14,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -113,7 +113,7 @@
       "target_record_count": 14
     },
     "factorylm:cv-101-e-007": {
-      "candidate_count": 0,
+      "candidate_count": 12,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -127,7 +127,7 @@
       "target_record_count": 12
     },
     "factorylm:cv-101-e-008": {
-      "candidate_count": 0,
+      "candidate_count": 12,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -141,7 +141,7 @@
       "target_record_count": 12
     },
     "factorylm:cv-101-e-009": {
-      "candidate_count": 0,
+      "candidate_count": 10,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -473,5 +473,12 @@
     "train": 25,
     "validation": 1
   },
-  "training_lineages": []
+  "training_lineages": [
+    "factorylm:cv-101-e-001",
+    "factorylm:cv-101-e-005",
+    "factorylm:cv-101-e-006",
+    "factorylm:cv-101-e-007",
+    "factorylm:cv-101-e-008",
+    "factorylm:cv-101-e-009"
+  ]
 }

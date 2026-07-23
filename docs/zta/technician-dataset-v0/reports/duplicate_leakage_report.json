@@ -1,0 +1,9 @@
+{
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "exact_duplicate_content_hashes": {},
+  "held_out_records_marked_eligible": [],
+  "leakage_clean": true,
+  "lineage_split_collisions": {},
+  "record_count": 70,
+  "schema": "factorylm.technician-dataset.duplicate-leakage.v1"
+}
