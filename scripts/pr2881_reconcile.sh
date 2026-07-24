@@ -91,10 +91,12 @@ PY
 
 git add VERSION docs/CHANGELOG.md
 
-# The temporary runner must not remain in the final PR tree. Restore the normal
-# self-fix script from main and delete this helper before creating the merge commit.
+# Temporary reconciliation scaffolding must not remain in the final PR tree.
 git checkout origin/main -- scripts/pr_self_fix.sh
 git rm -f scripts/pr2881_reconcile.sh
+if [ -f .github/workflows/pr2881-reconcile.yml ]; then
+  git rm -f .github/workflows/pr2881-reconcile.yml
+fi
 git add scripts/pr_self_fix.sh
 
 REMAINING="$(git diff --name-only --diff-filter=U || true)"
