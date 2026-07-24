@@ -299,9 +299,13 @@ def install_paid_authorization_guard(together_module: ModuleType) -> None:
             ]
         )
 
-    together_module.create_finetune_job = guarded_create_finetune_job
-    together_module.run_temporary_endpoint_benchmark = guarded_temporary_endpoint_benchmark
-    together_module._trusted_paid_guard_installed = True
+    setattr(together_module, "create_finetune_job", guarded_create_finetune_job)
+    setattr(
+        together_module,
+        "run_temporary_endpoint_benchmark",
+        guarded_temporary_endpoint_benchmark,
+    )
+    setattr(together_module, "_trusted_paid_guard_installed", True)
 
 
 __all__ = [
