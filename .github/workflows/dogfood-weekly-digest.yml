@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           since="$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)"
           all="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" \
-            --jq 'flatten | map(select(.body | contains("<!-- dogfood-heartbeat -->")))')"
+            | jq 'flatten | map(select(.body | contains("<!-- dogfood-heartbeat -->")))')"
           recent="$(printf '%s' "$all" | jq --arg since "$since" '[.[] | select(.created_at > $since)]')"
           total="$(printf '%s' "$recent" | jq 'length')"
           if [ "$total" -eq 0 ]; then
