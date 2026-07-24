@@ -31,8 +31,13 @@ jobs:
         id: check
         run: |
           set -euo pipefail
+          # NOTE: with --paginate, `gh --jq` applies the filter to EACH page
+          # separately, so `max_by` emits one object per page → multiple
+          # created_at values downstream → `date -d` gets a multi-line string and
+          # fails "invalid date". Fetch raw pages and aggregate ONCE with `jq -s`
+          # (`add` flattens the array-of-page-arrays) so exactly one object comes out.
           latest="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" \
-            --jq 'map(select(.body | contains("<!-- dogfood-heartbeat -->"))) | max_by(.created_at) // {}')"
+            | jq -s 'add | map(select(.body | contains("<!-- dogfood-heartbeat -->"))) | max_by(.created_at) // {}')"
           created="$(printf '%s' "$latest" | jq -r '.created_at // ""')"
           body="$(printf '%s' "$latest" | jq -r '.body // ""')"
           if [ -z "$created" ]; then
