@@ -49,9 +49,7 @@ def _decode_public_key(value: str) -> Any:
     try:
         raw = base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError) as exc:
-        raise PaidAuthorizationUnavailable(
-            f"{_PUBLIC_KEY_ENV} is not valid base64"
-        ) from exc
+        raise PaidAuthorizationUnavailable(f"{_PUBLIC_KEY_ENV} is not valid base64") from exc
     if len(raw) != 32:
         raise PaidAuthorizationUnavailable(
             f"{_PUBLIC_KEY_ENV} must decode to a 32-byte Ed25519 public key"
@@ -72,9 +70,7 @@ def _decode_public_key(value: str) -> Any:
 
 def _decode_signature(value: object) -> bytes:
     if not isinstance(value, str) or not value:
-        raise PaidAuthorizationRejected(
-            "authorization rejected: missing operator signature"
-        )
+        raise PaidAuthorizationRejected("authorization rejected: missing operator signature")
     try:
         signature = base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -82,9 +78,7 @@ def _decode_signature(value: object) -> bytes:
             "authorization rejected: malformed operator signature"
         ) from exc
     if len(signature) != 64:
-        raise PaidAuthorizationRejected(
-            "authorization rejected: invalid Ed25519 signature length"
-        )
+        raise PaidAuthorizationRejected("authorization rejected: invalid Ed25519 signature length")
     return signature
 
 
@@ -120,8 +114,7 @@ class TrustedPaidAuthorizationVerifier:
         ]
         if missing:
             raise PaidAuthorizationUnavailable(
-                "trusted paid-authorization configuration missing: "
-                + ", ".join(missing)
+                "trusted paid-authorization configuration missing: " + ", ".join(missing)
             )
         return cls(
             registry_path=registry_path,
@@ -141,9 +134,7 @@ class TrustedPaidAuthorizationVerifier:
         self.ledger.record_authorized(authorization)
         return self.ledger.verify_and_consume(authorization, **kwargs)
 
-    def _verify_signed_registry_receipt(
-        self, authorization: PaidEventAuthorization
-    ) -> None:
+    def _verify_signed_registry_receipt(self, authorization: PaidEventAuthorization) -> None:
         records = self._read_registry()
         matches: list[dict[str, Any]] = []
         conflicts = False
@@ -183,8 +174,7 @@ class TrustedPaidAuthorizationVerifier:
         key_id = record.get("key_id")
         if self.expected_key_id is not None and key_id != self.expected_key_id:
             raise PaidAuthorizationRejected(
-                f"authorization {authorization.authorization_id!r} rejected: "
-                "key id mismatch"
+                f"authorization {authorization.authorization_id!r} rejected: key id mismatch"
             )
         signature = _decode_signature(record.get("signature"))
         try:
@@ -194,9 +184,7 @@ class TrustedPaidAuthorizationVerifier:
                 "cryptography is required for paid-authorization verification"
             ) from exc
         try:
-            self.public_key.verify(
-                signature, _canonical_authorization_bytes(authorization)
-            )
+            self.public_key.verify(signature, _canonical_authorization_bytes(authorization))
         except InvalidSignature as exc:
             raise PaidAuthorizationRejected(
                 f"authorization {authorization.authorization_id!r} rejected: "
@@ -221,8 +209,7 @@ class TrustedPaidAuthorizationVerifier:
                     rows.append(record)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise PaidAuthorizationUnavailable(
-                "trusted paid-authorization registry unavailable: "
-                f"{self.registry_path}: {exc}"
+                f"trusted paid-authorization registry unavailable: {self.registry_path}: {exc}"
             ) from exc
         return rows
 
@@ -313,9 +300,7 @@ def install_paid_authorization_guard(together_module: ModuleType) -> None:
         )
 
     together_module.create_finetune_job = guarded_create_finetune_job
-    together_module.run_temporary_endpoint_benchmark = (
-        guarded_temporary_endpoint_benchmark
-    )
+    together_module.run_temporary_endpoint_benchmark = guarded_temporary_endpoint_benchmark
     together_module._trusted_paid_guard_installed = True
 
 
