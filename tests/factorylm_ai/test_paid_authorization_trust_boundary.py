@@ -115,9 +115,10 @@ class _FakeVerifier:
 
 @pytest.mark.asyncio
 async def test_create_finetune_rejects_caller_injected_verifier() -> None:
-    assert "authorization_verifier" not in inspect.signature(
-        together_module.create_finetune_job
-    ).parameters
+    assert (
+        "authorization_verifier"
+        not in inspect.signature(together_module.create_finetune_job).parameters
+    )
     with pytest.raises(PaidAuthorizationRejected, match="caller-supplied"):
         await together_module.create_finetune_job(
             "file-train",
@@ -131,9 +132,10 @@ async def test_create_finetune_rejects_caller_injected_verifier() -> None:
 
 @pytest.mark.asyncio
 async def test_endpoint_benchmark_rejects_caller_injected_verifier() -> None:
-    assert "authorization_verifier" not in inspect.signature(
-        together_module.run_temporary_endpoint_benchmark
-    ).parameters
+    assert (
+        "authorization_verifier"
+        not in inspect.signature(together_module.run_temporary_endpoint_benchmark).parameters
+    )
 
     async def benchmark(_: str) -> None:
         raise AssertionError("benchmark must not run")
@@ -208,9 +210,7 @@ def test_altered_signed_field_is_rejected(tmp_path: Path) -> None:
     )
     altered = replace(authorization, model="attacker/model")
 
-    with pytest.raises(
-        PaidAuthorizationRejected, match="conflicting signed-registry payload"
-    ):
+    with pytest.raises(PaidAuthorizationRejected, match="conflicting signed-registry payload"):
         _consume(_verifier(tmp_path, private_key), altered)
 
 
@@ -222,9 +222,7 @@ def test_signed_receipt_remains_revocable(tmp_path: Path) -> None:
         _signed_record(authorization, private_key),
     )
     verifier = _verifier(tmp_path, private_key)
-    verifier.ledger.record_revoked(
-        authorization.authorization_id, reason="operator revoked"
-    )
+    verifier.ledger.record_revoked(authorization.authorization_id, reason="operator revoked")
 
     with pytest.raises(PaidAuthorizationRejected, match="revoked"):
         _consume(verifier, authorization)
