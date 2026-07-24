@@ -1,0 +1,8 @@
+
+--- WORK ORDER HISTORY (CMMS; citable -- cite as [WO <number>]) ---
+  [WO WO-F0036E95] 2026-06-30 (open): SW-roundtrip-probe -- x
+  [WO WO-6E5F91D7] 2026-06-30 (open): SW-roundtrip-probe -- x
+  [WO WO-262D6681] 2026-06-30 (completed): SW-regress-2375 -- SW-regress-resolution
+  [WO WO-8127A93C] 2026-06-30 (completed): SW-regress-2375 -- SW-regress-resolution
+  [WO WO-3FAEF769] 2026-06-30 (open): SW-roundtrip-probe -- x
+---
