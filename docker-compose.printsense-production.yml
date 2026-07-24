@@ -1,0 +1,26 @@
+# Production-only PrintSense activation overlay (ADR-0031 PR 8).
+#
+# Applied after docker-compose.saas.yml so these values win even when legacy
+# PRINT_VISION_* values still exist in Doppler. This makes Together/MiniMax the
+# canonical production PrintSense path without deleting the approved rollback
+# providers. Rollback is explicit via PRINTSENSE_PROD_PROVIDER / MODEL.
+
+x-printsense-production-env: &printsense-production-env
+  PRINT_VISION_PROVIDER: ${PRINTSENSE_PROD_PROVIDER:-together}
+  PRINT_VISION_MODEL: ${PRINTSENSE_PROD_MODEL:-MiniMaxAI/MiniMax-M3}
+  TOGETHERAI_VISION_MODEL: ${PRINTSENSE_PROD_MODEL:-MiniMaxAI/MiniMax-M3}
+  PRINT_PROVIDER_POLICY: ${PRINTSENSE_PROD_POLICY:-strict}
+  PRINT_ENFORCE_APPROVED_MODELS: "1"
+  FACTORYLM_NETWORK_MODE: enabled
+  INFERENCE_BACKEND: cloud
+  OCR_REQUIRE_TESSERACT: "1"
+  OCR_EXPECT_TESSERACT: "1"
+
+services:
+  mira-bot-telegram:
+    environment:
+      <<: *printsense-production-env
+
+  mira-bot-slack:
+    environment:
+      <<: *printsense-production-env

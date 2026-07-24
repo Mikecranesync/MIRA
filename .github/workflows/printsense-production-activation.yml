@@ -1,0 +1,164 @@
+name: PrintSense Production Activation
+
+# ADR-0031 PR 8: make the staging-proven Together/MiniMax + required-Tesseract
+# profile the durable production PrintSense configuration for Telegram + Slack.
+#
+# This runs once on the activation merge and after every normal Deploy to VPS.
+# The post-deploy trigger is intentional: docker-compose.saas.yml still carries
+# legacy defaults while the deeper provider-config cleanup continues, so this
+# overlay is re-applied after a normal deploy instead of silently drifting back.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docker-compose.printsense-production.yml"
+      - ".github/workflows/printsense-production-activation.yml"
+      - "tests/print_of_day/test_production_activation_contract.py"
+  workflow_run:
+    workflows: ["Deploy to VPS"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  activate:
+    name: Activate Together/MiniMax PrintSense in production
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout activation revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Verify source PR passed Staging Gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          PR_HEAD_SHA=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" \
+            --jq '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty' \
+            2>/dev/null || echo "")
+          if [ -z "$PR_HEAD_SHA" ]; then
+            PR_HEAD_SHA=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" \
+              --jq '.[0].head.sha // empty' 2>/dev/null || echo "")
+          fi
+          if [ -z "$PR_HEAD_SHA" ]; then
+            echo "::error::No PR associated with activation SHA $DEPLOY_SHA"
+            exit 1
+          fi
+          STATUS=$(gh run list --repo "$REPO" --workflow "Staging Gate" \
+            --commit "$PR_HEAD_SHA" --limit 1 --json status,conclusion \
+            --jq '.[0] | "\(.status):\(.conclusion)"' 2>/dev/null || echo "")
+          echo "Staging Gate for PR head $PR_HEAD_SHA: $STATUS"
+          test "$STATUS" = "completed:success"
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Apply production profile and verify live
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            root@165.245.138.91 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /opt/mira
+
+          touch /opt/mira/.deploy-in-progress
+          trap 'rm -f /opt/mira/.deploy-in-progress' EXIT
+
+          echo "=== Pin activation code to current main ==="
+          git fetch origin main --tags --force
+          git reset --hard origin/main
+          test -f docker-compose.printsense-production.yml
+
+          COMPOSE="docker compose -f docker-compose.saas.yml -f docker-compose.printsense-production.yml"
+
+          echo "=== Validate production overlay ==="
+          doppler run --project factorylm --config prd -- $COMPOSE config >/tmp/printsense-production-compose.yml
+
+          echo "=== Rebuild and recreate production bot surfaces ==="
+          DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- \
+            $COMPOSE build mira-bot-telegram mira-bot-slack
+          doppler run --project factorylm --config prd -- \
+            $COMPOSE up -d --no-deps --force-recreate mira-bot-telegram mira-bot-slack
+
+          sleep 12
+
+          echo "=== Assert exact non-secret production configuration ==="
+          for container in mira-bot-telegram mira-bot-slack; do
+            docker exec "$container" sh -ec '
+              test "$PRINT_VISION_PROVIDER" = "together"
+              test "$PRINT_VISION_MODEL" = "MiniMaxAI/MiniMax-M3"
+              test "$TOGETHERAI_VISION_MODEL" = "MiniMaxAI/MiniMax-M3"
+              test "$PRINT_PROVIDER_POLICY" = "strict"
+              test "$PRINT_ENFORCE_APPROVED_MODELS" = "1"
+              test "$FACTORYLM_NETWORK_MODE" = "enabled"
+              test "$OCR_REQUIRE_TESSERACT" = "1"
+              test -n "$TOGETHERAI_API_KEY"
+            '
+            HEALTH=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container")
+            echo "$container health=$HEALTH"
+            test "$HEALTH" = "healthy"
+          done
+
+          echo "=== Run network-free readiness in both containers ==="
+          docker exec mira-bot-telegram python -m factorylm_ai.readiness \
+            --profile printsense --environment production >/tmp/telegram-printsense-readiness.json
+          docker exec mira-bot-slack python -m factorylm_ai.readiness \
+            --profile printsense --environment production >/tmp/slack-printsense-readiness.json
+          cat /tmp/telegram-printsense-readiness.json
+          cat /tmp/slack-printsense-readiness.json
+
+          echo "=== Run live Together/MiniMax known-token canary from production container ==="
+          docker cp tools/canary_fixtures/vision_canary.png \
+            mira-bot-telegram:/tmp/vision_canary.png
+          docker exec mira-bot-telegram python -c '
+          import json
+          from factorylm_ai import readiness
+          readiness._VISION_FIXTURE = "/tmp/vision_canary.png"
+          report = readiness.collect("printsense", live=True, environment="production")
+          assert report["verdict"] == "ready", report
+          assert report["provider"]["resolved"] == "together", report
+          assert report["provider"]["model"] == "MiniMaxAI/MiniMax-M3", report
+          assert report["provider"]["vision_probe"] == "ok", report
+          assert report["ocr"]["available"] is True, report
+          print(json.dumps(report, indent=2))
+          '
+
+          echo "=== Production activation complete ==="
+          doppler run --project factorylm --config prd -- $COMPOSE ps \
+            mira-bot-telegram mira-bot-slack
+          ENDSSH
+
+      - name: Record rollback control
+        run: |
+          {
+            echo "## PrintSense production profile"
+            echo ""
+            echo "Activated: Together / MiniMaxAI/MiniMax-M3 / strict / required Tesseract"
+            echo ""
+            echo "Rollback without code removal: set PRINTSENSE_PROD_PROVIDER and"
+            echo "PRINTSENSE_PROD_MODEL in Doppler factorylm/prd to an approved pair,"
+            echo "then re-run this workflow. The registry, OCR enforcement, provenance,"
+            echo "and typed failure behavior remain active."
+          } >> "$GITHUB_STEP_SUMMARY"
