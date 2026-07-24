@@ -1,0 +1,41 @@
+name: PR 2881 Reconcile
+
+on:
+  push:
+    branches:
+      - fix/pr4-paid-execution-hardening
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr-2881-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile and validate PR 2881
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/pr4-paid-execution-hardening
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Configure git
+        run: |
+          git config user.name "mira-pr2881-reconciler"
+          git config user.email "pr2881-reconcile@factorylm.local"
+
+      - name: Merge current main, validate, and push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/pr2881_reconcile.sh 2881
