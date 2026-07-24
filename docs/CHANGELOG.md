@@ -1,3 +1,14 @@
+### v3.211.2 (2026-07-24) - chore(ci): resurrect SonarQube scan workflow
+
+Optional SonarQube CI integration for MIRA's monorepo.
+
+- **SonarQube workflow restored.** Added `.github/workflows/sonarqube.yml` for PRs to `main`, pushes to `main`, and manual dispatches.
+- **Configuration is fail-neutral until wired.** The workflow skips with a clear Step Summary unless `SONAR_TOKEN`, `SONAR_HOST_URL`, and `SONAR_PROJECT_KEY` are configured; `SONAR_ORGANIZATION` is required only when the host is SonarQube Cloud.
+- **Project scope is checked in.** Added `sonar-project.properties` focused on first-party Python and TypeScript/JavaScript code while excluding docs, wiki content, generated output, fixtures, examples, and migrations.
+- **Operator runbook added.** `docs/runbooks/sonarqube-ci.md` records the required GitHub secret/variables and the deliberate no-implicit-SonarCloud default.
+
+Verification: `actionlint` on the SonarQube workflow, local preflight simulation with missing config, and Sonar scope directory validation.
+
 ### v3.211.1 (2026-07-24) - fix(ci): unbreak scheduled workflow canaries
 
 Workflow-only CI hardening for scheduled red checks.

@@ -1,0 +1,103 @@
+name: SonarQube
+
+# Optional SonarQube quality gate for CI. This workflow is intentionally neutral
+# until the repository is configured with SONAR_TOKEN + Sonar project settings;
+# MIRA's no-new-cloud default means there is no implicit SonarCloud fallback.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  sonarqube:
+    name: SonarQube Scan
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Sonar recommends full git history so blame/new-code analysis is
+          # correct for PRs and quality gates.
+          fetch-depth: 0
+
+      - name: Preflight SonarQube configuration
+        id: sonar_config
+        run: |
+          set -euo pipefail
+          missing=0
+
+          if [ -z "${SONAR_TOKEN:-}" ]; then
+            echo "::notice::SONAR_TOKEN secret is not configured; skipping SonarQube scan."
+            missing=1
+          fi
+          if [ -z "${SONAR_HOST_URL:-}" ]; then
+            echo "::notice::SONAR_HOST_URL repository variable is not configured; skipping SonarQube scan."
+            missing=1
+          fi
+          if [ -z "${SONAR_PROJECT_KEY:-}" ]; then
+            echo "::notice::SONAR_PROJECT_KEY repository variable is not configured; skipping SonarQube scan."
+            missing=1
+          fi
+
+          if [ "$missing" -eq 1 ]; then
+            {
+              echo "## SonarQube"
+              echo ""
+              echo "Scan skipped because the repository is not configured yet."
+              echo ""
+              echo "Required configuration:"
+              echo "- Secret: \`SONAR_TOKEN\`"
+              echo "- Variable: \`SONAR_HOST_URL\`"
+              echo "- Variable: \`SONAR_PROJECT_KEY\`"
+              echo "- Variable for SonarQube Cloud only: \`SONAR_ORGANIZATION\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${SONAR_HOST_URL%/}" = "https://sonarcloud.io" ] && [ -z "${SONAR_ORGANIZATION:-}" ]; then
+            echo "::notice::SONAR_ORGANIZATION is required for SonarQube Cloud; skipping SonarQube scan."
+            {
+              echo "## SonarQube"
+              echo ""
+              echo "Scan skipped because \`SONAR_ORGANIZATION\` is missing for SonarQube Cloud."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cp sonar-project.properties sonar-project.ci.properties
+          {
+            echo ""
+            echo "# Runtime project binding. Do not commit secrets here."
+            echo "sonar.host.url=${SONAR_HOST_URL}"
+            echo "sonar.projectKey=${SONAR_PROJECT_KEY}"
+            if [ -n "${SONAR_ORGANIZATION:-}" ]; then
+              echo "sonar.organization=${SONAR_ORGANIZATION}"
+            fi
+          } >> sonar-project.ci.properties
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: SonarQube scan + quality gate
+        if: steps.sonar_config.outputs.enabled == 'true'
+        uses: SonarSource/sonarqube-scan-action@v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: -Dproject.settings=sonar-project.ci.properties
