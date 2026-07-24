@@ -28,6 +28,10 @@ concurrency:
 permissions:
   actions: read
   contents: read
+  issues: write
+
+env:
+  ACTIVATION_PR: "2903"
 
 jobs:
   activate:
@@ -162,3 +166,46 @@ jobs:
             echo "then re-run this workflow. The registry, OCR enforcement, provenance,"
             echo "and typed failure behavior remain active."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report activation success
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTIVATED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          gh pr comment "$ACTIVATION_PR" --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
+          ## ✅ Production activation verified
+
+          The production Telegram and Slack containers passed the fail-closed activation checks.
+
+          - Provider: \`together\`
+          - Model: \`MiniMaxAI/MiniMax-M3\`
+          - Policy: \`strict\`
+          - Approved-model enforcement: enabled
+          - Tesseract: required and available
+          - Together key: present (value never logged)
+          - Live known-token vision canary: passed
+          - Activated revision: \`$ACTIVATED_SHA\`
+
+          Run: $RUN_URL
+          EOF
+          )"
+
+      - name: Report activation failure
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ATTEMPTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          gh pr comment "$ACTIVATION_PR" --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
+          ## ❌ Production activation failed closed
+
+          The activation workflow did not complete all required provider, OCR, container-health, and live-vision checks. The workflow exited non-zero rather than declaring the profile active.
+
+          Attempted revision: \`$ATTEMPTED_SHA\`
+
+          Run: $RUN_URL
+          EOF
+          )"
