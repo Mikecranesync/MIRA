@@ -31,8 +31,8 @@ jobs:
         id: check
         run: |
           set -euo pipefail
-          latest="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" \
-            --jq 'map(select(.body | contains("<!-- dogfood-heartbeat -->"))) | max_by(.created_at) // {}')"
+          latest="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" \
+            | jq 'flatten | map(select(.body | contains("<!-- dogfood-heartbeat -->"))) | max_by(.created_at) // {}')"
           created="$(printf '%s' "$latest" | jq -r '.created_at // ""')"
           body="$(printf '%s' "$latest" | jq -r '.body // ""')"
           if [ -z "$created" ]; then
