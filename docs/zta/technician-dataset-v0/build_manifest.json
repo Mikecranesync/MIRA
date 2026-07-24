@@ -27,13 +27,62 @@
     "readiness_package": "docs\\zta\\technician-dataset-v0\\training_readiness_package.md",
     "rejection_report": "docs\\zta\\technician-dataset-v0\\reports\\rejection_report.json",
     "review_cv101": "docs\\zta\\technician-dataset-v0\\review-packages\\cv101_review_package.md",
+    "review_decision_report": "docs\\zta\\technician-dataset-v0\\reports\\review_decision_report.json",
     "review_drive": "docs\\zta\\technician-dataset-v0\\review-packages\\drive_review_package.md",
     "review_printsense": "docs\\zta\\technician-dataset-v0\\review-packages\\printsense_review_package.md",
+    "reviewed_jsonl": "docs\\zta\\technician-dataset-v0\\reviewed_dataset.jsonl",
+    "reviewed_manifest": "docs\\zta\\technician-dataset-v0\\reports\\reviewed_manifest.json",
     "rights_report": "docs\\zta\\technician-dataset-v0\\reports\\rights_report.json",
     "source_registry": "docs\\zta\\technician-dataset-v0\\source_registry.json",
     "token_cost": "docs\\zta\\technician-dataset-v0\\reports\\token_cost_estimate.json"
   },
   "phase3_paid_gate_passed": false,
   "phase3_paid_gate_verdict": "PAID_GATE_BLOCKED",
+  "review_decisions": {
+    "build_id": "2026-07-23-technician-dataset-v0",
+    "built_at": "2026-07-23T00:00:00Z",
+    "candidate_count": 180,
+    "candidate_jsonl_mutated": false,
+    "candidate_manifest_sha256": "2face5d13b65ed68dcaf1aea71db2fc7d7f1cea0b534fb1e95ca26f0004f674d",
+    "corrected_records": [],
+    "decision_count": 0,
+    "decision_counts": {
+      "approve": 0,
+      "correct": 0,
+      "hold_out": 0,
+      "reject": 0
+    },
+    "decisions": [],
+    "eligibility_delta": {
+      "delta": 0,
+      "eligible_after": 0,
+      "eligible_before": 0
+    },
+    "held_out_records": [],
+    "no_action_proof": {
+      "authorization_consumed": false,
+      "deployment_occurred": false,
+      "dry_run": true,
+      "endpoint_created": false,
+      "executed": false,
+      "fine_tune_job_created": false,
+      "spend_occurred": false,
+      "upload_occurred": false
+    },
+    "paid_gate_blocking": [
+      "min_records",
+      "min_lineages",
+      "min_valued_interactions",
+      "min_safety_sensitive",
+      "trainable_source_representation",
+      "model_support_confirmed"
+    ],
+    "paid_gate_passed": false,
+    "paid_gate_verdict": "PAID_GATE_BLOCKED",
+    "policy": "Review decisions are append-only events. Exact duplicate events are idempotent; changed decisions for an existing record id are rejected. Only approve/correct decisions set approved_by and gold_status, and the reviewed record must still pass SourceCandidate/DatasetRecord/assemble_dataset_v0.",
+    "rejected_records": [],
+    "reviewed_manifest_sha256": "cfd060b6846643f200f6bb0f383502f84692b10b8137bdb36d8dd9047742c1f1",
+    "schema": "factorylm.technician-dataset.review-decision-report.v1"
+  },
   "schema": "factorylm.technician-dataset.build-manifest.v1"
 }

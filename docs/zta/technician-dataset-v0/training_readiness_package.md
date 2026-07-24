@@ -12,10 +12,25 @@ Verdict: BLOCKED for paid training. The candidate corpus is review-ready, but no
 - Drive Commander candidates: 70
 - Candidate train-side lineages: 25
 - Held-out lineages reserved: 5
+- Review decisions applied: 0
+- Approved decisions: 0
+- Corrected decisions: 0
+- Rejected decisions: 0
+- Hold-out decisions: 0
+- Eligible training records before decisions: 0
+- Eligible training records after decisions: 0
 - Valued uncertainty/refusal/correction records: 104
 - Safety-sensitive records: 56
 - Real or human-corrected share: 77.78%
 - Synthetic share: 22.22%
+
+## Review Decision Intake
+
+- Decision schema: `factorylm.technician-dataset.review-decision.v1`
+- Candidate JSONL is immutable; reviewer actions append to a separate JSONL ledger.
+- Exact duplicate decision events are idempotent; changed decisions for an existing record id are rejected.
+- Append command: `py -3 -m factorylm_ai.dataset.technician_v0 --stage readiness --decisions-path docs/zta/technician-dataset-v0/review-decisions/decisions.jsonl --append-decision decision.json`
+- Rebuild command: `py -3 -m factorylm_ai.dataset.technician_v0 --stage readiness --decisions-path docs/zta/technician-dataset-v0/review-decisions/decisions.jsonl --out-dir docs/zta/technician-dataset-v0`
 
 ## Paid Gate
 
@@ -47,8 +62,11 @@ Verdict: BLOCKED for paid training. The candidate corpus is review-ready, but no
 - phase3_paid_gate: `docs\zta\technician-dataset-v0\reports\phase3_paid_gate_report.json`
 - rejection_report: `docs\zta\technician-dataset-v0\reports\rejection_report.json`
 - review_cv101: `docs\zta\technician-dataset-v0\review-packages\cv101_review_package.md`
+- review_decision_report: `docs\zta\technician-dataset-v0\reports\review_decision_report.json`
 - review_drive: `docs\zta\technician-dataset-v0\review-packages\drive_review_package.md`
 - review_printsense: `docs\zta\technician-dataset-v0\review-packages\printsense_review_package.md`
+- reviewed_jsonl: `docs\zta\technician-dataset-v0\reviewed_dataset.jsonl`
+- reviewed_manifest: `docs\zta\technician-dataset-v0\reports\reviewed_manifest.json`
 - rights_report: `docs\zta\technician-dataset-v0\reports\rights_report.json`
 - source_registry: `docs\zta\technician-dataset-v0\source_registry.json`
 - token_cost: `docs\zta\technician-dataset-v0\reports\token_cost_estimate.json`

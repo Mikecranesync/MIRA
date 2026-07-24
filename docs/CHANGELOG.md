@@ -1,3 +1,15 @@
+### v3.213.0 (2026-07-24) - feat(dataset): add governed technician review-decision intake
+
+Adds the Dataset v0 review-decision intake path for issue #2905. Pure local artifacts only: no Together calls, uploads, jobs, endpoints, authorization consumption, deployment, or spend.
+
+- **Review decisions are append-only and hash-bound.** New `ReviewDecision` events support `approve`, `correct`, `reject`, and `hold_out`, bound to record id, candidate content hash, candidate manifest hash, reviewer identity, rationale, and timestamp. Exact duplicate events are idempotent; conflicting events for the same record are rejected.
+- **Approvals still use the existing gates.** Only valid `approve`/`correct` decisions set `approved_by` and `gold_status="gold"`, and reviewed records still flow through `SourceCandidate`, `DatasetRecord`, `assemble_dataset_v0`, leakage, readiness, and paid-gate checks.
+- **Corrections create reviewed records without mutating candidates.** The generated candidate JSONL stays immutable; corrected/approved records emit separately through `reviewed_dataset.jsonl`, `reviewed_manifest.json`, and `review_decision_report.json`.
+- **Fail-closed protections cover stale hashes, missing reviewer/rationale/timestamp, invalid corrections, conflicts, OEM rights blocks, and held-out/frozen train-side promotion.** Reject and hold-out decisions remain auditable but never trainable.
+- **Readiness artifacts disclose eligibility deltas.** The readiness package and build manifest now include decision counts, before/after eligible counts, reviewed manifest hashes, and no-action proof.
+
+Tests: focused technician dataset review-intake tests cover all four decisions, stale/conflicting/idempotent events, concurrent JSONL appends, rights blocks, held-out protection, eligibility deltas, and paid-gate behavior.
+
 ### v3.211.1 (2026-07-24) - fix(ci): unbreak scheduled workflow canaries
 
 Workflow-only CI hardening for scheduled red checks.

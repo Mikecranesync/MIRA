@@ -13,10 +13,12 @@ import argparse
 import csv
 import hashlib
 import json
+import threading
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Literal
+from typing import Any, Iterable, Literal, cast
 
 from factorylm_ai.adapters import drive_commander_candidate, printsense_candidate
 from factorylm_ai.dataset import (
@@ -35,11 +37,14 @@ from factorylm_ai.governance.rights import (
 )
 
 BuildStage = Literal["registry", "cv101", "drive", "printsense", "readiness"]
+ReviewDecisionAction = Literal["approve", "correct", "reject", "hold_out"]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_DIR = Path("docs/zta/technician-dataset-v0")
 DATASET_VERSION = "factorylm-industrial-technician-v0"
 CANDIDATE_SCHEMA_VERSION = "factorylm.technician-dataset.review-candidate.v1"
+REVIEW_DECISION_SCHEMA_VERSION = "factorylm.technician-dataset.review-decision.v1"
+REVIEW_DECISION_REPORT_SCHEMA_VERSION = "factorylm.technician-dataset.review-decision-report.v1"
 SOURCE_REGISTRY_SCHEMA_VERSION = "factorylm.technician-dataset.source-registry.v1"
 BUILD_ID = "2026-07-23-technician-dataset-v0"
 BUILD_TIMESTAMP = "2026-07-23T00:00:00Z"
@@ -99,6 +104,110 @@ _DRIVE_TARGETS = {
     "powerflex_40": 25,
     "powerflex_525": 25,
 }
+
+_REVIEW_DECISION_ACTIONS: frozenset[str] = frozenset({"approve", "correct", "reject", "hold_out"})
+_DECISION_APPEND_LOCK = threading.Lock()
+
+
+class ReviewDecisionError(ValueError):
+    """Raised when a review decision would weaken dataset governance."""
+
+    def __init__(self, code: str, detail: str) -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}")
+
+
+@dataclass(frozen=True)
+class ReviewDecision:
+    """Append-only reviewer event bound to the immutable candidate artifact hashes.
+
+    Exact duplicate events are treated as idempotent no-ops by the ledger writer; any
+    different event for the same record id is rejected as a conflict. A new approval
+    requires a new candidate record id or a newly generated candidate manifest.
+    """
+
+    action: ReviewDecisionAction
+    record_id: str
+    candidate_content_hash: str
+    candidate_manifest_sha256: str
+    reviewer_id: str
+    rationale: str
+    decided_at: str
+    correction_messages: list[dict[str, Any]] | None = None
+    rejection_reasons: tuple[str, ...] = ()
+
+    @property
+    def decision_id(self) -> str:
+        return _stable_hash(self._payload_dict())
+
+    def _payload_dict(self) -> dict[str, Any]:
+        return {
+            "schema": REVIEW_DECISION_SCHEMA_VERSION,
+            "action": self.action,
+            "record_id": self.record_id,
+            "candidate_content_hash": self.candidate_content_hash,
+            "candidate_manifest_sha256": self.candidate_manifest_sha256,
+            "reviewer_id": self.reviewer_id,
+            "rationale": self.rationale,
+            "decided_at": self.decided_at,
+            "correction_messages": self.correction_messages,
+            "rejection_reasons": list(self.rejection_reasons),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self._payload_dict()
+        payload["decision_id"] = self.decision_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, row: dict[str, Any]) -> "ReviewDecision":
+        if row.get("schema") != REVIEW_DECISION_SCHEMA_VERSION:
+            raise ReviewDecisionError("DECISION_SCHEMA_INVALID", "unknown review decision schema")
+        action = row.get("action")
+        if action not in _REVIEW_DECISION_ACTIONS:
+            raise ReviewDecisionError("DECISION_ACTION_INVALID", f"bad action={action!r}")
+        rejection_reasons = row.get("rejection_reasons") or ()
+        if not isinstance(rejection_reasons, (list, tuple)):
+            raise ReviewDecisionError(
+                "DECISION_REJECTION_REASONS_INVALID",
+                "rejection_reasons must be a list of typed reasons",
+            )
+        correction_messages = row.get("correction_messages")
+        if correction_messages is not None and not isinstance(correction_messages, list):
+            raise ReviewDecisionError(
+                "DECISION_CORRECTION_INVALID", "correction_messages must be a list"
+            )
+        decision = cls(
+            action=cast(ReviewDecisionAction, action),
+            record_id=str(row.get("record_id") or ""),
+            candidate_content_hash=str(row.get("candidate_content_hash") or ""),
+            candidate_manifest_sha256=str(row.get("candidate_manifest_sha256") or ""),
+            reviewer_id=str(row.get("reviewer_id") or ""),
+            rationale=str(row.get("rationale") or ""),
+            decided_at=str(row.get("decided_at") or ""),
+            correction_messages=correction_messages,
+            rejection_reasons=tuple(str(r) for r in rejection_reasons),
+        )
+        if row.get("decision_id") and row["decision_id"] != decision.decision_id:
+            raise ReviewDecisionError(
+                "DECISION_ID_MISMATCH", f"{decision.record_id}: decision_id does not match payload"
+            )
+        return decision
+
+    def with_updates(self, **changes: Any) -> "ReviewDecision":
+        return replace(self, **changes)
+
+
+@dataclass(frozen=True)
+class ReviewedDatasetBuild:
+    """Result of applying append-only review decisions through the existing gates."""
+
+    records: list[DatasetRecord]
+    dataset: Any
+    paid_gate: Any
+    report: dict[str, Any]
+    candidate_manifest: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -200,7 +309,156 @@ def build_review_candidates(stage: BuildStage = "readiness") -> list[ReviewCandi
     return candidates
 
 
-def write_build(out_dir: str | Path = DEFAULT_OUT_DIR, *, stage: BuildStage = "readiness") -> dict:
+def candidate_manifest_for(candidates: Iterable[ReviewCandidate]) -> dict[str, Any]:
+    """Return the immutable manifest a review decision must bind to."""
+
+    return _candidate_manifest([candidate.to_dict() for candidate in candidates])
+
+
+def load_review_decisions(path: str | Path) -> list[ReviewDecision]:
+    """Load append-only review decisions from JSONL, failing closed on malformed rows."""
+
+    ledger_path = Path(path)
+    if not ledger_path.exists():
+        return []
+
+    decisions: list[ReviewDecision] = []
+    for line_number, line in enumerate(ledger_path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ReviewDecisionError(
+                "DECISION_LEDGER_JSON_INVALID",
+                f"{ledger_path}:{line_number}: {exc.msg}",
+            ) from exc
+        if not isinstance(row, dict):
+            raise ReviewDecisionError(
+                "DECISION_LEDGER_ROW_INVALID", f"{ledger_path}:{line_number}: row is not an object"
+            )
+        decisions.append(ReviewDecision.from_dict(row))
+    return decisions
+
+
+def append_review_decision(
+    path: str | Path,
+    candidates: Iterable[ReviewCandidate],
+    decision: ReviewDecision,
+) -> Literal["appended", "duplicate"]:
+    """Append one decision after validating it against the current immutable candidates.
+
+    The ledger is serialized under a module-wide lock and writes one complete JSON line at a
+    time. Exact duplicate events are idempotent no-ops. Any different event for the same
+    record id is rejected so a reviewer must create a new candidate record/manifest for a
+    different approval.
+    """
+
+    ledger_path = Path(path)
+    candidates_list = list(candidates)
+    with _DECISION_APPEND_LOCK:
+        existing = load_review_decisions(ledger_path)
+        _validate_decision_set(candidates_list, [*existing, decision])
+        for existing_decision in existing:
+            if existing_decision.record_id != decision.record_id:
+                continue
+            if existing_decision.to_dict() == decision.to_dict():
+                return "duplicate"
+            raise ReviewDecisionError(
+                "DECISION_CONFLICT",
+                f"{decision.record_id}: existing decision uses different fields",
+            )
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        with ledger_path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(decision.to_dict(), ensure_ascii=True, sort_keys=True))
+            handle.write("\n")
+        return "appended"
+
+
+def apply_review_decisions(
+    candidates: Iterable[ReviewCandidate],
+    decisions: Iterable[ReviewDecision],
+    *,
+    readiness: ReadinessEvidence | None = None,
+) -> ReviewedDatasetBuild:
+    """Apply review decisions through SourceCandidate, DatasetRecord, assembly, and paid gate."""
+
+    candidates_list = list(candidates)
+    decisions_list = _validate_decision_set(candidates_list, list(decisions))
+    decisions_by_record = {decision.record_id: decision for decision in decisions_list}
+
+    original_records = [candidate.record for candidate in candidates_list]
+    original_dataset = assemble_dataset_v0(original_records, dataset_version=DATASET_VERSION)
+    reviewed_records: list[DatasetRecord] = []
+    corrected_records: list[dict[str, Any]] = []
+    rejected_records: list[dict[str, Any]] = []
+    held_out_records: list[dict[str, Any]] = []
+
+    for candidate in candidates_list:
+        decision = decisions_by_record.get(candidate.record.record_id)
+        if decision is None:
+            reviewed_records.append(candidate.record)
+            continue
+        if decision.action == "reject":
+            rejected_records.append(
+                {
+                    "record_id": decision.record_id,
+                    "rejection_reasons": list(decision.rejection_reasons),
+                }
+            )
+            reviewed_records.append(candidate.record)
+            continue
+        if decision.action == "hold_out":
+            held_out_records.append({"record_id": decision.record_id})
+            reviewed_records.append(candidate.record)
+            continue
+
+        reviewed_record = _approved_record_for_decision(candidate.record, decision)
+        if decision.action == "correct":
+            corrected_records.append(
+                {
+                    "record_id": decision.record_id,
+                    "candidate_content_hash": decision.candidate_content_hash,
+                    "reviewed_content_hash": reviewed_record.content_hash(),
+                }
+            )
+        if not reviewed_record.is_dataset_eligible():
+            eligibility = reviewed_record.eligibility()
+            raise ReviewDecisionError(
+                "REVIEWED_RECORD_INELIGIBLE",
+                f"{reviewed_record.record_id}: {eligibility.codes}",
+            )
+        reviewed_records.append(reviewed_record)
+
+    dataset = assemble_dataset_v0(reviewed_records, dataset_version=DATASET_VERSION)
+    paid_gate = evaluate_paid_gate(dataset, readiness=readiness, model_support=None)
+    manifest = candidate_manifest_for(candidates_list)
+    report = _review_decision_report(
+        candidate_count=len(candidates_list),
+        decisions=decisions_list,
+        original_dataset=original_dataset,
+        reviewed_dataset=dataset,
+        paid_gate=paid_gate.to_dict(),
+        candidate_manifest=manifest,
+        corrected_records=corrected_records,
+        rejected_records=rejected_records,
+        held_out_records=held_out_records,
+    )
+    return ReviewedDatasetBuild(
+        records=reviewed_records,
+        dataset=dataset,
+        paid_gate=paid_gate,
+        report=report,
+        candidate_manifest=manifest,
+    )
+
+
+def write_build(
+    out_dir: str | Path = DEFAULT_OUT_DIR,
+    *,
+    stage: BuildStage = "readiness",
+    decisions_path: str | Path | None = None,
+) -> dict:
     """Write reproducible registry, candidate, review, and readiness artifacts."""
 
     out = Path(out_dir)
@@ -213,10 +471,12 @@ def write_build(out_dir: str | Path = DEFAULT_OUT_DIR, *, stage: BuildStage = "r
     registry = source_registry(stage)
     candidates = build_review_candidates(stage)
     candidate_dicts = [c.to_dict() for c in candidates]
+    decisions = load_review_decisions(decisions_path) if decisions_path else []
     records = [c.record for c in candidates]
-    dataset = assemble_dataset_v0(records, dataset_version=DATASET_VERSION)
     readiness = _readiness_evidence(out)
-    paid_gate = evaluate_paid_gate(dataset, readiness=readiness, model_support=None)
+    reviewed = apply_review_decisions(candidates, decisions, readiness=readiness)
+    dataset = reviewed.dataset
+    paid_gate = reviewed.paid_gate
 
     files: dict[str, str] = {}
     files["source_registry"] = _write_json(out / "source_registry.json", registry)
@@ -230,13 +490,23 @@ def write_build(out_dir: str | Path = DEFAULT_OUT_DIR, *, stage: BuildStage = "r
     if STAGE_ORDER[stage] == STAGE_ORDER["registry"]:
         files["manifest"] = _write_json(
             out / "build_manifest.json",
-            _build_manifest(files, candidate_dicts, paid_gate.to_dict()),
+            _build_manifest(files, candidate_dicts, paid_gate.to_dict(), reviewed.report),
         )
         return {"stage": stage, "files": files, "candidate_count": len(candidate_dicts)}
 
     files["candidate_jsonl"] = _write_jsonl(out / "candidate_dataset.jsonl", candidate_dicts)
     files["candidate_manifest"] = _write_json(
-        out / "candidate_manifest.json", _candidate_manifest(candidate_dicts)
+        out / "candidate_manifest.json", reviewed.candidate_manifest
+    )
+    files["review_decision_report"] = _write_json(
+        report_dir / "review_decision_report.json", reviewed.report
+    )
+    files["reviewed_manifest"] = _write_json(
+        report_dir / "reviewed_manifest.json", dataset.manifest
+    )
+    files["reviewed_jsonl"] = _write_jsonl(
+        out / "reviewed_dataset.jsonl",
+        [_reviewed_record_dict(record) for record in dataset.eligible],
     )
 
     by_batch: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -268,7 +538,7 @@ def write_build(out_dir: str | Path = DEFAULT_OUT_DIR, *, stage: BuildStage = "r
     if STAGE_ORDER[stage] < STAGE_ORDER["readiness"]:
         files["manifest"] = _write_json(
             out / "build_manifest.json",
-            _build_manifest(files, candidate_dicts, paid_gate.to_dict()),
+            _build_manifest(files, candidate_dicts, paid_gate.to_dict(), reviewed.report),
         )
         return {"stage": stage, "files": files, "candidate_count": len(candidate_dicts)}
 
@@ -286,10 +556,11 @@ def write_build(out_dir: str | Path = DEFAULT_OUT_DIR, *, stage: BuildStage = "r
     )
     files["readiness_package"] = _write_text(
         out / "training_readiness_package.md",
-        _readiness_markdown(candidate_dicts, dataset, paid_gate.to_dict(), files),
+        _readiness_markdown(candidate_dicts, dataset, paid_gate.to_dict(), files, reviewed.report),
     )
     files["manifest"] = _write_json(
-        out / "build_manifest.json", _build_manifest(files, candidate_dicts, paid_gate.to_dict())
+        out / "build_manifest.json",
+        _build_manifest(files, candidate_dicts, paid_gate.to_dict(), reviewed.report),
     )
     return {"stage": stage, "files": files, "candidate_count": len(candidate_dicts)}
 
@@ -1128,6 +1399,265 @@ def _answer_key(
     }
 
 
+def _validate_decision_set(
+    candidates: list[ReviewCandidate], decisions: list[ReviewDecision]
+) -> list[ReviewDecision]:
+    manifest = candidate_manifest_for(candidates)
+    manifest_hash = manifest["manifest_sha256"]
+    entries = {entry["record_id"]: entry for entry in manifest["entries"]}
+    candidates_by_record = {candidate.record.record_id: candidate for candidate in candidates}
+    seen: dict[str, ReviewDecision] = {}
+
+    for decision in decisions:
+        _validate_decision_shape(decision)
+        if _contains_secret(decision.to_dict()):
+            raise ReviewDecisionError(
+                "DECISION_SECRET_PRESENT",
+                f"{decision.record_id}: decision payload contains secret-like text",
+            )
+        candidate = candidates_by_record.get(decision.record_id)
+        entry = entries.get(decision.record_id)
+        if candidate is None or entry is None:
+            raise ReviewDecisionError(
+                "DECISION_UNKNOWN_RECORD", f"{decision.record_id}: no matching candidate"
+            )
+        if decision.candidate_manifest_sha256 != manifest_hash:
+            raise ReviewDecisionError(
+                "DECISION_MANIFEST_STALE",
+                f"{decision.record_id}: decision manifest hash does not match current build",
+            )
+        if decision.candidate_content_hash != entry["content_hash"]:
+            raise ReviewDecisionError(
+                "DECISION_CONTENT_STALE",
+                f"{decision.record_id}: decision content hash does not match candidate",
+            )
+
+        existing = seen.get(decision.record_id)
+        if existing is not None:
+            if existing.to_dict() == decision.to_dict():
+                continue
+            raise ReviewDecisionError(
+                "DECISION_CONFLICT",
+                f"{decision.record_id}: multiple non-identical decisions for one candidate",
+            )
+
+        if decision.action in ("approve", "correct"):
+            reviewed_record = _approved_record_for_decision(candidate.record, decision)
+            if not reviewed_record.is_dataset_eligible():
+                raise ReviewDecisionError(
+                    "DECISION_GOVERNANCE_BLOCKED",
+                    f"{decision.record_id}: {reviewed_record.eligibility().codes}",
+                )
+        seen[decision.record_id] = decision
+
+    return list(seen.values())
+
+
+def _validate_decision_shape(decision: ReviewDecision) -> None:
+    if decision.action not in _REVIEW_DECISION_ACTIONS:
+        raise ReviewDecisionError("DECISION_ACTION_INVALID", f"bad action={decision.action!r}")
+    if not decision.record_id.strip():
+        raise ReviewDecisionError("DECISION_RECORD_ID_MISSING", "record_id is required")
+    if not _is_sha256(decision.candidate_content_hash):
+        raise ReviewDecisionError(
+            "DECISION_CONTENT_HASH_INVALID",
+            f"{decision.record_id}: candidate_content_hash must be sha256",
+        )
+    if not _is_sha256(decision.candidate_manifest_sha256):
+        raise ReviewDecisionError(
+            "DECISION_MANIFEST_HASH_INVALID",
+            f"{decision.record_id}: candidate_manifest_sha256 must be sha256",
+        )
+    if not decision.reviewer_id.strip():
+        raise ReviewDecisionError(
+            "DECISION_REVIEWER_MISSING", f"{decision.record_id}: reviewer_id is required"
+        )
+    if not decision.rationale.strip():
+        raise ReviewDecisionError(
+            "DECISION_RATIONALE_MISSING", f"{decision.record_id}: rationale is required"
+        )
+    if not _is_iso_timestamp(decision.decided_at):
+        raise ReviewDecisionError(
+            "DECISION_TIMESTAMP_INVALID",
+            f"{decision.record_id}: decided_at must be an ISO timestamp",
+        )
+    if decision.action == "correct" and not decision.correction_messages:
+        raise ReviewDecisionError(
+            "DECISION_CORRECTION_MISSING",
+            f"{decision.record_id}: correction_messages is required for correct",
+        )
+    if decision.action != "correct" and decision.correction_messages is not None:
+        raise ReviewDecisionError(
+            "DECISION_CORRECTION_UNEXPECTED",
+            f"{decision.record_id}: correction_messages is only valid for correct",
+        )
+    if decision.action == "reject" and not decision.rejection_reasons:
+        raise ReviewDecisionError(
+            "DECISION_REJECTION_REASON_MISSING",
+            f"{decision.record_id}: typed rejection_reasons are required for reject",
+        )
+    if decision.action != "reject" and decision.rejection_reasons:
+        raise ReviewDecisionError(
+            "DECISION_REJECTION_REASON_UNEXPECTED",
+            f"{decision.record_id}: rejection_reasons are only valid for reject",
+        )
+    if any(not str(reason).strip() for reason in decision.rejection_reasons):
+        raise ReviewDecisionError(
+            "DECISION_REJECTION_REASON_INVALID",
+            f"{decision.record_id}: rejection_reasons must be non-empty strings",
+        )
+
+
+def _approved_record_for_decision(record: DatasetRecord, decision: ReviewDecision) -> DatasetRecord:
+    messages = record.messages
+    if decision.action == "correct":
+        messages = decision.correction_messages or []
+        errors = replace(record, messages=messages).message_validation_errors()
+        if errors:
+            raise ReviewDecisionError(
+                "DECISION_CORRECTION_INVALID", f"{decision.record_id}: {'; '.join(errors)}"
+            )
+
+    candidate_metadata = dict(record.candidate.metadata)
+    candidate_metadata["review_decision"] = {
+        "decision_id": decision.decision_id,
+        "action": decision.action,
+        "reviewer_id": decision.reviewer_id,
+        "decided_at": decision.decided_at,
+        "rationale_hash": _stable_hash(decision.rationale),
+        "candidate_content_hash": decision.candidate_content_hash,
+        "candidate_manifest_sha256": decision.candidate_manifest_sha256,
+        "safety_status_before_review": record.candidate.safety_status,
+    }
+    safety_status = (
+        record.candidate.safety_status if record.candidate.safety_status == "clear" else "approved"
+    )
+    reviewed_candidate = replace(
+        record.candidate,
+        gold_status="gold",
+        safety_status=safety_status,
+        metadata=candidate_metadata,
+    )
+    return replace(
+        record,
+        candidate=reviewed_candidate,
+        messages=messages,
+        approved_by=decision.reviewer_id,
+    )
+
+
+def _review_decision_report(
+    *,
+    candidate_count: int,
+    decisions: list[ReviewDecision],
+    original_dataset: Any,
+    reviewed_dataset: Any,
+    paid_gate: dict[str, Any],
+    candidate_manifest: dict[str, Any],
+    corrected_records: list[dict[str, Any]],
+    rejected_records: list[dict[str, Any]],
+    held_out_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    counts = {action: 0 for action in sorted(_REVIEW_DECISION_ACTIONS)}
+    for decision in decisions:
+        counts[decision.action] += 1
+    return {
+        "schema": REVIEW_DECISION_REPORT_SCHEMA_VERSION,
+        "build_id": BUILD_ID,
+        "built_at": BUILD_TIMESTAMP,
+        "candidate_count": candidate_count,
+        "candidate_manifest_sha256": candidate_manifest["manifest_sha256"],
+        "reviewed_manifest_sha256": reviewed_dataset.manifest.get("manifest_sha256"),
+        "decision_count": len(decisions),
+        "decision_counts": counts,
+        "decisions": [
+            {
+                "decision_id": decision.decision_id,
+                "record_id": decision.record_id,
+                "action": decision.action,
+                "reviewer_id": decision.reviewer_id,
+                "decided_at": decision.decided_at,
+                "candidate_content_hash": decision.candidate_content_hash,
+                "candidate_manifest_sha256": decision.candidate_manifest_sha256,
+                "rationale_hash": _stable_hash(decision.rationale),
+            }
+            for decision in decisions
+        ],
+        "corrected_records": corrected_records,
+        "rejected_records": rejected_records,
+        "held_out_records": held_out_records,
+        "eligibility_delta": {
+            "eligible_before": original_dataset.record_count,
+            "eligible_after": reviewed_dataset.record_count,
+            "delta": reviewed_dataset.record_count - original_dataset.record_count,
+        },
+        "paid_gate_verdict": paid_gate["verdict"],
+        "paid_gate_passed": paid_gate["passed"],
+        "paid_gate_blocking": paid_gate["blocking"],
+        "no_action_proof": {
+            "dry_run": True,
+            "executed": False,
+            "upload_occurred": False,
+            "fine_tune_job_created": False,
+            "endpoint_created": False,
+            "authorization_consumed": False,
+            "spend_occurred": False,
+            "deployment_occurred": False,
+        },
+        "candidate_jsonl_mutated": False,
+        "policy": (
+            "Review decisions are append-only events. Exact duplicate events are "
+            "idempotent; changed decisions for an existing record id are rejected. "
+            "Only approve/correct decisions set approved_by and gold_status, and the "
+            "reviewed record must still pass SourceCandidate/DatasetRecord/assemble_dataset_v0."
+        ),
+    }
+
+
+def _reviewed_record_dict(record: DatasetRecord) -> dict[str, Any]:
+    return {
+        "schema": "factorylm.technician-dataset.reviewed-record.v1",
+        "build_id": BUILD_ID,
+        "dataset_version": DATASET_VERSION,
+        "record_id": record.record_id,
+        "source_system": record.source_system,
+        "document_lineage_key": record.document_lineage_key,
+        "split": record.candidate.assigned_split(),
+        "content_hash": record.content_hash(),
+        "source_evidence_id": record.candidate.evidence_id,
+        "messages": record.messages,
+        "approved_by": record.approved_by,
+        "gold_status": record.candidate.gold_status,
+        "interaction_type": record.interaction_type,
+        "tags": sorted(record.tags),
+        "safety": {
+            "safety_status": record.candidate.safety_status,
+            "safety_sensitive": record.is_safety_sensitive(),
+        },
+        "rights": record.candidate.rights.to_dict(),
+        "training_eligibility": record.eligibility().to_dict(),
+        "source_provenance": {
+            "evidence_id": record.candidate.evidence_id,
+            "provenance_present": record.candidate.provenance_present,
+        },
+        "review_decision": record.candidate.metadata.get("review_decision"),
+    }
+
+
+def _is_sha256(value: str) -> bool:
+    return len(value) == 64 and all(char in "0123456789abcdefABCDEF" for char in value)
+
+
+def _is_iso_timestamp(value: str) -> bool:
+    if not value:
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
 def _readiness_evidence(out_dir: Path) -> ReadinessEvidence:
     return ReadinessEvidence(
         held_out_lineage_keys=tuple(ln.public_lineage_key(m, d) for m, d in _HELD_OUT_DOCS),
@@ -1399,7 +1929,10 @@ def _candidate_manifest(candidates: list[dict[str, Any]]) -> dict:
 
 
 def _build_manifest(
-    files: dict[str, str], candidates: list[dict[str, Any]], paid_gate: dict
+    files: dict[str, str],
+    candidates: list[dict[str, Any]],
+    paid_gate: dict,
+    review_decisions: dict[str, Any] | None = None,
 ) -> dict:
     return {
         "schema": "factorylm.technician-dataset.build-manifest.v1",
@@ -1409,6 +1942,13 @@ def _build_manifest(
         "candidate_manifest_sha256": _candidate_manifest(candidates)["manifest_sha256"],
         "phase3_paid_gate_verdict": paid_gate["verdict"],
         "phase3_paid_gate_passed": paid_gate["passed"],
+        "review_decisions": review_decisions
+        or {
+            "schema": REVIEW_DECISION_REPORT_SCHEMA_VERSION,
+            "decision_count": 0,
+            "decision_counts": {action: 0 for action in sorted(_REVIEW_DECISION_ACTIONS)},
+            "eligibility_delta": {"eligible_before": 0, "eligible_after": 0, "delta": 0},
+        },
         "files": files,
         "dry_run": {
             "dry_run": True,
@@ -1479,7 +2019,11 @@ def _review_markdown(batch: str, rows: list[dict[str, Any]]) -> str:
 
 
 def _readiness_markdown(
-    candidates: list[dict[str, Any]], dataset: Any, paid_gate: dict, files: dict[str, str]
+    candidates: list[dict[str, Any]],
+    dataset: Any,
+    paid_gate: dict,
+    files: dict[str, str],
+    review_report: dict[str, Any],
 ) -> str:
     behavior = _behavior_report(candidates)
     composition = _composition_report(candidates)
@@ -1499,10 +2043,25 @@ def _readiness_markdown(
         f"- Drive Commander candidates: {behavior['target_comparison']['drive_commander']['actual']}",
         f"- Candidate train-side lineages: {lineage['candidate_training_lineage_count']}",
         f"- Held-out lineages reserved: {lineage['held_out_lineage_count']}",
+        f"- Review decisions applied: {review_report['decision_count']}",
+        f"- Approved decisions: {review_report['decision_counts']['approve']}",
+        f"- Corrected decisions: {review_report['decision_counts']['correct']}",
+        f"- Rejected decisions: {review_report['decision_counts']['reject']}",
+        f"- Hold-out decisions: {review_report['decision_counts']['hold_out']}",
+        f"- Eligible training records before decisions: {review_report['eligibility_delta']['eligible_before']}",
+        f"- Eligible training records after decisions: {review_report['eligibility_delta']['eligible_after']}",
         f"- Valued uncertainty/refusal/correction records: {behavior['valued_interaction_count']}",
         f"- Safety-sensitive records: {behavior['safety_sensitive_count']}",
         f"- Real or human-corrected share: {composition['real_or_human_corrected_pct']:.2%}",
         f"- Synthetic share: {composition['synthetic_pct']:.2%}",
+        "",
+        "## Review Decision Intake",
+        "",
+        f"- Decision schema: `{REVIEW_DECISION_SCHEMA_VERSION}`",
+        "- Candidate JSONL is immutable; reviewer actions append to a separate JSONL ledger.",
+        "- Exact duplicate decision events are idempotent; changed decisions for an existing record id are rejected.",
+        "- Append command: `py -3 -m factorylm_ai.dataset.technician_v0 --stage readiness --decisions-path docs/zta/technician-dataset-v0/review-decisions/decisions.jsonl --append-decision decision.json`",
+        "- Rebuild command: `py -3 -m factorylm_ai.dataset.technician_v0 --stage readiness --decisions-path docs/zta/technician-dataset-v0/review-decisions/decisions.jsonl --out-dir docs/zta/technician-dataset-v0`",
         "",
         "## Paid Gate",
         "",
@@ -1692,12 +2251,34 @@ def main(argv: list[str] | None = None) -> int:
         "--out-dir", default=str(DEFAULT_OUT_DIR), help="Artifact output directory."
     )
     parser.add_argument(
+        "--decisions-path",
+        default=None,
+        help="Append-only review decision JSONL to apply while writing readiness artifacts.",
+    )
+    parser.add_argument(
+        "--append-decision",
+        default=None,
+        help="Validate and append one review decision JSON object to --decisions-path.",
+    )
+    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="Build candidates in memory and validate without writing artifacts.",
     )
     args = parser.parse_args(argv)
     stage = args.stage
+    if args.append_decision:
+        if not args.decisions_path:
+            parser.error("--append-decision requires --decisions-path")
+        decision_path = Path(args.append_decision)
+        decision = ReviewDecision.from_dict(json.loads(decision_path.read_text(encoding="utf-8")))
+        result = append_review_decision(
+            args.decisions_path,
+            build_review_candidates(stage),
+            decision,
+        )
+        print(json.dumps({"status": result, "decision_id": decision.decision_id}, sort_keys=True))
+        return 0
     if args.validate_only:
         errors = validate_candidates(c.to_dict() for c in build_review_candidates(stage))
         if errors:
@@ -1706,7 +2287,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"validated stage={stage}")
         return 0
-    result = write_build(args.out_dir, stage=stage)
+    result = write_build(args.out_dir, stage=stage, decisions_path=args.decisions_path)
     print(json.dumps(result, ensure_ascii=True, sort_keys=True))
     return 0
 
