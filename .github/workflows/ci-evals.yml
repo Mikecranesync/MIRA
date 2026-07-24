@@ -37,7 +37,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio pyyaml
+          # httpx is imported at pytest COLLECTION time by many test modules
+          # (tests/beta, tests/conversation_suite, tools.drift_monitor, ...). The
+          # `-m "not network"` deselect happens AFTER import, so without httpx
+          # collection dies with 69 "ModuleNotFoundError: No module named 'httpx'"
+          # errors before any test runs. Install it so the whole tree collects.
+          pip install pytest pytest-asyncio pyyaml httpx
 
       - name: Run offline eval tests
         run: |
