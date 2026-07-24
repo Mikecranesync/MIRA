@@ -72,7 +72,9 @@ def _decode_public_key(value: str) -> Any:
 
 def _decode_signature(value: object) -> bytes:
     if not isinstance(value, str) or not value:
-        raise PaidAuthorizationRejected("authorization rejected: missing operator signature")
+        raise PaidAuthorizationRejected(
+            "authorization rejected: missing operator signature"
+        )
     try:
         signature = base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -118,7 +120,8 @@ class TrustedPaidAuthorizationVerifier:
         ]
         if missing:
             raise PaidAuthorizationUnavailable(
-                "trusted paid-authorization configuration missing: " + ", ".join(missing)
+                "trusted paid-authorization configuration missing: "
+                + ", ".join(missing)
             )
         return cls(
             registry_path=registry_path,
@@ -163,7 +166,10 @@ class TrustedPaidAuthorizationVerifier:
                 "conflicting signed-registry payload"
             )
         if len(matches) != 1:
-            reason = "unknown signed approval" if not matches else "duplicate signed approvals"
+            if not matches:
+                reason = "unknown signed approval"
+            else:
+                reason = "duplicate signed approvals"
             raise PaidAuthorizationRejected(
                 f"authorization {authorization.authorization_id!r} rejected: {reason}"
             )
@@ -177,7 +183,8 @@ class TrustedPaidAuthorizationVerifier:
         key_id = record.get("key_id")
         if self.expected_key_id is not None and key_id != self.expected_key_id:
             raise PaidAuthorizationRejected(
-                f"authorization {authorization.authorization_id!r} rejected: key id mismatch"
+                f"authorization {authorization.authorization_id!r} rejected: "
+                "key id mismatch"
             )
         signature = _decode_signature(record.get("signature"))
         try:
@@ -187,7 +194,9 @@ class TrustedPaidAuthorizationVerifier:
                 "cryptography is required for paid-authorization verification"
             ) from exc
         try:
-            self.public_key.verify(signature, _canonical_authorization_bytes(authorization))
+            self.public_key.verify(
+                signature, _canonical_authorization_bytes(authorization)
+            )
         except InvalidSignature as exc:
             raise PaidAuthorizationRejected(
                 f"authorization {authorization.authorization_id!r} rejected: "
@@ -212,7 +221,8 @@ class TrustedPaidAuthorizationVerifier:
                     rows.append(record)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise PaidAuthorizationUnavailable(
-                f"trusted paid-authorization registry unavailable: {self.registry_path}: {exc}"
+                "trusted paid-authorization registry unavailable: "
+                f"{self.registry_path}: {exc}"
             ) from exc
         return rows
 
@@ -303,7 +313,9 @@ def install_paid_authorization_guard(together_module: ModuleType) -> None:
         )
 
     together_module.create_finetune_job = guarded_create_finetune_job
-    together_module.run_temporary_endpoint_benchmark = guarded_temporary_endpoint_benchmark
+    together_module.run_temporary_endpoint_benchmark = (
+        guarded_temporary_endpoint_benchmark
+    )
     together_module._trusted_paid_guard_installed = True
 
 
