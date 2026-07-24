@@ -7,12 +7,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from factorylm_ai.budget import BudgetGuard
 from factorylm_ai.finetune import (
     ACTION_CREATE_FINETUNE_JOB,
     PaidAuthorizationLedger,
@@ -122,9 +123,9 @@ async def test_create_finetune_rejects_caller_injected_verifier() -> None:
             "file-train",
             "Qwen/Qwen3.5-9B",
             suffix="fixture",
-            budget=object(),
+            budget=BudgetGuard(cap_usd=5.0),
             est_training_tokens=1,
-            authorization_verifier=_FakeVerifier(),
+            authorization_verifier=cast(Any, _FakeVerifier()),
         )
 
 
@@ -133,13 +134,17 @@ async def test_endpoint_benchmark_rejects_caller_injected_verifier() -> None:
     assert "authorization_verifier" not in inspect.signature(
         together_module.run_temporary_endpoint_benchmark
     ).parameters
+
+    async def benchmark(_: str) -> None:
+        raise AssertionError("benchmark must not run")
+
     with pytest.raises(PaidAuthorizationRejected, match="caller-supplied"):
         await together_module.run_temporary_endpoint_benchmark(
             {"model": "fixture", "inactive_timeout": 60},
-            lambda _: None,
-            budget=object(),
+            benchmark,
+            budget=BudgetGuard(cap_usd=5.0),
             est_endpoint_usd=1.0,
-            authorization_verifier=_FakeVerifier(),
+            authorization_verifier=cast(Any, _FakeVerifier()),
         )
 
 
@@ -154,7 +159,8 @@ def test_self_minted_ledger_record_is_not_trusted(tmp_path: Path) -> None:
     with pytest.raises(PaidAuthorizationRejected, match="unknown signed approval"):
         _consume(verifier, authorization)
 
-    assert ledger.authorization_state(authorization.authorization_id)["event"] == "authorized"
+    state = ledger.authorization_state(authorization.authorization_id)
+    assert state["event"] == "authorized"
 
 
 def test_unsigned_registry_record_is_rejected(tmp_path: Path) -> None:
@@ -202,7 +208,9 @@ def test_altered_signed_field_is_rejected(tmp_path: Path) -> None:
     )
     altered = replace(authorization, model="attacker/model")
 
-    with pytest.raises(PaidAuthorizationRejected, match="conflicting signed-registry payload"):
+    with pytest.raises(
+        PaidAuthorizationRejected, match="conflicting signed-registry payload"
+    ):
         _consume(_verifier(tmp_path, private_key), altered)
 
 
@@ -214,7 +222,9 @@ def test_signed_receipt_remains_revocable(tmp_path: Path) -> None:
         _signed_record(authorization, private_key),
     )
     verifier = _verifier(tmp_path, private_key)
-    verifier.ledger.record_revoked(authorization.authorization_id, reason="operator revoked")
+    verifier.ledger.record_revoked(
+        authorization.authorization_id, reason="operator revoked"
+    )
 
     with pytest.raises(PaidAuthorizationRejected, match="revoked"):
         _consume(verifier, authorization)
@@ -242,7 +252,9 @@ def test_signed_receipt_consumption_is_atomic(tmp_path: Path) -> None:
     assert sorted(results) == ["consumed", "rejected"]
 
 
-def test_runtime_needs_only_public_key_material(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_runtime_needs_only_public_key_material(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     private_key = Ed25519PrivateKey.generate()
     public_raw = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
