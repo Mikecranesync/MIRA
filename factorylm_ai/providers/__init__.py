@@ -11,10 +11,17 @@ from __future__ import annotations
 
 import os
 
+from . import together as together
 from .base import ModelProvider
 from .local_liquid import LocalLiquidProvider
 from .mock import MockProvider
-from .together import TogetherProvider
+from .paid_authorization_guard import install_paid_authorization_guard
+
+# Install before exporting TogetherProvider or returning the Together module to
+# callers. Paid entry points then construct their verifier from operator-owned
+# configuration instead of trusting a caller-supplied verifier object.
+install_paid_authorization_guard(together)
+TogetherProvider = together.TogetherProvider
 
 __all__ = ["get_provider"]
 
