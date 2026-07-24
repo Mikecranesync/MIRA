@@ -34,6 +34,7 @@ jobs:
   drift:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
+    environment: staging
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -43,4 +44,11 @@ jobs:
       - name: Proposal-state drift canary (staging)
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
-        run: python3 tests/canary/run_proposal_canary.py
+        run: |
+          set -euo pipefail
+          if [ -z "${NEON_DATABASE_URL:-}" ]; then
+            echo "::error::NEON_STG_DATABASE_URL secret not set on the staging environment."
+            exit 1
+          fi
+          echo "::add-mask::$NEON_DATABASE_URL"
+          python3 tests/canary/run_proposal_canary.py

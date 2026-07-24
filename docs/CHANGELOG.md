@@ -1,3 +1,14 @@
+### v3.211.1 (2026-07-24) - fix(ci): unbreak scheduled workflow canaries
+
+Workflow-only CI hardening for scheduled red checks.
+
+- **Dogfood heartbeat/digest pagination is fixed.** Both workflows now slurp paginated `gh api` pages and flatten them before selecting `<!-- dogfood-heartbeat -->` comments, preventing multiple JSON objects from being fed into `date`.
+- **web-review canary no longer pushes to protected `main`.** The canary still writes the daily report locally, then uploads it as a run artifact instead of attempting a direct branch-protection-blocked push.
+- **Proposal-state canary can read staging secrets.** The drift job now uses the `staging` environment and fails with an explicit missing-secret error if `NEON_STG_DATABASE_URL` is unavailable.
+- **Eval fast unit coverage is scoped to the eval framework.** `ci-evals.yml` now runs `tests/eval` + `tests/scoring` with the `httpx` dependency needed by judge imports instead of collecting the entire monorepo test tree.
+
+Verification: local `actionlint` on touched workflows, `git diff --check`, `pytest tests/eval tests/scoring tests/canary/test_proposal_canary.py` (138 passed), and synthetic eval dry-run (100% pass). GitHub PR checks confirmed `actionlint`, `parse`, `Eval Offline`, `staging-gate`, smoke, Hub, lint, security, and license checks green before the version-bump follow-up.
+
 ### v3.211.0 (2026-07-23) - feat(factorylm-ai): governed Together orchestration dry-run preflight (PR 4)
 
 PR 4 of the technician-grounding LoRA program. Pure orchestration/control-plane code only: no upload, no network execution, no paid calls, no training job, no endpoint, no production deploy.
