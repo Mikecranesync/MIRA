@@ -1,8 +1,25 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-07-23
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-07-23
+
+### Most actionable change for the playbook
+Figma Config 2026 introduced the tightest cross-industry hook found to date: "X is material for Y." Their version: "Code is not the opposite of design. Code is material for design." For MIRA the direct transfer is: "OEM fault libraries + plant context are the materials for a grounded diagnosis — not a chatbot guess." Also: Anthropic shipped its first standalone product launch video (Sonnet 5), reversing the analyst-interview-only pattern catalogued in May. Notion 3.6 debuts the multi-agent hub pattern (external Claude + Cursor agents coordinated in one workspace UI), which is the closest B2B analog to MIRA's role as the grounded industrial AI layer on top of *any* UNS.
+
+### New findings
+
+**Automation / SCADA**
+- **Rockwell Automation** — "ROKStudios: OEM Leaders on Machine Lifecycle Innovation" (Jun 4, 2026): recorded at Interpack 2026 Düsseldorf; thought-leadership format unchanged but new season focuses on machine lifecycle from design through long-term operation; peer-register VO; soft brand CTA. No product demo. [transcript not verified]
+
+**B2B SaaS / dev-tools**
+- **Figma** — Config 2026 keynote (Jun 24, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — Dylan Field, ~1h conference keynote; Moscone Center SF; 5-sec hook: "Code is not the opposite of design. Code is material for design."; launched Code Layers (code as live canvas material), Figma Motion (full timeline + CSS/MP4/SVG export), Shader fills/effects, Generative Plugins, Weave Tools, Figma Agent with MCP connectors; footage style: on-stage keynote; VO register: founder; CTA: Config betas waitlist for Code Layers early access (July 2026)
+- **Anthropic** — "Introducing Claude Sonnet 5" (Jun 30, 2026): https://www.youtube.com/watch?v=fVLOuiO6jAQ — first standalone official product launch video from Anthropic (style shift from analyst/conference-only); framing: "most agentic model we've released"; key claims: browses web + codes autonomously, $2/M input tokens, intro price through Aug 31; VO register: corporate product; footage style: likely screen capture [transcript not verified]
+- **Notion** — "Notion 3.6: External Agents" (Jul 1–8, 2026): https://www.youtube.com/watch?v=kt2DW2Lwi5E — multi-agent hub launch; Claude and Cursor are the first two External Agents; "bring multiple agents into a single UI with the rest of your team, automate entire workflows end-to-end"; Notion Agents iOS app also shipped Jul 8; VO register: peer/product; CTA: soft, available now
 
 ---
 
@@ -200,6 +217,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - VO register: corporate executive
 - CTA: soft brand / thought leadership
 
+**ROKStudios Interpack season (Jun 4, 2026)**
+- URL: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Recorded at Interpack 2026, Düsseldorf; interviews with machine-builder executives and industry associations
+- Theme: how OEMs evolve to deliver value across the full machine lifecycle (design → commissioning → long-term operation)
+- Format: same peer-level thought-leadership format (150+ total recordings); no product demos
+- Pattern note: ROKStudios has now run two seasons in 2026 — the format is a sustained thought-leadership vehicle, not episodic product launches
+
 **Automation Fair 2025 (Nov 17–20, Chicago)**
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
@@ -304,6 +328,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Claude Sonnet 5 launch (Jun 30, 2026)** — style shift
+- URL: https://www.youtube.com/watch?v=fVLOuiO6jAQ
+- Title: "Introducing Claude Sonnet 5 \ Anthropic"
+- First standalone official product launch video observed from Anthropic — prior posture was analyst/conference-only
+- Framing: "most agentic model we've released"; can browse web + code autonomously
+- Key claim: $2/M input tokens (intro price through Aug 31); performance close to Opus 4.8 at lower cost
+- Footage style: likely screen capture [transcript not verified]
+- VO register: corporate product
+- CTA: introductory pricing anchor
+- Pattern note: Anthropic shifted from analyst-interview-only to a standalone launch video — indicator of increasing investment in owned video for model launches
+
 ---
 
 ### Cursor
@@ -340,6 +375,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.6: External Agents (Jul 1, 2026)**
+- URL: https://www.youtube.com/watch?v=kt2DW2Lwi5E
+- Title: "NEW Notion 3.6 Update & More! | Notion Mail Shut Down, Notion Agents App, External Agents"
+- Feature: Claude and Cursor are first two External Agents; any workspace can now integrate a custom agent via External Agents API (out of beta)
+- Hook: "bring multiple agents into a single UI with the rest of your team, so you can automate entire workflows end-to-end"
+- Footage style: screen capture; product walkthrough
+- VO register: peer/product [transcript not verified]
+- CTA: available now
+- Also: Notion Agents iOS app shipped Jul 8, 2026 (native agent coordination from phone)
+- Pattern note: introduces the **multi-agent hub** pattern — one workspace coordinating Claude, Cursor, and custom agents. The tightest B2B analog to MIRA's position: the grounded industrial AI layer coordinating models on top of the customer's own UNS and factory data. For MIRA's positioning: "MIRA is the External Agent your Ignition panel has been waiting for."
+
 ---
 
 ### Figma
@@ -354,6 +400,18 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (Jun 24, 2026)** — new pattern
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Title: "Config 2026 Keynote with Dylan Field (CEO & Co-founder, Figma)"
+- Presenter: CEO Dylan Field; venue: Moscone Center South, San Francisco
+- Opening hook: "Code is not the opposite of design. Code is material for design." [confirmed from multiple recaps]
+- Theme: the canvas should support any material a team needs — code, motion, shaders
+- Launches: Code Layers (convert design layer → interactive code layer in one click; early access July via waitlist), Figma Motion (full timeline with keyframes + export to CSS/JSON/React/MP4/WebM/SVG/GIF), Shader fills and effects, Generative Plugins, Weave Tools, Figma Agent with MCP connectors
+- Footage style: on-stage keynote; in-person sold out, virtual attendance free
+- VO register: founder
+- CTA: Config betas waitlist (Code Layers), availability now (Motion)
+- Pattern note: "X is material for Y" is the most transferable hook compression from this cycle. MIRA transfer: "OEM fault libraries + plant context are the materials for a grounded diagnosis, not a generic AI guess." Also: MCP-connected agent embedded in the primary work surface is now table stakes for leading tools — MIRA's Ignition/Slack integration strategy is ahead of the curve if framed this way.
 
 ---
 
@@ -385,6 +443,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| **"X is material for Y"** (new — Jun 2026) | Figma Config 2026: "Code is not the opposite of design. Code is material for design." | "OEM fault libraries + plant context are the materials for a grounded diagnosis — not an AI guess." Tightest single-sentence wedge found this cycle. |
+| **Multi-agent hub**: one surface coordinates multiple agents | Notion 3.6: Claude + Cursor as External Agents in the workspace | "MIRA is the grounded industrial agent your Ignition panel can call — alongside your CMMS, your PLC historian, your OEM manuals." Positions FactoryLM as the agent layer, not a standalone app. |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +458,5 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Anthropic** (Jun 2026): shifted from analyst-conference-only to a standalone launch video for Claude Sonnet 5 — first product launch video observed on the official channel. Now competing on the same video distribution surface as OpenAI.
+- **Figma** (Jun 2026): escalated from product-feature launch to canvas-philosophy hook ("code is material") — signals the conference-keynote format is maturing into a brand-positioning vehicle, not just a feature showcase.
