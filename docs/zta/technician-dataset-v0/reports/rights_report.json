@@ -1,0 +1,83 @@
+{
+  "blocked_sources": [
+    {
+      "document_lineage_key": "factorylm:cv-101-e-002",
+      "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
+      "source_id": "cv101-e-002",
+      "split": "validation"
+    },
+    {
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
+      "source_id": "cv101-e-003",
+      "split": "test"
+    },
+    {
+      "document_lineage_key": "factorylm:cv-101-e-004",
+      "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
+      "source_id": "cv101-e-004",
+      "split": "held_out"
+    },
+    {
+      "document_lineage_key": "automationdirect:gs10-um",
+      "rights_decision": "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
+      "source_id": "drive-durapulse_gs10",
+      "split": "train"
+    },
+    {
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "rights_decision": "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
+      "source_id": "drive-powerflex_40",
+      "split": "held_out"
+    },
+    {
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "rights_decision": "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
+      "source_id": "drive-powerflex_525",
+      "split": "train"
+    },
+    {
+      "document_lineage_key": "factorylm:cv-101-e-004",
+      "rights_decision": "HELD_OUT_EVALUATION_ONLY",
+      "source_id": "heldout-01",
+      "split": "held_out"
+    },
+    {
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "rights_decision": "HELD_OUT_EVALUATION_ONLY",
+      "source_id": "heldout-02",
+      "split": "held_out"
+    },
+    {
+      "document_lineage_key": "factorylm:factorylm-print-style-025",
+      "rights_decision": "HELD_OUT_EVALUATION_ONLY",
+      "source_id": "heldout-03",
+      "split": "held_out"
+    },
+    {
+      "document_lineage_key": "factorylm:public-domain-print-031",
+      "rights_decision": "HELD_OUT_EVALUATION_ONLY",
+      "source_id": "heldout-04",
+      "split": "held_out"
+    },
+    {
+      "document_lineage_key": "factorylm:technician-review-011",
+      "rights_decision": "HELD_OUT_EVALUATION_ONLY",
+      "source_id": "heldout-05",
+      "split": "held_out"
+    }
+  ],
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "candidate_training_allowed_counts": {
+    "false": 70,
+    "true": 110
+  },
+  "policy": "No candidate is trainable until the existing governance gate passes and Mike sets record-level gold/approval. OEM-derived Drive Commander packs remain training-blocked in this build.",
+  "registry_source_count": 34,
+  "rights_decisions": {
+    "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL": 26,
+    "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED": 3,
+    "HELD_OUT_EVALUATION_ONLY": 5
+  },
+  "schema": "factorylm.technician-dataset.rights-report.v1"
+}

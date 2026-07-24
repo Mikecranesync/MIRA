@@ -1,0 +1,13 @@
+{
+  "dataset_version": "factorylm-industrial-technician-v0",
+  "entries": [],
+  "lineage_count": 0,
+  "manifest_sha256": "cfd060b6846643f200f6bb0f383502f84692b10b8137bdb36d8dd9047742c1f1",
+  "record_count": 0,
+  "split_counts": {
+    "held_out": 0,
+    "test": 0,
+    "train": 0,
+    "validation": 0
+  }
+}
