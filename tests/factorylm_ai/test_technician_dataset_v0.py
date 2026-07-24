@@ -7,9 +7,13 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
+DECISION_TEMPLATES_DIR = (
+    REPO / "docs" / "zta" / "technician-dataset-v0" / "review-decisions" / "templates"
+)
 
 from factorylm_ai.dataset import SAFETY_SENSITIVE_TAG, assemble_dataset_v0  # noqa: E402
 from factorylm_ai.dataset.technician_v0 import (  # noqa: E402
@@ -61,6 +65,27 @@ def _decision(
         correction_messages=correction_messages,
         rejection_reasons=rejection_reasons,
     )
+
+
+def _fill_decision_template(value: Any) -> Any:
+    replacements = {
+        "__REVIEWER_ID__": "mike@example.com",
+        "__RATIONALE__": "reviewed against owned CV-101 source evidence",
+        "__DECIDED_AT_ISO__": "2026-07-24T18:00:00Z",
+    }
+    if isinstance(value, dict):
+        return {k: _fill_decision_template(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_fill_decision_template(v) for v in value]
+    if isinstance(value, str):
+        for placeholder, replacement in replacements.items():
+            value = value.replace(placeholder, replacement)
+    return value
+
+
+def _template_decision(template_name: str) -> ReviewDecision:
+    row = json.loads((DECISION_TEMPLATES_DIR / template_name).read_text(encoding="utf-8"))
+    return ReviewDecision.from_dict(_fill_decision_template(row))
 
 
 def test_readiness_candidate_counts_and_composition_targets() -> None:
@@ -231,6 +256,53 @@ def test_reject_and_hold_out_decisions_remain_auditable_but_ineligible() -> None
         {"record_id": reject.record_id, "rejection_reasons": ["answer_key_mismatch"]}
     ]
     assert reviewed.report["held_out_records"] == [{"record_id": hold.record_id}]
+
+
+def test_cv101_review_decision_templates_are_placeholder_guarded() -> None:
+    candidates = build_review_candidates("readiness")
+
+    for template_path in sorted(DECISION_TEMPLATES_DIR.glob("*.json")):
+        raw = json.loads(template_path.read_text(encoding="utf-8"))
+        timestamp_only = dict(raw)
+        timestamp_only["decided_at"] = "2026-07-24T18:00:00Z"
+
+        for row in (raw, timestamp_only):
+            decision = ReviewDecision.from_dict(row)
+            try:
+                apply_review_decisions(candidates, [decision])
+            except ReviewDecisionError as exc:
+                assert exc.code == "DECISION_TEMPLATE_PLACEHOLDER"
+            else:  # pragma: no cover
+                raise AssertionError(f"template was appendable without edits: {template_path.name}")
+
+
+def test_cv101_review_decision_templates_bind_to_current_manifest() -> None:
+    candidates = build_review_candidates("readiness")
+    decisions = [
+        _template_decision("approve.techv0-cv101-001.json"),
+        _template_decision("correct.techv0-cv101-002.json"),
+        _template_decision("reject.techv0-cv101-003.json"),
+        _template_decision("hold_out.techv0-cv101-004.json"),
+    ]
+
+    reviewed = apply_review_decisions(candidates, decisions)
+
+    assert reviewed.dataset.record_count == 2
+    assert {record.record_id for record in reviewed.dataset.eligible} == {
+        "techv0-cv101-001",
+        "techv0-cv101-002",
+    }
+    assert reviewed.report["decision_counts"] == {
+        "approve": 1,
+        "correct": 1,
+        "reject": 1,
+        "hold_out": 1,
+    }
+    assert reviewed.report["corrected_records"][0]["record_id"] == "techv0-cv101-002"
+    assert reviewed.report["rejected_records"] == [
+        {"record_id": "techv0-cv101-003", "rejection_reasons": ["answer_key_mismatch"]}
+    ]
+    assert reviewed.report["held_out_records"] == [{"record_id": "techv0-cv101-004"}]
 
 
 def test_stale_hashes_and_missing_reviewer_fail_closed() -> None:
