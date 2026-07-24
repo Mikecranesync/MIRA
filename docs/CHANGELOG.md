@@ -1,28 +1,13 @@
-### v3.211.2 (2026-07-23) - security(factorylm-ai): bind paid Together authorization to trusted request receipts
+### v3.211.1 (2026-07-24) - fix(ci): unbreak scheduled workflow canaries
 
-Follow-up hardening for PR `#2881`. Pure code/tests/docs only: no Together call, no upload, no fine-tune job, no endpoint, no production deploy, no spend.
+Workflow-only CI hardening for scheduled red checks.
 
-- **Paid authorization is trusted and single-use.** Added an append-only `PaidAuthorizationLedger` with per-authorization file locks, trusted stored receipts, revocation, durable consumed events, and fail-closed verifier errors. `create_finetune_job` and temporary endpoint benchmarks now require successful atomic consumption before any paid Together HTTP request.
-- **Authorization IDs stay terminal.** Reissuing an exact active receipt is an idempotent no-op, but any changed receipt, consumed ID, or revoked ID is rejected; different-ID JSONL writes are serialized by a global append lock.
-- **Fine-tune estimates bind exact requests.** Added versioned canonical request JSON plus `sha256:` hashes covering training/validation file IDs, model, suffix, epochs/evals/checkpoints, seed, packing, learning rate, method, and LoRA/full training type. Together estimate receipts and paid authorizations must reference the same request hash.
-- **Endpoint cleanup is failure-safe.** If endpoint creation returns an id and lease persistence fails, the code immediately attempts best-effort deletion and raises with endpoint id plus cleanup outcome. DELETE `204` is success, DELETE `404` is accepted as already absent, and cleanup errors preserve original benchmark failures.
-- **Dry-run evidence is reviewable.** `FinetuneDryRunPreflight.to_dict()` now emits manifest/request hashes, paid-gate report, model/auth/estimate receipts, verification state, endpoint lifecycle plan, wire-verification reference, blockers/warnings, and explicit no-execution flags without leaking bearer/API-token material.
-- **Together policy exception is explicit.** Added `docs/zta/together-governed-cloud-exception.md` and linked it from the root cloud constraint.
+- **Dogfood heartbeat/digest pagination is fixed.** Both workflows now slurp paginated `gh api` pages and flatten them before selecting `<!-- dogfood-heartbeat -->` comments, preventing multiple JSON objects from being fed into `date`.
+- **web-review canary no longer pushes to protected `main`.** The canary still writes the daily report locally, then uploads it as a run artifact instead of attempting a direct branch-protection-blocked push.
+- **Proposal-state canary can read staging secrets.** The drift job now uses the `staging` environment and fails with an explicit missing-secret error if `NEON_STG_DATABASE_URL` is unavailable.
+- **Eval fast unit coverage is scoped to the eval framework.** `ci-evals.yml` now runs `tests/eval` + `tests/scoring` with the `httpx` dependency needed by judge imports instead of collecting the entire monorepo test tree.
 
-Regression coverage: trusted-ledger forged/unknown/expired/revoked/consumed/concurrent cases, request hash determinism and material-field invalidation, estimate/request mismatch, endpoint ledger-write cleanup, DELETE 204/404 handling, cleanup-error preservation, and dry-run evidence/no-secret/no-side-effect assertions.
-
-### v3.211.1 (2026-07-23) - fix(factorylm-ai): harden paid Together execution gates
-
-Focused post-merge hardening for `#2879` + `#2880`. Pure code/tests/docs only: no Together call, no upload, no job, no endpoint, no production deploy, no spend.
-
-- **Paid authorization is durable evidence, not a string.** Fine-tune/job and endpoint paid paths now validate a `PaidEventAuthorization` receipt bound to action, dataset manifest, model, spend cap, Mike-issued provenance, expiration, and single-use status.
-- **Paid pricing is fixed policy.** Removed caller-controlled fine-tune rate overrides; SFT/DPO estimates use the reviewed module constants only.
-- **Dry-run approval requires the full package.** Upload/job readiness now blocks unless the dataset paid gate passed, manifest hash is present, model-support receipt is present, authorization receipt is present, local estimate exists, and Together `/fine-tunes/estimate-price` evidence is present and compatible.
-- **Budget alone no longer flips paid intent.** `would_upload` and `would_create_job` are true only when every typed blocker is absent.
-- **Endpoint cleanup is ledgered and verified.** Temporary endpoint runs require `inactive_timeout`, persist the endpoint id immediately, verify deletion before returning `deleted=True`, and expose idempotent orphan cleanup over the lease ledger.
-- **Local token counts are explicitly rough.** The JSONL counter now adds a safety factor over chars/4, and paid execution still requires Together's authoritative estimate.
-
-Regression coverage: adversarial tests for forged authorization, manipulated rates, incomplete evidence, estimate mismatch, deletion verification failure, and orphan recovery. Verification: full `tests/factorylm_ai` suite (`489 passed`), Ruff, and Pyright green.
+Verification: local `actionlint` on touched workflows, `git diff --check`, `pytest tests/eval tests/scoring tests/canary/test_proposal_canary.py` (138 passed), and synthetic eval dry-run (100% pass). GitHub PR checks confirmed `actionlint`, `parse`, `Eval Offline`, `staging-gate`, smoke, Hub, lint, security, and license checks green before the version-bump follow-up.
 
 ### v3.211.0 (2026-07-23) - feat(factorylm-ai): governed Together orchestration dry-run preflight (PR 4)
 
