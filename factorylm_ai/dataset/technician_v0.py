@@ -62,13 +62,25 @@ STAGE_ORDER: dict[BuildStage, int] = {
     "readiness": 4,
 }
 
+# One record per DISTINCT owned fact — never more.
+#
+# `_cv101_candidates` feeds these counts to `_repeat_to_count`, which cycles the
+# sheet's fact list when the target exceeds the facts available. The previous
+# targets over-drew badly: E-008 held 1 fact but targeted 12 (12x duplication),
+# E-007 5 facts targeted 12, and E-009 had NO facts at all so its 10 records fell
+# back to duplicating E-001. Meanwhile sheet E-003's 61 genuine owned facts were
+# never drawn. Duplicated rows inflate the record count the paid gate measures
+# while teaching the adapter the same fact repeatedly, so every target here is
+# capped at the sheet's real fact count (see `_cv101_facts`).
+#
+# E-004 stays absent: `cv-101-e-004` is a reserved `_HELD_OUT_DOCS` lineage.
 _CV101_SHEET_TARGETS: dict[str, int] = {
-    "E-001": 8,
-    "E-005": 14,
-    "E-006": 14,
-    "E-007": 12,
-    "E-008": 12,
-    "E-009": 10,
+    "E-001": 5,
+    "E-003": 61,
+    "E-005": 36,
+    "E-006": 24,
+    "E-007": 5,
+    "E-008": 1,
 }
 
 _STYLE_DOCS = (
@@ -98,6 +110,16 @@ _HELD_OUT_DOCS = (
     ("FactoryLM", "public-domain-print-031"),
     ("FactoryLM", "technician-review-011"),
 )
+
+# OEM training rights granted 2026-07-25 (see _DRIVE_TRAINING_RIGHTS_POLICY_REF).
+#
+# `powerflex_40` is deliberately ABSENT and must stay absent: its lineage
+# `rockwell-automation:22b-um001j-en-e` is one of exactly five `_HELD_OUT_DOCS`
+# above, and `paid_gate.MIN_HELD_OUT_LINEAGES == 5`. Granting it training rights
+# would shrink the evaluation reserve to four and fail `min_held_out_lineages`.
+# The exclusion is a gate invariant, not a rights preference.
+_DRIVE_TRAINING_GRANTED: frozenset[str] = frozenset({"durapulse_gs10", "powerflex_525"})
+_DRIVE_TRAINING_RIGHTS_POLICY_REF = "docs/zta/2026-07-25-drive-commander-oem-training-rights.md"
 
 _DRIVE_TARGETS = {
     "durapulse_gs10": 20,
@@ -661,6 +683,7 @@ def _drive_sources() -> list[dict[str, Any]]:
     rows = []
     for source_id, (manufacturer, document_number, family) in specs.items():
         source_ref = f"tools/drive-pack-extract/gold/{source_id}/gold.json"
+        training_granted = source_id in _DRIVE_TRAINING_GRANTED
         rows.append(
             _source_entry(
                 source_id=f"drive-{source_id}",
@@ -670,19 +693,35 @@ def _drive_sources() -> list[dict[str, Any]]:
                 source_reference=source_ref,
                 manufacturer=manufacturer,
                 document_number=document_number,
-                rights_decision="BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
+                rights_decision=(
+                    "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+                    if training_granted
+                    else "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED"
+                ),
                 rights={
-                    "license_class": LICENSE_PUBLIC_EVAL_ONLY,
-                    "training_allowed": False,
+                    "license_class": (
+                        LICENSE_PUBLIC_EVAL_AND_TRAIN
+                        if training_granted
+                        else LICENSE_PUBLIC_EVAL_ONLY
+                    ),
+                    "training_allowed": training_granted,
                     "evaluation_allowed": True,
-                    "policy_ref": "docs/zta/2026-07-23-technician-dataset-inventory-gap-report.md#drive-commander",
+                    "policy_ref": (
+                        _DRIVE_TRAINING_RIGHTS_POLICY_REF
+                        if training_granted
+                        else "docs/zta/2026-07-23-technician-dataset-inventory-gap-report.md#drive-commander"
+                    ),
                 },
                 source_class="human_corrected_pack",
                 origin="human_corrected",
                 target_record_count=_DRIVE_TARGETS[source_id],
                 answer_key_ref=source_ref,
                 notes=(
-                    "Structured deterministic pack facts may be used for review/eval. "
+                    "Structured deterministic pack facts. Training granted by the "
+                    "2026-07-25 OEM rights governance record; each record still "
+                    "requires gold promotion and human approval."
+                    if training_granted
+                    else "Structured deterministic pack facts may be used for review/eval. "
                     "Training remains blocked until the governance record explicitly allows it."
                 ),
                 lineage_key=ln.public_lineage_key(manufacturer, document_number),
