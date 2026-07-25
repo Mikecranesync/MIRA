@@ -13,7 +13,6 @@ import binascii
 import inspect
 import json
 import os
-import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -227,31 +226,31 @@ class _RuntimeVerifier:
         )
 
 
-def _legacy_pytest_ledger(value: object) -> PaidAuthorizationLedger | None:
-    """Keep pre-existing hermetic tests working without a production bypass."""
+_ledger_injection_allowed = False
 
-    if value.__class__ is not PaidAuthorizationLedger:
-        return None
-    if not os.getenv("PYTEST_CURRENT_TEST"):
-        return None
-    ledger = cast(PaidAuthorizationLedger, value)
-    try:
-        ledger_path = ledger.path.resolve()
-        temp_root = Path(tempfile.gettempdir()).resolve()
-        ledger_path.relative_to(temp_root)
-    except (AttributeError, OSError, ValueError):
-        return None
-    if ledger_path.name != "paid-authorizations.jsonl":
-        return None
-    return ledger
+
+def allow_ledger_injection_for_tests(enabled: bool = True) -> None:
+    """Explicit, auditable seam letting hermetic tests inject a real ledger.
+
+    Production code MUST NOT call this. It is off by default, so a process that
+    never calls it cannot be talked into accepting a caller-supplied verifier —
+    unlike an implicit ``PYTEST_CURRENT_TEST``/temp-path sniff, which any caller
+    able to set an environment variable could satisfy.
+
+    Even when enabled, only a genuine :class:`PaidAuthorizationLedger` is
+    accepted, so a duck-typed always-approve verifier stays forbidden in every
+    configuration.
+    """
+
+    global _ledger_injection_allowed
+    _ledger_injection_allowed = enabled
 
 
 def _select_verifier(supplied: object | None) -> object:
     if supplied is None:
         return _RuntimeVerifier()
-    legacy = _legacy_pytest_ledger(supplied)
-    if legacy is not None:
-        return legacy
+    if _ledger_injection_allowed and supplied.__class__ is PaidAuthorizationLedger:
+        return cast(PaidAuthorizationLedger, supplied)
     raise PaidAuthorizationRejected(
         "caller-supplied paid-authorization verifiers are forbidden; "
         "the Together provider owns trusted verifier construction"
@@ -311,5 +310,6 @@ def install_paid_authorization_guard(together_module: ModuleType) -> None:
 __all__ = [
     "SIGNED_AUTHORIZATION_SCHEMA_VERSION",
     "TrustedPaidAuthorizationVerifier",
+    "allow_ledger_injection_for_tests",
     "install_paid_authorization_guard",
 ]

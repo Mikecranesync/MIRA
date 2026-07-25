@@ -3,7 +3,9 @@ from __future__ import annotations
 import base64
 import inspect
 import json
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -20,6 +22,7 @@ from factorylm_ai.finetune import (
     PaidAuthorizationRejected,
     PaidEventAuthorization,
 )
+from factorylm_ai.providers import paid_authorization_guard
 from factorylm_ai.providers import together as together_module
 from factorylm_ai.providers.paid_authorization_guard import (
     SIGNED_AUTHORIZATION_SCHEMA_VERSION,
@@ -111,6 +114,79 @@ def _consume(
 class _FakeVerifier:
     def verify_and_consume(self, *args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a caller-controlled verifier must never run")
+
+
+@contextmanager
+def _ledger_injection(enabled: bool):
+    """Drive the explicit test seam, restoring the suite default afterwards."""
+
+    previous = paid_authorization_guard._ledger_injection_allowed
+    paid_authorization_guard.allow_ledger_injection_for_tests(enabled)
+    try:
+        yield
+    finally:
+        paid_authorization_guard.allow_ledger_injection_for_tests(previous)
+
+
+@pytest.mark.asyncio
+async def test_production_default_rejects_even_a_genuine_ledger(tmp_path: Path) -> None:
+    """Off by default: the seam must not be reachable in a production process."""
+
+    assert paid_authorization_guard.allow_ledger_injection_for_tests.__module__ == (
+        "factorylm_ai.providers.paid_authorization_guard"
+    )
+    with _ledger_injection(False):
+        with pytest.raises(PaidAuthorizationRejected, match="caller-supplied"):
+            await together_module.create_finetune_job(
+                "file-train",
+                "Qwen/Qwen3.5-9B",
+                suffix="fixture",
+                budget=BudgetGuard(cap_usd=5.0),
+                est_training_tokens=1,
+                authorization_verifier=cast(
+                    Any, PaidAuthorizationLedger(tmp_path / "paid-authorizations.jsonl")
+                ),
+            )
+
+
+@pytest.mark.asyncio
+async def test_pytest_env_and_temp_path_grant_no_bypass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The removed heuristic must stay removed.
+
+    A ``PYTEST_CURRENT_TEST`` value plus a ledger at the canonical temp filename
+    used to be enough to inject a verifier. Only the explicit seam may open it.
+    """
+
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "fabricated::test (call)")
+    ledger = PaidAuthorizationLedger(Path(tempfile.gettempdir()) / "paid-authorizations.jsonl")
+    with _ledger_injection(False):
+        with pytest.raises(PaidAuthorizationRejected, match="caller-supplied"):
+            await together_module.create_finetune_job(
+                "file-train",
+                "Qwen/Qwen3.5-9B",
+                suffix="fixture",
+                budget=BudgetGuard(cap_usd=5.0),
+                est_training_tokens=1,
+                authorization_verifier=cast(Any, ledger),
+            )
+
+
+@pytest.mark.asyncio
+async def test_seam_never_admits_a_duck_typed_verifier() -> None:
+    """Even wide open, only a real ledger type is accepted."""
+
+    with _ledger_injection(True):
+        with pytest.raises(PaidAuthorizationRejected, match="caller-supplied"):
+            await together_module.create_finetune_job(
+                "file-train",
+                "Qwen/Qwen3.5-9B",
+                suffix="fixture",
+                budget=BudgetGuard(cap_usd=5.0),
+                est_training_tokens=1,
+                authorization_verifier=cast(Any, _FakeVerifier()),
+            )
 
 
 @pytest.mark.asyncio
