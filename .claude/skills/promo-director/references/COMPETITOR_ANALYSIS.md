@@ -1,8 +1,32 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-07-25
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-07-25
+
+### Most actionable change for MIRA playbook
+
+Two patterns converge: OpenAI's ChatGPT Work "ships finished work" frame (agent delivers the output, not the conversation) + Anthropic Claude Science's vertical-agent template ("in the same way Claude Code supports software engineering, Claude Science supports research"). Together they define the current competitive frame: own a domain, bundle its tools, ship the deliverable. MIRA adaptation: "MIRA is to industrial maintenance what Claude Code is to software — it ships the grounded diagnosis with citations, not the chat."
+
+MaintainX's Autodesk acquisition ($3.6B, May 2026) is the biggest CMMS exit in the period and a direct competitive signal: their Smart Tag Mapping (AI maps Ignition/Kepware/MQTT tags → assets) puts them squarely inside MIRA's contextualization layer, now backed by Autodesk's CAD + BIM corpus.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX acquired by Autodesk** (May 28, 2026): https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — $3.6B all-cash; creates Autodesk Operations Solutions (AOS) merging design-make-operate. Largest CMMS exit in years. MIRA counterplay: sensor-agnostic, OEM-manual-native, no CAD vendor lock-in.
+- **MaintainX Smart Tag Mapping** (May 2026): AI auto-maps Ignition/Kepware/MQTT tags to existing assets as part of OT Data Connectors. No promo video confirmed; framing is "recommendations" not "autonomous mapping." Directly adjacent to MIRA's contextualization layer.
+- **MaintainX Report Builder AI** (Mar 19, 2026): natural language → custom maintenance reports and visualizations, eliminates spreadsheets. No standalone launch video confirmed.
+
+**B2B SaaS / dev-tools**
+- **Figma Config 2026 keynote** (June 24, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — Dylan Field CEO; hook: "code is material for design"; Figma Motion (timeline + keyframes in canvas), Design Agent expanded with MCP connectors and skills, Code Layers (runnable code as first-class canvas layer). MCP is becoming the universal extensibility vocabulary across agent tools. [transcript not verified]
+- **OpenAI GPT-5.6 + ChatGPT Work** (July 9, 2026): https://openai.com/index/gpt-5-6/ — livestream; three-model family (Sol/Terra/Luna); ChatGPT Work agent ships finished Slack summaries, Excel models, PowerPoint decks, and dashboards from a single conversation. Hook: "Frontier intelligence that scales with your ambition." Frame shift: launch event is no longer a model release — it is a task-agent product launch.
+- **Anthropic Claude Science** (June 30, 2026): https://www.cnbc.com/video/2026/06/30/anthropic-launches-claude-science.html — CEO Dario Amodei at "The Briefing: AI for Science" event; domain agent = 60 curated tools/connectors for genomics/proteomics/cheminformatics + autonomous task execution on Claude Opus 4.8. Third-party credibility format: pharma executives on stage alongside launch. Vertical-agent template directly applicable to MIRA.
+- **Cursor acquired by SpaceX/xAI** (June 16, 2026): https://www.cnbc.com/2026/06/16/spacex-spcx-cursor-acquisition-ipo.html — $60B in SpaceX stock; Grok 4.5 joint model (V9, 1.5T params, trained on Cursor developer data) entered private beta July 2026. No standalone launch video. Developer-tool M&A now at frontier-lab valuation.
+- **Notion 3.6 External Agents** (July 1, 2026): https://www.notion.com/releases/2026-07-01 — Claude and Cursor added as first External Agents in Notion; teams assign tasks to agents from a shared board. Notion Agents iOS app launched July 8. Pattern: platforms absorb agents as connectors; agent vendors lose direct technician relationship.
 
 ---
 
@@ -87,6 +111,25 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+
+**Autodesk acquisition (May 28, 2026)**
+- Autodesk acquired MaintainX for $3.6B all-cash; forms Autodesk Operations Solutions (AOS).
+- Thesis: converge design (CAD/BIM), make (manufacturing), and operate (CMMS + AI) into one lifecycle.
+- Strategic shift: MaintainX stops being an independent CMMS competitor and becomes an Autodesk product.
+
+**Smart Tag Mapping (May 2026)**
+- AI auto-recommends mappings between ingested OT tags (Ignition, Kepware, MQTT) and existing assets in the CMMS.
+- No promo video; announced in "What's New: May 2026" product update.
+- Pattern note: MaintainX is now competing inside MIRA's exact problem space (OT contextualization), but framed as "recommendations" rather than autonomous mapping.
+
+**Report Builder AI (Mar 19, 2026)**
+- Natural language → custom reports and visualizations from work order + asset data.
+- Claim: eliminates spreadsheets and third-party analytics tools. No standalone launch video.
+
+**Root Cause Analysis (Q1 2026)**
+- Structured failure analysis built into the work-order workflow.
+
+**Pattern note (updated):** MaintainX's trajectory in 2026 is the single largest competitive drift observed in this cache. In 18 months it moved from workflow CMMS → AI knowledge base (Feb 2025) → OT tag contextualization (May 2026) → Autodesk acquisition. Each move narrows the gap to MIRA's core layer.
 
 ---
 
@@ -295,6 +338,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Key claim: Codex agent "grown 20x since August, now serves trillions of tokens weekly"
 - Multiple 2025 launches: GPT-4o Image, Sora standalone app, group chats
 
+**GPT-5.6 + ChatGPT Work (July 9, 2026)**
+- URL: https://openai.com/index/gpt-5-6/
+- Title: "Frontier intelligence that scales with your ambition"
+- Format: livestream launch event (not a keynote presentation)
+- Three-model family: Sol (flagship), Terra (balanced), Luna (cost-efficient)
+- ChatGPT Work: agent that ships finished Slack summaries, Excel models, PowerPoint decks, dashboards in one conversation — without human hand-holding between steps
+- GPT-Live-1 voice models: simultaneous listen + speak
+- Frame shift: this is a task-agent product launch, not a model-capability release. OpenAI's video language shifted from "our model can…" to "ChatGPT Work ships finished work."
+- Pattern note: "ships finished work" is the 2026 successor to 2025's "acts on it" (UpKeep) and "assigns the tasks" (Notion). The frame has accelerated from autonomous-action to delivered-artifact.
+
 ---
 
 ### Anthropic
@@ -303,6 +356,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
+
+**Claude Science (June 30, 2026)**
+- URL: https://www.cnbc.com/video/2026/06/30/anthropic-launches-claude-science.html
+- Format: launch event "The Briefing: AI for Science" at Yerba Buena Center, San Francisco; CEO Dario Amodei + heads of three pharma companies on stage
+- Domain: AI workbench for life-science researchers; 60+ curated tools for genomics, single-cell analysis, proteomics, structural biology, cheminformatics
+- Runs on Claude Opus 4.8; "can autonomously carry out meaningful work given concise high-level instructions"
+- Positioning: "in the same way that Claude Code supports software engineering, Claude Science supports research"
+- CTA: beta for Pro/Max/Team/Enterprise; $30,000 compute credits for 50 AI for Science projects
+- Pattern note: this is a reusable vertical-agent template. Define the domain → bundle domain-specific tools → run the domain workflow autonomously. Steals the third-party credibility format (pharma exec on stage) from Augury/Bloomberg. Directly applicable to MIRA: "FactoryLM makes factory data trustworthy; MIRA is what Claude Science is to biology but for industrial maintenance."
 
 ---
 
@@ -316,6 +378,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
 - No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**SpaceX/xAI acquisition (June 16, 2026)**
+- URL: https://www.cnbc.com/2026/06/16/spacex-spcx-cursor-acquisition-ipo.html
+- $60B in SpaceX class A stock; announced days after SpaceX's Nasdaq IPO
+- Grok 4.5 (V9, 1.5T param model trained on Cursor developer data) entered private beta July 2026
+- Cursor rebranded under SpaceXAI umbrella; now positioned to challenge OpenAI/Anthropic directly
+- Pattern note: video-light go-to-market survives through largest-ever developer-tool M&A. No launch video for the acquisition itself.
 
 ---
 
@@ -340,6 +409,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.6: External Agents (July 1, 2026)**
+- URL: https://www.notion.com/releases/2026-07-01
+- Claude and Cursor added as first External Agents in Notion; agents from CLIs, IDEs, and third-party apps can be assigned tasks from boards shared with teams
+- Notion Agents iOS app launched July 8, 2026
+- Multi-model: agents now run on Opus 4.8, Grok 4.3, GLM 5.2 (open-weight)
+- No dedicated YouTube launch video; changelog-native release
+- Pattern note: Notion is inverting the agent relationship — instead of Notion's agent going out, external agent vendors (Claude, Cursor) come in and take assignments inside Notion. Platform becomes the task orchestrator; agents become connectors. Implication for MIRA: whoever owns the technician's "task board" controls how MIRA's answers reach them.
+
 ---
 
 ### Figma
@@ -354,6 +431,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (June 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Title: "Config 2026 Keynote with Dylan Field (CEO & Co-founder, Figma)"
+- Presenter: CEO Dylan Field
+- Hook: "Code is material for design" — Figma's canvas should support any material an idea needs, including runnable code, not just static frames [search-derived]
+- Launches: Figma Motion (timeline + keyframes + presets + agent-assisted animation), Design Agent with MCP connectors and skills (also coming to FigJam and Slides), Code Layers (code-as-canvas-layer, early access July 2026 via figma.com/config-betas)
+- Footage style: on-stage keynote [not verified]
+- VO register: founder
+- Key pattern: MCP connectors are the extensibility hook — same vocabulary OpenAI and Anthropic use. Figma is positioning the Design Agent as MCP-native, not a closed product.
+- CTA: config-betas waitlist for Code Layers; soft for Motion
 
 ---
 
@@ -385,6 +473,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Ships finished work" (deliver, not assist) | OpenAI ChatGPT Work (Jul 2026): "ships finished Slack summaries, Excel models, decks from one conversation" | "MIRA ships the grounded diagnosis — tech gets the answer, not a thread to sort through" |
+| Vertical-agent domain template | Anthropic Claude Science (Jun 2026): "in the same way Claude Code supports software engineering, Claude Science supports research" | "FactoryLM is the maintenance-context layer; MIRA is the vertical agent that proves it — the Claude Code for industrial maintenance" |
+| Third-party credibility + domain exec on stage | Anthropic: pharma executives on stage at Claude Science launch; Augury: Bloomberg/Fortune Brands | Plant manager / reliability director on stage (or on camera) with specific machine and specific number |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +486,9 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
-- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; AI tag mapping in May 2026; then acquired by Autodesk for $3.6B. Trajectory in 18 months: CMMS → AI KB → OT contextualization → Autodesk platform component. Now backed by CAD/BIM corpus.
+- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel. ICC 2026 (Sept 22-24) expected to preview Ignition 2027 and AI roadmap.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **OpenAI**: shifted from model-release events to task-agent product launches (ChatGPT Work, Jul 2026). Video format is livestream demo, not keynote presentation. Language shifted from "our model can…" to "ships finished work."
+- **Cursor**: video-light indie growth (CMGR-style changelog) → $60B SpaceX acquisition (Jun 2026). No launch video for the acquisition. Developer-tool M&A now at frontier-lab valuation.
+- **Anthropic**: shifted from analyst/conference appearances toward vertical-product event launches (Claude Science, Jun 2026). Borrowed Augury's third-party credibility format (domain executives on stage). Now publishing vertical-agent templates with reusable positioning language.
