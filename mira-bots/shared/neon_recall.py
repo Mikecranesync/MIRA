@@ -73,6 +73,15 @@ _FAULT_CONTEXT_RE = re.compile(
     r"\b(fault|error|alarm|trip|code|warning|drive|vfd|inverter|showing|display|flashing|reading)\b",
     re.IGNORECASE,
 )
+# A code-like token only counts as a fault code when a fault-context word appears
+# within this many tokens of it (#2208). Proximity — not mere presence anywhere in
+# the sentence — is what stops "the DRIVE in bay 12"→"BAY-12" and "re-do the VFD
+# setup"→"REDO": the context word must be adjacent to the candidate, not just
+# somewhere in the message. Empirically all real phrasings put the trigger within
+# 3 tokens ("drive is showing F0004", "warning A501", "getting F4 on my drive").
+_FAULT_PROXIMITY = 3
+# Leading alphabetic prefix of a candidate code (e.g. "F" of "F0004", "OC" of "OC1").
+_CODE_ALPHA_PREFIX_RE = re.compile(r"^[A-Za-z]+")
 
 # Product name patterns in user queries — matches "PowerFlex 40", "Micro820",
 # "GS20", "CompactLogix", "ControlLogix", etc.
@@ -275,57 +284,70 @@ def _normalise_fault_query(query_text: str) -> str:
 
 
 def _extract_fault_codes(query_text: str) -> list[str]:
-    """Extract fault code tokens from raw user query.
+    """Extract fault code tokens from a raw user query.
 
-    Permissive — accepts common syntax errors and spacing variations:
-      1. Alphanumeric codes: F4, F-012, OC1, A501, E014
-      2. Compound alpha codes: E-OC, E-OV, GF-A (letter-dash-letter)
-      3. Alpha-only VFD codes: OC, GF, OH — with or without fault-context words
-      4. No-dash variants tried alongside dashed form for all of the above
+    ONE contract for all three code shapes (#2208): a candidate is a fault code
+    only when (a) a fault-context word sits within ``_FAULT_PROXIMITY`` tokens of
+    it, AND (b) the token has a plausible fault-code SHAPE. Proximity + shape
+    together are what let "drive is showing F0004" → F0004 while rejecting
+    "the DRIVE in bay 12" → BAY-12 and "re-do the VFD setup" → REDO, even though
+    both carry an equipment word.
 
-    Patterns 1 and 2 require fault-context words to extract — avoids false
-    positives like "bay 12"→"BAY-12" and "re-do"→"REDO" that poison retrieval.
-    Trade-off: a bare code with no adjacent context word no longer extracts;
-    real messages carry context.
+    Shapes:
+      1. Alphanumeric (letter+digits): F4, F-012, OC1, A501, E014 — the alpha
+         prefix must be ≤ 2 chars, so "BAY-12" (prefix "BAY") is rejected while
+         "F4"/"OC1" pass.
+      2. Compound alpha-alpha (E-OC, E-OV): only when the no-dash form is a known
+         VFD code, so "RE-DO"/"CO-OP" are rejected while "E-OC" passes.
+      3. Alpha-only VFD codes (OC, GF, OCA): must be in ``_VFD_ALPHA_CODES``.
+
+    Trade-off (documented): a bare code with no nearby context word no longer
+    extracts; real technician messages carry context ("fault F0004", "showing
+    F0004"). Staging fault-recall eval gates this.
     """
     if not query_text:
         return []
 
-    normalised = _normalise_fault_query(query_text)
+    tokens = _normalise_fault_query(query_text).split()
+    context_positions = [i for i, tok in enumerate(tokens) if _FAULT_CONTEXT_RE.search(tok)]
+    if not context_positions:
+        # No fault-context word anywhere → nothing is a fault code.
+        return []
+
+    def _near_context(i: int) -> bool:
+        return any(abs(i - c) <= _FAULT_PROXIMITY for c in context_positions)
+
     codes: set[str] = set()
+    for i, raw in enumerate(tokens):
+        if not _near_context(i):
+            continue
+        tok = raw.strip(".,!?:;()\"'")  # keep internal/leading dash
+        up = tok.upper()
 
-    # Compute fault context ONCE — used by Patterns 1, 2, and 3
-    has_fault_context = bool(_FAULT_CONTEXT_RE.search(query_text))
+        # Shape 1: alphanumeric code with a short (≤2) alpha prefix.
+        if _FAULT_CODE_RE.fullmatch(tok):
+            prefix = _CODE_ALPHA_PREFIX_RE.match(tok)
+            if prefix and len(prefix.group(0)) <= 2:
+                codes.add(up)
+                continue
 
-    # Pattern 1: alphanumeric codes (original) — gated by fault context
-    if has_fault_context:
-        for m in _FAULT_CODE_RE.findall(normalised):
-            codes.add(m.upper())
+        # Shape 2: compound alpha-alpha, only if the no-dash form is a known code.
+        m = _COMPOUND_ALPHA_RE.fullmatch(tok)
+        if m:
+            nodash = (m.group(1) + m.group(2)).upper()
+            if nodash in _VFD_ALPHA_CODES:
+                codes.add(up)  # dashed "E-OC"
+                codes.add(nodash)  # "EOC"
+                if m.group(2).upper() in _VFD_ALPHA_CODES:
+                    codes.add(m.group(2).upper())  # bare "OC"
+                continue
 
-    # Pattern 2: compound alpha-alpha codes like E-OC, E-OV — gated by fault context
-    if has_fault_context:
-        for m in _COMPOUND_ALPHA_RE.finditer(normalised):
-            dashed = m.group(0).upper()  # "E-OC"
-            nodash = (m.group(1) + m.group(2)).upper()  # "EOC"
-            codes.add(dashed)
-            codes.add(nodash)
-
-    # Pattern 3: alpha-only VFD codes — already checked with fault context
-    for word in normalised.upper().split():
-        cleaned = word.strip(".,!?:;()\"'-")
-        if cleaned in _VFD_ALPHA_CODES:
-            codes.add(cleaned)
-        # Also try stripping a leading "E-" prefix (Yaskawa E-series style)
-        if cleaned.startswith("E-") and cleaned[2:] in _VFD_ALPHA_CODES:
-            codes.add(cleaned)  # keep full "E-OC"
-            codes.add(cleaned[2:])  # also try bare "OC"
-
-    # Fallback: if still empty and fault context present, scan original text too
-    if not codes and has_fault_context:
-        for word in query_text.upper().split():
-            cleaned = word.strip(".,!?:;()\"'-")
-            if cleaned in _VFD_ALPHA_CODES:
-                codes.add(cleaned)
+        # Shape 3: alpha-only known VFD code (with an optional "E-" prefix form).
+        if up in _VFD_ALPHA_CODES:
+            codes.add(up)
+        elif up.startswith("E-") and up[2:] in _VFD_ALPHA_CODES:
+            codes.add(up)
+            codes.add(up[2:])
 
     return list(codes)
 

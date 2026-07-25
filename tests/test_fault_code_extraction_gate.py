@@ -1,8 +1,11 @@
 """Tests for fault-code extraction context gate (PR #2208).
 
-Verifies that Patterns 1 (alphanumeric) and 2 (compound-alpha) fault codes
-require fault-context words to extract, preventing false positives like
-"bay 12" → "BAY-12" and "re-do" → "REDO" that poison retrieval.
+Verifies the ONE extraction contract: a candidate is a fault code only when a
+fault-context word sits within _FAULT_PROXIMITY tokens of it AND the token has a
+plausible code shape. Mere presence of an equipment word (drive/vfd/inverter)
+does not enable extraction of an unrelated token — so "the drive in bay 12" does
+not yield "BAY-12" and "re-do the VFD setup" does not yield "REDO", while
+"drive is showing F0004" still yields "F0004".
 """
 
 from __future__ import annotations
@@ -122,3 +125,56 @@ class TestFaultCodeExtractionGate:
         """'flashing' is a valid context word."""
         codes = _extract_fault_codes("light flashing F001")
         assert "F001" in codes
+
+
+class TestProximityAndShapeContract:
+    """Finding 1 (review): mere presence of an equipment word (drive/vfd/inverter)
+    must NOT enable extraction of an unrelated code-like token. Extraction requires
+    a fault-context word WITHIN _FAULT_PROXIMITY tokens AND a plausible code shape
+    (alpha prefix <= 2 for alphanumeric; known VFD code for compound/alpha-only).
+    """
+
+    # --- Equipment word PRESENT but candidate is not a real code -> reject ---
+    def test_drive_present_but_bay_number_rejected(self):
+        # "drive" is a context word, but "bay 12" -> "BAY-12" has a 3-letter
+        # prefix (a common word), so it is not a fault code.
+        assert _extract_fault_codes("the drive in bay 12 stopped") == []
+
+    def test_vfd_present_but_redo_rejected(self):
+        # "VFD" is a context word, but "re-do" -> "REDO" is not a known code.
+        assert _extract_fault_codes("please re-do the VFD setup") == []
+
+    def test_inverter_present_but_far_bay_number_rejected(self):
+        assert _extract_fault_codes("move the cable in bay 12 near the inverter") == []
+
+    # --- No context at all -> reject (even real-shaped codes) ---
+    def test_no_context_wire_terminal_rejected(self):
+        assert _extract_fault_codes("the OC wire goes to terminal 5") == []
+        assert _extract_fault_codes("move the GF wire to terminal 7") == []
+
+    def test_no_context_instruction_rejected(self):
+        assert _extract_fault_codes("install cable F 12 in bay 4") == []
+        assert _extract_fault_codes("the conveyor in bay 12 stopped") == []
+        assert _extract_fault_codes("please re-do the setup") == []
+
+    # --- Real codes near a real trigger -> extract (all named good cases) ---
+    def test_named_true_positives(self):
+        cases = {
+            "fault F0004": "F0004",
+            "the drive is showing F0004": "F0004",
+            "error E001 occurred": "E001",
+            "alarm OC1": "OC1",
+            "VFD flashing A501": "A501",
+            "inverter fault GF": "GF",
+            "display shows F4": "F4",
+        }
+        for msg, code in cases.items():
+            assert code in _extract_fault_codes(msg), f"{code!r} not extracted from {msg!r}"
+
+    def test_compound_code_near_trigger(self):
+        codes = _extract_fault_codes("error E-OC on the drive")
+        assert "E-OC" in codes and "EOC" in codes and "OC" in codes
+
+    def test_alpha_prefix_over_two_chars_rejected_even_with_context(self):
+        # A 3-letter alpha prefix + digits is not a code even next to "fault".
+        assert _extract_fault_codes("fault on bay 12") == []
