@@ -202,6 +202,57 @@ _NEW_QUESTION_RE = re.compile(
 )
 
 
+def _prepend_equipment_context(message: str, state: dict) -> str:
+    """Prepend resolved equipment context to text-only follow-ups in active diagnostic sessions.
+
+    If in an active diagnostic state (Q1, Q2, Q3, DIAGNOSIS, FIX_STEP) with a resolved
+    manufacturer (confidence >= 0.7), prepend it to the message. This carries equipment
+    context from prior turns into RAG queries for multi-turn follow-ups that lack a photo.
+
+    Args:
+        message: The raw user message.
+        state: The session state dict, containing state["state"] and state["context"]["uns_context"].
+
+    Returns:
+        The message with equipment context prepended (if conditions met), or the message unchanged.
+
+    Examples:
+        >>> state = {"state": "Q1", "context": {"uns_context": {"manufacturer": "Rockwell", "model": "PowerFlex 525", "confidence": 0.9}}}
+        >>> _prepend_equipment_context("Haven't meggered it yet", state)
+        'Rockwell PowerFlex 525 Haven't meggered it yet'
+
+        >>> state = {"state": "IDLE", "context": {"uns_context": {"manufacturer": "Rockwell", "model": "PowerFlex 525", "confidence": 0.9}}}
+        >>> _prepend_equipment_context("Follow-up", state)
+        'Follow-up'  # IDLE session, no prepend
+    """
+    # Only prepend if in an active diagnostic state
+    if state.get("state") not in ACTIVE_DIAGNOSTIC_STATES:
+        return message
+
+    # Extract uns_context
+    uns_ctx = (state.get("context") or {}).get("uns_context") or {}
+    if not uns_ctx:
+        return message
+
+    # Require manufacturer and sufficient confidence (0.7+)
+    manufacturer = uns_ctx.get("manufacturer")
+    if not manufacturer:
+        return message
+
+    confidence = uns_ctx.get("confidence", 0.0)
+    if confidence < 0.7:
+        return message
+
+    # Build enriched query: manufacturer + optional model + message
+    parts = [manufacturer]
+    model = uns_ctx.get("model")
+    if model:  # Only add if model exists and is truthy
+        parts.append(model)
+    parts.append(message)
+
+    return " ".join(parts)
+
+
 def _is_fresh_question_during_wo(message: str) -> bool:
     """True if message is a brand-new question, not a response to the WO preview.
 
@@ -4337,6 +4388,12 @@ class Supervisor:
         """
         max_attempts = 1 if photo_b64 else (2 if self.nemotron.enabled else 1)
         query = message
+        # Prepend equipment context to text-only follow-ups in active diagnostic sessions.
+        # Photo turns are enriched by the RAG worker (rag_worker.py:551), so skip them here
+        # to avoid double-prepending. Text turns lack that enrichment and need it for RAG
+        # to find equipment-specific chunks (#2209).
+        if not photo_b64:
+            query = _prepend_equipment_context(message, state)
         # Fetch KG + live-equipment context once (both best-effort, "" when
         # disabled/absent) and reuse across self-correction retries. They are
         # pre-formatted, self-labeled blocks; concatenate and inject as one.
@@ -4388,7 +4445,7 @@ class Supervisor:
             if attempt == 0 and max_attempts > 1:
                 logger.info("SELF_CORRECT attempt=1 — rewriting query")
                 query = await self.nemotron.rewrite_query(
-                    query=message,
+                    query=query,
                     context=state.get("asset_identified", ""),
                 )
 
