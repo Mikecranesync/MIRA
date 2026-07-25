@@ -1192,3 +1192,8 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 - Also: 2 fixtures (`pf520_hw_overcurrent_17`, `vfd_ab_03_pf525_wrong_model`) returned the "taking longer than usual" async placeholder — provider-latency artifacts inflating the count, not diagnosable engine bugs.
 - Non-patchable: `vfd_abb_01_acs580_fault_2310` wrong-vendor citation (ABB→Rockwell), same cross-vendor bleed as #2083/#2085 → retrieval-diagnostics, not FSM/keyword.
 - Did **not** attempt the #2759 gate fix autonomously (lives in `eval_watchdog.py`, outside the 4-file mandate; branch fix/precommit-untracked-sigpipe carries unrelated WIP).
+
+## eval-fixer run — 2026-07-25
+- Scorecard: 31/57 passing (54%)
+- Action: issue-filed (commented on rolling tracker #1876)
+- No patch: two hard-stops hit (23 patchable > 15; failures span 3 file clusters). Dominant signal = 14/26 failures ended on the "taking longer than usual" provider-timeout placeholder (FSM fell back to IDLE), not a code bug — the scorecard is confounded by transient latency and should be re-run. Real residual problems: 3 wrong-vendor citations + 1 ABB cross-load leak (retrieval vendor-scoping, non-patchable via engine/guardrails/prompt).
