@@ -97,7 +97,7 @@ _PRODUCT_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
-MIN_SIMILARITY = float(os.getenv("MIRA_MIN_SIMILARITY", "0.70"))
+_DEFAULT_MIN_SIMILARITY = float(os.getenv("MIRA_MIN_SIMILARITY", "0.70"))
 
 # Shared OEM knowledge pool — 61K entries ingested under the original tenant.
 # All tenants search this pool in addition to their own entries so they have
@@ -781,6 +781,7 @@ def recall_knowledge(
     tenant_id: Optional[str],
     limit: int = 3,
     query_text: str = "",
+    min_similarity: Optional[float] = None,
 ) -> list[dict]:
     """Hybrid retrieval: vector + fault code + product name + BM25.
 
@@ -796,10 +797,16 @@ def recall_knowledge(
     whenever the embedding was missing, which short-circuited BM25 even
     though it doesn't need an embedding — the GS11 demo regression.
 
+    min_similarity: optional cosine threshold for vector-stream filtering.
+    Defaults to env MIRA_MIN_SIMILARITY (0.70). Triage-relaxed thresholds
+    (0.55 for medium, 0.45 for low) should be passed here to enable chunking
+    at weaker confidence (#2207). The post-retrieval quality gate provides
+    precision backstop; this controls what reaches the worker.
+
     Returns a list of dicts with keys:
         content, manufacturer, model_number, equipment_type, source_type, similarity
 
-    Results below MIN_SIMILARITY are filtered out.
+    Results below the vector-stream min_similarity are filtered out.
     Returns [] on any failure — never raises.
     """
     url = os.environ.get("NEON_DATABASE_URL")
@@ -832,6 +839,11 @@ def recall_knowledge(
             connect_args={"sslmode": "require"},
             pool_pre_ping=True,
         )
+        # Effective cosine threshold: use provided min_similarity or default.
+        eff_min_similarity = (
+            min_similarity if min_similarity is not None else _DEFAULT_MIN_SIMILARITY
+        )
+
         # Hybrid corpus filter: shared OEM (is_private=false) + tenant's own rows (if tenant provided)
         if tenant_id:
             tenant_filter = "(is_private = false OR tenant_id = :tid)"
@@ -887,7 +899,9 @@ def recall_knowledge(
                     .mappings()
                     .fetchall()
                 )
-                vector_results = [dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY]
+                vector_results = [
+                    dict(r) for r in vector_rows if r["similarity"] >= eff_min_similarity
+                ]
 
             # Stage 2: Fault code — structured lookup first, ILIKE fallback
             fault_codes = _extract_fault_codes(query_text)
