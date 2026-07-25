@@ -18,7 +18,7 @@
     },
     {
       "role": "assistant",
-      "content": "Corrected answer: From the CV-101 evidence package, PLC1 terminal +CM1 is output bank 1 feed for O-04..O-06 with one spare. Source status is field_verify, so preserve that status and verify the terminal naming on the machine before relying on it for work."
+      "content": "__CORRECTED_ASSISTANT_MESSAGE__"
     }
   ],
   "rejection_reasons": []

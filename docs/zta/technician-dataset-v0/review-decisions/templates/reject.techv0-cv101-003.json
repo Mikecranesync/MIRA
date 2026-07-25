@@ -9,6 +9,6 @@
   "decided_at": "__DECIDED_AT_ISO__",
   "correction_messages": null,
   "rejection_reasons": [
-    "answer_key_mismatch"
+    "__REJECTION_REASON__"
   ]
 }

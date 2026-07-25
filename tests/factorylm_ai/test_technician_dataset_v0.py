@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
@@ -13,6 +14,9 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 DECISION_TEMPLATES_DIR = (
     REPO / "docs" / "zta" / "technician-dataset-v0" / "review-decisions" / "templates"
+)
+CV101_FIRST_PASS = (
+    REPO / "docs" / "zta" / "technician-dataset-v0" / "review-decisions" / "cv101-first-pass.md"
 )
 
 from factorylm_ai.dataset import SAFETY_SENSITIVE_TAG, assemble_dataset_v0  # noqa: E402
@@ -72,6 +76,8 @@ def _fill_decision_template(value: Any) -> Any:
         "__REVIEWER_ID__": "mike@example.com",
         "__RATIONALE__": "reviewed against owned CV-101 source evidence",
         "__DECIDED_AT_ISO__": "2026-07-24T18:00:00Z",
+        "__CORRECTED_ASSISTANT_MESSAGE__": ("Corrected answer from reviewed CV-101 evidence."),
+        "__REJECTION_REASON__": "answer_key_mismatch",
     }
     if isinstance(value, dict):
         return {k: _fill_decision_template(v) for k, v in value.items()}
@@ -86,6 +92,14 @@ def _fill_decision_template(value: Any) -> Any:
 def _template_decision(template_name: str) -> ReviewDecision:
     row = json.loads((DECISION_TEMPLATES_DIR / template_name).read_text(encoding="utf-8"))
     return ReviewDecision.from_dict(_fill_decision_template(row))
+
+
+def _fill_decision_template_top_level(row: dict[str, Any]) -> dict[str, Any]:
+    updated = dict(row)
+    updated["reviewer_id"] = "mike@example.com"
+    updated["rationale"] = "reviewed against owned CV-101 source evidence"
+    updated["decided_at"] = "2026-07-24T18:00:00Z"
+    return updated
 
 
 def test_readiness_candidate_counts_and_composition_targets() -> None:
@@ -275,6 +289,17 @@ def test_cv101_review_decision_templates_are_placeholder_guarded() -> None:
             else:  # pragma: no cover
                 raise AssertionError(f"template was appendable without edits: {template_path.name}")
 
+        if template_path.name.startswith(("correct.", "reject.")):
+            decision = ReviewDecision.from_dict(_fill_decision_template_top_level(raw))
+            try:
+                apply_review_decisions(candidates, [decision])
+            except ReviewDecisionError as exc:
+                assert exc.code == "DECISION_TEMPLATE_PLACEHOLDER"
+            else:  # pragma: no cover
+                raise AssertionError(
+                    f"template was appendable with action placeholder: {template_path.name}"
+                )
+
 
 def test_cv101_review_decision_templates_bind_to_current_manifest() -> None:
     candidates = build_review_candidates("readiness")
@@ -303,6 +328,31 @@ def test_cv101_review_decision_templates_bind_to_current_manifest() -> None:
         {"record_id": "techv0-cv101-003", "rejection_reasons": ["answer_key_mismatch"]}
     ]
     assert reviewed.report["held_out_records"] == [{"record_id": "techv0-cv101-004"}]
+
+
+def test_cv101_first_pass_review_sheet_references_current_templates_and_records() -> None:
+    text = CV101_FIRST_PASS.read_text(encoding="utf-8")
+    manifest = candidate_manifest_for(build_review_candidates("readiness"))
+    manifest_record_ids = {entry["record_id"] for entry in manifest["entries"]}
+    template_names = {path.name for path in DECISION_TEMPLATES_DIR.glob("*.json")}
+
+    linked_templates = set(re.findall(r"templates/([a-z_]+\.techv0-cv101-\d{3}\.json)", text))
+    mentioned_records = set(re.findall(r"\btechv0-cv101-\d{3}\b", text))
+
+    assert linked_templates == {
+        "approve.techv0-cv101-001.json",
+        "correct.techv0-cv101-002.json",
+        "reject.techv0-cv101-003.json",
+        "hold_out.techv0-cv101-004.json",
+    }
+    assert linked_templates <= template_names
+    assert mentioned_records <= manifest_record_ids
+    assert {
+        "techv0-cv101-001",
+        "techv0-cv101-002",
+        "techv0-cv101-003",
+        "techv0-cv101-004",
+    } <= mentioned_records
 
 
 def test_stale_hashes_and_missing_reviewer_fail_closed() -> None:

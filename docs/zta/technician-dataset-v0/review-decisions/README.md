@@ -5,6 +5,14 @@ Use this folder for append-only reviewer decisions for
 `candidate_dataset.jsonl`, `candidate_manifest.json`, or `reviewed_dataset.jsonl`
 by hand.
 
+## Start Here
+
+If you are reviewing the first small CV-101 batch, start with
+`cv101-first-pass.md`. It shows the four records as plain-English review cards
+and points to the matching JSON form. Use the larger
+`../review-packages/cv101_review_package.md` only when you need the full package
+context.
+
 ## Current Candidate Manifest
 
 - Build id: `2026-07-23-technician-dataset-v0`
@@ -13,9 +21,9 @@ by hand.
 - Review package: `../review-packages/cv101_review_package.md`
 - Append-only ledger path: `decisions.jsonl`
 
-The templates in `templates/` are intentionally guarded with placeholders. They
-will fail closed until `__REVIEWER_ID__`, `__RATIONALE__`, and
-`__DECIDED_AT_ISO__` are replaced.
+The templates in `templates/` are forms, not recommendations. They are
+intentionally guarded with placeholders and will fail closed until every
+`__PLACEHOLDER__` value is replaced.
 
 ## Decision Actions
 
@@ -44,6 +52,8 @@ Copy-Item docs\zta\technician-dataset-v0\review-decisions\templates\approve.tech
 - `__RATIONALE__`: the source-backed reason for the decision.
 - `__DECIDED_AT_ISO__`: an ISO timestamp, for example
   `2026-07-24T18:00:00Z`.
+- Action-specific placeholders such as `__CORRECTED_ASSISTANT_MESSAGE__` or
+  `__REJECTION_REASON__`: the actual reviewed content or typed reason.
 
 4. For `correct`, edit `correction_messages` so the full conversation is the
    reviewed replacement. Keep the system and user messages unless the candidate

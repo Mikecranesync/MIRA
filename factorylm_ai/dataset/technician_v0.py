@@ -1410,6 +1410,11 @@ def _validate_decision_set(
 
     for decision in decisions:
         _validate_decision_shape(decision)
+        if _contains_template_placeholder(decision.to_dict()):
+            raise ReviewDecisionError(
+                "DECISION_TEMPLATE_PLACEHOLDER",
+                f"{decision.record_id}: decision payload still contains a template placeholder",
+            )
         if _contains_secret(decision.to_dict()):
             raise ReviewDecisionError(
                 "DECISION_SECRET_PRESENT",
@@ -1672,6 +1677,16 @@ def _raise_if_template_placeholder(record_id: str, field: str, value: str) -> No
 def _is_template_placeholder(value: str) -> bool:
     stripped = value.strip()
     return len(stripped) > 4 and stripped.startswith("__") and stripped.endswith("__")
+
+
+def _contains_template_placeholder(payload: Any) -> bool:
+    if isinstance(payload, dict):
+        return any(_contains_template_placeholder(value) for value in payload.values())
+    if isinstance(payload, list | tuple):
+        return any(_contains_template_placeholder(value) for value in payload)
+    if isinstance(payload, str):
+        return _is_template_placeholder(payload)
+    return False
 
 
 def _readiness_evidence(out_dir: Path) -> ReadinessEvidence:
