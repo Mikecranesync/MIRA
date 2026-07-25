@@ -969,8 +969,8 @@ def recall_knowledge(
             # knows curated families (PowerFlex/GS/Micro/…). When it finds nothing
             # but the resolver gave us a model, use it so novel equipment still gets
             # the product-rerank stream instead of silently skipping it.
-            if not product_names and product_hint:
-                product_names = [product_hint]
+            if not product_names and product_hint and product_hint.strip():
+                product_names = [product_hint.strip()]
             product_results: list[dict] = []
             if product_names and has_embedding:
                 product_results = _product_search(
