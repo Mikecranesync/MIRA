@@ -1,0 +1,46 @@
+{
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "built_at": "2026-07-23T00:00:00Z",
+  "candidate_count": 180,
+  "candidate_jsonl_mutated": false,
+  "candidate_manifest_sha256": "2face5d13b65ed68dcaf1aea71db2fc7d7f1cea0b534fb1e95ca26f0004f674d",
+  "corrected_records": [],
+  "decision_count": 0,
+  "decision_counts": {
+    "approve": 0,
+    "correct": 0,
+    "hold_out": 0,
+    "reject": 0
+  },
+  "decisions": [],
+  "eligibility_delta": {
+    "delta": 0,
+    "eligible_after": 0,
+    "eligible_before": 0
+  },
+  "held_out_records": [],
+  "no_action_proof": {
+    "authorization_consumed": false,
+    "deployment_occurred": false,
+    "dry_run": true,
+    "endpoint_created": false,
+    "executed": false,
+    "fine_tune_job_created": false,
+    "spend_occurred": false,
+    "upload_occurred": false
+  },
+  "paid_gate_blocking": [
+    "min_records",
+    "min_lineages",
+    "min_valued_interactions",
+    "min_safety_sensitive",
+    "trainable_source_representation",
+    "model_support_confirmed"
+  ],
+  "paid_gate_passed": false,
+  "paid_gate_verdict": "PAID_GATE_BLOCKED",
+  "policy": "Review decisions are append-only events. Exact duplicate events are idempotent; changed decisions for an existing record id are rejected. Only approve/correct decisions set approved_by and gold_status, and the reviewed record must still pass SourceCandidate/DatasetRecord/assemble_dataset_v0.",
+  "rejected_records": [],
+  "reviewed_manifest_sha256": "cfd060b6846643f200f6bb0f383502f84692b10b8137bdb36d8dd9047742c1f1",
+  "schema": "factorylm.technician-dataset.review-decision-report.v1"
+}

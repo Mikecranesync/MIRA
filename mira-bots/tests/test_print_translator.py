@@ -779,3 +779,57 @@ class TestPrintSelfConsistency:
         assert usage is not None
         assert usage["input_tokens"] == 600  # 100 + 200 + 300
         assert usage["output_tokens"] == 60  # 10 + 20 + 30
+
+
+# ── printed safety / manufacturer warnings elevation (2026-07-21) ─────────────
+
+
+class TestPrintedWarningSignals:
+    def test_detects_danger_warning_caution_headers(self):
+        vd = {"ocr_items": ["DANGER Arc flash hazard", "Main disconnect", "CAUTION hot surface"]}
+        sigs = print_translator.printed_warning_signals(vd)
+        assert any("DANGER" in s for s in sigs)
+        assert any("CAUTION" in s for s in sigs)
+        assert "Main disconnect" not in sigs  # non-warning line excluded
+
+    def test_detects_hard_prohibition_lines(self):
+        vd = {"tesseract_text": "Do not connect the (0V) and (24V) terminals with others.\nX0 X1 X2"}
+        sigs = print_translator.printed_warning_signals(vd)
+        assert any("do not connect" in s.lower() for s in sigs)
+
+    def test_empty_when_no_ocr_available(self):
+        assert print_translator.printed_warning_signals({"ocr_items": []}) == []
+        assert print_translator.printed_warning_signals(None) == []
+
+    def test_verbatim_and_deduped(self):
+        vd = {"ocr_items": ["WARNING lockout required", "WARNING lockout required"]}
+        sigs = print_translator.printed_warning_signals(vd)
+        assert sigs == ["WARNING lockout required"]  # deduped, verbatim
+
+
+class TestSafetyWarningsBackstop:
+    _VD = {"ocr_items": ["WARNING never wire a PLC between the relay outputs and the MSC"]}
+
+    def test_backstop_appends_section_when_signal_and_no_section(self):
+        out = print_translator.format_theory_reply("This is an E-stop relay.", vision_data=self._VD)
+        assert print_translator.SAFETY_WARNINGS_HEADING in out
+        assert "never wire a PLC" in out
+        assert "PRINTED" in out
+
+    def test_backstop_skipped_when_reply_already_has_section(self):
+        raw = "Explanation.\n\n## Safety and Manufacturer Warnings\n- PRINTED: WARNING ..."
+        out = print_translator.format_theory_reply(raw, vision_data=self._VD)
+        # not appended twice
+        assert out.count(print_translator.SAFETY_WARNINGS_HEADING) == 1
+
+    def test_backstop_absent_when_no_signals(self):
+        out = print_translator.format_theory_reply("Explanation.", vision_data={"ocr_items": ["K1 M2"]})
+        assert print_translator.SAFETY_WARNINGS_HEADING not in out
+
+    def test_empty_raw_still_fallback(self):
+        out = print_translator.format_theory_reply("", vision_data=self._VD)
+        assert out == print_translator.FALLBACK_REPLY
+
+    def test_both_prompts_carry_the_safety_instruction(self):
+        assert "Safety and Manufacturer Warnings" in print_translator.SLIM_THEORY_SYSTEM_PROMPT
+        assert "Safety and Manufacturer Warnings" in print_translator.THEORY_SYSTEM_PROMPT

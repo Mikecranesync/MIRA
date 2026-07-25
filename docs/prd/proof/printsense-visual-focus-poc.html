@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>PrintSense Visual Focus — dependency-free proof</title>
+<!--
+  PR V0 proof of interaction + coordinate contract for the PrintSense Visual
+  Focus Workspace PRD (docs/prd/2026-07-20-printsense-visual-focus-workspace.md,
+  Appendix C). ZERO external libraries — pure HTML5 Canvas — so it runs offline
+  and inside a strict CSP.
+
+  It PROVES: image load, a phone-sized pan/zoom viewer, point/box/circle/
+  highlight/freehand marks, normalized-to-ORIGINAL coordinate storage
+  (0..1, factorylm.visual-region.v1), high-resolution focus-crop generation,
+  deterministic FocusedVisualRequest payload construction, and an annotated
+  snapshot export.
+
+  It does NOT prove Telegram auth, backend persistence, model accuracy, or
+  production performance — those are covered by the staged acceptance plan
+  (PRD §18/§20). Production uses the shared React component, not this file.
+-->
+<style>
+  :root { --bg:#0f1419; --panel:#182029; --line:#2a3542; --ink:#e7edf3; --mut:#93a1b0;
+          --accent:#4f6bed; --focus:#f2b705; --ok:#3fb950; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+              font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  #app { display:flex; flex-direction:column; height:100dvh; max-width:520px; margin:0 auto; }
+  header { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:14px; margin:0; font-weight:600; }
+  header .tag { color:var(--mut); font-size:12px; }
+  #stage { position:relative; flex:1; overflow:hidden; background:#0b0e12; touch-action:none; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .rail { display:flex; gap:6px; padding:8px; overflow-x:auto; border-top:1px solid var(--line); background:var(--panel); }
+  .rail button, .bar button { background:#212b36; color:var(--ink); border:1px solid var(--line);
+      border-radius:8px; padding:8px 10px; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .rail button.on { background:var(--accent); border-color:var(--accent); }
+  .bar { display:flex; gap:6px; padding:8px; border-top:1px solid var(--line); background:var(--panel); align-items:center; }
+  .bar input[type=text]{ flex:1; background:#0b0e12; border:1px solid var(--line); color:var(--ink);
+      border-radius:8px; padding:9px 10px; font-size:13px; }
+  .bar button.ask { background:var(--ok); border-color:var(--ok); font-weight:600; }
+  #out { max-height:38vh; overflow:auto; padding:10px 12px; border-top:1px solid var(--line);
+      background:#0b0e12; font:11.5px/1.4 ui-monospace,Menlo,Consolas,monospace; color:#b7c4d0; white-space:pre-wrap; }
+  #out .k { color:var(--focus); }
+  .pill { font-size:11px; color:var(--mut); }
+  label.file { background:#212b36; border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; }
+  label.file input { display:none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Visual Focus</h1>
+    <span class="tag" id="space">normalized_original · v1</span>
+    <span style="flex:1"></span>
+    <label class="file">Image<input id="file" type="file" accept="image/*" /></label>
+  </header>
+
+  <div id="stage">
+    <canvas id="img"></canvas>
+    <canvas id="ann"></canvas>
+  </div>
+
+  <div class="rail" id="tools">
+    <button data-tool="pan" class="on">Pan</button>
+    <button data-tool="point">Point</button>
+    <button data-tool="box">Box</button>
+    <button data-tool="circle">Circle</button>
+    <button data-tool="highlight">Highlight</button>
+    <button data-tool="freehand">Freehand</button>
+    <button id="undo">Undo</button>
+    <button id="clear">Clear</button>
+    <button id="fit">Fit</button>
+  </div>
+
+  <div class="bar">
+    <input id="q" type="text" placeholder="Ask about the selected area…" value="Why would this contact never energize?" />
+    <button class="ask" id="ask">Ask</button>
+  </div>
+
+  <div class="bar" style="border-top:none">
+    <span class="pill" id="count">0 regions</span>
+    <span style="flex:1"></span>
+    <button id="crop">Focus crop</button>
+    <button id="snap">Export snapshot</button>
+  </div>
+
+  <pre id="out">Load an image, mark a region, then "Ask" to see the factorylm.focused-visual-request.v1 payload (IDs + normalized geometry — never screen pixels).</pre>
+</div>
+
+<script>
+"use strict";
+(function () {
+  // --- tiny deterministic id + sha-ish (proof only; server owns real ids/hashes)
+  const uuid = () => "r-" + Math.abs(hash(Date.now() + ":" + Math.random())).toString(16);
+  function hash(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; }
+
+  const stage = document.getElementById("stage");
+  const imgCv = document.getElementById("img"), annCv = document.getElementById("ann");
+  const ig = imgCv.getContext("2d"), ag = annCv.getContext("2d");
+  const out = document.getElementById("out");
+  const PRECISION = 6, round = v => Math.round(v * 1e6) / 1e6;
+
+  let img = null, imgW = 0, imgH = 0;         // ORIGINAL pixels (preserved)
+  let view = { scale: 1, x: 0, y: 0 };         // original->screen transform
+  let tool = "pan", regions = [], draft = null, dragging = null;
+
+  // ---- viewport adapter (mirrors ViewportAdapter in PRD §9) ----
+  function screenToNormalized(sx, sy) {
+    const ox = (sx - view.x) / view.scale, oy = (sy - view.y) / view.scale;
+    return { x: clamp01(ox / imgW), y: clamp01(oy / imgH) };
+  }
+  function normalizedToScreen(nx, ny) {
+    return { x: nx * imgW * view.scale + view.x, y: ny * imgH * view.scale + view.y };
+  }
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+
+  function resize() {
+    for (const c of [imgCv, annCv]) { c.width = stage.clientWidth * devicePixelRatio; c.height = stage.clientHeight * devicePixelRatio; }
+    ig.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    ag.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    render();
+  }
+  function fit() {
+    if (!img) return;
+    const s = Math.min(stage.clientWidth / imgW, stage.clientHeight / imgH) * 0.98;
+    view.scale = s; view.x = (stage.clientWidth - imgW * s) / 2; view.y = (stage.clientHeight - imgH * s) / 2;
+    render();
+  }
+  function render() {
+    ig.clearRect(0,0,imgCv.width,imgCv.height);
+    if (img) ig.drawImage(img, view.x, view.y, imgW*view.scale, imgH*view.scale);
+    ag.clearRect(0,0,annCv.width,annCv.height);
+    for (const r of regions) drawRegion(r, false);
+    if (draft) drawRegion(draft, true);
+  }
+  function drawRegion(r, isDraft) {
+    ag.save();
+    ag.lineWidth = 2; ag.strokeStyle = isDraft ? "#8aa0ff" : "#4f6bed";
+    ag.fillStyle = "rgba(79,107,237,0.14)";
+    const g = r.geometry;
+    if (g.type === "point") { const p = normalizedToScreen(g.x,g.y); dot(p); }
+    else if (g.type === "rect" || g.type === "ellipse") {
+      const a = normalizedToScreen(g.x,g.y), b = normalizedToScreen(g.x+g.width,g.y+g.height);
+      if (g.type === "rect") { ag.beginPath(); ag.rect(a.x,a.y,b.x-a.x,b.y-a.y); ag.fill(); ag.stroke(); }
+      else { ag.beginPath(); ag.ellipse((a.x+b.x)/2,(a.y+b.y)/2,Math.abs(b.x-a.x)/2,Math.abs(b.y-a.y)/2,0,0,7); ag.fill(); ag.stroke(); }
+    } else if (g.type === "freehand" || g.type === "polyline") {
+      if (r.style && r.style.intent === "highlight") { ag.strokeStyle = "rgba(242,183,5,0.5)"; ag.lineWidth = 16; ag.lineCap="round"; }
+      ag.beginPath(); g.points.forEach((pt,i)=>{ const s=normalizedToScreen(pt[0],pt[1]); i?ag.lineTo(s.x,s.y):ag.moveTo(s.x,s.y); }); ag.stroke();
+    }
+    ag.restore();
+  }
+  function dot(p){ ag.beginPath(); ag.arc(p.x,p.y,6,0,7); ag.fillStyle="#4f6bed"; ag.fill(); ag.strokeStyle="#fff"; ag.lineWidth=2; ag.stroke(); }
+
+  // ---- gestures: pan/zoom (two-finger + wheel) and draw ----
+  let pinch = null;
+  stage.addEventListener("pointerdown", e => {
+    stage.setPointerCapture(e.pointerId);
+    if (tool === "pan") { dragging = { sx:e.clientX, sy:e.clientY, vx:view.x, vy:view.y }; return; }
+    const n = screenToNormalized(e.clientX, e.clientY);
+    if (tool === "point") { commit(mk("point",{x:n.x,y:n.y})); return; }
+    if (tool === "box" || tool === "circle") draft = mk(tool==="box"?"rect":"ellipse",{x:n.x,y:n.y,width:0,height:0,_ox:n.x,_oy:n.y});
+    else draft = mk(tool==="freehand"?"freehand":"freehand",{points:[[n.x,n.y]]}, tool==="highlight"?"highlight":"focus");
+    if (tool==="highlight") draft.geometry.type="polyline";
+  });
+  stage.addEventListener("pointermove", e => {
+    if (dragging) { view.x = dragging.vx + (e.clientX-dragging.sx); view.y = dragging.vy + (e.clientY-dragging.sy); render(); return; }
+    if (!draft) return;
+    const n = screenToNormalized(e.clientX, e.clientY), g = draft.geometry;
+    if (g.type==="rect"||g.type==="ellipse"){ g.x=Math.min(g._ox,n.x); g.y=Math.min(g._oy,n.y); g.width=Math.abs(n.x-g._ox); g.height=Math.abs(n.y-g._oy); }
+    else g.points.push([n.x,n.y]);
+    render();
+  });
+  stage.addEventListener("pointerup", () => {
+    dragging = null;
+    if (draft) { const g=draft.geometry; delete g._ox; delete g._oy;
+      const big = g.type==="point" || (g.width>0.005||g.height>0.005) || (g.points&&g.points.length>2);
+      if (big) commit(draft); draft=null; render(); }
+  });
+  stage.addEventListener("wheel", e => { e.preventDefault();
+    const f = e.deltaY<0?1.1:0.9, mx=e.clientX, my=e.clientY;
+    const before = screenToNormalized(mx,my); view.scale*=f;
+    const after = normalizedToScreen(before.x,before.y); view.x += mx-after.x; view.y += my-after.y; render();
+  }, {passive:false});
+
+  // ---- factorylm.visual-region.v1 construction (normalized-original only) ----
+  function mk(type, geom, intent) {
+    const g = { type, coordinate_space: "normalized_original" };
+    for (const k in geom) g[k] = geom[k];
+    return { schema:"factorylm.visual-region.v1", region_id: uuid(), origin:"user",
+             geometry: g, style:{ intent: intent||"focus", tool }, transform_to_original:null,
+             created_from:{ surface:"poc_html", viewport_rotation:0 } };
+  }
+  function canonize(g){ // deterministic: round every coord to 6dp, drop scratch keys
+    const c = { type:g.type, coordinate_space:"normalized_original" };
+    if (g.type==="point"){ c.x=round(g.x); c.y=round(g.y); }
+    else if (g.type==="rect"||g.type==="ellipse"){ c.x=round(g.x); c.y=round(g.y); c.width=round(g.width); c.height=round(g.height); }
+    else c.points = g.points.map(p=>[round(p[0]),round(p[1])]);
+    return c;
+  }
+  function commit(r){ r.geometry = canonize(r.geometry); regions.push(r); document.getElementById("count").textContent = regions.length+" region"+(regions.length!==1?"s":""); render(); }
+
+  // ---- focus crop (high-res, from PRESERVED original + padding) ----
+  function focusCrop(r, pad=0.08) {
+    const g = r.geometry; let bx,by,bw,bh;
+    if (g.type==="point"){ bw=bh=0.12; bx=g.x-0.06; by=g.y-0.06; }
+    else if (g.width!=null){ bx=g.x; by=g.y; bw=g.width; bh=g.height; }
+    else { const xs=g.points.map(p=>p[0]), ys=g.points.map(p=>p[1]); bx=Math.min(...xs); by=Math.min(...ys); bw=Math.max(...xs)-bx; bh=Math.max(...ys)-by; }
+    bx=clamp01(bx-bw*pad); by=clamp01(by-bh*pad); bw=Math.min(1-bx,bw*(1+2*pad)); bh=Math.min(1-by,bh*(1+2*pad));
+    const px=Math.round(bx*imgW), py=Math.round(by*imgH), pw=Math.max(1,Math.round(bw*imgW)), ph=Math.max(1,Math.round(bh*imgH));
+    const c=document.createElement("canvas"); c.width=pw; c.height=ph; c.getContext("2d").drawImage(img,px,py,pw,ph,0,0,pw,ph);
+    return { crop_pixel_bbox:[px,py,pw,ph], padding_ratio:pad, data_url:c.toDataURL("image/png") };
+  }
+
+  // ---- FocusedVisualRequest (client sends IDs + intent, NOT tenant/model/uri) ----
+  function focusedRequest() {
+    return { schema:"factorylm.focused-visual-request.v1", request_id: uuid(),
+             session_id:"<server-session>", evidence_id:"<evidence-id>", surface:"poc_html", mode:"printsense",
+             question: document.getElementById("q").value,
+             region_ids: regions.map(r=>r.region_id),
+             context:{ include_full_frame:true, include_neighboring_ocr:true, include_package_graph:true, include_machine_context:true, crop_padding_ratio:0.08 } };
+  }
+
+  function show(obj){ out.innerHTML = JSON.stringify(obj,null,2).replace(/"(\w[\w-]*)":/g,'"<span class=k>$1</span>":'); }
+
+  // ---- wiring ----
+  document.getElementById("tools").addEventListener("click", e => {
+    const b = e.target.closest("button"); if(!b) return;
+    if (b.dataset.tool){ tool=b.dataset.tool; [...e.currentTarget.querySelectorAll("button")].forEach(x=>x.classList.toggle("on", x===b)); }
+  });
+  document.getElementById("undo").onclick = ()=>{ regions.pop(); document.getElementById("count").textContent=regions.length+" regions"; render(); };
+  document.getElementById("clear").onclick = ()=>{ regions=[]; document.getElementById("count").textContent="0 regions"; render(); };
+  document.getElementById("fit").onclick = fit;
+  document.getElementById("ask").onclick = ()=>{ if(!regions.length){ show({error:"mark at least one region first"}); return; }
+    show({ focused_visual_request: focusedRequest(),
+           regions_stored_as: regions.map(r=>({ region_id:r.region_id, schema:r.schema, geometry:r.geometry, style:r.style })),
+           note:"IDs + normalized geometry only — no screen pixels, no tenant, no storage URI (server owns those)." }); };
+  document.getElementById("crop").onclick = ()=>{ if(!regions.length){ show({error:"mark a region first"}); return; }
+    const c = focusCrop(regions[regions.length-1]); show({ focus_crop:{ region_id:regions[regions.length-1].region_id, crop_pixel_bbox:c.crop_pixel_bbox, padding_ratio:c.padding_ratio, data_url_len:c.data_url.length } }); };
+  document.getElementById("snap").onclick = ()=>{ const c=document.createElement("canvas"); c.width=imgW; c.height=imgH; const g=c.getContext("2d");
+    g.drawImage(img,0,0); g.lineWidth=Math.max(2,imgW/400); g.strokeStyle="#4f6bed";
+    for(const r of regions){ const gg=r.geometry; if(gg.type==="rect"){ g.strokeRect(gg.x*imgW,gg.y*imgH,gg.width*imgW,gg.height*imgH); } }
+    const a=document.createElement("a"); a.download="annotated-snapshot.png"; a.href=c.toDataURL("image/png"); a.click(); };
+
+  document.getElementById("file").addEventListener("change", e => {
+    const f = e.target.files[0]; if(!f) return; const u = URL.createObjectURL(f); loadImage(u);
+  });
+  function loadImage(src){ const im = new Image(); im.onload = ()=>{ img=im; imgW=im.naturalWidth; imgH=im.naturalHeight; fit(); }; im.src = src; }
+
+  // Built-in synthetic sample so the proof runs with no upload (an SVG data URI = a tiny "print").
+  function sample(){
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='1040'>
+      <rect width='100%' height='100%' fill='#fdfdfb'/>
+      <g stroke='#222' stroke-width='3' fill='none' font-family='monospace'>
+        <rect x='60' y='60' width='1480' height='920'/>
+        <line x1='500' y1='140' x2='500' y2='900'/><line x1='1050' y1='140' x2='1050' y2='900'/>
+        <text x='90' y='120' font-size='30' stroke='none' fill='#111'>CV-101  CONTROL CURRENT (E-005 style demo)</text>
+        <circle cx='760' cy='420' r='40'/><text x='720' y='380' font-size='26' stroke='none' fill='#111'>K1</text>
+        <line x1='760' y1='200' x2='760' y2='380'/><line x1='760' y1='460' x2='760' y2='760'/>
+        <text x='620' y='210' font-size='24' stroke='none' fill='#111'>13</text><text x='620' y='790' font-size='24' stroke='none' fill='#111'>14</text>
+      </g></svg>`;
+    return "data:image/svg+xml;base64," + btoa(svg);
+  }
+
+  window.addEventListener("resize", resize);
+  resize(); loadImage(sample());
+})();
+</script>
+</body>
+</html>

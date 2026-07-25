@@ -62,3 +62,31 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """
     price_in, price_out = PRICING.get(model, _UNKNOWN_MODEL_PRICE)
     return (input_tokens / 1_000_000) * price_in + (output_tokens / 1_000_000) * price_out
+
+
+def estimate_finetune_cost(
+    training_tokens: int,
+    *,
+    validation_tokens: int = 0,
+    epochs: int = 3,
+    n_evals: int = 0,
+    usd_per_mtok: float | None = None,
+    method: str = "sft",
+) -> float:
+    """Estimate Together fine-tuning cost before launching a job.
+
+    Together bills tokens processed across training epochs and validation evals:
+    ``epochs * training_tokens + n_evals * validation_tokens``. The result is
+    floored at :data:`FT_MIN_JOB_USD`. This is a local conservative estimate;
+    PR 4's live price-estimate endpoint can refine it later, but this keeps the
+    spend gate turnkey in dry-run and CI.
+    """
+    if method not in {"sft", "dpo"}:
+        raise ValueError(f"method must be 'sft' or 'dpo', got {method!r}")
+    rate = usd_per_mtok
+    if rate is None:
+        rate = FT_LORA_DPO_USD_PER_MTOK_LE16B if method == "dpo" else FT_LORA_SFT_USD_PER_MTOK_LE16B
+    processed_tokens = max(0, training_tokens) * max(1, epochs)
+    processed_tokens += max(0, validation_tokens) * max(0, n_evals)
+    raw = (processed_tokens / 1_000_000) * rate
+    return max(FT_MIN_JOB_USD, raw)

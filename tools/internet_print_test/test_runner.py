@@ -157,7 +157,7 @@ def test_artifact_dir_is_immutable_and_hashed(tmp_path, monkeypatch):
     td = (tmp_path / "out" / "unit-fixture")
     for name in ("source.json", "sha256.txt", "tested_page.png", "telegram_request.json",
                  "telegram_response.txt", "telegram_response.json", "extraction.json",
-                 "judge_1.json", "report.md", "report.html", "run.log"):
+                 "deterministic_grade.json", "judge_1.json", "report.md", "report.html", "run.log"):
         assert (td / name).exists(), f"missing artifact {name}"
     # byte-for-byte response preserved
     assert (td / "telegram_response.txt").read_text(encoding="utf-8") == "MOCK REPLY"
@@ -166,6 +166,41 @@ def test_artifact_dir_is_immutable_and_hashed(tmp_path, monkeypatch):
 
     assert hashlib.sha256(png).hexdigest() in (td / "sha256.txt").read_text()
     assert row["status"] == "ok"
+
+
+# ── typed SKIP: one bad URL must never fail the exit code or halt an unattended batch ──
+
+
+def test_fetch_error_is_typed_skip_not_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "TESTS_ROOT", tmp_path / "out")
+
+    def _boom(src, log):
+        raise safety.FetchError("robots.txt disallows fetching https://x/y.pdf")
+
+    monkeypatch.setattr(runner, "_acquire", _boom)
+    src = {"test_id": "skip-fixture", "source_url": "https://x/y.pdf", "category": "test",
+           "caption": "Explain this print."}
+    args = runner.argparse.Namespace(page=0, dpi=200, caption="Explain this print.",
+                                     no_judge=True, send_email=False, recipient=None, regrade=False)
+    row = runner.run_one(src, args)
+    assert row["status"].startswith("skip:")
+    assert row.get("skip") is True
+
+
+def test_exit_zero_when_only_skips_no_errors(monkeypatch):
+    monkeypatch.setattr(runner, "_select", lambda args: [{"test_id": "a"}, {"test_id": "b"}])
+    monkeypatch.setattr(runner, "_write_index", lambda rows: None)
+    outcomes = iter([{"test_id": "a", "status": "skip: robots.txt disallow"},
+                     {"test_id": "b", "status": "ok"}])
+    monkeypatch.setattr(runner, "run_one", lambda s, args: next(outcomes))
+    assert runner.main(["--test-id", "a,b"]) == 0  # a skip is not a failure
+
+
+def test_exit_one_on_genuine_error(monkeypatch):
+    monkeypatch.setattr(runner, "_select", lambda args: [{"test_id": "a"}])
+    monkeypatch.setattr(runner, "_write_index", lambda rows: None)
+    monkeypatch.setattr(runner, "run_one", lambda s, args: {"test_id": "a", "status": "error: Boom"})
+    assert runner.main(["--test-id", "a"]) == 1
 
 
 # ── email packaging ───────────────────────────────────────────────────────────

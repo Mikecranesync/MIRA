@@ -8,6 +8,7 @@ and neutralization of prompt-injection so document text can never change an LLM'
 
 from __future__ import annotations
 
+import os
 import time
 import urllib.robotparser
 from dataclasses import dataclass, field
@@ -23,7 +24,9 @@ ALLOWED_MIME = {
     "image/webp",
     "image/tiff",
 }
-MAX_BYTES = 60 * 1024 * 1024  # 60 MB hard cap
+# Env-tunable so a batch can lower the ceiling (a 300-page vendor catalog is the classic
+# batch-killer — a leaner cap turns it into a clean SKIP instead of a stalled download).
+MAX_BYTES = int(os.getenv("PRINT_FETCH_MAX_BYTES") or str(60 * 1024 * 1024))  # default 60 MB
 _UA = "MIRA-InternetPrintTest/1.0 (+public-electrical-print eval; respects robots.txt)"
 _ARCHIVE_MAGIC = (b"PK\x03\x04", b"\x1f\x8b", b"Rar!", b"7z\xbc\xaf", b"\xfd7zXZ")
 _EXE_MAGIC = (b"MZ", b"\x7fELF", b"\xca\xfe\xba\xbe")
@@ -43,7 +46,9 @@ class Fetcher:
     """Rate-limited, robots-respecting, bounded downloader for public docs."""
 
     min_interval_s: float = 3.0          # per-host politeness delay
-    timeout_s: float = 30.0
+    timeout_s: float = 30.0              # per-operation read/write/pool timeout
+    connect_timeout_s: float = 10.0      # connection-establishment timeout (fail fast on dead hosts)
+    total_deadline_s: float = 60.0       # wall-clock cap on the whole streamed download
     max_bytes: int = MAX_BYTES
     respect_robots: bool = True
     _hosts: dict = field(default_factory=dict)
@@ -82,8 +87,10 @@ class Fetcher:
         self._rate_limit(parsed.netloc)
 
         redirects: list[str] = []
+        timeout = httpx.Timeout(self.timeout_s, connect=self.connect_timeout_s)
+        deadline = time.monotonic() + self.total_deadline_s
         try:
-            with httpx.Client(timeout=self.timeout_s, follow_redirects=True,
+            with httpx.Client(timeout=timeout, follow_redirects=True,
                               headers={"User-Agent": _UA}) as client:
                 with client.stream("GET", url) as resp:
                     redirects = [str(r.url) for r in resp.history]
@@ -97,6 +104,11 @@ class Fetcher:
                         buf += chunk
                         if len(buf) > self.max_bytes:
                             raise FetchError(f"download exceeded size cap {self.max_bytes} bytes")
+                        if time.monotonic() > deadline:
+                            raise FetchError(
+                                f"download exceeded total deadline {self.total_deadline_s}s "
+                                f"(got {len(buf)} bytes) — likely an oversized catalog"
+                            )
                     data = bytes(buf)
                     final_url = str(resp.url)
                     status = resp.status_code

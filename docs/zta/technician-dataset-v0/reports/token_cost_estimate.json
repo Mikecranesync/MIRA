@@ -1,0 +1,14 @@
+{
+  "authorization_consumed": false,
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "candidate_cost_floor_usd_if_later_approved": 4.0,
+  "candidate_record_count": 180,
+  "candidate_token_estimate": 21599,
+  "eligible_cost_usd": 4.0,
+  "eligible_record_count": 0,
+  "eligible_token_estimate": 0,
+  "job_created": false,
+  "schema": "factorylm.technician-dataset.token-cost-estimate.v1",
+  "together_call_performed": false,
+  "upload_performed": false
+}

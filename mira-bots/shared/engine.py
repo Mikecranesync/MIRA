@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from . import quality_gate
+from . import print_recall, quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
@@ -1141,7 +1141,9 @@ class Supervisor:
             obs.get("verify_outcome"),
             not bool(raw),
         )
-        return print_translator.format_theory_reply(raw, (vision_data or {}).get("drawing_type"))
+        return print_translator.format_theory_reply(
+            raw, (vision_data or {}).get("drawing_type"), vision_data=vision_data
+        )
 
     def _record_self_consistency_usage(self, usages: list[dict]) -> None:
         """Best-effort: record the SUMMED token usage of a self-consistency print
@@ -1220,12 +1222,27 @@ class Supervisor:
             except Exception:  # noqa: BLE001 — bad b64 -> cascade
                 return ""
         try:
-            graph = await asyncio.to_thread(
-                interpret.interpret_print,
-                pages,
-                package_context=package_context or {},
-                question=question,
-            )
+            if print_recall.enabled():
+                # Recall gate: an identical print turn reuses a stored interpretation
+                # with NO model call (behavior-preserving — the key folds question +
+                # package context). Falls through to a plain paid interpret on any
+                # recall error. Default OFF (PRINT_RECALL_ENABLED).
+                graph = await asyncio.to_thread(
+                    print_recall.interpret_with_recall,
+                    pages=pages,
+                    question=question,
+                    package_context=package_context or {},
+                    model=None,  # call-time default (ADR-0031): interpret resolves provider+model
+                    preprocess=True,
+                    interpret_fn=interpret.interpret_print,
+                )
+            else:
+                graph = await asyncio.to_thread(
+                    interpret.interpret_print,
+                    pages,
+                    package_context=package_context or {},
+                    question=question,
+                )
         except interpret.PrintVisionUnavailable:
             return ""
         except Exception as exc:  # noqa: BLE001 — any interp/API error -> cascade
