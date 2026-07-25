@@ -782,6 +782,7 @@ def recall_knowledge(
     limit: int = 3,
     query_text: str = "",
     min_similarity: Optional[float] = None,
+    product_hint: Optional[str] = None,
 ) -> list[dict]:
     """Hybrid retrieval: vector + fault code + product name + BM25.
 
@@ -942,6 +943,12 @@ def recall_knowledge(
             # Vector-rerank requires an embedding; if none, skip — BM25 still
             # surfaces product-matching chunks via lexical match below.
             product_names = _extract_product_names(query_text)
+            # Stranger-upload fallback (#2211): the hardcoded _PRODUCT_NAME_RE only
+            # knows curated families (PowerFlex/GS/Micro/…). When it finds nothing
+            # but the resolver gave us a model, use it so novel equipment still gets
+            # the product-rerank stream instead of silently skipping it.
+            if not product_names and product_hint:
+                product_names = [product_hint]
             product_results: list[dict] = []
             if product_names and has_embedding:
                 product_results = _product_search(

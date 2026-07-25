@@ -70,6 +70,23 @@ def _triage_relaxed_min_sim(state: dict) -> float | None:
     return None
 
 
+def _confident_query_vendor(state: dict) -> str | None:
+    """Return the query vendor for the cross-vendor suppression filter ONLY when the
+    resolver is confident enough to trust it (#2211).
+
+    ``uns_context.confidence`` is a float (0.5 = manufacturer-only, 0.7 =
+    manufacturer+model). Below 0.7 a false-positive alias ("delta pressure" →
+    "Delta Electronics" @0.5) would fully suppress all evidence, so we don't let it
+    drive suppression. Threshold is tunable — validate against the prod confidence
+    distribution on staging before tightening.
+    """
+    uns = (state.get("context") or {}).get("uns_context") or {}
+    vendor = uns.get("manufacturer")
+    if vendor and (uns.get("confidence") or 0.0) >= 0.7:
+        return vendor
+    return None
+
+
 def _is_junk_source(chunk: dict) -> bool:
     """Non-authoritative sources (e.g. YouTube transcripts) must not back a cited
     answer — checked against source_url / title / metadata.source_url."""
@@ -585,6 +602,12 @@ class RAGWorker:
                         # relaxed threshold the quality gate uses so 0.45–0.70
                         # chunks actually reach retrieval on medium/low triage.
                         _recall_min_sim = _triage_relaxed_min_sim(state)
+                        # Product-rerank fallback for stranger uploads (#2211):
+                        # feed the resolved model so novel equipment (not in the
+                        # curated product regex) still gets the product stream.
+                        _product_hint = ((state.get("context") or {}).get("uns_context") or {}).get(
+                            "model"
+                        )
 
                         sub_queries: list[str] = [embed_query]
                         if is_decompose_enabled():
@@ -606,6 +629,7 @@ class RAGWorker:
                                         effective_tenant,
                                         query_text=sq,
                                         min_similarity=_recall_min_sim,
+                                        product_hint=_product_hint,
                                     )
                                 )
                             neon_chunks = merge_subquery_results(per_sub, limit=6)
@@ -640,6 +664,7 @@ class RAGWorker:
                                 effective_tenant,
                                 query_text=recall_query,
                                 min_similarity=_recall_min_sim,
+                                product_hint=_product_hint,
                             )
                             _recall_ms = int((time.monotonic() - _t_rec) * 1000)
                             logger.info(
@@ -674,6 +699,7 @@ class RAGWorker:
                                             effective_tenant,
                                             query_text=reformulated,
                                             min_similarity=_recall_min_sim,
+                                            product_hint=_product_hint,
                                         )
                                         if retry_chunks:
                                             logger.info(
@@ -742,9 +768,7 @@ class RAGWorker:
             # yields results. Vendor is read from state["context"]["uns_context"]
             # (populated by the UNS resolver at the top of Supervisor.process_full).
             if chunk_texts and not photo_b64:
-                query_vendor = ((state.get("context") or {}).get("uns_context") or {}).get(
-                    "manufacturer"
-                )
+                query_vendor = _confident_query_vendor(state)
                 if query_vendor:
                     filtered_chunks = [
                         c
