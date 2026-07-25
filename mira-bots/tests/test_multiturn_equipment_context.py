@@ -32,6 +32,65 @@ def test_active_session_with_manufacturer_and_model():
     assert result == "Rockwell PowerFlex 525 Haven't meggered it yet", f"Got: {result}"
 
 
+def test_fault_code_included_in_precedence_order():
+    """mfr -> model -> fault code -> message (#2209 Finding 4)."""
+    state = {
+        "state": "Q1",
+        "context": {
+            "uns_context": {
+                "manufacturer": "Rockwell",
+                "model": "PowerFlex 525",
+                "fault_code": "F004",
+                "confidence": 0.9,
+            }
+        },
+    }
+    assert _prepend_equipment_context("haven't meggered it", state) == (
+        "Rockwell PowerFlex 525 F004 haven't meggered it"
+    )
+
+
+def test_active_alarm_used_when_no_fault_code():
+    """Falls back to session_context.active_alarm when uns_context has no fault_code."""
+    state = {
+        "state": "DIAGNOSIS",
+        "context": {
+            "uns_context": {"manufacturer": "ABB", "confidence": 0.8},
+            "session_context": {"active_alarm": "OV2"},
+        },
+    }
+    assert _prepend_equipment_context("next step?", state) == "ABB OV2 next step?"
+
+
+def test_fault_category_used_as_last_resort():
+    """Falls back to state.fault_category when neither fault_code nor active_alarm exist."""
+    state = {
+        "state": "DIAGNOSIS",
+        "fault_category": "overcurrent",
+        "context": {"uns_context": {"manufacturer": "Yaskawa", "confidence": 0.75}},
+    }
+    assert _prepend_equipment_context("what now", state) == "Yaskawa overcurrent what now"
+
+
+def test_no_duplicate_context_when_token_already_in_message():
+    """A token already present in the message is not repeated."""
+    state = {
+        "state": "Q1",
+        "context": {
+            "uns_context": {
+                "manufacturer": "Rockwell",
+                "model": "PowerFlex 525",
+                "fault_code": "F004",
+                "confidence": 0.9,
+            }
+        },
+    }
+    result = _prepend_equipment_context("is the F004 still latched?", state)
+    # F004 appears once (from the message), not twice.
+    assert result.count("F004") == 1
+    assert result == "Rockwell PowerFlex 525 is the F004 still latched?"
+
+
 def test_active_session_with_manufacturer_no_model():
     """Active state + high confidence, no model → returns enriched query."""
     state = {

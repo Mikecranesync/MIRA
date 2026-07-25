@@ -206,8 +206,12 @@ def _prepend_equipment_context(message: str, state: dict) -> str:
     """Prepend resolved equipment context to text-only follow-ups in active diagnostic sessions.
 
     If in an active diagnostic state (Q1, Q2, Q3, DIAGNOSIS, FIX_STEP) with a resolved
-    manufacturer (confidence >= 0.7), prepend it to the message. This carries equipment
-    context from prior turns into RAG queries for multi-turn follow-ups that lack a photo.
+    manufacturer (confidence >= 0.7), prepend the persisted equipment context in a fixed
+    precedence order — manufacturer -> model -> active fault code / alarm -> the message —
+    including only fields that exist and never repeating a token already in the message.
+    The fault term is read from uns_context.fault_code, else session_context.active_alarm,
+    else state.fault_category. This carries equipment + fault context from prior turns into
+    RAG queries for multi-turn follow-ups that lack a photo.
 
     Args:
         message: The raw user message.
@@ -243,11 +247,24 @@ def _prepend_equipment_context(message: str, state: dict) -> str:
     if confidence < 0.7:
         return message
 
-    # Build enriched query: manufacturer + optional model + message
-    parts = [manufacturer]
-    model = uns_ctx.get("model")
-    if model:  # Only add if model exists and is truthy
-        parts.append(model)
+    # Build the enriched query in a fixed precedence order (#2209):
+    #   manufacturer -> model -> active fault code / alarm -> the user's message.
+    # Only include fields that exist, and never repeat a token already present in
+    # the message (so "the F004 is back" is not turned into "... F004 ... F004").
+    fault = (
+        uns_ctx.get("fault_code")
+        or ((state.get("context") or {}).get("session_context") or {}).get("active_alarm")
+        or state.get("fault_category")
+    )
+    lowered_msg = message.lower()
+    parts: list[str] = []
+    for token in (manufacturer, uns_ctx.get("model"), fault):
+        if not token:
+            continue
+        token = str(token)
+        if token.lower() in lowered_msg or token in parts:
+            continue  # already present — don't duplicate context
+        parts.append(token)
     parts.append(message)
 
     return " ".join(parts)
