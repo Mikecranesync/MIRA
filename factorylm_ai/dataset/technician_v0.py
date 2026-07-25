@@ -29,6 +29,11 @@ from factorylm_ai.dataset import (
     evaluate_paid_gate,
 )
 from factorylm_ai.dataset.assemble import APPROVAL_MISSING
+from factorylm_ai.dataset.paid_gate import (
+    TARGET_MODEL_ID,
+    TARGET_PROVIDER,
+    ModelSupportEvidence,
+)
 from factorylm_ai.dataset.record import MESSAGE_INVALID, SAFETY_SENSITIVE_TAG
 from factorylm_ai.governance import lineage as ln
 from factorylm_ai.governance.rights import (
@@ -397,13 +402,123 @@ def append_review_decision(
         return "appended"
 
 
+def import_review_decisions(
+    ledger_path: str | Path,
+    candidates: Iterable[ReviewCandidate],
+    decisions_path: str | Path,
+) -> dict[str, Any]:
+    """Append a whole JSONL batch of reviewer decisions to the ledger.
+
+    ``--append-decision`` takes one decision file per invocation and revalidates
+    the entire set each time, which does not scale to a 100+ record review
+    sitting. This validates the incoming batch through the same
+    ``_validate_decision_set`` path (so nothing is admitted that the one-at-a-time
+    route would refuse) and appends fail-closed: if ANY row in the batch is
+    invalid, the whole batch raises and the ledger is left untouched.
+    """
+
+    candidates_list = list(candidates)
+    incoming = _read_decision_rows(Path(decisions_path))
+
+    # Validate the batch against the existing ledger as one set before writing a
+    # single line, so a bad row cannot leave a half-applied ledger behind.
+    existing = load_review_decisions(ledger_path)
+    _validate_decision_set(candidates_list, existing + incoming)
+
+    appended = 0
+    duplicate = 0
+    for decision in incoming:
+        if append_review_decision(ledger_path, candidates_list, decision) == "appended":
+            appended += 1
+        else:
+            duplicate += 1
+
+    return {
+        "status": "imported",
+        "received": len(incoming),
+        "appended": appended,
+        "duplicate": duplicate,
+        "ledger_total": len(load_review_decisions(ledger_path)),
+    }
+
+
+def _read_decision_rows(path: Path) -> list[ReviewDecision]:
+    if not path.is_file():
+        raise ReviewDecisionError("DECISION_IMPORT_MISSING", f"no decision file at {path}")
+    decisions: list[ReviewDecision] = []
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ReviewDecisionError(
+                "DECISION_IMPORT_JSON_INVALID", f"{path}:{line_number}: {exc}"
+            ) from exc
+        if not isinstance(row, dict):
+            raise ReviewDecisionError(
+                "DECISION_IMPORT_ROW_INVALID", f"{path}:{line_number}: row is not an object"
+            )
+        decisions.append(ReviewDecision.from_dict(row))
+    if not decisions:
+        raise ReviewDecisionError("DECISION_IMPORT_EMPTY", f"{path}: no decisions found")
+    return decisions
+
+
+def load_model_support_receipt(path: str | Path) -> ModelSupportEvidence:
+    """Build provider model-support evidence from a checked-in receipt document.
+
+    The receipt records a check that a human or agent actually performed against
+    the provider's published catalogue; this reads it, it does NOT perform the
+    check and makes no network call. The gate stays fail-closed — an absent
+    receipt yields no evidence and ``model_support_confirmed`` fails.
+    """
+
+    receipt = Path(path)
+    if not receipt.is_file():
+        raise ValueError(f"model-support receipt not found: {receipt}")
+    text = receipt.read_text(encoding="utf-8")
+    checked_at = _receipt_field(text, "checked_at")
+    method = _receipt_field(text, "method")
+    model_id = _receipt_field(text, "model_id")
+    provider = _receipt_field(text, "provider")
+    supported = _receipt_field(text, "supported").strip().lower()
+    if model_id != TARGET_MODEL_ID:
+        raise ValueError(f"receipt model_id {model_id!r} != target {TARGET_MODEL_ID!r}")
+    if provider != TARGET_PROVIDER:
+        raise ValueError(f"receipt provider {provider!r} != target {TARGET_PROVIDER!r}")
+    return ModelSupportEvidence(
+        model_id=model_id,
+        provider=provider,
+        checked_at=checked_at,
+        method=method,
+        supported=supported == "true",
+        receipt_ref=receipt.as_posix(),
+    )
+
+
+def _receipt_field(text: str, field: str) -> str:
+    marker = f"- {field}:"
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(marker):
+            return stripped[len(marker) :].strip().strip("`")
+    raise ValueError(f"model-support receipt is missing required field: {field}")
+
+
 def apply_review_decisions(
     candidates: Iterable[ReviewCandidate],
     decisions: Iterable[ReviewDecision],
     *,
     readiness: ReadinessEvidence | None = None,
+    model_support: ModelSupportEvidence | None = None,
 ) -> ReviewedDatasetBuild:
-    """Apply review decisions through SourceCandidate, DatasetRecord, assembly, and paid gate."""
+    """Apply review decisions through SourceCandidate, DatasetRecord, assembly, and paid gate.
+
+    ``model_support`` stays ``None`` by default so the gate remains fail-closed:
+    a build that supplies no provider evidence cannot pass ``model_support_confirmed``.
+    """
 
     candidates_list = list(candidates)
     decisions_list = _validate_decision_set(candidates_list, list(decisions))
@@ -453,7 +568,7 @@ def apply_review_decisions(
         reviewed_records.append(reviewed_record)
 
     dataset = assemble_dataset_v0(reviewed_records, dataset_version=DATASET_VERSION)
-    paid_gate = evaluate_paid_gate(dataset, readiness=readiness, model_support=None)
+    paid_gate = evaluate_paid_gate(dataset, readiness=readiness, model_support=model_support)
     manifest = candidate_manifest_for(candidates_list)
     report = _review_decision_report(
         candidate_count=len(candidates_list),
@@ -480,6 +595,7 @@ def write_build(
     *,
     stage: BuildStage = "readiness",
     decisions_path: str | Path | None = None,
+    model_support: ModelSupportEvidence | None = None,
 ) -> dict:
     """Write reproducible registry, candidate, review, and readiness artifacts."""
 
@@ -496,7 +612,9 @@ def write_build(
     decisions = load_review_decisions(decisions_path) if decisions_path else []
     records = [c.record for c in candidates]
     readiness = _readiness_evidence(out)
-    reviewed = apply_review_decisions(candidates, decisions, readiness=readiness)
+    reviewed = apply_review_decisions(
+        candidates, decisions, readiness=readiness, model_support=model_support
+    )
     dataset = reviewed.dataset
     paid_gate = reviewed.paid_gate
 
@@ -2300,12 +2418,39 @@ def main(argv: list[str] | None = None) -> int:
         help="Validate and append one review decision JSON object to --decisions-path.",
     )
     parser.add_argument(
+        "--import-decisions",
+        default=None,
+        help=(
+            "Validate and append a JSONL batch of review decisions to "
+            "--decisions-path. Fail-closed: one bad row rejects the whole batch."
+        ),
+    )
+    parser.add_argument(
+        "--model-support-receipt",
+        default=None,
+        help=(
+            "Provider model-support receipt document supplying evidence for the "
+            "model_support_confirmed gate check. Omitted means no evidence, and "
+            "the gate stays blocked."
+        ),
+    )
+    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="Build candidates in memory and validate without writing artifacts.",
     )
     args = parser.parse_args(argv)
     stage = args.stage
+    if args.import_decisions:
+        if not args.decisions_path:
+            parser.error("--import-decisions requires --decisions-path")
+        result = import_review_decisions(
+            args.decisions_path,
+            build_review_candidates(stage),
+            args.import_decisions,
+        )
+        print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+        return 0
     if args.append_decision:
         if not args.decisions_path:
             parser.error("--append-decision requires --decisions-path")
@@ -2326,7 +2471,17 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"validated stage={stage}")
         return 0
-    result = write_build(args.out_dir, stage=stage, decisions_path=args.decisions_path)
+    model_support = (
+        load_model_support_receipt(args.model_support_receipt)
+        if args.model_support_receipt
+        else None
+    )
+    result = write_build(
+        args.out_dir,
+        stage=stage,
+        decisions_path=args.decisions_path,
+        model_support=model_support,
+    )
     print(json.dumps(result, ensure_ascii=True, sort_keys=True))
     return 0
 

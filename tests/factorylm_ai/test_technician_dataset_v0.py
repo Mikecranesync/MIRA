@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
@@ -22,6 +24,8 @@ from factorylm_ai.dataset.technician_v0 import (  # noqa: E402
     apply_review_decisions,
     build_review_candidates,
     candidate_manifest_for,
+    import_review_decisions,
+    load_model_support_receipt,
     load_review_decisions,
     source_registry,
     validate_candidates,
@@ -445,3 +449,101 @@ def test_write_build_applies_decisions_without_mutating_candidate_jsonl(tmp_path
     assert "min_records" in paid_gate["blocking"]
     assert manifest["review_decisions"]["decision_counts"]["approve"] == 1
     assert manifest["dry_run"]["authorization_consumed"] is False
+
+
+def test_import_decisions_appends_a_batch_and_is_idempotent(tmp_path: Path) -> None:
+    """Bulk import is the only route that scales to a 100+ record review sitting."""
+
+    ledger = tmp_path / "decisions.jsonl"
+    candidates = build_review_candidates("readiness")
+    approvable = _approvable_cv101(candidates)[:5]
+    batch = tmp_path / "batch.jsonl"
+    batch.write_text(
+        "\n".join(
+            json.dumps(_decision(c.record.record_id, "approve").to_dict(), sort_keys=True)
+            for c in approvable
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = import_review_decisions(ledger, candidates, batch)
+    assert result["received"] == 5
+    assert result["appended"] == 5
+    assert result["duplicate"] == 0
+    assert len(load_review_decisions(ledger)) == 5
+
+    # Re-importing the same batch must be a no-op, not a conflict.
+    again = import_review_decisions(ledger, candidates, batch)
+    assert again["appended"] == 0
+    assert again["duplicate"] == 5
+    assert len(load_review_decisions(ledger)) == 5
+
+
+def test_import_decisions_rejects_the_whole_batch_on_one_bad_row(tmp_path: Path) -> None:
+    """Fail-closed: a bad row must not leave a half-applied ledger behind."""
+
+    ledger = tmp_path / "decisions.jsonl"
+    candidates = build_review_candidates("readiness")
+    good = _decision(_approvable_cv101(candidates)[0].record.record_id, "approve").to_dict()
+    stale = dict(good)
+    stale["record_id"] = good["record_id"]
+    stale["candidate_manifest_sha256"] = "0" * 64  # stale manifest
+    stale.pop("decision_id", None)
+    batch = tmp_path / "batch.jsonl"
+    batch.write_text(
+        json.dumps(good, sort_keys=True) + "\n" + json.dumps(stale, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReviewDecisionError):
+        import_review_decisions(ledger, candidates, batch)
+    assert not ledger.exists() or ledger.read_text(encoding="utf-8").strip() == ""
+
+
+def test_model_support_receipt_flips_the_gate_check(tmp_path: Path) -> None:
+    """`model_support_confirmed` is unreachable by review; the receipt supplies it."""
+
+    receipt = Path("docs/zta/2026-07-25-together-qwen35-9b-model-support-receipt.md")
+    evidence = load_model_support_receipt(receipt)
+    assert evidence.is_confirmed(), evidence.rejection_reason()
+    assert evidence.model_id == "Qwen/Qwen3.5-9B"
+    assert evidence.provider == "together"
+    assert evidence.receipt_ref
+
+    without = write_build(tmp_path / "without", stage="readiness")
+    gate_without = json.loads(Path(without["files"]["phase3_paid_gate"]).read_text())
+    assert "model_support_confirmed" in gate_without["blocking"]
+
+    with_evidence = write_build(tmp_path / "with", stage="readiness", model_support=evidence)
+    gate_with = json.loads(Path(with_evidence["files"]["phase3_paid_gate"]).read_text())
+    assert "model_support_confirmed" not in gate_with["blocking"]
+
+
+def test_model_support_receipt_is_fail_closed_on_a_wrong_target() -> None:
+    """A receipt for some other model must never satisfy the check."""
+
+    import tempfile
+
+    body = (
+        "- model_id: `some/other-model`\n"
+        "- provider: `together`\n"
+        "- checked_at: `2026-07-25T00:00:00Z`\n"
+        "- method: `serverless-catalog`\n"
+        "- supported: `true`\n"
+    )
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as fh:
+        fh.write(body)
+        path = fh.name
+    with pytest.raises(ValueError, match="model_id"):
+        load_model_support_receipt(path)
+
+
+def _approvable_cv101(candidates: list) -> list:
+    return [
+        c
+        for c in candidates
+        if c.to_dict()["review_batch"] == "cv101"
+        and c.to_dict()["split"] == "train"
+        and c.to_dict()["rights"]["training_allowed"] is True
+    ]
