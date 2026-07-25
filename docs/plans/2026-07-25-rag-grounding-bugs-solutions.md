@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-25 · **Bugs:** #2207, #2208, #2209, #2211 · **Baseline:** `origin/main` `0bd50b6ed`
 **Method:** ultracode workflow (understand → adversarial-verify → synthesize) + focused agent for #2207.
-**Status:** DESIGN VERIFIED — not yet implemented. Every fix's final gate is the **staging eval** (`staging-gate` CI + relevant `tests/eval/` regime), per CLAUDE.md "engine/RAG/retrieval changes MUST pass the staging gate."
+**Status (updated 2026-07-25):** IMPLEMENTED + unit/behavioral-tested in **PR #2913** (v3.213.1), then hardened per code review — proximity+shape fault-code gate (not a message-global context flag), behavioral tests that prove filtering/enrichment rather than signatures, and the CRLF line-ending churn reverted. **#2207 / #2208 / #2209 complete; #2211 partially addressed** — sub-fixes 1 (vendor-confidence gate) + 2 (product-hint fallback) shipped; sub-fix 3 (model-suffix exclude SQL) deferred to **#2914** (needs Neon-dialect verification on staging).
+**Remaining gate:** end-to-end behaviour still needs the **targeted staging replay** (bare-code recall, confidence-0.7 distribution, stranger-model rerank, multi-turn context, Nemotron coherence) before deploy — the offline unit/CI layer proves the mechanics; live staging proves the numbers. Replay set: `docs/eval/rag-grounding-staging-replay-2026-07-25.md`. Per CLAUDE.md "engine/RAG/retrieval changes MUST pass the staging gate."
 
 > These four all live in `mira-bots/shared/neon_recall.py`, `mira-bots/shared/workers/rag_worker.py`,
 > and `mira-bots/shared/engine.py`. **#2207 and #2211 both change `recall_knowledge()`'s signature and
