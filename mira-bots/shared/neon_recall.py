@@ -282,6 +282,11 @@ def _extract_fault_codes(query_text: str) -> list[str]:
       2. Compound alpha codes: E-OC, E-OV, GF-A (letter-dash-letter)
       3. Alpha-only VFD codes: OC, GF, OH — with or without fault-context words
       4. No-dash variants tried alongside dashed form for all of the above
+
+    Patterns 1 and 2 require fault-context words to extract — avoids false
+    positives like "bay 12"→"BAY-12" and "re-do"→"REDO" that poison retrieval.
+    Trade-off: a bare code with no adjacent context word no longer extracts;
+    real messages carry context.
     """
     if not query_text:
         return []
@@ -289,19 +294,23 @@ def _extract_fault_codes(query_text: str) -> list[str]:
     normalised = _normalise_fault_query(query_text)
     codes: set[str] = set()
 
-    # Pattern 1: alphanumeric codes (original)
-    for m in _FAULT_CODE_RE.findall(normalised):
-        codes.add(m.upper())
-
-    # Pattern 2: compound alpha-alpha codes like E-OC, E-OV
-    for m in _COMPOUND_ALPHA_RE.finditer(normalised):
-        dashed = m.group(0).upper()  # "E-OC"
-        nodash = (m.group(1) + m.group(2)).upper()  # "EOC"
-        codes.add(dashed)
-        codes.add(nodash)
-
-    # Pattern 3: alpha-only VFD codes — check with and without fault context
+    # Compute fault context ONCE — used by Patterns 1, 2, and 3
     has_fault_context = bool(_FAULT_CONTEXT_RE.search(query_text))
+
+    # Pattern 1: alphanumeric codes (original) — gated by fault context
+    if has_fault_context:
+        for m in _FAULT_CODE_RE.findall(normalised):
+            codes.add(m.upper())
+
+    # Pattern 2: compound alpha-alpha codes like E-OC, E-OV — gated by fault context
+    if has_fault_context:
+        for m in _COMPOUND_ALPHA_RE.finditer(normalised):
+            dashed = m.group(0).upper()  # "E-OC"
+            nodash = (m.group(1) + m.group(2)).upper()  # "EOC"
+            codes.add(dashed)
+            codes.add(nodash)
+
+    # Pattern 3: alpha-only VFD codes — already checked with fault context
     for word in normalised.upper().split():
         cleaned = word.strip(".,!?:;()\"'-")
         if cleaned in _VFD_ALPHA_CODES:
