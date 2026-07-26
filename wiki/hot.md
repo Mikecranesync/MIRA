@@ -1,6 +1,6 @@
-# Hot Cache — 2026-07-26 — Wire-designation PR shipped + deploy-freeze root-caused + fleet verdict hardening (v3.214.0→v3.214.2)
+# Hot Cache — 2026-07-26 — Wire-designation shipped + deploy-freeze root-caused + fleet hardening + LoRA PRs landed (v3.214.0→v3.215.0)
 
-Three PRs merged and LIVE in prod, each proven by watching the real chain run. The through-line: a
+FIVE PRs merged and LIVE in prod, each proven by watching the real chain run. The through-line: a
 false instrument reading started it (dead metric), and a false instrument reading nearly ended it
 (a red activation run that was actually a comment-permission error got auto-deploy disabled).
 
@@ -41,12 +41,34 @@ false instrument reading started it (dead metric), and a false instrument readin
   stops); a conflicting PR (`mergeable: CONFLICTING`) schedules ZERO checks (looks like stuck CI;
   rebase first); backticks inside a bash-interpolated python string get command-substituted —
   use a quoted heredoc (`py - <<'QUOTED'`) for any content carrying markdown.
+- **#2881 (v3.214.3) — paid Together authorization trust root — MERGED+DEPLOYED on Mike's order.**
+  Ed25519-signed offline operator approvals over request-bound `PaidEventAuthorization`; runtime
+  holds only the public key, cannot mint approvals; paid entry points reject caller-supplied
+  verifiers; signed-registry match required before ledger consumption; explicit
+  `allow_ledger_injection_for_tests()` seam replaces the `PYTEST_CURRENT_TEST` heuristic. Both stale
+  PRs were `CONFLICTING` (main moved 3 releases) — resolved by MERGING main in (both branches carry
+  prior main-merges; rebase replays old resolutions), VERSION renumbered (branch claimed stale
+  numbers), and #2881's changelog.d fragment renumbered + a missing CHANGELOG.md entry written.
+- **#2911 (v3.215.0) — technician dataset v0 paid-gate reachable + review console — MERGED+DEPLOYED
+  on Mike's explicit order with the rights-basis caveat ACKNOWLEDGED.** The gate was unpassable by
+  construction (drive candidates all `training_allowed=false` → 0 eligible). OEM grant scoped to
+  exactly `durapulse_gs10`+`powerflex_525` (PF40 held-out invariant intact 5/5); cv101 padding
+  fixed (approvable facts 42→111, dupes 26→0); `--import-decisions` + `--model-support-receipt`;
+  offline review console with live gate meter. Dry-run sim reaches `PAID_GATE_PASS` 15/15; real
+  ledger still EMPTY, awaiting the human review sitting. **The `<basis pending>` rights wording is
+  STILL owed by Mike — merging did not close it.** 555 factorylm_ai tests green post-merge with
+  #2881's trust root (the two compose).
+- **Docker Hub flaked twice during CI** (staging-gate ollama pull, actionlint image pull) — both
+  produced ACCURATE diagnoses under the new verdict-hardening and went green on `gh run rerun
+  --failed`. A `pending` check can race a just-dispatched rerun — re-arm watchers with a lead-in
+  sleep.
 - **Auto-deploy is ACTIVE again** (freeze cause fixed; deliberate decision with Mike). Chain
   self-proves: merge → Smoke → Deploy → Activation, all green twice in a row.
 - **NEXT / owed to Mike:** rclone OAuth token rotation (STILL highest priority, carried 2 handoffs);
-  LoRA rights-basis wording (thread B HOLD unchanged, C:/wt-train untouched); PrintSense extraction
-  escalation decision (crop re-read / stronger model / deterministic OCR); merge calls on #2881
-  + #2911 (both were green). Drift-tool residual: a DB connection error inside
+  LoRA **rights-basis wording** (now the sole blocker before the review sitting — #2911's console
+  makes the sitting cheap once wording lands; C:/wt-train now on merged main); PrintSense extraction
+  escalation decision (crop re-read / stronger model / deterministic OCR). Merge calls on #2881
+  + #2911: DONE this session. Drift-tool residual: a DB connection error inside
   `tools/migration_drift.py` still counts as drift — needs the tool to classify its own exit.
 - Handoff: `C:/Users/hharp/AppData/Local/Temp/handoff-2026-07-26-mira.md`.
 
