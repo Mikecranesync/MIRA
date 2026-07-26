@@ -1022,20 +1022,20 @@
     ],
     "techv0-ps-style-005": [
       "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-006": [
       "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-007": [
       "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-008": [
       "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-009": [
@@ -1044,24 +1044,25 @@
     ],
     "techv0-ps-style-010": [
       "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-011": [
       "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-012": [
       "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-013": [
       "NOT_GOLD",
+      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-014": [
       "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ],
     "techv0-ps-style-015": [
@@ -1074,122 +1075,18 @@
     ],
     "techv0-ps-style-017": [
       "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-018": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-019": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-020": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-021": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-022": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-023": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-024": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-025": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-026": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-027": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-028": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-029": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-030": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-031": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-032": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-033": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-034": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-035": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-036": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-037": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-038": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-039": [
-      "NOT_GOLD",
-      "APPROVAL_MISSING"
-    ],
-    "techv0-ps-style-040": [
-      "NOT_GOLD",
-      "SAFETY_REVIEW_REQUIRED",
       "APPROVAL_MISSING"
     ]
   },
   "code_counts": {
-    "APPROVAL_MISSING": 242,
+    "APPROVAL_MISSING": 219,
     "HELD_OUT": 25,
     "LINEAGE_ON_EVAL_SIDE": 61,
-    "NOT_GOLD": 242,
-    "SAFETY_REVIEW_REQUIRED": 100,
+    "NOT_GOLD": 219,
+    "SAFETY_REVIEW_REQUIRED": 89,
     "TRAINING_NOT_ALLOWED": 25
   },
   "eligible_count": 0,
-  "rejected_count": 242,
+  "rejected_count": 219,
   "schema": "factorylm.technician-dataset.rejection-report.v1"
 }

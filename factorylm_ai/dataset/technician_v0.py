@@ -1086,42 +1086,53 @@ def _drive_candidates() -> list[ReviewCandidate]:
 
 
 def _printsense_style_candidates() -> list[ReviewCandidate]:
+    """One record per distinct owned fact — the cv101 de-duplication principle.
+
+    The old loop ran ``_repeat_to_count(facts, target)`` PER SOURCE, restarting
+    at ``facts[0]`` every time, so the first sources all drew the same leading
+    facts: 40 records carried only 8 distinct pairs (80% padding), and the
+    review-case marker hid it. Facts are now dealt round-robin across sources
+    without repetition: 17 facts -> 17 records, zero duplicates, and every
+    style source keeps exactly one record so no lineage vanishes.
+    """
     sources = _printsense_style_sources()
     facts = _style_facts()
     candidates: list[ReviewCandidate] = []
     sequence = 0
-    for source in sources:
-        for fact in _repeat_to_count(facts, int(source["target_record_count"])):
-            sequence += 1
-            interaction = _interaction_type(sequence, safety=bool(fact["safety_sensitive"]))
-            record = _printsense_record_from_source(
-                source,
-                record_id=f"techv0-ps-style-{sequence:03d}",
-                messages=_style_messages(fact, sequence, interaction),
-                tags=("printsense", "factorylm-authored", fact["kind"]),
-                interaction_type=interaction,
-                safety_sensitive=bool(fact["safety_sensitive"]),
+    assignments: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for index, fact in enumerate(facts):
+        assignments.append((sources[index % len(sources)], fact))
+    for source, fact in assignments:
+        sequence += 1
+        interaction = _interaction_type(sequence, safety=bool(fact["safety_sensitive"]))
+        record = _printsense_record_from_source(
+            source,
+            record_id=f"techv0-ps-style-{sequence:03d}",
+            messages=_style_messages(fact, sequence, interaction),
+            tags=("printsense", "factorylm-authored", fact["kind"]),
+            interaction_type=interaction,
+            safety_sensitive=bool(fact["safety_sensitive"]),
+        )
+        candidates.append(
+            ReviewCandidate(
+                record=record,
+                source_entry=source,
+                answer_key=_answer_key(
+                    key_type="factorylm_authored_guidance",
+                    key_ref=f"{source['answer_key_ref']}#{fact['id']}",
+                    evidence_hash=_stable_hash(fact),
+                    producer_type="deterministic",
+                    payload=fact,
+                ),
+                origin="synthetic",
+                source_class="independently_grounded_synthetic",
+                review_batch="printsense",
+                notes=(
+                    "Original FactoryLM-authored guidance transformed into review-only "
+                    "technician dialogue; not approved for training yet.",
+                ),
             )
-            candidates.append(
-                ReviewCandidate(
-                    record=record,
-                    source_entry=source,
-                    answer_key=_answer_key(
-                        key_type="factorylm_authored_guidance",
-                        key_ref=f"{source['answer_key_ref']}#{fact['id']}",
-                        evidence_hash=_stable_hash(fact),
-                        producer_type="deterministic",
-                        payload=fact,
-                    ),
-                    origin="synthetic",
-                    source_class="independently_grounded_synthetic",
-                    review_batch="printsense",
-                    notes=(
-                        "Original FactoryLM-authored guidance transformed into review-only "
-                        "technician dialogue; not approved for training yet.",
-                    ),
-                )
-            )
+        )
     return candidates
 
 
@@ -1444,7 +1455,7 @@ def _cv101_messages(
             f"From the CV-101 evidence package, {claim}. Source status is {status}. "
             "Use the sheet and evidence reference together; do not infer missing landings."
         )
-    return _messages(user, answer, sequence)
+    return _messages(user, answer)
 
 
 def _drive_messages(
@@ -1478,7 +1489,7 @@ def _drive_messages(
             f"{fact['claim']}. Evidence page/ref: {fact.get('page')}. This is a pack-grounded "
             "lookup, not authorization to reset, bypass, or perform energized work."
         )
-    return _messages(user, answer, sequence)
+    return _messages(user, answer)
 
 
 def _style_messages(
@@ -1507,13 +1518,19 @@ def _style_messages(
     else:
         user = f"What is the PrintSense guidance for {fact['subject']}?"
         answer = f"The FactoryLM-authored guidance is: {fact['claim']}"
-    return _messages(user, answer, sequence)
+    return _messages(user, answer)
 
 
-def _messages(user: str, assistant: str, sequence: int) -> list[dict[str, str]]:
+def _messages(user: str, assistant: str) -> list[dict[str, str]]:
+    # No review-harness markers in the training input. The old
+    # "[review case NNN]" suffix gave every user message a unique tail, which
+    # (a) leaked a harness artifact into what the model would learn to expect
+    # and (b) defeated duplicate detection — 156 "distinct" train pairs
+    # collapsed to 118 once the marker was stripped. Sequence identity lives in
+    # record_id, where it belongs.
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"{user} [review case {sequence:03d}]"},
+        {"role": "user", "content": user},
         {"role": "assistant", "content": assistant},
     ]
 
