@@ -136,6 +136,12 @@ def verify(
     "independent", "reproducibility"}``.
     """
     graph_b, usage = (blind_pass or _blind_reread)(image_bytes)
+    # A genuinely independent reader is the whole point of the promotion gate,
+    # and the classes that qualify — deterministic OCR, a human annotation, an
+    # authoritative source — do not spend tokens. Requiring LLM token counts here
+    # would mean the only second pass that can run is the same-model one that can
+    # never promote.
+    usage = usage or {}
     pool_b = _pool(graph_b)
     independent = is_independent(evidence_class)
 
@@ -183,8 +189,8 @@ def verify(
         reproduced,
         promoted,
         len(decisions),
-        usage["input_tokens"],
-        usage["output_tokens"],
+        usage.get("input_tokens", 0),
+        usage.get("output_tokens", 0),
     )
     return {
         "graph": improved,

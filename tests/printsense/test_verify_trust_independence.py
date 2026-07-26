@@ -190,5 +190,59 @@ def test_unreadable_is_never_promoted():
     assert out["decisions"] == []
 
 
+# --- an independent reader need not be an LLM --------------------------------
+#
+# The classes that CAN promote — deterministic OCR, a human annotation, an
+# authoritative source — do not spend tokens. `verify` read `usage["input_tokens"]`
+# unconditionally, so a reader that reported no LLM token counts raised KeyError.
+# The only second pass that could actually run was the same-model one that can
+# never promote, which left the honest path to trust unreachable. Every fake in
+# this file returned token counts, so nothing noticed.
+
+
+def _tokenless_pass(graph_dict):
+    """A second pass that spends no tokens — deterministic OCR, a human, a source."""
+
+    def _bp(image_bytes):
+        return PrintSynthGraph.model_validate(graph_dict), {}
+
+    return _bp
+
+
+def test_a_reader_that_reports_no_token_usage_can_still_run():
+    graph = PrintSynthGraph.model_validate({"conductors": [{"tag": "P9DI900-0"}]})
+    out = verify.verify(
+        _img_bytes(),
+        graph,
+        blind_pass=_tokenless_pass({"conductors": [{"tag": "P9DI900-0"}]}),
+        evidence_class="deterministic_ocr",
+    )
+    assert out["usage"] == {}
+    assert out["graph"].conductors[0].trust == TrustState.machine_verified
+
+
+def test_a_reader_that_reports_no_usage_at_all_can_still_run():
+    """`None` usage is the same case — a non-LLM reader has nothing to report."""
+
+    def _bp(image_bytes):
+        return PrintSynthGraph.model_validate({"conductors": [{"tag": "P9DI900-0"}]}), None
+
+    graph = PrintSynthGraph.model_validate({"conductors": [{"tag": "P9DI900-0"}]})
+    out = verify.verify(_img_bytes(), graph, blind_pass=_bp, evidence_class="human_annotation")
+    assert out["usage"] == {}
+    assert out["graph"].conductors[0].trust == TrustState.machine_verified
+
+
+def test_token_usage_is_still_reported_when_the_reader_supplies_it():
+    graph = PrintSynthGraph.model_validate({"conductors": [{"tag": "P9DI900-0"}]})
+    out = verify.verify(
+        _img_bytes(),
+        graph,
+        blind_pass=_pass({"conductors": [{"tag": "P9DI900-0"}]}),
+        evidence_class="deterministic_ocr",
+    )
+    assert out["usage"] == {"input_tokens": 10, "output_tokens": 5}
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
