@@ -414,6 +414,19 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
     }
 )
 
+# Router intents that break a chat OUT of a stale ELECTRICAL_PRINT session.
+# The print follow-up handler answers questions ABOUT a previously-uploaded
+# schematic; but once the router says the user has moved on to diagnosing
+# specific equipment (``diagnose_equipment``) or is starting over
+# (``greeting_or_chitchat``), the print state must be released so the turn
+# routes normally. Genuine print follow-ups classify as ``answer_question`` /
+# ``continue_current`` and stay. See the ELECTRICAL_PRINT dispatch guard in
+# ``process()`` and incident 2026-07-26 (a stale print state trapped every
+# subsequent text turn in the slow Together/MiniMax vision path → bot timeout).
+_PRINT_STATE_EXIT_INTENTS: frozenset[str] = frozenset(
+    {"diagnose_equipment", "greeting_or_chitchat"}
+)
+
 # Stage 1 (PLAN.md §2 / §4) feature flag — when enabled the dialogue
 # state tracker becomes the routing backbone. Default OFF to keep the
 # existing Stage 0 + route_intent path unchanged in production until the
@@ -2585,15 +2598,35 @@ class Supervisor:
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
 
+            # Electrical-print follow-up — but only while the user is still
+            # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over
+            # from a prior schematic photo) must NOT trap a NEW diagnostic topic:
+            # if the router says the user has moved on to diagnosing specific
+            # equipment (diagnose_equipment) or is starting over (greeting), exit
+            # the print state and fall through to normal routing. Without this,
+            # every post-photo text message hits the print worker — which times
+            # out on the Together/MiniMax vision model in prod (~77s > 30s bot
+            # timeout → silent bot) and crashes on the 'disabled://' print
+            # endpoint in staging. See incident 2026-07-26.
             if state.get("state") == "ELECTRICAL_PRINT":
-                result = await self._handle_electrical_print_followup(
-                    chat_id,
-                    message,
-                    state,
-                    trace_id,
-                )
-                tl_flush()
-                return result
+                if _router_intent in _PRINT_STATE_EXIT_INTENTS:
+                    logger.info(
+                        "PRINT_STATE_EXIT chat_id=%s new_intent=%s — leaving "
+                        "ELECTRICAL_PRINT for normal routing",
+                        chat_id,
+                        _router_intent,
+                    )
+                    state["state"] = "IDLE"
+                    self._save_state(chat_id, state)
+                else:
+                    result = await self._handle_electrical_print_followup(
+                        chat_id,
+                        message,
+                        state,
+                        trace_id,
+                    )
+                    tl_flush()
+                    return result
 
             # Drive-pack fast-path (2026-07-06) — deterministic, pack-grounded
             # answer for a text question that explicitly names a drive MIRA has
