@@ -1,3 +1,7 @@
+### v3.214.3 (2026-07-26) - security(factorylm-ai): paid Together authorization trust root (#2881)
+
+Pure security/control-plane hardening; no Together upload, job, endpoint, or spend performed. Operator approvals are Ed25519-signed offline over the canonical request-bound `PaidEventAuthorization` payload; the paid runtime holds only the public verification key and cannot mint approvals; Together paid entry points own verifier construction and reject caller-supplied verifiers; a signed-registry match is required before the append-only ledger consumes an authorization. The hermetic-test escape hatch is an explicit `allow_ledger_injection_for_tests()` seam (off by default, opened only by the test conftest) replacing the `PYTEST_CURRENT_TEST` heuristic. Full detail: `docs/changelog.d/3.214.3-paid-together-authorization.md`.
+
 ### v3.214.2 (2026-07-26) - fix(ci): reporting steps can no longer decide workflow verdicts (fleet-wide)
 
 Fleet-wide application of the v3.214.1 lesson, from an adversarial sweep of all 49 workflows (13 raw findings, 12 confirmed by independent refutation agents). The incident class: a purely-informational step (comment, artifact upload, summary) failing AFTER the substantive work passed, flipping a load-bearing job conclusion — the mechanism that made PrintSense activation report false failures and got auto-deploy disabled for 8 hours.
