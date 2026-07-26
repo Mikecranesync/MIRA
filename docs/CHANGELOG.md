@@ -1,3 +1,18 @@
+### v3.214.2 (2026-07-26) - fix(ci): reporting steps can no longer decide workflow verdicts (fleet-wide)
+
+Fleet-wide application of the v3.214.1 lesson, from an adversarial sweep of all 49 workflows (13 raw findings, 12 confirmed by independent refutation agents). The incident class: a purely-informational step (comment, artifact upload, summary) failing AFTER the substantive work passed, flipping a load-bearing job conclusion — the mechanism that made PrintSense activation report false failures and got auto-deploy disabled for 8 hours.
+
+- **Staging Gate (HIGH)** - the required branch-protection check AND the deploy gate had three post-verdict reporting steps (artifact upload, comment render, sticky comment) that could flip a PASSING eval to red. All three now `continue-on-error`; `Run staging gate` still fails hard.
+- **Migration Verify** - sticky PR comment could flip the conclusion Staging Gate polls (`refusing to grade a bad/incomplete schema`). Now `continue-on-error`.
+- **CI sast-semgrep** - informational SARIF upload could fail the job the required ci-gate demands succeed (enforcement happens in the prior step). Now `continue-on-error`.
+- **deploy-vps** - the staging-gate-bypass audit issue was silently NEVER filed: no `permissions` block + read-only default token meant every bypass fell to the warning fallback. Explicit `permissions` block added (contents/actions read, issues write). Also: transient GitHub API errors in the PR-trace lookup were swallowed and misreported as the definitive "No PR associated" — API failures now fail closed with their own transient-error message.
+- **PrintSense activation** - `Record rollback control` (cosmetic summary) was the last step able to flip the verdict — and post-#2917 the false failure comment would now actually POST. Now `continue-on-error`. Dead `issues: write` grant removed (least privilege; the job holds VPS SSH secrets). On `workflow_run` triggers the Staging Gate re-verification is skipped: the triggering deploy already gated (or audited-bypassed) the same SHA, and hard-failing here silently left prod bots on legacy compose defaults after a hotfix deploy.
+- **Migration Drift Check** - the P1 issue asserting "a merged migration is not in the ledger" also fired on infra failures (empty secret, Doppler outage) where the drift tool never ran. The reporter now gates on the drift step's own verdict.
+- **Smoke Test** - "broken on production" was asserted for failures that were CI-local (lockfile-drift install failure, browser flake). The annotation now distinguishes "production broken" from "setup failed, production not assessed".
+- **PrintSense staging E2E** - a failed PR comment both flipped the run red and silently skipped the auto-merge of a PASSED E2E (implicit `success()` in the merge condition). Comment now `continue-on-error`.
+
+No gate is loosened anywhere: every substantive verification still fails hard; only reporting lost its ability to overrule them.
+
 ### v3.214.1 (2026-07-26) - fix(ci): PrintSense production activation reported failure on a successful activation
 
 `PrintSense Production Activation` has been failing on every run since it started firing, while the activation it performs actually succeeded. The consequence was not cosmetic: a red "production activation failed" is a reasonable thing to react to, and auto-deploy (`Deploy to VPS`) was manually disabled somewhere between 00:54 and 03:01 on 2026-07-26 — after which merges to `main` landed and tagged but never shipped.

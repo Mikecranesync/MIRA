@@ -28,10 +28,12 @@ concurrency:
 permissions:
   actions: read
   contents: read
-  issues: write
   # `gh pr comment` issues the GraphQL `addComment` mutation against a
-  # PullRequest, which requires `pull-requests: write` — `issues: write` alone
-  # is NOT sufficient and fails with "Resource not accessible by integration".
+  # PullRequest, which requires `pull-requests: write` — `issues: write` is
+  # neither sufficient (the 2026-07-26 incident failed with "Resource not
+  # accessible by integration" while it was granted) nor used by anything else
+  # here, so it is deliberately absent: this job runs in the production
+  # environment with VPS SSH secrets and carries no scope it does not need.
   pull-requests: write
 
 env:
@@ -54,6 +56,16 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Verify source PR passed Staging Gate
+        # On workflow_run triggers this SHA was ALREADY gated by the deploy that
+        # just shipped it: deploy-vps.yml either verified the Staging Gate itself
+        # or the operator explicitly bypassed it with an audited skip_reason.
+        # Re-verifying here cannot add safety, but it CAN subtract it — a
+        # hotfix-bypass deploy recreates the bot containers with legacy compose
+        # defaults, and if this step then hard-fails ('No PR associated'), the
+        # production PrintSense profile is silently never re-applied. Trust the
+        # triggering deploy's decision; keep the hard check for push and
+        # workflow_dispatch, where no deploy has gated the SHA.
+        if: github.event_name != 'workflow_run'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -159,6 +171,11 @@ jobs:
           ENDSSH
 
       - name: Record rollback control
+        # Cosmetic (step-summary text). The last remaining step of the reporting
+        # class that could flip the verdict after the activation itself passed —
+        # and with pull-requests:write now granted, a flip here would actually
+        # POST the false "checks did not complete" comment, not just try to.
+        continue-on-error: true
         run: |
           {
             echo "## PrintSense production profile"
