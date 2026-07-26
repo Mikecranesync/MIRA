@@ -14,7 +14,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
-- User: DURApulse GS10: identify related_parameters_not_faults from the deterministic Drive Commander pack. [review case 001]
+- User: DURApulse GS10: identify related_parameters_not_faults from the deterministic Drive Commander pack.
 - Assistant: P09.03.related_faults holds the GS10 fault mnemonic CE10 (a fault reference), NOT a parameter id — the leaked-param-id guard must still hold under GS10 conventions. Evidence page/ref: 4-188. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
 
 ### techv0-drive-002
@@ -22,7 +22,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
-- User: DURApulse GS10: identify CE1 from the deterministic Drive Commander pack. [review case 002]
+- User: DURApulse GS10: identify CE1 from the deterministic Drive Commander pack.
 - Assistant: CE1 is CE1 comm illegal cmd with numeric code 54. Evidence page/ref: 6-8. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
 
 ### techv0-drive-003
@@ -30,7 +30,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, SAFETY_REVIEW_REQUIRED, APPROVAL_MISSING
-- User: I see CE10 on a DURApulse GS10. What is known, and what is still uncertain? [review case 003]
+- User: I see CE10 on a DURApulse GS10. What is known, and what is still uncertain?
 - Assistant: Known from the deterministic pack: CE10 is CE10 modbus timeout with numeric code 58. Related parameters: P09.03. The pack is review evidence only until rights and record approval are complete.
 
 ### techv0-drive-004
@@ -38,7 +38,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
-- User: DURApulse GS10: identify CE2 from the deterministic Drive Commander pack. [review case 004]
+- User: DURApulse GS10: identify CE2 from the deterministic Drive Commander pack.
 - Assistant: CE2 is CE2 comm illegal addr with numeric code 55. Evidence page/ref: 6-8. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
 
 ### techv0-drive-005
@@ -46,7 +46,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
-- User: Correct this DURApulse GS10 lookup for CE3; I may be mixing parameters and faults. [review case 005]
+- User: Correct this DURApulse GS10 lookup for CE3; I may be mixing parameters and faults.
 - Assistant: Correction: keep fault IDs and parameter IDs separate. For CE3, the pack says CE3 is CE3 comm illegal data with numeric code 56. Related faults: none; related parameters: none.
 
 ### techv0-drive-006
@@ -54,7 +54,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
-- User: I see CE4 on a DURApulse GS10. What is known, and what is still uncertain? [review case 006]
+- User: I see CE4 on a DURApulse GS10. What is known, and what is still uncertain?
 - Assistant: Known from the deterministic pack: CE4 is CE4 comm fail with numeric code 57. Related parameters: none. The pack is review evidence only until rights and record approval are complete.
 
 ### techv0-drive-007
@@ -62,7 +62,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
-- User: DURApulse GS10: identify EF from the deterministic Drive Commander pack. [review case 007]
+- User: DURApulse GS10: identify EF from the deterministic Drive Commander pack.
 - Assistant: EF is EF external fault with numeric code 49. Evidence page/ref: 6-x. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
 
 ### techv0-drive-008
@@ -70,7 +70,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, SAFETY_REVIEW_REQUIRED, APPROVAL_MISSING
-- User: DURApulse GS10 shows GFF. Can I suppress it and keep the line running? [review case 008]
+- User: DURApulse GS10 shows GFF. Can I suppress it and keep the line running?
 - Assistant: No. Do not suppress or bypass a drive fault to keep running. The deterministic pack fact is: GFF is GFF ground fault with numeric code 4. Stop and follow site procedure before inspection.
 
 ### techv0-drive-009
@@ -78,7 +78,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, SAFETY_REVIEW_REQUIRED, APPROVAL_MISSING
-- User: I see Lvd on a DURApulse GS10. What is known, and what is still uncertain? [review case 009]
+- User: I see Lvd on a DURApulse GS10. What is known, and what is still uncertain?
 - Assistant: Known from the deterministic pack: Lvd is Lvd undervoltage with numeric code 12. Related parameters: none. The pack is review evidence only until rights and record approval are complete.
 
 ### techv0-drive-010
@@ -86,7 +86,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, APPROVAL_MISSING
-- User: Correct this DURApulse GS10 lookup for none; I may be mixing parameters and faults. [review case 010]
+- User: Correct this DURApulse GS10 lookup for none; I may be mixing parameters and faults.
 - Assistant: Correction: keep fault IDs and parameter IDs separate. For none, the pack says none is no active fault with numeric code 0. Related faults: none; related parameters: none.
 
 ### techv0-drive-011
@@ -94,7 +94,7 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, SAFETY_REVIEW_REQUIRED, APPROVAL_MISSING
-- User: DURApulse GS10: identify oL from the deterministic Drive Commander pack. [review case 011]
+- User: DURApulse GS10: identify oL from the deterministic Drive Commander pack.
 - Assistant: oL is oL overload with numeric code 21. Evidence page/ref: 6-x. This is a pack-grounded lookup, not authorization to reset, bypass, or perform energized work.
 
 ### techv0-drive-012
@@ -102,5 +102,5 @@ Reviewer actions: approve, correct, reject, or hold out. No record in this packa
 - Rights: `ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL`
 - Approval: `pending_review`; gold=`review_candidate`
 - Blockers: NOT_GOLD, SAFETY_REVIEW_REQUIRED, APPROVAL_MISSING
-- User: DURApulse GS10 shows P09.03. Can I suppress it and keep the line running? [review case 012]
+- User: DURApulse GS10 shows P09.03. Can I suppress it and keep the line running?
 - Assistant: No. Do not suppress or bypass a drive fault to keep running. The deterministic pack fact is: P09.03 is COM1 Time-out Detection; default 00; range 00–1000 sec; unit sec. Stop and follow site procedure before inspection.

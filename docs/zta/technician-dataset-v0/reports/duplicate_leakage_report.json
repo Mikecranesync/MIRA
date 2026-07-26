@@ -1,9 +1,16 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
-  "exact_duplicate_content_hashes": {},
+  "exact_duplicate_content_hashes": {
+    "1c861809f9d3ac467a3ac8bba8a4ef1df4a9b64072c1aa0b774493d5bccedadf": 2,
+    "36e8838b42de93d7171c9416479bd79ecc0688956f66d386e5247f2512cb3a76": 2,
+    "7f45342521279c363da3799d6b9c83b5f2792e1918c589dae00e85d7482acd6e": 2,
+    "e4b4d56a1dcc14deaee5ac8b3c105ae5b0a6aa3034a32aa8f764b3284ce858a4": 2,
+    "eafa35d7b3a64e7fd41d89017966ca5f1348fc50cfd4cc664afa40db5bf79383": 2,
+    "eb1fc81b9ccaa0cc0cd982e438229889cd546d6c3323106f108c8cb74b08ee47": 2
+  },
   "held_out_records_marked_eligible": [],
-  "leakage_clean": true,
+  "leakage_clean": false,
   "lineage_split_collisions": {},
-  "record_count": 242,
+  "record_count": 219,
   "schema": "factorylm.technician-dataset.duplicate-leakage.v1"
 }

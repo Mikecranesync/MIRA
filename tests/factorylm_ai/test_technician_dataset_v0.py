@@ -77,11 +77,14 @@ def test_readiness_candidate_counts_and_composition_targets() -> None:
     )
     safety = sum(1 for r in rows if SAFETY_SENSITIVE_TAG in r["tags"])
 
-    # 242 = 172 printsense (132 cv101 one-per-owned-fact + 40 style) + 70 drive.
+    # 219 = 149 printsense (132 cv101 one-per-owned-fact + 17 style) + 70 drive.
     # cv101 grew from a padded 70 once sheet E-003's 61 unused owned facts were
     # drawn and the over-drawn sheets were capped at their real fact counts.
-    assert len(rows) == 242
-    assert source_counts == {"printsense": 172, "drive_commander": 70}
+    # Style shrank from a padded 40 to one record per distinct owned fact (17):
+    # the per-source _repeat_to_count restarted at facts[0] every source, so 40
+    # records carried only 8 distinct pairs — same defect class, same fix.
+    assert len(rows) == 219
+    assert source_counts == {"printsense": 149, "drive_commander": 70}
     assert valued >= 30
     assert safety >= 25
     assert origin_counts["synthetic"] / len(rows) <= 0.30
@@ -106,7 +109,7 @@ def test_existing_dataset_gate_keeps_review_candidates_out_of_export() -> None:
     dataset = assemble_dataset_v0(records)
 
     assert dataset.record_count == 0
-    assert len(dataset.rejected) == 242
+    assert len(dataset.rejected) == 219
 
 
 def test_lineage_plan_keeps_train_lineages_above_the_gate_floor() -> None:
@@ -204,13 +207,56 @@ def test_cv101_draws_one_record_per_distinct_owned_fact() -> None:
     assert len(hashes) == len(set(hashes)), "cv101 records must each cite a distinct fact"
 
 
+def test_style_batch_draws_one_record_per_distinct_owned_fact() -> None:
+    """The style batch had the same padding defect, worse: per-source
+    `_repeat_to_count` restarted at `facts[0]` for EVERY source, so the first
+    sources all drew the same leading facts — 40 records, 8 distinct pairs.
+    One record per fact, dealt round-robin, keeps every style lineage alive
+    with zero duplicates.
+    """
+
+    style = [r for r in _dicts() if r["review_batch"] == "printsense"]
+    hashes = [r["answer_key"]["provenance"]["evidence_hash"] for r in style]
+    assert len(hashes) == len(set(hashes)), "style records must each cite a distinct fact"
+
+    from factorylm_ai.dataset.technician_v0 import _printsense_style_sources, _style_facts
+
+    assert len(style) == len(_style_facts()), "one record per owned style fact"
+    covered = {r["source_provenance"]["source_id"] for r in style}
+    assert covered == {s["source_id"] for s in _printsense_style_sources()}, (
+        "every style source keeps at least one record — a vanished source is a "
+        "vanished lineage, and lineage count is a paid-gate threshold"
+    )
+
+
+def test_no_review_harness_marker_in_any_training_message() -> None:
+    """The `[review case NNN]` suffix was a review-harness artifact inside the
+    TRAINING INPUT: it taught the model to expect a marker no real technician
+    will ever type, and its per-record uniqueness silently defeated duplicate
+    detection (156 "distinct" pairs collapsed to 118 without it). Sequence
+    identity belongs in record_id only.
+    """
+
+    import re
+
+    marker = re.compile(r"\[review case \d+\]")
+    for row in _dicts():
+        for message in row["messages"]:
+            assert not marker.search(message["content"]), (
+                f"{row['record_id']}: harness marker leaked into a {message['role']} message"
+            )
+    # And the duplicate-detection consequence: user messages that are byte-equal
+    # are now VISIBLE as duplicates instead of being masked by unique tails —
+    # so within each batch, evidence hashes stay the honest uniqueness signal.
+
+
 def test_write_build_emits_jsonl_and_readiness_reports(tmp_path: Path) -> None:
     result = write_build(tmp_path, stage="readiness")
     files = result["files"]
 
     candidate_path = Path(files["candidate_jsonl"])
     lines = candidate_path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 242
+    assert len(lines) == 219
     parsed = [json.loads(line) for line in lines]
     assert not validate_candidates(parsed)
 
