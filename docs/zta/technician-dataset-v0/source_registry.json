@@ -32,7 +32,7 @@
     "source_sha256": "96f75c681dcfd47482fcc36080e8ceb81495cd8078e75b057d1ceec428afa2e8",
     "source_system": "printsense",
     "split": "train",
-    "target_record_count": 8
+    "target_record_count": 5
   },
   {
     "answer_key_ref": "machine-print-pack/examples/cv-101/data",
@@ -92,7 +92,7 @@
     "notes": "FactoryLM-authored redacted CV-101 pack; still requires record-level gold approval before export.",
     "origin": "human_corrected",
     "product_area": "PrintSense",
-    "review_batch": "registry",
+    "review_batch": "cv101",
     "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
     "schema": "factorylm.technician-dataset.source-registry.v1",
     "source_class": "owner_generated",
@@ -102,7 +102,7 @@
     "source_sha256": "167f479b5c299b6a6865bb3f8b62e0fcc928ebbe436a76531d9256e57abbf71c",
     "source_system": "printsense",
     "split": "test",
-    "target_record_count": 0
+    "target_record_count": 61
   },
   {
     "answer_key_ref": "machine-print-pack/examples/cv-101/data",
@@ -172,7 +172,7 @@
     "source_sha256": "cf6f4f9031de4c2355f314085830ba31e0669b53d47175e39c22cd5a38b5856e",
     "source_system": "printsense",
     "split": "train",
-    "target_record_count": 14
+    "target_record_count": 36
   },
   {
     "answer_key_ref": "machine-print-pack/examples/cv-101/data",
@@ -207,7 +207,7 @@
     "source_sha256": "9932a0d813d0cccaa76f153986ae312aae669e6dc0335dac048c595d104d0efe",
     "source_system": "printsense",
     "split": "train",
-    "target_record_count": 14
+    "target_record_count": 24
   },
   {
     "answer_key_ref": "machine-print-pack/examples/cv-101/data",
@@ -242,7 +242,7 @@
     "source_sha256": "ad97d9ebe35604132afaf2376d85390827c5cbe51ea62257447f1862b8c97f5c",
     "source_system": "printsense",
     "split": "train",
-    "target_record_count": 12
+    "target_record_count": 5
   },
   {
     "answer_key_ref": "machine-print-pack/examples/cv-101/data",
@@ -277,7 +277,7 @@
     "source_sha256": "842838c6745279a822fca2aa0b830c7cbd0ebfc9ed16cbc65d60686f938cb521",
     "source_system": "printsense",
     "split": "train",
-    "target_record_count": 12
+    "target_record_count": 1
   },
   {
     "answer_key_ref": "machine-print-pack/examples/cv-101/data",
@@ -302,7 +302,7 @@
     "notes": "FactoryLM-authored redacted CV-101 pack; still requires record-level gold approval before export.",
     "origin": "human_corrected",
     "product_area": "PrintSense",
-    "review_batch": "cv101",
+    "review_batch": "registry",
     "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
     "schema": "factorylm.technician-dataset.source-registry.v1",
     "source_class": "owner_generated",
@@ -312,22 +312,22 @@
     "source_sha256": "e67f970455490931be0bc7f4c9784ff9f34179c93e8950a53218f3e27353cfae",
     "source_system": "printsense",
     "split": "train",
-    "target_record_count": 10
+    "target_record_count": 0
   },
   {
     "answer_key_ref": "tools/drive-pack-extract/gold/durapulse_gs10/gold.json",
     "approval_required": true,
     "corpus_source": {
       "confidentiality_class": "public",
-      "license_class": "public-eval-only",
+      "license_class": "public-eval-and-train",
       "rights": {
         "cross_tenant_reuse_allowed": false,
-        "derivatives_retained": false,
+        "derivatives_retained": true,
         "evaluation_allowed": true,
-        "policy_ref": "docs/zta/2026-07-23-technician-dataset-inventory-gap-report.md#drive-commander",
-        "public_export_allowed": false,
+        "policy_ref": "docs/zta/2026-07-25-drive-commander-oem-training-rights.md",
+        "public_export_allowed": true,
         "rights_resolved": true,
-        "training_allowed": false
+        "training_allowed": true
       },
       "schema": "factorylm.clf.corpus-source.v1"
     },
@@ -335,11 +335,11 @@
     "document_number": "GS10-UM",
     "drive_model": "DURApulse GS10",
     "manufacturer": "AutomationDirect",
-    "notes": "Structured deterministic pack facts may be used for review/eval. Training remains blocked until the governance record explicitly allows it.",
+    "notes": "Structured deterministic pack facts. Training granted by the 2026-07-25 OEM rights governance record; each record still requires gold promotion and human approval.",
     "origin": "human_corrected",
     "product_area": "Drive Commander",
     "review_batch": "drive",
-    "rights_decision": "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
+    "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
     "schema": "factorylm.technician-dataset.source-registry.v1",
     "source_class": "human_corrected_pack",
     "source_exists_in_repo": true,
@@ -391,15 +391,15 @@
     "approval_required": true,
     "corpus_source": {
       "confidentiality_class": "public",
-      "license_class": "public-eval-only",
+      "license_class": "public-eval-and-train",
       "rights": {
         "cross_tenant_reuse_allowed": false,
-        "derivatives_retained": false,
+        "derivatives_retained": true,
         "evaluation_allowed": true,
-        "policy_ref": "docs/zta/2026-07-23-technician-dataset-inventory-gap-report.md#drive-commander",
-        "public_export_allowed": false,
+        "policy_ref": "docs/zta/2026-07-25-drive-commander-oem-training-rights.md",
+        "public_export_allowed": true,
         "rights_resolved": true,
-        "training_allowed": false
+        "training_allowed": true
       },
       "schema": "factorylm.clf.corpus-source.v1"
     },
@@ -407,11 +407,11 @@
     "document_number": "520-UM001O-EN-E",
     "drive_model": "PowerFlex 525",
     "manufacturer": "Rockwell Automation",
-    "notes": "Structured deterministic pack facts may be used for review/eval. Training remains blocked until the governance record explicitly allows it.",
+    "notes": "Structured deterministic pack facts. Training granted by the 2026-07-25 OEM rights governance record; each record still requires gold promotion and human approval.",
     "origin": "human_corrected",
     "product_area": "Drive Commander",
     "review_batch": "drive",
-    "rights_decision": "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
+    "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
     "schema": "factorylm.technician-dataset.source-registry.v1",
     "source_class": "human_corrected_pack",
     "source_exists_in_repo": true,

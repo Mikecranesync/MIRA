@@ -1,3 +1,16 @@
+### v3.215.0 (2026-07-26) - feat(dataset): technician dataset v0 — make the paid gate reachable + review console (#2911)
+
+Gets the technician-grounding LoRA from a structurally-unpassable gate to one review sitting away from `PAID_GATE_PASS`. Everything offline — no Together call, upload, job, endpoint, authorization consumption, or spend.
+
+- **The gate was unpassable by construction.** `paid_gate.py` requires both `printsense` and `drive_commander` eligible, but every drive candidate carried `training_allowed=false` and approving one raised `DECISION_GOVERNANCE_BLOCKED` — 180 candidates, 0 eligible, no review path to green.
+- **OEM training-rights grant** (`docs/zta/2026-07-25-drive-commander-oem-training-rights.md`), scoped to exactly `durapulse_gs10` + `powerflex_525`. PowerFlex 40 stays excluded as a **gate invariant** (its lineage is 1 of exactly 5 held-out docs with `MIN_HELD_OUT_LINEAGES=5`). The grant removes only the rights block — gold promotion and human approval still required; the rights **basis wording remains owed by Mike** (`<basis pending>` in the governance record).
+- **cv101 stopped padding duplicates** (`_repeat_to_count`): distinct facts in the approvable pool 42 → 111, duplicate evidence 26 → 0; the fabricated E-009 lineage dropped (25 → 24 train lineages, still clear of `MIN_LINEAGES=20`).
+- **`--import-decisions <jsonl>`** bulk review import — same `_validate_decision_set` path, fail-closed (one bad row rejects the batch), idempotent.
+- **`--model-support-receipt`** threads a documented serverless-catalog check (Qwen/Qwen3.5-9B LoRA-fine-tunable, pricing matches pinned constants) through to the gate; default stays `None`/fail-closed; unverifiable claims are listed, not assumed.
+- **Offline review console** (`tools/factorylm_ai/review_console/`, single file, FactoryLM tokens, no server/network): renders only records that can count, live gate meter against real thresholds, round-robin lineage ordering, preset rationales. Its exported decisions are accepted unmodified by `--import-decisions`.
+
+Gate reachability proven by dry-run simulation (`PAID_GATE_PASS` on all 15 checks with 110 simulated approvals; nothing written — the real ledger is empty and awaits human review). Plus: print-eval fails closed on a dead OCR floor and keeps confidential batches out of the repo.
+
 ### v3.214.3 (2026-07-26) - security(factorylm-ai): paid Together authorization trust root (#2881)
 
 Pure security/control-plane hardening; no Together upload, job, endpoint, or spend performed. Operator approvals are Ed25519-signed offline over the canonical request-bound `PaidEventAuthorization` payload; the paid runtime holds only the public verification key and cannot mint approvals; Together paid entry points own verifier construction and reject caller-supplied verifiers; a signed-registry match is required before the append-only ledger consumes an authorization. The hermetic-test escape hatch is an explicit `allow_ledger_injection_for_tests()` seam (off by default, opened only by the test conftest) replacing the `PYTEST_CURRENT_TEST` heuristic. Full detail: `docs/changelog.d/3.214.3-paid-together-authorization.md`.

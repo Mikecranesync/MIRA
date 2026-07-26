@@ -1,8 +1,8 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
   "built_at": "2026-07-23T00:00:00Z",
-  "candidate_count": 180,
-  "candidate_manifest_sha256": "2face5d13b65ed68dcaf1aea71db2fc7d7f1cea0b534fb1e95ca26f0004f674d",
+  "candidate_count": 242,
+  "candidate_manifest_sha256": "8f4f4f12f7cd3e9308d7efa9e591fddcf13c8da899af40ab0fd8cf48a28435b4",
   "dry_run": {
     "authorization_consumed": false,
     "deployment_occurred": false,
@@ -41,9 +41,9 @@
   "review_decisions": {
     "build_id": "2026-07-23-technician-dataset-v0",
     "built_at": "2026-07-23T00:00:00Z",
-    "candidate_count": 180,
+    "candidate_count": 242,
     "candidate_jsonl_mutated": false,
-    "candidate_manifest_sha256": "2face5d13b65ed68dcaf1aea71db2fc7d7f1cea0b534fb1e95ca26f0004f674d",
+    "candidate_manifest_sha256": "8f4f4f12f7cd3e9308d7efa9e591fddcf13c8da899af40ab0fd8cf48a28435b4",
     "corrected_records": [],
     "decision_count": 0,
     "decision_counts": {
@@ -74,8 +74,7 @@
       "min_lineages",
       "min_valued_interactions",
       "min_safety_sensitive",
-      "trainable_source_representation",
-      "model_support_confirmed"
+      "trainable_source_representation"
     ],
     "paid_gate_passed": false,
     "paid_gate_verdict": "PAID_GATE_BLOCKED",

@@ -4,8 +4,7 @@
     "min_lineages",
     "min_valued_interactions",
     "min_safety_sensitive",
-    "trainable_source_representation",
-    "model_support_confirmed"
+    "trainable_source_representation"
   ],
   "checks": [
     {
@@ -79,9 +78,9 @@
       "passed": true
     },
     {
-      "detail": "model support NOT confirmed: no model-support evidence (live probe required before spend)",
+      "detail": "Qwen/Qwen3.5-9B FT support confirmed on together",
       "name": "model_support_confirmed",
-      "passed": false
+      "passed": true
     }
   ],
   "evidence": {
@@ -97,7 +96,15 @@
       "factorylm:technician-review-011",
       "rockwell-automation:22b-um001j-en-e"
     ],
-    "model_support": null,
+    "model_support": {
+      "checked_at": "2026-07-25T00:00:00Z",
+      "confirmed": true,
+      "method": "serverless-catalog",
+      "model_id": "Qwen/Qwen3.5-9B",
+      "provider": "together",
+      "receipt_ref": "docs/zta/2026-07-25-together-qwen35-9b-model-support-receipt.md",
+      "supported": true
+    },
     "rights_report_ref": "docs\\zta\\technician-dataset-v0\\reports\\rights_report.json",
     "synthetic_composition_report_ref": "docs\\zta\\technician-dataset-v0\\reports\\real_vs_synthetic_composition_report.json"
   },

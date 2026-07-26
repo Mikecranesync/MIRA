@@ -37,7 +37,14 @@ import mailer  # noqa: E402
 import safety  # noqa: E402
 from judge import judge as run_judge  # noqa: E402
 
-TESTS_ROOT = _REPO / "internet_print_tests"
+# Results root. Defaults to the in-repo corpus dir (public OEM prints, which are
+# committed as eval evidence). CONFIDENTIAL batches — customer or third-party
+# drawings that must never be committed — set PRINT_TESTS_ROOT to a path OUTSIDE
+# the repo so neither the per-test artifacts nor the shared index.json/index.md
+# ever land in git. See .claude/rules/... and the Stardust local-only precedent.
+TESTS_ROOT = Path(os.environ["PRINT_TESTS_ROOT"]) if os.environ.get("PRINT_TESTS_ROOT") else (
+    _REPO / "internet_print_tests"
+)
 SOURCES_JSON = _HERE / "sources.json"
 
 
@@ -489,6 +496,8 @@ def main(argv=None) -> int:
     ap.add_argument("--page", type=int, default=0, help="PDF page index to render (default 0)")
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--caption", default="Explain this print.")
+    ap.add_argument("--allow-degraded-ocr", action="store_true",
+                    help="run even when the Tesseract OCR floor is DEAD (results are NOT representative)")
     args = ap.parse_args(argv)
 
     run_requested = any([args.source_url, args.local_file, args.count, args.category, args.regrade,
@@ -501,6 +510,35 @@ def main(argv=None) -> int:
                   f"[{s.get('category')}/{s.get('standard')}]")
         print("(no download, no submission, no email — pass --source-url / --category / --count to run)")
         return 0
+
+    # Fail closed on a dead OCR floor. `ocr_lane_report()` already computes the
+    # verdict correctly and logs it loudly, but nothing consumed it here — so a
+    # run with Tesseract missing produced grades that LOOK like real evals while
+    # the OCR lane and auto-rotate were silently off. Degraded numbers reported
+    # as capability are worse than no numbers.
+    if not args.allow_degraded_ocr:
+        try:
+            # `shared` only becomes importable once mira-bots is on sys.path,
+            # which submit.py does lazily — mirror it here so the probe runs
+            # BEFORE any paid call rather than after.
+            _bots = str(_REPO / "mira-bots")
+            if _bots not in sys.path:
+                sys.path.insert(0, _bots)
+            from shared.workers.vision_worker import ocr_lane_report
+
+            report = ocr_lane_report()
+        except Exception:  # noqa: BLE001 — probe absence must not break the runner
+            report = None
+        if report and report.get("verdict") == "DEAD":
+            print(
+                "[FATAL] OCR floor is DEAD (Tesseract missing while expected): "
+                f"{json.dumps(report)}\n"
+                "        Grades from this configuration are NOT representative — the OCR\n"
+                "        lane and auto-rotate are off. Install Tesseract (or put it on\n"
+                "        PATH), or pass --allow-degraded-ocr to run anyway and mark the\n"
+                "        results degraded."
+            )
+            return 2
 
     if args.telegram_production_path:
         from submit import _load_real_bot
