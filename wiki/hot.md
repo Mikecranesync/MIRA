@@ -1,3 +1,57 @@
+# Hot Cache — 2026-07-26 — Wire-designation PR shipped + deploy-freeze root-caused + fleet verdict hardening (v3.214.0→v3.214.2)
+
+Three PRs merged and LIVE in prod, each proven by watching the real chain run. The through-line: a
+false instrument reading started it (dead metric), and a false instrument reading nearly ended it
+(a red activation run that was actually a comment-permission error got auto-deploy disabled).
+
+- **#2915 (v3.214.0) — PrintSense wire designations + 10-finding adversarial hardening.** The
+  handoff branch (5 commits, C:/wt-wire) pushed, rebased, hardened by a 29-agent ultracode review
+  (22 raw → 10 confirmed), merged, deployed. Extraction defect NOT fixed (0/9 exact acceptance —
+  honest negative; escalation still Mike's call). What shipped is the instrumentation: dead-metric
+  paths closed (empty-expected guard, duplicate-denominator, None-tag, JSON-string crash), near-miss
+  pairing narrowed to homoglyph-class edits only (was fabricating misreads from sequential wire
+  numbers), false prompt exemplar fixed (`P9DI900-0` claimed to hold a `1` it does not → `P9DI910-0`),
+  privacy allowlist given teeth (old one admitted `N7:CUSTOMERNAME` as "fictional"; truth block now
+  checked; 12 rejection controls). Every fix mutation-verified. **Confidentiality incident (agent's
+  own):** seeded the teeth-test probes with the REAL customer designation — the leak arrives THROUGH
+  the guard (test asserts rejection, passes, commits the secret). Caught by post-edit rescan;
+  scrubbed from tree+messages via filter-branch; memory `reference_negative_control_probes_leak_vector`.
+- **DEPLOY FREEZE ROOT-CAUSED.** Merged #2915 sat undeployed ~6h: `Deploy to VPS` was
+  `disabled_manually` (workflow_run cannot fire on a disabled workflow; dispatch 422s too). Cause
+  chain: `PrintSense Production Activation` had failed on EVERY run — but the activation always
+  SUCCEEDED; only the success REPORTER died (`gh pr comment` needs `pull-requests: write`;
+  `issues: write` is not sufficient), flipping the job red and posting a FALSE "checks did not
+  complete" message. Someone reasonably disabled auto-deploy on that signal. Mike re-enabled;
+  scoped dispatch `services="mira-bot-telegram mira-bot-slack"` shipped v3.214.0.
+- **#2917 (v3.214.1) — activation reporting fix.** `pull-requests: write` + both reporters
+  `continue-on-error` (a notification must never decide the verdict). Proven live: first green
+  activation run in the workflow's history, success comment posted on #2903, failure reporter
+  correctly skipped.
+- **#2918 (v3.214.2) — fleet verdict hardening.** 17-agent sweep of all 49 workflows (13 raw → 12
+  confirmed): **staging-gate.yml (HIGH — the required check + deploy gate) had 3 reporting steps
+  able to flip a passing eval red**; deploy-vps had NO permissions block so the bypass-audit issue
+  was silently never filed (read-only default token); swallowed API 5xxs masqueraded as "No PR
+  associated"; activation's workflow_run re-verification could strand prod bots on legacy compose
+  defaults after a hotfix-bypass deploy (now trusts the deploy's gate decision); drift-check filed
+  P1 "ledger drift" issues for Doppler outages; smoke said "broken on production" for lockfile
+  flakes. All fixed, no gate loosened. Proven live on the merge deploy: rewritten PR-trace lookup
+  green, activation verify SKIPPED on workflow_run, activation green, comment posted.
+- **Traps confirmed this session:** disabled workflow = silent chain dead-end (the last link just
+  is not listening — check `gh workflow list --all | grep disabled` when a workflow_run chain
+  stops); a conflicting PR (`mergeable: CONFLICTING`) schedules ZERO checks (looks like stuck CI;
+  rebase first); backticks inside a bash-interpolated python string get command-substituted —
+  use a quoted heredoc (`py - <<'QUOTED'`) for any content carrying markdown.
+- **Auto-deploy is ACTIVE again** (freeze cause fixed; deliberate decision with Mike). Chain
+  self-proves: merge → Smoke → Deploy → Activation, all green twice in a row.
+- **NEXT / owed to Mike:** rclone OAuth token rotation (STILL highest priority, carried 2 handoffs);
+  LoRA rights-basis wording (thread B HOLD unchanged, C:/wt-train untouched); PrintSense extraction
+  escalation decision (crop re-read / stronger model / deterministic OCR); merge calls on #2881
+  + #2911 (both were green). Drift-tool residual: a DB connection error inside
+  `tools/migration_drift.py` still counts as drift — needs the tool to classify its own exit.
+- Handoff: `C:/Users/hharp/AppData/Local/Temp/handoff-2026-07-26-mira.md`.
+
+---
+
 # Hot Cache — 2026-07-18 — UNSEEN stack + $0 vision fix + reply chunking ALL LIVE (v3.160.0→v3.162.3)
 
 Five PRs merged, staging+prod deployed, acceptance-verified. The PrintSense free path is fully
