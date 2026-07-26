@@ -462,6 +462,26 @@ def _like_search(
     return [dict(r) for r in rows]
 
 
+def _model_suffix_exclude_regex(name: str) -> str:
+    """POSIX regex matching MODEL SUFFIX VARIANTS of `name` to exclude from a
+    product search — for "PowerFlex 40" it matches "PowerFlex 400",
+    "PowerFlex 401", "PowerFlex 40P" but NOT the standalone "PowerFlex 40".
+
+    Used with ``NOT (model_number ~* :exclude_re)``. Replaces the old
+    ``NOT ILIKE '%{name}0%'`` (#2914) which only caught the single ``0`` suffix
+    and let ``401``-``409`` / letter-suffixed variants (``40A``, ``40P``) bleed
+    into the base model's results. The base model survives because it is `name`
+    followed by a word boundary (end-of-string or a non-alphanumeric char),
+    which does not match ``{name}[0-9A-Za-z]``.
+
+    `name` is escaped for POSIX ERE metacharacters so a model name containing
+    ``.``/``+``/``(`` etc. cannot corrupt the pattern. Verified against real
+    Neon PowerFlex 40/400/40P rows on staging (#2914).
+    """
+    escaped = re.sub(r"([\\.^$*+?()\[\]{}|])", r"\\\1", name)
+    return f"(^|[^0-9A-Za-z]){escaped}[0-9A-Za-z]"
+
+
 def _product_search(
     conn,
     text_fn,
@@ -493,9 +513,10 @@ def _product_search(
         tenant_filter = "is_private = false"
 
     for name in products[:3]:
-        # Use word-boundary-safe pattern: "PowerFlex 40" must not match "PowerFlex 400"
+        # Word-boundary-safe: "PowerFlex 40" must not match "PowerFlex 400"/"40P".
+        # The regex excludes any alphanumeric suffix; the base model is kept (#2914).
         exact_pat = f"%{name}%"
-        exclude_pat = f"%{name}0%"
+        exclude_re = _model_suffix_exclude_regex(name)
 
         # CTE forces Postgres to materialize the filtered set BEFORE vector sort.
         # Without this, pgvector's IVFFlat index scans cells and filters post-scan,
@@ -504,7 +525,7 @@ def _product_search(
         params = {
             "shared_tid": SHARED_TENANT_ID,
             "pat": exact_pat,
-            "exclude": exclude_pat,
+            "exclude_re": exclude_re,
             "emb": str(embedding),
             "lim": limit,
         }
@@ -520,7 +541,7 @@ def _product_search(
                     "  FROM knowledge_entries "
                     f"  WHERE {tenant_filter} "
                     "  AND model_number ILIKE :pat "
-                    "  AND model_number NOT ILIKE :exclude "
+                    "  AND NOT (model_number ~* :exclude_re) "
                     f"  AND embedding IS NOT NULL{_approval_filter_sql()}"
                     ") "
                     "SELECT content, manufacturer, model_number, equipment_type, "

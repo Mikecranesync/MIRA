@@ -1,3 +1,11 @@
+### v3.216.3 (2026-07-26) - fix(rag): widen product-search model-suffix exclusion (#2914)
+
+Sub-fix 3 of #2211 (deferred from PR #2913 because it changes retrieval SQL and needed Neon-dialect verification on staging).
+
+`_product_search` in `mira-bots/shared/neon_recall.py` excluded model-suffix variants with `model_number NOT ILIKE '%{name}0%'` — that only caught the single `0` suffix, so searching "PowerFlex 40" correctly dropped "PowerFlex 400" but let `401`-`409` and letter-suffixed variants (`40A`, `40P`) bleed into the base model's manual chunks. Replaced with a POSIX word-boundary regex used as `NOT (model_number ~* :exclude_re)` (`(^|[^0-9A-Za-z]){name}[0-9A-Za-z]`, name escaped for ERE metacharacters) that excludes ANY alphanumeric suffix while keeping the standalone base model.
+
+Verified against real staging Neon (`PowerFlex 40` / `400` / `40P` rows): the new predicate keeps exactly `PowerFlex 40` and drops `400`+`40P`. Note the regex the plan sketched (`…([0-9A-Za-z]|$)`) was wrong — the trailing `|$` wrongly matches the standalone base model; the shipped form has no `|$`. New regression test `mira-bots/tests/test_model_suffix_exclude.py` (base kept; `0`/`401`/`409`/`40A`/`40P` excluded; case-insensitive; metachars escaped). Retrieval/recall suite: 78 passed, no regressions.
+
 ### v3.216.1 (2026-07-26) - fix(dataset): marker-free, dedup'd technician-v0 candidate build (Gate-3 freeze)
 
 The Gate-3 rebuild the review hold deferred, executed after Mike's rights-basis wording landed (#2926). Two data-quality defects fixed in the builder, then the frozen artifacts regenerated (ledger was empty — `decision_count: 0` — so nothing was invalidated):
