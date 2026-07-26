@@ -1,12 +1,5 @@
 {
-  "blocking": [
-    "min_records",
-    "min_lineages",
-    "min_valued_interactions",
-    "min_safety_sensitive",
-    "trainable_source_representation",
-    "model_support_confirmed"
-  ],
+  "blocking": [],
   "checks": [
     {
       "detail": "every eligible record is governance-eligible AND approved",
@@ -19,19 +12,19 @@
       "passed": true
     },
     {
-      "detail": "0 eligible (need >= 100)",
+      "detail": "119 eligible (need >= 100)",
       "name": "min_records",
-      "passed": false
+      "passed": true
     },
     {
-      "detail": "0 lineages (need >= 20)",
+      "detail": "23 lineages (need >= 20)",
       "name": "min_lineages",
-      "passed": false
+      "passed": true
     },
     {
-      "detail": "0 uncertainty/refusal/correction (need >= 20)",
+      "detail": "66 uncertainty/refusal/correction (need >= 20)",
       "name": "min_valued_interactions",
-      "passed": false
+      "passed": true
     },
     {
       "detail": "every eligible source allows training; rights report referenced",
@@ -49,14 +42,14 @@
       "passed": true
     },
     {
-      "detail": "0 safety-sensitive examples (need >= 15)",
+      "detail": "31 safety-sensitive examples (need >= 15)",
       "name": "min_safety_sensitive",
-      "passed": false
+      "passed": true
     },
     {
-      "detail": "eligible set missing trainable source(s): ['drive_commander', 'printsense'] (present: [])",
+      "detail": "trainable printsense + drive_commander both present in the eligible set",
       "name": "trainable_source_representation",
-      "passed": false
+      "passed": true
     },
     {
       "detail": "frozen SimLab/MIRA benchmark baseline referenced",
@@ -79,14 +72,17 @@
       "passed": true
     },
     {
-      "detail": "model support NOT confirmed: no model-support evidence (live probe required before spend)",
+      "detail": "Qwen/Qwen3.5-9B FT support confirmed on together",
       "name": "model_support_confirmed",
-      "passed": false
+      "passed": true
     }
   ],
   "evidence": {
     "base_vs_tools_benchmark_ref": "docs\\zta\\technician-dataset-v0\\reports\\base_vs_tools_benchmark.json",
-    "eligible_source_systems": [],
+    "eligible_source_systems": [
+      "drive_commander",
+      "printsense"
+    ],
     "est_cost_usd": 4.0,
     "frozen_benchmark_baseline_ref": "docs\\zta\\technician-dataset-v0\\reports\\frozen_benchmark_baseline.json",
     "held_out_lineage_count": 5,
@@ -97,10 +93,18 @@
       "factorylm:technician-review-011",
       "rockwell-automation:22b-um001j-en-e"
     ],
-    "model_support": null,
+    "model_support": {
+      "checked_at": "2026-07-25T00:00:00Z",
+      "confirmed": true,
+      "method": "serverless-catalog",
+      "model_id": "Qwen/Qwen3.5-9B",
+      "provider": "together",
+      "receipt_ref": "docs/zta/2026-07-25-together-qwen35-9b-model-support-receipt.md",
+      "supported": true
+    },
     "rights_report_ref": "docs\\zta\\technician-dataset-v0\\reports\\rights_report.json",
     "synthetic_composition_report_ref": "docs\\zta\\technician-dataset-v0\\reports\\real_vs_synthetic_composition_report.json"
   },
-  "passed": false,
-  "verdict": "PAID_GATE_BLOCKED"
+  "passed": true,
+  "verdict": "PAID_GATE_PASS"
 }

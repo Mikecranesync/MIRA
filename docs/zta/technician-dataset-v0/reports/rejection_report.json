@@ -1086,7 +1086,7 @@
     "SAFETY_REVIEW_REQUIRED": 89,
     "TRAINING_NOT_ALLOWED": 25
   },
-  "eligible_count": 0,
-  "rejected_count": 219,
+  "eligible_count": 119,
+  "rejected_count": 100,
   "schema": "factorylm.technician-dataset.rejection-report.v1"
 }

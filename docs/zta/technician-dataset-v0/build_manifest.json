@@ -36,29 +36,1245 @@
     "source_registry": "docs\\zta\\technician-dataset-v0\\source_registry.json",
     "token_cost": "docs\\zta\\technician-dataset-v0\\reports\\token_cost_estimate.json"
   },
-  "phase3_paid_gate_passed": false,
-  "phase3_paid_gate_verdict": "PAID_GATE_BLOCKED",
+  "phase3_paid_gate_passed": true,
+  "phase3_paid_gate_verdict": "PAID_GATE_PASS",
   "review_decisions": {
     "build_id": "2026-07-23-technician-dataset-v0",
     "built_at": "2026-07-23T00:00:00Z",
     "candidate_count": 219,
     "candidate_jsonl_mutated": false,
     "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
-    "corrected_records": [],
-    "decision_count": 0,
+    "corrected_records": [
+      {
+        "candidate_content_hash": "1c861809f9d3ac467a3ac8bba8a4ef1df4a9b64072c1aa0b774493d5bccedadf",
+        "record_id": "techv0-drive-002",
+        "reviewed_content_hash": "07ff510d451b326cd2f22777c482365aef8a442f4a9d30c3b00e0bec90d338e5"
+      },
+      {
+        "candidate_content_hash": "2d16b9862a8f67a5b6e7698f8a9e1aa9048c58300b534a217cfb90f0769d81f6",
+        "record_id": "techv0-drive-047",
+        "reviewed_content_hash": "a28260bac66207a620b3238b8b7bfcecc21016ddcfaa918c8fb84f6c63645bd8"
+      }
+    ],
+    "decision_count": 120,
     "decision_counts": {
-      "approve": 0,
-      "correct": 0,
-      "hold_out": 0,
+      "approve": 117,
+      "correct": 2,
+      "hold_out": 1,
       "reject": 0
     },
-    "decisions": [],
+    "decisions": [
+      {
+        "action": "approve",
+        "candidate_content_hash": "7bc03ca987fbd09ea196de7ffbc1c80d8dcdd392716034d717cb82d6fd513acc",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T13:01:21Z",
+        "decision_id": "eb52e77e37dd8fd07ba385acd4028fd571582f17381d13ebee191031eba185da",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-cv101-067",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "79b584fb439efd04dcab1765248fb709066aa64f40a86444c22e8870a124fb4a",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T13:01:42Z",
+        "decision_id": "ad35b294c996634a3b322fd6f7a15f6d749b746a12b11d19233afc10508a0fc0",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-cv101-103",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "hold_out",
+        "candidate_content_hash": "3d9a96303841c1af7c3101c11515c14f5a18a30cbffc7e6a91e4c86f747d9fef",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T14:29:59Z",
+        "decision_id": "915b6af92806e842ad42ee1fe6b3c359236740b129f731ef6f5f7142ca40f1d1",
+        "rationale_hash": "4a5347fc729b5845a1a55f7c3fe3837f0d37bf9fac700e0b1f9bec6e89872848",
+        "record_id": "techv0-cv101-001",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "13109118a4785718ba7b9dcaa9fc704322ced34845e104e6e833994fb92f6dec",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T14:31:05Z",
+        "decision_id": "16e7a24d097a6cefd5c2fe08d7758a9fc1c10444f8e964259ff003ef944a1813",
+        "rationale_hash": "f220d1ac90611c17cf1a80bc2d5db880eed03f90a282e7ff153e0c13047165f1",
+        "record_id": "techv0-cv101-127",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "8abbefff2973eb2258c27bc69203e0c4c7d87f3031c8b0e5395af05d36883896",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:45:55Z",
+        "decision_id": "c1ea6526d400f7db2968c928eacf736c288edface2c0536d6248516bafb10ae1",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-cv101-132",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "e9fa82a377ecba0cc907aa77475f6bc824613e4aede6eb739eced0504187e699",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T14:32:42Z",
+        "decision_id": "538502a0e2e5640b056996085975590cf5df46dd75e8827ca8f06229e85b46cd",
+        "rationale_hash": "0273bdc96b03e1953b2774f5bb298dbb00fd1af92197f73fd324de6c05840a00",
+        "record_id": "techv0-ps-style-001",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0fedbb34a4a93845d6486d8f5551c10cb6607bbfb254f6fdef9ce785da8da238",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T14:33:13Z",
+        "decision_id": "64120fb7007914b8bef87d2bb649b69240352b29f431de3cb85c65efa398c97c",
+        "rationale_hash": "c431c6d9166fe48d2eff33ad7539042c0ee87917de44f8559b5ef61da0a5eb1f",
+        "record_id": "techv0-ps-style-002",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "f0fb13794fc5b177e797714ec02231994c9aa38b34256744447fdbdfa62a97b7",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T14:33:43Z",
+        "decision_id": "c236d8748c7215cb009a6fad460a1c7d5837d6cf45d6a99a9ef932a1b52fab27",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-ps-style-003",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "f130280f2888ab3d972833c73d6728732a96432e2c26d6cd911887f1c0559043",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T14:34:07Z",
+        "decision_id": "97f2be7519a358c254c61276b0b922dee4fe553672a816d92d128e61ca5964c4",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-ps-style-004",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "aa9f1ecbbb6090fbe97e5af0794dcbca70718f14bcf5ebd5140f37c064d3b45c",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T14:34:44Z",
+        "decision_id": "03a484a58b89b32536bc4f13b0b35b8d8e21868fd3509e473459c2592036dd5a",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-ps-style-005",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "cfa7a5345402e33f0c147e00e66c85fd7e9dafdcebcd44b02b25d77e7ebfe930",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:19:48Z",
+        "decision_id": "778e372a9ebc492fe40c2cff912a48f075773b005aca377e21b25e5274d28f63",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-ps-style-006",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "c1f5828d906018b2bb0a95a419ad49240138314172748765d63eabc559f38310",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:23:19Z",
+        "decision_id": "057a32a43b4138fff1e08a74f30906a4d524b91c6f767da82754e288e38a3be6",
+        "rationale_hash": "a33b59b18f27ad16198c2d630266deacfc1075a8a3941ecb6144b5bfdebc038e",
+        "record_id": "techv0-ps-style-007",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "adc31d2c696cc4650fb6c4652a93fed2a807e582b04f09d683e913993dbb128d",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:23:42Z",
+        "decision_id": "d2f1b58eda0ff8e283700dffc7835206b39e8401e6f6e40a00eff96f69a86859",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-ps-style-008",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "23dacc265e50c49bdd8200dff747af12a4bc374c55626a02c2e8510ea2032bc9",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:24:23Z",
+        "decision_id": "04ac48db2312883bac3b10f0eeca8cb43d562764d559a88da2bac81895704cae",
+        "rationale_hash": "f220d1ac90611c17cf1a80bc2d5db880eed03f90a282e7ff153e0c13047165f1",
+        "record_id": "techv0-ps-style-009",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "c85c1c3f94fea538646018072d96f876d62c4a65fccf204ed92599a45ad1b8e0",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:24:51Z",
+        "decision_id": "16e282ad85b687b00cd4dc840d65ebcad20a7d9fba5003e143f3d39d7e7d8ba3",
+        "rationale_hash": "f3170fe70c119512da5cc49d0a290acd5d9e5db616442b72f91ed61a2462ff9e",
+        "record_id": "techv0-ps-style-010",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "3aafa1dfa3ce020c09c87fa7d85e705379d2752cdecb14fe2c5b6da6ed46b046",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:25:16Z",
+        "decision_id": "c72ef617b09d81f0932f902c95c4afb50d2caadad29b504a8a6e974fc3cdc2fb",
+        "rationale_hash": "f220d1ac90611c17cf1a80bc2d5db880eed03f90a282e7ff153e0c13047165f1",
+        "record_id": "techv0-ps-style-011",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "f1de0bbc2a739df601bcca3cf1ed9701de9b8543a55835c6fb7104eb8adc6eee",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:25:36Z",
+        "decision_id": "9b92ddcb194647755035d0917ee42e550db986b2ea38d60518503bf260ac8d9e",
+        "rationale_hash": "f3170fe70c119512da5cc49d0a290acd5d9e5db616442b72f91ed61a2462ff9e",
+        "record_id": "techv0-ps-style-012",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "adfe8f952063ad666e87a38417ba8751414ac735f6c33423afb15230c454b5a4",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:28:30Z",
+        "decision_id": "494a1be7843d2b6588039963d0da4b95ac5b6651b9a12e63894449c1aa65b6fb",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-ps-style-013",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "19b62469975d459492dc3ee4fbcd4dcc9a421b4b9881fb43fe61287bbe9f2ba7",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:29:18Z",
+        "decision_id": "715f42b2577a12f5df89ae9cb1500fb9f4811d17772dd4978d09c18f02036f44",
+        "rationale_hash": "c431c6d9166fe48d2eff33ad7539042c0ee87917de44f8559b5ef61da0a5eb1f",
+        "record_id": "techv0-ps-style-014",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "3cc23d6879ab63c283346c27e6c788cb7e44a38e6c39be0488873870e5a65e1c",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T16:30:33Z",
+        "decision_id": "9b4c281978b7a99d028d18109861b48e6485ca2e81a78fbc8487fdc5efe72a0d",
+        "rationale_hash": "1f7abb657666876e739afe187f1a2f1be06c69370db9572ae9390164ce943a78",
+        "record_id": "techv0-ps-style-015",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "4246a9287e58ef6c94cec57579ea38948499c79a9accdb70bcd01125bc70d683",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:46:42Z",
+        "decision_id": "feeeef22425e43c79bf0774f743d3afb44ce58723451df9c3a19ca1432054b59",
+        "rationale_hash": "c431c6d9166fe48d2eff33ad7539042c0ee87917de44f8559b5ef61da0a5eb1f",
+        "record_id": "techv0-ps-style-016",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "8cb77e44f495ada63b3a38ae871fd1f961b1c3f8864aee3d58024178c0a32fdb",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:38:14Z",
+        "decision_id": "5e3906d8d91a5169ab2e5debc5227101dd7bda37f7385c3077513467f1bfc51d",
+        "rationale_hash": "a33b59b18f27ad16198c2d630266deacfc1075a8a3941ecb6144b5bfdebc038e",
+        "record_id": "techv0-cv101-068",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "1b9eadd7deae1a9a4f215a2d5b198f695e5b014b0c4dc183004790cc642bfdaa",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:38:53Z",
+        "decision_id": "4c42147cffc7c724ab2c8ad9b677b617994000383843e7b6caff09004f7a5f7b",
+        "rationale_hash": "a33b59b18f27ad16198c2d630266deacfc1075a8a3941ecb6144b5bfdebc038e",
+        "record_id": "techv0-cv101-104",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "72e5d0dbda103a639d2eedb1c559d5cd76bc3389a212788824f1f8d3ea02817b",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:40:04Z",
+        "decision_id": "65aeefaa6dc3baaa18036b84ec3f11d1db70657b882fb2f71702ffd85455b53c",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-cv101-002",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "f92c4bcff3e9de4cc2737950ae1483417c2141135d750f2a0cf8821405534d7d",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:40:31Z",
+        "decision_id": "9e509741a761140780f47dbab982993ed93cce7b8b40bff22762c41f98031268",
+        "rationale_hash": "a33b59b18f27ad16198c2d630266deacfc1075a8a3941ecb6144b5bfdebc038e",
+        "record_id": "techv0-cv101-128",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "correct",
+        "candidate_content_hash": "2d16b9862a8f67a5b6e7698f8a9e1aa9048c58300b534a217cfb90f0769d81f6",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T22:24:53Z",
+        "decision_id": "da55dd144a050b404719eaccf99b107452862aaecc3f83fbcf13697655542a16",
+        "rationale_hash": "9bfe73979794805593106f25418bbbec36a0d759d90286e71e08806fb1628022",
+        "record_id": "techv0-drive-047",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "correct",
+        "candidate_content_hash": "1c861809f9d3ac467a3ac8bba8a4ef1df4a9b64072c1aa0b774493d5bccedadf",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T22:24:53Z",
+        "decision_id": "0123e26d56e72c415eb1ffe9ae13a1e27cba51bd4e0e743ea6f5cfb5d28e5ff9",
+        "rationale_hash": "343b273a245ca8e89f5293abd4790034301240089bc6bbed470f8b8cb92b4610",
+        "record_id": "techv0-drive-002",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "e81459108a90fe5d0932644ae4e4069b35ff5d69e595de43304121053489272a",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "ed82849c27c2f34cba18e0e066a36a86a3abfc07ced4579d69921106bbb6acbd",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-069",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "c0802525b76957c1a505a7586f9c0d1865d19cfba08d468ff15d8e3d83bdea6e",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:49:05Z",
+        "decision_id": "7f6ba7b3e34bac19e3a6e4d6282df48412620b900128ad2ace2bcdc172a2be51",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-cv101-105",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "aee72db566c02ddecfcaac4db4a62061c9f7b03266cea6bd931ccfd6a692c151",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:49:52Z",
+        "decision_id": "d6150213b1892e6c8d0ad29c2ab0c5f9a2665a714954fc5b71110f9bd1c9b0de",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-cv101-003",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "54e8115e3743b2064aad77c4d5e28e3f08f1781b202078b7410c76054969fb48",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:50:20Z",
+        "decision_id": "a5d7eb1d701282c78cafaeee8053a25555ca2d859e16d331275c8316063250b8",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-cv101-129",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "ddf983779cb38240abf3e97a7eb5d7cd53333d22675e6494eefd7d05eaf91836",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T20:51:29Z",
+        "decision_id": "9230c76ce8b2c816ae76f7a9d2e7600fac41117c96b636174dea929894153978",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-drive-048",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "e4ece6edf9902c5d7d1ad47e840b46b972801e364557d13158b7962e9aa14a72",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:04:22Z",
+        "decision_id": "13cf6f4544e63a0525ae30687f080b2cebd9f988f0577e0f1dc6caefc59aa117",
+        "rationale_hash": "0f74a72b0c49f56319bb03a4ff6c2e25d08c2991e9dc1a9ff587e4c36276d587",
+        "record_id": "techv0-drive-003",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "09af1a6220279c8bb1055b0fe0841fd5ef4cfecc5d5e8fd54739a91ec789476d",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "85472db949fa0bfe9c0f6b1f4f31836596af95f256bce72bc5fb90c2eebb130b",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-070",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "d6acaf696bf0cb0fc1883be07d16e74462d49d65463b51c278613b59a19f4129",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "45eef26de48187c580f8af0904f0dc532b83ec12434ba64f6bcc0d3679084916",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-106",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "3598644edbded64a03ec183dbc9d2d4a61bf68921fa9bbbfcec6975de41192da",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "e59a21ef208dfccd00336b43f03f5afea2471295542db80feb210f4d86cae460",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-004",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "a62a38964b07ea4abea5d3435fd24855002dbd7e57020eda68ce97322d59d7c6",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "d8ceee267e6d8c950e0d6b769860d9242bc957795601319e91d6b6a47bc8141e",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-130",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "6ee3270d1261915f1cad99baf263b642d29e94642e17e6bac1d8558288b7a0bf",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "3f4760616258857a1d87218b0edfb6584b576924b30f19908062175087edf1a3",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-049",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "a8cf699db2e14e3fdac0bc76dfe483054e46e291026e5c7480ae3a469b806701",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "5c47f969fc3276e733cc8d6391b6a5b81e1397a7419102f0339c2406cce2157c",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-071",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "2774af508ffe0a20e40b2854429504fa60f0f2737271a72409d0388c8b462883",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "4aef8d981a15096a555095613497cd8cc950720cd9f3619e84e43ea9902fbbb3",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-107",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "afd006cc38eaa0409f40734c4c9381e2ae025fb969e3aafcc694bf1404414ef5",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "80bc3ae454e07436b9f856a1ded12c663bfbbe530407374f709849c91c0954f7",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-005",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "f76f937461a6462301260146ee301e13e4bbc4db720ccaf28c07ff37f2867387",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "283ce2caacf7c1d51c85abd2e8265453bf81afd9a5f79b4a8e70018386a3b71e",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-050",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "ea045bc3b552bccdeb4741856905d3c3c8b96d16acaccdf686aded3f83f53ba1",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "657314c9696b407f0a6e149a7376f0a48e462f0e17025778a8aa38a876866689",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-005",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0738e99ce1d4d53afe08d56985b0dd7603ebec5a28526d4be6afa12d91e16d3b",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "9990cc650c62d0fc1c605455d135dd4a055ea51951dd879a07bd22dce724a503",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-072",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0ca2460851a7ac9b40b2ae4f275faefc215054145018fd3ad7c29b53bfea947c",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "ce6806c97648df0fbca58cdcb3abcc3de0eb6added46591557bd10cc73f1a632",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-108",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "f7915117cd135da306dce18a2ffba2594dcd0c35458a25015f0e4efe3a015a45",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "4492af1d17325989016b958d9be028f0e7dea7b01a88025aaa456c3e57f724b8",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-051",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "eafa35d7b3a64e7fd41d89017966ca5f1348fc50cfd4cc664afa40db5bf79383",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "1fe8974ff05f54680a449d89de733de055986e6771aa83434666843800f1eb6a",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-006",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0d3cbe00cf45296ebf43b1bdcd6b5866fe6697211e0f48ca6a1615b46914b5c2",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "07d890290fcf22f7aad4956a860a1ceccd47b15d259d405a2a5c2f2e81d4526d",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-073",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "fdaea8ae4e8ac626bb360b5d926d180ea7282d83791fff352153df9802113955",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "8d197fc44742f34265939262b4cc30614488603389d5f4dd64b6e9fb79a9c974",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-109",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "eec65729bd0cfc7fed9978453b8c5be8dd46d858a2c384b1e8ecd768e2def34a",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "ab205c8e078b816aa537eeb311ec57d5bbee48e947626026946250f28b006365",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-drive-052",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "eb1fc81b9ccaa0cc0cd982e438229889cd546d6c3323106f108c8cb74b08ee47",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "818c67758aed342aebea9d3235a9ee107b2f7381e1aab6008a6d2206ab227c7f",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-007",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "bbe15b75e6e2351d0778beab64a6a78e4fec589d5ca91f30b46236159f1085cb",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "f3a13d56cddc885158ae91a5cd5c76dacc5f9adf1d4e3567abe8310c69a9af93",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-074",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "9b539c2e634f3f8d4d754ce0881c05874dc7368036652d70b0027d5a24ac9737",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "cc672aa4fc50cc3367354f31947cd8d3a8f8c0f7dbc341304a5c7c8f21201716",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-110",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "202d01168f1daefe635f3688ad7dd517a5cc96da6a2f24b1bfd544782a7271c7",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "53c964bc43f318052d5af6f5ae2d30d842f4f53e2732759d31da79b2bc51ecfe",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-drive-053",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "36e8838b42de93d7171c9416479bd79ecc0688956f66d386e5247f2512cb3a76",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "d3d3b27c8a3a959d4c1400362e8bd0eab9f7f6c87dec33ad282438d6c818a875",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-drive-008",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "7828db28072f5ce6903e22b615533710393b42a39c15dbd55f1d6e853cea8264",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "923eca6f0e63f6a62378a50a675e07b96c7ee5c130e895504b16f226699e1d44",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-075",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "371a902dd87a273adb17eba0eda6eeb34de5381017a2ed74283c73336a3afa12",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "14c0498b0c1c2bc2e0a6e9b4a087c5b76391601e99557db979d0077a1348e31c",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-111",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "f887ebb4aa8cc3592b888ced66c2be2a7009756715540742e0fe32bc3cd25aa3",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "7da2d9da31027b683eea6d56fe40e2135006ec41c0961477197e8f0cdfc6bc85",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-054",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "a234469bdb55bacb0c7fe84e376dcad8f88eb390453790beeaf83eb08b224baa",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "bf0dc320636345028b1488859df3f187d9735ad638a7633c61159a28985ad0dc",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-076",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "ff013bfe907d525ef4103f347d1c54cf9e6911730c7afd3ca7e5ed6b66ce2358",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "9d66972ad39a2114b100c162f4521dc3bf430e4bd9385b68f95eea58e4a6e3dd",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-112",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "2ef5b2f00a8ad20a91c2601d43feb6ba51a12db75223fa1b1ec970208947aafd",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "974b272ff720eaeb0de36b0c80531f6dcf2f3cd6f0dfa7abf9060213ae0d8c40",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-010",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "feff5fb2245cdaf5ca895c24e3e3b2fe5b6441a9c2a6d504521cbd6c9dff4ac7",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "8a93f91b7ee2d72a38e80b997d58c2792758abe604b462516df67fffb4a5418e",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-113",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "e9623a720a03d7e83363739c3cc17143cd58acca220ea520914cc366861529cf",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "9a9e71258833a99daeb15ca533006a0e4be8ad7ca842e1115adda1cdfd73aaa4",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-drive-056",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0539d6bbeee7ea31691e3d6490727e3121ac82f56c71605d2fe13274d7b4cd76",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "fc20576a2281f9a595db20efc162ad89076e82145be9bcfb5ac7ea9229174c23",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-drive-011",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0708d96a9b8228fa46c17aa6b6b3b482002495323f464e33260314db32399271",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "e3ee133362741932e21f367ca13ca44ee5ac55762e5bcb14f82101840448c3ba",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-078",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "741b93bd7def49fe3c317894b507c11d9cf421d87e3176d576721627af007700",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "966b0b9dc19b0a482987704af9d59c8c882af0f2eb36dcc56f466f1b550c0a38",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-114",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "d2af6fe8f86eacb7a8afcea9fe3fcc0a1eb7eeac0dca6d051aa23127108094bb",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "4097381f7b1c11c20ef9d3ff17d5ea42be4ea965ccb6f2007e50753e1368e423",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-057",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "262702a62fa9bdc11662628a38bb2f5f22e2dfd7a5f0344c1de25ef7cc7bedae",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "a63e6285e0ad1f0a5a9783ff0ec3b53cb442513edc58eb8572d3d64e32ceb3d6",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-079",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0a55c18d77e46153b9c38d5e379b880768b3732b9f6efc9c9fc9ac3622aa06d3",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "8bf511fe85d99af09d34b3f2cee05e340f26e9e446d1122ea0b0eb7d58b25aea",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-115",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "faf3a6a8cc28ac46d527028e628a8712f1afa3f1a832da4103aabfd202d26ccb",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "0759374de00f59b0f497e6374a0e3d3e1ac01a1d0c840a335edf158d6545a130",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-058",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "a282c27e5c874736d55511df8c752c20f0e5616b3e5d7936a003980aec7f02e5",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "34292cad765500a469090f8b74b56a6f879675923ea89e502800288377e4c730",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-080",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "cde5d14b262fb31035d15ce2ac5a0246882cce28a7ba920ff29c449a060e333f",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "e271da4d3c72b7c8b7db3c84c662c45f4254b1d73d2e79cd8a06d30819ce9e3a",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-116",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0c0e679ea27ab3e0e6106358dea1a7a1a3ca143eaf8d46d96bd4de1c8b6694e3",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "c73110c11c5507ad7fef43816d1d4860a5e701ae299c81ea1d82b899f790c1d2",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-drive-059",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "f05c63d234c1e2da08c198aa2014d7d6f179818a862aa51ecb88ec83a8c6a1d3",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "5e3402704f709df7532e00f5a1315c79c64a6aa450dd8046653b2f5d3b636870",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-081",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "240c89d454826972b88424f2099375d9808afb5dab127d116d941a3eb1555b05",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "f805fc312d8ce8386a5b3d5917ed7d447fb844184531eb19b86f2785d1ac0946",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-117",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "1e72f0778a5d7beb030dfced77251ee40ee5b04b41b9a753f1f99559da077c89",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "ed230367a550187ec35d908b7e05a90afcca9b05d14e18d402d654b6f11efdcc",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-060",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "c7e519edf3974710df022d9bae72ff3309794aec82128579a3f3d25dbc0f9680",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "6be0287bc9dff78c1e631075b0e9db305a65195bb59b356a249b036b9e6668b1",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-082",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "d6623c0a886c08a7f7d7cd6415e2300e2a96cd110ca9cd09f57ed6a5186e3d10",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "0c500e4c4a310d7d90280a8c4c9b3a1e030884b9682000fbca687be410456041",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-118",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "eda647e3eaabfba95be81750ff5e0119af40d0f66b6cca2c54bb902dbff2125f",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "349c84fc2fd7e88c07c6231b5cd825dbec0f205128fe69c403188c276ae3c776",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-061",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "6e03d77d2c02163d35d94cd2f3d4ce7af10515d3573196ab6fe75ec6ced412b4",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "65f2304d32768714cac0373cff98a939139863c9f6d5ed4a1429736b2ff21da8",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-083",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "7be318db62d2b9548500e3d2367fe5eb2728fbce0e176e99c436a0cebbf0f768",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:36:45Z",
+        "decision_id": "270ed86a8f65338b5e792a59bd1a4732a066863f5c5163f66e66bd8c5dbfff03",
+        "rationale_hash": "d8d1e2e444860fa58b24f03865418f29b18041cd06201b18ea7e91a89876d5f8",
+        "record_id": "techv0-cv101-119",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "739a9eb1113de55162d27ad00ebb7a9c3172fa251730590c716831cd5dca4979",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "0df2d787b7695656ab0ad1319ed33a992722218a412a73e709a493bf8fcd501e",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-062",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "35f3a379d5763f4cc64063f8e7ded6527474e4ba569092a9e9fa783428b8a256",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "bdc1225177fc768efc7e1b388c93c817e42101843af0a47415a7c22a02c18c33",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-017",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "247ab0c0554a6f72b52e704cdceb4ab41c27a87b073807c7df8b5bd593046959",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "38fefd5a71a03fb824e08cdcf6ad68183bebd2483003d0e11791896c84fb57cd",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-084",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "48c8665964350acf0ce5cf2358e244edb5d57b19484b6abc476026654553c87e",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "af98667e9ccced3b92c293be5dd51fccfbba4dcf40675531c0967f220ef4ee6c",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-120",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "3b25f93851de89c4805b468b60c2da66a16c27f5aa230d8b503ecf43b45b989e",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "f014ab1d9c918c0c283702407bcf1f15bd8574d2f3c25338c3d9d3ff994b95ad",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-063",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "eafa35d7b3a64e7fd41d89017966ca5f1348fc50cfd4cc664afa40db5bf79383",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "39cf4e1a144df99c1b8a2669d8567762c143ff13efa29597e61aca7d9f348f5c",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-018",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "42fb27d991686fd102712f0f030e441f0e521eef9af9fc4c604f8f591d4bb9b9",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "7e9e85810888e9b63a1a1f8ccc7ce3b8a6bd1d4ce20dceef4257a969eab5c095",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-085",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "62eb9135c3065f45893655320e70bbbbe062dfe00c9abe9f295c055be9d5c0a8",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "8872e3751a9010a63c758da6392c0d02034accf2ea8eeee5769cce08e71e0247",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-121",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "8dbb5a83628da6fba3e58fb12b9eb2fb2000cad8df5ad76608c099a332251c1e",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "5d0b46946fd3f68a8c51111c786f6f4e866d1f02c1ee063a077204f70e26f2c1",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-064",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "eb1fc81b9ccaa0cc0cd982e438229889cd546d6c3323106f108c8cb74b08ee47",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "65794e1357b1203e9b117b8603ce09adf532cfb05a21a9fc00e5f3ca1834ed6d",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-019",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "a1286e69ac6963750dfc401bde935c8a9e0aee80effcf7e562984ea577d9c641",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "7b8604a25678cee62da30de6478c8f5b30e22c17dc8b36fb6e95358bc33e5f31",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-086",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "aad66036fcd4c32aca1abc129fb864d8210fe6b5b349e2b2cfaa8ad0ed52bc0c",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "8b5f50fe5f477e484c35b6797c6c01ef067dfe6658f8b78d83cb4c5a6a1bcaef",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-122",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "1164abb5e4701eacef87ce976f2d55baee53d6515de928a1f448e24808062e58",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "6283e02f26c468dcc908fdec80c5f5a0ed7f9537a2ea9c041985302d95024174",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-065",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "36e8838b42de93d7171c9416479bd79ecc0688956f66d386e5247f2512cb3a76",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "60957effeec62e36a7289bfd7a3588b419f4502f6ccbde3845d1b270759f45ea",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-drive-020",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "9bc8baa4c2ddcfdc47383a1ef334bd551b46cc2bfe65dc79df4d39cd5373e7c4",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "ee1a5e3c4ff272d1e9b447098c4e3ffe777cdb0a602499ba8cad2eeedf872b8f",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-087",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "89d43b7504b332666ec1696a80260b29e37ab4938edeacfe52f7b4952330202d",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "2386c4babb52f6b1e07e965acef38cd7a433dadf484505c995e54c38e1aa9a68",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-123",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "45db6a38a5e60fc80ab1b9d24ded53bdfe95e85a5408dc17ece53dc7e707e35e",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "3ba0d4056c624df37679055b6d64c0ffa11954e83bfac4441f4b8f8d74d62c4e",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-066",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "15478bf872010641bece9e0b325454de2fca62ae6ef2dd8c096b7965e8b8247e",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "4e707208c79fc80cf41032d8a48345ddea8f802ebe5260e8eeff84ea16d97012",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-088",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "e2a8c3a7654a3f6a779317c0251141dbd9602daf90c3403f46f4e9bf347b1fad",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:42Z",
+        "decision_id": "d279d6cc9d624e67a00abe5a62d94d358d76fa3c61c30360dcdcb9f713bccb64",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-124",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "885fe213379fec1e07b0ea092a6d5763239c5bf834c4cbd6baa2dbdb384b0d62",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "893758c92c00edfeed278d62ac896fd83f51668f230ed0c2a0977895e92953e5",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-067",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "d44cb5085b75774f237367a6a881e64945f5da8197efdc02d6f8bf63ef4a23b9",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "bd021db6466f3ac6c3881bdd9d36efedde695aefa32bfd267152130226c95cb3",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-089",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "355d6160505c0f921354c4b1dbae8d6d1334de7f8f1eabae0da7f6692906fd69",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "8e44cd63dc86b59751878164705f9f41d99df7699447d814dae187f3348ee890",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-125",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "867997ae557841425dee6796a40871e786573cbc80bec985f90d6ef16cf4a15b",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "672bc720892d7a26d67c861879869b0ba2e042148ceba2b694db2ba7e8167456",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-068",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "cb984de59ded6fa2cb8b5465e23de90c457532017d61d108eb32dd421cda1c9b",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "ecfdb728644ea7c419b27de4fccb6eb858db962986cad2ca98ce785069ac31fc",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-090",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "3fa1fcc3e94230e5a9078733df699da75035f01ed2f6031eeb05e6d9dc74ebd3",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "092fe056c4b730b02af7b09d5e8bcfc3034c37dad9a934e266abdacafba05834",
+        "rationale_hash": "eeafe796c2e77b064cb54fd9053e53b47f04bb2facfa0fc182a6dd683489aeb2",
+        "record_id": "techv0-cv101-126",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "15e2c47e305dc01abc3107089075d1522d8e6ac662d7e924e1428cdf574971f0",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "e5c956a66920a71148a12353c076b2152eab0210ed17a71d3c67c96915a7a26d",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-069",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "83bd15e35ddb09b5f48776502d577763a98dd5cc4ae417cd197230d33210ad55",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "435fa4427676a5419ba82fe92145d77aa3b9ec93ef016eb611b7fcb65af521af",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-091",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "652b4cb0ef4d3a48a49b7aba6d64ff4c85fd3d6806a336cc108746fc363346f5",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "55bb9904f0f849f54ec5a5e781b3039e77143f88ba2d69b37ce85bcf4036d4de",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-drive-070",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "5fb8eb61a483e5c9087a8cddf044b9d646db7083dca7e3676da59b456387e272",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "c8148a437f3007e5d25c60bdc4de85aaa66b5d7dc66cda751ec8a597aa8841cc",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-092",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "7336c4b34215c7e23da082c3456dd8ac7a38dbe4560d45f982be5b6233cb3ac7",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "632c77924070e49514a46119c455f53aa33901e52be81a9166ae8694a711f986",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-093",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "338f9c471a3ca1b0a7a32098995e5557e213634c4f42a4be986d03e7c9d35a14",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "16dd3459e987ebdd006a77be58c89c7afa0ff40a9a18195b95487e035fc64937",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-094",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "6840e2823abd17b3067c82baefd451588069094a7d449a113bb0894811414ec2",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "c8faa4acc8facd69ed8518094c89aa2d3d58f007dc216283756fe8d8b15aefa7",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-095",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "8353b2ba03f52fada2309bce35ca90c4dbc05f51edf0d349fe0ab0cf63898fe7",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "590163c84f253934a2579b257f9a5cb7a13e94900ec368ff75108d2af03c0f21",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-096",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "9a824bcc6e24e3a5b2a15a1a3af7ebad46a68d4790ec54ac7b3b90d63d7cf842",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "0e17276ee1598e3fc134815bf7692bbe7695da71e251cee84f921ddcef928731",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-097",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "da55f6bfa1addd7fed602b61d40ed8f3a79be903b0168a07e684aa60a9e9aa06",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "31d4f053c6e10a99fce76cf608f72a55a604b071dac7d738a9fd1bf4868dce96",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-098",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "bc103ef2213c5bc656c4c72478eaab022d33bf974ec7f235285f915f1bfbed3c",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "579ca78db0405362dbf6bfa51f44aa8e089e1e2b76e47f3dbef9f490986308a7",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-099",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "0c3a8266b1566e9f729375fd221a531057290d9e0973403864b418346c64834e",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "52b6dc0e2f970028a8078b6e3a9eba9b4c7ad3da4a351ec6134276db965ad2b2",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-100",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "84ea512c7bb773eb37fc6d69253143c2a31382a05310a8aa9a4c8365b2a55b76",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "4c7fd4f02c3cb99d63ae40d96eee67cab5daa8bec8877290f23a3d848ad40fac",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-101",
+        "reviewer_id": "mike@cranesync.com"
+      },
+      {
+        "action": "approve",
+        "candidate_content_hash": "41aa5583510a5f73db58b9b0d0afcb5d2476e5bc9c4d2128eea18baad10e89e9",
+        "candidate_manifest_sha256": "dd236c86cce8317c21d2fcb35fd554f070b84ac5172565c523984298eae2c71b",
+        "decided_at": "2026-07-26T21:26:43Z",
+        "decision_id": "5fc965bbee5113570d62dd21119ff3afaecf882ba3a5082e9a2fbe183b24d9c0",
+        "rationale_hash": "4fca872c2257af2c5239a9467ff62a0d9ac37d381a4891de96a04f0390180741",
+        "record_id": "techv0-cv101-102",
+        "reviewer_id": "mike@cranesync.com"
+      }
+    ],
     "eligibility_delta": {
-      "delta": 0,
-      "eligible_after": 0,
+      "delta": 119,
+      "eligible_after": 119,
       "eligible_before": 0
     },
-    "held_out_records": [],
+    "held_out_records": [
+      {
+        "record_id": "techv0-cv101-001"
+      }
+    ],
     "no_action_proof": {
       "authorization_consumed": false,
       "deployment_occurred": false,
@@ -69,19 +1285,12 @@
       "spend_occurred": false,
       "upload_occurred": false
     },
-    "paid_gate_blocking": [
-      "min_records",
-      "min_lineages",
-      "min_valued_interactions",
-      "min_safety_sensitive",
-      "trainable_source_representation",
-      "model_support_confirmed"
-    ],
-    "paid_gate_passed": false,
-    "paid_gate_verdict": "PAID_GATE_BLOCKED",
+    "paid_gate_blocking": [],
+    "paid_gate_passed": true,
+    "paid_gate_verdict": "PAID_GATE_PASS",
     "policy": "Review decisions are append-only events. Exact duplicate events are idempotent; changed decisions for an existing record id are rejected. Only approve/correct decisions set approved_by and gold_status, and the reviewed record must still pass SourceCandidate/DatasetRecord/assemble_dataset_v0.",
     "rejected_records": [],
-    "reviewed_manifest_sha256": "cfd060b6846643f200f6bb0f383502f84692b10b8137bdb36d8dd9047742c1f1",
+    "reviewed_manifest_sha256": "50adbf79c3edce269a6c9ba6e3e08bbc677769e45750e546bb1be70f45d37023",
     "schema": "factorylm.technician-dataset.review-decision-report.v1"
   },
   "schema": "factorylm.technician-dataset.build-manifest.v1"
