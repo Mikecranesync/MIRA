@@ -1,3 +1,13 @@
+### v3.217.0 (2026-07-26) - feat(hub): ingest text/markdown + .txt manual uploads (#2277)
+
+The hub upload allowlist accepted only PDF + images; a maintenance **procedure** is often a plain `.md`/`.txt` and technicians reasonably try to upload those. Now they ingest through the **same citable v2 path** as PDFs.
+
+- `SUPPORTED_MIMES` gains `text/markdown` + `text/plain`; `extGuess` maps `.md`/`.markdown`/`.txt`; `inferKindFromMime` already routes text as a document.
+- `isMimeCompatible` accepts a declared `text/*` MIME when the magic-byte sniff is null (text has no signature) and still **rejects a binary-in-disguise** text upload (a `.txt` starting with `%PDF-`/PNG bytes).
+- New `writeTextChunksForNode` sibling to `writePdfChunksForNode`: the bytes ARE the text (no `unpdf` extraction, no PDF concurrency slot). Both now share a `writeChunkRowsForNode` core, so text lands the identical v2 `knowledge_entries` rows — `source_type='node_attachment'`, `ingest_route='v2'`, **`is_private=true`** (per-tenant, never leaks — #1833 write law), embed-on-write — and NodeChat can cite it. `runLocalIngest` routes `document` + text through it, falling back to the legacy OW path on error like the PDF door.
+
+Tests: `text-upload-allowlist.test.ts` (6) + `node-knowledge-ingest-text.test.ts` (1, mocks the DB — asserts decoded text → node_attachment chunks, is_private=true, unpdf never called). Existing PDF node-ingest suite still green (refactor-safe). Verified: eslint clean, tsc zero errors in changed files, 14/14 lib tests.
+
 ### v3.216.3 (2026-07-26) - fix(rag): widen product-search model-suffix exclusion (#2914)
 
 Sub-fix 3 of #2211 (deferred from PR #2913 because it changes retrieval SQL and needed Neon-dialect verification on staging).
