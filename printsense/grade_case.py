@@ -31,7 +31,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from . import gates, grader
+from . import designation_metrics, gates, grader
 
 # Release-tier score thresholds (PRD §8.1).
 _AUTO_IMPORT_MIN = 90
@@ -52,6 +52,7 @@ ENVELOPE_KEYS = (
     "import_blocking_failures",
     "gate_results",
     "metric_results",
+    "designation_metrics",
     "evidence",
 )
 
@@ -107,6 +108,9 @@ def grade_case(
         "import_blocking_failures": [],
         "gate_results": {},
         "metric_results": {},
+        # Always present and always explicit about whether a comparison happened
+        # — an empty metric_results was previously read downstream as "0 errors".
+        "designation_metrics": designation_metrics.measure(graph, rubric),
         "evidence": [],
     }
 
