@@ -1,3 +1,40 @@
+# Hot Cache — 2026-07-26 (later) — Prod bot outage diagnosed + fixed + follow-ups shipped (v3.215.1 → v3.216.2)
+
+The v3.214.0 deploy (from the session below) took the prod Telegram/Slack bot DOWN. Diagnosed the
+real cause, shipped the fix, then closed two follow-ups it surfaced — all verified live, not asserted.
+
+- **Root cause was NOT the "slow model" the handoff blamed.** Symptom: prod bot silent (30s
+  `PROCESS_TIMEOUT`); staging "MIRA ran into an unexpected problem" + KB-gap — for a plain
+  `PowerFlex 525 showing F004`. Real cause: a stuck `ELECTRICAL_PRINT` session (from prior PrintSense
+  photo testing) trapped EVERY later text turn — the guard in `Supervisor.process()`
+  (`mira-bots/shared/engine.py`) dispatched on `state=="ELECTRICAL_PRINT"` alone, no intent check.
+  Downstream, same trap: prod's print/vision path is Together `MiniMaxAI/MiniMax-M3` (~77s → timeout);
+  staging's print endpoint is `disabled://` → httpx crash. **MiniMax-M3 is the PrintSense VISION
+  model (ADR-0031), not the diagnose cascade — the "slow-model routing" was a red herring.**
+  Rollback would NOT have fixed it (the guard was identical in v3.182.0). Details: memory
+  `project_electrical_print_state_trap`.
+- **#2921 (v3.215.1) — the fix.** `_PRINT_STATE_EXIT_INTENTS = {diagnose_equipment,
+  greeting_or_chitchat}` releases a stale print state to IDLE; genuine follow-ups
+  (`answer_question`/`continue_current`) still stay. Regression test
+  `mira-bots/tests/test_engine_print_state_exit.py`. **Per-session unblock = `/new`**
+  (`engine.reset(chat_id)`) — used to restore Mike's live bot with no deploy. Verified live via a
+  round-trip after `/new`.
+- **#2922 + #2923 (v3.216.2, PR #2929) — follow-ups.** (a) `PrintWorker` now fails SOFT on a
+  `disabled://` endpoint (graceful notice, no crash). (b) Grew into a **staging schema-drift
+  reconciliation**: `migration-verify` runs RLS integration tests against the persistent staging
+  Neon branch, which surfaced §8 drift in `decision_traces` (superseded shape, engine's inserts
+  silently dropped) AND `flaky_input_signals` (wholesale-different shape). Migration
+  `063_reconcile_staging_schema_drift.sql` fixes both: additive for decision_traces, guarded
+  drop+recreate to canonical 034 for flaky. **Prod is canonical (0 drift warnings) → 063 is a
+  verified no-op there**; applied to prod cleanly. Details: memory `project_staging_migration_drift`.
+- **Ops gotchas learned (in memory):** `apply-migrations.yml migrations=NNN` globs `NNN_*.sql` — a
+  bare number pulls in duplicate-prefix files (`063` → also `063_visual_sessions.sql`), and explicit
+  lists don't auto-skip applied files. Target one file with a stem prefix (`063_reconcile`). And
+  `gh pr merge --delete-branch` fails when `main` is checked out in another worktree — merge plain,
+  then `git push origin --delete`.
+
+---
+
 # Hot Cache — 2026-07-26 — Wire-designation shipped + deploy-freeze root-caused + fleet hardening + LoRA PRs landed (v3.214.0→v3.215.0)
 
 FIVE PRs merged and LIVE in prod, each proven by watching the real chain run. The through-line: a
