@@ -413,9 +413,13 @@ approved:
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/node-knowledge-ingest.ts:161":
+  "mira-hub/src/lib/node-knowledge-ingest.ts:178":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "embedPendingNodeChunks embed-on-write pass — reads back ONLY the rows it
+      just wrote for THIS upload (scoped by tenant_id + source_url = node-doc/<uploadId>/…
+      + source_type='node_attachment' + embedding IS NULL) to fill their embeddings. Not a
+      user-facing corpus read, so the hybrid OEM filter (is_private=false OR …) does not
+      apply; the writer must only ever touch its own tenant's freshly-inserted chunks."
     query_snippet: |
       `SELECT id::text, content FROM knowledge_entries
                   WHERE tenant_id = $1 AND source_url = $2
