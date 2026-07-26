@@ -12,6 +12,8 @@ about MEANING, not wording: each checks a rule survives, not a sentence.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 pytest.importorskip("pydantic")
@@ -109,6 +111,38 @@ def test_homoglyphs_declared_non_interchangeable():
     flat = " ".join(SYSTEM.split())
     assert "letters and digits are NOT interchangeable" in flat
     assert "DIFFERENT characters" in flat
+
+
+def test_the_both_members_exemplar_actually_contains_both_members():
+    """The exemplar must demonstrate what its own sentence claims.
+
+    It read "`P9DI900-0` holds letter-`I`, digit-`1` and digit-`0` at once" — but
+    `P9DI900-0` contains no `1` anywhere. A prompt that names a character its own
+    example does not contain invites the model to resolve the contradiction
+    itself, and the most available resolution is that the `I` glyph doubles as
+    the digit `1` — which is the misread being corrected. Asserting the sentence
+    is present is not enough; assert it is TRUE.
+    """
+    flat = " ".join(SYSTEM.split())
+    m = re.search(
+        r"both members of a pair — `([^`]+)` holds ((?:letter|digit)-`.`(?:,| and )?\s*)+",
+        flat,
+    )
+    assert m, "the both-members-of-a-pair exemplar sentence is missing"
+    exemplar = m.group(1)
+    named = re.findall(r"(?:letter|digit)-`(.)`", m.group(0))
+    assert named, "the sentence names no characters"
+    for ch in named:
+        assert ch in exemplar, (
+            f"the exemplar `{exemplar}` does not contain `{ch}`, "
+            f"which its own sentence claims it holds"
+        )
+    # The whole point of the sentence is a PAIR, so the exemplar must carry both
+    # sides of at least one.
+    assert any(
+        letter in exemplar and digit in exemplar
+        for letter, digit in (("I", "1"), ("O", "0"), ("S", "5"), ("B", "8"), ("Z", "2"))
+    ), f"`{exemplar}` holds no complete homoglyph pair, so it demonstrates nothing"
 
 
 def test_letter_runs_must_not_be_dropped():

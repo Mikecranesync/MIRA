@@ -250,7 +250,7 @@ _SYSTEM = (
     "`S`/`5`, `B`/`8`, `Z`/`2` are DIFFERENT characters. Transcribe the glyph you "
     "actually see; never swap one for the other to make a tag look more "
     "number-like or more word-like. One designation may legitimately contain "
-    "both members of a pair — `P9DI900-0` holds letter-`I`, digit-`1` and "
+    "both members of a pair — `P9DI910-0` holds letter-`I`, digit-`1` and "
     "digit-`0` at once.\n"
     "- Never DROP or MERGE a character from a letter run. The PLC I/O "
     "abbreviations `DI` / `DO` / `AI` / `AO` (digital/analog in/out) keep BOTH "
