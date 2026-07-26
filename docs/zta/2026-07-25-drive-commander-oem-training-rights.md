@@ -52,10 +52,14 @@ model to be measurable at all. Do not flip this source.
 
 ## Rights basis
 
-> **REQUIRED — to be completed in Mike's own words before this dataset is used outside
-> FactoryLM, published, or shipped to a customer.**
+> **Completed 2026-07-26 in Mike's own words** (proposed answers assembled from his replies,
+> shown back to him verbatim, and inserted on his explicit "insert it" confirmation):
 >
-> `<basis pending>`
+> Information seeks to be free. All people use these manuals freely; I am simply making it
+> easier for them to do so. This basis covers the short manufacturer-authored strings that
+> appear verbatim in the extracted facts. This grant is cleared for external use. The same
+> basis applies to any manual we decide to train on, with each document added to the grant
+> list explicitly at the time we decide.
 
 The agent preparing this record did **not** author a legal justification and must not. What
 is recorded factually:
