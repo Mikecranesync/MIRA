@@ -1,10 +1,13 @@
 # RAG Grounding — Targeted Staging Replay (PR #2913 / v3.213.1)
 
-**Status: PARTIAL — extraction rows (A/B) executed offline 2026-07-26; retrieval-number rows
-(C/D/E/F) still require the deployed staging chat path.** The #2913/#2914 fixes are already
-**live on prod** (v3.213.1 → current ≥v3.216.3) and cleared the generic `staging-gate` +
-offline tests at merge; this targeted replay is the belt-and-suspenders behavioural confirmation.
-See "Executed results" below.
+**Status: SUBSTANTIALLY COMPLETE — sets A/B/C/D/E verified 2026-07-26; only F (Nemotron LLM
+retry) still needs live inference.** Sets A/B ran offline against `_extract_fault_codes`; sets
+C/D/E ran against the **production retrieval layer** (`recall_knowledge` raw, no harness) on
+**staging Neon** with real `nomic-embed-text` embeddings (Charlie Ollama), and the real
+resolver + `_confident_query_vendor` gate — the method the `retrieval-diagnostics` skill
+mandates (diagnose the production path, raw). The #2913/#2914 fixes are already **live on prod**
+(v3.213.1 → current ≥v3.216.3) and cleared the generic `staging-gate` + offline tests at merge;
+this targeted replay is the belt-and-suspenders behavioural confirmation. See "Executed results".
 
 This is the *targeted* staging validation the review (Finding 6)
 requires before deploy. The generic `staging-gate` CI (a broad conversation suite) does
@@ -67,9 +70,31 @@ half (does an extracted code fetch its docs) needs staging.
   "Risk / KNOWN TRADE-OFF"), not a regression — real technician phrasing carries a context
   word. Within the ≤5% acceptance for that specific case.
 
-Sets **C/D/E/F remain OPEN**: they need real corpus + embeddings + the rag_worker/engine
-retrieval path, i.e. the deployed staging chat path (`@Mira_stagong_bot` or staging
-mira-pipeline `/v1/chat/completions`). Not runnable from an offline Bravo session.
+**Sets C/D/E — production retrieval layer (run 2026-07-26 against staging Neon; embeddings from
+Charlie `nomic-embed-text` 768-dim; `recall_knowledge` raw + real resolver).** Driver:
+`/tmp/rag_replay_driver.py` (recall) + inline resolver check; corpus confirmed present
+(PowerFlex 525 = 7547 embedded chunks, Yaskawa GA500 = 4582).
+
+- **Set E — multi-turn equipment context (#2209): PASS.** Bare turn-2 `"I haven't meggered it
+  yet"` → 10 chunks but **all `bm25`, mostly `?`-manufacturer junk** (0 equipment-relevant — the
+  ~34% ungrounded case). The engine-#2209-enriched query `"Rockwell PowerFlex 525 F004 I haven't
+  meggered it yet"` → **10/10 Rockwell PowerFlex 525** chunks via `product`+`vector` streams (the
+  correct manual). Enrichment converts noise into the right equipment docs.
+- **Set D — stranger-model product rerank (#2211): PASS.** `"Yaskawa GA500 overvoltage fault"`
+  with **no** hint → GA500 via `vector`/`like` only (no product stream). With
+  `product_hint="GA500"` (a model outside `_PRODUCT_NAME_RE`) → the **`product` stream fires**
+  (GA500 p116 now `product`+`vector`). The product-hint fallback activates for a stranger model.
+- **Set C — low-confidence vendor collisions (#2211): PASS.** Real offline resolver +
+  `_confident_query_vendor` gate: `"delta pressure is high"`→Delta Electronics@0.5,
+  `"AB testing procedure"`→Rockwell@0.5, `"SEW this wire label…"`→SEW-Eurodrive@0.5. All three
+  resolve a real vendor alias at **0.5 < 0.7**, so the gate returns `None` → **0 cross-vendor
+  full-suppressions**. (Suppression is a rag_worker-layer gate, not `recall_knowledge`.)
+
+**Set F (Nemotron LLM retry) remains OPEN** — it needs the live inference rewrite path
+(`NEMOTRON_ENABLED=1`). The enrichment-into-retry (the engine passes the *enriched* query to the
+self-critique rewrite at `engine.py:~3879`) is unit-covered by
+`mira-bots/tests/test_multiturn_context_e2e.py`; the coherence/no-duplicate-prefix behaviour is
+the only row not yet exercised end-to-end.
 
 ## Metrics — fill from the run
 | Metric | Before (main) | After (PR #2913) | Acceptance | Result |
@@ -77,11 +102,11 @@ mira-pipeline `/v1/chat/completions`). Not runnable from an offline Bravo sessio
 | True-code recall (set A) | | 5/8 (context forms 5/5) | no regression | ✅ (offline 2026-07-26) |
 | False-code extraction rate (set B) | | 0/6 | **0** named adversarial false positives | ✅ (offline 2026-07-26) |
 | Terse bare-code recall (`F0004` alone) | | 0/3 bare (by design) | **≤ 5%** regression (documented trade-off) | ✅ intended trade-off |
-| Zero-chunk rate (set E, turn 2) | | | multi-turn returns >0 chunks | ⏳ needs staging |
-| Cross-vendor full-suppression < 0.7 conf (set C) | | | **0** | ⏳ needs staging |
-| Stranger-model product-stream activation (set D) | | | activates | ⏳ needs staging |
-| Duplicate-context rate (set F) | | | **0** duplicated prefixes | ⏳ needs staging |
-| Nemotron retry success (set F) | | | coherent, context-preserving | ⏳ needs staging |
+| Equipment-relevant chunks (set E, turn 2) | bare 0/10 (bm25 junk) | enriched 10/10 PF525 (product+vector) | multi-turn returns relevant chunks | ✅ (staging recall 2026-07-26) |
+| Cross-vendor full-suppression < 0.7 conf (set C) | | 0/3 (all @0.5 → gate None) | **0** | ✅ (resolver+gate 2026-07-26) |
+| Stranger-model product-stream activation (set D) | no-hint: no product stream | product_hint=GA500: product stream fires | activates | ✅ (staging recall 2026-07-26) |
+| Duplicate-context rate (set F) | | | **0** duplicated prefixes | ⏳ needs live inference (unit-covered) |
+| Nemotron retry success (set F) | | | coherent, context-preserving | ⏳ needs live inference (unit-covered) |
 
 **Acceptance to clear the gate:** 0 named adversarial false positives · ≤5% terse-code
 recall regression · 0 cross-vendor full-suppression below 0.7 · 100% equipment-context
