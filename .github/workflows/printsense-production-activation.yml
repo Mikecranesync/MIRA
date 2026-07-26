@@ -29,6 +29,10 @@ permissions:
   actions: read
   contents: read
   issues: write
+  # `gh pr comment` issues the GraphQL `addComment` mutation against a
+  # PullRequest, which requires `pull-requests: write` — `issues: write` alone
+  # is NOT sufficient and fails with "Resource not accessible by integration".
+  pull-requests: write
 
 env:
   ACTIVATION_PR: "2903"
@@ -169,6 +173,14 @@ jobs:
 
       - name: Report activation success
         if: ${{ success() }}
+        # Reporting must never decide the verdict. This step failing (a token
+        # permission, a GitHub outage, a deleted PR) previously flipped a fully
+        # verified activation to `failure`, which then ran the failure reporter,
+        # which posted "did not complete all required provider, OCR,
+        # container-health, and live-vision checks" — of an activation whose
+        # every check had passed. The fail-closed guarantee lives in the
+        # verification steps above, and they still fail hard.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -194,6 +206,10 @@ jobs:
 
       - name: Report activation failure
         if: ${{ failure() }}
+        # Same reasoning: a real activation failure must stay visible as a failed
+        # run even if the comment cannot be posted. Without this, an unpostable
+        # comment masks the reason in noise.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

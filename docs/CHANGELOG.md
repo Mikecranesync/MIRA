@@ -1,3 +1,14 @@
+### v3.214.1 (2026-07-26) - fix(ci): PrintSense production activation reported failure on a successful activation
+
+`PrintSense Production Activation` has been failing on every run since it started firing, while the activation it performs actually succeeded. The consequence was not cosmetic: a red "production activation failed" is a reasonable thing to react to, and auto-deploy (`Deploy to VPS`) was manually disabled somewhere between 00:54 and 03:01 on 2026-07-26 — after which merges to `main` landed and tagged but never shipped.
+
+- **The verdict was decided by a notification.** Every substantive step passed — `Verify source PR passed Staging Gate`, `Apply production profile and verify live`, `Record rollback control`. Only `Report activation success` failed, with `GraphQL: Resource not accessible by integration (addComment)`. That flipped the job to `failure`, which ran `Report activation failure` (`if: failure()`), which tried to post — and also failed. Job result: failure.
+- **The posted message was false.** The failure comment reads "did not complete all required provider, OCR, container-health, and live-vision checks" — asserted of a run in which all of those passed. Anyone reading the notification rather than the step list would conclude production activation was broken.
+- **Root cause: a missing permission.** `permissions:` granted `issues: write`, but `gh pr comment` issues the GraphQL `addComment` mutation against a PullRequest, which requires `pull-requests: write`. Added.
+- **Structural fix: reporting can no longer decide the verdict.** Both reporting steps are now `continue-on-error: true`. The fail-closed guarantee lives in the verification steps, which still fail hard — a real activation failure remains a failed run. What is removed is the ability of an unpostable comment to invent one, or to mask one.
+
+Found while investigating why a merged, tagged `v3.214.0` had not reached production.
+
 ### v3.214.0 (2026-07-25) - fix(printsense): exact wire designations, honest verification trust
 
 Fixes a systematic conductor-designation misread and the verification rule that would have certified it. Measured on a private acceptance corpus: 16 of 16 PLC I/O wire numbers lost a character (`P9DI900-0` extracted as `P9D900-0`). A designation missing one character still looks plausible to a judge but is unsearchable for a technician tracing a wire.
