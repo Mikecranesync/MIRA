@@ -1,3 +1,17 @@
+### v3.219.0 (2026-07-26) - feat(ontology): evidence-module fixture coverage (ADR-0032 Phase 1)
+
+Phase 1 of the ADR-0032 §8 follow-up: the **evidence** module — the keystone, and the "an AI approves its own work" class of rules — is now pinned by fixtures. Shape coverage **1/42 → 11/42**.
+
+Ten shapes, each with a valid/invalid pair (20 new fixtures): R9 approved-assertion evidence, R9b citation completeness, R10a inference-cannot-self-approve, R10b approver≠proposer, R10c machine_verified≠verified, R10d provenance-tier≠approval, R14a/b/c supersession + invalidation, and Assertion well-formedness. Every invalid fixture names the shape it must trip; the validator fails it if that specific shape stays silent, so "some SHACL violation occurred" is never sufficient.
+
+**Isolation audited, not assumed.** 8 of 10 invalid fixtures trip exactly one shape. The two that co-fire (R10a, R10d) do so because they are mathematically inseparable from R9 — both require `verified` with no approving Technician, which is precisely R9's violation condition — and that is documented in each fixture. The audit also caught one of our own fixture comments being wrong: R10a originally also tripped R10b because it reused a single agent for propose+approve. Fixed by giving it two *distinct* SoftwareAgents, which makes it a sharper test anyway — a second model rubber-stamping the first is still not human approval.
+
+**ADR-0032 correction.** The ADR claimed the blank-node `sh:sourceShape` attribution bug affected "~36 of the 42 shapes." That was an estimate and it was wrong. Measured: **17 of 42** — the shapes declaring `sh:property` and no `sh:sparql`. The 19 `sh:sparql` shapes were never affected (pyshacl attributes SPARQL constraints to the named shape directly), and 6 more use node-level constraints. Confirmed by re-running every invalid fixture under the pre-fix logic.
+
+New `tests/test_ontology_attribution.py` (11 tests) locks the fix down, including the `sh:or` RDF-list-cell path that no fixture exercises yet, doubly-nested `sh:property`→`sh:node`→`sh:property`, cycle-safety, and an anti-vacuity test proving a wrong expectation is still rejected. Wired into CI (`Ontology validation (ADR-0032)`) — offline, no paid calls, no DB.
+
+Verified: 28/28 validator checks (1 informational skip), 11/11 tests, pyright clean on changed files, ruff clean, actionlint clean, `git diff --check` clean.
+
 ### v3.218.0 (2026-07-26) - feat(ontology): OWL/SHACL foundation for MIRA's domain rules (ADR-0032)
 
 MIRA's cross-cutting domain rules — a fault code is meaningless without its drive-family scope, an inferred assertion can't self-approve, a PrintSense observation can't become a verified physical asset without a human step, a live claim needs fresh telemetry not a stale command bit — existed only as scattered docstrings, CHECK constraints, and convention. Nothing let a reviewer or CI ask "does this violate the fault-code-scope rule?" in one place. This lands the layer that can.
