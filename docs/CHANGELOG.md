@@ -2161,3 +2161,6 @@ For current build state, see `CLAUDE.md` in project root.
 
 ## 3.217.2
 - fix(finetune): thread optional batch_size through the canonical fine-tune request + Together provider (Together resolved a zero default batch size for Qwen/Qwen3.5-9B — "HTTP 400: batch size is zero"); omitted batch_size keeps prior hashes byte-stable
+
+## 3.219.1
+- fix(providers): Together Dedicated Endpoints v2 deployment lifecycle (together_v2.py) — v1 endpoints API retired by Together; adds project/endpoint/deployment create, PATCH-to-zero stop with etag+transient retries, observed-STOPPED verification, append-only lease ledger with crash recovery (cleanup_orphaned_v2_deployments), env-only trusted verifier (no injection), budget precheck before consume. 13 hermetic teardown tests mirror the v1 suite. No live calls.
