@@ -152,13 +152,34 @@ every shape), and invalid fixtures (every fixture under `ontology/fixtures/inval
 the *specific* shape(s) named in its `# EXPECT-VIOLATION:` header — proving the rule is actually
 enforced, not merely written).
 
-The fixture directories don't exist yet. Building them is 42 SHACL shapes' worth of fixture
-authoring and pyshacl debugging (see the shape list in `ontology/shapes/*.shacl.ttl`) — a phase of
-its own, tracked as a follow-up, not squeezed into the foundation PR. Until then, the validator
-treats a **missing** `fixtures/valid/` or `fixtures/invalid/` directory as a deliberate `SKIP`
-(exit 0), not a failure — so wiring this validator into CI today doesn't go red for work not yet
-started. An **empty-but-present** fixture directory still fails: once the phase begins, an empty
-directory is a regression, not an absence.
+This PR ships **one seed fixture pair** (`fixtures/valid/drives_scoped_fault.ttl` +
+`fixtures/invalid/drives_unscoped_fault.ttl`, covering `FaultCodeScopeShape`) and leaves the
+other 41 shapes uncovered. The seed is not decoration — it exercises the harness end-to-end, and
+writing it immediately surfaced a foundational defect that would otherwise have been discovered
+41 fixtures too late:
+
+> **`sh:sourceShape` names the blank property shape, not the named node shape.** For the common
+> `mirash:X sh:property [ sh:path … ; sh:minCount 1 ]` idiom, a violation is reported against the
+> **anonymous** inner shape. The first `violated_shapes()` extracted local names from the URI, so
+> a blank node yielded nothing and `# EXPECT-VIOLATION: mirash:X` could never be satisfied — for
+> ~36 of the 42 shapes. Fixed by walking UP the shapes graph from the blank node to its owning
+> named shape (`_named_ancestors`, through `sh:property` / `sh:node` / `sh:not` / the RDF list
+> cells of `sh:or`/`sh:and`/`sh:xone`). Verified both ways: the correct expectation passes, and a
+> fixture naming the *wrong* shape still fails and reports what did fire.
+
+Building the remaining 41 is a phase of its own — fixture authoring plus pyshacl debugging per
+shape — tracked as a follow-up rather than squeezed into the foundation PR.
+
+Two guards keep that gap honest rather than silent:
+
+- A **missing** `fixtures/valid/` or `fixtures/invalid/` directory is a deliberate `SKIP` (exit 0),
+  not a failure, so the validator is safe to wire into CI before the phase completes. An
+  **empty-but-present** directory still fails — once the phase begins, empty is a regression, not
+  an absence.
+- `shapes:fixture-coverage` always reports `N/42 shapes have an invalid fixture pinning them` and
+  lists the uncovered ones by name. It never fails the run, because the dangerous failure mode is
+  the *silent* one: two fixtures make every phase green and read as "the shapes are covered" when
+  40 rules have never been exercised. Naming the number keeps the gap visible.
 
 Same status for `ontology/mappings/` (referenced by `mira:maps_to` on `mira-core` and by the
 ISO-14224 alignment note in `mira-maintenance`): the directory and its `README.md` don't exist
@@ -179,8 +200,8 @@ follow-up work as fixtures.
 
 ## Follow-ups (tracked, not in this PR)
 
-1. Fixture coverage for all 42 shapes across the six shape files (`ontology/fixtures/valid/`,
-   `ontology/fixtures/invalid/`), each invalid fixture naming its expected shape(s).
+1. Fixture coverage for the remaining 41 shapes (1 of 42 seeded here), each invalid fixture naming
+   its expected shape(s). Run `tools/validate_ontology.py` for the current uncovered list.
 2. `ontology/mappings/` + `README.md` — the QUDT/PROV-O/ISO-14224 crosswalks currently only
    referenced by `mira:maps_to` comments.
 3. `tools/ontology_drift_check.py` — asserts every `term_status "canonical"` term still exists as

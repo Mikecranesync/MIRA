@@ -279,14 +279,81 @@ def run_shacl(data: Graph, onto: Graph, shapes: Graph) -> tuple[bool, Graph, str
 SH = Namespace("http://www.w3.org/ns/shacl#")
 
 
-def violated_shapes(results_graph: Graph) -> set[str]:
-    """The local names of shapes that reported a violation."""
+def _local_name(node: URIRef) -> str | None:
+    name = str(node)
+    return name.rsplit("#", 1)[1] if "#" in name else None
+
+
+def _named_ancestors(node, shapes: Graph, _seen: set | None = None) -> set[str]:
+    """Local names of the nearest NAMED shape(s) that own `node`.
+
+    SHACL reports `sh:sourceShape` as the shape that actually failed — and for the common
+    `mirash:X sh:property [ sh:path … ; sh:minCount 1 ]` idiom that is the BLANK property shape,
+    not `mirash:X`. Attributing a violation to the named shape a fixture declares in its
+    `# EXPECT-VIOLATION:` header therefore requires walking UP the shapes graph from the blank
+    node to whatever named shape contains it (through sh:property, sh:node, sh:not, and the RDF
+    list cells of sh:or / sh:and / sh:xone).
+
+    Without this, EXPECT-VIOLATION could only ever match the handful of shapes whose constraints
+    sit directly on the named node shape — every property-shape rule would be unassertable.
+    """
+    if _seen is None:
+        _seen = set()
+    if node in _seen:
+        return set()
+    _seen.add(node)
+
+    if isinstance(node, URIRef):
+        name = _local_name(node)
+        return {name} if name else set()
+
+    out: set[str] = set()
+    for parent in shapes.subjects(None, node):
+        out |= _named_ancestors(parent, shapes, _seen)
+    return out
+
+
+def violated_shapes(results_graph: Graph, shapes: Graph) -> set[str]:
+    """Local names of the named shapes that reported a violation.
+
+    A blank source shape is resolved to its owning named shape — see `_named_ancestors`.
+    """
     out: set[str] = set()
     for _, src in results_graph.subject_objects(SH.sourceShape):
-        name = str(src)
-        if "#" in name:
-            out.add(name.rsplit("#", 1)[1])
+        out |= _named_ancestors(src, shapes)
     return out
+
+
+def check_fixture_coverage(report: Report, shapes: Graph, root: Path) -> None:
+    """Report how many named shapes have at least one invalid fixture pinning them.
+
+    Informational (never fails the run) but ALWAYS printed, because the dangerous failure mode
+    here is silent: a fixture directory holding 2 fixtures makes every phase green and reads as
+    "the shapes are covered" when 40 rules have never been exercised. Naming the number keeps the
+    gap visible until the fixture phase closes it (ADR-0032 §8).
+    """
+    declared = {
+        n for n in (_local_name(s) for s in shapes.subjects(RDF.type, SH.NodeShape)) if n
+    }
+    if not declared:
+        return
+    invalid_dir = root / "invalid"
+    exercised: set[str] = set()
+    if invalid_dir.is_dir():
+        for f in invalid_dir.glob("*.ttl"):
+            exercised |= {
+                m.split(":")[-1] for m in EXPECT_RE.findall(f.read_text(encoding="utf-8"))
+            }
+    covered = declared & exercised
+    uncovered = sorted(declared - exercised)
+    report.add(
+        "shapes:fixture-coverage",
+        True,
+        f"{len(covered)}/{len(declared)} shapes have an invalid fixture pinning them; "
+        f"{len(uncovered)} uncovered (ADR-0032 §8 follow-up).\n"
+        f"uncovered: {', '.join(uncovered)}",
+        skipped=True,
+    )
 
 
 def check_valid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Path) -> None:
@@ -361,7 +428,7 @@ def check_invalid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Pat
                 "the rule this fixture exercises is not actually enforced",
             )
             continue
-        fired = violated_shapes(results_graph)
+        fired = violated_shapes(results_graph, shapes)
         unmet = expected - fired
         report.add(
             f"fixtures:invalid:{f.name}",
@@ -407,6 +474,7 @@ def main(argv: list[str] | None = None) -> int:
         check_valid_fixtures(report, onto, shapes, args.fixtures)
     if "invalid" in phases:
         check_invalid_fixtures(report, onto, shapes, args.fixtures)
+        check_fixture_coverage(report, shapes, args.fixtures)
 
     print(report.to_json() if args.format == "json" else report.to_text())
     return 0 if report.ok else 1
