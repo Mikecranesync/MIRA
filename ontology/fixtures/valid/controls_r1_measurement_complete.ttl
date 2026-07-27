@@ -1,0 +1,22 @@
+# R1 satisfied — the full tuple: value, quantity_kind, unit, event_timestamp, quality, freshness
+# and a named source. This is what a reading must look like before MIRA may reason from it.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.dc_bus" .
+ex:dc_bus a mira:MeasurementSignal ; mira:quantity_kind mira:qk_voltage .
+
+ex:obs_ok a mira:Observation ;
+    mira:observed_signal ex:dc_bus ;
+    mira:value 600 ;
+    mira:value_type mira:valuetype_float ;
+    mira:quantity_kind mira:qk_voltage ;
+    mira:unit "V" ;
+    mira:event_timestamp "2026-07-26T14:03:00Z"^^xsd:dateTime ;
+    mira:clock_source mira:clock_plc ;
+    mira:quality mira:quality_good ;
+    mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .

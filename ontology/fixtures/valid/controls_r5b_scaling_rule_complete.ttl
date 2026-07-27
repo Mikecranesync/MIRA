@@ -1,0 +1,7 @@
+# R5b satisfied — exactly one decimal multiplier.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:scale_ok a mira:ScalingRule ; mira:scaling "0.01"^^xsd:decimal .

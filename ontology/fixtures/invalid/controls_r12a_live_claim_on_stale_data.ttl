@@ -1,0 +1,28 @@
+# EXPECT-VIOLATION: mirash:LiveDiagnosisEligibilityShape
+#
+# R12a — a claim whose truth depends on LIVE process data, resting on an observation that is
+# explicitly stale. When comms are down MIRA must say so, not answer from the last good value.
+# Cached data silently promoted to live telemetry is the exact failure this prevents.
+#
+# The signal is a StatusSignal (not a MeasurementSignal) so R12b cannot fire — this isolates R12a.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.dc_bus" .
+ex:run_status a mira:StatusSignal .
+
+ex:obs_stale a mira:Observation ;
+    mira:observed_signal ex:run_status ;
+    mira:value true ; mira:value_type mira:valuetype_bool ;
+    mira:event_timestamp "2026-07-26T09:00:00Z"^^xsd:dateTime ;
+    mira:clock_source mira:clock_plc ;
+    mira:quality mira:quality_good ;
+    mira:freshness mira:freshness_stale ;
+    mira:supported_by ex:tag_src .
+
+ex:claim_live a mira:LiveDiagnosisClaim ;
+    mira:predicate "conveyor_is_running_now" ;
+    mira:supported_by ex:obs_stale .

@@ -1,0 +1,45 @@
+# EXPECT-VIOLATION: mirash:StaleCommsNumericClaimShape
+#
+# R12b — FAIL-CLOSED edge case. The supporting measurement declares NO quality at all. The rule
+# is written `FILTER NOT EXISTS { ?obs mira:quality mira:quality_good }`, so absence does not
+# read as good: an unknown-quality reading cannot back a numeric claim.
+#
+# This is the open-world property that matters most here. A VFD that stopped answering leaves
+# its last register value in cache; if missing quality defaulted to "fine", MIRA would report
+# that cached number as the drive's present current.
+#
+# ── STRUCTURAL FINDING (Phase 2): R12b cannot fire in ISOLATION. ─────────────────────────────
+# Verified, not assumed. For R12b alone to fire, an observation would have to be:
+#   * NOT quality_good                        (else R12b does not fire at all)
+#   * carry SOME quality                      (else R1 MeasurementCompletenessShape fires)
+#   * quality not in {bad, stale, uncertain}  (else R12a LiveDiagnosisEligibilityShape fires)
+# mira:QualityState is a CLOSED vocabulary of exactly {good, bad, stale, uncertain}, so no such
+# value exists. R12b is therefore strictly subsumed by R1 union R12a — defence-in-depth over a
+# region those two already cover, not an independently reachable rule.
+#
+# This fixture consequently co-fires with MeasurementCompletenessShape, and that is inherent
+# rather than sloppy fixture construction. R12b is kept because the three rules key on different
+# things (R1 on completeness, R12a on the claim's freshness eligibility, R12b on numeric claims
+# specifically), so relaxing either neighbour still leaves numeric claims guarded. If
+# QualityState ever gains a fifth value, R12b becomes independently reachable.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.dc_bus" .
+ex:current_a a mira:MeasurementSignal ; mira:quantity_kind mira:qk_current .
+
+ex:obs_noqual a mira:Observation ;
+    mira:observed_signal ex:current_a ;
+    mira:value 12.4 ; mira:value_type mira:valuetype_float ;
+    mira:quantity_kind mira:qk_current ; mira:unit "A" ;
+    mira:event_timestamp "2026-07-26T14:03:00Z"^^xsd:dateTime ;
+    mira:clock_source mira:clock_plc ;
+    mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .
+
+ex:claim_amps a mira:LiveDiagnosisClaim ;
+    mira:predicate "motor_current_is_12_4_amps" ;
+    mira:supported_by ex:obs_noqual .

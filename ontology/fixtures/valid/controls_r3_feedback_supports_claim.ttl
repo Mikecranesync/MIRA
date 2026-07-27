@@ -1,0 +1,31 @@
+# R3 satisfied — the physical-state claim cites actual FEEDBACK (a StatusSignal reading of the
+# run-confirm contact) alongside the command. Intent AND occurrence, so the claim stands.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.run_cmd" .
+ex:run_cmd     a mira:CommandSignal ; mira:read_only true .
+ex:run_confirm a mira:StatusSignal .
+
+ex:obs_cmd a mira:Observation ;
+    mira:observed_signal ex:run_cmd ;
+    mira:value true ; mira:value_type mira:valuetype_bool ;
+    mira:event_timestamp "2026-07-26T14:03:00Z"^^xsd:dateTime ;
+    mira:clock_source mira:clock_plc ;
+    mira:quality mira:quality_good ; mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .
+
+ex:obs_fb a mira:Observation ;
+    mira:observed_signal ex:run_confirm ;
+    mira:value true ; mira:value_type mira:valuetype_bool ;
+    mira:event_timestamp "2026-07-26T14:03:01Z"^^xsd:dateTime ;
+    mira:clock_source mira:clock_plc ;
+    mira:quality mira:quality_good ; mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .
+
+ex:claim_running a mira:PhysicalStateClaim ;
+    mira:predicate "motor_is_running" ;
+    mira:supported_by ex:obs_cmd , ex:obs_fb .

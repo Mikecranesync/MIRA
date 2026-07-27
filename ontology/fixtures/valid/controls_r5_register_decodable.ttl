@@ -1,0 +1,21 @@
+# R5 satisfied — the decoding register declares datatype, scaling and unit. Also shows the
+# deliberate carve-out: ex:reg_catalogued has NO decode edge, so it is not held to the bar —
+# an undocumented address is honest incompleteness, not a violation (drive_packs RegisterEntry
+# records addr=None rather than guessing).
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:dc_bus a mira:MeasurementSignal .
+
+ex:scale_centi a mira:ScalingRule ; mira:scaling "0.01"^^xsd:decimal .
+
+ex:reg_ok a mira:Register ;
+    mira:decodes ex:dc_bus ;
+    mira:register_addr 2103 ;
+    mira:datatype mira:valuetype_int ;
+    mira:has_scaling ex:scale_centi ;
+    mira:unit "V" .
+
+ex:reg_catalogued a mira:Register .
