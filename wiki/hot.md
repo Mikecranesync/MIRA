@@ -1,3 +1,16 @@
+# Hot Cache — 2026-07-27 — #2316 Atlas CMMS SSO draft PR opened
+
+- **#2316 / PR #2946:** Hub `/api/cmms/sso` no longer targets the non-existent Atlas `/auth/sso/hub`
+  bridge. It now validates the Hub session, signs into Atlas through the real `/auth/signin` contract
+  using configured `ATLAS_API_USER/PASSWORD`, and redirects through Atlas's existing
+  `/oauth2/success?token=...` handoff. Removed stale `HUB_SSO_*` deploy/docs wiring; `VERSION`
+  `3.219.1`, `mira-hub` `2.29.1`.
+- **Proof:** focused CMMS route/deploy/link tests green; full `mira-hub` unit suite green
+  (`164 files`, `1294 tests`); changed-file eslint and `git diff --check` green.
+- **Local gate noise still pre-existing:** full `npm run lint` fails on visual workspace React-hook
+  lint in untouched files; full `npx tsc --noEmit --pretty false` fails on older test typing issues
+  outside this PR.
+
 # Hot Cache — 2026-07-26 (later) — Prod bot outage diagnosed + fixed + follow-ups shipped (v3.215.1 → v3.216.2)
 
 The v3.214.0 deploy (from the session below) took the prod Telegram/Slack bot DOWN. Diagnosed the
