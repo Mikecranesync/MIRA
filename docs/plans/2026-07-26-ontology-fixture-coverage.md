@@ -5,7 +5,8 @@
 **Status:** Phase 0 complete (foundation + harness proven). **Phase 1 complete** (evidence module,
 10/10 shapes, coverage 1/42 → 11/42). **Phase 2 complete** (controls module, 11/11 shapes,
 coverage 11/42 → 22/42, plus one fail-closed correction to `WritableSignalShape`).
-Phases 3–6 open.
+**Phase 3 planned in detail below, not implemented** (electrical + maintenance → 32/42).
+Phases 4–7 open.
 
 ---
 
@@ -161,29 +162,109 @@ presents an action as permitted. The prohibition on actually issuing writes rema
 code and rules (`.claude/rules/fieldbus-readonly.md`,
 `mira-bots/tests/test_drive_packs_readonly.py`), not by the graph.
 
-## Phase 3 — `electrical` (7) + `drives` remaining (5)
+## Phase 3 — `electrical` (7) + `maintenance` (3) → **32/42**  *(PLANNED, not implemented)*
 
-Print → physical trust gates, plus finishing the drive-scope module.
+**Re-prioritised from the original "electrical + drives" grouping.** The instruction for this phase
+is safety-first ordering, and `electrical` + `maintenance` is the pairing that front-loads the two
+human-in-the-loop boundaries: *a symbol seen on a drawing is not a device in a panel*, and *a
+software agent's summary is not a technician's observation*. `drives` moves to Phase 4 — its
+highest-risk rule (R4 fault-code scope) is **already covered** since Phase 0, so what remains there
+is lower-severity pack hygiene.
 
-**electrical:** `PrintObservationSeparationShape` (R8 — an observation is not a physical asset),
-`PromotedSymbolNeedsHumanShape` (R8c — promotion requires a human), `PrintObservationEvidenceShape`
-(R8b), `ConductorEndpointsShape` (R6), `ConnectionPointShape` (R6b),
-`VerifiedConductorNoUnresolvedShape` (R6c), `TerminalOwnershipShape` (R7).
+All 10 use vocabulary that already exists and is `grounded_in` real artifacts. **None** touch the
+Phase 7 gap (`Integration` / `Command` / `Execution` / `Authorization` / execution-evidence).
 
-**drives:** `FaultCodeScopeTargetShape` (R4b), `FaultAppliedToWrongFamilyShape` (R4c — a fixture
-already exists in scratch from the tracer bullet; promote it), `DriveFamilyIdentityShape`,
-`ParameterCardCitationShape`, `RemedySafetyShape` (**note:** `sh:Warning` severity, not Violation —
-confirm the harness treats a Warning-only fixture as non-conforming, or mark the fixture's
-expectation accordingly; this is the one shape in the set with a known-different failure mode).
+### Shapes, guarantees, and proposed fixture pairs
 
-## Phase 4 — `core` (5) + `maintenance` (3)
+| # | Shape | Guarantee | Invalid fixture | Valid fixture |
+|---|---|---|---|---|
+| 1 | `PrintObservationSeparationShape` | R8 — a mark seen on a sheet is not a physical thing | node typed **both** `PrintObservation` and `AssetInstance` | the two kept distinct, linked by `observed_as` |
+| 2 | `PrintObservationEvidenceShape` | R8b — every reading cites its region + carries a TrustState | observation with no `supported_by`, no `trust` | observation citing an `ImageRegion`, `trust=proposed` |
+| 3 | `PromotedSymbolNeedsHumanShape` | R8c — only a human turns a symbol into a component | `AssetInstance observed_as` an obs with `trust=machine_verified` | same, `trust=human_verified` |
+| 4 | `ConductorEndpointsShape` | R6 — two resolved ends, **or** honest `endpoint_unresolved` | conductor with one endpoint and no unresolved flag | (a) two labelled endpoints; (b) one end + `endpoint_unresolved=true` |
+| 5 | `ConnectionPointShape` | R6b — an endpoint is (device, terminal), not just a device | `ConnectionPoint` with no `terminal_label` | `terminal_label "X1:3"` |
+| 6 | `VerifiedConductorNoUnresolvedShape` | R6c — a human cannot approve a run whose end was never read | `endpoint_unresolved=true` **and** `approval_state=verified` | unresolved but only `proposed` |
+| 7 | `TerminalOwnershipShape` | R7 — a verified terminal is locatable in the panel | verified `Terminal` with no `belongs_to_device` | verified terminal owned by a device |
+| 8 | `FaultNotFaultCodeShape` | a `Fault` (observed condition) ≠ a `FaultCode` (printed identifier) | node typed **both** | the observed fault linked to, not merged with, its code |
+| 9 | `ResolutionEvidenceShape` | a `Resolution` is plant ground truth only if traceable to its job | orphan `Resolution`, no `WorkOrder closed_by` | resolution closed by a work order |
+| 10 | `TechnicianObservationActorShape` | a SoftwareAgent summary is not a technician observation | `TechnicianObservation` with `proposed_by` a `SoftwareAgent` | `proposed_by` a `Technician` |
 
-Thinnest and most mechanical; good closing batch.
+**Expected coverage: 22/42 → 32/42** (10 shapes, ~10 valid + ~11 invalid fixtures — R6 warrants two
+valid cases for its two legitimate forms).
 
-**core:** `AssetClassInstanceShape`, `AssetClassHasNoUnsPathShape`, `InstanceOfDirectionShape`,
-`SelfParentShape` (R11a), `ContainmentCycleShape` (R11b — needs a 3-node cycle fixture).
+### Isolation risks (predicted — verify during implementation, do not assume)
 
-**maintenance:** `FaultNotFaultCodeShape`, `ResolutionEvidenceShape`, `TechnicianObservationActorShape`.
+- **R8 vs R8b/R8c.** A `PrintObservation` also typed `AssetInstance` will additionally trip R8b
+  unless the observation carries `supported_by` + `trust`. Give it both so R8 isolates.
+- **R8c fail-open on absent `trust`.** R8c's SPARQL is `?obs mira:trust ?t . FILTER(?t != human_verified)`
+  — if the observation has **no** `trust`, the pattern does not match and R8c stays silent. The
+  missing-trust case is caught only by R8b's `minCount 1`, and only when the object is typed
+  `PrintObservation`. **Likely correction:** add a fail-closed clause to R8c (`FILTER NOT EXISTS
+  { ?obs mira:trust mira:trust_human_verified }` instead of the inequality), which catches both
+  "wrong trust" and "no trust". Decide with a fixture, exactly as `WritableSignalShape` was decided
+  in Phase 2 — this is the same bug class.
+- **R6 vs R6b.** A conductor fixture carrying `ConnectionPoint`s trips R6b unless each endpoint has
+  a `terminal_label`. Label them.
+- **R6c vs R6.** No conflict: `endpoint_unresolved=true` satisfies R6's escape hatch, so R6c
+  isolates cleanly.
+- **`FaultNotFaultCodeShape` vs `FaultCodeScopeShape` (Phase 0, drives).** A node typed `FaultCode`
+  is targeted by R4, which demands `scoped_to` + `supported_by` + `fault_mnemonic`. Supply all three
+  so the maintenance rule isolates.
+- **`TechnicianObservation`** — confirm its superclasses before writing the fixture; if it is a
+  subclass of `Observation`, `MeasurementCompletenessShape` may co-target it.
+
+### New harness ground covered by Phase 3
+
+`ConductorEndpointsShape` is node-level `sh:or` over RDF list cells — the **first real fixture** to
+exercise the list-cell branch of `_named_ancestors`, which until now has only synthetic unit-test
+coverage (`tests/test_ontology_attribution.py::test_or_list_cell_blank_node_resolves_to_owner`).
+Confirm attribution resolves to `ConductorEndpointsShape` and not to an anonymous inner shape.
+
+`sh:targetObjectsOf` remains unexercised by any fixture after Phase 3 — both its shapes
+(`InstanceOfDirectionShape`, `FaultCodeScopeTargetShape`) fall in Phase 4.
+
+### Acceptance criteria (exact)
+
+1. `python tools/validate_ontology.py` → exit 0, **`32/42` shapes pinned**, 20→10 uncovered.
+2. Every new invalid fixture fires its **declared named** shape; the isolation audit shows no
+   *undocumented* co-firing.
+3. New `tests/test_ontology_electrical_maintenance_phase3.py` asserts the constraints
+   semantically (not file existence), including the R8c missing-`trust` decision and the R6
+   two-legitimate-forms case.
+4. Phase 1 + Phase 2 fixtures and tests unchanged and still green (`39 passed` becomes N passed,
+   with zero prior tests removed or weakened).
+5. CI step `Ontology validation (ADR-0032)` executes (non-skipped, `conclusion=success`) and its log
+   shows the validator result, the `32/42` coverage line, and the test count.
+6. `git diff --check`, `ruff`, `pyright`, `actionlint` clean; `/VERSION` bumped with a CHANGELOG entry.
+
+### Honest exclusions
+
+- **Nothing from Phase 7** — no `Integration` / `Command` / `Execution` / `Authorization` vocabulary
+  is invented to reach a higher number.
+- **`SelfParentShape` (core, Phase 4) is already known-subsumed.** Verified empirically: a
+  self-parent matches `mira:has_parent+`, so `ContainmentCycleShape` fires alongside it and R11a can
+  **never** fire in isolation — the same relationship R12b has to R1 ∪ R12a. Its fixture will
+  co-fire by construction and must say so. (`ContainmentCycleShape` *is* isolatable via a 2-node
+  cycle, which does not trip R11a.)
+- **`RemedySafetyShape` (drives, Phase 4) severity question is now settled** — verified that a
+  `sh:Warning`-only violation still yields `conforms=False` in pyshacl, so it needs no special
+  handling in the harness. Recorded here so Phase 4 does not re-investigate.
+- **No shape is corrected merely to make a fixture pass.** The one candidate correction (R8c
+  fail-closed) is justified on its own safety merits — absent metadata must not read as safe — and
+  is the identical bug class already fixed in `WritableSignalShape`.
+
+## Phase 4 — `drives` remaining (5) + `core` (5) → **42/42**
+
+Closes coverage. Lower severity than Phase 3, and carries the two already-diagnosed oddities.
+
+**drives:** `FaultCodeScopeTargetShape` (R4b, `sh:targetObjectsOf` — first fixture for that
+targeting mode), `FaultAppliedToWrongFamilyShape` (R4c — a working fixture was already written and
+verified during the Phase 0 tracer-bullet probe; re-create it), `DriveFamilyIdentityShape`,
+`ParameterCardCitationShape`, `RemedySafetyShape` (`sh:Warning`; behaviour confirmed above).
+
+**core:** `AssetClassInstanceShape`, `AssetClassHasNoUnsPathShape`, `InstanceOfDirectionShape`
+(`sh:targetObjectsOf`), `ContainmentCycleShape` (isolatable via a 2-node cycle), `SelfParentShape`
+(**known-subsumed**, will co-fire with `ContainmentCycleShape` by construction).
 
 ## Phase 5 — `ontology/mappings/` + README
 
@@ -224,9 +305,9 @@ PR   n+1     Phase 1 — evidence      (10) → CI wiring becomes worthwhile
    ↓
 PR   n+2     Phase 2 — controls      (11)
    ↓
-PR   n+3     Phase 3 — electrical(7) + drives(5)
+PR   n+3     Phase 3 — electrical(7) + maintenance(3)  -> 32/42
    ↓
-PR   n+4     Phase 4 — core(5) + maintenance(3)   → 42/42
+PR   n+4     Phase 4 — drives(5) + core(5)             -> 42/42
    ↓
 PR   n+5     Phase 5 — mappings/
    ↓
@@ -276,4 +357,5 @@ exists for its head SHA.
 | Partial coverage reads as full coverage | `shapes:fixture-coverage` always prints `N/42` + the uncovered names |
 | Fixtures drift from the code the shapes abstract | Phase 6 drift check; `mira:grounded_in` on every term is the anchor |
 | An over-broad fixture trips unrelated shapes | Keep fixtures minimal; the valid-fixture phase catches over-broad *valid* ones immediately |
-| `RemedySafetyShape` is `sh:Warning` | Called out in Phase 3 — confirm expected behavior before writing its pair |
+| `RemedySafetyShape` is `sh:Warning` | **RESOLVED (Phase 2 close-out):** verified that a Warning-only violation still yields `conforms=False` in pyshacl, so it needs no special harness handling. Shape moves to Phase 4. |
+| A shape can never fire in isolation (subsumption) | Detect during the isolation audit, document in the fixture, keep the shape as defence-in-depth. Two known: R12b ⊂ R1 ∪ R12a; `SelfParentShape` ⊂ `ContainmentCycleShape`. |
