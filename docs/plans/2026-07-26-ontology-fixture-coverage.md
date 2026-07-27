@@ -3,7 +3,9 @@
 **Created:** 2026-07-26
 **Governs:** the ADR-0032 §8 follow-ups left open by PR #2936 (ontology foundation)
 **Status:** Phase 0 complete (foundation + harness proven). **Phase 1 complete** (evidence module,
-10/10 shapes, coverage 1/42 → 11/42). Phases 2–6 open.
+10/10 shapes, coverage 1/42 → 11/42). **Phase 2 complete** (controls module, 11/11 shapes,
+coverage 11/42 → 22/42, plus one fail-closed correction to `WritableSignalShape`).
+Phases 3–6 open.
 
 ---
 
@@ -106,6 +108,59 @@ Live-data honesty and the read-only OT boundary.
 `.claude/rules/fieldbus-readonly.md`. Cross-check their fixtures against
 `mira-bots/tests/test_drive_packs_readonly.py` so the two layers can't drift apart.
 
+### Phase 2 outcome (shipped)
+
+11 fixture pairs (11 valid / 12 invalid — `WritableSignalShape` gets two invalid cases: an
+explicit write path and the fail-closed missing-capability case). Coverage **11/42 → 22/42**.
+Semantics are pinned by `tests/test_ontology_controls_phase2.py`, which asserts the constraints
+directly rather than checking that files exist.
+
+**One shape was corrected, not merely covered.** `WritableSignalShape` carried only
+`sh:not [ sh:in (false) ]`. SHACL evaluates that per *value*, so a `CommandSignal` declaring no
+`mira:read_only` at all had zero values and passed vacuously — an undeclared command point read
+as safe. That is backwards for a capability flag. Phase 2 adds `sh:minCount 1` so missing
+capability metadata fails closed, matching the default-deny posture of the fieldbus rule.
+Verified by rebuilding the pre-fix shapes graph: the same input fires nothing before, and
+`WritableSignalShape` after.
+
+**Deliberate asymmetry between R13 and R13b.** `ReadOnlyPolicyShape` still tolerates an absent
+`presents_action_as_permitted`, and that is correct: silence about an *assertion* means the claim
+does not assert permission (safe). Silence about a *capability* means writability is unknown
+(not safe). Both directions are pinned by tests so the asymmetry cannot drift unnoticed.
+
+**Structural finding — R12b is not independently reachable.** For `StaleCommsNumericClaimShape`
+to fire alone, an observation would need a quality that is not `good`, yet present (else R1
+fires), yet outside `{bad, stale, uncertain}` (else R12a fires). `mira:QualityState` is closed at
+exactly those four values, so no such value exists: R12b is strictly subsumed by R1 ∪ R12a. It is
+kept as defence-in-depth — the three rules key on different things, so relaxing either neighbour
+still leaves numeric claims guarded — and it becomes independently reachable if QualityState ever
+gains a fifth value. Its fixture therefore co-fires with R1 by construction.
+
+### What Phase 2 does NOT enforce (honest limits)
+
+The controls module covers **live-data honesty** well and the **read-only boundary only at the
+level of claims and signals**. Several stricter OT guarantees are *not representable* in the
+current ontology, because the vocabulary for them does not exist:
+
+| Guarantee | Status | Missing vocabulary |
+|---|---|---|
+| A recommendation cannot be represented as a command that was sent | **not enforceable** | no `Recommendation` / `Command` distinction |
+| A proposed command cannot be represented as executed | **not enforceable** | no `Execution` / execution-evidence class |
+| Execution claims must carry evidence from a control-capable path | **not enforceable** | no `Integration` class carrying a capability |
+| A read-only connection cannot be the execution path for a write | **not enforceable** | same — connections are not modelled |
+| Authorization must be explicit and separate from AI reasoning | **not enforceable** | no `Authorization` class; `approved_by` covers *assertion* approval, not *action* authorization |
+
+`mira:ControlActionClaim` + `presents_action_as_permitted` is the only control-side vocabulary
+that exists today, and it models what MIRA *says*, not what any integration *can do*. Closing
+these gaps needs new classes (`Integration` with a capability flag, `Command`, `Execution`,
+`Authorization`) and is a **Phase 7** candidate — deliberately not invented here, since inventing
+ungrounded terms would violate the `mira:grounded_in` rule that every term abstract a real
+repository artifact. **Do not describe MIRA as ontologically prevented from issuing OT writes on
+the strength of Phase 2.** What is enforced: no *signal* is marked writable, and no *claim*
+presents an action as permitted. The prohibition on actually issuing writes remains enforced by
+code and rules (`.claude/rules/fieldbus-readonly.md`,
+`mira-bots/tests/test_drive_packs_readonly.py`), not by the graph.
+
 ## Phase 3 — `electrical` (7) + `drives` remaining (5)
 
 Print → physical trust gates, plus finishing the drive-scope module.
@@ -136,6 +191,17 @@ The QUDT / PROV-O / ISO-14224 crosswalks currently referenced only by `mira:maps
 by `mira-maintenance`'s header. **Mappings, never imports** — the external vocabularies are not
 redistributed (license hygiene, PRD §4). `mapping_files()` in the validator already globs
 `ontology/mappings/*.ttl` into the ontology graph, so this phase needs no tool change.
+
+## Phase 7 (new, from Phase 2) — OT action vocabulary
+
+Surfaced by Phase 2: the ontology cannot express recommendation ≠ command ≠ executed, nor that a
+read-only integration is never an execution path, because the terms don't exist. Needed:
+`Integration` (with an explicit capability flag), `Command`, `Execution` (+ execution evidence),
+`Authorization` (distinct from `approved_by`, which approves *assertions*, not *actions*).
+
+Each new term must carry `mira:grounded_in` pointing at a real repository artifact — if no such
+artifact exists yet, the term is premature and the gap stays documented rather than papered over
+with invented vocabulary. See "What Phase 2 does NOT enforce" above.
 
 ## Phase 6 — `tools/ontology_drift_check.py` + CI wiring
 

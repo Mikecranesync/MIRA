@@ -1,3 +1,17 @@
+### v3.220.0 (2026-07-27) - feat(ontology): controls-module fixture coverage + read-only fail-closed fix (ADR-0032 Phase 2)
+
+Phase 2 of the ADR-0032 §8 follow-up: the **controls** module — live-data honesty and the read-only OT boundary. Shape coverage **11/42 → 22/42**, all 11 planned shapes pinned by fixtures plus `tests/test_ontology_controls_phase2.py` (28 tests asserting the semantic constraints directly, not file existence).
+
+**One shape was corrected, not merely covered.** `WritableSignalShape` carried only `sh:not [ sh:in (false) ]`. SHACL evaluates that per *value*, so a `CommandSignal` declaring no `mira:read_only` at all had zero values and **passed vacuously** — an undeclared command point read as safe. Backwards for a capability flag: unknown writability is not permission. Added `sh:minCount 1` so missing capability metadata fails closed, matching the default-deny posture of `.claude/rules/fieldbus-readonly.md`. Verified by rebuilding the pre-fix shapes graph — the same input fires nothing before and `WritableSignalShape` after.
+
+The R13/R13b asymmetry is deliberate and now test-pinned: `ReadOnlyPolicyShape` still tolerates an absent `presents_action_as_permitted` (silence about an *assertion* is safe — the claim does not assert permission), while `WritableSignalShape` does not (silence about a *capability* is not safe).
+
+**Structural finding:** `StaleCommsNumericClaimShape` (R12b) cannot fire in isolation. It would need an observation whose quality is not `good`, yet present (else R1 fires), yet outside `{bad, stale, uncertain}` (else R12a fires) — and `mira:QualityState` is closed at exactly those four values. R12b is strictly subsumed by R1 ∪ R12a; kept as defence-in-depth, documented in its fixture, and independently reachable only if the vocabulary gains a fifth value.
+
+**Honest limits recorded rather than overclaimed.** The read-only boundary is enforced only at the level of *claims* and *signals*. Recommendation ≠ command ≠ executed, execution evidence, read-only-integration-as-execution-path, and explicit authorization are **not representable** today — there is no `Integration`/`Command`/`Execution`/`Authorization` vocabulary. Rather than invent ungrounded terms (which would violate the `mira:grounded_in` rule), the gaps are documented and deferred to a new Phase 7. MIRA is **not** ontologically prevented from issuing OT writes on the strength of Phase 2; that prohibition still lives in code and rules.
+
+Fixtures: 11 valid + 12 invalid (`WritableSignalShape` gets two invalid cases — an explicit write path and the fail-closed missing-capability case). Verified: validator 51/51 (1 informational skip), 28/28 Phase 2 tests, 11/11 Phase 1 attribution tests, no Phase 1 regressions.
+
 ### v3.219.0 (2026-07-26) - feat(ontology): evidence-module fixture coverage (ADR-0032 Phase 1)
 
 Phase 1 of the ADR-0032 §8 follow-up: the **evidence** module — the keystone, and the "an AI approves its own work" class of rules — is now pinned by fixtures. Shape coverage **1/42 → 11/42**.

@@ -375,14 +375,18 @@ jobs:
         #      vocabulary, inverse completeness/symmetry, and every fixture pair;
         #   2. tests/test_ontology_attribution.py — locks down the blank-node
         #      sh:sourceShape attribution fix, including the sh:or list-cell path that no
-        #      fixture exercises yet.
+        #      fixture exercises yet;
+        #   3. tests/test_ontology_controls_phase2.py — the Phase 2 semantic constraints
+        #      (live-data honesty + the read-only OT boundary), including the two rules
+        #      that must FAIL CLOSED on missing metadata: read_only on a CommandSignal and
+        #      quality on a measurement backing a numeric claim.
         # Exits 0 today: absent fixture directories SKIP by design, so this stays green
         # through the remaining fixture phases (ADR-0032 §8) and only reddens on a real
         # regression.
         run: |
           pip install -r ontology/requirements.txt
           python tools/validate_ontology.py
-          pytest tests/test_ontology_attribution.py -v
+          pytest tests/test_ontology_attribution.py tests/test_ontology_controls_phase2.py -v
 
   mira-hub-unit:
     name: Hub Unit Tests
