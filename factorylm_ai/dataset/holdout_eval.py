@@ -291,38 +291,66 @@ async def _call_model(
     }
 
 
-async def _call_dedicated(qualified_name: str, prompt: dict[str, Any]) -> dict[str, Any]:
-    """Call the temporary v2 dedicated deployment directly.
+SERVERLESS_INFERENCE_URL = "https://api.together.ai/v1/chat/completions"
 
-    v2 dedicated endpoints serve on ``api-inference.together.ai`` (NOT the
-    serverless host the provider module is pinned to), addressed as
-    ``<project_slug>/<endpoint_name>``. Same receipt shape as ``_call_model``.
+
+async def _call_chat(
+    url: str,
+    request_model: str,
+    canonical_model: str,
+    provider_label: str,
+    prompt: dict[str, Any],
+) -> dict[str, Any]:
+    """Direct chat call with Qwen3.5 thinking DISABLED — used for both live sides.
+
+    Qwen3.5 is a reasoning model: by default its tokens land in
+    ``message.reasoning`` and ``content`` stays EMPTY until thinking finishes,
+    so a 300-token cap yields 50 empty answers (the 2026-07-27 invalid run).
+    ``chat_template_kwargs.enable_thinking=false`` turns that off — also the
+    faithful mode, since the training data holds plain answers with no
+    reasoning traces. If a server rejects the kwarg (HTTP 400), retry once
+    without it at 4x tokens and take post-thinking content; an empty answer
+    then fails loudly rather than being silently recorded.
     """
     import os
 
     import httpx
 
-    payload = {
-        "model": qualified_name,
-        "messages": list(prompt["messages"]),
-        "max_tokens": MAX_OUTPUT_TOKENS,
-        "temperature": TEMPERATURE,
-    }
     headers = {
         "Authorization": f"Bearer {os.environ['TOGETHERAI_API_KEY']}",
         "Content-Type": "application/json",
     }
+    base_payload: dict[str, Any] = {
+        "model": request_model,
+        "messages": list(prompt["messages"]),
+        "max_tokens": MAX_OUTPUT_TOKENS,
+        "temperature": TEMPERATURE,
+    }
     started = _now()
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(V2_INFERENCE_URL, headers=headers, json=payload)
+        resp = await client.post(
+            url,
+            headers=headers,
+            json={**base_payload, "chat_template_kwargs": {"enable_thinking": False}},
+        )
+        if resp.status_code == 400:
+            resp = await client.post(
+                url, headers=headers, json={**base_payload, "max_tokens": 4 * MAX_OUTPUT_TOKENS}
+            )
         resp.raise_for_status()
         data = resp.json()
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+    if not str(text).strip():
+        raise RuntimeError(
+            f"empty content from {request_model} for {prompt['record_id']} "
+            f"(finish_reason={(data.get('choices') or [{}])[0].get('finish_reason')!r}) — "
+            "refusing to record an ungradeable answer"
+        )
     usage = data.get("usage") or {}
     return {
-        "model": TUNED_MODEL,
+        "model": canonical_model,
         "text": str(text),
         "started_at": started,
         "finished_at": _now(),
@@ -330,8 +358,8 @@ async def _call_dedicated(qualified_name: str, prompt: dict[str, Any]) -> dict[s
             "input_tokens": usage.get("prompt_tokens", 0),
             "output_tokens": usage.get("completion_tokens", 0),
             "latency_ms": elapsed_ms,
-            "provider": "together-v2-dedicated",
-            "answered_by": data.get("model", qualified_name),
+            "provider": provider_label,
+            "answered_by": data.get("model", request_model),
         },
         "raw_hash": _sha(str(text)),
     }
@@ -378,9 +406,7 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
         )
         if not os.getenv("FACTORYLM_AI_ALLOW_NETWORK"):
             raise SystemExit("live run refused: FACTORYLM_AI_ALLOW_NETWORK not set")
-        from factorylm_ai.providers.together import TogetherProvider
-
-        provider = TogetherProvider()
+        provider = None  # live sides call _call_chat directly (thinking disabled)
         mode = f"LIVE (authorization {auth.authorization_id} consumed)"
 
     # ---- collect model outputs -------------------------------------------
@@ -399,7 +425,9 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
 
         budget = BudgetGuard(cap_usd=cfg.budget_usd)
         for prompt in prompt_set["prompts"]:
-            results["base"][prompt["record_id"]] = await _call_model(provider, prompt, "base")
+            results["base"][prompt["record_id"]] = await _call_chat(
+                SERVERLESS_INFERENCE_URL, BASE_MODEL, BASE_MODEL, "together", prompt
+            )
         budget.record(0.05)  # conservative flat charge for all serverless base calls
 
         if not cfg.endpoint_auth_path or not cfg.endpoint_auth_path.exists():
@@ -414,7 +442,13 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
         async def _tuned_benchmark(qualified_name: str) -> dict[str, dict[str, Any]]:
             out: dict[str, dict[str, Any]] = {}
             for prompt in prompt_set["prompts"]:
-                rec = await _call_dedicated(qualified_name, prompt)
+                rec = await _call_chat(
+                    V2_INFERENCE_URL,
+                    qualified_name,
+                    TUNED_MODEL,
+                    "together-v2-dedicated",
+                    prompt,
+                )
                 rec["model"] = TUNED_MODEL  # canonical identity; endpoint is transport
                 rec["served_via"] = qualified_name
                 out[prompt["record_id"]] = rec
