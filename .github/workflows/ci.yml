@@ -368,6 +368,22 @@ jobs:
         working-directory: mira-connectors
         run: pytest tests/ -v
 
+      - name: Ontology validation (ADR-0032)
+        # Deterministic + offline: rdflib (BSD-3) + pyshacl (Apache-2.0), no network, no
+        # paid calls, no DB. Two layers, both cheap:
+        #   1. the validator itself — Turtle syntax, the grounding rule, term_status
+        #      vocabulary, inverse completeness/symmetry, and every fixture pair;
+        #   2. tests/test_ontology_attribution.py — locks down the blank-node
+        #      sh:sourceShape attribution fix, including the sh:or list-cell path that no
+        #      fixture exercises yet.
+        # Exits 0 today: absent fixture directories SKIP by design, so this stays green
+        # through the remaining fixture phases (ADR-0032 §8) and only reddens on a real
+        # regression.
+        run: |
+          pip install -r ontology/requirements.txt
+          python tools/validate_ontology.py
+          pytest tests/test_ontology_attribution.py -v
+
   mira-hub-unit:
     name: Hub Unit Tests
     runs-on: ubuntu-latest
