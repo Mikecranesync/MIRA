@@ -1,3 +1,7 @@
+### v3.219.1 (2026-07-27) - fix(hub): use Atlas signin for CMMS SSO handoff (#2316)
+
+Authenticated Hub users opening FactoryLM Works now exchange through Atlas's real `/auth/signin` endpoint using the configured Atlas service credentials, then redirect through Atlas's existing `/oauth2/success?token=...` handoff. Removed the stale `HUB_SSO_*` production wiring that targeted a non-existent Atlas `/auth/sso/hub` bridge; deploy contract is now the same `HUB_CMMS_API_URL` + `CMMS_PUBLIC_URL` + `ATLAS_API_USER/PASSWORD` set already used by live stats and sync.
+
 ### v3.219.0 (2026-07-26) - feat(ontology): evidence-module fixture coverage (ADR-0032 Phase 1)
 
 Phase 1 of the ADR-0032 §8 follow-up: the **evidence** module — the keystone, and the "an AI approves its own work" class of rules — is now pinned by fixtures. Shape coverage **1/42 → 11/42**.

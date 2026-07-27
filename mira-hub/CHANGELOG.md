@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.29.1 - 2026-07-27
+- fix(hub): CMMS SSO now signs into Atlas through the real `/auth/signin` endpoint with configured Atlas credentials and redirects through Atlas's existing OAuth success token handoff, instead of requiring the stale `HUB_SSO_*` assertion bridge.
+
 ## v2.20.3 - 2026-06-27
 - fix(hub): synthetic QA seeding now creates real RBAC personas for all tenant roles plus a second-tenant isolation account, and the Hermes login helper fails loudly without a NextAuth session cookie.
 

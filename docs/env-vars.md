@@ -64,11 +64,10 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 | `ATLAS_PUBLIC_API_URL` | mira-cmms atlas-api + atlas-frontend — public URL for Atlas CMMS API (e.g. `http://bravo:8088`) |
 | `ATLAS_PUBLIC_FRONT_URL` | mira-cmms atlas-api — public URL for Atlas CMMS frontend |
 | `ATLAS_PUBLIC_MINIO_URL` | mira-cmms atlas-api + atlas-frontend — public URL for MinIO |
+| `ATLAS_API_USER`    | mira-hub + mira-cmms-sync — Atlas sign-in email for live stats, CMMS SSO handoff, and sync worker calls |
+| `ATLAS_API_PASSWORD` | mira-hub + mira-cmms-sync — Atlas sign-in password for live stats, CMMS SSO handoff, and sync worker calls |
 | `HUB_BASE_PATH`     | mira-hub — URL base path the Hub is served under (e.g. `/hub`). Default `/hub` in `docker-compose.saas.yml`. Must match the NextAuth basePath / reverse-proxy prefix. |
 | `HUB_INGEST_TOKEN`  | mira-hub + mira-bot-telegram — bearer token authorizing server-side file intake to the Hub `/api/uploads/folder` ingest path (Telegram file routing, #2547). Empty disables the authenticated ingest shortcut. |
-| `HUB_SSO_SECRET`    | mira-hub + Atlas CMMS API — shared HS256 secret for Hub-to-Atlas SSO assertions. Must match on both services. |
-| `HUB_SSO_ISSUER`    | mira-hub + Atlas CMMS API — optional SSO issuer override. Default `factorylm-hub`. |
-| `HUB_SSO_AUDIENCE`  | mira-hub + Atlas CMMS API — optional SSO audience override. Default `atlas-cmms`. |
 | `BRAVO_HOST`         | mira-core/docker-compose.oracle.yml — Tailscale IP or hostname of Bravo compute node (e.g. `100.86.236.11`). Required when running Oracle Cloud overrides. |
 | `MIRA_MCPO_VERSION`  | mira-core/docker-compose.yml — image tag for locally-built mira-mcpo container. Default: `3.4`. Bump when Dockerfile.mcpo changes. |
 | `MIRA_PLC_ENABLED`   | mira-bots/shared/engine.py — set `1`/`true`/`yes` to instantiate PLCWorker (Config 4 / deferred PLC integration). Default: disabled. |
