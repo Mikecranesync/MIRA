@@ -1,3 +1,13 @@
+### v3.217.1 (2026-07-26) - fix(rag): bridge ingest normalizer to known-vendor canonical (#1596/#2263 slice B1)
+
+The ingest-side `normalize_manufacturer()` collapsed only the 8 explicit OCR variants (`Alien-Bradley`, `Cofemo`, …); it never consulted the resolver's `VENDOR_ALIASES`, so a known OEM under a different casing/spelling minted its own catalog row. Read-only staging data (2026-07-26) proved the cost: `siemens` (514 chunks) split from `Siemens` (1948), `Rockwell` (18) never joined `Rockwell Automation` (34186), `Automation Direct` (8) vs `AutomationDirect` (4298), `Yaskawa Electric Corporation` (27) vs `Yaskawa` (9340).
+
+- Extended `OCR_VARIANT_ALIASES` (the flat map vendored in `mira-crawler/ingest/`, `mira-core/mira-ingest/db/`, and `mira-hub/src/lib/manufacturer-aliases.json`) with the manufacturer-NAME entries of `VENDOR_ALIASES` — **exact key match only** (whitespace-collapsed, case-insensitive), never the resolver's substring fallback, so a long-tail vendor whose name merely contains `ab`/`delta`/`sew` is never over-collapsed. Model/family tokens (`gs10`/`pf525`/`a1000`) are deliberately excluded (they are never a manufacturer value).
+- Plus 4 evidence-driven long-tail entries not in the resolver (`yaskawa electric corporation`→`Yaskawa`, `coffing`/`coffing hoists`→`Coffing`, `harrington`→`Harrington`).
+- The existing `test_manufacturer_alias_consistency.py` now enforces agreement with `VENDOR_ALIASES` across ~20 shared keys (was 1). Divergence-safety invariant preserved: unknown vendors still pass through unchanged.
+
+Fixes only **new** ingests (this is slice B1 of the plan). The existing polluted catalog and the 24,800 uncategorized chunks are slices B2 (gated backfill) and C (classifier) — see `docs/plans/2026-07-26-manufacturer-catalog-dedup.md`. Tests: 8 new behavioral cases in `mira-crawler/tests/test_manufacturer_normalize.py` (crawler 26, mira-core 9, consistency 2 — all green). The read-only reconcile planner over staging now collapses 33 distinct values (was 10).
+
 ### v3.217.0 (2026-07-26) - feat(hub): ingest text/markdown + .txt manual uploads (#2277)
 
 The hub upload allowlist accepted only PDF + images; a maintenance **procedure** is often a plain `.md`/`.txt` and technicians reasonably try to upload those. Now they ingest through the **same citable v2 path** as PDFs.
