@@ -1,3 +1,17 @@
+### v3.218.0 (2026-07-26) - feat(ontology): OWL/SHACL foundation for MIRA's domain rules (ADR-0032)
+
+MIRA's cross-cutting domain rules — a fault code is meaningless without its drive-family scope, an inferred assertion can't self-approve, a PrintSense observation can't become a verified physical asset without a human step, a live claim needs fresh telemetry not a stale command bit — existed only as scattered docstrings, CHECK constraints, and convention. Nothing let a reviewer or CI ask "does this violate the fault-code-scope rule?" in one place. This lands the layer that can.
+
+Six Turtle modules under `ontology/` (core, controls, evidence, drives, electrical, maintenance) + six paired SHACL shape files (42 shapes) + `tools/validate_ontology.py` — deterministic, offline, **zero paid calls and zero network** after `pip install -r ontology/requirements.txt` (rdflib BSD-3 + pyshacl Apache-2.0, both PRD §4-clean).
+
+Two hygiene rules are machine-enforced, not aspirational: **every** declared `mira:` term carries `mira:grounded_in` naming the concrete repo artifact it abstracts (annotation properties exempt — requiring `grounded_in grounded_in` is circular), and **every** `owl:ObjectProperty` either declares `owl:inverseOf` (symmetrically) or documents why no inverse is modeled, where the bar is a named production query, not a hypothetical.
+
+Design decisions recorded in ADR-0032: statement-level evidence is **reification** (`mira:Assertion`), not RDF-star (SHACL can't target quoted triples, so every rule would be unenforceable) and not named graphs (needs a quad store MIRA doesn't run) — the reified form already exists as `kg_triples_log` columns + `kg_relationships` rows, so no migration. The PrintSense `TrustState` ↔ `kg_*.approval_state` crosswalk is explicit and lossy-by-record: `machine_verified → proposed`, **never** `→ verified`, so a deterministic self-consistency check can't masquerade as human approval.
+
+Fixture coverage (42 shapes) and `ontology/mappings/` are tracked follow-ups (ADR-0032 §8). The validator SKIPs cleanly on a **missing** fixture directory (exit 0) but FAILs on an empty-but-present one — so it's safe to wire into CI today without going red for work not yet started. No OWL reasoner runs anywhere in MIRA; `owl:inverseOf` is a declaration for tooling, not an invitation to add inference.
+
+Verified: `6/6 checks passed (2 skipped)`, exit 0.
+
 ### v3.217.1 (2026-07-26) - fix(rag): bridge ingest normalizer to known-vendor canonical (#1596/#2263 slice B1)
 
 The ingest-side `normalize_manufacturer()` collapsed only the 8 explicit OCR variants (`Alien-Bradley`, `Cofemo`, …); it never consulted the resolver's `VENDOR_ALIASES`, so a known OEM under a different casing/spelling minted its own catalog row. Read-only staging data (2026-07-26) proved the cost: `siemens` (514 chunks) split from `Siemens` (1948), `Rockwell` (18) never joined `Rockwell Automation` (34186), `Automation Direct` (8) vs `AutomationDirect` (4298), `Yaskawa Electric Corporation` (27) vs `Yaskawa` (9340).
@@ -8,7 +22,6 @@ The ingest-side `normalize_manufacturer()` collapsed only the 8 explicit OCR var
 - **Exact-key by design** — multi-word (`Siemens AG`) and model-as-manufacturer (`PowerFlex`, `SINAMICS`) strings still fragment. That is the fuzzy-reviewed backfill's job (slice B2), not a silent write-time collapse.
 
 Fixes only **new** ingests (this is slice B1 of the plan). The existing polluted catalog and the 24,800 uncategorized chunks are slices B2 (gated backfill) and C (classifier) — see `docs/plans/2026-07-26-manufacturer-catalog-dedup.md`. Tests: 8 new behavioral cases in `mira-crawler/tests/test_manufacturer_normalize.py` (crawler 26, mira-core 9, consistency 2 — all green). The read-only reconcile planner over staging now yields 33 alias hits of which **~15 are real merges** (raw ≠ canonical; the rest are identity no-ops), up from 10.
-
 ### v3.217.0 (2026-07-26) - feat(hub): ingest text/markdown + .txt manual uploads (#2277)
 
 The hub upload allowlist accepted only PDF + images; a maintenance **procedure** is often a plain `.md`/`.txt` and technicians reasonably try to upload those. Now they ingest through the **same citable v2 path** as PDFs.
