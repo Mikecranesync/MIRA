@@ -177,6 +177,7 @@ class CanonicalFineTuneRequest:
             "packing": "packing",
             "learning_rate": "learning_rate",
             "random_seed": "random_seed",
+            "batch_size": "batch_size",
         }
         for canonical_key, payload_key in optional_map.items():
             value = self.request.get(canonical_key)
@@ -217,6 +218,7 @@ def canonical_finetune_request(
     lora_trainable_modules: str | None = None,
     lora: bool = True,
     training_method: str = "sft",
+    batch_size: int | str | None = None,
 ) -> CanonicalFineTuneRequest:
     if training_method not in ("sft", "dpo"):
         raise ValueError(f"training_method must be 'sft' or 'dpo', got {training_method!r}")
@@ -231,6 +233,7 @@ def canonical_finetune_request(
         "packing": packing,
         "learning_rate": learning_rate,
         "random_seed": seed,
+        "batch_size": batch_size,
         "training_method": _make_training_method_payload(training_method, train_on_inputs),
         "training_type": _make_training_type_payload(
             lora=lora,

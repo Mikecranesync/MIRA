@@ -2131,3 +2131,6 @@ For current build state, see `CLAUDE.md` in project root.
 - **P0-2**: Regenerate button dedup — FSM rolls back to prior state when identical user message detected in consecutive turns
 - **P0-3**: PDF uploads in OW now route to `mira-ingest /ingest/document-kb` instead of silently falling through to OW native embedding
 - **Rollback anchor:** `v0.5.3-pre-p0-ux` tag on commit before merge; to roll back: `git checkout v0.5.3-pre-p0-ux` → rebuild `mira-pipeline`
+
+## 3.217.2
+- fix(finetune): thread optional batch_size through the canonical fine-tune request + Together provider (Together resolved a zero default batch size for Qwen/Qwen3.5-9B — "HTTP 400: batch size is zero"); omitted batch_size keeps prior hashes byte-stable

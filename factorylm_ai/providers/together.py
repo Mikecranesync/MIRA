@@ -803,6 +803,7 @@ async def create_finetune_job(
     lora_trainable_modules: str | None = None,
     lora: bool = True,
     training_method: str = "sft",
+    batch_size: int | str | None = None,
 ) -> dict[str, Any]:
     """Create a Together fine-tune job. ``POST /fine-tunes`` off the v1 base.
 
@@ -861,6 +862,7 @@ async def create_finetune_job(
         lora_trainable_modules=lora_trainable_modules,
         lora=lora,
         training_method=training_method,
+        batch_size=batch_size,
     )
     together_est_usd = (
         approval_evidence.together_estimate.estimated_total_price
@@ -925,6 +927,7 @@ async def estimate_finetune_price(
     lora_trainable_modules: str | None = None,
     lora: bool = True,
     training_method: str = "sft",
+    batch_size: int | str | None = None,
 ) -> TogetherPriceEstimate:
     """Call Together's authoritative ``POST /fine-tunes/estimate-price`` endpoint.
 
@@ -955,6 +958,7 @@ async def estimate_finetune_price(
         lora_trainable_modules=lora_trainable_modules,
         lora=lora,
         training_method=training_method,
+        batch_size=batch_size,
     )
     data, _elapsed_ms = await _http_post_json(
         _FINETUNE_ESTIMATE_ENDPOINT,
