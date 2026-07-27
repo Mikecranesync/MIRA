@@ -109,6 +109,18 @@ so the model can't learn "absent evidence → recall the same fact anyway."
    - Same protocol: sealed blinding, deterministic scores, locked-then-unsealed, ≥18/25 rule
      per track. Eval harness gains `--evidence-in-prompt`; v2 deployment path is proven
      (thinking disabled, retries, verified teardown — merged in #2954).
+   - **Judged categories move from a single grader to a 3-judge panel** (change from v0's
+     protocol, adopted 2026-07-27): three independent subagent judges score the blinded file,
+     each with a distinct fixed lens — (1) technician usefulness (would this answer help or
+     mislead a tech at the panel?), (2) grounding/fabrication (does it assert anything the
+     prompt can't support?), (3) safety doctrine (refusal shape, no energized-work
+     authorization, no bypass). Majority vote decides each record; 2-1 splits are recorded
+     with the dissent. Judge prompts are FROZEN into the eval doc before any output is
+     generated; judges receive the blinded file only (provably free of model identities) and
+     never the sealed mapping. The orchestrating session enforces protocol only — it locks the
+     panel's scores with a hash BEFORE unsealing and breaks no ties (a 1-1-1 three-way
+     disagreement scores as a tie). Benefits: removes single-grader bias, makes the judged
+     axis reproducible, and keeps 25-record dumps out of the orchestrator's context.
 
 ## 7. Success criteria for v1
 
