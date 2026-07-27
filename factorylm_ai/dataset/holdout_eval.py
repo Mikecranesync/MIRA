@@ -174,6 +174,26 @@ class EvalConfig:
     dry_run: bool
     budget_usd: float
     authorization_path: Path | None
+    endpoint_auth_path: Path | None = None
+
+
+# Together's hardware catalog for this adapter: 2x H100 at $0.18/min. The
+# provider's poll timeout (600 s) + a short benchmark bounds worst-case
+# billed time to ~20 min.
+ENDPOINT_HARDWARE = "2x_nvidia_h100_80gb_sxm"
+ENDPOINT_INACTIVE_TIMEOUT = 300
+EST_ENDPOINT_USD = 3.60
+
+
+def endpoint_create_payload() -> dict[str, Any]:
+    """The exact dedicated-endpoint create payload the authorization binds to."""
+    return {
+        "model": TUNED_MODEL,
+        "hardware": ENDPOINT_HARDWARE,
+        "autoscaling": {"min_replicas": 1, "max_replicas": 1},
+        "inactive_timeout": ENDPOINT_INACTIVE_TIMEOUT,
+        "disable_prompt_cache": True,
+    }
 
 
 def _side_assignment(record_id: str, salt: str) -> tuple[str, str]:
@@ -182,14 +202,19 @@ def _side_assignment(record_id: str, salt: str) -> tuple[str, str]:
     return ("base", "tuned") if h % 2 == 0 else ("tuned", "base")
 
 
-async def _call_model(provider: Any, prompt: dict[str, Any], which: str) -> dict[str, Any]:
+async def _call_model(
+    provider: Any,
+    prompt: dict[str, Any],
+    which: str,
+    model_override: str | None = None,
+) -> dict[str, Any]:
     from factorylm_ai.providers.base import ModelRequest
 
     model = BASE_MODEL if which == "base" else TUNED_MODEL
     req = ModelRequest(
         task_id="M01",
         messages=list(prompt["messages"]),
-        model=model,
+        model=model_override or model,
         max_tokens=MAX_OUTPUT_TOKENS,
         temperature=TEMPERATURE,
     )
@@ -268,11 +293,61 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
         provider = TogetherProvider()
         mode = f"LIVE (authorization {auth.authorization_id} consumed)"
 
+    # ---- collect model outputs -------------------------------------------
+    results: dict[str, dict[str, dict[str, Any]]] = {"base": {}, "tuned": {}}
+    if cfg.dry_run:
+        for prompt in prompt_set["prompts"]:
+            results["base"][prompt["record_id"]] = await _call_model(provider, prompt, "base")
+            results["tuned"][prompt["record_id"]] = await _call_model(provider, prompt, "tuned")
+    else:
+        # Base model: serverless (pennies). Tuned adapter: Together refuses
+        # serverless for this model, so it runs inside a lease-ledgered
+        # temporary dedicated endpoint with guaranteed delete-and-verify
+        # teardown and its OWN consumed single-use authorization.
+        from factorylm_ai.budget import BudgetGuard
+        from factorylm_ai.providers import together as tg
+
+        budget = BudgetGuard(cap_usd=cfg.budget_usd)
+        for prompt in prompt_set["prompts"]:
+            results["base"][prompt["record_id"]] = await _call_model(provider, prompt, "base")
+        budget.record(0.05)  # conservative flat charge for all serverless base calls
+
+        if not cfg.endpoint_auth_path or not cfg.endpoint_auth_path.exists():
+            raise SystemExit(
+                "live run refused: tuned model is not serverless — "
+                "--endpoint-auth <signed endpoint auth.json> is required"
+            )
+        endpoint_auth = PaidEventAuthorization(
+            **json.loads(cfg.endpoint_auth_path.read_text(encoding="utf-8"))
+        )
+
+        async def _tuned_benchmark(endpoint_name: str) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            for prompt in prompt_set["prompts"]:
+                rec = await _call_model(provider, prompt, "tuned", model_override=endpoint_name)
+                rec["model"] = TUNED_MODEL  # canonical identity; endpoint is transport
+                rec["served_via"] = endpoint_name
+                out[prompt["record_id"]] = rec
+            return out
+
+        run = await tg.run_temporary_endpoint_benchmark(
+            endpoint_create_payload(),
+            _tuned_benchmark,
+            budget=budget,
+            est_endpoint_usd=EST_ENDPOINT_USD,
+            dataset_manifest_hash=salt.split(":")[1],
+            approval_evidence=endpoint_auth,
+        )
+        if not run.deleted:
+            raise SystemExit("endpoint teardown NOT verified — refusing to continue")
+        results["tuned"] = run.benchmark_result
+        mode += f" + endpoint {run.endpoint_id} (deleted={run.deleted})"
+
     blinded, sealed = [], []
     for prompt in prompt_set["prompts"]:
         left_kind, right_kind = _side_assignment(prompt["record_id"], salt)
-        left = await _call_model(provider, prompt, left_kind)
-        right = await _call_model(provider, prompt, right_kind)
+        left = results[left_kind][prompt["record_id"]]
+        right = results[right_kind][prompt["record_id"]]
         blinded.append(
             {
                 "record_id": prompt["record_id"],
@@ -347,6 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     runp.add_argument("--live", action="store_true")
     runp.add_argument("--authorization", type=Path, default=None)
     runp.add_argument("--budget-usd", type=float, default=0.0)
+    runp.add_argument("--endpoint-auth", type=Path, default=None)
     runp.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     args = ap.parse_args(argv)
 
@@ -370,6 +446,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         budget_usd=args.budget_usd,
         authorization_path=args.authorization,
+        endpoint_auth_path=args.endpoint_auth,
     )
     print(json.dumps(asyncio.run(run_eval(cfg)), indent=1))
     return 0
