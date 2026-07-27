@@ -2179,5 +2179,8 @@ For current build state, see `CLAUDE.md` in project root.
 ## 3.219.1
 - fix(providers): Together Dedicated Endpoints v2 deployment lifecycle (together_v2.py) — v1 endpoints API retired by Together; adds project/endpoint/deployment create, PATCH-to-zero stop with etag+transient retries, observed-STOPPED verification, append-only lease ledger with crash recovery (cleanup_orphaned_v2_deployments), env-only trusted verifier (no injection), budget precheck before consume. 13 hermetic teardown tests mirror the v1 suite. No live calls.
 
+## 3.221.1
+- fix(eval): disable Qwen3.5 thinking mode on both live holdout-eval sides (`chat_template_kwargs.enable_thinking=false`) — the 2026-07-27 first live run produced 50 EMPTY answers because the reasoning model spent the whole 300-token cap in `message.reasoning` and `content` never populated; unified `_call_chat` for base (serverless) + tuned (v2 dedicated), 400-fallback retries once without the kwarg at 4x tokens, and an empty answer now fails loudly instead of being recorded. Run declared invalid before unsealing; ~$0.55 spent of the $5 declaration.
+
 ## 3.220.0
 - feat(eval): blinded hold-out evaluation harness (base vs technician-v0 LoRA) — deterministic prompt set + leakage guard over the 25 reserved PowerFlex 40 records, sealed-mapping blinding, deterministic scoring, mock dry-run, live path gated on a fresh single-use signed authorization; proposal in docs/zta/2026-07-27-holdout-eval-proposal.md. Live path runs the tuned model on a Together v2 dedicated deployment (merged model, verified teardown). No paid calls.
