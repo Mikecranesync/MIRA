@@ -329,3 +329,31 @@ def test_missing_authorization_refused_before_any_call(monkeypatch, env):
             )
         )
     assert fake.calls == []
+
+
+def test_project_identity_uses_whoami_route(monkeypatch):
+    """No list-projects route exists on v2 — identity comes from GET /v1/whoami."""
+    calls: list[tuple[str, str]] = []
+
+    async def _fake(method, path, api_key, payload=None, timeout=60.0):
+        calls.append((method, path))
+        return {"project_id": "proj_x", "project_slug": "mike-578c", "organization_id": "org_y"}
+
+    monkeypatch.setattr(v2, "_v2_request", _fake)
+    ident = asyncio.run(v2.get_project_identity(api_key="k"))
+    assert ident["project_id"] == "proj_x"
+    assert calls == [("GET", v2.WHOAMI_URL)]
+
+
+def test_list_configs_requires_reference_model_param(monkeypatch):
+    """The configs route 400s without referenceModelId — the param is mandatory."""
+    calls: list[tuple[str, str]] = []
+
+    async def _fake(method, path, api_key, payload=None, timeout=60.0):
+        calls.append((method, path))
+        return {"data": [{"id": "cr_1"}]}
+
+    monkeypatch.setattr(v2, "_v2_request", _fake)
+    configs = asyncio.run(v2.list_configs("proj_x", "ml_abc", api_key="k"))
+    assert configs == [{"id": "cr_1"}]
+    assert calls == [("GET", "/projects/proj_x/configs?referenceModelId=ml_abc")]

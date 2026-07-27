@@ -56,6 +56,7 @@ from factorylm_ai.providers.base import ProviderError
 logger = logging.getLogger("factorylm-ai-together-v2")
 
 V2_BASE = "https://api.together.ai/v2"
+WHOAMI_URL = "https://api.together.ai/v1/whoami"
 STATE_READY = "DEPLOYMENT_STATE_READY"
 STATE_STOPPED = "DEPLOYMENT_STATE_STOPPED"
 STATE_FAILED = "DEPLOYMENT_STATE_FAILED"
@@ -104,8 +105,10 @@ async def _v2_request(
     """The single HTTP seam for the v2 management API (hermetically mocked in tests).
 
     One 429 retry; >=400 raises ProviderError carrying the status code text.
+    ``path`` is joined onto ``V2_BASE`` unless it is already an absolute URL
+    (the whoami identity route lives on the v1 base).
     """
-    url = f"{V2_BASE}{path}"
+    url = path if path.startswith("https://") else f"{V2_BASE}{path}"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=timeout) as client:
         for attempt in (1, 2):
@@ -211,15 +214,29 @@ class TogetherV2DeploymentLeaseLedger:
 # --------------------------------------------------------------------------
 # resource helpers ($0 reads + lifecycle writes)
 # --------------------------------------------------------------------------
-async def list_projects(api_key: str | None = None) -> list[dict[str, Any]]:
+async def get_project_identity(api_key: str | None = None) -> dict[str, Any]:
+    """Resolve the API key's project/org identity via ``GET /v1/whoami``.
+
+    There is no list-projects route on the v2 management API (verified live
+    2026-07-27: ``GET /v2/projects`` is 404); whoami returns ``project_id``,
+    ``project_slug``, ``organization_id`` for the authenticated key.
+    """
     key = api_key or _require_network()
-    data = await _v2_request("GET", "/projects", key)
-    return data.get("projects") or data.get("data") or []
+    return await _v2_request("GET", WHOAMI_URL, key)
 
 
-async def list_configs(project_id: str, api_key: str | None = None) -> list[dict[str, Any]]:
+async def list_configs(
+    project_id: str, reference_model_id: str, api_key: str | None = None
+) -> list[dict[str, Any]]:
+    """List deployment configs compatible with ``reference_model_id``.
+
+    The route rejects a bare call ("referenceModelId or referenceModel is
+    required", verified live 2026-07-27) — the reference model is mandatory.
+    """
     key = api_key or _require_network()
-    data = await _v2_request("GET", f"/projects/{project_id}/configs", key)
+    data = await _v2_request(
+        "GET", f"/projects/{project_id}/configs?referenceModelId={reference_model_id}", key
+    )
     return data.get("configs") or data.get("data") or []
 
 
