@@ -40,10 +40,16 @@ ops/install_watchdog.sh install \
 ```
 
 Defaults resolve to the crawler dir the script lives in, so on the prod worktree
-`ops/install_watchdog.sh install` with no flags is usually correct. Point
-`--heartbeat-log` at the **same** file the daemon writes (`MIRA_JOB_HEARTBEAT_LOG`
-in `run.sh`, or the `data/job_heartbeat.jsonl` default) or health will read an
-empty log and always say `no_evidence_yet`.
+`ops/install_watchdog.sh install` with no flags is usually correct. Both sides
+already agree by construction: `metrics/heartbeat.py`'s default is
+`<crawler>/data/job_heartbeat.jsonl` resolved from the module location (absolute,
+cwd-independent), and the installer's `--heartbeat-log` default is the same
+`<crawler_dir>/data/job_heartbeat.jsonl`. So the daemon writes and the watchdog
+reads the **same** file with **no `run.sh` edit** (`run.sh` does not export
+`MIRA_JOB_HEARTBEAT_LOG`). Only override `--heartbeat-log` if you deliberately
+relocate the log (e.g. Phase 5), and set `MIRA_JOB_HEARTBEAT_LOG` in `run.sh` to
+match at the same time — otherwise health reads an empty log and says
+`no_evidence_yet` forever.
 
 > **Sequencing:** the watchdog is only meaningful once the daemon actually emits
 > heartbeats — i.e. after the `main.py` in this PR is deployed (a reviewed,

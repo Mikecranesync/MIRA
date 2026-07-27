@@ -31,8 +31,16 @@ STATUS_OK = "ok"
 STATUS_NO_NEW = "no_new"
 STATUS_FAILED = "failed"
 
-DEFAULT_LOG_PATH = "mira-crawler/data/job_heartbeat.jsonl"
 SCHEMA_VERSION = 1
+
+# Absolute, cwd-INDEPENDENT default: heartbeat.py lives in mira-crawler/metrics/,
+# so parent.parent is mira-crawler/. A cwd-relative string (as latency.py uses)
+# would double to mira-crawler/mira-crawler/data/… under the daemon's cwd
+# (run.sh does `cd $SCRIPT_DIR`), so the daemon and the watchdog/health CLI would
+# read different files. Resolve from __file__ instead (the fleet_status.py
+# pattern). This matches install_watchdog.sh's HEARTBEAT_LOG default, so daemon
+# and watchdog agree with NO run.sh edit.
+DEFAULT_LOG_PATH = str(Path(__file__).resolve().parent.parent / "data" / "job_heartbeat.jsonl")
 
 
 def _default_log_path() -> Path:

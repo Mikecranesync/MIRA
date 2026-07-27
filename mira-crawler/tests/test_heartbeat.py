@@ -103,6 +103,28 @@ def test_read_records_skips_malformed_lines(tmp_path):
     assert [r["job_id"] for r in records] == ["crawl_abb", "crawl_fanuc"]
 
 
+def test_default_log_path_is_absolute_and_not_cwd_doubled(monkeypatch, tmp_path):
+    # The daemon runs with cwd = mira-crawler/ (run.sh does `cd $SCRIPT_DIR`) and
+    # does NOT export MIRA_JOB_HEARTBEAT_LOG. A cwd-relative default like
+    # "mira-crawler/data/..." would resolve to mira-crawler/mira-crawler/data/...
+    # (doubled) — the daemon would write there while the watchdog reads the real
+    # data/, so health would forever report no_evidence_yet. The default MUST be
+    # absolute, resolved from the module location, cwd-independent.
+    monkeypatch.delenv("MIRA_JOB_HEARTBEAT_LOG", raising=False)
+    monkeypatch.chdir(tmp_path)
+    p = hb._default_log_path()
+    assert p.is_absolute()
+    assert "mira-crawler/mira-crawler" not in str(p)
+    assert str(tmp_path) not in str(p)
+    assert p == Path(hb.__file__).resolve().parent.parent / "data" / "job_heartbeat.jsonl"
+
+
+def test_env_override_still_wins_over_the_absolute_default(monkeypatch, tmp_path):
+    override = tmp_path / "custom" / "hb.jsonl"
+    monkeypatch.setenv("MIRA_JOB_HEARTBEAT_LOG", str(override))
+    assert hb._default_log_path() == override
+
+
 def test_latest_by_job_keeps_the_newest_row_per_job(tmp_path):
     log = tmp_path / "hb.jsonl"
     hb.record_job("crawl_abb", hb.STATUS_OK, log_path=log, now=1.0)
