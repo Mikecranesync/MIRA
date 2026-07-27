@@ -171,6 +171,29 @@ Phases 1–4 are independent of each other (different modules, different fixture
 parallel if desired; the ordering above is by **safety value**, so a stall after any phase still
 leaves the most dangerous rules pinned.
 
+### ⚠️ Repo gotcha: a stacked PR gets ZERO CI
+
+Every workflow in `.github/workflows/` is gated on `pull_request: branches: [main]`, and `ci.yml`
+has no `workflow_dispatch`. **A PR whose base is a feature branch therefore triggers no workflow
+runs at all** — `gh run list --branch <branch>` returns empty.
+
+The trap is that such a PR still reports `mergeStateStatus: CLEAN`. That is not "CI passed"; it is
+"no required check was ever evaluated." Do not read it as a green light. (Observed on PR #2939,
+Phase 1.)
+
+Options, in order of preference:
+
+1. **Merge the parent first, then let GitHub auto-retarget the stacked PR to `main`** — CI fires
+   on retarget and the PR is validated normally. This is the intended flow.
+2. **Open each phase PR against `main` sequentially**, after the previous phase merges. No stack,
+   no gap, at the cost of serialization.
+3. **Verify locally and say so explicitly in the PR body**, including a clean-room run of the exact
+   CI step (`python -m venv` → `pip install -r ontology/requirements.txt` → validator + pytest), so
+   a reviewer is never misled by the CLEAN badge.
+
+Whichever is chosen, a phase PR must never be described as "CI green" until a workflow run actually
+exists for its head SHA.
+
 ## Definition of done for the fixture work
 
 - `shapes:fixture-coverage` reports **42/42**, no uncovered names.
