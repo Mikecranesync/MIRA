@@ -261,6 +261,18 @@ jobs:
         # this file is named explicitly (like bot_regression.py above).
         run: pytest tests/test_harvest_golden_cases.py -v
 
+      - name: Manufacturer alias consistency + normalizer (#1596/#2263)
+        # Locks the cross-service drift guard: the manufacturer alias map is
+        # vendored in 3 places (crawler .py, mira-core .py, hub JSON) and must
+        # stay byte-equal AND agree with the resolver's VENDOR_ALIASES on every
+        # shared key. Hermetic (AST/JSON reads by path, stdlib-only). The
+        # crawler behavioral suite (mira-core's runs in the ingest step above)
+        # imports only stdlib, so no extra deps. Root tests/ is not collected
+        # wholesale here — named explicitly.
+        run: |
+          pytest tests/test_manufacturer_alias_consistency.py -v
+          (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)
+
       - name: Relational distiller (flywheel Phase 4b)
         # Pure core of tools/relational_distill.py — matched drive-pack fault
         # turns → grounded HAS_FAILURE_MODE edge proposals (human-gated, never
