@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent template for the mira-crawler DETECTION-ONLY watchdog.
+  Rendered by install_watchdog.sh (placeholders __UPPER__ are substituted).
+  Contains NO secrets — only filesystem paths. Do NOT add DOPPLER_TOKEN here:
+  the watchdog reads local heartbeat JSONL + launchctl, it never runs a crawl.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mira.crawler-watchdog</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__WATCHDOG_SH__</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>CRAWLER_DIR</key>
+        <string>__CRAWLER_DIR__</string>
+        <key>VENV_PYTHON</key>
+        <string>__VENV_PYTHON__</string>
+        <key>MIRA_JOB_HEARTBEAT_LOG</key>
+        <string>__HEARTBEAT_LOG__</string>
+        <key>WATCHDOG_LOG</key>
+        <string>__WATCHDOG_LOG__</string>
+        <key>LAUNCHD_LABEL</key>
+        <string>com.mira.crawler</string>
+    </dict>
+
+    <!-- Every 10 minutes (600s). The 30-min healthcheck's 40-min stale window
+         means a wedged scheduler is detected within ~3 watchdog ticks. -->
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__WATCHDOG_LOG__</string>
+    <key>StandardErrorPath</key>
+    <string>__WATCHDOG_LOG__</string>
+</dict>
+</plist>

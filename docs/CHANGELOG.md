@@ -1,3 +1,17 @@
+### v3.221.0 (2026-07-27) - feat(crawler): per-job heartbeat + health CLI + single-source job registry
+
+Runtime hardening (Tier A) for the Bravo manufacturer crawler. Fixes the "registration ≠ success" trap: the old 30-minute `healthcheck` only proved `CrawlerConfig()` constructs — it never proved a crawl *ran*, let alone succeeded. Now every scheduled job leaves a per-job heartbeat and a dependency-free `health.py` CLI judges the whole schedule from that evidence.
+
+**Single source of truth for the schedule.** `mira-crawler/job_registry.py` defines the 9 jobs (id / trigger / cadence) as data. Both `main._setup_scheduler` (the write side — what fires) and `health.py` (the read side — what's judged healthy) read it, so they can't drift. It is stdlib-only by design so the minimal-deps CI job imports it without docling/apscheduler.
+
+**Heartbeat evidence, mirroring `metrics/latency.py`.** `metrics/heartbeat.py` appends one JSONL row per job run — `ok` (did work), `no_new` (ran, nothing new — 0 URLs discovered is **healthy**, per Phase 0), or `failed` (raised / every URL errored) — classified from the base crawler's `{total_urls, stored_chunks, errors, …}`. Fail-soft readers, injectable clock.
+
+**Honest, graceful health.** `health.py` judges each job against its stale window: cold start reads `no_evidence_yet` and exits 0 (a fresh box is **never** "unhealthy"); `ran-0-new` is distinct from `failed` and from `never_ran`; a weekly job not yet due doesn't raise a false alarm; and the 30-minute healthcheck going `stale` (silent > 40 min) is the daemon-dead signal that drives overall `degraded` (exit 1).
+
+**Detection-only watchdog** (`mira-crawler/ops/`): a LaunchAgent template (no secrets — paths only), an install/uninstall/rollback script, and a shellcheck-clean detection script that checks launchd liveness + `health.py --json` and **alerts without ever restarting** the crawler. Docs: `docs/ops/crawler-runtime.md` (runtime reference), `docs/ops/crawler-watchdog.md` (install/rollback), `docs/ops/crawler-data-relocation-assessment.md` (Phase 5 — assessed, execution deferred).
+
+**No behavior deployed.** The running daemon stays on its pinned SHA; deploying this `main.py` and installing the watchdog is a reviewed, SHA-changing follow-up. Verified: 43 new tests green (registry / heartbeat / health hermetic; scheduler↔registry tie self-skips where heavy deps absent), ruff + shellcheck clean, watchdog exercised end-to-end on healthy/cold-start/degraded logs, no regressions in the existing crawler suite (pre-existing optional-dep failures unchanged). Refs `docs/ops/2026-07-27-crawler-runtime-hardening-phase0.md`.
+
 ### v3.219.0 (2026-07-26) - feat(ontology): evidence-module fixture coverage (ADR-0032 Phase 1)
 
 Phase 1 of the ADR-0032 §8 follow-up: the **evidence** module — the keystone, and the "an AI approves its own work" class of rules — is now pinned by fixtures. Shape coverage **1/42 → 11/42**.
