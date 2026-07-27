@@ -15,16 +15,16 @@ describe("/api/cmms/sso", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     vi.stubEnv("HUB_CMMS_API_URL", "http://cmms-backend:8080");
     vi.stubEnv("CMMS_PUBLIC_URL", "https://cmms.factorylm.com");
-    vi.stubEnv("HUB_SSO_SECRET", "test-secret");
-    vi.stubEnv("HUB_SSO_ISSUER", "factorylm-hub");
-    vi.stubEnv("HUB_SSO_AUDIENCE", "atlas-cmms");
+    vi.stubEnv("ATLAS_API_USER", "atlas-owner@example.test");
+    vi.stubEnv("ATLAS_API_PASSWORD", "atlas-password");
   });
 
-  it("exchanges the Hub session for an Atlas token and redirects to the CMMS token handoff", async () => {
-    const fetchMock = vi.fn(async () =>
+  it("signs into Atlas with configured Atlas credentials and redirects to the CMMS token handoff", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
       new Response(JSON.stringify({ accessToken: "atlas.jwt" }), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -40,15 +40,19 @@ describe("/api/cmms/sso", () => {
       "https://cmms.factorylm.com/oauth2/success?token=atlas.jwt&redirect=%2Fapp%2Fassets",
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://cmms-backend:8080/auth/sso/hub",
+      "http://cmms-backend:8080/auth/signin",
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.assertion).toEqual(expect.any(String));
-    expect(body.assertion.split(".")).toHaveLength(3);
+    const init = fetchMock.mock.calls[0]?.[1];
+    const body = JSON.parse(String(init?.body));
+    expect(body).toEqual({
+      email: "atlas-owner@example.test",
+      password: "atlas-password",
+      type: "CLIENT",
+    });
   });
 
   it("falls back to the work-order route when redirect is not an app path", async () => {
@@ -67,8 +71,8 @@ describe("/api/cmms/sso", () => {
     );
   });
 
-  it("returns 503 when the shared SSO secret is missing", async () => {
-    vi.stubEnv("HUB_SSO_SECRET", "");
+  it("returns 503 when Atlas credentials are missing", async () => {
+    vi.stubEnv("ATLAS_API_PASSWORD", "");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 

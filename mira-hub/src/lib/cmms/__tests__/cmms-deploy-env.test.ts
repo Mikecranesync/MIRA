@@ -15,11 +15,15 @@ function serviceBlock(serviceName: string) {
 }
 
 describe("SaaS deploy CMMS SSO environment", () => {
-  it("passes the Hub SSO signing configuration into mira-hub", () => {
+  it("passes the Atlas sign-in configuration into mira-hub", () => {
     const hub = serviceBlock("mira-hub");
 
-    expect(hub).toContain("- HUB_SSO_SECRET=${HUB_SSO_SECRET:-}");
-    expect(hub).toContain("- HUB_SSO_ISSUER=${HUB_SSO_ISSUER:-factorylm-hub}");
-    expect(hub).toContain("- HUB_SSO_AUDIENCE=${HUB_SSO_AUDIENCE:-atlas-cmms}");
+    expect(hub).toContain("- HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}");
+    expect(hub).toContain("- CMMS_PUBLIC_URL=${CMMS_PUBLIC_URL:-https://cmms.factorylm.com}");
+    expect(hub).toContain("- ATLAS_API_USER=${ATLAS_API_USER:-}");
+    expect(hub).toContain("- ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}");
+    expect(hub).not.toContain("HUB_SSO_SECRET");
+    expect(hub).not.toContain("HUB_SSO_ISSUER");
+    expect(hub).not.toContain("HUB_SSO_AUDIENCE");
   });
 });
