@@ -35,7 +35,7 @@ from pathlib import Path
 
 try:
     from pyshacl import validate as shacl_validate
-    from rdflib import Graph, Namespace, RDF, RDFS, OWL, URIRef
+    from rdflib import OWL, RDF, RDFS, Graph, Namespace, URIRef
 except ImportError:  # pragma: no cover - environment guard
     sys.stderr.write(
         "ERROR: rdflib/pyshacl not installed.\n"

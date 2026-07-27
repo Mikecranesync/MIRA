@@ -161,11 +161,20 @@ writing it immediately surfaced a foundational defect that would otherwise have 
 > **`sh:sourceShape` names the blank property shape, not the named node shape.** For the common
 > `mirash:X sh:property [ sh:path … ; sh:minCount 1 ]` idiom, a violation is reported against the
 > **anonymous** inner shape. The first `violated_shapes()` extracted local names from the URI, so
-> a blank node yielded nothing and `# EXPECT-VIOLATION: mirash:X` could never be satisfied — for
-> ~36 of the 42 shapes. Fixed by walking UP the shapes graph from the blank node to its owning
-> named shape (`_named_ancestors`, through `sh:property` / `sh:node` / `sh:not` / the RDF list
-> cells of `sh:or`/`sh:and`/`sh:xone`). Verified both ways: the correct expectation passes, and a
-> fixture naming the *wrong* shape still fails and reports what did fire.
+> a blank node yielded nothing and `# EXPECT-VIOLATION: mirash:X` could never be satisfied. Fixed
+> by walking UP the shapes graph from the blank node to its owning named shape
+> (`_named_ancestors`, through `sh:property` / `sh:node` / `sh:not` / the RDF list cells of
+> `sh:or`/`sh:and`/`sh:xone`). Verified both ways: the correct expectation passes, and a fixture
+> naming the *wrong* shape still fails and reports what did fire.
+>
+> **Blast radius, measured rather than estimated (corrected in Phase 1).** An earlier draft of
+> this ADR said "~36 of the 42 shapes." That was an estimate and it was **wrong**. The real figure
+> is **17 of 42** — the shapes that declare `sh:property` and no `sh:sparql`, whose constraints
+> therefore live entirely in blank nodes. The **19** `sh:sparql` shapes were never affected:
+> pyshacl attributes a SPARQL constraint to the *named* shape itself. The remaining 6 use
+> node-level constraints (`sh:or`, `sh:class`) and likewise attribute directly. Confirmed
+> empirically by re-running every invalid fixture under the pre-fix logic: exactly the
+> property-shape fixtures fail, and every SPARQL-constraint fixture passes unchanged.
 
 Building the remaining 41 is a phase of its own — fixture authoring plus pyshacl debugging per
 shape — tracked as a follow-up rather than squeezed into the foundation PR.

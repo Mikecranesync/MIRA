@@ -2,7 +2,8 @@
 
 **Created:** 2026-07-26
 **Governs:** the ADR-0032 §8 follow-ups left open by PR #2936 (ontology foundation)
-**Status:** Phase 0 complete (foundation + harness proven). Phases 1–6 open.
+**Status:** Phase 0 complete (foundation + harness proven). **Phase 1 complete** (evidence module,
+10/10 shapes, coverage 1/42 → 11/42). Phases 2–6 open.
 
 ---
 
@@ -18,9 +19,14 @@ Two things the seed already bought us, which set the difficulty for everything b
    (`sh:property [ … ]`) and SPARQL-constraint violations (`sh:sparql [ … ]`) both attribute
    correctly to the named shape a fixture declares. Verified with a real fixture of each kind.
 2. **The attribution bug is already fixed.** `sh:sourceShape` names the *blank* inner shape, not
-   the named node shape — so `# EXPECT-VIOLATION:` was unsatisfiable for ~36 of 42 shapes until
-   `_named_ancestors` walked up the shapes graph. Had this been found in Phase 3 instead of Phase
-   0, every fixture written before it would have been silently mis-verified.
+   the named node shape — so `# EXPECT-VIOLATION:` was unsatisfiable until `_named_ancestors`
+   walked up the shapes graph. Had this been found in Phase 3 instead of Phase 0, every fixture
+   written before it would have been silently mis-verified.
+   **Measured blast radius (Phase 1 correction):** **17 of 42** shapes — those declaring
+   `sh:property` and no `sh:sparql`. The 19 `sh:sparql` shapes were never affected (pyshacl
+   attributes SPARQL constraints to the named shape directly); 6 more use node-level constraints
+   and likewise attribute directly. An earlier "~36 of 42" figure in this document and in
+   ADR-0032 was an estimate and was wrong.
 
 The remaining work is therefore **volume, not risk**. Read the current uncovered list from the
 tool, never from this document:
