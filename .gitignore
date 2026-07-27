@@ -311,3 +311,13 @@ graphify-out/
 # One-shot rollback scratch dirs left by working-tree cleanups (ORIG_* snapshots
 # + a finish-cleanup.sh). Superseded once the cleanup lands; several MB each.
 .cleanup-rollback-*/
+
+# lead-hunter cron runtime state (untracked 2026-07-27). Both are rewritten by the
+# hourly routine, so while tracked they made the shared working tree PERMANENTLY dirty
+# — and tools/hooks/safe-cron-pull.sh skips on a dirty tree, which is one of the two
+# conditions that left the nightly eval unable to update itself (#2952).
+# Neither is source: .hourly_state.json is 4 counters (city_index/requests_today/
+# last_date/total_discovered); hardening-alerts.jsonl is per-run health telemetry
+# (durations + step statuses), the same class as the eval run logs ignored above.
+tools/lead-hunter/.hourly_state.json
+marketing/prospects/hardening-alerts.jsonl
