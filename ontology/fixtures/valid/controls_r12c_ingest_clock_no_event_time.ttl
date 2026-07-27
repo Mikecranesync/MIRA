@@ -1,0 +1,26 @@
+# R12c satisfied — two honest observations. The PLC-stamped one carries an event_timestamp; the
+# ingest-stamped one carries NO event_timestamp, because MIRA's clock is not the device's.
+# Missing device time is represented as missing, not fabricated.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.dc_bus" .
+ex:run_status a mira:StatusSignal .
+
+ex:obs_plc a mira:Observation ;
+    mira:observed_signal ex:run_status ;
+    mira:value true ; mira:value_type mira:valuetype_bool ;
+    mira:clock_source mira:clock_plc ;
+    mira:event_timestamp "2026-07-26T14:03:00Z"^^xsd:dateTime ;
+    mira:quality mira:quality_good ; mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .
+
+ex:obs_ingest a mira:Observation ;
+    mira:observed_signal ex:run_status ;
+    mira:value true ; mira:value_type mira:valuetype_bool ;
+    mira:clock_source mira:clock_ingest ;
+    mira:quality mira:quality_uncertain ; mira:freshness mira:freshness_stale ;
+    mira:supported_by ex:tag_src .

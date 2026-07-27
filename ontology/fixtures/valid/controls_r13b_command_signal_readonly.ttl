@@ -1,0 +1,10 @@
+# R13b satisfied — the command signal declares read_only=true EXPLICITLY. Under the Phase 2
+# fail-closed correction, explicit is the only acceptable form: an undeclared capability is a
+# violation, not a default.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:run_cmd a mira:CommandSignal ;
+    mira:read_only true .

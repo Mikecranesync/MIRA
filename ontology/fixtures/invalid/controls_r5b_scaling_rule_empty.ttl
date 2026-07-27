@@ -1,0 +1,10 @@
+# EXPECT-VIOLATION: mirash:ScalingRuleShape
+#
+# R5b — a ScalingRule with no multiplier. An empty scaling rule satisfies R5's minCount while
+# carrying no arithmetic, so the register would LOOK decodable and still produce a raw count.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:scale_empty a mira:ScalingRule .

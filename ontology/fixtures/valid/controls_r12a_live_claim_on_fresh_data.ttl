@@ -1,0 +1,22 @@
+# R12a satisfied — the live claim rests on a good-quality, live-freshness observation.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.dc_bus" .
+ex:run_status a mira:StatusSignal .
+
+ex:obs_live a mira:Observation ;
+    mira:observed_signal ex:run_status ;
+    mira:value true ; mira:value_type mira:valuetype_bool ;
+    mira:event_timestamp "2026-07-26T14:03:00Z"^^xsd:dateTime ;
+    mira:clock_source mira:clock_plc ;
+    mira:quality mira:quality_good ;
+    mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .
+
+ex:claim_live a mira:LiveDiagnosisClaim ;
+    mira:predicate "conveyor_is_running_now" ;
+    mira:supported_by ex:obs_live .

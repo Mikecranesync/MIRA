@@ -1,0 +1,19 @@
+# R13 satisfied — the control action is described with permission explicitly denied.
+#
+# NOTE on the absent case: a ControlActionClaim carrying NO presents_action_as_permitted also
+# conforms. That is deliberate and safe here — absence means the claim does not assert
+# permission, which is the conservative reading. Contrast R13b, where absence of read_only on a
+# CommandSignal means writability is UNKNOWN and therefore MUST fail closed. The asymmetry is
+# intentional: silence about an assertion is safe; silence about a capability is not.
+# Both directions are pinned by tests in tests/test_ontology_controls_phase2.py.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:claim_reset a mira:ControlActionClaim ;
+    mira:predicate "drive_fault_requires_manual_reset_by_a_technician" ;
+    mira:presents_action_as_permitted false .
+
+ex:claim_described a mira:ControlActionClaim ;
+    mira:predicate "a_reset_exists_but_mira_asserts_nothing_about_permission" .
