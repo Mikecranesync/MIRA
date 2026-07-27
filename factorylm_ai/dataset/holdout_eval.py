@@ -29,6 +29,7 @@ import asyncio
 import hashlib
 import json
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -177,23 +178,76 @@ class EvalConfig:
     endpoint_auth_path: Path | None = None
 
 
-# Together's hardware catalog for this adapter: 2x H100 at $0.18/min. The
-# provider's poll timeout (600 s) + a short benchmark bounds worst-case
-# billed time to ~20 min.
-ENDPOINT_HARDWARE = "2x_nvidia_h100_80gb_sxm"
-ENDPOINT_INACTIVE_TIMEOUT = 300
+# Together v2 dedicated-deployment resources, pinned by the 2026-07-27 $0
+# preflight (all live-verified GETs): the fine-tune auto-registered a MERGED
+# model resource (revision validation SUCCESS) and an adapter resource
+# (validation FAILED: TARGET_MODULES_EXIST) — the eval deploys the merged
+# model. The certified config for the Qwen3.5-9B base is 1x H100-80GB
+# (balanced) and lives in Together's public project. Billing runs from
+# DEPLOYMENT_STATE_READY to observed STOPPED; teardown is lease-ledgered
+# and verified by the v2 provider module.
+V2_PROJECT_ID = "proj_CcHE4SjS9B3pHfhyatLNT"
+V2_PROJECT_SLUG = "mike-578c"
+V2_MODEL_RESOURCE = (
+    f"projects/{V2_PROJECT_ID}/models/ml_CdRe7guMCoY3Jt6VTxuDM/revisions/rv_CdRe8tDXNZrAt4qi8nMbQ"
+)
+V2_CONFIG_RESOURCE = "projects/proj_CbGpV8orZSw72BARMZy4i/configs/cr_Cd35Fpam3FrMdwHdmroZD"
+V2_ENDPOINT_NAME = "holdout-eval-technician-v0"
+V2_DEPLOYMENT_NAME = "holdout-eval"
+V2_INFERENCE_URL = "https://api-inference.together.ai/v1/chat/completions"
 EST_ENDPOINT_USD = 3.60
 
 
-def endpoint_create_payload() -> dict[str, Any]:
-    """The exact dedicated-endpoint create payload the authorization binds to."""
-    return {
-        "model": TUNED_MODEL,
-        "hardware": ENDPOINT_HARDWARE,
-        "autoscaling": {"min_replicas": 1, "max_replicas": 1},
-        "inactive_timeout": ENDPOINT_INACTIVE_TIMEOUT,
-        "disable_prompt_cache": True,
-    }
+def v2_deployment_spec() -> Any:
+    """The exact v2 deployment spec the endpoint authorization binds to.
+
+    ``run_temporary_v2_deployment`` hashes ``spec.canonical_payload()`` into the
+    authorization request hash — the signing ceremony must sign this exact spec.
+    """
+    from factorylm_ai.providers.together_v2 import V2CreateSpec
+
+    return V2CreateSpec(
+        project_id=V2_PROJECT_ID,
+        project_slug=V2_PROJECT_SLUG,
+        endpoint_name=V2_ENDPOINT_NAME,
+        deployment_name=V2_DEPLOYMENT_NAME,
+        model=V2_MODEL_RESOURCE,
+        config=V2_CONFIG_RESOURCE,
+        enable_lora=False,
+    )
+
+
+def eval_request_hash(salt: str, n_prompts: int) -> str:
+    """The request hash the eval-gate authorization binds to."""
+    return _sha(
+        {
+            "action": ACTION_HOLDOUT_EVAL,
+            "prompt_set_hash": salt,
+            "base_model": BASE_MODEL,
+            "tuned_model": TUNED_MODEL,
+            "max_output_tokens": MAX_OUTPUT_TOKENS,
+            "temperature": TEMPERATURE,
+            "max_calls": 2 * n_prompts,
+        }
+    )
+
+
+def endpoint_request_hash() -> str:
+    """The request hash the deployment authorization binds to.
+
+    Must equal what ``run_temporary_v2_deployment`` computes from
+    ``spec.canonical_payload()`` — same canonical hasher, same spec.
+    """
+    from factorylm_ai.finetune import (
+        ACTION_TEMPORARY_ENDPOINT_BENCHMARK,
+        canonical_paid_action_request_hash,
+    )
+
+    return canonical_paid_action_request_hash(
+        provider="together",
+        action=ACTION_TEMPORARY_ENDPOINT_BENCHMARK,
+        payload=v2_deployment_spec().canonical_payload(),
+    )
 
 
 def _side_assignment(record_id: str, salt: str) -> tuple[str, str]:
@@ -237,6 +291,52 @@ async def _call_model(
     }
 
 
+async def _call_dedicated(qualified_name: str, prompt: dict[str, Any]) -> dict[str, Any]:
+    """Call the temporary v2 dedicated deployment directly.
+
+    v2 dedicated endpoints serve on ``api-inference.together.ai`` (NOT the
+    serverless host the provider module is pinned to), addressed as
+    ``<project_slug>/<endpoint_name>``. Same receipt shape as ``_call_model``.
+    """
+    import os
+
+    import httpx
+
+    payload = {
+        "model": qualified_name,
+        "messages": list(prompt["messages"]),
+        "max_tokens": MAX_OUTPUT_TOKENS,
+        "temperature": TEMPERATURE,
+    }
+    headers = {
+        "Authorization": f"Bearer {os.environ['TOGETHERAI_API_KEY']}",
+        "Content-Type": "application/json",
+    }
+    started = _now()
+    t0 = time.monotonic()
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(V2_INFERENCE_URL, headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+    usage = data.get("usage") or {}
+    return {
+        "model": TUNED_MODEL,
+        "text": str(text),
+        "started_at": started,
+        "finished_at": _now(),
+        "usage": {
+            "input_tokens": usage.get("prompt_tokens", 0),
+            "output_tokens": usage.get("completion_tokens", 0),
+            "latency_ms": elapsed_ms,
+            "provider": "together-v2-dedicated",
+            "answered_by": data.get("model", qualified_name),
+        },
+        "raw_hash": _sha(str(text)),
+    }
+
+
 async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
     prompt_set = build_prompt_set()
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
@@ -265,17 +365,7 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
         auth = PaidEventAuthorization(
             **json.loads(cfg.authorization_path.read_text(encoding="utf-8"))
         )
-        expected_request_hash = _sha(
-            {
-                "action": ACTION_HOLDOUT_EVAL,
-                "prompt_set_hash": salt,
-                "base_model": BASE_MODEL,
-                "tuned_model": TUNED_MODEL,
-                "max_output_tokens": MAX_OUTPUT_TOKENS,
-                "temperature": TEMPERATURE,
-                "max_calls": 2 * len(prompt_set["prompts"]),
-            }
-        )
+        expected_request_hash = eval_request_hash(salt, len(prompt_set["prompts"]))
         verifier = TrustedPaidAuthorizationVerifier.from_environment()
         verifier.verify_and_consume(
             auth,
@@ -300,12 +390,12 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
             results["base"][prompt["record_id"]] = await _call_model(provider, prompt, "base")
             results["tuned"][prompt["record_id"]] = await _call_model(provider, prompt, "tuned")
     else:
-        # Base model: serverless (pennies). Tuned adapter: Together refuses
-        # serverless for this model, so it runs inside a lease-ledgered
-        # temporary dedicated endpoint with guaranteed delete-and-verify
-        # teardown and its OWN consumed single-use authorization.
+        # Base model: serverless (pennies). Tuned model: not serverless — it
+        # runs as the MERGED model resource inside a lease-ledgered temporary
+        # v2 deployment with observed-STOPPED verified teardown and its OWN
+        # consumed single-use authorization.
         from factorylm_ai.budget import BudgetGuard
-        from factorylm_ai.providers import together as tg
+        from factorylm_ai.providers.together_v2 import run_temporary_v2_deployment
 
         budget = BudgetGuard(cap_usd=cfg.budget_usd)
         for prompt in prompt_set["prompts"]:
@@ -321,27 +411,30 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
             **json.loads(cfg.endpoint_auth_path.read_text(encoding="utf-8"))
         )
 
-        async def _tuned_benchmark(endpoint_name: str) -> dict[str, dict[str, Any]]:
+        async def _tuned_benchmark(qualified_name: str) -> dict[str, dict[str, Any]]:
             out: dict[str, dict[str, Any]] = {}
             for prompt in prompt_set["prompts"]:
-                rec = await _call_model(provider, prompt, "tuned", model_override=endpoint_name)
+                rec = await _call_dedicated(qualified_name, prompt)
                 rec["model"] = TUNED_MODEL  # canonical identity; endpoint is transport
-                rec["served_via"] = endpoint_name
+                rec["served_via"] = qualified_name
                 out[prompt["record_id"]] = rec
             return out
 
-        run = await tg.run_temporary_endpoint_benchmark(
-            endpoint_create_payload(),
+        run = await run_temporary_v2_deployment(
+            v2_deployment_spec(),
             _tuned_benchmark,
             budget=budget,
-            est_endpoint_usd=EST_ENDPOINT_USD,
+            est_usd=EST_ENDPOINT_USD,
             dataset_manifest_hash=salt.split(":")[1],
             approval_evidence=endpoint_auth,
         )
-        if not run.deleted:
-            raise SystemExit("endpoint teardown NOT verified — refusing to continue")
+        if not run.stopped_verified:
+            raise SystemExit("deployment teardown NOT verified — refusing to continue")
         results["tuned"] = run.benchmark_result
-        mode += f" + endpoint {run.endpoint_id} (deleted={run.deleted})"
+        mode += (
+            f" + v2 deployment {run.deployment_id} on endpoint {run.endpoint_id}"
+            f" (stopped_verified={run.stopped_verified})"
+        )
 
     blinded, sealed = [], []
     for prompt in prompt_set["prompts"]:
@@ -417,6 +510,10 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("build", help="build + hash the prompt set; run leakage guard ($0)")
+    sub.add_parser(
+        "auth-hashes",
+        help="print the two request hashes the signing ceremony binds to ($0, offline)",
+    )
     runp = sub.add_parser("run", help="run the blinded eval")
     runp.add_argument("--dry-run", action="store_true")
     runp.add_argument("--live", action="store_true")
@@ -434,6 +531,22 @@ def main(argv: list[str] | None = None) -> int:
                     "records": len(ps["prompts"]),
                     "prompt_set_hash": ps["prompt_set_hash"],
                     "leakage_guard": "PASS",
+                },
+                indent=1,
+            )
+        )
+        return 0
+    if args.cmd == "auth-hashes":
+        ps = build_prompt_set()
+        print(
+            json.dumps(
+                {
+                    "prompt_set_hash": ps["prompt_set_hash"],
+                    "eval_authorization_request_hash": eval_request_hash(
+                        ps["prompt_set_hash"], len(ps["prompts"])
+                    ),
+                    "endpoint_authorization_request_hash": endpoint_request_hash(),
+                    "endpoint_spec": v2_deployment_spec().canonical_payload(),
                 },
                 indent=1,
             )
