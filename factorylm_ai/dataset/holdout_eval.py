@@ -329,15 +329,24 @@ async def _call_chat(
     started = _now()
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            url,
-            headers=headers,
-            json={**base_payload, "chat_template_kwargs": {"enable_thinking": False}},
-        )
-        if resp.status_code == 400:
+        resp = None
+        for attempt in range(4):  # 3 transient retries — a stray 500 must not burn the run
             resp = await client.post(
-                url, headers=headers, json={**base_payload, "max_tokens": 4 * MAX_OUTPUT_TOKENS}
+                url,
+                headers=headers,
+                json={**base_payload, "chat_template_kwargs": {"enable_thinking": False}},
             )
+            if resp.status_code == 400:
+                resp = await client.post(
+                    url,
+                    headers=headers,
+                    json={**base_payload, "max_tokens": 4 * MAX_OUTPUT_TOKENS},
+                )
+            if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
+                await asyncio.sleep(3.0 * (attempt + 1))
+                continue
+            break
+        assert resp is not None
         resp.raise_for_status()
         data = resp.json()
     elapsed_ms = int((time.monotonic() - t0) * 1000)
