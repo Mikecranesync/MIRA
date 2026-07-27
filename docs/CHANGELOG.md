@@ -1,3 +1,11 @@
+### v3.222.1 (2026-07-27) - fix(crawler): manufacturer crawl finds reference-tier docs (tier-scoping bug)
+
+**Root cause (one line):** `ManufacturerCrawler.discover_urls()` filtered tiers with `if "manufacturer" not in tier_key: continue`, hard-scoping discovery to the single `3_manufacturer` tier. The OEM reference PDFs (ABB/SKF/Rockwell) are catalogued under the `5_reference` tier, so a `--filter abb` crawl skipped **4 ABB PDFs that already existed in `sources.yaml`** — discovering 0 URLs and reporting healthy `no_new` forever while finding nothing.
+
+**Fix (surgical):** when crawling a *specific* manufacturer, scan every tier — the existing manufacturer-name filter already restricts to matching entries. When crawling "all" (no filter), keep the manufacturer-tier-only behavior so reference/curriculum-owned docs aren't double-ingested. Verified: `crawl_abb` 0 → 4 URLs discovered. A hermetic regression test (`tests/test_manufacturer_discovery.py`) pins this — it fails against the pre-fix code and passes on the fix.
+
+**Note — separate content gap (not this fix):** FANUC/KUKA/Siemens/Rockwell still discover 0 because they have no source URLs anywhere in `sources.yaml` (a `# to be verified and added` placeholder). That needs source curation, not code.
+
 ### v3.221.0 (2026-07-27) - feat(crawler): per-job heartbeat + health CLI + single-source job registry
 
 Runtime hardening (Tier A) for the Bravo manufacturer crawler. Fixes the "registration ≠ success" trap: the old 30-minute `healthcheck` only proved `CrawlerConfig()` constructs — it never proved a crawl *ran*, let alone succeeded. Now every scheduled job leaves a per-job heartbeat and a dependency-free `health.py` CLI judges the whole schedule from that evidence.
