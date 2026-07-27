@@ -323,8 +323,10 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
         "records": len(blinded),
         "calls": 2 * len(blinded),
         "prompt_set_hash": salt,
-        "blinded_outputs_hash": _sha(blinded_doc),
-        "sealed_mapping_hash": _sha(sealed_doc),
+        # hash the RECORDS, not the wrapper meta — generated_at must not break
+        # run-to-run determinism proofs
+        "blinded_outputs_hash": _sha(blinded),
+        "sealed_mapping_hash": _sha(sealed),
     }
     (cfg.out_dir / "run_summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     return summary
