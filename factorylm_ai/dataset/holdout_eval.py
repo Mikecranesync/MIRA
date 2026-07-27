@@ -201,7 +201,13 @@ async def _call_model(provider: Any, prompt: dict[str, Any], which: str) -> dict
         "text": str(text),
         "started_at": started,
         "finished_at": _now(),
-        "usage": getattr(resp, "usage", None) or {},
+        "usage": {
+            "input_tokens": getattr(resp, "input_tokens", 0),
+            "output_tokens": getattr(resp, "output_tokens", 0),
+            "latency_ms": getattr(resp, "latency_ms", 0),
+            "provider": getattr(resp, "provider", ""),
+            "answered_by": getattr(resp, "model", ""),
+        },
         "raw_hash": _sha(str(text)),
     }
 
