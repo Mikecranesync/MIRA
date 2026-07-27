@@ -1,8 +1,28 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-07-27
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-07-27
+
+### Most actionable change for the playbook
+
+Augury's "Industrial AI Workforce" pivot (May 2026) is the most significant competitive move since the last refresh. Augury moved from sensor-based predictive AI to positioning as a suite of role-based industrial agents (reliability, maintenance, operations). MIRA must answer what specific industrial role it owns in this new "AI workforce" frame — not just what it does. The passive→active dichotomy ("insight to action") is now Augury's main claim, not just UpKeep's.
+
+### New findings
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" announcement (May 18, 2026): https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/ — video: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce — role-based AI agents (reliability, maintenance, ops roles) announced at AVEVA World (Milan); "Industrial Context Graph" for cognitive cause-and-effect reasoning; AVEVA CONNECT + Google Gemini partnership; frame: "bridge the gap from insight to action" [Machine Design video, not YouTube; transcript not verified]
+- **Tractian** — TracOS Offline Mode + Smart Trac enhancements (July 7, 2026): https://releases.tractian.com/en/ — new category claim: "industry's first mobile maintenance management tool with 100% uptime guarantee"; Always Listening™ continuous monitoring [no YouTube video confirmed]
+
+**Automation / SCADA**
+- **Rockwell Automation** — FactoryTalk Orchestration at Automate 2026 (June 22, 2026): https://www.prnewswire.com/news-releases/rockwell-automation-launches-factorytalk-orchestration-software-at-automate-302805607.html — "coordinates material flow and production processes end-to-end using real-time production signals"; OTTO AMR + Emulate3D digital twin integration; live demo at Automate, Chicago; no standalone YouTube video confirmed
+
+**B2B SaaS (pattern transfer)**
+- **Anthropic** — Claude Science live launch event (June 30, 2026): https://www.cnbc.com/video/2026/06/30/anthropic-launches-claude-science.html — key hook pattern: "workflow, not a new model" (TechCrunch framing); extended on-stage demo (drug-candidate discovery for phenylketonuria); positions Claude as a workbench/workflow tool, not a benchmark claim; validates MIRA's context-layer-over-raw-capability positioning
 
 ---
 
@@ -120,6 +140,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Oracle Cloud Infrastructure partnership (Mar 2025): adopted OCI to support Copilot scale
 - Competitive note: hardware-first (IoT sensors + software); MIRA's counterplay is sensor-agnostic + OEM-manual-native
 
+**Smart Trac + TracOS updates (July 7, 2026)**
+- Releases: https://releases.tractian.com/en/
+- Smart Trac: Sample Profiles, Expert Sample Scheduling, Always Listening™ continuous monitoring
+- TracOS Offline Mode: category claim "industry's first mobile maintenance management tool with 100% uptime guarantee" — full WO/request management without Wi-Fi or cellular
+- No YouTube video confirmed
+- Note: "Always Listening™" continuous polling vs. scheduled sweeps; offline-first for harsh plant environments; "industry's first" claim pattern reused from Augury's Ultra Low RPM playbook
+
 ---
 
 ### Augury
@@ -144,7 +171,16 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**Pattern note:** Augury ran a dual-track strategy through 2025 — technical category-creation (Ultra Low RPM) alongside third-party credibility (Bloomberg/Fortune Brands). In May 2026 it pivoted entirely to platform framing.
+
+**Industrial AI Workforce pivot (May 18, 2026)**
+- Announcement: https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/
+- Video coverage: https://www.machinedesign.com/automation-iiot/video/55389965/augury-a-new-agent-in-town-inside-the-industrial-ai-workforce [Machine Design, not YouTube; transcript not verified]
+- Frame: role-based AI agents for reliability, maintenance, and operations — now calling this an "Industrial AI Workforce"
+- Technology: "Industrial Context Graph" — cognitive cause-and-effect reasoning across the production system; synthesizes Augury machine health + AVEVA CONNECT operational context + Google Gemini models
+- Event: AVEVA World, Milan; CEO Elan Greenberg + CPTO Anoop Mohan on stage
+- Key claim: "bridge the gap from insight to action" — reuses the passive-to-active dichotomy from UpKeep; now the dominant frame in industrial AI
+- Competitive note: Augury has completed a full pivot from sensor/predictive analytics company to industrial AI platform. Each agent is role-specific, not generic. MIRA should articulate its own role in the "industrial AI workforce" narrative before Augury owns the frame.
 
 ---
 
@@ -199,6 +235,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Episode topics: cyber resilience in OT/IT convergence, workforce reshaping under AI
 - VO register: corporate executive
 - CTA: soft brand / thought leadership
+
+**FactoryTalk Orchestration at Automate 2026 (June 22–25, 2026)**
+- Announcement: https://www.prnewswire.com/news-releases/rockwell-automation-launches-factorytalk-orchestration-software-at-automate-302805607.html
+- Product: "coordinates material flow and production processes end-to-end using real-time production signals"; connects automated equipment with enterprise + plant systems
+- Integration: OTTO AMRs + Emulate3D digital twin; built on FactoryTalk Optix platform
+- Live demo at Automate, Chicago (booth S2267); no standalone YouTube video confirmed
+- Note: "orchestration layer" language is adjacent to MIRA's context-layer positioning — Rockwell framing its own product around signal-driven coordination, not just hardware/automation. Watch how this narrative develops at Automation Fair 2026.
 
 **Automation Fair 2025 (Nov 17–20, Chicago)**
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
@@ -304,6 +347,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Claude Science launch event (June 30, 2026)**
+- Video: https://www.cnbc.com/video/2026/06/30/anthropic-launches-claude-science.html (CNBC); event: https://www.anthropic.com/events/the-briefing-ai-for-science-virtual-event (live-streamed)
+- Product: AI workbench for scientists — integrates research tools, produces auditable artifacts, provides flexible compute
+- Hook pattern: "workflow, not a new model" (TechCrunch headline) — Anthropic positioned this as a workflow product, not a benchmark claim; on-stage demo showed autonomous drug-candidate identification
+- No standalone YouTube video; CNBC + Anthropic live stream as video channels
+- Pattern for MIRA: this is the clearest recent proof that the market is ready for "context platform" narratives over raw model-capability claims. Competitors and hyperscalers are all converging on workflow/workbench framing as the differentiated value.
+
 ---
 
 ### Cursor
@@ -385,6 +435,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Workforce" frame: role-based agents, not generic tools | Augury: "Industrial AI Workforce" — reliability agent, maintenance agent, ops agent (May 2026) | "MIRA is the diagnostic specialist in your industrial AI workforce — grounded in your docs, never hallucinating" |
+| "Workflow, not model" positioning | Anthropic Claude Science: "workflow, not a new model" (TechCrunch, June 2026) | Lead with what MIRA does for a technician's workflow, not what AI model powers it |
 
 ### Anti-patterns (avoid)
 
@@ -397,4 +449,5 @@ No video content surfaced for 2025–2026.
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals through early 2026, then executed a full strategic pivot to "Industrial AI Workforce" framing (May 2026) — role-based agents, Industrial Context Graph, AVEVA + Gemini partnerships. Most aggressive competitive rebranding in the maintenance space to date.
+- **Rockwell Automation**: shifted from event/announcement-only video (ROKStudios, Automation Fair) to live product demo at Automate 2026 (FactoryTalk Orchestration, June 2026) — now speaking "orchestration layer" language adjacent to MIRA's context-layer positioning.
