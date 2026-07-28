@@ -64,6 +64,13 @@ cause of 65 accumulated worktrees on CHARLIE
    someone's work, and `git branch --merged` is a weak signal in this repo
    because it squash-merges (an unmerged-looking branch may be landed, and a
    merged-looking one may be superseded rather than shipped).
+9. **`tools/worktree-health.sh` reports the state; it never changes it.** Run it
+   to see >1 holder of `main`, missing paths (calling out **missing + locked**,
+   which `git worktree prune` silently skips), deleted branch refs, unreachable
+   detached HEADs, worktrees older than `MIRA_WT_MAX_AGE_DAYS`, and `MIRA-wt/`
+   accumulation. It is **detection-only by design** — deletion stays a human
+   decision, for the reason in rule 8. `--strict` exits 1 when there are
+   findings, for a CI/cron gate.
 
 ## Scripts
 
