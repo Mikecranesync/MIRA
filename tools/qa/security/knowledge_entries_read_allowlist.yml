@@ -74,7 +74,7 @@ compliant:
     status: compliant
     reason: Quickstart manufacturer list from OEM corpus
 
-  "mira-hub/src/lib/manual-rag.ts:430":
+  "mira-hub/src/lib/manual-rag.ts:332":
     classification: HYBRID
     status: compliant
     reason: Asset chat RAG uses (is_private=false OR tenant_id) hybrid filter for OEM+uploads
@@ -406,9 +406,9 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
-  "mira-hub/src/lib/manual-rag.ts:430":
+  "mira-hub/src/lib/manual-rag.ts:439":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "retrieveNodeChunks (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above)."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
