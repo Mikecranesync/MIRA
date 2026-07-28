@@ -1,7 +1,7 @@
 ---
 name: mira-platform
 description: |
-  Read-only doctrine and architecture reference for MIRA. Co-activates with any other MIRA domain or workflow skill to provide cross-cutting constraints — North Star, environment boundaries, provider cascade, hard constraints (PRD §4), and screenshot/commit conventions. Use when reviewing a feature proposal, refactor, or PR for alignment with the product wedge. Do NOT trigger as the *primary* skill for UNS resolution (mira-uns-architecture), component profile work (mira-component-profile), maintenance workflow design (mira-maintenance-workflow), or safety-keyword handling (mira-industrial-safety) — those have dedicated specialized skills; this one provides the ceiling, not the answer.
+  Read-only doctrine and architecture reference for MIRA. Co-activates with any other MIRA domain or workflow skill to provide cross-cutting constraints — North Star, environment boundaries, provider cascade, hard constraints, visual-proof, and commit conventions. Use when reviewing a feature proposal, refactor, or PR for alignment with the product wedge. Do NOT trigger as the *primary* skill for UNS resolution (mira-uns-architecture), component profile work (mira-component-profile), maintenance workflow design (mira-maintenance-workflow), or safety-keyword handling (mira-industrial-safety) — those have dedicated specialized skills; this one provides the ceiling, not the answer.
 version: 0.1.0
 status: draft
 last-updated: 2026-05-19
@@ -34,7 +34,7 @@ Invoke as a **co-skill** whenever any of the following hold:
 
 - A feature request, PR, or refactor could expand MIRA's surface area beyond the maintenance-intelligence wedge.
 - A PR touches `mira-bots/`, `mira-pipeline/`, `mira-mcp/`, `mira-crawler/`, `mira-cmms/`, `mira-web/`, `mira-bridge/`, `mira-relay/`, or `mira-hub/`.
-- Any task involves provider selection, secrets, environment boundaries, the screenshot rule, or the commit convention.
+- Any task involves provider selection, secrets, environment boundaries, visual proof, or the commit convention.
 - A reply needs to be checked against MIRA's North Star ("Slack = front door, UNS/MQTT = nervous system, KG + component templates = memory, customer docs + work orders = evidence").
 
 ### Do NOT trigger as the primary skill for
@@ -80,7 +80,7 @@ If a constraint here doesn't trace to one of these files, that's a bug in this s
         │  • UNS resolver (uns_resolver.py)        │
         │  • Confirmation gate                     │
         │  • Grounding + citation compliance       │
-        │  • Inference cascade (Groq→Cerebras→Gem) │
+        │  • Inference cascade (Groq→Cerebras→Together) │
         └────────────────┬─────────────────────────┘
                          │
    ┌─────────────────────┼──────────────────────────┐
@@ -103,9 +103,9 @@ Lines that cross these layers do so through the engine. New front doors must con
 
 ### 4.2 Inference + provider cascade
 
-- **PLT-010** `[FATAL]` Never reintroduce Anthropic as an LLM provider. Removed PR #610 (verified by memory). Provider cascade is **Groq → Cerebras → Gemini**.
-- **PLT-011** `[WARNING]` Always go through `InferenceRouter.complete()` (`mira-bots/shared/inference/router.py`). Default behavior includes PII sanitization (IP/MAC/SN). Setting `sanitize=False` requires a justified comment in the PR.
-- **PLT-012** `[STYLE]` Single-provider direct calls are a code smell. If you find one in the codebase, file an issue or fix it in the same PR.
+- **PLT-010** `[FATAL]` Never reintroduce Anthropic as an LLM provider. Removed PR #610 (verified by memory). Provider cascade is **Groq → Cerebras → Together**.
+- **PLT-011** `[WARNING]` Diagnostic cascade paths go through `InferenceRouter.complete()` (`mira-bots/shared/inference/router.py`). Default behavior includes PII sanitization (IP/MAC/SN). Setting `sanitize=False` requires a justified comment in the PR.
+- **PLT-012** `[STYLE]` Direct provider calls are acceptable for simple isolated paths when they preserve portability and tests; do not fork the diagnostic cascade accidentally.
 
 ### 4.3 Environment boundaries
 
@@ -142,7 +142,7 @@ See `references/environment-doctrine.md` for the full table.
 
 ### 4.8 Frameworks + abstractions
 
-- **PLT-070** `[FATAL]` No LangChain, no TensorFlow, no n8n, no framework that abstracts the LLM call. PRD §4.
+- **PLT-070** `[BLOCKING]` Frameworks, including LangChain, are permitted only when they reduce total complexity, preserve provider portability, and include tests. Do not rewrite stable production paths solely to adopt a framework. LangGraph remains excluded unless separately approved.
 - **PLT-071** `[STYLE]` Engine layer, bot adapters, and ingest pipelines read top-to-bottom — not chained through indirections.
 
 ### 4.9 Python standards
@@ -154,9 +154,9 @@ See `references/environment-doctrine.md` for the full table.
 
 - **PLT-090** `[WARNING]` Conventional Commits: `feat/fix/security/docs/refactor/test/chore/BREAKING`. Scope hint: module name (`feat(slack):`, `fix(engine):`).
 
-### 4.11 Screenshot rule
+### 4.11 Visual proof
 
-- **PLT-100** `[BLOCKING]` For visible `mira-web` UI changes, save before/after Playwright proofs to `docs/promo-screenshots/` with format `YYYY-MM-DD_feature_viewport.png`. See `references/screenshot-rule.md`.
+- **PLT-100** `[BLOCKING]` For visible UI changes, follow `docs/runbooks/visual-proof.md`.
 
 ## 5. Workflow — reviewing a feature proposal
 
@@ -165,14 +165,14 @@ See `references/environment-doctrine.md` for the full table.
 3. **Locate the evidence.** Does this surface grounded answers (UNS, KG, manuals, WO history) or does it produce un-grounded chat? If un-grounded, refuse.
 4. **Locate the safety surface.** Could this surface advice on energized equipment, LOTO, confined spaces? If yes → activate `mira-industrial-safety`.
 5. **Locate the environment.** Does this touch prod NeonDB, the VPS, the production bot, or the KG `verified` set without staging gate? If yes → refuse or require explicit human override.
-6. **Locate the abstractions.** Does this add LangChain/TensorFlow/n8n or a wrapper over the LLM call? If yes → refuse.
+6. **Locate the abstractions.** Does this add an orchestration framework? If yes, check policy revision 2.0 criteria and ADR-0011 for LangGraph.
 7. **Run the output checklist below.**
 
 ## 6. Common errors (error message → cause → fix)
 
 | Error / symptom | Likely cause | Fix |
 |---|---|---|
-| "Anthropic key not set" appears in logs | Someone reintroduced an Anthropic provider | Remove the provider; restore Groq → Cerebras → Gemini cascade (PLT-010) |
+| "Anthropic key not set" appears in logs | Someone reintroduced an Anthropic provider | Remove the provider; restore Groq → Cerebras → Together cascade (PLT-010) |
 | Prod NeonDB write from a feature branch | `prod-guard.sh` bypassed via `MIRA_ALLOW_PROD=1` | Revert the write; rerun against staging |
 | Engine PR merged without smoke test | `smoke-test.yml` skipped | Run smoke against `factorylm.com` + `app.factorylm.com`; rollback if fails |
 | Grounding score drop after merge | A change weakened evidence requirements | Surface in PR, revert if not justified by a feature change |
@@ -185,15 +185,15 @@ Before declaring a feature proposal aligned with `mira-platform`, confirm all of
 
 - [ ] Aligned with the maintenance-intelligence wedge (or explicitly out-of-scope and routed to `mira-saas-scope-guard`).
 - [ ] Slack front door preserved (or new adapter routes through `shared/engine.py`).
-- [ ] Provider cascade preserved (Groq → Cerebras → Gemini; no Anthropic).
+- [ ] Provider cascade preserved (Groq → Cerebras → Together; no Anthropic).
 - [ ] Environment boundaries respected (no prod psql, no direct VPS docker compose, no feature-branch traffic to `@FactoryLM_Diagnose`).
 - [ ] Secrets via Doppler.
 - [ ] UNS gate preserved (or explicitly evolved through `mira-uns-architecture`).
 - [ ] Safety keywords still trigger STOP+escalate (`mira-industrial-safety` consulted if applicable).
 - [ ] KG `verified` state still requires admin promotion.
-- [ ] No LangChain / TensorFlow / n8n / generic LLM-abstraction framework introduced.
+- [ ] Any framework adoption satisfies policy revision 2.0; LangGraph not introduced without separate approval.
 - [ ] Conventional Commit message used.
-- [ ] Screenshot rule honored for visible `mira-web` UI changes.
+- [ ] Visual proof runbook followed for visible UI changes.
 
 ## 8. References
 
@@ -201,7 +201,7 @@ See `references/` for depth:
 
 - `references/provider-cascade.md` — cascade order, fallback semantics, error handling.
 - `references/environment-doctrine.md` — full dev/staging/prod table, promotion workflow, hotfix bypass.
-- `references/screenshot-rule.md` — Playwright proof format, viewport rules, archive location.
+- `docs/runbooks/visual-proof.md` — Playwright proof format, viewport rules, archive location.
 - `references/hard-constraints.md` — PRD §4 hard constraints in canonical form.
 
 ## 9. Cross-references

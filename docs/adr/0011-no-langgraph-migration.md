@@ -38,7 +38,8 @@ was never "do we adopt the pattern" but "do we adopt the framework."
 
 ## Decision
 
-**No LangGraph migration. No framework adoption.**
+**No LangGraph migration for the diagnostic FSM.** Framework adoption is
+governed by root `CLAUDE.md` policy revision 2.0.
 
 Instead, extend the existing self-correcting pattern with a fifth instance:
 **`DIAGNOSIS_SELF_CRITIQUE`** — a post-diagnosis quality gate that calls the existing
@@ -54,13 +55,16 @@ falls below threshold. This is issue #284.
 | Scope | Full orchestration rewrite | ~200 lines in `engine.py` |
 | Risk to existing 33+ eval fixtures | High (rewrite FSM transitions) | Isolated; existing fixtures unchanged |
 | New capability gained | Graph-level parallelism, branching | AutoGen nudging pattern, same result |
-| Aligns with Hard Constraint #3 | ✗ LangGraph abstracts Claude API | ✓ direct judge call via Groq/Anthropic API |
+| Aligns with policy revision 2.0 | ✗ Full FSM rewrite solely to adopt a framework | ✓ direct judge call on the existing provider path |
 | Config 1 MVP timeline | Blocks | Unblocks |
 | Revisit point | Applicable at multi-agent scale (Config 4+) | — |
 
-Hard Constraint #3 (CLAUDE.md) prohibits frameworks that abstract the Claude API call.
-LangGraph's executor wraps LLM calls inside graph nodes — this directly violates the
-constraint without a formal constraint revision.
+Policy revision 2.0 no longer bans orchestration frameworks generally. It does
+keep LangGraph excluded unless separately approved, and it requires any
+framework adoption to reduce total complexity, preserve provider portability,
+and include tests. A LangGraph migration still fails that bar for the current
+diagnostic FSM because it would rewrite stable state transitions without a
+proven capability gap.
 
 The judge module (`tests/eval/judge.py`) already implements cross-model Likert scoring with
 four dimensions (groundedness, helpfulness, tone, instruction_following). Reusing it
@@ -106,8 +110,8 @@ forensic as a third fixture (`36_distribution_block_forensic.yaml`).
 
 **Deferred:**
 - Multi-agent parallelism (e.g., simultaneous PLC + documentation agent) — remains a
-  Config 4 item. LangGraph remains a candidate framework at that point, pending a
-  Constraint #3 revision.
+  Config 4 item. LangGraph remains a candidate framework at that point, pending
+  separate approval under policy revision 2.0.
 
 ---
 
@@ -118,4 +122,4 @@ forensic as a third fixture (`36_distribution_block_forensic.yaml`).
 - ADR-0009 — Crawl route fallback (v2.5.1 / #211)
 - `tests/eval/judge.py` — judge module (4 Likert dimensions)
 - `mira-bots/shared/engine.py` — hand-rolled FSM (`Supervisor` class)
-- CLAUDE.md Hard Constraint #3: no frameworks that abstract the Claude API call
+- CLAUDE.md policy revision 2.0: LangGraph excluded unless separately approved

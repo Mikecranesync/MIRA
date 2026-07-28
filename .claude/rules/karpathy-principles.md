@@ -27,7 +27,7 @@ Before any non-trivial change:
 - **No speculative flexibility.** Don't add config knobs, plugin hooks, or "future-proofing" that has no current caller.
 - **If 200 lines could be 50, rewrite it.** Length is a code smell, not a virtue.
 
-**MIRA hook:** PRD §4 already bans LangChain/n8n-style abstraction over the LLM call — extend that mindset to *all* code in the repo. Engine layer, bot adapters, and ingest pipelines should be readable top-to-bottom, not chained through 4 indirections.
+**MIRA hook:** root `CLAUDE.md` policy revision 2.0 permits frameworks only when they reduce total complexity, preserve provider portability, and include tests. Engine layer, bot adapters, and ingest pipelines should still be readable top-to-bottom, not chained through 4 indirections.
 
 ## 3. Surgical Changes
 
@@ -48,7 +48,7 @@ Before any non-trivial change:
 - **Strong success criteria let the loop run independently.** When the goal is measurable (test passes, command returns expected output, screenshot matches), you can iterate without checking in after every step.
 - **Evidence beats assertion.** "I think it's done" is not done — see Cluster 7 Laws (Law 1: Evidence-Only Completion) in `~/factorylm/CLUSTER.md`.
 
-**MIRA hook:** the 5-regime testing framework (`tests/`) and the eval harness (`tests/eval/`) are the verify steps for most diagnostic-engine work. Use them. For UI changes, the screenshot rule (CLAUDE.md "Screenshot Rule") is your evidence.
+**MIRA hook:** the 5-regime testing framework (`tests/`) and the eval harness (`tests/eval/`) are the verify steps for most diagnostic-engine work. Use them. For UI changes, follow `docs/runbooks/visual-proof.md`.
 
 ---
 

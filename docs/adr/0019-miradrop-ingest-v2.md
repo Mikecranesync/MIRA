@@ -49,7 +49,7 @@ Build **mira-ingest-v2**, a new ingest service that replaces the OW path for Mir
 - **No silent KG promotion** (`.claude/CLAUDE.md` § Knowledge graph proposals): every `verified` row carries `verified_by` provenance. Pure transitive auto-verification is forbidden.
 - **Environment doctrine** (`docs/environments.md`): all schema changes ship dev → staging → prod via `apply-migrations.yml`. v2 itself runs CHARLIE-local only; never on the prod VPS this round.
 - **Slack is the front door** (North Star): the dialogue lives in Slack, mirroring the troubleshooting flow.
-- **Provider cascade** (PRD §4 + memory `feedback_llm_cascade_default`): LLM-fallback extraction goes through Groq → Cerebras → Gemini. No Anthropic, ever.
+- **Provider cascade** (root policy revision 2.0): LLM-fallback extraction goes through Groq -> Cerebras -> Together. No Anthropic, ever.
 - **Single source of truth**: `hub_uploads` is the queue, the audit log, and the row Hub UI renders. No sibling tables (the dual-truth pattern bit us with `kg_relationships` columns — `project_kg_relationships_schema.md`).
 
 ## Consequences

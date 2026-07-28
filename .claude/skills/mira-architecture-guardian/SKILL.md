@@ -31,7 +31,7 @@ Push back when a request smells like:
 - "Have MIRA replace our CMMS / SCADA / historian" → out of scope (see `.claude/skills/mira-saas-scope-guard/SKILL.md`).
 - "Skip the confirmation prompt, it's annoying" → breaks the load-bearing UNS gate. Hard no without a written exception.
 - "Auto-verify proposed relationships" → pollutes the graph. Hard no.
-- "Add a LangChain/n8n layer to make this easier" → banned (PRD §4).
+- "Add a framework because it is easier" → require policy revision 2.0 proof: lower total complexity, provider portability, and tests. LangGraph still needs separate approval.
 
 ## What to do when invoked
 

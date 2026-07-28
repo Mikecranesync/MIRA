@@ -58,10 +58,13 @@ If your output contradicts an existing ADR, surface it explicitly rather than si
 
 Especially watch for conflicts with:
 - ADR-0008 (sidecar deprecation) — don't propose new sidecar work
-- ADR-0011 (no LangGraph migration) — don't propose LangChain/LangGraph adoption
+- ADR-0011 (no LangGraph migration) — do not propose a LangGraph migration without separate approval; LangChain is governed by root policy revision 2.0
 - ADR-0013 (UNS namespace builder schema canonicalization)
 - ADR-0016 (mira-bridge → FlowFuse)
 
-## Marketplace objective lock
+## Priority routing
 
-Per `~/.claude/CLAUDE.md` (global) and root `CLAUDE.md`: MIRA is locked on the monday.com marketplace objective through 2026-07-19. Engineering skills that propose architectural changes, refactors, or new features must check whether the work falls inside Phase 1/Phase 2 of `~/.claude/plans/dev-api-key-for-optimized-badger.md` or is captured in `docs/ideation/` for later. This is enforced by `mira-saas-scope-guard` skill — invoke it when a Pocock skill output proposes scope expansion.
+Root `CLAUDE.md` no longer hard-codes expired priority locks. Engineering
+skills that propose architectural changes, refactors, or new features should
+read the active planning docs under `docs/plans/` and invoke
+`mira-saas-scope-guard` when a proposal expands product scope.

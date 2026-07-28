@@ -23,7 +23,7 @@ QA specs were repeatedly diagnosed as "VPS not deployed" — the spec ran agains
    - AskMira / kiosk: use the `askmira-tester` skill's regression bake.
    - Windows note: Playwright CDP/websocket handshake is blocked by Defender on this host — use the documented fallback (`chrome --headless=new --screenshot=...` or the playwright MCP) rather than connectOverCDP.
 3. **Report pass / skip / fail counts** explicitly — not "looks good". Quote failing assertions verbatim.
-4. **Capture evidence** — screenshot of the green (or red) state to `tools/web-review-runs/<date>-pr-<N>/` or `docs/promo-screenshots/` per the screenshot rule.
+4. **Capture evidence** — screenshot of the green (or red) state to `tools/web-review-runs/<date>-pr-<N>/` or `docs/promo-screenshots/` per `docs/runbooks/visual-proof.md`.
 5. **Update the linked GitHub issue** — `gh issue comment <N>` with counts + evidence path. Cross-link the PR ↔ issue both directions.
 
 ## Done-when

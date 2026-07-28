@@ -117,7 +117,7 @@ ffmpeg -y -loglevel error -i in.png -vf "crop=1440:780:0:0" \
   docs/promo-screenshots/$(date +%F)_<feature>-hero-crop_desktop.png
 ```
 
-- **Append-only** (Screenshot Rule): new dated filename; never overwrite/delete the
+- **Append-only** (visual proof runbook): new dated filename; never overwrite/delete the
   original.
 - Repoint the manifest frame at the crop, then **re-render** (use `--skip-tts` if
   the voice is already good) — a manifest edit alone does NOT change the delivered

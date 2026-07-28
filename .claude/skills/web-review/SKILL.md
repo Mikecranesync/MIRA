@@ -187,7 +187,7 @@ with nothing to accept it, or a shared profile locked by a concurrent session
   including pages created later by `window.open` / tab recreation;
 - **`browser.page` always returns a live page** — re-attaches to the newest
   surviving page if the active one closes (read it each time; don't cache);
-- **timestamped screenshots** into `docs/promo-screenshots/` (Screenshot Rule).
+- **timestamped screenshots** into `docs/promo-screenshots/` per `docs/runbooks/visual-proof.md`.
 
 Use it for any Playwright capture/verification that must finish end-to-end with
 no manual handoff. Hermetic self-test: `uv run tools/browser_harness.py

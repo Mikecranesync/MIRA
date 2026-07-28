@@ -43,7 +43,7 @@ These are NOT modules — they're capabilities consumed by any layer via env var
 | Concern | Implementation | Access Pattern |
 |---------|---------------|----------------|
 | Secrets | Doppler `factorylm/prd` | `os.environ[VAR]` via `doppler run` |
-| Inference | InferenceRouter (cascade: Gemini→Groq→Cerebras→Claude) | `router.complete(messages)` |
+| Inference | InferenceRouter (cascade: Groq -> Cerebras -> Together) | `router.complete(messages)` |
 | Observability | Langfuse (tracing), Flower/Prometheus/Grafana (metrics) | Auto-instrumented |
 | PII sanitization | `InferenceRouter.sanitize_context()` | Called before every API dispatch |
 | Tenant scoping | `MIRA_TENANT_ID` env var | Injected per-container |
