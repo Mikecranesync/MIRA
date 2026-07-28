@@ -1,3 +1,11 @@
+### v3.223.3 (2026-07-28) - fix(hub): stop citing chunk-index as a page number on /quickstart (#2910)
+
+On the public money path (`/quickstart`), MIRA cited **PowerFlex 525 · p.1254** — but that manual (520-UM001) is ~140 pages. The "we cite the real OEM page" trust promise breaks. Root cause (traced against staging, not guessed): legacy ingest paths (Google-Drive ingest, `ingest_manuals.py`) stamped `knowledge_entries.source_page` with the chunk **ordinal**, not the real PDF page — so a 1254-chunk doc "cites" p.1254. The correctly-paginated crawler copy of the same manual exists (real pages 1..274), which yields a clean per-row discriminator: **a mis-stamped row has `source_page === (metadata->>'chunk_index')`** (verified: legacy copies 100% sp==cidx; crawler copy sp!=cidx for 1067/1069 rows).
+
+**Fix (render-side, zero DB mutation):** `manual-rag.ts` now selects `metadata->>'chunk_index'` into `ManualChunk.chunkIndex` and a new `displayPage()` helper suppresses the page label only when `sourcePage === chunkIndex`. Applied at both citation surfaces — `chunksToSources`, `buildGroundedContext`, and the `/quickstart` route's inline 1:1 citation map (kept 1:1 per #1875; not switched to `chunksToSources` to preserve that invariant). Real-page rows (crawler ingest; node `page_start`, where `chunkIndex` is null) still render their page. `sourceKey` keys on the raw page, so citation numbering/dedup is unchanged.
+
+**Scope note (not this PR):** the underlying corpus problem is large — ~61.8k/84k `knowledge_entries` rows have `source_page == chunk_index`, plus heavy document duplication (e.g. `gs10_fault_codes.pdf` ingested 158×). That is a separate, gated data-remediation + dedup program (overlaps #1596/#2263), tracked as its own issue — deliberately **not** folded into this P2 citation fix. A small ride-along could fix the ingest write-sites (`ingest_manuals.py`, `mira-ingest/db/neon.py`) to stop *new* mis-stamps. Tests: 5 new guard cases + 72 existing green (manual-rag + assets/node chat routes); typecheck + eslint clean.
+
 ### v3.223.2 (2026-07-28) - chore(worktrees): CodeGraph nested-worktree allowlist + detection-only health report
 
 Implements fixes **3** and **4** from `docs/tech-debt/2026-07-27-worktree-clutter-rca.md` (#2958). Fix 3 and 4 only — the #2952 nightly redesign is tracked separately.
