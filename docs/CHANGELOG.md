@@ -1,3 +1,20 @@
+### v3.222.3 (2026-07-27) - fix(crawler): curate + verify OEM source URLs — closes the "crawls find nothing" content gap
+
+Closes the content gap the v3.222.1 note flagged: after the tier-scoping code fix, siemens/rockwell still discovered **0 URLs** because `sources.yaml` had no entries for them (a `# to be verified and added` placeholder). This adds real, curated OEM manual URLs and repairs dead existing ones. **Every URL was fetch-verified (`200` + `application/pdf` + sane size) and robots.txt-checked on 2026-07-27** — no URL was transcribed from a search snippet (guessed doc-numbers all 404'd in testing).
+
+**New tier-3 entries (wedge-first: drive manuals with fault/parameter tables):**
+- Rockwell **PowerFlex 525** user manual (`520-UM001`, 34 MB) + **PowerFlex 755** programming manual (`750-PM001`, 39 MB) — `literature.rockwellautomation.com`, public/zero-login.
+- Siemens **SINAMICS G120C** List Manual + **G120 CU240B-2/E-2** List Manual (fault `Fxxxxx`/alarm `Axxxxx`/parameter reference) — `cache.industry.siemens.com/dl/files/` (robots allows `/dl/files/`).
+
+**Repaired dead existing targets (all were 404):**
+- `automationdirect_gs10` → `gs10usermanual.pdf` (AD split `gs10m.pdf` into per-chapter files; combined manual is the current URL). The GS10 is the bench VFD.
+- `wago_750_8202` → moved from `/global/download/` to `/wagoweb/documentation/`.
+- `wago_topjob_s` **removed** — dead, no zero-login official replacement (distributor catalogs only), low diagnostic value (DIN-rail terminal block).
+
+**FANUC & KUKA intentionally omitted, documented in-file:** no zero-login official manuals exist (dealer/customer-portal only; every public copy is a login-walled or copyright-infringing third-party re-host), so they stay at 0 rather than carry a dead/non-compliant URL.
+
+**Verified via the real `ManufacturerCrawler.discover_urls()`:** rockwell 0→3, siemens 0→2, abb 4 (unchanged), automationdirect 3 (GS10 repaired), fanuc/kuka 0 (no public docs). `tests/test_manufacturer_discovery.py` + `tests/test_crawlers.py` green (13/13). No code changed — `sources.yaml` data only.
+
 ### v3.222.1 (2026-07-27) - fix(crawler): manufacturer crawl finds reference-tier docs (tier-scoping bug)
 
 **Root cause (one line):** `ManufacturerCrawler.discover_urls()` filtered tiers with `if "manufacturer" not in tier_key: continue`, hard-scoping discovery to the single `3_manufacturer` tier. The OEM reference PDFs (ABB/SKF/Rockwell) are catalogued under the `5_reference` tier, so a `--filter abb` crawl skipped **4 ABB PDFs that already existed in `sources.yaml`** — discovering 0 URLs and reporting healthy `no_new` forever while finding nothing.
