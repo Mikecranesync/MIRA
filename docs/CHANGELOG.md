@@ -1,3 +1,7 @@
+### v3.224.1 (2026-07-28) - chore(zta): technician-v1 Track-1 hold-out eval — harness repoint + scorecard
+
+Repoints `factorylm_ai/dataset/holdout_eval.py` at the v1 fine-tune (`mike_578c/Qwen3.5-9B-technician-v1-29ed546c`, merged v2 resource `ml_CdV9UHKVHPSJZkg9g15g5/rv_CdV9VYuPvSyHSZ5ut2MVs`, endpoint `holdout-eval-technician-v1`) and lands the eval evidence under `docs/zta/technician-dataset-v1/holdout-eval/`: frozen 3-judge panel protocol (sha `4e368ffb`), per-judge verdicts, pre-unseal locked scores (sha `03460467`), and the scorecard. Result: **tuned 14 / base 9 / tie 2** on the 25 byte-identical PF40 evidence-absent prompts — ≥18/25 honesty bar NOT met, but v0's 7-13 loss flipped, and the grounding lens went **18-0-7: zero fabrication losses**. Training: job `ft-6fe667a3-6b72`, $4.00. Eval spend <$1, teardown verified.
+
 ### v3.224.0 (2026-07-28) - fix(migrations): content-fingerprinted ledger kills the draft-poisoning drift class (#2284 / #2945)
 
 Builds the prevention #2284 proposed in June but never shipped — it was closed COMPLETED the same day it was filed with only the one-off staging drop+recreate done, which is why the identical drift recurred a month later as #2945.
