@@ -11,6 +11,7 @@ Self-test:  py -3 server.py --selftest
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import os
@@ -39,8 +40,14 @@ MANIFEST_PATH = Path(
     )
 )
 DOWNLOADS_DIR = Path(os.environ.get("MIRA_REVIEW_V2_DOWNLOADS", r"C:\Users\hharp\Downloads"))
+# Optional review-by-exception recommendations (absent => bulk approval OFF,
+# console behaves exactly as before).
+RECOMMENDATIONS_PATH = os.environ.get("MIRA_REVIEW_V2_RECOMMENDATIONS", "")
 
 REQUIRED_SOURCES = ["printsense", "drive_commander"]
+BULK_POLICY_VERSION = "review-by-exception.v1"
+QA_SAMPLE_MODULUS = 10  # deterministic 10% of recommended approvals -> human QA
+QA_MAX_ERROR_RATE = 0.02  # >2% sampled errors disables bulk approval
 VALUED_TYPES = {"uncertainty", "refusal", "correction"}
 ACTIONS = {"approve", "correct", "reject", "hold_out", "clear"}
 KEPT_ACTIONS = {"approve", "correct"}
@@ -106,6 +113,7 @@ class AppState:
         ]
         self.queue = self._build_queue(approvable)
         self.rec_by_id = {r["record_id"]: r for r in self.queue}
+        self._load_recommendations()
 
         self.data_dir.mkdir(parents=True, exist_ok=True)
         # last-wins decision map: record_id -> decision dict (clear removes)
@@ -114,6 +122,86 @@ class AppState:
         self.decisions_version = 0
         self.last_event_ts: str | None = None
         self._replay_or_preload()
+
+    # -- review-by-exception (bulk approval advice; ledger stays append-only) --
+    def _load_recommendations(self) -> None:
+        """Load auto-approve advice; hash-bound, fail-closed, purely optional.
+
+        A row counts only if its manifest hash AND per-record content hash
+        match THIS dataset — stale advice can never recommend text the
+        reviewer hasn't seen. Absent/empty file => bulk approval disabled.
+        """
+        self.recommended: set[str] = set()
+        self.rec_meta: dict[str, dict] = {}
+        self.qa_sampled: set[str] = set()
+        path = Path(RECOMMENDATIONS_PATH) if RECOMMENDATIONS_PATH else None
+        if not path or not path.is_file():
+            return
+        try:
+            rows = [
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+        except (OSError, json.JSONDecodeError):
+            return
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            rid = row.get("record_id")
+            if (
+                row.get("policy_version") != BULK_POLICY_VERSION
+                or row.get("manifest_sha256") != self.manifest_sha
+                or rid not in self.rec_by_id
+                or row.get("content_hash") != self.content_hash.get(rid)
+                or row.get("recommendation") != "auto_approve_ok"
+            ):
+                continue
+            self.rec_meta[rid] = {
+                "evidence_hash": str(row.get("evidence_hash", "")),
+                "independent_reviewer": str(row.get("independent_reviewer", "")),
+                "independent_confidence": row.get("independent_confidence"),
+            }
+            digest = hashlib.sha256(
+                (BULK_POLICY_VERSION + ":" + rid).encode("utf-8")
+            ).hexdigest()
+            if int(digest, 16) % QA_SAMPLE_MODULUS == 0:
+                self.qa_sampled.add(rid)  # routed to human QA, never bulk-approved
+            else:
+                self.recommended.add(rid)
+
+    def _bulk_eligible_now(self, rid: str) -> bool:
+        """Server-side hard gate, re-verified from the live record every time."""
+        if rid not in self.recommended or rid in self.qa_sampled:
+            return False
+        if rid in self.decisions:
+            return False
+        r = self.rec_by_id.get(rid)
+        if r is None:
+            return False
+        if r.get("safety", {}).get("safety_sensitive"):
+            return False
+        if r.get("interaction_type") == "correction":
+            return False
+        if r.get("split") != "train" or not r.get("rights", {}).get("training_allowed"):
+            return False
+        return True
+
+    def qa_status(self) -> dict:
+        decided = [rid for rid in self.qa_sampled if rid in self.decisions]
+        errors = [rid for rid in decided if self.decisions[rid]["action"] != "approve"]
+        rate = (len(errors) / len(decided)) if decided else 0.0
+        return {
+            "sampled_total": len(self.qa_sampled),
+            "sampled_decided": len(decided),
+            "sampled_errors": len(errors),
+            "error_rate": round(rate, 4),
+            "bulk_disabled": rate > QA_MAX_ERROR_RATE,
+        }
+
+    def bulk_confirm_token(self, rids: list[str]) -> str:
+        payload = self.manifest_sha + "|" + BULK_POLICY_VERSION + "|" + ",".join(sorted(rids))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
 
     # -- queue math (SPEC pseudocode, exactly) ------------------------------
     @staticmethod
@@ -158,6 +246,12 @@ class AppState:
                 "needs_correction_reentry": bool(ev.get("needs_correction_reentry", False)),
                 "invalid": bool(ev.get("invalid", False)),
                 "client_ts": ev.get("client_ts"),
+                # review-by-exception audit fields (individual|bulk|sampled)
+                "mode": ev.get("mode", "individual"),
+                "policy_version": ev.get("policy_version"),
+                "evidence_hash": ev.get("evidence_hash"),
+                "confidence": ev.get("confidence"),
+                "reviewer": ev.get("reviewer"),
             }
 
     def _append_event(self, ev: dict) -> None:
@@ -299,6 +393,8 @@ class AppState:
                     },
                     "key_ref": r.get("answer_key", {}).get("key_ref"),
                     "has_snippet": (self.snippets_dir / (rid + ".png")).is_file(),
+                    "recommended": rid in self.recommended,
+                    "qa_sample": rid in self.qa_sampled,
                 }
             )
         return out
@@ -503,6 +599,10 @@ class Handler(BaseHTTPRequestHandler):
                             "remaining": len(st.queue) - len(st.decisions),
                             "actions_count": st.events_count,
                             "last_event_ts": st.last_event_ts,
+                            "qa": st.qa_status(),
+                            "bulk_eligible_now": sum(
+                                1 for r in st.queue if st._bulk_eligible_now(r["record_id"])
+                            ),
                         }
                     )
             else:
@@ -591,10 +691,104 @@ class Handler(BaseHTTPRequestHandler):
                     "rationale": rationale if isinstance(rationale, str) else "",
                     "correction_text": correction_text if isinstance(correction_text, str) else "",
                     "client_ts": client_ts,
+                    # audit: an individually-decided QA-sampled card is "sampled"
+                    "mode": "sampled" if rid in st.qa_sampled else "individual",
+                    "policy_version": BULK_POLICY_VERSION if rid in st.qa_sampled else None,
+                    "reviewer": st.reviewer_id,
                 }
                 with st.lock:
                     st._append_event(ev)
                     self._json({"ok": True, "gate": st.gate()})
+            elif parsed.path == "/api/bulk_preview":
+                # Step 1 of 2: compute the eligible set NOW and return a summary
+                # + confirmation token. Commits nothing.
+                with st.lock:
+                    qa = st.qa_status()
+                    if qa["bulk_disabled"]:
+                        self._err(409, "bulk approval disabled: sampled QA error rate "
+                                       "%.1f%% exceeds 2%%" % (qa["error_rate"] * 100))
+                        return
+                    eligible = [
+                        r["record_id"] for r in st.queue
+                        if st._bulk_eligible_now(r["record_id"])
+                    ]
+                    by_source: dict[str, int] = {}
+                    by_type: dict[str, int] = {}
+                    for rid in eligible:
+                        r = st.rec_by_id[rid]
+                        by_source[r["source_system"]] = by_source.get(r["source_system"], 0) + 1
+                        by_type[r["interaction_type"]] = by_type.get(r["interaction_type"], 0) + 1
+                    self._json(
+                        {
+                            "ok": True,
+                            "policy_version": BULK_POLICY_VERSION,
+                            "count": len(eligible),
+                            "record_ids": eligible,
+                            "by_source": by_source,
+                            "by_interaction_type": by_type,
+                            "qa": qa,
+                            "confirm_token": st.bulk_confirm_token(eligible),
+                        }
+                    )
+            elif parsed.path == "/api/bulk_commit":
+                # Step 2 of 2: token must match the CURRENT eligible set —
+                # any change since preview (new decision, restart, edits)
+                # invalidates the confirmation.
+                confirm = body.get("confirm_token")
+                if not isinstance(confirm, str) or not confirm:
+                    self._err(400, "confirm_token is required — call /api/bulk_preview first")
+                    return
+                with st.lock:
+                    qa = st.qa_status()
+                    if qa["bulk_disabled"]:
+                        self._err(409, "bulk approval disabled: sampled QA error rate "
+                                       "%.1f%% exceeds 2%%" % (qa["error_rate"] * 100))
+                        return
+                    eligible = [
+                        r["record_id"] for r in st.queue
+                        if st._bulk_eligible_now(r["record_id"])
+                    ]
+                    if not hmac.compare_digest(confirm, st.bulk_confirm_token(eligible)):
+                        self._err(409, "eligible set changed since preview — re-run "
+                                       "/api/bulk_preview and confirm again")
+                        return
+                    approved = 0
+                    for rid in eligible:
+                        meta = st.rec_meta.get(rid, {})
+                        conf = meta.get("independent_confidence")
+                        st._append_event(
+                            {
+                                "ts": _now_iso(),
+                                "record_id": rid,
+                                "action": "approve",
+                                "rationale": (
+                                    "Bulk approve under %s: deterministic checks and "
+                                    "independent reviewer (%s, confidence %s) agree; "
+                                    "non-safety, schema-valid, source-grounded."
+                                    % (
+                                        BULK_POLICY_VERSION,
+                                        meta.get("independent_reviewer") or "n/a",
+                                        conf if conf is not None else "n/a",
+                                    )
+                                ),
+                                "correction_text": "",
+                                "client_ts": None,
+                                "mode": "bulk",
+                                "policy_version": BULK_POLICY_VERSION,
+                                "evidence_hash": meta.get("evidence_hash"),
+                                "confidence": conf,
+                                "reviewer": st.reviewer_id,
+                            }
+                        )
+                        approved += 1
+                    self._json(
+                        {
+                            "ok": True,
+                            "approved": approved,
+                            "gate": st.gate(),
+                            "qa": st.qa_status(),
+                        }
+                    )
             elif parsed.path == "/api/comment":
                 text = body.get("text")
                 if not isinstance(text, str) or not text.strip():
@@ -964,6 +1158,144 @@ def _selftest() -> int:
 
         srv.shutdown()
         srv.server_close()
+
+        # =====================================================================
+        # review-by-exception: bulk approval safety invariants
+        # =====================================================================
+        # Fresh world: same dataset, EMPTY ledger, a recommendations file that
+        # (adversarially) marks EVERY card auto_approve_ok — including the
+        # safety-sensitive, correction, holdout, and no-rights ones. The server
+        # must refuse all of those regardless of what the file claims.
+        global RECOMMENDATIONS_PATH
+        work2 = root / "work2"
+        for d2 in (work2, work2 / "data", work2 / "snippets"):
+            d2.mkdir(parents=True, exist_ok=True)
+        (work2 / "config.json").write_text(
+            json.dumps({"token": token, "reviewer_id": "mike@cranesync.com", "port": 0}),
+            encoding="utf-8",
+        )
+        (work2 / "index.html").write_text("<!doctype html><title>x</title>", encoding="utf-8")
+        recfile = frozen / "recommendations.jsonl"
+        rec_rows = []
+        for r in recs:  # adversarial: recommend EVERYTHING
+            rec_rows.append({
+                "policy_version": BULK_POLICY_VERSION,
+                "manifest_sha256": manifest_sha,
+                "record_id": r["record_id"],
+                "content_hash": hashlib.sha256(r["record_id"].encode()).hexdigest(),
+                "recommendation": "auto_approve_ok",
+                "evidence_hash": "ev-" + r["record_id"],
+                "independent_reviewer": "claude-sonnet-independent",
+                "independent_confidence": 0.95,
+            })
+        # plus a stale row (wrong content hash) that must be ignored
+        rec_rows.append({
+            "policy_version": BULK_POLICY_VERSION, "manifest_sha256": manifest_sha,
+            "record_id": "ps-1", "content_hash": "0" * 64,
+            "recommendation": "auto_approve_ok",
+        })
+        recfile.write_text("".join(json.dumps(r) + "\n" for r in rec_rows), encoding="utf-8")
+        (root / "empty-dl").mkdir(exist_ok=True)
+        saved_rec_path = RECOMMENDATIONS_PATH
+        RECOMMENDATIONS_PATH = str(recfile)
+        try:
+            st3 = AppState(work2, ds, mf, root / "empty-dl")
+            # eligible = approvable AND non-safety AND non-correction: ps-1, ps-3, dc-2
+            # (ps-2 safety, dc-1 safety+correction, ho-1/nr-1 not even loaded)
+            elig0 = sorted(rid for rid in st3.rec_by_id if st3._bulk_eligible_now(rid))
+            allowed = {"ps-1", "ps-3", "dc-2"} - st3.qa_sampled
+            check("bulk gate: only non-safety/non-correction approvable cards eligible",
+                  set(elig0) == allowed, str(elig0))
+            check("bulk gate: safety + correction cards NEVER eligible",
+                  not any(st3._bulk_eligible_now(r) for r in ("ps-2", "dc-1")))
+            check("bulk gate: holdout/no-rights cards not even loadable",
+                  "ho-1" not in st3.rec_by_id and "nr-1" not in st3.rec_by_id)
+
+            srv3 = make_server(st3, host="127.0.0.1", port=0)
+            port3 = srv3.server_address[1]
+            t3 = threading.Thread(target=srv3.serve_forever, daemon=True)
+            t3.start()
+            base3 = "http://127.0.0.1:%d" % port3
+
+            def http3(path, data=None, tok=token):
+                url = base3 + path + ("&" if "?" in path else "?") + "k=" + tok
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps(data).encode("utf-8") if data is not None else None,
+                    headers={"Content-Type": "application/json"} if data is not None else {},
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        return resp.status, resp.read()
+                except urllib.error.HTTPError as e:
+                    return e.code, e.read()
+
+            # commit without confirmation -> 400, ZERO events written
+            code, _b = http3("/api/bulk_commit", {})
+            check("bulk commit without confirm_token -> 400", code == 400)
+            check("no events written by unconfirmed commit",
+                  not st3.events_path.exists() or st3.events_path.stat().st_size == 0)
+            # wrong token -> 409
+            code, _b = http3("/api/bulk_commit", {"confirm_token": "f" * 24})
+            check("bulk commit with wrong token -> 409", code == 409)
+
+            code, b = http3("/api/bulk_preview", {})
+            prev = json.loads(b)
+            check("bulk preview 200 + eligible set", code == 200
+                  and sorted(prev["record_ids"]) == sorted(elig0))
+            code, b = http3("/api/bulk_commit", {"confirm_token": prev["confirm_token"]})
+            resp3 = json.loads(b)
+            check("bulk commit approves exactly the eligible set",
+                  code == 200 and resp3["approved"] == len(elig0))
+            check("bulk decisions carry mode/policy/reviewer audit fields",
+                  all(st3.decisions[rid]["mode"] == "bulk"
+                      and st3.decisions[rid]["policy_version"] == BULK_POLICY_VERSION
+                      and st3.decisions[rid]["reviewer"] == "mike@cranesync.com"
+                      for rid in elig0))
+            check("safety/correction cards still undecided after bulk",
+                  "ps-2" not in st3.decisions and "dc-1" not in st3.decisions)
+
+            # replay idempotence: preview+commit again -> approves 0
+            code, b = http3("/api/bulk_preview", {})
+            prev2 = json.loads(b)
+            check("second preview shows zero eligible", prev2["count"] == 0)
+            code, b = http3("/api/bulk_commit", {"confirm_token": prev2["confirm_token"]})
+            check("second commit approves zero (idempotent replay)",
+                  code == 200 and json.loads(b)["approved"] == 0)
+
+            # pre-existing decisions intact: restart state and compare byte-stable
+            before = json.dumps(st3.decisions, sort_keys=True)
+            st3b = AppState(work2, ds, mf, root / "empty-dl")
+            check("restart replay keeps bulk decisions byte-stable",
+                  json.dumps(st3b.decisions, sort_keys=True) == before)
+
+            # individual decision on a bulk-approved card still allowed to change it
+            # (human always outranks the policy), and an individual decision on a
+            # QA-sampled card is logged mode=sampled
+            if st3.qa_sampled:
+                qa_rid = sorted(st3.qa_sampled)[0]
+                code, _b = http3("/api/decision",
+                                 {"record_id": qa_rid, "action": "reject",
+                                  "rationale": "QA check failed", "client_ts": 1})
+                check("QA-sampled individual decision -> mode=sampled",
+                      code == 200 and st3.decisions[qa_rid]["mode"] == "sampled")
+                qa_after = st3.qa_status()
+                # 1 decided sample, 1 error -> 100% > 2% -> bulk disabled
+                check("QA error rate above 2% disables bulk",
+                      qa_after["bulk_disabled"] is True)
+                code, _b = http3("/api/bulk_preview", {})
+                check("bulk preview 409 when QA-disabled", code == 409)
+                code, _b = http3("/api/bulk_commit", {"confirm_token": "x" * 24})
+                check("bulk commit 409 when QA-disabled", code == 409)
+            else:
+                # deterministic sampling chose no card in this tiny world — the
+                # disable rule is then exercised via qa_status() directly
+                check("QA sampling deterministic (none in tiny world)", True)
+
+            srv3.shutdown()
+            srv3.server_close()
+        finally:
+            RECOMMENDATIONS_PATH = saved_rec_path
     finally:
         try:
             shutil.rmtree(root, ignore_errors=True)

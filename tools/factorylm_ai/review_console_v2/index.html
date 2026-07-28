@@ -701,7 +701,15 @@ function renderList() {
   cards.forEach(function (c) { if (isTodo(c)) todoN++; });
   var tabs = document.createElement("div");
   tabs.className = "actions"; tabs.style.marginBottom = "8px";
-  [["todo", "To do (" + todoN + ")"], ["all", "All " + cards.length]].forEach(function (t) {
+  var recN = 0, qaN = 0;
+  cards.forEach(function (c) {
+    if (c.recommended && isTodo(c)) recN++;
+    if (c.qa_sample && isTodo(c)) qaN++;
+  });
+  [["todo", "To do (" + todoN + ")"], ["all", "All " + cards.length],
+   ["uncertain", "Uncertain"], ["safety", "Safety"], ["corrections", "Corrections"],
+   ["recommended", "Recommended (" + recN + ")"], ["qa", "QA sample (" + qaN + ")"]
+  ].forEach(function (t) {
     var b = document.createElement("button");
     b.type = "button"; b.textContent = t[1];
     if (listMode === t[0]) b.className = "sel";
@@ -709,8 +717,14 @@ function renderList() {
     tabs.appendChild(b);
   });
   host.appendChild(tabs);
+  renderBulkBar(host, recN);
   cards.forEach(function (c, i) {
     if (listMode === "todo" && !isTodo(c)) return;
+    if (listMode === "uncertain" && c.interaction_type !== "uncertainty") return;
+    if (listMode === "safety" && !c.safety) return;
+    if (listMode === "corrections" && c.interaction_type !== "correction") return;
+    if (listMode === "recommended" && !(c.recommended && isTodo(c))) return;
+    if (listMode === "qa" && !(c.qa_sample && isTodo(c))) return;
     if (filter) {
       var hay = (c.record_id + " " + esc(c.subject)).toLowerCase();
       if (hay.indexOf(filter) < 0) return;
@@ -721,7 +735,12 @@ function renderList() {
     var mid = document.createElement("span"); mid.className = "mid";
     var subj = document.createElement("div"); subj.className = "subj"; subj.textContent = esc(c.subject) || "(no subject)";
     var rid = document.createElement("div"); rid.className = "rid";
-    rid.textContent = c.record_id + " · " + c.source_system + " · " + c.interaction_type;
+    var ridTags = [];
+    if (c.safety) ridTags.push("SAFETY");
+    if (c.qa_sample) ridTags.push("QA");
+    else if (c.recommended) ridTags.push("AUTO-OK");
+    rid.textContent = c.record_id + " · " + c.source_system + " · " + c.interaction_type
+      + (ridTags.length ? " · " + ridTags.join(" · ") : "");
     mid.appendChild(subj); mid.appendChild(rid);
     row.appendChild(n); row.appendChild(mid);
     if (unread[c.record_id]) {
@@ -981,6 +1000,56 @@ function confirmDecision() {
   if (curIdx < cards.length - 1) openCard(curIdx + 1);
 }
 
+/* ---------- review-by-exception: bulk approve (two-step confirm) ---------- */
+function renderBulkBar(host, recN) {
+  if (!recN) return;
+  var bar = document.createElement("div");
+  bar.className = "actions"; bar.style.marginBottom = "8px";
+  var b = document.createElement("button");
+  b.type = "button";
+  b.textContent = "Approve " + recN + " recommended low-risk cards…";
+  b.addEventListener("click", bulkPreview);
+  bar.appendChild(b);
+  var note = document.createElement("span");
+  note.className = "rid";
+  note.textContent = " safety-sensitive, corrections, QA-sampled and flagged cards are excluded and stay individual";
+  bar.appendChild(note);
+  host.appendChild(bar);
+}
+function bulkPreview() {
+  fetch(api("/api/bulk_preview"), { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: "{}" })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok) { alert(res.j.error || "bulk preview failed"); return; }
+      var j = res.j;
+      var lines = [
+        "Bulk approve " + j.count + " cards under " + j.policy_version + "?",
+        "",
+        "By source: " + JSON.stringify(j.by_source),
+        "By type: " + JSON.stringify(j.by_interaction_type),
+        "QA: " + j.qa.sampled_total + " sampled cards stay INDIVIDUAL (" +
+          j.qa.sampled_decided + " decided, " + j.qa.sampled_errors + " errors so far)",
+        "",
+        "Each card is written to the append-only ledger as an approval in your",
+        "name with mode=bulk and the policy version. This cannot approve",
+        "safety-sensitive, correction, flagged, or already-decided cards."
+      ];
+      if (!window.confirm(lines.join("\n"))) return;
+      fetch(api("/api/bulk_commit"), { method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ confirm_token: j.confirm_token }) })
+        .then(function (r2) { return r2.json().then(function (k) { return { ok: r2.ok, k: k }; }); })
+        .then(function (res2) {
+          if (!res2.ok) { alert(res2.k.error || "bulk commit failed"); return; }
+          alert("Approved " + res2.k.approved + " cards (mode=bulk). QA-sampled cards remain in the QA tab.");
+          window.location.reload();
+        })
+        .catch(function () { alert("network error during bulk commit — nothing partial: retry safely"); });
+    })
+    .catch(function () { alert("network error during bulk preview"); });
+}
+
 /* ---------- reply polling ---------- */
 function poll() {
   fetch(api("/api/updates?since=" + encodeURIComponent(seq)))
@@ -1039,6 +1108,14 @@ document.addEventListener("keydown", function (e) {
   else if (lk === "c") startDecision("correct");
   else if (lk === "r") startDecision("reject");
   else if (lk === "h") startDecision("hold_out");
+  else if (lk === "s" || lk === "n") {
+    // skip / next: advance to the next to-do card without deciding this one
+    for (var jn = curIdx + 1; jn < cards.length; jn++) {
+      if (isTodo(cards[jn])) { openCard(jn); e.preventDefault(); return; }
+    }
+    if (curIdx < cards.length - 1) openCard(curIdx + 1);
+    e.preventDefault();
+  }
 });
 
 /* ---------- wiring ---------- */
