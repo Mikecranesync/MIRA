@@ -588,3 +588,47 @@ describe("isRefusalAnswer (#1875 phantom-citation gate)", () => {
     expect(isRefusalAnswer(null)).toBe(false);
   });
 });
+
+describe("citation page guard (#2910) — suppress chunk-index-as-page", () => {
+  // Legacy ingest paths (gdrive / ingest_manuals.py) stamped source_page with the
+  // chunk ORDINAL, not the real PDF page — so a ~140-page PF525 manual cites
+  // "p.1254". The discriminator: a bad row has source_page === chunk_index; a
+  // real-page (crawler-ingested) row does not. Suppress the page label only for
+  // the bad case. Verified against staging: bad copies are 100% sp==cidx; the
+  // crawler copy is sp!=cidx for 1067/1069 rows.
+  const base: ManualChunk = {
+    content: "F004 = overvoltage on the DC bus.",
+    manufacturer: "Rockwell Automation",
+    modelNumber: "PowerFlex 525",
+    sourceUrl: "gdrive://520-um001_-en-e.pdf",
+    sourcePage: 1254,
+    title: "PowerFlex 525",
+    rank: 1,
+  };
+
+  it("buildGroundedContext drops p.N when sourcePage === chunkIndex (fabricated page)", () => {
+    const ctx = buildGroundedContext([{ ...base, sourcePage: 1254, chunkIndex: 1254 }]);
+    expect(ctx).not.toContain("p.1254");
+    expect(ctx).toContain("[1] Rockwell Automation PowerFlex 525\n");
+  });
+
+  it("buildGroundedContext keeps p.N when sourcePage !== chunkIndex (real page)", () => {
+    const ctx = buildGroundedContext([{ ...base, sourcePage: 42, chunkIndex: 517 }]);
+    expect(ctx).toContain("PowerFlex 525, p.42");
+  });
+
+  it("chunksToSources nulls the page when sourcePage === chunkIndex", () => {
+    const src = chunksToSources([{ ...base, sourcePage: 715, chunkIndex: 715 }]);
+    expect(src[0].page).toBeNull();
+  });
+
+  it("chunksToSources keeps a real page when sourcePage !== chunkIndex", () => {
+    const src = chunksToSources([{ ...base, sourcePage: 42, chunkIndex: 517 }]);
+    expect(src[0].page).toBe(42);
+  });
+
+  it("no chunkIndex present → page shown unchanged (back-compat: node/page_start path)", () => {
+    const src = chunksToSources([{ ...base, sourcePage: 88 }]);
+    expect(src[0].page).toBe(88);
+  });
+});
