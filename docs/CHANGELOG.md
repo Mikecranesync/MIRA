@@ -1,3 +1,9 @@
+### v3.223.1 (2026-07-28) - fix(crawler): latency.py default log path was cwd-doubled (same bug class as the heartbeat fix)
+
+`metrics/latency.py`'s `DEFAULT_LOG_PATH` was the cwd-relative string `"mira-crawler/data/ingest_latency.jsonl"`. The daemon runs with cwd = `mira-crawler/` (run.sh does `cd $SCRIPT_DIR`) and doesn't export `MIRA_INGEST_LATENCY_LOG`, so that relative path resolves to the **doubled** `mira-crawler/mira-crawler/data/ingest_latency.jsonl` — ingest latency rows were written to a phantom directory nobody reads. This is the exact bug the advisor caught in `heartbeat.py` last session (heartbeat.py's fix comment even cited latency.py as the outstanding bad case).
+
+**Fix (1 line):** `DEFAULT_LOG_PATH = str(Path(__file__).resolve().parent.parent / "data" / "ingest_latency.jsonl")` — absolute, resolved from the module location, cwd-independent. The `MIRA_INGEST_LATENCY_LOG` env override still wins. New regression test `tests/test_latency_path.py` mirrors `test_heartbeat.py`'s path guard (fails on the old relative default, passes on the fix); heartbeat + latency path tests green (15/15). Surgical — no other latency.py behavior touched.
+
 ### v3.222.3 (2026-07-27) - fix(crawler): curate + verify OEM source URLs — closes the "crawls find nothing" content gap
 
 Closes the content gap the v3.222.1 note flagged: after the tier-scoping code fix, siemens/rockwell still discovered **0 URLs** because `sources.yaml` had no entries for them (a `# to be verified and added` placeholder). This adds real, curated OEM manual URLs and repairs dead existing ones. **Every URL was fetch-verified (`200` + `application/pdf` + sane size) and robots.txt-checked on 2026-07-27** — no URL was transcribed from a search snippet (guessed doc-numbers all 404'd in testing).
