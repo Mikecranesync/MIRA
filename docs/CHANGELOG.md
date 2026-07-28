@@ -1,3 +1,14 @@
+### v3.223.4 (2026-07-28) - fix(ingest): stamp the real PDF page in source_page, not the chunk ordinal (#2968)
+
+The write-site half of #2968 (the corpus problem surfaced by #2910): the offline OEM/document ingest paths stamped `knowledge_entries.source_page` with the **chunk ordinal** instead of the real PDF page — the root cause of "PowerFlex 525 · p.1254" on a ~140-page manual. This stops **new** mis-stamped rows at the source. (Existing rows are the separate remediation tracked in #2968; the shipped #2910 render guard contains them meanwhile.)
+
+**The coupling that made this non-trivial:** the shared dedup guard `knowledge_entry_exists()` (in `mira-ingest/db/neon.py`, used by `ingest_manuals.py`, `ingest_gdrive_docs.py`, `ingest_gmail_takeout.py`) matched on `source_page = chunk_index` — so idempotency *relied* on the bug. Fixed **atomically**:
+- **`neon.py` dedup** now keys on `(metadata->>'chunk_index')::int` (the ordinal, preserved in metadata) — matching the crawler's `store.py` ON CONFLICT convention. Keying on `source_page` would break idempotency the instant a real page repeats across chunks (many chunks per page).
+- **`neon.py::insert_knowledge_entry`** writes `source_page = page_num` (the real page it already received, or `NULL`) instead of `chunk_index`. This fixes the gdrive + gmail ingest paths, which route through it.
+- **`ingest_manuals.py`** (its own inserts, ×2) writes `source_page = chunk.get("page_num")`.
+
+The chunk ordinal remains in `metadata.chunk_index` for dedup. Existing rows already carry `metadata.chunk_index`, so re-runs still dedup correctly against them. Aligns the whole legacy ingest family with the already-correct `mira-crawler/ingest/store.py`. Tests: 3 new regression cases + 16 existing green (`db/test_knowledge_entries.py`); ruff clean. Offline scripts only — not in the live crawler daemon.
+
 ### v3.223.3 (2026-07-28) - fix(hub): stop citing chunk-index as a page number on /quickstart (#2910)
 
 On the public money path (`/quickstart`), MIRA cited **PowerFlex 525 · p.1254** — but that manual (520-UM001) is ~140 pages. The "we cite the real OEM page" trust promise breaks. Root cause (traced against staging, not guessed): legacy ingest paths (Google-Drive ingest, `ingest_manuals.py`) stamped `knowledge_entries.source_page` with the chunk **ordinal**, not the real PDF page — so a 1254-chunk doc "cites" p.1254. The correctly-paginated crawler copy of the same manual exists (real pages 1..274), which yields a clean per-row discriminator: **a mis-stamped row has `source_page === (metadata->>'chunk_index')`** (verified: legacy copies 100% sp==cidx; crawler copy sp!=cidx for 1067/1069 rows).

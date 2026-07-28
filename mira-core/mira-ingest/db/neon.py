@@ -333,10 +333,14 @@ def knowledge_entry_exists(tenant_id: str, source_url: str, chunk_index: int) ->
     with _engine().connect() as conn:
         count = conn.execute(
             text(
+                # Dedup on the chunk ORDINAL stored in metadata — NOT source_page,
+                # which now holds the real PDF page (#2910/#2968). Keying on
+                # source_page would break idempotency the moment a real page repeats
+                # across chunks (many chunks share one page).
                 "SELECT COUNT(*) FROM knowledge_entries "
                 "WHERE tenant_id = :tid "
                 "AND source_url = :url "
-                "AND source_page = :chunk"
+                "AND (metadata->>'chunk_index')::int = :chunk"
             ),
             {"tid": tenant_id, "url": source_url, "chunk": chunk_index},
         ).scalar()
@@ -396,7 +400,9 @@ def insert_knowledge_entry(
                 "content": content,
                 "embedding": str(embedding),
                 "source_url": source_url,
-                "source_page": chunk_index,
+                # Real PDF page (or NULL) — never the chunk ordinal (#2910/#2968).
+                # The ordinal is preserved in metadata.chunk_index for dedup.
+                "source_page": page_num,
                 "metadata": json.dumps(meta),
                 "chunk_type": chunk_type,
                 "isa95_path": isa95_path,

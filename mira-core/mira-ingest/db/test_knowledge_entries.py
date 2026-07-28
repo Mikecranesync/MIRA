@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -112,6 +113,66 @@ def test_insert_includes_new_columns_in_sql_and_params(engine_patch):
     assert params["isa95_path"] == "AcmePlant/Line2/Oven1"
     assert params["equipment_id"] == "Oven1"
     assert params["data_type"] == data_types.FAULT_EVENT
+
+
+# ---------------------------------------------------------------------------
+# source_page must be the REAL page, not the chunk ordinal (#2910 / #2968)
+# ---------------------------------------------------------------------------
+
+
+@patch.object(neon, "_engine")
+def test_insert_stamps_real_page_not_chunk_index(engine_patch):
+    # Legacy bug: source_page was stamped with chunk_index, so a 1254-chunk manual
+    # "cited" p.1254. source_page must hold the real PDF page; the ordinal lives in
+    # metadata.chunk_index for dedup only.
+    conn = _install_engine_mock(engine_patch)
+    neon.insert_knowledge_entry(
+        tenant_id="t1",
+        content="c",
+        embedding=[0.1, 0.2],
+        manufacturer=None,
+        model_number=None,
+        source_url="s",
+        chunk_index=42,
+        page_num=7,
+        section=None,
+    )
+    _, params = _sql_and_params(conn)
+    assert params["source_page"] == 7  # real page, NOT the ordinal 42
+    meta = json.loads(params["metadata"])
+    assert meta["chunk_index"] == 42  # ordinal preserved in metadata for dedup
+
+
+@patch.object(neon, "_engine")
+def test_insert_source_page_is_null_when_page_unknown(engine_patch):
+    # Emails / HTML have no page → source_page must be NULL, never the ordinal.
+    conn = _install_engine_mock(engine_patch)
+    neon.insert_knowledge_entry(
+        tenant_id="t1",
+        content="c",
+        embedding=[0.1],
+        manufacturer=None,
+        model_number=None,
+        source_url="s",
+        chunk_index=3,
+        page_num=None,
+        section=None,
+    )
+    _, params = _sql_and_params(conn)
+    assert params["source_page"] is None  # no page → NULL, not the ordinal 3
+
+
+@patch.object(neon, "_engine")
+def test_dedup_keys_on_metadata_chunk_index_not_source_page(engine_patch):
+    # Now that source_page holds the real page, the idempotency guard must match
+    # the chunk ordinal in metadata, not source_page — else re-runs never dedup.
+    conn = _install_engine_mock(engine_patch)
+    conn.execute.return_value.scalar.return_value = 0
+    neon.knowledge_entry_exists("t1", "s", 5)
+    sql_text, params = _sql_and_params(conn)
+    assert "metadata->>'chunk_index'" in sql_text
+    assert "source_page = :chunk" not in sql_text
+    assert params["chunk"] == 5
 
 
 @patch.object(neon, "_engine")
