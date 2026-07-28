@@ -176,6 +176,7 @@ class EvalConfig:
     budget_usd: float
     authorization_path: Path | None
     endpoint_auth_path: Path | None = None
+    evidence_in_prompt: bool = False
 
 
 # Together v2 dedicated-deployment resources, pinned by the 2026-07-28 $0
@@ -217,19 +218,57 @@ def v2_deployment_spec() -> Any:
     )
 
 
-def eval_request_hash(salt: str, n_prompts: int) -> str:
-    """The request hash the eval-gate authorization binds to."""
-    return _sha(
-        {
-            "action": ACTION_HOLDOUT_EVAL,
-            "prompt_set_hash": salt,
-            "base_model": BASE_MODEL,
-            "tuned_model": TUNED_MODEL,
-            "max_output_tokens": MAX_OUTPUT_TOKENS,
-            "temperature": TEMPERATURE,
-            "max_calls": 2 * n_prompts,
-        }
-    )
+def eval_request_hash(salt: str, n_prompts: int, evidence_in_prompt: bool = False) -> str:
+    """The request hash the eval-gate authorization binds to.
+
+    Track 2 (``evidence_in_prompt=True``) adds a marker key so a Track-2 run
+    needs its own signed authorization; the Track-1 hash is byte-unchanged.
+    """
+    payload: dict[str, Any] = {
+        "action": ACTION_HOLDOUT_EVAL,
+        "prompt_set_hash": salt,
+        "base_model": BASE_MODEL,
+        "tuned_model": TUNED_MODEL,
+        "max_output_tokens": MAX_OUTPUT_TOKENS,
+        "temperature": TEMPERATURE,
+        "max_calls": 2 * n_prompts,
+    }
+    if evidence_in_prompt:
+        payload["evidence_in_prompt"] = True
+    return _sha(payload)
+
+
+def evidence_prompt_line(evidence: dict[str, Any]) -> str:
+    """Render a record's withheld evidence as the trained Pattern-A user-turn line.
+
+    Mirrors the v1 training shape (``…\\nEvidence (deterministic Drive Commander
+    pack, page N): <claim>. Related parameters: …``) so Track 2 measures cited
+    lookup in the format the tuned model was actually trained on.
+    """
+    src = str(evidence.get("source") or "").strip()
+    page = evidence.get("page")
+    where = "deterministic Drive Commander pack"
+    if src:
+        where += f", {src}"
+    if page is not None:
+        where += f" page {page}"
+    claim = str(evidence.get("claim") or "").strip().rstrip(".")
+    rel = evidence.get("related_parameters") or []
+    tail = f" Related parameters: {', '.join(str(r) for r in rel)}." if rel else ""
+    return f"\nEvidence ({where}): {claim}.{tail}"
+
+
+def with_evidence_in_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of a prompt-set record with evidence appended to the last
+    user turn (Track 2). The original record is not mutated."""
+    out = dict(prompt)
+    msgs = [dict(m) for m in prompt["messages"]]
+    for m in reversed(msgs):
+        if m["role"] == "user":
+            m["content"] = m["content"] + evidence_prompt_line(prompt["evidence"])
+            break
+    out["messages"] = msgs
+    return out
 
 
 def endpoint_request_hash() -> str:
@@ -331,17 +370,26 @@ async def _call_chat(
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = None
         for attempt in range(4):  # 3 transient retries — a stray 500 must not burn the run
-            resp = await client.post(
-                url,
-                headers=headers,
-                json={**base_payload, "chat_template_kwargs": {"enable_thinking": False}},
-            )
-            if resp.status_code == 400:
+            try:
                 resp = await client.post(
                     url,
                     headers=headers,
-                    json={**base_payload, "max_tokens": 4 * MAX_OUTPUT_TOKENS},
+                    json={**base_payload, "chat_template_kwargs": {"enable_thinking": False}},
                 )
+                if resp.status_code == 400:
+                    resp = await client.post(
+                        url,
+                        headers=headers,
+                        json={**base_payload, "max_tokens": 4 * MAX_OUTPUT_TOKENS},
+                    )
+            except (httpx.TimeoutException, httpx.TransportError):
+                # A slow/dropped serverless response is as transient as a 500 —
+                # letting it raise burns the consumed single-use authorization
+                # (the 2026-07-28 Track-2 ReadTimeout). Same backoff, then retry.
+                if attempt < 3:
+                    await asyncio.sleep(3.0 * (attempt + 1))
+                    continue
+                raise
             if resp.status_code in (429, 500, 502, 503, 504) and attempt < 3:
                 await asyncio.sleep(3.0 * (attempt + 1))
                 continue
@@ -381,6 +429,12 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
         json.dumps(prompt_set, indent=1, ensure_ascii=False), encoding="utf-8"
     )
     salt = prompt_set["prompt_set_hash"]
+    track = "track2-evidence-in-prompt" if cfg.evidence_in_prompt else "track1-evidence-absent"
+    if cfg.evidence_in_prompt:
+        # Transform AFTER the canonical prompt set is written/hashed: the salt
+        # stays the frozen prompt-set identity; the Track-2 variant is bound
+        # into the authorization via eval_request_hash(evidence_in_prompt=True).
+        prompt_set["prompts"] = [with_evidence_in_prompt(p) for p in prompt_set["prompts"]]
 
     if cfg.dry_run:
         from factorylm_ai.providers.mock import MockProvider
@@ -402,7 +456,9 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
         auth = PaidEventAuthorization(
             **json.loads(cfg.authorization_path.read_text(encoding="utf-8"))
         )
-        expected_request_hash = eval_request_hash(salt, len(prompt_set["prompts"]))
+        expected_request_hash = eval_request_hash(
+            salt, len(prompt_set["prompts"]), cfg.evidence_in_prompt
+        )
         verifier = TrustedPaidAuthorizationVerifier.from_environment()
         verifier.verify_and_consume(
             auth,
@@ -514,6 +570,7 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
     blinded_doc = {
         "schema": "factorylm.holdout-eval.blinded-outputs.v1",
         "mode": mode,
+        "track": track,
         "prompt_set_hash": salt,
         "generated_at": _now(),
         "records": blinded,
@@ -537,6 +594,7 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
     )
     summary = {
         "mode": mode,
+        "track": track,
         "records": len(blinded),
         "calls": 2 * len(blinded),
         "prompt_set_hash": salt,
@@ -564,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     runp.add_argument("--budget-usd", type=float, default=0.0)
     runp.add_argument("--endpoint-auth", type=Path, default=None)
     runp.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
+    runp.add_argument("--evidence-in-prompt", action="store_true")
     args = ap.parse_args(argv)
 
     if args.cmd == "build":
@@ -588,6 +647,9 @@ def main(argv: list[str] | None = None) -> int:
                     "eval_authorization_request_hash": eval_request_hash(
                         ps["prompt_set_hash"], len(ps["prompts"])
                     ),
+                    "eval_authorization_request_hash_track2": eval_request_hash(
+                        ps["prompt_set_hash"], len(ps["prompts"]), evidence_in_prompt=True
+                    ),
                     "endpoint_authorization_request_hash": endpoint_request_hash(),
                     "endpoint_spec": v2_deployment_spec().canonical_payload(),
                 },
@@ -603,6 +665,7 @@ def main(argv: list[str] | None = None) -> int:
         budget_usd=args.budget_usd,
         authorization_path=args.authorization,
         endpoint_auth_path=args.endpoint_auth,
+        evidence_in_prompt=bool(getattr(args, "evidence_in_prompt", False)),
     )
     print(json.dumps(asyncio.run(run_eval(cfg)), indent=1))
     return 0
