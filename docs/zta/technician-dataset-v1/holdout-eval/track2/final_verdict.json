@@ -1,0 +1,110 @@
+{
+ "result": {
+  "tuned": 10,
+  "base": 14,
+  "tie": 1
+ },
+ "per_record": {
+  "techv0-drive-021": {
+   "winner": "tuned",
+   "split": "3-0"
+  },
+  "techv0-drive-022": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-023": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-024": {
+   "winner": "tie",
+   "split": "2-1"
+  },
+  "techv0-drive-025": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-026": {
+   "winner": "tuned",
+   "split": "2-1"
+  },
+  "techv0-drive-027": {
+   "winner": "base",
+   "split": "3-0"
+  },
+  "techv0-drive-028": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-029": {
+   "winner": "tuned",
+   "split": "2-1"
+  },
+  "techv0-drive-030": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-031": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-032": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-033": {
+   "winner": "tuned",
+   "split": "2-1"
+  },
+  "techv0-drive-034": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-035": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-036": {
+   "winner": "tuned",
+   "split": "2-1"
+  },
+  "techv0-drive-037": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-038": {
+   "winner": "tuned",
+   "split": "3-0"
+  },
+  "techv0-drive-039": {
+   "winner": "tuned",
+   "split": "2-1"
+  },
+  "techv0-drive-040": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-041": {
+   "winner": "tuned",
+   "split": "2-1"
+  },
+  "techv0-drive-042": {
+   "winner": "tuned",
+   "split": "2-1"
+  },
+  "techv0-drive-043": {
+   "winner": "base",
+   "split": "2-1"
+  },
+  "techv0-drive-044": {
+   "winner": "tuned",
+   "split": "3-0"
+  },
+  "techv0-drive-045": {
+   "winner": "base",
+   "split": "2-1"
+  }
+ },
+ "success_rule": "tuned >= base with correct citations on >= 20/25"
+}

@@ -1,0 +1,9 @@
+{
+ "mode": "LIVE (authorization techv1-t2-eval-20260728-run2-6b87 consumed) + v2 deployment dep_CdVDVXBRb3mwTZco24afj on endpoint ep_CdVDVU59kLHLKaxLCLpkB (stopped_verified=True)",
+ "track": "track2-evidence-in-prompt",
+ "records": 25,
+ "calls": 50,
+ "prompt_set_hash": "sha256:fe5eb9abe1cd20f973a561168a1c15022bbefa82d19d659101eaf784b991c37e",
+ "blinded_outputs_hash": "sha256:0db27ce2dfb91a4ac3c2cb069dd4dda002b4351dc3c8429402c3a7cfb025dbca",
+ "sealed_mapping_hash": "sha256:e5ebe1ee095ffa19d7fd8fd2df6326637288129b01596a93dee5b0c9eeb13286"
+}
