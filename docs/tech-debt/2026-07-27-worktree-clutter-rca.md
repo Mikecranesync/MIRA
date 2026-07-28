@@ -99,22 +99,22 @@ But it is a **denylist, and it fails open.** This session found `wt-verify` — 
 
 Ordered by leverage. **Deliberately NOT proposed: an automatic sweeper that deletes worktrees it judges abandoned.** A heuristic sweep over other sessions' work has to answer "is this dead?", and `git branch --merged` ancestry is a weak signal in this repo because it squash-merges — a wrong guess deletes live, unpushed work, which is exactly the near-miss in §3.1. Automate the *report*, let a human make the deletion call.
 
-### Fix 1 — Creators clean up on exit (highest leverage)
+### Fix 1 — Creators clean up on exit (highest leverage)  ✅ IMPLEMENTED 2026-07-27 (#2960)
 
 Make removal-on-exit the documented obligation for **any** script or workflow that runs `git worktree add`. `tools/orchestrator/refresh-graph.sh` is the reference implementation: remove at every exit path, including early returns and error paths (a `trap` is the reliable way).
 
 Concretely: change `run-merge-and-verify.command:232` from echoing the removal command to executing it, and state the rule so new scripts inherit it.
 
-### Fix 2 — Close the doctrine gap
+### Fix 2 — Close the doctrine gap  ✅ IMPLEMENTED 2026-07-27 (#2960)
 
 1. Correct `.claude/rules/subagent-worktree-isolation.md:22`. The current sentence implies cleanup is handled; state plainly that auto-removal applies **only** to unchanged worktrees and therefore never to one that did work.
 2. Add a teardown obligation to `CLAUDE.md` § *Sub-agents / Worktrees*, which today mandates creation and is silent on removal: when the work is merged or abandoned, remove the worktree and delete its branch — and never leave a worktree holding `main`.
 
-### Fix 3 — Turn the CodeGraph ignore into an allowlist
+### Fix 3 — Turn the CodeGraph ignore into an allowlist  ✅ IMPLEMENTED 2026-07-28
 
 Replace the three enumerated paths with a pattern that catches any nested worktree regardless of location (and/or have `tools/codegraph-preflight.sh` fail loudly when it detects an indexed path containing a `.git` *file* rather than a directory — the unambiguous signature of a nested worktree). Small, deterministic, and directly verifiable against the `wt-verify` case.
 
-### Fix 4 — A periodic report, not a sweep
+### Fix 4 — A periodic report, not a sweep  ✅ IMPLEMENTED 2026-07-28
 
 A weekly job that lists worktrees older than N days with, for each: path, branch, dirty/clean, ahead/behind `origin/main`, and whether an open PR exists. Output goes to a human; **it deletes nothing.** This is the piece that can be automated safely, and it makes §3.1 visible before it becomes a blocker — a "worktree is holding `main`" line in that report would have prevented today's incident entirely.
 
@@ -134,3 +134,19 @@ For the record, and as the baseline any fix should preserve:
 - Manifest of all 65 with actions taken: `.git/worktree-manifest-2026-07-27.txt`.
 
 Result: 65 → 31 registered (30 after this document's own worktrees were cleaned up), `.git/worktrees` 46 MB → 23 MB, ~8.1 GB reclaimed, 0 dangling paths, all 367 branches intact.
+
+---
+
+## Implementation status (updated 2026-07-28)
+
+| Fix | Status | Where |
+|---|---|---|
+| 1 — creators clean up on exit | ✅ shipped | #2960 — `trap` added to `refresh-graph.sh`; § Scripts documents patterns (a)/(b) |
+| 2 — close the doctrine gap | ✅ shipped | #2960 — inverted "auto-removed" sentence corrected; § Teardown + `CLAUDE.md` |
+| 3 — CodeGraph ignore → allowlist | ✅ shipped | `tools/codegraph-preflight.sh` — WARN-only `⚠ NESTED WORKTREE` on any in-repo worktree outside the three allowed prefixes |
+| 4 — periodic report, not a sweep | ✅ shipped | `tools/worktree-health.sh` + 11 hermetic tests; detection-only, always exits 0 |
+| #2952 — nightly `main`-pinned worktree | see the issue | tracked separately; deliberately **not** bundled with 1–4 so it can be rolled back alone |
+
+**Not scheduled anywhere yet.** `tools/worktree-health.sh` exists but no cron/launchd
+entry runs it — wiring that up is a deliberate follow-up, since a schedule is an
+operational decision (where does the output go, who reads it) rather than a code one.
