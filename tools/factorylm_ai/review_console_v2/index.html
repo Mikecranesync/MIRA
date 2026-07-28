@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIRA Review Console v2</title>
+<link rel="icon" href="data:,">
+<style>
+/* ============================================================
+   FactoryLM design tokens — inlined verbatim from
+   docs/design/factorylm-tokens.css (canonical). TOKENS BLOCK.
+   ============================================================ */
+/* FactoryLM design tokens — the single source of truth for the FactoryLM/MIRA look.
+ *
+ * CANONICAL FILE. Plain-HTML tools <link> a COPY of this in their gui/ dir (so it bundles offline);
+ * React/Tailwind apps (mira-hub, mira-web) map these same values into their theme. Keep copies in
+ * sync with this file. Spec + usage: docs/design/factorylm-style.md.
+ *
+ * Doctrine: muted-gray normal state; strong color reserved for state/abnormal
+ * (green=ok/running, amber=warning, red=fault/stop) per .claude/rules/ui-style.md and the
+ * industrial-hmi-scada-design rule. Do NOT introduce new ad-hoc colors — extend tokens here.
+ */
+:root {
+  /* surfaces */
+  --fl-bg: #f3f4f6;          /* app background */
+  --fl-surface: #ffffff;     /* cards, panels, rows */
+  --fl-header: #111827;      /* top bar / dark chrome */
+  --fl-header-ink: #ffffff;
+  --fl-header-muted: #9ca3af;
+
+  /* text */
+  --fl-ink: #1f2937;         /* primary text */
+  --fl-muted: #6b7280;       /* secondary text */
+  --fl-faint: #9ca3af;       /* disabled / placeholder */
+
+  /* lines */
+  --fl-line: #e5e7eb;
+  --fl-line-strong: #d1d5db;
+
+  /* brand accent (actions, selection) */
+  --fl-accent: #4f46e5;      /* indigo 600 */
+  --fl-accent-hover: #4338ca;
+  --fl-accent-tint: #eef2ff; /* selected row / chip bg */
+  --fl-accent-ink: #3730a3;
+
+  /* STATE colors — reserved for status/abnormal, never decoration */
+  --fl-ok: #16a34a;          /* running / healthy / accepted */
+  --fl-ok-bg: #f0fdf4;
+  --fl-ok-ink: #15803d;      /* readable ok TEXT on light surfaces (green-700, ~5:1 on white) */
+  --fl-warn: #d97706;        /* warning / medium confidence */
+  --fl-warn-bg: #fffbeb;
+  --fl-fault: #dc2626;       /* fault / stop / rejected */
+  --fl-fault-bg: #fef2f2;
+  --fl-off: #9ca3af;         /* off / unknown / low confidence */
+
+  /* type */
+  --fl-font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --fl-mono: Consolas, "SF Mono", ui-monospace, monospace;
+  --fl-fs: 14px;            /* base size */
+  --fl-fs-sm: 12px;
+  --fl-fs-xs: 11px;
+
+  /* shape + spacing */
+  --fl-radius: 8px;
+  --fl-radius-sm: 6px;
+  --fl-gap: 8px;
+  --fl-pad: 12px;
+  --fl-shadow: 0 1px 2px rgba(0,0,0,.06);
+  --fl-shadow-pop: 0 4px 14px rgba(0,0,0,.25);
+
+  /* ── DARK DATASHEET THEME — public marketing/datasheet surfaces ─────────
+   * The ONE sanctioned dark look (Drive Commander family pages, PrintSense
+   * landing, future public technical pages). Same doctrine as the light
+   * workspace: muted-gray normal, ONE accent for actions/selection, strong
+   * color reserved for state. Never mix these with the light workspace
+   * tokens on the same surface. Added 2026-07-17 (de-slop pass). */
+
+  /* dark surfaces */
+  --fl-dark-bg: #0d0e11;
+  --fl-dark-bg-glass: rgba(13,14,17,.88); /* sticky-nav backdrop */
+  --fl-dark-surface: #13141a;
+  --fl-dark-surface-hi: #181a22;
+  --fl-dark-line: rgba(255,255,255,.07);
+  --fl-dark-line-hi: rgba(255,255,255,.12);
+
+  /* dark text */
+  --fl-dark-ink: #e8eaf0;
+  --fl-dark-muted: rgba(255,255,255,.62);
+  --fl-dark-faint: rgba(255,255,255,.40);
+
+  /* dark accent — brand orange (actions/selection ONLY, never status).
+   * Matches mira-web --fl-orange-500 so marketing and workspace share one
+   * brand accent; also frees amber for its state job (warning). */
+  --fl-dark-accent: #E67139;
+  --fl-dark-accent-hover: #f08a55;
+  --fl-dark-accent-tint: rgba(230,113,57,.10);
+  --fl-dark-accent-line: rgba(230,113,57,.38);
+
+  /* dark STATE colors — status/abnormal only, never decoration */
+  --fl-dark-ok: #2fbf71;          /* grounded / cited / pass / paid */
+  --fl-dark-ok-tint: rgba(47,191,113,.07);
+  --fl-dark-ok-line: rgba(47,191,113,.35);
+  --fl-dark-warn: #f0a000;        /* held / caution */
+  --fl-dark-warn-tint: rgba(240,160,0,.08);
+  --fl-dark-warn-line: rgba(240,160,0,.35);
+  --fl-dark-fault: #ff5d5d;       /* stop / escalate / fault */
+  --fl-dark-fault-tint: rgba(255,93,93,.08);
+  --fl-dark-fault-line: rgba(255,93,93,.35);
+
+  /* dark type (marketing stacks) */
+  --fl-dark-font: 'Inter', 'Helvetica Neue', -apple-system, sans-serif;
+  --fl-dark-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+}
+/* ==================== END TOKENS BLOCK ==================== */
+</style>
+<style>
+/* Component styles — var(--fl-*) ONLY. No hardcoded colors here. */
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body {
+  margin: 0; background: var(--fl-bg); color: var(--fl-ink);
+  font-family: var(--fl-font); font-size: var(--fl-fs);
+  -webkit-text-size-adjust: 100%;
+}
+header {
+  background: var(--fl-header); color: var(--fl-header-ink);
+  padding: 8px var(--fl-pad); position: sticky; top: 0; z-index: 20;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.hrow { display: flex; gap: var(--fl-gap); align-items: center; flex-wrap: wrap; }
+header h1 { font-size: var(--fl-fs); margin: 0; font-weight: 600; }
+header .sub { color: var(--fl-header-muted); font-size: var(--fl-fs-xs); font-family: var(--fl-mono); }
+.spacer { flex: 1; }
+
+.dot {
+  width: 12px; height: 12px; border-radius: 999px; display: inline-block;
+  background: var(--fl-off); flex: none;
+}
+.dot.ok    { background: var(--fl-ok); }
+.dot.retry { background: var(--fl-warn); }
+.dot.off   { background: var(--fl-fault); }
+#syncwrap { display: inline-flex; align-items: center; gap: 6px; min-height: 24px;
+  font-size: var(--fl-fs-xs); color: var(--fl-header-muted); font-family: var(--fl-mono); }
+
+#gate { display: flex; gap: 5px; flex-wrap: wrap; }
+.g {
+  border: 1px solid var(--fl-header-muted); border-radius: var(--fl-radius-sm);
+  padding: 2px 7px; font-size: var(--fl-fs-xs); font-family: var(--fl-mono);
+}
+.g .lbl { color: var(--fl-header-muted); display: block; font-size: 10px;
+  text-transform: uppercase; letter-spacing: .04em; }
+.g .val { color: var(--fl-header-ink); font-weight: 600; }
+.g.met { border-color: var(--fl-ok); }
+.g.met .val { color: var(--fl-ok); }
+.g.short .val { color: var(--fl-warn); }
+#verdict { padding: 4px 10px; border-radius: var(--fl-radius-sm); font-weight: 700;
+  font-size: var(--fl-fs-xs); letter-spacing: .04em; }
+#verdict.blocked { background: var(--fl-fault-bg); color: var(--fl-fault); }
+#verdict.pass    { background: var(--fl-ok-bg); color: var(--fl-ok-ink); }
+
+main { max-width: 900px; margin: 0 auto; padding: var(--fl-pad); }
+.panel {
+  background: var(--fl-surface); border: 1px solid var(--fl-line);
+  border-radius: var(--fl-radius); box-shadow: var(--fl-shadow);
+  padding: var(--fl-pad); margin-bottom: var(--fl-gap);
+}
+.banner {
+  border: 1px solid var(--fl-warn); background: var(--fl-warn-bg); color: var(--fl-warn);
+  border-radius: var(--fl-radius); padding: 10px var(--fl-pad); margin-bottom: var(--fl-gap);
+  font-size: var(--fl-fs-sm);
+}
+.banner b { display: block; margin-bottom: 4px; }
+.banner .blink2 { display: inline-block; margin: 2px 6px 2px 0; padding: 6px 10px; min-height: 32px;
+  border: 1px solid var(--fl-warn); border-radius: var(--fl-radius-sm);
+  background: var(--fl-surface); color: var(--fl-warn); cursor: pointer;
+  font-family: var(--fl-mono); font-size: var(--fl-fs-xs); }
+.err-banner {
+  border: 1px solid var(--fl-fault); background: var(--fl-fault-bg); color: var(--fl-fault);
+  border-radius: var(--fl-radius); padding: 10px var(--fl-pad); margin-bottom: var(--fl-gap);
+  font-size: var(--fl-fs-sm);
+}
+
+/* buttons — 44px min touch target */
+button {
+  font-family: var(--fl-font); font-size: var(--fl-fs); cursor: pointer;
+  border-radius: var(--fl-radius-sm); border: 1px solid var(--fl-line-strong);
+  background: var(--fl-surface); color: var(--fl-ink); padding: 10px 14px;
+  min-height: 44px;
+}
+button:hover { border-color: var(--fl-accent); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button kbd { font-family: var(--fl-mono); font-size: 11px; opacity: .65; margin-right: 5px; }
+button.approve { border-color: var(--fl-ok); color: var(--fl-ok-ink); font-weight: 600; }
+button.correct { border-color: var(--fl-warn); color: var(--fl-warn); font-weight: 600; }
+button.reject  { border-color: var(--fl-fault); color: var(--fl-fault); font-weight: 600; }
+button.hold    { border-style: dashed; border-color: var(--fl-warn); color: var(--fl-warn); }
+button.primary { background: var(--fl-accent); color: var(--fl-header-ink);
+  border-color: var(--fl-accent); font-weight: 600; }
+button.primary:hover { background: var(--fl-accent-hover); }
+button.sel { background: var(--fl-accent-tint); border-color: var(--fl-accent); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* search */
+input[type=search], input[type=text] {
+  width: 100%; padding: 10px; min-height: 44px; border: 1px solid var(--fl-line-strong);
+  border-radius: var(--fl-radius-sm); font-family: var(--fl-font);
+  font-size: 16px; /* <16px triggers iOS focus auto-zoom */
+  background: var(--fl-surface); color: var(--fl-ink);
+}
+
+/* list view */
+#list { display: flex; flex-direction: column; gap: 6px; margin-top: var(--fl-gap); }
+.row {
+  display: flex; gap: 8px; align-items: center; width: 100%; text-align: left;
+  min-height: 52px; padding: 8px 10px; border: 1px solid var(--fl-line);
+  border-radius: var(--fl-radius-sm); background: var(--fl-surface); cursor: pointer;
+}
+.row:hover { border-color: var(--fl-accent); }
+.row .n { font-family: var(--fl-mono); font-size: var(--fl-fs-xs); color: var(--fl-faint);
+  min-width: 30px; text-align: right; flex: none; }
+.row .rid { font-family: var(--fl-mono); font-size: var(--fl-fs-xs); color: var(--fl-muted); }
+.row .subj { font-size: var(--fl-fs-sm); color: var(--fl-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .mid { flex: 1; min-width: 0; }
+.st {
+  flex: none; font-family: var(--fl-mono); font-size: var(--fl-fs-xs); font-weight: 600;
+  padding: 3px 8px; border-radius: 999px; border: 1px solid var(--fl-line-strong);
+  color: var(--fl-muted); background: var(--fl-bg);
+}
+.st.approve  { background: var(--fl-ok-bg);    color: var(--fl-ok-ink); border-color: var(--fl-ok); }
+.st.correct  { background: var(--fl-warn-bg);  color: var(--fl-warn);   border-color: var(--fl-warn); }
+.st.reject   { background: var(--fl-fault-bg); color: var(--fl-fault);  border-color: var(--fl-fault); }
+.st.hold_out { background: var(--fl-surface);  color: var(--fl-warn);   border-color: var(--fl-warn); border-style: dashed; }
+.unread {
+  flex: none; min-width: 20px; height: 20px; border-radius: 999px;
+  background: var(--fl-accent); color: var(--fl-header-ink);
+  font-size: var(--fl-fs-xs); font-weight: 700; line-height: 20px; text-align: center;
+}
+
+/* chips on card */
+.meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.chip {
+  font-family: var(--fl-mono); font-size: var(--fl-fs-xs); padding: 4px 9px;
+  border-radius: 999px; border: 1px solid var(--fl-line-strong); color: var(--fl-muted);
+  background: var(--fl-bg); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.chip.safety { background: var(--fl-warn-bg); color: var(--fl-warn); border-color: var(--fl-warn); font-weight: 600; }
+.chip.valued { background: var(--fl-accent-tint); color: var(--fl-accent-ink); border-color: var(--fl-accent); }
+
+.qa { margin: 0 0 12px; }
+.qa .role { font-size: var(--fl-fs-xs); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--fl-faint); margin-bottom: 3px; }
+.qa .body { white-space: pre-wrap; line-height: 1.5; word-break: break-word; }
+.qa.answer .body { background: var(--fl-bg); border-left: 3px solid var(--fl-accent);
+  padding: 10px 12px; border-radius: var(--fl-radius-sm); }
+
+.evidence { background: var(--fl-bg); border: 1px dashed var(--fl-line-strong);
+  border-radius: var(--fl-radius-sm); padding: 10px 12px; margin-bottom: 12px; }
+.evidence h3 { margin: 0 0 6px; font-size: var(--fl-fs-xs); text-transform: uppercase;
+  letter-spacing: .05em; color: var(--fl-muted); }
+.evidence .claim { white-space: pre-wrap; line-height: 1.5; margin-bottom: 8px; word-break: break-word; }
+.evidence dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; }
+.evidence dt { color: var(--fl-muted); font-size: var(--fl-fs-sm); }
+.evidence dd { margin: 0; font-family: var(--fl-mono); font-size: var(--fl-fs-sm); word-break: break-word; }
+.evidence .st-field_verify { color: var(--fl-warn); font-weight: 600; }
+.evidence .st-verified { color: var(--fl-ok-ink); font-weight: 600; }
+
+/* snippet: zoomable, scrolls inside its own container, never the page */
+.snipwrap { overflow: auto; -webkit-overflow-scrolling: touch; max-height: 62vh;
+  border: 1px solid var(--fl-line); border-radius: var(--fl-radius-sm);
+  margin-bottom: 12px; background: var(--fl-surface); }
+.snipwrap img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+.snipwrap img.zoom { width: 230%; max-width: none; cursor: zoom-out; }
+.sniphint { font-size: var(--fl-fs-xs); color: var(--fl-faint); margin: -8px 0 12px; }
+
+/* decision area */
+.hint { color: var(--fl-muted); font-size: var(--fl-fs-sm); }
+textarea {
+  width: 100%; min-height: 84px; font-family: var(--fl-font);
+  font-size: 16px; /* <16px triggers iOS focus auto-zoom */
+  padding: 10px; border-radius: var(--fl-radius-sm); border: 1px solid var(--fl-line-strong);
+  background: var(--fl-surface); color: var(--fl-ink); margin-top: 6px; resize: vertical;
+}
+.opts { display: grid; gap: 6px; margin-top: 8px; }
+.opt { display: flex; gap: 8px; align-items: flex-start; padding: 10px 11px; min-height: 44px;
+  border-radius: var(--fl-radius-sm); border: 1px solid var(--fl-line);
+  background: var(--fl-surface); cursor: pointer; text-align: left; width: 100%;
+  font-size: var(--fl-fs-sm); color: var(--fl-ink); }
+.opt:hover, .opt.sel { border-color: var(--fl-accent); background: var(--fl-accent-tint); }
+.opt kbd { font-family: var(--fl-mono); font-size: 11px; color: var(--fl-muted); flex: none; }
+.decided-line { font-size: var(--fl-fs-sm); font-family: var(--fl-mono); color: var(--fl-muted);
+  margin-top: 8px; word-break: break-word; }
+
+/* comments */
+.thread { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.msg { padding: 9px 11px; border-radius: var(--fl-radius); max-width: 92%;
+  white-space: pre-wrap; line-height: 1.45; word-break: break-word; font-size: var(--fl-fs-sm); }
+.msg .who { font-size: var(--fl-fs-xs); font-family: var(--fl-mono); color: var(--fl-muted);
+  margin-bottom: 3px; }
+.msg.mine { align-self: flex-end; background: var(--fl-accent-tint);
+  border: 1px solid var(--fl-accent); }
+.msg.claude { align-self: flex-start; background: var(--fl-bg);
+  border: 1px solid var(--fl-line-strong); }
+
+/* nav */
+.cardnav { display: flex; gap: 8px; align-items: center; margin-bottom: var(--fl-gap); }
+.cardnav .pos { font-family: var(--fl-mono); font-size: var(--fl-fs-sm); color: var(--fl-muted); }
+h2 { font-size: var(--fl-fs); margin: 0 0 8px; }
+
+@media (min-width: 720px) {
+  header { flex-direction: row; align-items: center; }
+}
+
+@media (prefers-color-scheme: dark) {
+  body { background: var(--fl-dark-bg); color: var(--fl-dark-ink); }
+  .panel, .row, button, .opt, textarea, input[type=search], input[type=text] {
+    background: var(--fl-dark-surface); border-color: var(--fl-dark-line-hi);
+    color: var(--fl-dark-ink);
+  }
+  .qa.answer .body, .evidence, .chip, .msg.claude, .st, .snipwrap {
+    background: var(--fl-dark-surface-hi); border-color: var(--fl-dark-line-hi);
+  }
+  .row .subj { color: var(--fl-dark-ink); }
+  .row .rid, .hint, .evidence dt, .qa .role, .decided-line, .msg .who,
+  .chip, .st, .cardnav .pos { color: var(--fl-dark-muted); }
+  .row .n, .sniphint { color: var(--fl-dark-faint); }
+  button.primary { background: var(--fl-dark-accent); border-color: var(--fl-dark-accent);
+    color: var(--fl-dark-bg); }
+  button.primary:hover { background: var(--fl-dark-accent-hover); }
+  button.sel, .opt:hover, .opt.sel { background: var(--fl-dark-accent-tint);
+    border-color: var(--fl-dark-accent-line); }
+  .msg.mine { background: var(--fl-dark-accent-tint); border-color: var(--fl-dark-accent-line); }
+  button.approve, .st.approve, .evidence .st-verified { color: var(--fl-dark-ok); border-color: var(--fl-dark-ok-line); }
+  .st.approve { background: var(--fl-dark-ok-tint); }
+  button.correct, button.hold, .st.correct, .st.hold_out, .banner,
+  .evidence .st-field_verify, .chip.safety { color: var(--fl-dark-warn); border-color: var(--fl-dark-warn-line); }
+  .st.correct { background: var(--fl-dark-warn-tint); }
+  .banner { background: var(--fl-dark-warn-tint); }
+  .banner .blink2 { background: var(--fl-dark-surface); color: var(--fl-dark-warn);
+    border-color: var(--fl-dark-warn-line); }
+  button.reject, .st.reject, .err-banner { color: var(--fl-dark-fault); border-color: var(--fl-dark-fault-line); }
+  .st.reject { background: var(--fl-dark-fault-tint); }
+  .err-banner { background: var(--fl-dark-fault-tint); }
+  #verdict.blocked { background: var(--fl-dark-fault-tint); color: var(--fl-dark-fault); }
+  #verdict.pass { background: var(--fl-dark-ok-tint); color: var(--fl-dark-ok); }
+  .chip.valued { background: var(--fl-dark-accent-tint); color: var(--fl-dark-accent);
+    border-color: var(--fl-dark-accent-line); }
+  .chip.safety { background: var(--fl-dark-warn-tint); }
+  .unread { background: var(--fl-dark-accent); color: var(--fl-dark-bg); }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <div>
+      <h1>MIRA Review v2</h1>
+      <div class="sub" id="hdrsub">loading&hellip;</div>
+    </div>
+    <div class="spacer"></div>
+    <span id="syncwrap"><span class="dot" id="dot"></span><span id="synctxt">sync</span></span>
+    <span class="sub" id="progress"></span>
+  </div>
+  <div class="hrow">
+    <div id="gate"></div>
+    <div id="verdict" class="blocked">BLOCKED</div>
+  </div>
+</header>
+
+<main>
+  <div id="loadErr" class="err-banner" hidden></div>
+
+  <!-- ============ LIST VIEW ============ -->
+  <section id="listView">
+    <div id="reentryBanner" class="banner" hidden></div>
+    <div class="panel">
+      <input type="search" id="search" placeholder="Search record_id or subject&hellip;"
+             autocomplete="off" aria-label="Search cards">
+      <div id="list"></div>
+    </div>
+    <div class="panel">
+      <h2>General comments <span class="unread" id="genUnread" hidden>0</span></h2>
+      <div class="thread" id="genThread"></div>
+      <textarea id="genBox" placeholder="Comment to Claude (not tied to a card)&hellip;"></textarea>
+      <div class="actions" style="margin-top:8px">
+        <button class="primary" id="genSend">Send comment</button>
+        <div class="spacer"></div>
+        <button id="exportBtn">Export decisions.jsonl</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CARD VIEW ============ -->
+  <section id="cardView" hidden>
+    <div class="cardnav">
+      <button id="backBtn">&equiv; List</button>
+      <span class="pos" id="cardPos"></span>
+      <div class="spacer"></div>
+      <button id="prevBtn" aria-label="Previous card">&larr; Prev</button>
+      <button id="nextBtn" aria-label="Next card">Next &rarr;</button>
+    </div>
+
+    <div id="cardReentry" class="banner" hidden>
+      <b>Correction text needed</b>
+      This card was imported from the v1 export with broken correction messages.
+      Re-enter the corrected answer below and confirm the Correct decision again.
+    </div>
+
+    <section class="panel">
+      <div class="meta" id="chips"></div>
+      <div class="qa"><div class="role">Technician asks</div><div class="body" id="qUser"></div></div>
+      <div class="qa answer"><div class="role">MIRA answered</div><div class="body" id="qAsst"></div></div>
+      <div class="evidence">
+        <h3>The evidence says</h3>
+        <div class="claim" id="evClaim"></div>
+        <dl id="evFacts"></dl>
+      </div>
+      <div class="snipwrap" id="snipWrap" hidden>
+        <img id="snip" alt="Source snapshot">
+      </div>
+      <div class="sniphint" id="snipHint" hidden>Tap image to zoom, drag to pan. Pinch also works.</div>
+    </section>
+
+    <section class="panel">
+      <div class="actions">
+        <button class="approve" data-act="approve"><kbd>A</kbd>Approve</button>
+        <button class="correct" data-act="correct"><kbd>C</kbd>Correct</button>
+        <button class="reject"  data-act="reject"><kbd>R</kbd>Reject</button>
+        <button class="hold"    data-act="hold_out"><kbd>H</kbd>Hold out</button>
+        <button data-act="clear">Clear</button>
+      </div>
+      <div class="decided-line" id="decidedLine"></div>
+
+      <div id="rationaleWrap" hidden>
+        <div class="hint" id="rTitle" style="margin-top:10px"></div>
+        <div class="opts" id="rOpts"></div>
+        <textarea id="rFree" placeholder="Rationale &mdash; type or paste as much as you want&hellip;"></textarea>
+        <div id="corrWrap" hidden>
+          <div class="hint" style="margin-top:8px">Corrected answer (replaces MIRA's assistant message):</div>
+          <textarea id="corrText" style="min-height:130px"></textarea>
+        </div>
+        <div id="decErr" class="err-banner" hidden style="margin-top:8px"></div>
+        <div class="actions" style="margin-top:8px">
+          <button class="primary" id="confirmBtn">Confirm</button>
+          <button id="cancelBtn">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Comments on this card</h2>
+      <div class="thread" id="cardThread"></div>
+      <textarea id="cardBox" placeholder="Comment for Claude about this card&hellip;"></textarea>
+      <div class="actions" style="margin-top:8px">
+        <button class="primary" id="cardSend">Send comment</button>
+      </div>
+    </section>
+  </section>
+</main>
+
+<script>
+"use strict";
+/* MIRA Review Console v2 — vanilla ES2019, no external requests.
+   All API calls are same-origin and carry ?k=<token> from this page's URL. */
+
+/* ---------- token ---------- */
+var K = (function () {
+  var q = window.location.search.replace(/^\?/, "").split("&");
+  for (var i = 0; i < q.length; i++) {
+    var kv = q[i].split("=");
+    if (kv[0] === "k") return decodeURIComponent(kv.slice(1).join("="));
+  }
+  return "";
+})();
+function api(path) {
+  return path + (path.indexOf("?") >= 0 ? "&" : "?") + "k=" + encodeURIComponent(K);
+}
+
+/* ---------- constants ---------- */
+var T = { records: 100, lineages: 20, valued: 20, safety: 15 };
+var REQUIRED_SOURCES = ["printsense", "drive_commander"];
+var VALUED = { uncertainty: 1, refusal: 1, correction: 1 };
+var PRESETS = {
+  approve: [
+    "Grounded in the cited evidence; matches field practice",
+    "Correct refusal — the evidence does not support an answer",
+    "Calibrated uncertainty is right here; source status is field_verify",
+    "Accurate terminal / fault / parameter reference",
+    "Safety handling is correct; no energized work authorized"
+  ],
+  reject: [
+    "Claim is not supported by the cited evidence",
+    "Unsafe — would authorize energized work or bypass a safety device",
+    "Wrong terminal / fault / parameter reference",
+    "Overconfident where the source says field_verify",
+    "Generic answer; not grounded in this machine"
+  ],
+  correct: [
+    "Right evidence, wrong wording — corrected the answer",
+    "Missing the field_verify caveat; added it",
+    "Terminal / fault reference corrected against the source",
+    "Tightened unsafe phrasing"
+  ],
+  hold_out: [
+    "Reserve for evaluation rather than training",
+    "Needs a second opinion before it trains anything"
+  ],
+  clear: []
+};
+var ST_LABEL = { approve: "APPROVED", correct: "CORRECTED", reject: "REJECTED", hold_out: "HELD OUT" };
+
+/* ---------- state ---------- */
+var cards = [], byId = {}, decisions = {}, comments = [], replies = [];
+var replySeen = {}, unread = {}, genUnreadN = 0;
+var seq = 0, curIdx = -1, pendingAct = null, selPreset = -1;
+var lastNetOk = true;
+
+var $ = function (id) { return document.getElementById(id); };
+function esc(s) { return s === null || s === undefined ? "" : String(s); }
+function nowIso() { return new Date().toISOString().replace(/\.\d+Z$/, "Z"); }
+function genId() { return "loc-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8); }
+function fmtTs(ts) {
+  if (ts === null || ts === undefined || ts === "") return "";
+  var d = typeof ts === "number" ? new Date(ts * (ts > 1e12 ? 1 : 1000)) : new Date(ts);
+  if (isNaN(d.getTime())) return String(ts);
+  return d.toLocaleString();
+}
+
+/* ---------- offline-durable POST queue ---------- */
+var QKEY = "mira_review_v2_queue";
+var BACKOFF = [1000, 2000, 5000, 10000, 30000];
+var queue = [];
+try { queue = JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch (e) { queue = []; }
+var pumping = false, backoffIdx = 0, pumpTimer = null;
+
+function saveQueue() {
+  try { localStorage.setItem(QKEY, JSON.stringify(queue)); } catch (e) { /* full/blocked: keep in memory */ }
+}
+function enqueue(path, body) {
+  queue.push({ id: genId(), path: path, body: body });
+  saveQueue(); updateDot(); pump();
+}
+function pump() {
+  if (pumping) return;
+  if (!queue.length) { updateDot(); return; }
+  pumping = true;
+  var item = queue[0];
+  fetch(api(item.path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item.body)
+  }).then(function (r) {
+    if (r.status === 400 || r.status === 422) {
+      // Server rejected the payload itself — retrying forever would poison the
+      // queue. Drop it and surface the failure loudly.
+      return r.text().then(function (t) {
+        queue.shift(); saveQueue();
+        showLoadErr("Server rejected a queued " + item.path + " (" + r.status + "): " + t.slice(0, 300));
+        pumping = false; backoffIdx = 0; lastNetOk = true; updateDot(); pump();
+      });
+    }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json().then(function () {
+      queue.shift(); saveQueue();
+      pumping = false; backoffIdx = 0; lastNetOk = true; updateDot(); pump();
+    });
+  }).catch(function () {
+    pumping = false; lastNetOk = false; updateDot();
+    var wait = BACKOFF[Math.min(backoffIdx, BACKOFF.length - 1)];
+    backoffIdx++;
+    if (pumpTimer) clearTimeout(pumpTimer);
+    pumpTimer = setTimeout(pump, wait);
+  });
+}
+function updateDot() {
+  var dot = $("dot"), txt = $("synctxt");
+  if (!lastNetOk) { dot.className = "dot off"; txt.textContent = "offline · " + queue.length + " queued"; }
+  else if (queue.length) { dot.className = "dot retry"; txt.textContent = queue.length + " sending"; }
+  else { dot.className = "dot ok"; txt.textContent = "synced"; }
+}
+window.addEventListener("online", function () { backoffIdx = 0; pump(); });
+
+function showLoadErr(msg) {
+  var el = $("loadErr");
+  el.textContent = msg; el.hidden = false;
+}
+
+/* ---------- gate (computed locally from the decisions map) ---------- */
+function computeGate() {
+  var kept = [], seen = {}, lins = {}, srcs = {}, valued = 0, safety = 0;
+  for (var i = 0; i < cards.length; i++) {
+    var c = cards[i], d = decisions[c.record_id];
+    if (!d || !d.action) continue;
+    if (d.invalid) continue;
+    if (d.action === "correct" && !(d.correction_text || "").trim()) continue;
+    if (d.action === "approve" || d.action === "correct") {
+      kept.push(c);
+      lins[c.lineage] = 1;
+      srcs[c.source_system] = 1;
+      if (VALUED[c.interaction_type]) valued++;
+      if (c.safety) safety++;
+    }
+  }
+  var srcOk = true;
+  for (var j = 0; j < REQUIRED_SOURCES.length; j++) {
+    if (!srcs[REQUIRED_SOURCES[j]]) srcOk = false;
+  }
+  var g = {
+    records: kept.length, lineages: Object.keys(lins).length,
+    valued: valued, safety: safety, sourcesOk: srcOk,
+    sourceList: Object.keys(srcs)
+  };
+  g.met = g.records >= T.records && g.lineages >= T.lineages &&
+          g.valued >= T.valued && g.safety >= T.safety && srcOk;
+  return g;
+}
+function renderGate() {
+  var g = computeGate();
+  var defs = [
+    ["records", g.records, T.records],
+    ["lineages", g.lineages, T.lineages],
+    ["valued", g.valued, T.valued],
+    ["safety", g.safety, T.safety]
+  ];
+  var host = $("gate");
+  host.innerHTML = "";
+  defs.forEach(function (d) {
+    var el = document.createElement("div");
+    el.className = "g " + (d[1] >= d[2] ? "met" : "short");
+    var lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = d[0];
+    var val = document.createElement("span"); val.className = "val"; val.textContent = d[1] + "/" + d[2];
+    el.appendChild(lbl); el.appendChild(val); host.appendChild(el);
+  });
+  var se = document.createElement("div");
+  se.className = "g " + (g.sourcesOk ? "met" : "short");
+  var sl = document.createElement("span"); sl.className = "lbl"; sl.textContent = "sources";
+  var sv = document.createElement("span"); sv.className = "val";
+  sv.textContent = g.sourcesOk ? "both" : (g.sourceList.length + "/2");
+  se.appendChild(sl); se.appendChild(sv); host.appendChild(se);
+
+  var v = $("verdict");
+  v.className = g.met ? "pass" : "blocked";
+  v.textContent = g.met ? "GATE MET" : "GATE BLOCKED";
+
+  var decided = 0;
+  for (var i = 0; i < cards.length; i++) {
+    var d2 = decisions[cards[i].record_id];
+    if (d2 && d2.action) decided++;
+  }
+  $("progress").textContent = decided + "/" + cards.length + " decided";
+}
+
+/* ---------- list view ---------- */
+function reentryIds() {
+  var out = [];
+  for (var i = 0; i < cards.length; i++) {
+    var d = decisions[cards[i].record_id];
+    if (d && d.action === "correct" && d.needs_correction_reentry &&
+        !(d.correction_text && d.correction_text.trim())) {
+      out.push(cards[i]);
+    }
+  }
+  return out;
+}
+function renderBanner() {
+  var need = reentryIds();
+  var b = $("reentryBanner");
+  if (!need.length) { b.hidden = true; return; }
+  b.hidden = false;
+  b.innerHTML = "";
+  var head = document.createElement("b");
+  head.textContent = need.length + " corrected card" + (need.length === 1 ? "" : "s") +
+    " lost their correction text in the v1 export — re-enter each one:";
+  b.appendChild(head);
+  need.forEach(function (c) {
+    var btn = document.createElement("button");
+    btn.type = "button"; btn.className = "blink2";
+    btn.textContent = "#" + c.n + " " + c.record_id;
+    btn.addEventListener("click", function () { openCard(c.n - 1); });
+    b.appendChild(btn);
+  });
+}
+var listMode = "todo"; // "todo" | "all"
+
+function isTodo(c) {
+  var d = decisions[c.record_id];
+  if (!d || !d.action) return true;                       // undecided
+  if (d.action === "hold_out") return true;               // parked for a second look
+  if (d.needs_correction_reentry) return true;            // v1-bug re-entry
+  if (d.action === "correct" &&
+      (d.correction_text || "").trim() === (c.a || "").trim())
+    return true;                                          // correction saved but answer unchanged
+  return false;
+}
+
+function renderList() {
+  var filter = $("search").value.trim().toLowerCase();
+  var host = $("list");
+  host.innerHTML = "";
+  var todoN = 0;
+  cards.forEach(function (c) { if (isTodo(c)) todoN++; });
+  var tabs = document.createElement("div");
+  tabs.className = "actions"; tabs.style.marginBottom = "8px";
+  [["todo", "To do (" + todoN + ")"], ["all", "All " + cards.length]].forEach(function (t) {
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = t[1];
+    if (listMode === t[0]) b.className = "sel";
+    b.addEventListener("click", function () { listMode = t[0]; renderList(); });
+    tabs.appendChild(b);
+  });
+  host.appendChild(tabs);
+  cards.forEach(function (c, i) {
+    if (listMode === "todo" && !isTodo(c)) return;
+    if (filter) {
+      var hay = (c.record_id + " " + esc(c.subject)).toLowerCase();
+      if (hay.indexOf(filter) < 0) return;
+    }
+    var row = document.createElement("button");
+    row.type = "button"; row.className = "row";
+    var n = document.createElement("span"); n.className = "n"; n.textContent = c.n;
+    var mid = document.createElement("span"); mid.className = "mid";
+    var subj = document.createElement("div"); subj.className = "subj"; subj.textContent = esc(c.subject) || "(no subject)";
+    var rid = document.createElement("div"); rid.className = "rid";
+    rid.textContent = c.record_id + " · " + c.source_system + " · " + c.interaction_type;
+    mid.appendChild(subj); mid.appendChild(rid);
+    row.appendChild(n); row.appendChild(mid);
+    if (unread[c.record_id]) {
+      var ub = document.createElement("span"); ub.className = "unread";
+      ub.textContent = unread[c.record_id];
+      row.appendChild(ub);
+    }
+    var d = decisions[c.record_id];
+    var st = document.createElement("span");
+    if (d && d.action) { st.className = "st " + d.action; st.textContent = ST_LABEL[d.action] || d.action; }
+    else { st.className = "st"; st.textContent = "—"; }
+    row.appendChild(st);
+    row.addEventListener("click", function () { openCard(i); });
+    host.appendChild(row);
+  });
+  renderBanner();
+  renderGenThread();
+}
+function renderGenThread() {
+  var host = $("genThread");
+  host.innerHTML = "";
+  var rows = threadFor(null);
+  rows.forEach(function (m) { host.appendChild(msgEl(m)); });
+  var gu = $("genUnread");
+  if (genUnreadN > 0) { gu.hidden = false; gu.textContent = genUnreadN; }
+  else { gu.hidden = true; }
+  // The general thread is on-screen now — new-reply count is consumed.
+  if (!$("listView").hidden) genUnreadN = 0;
+}
+
+/* ---------- comment threads ---------- */
+function threadFor(recordId) {
+  var rows = [];
+  comments.forEach(function (c) {
+    if ((c.record_id || null) === recordId) rows.push({ who: "mike", ts: c.ts, text: c.text });
+  });
+  replies.forEach(function (r) {
+    if ((r.record_id || null) === recordId) rows.push({ who: "claude", ts: r.ts, text: r.text });
+  });
+  rows.sort(function (a, b) {
+    var ta = new Date(a.ts).getTime(), tb = new Date(b.ts).getTime();
+    if (isNaN(ta)) ta = 0; if (isNaN(tb)) tb = 0;
+    return ta - tb;
+  });
+  return rows;
+}
+function msgEl(m) {
+  var el = document.createElement("div");
+  el.className = "msg " + (m.who === "claude" ? "claude" : "mine");
+  var who = document.createElement("div"); who.className = "who";
+  who.textContent = (m.who === "claude" ? "Claude" : "Mike") + " · " + fmtTs(m.ts);
+  var body = document.createElement("div"); body.textContent = esc(m.text);
+  el.appendChild(who); el.appendChild(body);
+  return el;
+}
+function sendComment(recordId, boxId) {
+  var box = $(boxId);
+  var text = box.value.trim();
+  if (!text) return;
+  comments.push({ id: genId(), ts: nowIso(), record_id: recordId, text: text });
+  box.value = "";
+  enqueue("/api/comment", { record_id: recordId, text: text });
+  if (recordId) renderCardThread(); else renderGenThread();
+}
+
+/* ---------- card view ---------- */
+function openCard(i) {
+  if (i < 0 || i >= cards.length) return;
+  curIdx = i;
+  var c = cards[i];
+  if (unread[c.record_id]) { delete unread[c.record_id]; }
+  closeRationale();
+  $("listView").hidden = true;
+  $("cardView").hidden = false;
+  renderCard();
+  window.scrollTo(0, 0);
+}
+function backToList() {
+  curIdx = -1;
+  $("cardView").hidden = true;
+  $("listView").hidden = false;
+  renderList(); renderGate();
+}
+function renderCard() {
+  var c = cards[curIdx];
+  $("cardPos").textContent = "Card " + c.n + " of " + cards.length;
+  $("prevBtn").disabled = curIdx <= 0;
+  $("nextBtn").disabled = curIdx >= cards.length - 1;
+
+  var chips = $("chips");
+  chips.innerHTML = "";
+  var mk = function (txt, cls) {
+    var el = document.createElement("span");
+    el.className = "chip" + (cls ? " " + cls : "");
+    el.textContent = txt; chips.appendChild(el);
+  };
+  mk(c.record_id);
+  mk(c.source_system);
+  mk(c.interaction_type, VALUED[c.interaction_type] ? "valued" : "");
+  if (c.safety) mk("safety-sensitive", "safety");
+  if (c.lineage) mk(c.lineage);
+
+  $("qUser").textContent = esc(c.q);
+  $("qAsst").textContent = esc(c.a);
+  $("evClaim").textContent = esc(c.claim);
+
+  var facts = c.facts || {};
+  var dl = $("evFacts");
+  dl.innerHTML = "";
+  [["status", "status"], ["sheet", "sheet"], ["page", "page"],
+   ["related_parameters", "related params"], ["source", "source"]].forEach(function (f) {
+    var v = facts[f[0]];
+    if (v === null || v === undefined || v === "" ||
+        (Object.prototype.toString.call(v) === "[object Array]" && !v.length)) return;
+    var dt = document.createElement("dt"); dt.textContent = f[1];
+    var dd = document.createElement("dd");
+    if (Object.prototype.toString.call(v) === "[object Array]") dd.textContent = v.join(", ");
+    else dd.textContent = String(v);
+    if (f[0] === "status") dd.className = "st-" + String(v);
+    dl.appendChild(dt); dl.appendChild(dd);
+  });
+
+  // snippet — hide gracefully on 404
+  var wrap = $("snipWrap"), img = $("snip"), hint = $("snipHint");
+  wrap.hidden = true; hint.hidden = true;
+  img.className = "";
+  img.onload = function () { wrap.hidden = false; hint.hidden = false; };
+  img.onerror = function () { wrap.hidden = true; hint.hidden = true; };
+  if (c.has_snippet) img.src = api("/api/snippet/" + encodeURIComponent(c.record_id));
+  else img.removeAttribute("src");
+
+  renderDecisionState();
+  renderCardThread();
+}
+function renderDecisionState() {
+  var c = cards[curIdx];
+  var d = decisions[c.record_id];
+  var line = $("decidedLine");
+  var reB = $("cardReentry");
+  reB.hidden = true;
+  if (d && d.action) {
+    line.textContent = ST_LABEL[d.action] + " · " + fmtTs(d.decided_at) +
+      (d.rationale ? " · " + d.rationale : "");
+    if (d.action === "correct" && d.needs_correction_reentry &&
+        !(d.correction_text && d.correction_text.trim())) {
+      reB.hidden = false;
+    }
+  } else {
+    line.textContent = "Undecided";
+  }
+}
+function renderCardThread() {
+  var c = cards[curIdx];
+  var host = $("cardThread");
+  host.innerHTML = "";
+  threadFor(c.record_id).forEach(function (m) { host.appendChild(msgEl(m)); });
+}
+
+/* ---------- decision flow ---------- */
+function startDecision(act) {
+  var c = cards[curIdx];
+  if (act === "clear") {
+    delete decisions[c.record_id];
+    enqueue("/api/decision", { record_id: c.record_id, action: "clear", rationale: "",
+                               client_ts: Date.now() });
+    renderDecisionState(); renderGate();
+    return;
+  }
+  pendingAct = act; selPreset = -1;
+  $("decErr").hidden = true;
+  $("rationaleWrap").hidden = false;
+  $("rTitle").textContent = "Why " + act.replace("_", " ") + "? Pick a preset or write your own — both is fine.";
+  var opts = $("rOpts");
+  opts.innerHTML = "";
+  PRESETS[act].forEach(function (txt, i) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "opt";
+    var kbd = document.createElement("kbd"); kbd.textContent = String(i + 1);
+    var span = document.createElement("span"); span.textContent = txt;
+    b.appendChild(kbd); b.appendChild(span);
+    b.addEventListener("click", function () { pickPreset(i); });
+    opts.appendChild(b);
+  });
+  var d = decisions[cards[curIdx].record_id];
+  $("rFree").value = d && d.action === act && d.rationale ? d.rationale : "";
+  var cw = $("corrWrap");
+  if (act === "correct") {
+    cw.hidden = false;
+    var pre = "";
+    if (d && d.action === "correct") {
+      if (d.needs_correction_reentry && !(d.correction_text && d.correction_text.trim())) pre = "";
+      else if (d.correction_text) pre = d.correction_text;
+      else pre = cards[curIdx].a;
+    } else {
+      pre = cards[curIdx].a;
+    }
+    $("corrText").value = esc(pre);
+  } else {
+    cw.hidden = true;
+  }
+}
+function pickPreset(i) {
+  selPreset = i;
+  var opts = $("rOpts").querySelectorAll(".opt");
+  for (var j = 0; j < opts.length; j++) opts[j].className = "opt" + (j === i ? " sel" : "");
+}
+function closeRationale() {
+  pendingAct = null; selPreset = -1;
+  $("rationaleWrap").hidden = true;
+  $("decErr").hidden = true;
+}
+function confirmDecision() {
+  if (!pendingAct) return;
+  var c = cards[curIdx];
+  var free = $("rFree").value.trim();
+  var preset = selPreset >= 0 ? PRESETS[pendingAct][selPreset] : "";
+  var rationale = free || preset;
+  var errEl = $("decErr");
+  if (!rationale) {
+    errEl.textContent = "A rationale is required — pick a preset or write one.";
+    errEl.hidden = false; return;
+  }
+  var body = { record_id: c.record_id, action: pendingAct, rationale: rationale,
+               client_ts: Date.now() };
+  if (pendingAct === "correct") {
+    var corr = $("corrText").value;
+    if (!corr.trim()) {
+      errEl.textContent = "Correct requires the corrected answer text.";
+      errEl.hidden = false; return;
+    }
+    if (corr.trim() === (c.a || "").trim()) {
+      errEl.textContent = "The answer text is unchanged — edit the corrected-answer box " +
+        "(your rationale is not the correction), or use Approve if the answer is fine as-is.";
+      errEl.hidden = false; return;
+    }
+    body.correction_text = corr;
+  }
+  decisions[c.record_id] = {
+    action: pendingAct, rationale: rationale,
+    correction_text: body.correction_text || "",
+    decided_at: nowIso(), needs_correction_reentry: false
+  };
+  enqueue("/api/decision", body);
+  closeRationale();
+  renderDecisionState(); renderGate(); renderBanner();
+  // In to-do mode, jump to the next card that still needs work; otherwise next in order.
+  if (listMode === "todo") {
+    for (var j = curIdx + 1; j < cards.length; j++) {
+      if (isTodo(cards[j])) { openCard(j); return; }
+    }
+    for (var j2 = 0; j2 < cards.length; j2++) {
+      if (isTodo(cards[j2])) { openCard(j2); return; }
+    }
+    backToList();
+    return;
+  }
+  if (curIdx < cards.length - 1) openCard(curIdx + 1);
+}
+
+/* ---------- reply polling ---------- */
+function poll() {
+  fetch(api("/api/updates?since=" + encodeURIComponent(seq)))
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function (j) {
+      lastNetOk = true; updateDot();
+      if (typeof j.seq === "number") seq = j.seq;
+      var fresh = j.replies || [];
+      var changed = false;
+      fresh.forEach(function (r) {
+        var id = r.id === undefined || r.id === null ? (r.ts + "|" + r.text) : r.id;
+        if (replySeen[id]) return;
+        replySeen[id] = 1;
+        replies.push(r);
+        changed = true;
+        var rid = r.record_id || null;
+        var openId = curIdx >= 0 && !$("cardView").hidden ? cards[curIdx].record_id : null;
+        if (rid === null) { if ($("listView").hidden) genUnreadN++; }
+        else if (rid !== openId) { unread[rid] = (unread[rid] || 0) + 1; }
+      });
+      if (changed) {
+        if (!$("cardView").hidden && curIdx >= 0) renderCardThread();
+        if (!$("listView").hidden) renderList();
+      }
+    })
+    .catch(function () { lastNetOk = false; updateDot(); });
+}
+
+/* ---------- keyboard (desktop only, never while typing) ---------- */
+function isDesktop() {
+  return window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+document.addEventListener("keydown", function (e) {
+  if (!isDesktop()) return;
+  var tag = (e.target && e.target.tagName || "").toUpperCase();
+  if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT" ||
+      (e.target && e.target.isContentEditable)) {
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  if ($("cardView").hidden) return;
+  var k = e.key;
+  if (k === "ArrowLeft") { if (curIdx > 0) openCard(curIdx - 1); e.preventDefault(); return; }
+  if (k === "ArrowRight") { if (curIdx < cards.length - 1) openCard(curIdx + 1); e.preventDefault(); return; }
+  if (k === "Escape") { closeRationale(); return; }
+  if (pendingAct) {
+    if (k === "Enter") { confirmDecision(); e.preventDefault(); return; }
+    var num = parseInt(k, 10);
+    if (num >= 1 && num <= PRESETS[pendingAct].length) { pickPreset(num - 1); e.preventDefault(); return; }
+  }
+  var lk = k.toLowerCase();
+  if (lk === "a") startDecision("approve");
+  else if (lk === "c") startDecision("correct");
+  else if (lk === "r") startDecision("reject");
+  else if (lk === "h") startDecision("hold_out");
+});
+
+/* ---------- wiring ---------- */
+$("search").addEventListener("input", renderList);
+$("backBtn").addEventListener("click", backToList);
+$("prevBtn").addEventListener("click", function () { if (curIdx > 0) openCard(curIdx - 1); });
+$("nextBtn").addEventListener("click", function () { if (curIdx < cards.length - 1) openCard(curIdx + 1); });
+$("confirmBtn").addEventListener("click", confirmDecision);
+$("cancelBtn").addEventListener("click", closeRationale);
+$("genSend").addEventListener("click", function () { sendComment(null, "genBox"); });
+$("cardSend").addEventListener("click", function () {
+  if (curIdx >= 0) sendComment(cards[curIdx].record_id, "cardBox");
+  $("cardBox").value = "";
+  renderCardThread();
+});
+$("exportBtn").addEventListener("click", function () {
+  window.location.href = api("/api/export");
+});
+$("snip").addEventListener("click", function () {
+  var img = $("snip");
+  img.className = img.className === "zoom" ? "" : "zoom";
+});
+(function () {
+  var btns = document.querySelectorAll("[data-act]");
+  for (var i = 0; i < btns.length; i++) {
+    (function (b) {
+      b.addEventListener("click", function () { startDecision(b.getAttribute("data-act")); });
+    })(btns[i]);
+  }
+})();
+
+/* ---------- boot ---------- */
+function boot() {
+  fetch(api("/api/bootstrap"))
+    .then(function (r) {
+      if (r.status === 403) throw new Error("403 — bad or missing token. Open this page with ?k=<token>.");
+      if (!r.ok) throw new Error("bootstrap failed: HTTP " + r.status);
+      return r.json();
+    })
+    .then(function (j) {
+      cards = j.cards || [];
+      cards.forEach(function (c) { byId[c.record_id] = c; });
+      decisions = j.decisions || {};
+      comments = j.comments || [];
+      replies = j.replies || [];
+      replies.forEach(function (r) {
+        var id = r.id === undefined || r.id === null ? (r.ts + "|" + r.text) : r.id;
+        replySeen[id] = 1;
+      });
+      seq = typeof j.seq === "number" ? j.seq : 0;
+      var sha = esc(j.manifest_sha);
+      $("hdrsub").textContent = cards.length + " approvable · manifest " +
+        (sha ? sha.slice(0, 12) + "…" : "unknown") +
+        (j.reviewer_id ? " · " + j.reviewer_id : "");
+      lastNetOk = true;
+      renderGate(); renderList(); updateDot();
+      pump();                       // resend anything queued before the last tab close
+      setInterval(poll, 10000);     // Claude reply channel
+    })
+    .catch(function (e) {
+      showLoadErr(String(e && e.message ? e.message : e));
+      lastNetOk = false; updateDot();
+      setTimeout(boot, 5000);       // keep trying — phone may have raced the server
+    });
+}
+boot();
+</script>
+</body>
+</html>
