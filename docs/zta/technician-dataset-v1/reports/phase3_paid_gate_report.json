@@ -1,11 +1,5 @@
 {
-  "blocking": [
-    "min_records",
-    "min_lineages",
-    "min_valued_interactions",
-    "min_safety_sensitive",
-    "trainable_source_representation"
-  ],
+  "blocking": [],
   "checks": [
     {
       "detail": "every eligible record is governance-eligible AND approved",
@@ -18,19 +12,19 @@
       "passed": true
     },
     {
-      "detail": "0 eligible (need >= 100)",
+      "detail": "105 eligible (need >= 100)",
       "name": "min_records",
-      "passed": false
+      "passed": true
     },
     {
-      "detail": "0 lineages (need >= 20)",
+      "detail": "24 lineages (need >= 20)",
       "name": "min_lineages",
-      "passed": false
+      "passed": true
     },
     {
-      "detail": "0 uncertainty/refusal/correction (need >= 20)",
+      "detail": "35 uncertainty/refusal/correction (need >= 20)",
       "name": "min_valued_interactions",
-      "passed": false
+      "passed": true
     },
     {
       "detail": "every eligible source allows training; rights report referenced",
@@ -48,14 +42,14 @@
       "passed": true
     },
     {
-      "detail": "0 safety-sensitive examples (need >= 15)",
+      "detail": "22 safety-sensitive examples (need >= 15)",
       "name": "min_safety_sensitive",
-      "passed": false
+      "passed": true
     },
     {
-      "detail": "eligible set missing trainable source(s): ['drive_commander', 'printsense'] (present: [])",
+      "detail": "trainable printsense + drive_commander both present in the eligible set",
       "name": "trainable_source_representation",
-      "passed": false
+      "passed": true
     },
     {
       "detail": "frozen SimLab/MIRA benchmark baseline referenced",
@@ -85,7 +79,10 @@
   ],
   "evidence": {
     "base_vs_tools_benchmark_ref": "docs\\zta\\technician-dataset-v1\\reports\\base_vs_tools_benchmark.json",
-    "eligible_source_systems": [],
+    "eligible_source_systems": [
+      "drive_commander",
+      "printsense"
+    ],
     "est_cost_usd": 4.0,
     "frozen_benchmark_baseline_ref": "docs\\zta\\technician-dataset-v1\\reports\\frozen_benchmark_baseline.json",
     "held_out_lineage_count": 5,
@@ -108,6 +105,6 @@
     "rights_report_ref": "docs\\zta\\technician-dataset-v1\\reports\\rights_report.json",
     "synthetic_composition_report_ref": "docs\\zta\\technician-dataset-v1\\reports\\real_vs_synthetic_composition_report.json"
   },
-  "passed": false,
-  "verdict": "PAID_GATE_BLOCKED"
+  "passed": true,
+  "verdict": "PAID_GATE_PASS"
 }
