@@ -156,10 +156,37 @@ process issue #2284). The mechanism is a silent trap:
    pattern (deployed-vs-canonical column/constraint diff) for any table this matters for, and
    prefer the **structural prevention** below over relying on detection.
 
-**Permanent prevention (recommended, see #2284):** an **ephemeral verify DB** for
-`migration-verify` (so drafts never accumulate on persistent staging) is the root fix; a
-**content-hash column** in `schema_migrations` (fail loud when an applied filename's content
-changes) is the strong backstop; this immutability rule is the doctrine layer.
+**Permanent prevention — content-fingerprinted ledger ✅ SHIPPED 2026-07-28.** #2284 was
+closed in June with only the one-off staging cleanup done; the prevention was never built,
+which is why the drift recurred as #2945. What shipped:
+
+**Migration `066`** adds `schema_migrations.content_sha256` (+ `content_sha256_at`), and
+`apply-migrations.yml` records the sha on apply and **fails loud** when a filename already
+in the ledger has different content on the current ref. That is what makes the *silence*
+impossible: the ledger keys on filename, and a stable key with mutable content cannot
+otherwise distinguish "this file was applied" from "a DIFFERENT VERSION of it was applied".
+The check runs **before** the skip filter — essential, because a drifted file is precisely
+one that *would* be skipped.
+
+**The backfill is what makes it real.** Pre-`066` rows carry `content_sha256 = NULL`,
+treated as "unknown" and never failed on (we cannot retroactively know what they ran).
+Because `mode=apply` *skips* already-applied files, those rows would never be stamped and
+the detector would sit **permanently dormant on exactly the historical files most likely to
+have drifted**. `mode=seed-ledger` therefore stamps current shas onto existing rows — run it
+once per target when that target's schema is believed canonical.
+
+⚠️ **The "ephemeral verify DB" half of #2284's proposal is NOT viable as written, and was
+withdrawn after being empirically disproved (2026-07-28).** A from-scratch apply of
+`mira-hub/db/migrations/` fails at the **third file**: `003_kb_hardening.sql` does
+`ALTER TABLE knowledge_entries` / `ENABLE ROW LEVEL SECURITY`, but **no file in that
+directory ever creates `knowledge_entries`**. Per `048`'s own header the base tables came
+from `001_saas_layer.sql` / `002_knowledge_base.sql`, which are **no longer in the repo**.
+So that directory is an *incremental* set layered on a base that no longer exists in
+source — it is not a complete schema definition, and no ephemeral from-scratch job can pass
+against it until a base-schema bootstrap exists. Tracked separately; do not re-attempt the
+ephemeral job without solving the bootstrap first.
+
+This immutability rule remains the doctrine layer above the guard.
 
 ## When this applies
 - Any new or altered file under `mira-hub/db/migrations/`.

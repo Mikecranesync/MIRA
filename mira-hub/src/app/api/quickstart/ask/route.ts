@@ -6,6 +6,7 @@ import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
   buildGroundedContext,
+  displayPage,
   isRefusalAnswer,
   type ManualChunk,
   type ManualSource,
@@ -189,7 +190,9 @@ export async function POST(req: Request) {
         index: i + 1,
         title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
         url: c.sourceUrl || null,
-        page: c.sourcePage,
+        // #2910: suppress a page label when it's actually the chunk ordinal
+        // (legacy ingest mis-stamp) so we never show an impossible page like p.1254.
+        page: displayPage(c),
         verified: c.verified === true,
       }));
 

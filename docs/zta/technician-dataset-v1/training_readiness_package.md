@@ -7,18 +7,18 @@ Verdict: BLOCKED for paid training. The candidate corpus is review-ready, but no
 ## Counts
 
 - Candidate records: 211
-- Eligible training records now: 0
+- Eligible training records now: 105
 - PrintSense candidates: 149
 - Drive Commander candidates: 62
 - Candidate train-side lineages: 24
 - Held-out lineages reserved: 5
-- Review decisions applied: 0
-- Approved decisions: 0
-- Corrected decisions: 0
-- Rejected decisions: 0
+- Review decisions applied: 106
+- Approved decisions: 104
+- Corrected decisions: 1
+- Rejected decisions: 1
 - Hold-out decisions: 0
 - Eligible training records before decisions: 0
-- Eligible training records after decisions: 0
+- Eligible training records after decisions: 105
 - Valued uncertainty/refusal/correction records: 77
 - Safety-sensitive records: 87
 - Real or human-corrected share: 100.00%
@@ -34,8 +34,8 @@ Verdict: BLOCKED for paid training. The candidate corpus is review-ready, but no
 
 ## Paid Gate
 
-- Verdict: `PAID_GATE_BLOCKED`
-- Blocking checks: min_records, min_lineages, min_valued_interactions, min_safety_sensitive, trainable_source_representation
+- Verdict: `PAID_GATE_PASS`
+- Blocking checks: 
 
 ## No-Action Proof
 

@@ -37,7 +37,7 @@ from typing import Any
 
 HELD_OUT_LINEAGE = "rockwell-automation:22b-um001j-en-e"
 BASE_MODEL = "Qwen/Qwen3.5-9B"
-TUNED_MODEL = "mike_578c/Qwen3.5-9B-technician-v0-47089483"
+TUNED_MODEL = "mike_578c/Qwen3.5-9B-technician-v1-29ed546c"
 ACTION_HOLDOUT_EVAL = "together.holdout_eval"
 MAX_OUTPUT_TOKENS = 300
 TEMPERATURE = 0.0
@@ -178,21 +178,21 @@ class EvalConfig:
     endpoint_auth_path: Path | None = None
 
 
-# Together v2 dedicated-deployment resources, pinned by the 2026-07-27 $0
-# preflight (all live-verified GETs): the fine-tune auto-registered a MERGED
-# model resource (revision validation SUCCESS) and an adapter resource
-# (validation FAILED: TARGET_MODULES_EXIST) — the eval deploys the merged
-# model. The certified config for the Qwen3.5-9B base is 1x H100-80GB
-# (balanced) and lives in Together's public project. Billing runs from
-# DEPLOYMENT_STATE_READY to observed STOPPED; teardown is lease-ledgered
-# and verified by the v2 provider module.
+# Together v2 dedicated-deployment resources, pinned by the 2026-07-28 $0
+# preflight (all live-verified GETs): the v1 fine-tune (ft-6fe667a3-6b72)
+# auto-registered a MERGED model resource ml_CdV9UHKVHPSJZkg9g15g5 with
+# revision rv_CdV9VYuPvSyHSZ5ut2MVs validation SUCCESS — the eval deploys
+# the merged model. The certified config for the Qwen3.5-9B base is
+# 1x H100-80GB (balanced) and lives in Together's public project. Billing
+# runs from DEPLOYMENT_STATE_READY to observed STOPPED; teardown is
+# lease-ledgered and verified by the v2 provider module.
 V2_PROJECT_ID = "proj_CcHE4SjS9B3pHfhyatLNT"
 V2_PROJECT_SLUG = "mike-578c"
 V2_MODEL_RESOURCE = (
-    f"projects/{V2_PROJECT_ID}/models/ml_CdRe7guMCoY3Jt6VTxuDM/revisions/rv_CdRe8tDXNZrAt4qi8nMbQ"
+    f"projects/{V2_PROJECT_ID}/models/ml_CdV9UHKVHPSJZkg9g15g5/revisions/rv_CdV9VYuPvSyHSZ5ut2MVs"
 )
 V2_CONFIG_RESOURCE = "projects/proj_CbGpV8orZSw72BARMZy4i/configs/cr_Cd35Fpam3FrMdwHdmroZD"
-V2_ENDPOINT_NAME = "holdout-eval-technician-v0"
+V2_ENDPOINT_NAME = "holdout-eval-technician-v1"
 V2_DEPLOYMENT_NAME = "holdout-eval"
 V2_INFERENCE_URL = "https://api-inference.together.ai/v1/chat/completions"
 EST_ENDPOINT_USD = 3.60
