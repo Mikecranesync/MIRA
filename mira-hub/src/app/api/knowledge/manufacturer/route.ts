@@ -17,7 +17,11 @@ export const fetchCache = "force-no-store";
 // Equipment type comes from the column when populated, otherwise we infer
 // from model_number / title / source_url (see lib/equipment-type.ts).
 //
-// No tenant filter — KB is universal (see /api/knowledge/route.ts comment).
+// No tenant filter, but scoped to `is_private = false` — this is an aggregate
+// OEM-corpus surface: it shows the shared library only and must never surface
+// per-tenant uploads (source_urls/titles/models) to other tenants. Do NOT add
+// a `tenant_id = $caller` filter (that hides the system-tenant-owned OEM
+// corpus — bug #1761). See .claude/rules/knowledge-entries-tenant-scoping.md.
 // Auth still enforced via sessionOr401 so anonymous callers cannot reach data.
 export async function GET(req: NextRequest) {
   if (!process.env.NEON_DATABASE_URL) {
@@ -50,6 +54,7 @@ export async function GET(req: NextRequest) {
          MAX(metadata->>'title') AS title
        FROM knowledge_entries
        WHERE ${mfrFilter}
+         AND is_private = false
        GROUP BY source_url
        ORDER BY chunk_count DESC
        LIMIT 500`,

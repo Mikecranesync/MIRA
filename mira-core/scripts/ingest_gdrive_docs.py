@@ -325,6 +325,10 @@ def process_file(file_path: Path, dry_run: bool = False) -> tuple[int, int]:
                 page_num=chunk["page_num"],
                 section=chunk["section"],
                 source_type="gdrive",
+                # Facility Drive docs are per-tenant customer content — the write
+                # law requires is_private=True so the hybrid read filter scopes
+                # them to their tenant (knowledge-entries-tenant-scoping.md).
+                is_private=True,
             )
             inserted += 1
         except Exception as exc:

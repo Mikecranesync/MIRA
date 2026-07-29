@@ -366,8 +366,17 @@ def insert_knowledge_entry(
     isa95_path: str | None = None,
     equipment_id: str | None = None,
     data_type: str = "manual",
+    is_private: bool = False,
+    verified: bool = False,
 ) -> str:
-    """Insert one chunk into knowledge_entries. Returns the new row id."""
+    """Insert one chunk into knowledge_entries. Returns the new row id.
+
+    Visibility (write law, .claude/rules/knowledge-entries-tenant-scoping.md):
+    per-tenant customer content MUST pass ``is_private=True`` so the hybrid
+    read filter scopes it to its tenant; the shared OEM corpus keeps the
+    ``False`` default. ``verified`` defaults ``False`` — promotion to verified
+    is an admin action, never an ingest-time default.
+    """
     _data_types.validate(data_type)
     # Collapse OCR/extraction manufacturer variants to the catalog canonical
     # (#1596). Column is nullable — preserve None for an empty canonical.
@@ -391,7 +400,7 @@ def insert_knowledge_entry(
             VALUES
                 (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                  :content, cast(:embedding AS vector), :source_url, :source_page, cast(:metadata AS jsonb),
-                 false, false, :chunk_type,
+                 :is_private, :verified, :chunk_type,
                  :isa95_path, :equipment_id, :data_type)
         """),
             {
@@ -407,6 +416,8 @@ def insert_knowledge_entry(
                 # ordinal lives in metadata.chunk_index for dedup only.
                 "source_page": page_num,
                 "metadata": json.dumps(meta),
+                "is_private": is_private,
+                "verified": verified,
                 "chunk_type": chunk_type,
                 "isa95_path": isa95_path,
                 "equipment_id": equipment_id,
