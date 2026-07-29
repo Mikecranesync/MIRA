@@ -944,7 +944,12 @@ async def _try_equipment_photo_followup(
     live workspace holding equipment evidence AND the text asks for a
     nameplate field or refers to the photo itself. Zero LLM; every answer
     carries EvidenceAnswer trust labels or is an honest refusal. Read-only
-    on evidence (records the Q&A turn only); fail-open."""
+    on evidence (records the Q&A turn only); fail-open.
+
+    Scope note: this rung handles TEXT turns only. A question captioned ON
+    the photo itself ("what model is this?" + photo) is answered by the
+    nameplate fast-path / engine from the live photo in the same turn — no
+    memory needed there, by design."""
     try:
         if not text:
             return False
@@ -961,6 +966,12 @@ async def _try_equipment_photo_followup(
         chat_id = str(update.effective_chat.id)
         ws = print_workspace.get_workspace(chat_id, max_age_s=print_workspace.PRINT_WORKSPACE_TTL_S)
         if ws is None:
+            return False
+        # Tenant re-validation (adversarial-review finding, defense-in-depth):
+        # the stored workspace must belong to the tenant THIS turn resolves
+        # to — a chat whose tenant mapping changed must not read the old
+        # tenant's evidence. Mismatch → fall through, never answer.
+        if _print_workspace_tenant(update) != ws.tenant_id:
             return False
         store = print_workspace._get_service().store
         observations = await store.load_observations(ws.session_id, ws.tenant_id, active_only=True)

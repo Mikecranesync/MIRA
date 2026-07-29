@@ -112,6 +112,10 @@ def wired(monkeypatch, tmp_path):
     # The rung is zero-LLM by contract — any cascade call is a failure.
     router = AsyncMock(side_effect=AssertionError("equipment rung must never call the cascade"))
     monkeypatch.setattr(bot.engine.router, "complete", router)
+    # Tenant guard: tests seed tenant "t-eq" directly, so the current-turn
+    # resolver must agree (the real bot uses the same resolver on both the
+    # persist and read sides — see test_tenant_mismatch_falls_through).
+    monkeypatch.setattr(bot, "_print_workspace_tenant", lambda _u: "t-eq")
     yield {"router": router, "monkeypatch": monkeypatch}
     print_workspace._reset_for_tests()
 
@@ -361,6 +365,59 @@ async def test_golden_equipment_photo_conversation(wired):
     update.message.reply_text.assert_not_awaited()
 
     wired["router"].assert_not_awaited()  # the entire conversation cost zero tokens
+
+
+# --------------------------------------------------------------------------- #
+# tenant guard + rung precedence (adversarial-review findings)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_tenant_mismatch_falls_through(wired):
+    """Defense-in-depth: if this turn resolves to a DIFFERENT tenant than the
+    stored workspace (tenant mapping drifted), the rung must not answer."""
+    await _seed()
+    wired["monkeypatch"].setattr(bot, "_print_workspace_tenant", lambda _u: "other-tenant")
+    claimed, update = await _run("what was the model number?")
+    assert claimed is False
+    update.message.reply_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mixed_workspace_rung_precedence(wired):
+    """One chat, BOTH print and equipment evidence in the same workspace:
+    a print question is claimed by the print rung, a nameplate-field question
+    by the equipment rung — never both, never crossed."""
+    await _seed()  # equipment evidence
+    await print_workspace.persist_print_turn(
+        "777",
+        "t-eq",
+        _good_image_bytes(),
+        {
+            "classification": "ELECTRICAL_PRINT",
+            "drawing_type": "control circuit",
+            "ocr_items": ["-K17"],
+            "ocr_tokens": [{"text": "-K17", "bbox": [10, 10, 60, 40]}],
+        },
+        "explain this print",
+        "PRINT SEED",
+    )
+
+    # Field question → equipment rung claims; print rung declines first.
+    u1 = _update()
+    print_claimed = await bot._try_print_workspace_followup("what was the model number?", u1, MagicMock())
+    assert print_claimed is False
+    claimed, update = await _run("what was the model number?")
+    assert claimed is True
+    assert "Model: AEHH8N" in _reply_text(update)
+
+    # Print-tag question → print rung claims (equipment rung never sees it
+    # in handle_message; prove it also would not claim on its own).
+    u2 = _update()
+    print_claimed2 = await bot._try_print_workspace_followup("what feeds K17?", u2, MagicMock())
+    assert print_claimed2 is True
+    eq_claimed = await bot._try_equipment_photo_followup("what feeds K17?", _update(), MagicMock())
+    assert eq_claimed is False
 
 
 # --------------------------------------------------------------------------- #

@@ -19,7 +19,9 @@ history for the old contract.)*
    reuse `print_workspace.py` patterns; extend, don't fork). Materialized-evidence rules apply
    (keyed on photo sha, idempotent, chat→session mapping in mira.db).
    - ✅ Success: sending an equipment photo produces a persisted workspace row; re-ingesting the
-     same photo bytes is a no-op (same session/evidence, no duplicate).
+     same photo bytes CONVERGES (latest-wins field readers; answers unchanged). *(Adjusted from
+     "strict no-op" mid-run: the spine has no evidence-read API, so sha-keyed dedupe is a
+     documented follow-up — see HANDOFF.md.)*
 
 2. **Follow-up rung.** A text turn that references the earlier photo ("what was the model
    number?", "what did that photo show?", "how many amps?") answers deterministic-first from

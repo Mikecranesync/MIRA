@@ -152,9 +152,14 @@ async def _equipment_section(bot) -> bool:
         print("SKIP: deployed image predates the equipment rung (pre-photo-memory branch)")
         return True
 
+    # Persist under the SAME tenant the rung's guard will resolve for this
+    # chat (the rung re-validates workspace tenant against the current turn).
+    eff_tenant = bot._print_workspace_tenant(_fake_update(EQUIP_CHAT)) or TENANT
+    print(f"effective tenant for equipment section: {eff_tenant}")
+
     outcome = await pw.persist_print_turn(
         chat_id=EQUIP_CHAT,
-        tenant_id=TENANT,
+        tenant_id=eff_tenant,
         raw_bytes=_png(),
         vision_data=dict(_EQUIP_VISION),
         caption="what is this motor?",
