@@ -1,3 +1,18 @@
+### v3.226.3 (2026-07-29) - security(web): per-IP rate limit on /api/v1/inbox/email (re-cut of #891)
+
+P0.4 from the 2026-04-30 site-hardening plan, verified still absent on main. In-memory sliding window, 10 req/60s per source IP (X-Forwarded-For first hop → X-Real-IP → CF-Connecting-IP), 429 + Retry-After, gate runs BEFORE the HMAC compute so junk floods don't burn signature CPU, opportunistic GC bounds the map. 9 new tests (window, boundary, recovery, per-IP isolation, header precedence); 36/36 across both inbox test files. Ported from #891 (hunks applied clean); supersedes it.
+
+### v3.226.2 (2026-07-29) - security(web): auth hardening P0.1-P0.3 — re-cut of #890 against current main
+
+The three Wave-1 P0s from `docs/site-hardening-plan-2026-04-30.md` never shipped (the #890 branch rotted; `JWT_EXPIRY` was still `30d` on main). Re-implemented against current code: **P0.1** `requireAuth`/`requireActive`/`requireAdmin` no longer accept `?token=` query auth (tokens in URLs leak via logs/referrers/history; header + `mira_session` cookie only; the magic-link/QR landing surfaces `/activated`, `/m/:tag`, `m-register` keep their one-click `?token=` cookie-set handoff — different surface, unchanged). The cross-tenant test locking the old behavior is inverted to assert 401. **P0.2** JWT expiry 30d→7d (existing tokens keep their original expiry). **P0.3** CORS scoped from `app.use("*", cors())` (ACAO `*` everywhere) to `/api/*` with an explicit allowlist from `PLG_API_ALLOWED_ORIGINS` (default: factorylm.com/www/app + localhost dev ports); marketing/HTML routes get no CORS header. Verified: cross-tenant suite 8/8; full route suite has the same 5 pre-existing environmental failures as clean main (mailer export drift + ECONNREFUSED), net-zero regressions. Supersedes #890.
+
+### v3.226.1 (2026-07-29) - security(bots): redact bot-token URLs from logs (#2711)
+
+`shared/log_redaction.TokenRedactionFilter` masks `/bot<id>:<token>` URL segments (plain and %3A-encoded) in formatted log output — httpx logs token-bearing URLs via `args`, so the filter renders the full message before masking. Installed idempotently on httpx/httpcore/telegram loggers + root handlers at both the Telegram and Slack bot entrypoints. Prompted by the 2026-07-15 token disclosure into a session transcript. Rebased across the Slack Socket-Mode refactor; the end-to-end test accepts either redaction case because python-telegram-bot >=21 pre-redacts httpx URLs itself (lowercase) before our filter (uppercase) sees them.
+### v3.226.0 (2026-07-28) - chore(hub): hub_uploads schema moved to a versioned migration (#703)
+
+Migration 068 transcribes `hub_uploads`' schema (verbatim, from the runtime DDL as of today) into `mira-hub/db/migrations/` — a pure no-op on prod/staging since the table already has this exact shape. `ensureUploadsSchema()` in `mira-hub/src/lib/uploads.ts` no longer runs `CREATE TABLE`/`ALTER TABLE` on every cold start; it does a cheap memoized-per-process column check and fails loud (doesn't cache the failure — retries on next call) if migration 068 hasn't landed yet. Closes the three problems a 2026-04-26 backend review flagged: branch-to-branch DDL divergence with no review gate, race conditions on multi-replica startup, and no migration history to audit "when did column X appear?".
+
 ### v3.225.1 (2026-07-28) - test(potd): port unique regression coverage from superseded #2865
 
 Reconciliation-only port of #2865's residual value onto the canonical Print-of-the-Day stack (#2866-#2868): a pure, backward-compatible `build_payload(pkg)` extraction in `tools/internet_print_test/mailer.py` plus two regression test files. No second view model, renderer, or send gate. Unblocks closing #2865 as superseded.
