@@ -56,6 +56,42 @@ def _load_pages(paths: list[Path]) -> list[tuple[bytes, str]]:
     return pages
 
 
+def _interpret_with_recall(pages: list[tuple[bytes, str]], args):
+    """``--recall`` path: reuse a prior interpretation of the same print when possible.
+
+    Lazily imports the Materialized Evidence layer + CAS so the default (non-recall)
+    CLI path pulls in nothing new. Reports a recall hit/miss on stderr; the graph is
+    materialized on a miss so the next identical run recalls it (no model call).
+    """
+    from materialized_evidence import Environment  # noqa: PLC0415 -- lazy: only on --recall
+    from materialized_evidence.backends import FileRegistry  # noqa: PLC0415
+
+    from .cas import CAS  # noqa: PLC0415
+    from .recall import interpret_print_with_recall  # noqa: PLC0415
+
+    store = args.recall_store
+    graph, info = interpret_print_with_recall(
+        pages,
+        registry=FileRegistry(store / "registry.json"),
+        cas=CAS(store / "cas"),
+        environment=Environment.DEV,
+        question=args.question,
+        preprocess=not args.no_preprocess,
+    )
+    if info.recalled:
+        print(
+            f"[printsense] recall HIT — reused {info.dataset_version_id} "
+            f"(no model call; avoided ~{info.avoided_compute_ms} ms of vision compute)",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "[printsense] recall MISS — interpreted + materialized for next time",
+            file=sys.stderr,
+        )
+    return graph
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="printsense",
@@ -70,6 +106,17 @@ def main(argv: list[str] | None = None) -> int:
         "--map", action="store_true", dest="want_map", help="also emit the exact tag/terminal map"
     )
     parser.add_argument("--no-preprocess", action="store_true", help="skip auto-upright/resize")
+    parser.add_argument(
+        "--recall",
+        action="store_true",
+        help="reuse a prior interpretation of the same print instead of re-paying the vision model",
+    )
+    parser.add_argument(
+        "--recall-store",
+        type=Path,
+        default=Path("printsense_recall"),
+        help="durable recall store directory (used with --recall)",
+    )
     args = parser.parse_args(argv)
 
     # Windows consoles default to cp1252; the brief contains unicode. Never crash on print.
@@ -83,7 +130,12 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE
 
     try:
-        graph = interpret_print(pages, question=args.question, preprocess=not args.no_preprocess)
+        if args.recall:
+            graph = _interpret_with_recall(pages, args)
+        else:
+            graph = interpret_print(
+                pages, question=args.question, preprocess=not args.no_preprocess
+            )
     except PrintVisionUnavailable as exc:
         print(
             f"error: print-vision provider not configured — {exc}\n"

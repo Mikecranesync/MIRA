@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -36,7 +37,14 @@ import mailer  # noqa: E402
 import safety  # noqa: E402
 from judge import judge as run_judge  # noqa: E402
 
-TESTS_ROOT = _REPO / "internet_print_tests"
+# Results root. Defaults to the in-repo corpus dir (public OEM prints, which are
+# committed as eval evidence). CONFIDENTIAL batches — customer or third-party
+# drawings that must never be committed — set PRINT_TESTS_ROOT to a path OUTSIDE
+# the repo so neither the per-test artifacts nor the shared index.json/index.md
+# ever land in git. See .claude/rules/... and the Stardust local-only precedent.
+TESTS_ROOT = Path(os.environ["PRINT_TESTS_ROOT"]) if os.environ.get("PRINT_TESTS_ROOT") else (
+    _REPO / "internet_print_tests"
+)
 SOURCES_JSON = _HERE / "sources.json"
 
 
@@ -94,11 +102,34 @@ def _tested_page(original: bytes, mime: str | None, page: int, dpi: int, td: Pat
         from run import render_page  # reuse PyMuPDF renderer
 
         (td / "original.pdf").write_bytes(original)
+        # Best-effort page-count guard: a full vendor catalog (hundreds of pages) is a wrong
+        # source for a single wiring sheet — SKIP it rather than silently render page 0 of a cover.
+        max_pages = int(os.getenv("PRINT_MAX_PDF_PAGES") or "600")
+        try:
+            import fitz  # PyMuPDF — same lib render_page uses
+
+            with fitz.open(td / "original.pdf") as _doc:
+                n_pages = _doc.page_count
+            if n_pages > max_pages:
+                raise SkipError(f"PDF has {n_pages} pages (> {max_pages}) — looks like a full "
+                                "catalog, not a wiring sheet; pick a leaner source")
+            if page >= n_pages:
+                raise SkipError(f"requested page {page} out of range (PDF has {n_pages} pages)")
+        except SkipError:
+            raise
+        except Exception as e:  # noqa: BLE001 — page-count probe is best-effort, never blocks a valid render
+            log.warning("page-count probe failed (%s) — proceeding to render", e)
         png = render_page(td / "original.pdf", page, dpi=dpi, fmt="png")
         log.info("rendered PDF page %d @ %d dpi -> %d bytes PNG", page, dpi, len(png))
         return png
     # Already an image: it IS the tested page.
     return original
+
+
+class SkipError(Exception):
+    """A source that can't be tested for a benign, expected reason (robots.txt disallow,
+    oversized/slow download, too many pages). Recorded as a typed ``skip:`` — NOT a failure,
+    so one bad URL never fails the exit code or terminates an unattended batch."""
 
 
 def _deterministic_grade(td: Path, result: dict, log) -> dict | None:
@@ -136,6 +167,11 @@ def _deterministic_report_lines(grade: dict | None) -> list[str]:
 def _grade_and_deliver(td: Path, source_json: dict, result: dict, tested: bytes, args, row: dict, log) -> None:
     """Deterministic grader → judge → report → email. Shared by the normal run and --regrade (mutates `row`)."""
     grade = _deterministic_grade(td, result, log)
+    # Preserve the deterministic checks as their own artifact (plan requirement — every case keeps
+    # image + response + deterministic checks + judge + latency + cost).
+    (td / "deterministic_grade.json").write_text(
+        json.dumps(grade if grade is not None else {"deterministic_grade": "unavailable"},
+                   indent=2, ensure_ascii=False), encoding="utf-8")
     graph = result.get("graph")
     final_text = result.get("final_text")
     jr = {"judge_error": "skipped"}
@@ -242,6 +278,12 @@ def run_one(src: dict, args) -> dict:
                      result.get("handled"), result.get("classification"), result.get("interpreter_used"), result.get("latency_s"))
 
         _grade_and_deliver(td, source_json, result, tested, args, row, log)
+    except (safety.FetchError, SkipError) as e:
+        # Benign, expected: robots-disallow / oversized-or-slow / too-many-pages. A typed SKIP
+        # (not a failure) so it never fails the exit code or halts an unattended batch.
+        log.warning("skip: %s", e)
+        row["status"] = f"skip: {e}"
+        row["skip"] = True
     except Exception as e:  # noqa: BLE001 — record the failure, preserve partial evidence
         log.exception("run failed")
         row["status"] = f"error: {type(e).__name__}: {e}"
@@ -454,6 +496,8 @@ def main(argv=None) -> int:
     ap.add_argument("--page", type=int, default=0, help="PDF page index to render (default 0)")
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--caption", default="Explain this print.")
+    ap.add_argument("--allow-degraded-ocr", action="store_true",
+                    help="run even when the Tesseract OCR floor is DEAD (results are NOT representative)")
     args = ap.parse_args(argv)
 
     run_requested = any([args.source_url, args.local_file, args.count, args.category, args.regrade,
@@ -466,6 +510,35 @@ def main(argv=None) -> int:
                   f"[{s.get('category')}/{s.get('standard')}]")
         print("(no download, no submission, no email — pass --source-url / --category / --count to run)")
         return 0
+
+    # Fail closed on a dead OCR floor. `ocr_lane_report()` already computes the
+    # verdict correctly and logs it loudly, but nothing consumed it here — so a
+    # run with Tesseract missing produced grades that LOOK like real evals while
+    # the OCR lane and auto-rotate were silently off. Degraded numbers reported
+    # as capability are worse than no numbers.
+    if not args.allow_degraded_ocr:
+        try:
+            # `shared` only becomes importable once mira-bots is on sys.path,
+            # which submit.py does lazily — mirror it here so the probe runs
+            # BEFORE any paid call rather than after.
+            _bots = str(_REPO / "mira-bots")
+            if _bots not in sys.path:
+                sys.path.insert(0, _bots)
+            from shared.workers.vision_worker import ocr_lane_report
+
+            report = ocr_lane_report()
+        except Exception:  # noqa: BLE001 — probe absence must not break the runner
+            report = None
+        if report and report.get("verdict") == "DEAD":
+            print(
+                "[FATAL] OCR floor is DEAD (Tesseract missing while expected): "
+                f"{json.dumps(report)}\n"
+                "        Grades from this configuration are NOT representative — the OCR\n"
+                "        lane and auto-rotate are off. Install Tesseract (or put it on\n"
+                "        PATH), or pass --allow-degraded-ocr to run anyway and mark the\n"
+                "        results degraded."
+            )
+            return 2
 
     if args.telegram_production_path:
         from submit import _load_real_bot
@@ -482,10 +555,15 @@ def main(argv=None) -> int:
     rows = [run_one(s, args) for s in sources]
     _write_index(rows)
     ok = sum(1 for r in rows if r["status"] == "ok")
-    print(f"\n=== {ok}/{len(rows)} ok — index at {TESTS_ROOT/'index.md'} ===")
+    skipped = sum(1 for r in rows if str(r.get("status", "")).startswith("skip:"))
+    errored = sum(1 for r in rows if str(r.get("status", "")).startswith("error:"))
+    print(f"\n=== {ok}/{len(rows)} ok · {skipped} skipped · {errored} error — index at {TESTS_ROOT/'index.md'} ===")
     for r in rows:
         print(f"  {r['test_id']}: {r['status']} score={r.get('score')} hard_fail={r.get('hard_failure')} email={r.get('email')}")
-    return 0 if ok == len(rows) else 1
+    # Exit non-zero ONLY on a genuine error. Skips (robots/oversized) are expected and must
+    # never fail an unattended batch (plan success gate: "rerun unattended without one URL
+    # terminating the batch").
+    return 1 if errored else 0
 
 
 if __name__ == "__main__":

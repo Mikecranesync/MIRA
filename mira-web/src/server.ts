@@ -565,7 +565,10 @@ app.get("/feature/:slug", (c) => {
 app.get("/drive-commander/:model", (c) => {
   const pack = getPack(c.req.param("model"));
   if (!pack) return c.notFound();
-  return c.html(renderDriveLandingPage(pack));
+  // Stripe checkout returns here with ?checkout=success|cancelled.
+  return c.html(
+    renderDriveLandingPage(pack, { checkout: c.req.query("checkout") }),
+  );
 });
 
 app.get("/drive-commander/:model/faults/:code", (c) => {

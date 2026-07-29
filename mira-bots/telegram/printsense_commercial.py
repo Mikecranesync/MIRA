@@ -331,6 +331,37 @@ async def ps_survey_command(update, context):
     )
 
 
+async def printsense_grade_session_command(update, context):
+    """Admin-only ``/printsense_grade_session start|finish`` — live-session
+    truth-free grading (testing-program Phase 3). Body lives in the testkit;
+    this wrapper owns the reviewer gate, matching /printsense_test."""
+    if not _is_reviewer(update):
+        await update.message.reply_text("Not authorized.")
+        return
+    try:
+        import printsense_testkit
+
+        await printsense_testkit.printsense_grade_session_command(update, context)
+    except Exception as exc:
+        logger.warning("printsense_grade_session failed: %s", type(exc).__name__)
+        await update.message.reply_text(f"Session grading failed: {type(exc).__name__}")
+
+
+async def printsense_compare_command(update, context):
+    """Admin-only ``/printsense_compare`` — original-vs-degraded pair diff
+    (testing-program Phase 4). Body in the testkit; gate here."""
+    if not _is_reviewer(update):
+        await update.message.reply_text("Not authorized.")
+        return
+    try:
+        import printsense_testkit
+
+        await printsense_testkit.printsense_compare_command(update, context)
+    except Exception as exc:
+        logger.warning("printsense_compare failed: %s", type(exc).__name__)
+        await update.message.reply_text(f"Compare failed: {type(exc).__name__}")
+
+
 async def printsense_test_command(update, context):
     """Admin-only Phase-1 smoke: run the frozen deterministic gates through the
     SAME shared printsense logic the concierge uses and return a phone-readable
@@ -349,8 +380,57 @@ async def printsense_test_command(update, context):
             logger.warning("printsense_test phase2 failed: %s", type(exc).__name__)
             await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
         return
+    if phase == "phase3":
+        try:
+            import printsense_testkit
+
+            await update.message.reply_text(
+                "Phase 3 running — bounded multi-photo sessions through the paid "
+                "interpreter; expect several minutes."
+            )
+            await printsense_testkit.run_phase3_live(update, context)
+        except Exception as exc:
+            logger.warning("printsense_test phase3 failed: %s", type(exc).__name__)
+            await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
+        return
+    if phase == "phase4":
+        try:
+            import printsense_testkit
+
+            await update.message.reply_text(
+                "Phase 4 running — 16-condition robustness matrix (classification "
+                "lane free; bounded answer lane); a few minutes."
+            )
+            await printsense_testkit.run_phase4_live(update, context)
+        except Exception as exc:
+            logger.warning("printsense_test phase4 failed: %s", type(exc).__name__)
+            await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
+        return
+    if phase == "unseen":
+        try:
+            import printsense_testkit
+
+            await update.message.reply_text(
+                "UNSEEN generalization lane running — free path only, $0; a couple of minutes."
+            )
+            await printsense_testkit.run_unseen_lane_live(update, context)
+        except Exception as exc:
+            logger.warning("printsense_test unseen failed: %s", type(exc).__name__)
+            await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
+        return
+    if phase == "ocr":
+        try:
+            import printsense_testkit
+
+            await printsense_testkit.run_ocr_report_live(update, context)
+        except Exception as exc:
+            logger.warning("printsense_test ocr failed: %s", type(exc).__name__)
+            await update.message.reply_text(f"PrintSense test failed: {type(exc).__name__}")
+        return
     if phase != "phase1":
-        await update.message.reply_text("Usage: /printsense_test phase1|phase2")
+        await update.message.reply_text(
+            "Usage: /printsense_test phase1|phase2|phase3|phase4|unseen|ocr"
+        )
         return
     try:
         from printsense import grader_gate

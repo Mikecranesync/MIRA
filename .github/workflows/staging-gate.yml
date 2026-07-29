@@ -245,8 +245,16 @@ jobs:
           echo "::error::staging gate failed after 2 attempts"
           exit 1
 
+      # The three steps below are REPORTING, not verification, and they carry
+      # continue-on-error because this job's conclusion is the most load-bearing
+      # in the repo: it is the required branch-protection check AND the gate
+      # deploy-vps.yml verifies before shipping. A failed artifact upload or an
+      # unpostable comment after a PASSING eval must not flip that conclusion —
+      # the 2026-07-26 activation incident (a reporter deciding the verdict, PR
+      # #2917) is the pattern being excluded. 'Run staging gate' still fails hard.
       - name: Upload results artifact
         if: always() && steps.scope.outputs.run_eval == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: staging-results-${{ github.run_number }}
@@ -255,6 +263,7 @@ jobs:
 
       - name: Render PR comment
         if: always() && github.event_name == 'pull_request' && steps.scope.outputs.run_eval == 'true'
+        continue-on-error: true
         run: |
           python tools/staging_render_comment.py \
             --in tools/staging_results.json \
@@ -263,6 +272,7 @@ jobs:
 
       - name: Post / update PR comment
         if: always() && github.event_name == 'pull_request' && steps.scope.outputs.run_eval == 'true' && hashFiles('staging_comment.md') != ''
+        continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: staging-gate

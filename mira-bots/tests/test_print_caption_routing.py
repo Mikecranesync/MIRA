@@ -44,8 +44,10 @@ _OCR = ["-M1", "-B1", "-B2", "PT100", "KLIX", "-X1"]
 
 
 def test_caption_says_print_routes_to_electrical_print():
-    """The technician's 'in this print' caption flips an otherwise
-    equipment-classified photo to ELECTRICAL_PRINT (the grounded path)."""
+    """The MACK/InTraSys sheet still routes to ELECTRICAL_PRINT — now on its OCR
+    designation-grammar tags (-M1/-B1/-B2/-X1: LAYOUT evidence), per the
+    2026-07-15 operator directive (visual -> OCR/layout -> caption tie-break).
+    The caption is no longer load-bearing."""
     w = _worker()
     result = w._classify_photo(
         _COMPONENTS_ONLY,
@@ -55,19 +57,27 @@ def test_caption_says_print_routes_to_electrical_print():
     assert result["type"] == "ELECTRICAL_PRINT"
 
 
-def test_same_photo_without_print_caption_regresses_to_equipment():
-    """Proves the caption is what flips it: the identical vision summary with a
-    neutral caption still classifies EQUIPMENT_PHOTO (the pre-fix behavior)."""
+def test_same_photo_without_print_caption_is_still_a_print():
+    """UPDATED 2026-07-15 (operator directive): the identical sheet with a
+    neutral — or even misleading — caption is STILL a print. The old test
+    asserted EQUIPMENT_PHOTO here, encoding the caption dependence the live
+    phone test proved harmful (the Bulletin 509 print captioned 'Analyze this
+    equipment photo' got the thin preview). The OCR tag grammar now carries
+    the classification regardless of caption; the ground truth
+    (hard_failures/mack_intrasys_brake_stator.yaml) says this IS a print."""
     w = _worker()
-    result = w._classify_photo(
-        _COMPONENTS_ONLY,
-        ocr_items=_OCR,
-        caption="Analyze this equipment photo",
-    )
-    assert result["type"] == "EQUIPMENT_PHOTO"
+    for cap in ("Analyze this equipment photo", "", "what is this?"):
+        result = w._classify_photo(_COMPONENTS_ONLY, ocr_items=_OCR, caption=cap)
+        assert result["type"] == "ELECTRICAL_PRINT", cap
 
 
 def test_schematic_caption_variants_route_to_print():
+    """With the sheet's real OCR tags present, every caption variant routes to
+    the print path. UPDATED 2026-07-15: the old version used ocr_items=[] so
+    the CAPTION alone forced the flip — exactly what the operator directive
+    forbids (captions are tie-breakers, never overrides). With equipment words
+    in the vision summary and NO tags, a print-ish caption must NOT override
+    the visual evidence (second loop)."""
     w = _worker()
     for cap in (
         "explain this schematic",
@@ -75,8 +85,13 @@ def test_schematic_caption_variants_route_to_print():
         "read this drawing for me",
         "trace this one-line",
     ):
-        result = w._classify_photo(_COMPONENTS_ONLY, ocr_items=[], caption=cap)
+        result = w._classify_photo(_COMPONENTS_ONLY, ocr_items=_OCR, caption=cap)
         assert result["type"] == "ELECTRICAL_PRINT", cap
+    # Caption may NOT override visual equipment evidence when no layout
+    # evidence backs it up (kit-06 class: real equipment, print-ish caption).
+    for cap in ("explain this schematic", "read this print"):
+        result = w._classify_photo(_COMPONENTS_ONLY, ocr_items=[], caption=cap)
+        assert result["type"] == "EQUIPMENT_PHOTO", cap
 
 
 def test_genuine_nameplate_with_print_caption_stays_nameplate():

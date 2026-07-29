@@ -31,6 +31,8 @@ class EmailPackage:
     recipient: str
     attachments: list[dict]      # [{filename, path, bytes, included, reason}]
     dropped: list[str]
+    text: str | None = None      # FR-9 plain-text alternative
+    inline_images: list[dict] | None = None  # [{cid, path}] — CID-embedded (FR-2)
 
 
 def build_package(subject: str, html: str, recipient: str, files: list[Path]) -> EmailPackage:
@@ -65,18 +67,29 @@ def package_summary(pkg: EmailPackage) -> str:
     return "\n".join(lines)
 
 
-def send(pkg: EmailPackage) -> dict:
-    """Send via Resend. Returns {sent, status, id/error}. Requires RESEND_API_KEY (Doppler)."""
-    api_key = os.getenv("RESEND_API_KEY", "")
-    if not api_key:
-        return {"sent": False, "status": None, "error": "RESEND_API_KEY not set (load via Doppler)"}
+def build_payload(pkg: EmailPackage) -> dict:
+    """Pure Resend payload for a package — exactly what ``send`` POSTs.
 
+    Extracted from ``send`` (backward-compatibly) so the serialization can be
+    regression-tested in isolation. Serializes the HTML body, the optional
+    plain-text alternative (FR-9), conventional base64 attachments, and
+    CID-embedded inline images carrying ``content_id`` (FR-2). Reads attachment
+    bytes off disk; performs no network I/O. ``send``'s behavior is unchanged."""
     attachments = []
     for a in pkg.attachments:
         if not a["included"]:
             continue
         data = Path(a["path"]).read_bytes()
         attachments.append({"filename": a["filename"], "content": base64.b64encode(data).decode()})
+    # CID-embedded inline images (FR-2): a content_id makes the image render
+    # inline via `cid:` in the HTML without any public URL.
+    for img in pkg.inline_images or []:
+        data = Path(img["path"]).read_bytes()
+        attachments.append({
+            "filename": Path(img["path"]).name,
+            "content": base64.b64encode(data).decode(),
+            "content_id": img["cid"],
+        })
 
     payload = {
         "from": RESEND_FROM,
@@ -85,6 +98,18 @@ def send(pkg: EmailPackage) -> dict:
         "html": pkg.html,
         "attachments": attachments,
     }
+    if pkg.text:  # FR-9 plain-text alternative
+        payload["text"] = pkg.text
+    return payload
+
+
+def send(pkg: EmailPackage) -> dict:
+    """Send via Resend. Returns {sent, status, id/error}. Requires RESEND_API_KEY (Doppler)."""
+    api_key = os.getenv("RESEND_API_KEY", "")
+    if not api_key:
+        return {"sent": False, "status": None, "error": "RESEND_API_KEY not set (load via Doppler)"}
+
+    payload = build_payload(pkg)
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.post(RESEND_ENDPOINT,
@@ -100,6 +125,29 @@ def send(pkg: EmailPackage) -> dict:
                 "id": body.get("id"), "error": None if ok else str(body)[:300]}
     except httpx.HTTPError as e:
         return {"sent": False, "status": None, "error": f"{type(e).__name__}: {e}"}
+
+
+def verify_attachments(files: list[Path], expected_sha256: dict[str, str]) -> list[str]:
+    """FR-15: before send, verify each expected attachment exists, is non-empty,
+    and matches the report's recorded hash. Returns the list of problems (empty
+    == all good). The send gate must hold when this is non-empty."""
+    import hashlib as _h  # noqa: PLC0415
+
+    problems: list[str] = []
+    for f in files:
+        f = Path(f)
+        if not f.exists():
+            problems.append(f"missing:{f.name}")
+            continue
+        if f.stat().st_size == 0:
+            problems.append(f"empty:{f.name}")
+            continue
+        want = expected_sha256.get(f.name)
+        if want:
+            got = _h.sha256(f.read_bytes()).hexdigest()
+            if got != want:
+                problems.append(f"hash_mismatch:{f.name}")
+    return problems
 
 
 def default_recipient() -> str:

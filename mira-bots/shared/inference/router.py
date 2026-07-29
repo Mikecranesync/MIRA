@@ -51,6 +51,40 @@ _SERIAL_RE = re.compile(
 # Warn when any LLM call exceeds this threshold — indicates context bloat
 _LATENCY_WARN_MS = int(os.getenv("MIRA_LATENCY_WARN_MS", "15000"))
 
+# Reasoning-model handling. Models like Kimi-K2.6 and LFM2.5 emit chain-of-
+# thought in <think> blocks (or a separate reasoning_content field) and can
+# burn the ENTIRE max_tokens budget thinking — returning HTTP 200 with empty
+# visible content (Tower OP round 4, 2026-07-19: 20/22 such calls at the 1024
+# and 2000 caps). The cascade treated that as EMPTY_RESPONSE and fell through
+# to the deterministic fallback, so a capable model produced 0 usable replies.
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_reasoning(text: str) -> str:
+    """Return the visible (non-reasoning) part of a model reply.
+
+    Closed <think>...</think> blocks are removed. An unterminated <think>
+    (the cap-hit-mid-reasoning signature) has no visible answer after it, so
+    everything from the marker on is dropped.
+    """
+    if not text:
+        return ""
+    out = _THINK_RE.sub("", text)
+    lower = out.lower()
+    if "<think>" in lower:
+        out = out[: lower.index("<think>")]
+    return out.strip()
+
+
+def _reasoning_retry_max_tokens() -> int:
+    """Token cap for the single reasoning-burn retry (0 disables the retry).
+
+    Or-form parse: docker compose ``${LLM_REASONING_RETRY_MAX_TOKENS:-}`` maps
+    an unset var to an EMPTY STRING in-container, which must fall back to the
+    default instead of crashing int().
+    """
+    return int(os.getenv("LLM_REASONING_RETRY_MAX_TOKENS") or "8192")
+
 
 def get_system_prompt() -> str:
     """Load system prompt from prompts/diagnose/active.yaml with a 60s TTL cache.
@@ -176,9 +210,13 @@ def _build_providers() -> list[_Provider]:
                 api_key=groq_key,
                 model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
                 timeout=30.0,
-                vision_model=os.getenv(
-                    "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
-                ),
+                # Groq removed ALL vision-capable models on 2026-07-18 (llama-4
+                # scout/maverick delisted; /v1/models lists nothing multimodal),
+                # so the default is empty — image requests skip Groq instead of
+                # burning a guaranteed 404 + latency on every photo turn. The
+                # env knob stays so ops can re-enable without a deploy if Groq
+                # ever re-adds a vision model.
+                vision_model=os.getenv("GROQ_VISION_MODEL") or "",
             )
         )
 
@@ -202,14 +240,28 @@ def _build_providers() -> list[_Provider]:
                 api_url="https://api.together.xyz/v1/chat/completions",
                 api_key=together_key,
                 model=os.getenv("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
-                timeout=30.0,
-                # No default vision model: Together's serverless catalog has no
-                # stable text+vision model on this account, so image requests stay
-                # on Groq's vision model. Set TOGETHERAI_VISION_MODEL to add one.
-                # (Default text model is serverless pay-per-token, covered by the
-                # account's free credits; the -Turbo-Free variant is not serverless
-                # on this account.)
-                vision_model=os.getenv("TOGETHERAI_VISION_MODEL", ""),
+                # Together is the LAST text-cascade provider AND the ONLY vision
+                # provider (no fallback exists for vision). The 2026-07-19 bench
+                # measured successful theory calls at 13.9-28.6s, with 2/10 runs
+                # crossing the old hardcoded 30s and losing an already-computed
+                # answer to "together timeout after 30s" — the #2804 2000-token
+                # theory budget + #2805 evidence-contract prompt ate the old
+                # margin. Raised to 90s. The `or` form is MANDATORY: compose maps
+                # ${TOGETHERAI_TIMEOUT:-}, which delivers an EMPTY STRING
+                # in-container; a bare float(os.getenv(...)) on "" raises and
+                # crash-loops the bot at import (same trap as
+                # TOGETHERAI_VISION_MODEL below — this has bitten the repo twice).
+                timeout=float(os.getenv("TOGETHERAI_TIMEOUT") or "90"),
+                # google/gemma-3n-E4B-it is the ONLY vision-capable model this
+                # account can reach serverless (verified live 2026-07-18: every
+                # Qwen-VL / Llama-4 / Kimi / GLM-4.5V id in the catalog rejects
+                # with "non-serverless model" — including the per-token-priced
+                # ones, so catalog pricing does NOT imply serverless access).
+                # Same free-credits basis as the default text model above. The
+                # `or` form is load-bearing: compose maps
+                # ${TOGETHERAI_VISION_MODEL:-}, which delivers an EMPTY STRING
+                # in-container; a plain getenv default would leave vision dead.
+                vision_model=os.getenv("TOGETHERAI_VISION_MODEL") or "google/gemma-3n-E4B-it",
             )
         )
 
@@ -442,46 +494,78 @@ class InferenceRouter:
         }
 
         try:
-            t0 = time.monotonic()
-            async with httpx.AsyncClient(timeout=provider.timeout) as client:
-                resp = await client.post(provider.api_url, headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            # Up to two attempts: the requested cap, then — only when the first
+            # attempt was a reasoning burn (tokens consumed, no visible content)
+            # — one retry with headroom so the model can finish thinking AND
+            # emit the answer. A genuinely empty reply is not retried.
+            attempt_caps = [max_tokens]
+            content = ""
+            usage_dict: dict = {}
+            for attempt_idx, attempt_cap in enumerate(attempt_caps):
+                payload["max_tokens"] = attempt_cap
+                t0 = time.monotonic()
+                async with httpx.AsyncClient(timeout=provider.timeout) as client:
+                    resp = await client.post(provider.api_url, headers=headers, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-            content = data["choices"][0]["message"]["content"]
-            usage = data.get("usage", {})
-            usage_dict = {
-                "input_tokens": usage.get("prompt_tokens", 0),
-                "output_tokens": usage.get("completion_tokens", 0),
-                "provider": provider.name,
-                "model": f"{provider.name}/{model}",
-            }
+                message = data["choices"][0]["message"]
+                raw_content = message.get("content") or ""
+                content = _strip_reasoning(raw_content)
+                usage = data.get("usage", {})
+                usage_dict = {
+                    "input_tokens": usage.get("prompt_tokens", 0),
+                    "output_tokens": usage.get("completion_tokens", 0),
+                    "provider": provider.name,
+                    "model": f"{provider.name}/{model}",
+                }
 
-            logger.info(
-                "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
-                provider.name,
-                model,
-                elapsed_ms,
-                usage_dict["input_tokens"],
-                usage_dict["output_tokens"],
-            )
-            if elapsed_ms > _LATENCY_WARN_MS:
-                logger.warning(
-                    "SLOW_LLM_CALL provider=%s latency_ms=%d input_tokens=%d — "
-                    "consider trimming context",
+                logger.info(
+                    "LLM_CALL provider=%s model=%s latency_ms=%d input=%d output=%d",
                     provider.name,
+                    model,
                     elapsed_ms,
                     usage_dict["input_tokens"],
+                    usage_dict["output_tokens"],
+                )
+                if elapsed_ms > _LATENCY_WARN_MS:
+                    logger.warning(
+                        "SLOW_LLM_CALL provider=%s latency_ms=%d input_tokens=%d — "
+                        "consider trimming context",
+                        provider.name,
+                        elapsed_ms,
+                        usage_dict["input_tokens"],
+                    )
+
+                self.write_api_usage(
+                    session_id=session_id,
+                    usage=usage_dict,
+                    model=f"{provider.name}/{model}",
+                    has_image=has_image,
+                    response_time_ms=elapsed_ms,
                 )
 
-            self.write_api_usage(
-                session_id=session_id,
-                usage=usage_dict,
-                model=f"{provider.name}/{model}",
-                has_image=has_image,
-                response_time_ms=elapsed_ms,
-            )
+                if content:
+                    break
+
+                retry_cap = _reasoning_retry_max_tokens()
+                burned = (
+                    usage_dict["output_tokens"] >= attempt_cap
+                    or bool(message.get("reasoning_content"))
+                    or "<think>" in raw_content.lower()
+                )
+                if attempt_idx == 0 and burned and retry_cap > attempt_cap:
+                    logger.warning(
+                        "REASONING_BURN provider=%s model=%s output=%d cap=%d — "
+                        "retrying once with max_tokens=%d",
+                        provider.name,
+                        model,
+                        usage_dict["output_tokens"],
+                        attempt_cap,
+                        retry_cap,
+                    )
+                    attempt_caps.append(retry_cap)
 
             return content, usage_dict
 
@@ -507,7 +591,7 @@ class InferenceRouter:
                         r2 = await rc.post(provider.api_url, headers=headers, json=payload)
                         r2.raise_for_status()
                         d2 = r2.json()
-                    return d2["choices"][0]["message"]["content"], {
+                    return _strip_reasoning(d2["choices"][0]["message"]["content"] or ""), {
                         "input_tokens": d2.get("usage", {}).get("prompt_tokens", 0),
                         "output_tokens": d2.get("usage", {}).get("completion_tokens", 0),
                         "provider": provider.name,

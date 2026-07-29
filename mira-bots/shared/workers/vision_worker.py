@@ -1,13 +1,11 @@
 """Vision Worker — Photo analysis, OCR, and classification."""
 
 import base64
-import io
 import logging
 import os
 import re
 
 import httpx
-from PIL import Image
 
 from ..inference.router import InferenceRouter as _InferenceRouter
 
@@ -239,6 +237,186 @@ def _kw_affirmed(keyword: str, text: str) -> bool:
 
 OCR_CLASSIFICATION_THRESHOLD = 10
 
+# IEC/DIN designation-grammar tokens (schematic tags) — deterministic LAYOUT
+# evidence that a page is a drawing. Real prints label entities with short
+# designators (-M1, -B1, -X1, -W5497, -20/A10, 15.7, PT100); physical equipment
+# photos carry brand/catalog text (Micro820, 2080-LC20-20QBB) that matches none
+# of these. Anchored full-token patterns — an OCR item must BE a tag, not merely
+# contain one — so long catalog strings can never false-positive.
+_SCHEMATIC_TAG_PATTERNS = [
+    re.compile(r"^[+-][A-Z]{1,3}\d{1,4}$", re.IGNORECASE),  # -M1, -B2, +S1
+    re.compile(r"^-?[A-Z]{0,3}\d{1,3}/[A-Z]{1,3}\d{1,4}$", re.IGNORECASE),  # -20/A10
+    re.compile(r"^-?W\d{2,5}$", re.IGNORECASE),  # -W5497
+    re.compile(r"^\d{1,3}\.\d{1,2}$"),  # 15.7 (sheet.column)
+    re.compile(r"^[A-Z]{1,3}\d{1,4}$", re.IGNORECASE),  # PT100, M1 (unprefixed)
+]
+_PREFIXED_TAG = re.compile(r"^[+-]|/")
+
+
+def _ocr_schematic_tag_hits(ocr_items: list) -> tuple[int, int]:
+    """(total tag-grammar hits, prefixed hits) across OCR items.
+
+    ``prefixed`` (leading -/+ or a sheet/device slash) is the high-precision
+    subset — bare ``PT100``-style tokens also appear on nameplates, so the
+    caller requires at least one prefixed tag before trusting the count.
+    """
+    hits = prefixed = 0
+    for item in ocr_items or []:
+        tok = str(item).strip()
+        if any(p.match(tok) for p in _SCHEMATIC_TAG_PATTERNS):
+            hits += 1
+            if _PREFIXED_TAG.search(tok[:4]):
+                prefixed += 1
+    return hits, prefixed
+
+
+# Minimum distinct tag-grammar hits (with >=1 prefixed) to call a page a print
+# on layout evidence alone.
+SCHEMATIC_TAG_THRESHOLD = 3
+
+# Overwhelming OCR density, on its own, is STRONG layout evidence a page is a
+# printed sheet/table rather than a physical device face — deliberately much
+# higher than OCR_CLASSIFICATION_THRESHOLD (10, a WEAK tiebreaker only reached
+# when nothing else matched; see the "OCR count alone must NOT override the
+# vision model's classification" note in _classify_photo). Bench regression
+# (2026-07-18 Tower OP re-benchmark, c11/c12): two real LED/diagnostic-table
+# print pages carried 156 and 184 OCR items yet classified EQUIPMENT_PHOTO,
+# because their dense reference tables are described using the SAME
+# vocabulary as EQUIPMENT_FACE_KEYWORDS ("led", "plc", "indicator", "fault")
+# and their module references (e.g. "X9.4") don't match the IEC schematic-tag
+# grammar above. No genuine single-device faceplate/nameplate photo carries
+# anywhere near this many distinct OCR items, so this threshold is safe to
+# treat as STRONG evidence — outranking EQUIPMENT_FACE_KEYWORDS the same way
+# STRONG_PRINT_SIGNALS and the schematic-tag grammar already do.
+DENSE_TABLE_OCR_THRESHOLD = 50
+
+# Guards the NAMEPLATE_OCR_FIELDS unit-vocabulary branch (>=3 hits, above) at
+# dense-table volume — bench regression 2026-07-19, c10: a ~170-item PLC
+# LED-reference table carried "24 V"/"10 Hz"/"(25 Hz)"/"voltage" as native
+# table content, hitting >=3 NAMEPLATE_OCR_FIELDS and returning NAMEPLATE
+# before the DENSE_TABLE_OCR_THRESHOLD check above ever ran. At
+# len(ocr_items) >= DENSE_TABLE_OCR_THRESHOLD, the unit-field branch requires
+# EITHER plate vocabulary proper (NAMEPLATE_KEYWORDS — checked earlier,
+# unconditional on density) OR a hit density at/above this ratio. Derived
+# from the two real data points: a genuine VFD spec plate is ~3+ hits in ~a
+# dozen OCR items (~0.25+); the c10 table is ~4 hits in ~170 items (~0.02).
+# 0.15 sits with margin below a real plate and well above the table case.
+# Below the dense threshold this guard does not apply — unit-field NAMEPLATE
+# detection is unchanged.
+NAMEPLATE_FIELD_DENSITY_THRESHOLD = 0.15
+
+
+def parse_ocr_reply(raw: str) -> list[str]:
+    """Model OCR reply -> clean text items (numbered list / markdown tolerant)."""
+    items = []
+    for line in raw.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("```") or line in ("{", "}", "[", "]"):
+            continue
+        if re.match(r"^[|:\-\s]+$", line):
+            continue
+        if line.startswith("|") and line.endswith("|"):
+            cells = [c.strip() for c in line.split("|") if c.strip()]
+            for cell in cells:
+                cell = re.sub(r"[*`]", "", cell).strip()
+                if cell and not cell.startswith("```"):
+                    items.append(cell)
+            continue
+        line = re.sub(r"[*`]", "", line)
+        # Numbering alternatives, in order: dot/paren ("1." / "2)"), dash-bullet (needs whitespace after the dash, e.g. "3 - x"), then bare "N ".
+        # A glued dash ("3 -K17") isn't dash-bullet (no space after "-"), so it falls to bare "N " and the IEC tag "-K17" survives.
+        cleaned = re.sub(r"^\d+[\.\)]\s*|^\d+\s+-\s+|^\d+\s+", "", line).strip()
+        if cleaned and not cleaned.startswith("```"):
+            items.append(cleaned)
+    return items
+
+
+def _tesseract_tokens_impl(image_bytes: bytes) -> list[dict]:
+    """Deterministic word boxes via the shared printsense adapter.
+
+    Raises printsense.xref_extractor.OcrUnavailable when the binary or
+    pytesseract is absent (local Windows dev) — callers degrade honestly.
+    """
+    from printsense.xref_extractor import ocr_tokens
+
+    return ocr_tokens(image_bytes)
+
+
+def _printsense_line_items(tokens: list) -> list:
+    """line_items via printsense when shipped; [] otherwise for lean images."""
+    try:
+        from printsense.xref_extractor import line_items
+    except ImportError:
+        return []
+    return line_items(tokens)
+
+
+def _tesseract_version_impl() -> str:
+    import pytesseract
+
+    return str(pytesseract.get_tesseract_version())
+
+
+def _model_lane_on() -> bool:
+    """OCR_MODEL_LANE=on gate, shared by ocr_lane_report() and _call_ocr() —
+    off by default; the deterministic floor is Tesseract."""
+    return os.environ.get("OCR_MODEL_LANE", "off").strip().lower() == "on"
+
+
+def ocr_lane_report() -> dict:
+    """One-shot health report for every OCR lane. Logged at bot boot and
+    rendered by /printsense_test ocr — the mechanism that makes a dead
+    floor loud instead of a per-turn WARNING nobody reads (the 2026-07
+    glm-ocr lane died silently for weeks)."""
+    # ADR-0031 §6.5: OCR_REQUIRE_TESSERACT is the canonical knob; legacy
+    # OCR_EXPECT_TESSERACT keeps working through the migration. Either being
+    # "1" makes a missing floor DEAD (readiness-failing) instead of DEGRADED.
+    expected = (os.environ.get("OCR_REQUIRE_TESSERACT", "").strip() or "0") == "1" or (
+        os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0"
+    ) == "1"
+    model_lane = "on" if _model_lane_on() else "off"
+    try:
+        version: str | None = _tesseract_version_impl()
+        available = True
+    except Exception:  # noqa: BLE001 — absence is a report state, not an error
+        version = None
+        available = False
+    if available:
+        verdict = "ok"
+    elif expected:
+        verdict = "DEAD"
+    else:
+        verdict = "DEGRADED"
+    return {
+        "tesseract": {"available": available, "version": version},
+        "model_lane": model_lane,
+        "expected_floor": expected,
+        "verdict": verdict,
+    }
+
+
+_OCR_AVAILABLE_CACHE: bool | None = None
+
+
+def _ocr_capability_available() -> bool:
+    """Whether the Tesseract OCR floor is installed in THIS process (cached — one probe).
+
+    Surfaced on vision_data as ``ocr_available`` so downstream graders can tell
+    "OCR ran and read nothing" (available=True, real signal) apart from "OCR
+    could not run at all" (available=False) — e.g. the autoeval ``tag_flood_without_ocr``
+    lane must not fire when the OCR capability is simply absent (a correct dense
+    reading would otherwise trip a false positive). Defaults True (safe) if unknowable."""
+    global _OCR_AVAILABLE_CACHE
+    if _OCR_AVAILABLE_CACHE is None:
+        try:
+            _tesseract_version_impl()
+            _OCR_AVAILABLE_CACHE = True
+        except Exception:  # noqa: BLE001 — absence is a state, not an error
+            _OCR_AVAILABLE_CACHE = False
+    return _OCR_AVAILABLE_CACHE
+
 
 class VisionWorker:
     """Handles photo analysis: vision model + OCR + classification."""
@@ -253,35 +431,108 @@ class VisionWorker:
 
         Returns dict with keys:
             classification: 'ELECTRICAL_PRINT' | 'NAMEPLATE' | 'EQUIPMENT_PHOTO'
+                | 'UNKNOWN' (vision gave no usable signal — caller should decline
+                with an evidence-based fallback, not a fabricated diagnosis)
+            vision_ok: bool (False when the vision call failed or was empty)
+            decline_reason: str | None ('vision_error' | 'vision_empty' when
+                classification is UNKNOWN, else None)
             vision_result: str (vision model description)
-            ocr_items: list[str] (glm-ocr extracted text items)
-            tesseract_text: str (Tesseract backup OCR)
+            ocr_items: list[str] (Tesseract floor + model-lane supplement, deduped)
+            ocr_tokens: list[dict] (Tesseract word boxes: {text, bbox, line}; [] when unavailable)
+            ocr_source: str ('tesseract' | 'tesseract+model' | 'model' | 'none')
+            tesseract_text: str (newline-joined Tesseract line strings from the same pass)
             drawing_type: str | None (only for ELECTRICAL_PRINT)
         """
         import asyncio
 
         vision_coro = self._call_vision(photo_b64, message)
         ocr_coro = self._call_ocr(photo_b64)
-        results = await asyncio.gather(vision_coro, ocr_coro, return_exceptions=True)
+
+        def _floor() -> list[dict]:
+            try:
+                from printsense.xref_extractor import OcrUnavailable
+
+                return _tesseract_tokens_impl(base64.b64decode(photo_b64))
+            except ImportError as exc:
+                # printsense not shipped in this image (slack/mira-pipeline) —
+                # the floor is telegram-image-only until image parity lands.
+                logger.warning("printsense not shipped in this image — OCR floor off: %s", exc)
+                return []
+            except OcrUnavailable as exc:
+                logger.warning("tesseract floor unavailable: %s", exc)
+                return []
+            except Exception as exc:  # noqa: BLE001 — floor failure must not eat the turn
+                logger.warning("tesseract floor error: %s", exc)
+                return []
+
+        floor_coro = asyncio.to_thread(_floor)
+        results = await asyncio.gather(vision_coro, ocr_coro, floor_coro, return_exceptions=True)
 
         vision_result = results[0] if not isinstance(results[0], Exception) else message
-        ocr_items = results[1] if not isinstance(results[1], Exception) else []
+        model_items = results[1] if not isinstance(results[1], Exception) else []
+        ocr_tokens_ = results[2] if not isinstance(results[2], Exception) else []
+
+        # Did the vision model give the classifier a usable signal? A failed call
+        # or empty content means NO — and we must not let the caption (which
+        # `vision_result` falls back to above) masquerade as vision prose in
+        # `_classify_photo`. See the classification-fallback floor there.
+        if isinstance(results[0], Exception):
+            vision_ok = False
+            vision_decline_reason = "vision_error"
+        elif not str(results[0]).strip():
+            vision_ok = False
+            vision_decline_reason = "vision_empty"
+        else:
+            vision_ok = True
+            vision_decline_reason = None
 
         if isinstance(results[0], Exception):
             logger.error("Vision call failed: %s", results[0])
         if isinstance(results[1], Exception):
-            logger.warning("glm-ocr call failed: %s", results[1])
+            logger.warning("model-OCR lane failed: %s", results[1])
+        if isinstance(results[2], Exception):
+            logger.warning("tesseract floor task failed: %s", results[2])
 
-        tesseract_text = self._ocr_extract(photo_b64)
+        floor_items = _printsense_line_items(ocr_tokens_)
+        ocr_items = list(floor_items)
+        for item in model_items if isinstance(model_items, list) else []:
+            if item not in ocr_items:
+                ocr_items.append(item)
 
-        classify_result = self._classify_photo(str(vision_result), ocr_items, message)
+        if floor_items and len(ocr_items) > len(floor_items):
+            ocr_source = "tesseract+model"
+        elif floor_items:
+            ocr_source = "tesseract"
+        elif ocr_items:
+            ocr_source = "model"
+        else:
+            ocr_source = "none"
+
+        tesseract_text = "\n".join(floor_items) if floor_items else ""
+
+        # When vision is unusable, feed the classifier an empty vision string
+        # (never the caption fallback) so its vision-prose branches can't fire
+        # on caption text, and flag vision_ok=False so the weak fallback tail
+        # declines to UNKNOWN instead of a fabricated EQUIPMENT_PHOTO.
+        classify_vision_text = str(vision_result) if vision_ok else ""
+        classify_result = self._classify_photo(
+            classify_vision_text, ocr_items, message, vision_ok=vision_ok
+        )
         classification = classify_result["type"]
         classify_confidence = classify_result["confidence"]
+        # Prefer the specific reason (vision_error vs vision_empty) over the
+        # classifier's generic "vision_unavailable".
+        decline_reason = classify_result.get("decline_reason")
+        if classification == "UNKNOWN" and vision_decline_reason:
+            decline_reason = vision_decline_reason
         logger.info(
-            "Photo classified as %s (confidence=%.2f, %d OCR items)",
+            "Photo classified as %s (confidence=%.2f, %d OCR items, ocr_source=%s, vision_ok=%s%s)",
             classification,
             classify_confidence,
             len(ocr_items),
+            ocr_source,
+            vision_ok,
+            f", decline_reason={decline_reason}" if decline_reason else "",
         )
 
         drawing_type = None
@@ -294,8 +545,13 @@ class VisionWorker:
         return {
             "classification": classification,
             "classification_confidence": classify_confidence,
+            "vision_ok": vision_ok,
+            "decline_reason": decline_reason,
             "vision_result": vision_result,
-            "ocr_items": ocr_items if isinstance(ocr_items, list) else [],
+            "ocr_items": ocr_items,
+            "ocr_tokens": ocr_tokens_,
+            "ocr_source": ocr_source,
+            "ocr_available": _ocr_capability_available(),
             "tesseract_text": tesseract_text,
             "drawing_type": drawing_type,
             "drawing_type_confidence": drawing_confidence,
@@ -362,10 +618,14 @@ class VisionWorker:
         return data["choices"][0]["message"]["content"]
 
     async def _call_ocr(self, photo_b64: str) -> list:
-        """Call glm-ocr for pure text extraction. Returns list of text items."""
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        """Model-OCR enrichment lane (OFF by default — the deterministic floor
+        is Tesseract, see ``process``). When ``OCR_MODEL_LANE=on``, sends the
+        numbered-list OCR prompt through the inference router (same cascade
+        as ``_call_vision``); free-tier VL models misread dense schematics
+        (2026-07-17 UNSEEN benchmark), so this lane supplements the floor —
+        it must never replace it."""
+        if not _model_lane_on():
+            return []
 
         messages = [
             {
@@ -391,65 +651,32 @@ class VisionWorker:
                 ],
             }
         ]
+        content, _usage = await _inference_router.complete(messages)
+        if not content:
+            return []
+        return parse_ocr_reply(content)
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.openwebui_url}/api/chat/completions",
-                headers=headers,
-                json={
-                    "model": os.environ.get("GLM_OCR_MODEL", "glm-ocr:latest"),
-                    "messages": messages,
-                    "options": {"temperature": 0.0},
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
+    def _classify_photo(
+        self,
+        vision_result: str,
+        ocr_items: list,
+        caption: str = "",
+        vision_ok: bool = True,
+    ) -> dict:
+        """Classify photo as ELECTRICAL_PRINT, NAMEPLATE, EQUIPMENT_PHOTO, or UNKNOWN.
 
-        raw = data["choices"][0]["message"]["content"]
-        items = []
-        for line in raw.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            # Skip code fence markers and bare JSON/markdown syntax
-            if line.startswith("```") or line in ("{", "}", "[", "]"):
-                continue
-            # Skip markdown table separator rows (|:---|:---|)
-            if re.match(r"^[|:\-\s]+$", line):
-                continue
-            # Extract content from markdown table rows (| cell | cell |)
-            if line.startswith("|") and line.endswith("|"):
-                cells = [c.strip() for c in line.split("|") if c.strip()]
-                for cell in cells:
-                    cell = re.sub(r"[*`]", "", cell).strip()
-                    if cell and not cell.startswith("```"):
-                        items.append(cell)
-                continue
-            # Strip markdown bold/italic/code markers from regular lines (not underscore)
-            line = re.sub(r"[*`]", "", line)
-            # Strip leading numbers, dots, dashes, parens
-            cleaned = re.sub(r"^\d+[\.\)\-\s]+", "", line).strip()
-            if cleaned and not cleaned.startswith("```"):
-                items.append(cleaned)
-        return items
+        Returns {"type": str, "confidence": float} — plus "decline_reason" (str)
+        when type is UNKNOWN.
 
-    def _ocr_extract(self, photo_b64: str) -> str:
-        """Run Tesseract OCR on image to extract text deterministically."""
-        try:
-            import pytesseract
-
-            image_bytes = base64.b64decode(photo_b64)
-            img = Image.open(io.BytesIO(image_bytes))
-            text = pytesseract.image_to_string(img, config="--psm 6")
-            return text.strip()
-        except Exception as e:
-            logger.warning("OCR extraction failed: %s", e)
-            return ""
-
-    def _classify_photo(self, vision_result: str, ocr_items: list, caption: str = "") -> dict:
-        """Classify photo as ELECTRICAL_PRINT, NAMEPLATE, or EQUIPMENT_PHOTO with confidence.
-
-        Returns {"type": str, "confidence": float}.
+        ``vision_ok`` records whether the vision model produced a usable signal.
+        When it is False (the call failed or returned empty content — see
+        ``process``), the weak fallback tail must NOT manufacture a confident
+        ``EQUIPMENT_PHOTO`` out of OCR keyword scraps or the low-confidence
+        default (ROUND 4 defect #2). Strong, vision-independent LAYOUT/OCR
+        evidence (dense-table, IEC schematic-tag grammar, OCR-structural
+        nameplate fields) still classifies normally; anything weaker declines to
+        an explicit UNKNOWN so the caller can offer an evidence-based fallback
+        instead of a fabricated diagnosis.
 
         Equipment faceplates (overload relays, VFDs, PLCs) often have 10+ readable
         labels, so OCR count alone must NOT override the vision model's classification.
@@ -501,10 +728,23 @@ class VisionWorker:
         # VFD and motor nameplates are often printed labels that vision models describe
         # using the equipment name ("drive", "controller") rather than "nameplate".
         # (Substring match on purpose — "5HP"/"480VAC"/"60Hz" abut digits.)
+        #
+        # Density-gated at dense-table volume (see NAMEPLATE_FIELD_DENSITY_THRESHOLD
+        # docstring, c10 regression): a handful of unit-field hits scattered across
+        # 50+ OCR items is table content, not a plate, unless plate vocabulary
+        # proper is also present. Below the dense threshold this branch is
+        # unchanged from before.
         ocr_field_hits = sum(1 for f in NAMEPLATE_OCR_FIELDS if f in ocr_text_lower)
         if ocr_field_hits >= 3:
-            conf = min(1.0, 0.55 + ocr_field_hits * 0.04)
-            return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
+            is_dense = len(ocr_items) >= DENSE_TABLE_OCR_THRESHOLD
+            field_density = (ocr_field_hits / len(ocr_items)) if ocr_items else 0.0
+            if (
+                not is_dense
+                or nameplate_matches > 0
+                or field_density >= NAMEPLATE_FIELD_DENSITY_THRESHOLD
+            ):
+                conf = min(1.0, 0.55 + ocr_field_hits * 0.04)
+                return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
 
         # Vision structural detection: "table with specifications" or "specifications for"
         # catches VFD spec labels described by vision models using the equipment name
@@ -525,15 +765,49 @@ class VisionWorker:
             conf = min(1.0, 0.7 + print_matches * 0.05)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 
-        # Caption override: if the technician's caption/question explicitly calls
-        # this a print/schematic/diagram/wiring drawing, trust that over an
-        # incidental equipment-component word in the vision summary. A genuine
-        # nameplate (handled above) still wins; this only pre-empts the
-        # EQUIPMENT_FACE override below so a captioned drawing routes to the
-        # grounded schematic path instead of the generic engine.
-        caption_lower = (caption or "").lower()
-        if any(_kw_in(kw, caption_lower) for kw in CAPTION_PRINT_KEYWORDS):
-            return {"type": "ELECTRICAL_PRINT", "confidence": 0.6}
+        # OCR schematic-tag grammar (LAYOUT evidence — operator directive
+        # 2026-07-15: visual -> OCR/layout -> caption). A page whose OCR items
+        # are IEC designators (-M1, -B1, -X1, PT100 …) is a drawing even when
+        # the vision model describes only its CONTENTS ("a stator winding with
+        # an RTD…" — the 2026-07-12 MACK/InTraSys misroute). This replaces the
+        # old caption pre-empt: the rescue no longer needs a caption at all,
+        # and a caption alone can never produce it.
+        tag_hits, tag_prefixed = _ocr_schematic_tag_hits(ocr_items)
+        if tag_hits >= SCHEMATIC_TAG_THRESHOLD and tag_prefixed >= 1:
+            conf = min(1.0, 0.6 + tag_hits * 0.04)
+            return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
+
+        # Overwhelming OCR density (LAYOUT evidence, same tier as the schematic-
+        # tag grammar above — bench regression 2026-07-18, c11/c12: LED/
+        # diagnostic-table print pages at 156-184 OCR items). A page densely
+        # covered in 50+ distinct OCR items is a printed sheet/table, never a
+        # single device's faceplate — even when the vision description and the
+        # OCR text both carry EQUIPMENT_FACE_KEYWORDS vocabulary ("led", "plc",
+        # "indicator", "fault" are exactly what a LED-reference table's own
+        # content says). Deliberately checked BEFORE EQUIPMENT_FACE_KEYWORDS,
+        # unlike the weak OCR_CLASSIFICATION_THRESHOLD tiebreaker further below
+        # which stays a last resort for genuinely ambiguous, lower-density cases.
+        if len(ocr_items) >= DENSE_TABLE_OCR_THRESHOLD:
+            conf = min(1.0, 0.6 + len(ocr_items) * 0.001)
+            return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
+
+        # Classification-fallback floor (ROUND 4 defect #2). Every branch below
+        # this point is a WEAK fallback that leans on vision-prose keywords, a
+        # single scraped OCR keyword, a low OCR count, the caption, or the
+        # bare default. When the vision model gave us no usable signal
+        # (``vision_ok`` False — call failed or returned empty content) those
+        # branches would fabricate a confident-ish EQUIPMENT_PHOTO / print out
+        # of nothing, silently promoting a fallback to a model-qualified answer
+        # (the naive 0/12 on Tower OP). The strong, vision-independent LAYOUT
+        # and OCR-structural branches above have already had their chance, so
+        # decline explicitly and let the caller offer an evidence-based
+        # fallback (show what OCR read, ask for a clearer photo) instead.
+        if not vision_ok:
+            return {
+                "type": "UNKNOWN",
+                "confidence": 0.0,
+                "decline_reason": "vision_unavailable",
+            }
 
         # Equipment faceplate keywords (only when NO strong print signal above) —
         # a physical faceplate photo, never a drawing.
@@ -553,6 +827,17 @@ class VisionWorker:
         if len(ocr_items) >= OCR_CLASSIFICATION_THRESHOLD:
             conf = min(1.0, 0.3 + len(ocr_items) * 0.02)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
+
+        # Caption as a TIE-BREAKER only (operator directive 2026-07-15: visual
+        # evidence -> OCR/layout evidence -> caption). Reached only when nothing
+        # visual or OCR-based matched above — a technician calling an otherwise
+        # unidentifiable page "my print" may break the tie toward the schematic
+        # path, but a caption can never override visual/OCR evidence in either
+        # direction (a cabinet photo captioned "explain this print" stays
+        # EQUIPMENT_PHOTO via the vision keywords above).
+        caption_lower = (caption or "").lower()
+        if any(_kw_in(kw, caption_lower) for kw in CAPTION_PRINT_KEYWORDS):
+            return {"type": "ELECTRICAL_PRINT", "confidence": 0.6}
 
         # Default: equipment photo with low confidence
         return {"type": "EQUIPMENT_PHOTO", "confidence": 0.3}
