@@ -74,6 +74,7 @@ def insert_chunk(
     chunk_index: int = 0,
     chunk_type: str = "text",
     image_embedding: list[float] | None = None,
+    verified: bool = False,
 ) -> str:
     """Insert a single chunk into knowledge_entries. Returns entry ID or empty string."""
     from sqlalchemy import text
@@ -107,7 +108,7 @@ def insert_chunk(
                     VALUES
                         (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                          :content, cast(:embedding AS vector), :source_url, :source_page,
-                         cast(:metadata AS jsonb), false, false, :chunk_type,
+                         cast(:metadata AS jsonb), false, :verified, :chunk_type,
                          cast(:image_embedding AS vector))
                     ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
                     WHERE (metadata->>'chunk_index') IS NOT NULL
@@ -125,6 +126,7 @@ def insert_chunk(
                     "source_page": page_num,
                     "metadata": json.dumps(metadata),
                     "chunk_type": chunk_type,
+                    "verified": verified,
                     "image_embedding": img_emb_val,
                 },
             )
@@ -141,12 +143,16 @@ def store_chunks(
     manufacturer: str = "",
     model_number: str = "",
     image_embedding: list[float] | None = None,
+    verified: bool = False,
 ) -> int:
     """Store a batch of (chunk, embedding) pairs into NeonDB.
 
     Skips chunks that already exist (dedup by source_url + chunk_index).
     Returns number of chunks inserted.
     image_embedding: optional 768-dim visual vector stored alongside text embedding.
+    verified: when True the chunk is written as trusted (citable while
+    MIRA_ENFORCE_APPROVED_RETRIEVAL is on). Only OEM-trusted crawlers pass
+    True — see .claude/rules/oem-crawler-trusted.md.
 
     UNS+KG flywheel (spec §4.4): when manufacturer+model are known, this
     upserts an `equipment` and a `manual` entity, links the chunk row to
@@ -216,6 +222,7 @@ def store_chunks(
             chunk_index=chunk_index,
             chunk_type=chunk.get("chunk_type", "text"),
             image_embedding=image_embedding,
+            verified=verified,
         )
         if not entry_id:
             continue
