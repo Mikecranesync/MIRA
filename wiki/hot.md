@@ -1,3 +1,21 @@
+# Hot Cache — 2026-07-29 — Epic #1666 gap-closure driver: Phase 8 shipped (PR #2984)
+
+**Driver state:** Running autonomous gap-closure for epic #1666.
+- #1658 (Phase 6 — direct_connection UNS bypass): CLOSED — already merged via PR #1844 (2026-06-09).
+- #1659 (Phase 7 — citation enforcement + session lifecycle): CLOSED — already merged via PR #2045.
+- **#1660 (Phase 8 — DecisionTraceWriter + /decision-traces admin page): PR #2984 open, CI queued.**
+- #1661 (Phase 9 — Flaky-input detector): OPEN, next after #1660.
+
+**PR #2984 changes:**
+- `decision_trace.py`: add `confidence` to `_INSERT_SQL` + `build_trace_row()` — migration 055 column now populated.
+- `engine.py` (`_schedule_decision_trace`): thread `session_id` from `_ts_sessions` + `confidence` from `result` into `write_trace()`.
+- Hub: `GET /api/decision-trace` list endpoint (paginated cursor).
+- Hub: `/decision-traces` list page + `/decision-traces/[id]` detail page.
+- Script: `mira-bots/scripts/replay_decision_trace.py` — CLI trace replay.
+- VERSION: 3.225.1 → 3.226.0. Hub: 2.30.0 → 2.31.0.
+
+---
+
 # Hot Cache — 2026-07-28 — Content-fingerprinted migration ledger + prod migration-tracker cleanup
 
 **Migration head: 066** (`066_migration_ledger_content_sha.sql`, PR #2969). Applied to prod today
