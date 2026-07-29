@@ -1,0 +1,71 @@
+{
+ "schema": "factorylm.technician-unified.mixture-report.v1",
+ "records": 144,
+ "by_source_family": {
+  "general": 78,
+  "bridge": 2,
+  "drive_commander": 28,
+  "printsense": 36
+ },
+ "by_task_mode": {
+  "task_mode_general_troubleshooting": 80,
+  "task_mode_product": 64
+ },
+ "by_manufacturer": {
+  "factorylm": 116,
+  "rockwell automation": 14,
+  "automationdirect": 14
+ },
+ "by_template_family": {
+  "ambiguous-identity": 7,
+  "incomplete-symptoms": 10,
+  "next-best-measurement": 9,
+  "safety-boundary": 9,
+  "evidence-vs-inference": 8,
+  "escalation-handoff": 10,
+  "work-order-history": 7,
+  "correction-acceptance": 10,
+  "cross-trade-reasoning": 8,
+  "cross_domain_bridge": 2,
+  "stratum_voice": 9,
+  "stratum_format_table": 3,
+  "stratum_paraphrase": 23,
+  "stratum_safety_pushback": 4,
+  "s1_v11": 6,
+  "stratum_format_prose": 4,
+  "stratum_multiturn": 2,
+  "stratum_format_json": 1,
+  "stratum_format_ocr": 3,
+  "stratum_distractor_wrong": 3,
+  "stratum_distractor_mixed": 6
+ },
+ "by_interaction_type": {
+  "uncertainty": 22,
+  "diagnostic": 78,
+  "refusal": 22,
+  "correction": 22
+ },
+ "safety_sensitive": 58,
+ "unique_lineages": 87,
+ "general_plus_bridge_fraction": 0.5556,
+ "caps": {
+  "general_fraction_min": 0.5,
+  "product_family_cap": 0.25,
+  "manufacturer_cap": 0.1,
+  "template_family_cap": 0.2,
+  "house_manufacturers": [
+   "factorylm"
+  ]
+ },
+ "dropped": {
+  "family_cap:printsense": 833,
+  "manufacturer_cap:rockwell automation": 235,
+  "manufacturer_cap:automationdirect": 107,
+  "post_trim": 8
+ },
+ "general_offtrain_records": 30,
+ "gates": {
+  "general_fraction_ok": true,
+  "eval_families_excluded": true
+ }
+}
