@@ -18,21 +18,22 @@ compliant:
     status: compliant
     reason: Reference implementation with (is_private = false OR tenant_id = $1) on raw pool
 
-  # OEM rollup surfaces (universal, no tenant filter)
-  "mira-hub/src/app/api/knowledge/route.ts:42":
+  # OEM rollup surfaces (universal, no tenant filter; is_private = false added
+  # by the P0 leak-fix PR so private uploads never surface in the library)
+  "mira-hub/src/app/api/knowledge/route.ts:43":
     classification: PUBLIC-ONLY
     status: compliant
-    reason: Aggregate manufacturer rollup, intentionally universal (shows OEM corpus only)
+    reason: Aggregate manufacturer rollup, is_private = false (shared OEM corpus only)
 
-  "mira-hub/src/app/api/knowledge/route.ts:51":
+  "mira-hub/src/app/api/knowledge/route.ts:53":
     classification: PUBLIC-ONLY
     status: compliant
-    reason: OEM corpus global stat, no tenant filtering needed
+    reason: OEM corpus global stat, is_private = false
 
-  "mira-hub/src/app/api/knowledge/manufacturer/route.ts:51":
+  "mira-hub/src/app/api/knowledge/manufacturer/route.ts:55":
     classification: PUBLIC-ONLY
     status: compliant
-    reason: OEM manufacturer rollup, intentionally universal
+    reason: OEM manufacturer rollup, is_private = false on both mfrFilter branches
 
   "mira-hub/src/app/api/knowledge/growth/route.ts:28":
     classification: PUBLIC-ONLY
@@ -248,27 +249,9 @@ approved:
       FROM knowledge_entries
                 WHERE manufacturer IS NOT NULL AND manufacturer <> ''
                 GROUP BY manufacturer
-  "mira-hub/src/app/api/knowledge/route.ts:42":
-    approved_classification: UNFILTERED
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-               GROUP BY 1
-               ORDER BY manufacturer ASC`,
-  "mira-hub/src/app/api/knowledge/route.ts:51":
-    approved_classification: UNFILTERED
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries`,
-            ),
-          ]);
-  "mira-hub/src/app/api/knowledge/manufacturer/route.ts:51":
-    approved_classification: UNFILTERED
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-             WHERE ${mfrFilter}
-             GROUP BY source_url
+  # (knowledge/route.ts and knowledge/manufacturer/route.ts entries removed —
+  # the P0 leak-fix PR added `is_private = false`, so the checker now
+  # classifies those reads PUBLIC-ONLY / compliant with no entry needed.)
   "mira-hub/src/app/api/knowledge/growth/route.ts:28":
     approved_classification: UNFILTERED
     reason: "TODO: justify this read pattern"
@@ -808,19 +791,15 @@ approved:
       Takes parsed manual chunks from knowledge_entries and extracts structured
       preventive maintenance schedules using the Groq→Cerebras→Together cascade.
       
-  "mira-bots/shared/pm_extractor.py:86":
+  # (pm_extractor.py:86 query entry removed — the P0 leak-fix PR put the
+  # hybrid predicate literally in the SQL, so the checker now classifies the
+  # read HYBRID / compliant with no entry needed.)
+  "mira-bots/shared/pm_extractor.py:317":
     approved_classification: UNFILTERED
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                          WHERE LOWER(manufacturer) ILIKE :mfr
-                            AND LOWER(model_number) ILIKE :model
-  "mira-bots/shared/pm_extractor.py:295":
-    approved_classification: UNFILTERED
-    reason: "TODO: justify this read pattern"
+    reason: "Docstring prose mentioning knowledge_entries, not a query — extract_pm_schedules receives already-fetched chunks; the only real read (get_chunks_for_model) carries the hybrid is_private predicate."
     query_snippet: |
       """Extract PM schedules from knowledge_entries chunks using the LLM cascade.
-      
+
           Splits chunks into batches, extracts from each, deduplicates by task name.
   "mira-bots/shared/agents/kb_builder.py:52":
     approved_classification: TENANT-ONLY
@@ -920,14 +899,14 @@ approved:
       with _engine().connect() as conn:
               count = conn.execute(
                   text(
-  "mira-core/mira-ingest/db/neon.py:514":
+  "mira-core/mira-ingest/db/neon.py:525":
     approved_classification: TENANT-ONLY
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                       WHERE tenant_id = :tid
                         AND source_type = 'manual'
-  "mira-core/mira-ingest/db/neon.py:744":
+  "mira-core/mira-ingest/db/neon.py:755":
     approved_classification: TENANT-ONLY
     reason: "TODO: justify this read pattern"
     query_snippet: |

@@ -88,29 +88,30 @@ def get_chunks_for_model(
         "mfr": f"%{manufacturer.lower()}%",
         "model": f"%{model_number.lower()}%",
         "lim": limit,
+        # None → NULL, which disables the tenant branch below (OEM-only read).
+        "tenant_id": tenant_id,
     }
-    if tenant_id is None:
-        tenant_clause = "AND is_private = false"
-    else:
-        # tenant_id::text — legacy caller tenant ids can be non-UUID strings
-        # ('mike'); a ::uuid cast on those throws, so compare as text. LOWER()
-        # both sides: uuid::text renders lowercase-canonical, so a text compare
-        # would silently miss an uppercase caller UUID (uuid = uuid is
-        # case-insensitive natively; the text cast loses that).
-        tenant_clause = "AND (is_private = false OR LOWER(tenant_id::text) = LOWER(:tenant_id))"
-        params["tenant_id"] = tenant_id
 
     engine = _get_neon_engine()
     try:
         with engine.connect() as conn:
+            # Hybrid read law, literal in the SQL so the static checker
+            # (tools/qa/security/check_knowledge_entries_filters.py) classifies
+            # it HYBRID. tenant_id compared as text — legacy caller tenant ids
+            # can be non-UUID strings ('mike'); a ::uuid cast on those throws.
+            # LOWER() both sides: uuid::text renders lowercase-canonical, so a
+            # raw text compare would silently miss an uppercase caller UUID
+            # (uuid = uuid is case-insensitive natively; the cast loses that).
             rows = conn.execute(
                 text(
-                    f"""
+                    """
                     SELECT id, content, source_url, source_page, metadata, chunk_type
                     FROM knowledge_entries
                     WHERE LOWER(manufacturer) ILIKE :mfr
                       AND LOWER(model_number) ILIKE :model
-                      {tenant_clause}
+                      AND (is_private = false
+                           OR (:tenant_id IS NOT NULL
+                               AND LOWER(tenant_id::text) = LOWER(:tenant_id)))
                     ORDER BY source_page ASC NULLS LAST, created_at ASC
                     LIMIT :lim
                     """
