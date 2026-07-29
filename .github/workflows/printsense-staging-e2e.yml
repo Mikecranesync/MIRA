@@ -122,6 +122,11 @@ jobs:
 
       - name: Post result to PR #2665
         if: always() && steps.guard.outputs.run == 'true'
+        # Reporting only. Without continue-on-error, a failed comment post both
+        # flips the run red AND silently skips the merge step below (its
+        # `if: steps.e2e.outcome == 'success'` implicitly ANDs success()) — a
+        # passed E2E would then never merge, for a commenting failure.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

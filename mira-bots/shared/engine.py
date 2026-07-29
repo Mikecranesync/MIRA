@@ -202,6 +202,74 @@ _NEW_QUESTION_RE = re.compile(
 )
 
 
+def _prepend_equipment_context(message: str, state: dict) -> str:
+    """Prepend resolved equipment context to text-only follow-ups in active diagnostic sessions.
+
+    If in an active diagnostic state (Q1, Q2, Q3, DIAGNOSIS, FIX_STEP) with a resolved
+    manufacturer (confidence >= 0.7), prepend the persisted equipment context in a fixed
+    precedence order — manufacturer -> model -> active fault code / alarm -> the message —
+    including only fields that exist and never repeating a token already in the message.
+    The fault term is read from uns_context.fault_code, else session_context.active_alarm,
+    else state.fault_category. This carries equipment + fault context from prior turns into
+    RAG queries for multi-turn follow-ups that lack a photo.
+
+    Args:
+        message: The raw user message.
+        state: The session state dict, containing state["state"] and state["context"]["uns_context"].
+
+    Returns:
+        The message with equipment context prepended (if conditions met), or the message unchanged.
+
+    Examples:
+        >>> state = {"state": "Q1", "context": {"uns_context": {"manufacturer": "Rockwell", "model": "PowerFlex 525", "confidence": 0.9}}}
+        >>> _prepend_equipment_context("Haven't meggered it yet", state)
+        'Rockwell PowerFlex 525 Haven't meggered it yet'
+
+        >>> state = {"state": "IDLE", "context": {"uns_context": {"manufacturer": "Rockwell", "model": "PowerFlex 525", "confidence": 0.9}}}
+        >>> _prepend_equipment_context("Follow-up", state)
+        'Follow-up'  # IDLE session, no prepend
+    """
+    # Only prepend if in an active diagnostic state
+    if state.get("state") not in ACTIVE_DIAGNOSTIC_STATES:
+        return message
+
+    # Extract uns_context
+    uns_ctx = (state.get("context") or {}).get("uns_context") or {}
+    if not uns_ctx:
+        return message
+
+    # Require manufacturer and sufficient confidence (0.7+)
+    manufacturer = uns_ctx.get("manufacturer")
+    if not manufacturer:
+        return message
+
+    confidence = uns_ctx.get("confidence", 0.0)
+    if confidence < 0.7:
+        return message
+
+    # Build the enriched query in a fixed precedence order (#2209):
+    #   manufacturer -> model -> active fault code / alarm -> the user's message.
+    # Only include fields that exist, and never repeat a token already present in
+    # the message (so "the F004 is back" is not turned into "... F004 ... F004").
+    fault = (
+        uns_ctx.get("fault_code")
+        or ((state.get("context") or {}).get("session_context") or {}).get("active_alarm")
+        or state.get("fault_category")
+    )
+    lowered_msg = message.lower()
+    parts: list[str] = []
+    for token in (manufacturer, uns_ctx.get("model"), fault):
+        if not token:
+            continue
+        token = str(token)
+        if token.lower() in lowered_msg or token in parts:
+            continue  # already present — don't duplicate context
+        parts.append(token)
+    parts.append(message)
+
+    return " ".join(parts)
+
+
 def _is_fresh_question_during_wo(message: str) -> bool:
     """True if message is a brand-new question, not a response to the WO preview.
 
@@ -344,6 +412,19 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
         # repetition gate and replace the useful print answer with a rephrase.
         "ELECTRICAL_PRINT",
     }
+)
+
+# Router intents that break a chat OUT of a stale ELECTRICAL_PRINT session.
+# The print follow-up handler answers questions ABOUT a previously-uploaded
+# schematic; but once the router says the user has moved on to diagnosing
+# specific equipment (``diagnose_equipment``) or is starting over
+# (``greeting_or_chitchat``), the print state must be released so the turn
+# routes normally. Genuine print follow-ups classify as ``answer_question`` /
+# ``continue_current`` and stay. See the ELECTRICAL_PRINT dispatch guard in
+# ``process()`` and incident 2026-07-26 (a stale print state trapped every
+# subsequent text turn in the slow Together/MiniMax vision path → bot timeout).
+_PRINT_STATE_EXIT_INTENTS: frozenset[str] = frozenset(
+    {"diagnose_equipment", "greeting_or_chitchat"}
 )
 
 # Stage 1 (PLAN.md §2 / §4) feature flag — when enabled the dialogue
@@ -2517,15 +2598,35 @@ class Supervisor:
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
 
+            # Electrical-print follow-up — but only while the user is still
+            # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over
+            # from a prior schematic photo) must NOT trap a NEW diagnostic topic:
+            # if the router says the user has moved on to diagnosing specific
+            # equipment (diagnose_equipment) or is starting over (greeting), exit
+            # the print state and fall through to normal routing. Without this,
+            # every post-photo text message hits the print worker — which times
+            # out on the Together/MiniMax vision model in prod (~77s > 30s bot
+            # timeout → silent bot) and crashes on the 'disabled://' print
+            # endpoint in staging. See incident 2026-07-26.
             if state.get("state") == "ELECTRICAL_PRINT":
-                result = await self._handle_electrical_print_followup(
-                    chat_id,
-                    message,
-                    state,
-                    trace_id,
-                )
-                tl_flush()
-                return result
+                if _router_intent in _PRINT_STATE_EXIT_INTENTS:
+                    logger.info(
+                        "PRINT_STATE_EXIT chat_id=%s new_intent=%s — leaving "
+                        "ELECTRICAL_PRINT for normal routing",
+                        chat_id,
+                        _router_intent,
+                    )
+                    state["state"] = "IDLE"
+                    self._save_state(chat_id, state)
+                else:
+                    result = await self._handle_electrical_print_followup(
+                        chat_id,
+                        message,
+                        state,
+                        trace_id,
+                    )
+                    tl_flush()
+                    return result
 
             # Drive-pack fast-path (2026-07-06) — deterministic, pack-grounded
             # answer for a text question that explicitly names a drive MIRA has
@@ -4337,6 +4438,12 @@ class Supervisor:
         """
         max_attempts = 1 if photo_b64 else (2 if self.nemotron.enabled else 1)
         query = message
+        # Prepend equipment context to text-only follow-ups in active diagnostic sessions.
+        # Photo turns are enriched by the RAG worker (rag_worker.py:551), so skip them here
+        # to avoid double-prepending. Text turns lack that enrichment and need it for RAG
+        # to find equipment-specific chunks (#2209).
+        if not photo_b64:
+            query = _prepend_equipment_context(message, state)
         # Fetch KG + live-equipment context once (both best-effort, "" when
         # disabled/absent) and reuse across self-correction retries. They are
         # pre-formatted, self-labeled blocks; concatenate and inject as one.
@@ -4388,7 +4495,7 @@ class Supervisor:
             if attempt == 0 and max_attempts > 1:
                 logger.info("SELF_CORRECT attempt=1 — rewriting query")
                 query = await self.nemotron.rewrite_query(
-                    query=message,
+                    query=query,
                     context=state.get("asset_identified", ""),
                 )
 

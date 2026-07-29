@@ -72,6 +72,7 @@ jobs:
       # set SMOKE_CHECKOUT_CHECK to "1" on both steps below.
       # See wayfinder #2577 / Drive Commander money-slice (backlog DC-H/I/J).
       - name: Run smoke tests
+        id: smoke
         working-directory: mira-hub
         env:
           WEB_URL: https://factorylm.com
@@ -80,6 +81,7 @@ jobs:
         run: npx playwright test --config playwright.smoke.config.ts
 
       - name: Run signup money-path tests (pricing → trial CTA → checkout → magic link)
+        id: signup
         working-directory: mira-hub
         env:
           WEB_URL: https://factorylm.com
@@ -97,10 +99,19 @@ jobs:
 
       - name: Annotate PR with failure summary
         if: failure() && github.event_name == 'pull_request'
+        # The wording is conditioned on which step failed: "broken on production"
+        # is only asserted when a TEST step failed. A setup failure (bun install
+        # on lockfile drift — the exact class the comment above the install step
+        # documents — or a Playwright browser flake) never assessed production
+        # and must not claim it is broken.
         run: |
           echo "## ❌ Smoke test failed" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "The money path or a critical page is broken on production." >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.smoke.outcome }}" = "failure" ] || [ "${{ steps.signup.outcome }}" = "failure" ]; then
+            echo "The money path or a critical page is broken on production." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "CI setup failed (dependency install or browser provisioning) — production was NOT assessed. Fix the setup failure; do not treat this as a production outage." >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "Download the \`smoke-failures-${{ github.run_id }}\` artifact for screenshots." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Check | What was verified |" >> "$GITHUB_STEP_SUMMARY"

@@ -20,6 +20,7 @@ import sys
 import threading
 from pathlib import Path
 
+import job_registry
 from apscheduler.schedulers.background import BackgroundScheduler
 from crawler.csv_crawler import CSVCrawler
 from crawler.curriculum import CurriculumCrawler
@@ -30,6 +31,7 @@ from ingest.converter import extract_from_docling, extract_from_pdf
 from ingest.dedup import DedupStore
 from ingest.embedder import embed_batch
 from ingest.store import store_chunks
+from metrics import heartbeat
 from metrics.latency import IngestLatencyRecorder
 from watcher.folder_watcher import FolderWatcher
 
@@ -136,26 +138,28 @@ def _ingest_file(path: Path, config: CrawlerConfig) -> None:
             logger.warning("Failed to write ingest latency metric: %s", metric_error)
 
 
-def _run_curriculum_crawl(config: CrawlerConfig, tiers: list[str] | None = None) -> None:
-    """Run curriculum crawl job."""
+def _run_curriculum_crawl(config: CrawlerConfig, tiers: list[str] | None = None) -> dict:
+    """Run curriculum crawl job. Returns the crawl stats dict."""
     logger.info("Starting curriculum crawl (tiers=%s)", tiers or "all")
     crawler = CurriculumCrawler(config, tiers=tiers)
     try:
         stats = crawler.crawl()
         logger.info("Curriculum crawl complete: %s", stats)
+        return stats
     finally:
         crawler.close()
 
 
 def _run_manufacturer_crawl(
     config: CrawlerConfig, manufacturers: list[str] | None = None
-) -> None:
-    """Run manufacturer crawl job."""
+) -> dict:
+    """Run manufacturer crawl job. Returns the crawl stats dict."""
     logger.info("Starting manufacturer crawl (filter=%s)", manufacturers or "all")
     crawler = ManufacturerCrawler(config, manufacturers=manufacturers)
     try:
         stats = crawler.crawl()
         logger.info("Manufacturer crawl complete: %s", stats)
+        return stats
     finally:
         crawler.close()
 
@@ -176,62 +180,55 @@ def healthcheck() -> bool:
         return False
 
 
-def _setup_scheduler(config: CrawlerConfig) -> BackgroundScheduler:
-    """Configure APScheduler with crawl cron triggers."""
-    scheduler = BackgroundScheduler()
+def _run_registered_job(config: CrawlerConfig, spec: job_registry.JobSpec) -> None:
+    """Run one registered job and record a heartbeat for it.
 
-    # Nightly manufacturer crawls (staggered by hour)
-    manufacturers = [
-        ("abb", "01:00"),
-        ("fanuc", "02:00"),
-        ("kuka", "03:00"),
-        ("siemens", "04:00"),
-        ("rockwell", "05:00"),
-        ("automationdirect", "05:30"),
-    ]
-    for mfr, time_str in manufacturers:
-        hour, minute = time_str.split(":")
-        scheduler.add_job(
-            _run_manufacturer_crawl,
-            "cron",
-            hour=int(hour),
-            minute=int(minute),
-            args=[config, [mfr]],
-            id=f"crawl_{mfr}",
-            name=f"Crawl {mfr}",
+    This is the fix for the "registration != success" trap: every scheduled run
+    now leaves a per-job heartbeat (``ok`` / ``no_new`` / ``failed``) that
+    ``health.py`` reads. A raise is recorded as ``failed`` and re-raised so
+    APScheduler still logs the exception.
+    """
+    try:
+        if spec.target == "manufacturer_crawl":
+            stats = _run_manufacturer_crawl(config, list(spec.args))
+        elif spec.target == "curriculum_crawl":
+            stats = _run_curriculum_crawl(config)
+        elif spec.target == "report":
+            _run_report(config)
+            stats = None
+        elif spec.target == "healthcheck":
+            stats = None if healthcheck() else {"total_urls": 1, "fetched": 0, "stored_chunks": 0, "errors": 1}
+        else:  # pragma: no cover - registry drift guard
+            raise ValueError(f"unknown job target: {spec.target}")
+        status = heartbeat.classify_crawl_stats(stats)
+        heartbeat.record_job(spec.id, status, detail=stats if isinstance(stats, dict) else None)
+    except Exception as exc:
+        heartbeat.record_job(
+            spec.id,
+            heartbeat.STATUS_FAILED,
+            detail={"error": f"{type(exc).__name__}: {exc}"},
         )
+        raise
 
-    # Weekly curriculum crawl (Sunday 06:00)
-    scheduler.add_job(
-        _run_curriculum_crawl,
-        "cron",
-        day_of_week="sun",
-        hour=6,
-        args=[config],
-        id="crawl_curriculum",
-        name="Crawl all curriculum sources",
-    )
 
-    # Weekly report (Monday 07:00)
-    scheduler.add_job(
-        _run_report,
-        "cron",
-        day_of_week="mon",
-        hour=7,
-        args=[config],
-        id="generate_report",
-        name="Generate weekly crawl report",
-    )
+def _setup_scheduler(config: CrawlerConfig) -> BackgroundScheduler:
+    """Configure APScheduler from the single-source-of-truth job registry.
 
-    # Healthcheck every 30 minutes
-    scheduler.add_job(
-        healthcheck,
-        "interval",
-        minutes=30,
-        id="healthcheck",
-        name="Health check",
-    )
-
+    Every job is wrapped in ``_run_registered_job`` so it emits a heartbeat.
+    Ids / triggers / cadence come from ``job_registry.JOBS`` — the same table
+    ``health.py`` judges, so the schedule that fires and the schedule that is
+    judged healthy cannot drift.
+    """
+    scheduler = BackgroundScheduler()
+    for spec in job_registry.JOBS:
+        scheduler.add_job(
+            _run_registered_job,
+            spec.trigger_type,
+            args=[config, spec],
+            id=spec.id,
+            name=spec.name,
+            **spec.trigger_kwargs,
+        )
     return scheduler
 
 

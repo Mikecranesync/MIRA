@@ -175,6 +175,10 @@ jobs:
 
       - name: Upload SARIF
         if: always()
+        # Informational (populates the code-scanning tab). Enforcement already
+        # happened in the previous step; a transient upload-sarif failure must
+        # not fail sast-semgrep, which the required ci-gate demands succeed.
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
@@ -256,6 +260,18 @@ jobs:
         # Hermetic, no DB/LLM. Root tests/ is NOT collected wholesale here, so
         # this file is named explicitly (like bot_regression.py above).
         run: pytest tests/test_harvest_golden_cases.py -v
+
+      - name: Manufacturer alias consistency + normalizer (#1596/#2263)
+        # Locks the cross-service drift guard: the manufacturer alias map is
+        # vendored in 3 places (crawler .py, mira-core .py, hub JSON) and must
+        # stay byte-equal AND agree with the resolver's VENDOR_ALIASES on every
+        # shared key. Hermetic (AST/JSON reads by path, stdlib-only). The
+        # crawler behavioral suite (mira-core's runs in the ingest step above)
+        # imports only stdlib, so no extra deps. Root tests/ is not collected
+        # wholesale here — named explicitly.
+        run: |
+          pytest tests/test_manufacturer_alias_consistency.py -v
+          (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)
 
       - name: Relational distiller (flywheel Phase 4b)
         # Pure core of tools/relational_distill.py — matched drive-pack fault
@@ -351,6 +367,22 @@ jobs:
         # network/DB/LLM, <1s. Guards the whole framework, not just the new connectors.
         working-directory: mira-connectors
         run: pytest tests/ -v
+
+      - name: Ontology validation (ADR-0032)
+        # Deterministic + offline: rdflib (BSD-3) + pyshacl (Apache-2.0), no network, no
+        # paid calls, no DB. Two layers, both cheap:
+        #   1. the validator itself — Turtle syntax, the grounding rule, term_status
+        #      vocabulary, inverse completeness/symmetry, and every fixture pair;
+        #   2. tests/test_ontology_attribution.py — locks down the blank-node
+        #      sh:sourceShape attribution fix, including the sh:or list-cell path that no
+        #      fixture exercises yet.
+        # Exits 0 today: absent fixture directories SKIP by design, so this stays green
+        # through the remaining fixture phases (ADR-0032 §8) and only reddens on a real
+        # regression.
+        run: |
+          pip install -r ontology/requirements.txt
+          python tools/validate_ontology.py
+          pytest tests/test_ontology_attribution.py -v
 
   mira-hub-unit:
     name: Hub Unit Tests
@@ -530,7 +562,12 @@ jobs:
         run: pip install pytest pytest-asyncio pdfplumber==0.11.9 reportlab pypdf
 
       - name: Run extractor + grading + registry + fleet-status + bridge + pdf-extract + eval-scorer offline tests
-        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py -q
+        # The crawler job-registry / heartbeat / health tests are stdlib-only by
+        # design (no docling/apscheduler) so they run in this minimal-deps job —
+        # they pin the scheduler's job table and the heartbeat-based health CLI
+        # (docs/ops/crawler-runtime.md). The scheduler↔registry tie test lives in
+        # tests/test_scheduler_registry.py and self-skips where heavy deps are absent.
+        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py mira-crawler/tests/test_job_registry.py mira-crawler/tests/test_heartbeat.py mira-crawler/tests/test_health.py -q
 
       - name: Pack reliability gate (deterministic scorecard)
         # Fails the build if ANY live/promoted drive pack regresses a reliability

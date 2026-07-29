@@ -1,0 +1,8 @@
+{
+ "mode": "LIVE (authorization techv1-holdout-eval-20260728-30cb consumed) + v2 deployment dep_CdV9sNJmtzkzp9F9Nahqt on endpoint ep_CdV9sKAknwhrkiNzweUQG (stopped_verified=True)",
+ "records": 25,
+ "calls": 50,
+ "prompt_set_hash": "sha256:fe5eb9abe1cd20f973a561168a1c15022bbefa82d19d659101eaf784b991c37e",
+ "blinded_outputs_hash": "sha256:446719c5a5a63ba92c842b83d81846228a4c0974061263db1453b1c7ec0cf152",
+ "sealed_mapping_hash": "sha256:8c7df223a196f0a88ca0d5c16395a8baec15abbae2baba0c36b7a1b428dda109"
+}

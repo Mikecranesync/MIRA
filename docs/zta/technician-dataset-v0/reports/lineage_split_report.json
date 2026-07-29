@@ -1,6 +1,6 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
-  "candidate_training_lineage_count": 25,
+  "candidate_training_lineage_count": 24,
   "held_out_lineage_count": 5,
   "held_out_lineages": [
     "factorylm:cv-101-e-004",
@@ -14,7 +14,7 @@
     "automationdirect:gs10-um": {
       "candidate_count": 20,
       "rights_decisions": [
-        "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED"
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
       "source_ids": [
         "drive-durapulse_gs10"
@@ -26,7 +26,7 @@
       "target_record_count": 20
     },
     "factorylm:cv-101-e-001": {
-      "candidate_count": 8,
+      "candidate_count": 5,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -37,7 +37,7 @@
         "printsense"
       ],
       "split": "train",
-      "target_record_count": 8
+      "target_record_count": 5
     },
     "factorylm:cv-101-e-002": {
       "candidate_count": 0,
@@ -54,7 +54,7 @@
       "target_record_count": 0
     },
     "factorylm:cv-101-e-003": {
-      "candidate_count": 0,
+      "candidate_count": 61,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -65,7 +65,7 @@
         "printsense"
       ],
       "split": "test",
-      "target_record_count": 0
+      "target_record_count": 61
     },
     "factorylm:cv-101-e-004": {
       "candidate_count": 0,
@@ -85,7 +85,7 @@
       "target_record_count": 0
     },
     "factorylm:cv-101-e-005": {
-      "candidate_count": 14,
+      "candidate_count": 36,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -96,10 +96,10 @@
         "printsense"
       ],
       "split": "train",
-      "target_record_count": 14
+      "target_record_count": 36
     },
     "factorylm:cv-101-e-006": {
-      "candidate_count": 14,
+      "candidate_count": 24,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -110,10 +110,10 @@
         "printsense"
       ],
       "split": "train",
-      "target_record_count": 14
+      "target_record_count": 24
     },
     "factorylm:cv-101-e-007": {
-      "candidate_count": 12,
+      "candidate_count": 5,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -124,10 +124,10 @@
         "printsense"
       ],
       "split": "train",
-      "target_record_count": 12
+      "target_record_count": 5
     },
     "factorylm:cv-101-e-008": {
-      "candidate_count": 12,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -138,10 +138,10 @@
         "printsense"
       ],
       "split": "train",
-      "target_record_count": 12
+      "target_record_count": 1
     },
     "factorylm:cv-101-e-009": {
-      "candidate_count": 10,
+      "candidate_count": 0,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -152,10 +152,10 @@
         "printsense"
       ],
       "split": "train",
-      "target_record_count": 10
+      "target_record_count": 0
     },
     "factorylm:factorylm-print-style-002": {
-      "candidate_count": 3,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -169,7 +169,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-004": {
-      "candidate_count": 3,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -183,7 +183,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-005": {
-      "candidate_count": 3,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -197,7 +197,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-006": {
-      "candidate_count": 3,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -211,7 +211,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-009": {
-      "candidate_count": 3,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -225,7 +225,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-010": {
-      "candidate_count": 3,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -239,7 +239,7 @@
       "target_record_count": 3
     },
     "factorylm:factorylm-print-style-011": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -253,7 +253,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-012": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -267,7 +267,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-013": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -281,7 +281,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-015": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -295,7 +295,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-018": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -309,7 +309,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-019": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -323,7 +323,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-020": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -337,7 +337,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-021": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -351,7 +351,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-022": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -365,7 +365,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-023": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -379,7 +379,7 @@
       "target_record_count": 2
     },
     "factorylm:factorylm-print-style-024": {
-      "candidate_count": 2,
+      "candidate_count": 1,
       "rights_decisions": [
         "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
@@ -454,7 +454,7 @@
     "rockwell-automation:520-um001o-en-e": {
       "candidate_count": 25,
       "rights_decisions": [
-        "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED"
+        "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
       ],
       "source_ids": [
         "drive-powerflex_525"
@@ -480,7 +480,6 @@
     "factorylm:cv-101-e-006",
     "factorylm:cv-101-e-007",
     "factorylm:cv-101-e-008",
-    "factorylm:cv-101-e-009",
     "factorylm:factorylm-print-style-002",
     "factorylm:factorylm-print-style-004",
     "factorylm:factorylm-print-style-005",

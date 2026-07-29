@@ -90,6 +90,31 @@ def test_19_ocr_variant_yields_candidate_correction():
     assert all(c.get("reason") and c.get("confidence") for c in cands)
 
 
+def test_19b_all_five_homoglyph_pairs_are_offered_in_the_numeric_tail():
+    """The lexer's OCR families must cover the same pairs the rest of PrintSense does.
+
+    S/5 was missing. Adding it to `_OCR_TAIL` alone is inert — both character
+    classes in `_ocr_candidates` gate on the tail before the substitution loop is
+    reached, so a token containing `S` never got there. Asserting the behaviour is
+    what keeps the three-place edit honest.
+    """
+    from printsense import designation_metrics as dm
+    from printsense.designations import lexer
+
+    for letter, digit in dm.HOMOGLYPH_PAIRS:
+        token = f"K{letter}"
+        texts = [c["text"] for c in lexer._ocr_candidates(token)]
+        assert f"K{digit}" in texts, f"no {letter}->{digit} candidate offered for {token}"
+
+
+def test_19c_widening_the_class_does_not_start_rewriting_raw():
+    """Candidates stay candidates — the lossless round-trip must still hold."""
+    from printsense.designations import lexer
+
+    for token in ("K0S", "X9S1", "PS"):
+        assert "".join(t["raw"] for t in lexer.lex(token)["tokens"]) == token
+
+
 # --- D17 30: safety findings survive bounded rendering ------------------------
 
 def test_30_safety_items_survive_bounded_explain():

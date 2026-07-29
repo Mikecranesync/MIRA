@@ -29,6 +29,11 @@ from factorylm_ai.dataset import (
     evaluate_paid_gate,
 )
 from factorylm_ai.dataset.assemble import APPROVAL_MISSING
+from factorylm_ai.dataset.paid_gate import (
+    TARGET_MODEL_ID,
+    TARGET_PROVIDER,
+    ModelSupportEvidence,
+)
 from factorylm_ai.dataset.record import MESSAGE_INVALID, SAFETY_SENSITIVE_TAG
 from factorylm_ai.governance import lineage as ln
 from factorylm_ai.governance.rights import (
@@ -62,13 +67,25 @@ STAGE_ORDER: dict[BuildStage, int] = {
     "readiness": 4,
 }
 
+# One record per DISTINCT owned fact — never more.
+#
+# `_cv101_candidates` feeds these counts to `_repeat_to_count`, which cycles the
+# sheet's fact list when the target exceeds the facts available. The previous
+# targets over-drew badly: E-008 held 1 fact but targeted 12 (12x duplication),
+# E-007 5 facts targeted 12, and E-009 had NO facts at all so its 10 records fell
+# back to duplicating E-001. Meanwhile sheet E-003's 61 genuine owned facts were
+# never drawn. Duplicated rows inflate the record count the paid gate measures
+# while teaching the adapter the same fact repeatedly, so every target here is
+# capped at the sheet's real fact count (see `_cv101_facts`).
+#
+# E-004 stays absent: `cv-101-e-004` is a reserved `_HELD_OUT_DOCS` lineage.
 _CV101_SHEET_TARGETS: dict[str, int] = {
-    "E-001": 8,
-    "E-005": 14,
-    "E-006": 14,
-    "E-007": 12,
-    "E-008": 12,
-    "E-009": 10,
+    "E-001": 5,
+    "E-003": 61,
+    "E-005": 36,
+    "E-006": 24,
+    "E-007": 5,
+    "E-008": 1,
 }
 
 _STYLE_DOCS = (
@@ -98,6 +115,16 @@ _HELD_OUT_DOCS = (
     ("FactoryLM", "public-domain-print-031"),
     ("FactoryLM", "technician-review-011"),
 )
+
+# OEM training rights granted 2026-07-25 (see _DRIVE_TRAINING_RIGHTS_POLICY_REF).
+#
+# `powerflex_40` is deliberately ABSENT and must stay absent: its lineage
+# `rockwell-automation:22b-um001j-en-e` is one of exactly five `_HELD_OUT_DOCS`
+# above, and `paid_gate.MIN_HELD_OUT_LINEAGES == 5`. Granting it training rights
+# would shrink the evaluation reserve to four and fail `min_held_out_lineages`.
+# The exclusion is a gate invariant, not a rights preference.
+_DRIVE_TRAINING_GRANTED: frozenset[str] = frozenset({"durapulse_gs10", "powerflex_525"})
+_DRIVE_TRAINING_RIGHTS_POLICY_REF = "docs/zta/2026-07-25-drive-commander-oem-training-rights.md"
 
 _DRIVE_TARGETS = {
     "durapulse_gs10": 20,
@@ -375,13 +402,123 @@ def append_review_decision(
         return "appended"
 
 
+def import_review_decisions(
+    ledger_path: str | Path,
+    candidates: Iterable[ReviewCandidate],
+    decisions_path: str | Path,
+) -> dict[str, Any]:
+    """Append a whole JSONL batch of reviewer decisions to the ledger.
+
+    ``--append-decision`` takes one decision file per invocation and revalidates
+    the entire set each time, which does not scale to a 100+ record review
+    sitting. This validates the incoming batch through the same
+    ``_validate_decision_set`` path (so nothing is admitted that the one-at-a-time
+    route would refuse) and appends fail-closed: if ANY row in the batch is
+    invalid, the whole batch raises and the ledger is left untouched.
+    """
+
+    candidates_list = list(candidates)
+    incoming = _read_decision_rows(Path(decisions_path))
+
+    # Validate the batch against the existing ledger as one set before writing a
+    # single line, so a bad row cannot leave a half-applied ledger behind.
+    existing = load_review_decisions(ledger_path)
+    _validate_decision_set(candidates_list, existing + incoming)
+
+    appended = 0
+    duplicate = 0
+    for decision in incoming:
+        if append_review_decision(ledger_path, candidates_list, decision) == "appended":
+            appended += 1
+        else:
+            duplicate += 1
+
+    return {
+        "status": "imported",
+        "received": len(incoming),
+        "appended": appended,
+        "duplicate": duplicate,
+        "ledger_total": len(load_review_decisions(ledger_path)),
+    }
+
+
+def _read_decision_rows(path: Path) -> list[ReviewDecision]:
+    if not path.is_file():
+        raise ReviewDecisionError("DECISION_IMPORT_MISSING", f"no decision file at {path}")
+    decisions: list[ReviewDecision] = []
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ReviewDecisionError(
+                "DECISION_IMPORT_JSON_INVALID", f"{path}:{line_number}: {exc}"
+            ) from exc
+        if not isinstance(row, dict):
+            raise ReviewDecisionError(
+                "DECISION_IMPORT_ROW_INVALID", f"{path}:{line_number}: row is not an object"
+            )
+        decisions.append(ReviewDecision.from_dict(row))
+    if not decisions:
+        raise ReviewDecisionError("DECISION_IMPORT_EMPTY", f"{path}: no decisions found")
+    return decisions
+
+
+def load_model_support_receipt(path: str | Path) -> ModelSupportEvidence:
+    """Build provider model-support evidence from a checked-in receipt document.
+
+    The receipt records a check that a human or agent actually performed against
+    the provider's published catalogue; this reads it, it does NOT perform the
+    check and makes no network call. The gate stays fail-closed — an absent
+    receipt yields no evidence and ``model_support_confirmed`` fails.
+    """
+
+    receipt = Path(path)
+    if not receipt.is_file():
+        raise ValueError(f"model-support receipt not found: {receipt}")
+    text = receipt.read_text(encoding="utf-8")
+    checked_at = _receipt_field(text, "checked_at")
+    method = _receipt_field(text, "method")
+    model_id = _receipt_field(text, "model_id")
+    provider = _receipt_field(text, "provider")
+    supported = _receipt_field(text, "supported").strip().lower()
+    if model_id != TARGET_MODEL_ID:
+        raise ValueError(f"receipt model_id {model_id!r} != target {TARGET_MODEL_ID!r}")
+    if provider != TARGET_PROVIDER:
+        raise ValueError(f"receipt provider {provider!r} != target {TARGET_PROVIDER!r}")
+    return ModelSupportEvidence(
+        model_id=model_id,
+        provider=provider,
+        checked_at=checked_at,
+        method=method,
+        supported=supported == "true",
+        receipt_ref=receipt.as_posix(),
+    )
+
+
+def _receipt_field(text: str, field: str) -> str:
+    marker = f"- {field}:"
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(marker):
+            return stripped[len(marker) :].strip().strip("`")
+    raise ValueError(f"model-support receipt is missing required field: {field}")
+
+
 def apply_review_decisions(
     candidates: Iterable[ReviewCandidate],
     decisions: Iterable[ReviewDecision],
     *,
     readiness: ReadinessEvidence | None = None,
+    model_support: ModelSupportEvidence | None = None,
 ) -> ReviewedDatasetBuild:
-    """Apply review decisions through SourceCandidate, DatasetRecord, assembly, and paid gate."""
+    """Apply review decisions through SourceCandidate, DatasetRecord, assembly, and paid gate.
+
+    ``model_support`` stays ``None`` by default so the gate remains fail-closed:
+    a build that supplies no provider evidence cannot pass ``model_support_confirmed``.
+    """
 
     candidates_list = list(candidates)
     decisions_list = _validate_decision_set(candidates_list, list(decisions))
@@ -431,7 +568,7 @@ def apply_review_decisions(
         reviewed_records.append(reviewed_record)
 
     dataset = assemble_dataset_v0(reviewed_records, dataset_version=DATASET_VERSION)
-    paid_gate = evaluate_paid_gate(dataset, readiness=readiness, model_support=None)
+    paid_gate = evaluate_paid_gate(dataset, readiness=readiness, model_support=model_support)
     manifest = candidate_manifest_for(candidates_list)
     report = _review_decision_report(
         candidate_count=len(candidates_list),
@@ -458,6 +595,7 @@ def write_build(
     *,
     stage: BuildStage = "readiness",
     decisions_path: str | Path | None = None,
+    model_support: ModelSupportEvidence | None = None,
 ) -> dict:
     """Write reproducible registry, candidate, review, and readiness artifacts."""
 
@@ -474,7 +612,9 @@ def write_build(
     decisions = load_review_decisions(decisions_path) if decisions_path else []
     records = [c.record for c in candidates]
     readiness = _readiness_evidence(out)
-    reviewed = apply_review_decisions(candidates, decisions, readiness=readiness)
+    reviewed = apply_review_decisions(
+        candidates, decisions, readiness=readiness, model_support=model_support
+    )
     dataset = reviewed.dataset
     paid_gate = reviewed.paid_gate
 
@@ -661,6 +801,7 @@ def _drive_sources() -> list[dict[str, Any]]:
     rows = []
     for source_id, (manufacturer, document_number, family) in specs.items():
         source_ref = f"tools/drive-pack-extract/gold/{source_id}/gold.json"
+        training_granted = source_id in _DRIVE_TRAINING_GRANTED
         rows.append(
             _source_entry(
                 source_id=f"drive-{source_id}",
@@ -670,19 +811,35 @@ def _drive_sources() -> list[dict[str, Any]]:
                 source_reference=source_ref,
                 manufacturer=manufacturer,
                 document_number=document_number,
-                rights_decision="BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED",
+                rights_decision=(
+                    "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL"
+                    if training_granted
+                    else "BLOCK_TRAINING_UNTIL_OEM_RIGHTS_APPROVED"
+                ),
                 rights={
-                    "license_class": LICENSE_PUBLIC_EVAL_ONLY,
-                    "training_allowed": False,
+                    "license_class": (
+                        LICENSE_PUBLIC_EVAL_AND_TRAIN
+                        if training_granted
+                        else LICENSE_PUBLIC_EVAL_ONLY
+                    ),
+                    "training_allowed": training_granted,
                     "evaluation_allowed": True,
-                    "policy_ref": "docs/zta/2026-07-23-technician-dataset-inventory-gap-report.md#drive-commander",
+                    "policy_ref": (
+                        _DRIVE_TRAINING_RIGHTS_POLICY_REF
+                        if training_granted
+                        else "docs/zta/2026-07-23-technician-dataset-inventory-gap-report.md#drive-commander"
+                    ),
                 },
                 source_class="human_corrected_pack",
                 origin="human_corrected",
                 target_record_count=_DRIVE_TARGETS[source_id],
                 answer_key_ref=source_ref,
                 notes=(
-                    "Structured deterministic pack facts may be used for review/eval. "
+                    "Structured deterministic pack facts. Training granted by the "
+                    "2026-07-25 OEM rights governance record; each record still "
+                    "requires gold promotion and human approval."
+                    if training_granted
+                    else "Structured deterministic pack facts may be used for review/eval. "
                     "Training remains blocked until the governance record explicitly allows it."
                 ),
                 lineage_key=ln.public_lineage_key(manufacturer, document_number),
@@ -929,42 +1086,53 @@ def _drive_candidates() -> list[ReviewCandidate]:
 
 
 def _printsense_style_candidates() -> list[ReviewCandidate]:
+    """One record per distinct owned fact — the cv101 de-duplication principle.
+
+    The old loop ran ``_repeat_to_count(facts, target)`` PER SOURCE, restarting
+    at ``facts[0]`` every time, so the first sources all drew the same leading
+    facts: 40 records carried only 8 distinct pairs (80% padding), and the
+    review-case marker hid it. Facts are now dealt round-robin across sources
+    without repetition: 17 facts -> 17 records, zero duplicates, and every
+    style source keeps exactly one record so no lineage vanishes.
+    """
     sources = _printsense_style_sources()
     facts = _style_facts()
     candidates: list[ReviewCandidate] = []
     sequence = 0
-    for source in sources:
-        for fact in _repeat_to_count(facts, int(source["target_record_count"])):
-            sequence += 1
-            interaction = _interaction_type(sequence, safety=bool(fact["safety_sensitive"]))
-            record = _printsense_record_from_source(
-                source,
-                record_id=f"techv0-ps-style-{sequence:03d}",
-                messages=_style_messages(fact, sequence, interaction),
-                tags=("printsense", "factorylm-authored", fact["kind"]),
-                interaction_type=interaction,
-                safety_sensitive=bool(fact["safety_sensitive"]),
+    assignments: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for index, fact in enumerate(facts):
+        assignments.append((sources[index % len(sources)], fact))
+    for source, fact in assignments:
+        sequence += 1
+        interaction = _interaction_type(sequence, safety=bool(fact["safety_sensitive"]))
+        record = _printsense_record_from_source(
+            source,
+            record_id=f"techv0-ps-style-{sequence:03d}",
+            messages=_style_messages(fact, sequence, interaction),
+            tags=("printsense", "factorylm-authored", fact["kind"]),
+            interaction_type=interaction,
+            safety_sensitive=bool(fact["safety_sensitive"]),
+        )
+        candidates.append(
+            ReviewCandidate(
+                record=record,
+                source_entry=source,
+                answer_key=_answer_key(
+                    key_type="factorylm_authored_guidance",
+                    key_ref=f"{source['answer_key_ref']}#{fact['id']}",
+                    evidence_hash=_stable_hash(fact),
+                    producer_type="deterministic",
+                    payload=fact,
+                ),
+                origin="synthetic",
+                source_class="independently_grounded_synthetic",
+                review_batch="printsense",
+                notes=(
+                    "Original FactoryLM-authored guidance transformed into review-only "
+                    "technician dialogue; not approved for training yet.",
+                ),
             )
-            candidates.append(
-                ReviewCandidate(
-                    record=record,
-                    source_entry=source,
-                    answer_key=_answer_key(
-                        key_type="factorylm_authored_guidance",
-                        key_ref=f"{source['answer_key_ref']}#{fact['id']}",
-                        evidence_hash=_stable_hash(fact),
-                        producer_type="deterministic",
-                        payload=fact,
-                    ),
-                    origin="synthetic",
-                    source_class="independently_grounded_synthetic",
-                    review_batch="printsense",
-                    notes=(
-                        "Original FactoryLM-authored guidance transformed into review-only "
-                        "technician dialogue; not approved for training yet.",
-                    ),
-                )
-            )
+        )
     return candidates
 
 
@@ -1287,7 +1455,7 @@ def _cv101_messages(
             f"From the CV-101 evidence package, {claim}. Source status is {status}. "
             "Use the sheet and evidence reference together; do not infer missing landings."
         )
-    return _messages(user, answer, sequence)
+    return _messages(user, answer)
 
 
 def _drive_messages(
@@ -1321,7 +1489,7 @@ def _drive_messages(
             f"{fact['claim']}. Evidence page/ref: {fact.get('page')}. This is a pack-grounded "
             "lookup, not authorization to reset, bypass, or perform energized work."
         )
-    return _messages(user, answer, sequence)
+    return _messages(user, answer)
 
 
 def _style_messages(
@@ -1350,13 +1518,19 @@ def _style_messages(
     else:
         user = f"What is the PrintSense guidance for {fact['subject']}?"
         answer = f"The FactoryLM-authored guidance is: {fact['claim']}"
-    return _messages(user, answer, sequence)
+    return _messages(user, answer)
 
 
-def _messages(user: str, assistant: str, sequence: int) -> list[dict[str, str]]:
+def _messages(user: str, assistant: str) -> list[dict[str, str]]:
+    # No review-harness markers in the training input. The old
+    # "[review case NNN]" suffix gave every user message a unique tail, which
+    # (a) leaked a harness artifact into what the model would learn to expect
+    # and (b) defeated duplicate detection — 156 "distinct" train pairs
+    # collapsed to 118 once the marker was stripped. Sequence identity lives in
+    # record_id, where it belongs.
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"{user} [review case {sequence:03d}]"},
+        {"role": "user", "content": user},
         {"role": "assistant", "content": assistant},
     ]
 
@@ -2261,12 +2435,39 @@ def main(argv: list[str] | None = None) -> int:
         help="Validate and append one review decision JSON object to --decisions-path.",
     )
     parser.add_argument(
+        "--import-decisions",
+        default=None,
+        help=(
+            "Validate and append a JSONL batch of review decisions to "
+            "--decisions-path. Fail-closed: one bad row rejects the whole batch."
+        ),
+    )
+    parser.add_argument(
+        "--model-support-receipt",
+        default=None,
+        help=(
+            "Provider model-support receipt document supplying evidence for the "
+            "model_support_confirmed gate check. Omitted means no evidence, and "
+            "the gate stays blocked."
+        ),
+    )
+    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="Build candidates in memory and validate without writing artifacts.",
     )
     args = parser.parse_args(argv)
     stage = args.stage
+    if args.import_decisions:
+        if not args.decisions_path:
+            parser.error("--import-decisions requires --decisions-path")
+        result = import_review_decisions(
+            args.decisions_path,
+            build_review_candidates(stage),
+            args.import_decisions,
+        )
+        print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+        return 0
     if args.append_decision:
         if not args.decisions_path:
             parser.error("--append-decision requires --decisions-path")
@@ -2287,7 +2488,17 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"validated stage={stage}")
         return 0
-    result = write_build(args.out_dir, stage=stage, decisions_path=args.decisions_path)
+    model_support = (
+        load_model_support_receipt(args.model_support_receipt)
+        if args.model_support_receipt
+        else None
+    )
+    result = write_build(
+        args.out_dir,
+        stage=stage,
+        decisions_path=args.decisions_path,
+        model_support=model_support,
+    )
     print(json.dumps(result, ensure_ascii=True, sort_keys=True))
     return 0
 

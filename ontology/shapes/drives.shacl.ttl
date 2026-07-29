@@ -1,0 +1,104 @@
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix mirash: <https://ontology.factorylm.com/mira/shapes#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://ontology.factorylm.com/mira/shapes/drives>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/shapes/drives/0.1.0> ;
+    rdfs:comment "Drive Commander shapes: fault-code scope, cross-family misapplication, safety prerequisites." .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 4 — Fault-code scope
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:FaultCodeScopeShape
+    a sh:NodeShape ;
+    sh:targetClass mira:FaultCode ;
+    rdfs:label "R4 fault code is scoped and cited" ;
+    rdfs:comment """Mnemonics collide across manufacturers. On-disk, packs are family-keyed by their
+directory, so scope is implicit and safe; the moment a code is lifted into the graph that scope is
+gone unless it is carried explicitly. This shape makes an unscoped fault code unrepresentable.""" ;
+    sh:property [
+        sh:path mira:scoped_to ; sh:minCount 1 ;
+        sh:message "R4 fault scope: fault code {$this} declares no scoped_to family or model. 'F007' is not a global identifier — the same mnemonic means different faults on different drives, so an unscoped code will eventually be answered for the wrong machine." ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:supported_by ; sh:minCount 1 ;
+        sh:message "R4 fault scope: fault code {$this} retains no source evidence. Every code must trace to the manual page or bench observation it came from." ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:fault_mnemonic ; sh:minCount 1 ; sh:datatype xsd:string ;
+        sh:message "R4 fault scope: fault code {$this} has no mnemonic." ;
+        sh:severity sh:Violation ;
+    ] .
+
+mirash:FaultCodeScopeTargetShape
+    a sh:NodeShape ;
+    sh:targetObjectsOf mira:scoped_to ;
+    rdfs:label "R4b scope points at a family or model" ;
+    sh:or ( [ sh:class mira:DriveFamily ] [ sh:class mira:DriveModel ] ) ;
+    sh:message "R4b fault scope: the object of scoped_to must be a DriveFamily or a DriveModel — a fault code cannot be scoped to a physical instance or to nothing in particular." ;
+    sh:severity sh:Violation .
+
+mirash:FaultAppliedToWrongFamilyShape
+    a sh:NodeShape ;
+    sh:targetClass mira:AssetInstance ;
+    rdfs:label "R4c fault code applied to the wrong family" ;
+    rdfs:comment "The failure this whole module exists for: a GS10 fault answered from a PowerFlex pack, or vice versa." ;
+    sh:sparql [
+        sh:message "R4c wrong family: asset {$this} is attributed a fault code scoped to a different drive family than the one it belongs to. The mnemonic may match by accident; the meaning does not transfer." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:member_of_family ?actualFamily ;
+                      mira:has_fault ?code .
+                ?code mira:scoped_to ?codeFamily .
+                FILTER(?codeFamily != ?actualFamily)
+                FILTER NOT EXISTS { ?codeFamily mira:has_instance $this }
+                FILTER NOT EXISTS { $this mira:member_of_family ?codeFamily }
+            }
+        """ ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## Pack integrity
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:DriveFamilyIdentityShape
+    a sh:NodeShape ;
+    sh:targetClass mira:DriveFamily ;
+    sh:property [
+        sh:path mira:manufactured_by ; sh:minCount 1 ; sh:class mira:Manufacturer ;
+        sh:message "Drive family {$this} names no manufacturer. drive_packs Family requires manufacturer AND series — 'GS10' alone is ambiguous across vendors." ;
+        sh:severity sh:Violation ;
+    ] .
+
+mirash:RemedySafetyShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Remedy ;
+    rdfs:label "Remedy safety prerequisites are explicit" ;
+    rdfs:comment """Advisory, not a hard violation: many remedies (read a parameter, check a display)
+carry no energised-equipment hazard, so requiring a SafetyPrerequisite on every one would be noise.
+Severity is Warning so this surfaces for review without failing a build — the honest placement for a
+rule whose false-positive rate is high. Escalation of real hazards stays with SAFETY_KEYWORDS in
+guardrails.py, which is a deterministic code path, not a graph shape.""" ;
+    sh:property [
+        sh:path mira:requires_safety ; sh:minCount 1 ; sh:class mira:SafetyPrerequisite ;
+        sh:message "Remedy {$this} declares no safety prerequisite. If this step touches energised equipment it needs one (LOTO / arc-flash PPE / stored-energy discharge)." ;
+        sh:severity sh:Warning ;
+    ] .
+
+mirash:ParameterCardCitationShape
+    a sh:NodeShape ;
+    sh:targetClass mira:ParameterCard ;
+    sh:property [
+        sh:path mira:supported_by ; sh:minCount 1 ; sh:class mira:Citation ;
+        sh:message "Parameter card {$this} is uncited. Pack v2 parameter decodes are manual_cited by construction — an uncited setting value is a guess about someone's live drive configuration." ;
+        sh:severity sh:Violation ;
+    ] .

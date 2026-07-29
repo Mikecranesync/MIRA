@@ -14,6 +14,7 @@ Official Together docs checked:
 - Fine-tuned model deployment and teardown: https://docs.together.ai/docs/fine-tuning/deployment
 - Dedicated endpoint create/delete: https://docs.together.ai/reference/createendpoint and https://docs.together.ai/reference/deleteendpoint
 - LoRA settings: https://docs.together.ai/docs/fine-tuning/lora-vs-full
+- Governed Together cloud exception: `docs/zta/together-governed-cloud-exception.md`
 
 Verified request shape used by `factorylm_ai.providers.together`:
 
@@ -22,6 +23,7 @@ Verified request shape used by `factorylm_ai.providers.together`:
 - Optional PR-4 fields: `validation_file`, `n_epochs`, `n_evals`, `n_checkpoints`, `suffix`, `packing`, `learning_rate`, `random_seed`
 - SFT/DPO method object: `training_method={"method": "sft"|"dpo", "train_on_inputs": ...}`
 - LoRA/full object: `training_type={"type": "Lora"|"Full", "lora_r": ..., "lora_alpha": ..., "lora_dropout": ..., "lora_trainable_modules": ...}`
+- Canonical request evidence: schema `together-finetune-request-v1`, deterministic sorted JSON, request hash `sha256:<hex>`, rebuilt immediately before paid job creation.
 
 Verified monitoring/checkpoint endpoints:
 
@@ -33,10 +35,13 @@ Verified monitoring/checkpoint endpoints:
 Verified endpoint lifecycle:
 
 - Dedicated endpoints are billable while running.
-- A temporary benchmark path must be budget-prechecked, explicitly authorized, and delete the endpoint in `finally`.
-- PR 4 exposes only the budgeted temporary benchmark wrapper publicly; low-level endpoint create/get/delete helpers are private.
+- A temporary benchmark path must be budget-prechecked, carry trusted single-use paid-event authorization evidence, require `inactive_timeout`, consume authorization before creation, persist the endpoint id immediately, delete the endpoint in `finally`, and verify deletion before reporting `deleted=True`.
+- If endpoint creation succeeds but lease persistence fails, the endpoint id must be retained in the raised cleanup error and best-effort deletion must run immediately.
+- DELETE `204` means deleted. DELETE `404` is treated as idempotent success because the endpoint is already absent.
+- PR 4 exposes only the budgeted temporary benchmark wrapper and idempotent orphan cleanup publicly; low-level endpoint create/get/delete helpers are private.
 
 Remaining live gate:
 
-- Before a real paid event, Mike must provide a `paid_event_authorization_ref`.
-- The dry-run package must include the dataset gate report, token/cost preflight, model-support evidence, and this wire-verification note.
+- Before a real paid event, Mike must provide a trusted stored `PaidEventAuthorization` receipt bound to provider, action, dataset manifest hash, model, request hash, spend cap, currency, issuer, authority reference, expiration, and unused single-use status.
+- A real paid event must atomically consume that authorization in the trusted ledger before the paid Together HTTP request.
+- The dry-run package must include the dataset gate PASS report, manifest hash, canonical request hash/schema, model-support receipt, authorization receipt and verification state, local token/cost preflight, Together `/fine-tunes/estimate-price` receipt, endpoint lifecycle plan, and this wire-verification note.

@@ -1,0 +1,88 @@
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix mirash: <https://ontology.factorylm.com/mira/shapes#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://ontology.factorylm.com/mira/shapes/core>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/shapes/core/0.1.0> ;
+    rdfs:comment "Core shapes: containment sanity, asset class/instance separation." .
+
+##  Shared SPARQL prefix declaration (referenced by every sh:sparql below)  ##
+mirash:prefixes
+    a owl:Ontology ;
+    sh:declare [ sh:prefix "mira"  ; sh:namespace "https://ontology.factorylm.com/mira#"^^xsd:anyURI ] ;
+    sh:declare [ sh:prefix "rdf"   ; sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ] ;
+    sh:declare [ sh:prefix "rdfs"  ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 11 — Containment sanity
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:SelfParentShape
+    a sh:NodeShape ;
+    sh:targetClass mira:UnsNode ;
+    rdfs:label "R11a self-parenting" ;
+    sh:sparql [
+        sh:message "R11a containment: {$this} is its own parent. Direct self-parenting is never valid — the DB's no_self_loop CHECK covers kg_relationships, but nothing covers a graph assembled in memory before insert." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                { $this mira:has_parent $this } UNION { $this mira:has_child $this }
+            }
+        """ ;
+    ] .
+
+mirash:ContainmentCycleShape
+    a sh:NodeShape ;
+    sh:targetClass mira:UnsNode ;
+    rdfs:label "R11b containment cycle" ;
+    rdfs:comment """Bounded cycle detection via a SPARQL 1.1 transitive property path. This IS reliable
+and maintainable in SHACL-SPARQL (rdflib evaluates `mira:has_parent+` natively), so per the task's
+'otherwise document where cycle detection belongs' clause we implement it here rather than deferring.
+Cost is O(nodes x edges) on the validated subgraph — acceptable at the proposal-batch sizes in the
+latency budget (ADR-0032 §9), NOT at whole-plant scale. The budget check enforces that boundary.""" ;
+    sh:sparql [
+        sh:message "R11b containment: {$this} reaches itself through a chain of has_parent edges — the UNS hierarchy is a tree, not a cycle." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:has_parent+ $this .
+            }
+        """ ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE (core) — Asset CLASS vs asset INSTANCE must not be conflated
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:AssetClassInstanceShape
+    a sh:NodeShape ;
+    sh:targetClass mira:AssetClass ;
+    rdfs:label "Asset class / instance separation" ;
+    sh:not [ sh:class mira:AssetInstance ] ;
+    sh:message "Class/instance conflation: {$this} is typed as BOTH an AssetClass (a reusable model) and an AssetInstance (a physical thing at a UNS path). A model has no location, no live signals and no work orders; a diagnosis target is always an instance." ;
+    sh:severity sh:Violation .
+
+mirash:AssetClassHasNoUnsPathShape
+    a sh:NodeShape ;
+    sh:targetClass mira:AssetClass ;
+    rdfs:label "Asset class carries no plant location" ;
+    sh:property [
+        sh:path mira:uns_path ;
+        sh:maxCount 0 ;
+        sh:message "Class/instance conflation: AssetClass {$this} carries a uns_path. A reusable model is not installed anywhere — only an AssetInstance has a plant location. (Knowledge-base paths for models come from uns.py::model_path(), which is a different address space.)" ;
+        sh:severity sh:Violation ;
+    ] .
+
+mirash:InstanceOfDirectionShape
+    a sh:NodeShape ;
+    sh:targetObjectsOf mira:instance_of ;
+    rdfs:label "instance_of points at a class" ;
+    sh:class mira:AssetClass ;
+    sh:message "Direction error: the object of instance_of must be an AssetClass. An instance is never `instance_of` another instance." ;
+    sh:severity sh:Violation .

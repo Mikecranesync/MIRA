@@ -1,0 +1,26 @@
+# R14a satisfied — the superseded assertion is retained (history is not deleted) but is no longer
+# exposed as current. The replacement carries the present-tense claim.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech1  a mira:Technician .
+ex:llm    a mira:SoftwareAgent .
+ex:doc1   a mira:SourceDocument .
+ex:cite1  a mira:Citation ; mira:cite_doc ex:doc1 ; mira:cite_locator "p.114" .
+
+ex:a_old a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:approval_state mira:approval_deprecated ;
+    mira:exposed_as_current false .
+
+ex:a_new a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr4 ;
+    mira:supersedes ex:a_old ;
+    mira:approval_state mira:approval_verified ;
+    mira:supported_by ex:cite1 ;
+    mira:proposed_by ex:llm ;
+    mira:approved_by ex:tech1 ;
+    mira:approved_at "2026-07-21T09:15:00Z"^^xsd:dateTime ;
+    mira:exposed_as_current true .

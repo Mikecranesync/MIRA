@@ -1,11 +1,16 @@
 """Hermetic tests for Phase 2 (tiling) + Phase 3 (verify) — no API, no network.
 
 Mocks the single Anthropic entry point ``tiling._call_json`` with canned
-locate/reread payloads so the crop/merge/promote/demote LOGIC is exercised
+locate/reread payloads so the crop/merge/promote LOGIC is exercised
 deterministically. Guards the rules that matter: only grammar-valid, confident,
 non-duplicate crop readings merge (Phase 2); agreement promotes to
-machine_verified and disagreement demotes to unresolved (Phase 3); the machine
+machine_verified ONLY from an independent evidence class (Phase 3); the machine
 never writes human_verified.
+
+Phase-3 trust policy amended 2026-07-25 — a second pass of the SAME evidence
+class (same model, prompt, preprocessing, image) proves reproducibility, not
+correctness, so it no longer promotes. See ``printsense/verify.py`` and
+``test_verify_trust_independence.py`` for the full regression cover.
 """
 
 import io
@@ -117,15 +122,33 @@ def _blind(graph_dict):
     return _bp
 
 
-def test_phase3_agreement_promotes_to_machine_verified():
+def test_phase3_same_class_agreement_does_not_promote():
+    """AMENDED: a second same-model pass agreeing is reproducibility, not proof.
+
+    Was ``test_phase3_agreement_promotes_to_machine_verified``, which asserted the
+    behaviour that laundered a reproducible misread into ``machine_verified``.
+    """
     graph = PrintSynthGraph.model_validate(
         {"cables": [{"tag": "-W5497", "confidence": 0.9, "trust": "proposed"}]}
     )
-    # independent blind pass ALSO reads -W5497 -> agreement
+    # the second pass (same model, same image) ALSO reads -W5497
     blind = _blind({"cables": [{"tag": "-W5497"}]})
     out = verify.verify(_img_bytes(), graph, blind_pass=blind)
     e = out["graph"].cables[0]
-    assert e.trust == TrustState.machine_verified
+    assert e.trust == TrustState.proposed
+    assert out["decisions"][0]["decision"] == "agree_same_evidence_class"
+    assert out["reproducibility"]["reproduced"] == 1
+    assert out["reproducibility"]["promoted"] == 0
+
+
+def test_phase3_independent_evidence_still_promotes():
+    """A materially independent reader still promotes — the contract is intact."""
+    graph = PrintSynthGraph.model_validate(
+        {"cables": [{"tag": "-W5497", "confidence": 0.9, "trust": "proposed"}]}
+    )
+    blind = _blind({"cables": [{"tag": "-W5497"}]})
+    out = verify.verify(_img_bytes(), graph, blind_pass=blind, evidence_class="deterministic_ocr")
+    assert out["graph"].cables[0].trust == TrustState.machine_verified
     assert out["decisions"][0]["decision"] == "agree"
 
 
@@ -140,16 +163,17 @@ def test_phase3_no_second_witness_keeps_proposed_not_demoted():
     assert e.trust == TrustState.proposed  # not verified...
     assert e.tag == "-W5497"  # ...and not falsely demoted
     assert out["decisions"][0]["decision"] == "no_second_witness"
+    assert out["decisions"][0]["agreed"] is False
 
 
 def test_phase3_verifies_head_of_composite_tag():
-    """A composite tag -21/A13:24VDC is verified when the blind pass asserts the
-    atomic head -21/A13."""
+    """A composite tag -21/A13:24VDC is verified when an INDEPENDENT pass asserts
+    the atomic head -21/A13 (head-matching is unchanged; only the trust rule moved)."""
     graph = PrintSynthGraph.model_validate(
         {"terminals": [{"tag": "-21/A13:24VDC", "trust": "proposed"}]}
     )
     blind = _blind({"devices": [{"tag": "-21/A13"}]})
-    out = verify.verify(_img_bytes(), graph, blind_pass=blind)
+    out = verify.verify(_img_bytes(), graph, blind_pass=blind, evidence_class="human_annotation")
     assert out["graph"].terminals[0].trust == TrustState.machine_verified
 
 
