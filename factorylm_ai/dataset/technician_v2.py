@@ -520,6 +520,52 @@ def audit(candidates: list[ReviewCandidate]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
+# validation carve (2026-07-28 requirement): the v2 lineage hashing landed no
+# validation split, so training-time monitoring uses a deterministic
+# LINEAGE-based ~10% carve of the APPROVED train records. Carved lineages are
+# excluded from the training file entirely (no same-lineage leakage into the
+# monitoring signal); validation loss is monitoring-only (n_checkpoints=1 —
+# nothing automatic selects on it).
+# --------------------------------------------------------------------------
+VALIDATION_TARGET_FRAC = 0.10
+
+
+def carve_validation(rows: list[dict[str, Any]]) -> tuple[list[dict], list[dict]]:
+    """Split reviewed/eligible rows into (train, validation) by lineage.
+
+    Deterministic: lineages ordered by sha256(lineage) and taken until the
+    validation side holds ~VALIDATION_TARGET_FRAC of records. Guards: every
+    row must be split=train; outputs share no lineage.
+    """
+    import hashlib as _hashlib
+
+    for r in rows:
+        if r.get("split") != "train":
+            raise SystemExit(f"carve_validation: non-train row {r.get('record_id')}")
+    by_lineage: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_lineage[r["document_lineage_key"]].append(r)
+    ordered = sorted(by_lineage, key=lambda k: _hashlib.sha256(k.encode("utf-8")).hexdigest())
+    target = int(len(rows) * VALIDATION_TARGET_FRAC)
+    val_lineages: set[str] = set()
+    n = 0
+    for lk in ordered:
+        if n >= target:
+            break
+        # never let one giant lineage swallow the corpus into validation
+        if n + len(by_lineage[lk]) > max(target * 2, target + 40):
+            continue
+        val_lineages.add(lk)
+        n += len(by_lineage[lk])
+    train = [r for r in rows if r["document_lineage_key"] not in val_lineages]
+    val = [r for r in rows if r["document_lineage_key"] in val_lineages]
+    assert not ({r["document_lineage_key"] for r in train} & val_lineages)
+    if not val:
+        raise SystemExit("carve_validation: produced an empty validation set")
+    return train, val
+
+
+# --------------------------------------------------------------------------
 # build under the context-managed v0 override
 # --------------------------------------------------------------------------
 @contextlib.contextmanager

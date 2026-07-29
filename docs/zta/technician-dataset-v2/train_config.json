@@ -1,0 +1,34 @@
+{
+  "schema": "factorylm.technician-v2.train-config.v1",
+  "amended": "2026-07-28 per Mike's pre-flight requirements + HF best-practices audit",
+  "base_model": "Qwen/Qwen3.5-9B",
+  "provider": "together",
+  "suffix": "technician-v2",
+  "hyperparameters": {
+    "learning_rate": 1e-4,
+    "learning_rate_note": "raised from the v0/v1-proven 2e-5 per TRL adapter guidance (audit finding 3); all other proven settings retained",
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "n_epochs": 3,
+    "packing": true,
+    "seed": 42,
+    "train_on_inputs": false,
+    "batch_size": 8,
+    "n_checkpoints": 1
+  },
+  "validation": {
+    "validation_file": "carved lineage-based ~10% of approved train records (technician_v2.carve_validation); no lineage shared with the training file",
+    "n_evals": 3,
+    "note": "validation loss recorded at least once per epoch; monitoring-only (n_checkpoints=1, nothing selects on it)"
+  },
+  "stop_gates": [
+    "phase3 paid gate all 15 checks PASS on Mike's real decisions",
+    "provider verification PROVEN: packing preserves completion-only loss mask (docs/zta/2026-07-28-provider-verification-packing-template.md)",
+    "provider verification PROVEN: train/inference tokenizer + chat template identical",
+    "validation_file + n_evals supported by Together for LoRA SFT, else STOP",
+    "expanded holdout leakage guard PASS (holdout_eval.expanded_leakage_guard)",
+    "signed single-use spend authorization (two-key ceremony); $0 estimate-price probe of the EXACT request before signing"
+  ],
+  "do_not": "launch without every stop gate green; consume the $4 authorization on an unproven configuration"
+}
