@@ -48,6 +48,25 @@ const TENANT_B = "hub-uploads-itest-b";
 // is unset in the test env, so this is what an omitted tenantId resolves to.
 const DEFAULT_TENANT = "mike";
 
+const ISO_8601_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * Pins the `Upload` interface's declared `string` contract for a
+ * timestamptz-backed field. Deliberately stricter than
+ * `new Date(v).getTime()` not being NaN — pg returns `Date` objects for
+ * timestamptz columns by default, and `new Date(aDateObject).getTime()`
+ * passes identically whether rowToUpload converts it or not. Checking the
+ * runtime type plus the exact ISO-8601-with-milliseconds shape plus a
+ * round-trip through `toISOString()` is what actually fails against a raw
+ * `Date` leaking through an `as string` cast.
+ */
+function expectIsoString(value: unknown) {
+  expect(typeof value).toBe("string");
+  const v = value as string;
+  expect(v).toMatch(ISO_8601_MS);
+  expect(new Date(v).toISOString()).toBe(v);
+}
+
 let createdIds: string[] = [];
 
 function track(upload: Upload): Upload {
@@ -127,10 +146,27 @@ describe("createUpload", () => {
     expect(upload.unsPath).toBeNull();
     expect(upload.kgEntityId).toBeNull();
     expect(upload.ingestRoute).toBeNull();
-    // createdAt/updatedAt are typed `string` but pg returns a Date for
-    // timestamptz — see the report's "bug found" note. Assert loosely.
-    expect(new Date(upload.createdAt).getTime()).not.toBeNaN();
-    expect(new Date(upload.updatedAt).getTime()).not.toBeNaN();
+    // externalCreatedAt wasn't supplied — nullable field must stay null, not
+    // become "Invalid Date" or throw.
+    expect(upload.externalCreatedAt).toBeNull();
+    // createdAt/updatedAt are typed `string` — pin the actual contract
+    // (runtime type + ISO-8601 shape + toISOString() round-trip), not just
+    // "date-parseable", which a raw pg `Date` object also satisfies.
+    expectIsoString(upload.createdAt);
+    expectIsoString(upload.updatedAt);
+  });
+
+  it("returns externalCreatedAt as an ISO string when supplied", async () => {
+    const upload = track(
+      await createUpload({
+        tenantId: TENANT_A,
+        provider: "google",
+        filename: "with-external-date.pdf",
+        externalCreatedAt: new Date("2026-01-15T12:34:56.000Z"),
+      }),
+    );
+    expectIsoString(upload.externalCreatedAt);
+    expect(upload.externalCreatedAt).toBe("2026-01-15T12:34:56.000Z");
   });
 
   it("falls back to DEFAULT_TENANT_ID when tenantId is omitted", async () => {

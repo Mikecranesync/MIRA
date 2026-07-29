@@ -83,6 +83,21 @@ export interface CreateUploadInput {
   ingestRoute?: string | null;
 }
 
+/**
+ * pg returns `Date` objects for `timestamptz` columns by default (no
+ * setTypeParser override in this codebase) — but the `Upload` interface
+ * declares createdAt/updatedAt/externalCreatedAt as `string`. Convert here so
+ * the declared type is actually true, rather than casting a Date through
+ * `as string`. Tolerates a driver/config that already hands back a string.
+ */
+function toIsoString(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function toIsoStringOrNull(value: Date | string | null): string | null {
+  return value == null ? null : toIsoString(value);
+}
+
 function rowToUpload(r: Record<string, unknown>): Upload {
   return {
     id: r.id as string,
@@ -94,7 +109,7 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     filename: r.filename as string,
     mimeType: (r.mime_type as string | null) ?? null,
     sizeBytes: r.size_bytes != null ? Number(r.size_bytes) : null,
-    externalCreatedAt: (r.external_created_at as string | null) ?? null,
+    externalCreatedAt: toIsoStringOrNull(r.external_created_at as Date | string | null),
     status: r.status as UploadStatus,
     statusDetail: (r.status_detail as string | null) ?? null,
     kbFileId: (r.kb_file_id as string | null) ?? null,
@@ -103,8 +118,8 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     unsPath: (r.uns_path as string | null) ?? null,
     kgEntityId: (r.kg_entity_id as string | null) ?? null,
     ingestRoute: (r.ingest_route as string | null) ?? null,
-    createdAt: r.created_at as string,
-    updatedAt: r.updated_at as string,
+    createdAt: toIsoString(r.created_at as Date | string),
+    updatedAt: toIsoString(r.updated_at as Date | string),
   };
 }
 
