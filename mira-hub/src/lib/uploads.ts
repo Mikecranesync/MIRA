@@ -41,72 +41,25 @@ export interface Upload {
 
 let schemaReady: Promise<void> | null = null;
 
+/**
+ * hub_uploads' schema is now owned by mira-hub/db/migrations/068_hub_uploads.sql
+ * (#703) — this no longer runs DDL. It's a cheap, memoized-per-process check
+ * that the newest known column exists, and fails loud (not silently creates)
+ * if migration 068 hasn't been applied to this environment yet.
+ */
 export function ensureUploadsSchema(): Promise<void> {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS hub_uploads (
-        id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id             TEXT NOT NULL DEFAULT 'mike',
-        provider              TEXT NOT NULL,
-        external_file_id      TEXT,
-        external_download_url TEXT,
-        filename              TEXT NOT NULL,
-        mime_type             TEXT,
-        size_bytes            BIGINT,
-        external_created_at   TIMESTAMPTZ,
-        status                TEXT NOT NULL DEFAULT 'queued',
-        status_detail         TEXT,
-        kb_file_id            TEXT,
-        kb_chunk_count        INTEGER,
-        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-    // In-place migrations for pre-existing deployments (idempotent)
-    await pool.query(`
-      ALTER TABLE hub_uploads
-        ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'document'
-    `);
-    await pool.query(`
-      ALTER TABLE hub_uploads
-        ADD COLUMN IF NOT EXISTS asset_tag TEXT
-    `);
-    await pool.query(`
-      ALTER TABLE hub_uploads
-        ADD COLUMN IF NOT EXISTS uns_path TEXT
-    `);
-    // mira-ingest-v2 (ADR-0019) / Hub folder=brain: a drop attached to a namespace node
-    // records the confirmed kg_entities node id, so retrieval resolves the chunk → node
-    // address (knowledge_entries.doc_id → hub_uploads.kg_entity_id → kg_entities.uns_path).
-    await pool.query(`
-      ALTER TABLE hub_uploads
-        ADD COLUMN IF NOT EXISTS kg_entity_id UUID
-    `);
-    // 'v2' = mira-ingest-v2 / Hub-node attachment (chunks land in knowledge_entries);
-    // NULL / 'ow' = legacy Open-WebUI-only path. Discriminator for cutover.
-    await pool.query(`
-      ALTER TABLE hub_uploads
-        ADD COLUMN IF NOT EXISTS ingest_route TEXT
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_hub_uploads_tenant_status
-        ON hub_uploads (tenant_id, status, created_at DESC)
-    `);
-    // Fetch all v2 drops bound to a node (node Documents panel + subtree retrieval join).
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_hub_uploads_kg_entity
-        ON hub_uploads (tenant_id, kg_entity_id)
-        WHERE kg_entity_id IS NOT NULL
-    `);
-    // Idempotency for cloud-source uploads (#700) — re-picking the same
-    // Drive/Dropbox file should return the existing row, not duplicate
-    // the entire fetch → forward → KB pipeline.
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_hub_uploads_dedup
-        ON hub_uploads (tenant_id, provider, external_file_id)
-        WHERE external_file_id IS NOT NULL
-    `);
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'hub_uploads' AND column_name = 'ingest_route'`,
+    );
+    if (rows.length === 0) {
+      schemaReady = null; // don't cache a failure — allow retry once the migration lands
+      throw new Error(
+        "hub_uploads schema is out of date — apply mira-hub/db/migrations/068_hub_uploads.sql",
+      );
+    }
   })();
   return schemaReady;
 }
