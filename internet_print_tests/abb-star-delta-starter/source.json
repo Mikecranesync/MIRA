@@ -1,0 +1,25 @@
+{
+  "test_id": "abb-star-delta-starter",
+  "source_url": "https://library.e.abb.com/public/ac6b6e46df1ea3e6c1256e35004c9145/Star-delta%20Starters%20Open%20Type_technical%20data.pdf",
+  "publisher": "ABB",
+  "title": "STAR-DELTA Open-Type Starter \u2014 Technical Data",
+  "sheet": "Terminal arrangement & wiring, sheet 1-2",
+  "equipment_type": "IEC open-type star-delta reduced-voltage starter",
+  "standard": "IEC 60947-4-1",
+  "category": "contactor",
+  "why_selected": "European/IEC three-phase star-delta reversal starter with main + delta + star contactors, overload, and terminal-to-terminal wiring. Page 4 is the campaign-verified rendered schematic page (corpus_manifest.md first-10, entry #3). Publicly published on library.e.abb.com; provenance verified 2026-07-10 (httpx application/pdf).",
+  "access_date_utc": "2026-07-13T20:28:15Z",
+  "original_sha256": "f9eb30746fd22c91bbe160b889fbbbecd93d5997c9fa438fd9a57a7847f1f07f",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://library.e.abb.com/public/ac6b6e46df1ea3e6c1256e35004c9145/Star-delta%20Starters%20Open%20Type_technical%20data.pdf",
+    "final_url": "https://library.e.abb.com/public/ac6b6e46df1ea3e6c1256e35004c9145/Star-delta%20Starters%20Open%20Type_technical%20data.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 1172188,
+    "host": "library.e.abb.com"
+  },
+  "license_note": "Publicly published OEM literature; ownership retained by ABB; retained only for read-only interpreter testing."
+}

@@ -5,7 +5,7 @@ import { API_BASE } from "@/lib/config";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { GraphCanvas } from "@/components/kg/GraphCanvas";
-import type { GraphNode, GraphLink } from "@/lib/knowledge-graph/graph-view";
+import { kgMapDisplayState, type GraphNode, type GraphLink } from "@/lib/knowledge-graph/graph-view";
 import type { GraphAnalysis } from "@/lib/knowledge-graph/analysis";
 
 // Route folds per-node stats into nodes and returns the rest as `analysis`.
@@ -182,7 +182,15 @@ function GraphView() {
   if (error) return <div className="p-6 text-red-400">Graph error: {error}</div>;
   if (!raw) return <div className="p-6 text-slate-400">Loading relationship graph…</div>;
 
-  const showEmptyState = verifiedCount === 0 && proposedCount > 0;
+  const displayState = kgMapDisplayState(verifiedCount, proposedCount);
+  // Banner: edges exist as suggestions but none are verified yet.
+  const showEmptyState = displayState === "review-suggestions";
+  // Guidance card: no edges at all (verified === 0 && proposed === 0). The
+  // graph shows disconnected nodes with nothing to do — #1984. Tell the
+  // technician how relationships actually get built (upload manuals → MIRA
+  // proposes edges → confirm them) instead of leaving them staring at dots.
+  const noEdgesAtAll = displayState === "guidance";
+  const hasNodes = raw.nodes.length > 0;
 
   return (
     <div className="relative h-[calc(100vh-7rem)] w-full overflow-hidden bg-[#05070d]">
@@ -213,6 +221,65 @@ function GraphView() {
           {showSuggestions
             ? "Tap a dashed edge to review the evidence and confirm it."
             : "Turn on Show suggestions to review them."}
+        </div>
+      )}
+
+      {noEdgesAtAll && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4">
+          <div
+            className="pointer-events-auto w-[min(94vw,560px)] rounded-xl border border-sky-500/30 bg-slate-900/95 p-6 text-slate-200 shadow-2xl"
+            data-testid="kg-empty-guidance"
+          >
+            <div className="text-xs font-semibold uppercase tracking-wide text-sky-300">
+              No connections yet
+            </div>
+            <h2 className="mt-1 text-lg font-semibold text-white">
+              {hasNodes
+                ? `${raw.nodes.length} nodes, but nothing is linked`
+                : "Your knowledge graph is empty"}
+            </h2>
+            <p className="mt-2 text-sm text-slate-400">
+              {hasNodes
+                ? "MIRA can see your equipment, but there are no relationships to reason over yet. Connect them so the graph can power fault diagnosis."
+                : "Build your namespace and upload documentation so MIRA has something to connect."}
+            </p>
+
+            <ol className="mt-4 space-y-3 text-sm">
+              <li className="flex gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-[11px] font-semibold text-sky-300">
+                  1
+                </span>
+                <span>
+                  <Link href="/knowledge/manuals" className="font-medium text-sky-300 hover:text-sky-200">
+                    Upload asset manuals
+                  </Link>
+                  <span className="text-slate-400"> — MIRA reads them and proposes manual→component links.</span>
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-[11px] font-semibold text-sky-300">
+                  2
+                </span>
+                <span>
+                  <Link href="/knowledge/suggestions" className="font-medium text-sky-300 hover:text-sky-200">
+                    Review &amp; confirm suggestions
+                  </Link>
+                  <span className="text-slate-400"> — confirmed proposals become verified edges on this graph.</span>
+                </span>
+              </li>
+            </ol>
+
+            <div className="mt-5 rounded-md border border-slate-700/60 bg-slate-800/50 p-3">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                What a useful graph looks like
+              </div>
+              <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                <li>• <span className="text-slate-400">fault → asset</span> — which machine throws this code</li>
+                <li>• <span className="text-slate-400">asset → manual</span> — the doc to cite for a fix</li>
+                <li>• <span className="text-slate-400">component → PLC tag</span> — what the live signal means</li>
+              </ul>
+            </div>
+          </div>
         </div>
       )}
 
@@ -355,6 +422,37 @@ function GraphView() {
           );
         })()}
 
+      {selectedEdge && !selectedEdge.proposalId &&
+        (() => {
+          const f = friendlyEdge(selectedEdge.type);
+          const src = nodeById.get(endId(selectedEdge.source))?.label ?? "this component";
+          const tgt = nodeById.get(endId(selectedEdge.target))?.label ?? "this item";
+          const pct = Math.round((selectedEdge.confidence ?? 1) * 100);
+          return (
+            <div
+              data-testid="kg-verified-edge-panel"
+              className="absolute inset-x-2 bottom-2 z-20 w-auto rounded-xl bg-slate-900/95 p-4 text-sm text-slate-200 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:w-80 sm:rounded-md"
+            >
+              <button onClick={() => setSelectedEdge(null)} className="float-right text-slate-500 hover:text-slate-300">
+                ✕
+              </button>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-emerald-300">Verified connection</div>
+              <div className="mb-2 text-base font-semibold text-white">{f.label}</div>
+              <div className="text-xs text-slate-300">
+                {src} <span className="text-slate-500">→</span> {tgt}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-500">Confidence: {pct}%</div>
+              {selectedEdge.evidenceSummary ? (
+                <div className="mt-2 rounded bg-slate-800/70 px-2 py-1 text-xs text-slate-300">
+                  <span className="text-slate-500">Evidence:</span> {selectedEdge.evidenceSummary}
+                </div>
+              ) : (
+                <div className="mt-2 text-[11px] text-slate-500">A human confirmed this connection.</div>
+              )}
+            </div>
+          );
+        })()}
+
       {selected && !selectedEdge && (
         <div className="absolute inset-x-2 bottom-2 z-20 w-auto rounded-xl bg-slate-900/90 p-4 text-sm text-slate-200 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:w-72 sm:rounded-md">
           <button onClick={() => setSelected(null)} className="float-right text-slate-500 hover:text-slate-300">
@@ -370,6 +468,18 @@ function GraphView() {
             <div className="text-xs text-slate-400">cluster: #{selected.community}</div>
           )}
           {selected.unsPath && <div className="mt-2 break-words text-xs text-slate-400">{selected.unsPath}</div>}
+          <div className="mt-3">
+            <Link
+              href={`/namespace?node=${selected.id}`}
+              data-testid="kg-node-add-documents"
+              className="inline-flex items-center gap-1.5 rounded bg-sky-600/90 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500"
+            >
+              📁 Add documents
+            </Link>
+            <div className="mt-1 text-[10px] text-slate-500">
+              Jump to this node in the namespace to attach manuals &amp; docs.
+            </div>
+          </div>
         </div>
       )}
 
@@ -380,7 +490,7 @@ function GraphView() {
             setSelected(n);
             setSelectedEdge(null);
           }}
-          onLinkClick={(l) => setSelectedEdge(l.proposalId ? l : null)}
+          onLinkClick={(l) => setSelectedEdge(l)}
           highlightNodeIds={trace?.ids}
           intensity={density}
           sizeBy={sizeByInfluence ? "centrality" : "degree"}

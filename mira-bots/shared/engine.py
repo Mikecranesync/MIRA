@@ -14,12 +14,13 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from . import quality_gate
+from . import print_recall, quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .conversation_router import route_intent
+from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
     DialogueState,
@@ -34,6 +35,12 @@ from .dialogue_tracker import (
     DISPATCH_SAFETY,
     DISPATCH_SLOT_DONT_KNOW,
     track_turn,
+)
+from .drive_packs import (
+    answer_fault_code,
+    answer_question,
+    extract_pack_fault_codes,
+    resolve_pack,
 )
 from .fallback_responses import (
     GENERIC_ENGINE_ERROR,
@@ -71,7 +78,8 @@ from .integrations.pm_suggestions import (
     is_pm_acceptance,
     suggest_followup_pm,
 )
-from .live_snapshot import STALE, render_status_block
+from .interlock_context import build_interlock_answer, fetch_interlocks
+from .live_snapshot import STALE, render_machine_evidence
 from .live_snapshot import normalize as normalize_live_tags
 from .models.work_order import (
     UNSWorkOrder,
@@ -90,6 +98,7 @@ from .photo_handler import (
     load_session_photo,
     save_session_photo,
 )
+from .quota import QUOTA_BLOCK_MESSAGE, check_quota
 from .response_formatter import (
     _VISION_PROSE_PREFIX_RE,
     deduplicate_options,  # noqa: F401 — re-exported for test_conversation_continuity.py
@@ -107,6 +116,7 @@ from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
 from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
+from .wo_evidence import recall_work_orders as _recall_work_orders
 from .workers.nameplate_worker import NameplateWorker
 from .workers.photo_ingest_worker import propose_from_nameplate
 from .workers.plc_worker import PLCWorker
@@ -190,6 +200,74 @@ _NEW_QUESTION_RE = re.compile(
     r"causes?\s+of|caused\s+by|trigger(?:s|ed)?)\b",
     re.IGNORECASE,
 )
+
+
+def _prepend_equipment_context(message: str, state: dict) -> str:
+    """Prepend resolved equipment context to text-only follow-ups in active diagnostic sessions.
+
+    If in an active diagnostic state (Q1, Q2, Q3, DIAGNOSIS, FIX_STEP) with a resolved
+    manufacturer (confidence >= 0.7), prepend the persisted equipment context in a fixed
+    precedence order — manufacturer -> model -> active fault code / alarm -> the message —
+    including only fields that exist and never repeating a token already in the message.
+    The fault term is read from uns_context.fault_code, else session_context.active_alarm,
+    else state.fault_category. This carries equipment + fault context from prior turns into
+    RAG queries for multi-turn follow-ups that lack a photo.
+
+    Args:
+        message: The raw user message.
+        state: The session state dict, containing state["state"] and state["context"]["uns_context"].
+
+    Returns:
+        The message with equipment context prepended (if conditions met), or the message unchanged.
+
+    Examples:
+        >>> state = {"state": "Q1", "context": {"uns_context": {"manufacturer": "Rockwell", "model": "PowerFlex 525", "confidence": 0.9}}}
+        >>> _prepend_equipment_context("Haven't meggered it yet", state)
+        'Rockwell PowerFlex 525 Haven't meggered it yet'
+
+        >>> state = {"state": "IDLE", "context": {"uns_context": {"manufacturer": "Rockwell", "model": "PowerFlex 525", "confidence": 0.9}}}
+        >>> _prepend_equipment_context("Follow-up", state)
+        'Follow-up'  # IDLE session, no prepend
+    """
+    # Only prepend if in an active diagnostic state
+    if state.get("state") not in ACTIVE_DIAGNOSTIC_STATES:
+        return message
+
+    # Extract uns_context
+    uns_ctx = (state.get("context") or {}).get("uns_context") or {}
+    if not uns_ctx:
+        return message
+
+    # Require manufacturer and sufficient confidence (0.7+)
+    manufacturer = uns_ctx.get("manufacturer")
+    if not manufacturer:
+        return message
+
+    confidence = uns_ctx.get("confidence", 0.0)
+    if confidence < 0.7:
+        return message
+
+    # Build the enriched query in a fixed precedence order (#2209):
+    #   manufacturer -> model -> active fault code / alarm -> the user's message.
+    # Only include fields that exist, and never repeat a token already present in
+    # the message (so "the F004 is back" is not turned into "... F004 ... F004").
+    fault = (
+        uns_ctx.get("fault_code")
+        or ((state.get("context") or {}).get("session_context") or {}).get("active_alarm")
+        or state.get("fault_category")
+    )
+    lowered_msg = message.lower()
+    parts: list[str] = []
+    for token in (manufacturer, uns_ctx.get("model"), fault):
+        if not token:
+            continue
+        token = str(token)
+        if token.lower() in lowered_msg or token in parts:
+            continue  # already present — don't duplicate context
+        parts.append(token)
+    parts.append(message)
+
+    return " ".join(parts)
 
 
 def _is_fresh_question_during_wo(message: str) -> bool:
@@ -322,7 +400,31 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
         # substring heuristics spuriously flag repeated tag-name patterns.
         "tag_query",
         "status_summary",
+        # 2026-07-06: drive-pack fast-path replies are composed verbatim from
+        # a pack's fault/parameter cards (shared.drive_packs.ask.answer_question)
+        # — templated, pack-grounded text, not LLM free text. Repeated
+        # boilerplate ("VIEW-ONLY", citation blocks) trips the same n-gram /
+        # substring heuristics as tag_query/status_summary above.
+        "drive_pack",
+        # 2026-07-19: electrical-print replies are grounded to the saved print
+        # image before this dispatch kind is set. Schematic answers naturally
+        # repeat symbols/labels (M1, K1, contactor), which can trip the generic
+        # repetition gate and replace the useful print answer with a rephrase.
+        "ELECTRICAL_PRINT",
     }
+)
+
+# Router intents that break a chat OUT of a stale ELECTRICAL_PRINT session.
+# The print follow-up handler answers questions ABOUT a previously-uploaded
+# schematic; but once the router says the user has moved on to diagnosing
+# specific equipment (``diagnose_equipment``) or is starting over
+# (``greeting_or_chitchat``), the print state must be released so the turn
+# routes normally. Genuine print follow-ups classify as ``answer_question`` /
+# ``continue_current`` and stay. See the ELECTRICAL_PRINT dispatch guard in
+# ``process()`` and incident 2026-07-26 (a stale print state trapped every
+# subsequent text turn in the slow Together/MiniMax vision path → bot timeout).
+_PRINT_STATE_EXIT_INTENTS: frozenset[str] = frozenset(
+    {"diagnose_equipment", "greeting_or_chitchat"}
 )
 
 # Stage 1 (PLAN.md §2 / §4) feature flag — when enabled the dialogue
@@ -367,6 +469,34 @@ _MIRA_HUB_URL = os.getenv("MIRA_HUB_URL", "http://mira-hub:3000")
 _LIVE_DATA_ENABLED = os.getenv("MIRA_LIVE_DATA_ENABLED", "0") == "1"
 _FAULT_DETECTIVE_URL = os.getenv("FAULT_DETECTIVE_URL", "http://mira-fault-detective:8077")
 _LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
+
+# Contextualization-signals enrichment (additive, OFF by default). When on,
+# queries kg_entities for approved ctx signals under the resolved UNS path and
+# injects a [APPROVED PLC SIGNALS] block before the RAG call. Best-effort: ""
+# on any miss (flag off, no tenant/asset, NeonDB unreachable). Enabled by
+# MIRA_CTX_SIGNALS_ENABLED=1.
+_CTX_SIGNALS_ENABLED = os.getenv("MIRA_CTX_SIGNALS_ENABLED", "0") == "1"
+_CTX_SIGNALS_TIMEOUT_S = float(os.getenv("MIRA_CTX_SIGNALS_TIMEOUT_S", "3.0"))
+
+# Interlock-context enrichment — the CONSUME side of the interlock flywheel
+# (docs/north-star/interlock-flywheel-audit.md). Additive, OFF by default. When
+# on, recalls VERIFIED kg_relationships interlock edges (USED_IN_LOGIC / CAUSES)
+# under the resolved UNS path — the previously-invisible approved logic the
+# answer path never read — and injects an [APPROVED INTERLOCK LOGIC] block so MIRA
+# can explain *why a machine won't move*. Best-effort: "" on any miss. Enabled by
+# MIRA_INTERLOCK_CONTEXT_ENABLED=1.
+_INTERLOCK_CONTEXT_ENABLED = os.getenv("MIRA_INTERLOCK_CONTEXT_ENABLED", "0") == "1"
+_INTERLOCK_CONTEXT_TIMEOUT_S = float(os.getenv("MIRA_INTERLOCK_CONTEXT_TIMEOUT_S", "3.0"))
+
+# Work-order-history evidence (additive, OFF by default). When on, the diagnosis
+# path recalls recent CMMS work orders for the CONFIRMED asset from the Hub
+# NeonDB (work_orders JOIN cmms_equipment — the store hub_neon.py writes to) and
+# injects them as CITABLE evidence lines. Best-effort: "" on any miss (flag off,
+# no tenant/asset, NeonDB unreachable) — the diagnosis path is byte-for-byte
+# unchanged. Same wrap-don't-rewrite pattern as the ctx-signals block.
+_WO_EVIDENCE_ENABLED = os.getenv("ENABLE_WO_EVIDENCE", "0") == "1"
+_WO_EVIDENCE_TIMEOUT_S = float(os.getenv("MIRA_WO_EVIDENCE_TIMEOUT_S", "3.0"))
+_WO_EVIDENCE_LIMIT = int(os.getenv("MIRA_WO_EVIDENCE_LIMIT", "5"))
 
 # Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
 # answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
@@ -721,6 +851,13 @@ class Supervisor:
         # fire-and-forget writes from being GC'd before they complete.
         self._decision_trace_tasks: set = set()
 
+        # Troubleshooting-session lifecycle (Phase 7, #1659). Strong refs keep
+        # the fire-and-forget NeonDB writes alive; the dict maps chat_id → the
+        # active troubleshooting_sessions UUID so a session opens once per
+        # confirmed-asset conversation and subsequent turns append to it.
+        self._session_tasks: set = set()
+        self._ts_sessions: dict[str, str] = {}
+
         # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
             mcp_base_url or os.getenv("MCP_BASE_URL", "http://mira-mcp:8001")
@@ -735,7 +872,7 @@ class Supervisor:
         self.nemotron = NemotronClient()
 
         # Inference router — enabled when INFERENCE_BACKEND=cloud and at least one of
-        # GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY is set.
+        # GROQ_API_KEY / CEREBRAS_API_KEY / TOGETHERAI_API_KEY is set.
         self.router = InferenceRouter()
 
         # Initialize workers
@@ -822,7 +959,7 @@ class Supervisor:
         if photo_turn <= 0:
             return None
 
-        turns_since_photo = state["exchange_count"] - photo_turn
+        turns_since_photo = max(0, state["exchange_count"] - photo_turn)
         if turns_since_photo >= PHOTO_MEMORY_TURNS:
             self._clear_session_photo(chat_id)
             ctx.pop("photo_turn", None)
@@ -841,6 +978,358 @@ class Supervisor:
 
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
+
+    @staticmethod
+    def _print_vision_context_from_state(state: dict) -> dict:
+        """Rebuild the print vision context persisted with an ELECTRICAL_PRINT session."""
+        ctx = state.get("context") or {}
+        last_print = ctx.get("last_print_vision") if isinstance(ctx, dict) else None
+        if isinstance(last_print, dict):
+            vision_data = dict(last_print)
+        else:
+            vision_data = {
+                "classification": "ELECTRICAL_PRINT",
+                "vision_result": state.get("asset_identified", ""),
+                "ocr_items": ctx.get("ocr_items", []),
+                "tesseract_text": ctx.get("ocr_text", ""),
+                "drawing_type": ctx.get("drawing_type") or "electrical drawing",
+                "confidence": "medium",
+            }
+        vision_data.setdefault("classification", "ELECTRICAL_PRINT")
+        vision_data.setdefault("ocr_items", ctx.get("ocr_items", []))
+        vision_data.setdefault("tesseract_text", ctx.get("ocr_text", ""))
+        vision_data.setdefault("drawing_type", ctx.get("drawing_type") or "electrical drawing")
+        return vision_data
+
+    async def _handle_electrical_print_followup(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+    ) -> dict:
+        """Answer a text follow-up while preserving the visual print context."""
+        ctx = state.get("context") or {}
+        session_photo = self._load_recent_session_photo(chat_id, state)
+        if session_photo:
+            vision_data = self._print_vision_context_from_state(state)
+            reply = await self._grounded_print_reply(session_photo, message, vision_data, chat_id)
+            if not reply:
+                reply = self._build_print_reply(vision_data)
+            formatted = reply
+        else:
+            try:
+                raw = await self.print_.process(message, state)
+            except Exception as e:
+                logger.error(
+                    "PRINT_WORKER_ERROR chat_id=%s error=%s",
+                    chat_id,
+                    e,
+                    exc_info=True,
+                )
+                self._save_state(chat_id, state)
+                return self._make_result(GENERIC_ENGINE_ERROR, "none", trace_id)
+            parsed = self._parse_response(raw)
+            print_intent = classify_intent(message)
+            reply = check_output(parsed["reply"], print_intent, has_photo=False)
+            parsed["reply"] = reply
+            formatted = self._format_reply(parsed, user_message=message)
+
+        state["state"] = "ELECTRICAL_PRINT"
+        state["exchange_count"] += 1
+        history = ctx.get("history", [])
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": reply})
+        if len(history) > HISTORY_LIMIT:
+            history = history[-HISTORY_LIMIT:]
+        ctx["history"] = history
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        return self._make_result(
+            formatted,
+            self._infer_confidence(formatted),
+            trace_id,
+            "ELECTRICAL_PRINT",
+        )
+
+    async def _grounded_print_reply(
+        self,
+        photo_b64: str,
+        question: str | None,
+        vision_data: dict,
+        chat_id: str,
+        *,
+        interpret_b64: str | None = None,
+        observe: dict | None = None,
+    ) -> str:
+        """Grounded, display-ready answer for a classified ELECTRICAL_PRINT photo.
+
+        ``observe`` (optional mutable dict) collects privacy-safe synthesis
+        provenance — ``route`` (which path answered), ``fallback_reason`` (why a
+        synthesis branch declined), ``verify_outcome`` — for the caller to feed
+        into ``_log_interaction``. Reason codes / route names only; never page
+        content. No behavior change when omitted.
+
+        Anthropic PrintSynth interpreter FIRST (deep, typed, never-invent — only
+        when configured), else the No-Anthropic grounded cascade
+        (``print_translator`` over Groq -> Cerebras -> Together). Always returns a
+        display-ready string — the cascade's ``format_theory_reply`` yields a
+        graceful fallback even on an empty provider result — so a print question is
+        never left unanswered.
+
+        ``interpret_b64`` is the FULL-RESOLUTION image for the Anthropic
+        interpreter — the bot passes the raw Telegram bytes so Claude's 2576 px
+        high-res vision budget is used, NOT the 1024 px ``photo_b64`` crushed for
+        the local qwen classifier (roadmap Phase 0.1). Defaults to ``photo_b64``
+        when a caller has no full-res image to hand (e.g. the FSM path), which is
+        the prior behavior. The cascade fallback stays on ``photo_b64`` — the local
+        vision models want the small image.
+        """
+        from . import print_translator
+
+        obs = observe if observe is not None else {}
+
+        # 1. Anthropic PrintSynth interpreter (primary, isolated, flag+key gated).
+        reply = await self._interpret_print_anthropic(
+            interpret_b64 or photo_b64, question, vision_data
+        )
+        if reply:
+            obs["route"] = "print_vision_primary"
+            return reply
+        obs["route"] = "grounded_cascade"
+
+        # 2. Grounded cascade fallback (No-Anthropic vision path).
+        # PRINT_THEORY_FULL_RES=1 sends the caller's full-resolution image to
+        # the cascade theory call instead of the 1024 px classifier crush. The
+        # R5-alpha probe (2026-07-19) showed serverless big-vision models
+        # reading dense table rows correctly at full resolution that the
+        # crushed image loses. Default OFF: the small free models the cascade
+        # was tuned on want the small image. Or-form parse (compose ${VAR:-}
+        # delivers an empty string in-container).
+        theory_b64 = photo_b64
+        if (os.environ.get("PRINT_THEORY_FULL_RES") or "").strip().lower() in ("1", "true", "on"):
+            theory_b64 = interpret_b64 or photo_b64
+
+        async def _sample() -> tuple[str, list[dict]]:
+            """One theory(+verify) chain -> (reply, [per-call usage]). Never raises.
+
+            Reproduces the single-pass behavior exactly: a theory draft, then the
+            optional ``PRINT_THEORY_VERIFY`` second pass that re-reads the sheet
+            against the draft. Fall-through on ANY router failure or empty result
+            — the draft is never lost, the turn is never eaten.
+            """
+            sample_usages: list[dict] = []
+            messages = print_translator.build_theory_messages(
+                theory_b64, vision_data, question=question
+            )
+            reply = ""
+            try:
+                reply, usage = await self.router.complete(
+                    messages,
+                    max_tokens=int(os.environ.get("PRINT_THEORY_MAX_TOKENS") or "2000"),
+                    session_id=str(chat_id),
+                )
+                if reply:
+                    InferenceRouter.log_usage(usage)
+                    sample_usages.append(usage)
+            except Exception as exc:  # noqa: BLE001 — never eat the turn
+                logger.warning("PRINT_GROUNDED_ROUTER_ERROR error=%s", exc)
+                reply = ""
+                obs["fallback_reason"] = "provider_error"
+            # PRINT_THEORY_VERIFY=1 (or-form, default off): one self-verification
+            # pass — the vision model re-reads the sheet against its own draft
+            # (fix misquotes to the printed text, delete claims it cannot see
+            # printed, add printed tiers/contacts/cross-refs it omitted on the
+            # asked device). R5-delta's remaining defect classes (a wrong
+            # volunteered terminal, a paraphrased label, a column-shift trace, a
+            # dropped header tier) are second-look errors by construction.
+            if reply and (os.environ.get("PRINT_THEORY_VERIFY") or "").strip().lower() in (
+                "1",
+                "true",
+                "on",
+            ):
+                try:
+                    v_messages = print_translator.build_verify_messages(
+                        theory_b64, reply, question=question
+                    )
+                    v_raw, v_usage = await self.router.complete(
+                        v_messages,
+                        max_tokens=int(os.environ.get("PRINT_THEORY_MAX_TOKENS") or "2000"),
+                        session_id=str(chat_id),
+                    )
+                    if v_raw:
+                        logger.info(
+                            "PRINT_VERIFY_APPLIED len_before=%d len_after=%d",
+                            len(reply),
+                            len(v_raw),
+                        )
+                        InferenceRouter.log_usage(v_usage)
+                        sample_usages.append(v_usage)
+                        reply = v_raw
+                        obs["verify_outcome"] = "applied"
+                    else:
+                        logger.info("PRINT_VERIFY_EMPTY — keeping draft")
+                        obs["verify_outcome"] = "empty"
+                except Exception as exc:  # noqa: BLE001 — verification must never eat the turn
+                    logger.warning("PRINT_VERIFY_ERROR error=%s — keeping draft", exc)
+                    obs["verify_outcome"] = "error"
+            return reply, sample_usages
+
+        # PRINT_THEORY_SELF_CONSISTENCY=N (or-form, default 0/1 = off): sample the
+        # theory(+verify) chain N times and reconcile DETERMINISTICALLY to the
+        # consensus (medoid) reply — variance reduction on the handful of runs
+        # that coin-flip a near-ambiguous reading or fabricate a fresh
+        # false-precision detail (ROUND5 Addendum 3, 2026-07-19). No LLM judge.
+        # Any sample error is skipped (fall through); if every sample fails the
+        # reply is empty and format_theory_reply yields the graceful fallback —
+        # the turn is never eaten. N<2 is the single-pass path, unchanged.
+        samples_n = int(os.environ.get("PRINT_THEORY_SELF_CONSISTENCY") or "0")
+        if samples_n >= 2:
+            candidates: list[str] = []
+            usages: list[dict] = []
+            for _i in range(samples_n):
+                try:
+                    reply_i, usages_i = await _sample()
+                except Exception as exc:  # noqa: BLE001 — a sample must never eat the turn
+                    logger.warning("PRINT_SELF_CONSISTENCY_SAMPLE_ERROR error=%s", exc)
+                    continue
+                usages.extend(usages_i)
+                if reply_i:
+                    candidates.append(reply_i)
+            if candidates:
+                raw, agreed = print_translator.reconcile_print_samples(candidates)
+                logger.info(
+                    "PRINT_SELF_CONSISTENCY samples=%d/%d agreed=%s",
+                    len(candidates),
+                    samples_n,
+                    agreed,
+                )
+                self._record_self_consistency_usage(usages)
+            else:
+                raw = ""
+        else:
+            raw, _ = await _sample()
+        # Empty synthesis after the cascade (and any verify pass) → the reply
+        # will be format_theory_reply's graceful FALLBACK_REPLY. Record the
+        # decline reason if a more specific one (provider_error) wasn't already
+        # set, so the turn is never silently a fallback.
+        if not raw:
+            obs.setdefault("fallback_reason", "empty_synthesis")
+        logger.info(
+            "PRINT_SYNTHESIS_OUTCOME route=%s fallback_reason=%s verify=%s empty=%s",
+            obs.get("route"),
+            obs.get("fallback_reason"),
+            obs.get("verify_outcome"),
+            not bool(raw),
+        )
+        return print_translator.format_theory_reply(
+            raw, (vision_data or {}).get("drawing_type"), vision_data=vision_data
+        )
+
+    def _record_self_consistency_usage(self, usages: list[dict]) -> None:
+        """Best-effort: record the SUMMED token usage of a self-consistency print
+        turn into ``printsense.interpret.pop_last_usage``'s slot, so a bench
+        envelope reads the total cost of ALL samples (not one call).
+
+        Best-effort telemetry only — ``printsense`` may not be shipped in this
+        image, and the slot never grades truth; never raises, never eats the turn.
+        """
+        if not usages:
+            return
+        try:
+            from printsense import interpret
+
+            total_in = sum(int(u.get("input_tokens") or 0) for u in usages)
+            total_out = sum(int(u.get("output_tokens") or 0) for u in usages)
+            last = usages[-1]
+            interpret.record_sampled_usage(
+                last.get("provider"), last.get("model"), total_in, total_out
+            )
+        except Exception as exc:  # noqa: BLE001 — telemetry must never eat the turn
+            logger.warning("PRINT_SELF_CONSISTENCY_USAGE_ERROR error=%s", exc)
+
+    async def _interpret_print_anthropic(
+        self,
+        photo_b64: str,
+        question: str | None,
+        vision_data: dict,
+    ) -> str:
+        """ISOLATED paid PrintSynth interpretation -> rendered Telegram reply.
+
+        (Method name keeps its historical ``_anthropic`` suffix — it is the paid
+        print-vision seam; the provider is ``PRINT_VISION_PROVIDER``, OpenAI by
+        default since 2026-07-16, Anthropic retained behind the knob.)
+
+        Returns "" (caller falls back to the free cascade) when the provider
+        isn't configured: no ``printsense`` package in this image, provider/key
+        not set (``interpret.is_configured()``), or the call fails. The paid
+        provider is confined to this seam — the general cascade never touches
+        it. The blocking call runs in a worker thread so the bot event loop
+        stays free during the ~30-60 s interpretation.
+        """
+        pkg_ctx = {"drawing_type": (vision_data or {}).get("drawing_type")}
+        return await self._interpret_print_anthropic_pages(
+            photo_b64s=[photo_b64],
+            question=question,
+            package_context=pkg_ctx,
+        )
+
+    async def _interpret_print_anthropic_pages(
+        self,
+        *,
+        photo_b64s: list[str],
+        question: str | None,
+        package_context: dict | None = None,
+    ) -> str:
+        """ISOLATED paid PrintSynth interpretation for a print package.
+
+        The Telegram album path uses this to send multiple print photos as one
+        ``interpret_print(pages=[...])`` package so cross-page references stay
+        in the same typed graph. Returns "" when unavailable or failed so callers
+        can fall back to the free-cascade vision path.
+        """
+        try:
+            from printsense import interpret, render
+        except ImportError:
+            return ""  # framework not shipped in this image -> cascade
+        if not interpret.is_configured():
+            return ""  # inert without the provider flag + its key
+        import base64
+
+        pages: list[tuple[bytes, str]] = []
+        for b64 in photo_b64s:
+            try:
+                pages.append((base64.b64decode(b64), "image/jpeg"))
+            except Exception:  # noqa: BLE001 — bad b64 -> cascade
+                return ""
+        try:
+            if print_recall.enabled():
+                # Recall gate: an identical print turn reuses a stored interpretation
+                # with NO model call (behavior-preserving — the key folds question +
+                # package context). Falls through to a plain paid interpret on any
+                # recall error. Default OFF (PRINT_RECALL_ENABLED).
+                graph = await asyncio.to_thread(
+                    print_recall.interpret_with_recall,
+                    pages=pages,
+                    question=question,
+                    package_context=package_context or {},
+                    model=None,  # call-time default (ADR-0031): interpret resolves provider+model
+                    preprocess=True,
+                    interpret_fn=interpret.interpret_print,
+                )
+            else:
+                graph = await asyncio.to_thread(
+                    interpret.interpret_print,
+                    pages,
+                    package_context=package_context or {},
+                    question=question,
+                )
+        except interpret.PrintVisionUnavailable:
+            return ""
+        except Exception as exc:  # noqa: BLE001 — any interp/API error -> cascade
+            logger.warning("PRINT_ANTHROPIC_ERROR error=%s", exc)
+            return ""
+        return render.format_graph_for_telegram(graph)
 
     async def _analyze_schematic_with_question(
         self,
@@ -894,7 +1383,23 @@ class Supervisor:
             "Be specific. Use the actual designations from the drawing. "
             "Explain in terms a maintenance technician would understand. "
             "If you cannot read a label or value clearly, say so — do not "
-            "guess. Keep the reply under 350 words; bullet lists are fine."
+            "guess.\n\n"
+            "CRITICAL — never fabricate a device inventory:\n"
+            "- Name ONLY components whose labels/designations you can actually "
+            "read on this drawing. Do NOT output a generic device taxonomy "
+            "(timers, counters, logic gates, I/O modules, PLC blocks, relay "
+            "coils) unless those exact elements are visibly labelled here.\n"
+            "- Do NOT assume this is ladder logic or a PLC program. Most field "
+            "drawings are power/wiring/interconnection schematics; identify the "
+            "type only from what you can actually see.\n"
+            "- If the image is too unclear to read the device labels (glare, "
+            "moiré, low resolution, a photo of a screen), say exactly that and "
+            "ask for a closer, flatter photo or the source PDF — an honest "
+            "'I can't read this clearly' beats a confident guess.\n"
+            "- Never claim 'no safety-critical elements' unless you can "
+            "positively read the whole drawing; absence of a readable label is "
+            "NOT absence of a hazard.\n\n"
+            "Keep the reply under 350 words; bullet lists are fine."
         )
 
         user_text = (
@@ -1050,6 +1555,11 @@ class Supervisor:
         next_state: str | None = None,
         dispatch_kind: str = "",
         citation_evidence: dict | None = None,
+        *,
+        route: str | None = None,
+        model: str | None = None,
+        input_sha256: str | None = None,
+        fallback_reason: str | None = None,
     ) -> dict:
         """Build a standard process_full() result dict.
 
@@ -1071,6 +1581,14 @@ class Supervisor:
             "next_state": next_state,
             "dispatch_kind": dispatch_kind,
             "_citation_evidence": citation_evidence,
+            # Print-turn observability provenance (privacy-safe: route/model
+            # names + reason codes only, never page content) — read by
+            # process()'s _log_interaction so "check the bot results" shows the
+            # full synthesis story. None on turns that don't set them.
+            "route": route,
+            "model": model,
+            "input_sha256": input_sha256,
+            "fallback_reason": fallback_reason,
         }
 
     @staticmethod
@@ -1180,6 +1698,23 @@ class Supervisor:
         # Per-call tenant flows through method params (tenant_id → process_full,
         # workers, and the decision-trace) — NOT stashed on self, which a
         # concurrent tenant would overwrite across this turn's awaits.
+        # Plan/quota gate (audit issue #1) — the ONE enforcement point every
+        # adapter (Telegram/Slack/Ignition/web) inherits. Flag-gated behind
+        # ENFORCE_PLAN_QUOTA (default OFF — no DB call, no behavior change) and
+        # fail-open on any error or missing tenant. Runs BEFORE inference so a
+        # blocked tenant costs zero LLM calls; does not touch the UNS gate,
+        # greeting, or safety paths (those live inside process_full).
+        quota_tenant = tenant_id or self.tenant_id or None
+        quota_allowed, quota_reason = await check_quota(quota_tenant)
+        if not quota_allowed:
+            logger.warning(
+                "QUOTA_BLOCKED chat_id=%s tenant_id=%s platform=%s reason=%s",
+                chat_id,
+                quota_tenant,
+                platform,
+                quota_reason,
+            )
+            return QUOTA_BLOCK_MESSAGE
         # Read-only live-tag snapshot — gated on a confirmed asset (see helper).
         message = self._maybe_attach_live_snapshot(chat_id, message, live_tags, platform)
 
@@ -1245,6 +1780,10 @@ class Supervisor:
             has_photo=bool(photo_b64),
             response_time_ms=elapsed_ms,
             platform=platform,
+            route=result.get("route"),
+            model=result.get("model"),
+            input_sha256=result.get("input_sha256"),
+            fallback_reason=result.get("fallback_reason"),
         )
         # Phase 9 — decision trace (observational, fire-and-forget). Scheduled
         # AFTER the reply is built so it adds zero latency to the user response,
@@ -1257,6 +1796,18 @@ class Supervisor:
             platform=platform,
             latency_ms=elapsed_ms,
             tag_evidence=tag_evidence,
+            tenant_id=tenant_id,
+        )
+        # Phase 7 (#1659) — troubleshooting-session lifecycle (observational,
+        # fire-and-forget). Opens a session on gate-pass (confirmed asset +
+        # active diagnostic state), appends each turn, closes on RESOLVED.
+        # Idle sessions are abandoned by the nightly cron. Fully guarded.
+        self._schedule_session_lifecycle(
+            chat_id=chat_id,
+            message=message,
+            reply=reply,
+            result=result,
+            platform=platform,
             tenant_id=tenant_id,
         )
         return reply
@@ -1312,6 +1863,15 @@ class Supervisor:
             retrieved = bool(ev) and not ev.get("no_kb", True)
             manual_sources = (ev.get("sources") or None) if retrieved else None
 
+            # Phase 2 — model attribution. The cascade router caches the model that
+            # answered each session (keyed by session_id, #1704-safe); look it up by
+            # this turn's chat_id. None when the answering call passed no session_id
+            # or fell back to Open WebUI. Feeds both the NeonDB row and the local trace.
+            try:
+                model_used = self.router.last_model_for(str(chat_id))
+            except Exception:  # noqa: BLE001
+                model_used = None
+
             coro = write_trace(
                 tenant_id=tenant_id,
                 user_question=message,
@@ -1321,14 +1881,130 @@ class Supervisor:
                 tag_evidence=tag_evidence,
                 manual_sources=manual_sources,
                 outcome=outcome,
+                model_used=model_used,
                 latency_ms=latency_ms,
             )
             # Hold a reference so the task isn't GC'd before it runs.
             task = asyncio.create_task(coro)
             self._decision_trace_tasks.add(task)
             task.add_done_callback(self._decision_trace_tasks.discard)
+
+            # Phase 1 — local AnswerTrace (off unless MIRA_LOCAL_TRACE=1; fail-open).
+            # Same evidence as the NeonDB row above (incl. model_used from Phase 2),
+            # written as inspectable JSONL so every adapter routing through process()
+            # emits a local trace. Governance/incident checks run in Phase 3.
+            try:
+                from .observe.from_engine import emit_local_trace
+
+                emit_local_trace(
+                    question=message,
+                    reply=reply,
+                    platform=platform,
+                    tenant_id=tenant_id,
+                    uns_context=uns_context,
+                    tag_evidence=tag_evidence,
+                    manual_sources=manual_sources,
+                    confidence=result.get("confidence"),
+                    model_used=model_used,
+                    latency_ms=latency_ms,
+                    outcome=outcome,
+                )
+            except Exception as exc:  # noqa: BLE001 — observational, never block reply
+                logger.debug("local trace emit skipped: %s", exc)
         except Exception as exc:  # noqa: BLE001
             logger.debug("decision_trace schedule skipped: %s", exc)
+
+    def _schedule_session_lifecycle(
+        self,
+        *,
+        chat_id: str,
+        message: str,
+        reply: str,
+        result: dict,
+        platform: str,
+        tenant_id: str | None = None,
+    ) -> None:
+        """Open / append / close a ``troubleshooting_sessions`` row for this turn.
+
+        Phase 7 (#1659). Best-effort and fully guarded — a NeonDB blip must
+        never touch the reply path:
+
+          * **Open** on gate-pass: an asset is confirmed (``asset_identified``),
+            the UNS gate is no longer pending, and the turn is in an active
+            diagnostic state. Opens once per ``chat_id`` (deduped via
+            ``self._ts_sessions``).
+          * **Append** every turn while a session is active — the user message
+            and the assistant reply.
+          * **Close** (``resolved``) on a ``RESOLVED`` next_state. Idle sessions
+            (>24h) are abandoned by ``mira-bots/scripts/nightly_close_sessions.py``.
+
+        Asset context lives in ``metadata`` — chat surfaces carry no asset UUID,
+        so ``asset_id``/``component_id`` stay NULL (the column is nullable).
+        """
+        try:
+            import asyncio  # noqa: PLC0415
+
+            from .fsm import ACTIVE_DIAGNOSTIC_STATES  # noqa: PLC0415
+            from .troubleshooting_session import (  # noqa: PLC0415
+                append_turn_coro,
+                close_session_coro,
+                open_session_coro,
+            )
+
+            tenant_id = tenant_id or self.tenant_id
+            if not tenant_id:
+                return
+
+            state = self._load_state(chat_id)
+            if not isinstance(state, dict):
+                return
+            ctx = state.get("context") or {}
+            uns_context = ctx.get("uns_context") if isinstance(ctx, dict) else None
+            next_state = result.get("next_state") or ""
+            asset_label = state.get("asset_identified") or ""
+            gate_passed = bool(asset_label) and not (
+                isinstance(ctx, dict) and ctx.get("pending_uns_confirm")
+            )
+
+            async def _run() -> None:
+                sid = self._ts_sessions.get(chat_id)
+                if not sid and gate_passed and next_state in ACTIVE_DIAGNOSTIC_STATES:
+                    uc = uns_context if isinstance(uns_context, dict) else {}
+                    metadata = {
+                        "asset_label": asset_label,
+                        "manufacturer": uc.get("manufacturer"),
+                        "model": uc.get("model"),
+                        "uns_path": uc.get("uns_path"),
+                        "fault_code": uc.get("fault_code"),
+                        "source": uc.get("source"),
+                        "fsm_state": next_state,
+                    }
+                    sid = await open_session_coro(
+                        tenant_id=tenant_id,
+                        asset_id=None,
+                        component_id=None,
+                        channel=platform,
+                        metadata=metadata,
+                    )
+                    if sid:
+                        self._ts_sessions[chat_id] = sid
+                if not sid:
+                    return
+                await append_turn_coro(
+                    session_id=sid, tenant_id=tenant_id, role="user", content=message
+                )
+                await append_turn_coro(
+                    session_id=sid, tenant_id=tenant_id, role="assistant", content=reply
+                )
+                if next_state == "RESOLVED":
+                    await close_session_coro(session_id=sid, tenant_id=tenant_id, reason="resolved")
+                    self._ts_sessions.pop(chat_id, None)
+
+            task = asyncio.create_task(_run())
+            self._session_tasks.add(task)
+            task.add_done_callback(self._session_tasks.discard)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("session_lifecycle schedule skipped: %s", exc)
 
     def _maybe_attach_live_snapshot(
         self,
@@ -1367,7 +2043,11 @@ class Supervisor:
             uns_base = uns_ctx.get("uns_path") or ""
             ts = datetime.now(timezone.utc).isoformat()
             snapshots = normalize_live_tags(live_tags, uns_base, source=platform, ts=ts)
-            block = render_status_block(snapshots)
+            # Attach the structured Live Machine Evidence section (decoded values
+            # + deterministic assessment + separation instruction) — the Python
+            # mirror of the Hub machine-context packet. Same gated, best-effort,
+            # read-only text-preamble mechanism as before.
+            block = render_machine_evidence(snapshots)
             if not block:
                 return message
             n_stale = sum(1 for s in snapshots if s.quality == STALE)
@@ -1515,6 +2195,8 @@ class Supervisor:
                         "classification_confidence": 0.0,
                         "vision_result": "unclear",
                         "ocr_items": [],
+                        "ocr_tokens": [],
+                        "ocr_source": "none",
                         "tesseract_text": "",
                         "drawing_type": None,
                         "drawing_type_confidence": 0.0,
@@ -1625,6 +2307,11 @@ class Supervisor:
         ``state["context"]["uns_context"]["source"]`` so downstream consumers
         (decision trace, audits) can see the turn's provenance. See process().
         """
+        # Boundary normalization: adapters send strings, but a captionless photo
+        # from a non-Telegram caller may arrive as None — the pipeline's regex
+        # guards assume str (guardrails.py). Normalize once at the entry point.
+        message = message or ""
+
         # Resolve tenant per call — chat_tenant LRU cache makes this cheap
         resolved_tenant = resolve_tenant(chat_id) or self.rag.tenant_id
 
@@ -1911,6 +2598,109 @@ class Supervisor:
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
 
+            # Electrical-print follow-up — but only while the user is still
+            # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over
+            # from a prior schematic photo) must NOT trap a NEW diagnostic topic:
+            # if the router says the user has moved on to diagnosing specific
+            # equipment (diagnose_equipment) or is starting over (greeting), exit
+            # the print state and fall through to normal routing. Without this,
+            # every post-photo text message hits the print worker — which times
+            # out on the Together/MiniMax vision model in prod (~77s > 30s bot
+            # timeout → silent bot) and crashes on the 'disabled://' print
+            # endpoint in staging. See incident 2026-07-26.
+            if state.get("state") == "ELECTRICAL_PRINT":
+                if _router_intent in _PRINT_STATE_EXIT_INTENTS:
+                    logger.info(
+                        "PRINT_STATE_EXIT chat_id=%s new_intent=%s — leaving "
+                        "ELECTRICAL_PRINT for normal routing",
+                        chat_id,
+                        _router_intent,
+                    )
+                    state["state"] = "IDLE"
+                    self._save_state(chat_id, state)
+                else:
+                    result = await self._handle_electrical_print_followup(
+                        chat_id,
+                        message,
+                        state,
+                        trace_id,
+                    )
+                    tl_flush()
+                    return result
+
+            # Drive-pack fast-path (2026-07-06) — deterministic, pack-grounded
+            # answer for a text question that explicitly names a drive MIRA has
+            # a pack for (e.g. "what does CE10 mean on my gs10"). Placed AFTER
+            # the safety short-circuit above (safety always wins) and BEFORE
+            # the router-exclusive dispatches below — this fast-path must never
+            # pre-empt the safety stop. resolve_pack() is a pure text match over
+            # pack aliases/keywords (shared/drive_packs/loader.py); a non-match,
+            # or a match whose question doesn't map to real pack content
+            # (answer_question().matched is False), falls through to the
+            # existing routing/RAG path completely unchanged — a false-positive
+            # resolve_pack() match is harmless by construction. See ADR-0025 +
+            # shared/drive_packs/ask.py for the pack-grounded-only contract
+            # (never a generic LLM answer, never a guess).
+            #
+            # Match on the technician's QUESTION ONLY (2026-07-12) — never on
+            # attached context blocks. The kiosk /ask path composes
+            # MACHINE_CONTEXT + status block + "[QUESTION]\n<q>" (ask_api/app.py),
+            # and MACHINE_CONTEXT embeds the full GS10 fault-code TABLE
+            # ("4=GFF ground fault; 12=Lvd; …") — so matching the whole message
+            # made answer_question() hit the first table mnemonic (GFF) on EVERY
+            # kiosk turn, hijacking unrelated questions to the GFF card. Same
+            # class of risk for the Ignition "[LIVE TAGS …]…[END LIVE TAGS]"
+            # preamble (mira-pipeline/ignition_chat.py). Strip both; a message
+            # with no marker is already a bare question.
+            _dp_question = message
+            if "[QUESTION]\n" in _dp_question:
+                _dp_question = _dp_question.rsplit("[QUESTION]\n", 1)[-1]
+            if "[END LIVE TAGS]" in _dp_question:
+                _dp_question = _dp_question.rsplit("[END LIVE TAGS]", 1)[-1]
+            _dp_pack = resolve_pack(_dp_question)
+            if _dp_pack is not None:
+                _dp_answer = answer_question(_dp_pack.pack_id, _dp_question)
+                if _dp_answer.matched:
+                    _dp_seen: set[tuple[str, str]] = set()
+                    _dp_cite_parts: list[str] = []
+                    for _c in _dp_answer.citations:
+                        _doc = _c.get("doc", "")
+                        _page = _c.get("page", "")
+                        _key = (_doc, _page)
+                        if not _doc or _key in _dp_seen:
+                            continue
+                        _dp_seen.add(_key)
+                        _dp_cite_parts.append(
+                            f"[Source: {_doc} p.{_page}]" if _page else f"[Source: {_doc}]"
+                        )
+                    reply = _dp_answer.answer
+                    if _dp_cite_parts:
+                        reply = f"{reply}\n\n{' '.join(_dp_cite_parts)}"
+                    # Static-vs-live label: a drive-pack answer is manual-cited
+                    # pack intelligence, NEVER a live telemetry read
+                    # (DrivePackAnswer.live_telemetry is always False — see
+                    # shared/drive_packs/ask.py). If this turn ALSO carries a
+                    # live snapshot, say so explicitly so a static pack answer is
+                    # never conflated with a live read. Two live-preamble markers
+                    # reach the engine: the kiosk/conveyor "[LIVE CONVEYOR STATUS]"
+                    # block (_maybe_attach_live_snapshot) and the Ignition
+                    # direct-connection "[LIVE TAGS …]" preamble
+                    # (mira-pipeline/ignition_chat.py::_format_tag_preamble) — cover both.
+                    if _LIVE_STATUS_HEADER in message or "[LIVE TAGS" in message:
+                        reply = f"(Static pack reference — not from live telemetry.)\n\n{reply}"
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(
+                        reply,
+                        "high",
+                        trace_id,
+                        state.get("state", "IDLE"),
+                        dispatch_kind="drive_pack",
+                    )
+                # else: matched=False — the question doesn't map to this pack's
+                # fault/parameter content; fall through to the existing
+                # routing/RAG flow below unchanged.
+
             # Router-exclusive dispatches — intents the keyword classifier doesn't handle
             if _router_intent == "log_work_order":
                 return await self._handle_wo_request(chat_id, message, state, trace_id)
@@ -2113,7 +2903,7 @@ class Supervisor:
             ctx["ocr_text"] = vision_data["tesseract_text"]
             ctx["ocr_items"] = vision_data["ocr_items"]
             # Track which turn the photo was sent on
-            ctx["photo_turn"] = state["exchange_count"]
+            ctx["photo_turn"] = state["exchange_count"] + 1
             state["context"] = ctx
             # Store a concise asset identifier, not the full vision description.
             # The LLM regurgitates the full text on every turn if we store the paragraph.
@@ -2165,22 +2955,35 @@ class Supervisor:
             elif vision_data["classification"] == "ELECTRICAL_PRINT":
                 state["state"] = "ELECTRICAL_PRINT"
                 ctx["drawing_type"] = vision_data["drawing_type"]
+                ctx["last_print_vision"] = {
+                    "classification": "ELECTRICAL_PRINT",
+                    "vision_result": vision_data.get("vision_result", ""),
+                    "ocr_items": vision_data.get("ocr_items", []),
+                    "tesseract_text": vision_data.get("tesseract_text", ""),
+                    "drawing_type": vision_data.get("drawing_type") or "electrical drawing",
+                    "confidence": vision_data.get("confidence", ""),
+                }
                 state["context"] = ctx
+                self._save_state(chat_id, state)
 
-                # If the technician sent a real question with the schematic,
-                # send image + question to the vision LLM for circuit analysis.
-                # Otherwise (just the default "Analyze this equipment photo"
-                # caption) keep the OCR-label preview + prompt-for-question.
+                # Visual-first routing (operator directive 2026-07-15): a photo
+                # the vision worker classified as an ELECTRICAL_PRINT ALWAYS gets
+                # the grounded interpretation — Anthropic PrintSynth first (deep,
+                # typed, never-invent), else the OCR-verbatim cascade. Captions
+                # are weak evidence: a real question is forwarded to the
+                # interpreter; an empty caption or the bot's own default caption
+                # means "interpret the whole sheet" (question=None). The live
+                # 2026-07-15 phone test proved a technician typing the literal
+                # default caption otherwise got only the thin OCR-label preview.
                 has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
-                reply = ""
-                if has_real_question:
-                    reply = await self._analyze_schematic_with_question(
-                        photo_b64=photo_b64,
-                        question=message,
-                        vision_data=vision_data,
-                        chat_id=chat_id,
-                    )
+                question = message if has_real_question else None
+                print_observe: dict = {}
+                reply = await self._grounded_print_reply(
+                    photo_b64, question, vision_data, chat_id, observe=print_observe
+                )
                 if not reply:
+                    # Fail-safe only — the grounded path is display-ready even on
+                    # provider failure, but never leave a print unanswered.
                     reply = self._build_print_reply(vision_data)
                     if not has_real_question:
                         reply += "\n\nWhat would you like to know about this circuit?"
@@ -2215,6 +3018,8 @@ class Supervisor:
                     self._infer_confidence(reply),
                     trace_id,
                     "ELECTRICAL_PRINT",
+                    route=print_observe.get("route"),
+                    fallback_reason=print_observe.get("fallback_reason"),
                 )
             elif vision_data["classification"] == "NAMEPLATE":
                 reply = await self._handle_nameplate(
@@ -2235,6 +3040,45 @@ class Supervisor:
                     trace_id,
                     "ASSET_IDENTIFIED",
                 )
+            elif vision_data["classification"] == "UNKNOWN":
+                # ROUND 4 defect #2: the vision model returned no usable signal
+                # (decline_reason below) and no strong LAYOUT/OCR evidence
+                # carried the page. Decline with an evidence-based fallback —
+                # surface whatever OCR could read and ask for a clearer photo —
+                # instead of routing to the equipment-diagnosis path on a
+                # fabricated classification. Never promote a fallback to a
+                # model-qualified answer.
+                decline_reason = vision_data.get("decline_reason") or "vision_unavailable"
+                _ocr_items = vision_data.get("ocr_items") or []
+                logger.info(
+                    "PHOTO_CLASSIFY_UNKNOWN chat_id=%s decline_reason=%s ocr_items=%d",
+                    chat_id,
+                    decline_reason,
+                    len(_ocr_items),
+                )
+                if _ocr_items:
+                    preview = ", ".join(str(i) for i in _ocr_items[:8])
+                    reply = (
+                        "I couldn't get a clear read on that photo — the image "
+                        "analysis didn't return a usable description. Here's the "
+                        f"text I could pull off it: {preview}. Could you resend a "
+                        "sharper, well-lit shot of the whole page or nameplate? "
+                        "Or tell me the equipment and fault and I'll help from there."
+                    )
+                else:
+                    reply = PHOTO_FAILURE
+                state["exchange_count"] += 1
+                self._save_state(chat_id, state)
+                tl_flush()
+                return self._make_result(
+                    reply,
+                    "low",
+                    trace_id,
+                    state.get("state"),
+                    dispatch_kind="dont_know",
+                    route="classify_decline",
+                    fallback_reason=decline_reason,
+                )
             else:
                 state["state"] = "ASSET_IDENTIFIED"
                 state["fault_category"] = None
@@ -2250,41 +3094,15 @@ class Supervisor:
 
         # Electrical print follow-up (text question in ELECTRICAL_PRINT state)
         if state.get("state") == "ELECTRICAL_PRINT" and not photo_b64:
-            try:
-                with tl_span(t, "print_worker"):
-                    raw = await self.print_.process(message, state)
-            except Exception as e:
-                logger.error(
-                    "PRINT_WORKER_ERROR chat_id=%s error=%s",
+            with tl_span(t, "print_worker"):
+                result = await self._handle_electrical_print_followup(
                     chat_id,
-                    e,
-                    exc_info=True,
+                    message,
+                    state,
+                    trace_id,
                 )
-                self._save_state(chat_id, state)
-                tl_flush()
-                return self._make_result(GENERIC_ENGINE_ERROR, "none", trace_id)
-            parsed = self._parse_response(raw)
-            # Output guardrail for print worker
-            print_intent = classify_intent(message)
-            parsed["reply"] = check_output(parsed["reply"], print_intent, has_photo=False)
-            state["exchange_count"] += 1
-            ctx = state.get("context") or {}
-            history = ctx.get("history", [])
-            history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": parsed["reply"]})
-            if len(history) > HISTORY_LIMIT:
-                history = history[-HISTORY_LIMIT:]
-            ctx["history"] = history
-            state["context"] = ctx
-            self._save_state(chat_id, state)
-            formatted = self._format_reply(parsed, user_message=message)
             tl_flush()
-            return self._make_result(
-                formatted,
-                self._infer_confidence(formatted),
-                trace_id,
-                "ELECTRICAL_PRINT",
-            )
+            return result
 
         # Photo with no specific intent → check for visible fault indicators first
         # (Skip for photo-as-answer: active session photos go straight to RAG)
@@ -2319,6 +3137,61 @@ class Supervisor:
             )
 
             if has_fault_indicators:
+                # Photo→pack fast-path (the OCR-code → drive-pack bridge): if we
+                # already know WHICH drive this is — resolved from the identified
+                # ASSET, never inferred from the code (a bare code is ambiguous
+                # across vendors) — and the OCR shows a fault code that drive
+                # documents, answer from the pack: cited, deterministic,
+                # read-only. Any miss (no pack, no code, or code not documented)
+                # falls through to the generic RAG auto-diagnose below, unchanged.
+                # extract_pack_fault_codes() is the gate that rejects bare OCR
+                # numerals ("5 A"); see shared/drive_packs/ask.py +
+                # .claude/rules/direct-connection-uns-certified.md (grounded only).
+                #
+                # Safety precedence: NEVER let this fast-path pre-empt a hazard.
+                # If the OCR/vision text carries a safety keyword (arc flash,
+                # smoke, ...), skip the pack answer entirely and fall through so
+                # a cited fault answer can never mask the safety path — mirrors
+                # the text drive-pack fast-path, which sits AFTER the safety
+                # short-circuit, and the vision-safety bypass above (~L2489).
+                _photo_safety = any(kw in ocr_text or kw in vision_text for kw in SAFETY_KEYWORDS)
+                _pf_pack = (
+                    None if _photo_safety else resolve_pack(state.get("asset_identified", "") or "")
+                )
+                if _pf_pack is not None:
+                    _pf_ocr = " ".join(ocr_items)
+                    for _pf_code in extract_pack_fault_codes(_pf_pack, _pf_ocr):
+                        _pf_ans = answer_fault_code(_pf_pack.pack_id, _pf_code)
+                        if not _pf_ans.matched:
+                            continue
+                        _pf_seen: set[tuple[str, str]] = set()
+                        _pf_cites: list[str] = []
+                        for _c in _pf_ans.citations:
+                            _doc = _c.get("doc", "")
+                            _page = _c.get("page", "")
+                            if not _doc or (_doc, _page) in _pf_seen:
+                                continue
+                            _pf_seen.add((_doc, _page))
+                            _pf_cites.append(
+                                f"[Source: {_doc} p.{_page}]" if _page else f"[Source: {_doc}]"
+                            )
+                        # Echo the code we READ off the photo so a human catches
+                        # an OCR misread before trusting the answer.
+                        _pf_reply = (
+                            f"I read fault code {_pf_code} off the photo.\n\n{_pf_ans.answer}"
+                        )
+                        if _pf_cites:
+                            _pf_reply = f"{_pf_reply}\n\n{' '.join(_pf_cites)}"
+                        self._record_exchange(chat_id, state, message, _pf_reply)
+                        tl_flush()
+                        return self._make_result(
+                            _pf_reply,
+                            "high",
+                            trace_id,
+                            state.get("state", "IDLE"),
+                            dispatch_kind="drive_pack",
+                        )
+
                 # Auto-diagnose: inject fault context into message and route to RAG
                 asset = state.get("asset_identified", "this equipment")
                 fault_items = [
@@ -3359,6 +4232,194 @@ class Supervisor:
             lines.append("Safety: " + safety)
         return "\n--- LIVE EQUIPMENT STATUS ---\n" + "\n".join(lines) + "\n---\n"
 
+    # ------------------------------------------------------------------
+    # Contextualization-signals enrichment (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_ctx_signals_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort approved PLC-signal context from kg_entities.
+
+        Queries for signals (entity_type='signal', approval_state IN
+        ('proposed','verified')) whose uns_path is a descendant of the asset's
+        resolved UNS path.  Returns a labeled block for prompt injection, or ""
+        on any miss.  Never raises.
+        """
+        if not _CTX_SIGNALS_ENABLED:
+            return ""
+        if not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            uns_path = resolve_uns_path(asset).uns_path
+            if not uns_path:
+                return ""
+            ltree_prefix = uns_path.replace("/", ".")
+            signals = await asyncio.wait_for(
+                asyncio.to_thread(_fetch_ctx_approved_signals, tenant_id, ltree_prefix),
+                timeout=_CTX_SIGNALS_TIMEOUT_S,
+            )
+            return self._format_ctx_signals(signals)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("CTX_SIGNALS miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_ctx_signals(signals: list[dict]) -> str:
+        """Render approved ctx signals as a compact prompt block. Never raises."""
+        if not signals:
+            return ""
+        lines = ["\n--- APPROVED PLC SIGNALS ---"]
+        for s in signals:
+            roles = s.get("roles") or []
+            roles_str = ", ".join(roles) if roles else "unknown"
+            conf = s.get("confidence")
+            try:
+                conf_str = f" ({float(conf):.0%})" if conf is not None else ""
+            except (TypeError, ValueError):
+                conf_str = ""
+            lines.append(f"  {s['name']}: {s['uns_path']} [{roles_str}]{conf_str}")
+        lines.append("---\n")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Interlock-context enrichment — consume side of the interlock flywheel
+    # (additive, flag-gated). Surfaces approved kg_relationships interlock edges.
+    # ------------------------------------------------------------------
+    async def _build_interlock_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort approved-interlock context for the confirmed asset.
+
+        Recalls VERIFIED interlock edges (USED_IN_LOGIC / CAUSES) from
+        kg_relationships under the asset's UNS subtree — the human-approved logic
+        the answer path historically never read — and renders them as grounded,
+        citable context. When a live tag snapshot is present on the turn, also
+        assembles the "why it won't move" explanation. Returns "" on any miss
+        (flag off, no asset/tenant, DB unreachable, nothing verified). Never
+        raises — diagnosis must be unaffected when interlock context is absent.
+        """
+        if not _INTERLOCK_CONTEXT_ENABLED or not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            uns_path = resolve_uns_path(asset).uns_path
+            if not uns_path:
+                return ""
+            ltree_prefix = uns_path.replace("/", ".")
+            edges = await asyncio.wait_for(
+                asyncio.to_thread(fetch_interlocks, tenant_id, ltree_prefix),
+                timeout=_INTERLOCK_CONTEXT_TIMEOUT_S,
+            )
+            if not edges:
+                return ""  # nothing verified -> no approved context -> no block
+            live = ((state.get("context") or {}).get("session_context") or {}).get(
+                "tag_state"
+            ) or {}
+            answer = build_interlock_answer(edges, live, asset) if live else None
+            return self._format_interlock_context(edges, answer)
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("INTERLOCK_CONTEXT miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_interlock_context(edges: list, answer: dict | None = None) -> str:
+        """Render recalled interlock edges (+ optional live explanation) as a
+        compact prompt block. Never raises; "" when there are no edges."""
+        if not edges:
+            return ""
+        lines = ["\n--- APPROVED INTERLOCK LOGIC (verified relationships; grounded, citable) ---"]
+        for e in edges[:12]:
+            loc = ""
+            for ev in getattr(e, "evidence", None) or []:
+                if ev.get("location"):
+                    loc = f"  [{ev.get('type') or 'evidence'}: {ev['location']}]"
+                    break
+            lines.append(f"  {e.source} -[{e.relationship_type}]-> {e.target}{loc}")
+        if answer and answer.get("why"):
+            lines.append(f"Why not moving: {answer['why']}")
+            checks = answer.get("next_checks") or []
+            if checks:
+                lines.append("Suggested checks: " + "; ".join(checks[:3]))
+        lines.append("---\n")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Work-order-history evidence (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_wo_evidence_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort CMMS work-order history for the confirmed asset.
+
+        Recalls recent Hub work_orders rows for the asset and renders them as a
+        labeled, CITABLE evidence block for prompt injection. Returns "" on any
+        miss (flag off, no tenant/asset, DB unreachable). Never raises -- the
+        diagnosis path must be unaffected when the CMMS store is absent.
+        """
+        if not _WO_EVIDENCE_ENABLED:
+            return ""
+        if not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            try:
+                uns_path = resolve_uns_path(asset).uns_path or ""
+            except Exception:  # noqa: BLE001 -- fall back to name-only matching
+                uns_path = ""
+            ltree_prefix = uns_path.replace("/", ".") if uns_path else None
+            wos = await asyncio.wait_for(
+                _recall_work_orders(
+                    tenant_id, asset, uns_path=ltree_prefix, limit=_WO_EVIDENCE_LIMIT
+                ),
+                timeout=_WO_EVIDENCE_TIMEOUT_S,
+            )
+            return self._format_wo_evidence(wos)
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("WO_EVIDENCE miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_wo_evidence(wos: list[dict]) -> str:
+        """Render work-order rows as a compact citable-evidence block.
+
+        Defensive: tolerates missing/extra keys and never raises. Only fields
+        read from the DB are rendered -- nothing is invented. Empty input
+        returns "".
+        """
+        if not wos:
+            return ""
+        lines: list[str] = []
+        for w in wos[:_WO_EVIDENCE_LIMIT]:
+            if not isinstance(w, dict):
+                continue
+            num = str(w.get("work_order_number") or "").strip()
+            title = str(w.get("title") or "").strip()
+            if not num or not title:
+                continue
+            created = w.get("created_at")
+            date = ""
+            try:
+                date = created.date().isoformat() if created else ""
+            except AttributeError:
+                date = str(created)[:10] if created else ""
+            status = str(w.get("status") or "").strip()
+            head = f"  [WO {num}]" + (f" {date}" if date else "")
+            if status:
+                head += f" ({status})"
+            head += f": {title}"
+            detail = str(w.get("resolution") or w.get("fault_description") or "").strip()
+            if detail:
+                head += f" -- {detail[:200]}"
+            lines.append(head)
+        if not lines:
+            return ""
+        return (
+            "\n--- WORK ORDER HISTORY (CMMS; citable -- cite as [WO <number>]) ---\n"
+            + "\n".join(lines)
+            + "\n---\n"
+        )
+
     async def _call_with_correction(
         self,
         message: str,
@@ -3377,12 +4438,27 @@ class Supervisor:
         """
         max_attempts = 1 if photo_b64 else (2 if self.nemotron.enabled else 1)
         query = message
+        # Prepend equipment context to text-only follow-ups in active diagnostic sessions.
+        # Photo turns are enriched by the RAG worker (rag_worker.py:551), so skip them here
+        # to avoid double-prepending. Text turns lack that enrichment and need it for RAG
+        # to find equipment-specific chunks (#2209).
+        if not photo_b64:
+            query = _prepend_equipment_context(message, state)
         # Fetch KG + live-equipment context once (both best-effort, "" when
         # disabled/absent) and reuse across self-correction retries. They are
         # pre-formatted, self-labeled blocks; concatenate and inject as one.
         kg_context = await self._build_kg_context(state, tenant_id)
         live_context = await self._build_live_data_context(state)
-        extra_context = kg_context + live_context
+        ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
+        interlock_context = await self._build_interlock_context(state, tenant_id)
+        wo_evidence_context = await self._build_wo_evidence_context(state, tenant_id)
+        extra_context = (
+            kg_context
+            + live_context
+            + ctx_signals_context
+            + interlock_context
+            + wo_evidence_context
+        )
 
         for attempt in range(max_attempts):
             try:
@@ -3419,7 +4495,7 @@ class Supervisor:
             if attempt == 0 and max_attempts > 1:
                 logger.info("SELF_CORRECT attempt=1 — rewriting query")
                 query = await self.nemotron.rewrite_query(
-                    query=message,
+                    query=query,
                     context=state.get("asset_identified", ""),
                 )
 
@@ -5375,8 +6451,18 @@ class Supervisor:
         confidence: str = "",
         response_time_ms: int = 0,
         platform: str = "telegram",
+        route: str | None = None,
+        model: str | None = None,
+        devices: int | None = None,
+        input_sha256: str | None = None,
+        fallback_reason: str | None = None,
     ) -> None:
-        """Append-only log of every user/bot exchange for quality analysis."""
+        """Append-only log of every user/bot exchange for quality analysis.
+
+        The optional provenance fields (``route``/``model``/``devices``/
+        ``input_sha256``/``fallback_reason``) are populated by print turns so
+        "check the bot results" retrieves the full story without screenshots
+        (2026-07-15 operator directive)."""
         if fsm_state == "DIAGNOSIS_REVISION":
             fsm_state = "DIAGNOSIS"
         log_interaction(
@@ -5390,6 +6476,11 @@ class Supervisor:
             confidence=confidence,
             response_time_ms=response_time_ms,
             platform=platform,
+            route=route,
+            model=model,
+            devices=devices,
+            input_sha256=input_sha256,
+            fallback_reason=fallback_reason,
         )
 
     # ------------------------------------------------------------------

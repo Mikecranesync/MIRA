@@ -106,11 +106,19 @@ def propose_relationship(
     reasoning: str | None = None,
     proposed_by: str = "import:kg_writer",
     source_chunk_id: str | UUID | None = None,
+    source_description: str | None = None,
+    evidence_type: str = "oem_kb",
 ) -> str | None:
     """Propose an ingest-derived edge instead of verifying it.
 
     Writes `relationship_proposals` (+ `relationship_evidence` when a
-    source chunk is known) and a bridging `ai_suggestions(kg_edge)` row.
+    source is known) and a bridging `ai_suggestions(kg_edge)` row.
+    Evidence rows are created for both chunk-level sources (source_chunk_id)
+    and document-level sources (source_description without a chunk UUID).
+    `evidence_type` is the `relationship_evidence.evidence_type` bucket for
+    the document-level branch (default `oem_kb`; a conversation-sourced
+    caller passes e.g. `technician_note`). Chunk-level sources are always
+    `document_page`.
     Idempotent: if an open proposal OR an already-verified edge exists for
     the same (tenant, source, target, canonical_type), no new rows are
     written and the existing proposal id (or None) is returned.
@@ -239,7 +247,11 @@ def propose_relationship(
         return None
     proposal_id = str(prop_row[0])
 
-    # Evidence: cite the source chunk this edge was extracted from.
+    # Evidence: cite the source this edge was extracted from.
+    # Chunk-level source (preferred): creates a document_page row with source_id.
+    # Document-level fallback: creates an oem_kb row with a text description only
+    # (source_id NULL, allowed by the schema) so the UI shows ≥1 evidence rather
+    # than "0 evidence" for every document-sourced proposal.
     if source_chunk_id:
         c.execute(
             text(
@@ -256,6 +268,25 @@ def propose_relationship(
                 "proposal_id": proposal_id,
                 "source_id": str(source_chunk_id),
                 "descr": f"Extracted from manual chunk {source_chunk_id}",
+                "conf": confidence,
+            },
+        )
+    elif source_description:
+        c.execute(
+            text(
+                """
+                INSERT INTO relationship_evidence
+                    (proposal_id, evidence_type,
+                     source_description, confidence_contribution)
+                VALUES
+                    (cast(:proposal_id AS uuid), :evidence_type,
+                     :descr, :conf)
+                """
+            ),
+            {
+                "proposal_id": proposal_id,
+                "evidence_type": evidence_type,
+                "descr": source_description,
                 "conf": confidence,
             },
         )
@@ -349,12 +380,15 @@ def propose_relationship_cursor(
     reasoning: str | None = None,
     proposed_by: str = "import:full_ingest",
     source_chunk_id: str | UUID | None = None,
+    source_description: str | None = None,
+    evidence_type: str = "oem_kb",
 ) -> str | None:
     """psycopg2-cursor variant of `propose_relationship` for callers that run
     inside a raw psycopg2 transaction (`tasks/full_ingest_pipeline.py`).
 
-    Same contract and invariants as `propose_relationship`, but uses `%s`
-    paramstyle and the caller's `cur` — so it reads the entities created
+    Same contract and invariants as `propose_relationship` (including the
+    `evidence_type` bucket for the document-level evidence branch), but uses
+    `%s` paramstyle and the caller's `cur` — so it reads the entities created
     (uncommitted) earlier in the same transaction. Returns the
     relationship_proposals id, or None when nothing was proposed (self-edge,
     unmapped type, or already-present edge)."""
@@ -440,6 +474,17 @@ def propose_relationship_cursor(
             """,
             (proposal_id, str(source_chunk_id),
              f"Extracted from manual chunk {source_chunk_id}", confidence),
+        )
+    elif source_description:
+        cur.execute(
+            """
+            INSERT INTO relationship_evidence
+                (proposal_id, evidence_type,
+                 source_description, confidence_contribution)
+            VALUES
+                (%s::uuid, %s, %s, %s)
+            """,
+            (proposal_id, evidence_type, source_description, confidence),
         )
 
     title, body, extracted_json = _kg_edge_suggestion_fields(

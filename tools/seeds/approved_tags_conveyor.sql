@@ -9,10 +9,10 @@ BEGIN;
 -- Command Center conveyor tile never gets a fresh row in `live_signal_cache`
 -- → freshness dot stays gray.
 --
--- Source of truth: `ignition/project/approved_tags.json` (57 entries, gateway-
+-- Source of truth: `ignition/project/approved_tags.json` (65 entries, gateway-
 -- side allowlist deployed by deploy_ignition.ps1). This seed mirrors the same
 -- list per-tenant in NeonDB so the relay enforces defense-in-depth on the way
--- in.
+-- in. Parity is pinned by tests/test_conveyor_allowlist_parity.py.
 --
 -- KEY MATCH — the relay's hot-path query is
 --   WHERE tenant_id=? AND source_system=? AND normalized_tag_path=? AND enabled=true
@@ -26,8 +26,8 @@ BEGIN;
 -- is a follow-up; subtree match works either way.
 --
 -- TENANT — `__TENANT_ID__` placeholder is replaced at apply time by
--- apply-seeds.yml from the workflow's `tenant_id_uuid` input (NOT the legacy
--- text tenant slug used by KB seeds).
+-- apply-approved-tags.yml from the workflow's `tenant_id` input (NOT the
+-- legacy text tenant slug used by KB seeds / apply-seeds.yml).
 --
 -- Idempotent — re-running is safe via `ON CONFLICT … DO UPDATE SET enabled=true`.
 
@@ -91,7 +91,13 @@ VALUES
   ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_fault_code',              'default_mira_iocheck_vfd_vfd_fault_code',              'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'Seeded by approved_tags_conveyor.sql 2026-06-07'),
   ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_freq_sp',                 'default_mira_iocheck_vfd_vfd_freq_sp',                 'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'Seeded by approved_tags_conveyor.sql 2026-06-07'),
   ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_frequency',               'default_mira_iocheck_vfd_vfd_frequency',               'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'Seeded by approved_tags_conveyor.sql 2026-06-07'),
-  ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_status_word',             'default_mira_iocheck_vfd_vfd_status_word',             'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'Seeded by approved_tags_conveyor.sql 2026-06-07')
+  ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_status_word',             'default_mira_iocheck_vfd_vfd_status_word',             'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'Seeded by approved_tags_conveyor.sql 2026-06-07'),
+  ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_warn_code',               'default_mira_iocheck_vfd_vfd_warn_code',               'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'VFD analyzer backfill 2026-07-04 - parity with gateway allowlist'),
+  ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_freq_cmd',                'default_mira_iocheck_vfd_vfd_freq_cmd',                'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'VFD analyzer backfill 2026-07-04 - parity with gateway allowlist'),
+  ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_torque',                  'default_mira_iocheck_vfd_vfd_torque',                  'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'VFD analyzer backfill 2026-07-04 - parity with gateway allowlist'),
+  ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_motor_rpm',               'default_mira_iocheck_vfd_vfd_motor_rpm',               'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'VFD analyzer backfill 2026-07-04 - parity with gateway allowlist'),
+  ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_power',                   'default_mira_iocheck_vfd_vfd_power',                   'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'VFD analyzer backfill 2026-07-04 - parity with gateway allowlist'),
+  ('__TENANT_ID__'::uuid, 'ignition', '[default]MIRA_IOCheck/VFD/vfd_last_fault',              'default_mira_iocheck_vfd_vfd_last_fault',              'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree, true, 'VFD analyzer backfill 2026-07-04 - parity with gateway allowlist')
 ON CONFLICT (tenant_id, source_system, source_tag_path) DO UPDATE
   SET normalized_tag_path = EXCLUDED.normalized_tag_path,
       uns_path = EXCLUDED.uns_path,

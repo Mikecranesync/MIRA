@@ -1,0 +1,13 @@
+{
+  "case_id": "14",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\14.png",
+  "oem": "AutomationDirect",
+  "document": "D0–06 PLC I/O Configuration (User Manual, Ch. 2)",
+  "source_url": "cdn.automationdirect.com/static/manuals/d006userm/ch2.pdf",
+  "page": 31,
+  "category": "PLC I/O",
+  "standard": "Industrial 24VDC",
+  "question": "Describe the theory of operation.",
+  "candidate_response": "## 1. **What this appears to be**\nThis appears to be a page from an instruction manual or technical documentation for a Direct Logic 06 (D0-06AR) Micro PLC, specifically detailing its I/O wiring diagram.\n\n## 2. **Main visible components**\nThe main visible components include:\n- A detailed I/O wiring diagram for the D0-06AR PLC\n- A derating chart for relay outputs\n- A table for typical relay life (operations) at room temperature\n- Equivalent circuit diagrams for input and output\n\n## 3. **Plain-English theory of operation**\nThe D0-06AR PLC has twenty AC input channels and sixteen relay contact outputs. The AC external power connection uses four terminals at the left. Inputs are organized into five banks of four, each with a common terminal. The outputs are configurable for 6-240V AC or 6-27V DC.\n\n## 4. **What must be true for it to work**\n- The PLC must be properly powered with 100-240V AC.\n- Inputs must be connected to the appropriate terminals (X0-X23).\n- Outputs must be connected to the appropriate terminals (Y0-Y17).\n- The common terminals for inputs and outputs must be correctly wired.\n\n## 5. **What would stop it from working**\n- Incorrect or loose wiring connections.\n- Power supply issues (outside the 100-240V AC range).\n- Overloading outputs beyond the specified derating chart limits.\n- Failure to properly configure input and output channels.\n\n## 6. **Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image. All text and diagrams seem clear.",
+  "context_notes": "This candidate had NO OCR text extracted — it was grounded on the image only (ocr_grounding='unavailable_on_this_box'). Judge whether it correctly separates what is visibly readable from inference accordingly: do not penalize it for declining to cite a specific tag/wire-number string it could not have OCR'd, but do penalize it under evidence_grounding_unsupported_claims if it invents a specific tag/wire-number/label that is not actually legible in the image."
+}

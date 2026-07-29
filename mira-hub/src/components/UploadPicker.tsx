@@ -137,24 +137,29 @@ export function UploadPicker({
 
   // Re-sync when the consumer opens the picker for a different asset.
   useEffect(() => {
-    if (open) setSelectedAsset(defaultAssetTag);
+    if (!open) return undefined;
+    const timeout = window.setTimeout(() => setSelectedAsset(defaultAssetTag), 0);
+    return () => window.clearTimeout(timeout);
   }, [open, defaultAssetTag]);
 
   useEffect(() => {
-    if (!open) return;
-    setError(null);
-    fetch(`${API_BASE}/api/picker/google/token/`)
-      .then((r) => setGoogleAvailable(r.ok))
-      .catch(() => setGoogleAvailable(false));
-    fetch(`${API_BASE}/api/picker/dropbox/key/`)
-      .then((r) => setDropboxAvailable(r.ok))
-      .catch(() => setDropboxAvailable(false));
-    fetch(`${API_BASE}/api/assets/`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: Asset[] | unknown) => {
-        if (Array.isArray(data)) setAssets(data as Asset[]);
-      })
-      .catch(() => setAssets([]));
+    if (!open) return undefined;
+    const timeout = window.setTimeout(() => {
+      setError(null);
+      fetch(`${API_BASE}/api/picker/google/token/`)
+        .then((r) => setGoogleAvailable(r.ok))
+        .catch(() => setGoogleAvailable(false));
+      fetch(`${API_BASE}/api/picker/dropbox/key/`)
+        .then((r) => setDropboxAvailable(r.ok))
+        .catch(() => setDropboxAvailable(false));
+      fetch(`${API_BASE}/api/assets/`)
+        .then((r) => (r.ok ? r.json() : []))
+        .then((data: Asset[] | unknown) => {
+          if (Array.isArray(data)) setAssets(data as Asset[]);
+        })
+        .catch(() => setAssets([]));
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [open]);
 
   useEffect(() => {
@@ -173,8 +178,8 @@ export function UploadPicker({
   useEffect(() => { dropboxReadyRef.current = dropboxReady; }, [dropboxReady]);
 
   useEffect(() => {
-    if (!open) return;
-    setPickerLoadFailed(false);
+    if (!open) return undefined;
+    const resetTimeout = window.setTimeout(() => setPickerLoadFailed(false), 0);
     const t = setTimeout(() => {
       // Surface a failure for whichever provider is "available" but still
       // hasn't loaded — the other button reverts to its label regardless.
@@ -182,7 +187,10 @@ export function UploadPicker({
       const dropboxStuck = dropboxAvailable && !dropboxReadyRef.current;
       if (googleStuck || dropboxStuck) setPickerLoadFailed(true);
     }, 10_000);
-    return () => clearTimeout(t);
+    return () => {
+      window.clearTimeout(resetTimeout);
+      clearTimeout(t);
+    };
   }, [open, googleAvailable, dropboxAvailable]);
 
   const filteredAssets = useMemo(() => {

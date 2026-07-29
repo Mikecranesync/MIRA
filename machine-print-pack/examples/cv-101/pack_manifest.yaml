@@ -1,0 +1,28 @@
+achieved_tier: APPROVABLE WITH FIELD VERIFICATION
+asset:
+  label: Garage conveyor (Conv_Simple)
+  tag: CV-101
+  uns_path: enterprise.garage.demo_cell.cv_101
+built_as_of: '2026-07-11'
+counts:
+  conductors: 40
+  conductors_field_verify: 37
+  devices: 14
+  open_items: 28
+  open_items_closed: 2
+  terminals: 96
+  terminals_field_verify: 34
+customer:
+  confidential: false
+  contact: prints@factorylm.com
+  name: ''
+  site: ''
+pack_format_version: 1.0.0
+redacted: true
+requested_tier: APPROVABLE WITH FIELD VERIFICATION
+signoff:
+  customer_field_accepted_by: ''
+  engineering_reviewed_by: 4-reviewer panel (technician, controls, drafting, evidence-auditor)
+  prepared_by: MIRA / FactoryLM
+source_package_dir: plc/conv_simple_electrical
+source_ref: model-sha256:7561b203f61424e9

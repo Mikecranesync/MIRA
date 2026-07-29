@@ -33,22 +33,22 @@ class TestBuildProviders:
         env = {
             "GROQ_API_KEY": "gsk_test",
             "CEREBRAS_API_KEY": "csk_test",
-            "GEMINI_API_KEY": "gem_test",
+            "TOGETHERAI_API_KEY": "tog_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
         assert len(providers) == 3
-        assert [p.name for p in providers] == ["groq", "cerebras", "gemini"]
+        assert [p.name for p in providers] == ["groq", "cerebras", "together"]
 
-    def test_cerebras_and_gemini_no_groq(self):
+    def test_cerebras_and_together_no_groq(self):
         env = {
             "CEREBRAS_API_KEY": "csk_test",
-            "GEMINI_API_KEY": "gem_test",
+            "TOGETHERAI_API_KEY": "tog_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
         assert len(providers) == 2
-        assert [p.name for p in providers] == ["cerebras", "gemini"]
+        assert [p.name for p in providers] == ["cerebras", "together"]
 
     def test_anthropic_key_is_ignored(self):
         """ANTHROPIC_API_KEY must NOT add a Claude provider — Anthropic was removed."""
@@ -71,6 +71,37 @@ class TestBuildProviders:
             providers = _build_providers()
         assert providers[0].model == "llama-3.1-8b-instant"
         assert providers[1].model == "llama-3.1-70b"
+
+
+class TestTogetherTimeout:
+    """Together is the LAST text-cascade provider AND the ONLY vision provider
+    (no fallback) — its timeout is env-configurable (default 90s, raised from a
+    hardcoded 30s after the 2026-07-19 bench lost 2/10 already-computed answers
+    to a 30s timeout). Groq/Cerebras stay hardcoded at 30.0 — not covered here."""
+
+    def test_default_ninety_when_unset(self):
+        env = {"TOGETHERAI_API_KEY": "tog_test"}
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        together = next(p for p in providers if p.name == "together")
+        assert together.timeout == 90.0
+
+    def test_env_override(self):
+        env = {"TOGETHERAI_API_KEY": "tog_test", "TOGETHERAI_TIMEOUT": "45"}
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        together = next(p for p in providers if p.name == "together")
+        assert together.timeout == 45.0
+
+    def test_empty_string_falls_back_to_default(self):
+        # docker compose ${TOGETHERAI_TIMEOUT:-} maps an unset var to an EMPTY
+        # STRING in-container, not an absent key — float("") raises, so this
+        # must fall back to the default rather than crash-loop the bot.
+        env = {"TOGETHERAI_API_KEY": "tog_test", "TOGETHERAI_TIMEOUT": ""}
+        with patch.dict(os.environ, env, clear=True):
+            providers = _build_providers()
+        together = next(p for p in providers if p.name == "together")
+        assert together.timeout == 90.0
 
 
 class TestRouterEnabled:
@@ -168,11 +199,16 @@ class TestCascadeComplete:
         assert content == ""
 
     async def test_image_request_uses_provider_with_vision_model(self):
-        """Groq has a vision model; Cerebras does not — image request should hit Groq."""
+        """Only the provider WITH a vision model gets image requests — the rest
+        are skipped. Groq's vision model comes from the env knob here: since the
+        2026-07-18 Groq vision deprecation there is no Groq vision default (the
+        default image carrier is Together — pinned in
+        mira-bots/tests/test_router_coverage.py::TestVisionModelConfig)."""
         env = {
             "INFERENCE_BACKEND": "cloud",
             "GROQ_API_KEY": "gsk_test",
             "CEREBRAS_API_KEY": "csk_test",
+            "GROQ_VISION_MODEL": "test/vision-model",
         }
         with patch.dict(os.environ, env, clear=True):
             router = InferenceRouter()
@@ -231,3 +267,37 @@ class TestCascadeComplete:
             content, _ = await router.complete([{"role": "user", "content": "test"}])
 
         assert content == ""
+
+
+class TestSessionModelCache:
+    """Phase 2 — session-keyed model attribution for the observability trace."""
+
+    def test_record_and_read(self):
+        r = InferenceRouter()
+        r._record_session_model("sess-1", "groq/llama-3.1")
+        assert r.last_model_for("sess-1") == "groq/llama-3.1"
+
+    def test_unknown_session_is_none(self):
+        r = InferenceRouter()
+        assert r.last_model_for("never-seen") is None
+        assert r.last_model_for(None) is None
+
+    def test_noop_on_missing_args(self):
+        r = InferenceRouter()
+        r._record_session_model(None, "groq/x")
+        r._record_session_model("s", None)
+        assert r.last_model_for("s") is None
+
+    def test_last_writer_wins_per_session(self):
+        r = InferenceRouter()
+        r._record_session_model("s", "groq/a")
+        r._record_session_model("s", "cerebras/b")
+        assert r.last_model_for("s") == "cerebras/b"
+
+    def test_cache_is_bounded(self):
+        r = InferenceRouter()
+        for i in range(r._MODEL_CACHE_MAX + 50):
+            r._record_session_model(f"s{i}", "groq/m")
+        assert len(r._last_model_by_session) <= r._MODEL_CACHE_MAX
+        # most-recent sessions survive
+        assert r.last_model_for(f"s{r._MODEL_CACHE_MAX + 49}") == "groq/m"

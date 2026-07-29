@@ -1,0 +1,1 @@
+{"package": {drawing_no: "31971"}, "devices": [], "note": "model emitted a JS-style unquoted key on this dense sheet"}

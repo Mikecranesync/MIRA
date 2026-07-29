@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Drive Commander self-eval scout on Bravo — daily. Install:
+    cp tools/crew/drive-commander-scout/com.factorylm.drive-commander-scout.plist ~/Library/LaunchAgents/
+    launchctl unload ~/Library/LaunchAgents/com.factorylm.drive-commander-scout.plist 2>/dev/null
+    launchctl load   ~/Library/LaunchAgents/com.factorylm.drive-commander-scout.plist
+  Run now (test):  launchctl start com.factorylm.drive-commander-scout
+  Prereq: a prd-scoped Doppler service token at ~/.doppler/drive-commander-scout-prd.token
+          (0600) so launchd's non-login env can read RESEND_API_KEY. See scout.sh.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.drive-commander-scout</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/bravonode/Mira/tools/crew/drive-commander-scout/scout.sh</string>
+  </array>
+  <!-- Daily (86400s) from load. One unseen manual per run, rotating. -->
+  <key>StartInterval</key>
+  <integer>86400</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/bravonode/Mira/dogfood-output/drive-commander-scout/scout.launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/bravonode/Mira/dogfood-output/drive-commander-scout/scout.launchd.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/bravonode/.local/bin:/Users/bravonode/.bun/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>

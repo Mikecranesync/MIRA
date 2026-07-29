@@ -1,0 +1,12 @@
+{"case_id": "t01", "question": "trace_wire from K1 terminal A1 through to X4 pin 17", "expected_tool": "trace_wire"}
+{"case_id": "t02", "question": "can you trace_wire on the estop loop starting at S1", "expected_tool": "trace_wire"}
+{"case_id": "t03", "question": "lookup_fault_code E5 on the powerflex 525 keypad", "expected_tool": "lookup_fault_code"}
+{"case_id": "t04", "question": "please lookup_fault_code F0004 and tell me what it means", "expected_tool": "lookup_fault_code"}
+{"case_id": "t05", "question": "resolve_device K1 so i know what type of relay it is", "expected_tool": "resolve_device"}
+{"case_id": "t06", "question": "resolve_device X4 to see where it is on the panel", "expected_tool": "resolve_device"}
+{"case_id": "t07", "question": "this photo is too blurry, ask_for_closeup of the nameplate", "expected_tool": "ask_for_closeup"}
+{"case_id": "t08", "question": "ask_for_closeup because i cannot read the small print on this label", "expected_tool": "ask_for_closeup"}
+{"case_id": "t09", "question": "search_print_pages for any sheet that shows K1", "expected_tool": "search_print_pages"}
+{"case_id": "t10", "question": "search_print_pages for the motor starter ladder diagram", "expected_tool": "search_print_pages"}
+{"case_id": "t11", "question": "retrieve_page_crop of sheet 6 around the K1 coil", "expected_tool": "retrieve_page_crop"}
+{"case_id": "t12", "question": "retrieve_page_crop for the top right corner of sheet 3", "expected_tool": "retrieve_page_crop"}

@@ -38,7 +38,10 @@ export default function UsagePage() {
     allTime: { totalWorkOrders: number; totalKbChunks: number };
   } | null>(null);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/usage/`)

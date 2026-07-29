@@ -329,14 +329,21 @@ def get_pending_urls() -> list[dict[str, Any]]:
 
 
 def knowledge_entry_exists(tenant_id: str, source_url: str, chunk_index: int) -> bool:
-    """Check if a chunk has already been ingested (dedup guard)."""
+    """Check if a chunk has already been ingested (dedup guard).
+
+    Dedup keys on metadata chunk_index, not source_page: source_page now holds
+    the real PDF page (or NULL), which many chunks share (#2968). Matches the
+    partial unique index from mira-hub migration 003 (tenant_id, source_url,
+    (metadata->>'chunk_index')::int) and still finds legacy rows, which carry
+    chunk_index in metadata too.
+    """
     with _engine().connect() as conn:
         count = conn.execute(
             text(
                 "SELECT COUNT(*) FROM knowledge_entries "
                 "WHERE tenant_id = :tid "
                 "AND source_url = :url "
-                "AND source_page = :chunk"
+                "AND (metadata->>'chunk_index')::int = :chunk"
             ),
             {"tid": tenant_id, "url": source_url, "chunk": chunk_index},
         ).scalar()
@@ -396,7 +403,9 @@ def insert_knowledge_entry(
                 "content": content,
                 "embedding": str(embedding),
                 "source_url": source_url,
-                "source_page": chunk_index,
+                # Real PDF page or NULL — never the chunk ordinal (#2968). The
+                # ordinal lives in metadata.chunk_index for dedup only.
+                "source_page": page_num,
                 "metadata": json.dumps(meta),
                 "chunk_type": chunk_type,
                 "isa95_path": isa95_path,
@@ -418,6 +427,11 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
     Optional per-entry keys (vision doc Problem 1): isa95_path, equipment_id,
     data_type (defaults to 'manual'). data_type is validated per entry.
 
+    Optional visibility keys: is_private, verified (both default False). A
+    per-tenant corpus (e.g. the proveit Pilot DB) sets is_private=True so it
+    stays scoped to its tenant; the shared OEM corpus omits both and keeps the
+    False default. See .claude/rules/knowledge-entries-tenant-scoping.md.
+
     Returns count of rows inserted.
     """
     if not entries:
@@ -433,6 +447,12 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
                 "isa95_path": e.get("isa95_path"),
                 "equipment_id": e.get("equipment_id"),
                 "data_type": dt,
+                # Per-row visibility: per-tenant uploads (the proveit Pilot DB corpus) set
+                # is_private=True; the shared OEM corpus omits it and keeps the False default,
+                # so every existing caller is byte-for-byte unchanged. See
+                # .claude/rules/knowledge-entries-tenant-scoping.md (write law).
+                "is_private": bool(e.get("is_private", False)),
+                "verified": bool(e.get("verified", False)),
             }
         )
     with _engine().connect() as conn:
@@ -447,7 +467,7 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
                 VALUES
                     (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                      :content, cast(:embedding AS vector), :source_url, :source_page,
-                     cast(:metadata AS jsonb), false, false, :chunk_type,
+                     cast(:metadata AS jsonb), :is_private, :verified, :chunk_type,
                      :isa95_path, :equipment_id, :data_type)
             """),
                 entry,

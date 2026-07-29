@@ -1,0 +1,73 @@
+{
+  "case": "atv340_vfd_s1s2s3_nve97896",
+  "created": "2026-07-14",
+  "purpose": "Primary-source evidence for the ATV340 frozen truth-set: the drawing + official Schneider manuals used to verify each retained blocker, and the auditable D1 reversal. Official Schneider sources only (download.schneider-electric.com); no reseller/forum/generic-knowledge sources.",
+  "primary_sources": [
+    {
+      "role": "source drawing (the graded print)",
+      "title": "ATV340 S1, S2 & S3 Wiring Diagrams",
+      "doc_number": "NVE97896",
+      "revision": "02",
+      "issue_date": "07/2018",
+      "sheet": "1/2",
+      "filename": "internet_print_tests/schneider-atv340-vfd/original.pdf",
+      "sha256": "5d8d99b51ecee2eb5e8f085552c3e4b72f0b63295497b88aa7978135ee204785",
+      "publisher": "Schneider Electric",
+      "official_source": "download.schneider-electric.com"
+    },
+    {
+      "role": "official installation manual (authoritative terminal/connector definitions)",
+      "title": "Altivar Machine ATV340 Variable Speed Drives Installation Manual",
+      "doc_number": "NVE61069",
+      "revision": "06",
+      "issue_date": "10/2025",
+      "sha256": "8544403d91bcd55e05414e2099bbe8dbdb6efac53cba565a44edc9678ae48045",
+      "publisher": "Schneider Electric",
+      "official_source": "download.schneider-electric.com"
+    }
+  ],
+  "verifications": [
+    {
+      "item": "D1 — RS422 / CN3 connector ownership",
+      "verdict": "contradicted -> blocker REMOVED (incorrect_connector_ownership)",
+      "source_doc": "NVE61069 rev 06",
+      "page": "132 (electrical/pin detail p.133)",
+      "table_or_section": "\"Drive Frame Sizes 1...3 - Top Side CN3 Connector\" (Arrangement and Characteristics of Control Block Terminals)",
+      "excerpt": "ENC ... Digital encoder 5V RS422 A/B/I ... Analog encoder 1Vpp sin/cos. (p.133: RS422/RS485, Rin 121 Ohm, 1 Mbit)",
+      "reviewer_note": "CN3/ENC legitimately supports RS422; RS422 is Schneider's shared differential standard across CN3/CN4/CN5, not CN4-exclusive. Independently re-verified in the downloaded PDF (sha256 8544403d...) — see reversal_note."
+    },
+    {
+      "item": "D2 — S3 braking-resistor path",
+      "verdict": "confirmed_drawing",
+      "source_doc": "NVE97896 rev 02",
+      "page": "1/2",
+      "table_or_section": "Power section — S3 block (CN1/CN8/CN9/CN10)",
+      "excerpt": "S3 braking resistor connects CN8:PB <-> CN9:PA/+; S1&S2 braking resistor connects CN10:PBe <-> CN10:PB."
+    },
+    {
+      "item": "D3 — frame-variant membership",
+      "verdict": "strongly_supported (scoped)",
+      "source_doc": "NVE61069 rev 06 + NVE97896 rev 02",
+      "page": "117 (manual) + 1/2 (drawing)",
+      "table_or_section": "Wiring the Power Part > Functions of the Power Terminals",
+      "excerpt": "PB terminal location varies by frame (CN10 for S1/S2, CN8 for S3); CN9 (PA/+, PC/-) is IDENTICAL across frames. Duplicate CN9:PA/+ / CN9:PC/- = same terminal (de-duplicate), not frame-qualify."
+    },
+    {
+      "item": "D4 — PC/- functional role",
+      "verdict": "confirmed_official_manual",
+      "source_doc": "NVE61069 rev 06",
+      "page": "117",
+      "table_or_section": "Functions of the Power Terminals",
+      "excerpt": "CN9 PA/+ = DC bus + polarity; PC/- = DC bus - polarity; braking = CN10:PB-PBe (S1/S2) or CN9:PA/+ - CN8:PB (S3). PC/- is in neither brake loop."
+    },
+    {
+      "item": "exact-label — CN6 digital outputs",
+      "verdict": "confirmed_drawing",
+      "source_doc": "NVE97896 rev 02",
+      "page": "1/2",
+      "table_or_section": "Control section — CN6 terminal column",
+      "excerpt": "CN6 outputs are labeled DQCOM, DQ1, DQ2 (graph's DO1/DO2 is the misread)."
+    }
+  ],
+  "reversal_note": "D1 was REVERSED after primary-source verification. The initial drawing-only reading concluded RS422-on-CN3 was a defect; the official Installation Manual (NVE61069.06 p.132) shows CN3 legitimately supports a 5V RS422 A/B/I digital encoder. The incorrect_connector_ownership blocker was removed; variant_crossover (redundant with incompatible_functional_path; CN9 is not frame-variable) and dangling_reference (CN3 is a real connector) were also removed. Five drawing/manual-confirmed blockers retained; the reduced set independently preserves import_verdict=FAIL. Verification used Sonnet evidence-review agents + independent in-PDF confirmation by the orchestrator; se.com FAQ pages returned HTTP 403 and are NOT cited."
+}

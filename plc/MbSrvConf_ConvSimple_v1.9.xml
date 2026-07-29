@@ -1,0 +1,111 @@
+<modbusServer Version="2.0">
+  <!-- Conv_Simple_1.8 Modbus server map, V1.9 (Trends V2).
+       SURGICAL SUPERSET of the deployed map (Version 2.0, 13 coils + 5 HRs):
+       every live entry is preserved verbatim, and ONLY the new full-GS10
+       monitoring registers are appended. We deliberately do NOT add the
+       v4-lineage variables (conveyor_running, fault_alarm, system_ready,
+       dir_*, motor_speed, conv_state, vfd_poll_step, ...) which exist in
+       the old plc/MbSrvConf_v4.xml but may NOT exist as globals in the live
+       1.8 project, and referencing a non-existent variable fails the import.
+       New, written by Prog_init V1.9 (plc/Prog_init_ConvSimple_v1.9.st):
+         coil 000024 last_fault_clear  (operator clear for the latch; HMI-write)
+         HR   400118 vfd_status_word   (0x2101 status bits)
+         HR   400119 vfd_fault_code    (0x2100 low byte = active fault)
+         HR   400120 vfd_warn_code     (0x2100 high byte = active warning)
+         HR   400121 vfd_freq_cmd      (0x2102 freq command echo)
+         HR   400122 vfd_torque        (0x210B torque, 0.1 %)
+         HR   400123 vfd_motor_rpm     (0x210C motor speed, rpm)
+         HR   400124 vfd_power         (0x210F output power, 0.001 kW)
+         HR   400125 vfd_last_fault    (PLC-latched last nonzero fault)
+       Historian pymodbus offset = CCW address - 400001 (400118 -> 117),
+       matching plc/conv_simple_anomaly/live_logger.py HR_SPECS 117..124.
+       Version="2.0" matches the deployed file's CCW schema version (do not
+       bump). CCW must be CLOSED when deploy_modbus_map.py drops this in. -->
+  <modbusRegister name="COILS">
+    <mapping variable="motor_running" parent="Micro820" dataType="Bool" address="000001">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="vfd_comm_ok" parent="Micro820" dataType="Bool" address="000004">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="e_stop_active" parent="Micro820" dataType="Bool" address="000006">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="estop_wiring_fault" parent="Micro820" dataType="Bool" address="000010">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_00" parent="Micro820" dataType="Bool" address="000012">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_01" parent="Micro820" dataType="Bool" address="000013">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_02" parent="Micro820" dataType="Bool" address="000014">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_03" parent="Micro820" dataType="Bool" address="000015">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_04" parent="Micro820" dataType="Bool" address="000016">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_00" parent="Micro820" dataType="Bool" address="000017">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_01" parent="Micro820" dataType="Bool" address="000018">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_02" parent="Micro820" dataType="Bool" address="000019">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_03" parent="Micro820" dataType="Bool" address="000020">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <!-- V1.9 Trends V2: operator clear for the vfd_last_fault latch -->
+    <mapping variable="last_fault_clear" parent="Micro820" dataType="Bool" address="000024">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+  </modbusRegister>
+  <modbusRegister name="HOLDING_REGISTERS">
+    <mapping variable="vfd_frequency" parent="Micro820" dataType="Word" address="400107">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_current" parent="Micro820" dataType="Word" address="400108">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_voltage" parent="Micro820" dataType="Word" address="400109">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_dc_bus" parent="Micro820" dataType="Word" address="400110">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_cmd_word" parent="Micro820" dataType="Word" address="400115">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <!-- V1.9 Trends V2: full GS10 monitoring mirrors written by Prog_init V1.9 -->
+    <mapping variable="vfd_status_word" parent="Micro820" dataType="Word" address="400118">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_fault_code" parent="Micro820" dataType="Word" address="400119">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_warn_code" parent="Micro820" dataType="Word" address="400120">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_freq_cmd" parent="Micro820" dataType="Word" address="400121">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_torque" parent="Micro820" dataType="Word" address="400122">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_motor_rpm" parent="Micro820" dataType="Word" address="400123">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_power" parent="Micro820" dataType="Word" address="400124">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="vfd_last_fault" parent="Micro820" dataType="Word" address="400125">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+  </modbusRegister>
+</modbusServer>

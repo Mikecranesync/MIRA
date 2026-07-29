@@ -1,0 +1,31 @@
+# EXPECT-VIOLATION: mirash:SupersededNotCurrentShape
+#
+# R14a — a superseded assertion still rendered as present-tense fact. It may be shown as history
+# with explicit context; it may never be exposed as current. This is how a technician gets told
+# the old wiring is the live wiring.
+#
+# Isolation: the superseded assertion sits at approval_state=deprecated, so R14c (superseded but
+# still verified) cannot fire. Only R14a does.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech1  a mira:Technician .
+ex:llm    a mira:SoftwareAgent .
+ex:doc1   a mira:SourceDocument .
+ex:cite1  a mira:Citation ; mira:cite_doc ex:doc1 ; mira:cite_locator "p.114" .
+
+ex:a_old a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:approval_state mira:approval_deprecated ;
+    mira:exposed_as_current true .
+
+ex:a_new a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr4 ;
+    mira:supersedes ex:a_old ;
+    mira:approval_state mira:approval_verified ;
+    mira:supported_by ex:cite1 ;
+    mira:proposed_by ex:llm ;
+    mira:approved_by ex:tech1 ;
+    mira:approved_at "2026-07-21T09:15:00Z"^^xsd:dateTime .

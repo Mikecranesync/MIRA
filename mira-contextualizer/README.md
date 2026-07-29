@@ -1,0 +1,70 @@
+# mira-contextualizer
+
+Offline-first Windows desktop app that ingests **any** document and **deterministically**
+contextualizes a factory — proposing UNS paths, roles, and i3X objects — then exports a portable
+bundle for import into MIRA Hub. **No internet, no LLM** in the reasoning path.
+
+Plan: `C:\Users\hharp\.claude\plans\offline-factory-contextualizer.md`. Composes the stdlib-only
+`mira-plc-parser` engine.
+
+## Status — P0 + P1 + P2 + P4 + P5 + P6 ✅
+
+**P5 (packaging):** `MIRA-Contextualizer.spec` (PyInstaller **onedir**) bundles the GUI, the
+`mira_plc_parser` engine, and the document stack; `installer.iss` (Inno Setup) makes a real Windows
+program (shortcuts, file associations, per-user install). Optional Tesseract bundled from
+`vendor/tesseract/`. A real build was produced and the frozen exe launches (engine imports verified);
+`tests/test_packaging.py` pins the frozen-path contracts. See `PACKAGING.md`.
+
+**P6 (Hub import bridge):** `POST /api/contextualization/import` in mira-hub ingests a bundle zip
+(dependency-free reader → `parseBundle`) and recreates project + sources + extractions (preserving
+offline accept/reject), so the existing Promote flow lands signals in the KG. 5 hub tests green.
+
+
+
+**P4:** `bundle.py` exports a portable **Factory Context Bundle** (`bundle@1`) as a zip —
+`manifest.json` (+ source sha256), `uns.json`, `i3x.json` (CESMII objectInstances projected from the
+UNS hierarchy), `kg_entities.json` + `kg_relationships.json` (proposed; offline twin of Promote, with
+HAS_SIGNAL / MENTIONS edges), `signals.csv`, `documents/*.json` (extracted IR), `review.json` (audit),
+`report.md`, `IMPORT.md`. Download via the GUI "Export Bundle" button or
+`GET /api/projects/{id}/export?format=bundle` (also `uns` / `i3x`). 25 tests green.
+
+
+
+**P2:** `contextualize.py` runs deterministic rules (regex + curated vocab + table awareness) over the
+Document IR → reviewable candidates with provenance + confidence: fault codes, drive parameters,
+catalog numbers, model families, manufacturers, and cross-references to the project's PLC tags. No
+LLM. Wired into the document upload path, so dropping a manual immediately yields candidates in the
+shared accept/reject review table. 21 tests green.
+
+
+
+**P1:** `extract.py` reads ANY document → a normalized **Document IR** (`document@1`): digital +
+scanned PDF (pypdfium2 rasterize → Tesseract OCR), Word, Excel, CSV, HTML, text, images. OCR is
+built in and **degrades gracefully** when the Tesseract engine binary is absent (bundled at P5).
+Heavy deps are lazy-imported (the `[docs]` extra) so the core stays dependency-free. Documents
+upload as raw bytes; extracted text persists on the source for P2 contextualization. 17 tests green.
+
+### P0
+- Local **SQLite** store mirroring the Hub contextualization schema (`store.py`).
+- Stdlib **HTTP API** mirroring the Hub routes (`server.py`): projects, sources, extractions,
+  decisions, UNS export.
+- **Engine adapter** (`engine.py`) running the deterministic PLC pipeline (same call the Hub worker
+  makes) — PLC exports (L5X/CSV) extract today; document formats land in **P1**.
+- **Desktop launcher** (`app.py`) — Edge app-mode window on `127.0.0.1`, per-user SQLite DB.
+- Unified **GUI** (`gui/index.html`) — two modes (PLC Tag Mapper / Documents), project list,
+  upload, accept/reject review, UNS export.
+
+## Run from source
+```
+python -m mira_contextualizer        # opens the desktop window (needs sibling mira-plc-parser/)
+```
+
+## Test
+```
+python -m pytest mira-contextualizer/tests -q
+```
+
+## Roadmap
+P1 heavy doc extraction (PDF/Word/Excel/scan OCR → Document IR) · P2 deterministic contextualization
+rules · P3 Mode-B review GUI · P4 portable Factory Context Bundle · P5 PyInstaller onedir + Inno
+installer · P6 Hub `POST /api/contextualization/import`.

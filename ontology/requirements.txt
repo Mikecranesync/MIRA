@@ -1,0 +1,13 @@
+# MIRA ontology validation toolchain (ADR-0032).
+#
+# Both packages are permissively licensed and satisfy the PRD §4 hard constraint
+# (Apache-2.0 or MIT only):
+#   rdflib  — BSD-3-Clause  (compatible; recorded explicitly in ADR-0032 §License)
+#   pyshacl — Apache-2.0
+#
+# Deliberately NOT pinned to an exact patch so Dependabot can move them; pinned to
+# a major so a breaking SHACL-engine change cannot silently land. No Java tooling
+# (Apache Jena / TopBraid) — the whole validator must run in the existing
+# setup-python@v6 + pip CI shape with no JVM.
+rdflib>=7.1,<8
+pyshacl>=0.30,<1

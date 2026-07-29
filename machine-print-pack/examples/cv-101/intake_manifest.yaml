@@ -1,0 +1,47 @@
+# MIRA Print Pack — CV-101 (Conv_Simple) intake manifest.
+# This is the REAL manifest the example bundle is built from. The customer
+# fields are placeholders (this is a bench/demo asset) and are redacted in the
+# published example. Every evidence item below is a real repo artifact.
+
+pack_format_version: "1.0.0"
+
+asset:
+  uns_path: "enterprise.garage.demo_cell.cv_101"
+  tag: "CV-101"
+  label: "Garage conveyor (Conv_Simple)"
+
+customer:
+  name: "FactoryLM (bench/demo asset)"
+  site: "Garage demo cell"
+  contact: "prints@factorylm.com"
+  confidential: false
+
+model_source:
+  package_dir: "plc/conv_simple_electrical"
+
+evidence:
+  - path: "plc/conv_simple_electrical/review/photos/wire_2.jpg"
+    kind: photo
+    provenance: "bench photo, 2026-07-11 — Micro820 model label + MAC ID + Mean Well nameplate"
+    redact: true
+  - path: "plc/conv_simple_electrical/review/photos/wire_3.jpg"
+    kind: photo
+    provenance: "bench photo, 2026-07-11 — Q1 (MLC) aux contacts landed"
+    redact: true
+  - path: "plc/GS10_Integration_Guide.md"
+    kind: manual
+    provenance: "GS10 integration guide (repo)"
+    redact: false
+  - path: "plc/conv_simple_electrical/review/PHOTO_EVIDENCE_V7.md"
+    kind: technician_statement
+    provenance: "technician confirmation 'it's 230', 2026-07-11 (OI-27 close-out)"
+    redact: false
+
+build:
+  as_of: "2026-07-11"
+  requested_tier: "field_verification"
+
+signoff:
+  prepared_by: "MIRA / FactoryLM"
+  engineering_reviewed_by: "4-reviewer panel (technician, controls, drafting, evidence-auditor)"
+  customer_field_accepted_by: ""   # blank — the bench technician signs after field verification

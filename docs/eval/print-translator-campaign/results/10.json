@@ -1,0 +1,44 @@
+{
+  "id": 10,
+  "oem": "Omron",
+  "document": "G9SP-N Series Dual-Channel Safety Relay (Z922)",
+  "url": "https://files.omron.eu/downloads/latest/manual/en/z922_g9sp_series_safety_controller_operation_manual_en.pdf",
+  "manifest_page_ref": "Wiring diagram section (p. 5–8)",
+  "print_type": "Dual-channel safety relay schematic",
+  "standard": "ISO 13849-1 PLe",
+  "category": "Safety Relays",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 41,
+  "image_sha256": "be120b32a60d81df959223bac60ad12cba51948d0b4a160fc6fe45968169b5e1",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:08:32.679405+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.85,
+    "drawing_type": "wiring diagram",
+    "drawing_type_confidence": 0.9,
+    "vision_result": "The image shows an electrical drawing, specifically a terminal arrangement and wiring diagram for G9SP-series Controllers. The diagram includes terminal arrangements for different models, internal circuits, and a table describing the function of each terminal. There are no physical indicators or equipment visible.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 419,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "1. **What this appears to be**:  \n   This appears to be a terminal arrangement and internal circuit diagram for G9SP-series Controllers, specifically detailing the pin configurations and internal wiring for different models (G9SP-N10S, G9SP-N10D, G9SP-N20S).\n\n2. **Main visible components**:  \n   The main visible components include:\n   - Terminal blocks for power supply, safety inputs, safety outputs, standard outputs, and test outputs.\n   - Internal circuit sections labeled as:\n     - Internal Circuit\n     - Safety Input Circuit\n     - Test Output Circuit\n     - Safety Output Circuit\n     - Standard Output Circuit\n\n3. **Plain-English theory of operation**:  \n   The diagram shows how various terminals on the G9SP-series Controllers are internally connected. The power supply terminals (V1/G1 and V2/G2) provide 24 VDC to the internal circuits. Safety inputs (Si0 to Si19) are connected to the Safety Input Circuit. The Safety Output Circuit and Standard Output Circuit handle respective output operations. Test Output terminals (T0 to T5) are linked to the Test Output Circuit.\n\n4. **What must be true for it to work**:  \n   For the system to work:\n   - Power supply must be connected to V1/G1 and V2/G2 terminals.\n   - Safety inputs must be properly connected to Si0 to Si19 terminals.\n   - Outputs must be correctly wired to So0 to So15 (Safety Outputs) and O0 to O3 (Standard Outputs).\n\n5. **What would stop it from working**:  \n   Potential issues that would stop it from working:\n   - No power supply connected to V1/G1 or V2/G2.\n   - Open circuits in safety input connections (Si0 to Si19).\n   - Faulty Safety Output Circuit or Standard Output Circuit.\n\n6. **Unclear or unreadable items**:  \n   Nothing major appears to be unreadable in the provided image. All labels and terminal designations are clearly visible."
+}

@@ -87,9 +87,13 @@ COIL_TOPICS: dict[int, str] = {
     17: "plc/do/do01_red",
     18: "safety/contactor_q1",
     19: "plc/do/do03_pbrun_led",
-    # --- slave-map v2 (A12 photo-eye): enable after the MbSrvConf.xml reflash ---
-    # 20: "plc/di/di05_photoeye",   # raw photo-eye beam
-    # 21: "safety/pe_latched",      # photo-eye latching soft-stop engaged
+    # --- slave-map v2 (A12 photo-eye): PE-101 wired to embedded DI 5, mapped at
+    #     coil 000023 = pymodbus offset 22 (offsets 20/21 are the v4.1.x VFD poll
+    #     coils vfd_poll_active / vfd_fault_reset_pending, so DI 5 is appended).
+    22: "plc/di/di05_photoeye",   # raw photo-eye beam (_IO_EM_DI_05)
+    # pe_latched is a ladder-computed latch, not a wired input — enable once the
+    # latch rung exists and is mapped to a coil:
+    # NN: "safety/pe_latched",     # photo-eye latching soft-stop engaged
 }
 
 # HR offset -> (relative topic, scale divisor). vfd_comm_ok (coil 3) is the
@@ -107,9 +111,11 @@ HR_SPECS: dict[int, tuple[str, float]] = {
 
 # Read plan: blocks that are fully mapped (no unmapped address inside a span).
 # The Micro 820 rejects a read that spans an unmapped address, so the plan only
-# covers mapped blocks. After the slave-map v2 reflash, widen these spans (e.g.
-# HR (106, 6) to pick up 110/111) and uncomment the HR_SPECS/COIL_TOPICS above.
-COIL_READS = [(0, 1), (3, 1), (5, 1), (9, 1), (11, 9)]  # (offset, count)
+# covers mapped blocks. The (22, 1) block picks up the slave-map v2 photo-eye
+# (_IO_EM_DI_05) without spanning the VFD poll coils at offsets 20/21. For the
+# A2/A7 VFD fault+setpoint HRs, widen HR (106, 6) to pick up 110/111 and
+# uncomment the HR_SPECS/COIL_TOPICS above after that reflash.
+COIL_READS = [(0, 1), (3, 1), (5, 1), (9, 1), (11, 9), (22, 1)]  # (offset, count)
 HR_READS = [(106, 4), (114, 1)]
 
 

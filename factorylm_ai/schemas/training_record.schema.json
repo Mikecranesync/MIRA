@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/training_record.schema.json",
+  "title": "TrainingRecord",
+  "description": "One approved, split-assigned fine-tuning candidate — the unit factorylm_ai.flywheel.export.export_together_jsonl() writes to Together fine-tuning JSONL. Built by factorylm_ai.flywheel.records.new_training_record(). approved_by is mandatory before export (see ExportRefused).",
+  "type": "object",
+  "properties": {
+    "record_id": { "type": "string", "minLength": 1 },
+    "source_interaction_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string", "minLength": 1 },
+          "content": { "type": "string" }
+        },
+        "required": ["role", "content"],
+        "additionalProperties": true
+      }
+    },
+    "tools": { "type": ["array", "null"] },
+    "split": {
+      "type": "string",
+      "enum": ["train", "dev", "test", "holdout"]
+    },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "sensitive": { "type": "boolean" },
+    "tenant_id": { "type": ["string", "null"] },
+    "approved_by": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "minLength": 1 }
+  },
+  "required": [
+    "record_id", "source_interaction_ids", "messages", "tools", "split",
+    "tags", "sensitive", "tenant_id", "approved_by", "created_at"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "record_id": "tr_0001",
+      "source_interaction_ids": ["int_0001"],
+      "messages": [
+        {"role": "system", "content": "You are the FactoryLM intent router."},
+        {"role": "user", "content": "what is this relay"},
+        {"role": "assistant", "content": "K1 is shown on sheet 6."}
+      ],
+      "tools": null,
+      "split": "train",
+      "tags": ["m05", "intent_router"],
+      "sensitive": false,
+      "tenant_id": null,
+      "approved_by": "mike",
+      "created_at": "2026-07-19T00:04:00Z"
+    },
+    {
+      "record_id": "tr_0002",
+      "source_interaction_ids": ["int_0002", "int_0003"],
+      "messages": [
+        {"role": "user", "content": "route this: fault on the vfd"},
+        {"role": "assistant", "content": "{\"route\": \"drive_fault_photo\"}"}
+      ],
+      "tools": [{"type": "function", "function": {"name": "search_print_pages"}}],
+      "split": "holdout",
+      "tags": ["m05"],
+      "sensitive": true,
+      "tenant_id": "9d1f8f0a-2222-4b3c-8a11-000000000001",
+      "approved_by": null,
+      "created_at": "2026-07-19T00:06:00Z"
+    }
+  ]
+}

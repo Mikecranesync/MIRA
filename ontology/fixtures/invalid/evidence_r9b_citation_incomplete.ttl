@@ -1,0 +1,11 @@
+# EXPECT-VIOLATION: mirash:CitationCompletenessShape
+#
+# R9b — a citation that names neither a source document nor a locator. A whole-document
+# citation is not re-verifiable: "it's in the manual somewhere" cannot be checked by the
+# technician standing at the machine.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:cite_bad a mira:Citation .

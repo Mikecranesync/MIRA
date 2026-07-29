@@ -6,10 +6,10 @@ Provides:
 
 Environment variables:
   LANGFUSE_SECRET_KEY    — required
-  LANGFUSE_PUBLIC_KEY    — required
-  LANGFUSE_HOST          — optional, default: http://localhost:3000
+  LANGFUSE_PUBLIC_KEY    — required  (LANGFUSE_PUBLIC_API_KEY also accepted)
+  LANGFUSE_HOST          — region endpoint, e.g. https://us.cloud.langfuse.com
 
-Usage (Phase 4 integration target):
+Wired into the live path at ``mira-bots/shared/workers/rag_worker.py``:
     async with trace_rag_query(query, session_id=user_id) as spans:
         async with spans.embed_query(query):
             ...
@@ -20,6 +20,11 @@ Usage (Phase 4 integration target):
         async with spans.llm_inference(prompt_len, response, latency_ms):
             ...
 
+Privacy: this trace path ships to a third-party SaaS (Langfuse Cloud). The
+cascade's InferenceRouter.sanitize_context() does NOT cover it, so every
+free-text payload (query / composed context / response preview) is run through
+``_scrub()`` before it leaves. Keep the patterns in sync with router.py.
+
 Note: All Langfuse calls are wrapped in try/except.
 Tracing failures are logged but NEVER propagate to the caller.
 """
@@ -27,6 +32,7 @@ Tracing failures are logged but NEVER propagate to the caller.
 import contextlib
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -34,6 +40,31 @@ from typing import Any
 logger = logging.getLogger("mira.evals.langfuse")
 
 _langfuse_client = None
+
+# PII scrub — mirror of InferenceRouter.sanitize_text (inference/router.py).
+# Inlined so this module stays dependency-light (its design intent) and the
+# evals/ copy works standalone. Keep these three patterns in sync with router.py.
+_IPV4_RE = re.compile(
+    r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
+)
+_MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")
+_SERIAL_RE = re.compile(
+    r"\b(?:S/?N|SER(?:IAL)?(?:\s*(?:NO|NUM|NUMBER)?)?)[:\s#]*[A-Z0-9\-]{4,20}\b",
+    re.IGNORECASE,
+)
+
+
+def _scrub(text):
+    """Strip IPs, MACs, and serial numbers before a payload leaves for Langfuse.
+
+    Mirror of InferenceRouter.sanitize_text. Returns non-str input unchanged.
+    """
+    if not isinstance(text, str):
+        return text
+    text = _IPV4_RE.sub("[IP]", text)
+    text = _MAC_RE.sub("[MAC]", text)
+    text = _SERIAL_RE.sub("[SN]", text)
+    return text
 
 
 def get_langfuse():
@@ -53,13 +84,15 @@ def get_langfuse():
         return None
 
     secret_key = os.environ.get("LANGFUSE_SECRET_KEY", "")
-    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY") or os.environ.get("LANGFUSE_PUBLIC_API_KEY", "")
-    host = os.environ.get("LANGFUSE_HOST") or os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY") or os.environ.get(
+        "LANGFUSE_PUBLIC_API_KEY", ""
+    )
+    host = os.environ.get("LANGFUSE_HOST") or os.environ.get(
+        "LANGFUSE_BASE_URL", "https://cloud.langfuse.com"
+    )
 
     if not secret_key or not public_key:
-        logger.warning(
-            "LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY not set — tracing disabled"
-        )
+        logger.warning("LANGFUSE_SECRET_KEY / LANGFUSE_PUBLIC_KEY not set — tracing disabled")
         return None
 
     try:
@@ -88,8 +121,9 @@ class _SpanHelper:
     @contextlib.asynccontextmanager
     async def embed_query(self, query: str):
         """span: embed_query
-        input  — raw query string
-        output — embedding vector shape (approximated; real embed is inside Open WebUI)
+        input  — raw query string (PII-scrubbed)
+        output — marker only; the real embedding happens inside Open WebUI and
+                 is not available here (do not fabricate a vector shape).
         """
         if self._trace is None:
             yield
@@ -98,7 +132,7 @@ class _SpanHelper:
         try:
             span = self._trace.span(
                 name="embed_query",
-                input={"query": query},
+                input={"query": _scrub(query)},
             )
         except Exception as exc:
             logger.debug("embed_query span start failed: %s", exc)
@@ -107,15 +141,16 @@ class _SpanHelper:
         finally:
             if span is not None:
                 try:
-                    span.end(output={"shape": "(1, 768)"})
+                    span.end(output={"embedded": True})
                 except Exception as exc:
                     logger.debug("embed_query span end failed: %s", exc)
 
     @contextlib.asynccontextmanager
-    async def vector_search(self, query: str, chunk_ids: list[str] = None,
-                            scores: list[float] = None):
+    async def vector_search(
+        self, query: str, chunk_ids: list[str] = None, scores: list[float] = None
+    ):
         """span: vector_search
-        input  — query string passed to retrieval
+        input  — query string passed to retrieval (PII-scrubbed)
         output — list of retrieved chunk IDs and similarity scores
         """
         if self._trace is None:
@@ -125,7 +160,7 @@ class _SpanHelper:
         try:
             span = self._trace.span(
                 name="vector_search",
-                input={"query": query},
+                input={"query": _scrub(query)},
             )
         except Exception as exc:
             logger.debug("vector_search span start failed: %s", exc)
@@ -136,20 +171,21 @@ class _SpanHelper:
                 try:
                     results = []
                     for i, cid in enumerate(chunk_ids or []):
-                        results.append({
-                            "chunk_id": cid,
-                            "score": scores[i] if scores and i < len(scores) else None,
-                        })
+                        results.append(
+                            {
+                                "chunk_id": cid,
+                                "score": scores[i] if scores and i < len(scores) else None,
+                            }
+                        )
                     span.end(output={"retrieved": results, "count": len(results)})
                 except Exception as exc:
                     logger.debug("vector_search span end failed: %s", exc)
 
     @contextlib.asynccontextmanager
-    async def context_compose(self, chunk_ids: list[str] = None,
-                               context: str = ""):
+    async def context_compose(self, chunk_ids: list[str] = None, context: str = ""):
         """span: context_compose
         input  — chunk IDs used to compose context
-        output — composed context string (first 500 chars)
+        output — composed context string (first 500 chars, PII-scrubbed)
         """
         if self._trace is None:
             yield
@@ -167,16 +203,17 @@ class _SpanHelper:
         finally:
             if span is not None:
                 try:
-                    span.end(output={"context_preview": context[:500]})
+                    span.end(output={"context_preview": _scrub(context[:500])})
                 except Exception as exc:
                     logger.debug("context_compose span end failed: %s", exc)
 
     @contextlib.asynccontextmanager
-    async def llm_inference(self, prompt_token_estimate: int = 0,
-                             response: str = "", latency_ms: int = 0):
+    async def llm_inference(
+        self, prompt_token_estimate: int = 0, response: str = "", latency_ms: int = 0
+    ):
         """span: llm_inference
         input  — full prompt length in tokens (estimated)
-        output — response text and latency_ms
+        output — response text (first 200 chars, PII-scrubbed) and latency_ms
         """
         if self._trace is None:
             yield
@@ -196,17 +233,18 @@ class _SpanHelper:
             if span is not None:
                 try:
                     elapsed = latency_ms or int((time.monotonic() - t0) * 1000)
-                    span.end(output={
-                        "response_preview": response[:200],
-                        "latency_ms": elapsed,
-                    })
+                    span.end(
+                        output={
+                            "response_preview": _scrub(response[:200]),
+                            "latency_ms": elapsed,
+                        }
+                    )
                 except Exception as exc:
                     logger.debug("llm_inference span end failed: %s", exc)
 
 
 @asynccontextmanager
-async def trace_rag_query(query: str, session_id: str = None,
-                           metadata: dict[str, Any] = None):
+async def trace_rag_query(query: str, session_id: str = None, metadata: dict[str, Any] = None):
     """Async context manager: wraps one full RAG query in a Langfuse trace.
 
     Yields a _SpanHelper instance. Use its methods as async context managers
@@ -224,15 +262,16 @@ async def trace_rag_query(query: str, session_id: str = None,
                 ...
 
     Safe to use even when Langfuse is disabled — all spans become no-ops.
+    The query is PII-scrubbed before it is recorded.
     """
     lf = get_langfuse()
     trace = None
 
-    if lf is not None:
+    if lf is not None and hasattr(lf, "trace"):
         try:
             trace = lf.trace(
                 name="rag_query",
-                input={"query": query},
+                input={"query": _scrub(query)},
                 session_id=session_id,
                 metadata=metadata or {},
             )
@@ -244,7 +283,7 @@ async def trace_rag_query(query: str, session_id: str = None,
     try:
         yield helper
     finally:
-        if lf is not None and trace is not None:
+        if lf is not None and hasattr(lf, "trace") and trace is not None:
             try:
                 lf.flush()
             except Exception as exc:

@@ -1,0 +1,13 @@
+{
+  "case_id": "03",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\03.png",
+  "oem": "ABB",
+  "document": "STAR DELTA Open-Type Starter Technical Data (1SXU...)",
+  "source_url": "library.e.abb.com/public/ac6b6e46df1ea3e6c1256e35004c9145/Star-delta%20Starters%20Open%20Type_technical%20data.pdf",
+  "page": 4,
+  "category": "European/IEC",
+  "standard": "IEC 60947-4-1",
+  "question": "Explain this print.",
+  "candidate_response": "## **1. What this appears to be**\nThis appears to be a technical diagram for YKA and YDA Star-Delta starters, specifically the open-type version with protection by a thermal overload relay.\n\n## **2. Main visible components**\nThe main visible components include:\n- Power circuits\n- Control circuits for local and remote operation\n- Motor (M)\n- Contactors (KM1, KM2, KM3)\n- Thermal overload relay (FR1)\n- Timer (KT)\n\n## **3. Plain-English theory of operation**\nThe Star-Delta starter appears to operate as follows:\n- The motor (M) is controlled by contactors KM1, KM2, and KM3.\n- In the power circuit, KM1 directly connects to the motor.\n- KM2 and KM3 are used for star and delta configurations.\n- The thermal overload relay (FR1) provides protection.\n- The timer (KT) seems to control the transition between star and delta configurations.\n\n## **4. What must be true for it to work**\nFor the system to work:\n- The power supply must be connected correctly.\n- All contactors (KM1, KM2, KM3) must function properly.\n- The thermal overload relay (FR1) must be reset if tripped.\n- The timer (KT) must be set correctly.\n\n## **5. What would stop it from working**\nThe system would not work if:\n- Any of the contactors (KM1, KM2, KM3) fail.\n- The thermal overload relay (FR1) trips and is not reset.\n- The timer (KT) malfunction.\n\n## **6. Unclear or unreadable items**\nNothing major appears to be unreadable.",
+  "context_notes": "This candidate had NO OCR text extracted — it was grounded on the image only (ocr_grounding='unavailable_on_this_box'). Judge whether it correctly separates what is visibly readable from inference accordingly: do not penalize it for declining to cite a specific tag/wire-number string it could not have OCR'd, but do penalize it under evidence_grounding_unsupported_claims if it invents a specific tag/wire-number/label that is not actually legible in the image."
+}
