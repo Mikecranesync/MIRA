@@ -1,12 +1,16 @@
 name: Apply KB Seeds
 
-# Manually-triggered workflow to apply tools/seeds/*.sql against prod NeonDB.
+# Manually-triggered workflow to apply tools/seeds/*.sql against staging or prod
+# NeonDB. Default target is staging — promote to prod only after verifying.
 # All target seeds use WHERE NOT EXISTS guards keyed on
 # (tenant_id, source_url, source_page) and are idempotent — re-running is safe.
 #
 # Pre-reqs:
-#   - GitHub secret `DOPPLER_TOKEN` set to a Doppler service token scoped to
-#     `factorylm/prd`. (Same secret apply-migrations.yml already uses.)
+#   - GitHub secret `DOPPLER_TOKEN` set to a Doppler service token, scoped PER
+#     GITHUB ENVIRONMENT: the `staging` environment's copy must reach
+#     `factorylm/stg`, the `production` environment's copy `factorylm/prd`.
+#     A prd-only token makes a target=staging run fail at the Doppler fetch.
+#     (Same secret name apply-migrations.yml already uses.)
 #   - Repo admin runs the workflow. workflow_dispatch already restricts to
 #     users with write access; the `production` environment gate adds an
 #     audit-log entry in the deployments tab.
@@ -14,6 +18,14 @@ name: Apply KB Seeds
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: 'NeonDB target. staging = factorylm/stg, prod = factorylm/prd. Default staging — promote to prod only after staging is verified.'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
       seeds:
         description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, simlab-docs, all. NOTE: simlab-docs is a Python seed (tools/seeds/seed-simlab-docs.py) with its own fixed SimLab tenant — it ignores the tenant_id input and only runs once PR #1816 (simlab/docs/) is on the checked-out ref.'
         required: true
@@ -37,14 +49,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: prod-seeds
+  group: seeds-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
   apply:
-    name: Apply seeds (${{ inputs.mode }})
+    name: Apply seeds (${{ inputs.target }} / ${{ inputs.mode }})
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 15
 
     steps:
@@ -69,7 +81,9 @@ jobs:
             echo "::error::DOPPLER_TOKEN secret not set."
             exit 1
           fi
-          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          DOPPLER_CFG=$([ "${{ inputs.target }}" = "prod" ] && echo "prd" || echo "stg")
+          echo "Doppler config: factorylm/${DOPPLER_CFG}"
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
           if [ -z "$DATABASE_URL" ]; then
             echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong?"
             exit 1
@@ -212,7 +226,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "#### $f" >> "$GITHUB_STEP_SUMMARY"
             echo '```sql' >> "$GITHUB_STEP_SUMMARY"
-            head -40 "$f" >> "$GITHUB_STEP_SUMMARY"
+            # 80, not 40: a seed's header comment IS the operator runbook (it is
+            # all mode=dry-run shows), and a long runbook comment can run past 40
+            # lines — a shorter preview would cut off mid-runbook.
+            head -80 "$f" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           done < .seed_plan
           echo ""

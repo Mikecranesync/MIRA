@@ -151,3 +151,74 @@ class TestManufacturerCrawler:
         crawler = ManufacturerCrawler(config, manufacturers=["automationdirect"])
         urls = crawler.discover_urls()
         assert len(urls) == 1
+
+
+class TestSourcesYamlWellFormed:
+    """Guard against a malformed sources.yaml entry silently dropping manuals.
+
+    ManufacturerCrawler.discover_urls() has no validation — it just skips
+    (`continue`) anything that isn't shaped the way it expects (see
+    crawler/manufacturer.py): a non-dict source_def is skipped, and a
+    "direct"-pattern entry with no `url` is skipped. Both failures are silent
+    — no exception, the crawl just quietly discovers fewer URLs than the file
+    promises. This tests the REAL repo sources.yaml, not a fixture.
+    """
+
+    SOURCES_PATH = Path(__file__).resolve().parent.parent / "sources.yaml"
+
+    def test_parses_and_manufacturer_tier_entries_carry_required_keys(self):
+        """sources.yaml parses as YAML, and every entry in a manufacturer-tier
+        (tier key containing "manufacturer") is a mapping with the key(s)
+        discover_urls() actually reads for its crawl_pattern:
+        - crawl_pattern == "index": base_url or url (else skipped, line ~105).
+        - anything else (default "direct"): a non-empty url (else skipped, line ~112).
+        """
+        data = yaml.safe_load(self.SOURCES_PATH.read_text(encoding="utf-8"))
+        assert isinstance(data, dict)
+        tiers = data.get("tiers", {})
+        assert isinstance(tiers, dict) and tiers
+
+        manufacturer_tiers = {k: v for k, v in tiers.items() if "manufacturer" in k}
+        assert manufacturer_tiers, "expected at least one manufacturer tier"
+
+        for tier_key, sources in manufacturer_tiers.items():
+            assert isinstance(sources, dict), f"tier {tier_key} must be a mapping"
+            for source_id, source_def in sources.items():
+                assert isinstance(source_def, dict), (
+                    f"{tier_key}.{source_id} must be a mapping, "
+                    f"got {type(source_def).__name__}"
+                )
+                crawl_pattern = source_def.get("crawl_pattern", "direct")
+                if crawl_pattern == "index":
+                    assert source_def.get("base_url") or source_def.get("url"), (
+                        f"{tier_key}.{source_id}: crawl_pattern=index needs "
+                        "base_url or url, or discover_urls() silently drops it"
+                    )
+                else:
+                    assert source_def.get("url"), (
+                        f"{tier_key}.{source_id}: missing 'url' — "
+                        "discover_urls() silently drops this entry"
+                    )
+
+    def test_manufacturer_crawler_discovers_every_direct_entry(self):
+        """End-to-end: every direct-pattern manufacturer-tier URL in the real
+        sources.yaml is actually surfaced by discover_urls() on a full
+        (unfiltered) crawl — the same path a scheduled OEM crawl runs."""
+        config = CrawlerConfig()
+        config.sources_file = self.SOURCES_PATH
+        crawler = ManufacturerCrawler(config)
+        discovered = {u["url"] for u in crawler.discover_urls()}
+
+        data = yaml.safe_load(self.SOURCES_PATH.read_text(encoding="utf-8"))
+        expected = {
+            source_def["url"]
+            for tier_key, sources in data["tiers"].items()
+            if "manufacturer" in tier_key
+            for source_def in sources.values()
+            if isinstance(source_def, dict)
+            and source_def.get("crawl_pattern", "direct") == "direct"
+            and source_def.get("url")
+        }
+
+        assert expected, "no direct-pattern manufacturer entries found to check"
+        assert expected <= discovered

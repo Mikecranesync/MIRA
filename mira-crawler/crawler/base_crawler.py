@@ -27,6 +27,12 @@ logger = logging.getLogger("mira-crawler.base")
 class BaseCrawler:
     """Abstract base for all crawlers."""
 
+    #: OEM-trusted crawlers write to the shared OEM pool as verified content.
+    #: Default False — only ManufacturerCrawler opts in. Subclasses that
+    #: inherit process() (CurriculumCrawler, CSVCrawler) keep prior behavior.
+    #: See .claude/rules/oem-crawler-trusted.md.
+    oem_trusted: bool = False
+
     def __init__(self, config: CrawlerConfig) -> None:
         self.config = config
         self.robots = RobotsChecker(
@@ -145,11 +151,18 @@ class BaseCrawler:
             logger.warning("All embeddings failed for %s", url)
             return 0
 
-        # Store
+        # Store. OEM-trusted crawlers write to the shared pool as verified so the
+        # content is citable with MIRA_ENFORCE_APPROVED_RETRIEVAL on; every other
+        # crawler keeps its prior tenant and stays unverified.
         stored = store_chunks(
             valid,
-            tenant_id=self.config.mira_tenant_id,
+            tenant_id=(
+                self.config.oem_tenant_id
+                if self.oem_trusted
+                else self.config.mira_tenant_id
+            ),
             manufacturer=manufacturer,
+            verified=self.oem_trusted,
         )
 
         # Mark as indexed

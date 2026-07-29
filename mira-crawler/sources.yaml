@@ -169,6 +169,52 @@ tiers:
     # Intentionally omitted (searched + verified 2026-07-27). Re-add only if an
     # official, login-free fanuc.*/kuka.* PDF surfaces.
 
+    # ── Re-acquisition (2026-07-29) — CSVCrawler had discovered these on official
+    # OEM domains but wrote them untrusted (manual_scrape_targets.csv never persists
+    # the resolved PDF URL, so those rows can't be audited after the fact — see
+    # .claude/rules/oem-crawler-trusted.md). Re-added here so they are fetched by the
+    # trusted ManufacturerCrawler path instead, with a re-fetchable source_url on
+    # record. Each verified live + valid PDF (%PDF- header + intact %%EOF trailer) by
+    # the 2026-07-29 link-health audit. Only official-OEM hosts with a stable, direct
+    # static-file URL qualified — distributor/reseller hosts (rs-online.com,
+    # hoosiercrane.com, tsoverheadcrane.com), portal roots, and dynamic
+    # document-ID endpoints (Siemens, Yaskawa) were excluded; see
+    # docs/CHANGELOG.md for the full exclusion list.
+    interroll_multicontrol:
+      url: "https://www.interroll.com/fileadmin/Downloads/User_Manuals/Controls/MultiControl/User_Manual_MultiControl_EN.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Interroll
+      equipment_id: MultiControl Analog Interface
+      crawl_pattern: direct
+      description: "Interroll MultiControl Analog Interface user manual — conveyor drum-motor controller wiring, configuration, diagnostics"
+
+    demag_other:
+      url: "https://www.demagcranes.com/sites/default/files/media/documents/21115144_100331_2.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Demag
+      crawl_pattern: direct
+      description: "Demag crane/hoist equipment manual (no specific model recorded in the source CSV row)"
+
+    magnetek_impulse_g_mini:
+      url: "https://www.magnetekdrives.com/wp-content/uploads/sites/7/drives-g-mini-manual.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Magnetek
+      equipment_id: Impulse G+ Mini
+      crawl_pattern: direct
+      description: "Magnetek Impulse G+ Mini VFD manual — parameters, wiring, fault codes"
+
+    allen_bradley_c30:
+      url: "https://literature.rockwellautomation.com/idc/groups/literature/documents/td/100-td013_-en-p.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Rockwell
+      equipment_id: C30
+      crawl_pattern: direct
+      description: "Allen-Bradley Bulletin 100-C30 IEC contactor technical data (100-TD013) — ratings, wiring, dimensions"
+
   # ── TIER 4: Open Educational ────────────────────────────────────
   4_educational:
     # MIT OCW, OER Commons — URLs to be added
