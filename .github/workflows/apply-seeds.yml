@@ -6,8 +6,11 @@ name: Apply KB Seeds
 # (tenant_id, source_url, source_page) and are idempotent — re-running is safe.
 #
 # Pre-reqs:
-#   - GitHub secret `DOPPLER_TOKEN` set to a Doppler service token scoped to
-#     `factorylm/prd`. (Same secret apply-migrations.yml already uses.)
+#   - GitHub secret `DOPPLER_TOKEN` set to a Doppler service token, scoped PER
+#     GITHUB ENVIRONMENT: the `staging` environment's copy must reach
+#     `factorylm/stg`, the `production` environment's copy `factorylm/prd`.
+#     A prd-only token makes a target=staging run fail at the Doppler fetch.
+#     (Same secret name apply-migrations.yml already uses.)
 #   - Repo admin runs the workflow. workflow_dispatch already restricts to
 #     users with write access; the `production` environment gate adds an
 #     audit-log entry in the deployments tab.
@@ -51,7 +54,7 @@ concurrency:
 
 jobs:
   apply:
-    name: Apply seeds (${{ inputs.mode }})
+    name: Apply seeds (${{ inputs.target }} / ${{ inputs.mode }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 15
@@ -223,7 +226,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "#### $f" >> "$GITHUB_STEP_SUMMARY"
             echo '```sql' >> "$GITHUB_STEP_SUMMARY"
-            head -40 "$f" >> "$GITHUB_STEP_SUMMARY"
+            # 80, not 40: a seed's header comment IS the operator runbook (it is
+            # all mode=dry-run shows), and backfill_oem_crawler_chunks.sql's runs
+            # to line 78 — a 40-line preview would cut off mid-runbook.
+            head -80 "$f" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           done < .seed_plan
           echo ""
