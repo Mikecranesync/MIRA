@@ -140,3 +140,69 @@ def test_uns_context_and_drive_pack_and_kg_adapters() -> None:
         ]
     )
     assert g[0].trust == "verified" and g[0].citation_id == "G1"
+
+
+def test_forbidden_actions_superset_of_agent_registry_write_verbs() -> None:
+    """The REAL lockstep test (2026-07-29 review): parse agent_registry's
+    source and prove every one of its write verbs is caught by the contract
+    validator — no cross-package runtime import."""
+    import ast
+    from pathlib import Path
+
+    src = Path("mira-bots/shared/observe/agent_registry.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    verbs: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if getattr(t, "id", "") == "_WRITE_VERBS":
+                    verbs = [ast.literal_eval(e) for e in node.value.elts]
+    assert verbs, "could not locate _WRITE_VERBS in agent_registry.py"
+    from materialized_evidence.context_contract import FORBIDDEN_ACTION_SUBSTRINGS
+
+    for verb in verbs:
+        assert any(bad in verb for bad in FORBIDDEN_ACTION_SUBSTRINGS), (
+            f"agent_registry write verb {verb!r} would pass the contract validator"
+        )
+    # and the concrete bypasses from the adversarial review stay closed
+    for bad in ("stop_machine", "close_work_order", "submit_work_order", "control_drive"):
+        v = validate_context(_ctx(allowed_actions=[bad]))
+        assert any(x.startswith("forbidden_action") for x in v), bad
+
+
+def test_machine_packet_adapter_real_ts_shape() -> None:
+    """Adversarial-review repro: nested machine_state object + `freshness`
+    field name + unexpected freshness string must all be handled."""
+    from materialized_evidence.context_contract import live_overlay_from_machine_packet
+
+    packet = {
+        "machine_state": {"state": "running", "since": "2026-07-29T00:00:00Z", "fresh": True},
+        "freshness": {"live": 3, "stale": 0, "simulated": 1, "unknown": 0},
+        "live_tags": [{"tag_path": "a.b", "value": 1, "quality": "good", "freshness": "fresh"}],
+    }
+    ov = live_overlay_from_machine_packet(packet)
+    assert ov.machine_state == "running"
+    assert ov.state_since == "2026-07-29T00:00:00Z"
+    assert ov.freshness_summary == {"live": 3, "stale": 0, "simulated": 1, "unknown": 0}
+    assert ov.tags[0].freshness == Freshness.UNKNOWN  # "fresh" is not a known value
+
+
+def test_printsense_and_ontology_adapters() -> None:
+    from materialized_evidence.context_contract import (
+        evidence_from_ontology_validation,
+        evidence_from_printsense_graph,
+    )
+
+    p = evidence_from_printsense_graph(
+        [{"tag": "-K1", "type": "contactor", "detail": "main contactor", "trust": "verified"}],
+        sheet="E-003",
+    )
+    assert p[0].kind == EvidenceKind.PRINT_OBSERVATION
+    assert p[0].source_locator == "sheet:E-003#-K1"
+    o = evidence_from_ontology_validation(
+        [{"shape": "ApproverIsNotProposerShape", "conforms": False, "message": "self-approval"}]
+    )
+    assert o[0].trust == "rejected"
+    assert "VIOLATION" in o[0].payload["summary"]
+    ok = evidence_from_ontology_validation([{"shape": "S", "conforms": True}])
+    assert ok[0].trust == "verified"

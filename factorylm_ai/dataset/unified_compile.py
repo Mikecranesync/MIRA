@@ -62,6 +62,20 @@ HOUSE_MANUFACTURERS = {"factorylm"}  # house content: exempt from the OEM mfr ca
 # Scenario families reserved for evaluation — NEVER compiled into training.
 EVAL_ONLY_FAMILIES = ("conflicting-evidence", "stale-live-data", "missing-retrieval")
 
+
+def _is_eval_family_lineage(lineage: str) -> bool:
+    """True if a lineage key belongs to a reserved eval-only family.
+
+    Real keys are ``factorylm:general-behavior-<family>-<archetype-slug>``,
+    so this matches on the family PREFIX (exact base also accepted for
+    forward-compat with coarser keys)."""
+    for fam in EVAL_ONLY_FAMILIES:
+        base = f"factorylm:general-behavior-{fam}"
+        if lineage == base or lineage.startswith(base + "-"):
+            return True
+    return False
+
+
 _ARCHETYPES = (
     ("conveyor drive motor", "motor overload trips after 20 minutes of running"),
     ("hydraulic power unit", "pressure sags under load then recovers at idle"),
@@ -91,7 +105,13 @@ def _general_sources() -> dict[str, dict[str, Any]]:
     lesson), and off-train rows become governed eval material instead.
     """
     adr = v0.REPO_ROOT / "docs/adr/0033-one-technician-brain.md"
-    sha = hashlib.sha256(adr.read_bytes()).hexdigest() if adr.is_file() else ""
+    # newline-normalized so CRLF/LF checkouts hash identically (2026-07-29
+    # review: raw read_bytes made all general-record provenance drift by OS)
+    sha = (
+        hashlib.sha256(adr.read_text(encoding="utf-8").replace("\r\n", "\n").encode()).hexdigest()
+        if adr.is_file()
+        else ""
+    )
     out: dict[str, dict[str, Any]] = {}
     for family in _TRAIN_FAMILIES + EVAL_ONLY_FAMILIES:
         for asset, _symptom in _ARCHETYPES:
@@ -429,8 +449,15 @@ def bridge_candidates() -> list[ReviewCandidate]:
     part = v2.fact_partition()
     ctxs = [v2._fact_context(c) for c in v2._v11_candidates()]
     present = [c for c in ctxs if part[c["key_ref"]] == "present"]
-    cv = [c for c in present if c["batch"] == "cv101"]
-    dr = [c for c in present if c["batch"] == "drive"]
+    # TRAIN-side facts only (2026-07-29 review: bridges inherit the primary
+    # fact's lineage, so pairing from all present-side facts let the lineage
+    # split decimate the family to 2 train records — filter up front instead)
+    cv = [
+        c for c in present if c["batch"] == "cv101" and c["candidate"].to_dict()["split"] == "train"
+    ]
+    dr = [
+        c for c in present if c["batch"] == "drive" and c["candidate"].to_dict()["split"] == "train"
+    ]
     out: list[ReviewCandidate] = []
     n = 0
     for i in range(min(len(cv), len(dr))):
@@ -660,10 +687,10 @@ def compile_unified(
         "general_offtrain_records": general_offtrain,
         "gates": {
             "general_fraction_ok": general_fraction >= GENERAL_FRACTION_MIN,
-            "eval_families_excluded": all(
-                f"factorylm:general-behavior-{fam}"
-                not in {c.to_dict()["document_lineage_key"] for c in unique}
-                for fam in EVAL_ONLY_FAMILIES
+            # PREFIX match (2026-07-29 review: exact-membership on the family
+            # base string was vacuous — real keys carry an archetype suffix)
+            "eval_families_excluded": not any(
+                _is_eval_family_lineage(c.to_dict()["document_lineage_key"]) for c in unique
             ),
         },
     }

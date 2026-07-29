@@ -28,6 +28,7 @@ OUTSIDE this contract (ADR-0033 rule 3 + fieldbus-readonly doctrine).
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
@@ -64,23 +65,31 @@ class Freshness(str, Enum):
     UNKNOWN = "unknown"
 
 
-# Mirrors agent_registry's write-verb rejection (kept in lockstep by
-# tests/test_context_contract.py; do not import across packages).
+# Superset of agent_registry._WRITE_VERBS plus contract-local additions
+# (clear/jog/energize/stop/.set). tests/test_context_contract.py parses the
+# agent_registry source and asserts every one of its verbs is caught here —
+# a real lockstep test, no cross-package runtime import.
 FORBIDDEN_ACTION_SUBSTRINGS = (
     "write",
     "set_",
+    ".set",
     "reset",
     "clear",
     "force",
     "jog",
     "start",
+    "stop",
     "energize",
     "bypass",
     "override",
     "delete",
     "update",
     "command",
+    "control",
     "actuate",
+    "submit",
+    "close",
+    "create_work_order",
 )
 
 ALLOWED_ACTION_VOCAB = (
@@ -267,9 +276,7 @@ def _payload_line(item: EvidenceItem) -> str:
     for key in ("claim", "text", "content", "summary"):
         if isinstance(p.get(key), str):
             return p[key]
-    import json as _json
-
-    return _json.dumps(p, sort_keys=True, ensure_ascii=False)
+    return json.dumps(p, sort_keys=True, ensure_ascii=False)
 
 
 # --------------------------------------------------------------------------
@@ -334,8 +341,23 @@ def evidence_from_kg_context(paths: list[dict[str, Any]]) -> list[EvidenceItem]:
     return items
 
 
+def _freshness(value: Any) -> Freshness:
+    """Tolerant parse for untyped legacy producers — unexpected strings map to
+    UNKNOWN instead of raising (2026-07-29 adversarial-review finding)."""
+    try:
+        return Freshness(str(value or "unknown").lower())
+    except ValueError:
+        return Freshness.UNKNOWN
+
+
 def live_overlay_from_machine_packet(packet: dict[str, Any]) -> LiveStateOverlay:
-    """MachineContextPacket-shaped dict (TS producer) → overlay."""
+    """MachineContextPacket-shaped dict (TS producer) → overlay.
+
+    Mirrors the REAL TS shape (verified against
+    ``mira-hub/src/lib/machine-context-packet.ts``): ``machine_state`` may be
+    a nested ``{state, since, fresh}`` object; the freshness summary field is
+    named ``freshness`` in TS (``freshness_summary`` also accepted).
+    """
     tags = []
     for t in packet.get("live_tags") or packet.get("liveTags") or []:
         tags.append(
@@ -343,15 +365,27 @@ def live_overlay_from_machine_packet(packet: dict[str, Any]) -> LiveStateOverlay
                 tag_path=str(t.get("tag_path") or t.get("tagPath") or t.get("plc_tag") or ""),
                 value=t.get("value"),
                 quality=str(t.get("quality") or "unknown"),
-                freshness=Freshness(str(t.get("freshness") or "unknown")),
+                freshness=_freshness(t.get("freshness")),
                 observed_at=t.get("observed_at") or t.get("observedAt"),
             )
         )
-    fs = packet.get("freshness_summary") or packet.get("freshnessSummary") or {}
+    fs = (
+        packet.get("freshness")
+        or packet.get("freshness_summary")
+        or packet.get("freshnessSummary")
+        or {}
+    )
+    raw_state = packet.get("machine_state") or packet.get("machineState") or "unknown"
+    if isinstance(raw_state, dict):
+        state = str(raw_state.get("state") or "unknown")
+        since = raw_state.get("since")
+    else:
+        state = str(raw_state)
+        since = packet.get("state_since") or packet.get("stateSince")
     return LiveStateOverlay(
-        machine_state=str(packet.get("machine_state") or packet.get("machineState") or "unknown"),
-        state_since=packet.get("state_since") or packet.get("stateSince"),
-        freshness_summary={str(k): int(v) for k, v in fs.items()},
+        machine_state=state,
+        state_since=since,
+        freshness_summary={str(k): int(v) for k, v in fs.items() if isinstance(v, (int, float))},
         tags=tags,
         dropped_tag_count=int(packet.get("dropped_tag_count") or 0),
         active_conditions=[str(c) for c in packet.get("active_conditions") or []],
@@ -369,3 +403,59 @@ def asset_from_uns_context(uns_context: dict[str, Any]) -> AssetIdentity:
         confidence=uns_context.get("confidence"),
         source=uns_context.get("source"),
     )
+
+
+def evidence_from_printsense_graph(
+    entities: list[dict[str, Any]], sheet: str | None = None
+) -> list[EvidenceItem]:
+    """PrintSynth ``graph.json`` entity dicts (devices/terminals/wires) → items.
+
+    Producers pass the entity rows they want cited (each carries tag/type/
+    detail/evidence/confidence/trust per ``printsense/models.py``); geometry
+    and crops stay behind ``source_locator`` references, never inlined.
+    """
+    items = []
+    for i, e in enumerate(entities, 1):
+        tag = str(e.get("tag") or e.get("id") or f"entity{i}")
+        detail = str(e.get("detail") or e.get("type") or "")
+        items.append(
+            EvidenceItem(
+                kind=EvidenceKind.PRINT_OBSERVATION,
+                citation_id=f"P{i}",
+                payload={"summary": f"{tag}: {detail}".strip(": ")},
+                source_locator=f"sheet:{sheet or e.get('sheet') or ''}#{tag}",
+                confidence=e.get("confidence"),
+                trust=str(e.get("trust") or "candidate"),
+                producer_name="printsense",
+            )
+        )
+    return items
+
+
+def evidence_from_ontology_validation(results: list[dict[str, Any]]) -> list[EvidenceItem]:
+    """SHACL/ontology validation outcomes → items (kind ONTOLOGY_VALIDATION).
+
+    Each result row: {shape, conforms: bool, message?, focus?}. A
+    non-conforming result is evidence AGAINST a claim — the policy must treat
+    it as a rejection reason, never silently drop it.
+    """
+    items = []
+    for i, r in enumerate(results, 1):
+        conforms = bool(r.get("conforms"))
+        items.append(
+            EvidenceItem(
+                kind=EvidenceKind.ONTOLOGY_VALIDATION,
+                citation_id=f"O{i}",
+                payload={
+                    "summary": (
+                        f"shape {r.get('shape')}: "
+                        + ("conforms" if conforms else f"VIOLATION — {r.get('message', '')}")
+                    ).strip(),
+                    "conforms": conforms,
+                },
+                source_locator=str(r.get("focus") or r.get("shape") or ""),
+                trust="verified" if conforms else "rejected",
+                producer_name="ontology_validator",
+            )
+        )
+    return items

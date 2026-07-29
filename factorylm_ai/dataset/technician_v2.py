@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import re
 from collections import Counter, defaultdict
@@ -457,7 +458,59 @@ def build_review_candidates_v2(stage: v0.BuildStage = "readiness") -> list[Revie
         for f in sorted(gen_dir.glob("*.jsonl")):
             accepted, _rejected = fold_generated(f, v11_by_key)
             candidates.extend(accepted)
-    return candidates
+    return _drop_near_dupes(candidates)
+
+
+def _varying_grams(c: ReviewCandidate) -> set:
+    """N-grams of the part a record's stratum actually VARIES.
+
+    Near-dup similarity must be judged on the varying axis or it mass-flags
+    legitimate variants (2026-07-29 review follow-through): paraphrase
+    records vary the QUESTION (answers + evidence canonical), voice records
+    vary the ANSWER (question canonical), multiturn records vary turn 2.
+    Deterministic strata are structurally distinct by construction and are
+    covered by the exact-dup check, so they compare on the full non-evidence
+    text (a no-op in practice)."""
+    tags = c.record.tags
+    if "stratum_voice" in tags:
+        texts = [m["content"] for m in c.record.messages if m["role"] == "assistant"]
+    elif "stratum_multiturn" in tags:
+        texts = [m["content"] for m in c.record.messages[3:]]  # turn 2 onward
+    else:  # paraphrase + deterministic strata: user turns minus evidence lines
+        texts = []
+        for m in c.record.messages:
+            if m["role"] != "user":
+                continue
+            texts.extend(
+                line
+                for line in m["content"].splitlines()
+                if not line.strip().startswith("Evidence (")
+            )
+    return _ngrams("\n".join(texts))
+
+
+def _drop_near_dupes(candidates: list[ReviewCandidate]) -> list[ReviewCandidate]:
+    """Drop the LATER record of any same-fact same-stratum pair whose QUESTION
+    text exceeds NEAR_DUP_JACCARD (2026-07-29 review: word-swap-grade
+    paraphrase variants are fake diversity). Deterministic: record order is
+    build order; the earlier record survives."""
+    grams: list[set] = [_varying_grams(c) for c in candidates]
+    by_bucket: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for idx, c in enumerate(candidates):
+        stratum = next((t for t in c.record.tags if t.startswith("stratum_")), "s1_v11")
+        by_bucket[(c.answer_key["key_ref"], stratum)].append(idx)
+    doomed: set[int] = set()
+    for idxs in by_bucket.values():
+        for i in range(len(idxs)):
+            if idxs[i] in doomed:
+                continue
+            for j in range(i + 1, len(idxs)):
+                ga, gb = grams[idxs[i]], grams[idxs[j]]
+                if not ga or not gb:
+                    continue
+                if len(ga & gb) / len(ga | gb) >= NEAR_DUP_JACCARD:
+                    doomed.add(idxs[j])
+    return [c for i, c in enumerate(candidates) if i not in doomed]
 
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -505,6 +558,26 @@ def audit(candidates: list[ReviewCandidate]) -> dict[str, Any]:
         else:
             seen_exact[fz] = rid
 
+    # near-duplicate detection at NEAR_DUP_JACCARD, bucketed by (fact, stratum)
+    # — near-dups are only plausible among variants of the same fact, so the
+    # pairwise check stays cheap (2026-07-29 review: threshold was unused).
+    near_dupes: list[tuple[str, str, float]] = []
+    qgrams = [_varying_grams(c) for c in candidates]
+    rids = [c.record.record_id for c in candidates]
+    by_bucket: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for idx, c in enumerate(candidates):
+        stratum = next((t for t in c.record.tags if t.startswith("stratum_")), "s1_v11")
+        by_bucket[(c.answer_key["key_ref"], stratum)].append(idx)
+    for idxs in by_bucket.values():
+        for i in range(len(idxs)):
+            for j in range(i + 1, len(idxs)):
+                ga, gb = qgrams[idxs[i]], qgrams[idxs[j]]
+                if not ga or not gb:
+                    continue
+                jac = len(ga & gb) / len(ga | gb)
+                if jac >= NEAR_DUP_JACCARD:
+                    near_dupes.append((rids[idxs[i]], rids[idxs[j]], round(jac, 3)))
+
     strata = Counter(
         next((t for t in c.record.tags if t.startswith("stratum_")), "s1_v11") for c in candidates
     )
@@ -514,8 +587,9 @@ def audit(candidates: list[ReviewCandidate]) -> dict[str, Any]:
         "strata": dict(strata),
         "partition_violations": violations,
         "exact_user_dupes": [(a, b) for a, b, _ in dupes],
+        "near_dupes_over_threshold": near_dupes,
         "approx_word_tokens": total_tokens,
-        "ok": not violations and not dupes,
+        "ok": not violations and not dupes and not near_dupes,
     }
 
 
@@ -537,31 +611,39 @@ def carve_validation(rows: list[dict[str, Any]]) -> tuple[list[dict], list[dict]
     validation side holds ~VALIDATION_TARGET_FRAC of records. Guards: every
     row must be split=train; outputs share no lineage.
     """
-    import hashlib as _hashlib
-
     for r in rows:
         if r.get("split") != "train":
             raise SystemExit(f"carve_validation: non-train row {r.get('record_id')}")
     by_lineage: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         by_lineage[r["document_lineage_key"]].append(r)
-    ordered = sorted(by_lineage, key=lambda k: _hashlib.sha256(k.encode("utf-8")).hexdigest())
-    target = int(len(rows) * VALIDATION_TARGET_FRAC)
+    ordered = sorted(by_lineage, key=lambda k: hashlib.sha256(k.encode("utf-8")).hexdigest())
+    target = max(1, int(len(rows) * VALIDATION_TARGET_FRAC))
+    # Greedy WITHOUT overshoot (2026-07-29 review: the old version reached
+    # 18-35% on plausible inputs and could die on all-large lineages): a
+    # lineage is taken only while the running count is below target AND
+    # taking it stays within +20% of target. If nothing fits (all lineages
+    # huge), fall back to the single smallest lineage — oversized validation
+    # beats a dead build or none at all, and the fraction is reported.
     val_lineages: set[str] = set()
     n = 0
     for lk in ordered:
+        size = len(by_lineage[lk])
         if n >= target:
             break
-        # never let one giant lineage swallow the corpus into validation
-        if n + len(by_lineage[lk]) > max(target * 2, target + 40):
+        if n + size > target * 1.2:
             continue
         val_lineages.add(lk)
-        n += len(by_lineage[lk])
+        n += size
+    if not val_lineages:
+        smallest = min(ordered, key=lambda k: len(by_lineage[k]))
+        val_lineages.add(smallest)
     train = [r for r in rows if r["document_lineage_key"] not in val_lineages]
     val = [r for r in rows if r["document_lineage_key"] in val_lineages]
-    assert not ({r["document_lineage_key"] for r in train} & val_lineages)
-    if not val:
-        raise SystemExit("carve_validation: produced an empty validation set")
+    if {r["document_lineage_key"] for r in train} & val_lineages:
+        raise SystemExit("carve_validation: train/validation lineage overlap")
+    if not val or not train:
+        raise SystemExit("carve_validation: degenerate carve (empty side)")
     return train, val
 
 

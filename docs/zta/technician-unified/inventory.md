@@ -34,6 +34,18 @@ was verified against the repo this night.
 7. **Console/tooling drift**: review_console_v2 defaults to a stale worktree path; review_console v1 (data-destroying export bug) still committed; two ledger filenames; judge protocol v1 vs v3.
 8. **Pack copies ×4** with one drift guard; `siemens_g120` sold via Stripe but invisible to resolver/registry/rights.
 
+## Documented mixture choice: the FactoryLM house-content exemption
+
+The mission's default is "any one manufacturer ≤10% unless the inventory proves a better
+documented choice." This inventory documents that choice: `FactoryLM` is not an OEM — it
+is the house author of the synthetic general-behavior family, the CV-101 training print,
+and the style guide. Applying the OEM manufacturer cap to house content would cap the
+*general majority class itself* (the ≥50% rule and the 10% rule would be mutually
+unsatisfiable). Therefore the manufacturer cap applies to real OEMs only
+(rockwell/automationdirect/etc.), FactoryLM's share is reported transparently in
+`mixture_report.json` (`by_manufacturer`), and house content remains bounded by the
+product-family (≤25%) and template-family (≤20%) caps.
+
 ## Google Drive reconciliation (discovery inputs only)
 
 Superseded: MIRA-Projects-PRD-v1, MIRA_LlamaIndex_RAG_PRD. Reconcile-worthy: Cognite-style

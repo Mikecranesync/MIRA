@@ -15,7 +15,7 @@ is whether general-situation behavior transfers the same way — untested until 
 
 ## Why not yet — ranked blockers
 
-1. **General-family volume is the bottleneck: the compile is 144 records (80
+1. **General-family volume is the bottleneck: the compile is 180 records (99
    general+bridge).** The mixture gates hold (55.6% general, all caps green), but the
    ≥50% law means product data is throttled by the scarce class. One $4 job buys ~8.3M
    tokens; spending it on 144 records repeats the exact under-utilization Plan v2 was
@@ -24,7 +24,7 @@ is whether general-situation behavior transfers the same way — untested until 
    deterministic) to ~500–1,000 general records, then recompile — the caps will then
    admit proportionally more product records too.
 2. **No human sitting has reviewed any of it.** 0 decisions on the unified manifest
-   (`03874d57…`). The review-by-exception console + independent screening make this a
+   (`51fe7b49…`). The review-by-exception console + independent screening make this a
    1–2 h sitting once the corpus is at full size — but it must happen on the FINAL
    compile, not twice.
 3. **Provider stop-gate still red:** packing×completion-loss-mask remains NOT PROVEN

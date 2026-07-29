@@ -15,7 +15,7 @@ domain regression. **No paid run is launched from this manifest.**
 | 6 | Missing retrieval | family `missing-retrieval` (reserved) | 12 | READY (new) |
 | 7 | General troubleshooting | off-train general-behavior records (lineage-hashed test/held_out side, `general_offtrain_records` in the mixture report) | ~30 | READY (governed split by-product) |
 | 8 | Correction handling | `correction-acceptance` off-train rows + judge lens | partial | PARTIAL |
-| 9 | Cross-domain bridge | off-train bridge rows | ~small | PARTIAL (thin) |
+| 9 | Cross-domain bridge | off-train bridge rows | ~small | PARTIAL (train-side bridge fix landed; off-train bridge rows remain few) |
 | 10 | PrintSense | grader-gate frozen corpus (scu2 PASS / atv340 FAIL) + deterministic grader — **behavioral chat slice UNFILLED** | 2 graded cases | PARTIAL — honest gap |
 | 11 | Graph/path reasoning | ontology fixtures are validator-only; **no chat-shaped graph eval exists** | 0 | UNFILLED — honest gap |
 | 12 | Ontology truth boundaries | SHACL fixture pairs (11) — validator level only | 11 | PARTIAL |

@@ -30,10 +30,13 @@ import hashlib
 import json
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from factorylm_ai.dataset import technician_v0 as _v0
 
 HELD_OUT_LINEAGE = "rockwell-automation:22b-um001j-en-e"
 BASE_MODEL = "Qwen/Qwen3.5-9B"
@@ -142,11 +145,9 @@ EXPANDED_MIN_RECORDS = 100
 
 
 def _pf40_facts() -> list[dict[str, Any]]:
-    from factorylm_ai.dataset import technician_v0 as v0
-
-    src = {s["source_id"]: s for s in v0._drive_sources()}["drive-powerflex_40"]
-    gold = v0._read_json(v0.REPO_ROOT / src["source_reference"])
-    facts = v0._drive_facts("powerflex_40", gold)
+    src = {s["source_id"]: s for s in _v0._drive_sources()}["drive-powerflex_40"]
+    gold = _v0._read_json(_v0.REPO_ROOT / src["source_reference"])
+    facts = _v0._drive_facts("powerflex_40", gold)
     facts.sort(key=lambda f: str(f.get("id")))
     return facts
 
@@ -172,19 +173,13 @@ def _expanded_record(
         "interaction_type": "diagnostic",
         "safety_sensitive": bool(fact.get("safety_sensitive")),
         "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT()},
+            {"role": "system", "content": _v0.SYSTEM_PROMPT},
             {"role": "user", "content": user},
         ],
         "reference_answer": reference,
         "evidence": fact,
         "content_hash": _sha(fact).removeprefix("sha256:"),
     }
-
-
-def _SYSTEM_PROMPT() -> str:
-    from factorylm_ai.dataset import technician_v0 as v0
-
-    return v0.SYSTEM_PROMPT
 
 
 def expanded_leakage_guard(facts: list[dict[str, Any]]) -> None:
@@ -782,8 +777,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "build" and getattr(args, "expanded", False):
         ps = build_prompt_set_expanded()
-        from collections import Counter
-
         print(
             json.dumps(
                 {
