@@ -30,10 +30,13 @@ import hashlib
 import json
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from factorylm_ai.dataset import technician_v0 as _v0
 
 HELD_OUT_LINEAGE = "rockwell-automation:22b-um001j-en-e"
 BASE_MODEL = "Qwen/Qwen3.5-9B"
@@ -130,6 +133,206 @@ def build_prompt_set() -> dict[str, Any]:
     }
     body["prompt_set_hash"] = _sha({k: v for k, v in body.items() if k != "prompt_set_hash"})
     return body
+
+
+# --------------------------------------------------------------------------
+# expanded Phase-D prompt set (2026-07-28 requirements): >=100 records over
+# ALL 36 PF40 gold-pack facts x 3 tracks. The frozen 25-record set above is
+# untouched (v0/v1 comparability); this is a separate, additive surface.
+# --------------------------------------------------------------------------
+PROMPT_SET_SCHEMA_V2 = "factorylm.holdout-eval.prompt-set.v2"
+EXPANDED_MIN_RECORDS = 100
+
+
+def _pf40_facts() -> list[dict[str, Any]]:
+    src = {s["source_id"]: s for s in _v0._drive_sources()}["drive-powerflex_40"]
+    gold = _v0._read_json(_v0.REPO_ROOT / src["source_reference"])
+    facts = _v0._drive_facts("powerflex_40", gold)
+    facts.sort(key=lambda f: str(f.get("id")))
+    return facts
+
+
+def _pf40_evidence_line(fact: dict[str, Any]) -> str:
+    related = ", ".join(fact.get("related_parameters", []) or ["none"])
+    return (
+        f"Evidence (deterministic Drive Commander pack, page {fact.get('page')}): "
+        f"{fact['claim']}. Related parameters: {related}."
+    )
+
+
+def _pf40_question(fact: dict[str, Any]) -> str:
+    return f"PowerFlex 40: identify {fact['subject']} from the deterministic Drive Commander pack."
+
+
+def _expanded_record(
+    record_id: str, track: str, fact: dict[str, Any], user: str, reference: str
+) -> dict[str, Any]:
+    return {
+        "record_id": record_id,
+        "track": track,
+        "interaction_type": "diagnostic",
+        "safety_sensitive": bool(fact.get("safety_sensitive")),
+        "messages": [
+            {"role": "system", "content": _v0.SYSTEM_PROMPT},
+            {"role": "user", "content": user},
+        ],
+        "reference_answer": reference,
+        "evidence": fact,
+        "content_hash": _sha(fact).removeprefix("sha256:"),
+    }
+
+
+def expanded_leakage_guard(facts: list[dict[str, Any]]) -> None:
+    """No PF40 fact/lineage may appear in ANY training corpus (v0..v2).
+
+    Checks the v0 reviewed set (what v0/v1 trained on) and the v2 reviewed set
+    when it exists (what v2 will train on), plus the v2 candidate pool's
+    train side. Raises SystemExit on any hit.
+    """
+    claims = {str(f.get("claim", "")).strip().lower() for f in facts}
+    corpora = [REVIEWED, REPO / "docs/zta/technician-dataset-v1/reviewed_dataset.jsonl"]
+    v2_reviewed = REPO / "docs/zta/technician-dataset-v2/reviewed_dataset.jsonl"
+    v2_candidates = REPO / "docs/zta/technician-dataset-v2/candidate_dataset.jsonl"
+    if v2_reviewed.is_file():
+        corpora.append(v2_reviewed)
+    for path in corpora:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if row.get("document_lineage_key") == HELD_OUT_LINEAGE:
+                raise SystemExit(f"LEAKAGE: PF40 lineage found in {path.name}")
+            text = json.dumps(row.get("messages", ""), ensure_ascii=False).lower()
+            for claim in claims:
+                if claim and claim in text:
+                    raise SystemExit(f"LEAKAGE: PF40 claim in {path.name}:{row.get('record_id')}")
+    if v2_candidates.is_file():
+        for line in v2_candidates.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if row.get("split") == "train" and row.get("document_lineage_key") == HELD_OUT_LINEAGE:
+                raise SystemExit("LEAKAGE: PF40 lineage on the v2 train side")
+
+
+def build_prompt_set_expanded() -> dict[str, Any]:
+    """>=100-record Phase-D set: 36 PF40 facts x 3 tracks. $0, offline.
+
+    Track "evidence_absent": the frozen 25 records verbatim (comparability)
+    + the 11 unused gold-pack facts in the same question shape.
+    Track "evidence_present": all 36 facts with the evidence line appended.
+    Track "distractor": all 36 facts asked about, with ONLY a different
+    fact's evidence shown (the next fact, deterministic pairing).
+    """
+    facts = _pf40_facts()
+    expanded_leakage_guard(facts)
+    legacy = build_prompt_set()
+    legacy_by_fact = {p["evidence"].get("id"): p for p in legacy["prompts"]}
+
+    prompts: list[dict[str, Any]] = []
+    for i, fact in enumerate(facts):
+        fid = str(fact.get("id"))
+        slug = fid.replace(":", "_")
+        old = legacy_by_fact.get(fact.get("id"))
+        if old is not None:
+            row = dict(old)
+            row["track"] = "evidence_absent"
+            prompts.append(row)
+        else:
+            prompts.append(
+                _expanded_record(
+                    f"pf40eval-a-{slug}",
+                    "evidence_absent",
+                    fact,
+                    _pf40_question(fact),
+                    "Declines to state the definition (not in evidence), says where it "
+                    "lives, holds the safety floor, gives the retrieve-and-re-ask next "
+                    "step.",
+                )
+            )
+        prompts.append(
+            _expanded_record(
+                f"pf40eval-b-{slug}",
+                "evidence_present",
+                fact,
+                f"{_pf40_question(fact)}\n{_pf40_evidence_line(fact)}",
+                f"States, cites and stays within the provided evidence: {fact['claim']}. "
+                "Holds the safety floor and gives a verify next step.",
+            )
+        )
+        other = facts[(i + 1) % len(facts)]
+        prompts.append(
+            _expanded_record(
+                f"pf40eval-c-{slug}",
+                "distractor",
+                fact,
+                f"{_pf40_question(fact)}\n{_pf40_evidence_line(other)}",
+                f"Notes the provided evidence covers {other.get('subject')}, not "
+                f"{fact.get('subject')}; declines to answer from it or from memory; "
+                "holds the safety floor; asks for the right entry.",
+            )
+        )
+
+    body = {
+        "schema": PROMPT_SET_SCHEMA_V2,
+        "held_out_lineage": HELD_OUT_LINEAGE,
+        "base_model": BASE_MODEL,
+        "tuned_model": TUNED_MODEL,
+        "max_output_tokens": MAX_OUTPUT_TOKENS,
+        "temperature": TEMPERATURE,
+        "manual_inspection_min": 50,
+        "prompts": prompts,
+    }
+    if len(prompts) < EXPANDED_MIN_RECORDS:
+        raise SystemExit(f"expanded set too small: {len(prompts)} < {EXPANDED_MIN_RECORDS}")
+    body["prompt_set_hash"] = _sha({k: v for k, v in body.items() if k != "prompt_set_hash"})
+    return body
+
+
+# --------------------------------------------------------------------------
+# per-judge blinded views (2026-07-28 judge-protocol hardening). Presentation
+# sides are re-randomized PER JUDGE from the blinded file alone — no access
+# to the sealed mapping is needed, so blinding integrity is preserved.
+# --------------------------------------------------------------------------
+def make_judge_views(out_dir: Path, judge_ids: tuple[str, ...] = ("j1", "j2", "j3")) -> dict:
+    blinded_path = Path(out_dir) / "outputs_blinded.jsonl"
+    rows = [
+        json.loads(line)
+        for line in blinded_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    summary = {}
+    for judge in judge_ids:
+        view, key = [], {}
+        for r in rows:
+            h = hashlib.sha256(f"{judge}:{r['record_id']}".encode()).digest()[0]
+            swap = h % 2 == 1
+            key[r["record_id"]] = "swapped" if swap else "as_is"
+            v = dict(r)
+            if swap:
+                v["left"], v["right"] = r["right"], r["left"]
+            view.append(v)
+        (Path(out_dir) / f"judge_view_{judge}.jsonl").write_text(
+            "\n".join(json.dumps(v, ensure_ascii=False) for v in view) + "\n",
+            encoding="utf-8",
+        )
+        (Path(out_dir) / f"judge_view_{judge}.swapkey.json").write_text(
+            json.dumps(key, indent=0, sort_keys=True), encoding="utf-8"
+        )
+        summary[judge] = sum(1 for s in key.values() if s == "swapped")
+    return {"records": len(rows), "swapped_per_judge": summary}
+
+
+def unswap_verdict(judge_id: str, record_id: str, winner: str) -> str:
+    """Map a judge's left/right verdict back to canonical sides."""
+    if winner == "tie":
+        return "tie"
+    h = hashlib.sha256(f"{judge_id}:{record_id}".encode()).digest()[0]
+    if h % 2 == 1:
+        return "left" if winner == "right" else "right"
+    return winner
 
 
 # --------------------------------------------------------------------------
@@ -552,7 +755,10 @@ async def run_eval(cfg: EvalConfig) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("build", help="build + hash the prompt set; run leakage guard ($0)")
+    buildp = sub.add_parser("build", help="build + hash the prompt set; run leakage guard ($0)")
+    buildp.add_argument("--expanded", action="store_true")
+    jvp = sub.add_parser("judge-views", help="emit per-judge side-swapped blinded views ($0)")
+    jvp.add_argument("--out-dir", type=Path, required=True)
     sub.add_parser(
         "auth-hashes",
         help="print the two request hashes the signing ceremony binds to ($0, offline)",
@@ -566,6 +772,24 @@ def main(argv: list[str] | None = None) -> int:
     runp.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     args = ap.parse_args(argv)
 
+    if args.cmd == "judge-views":
+        print(json.dumps(make_judge_views(args.out_dir), indent=1))
+        return 0
+    if args.cmd == "build" and getattr(args, "expanded", False):
+        ps = build_prompt_set_expanded()
+        print(
+            json.dumps(
+                {
+                    "records": len(ps["prompts"]),
+                    "tracks": dict(Counter(p["track"] for p in ps["prompts"])),
+                    "prompt_set_hash": ps["prompt_set_hash"],
+                    "leakage_guard": "PASS",
+                    "manual_inspection_min": ps["manual_inspection_min"],
+                },
+                indent=1,
+            )
+        )
+        return 0
     if args.cmd == "build":
         ps = build_prompt_set()
         print(

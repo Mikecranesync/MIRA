@@ -1,0 +1,244 @@
+{
+ "schema": "factorylm.technician-unified.inventory.v1",
+ "generated": "2026-07-29",
+ "worktree_base": "55e4803c6",
+ "phase0": {
+  "issue": 2945,
+  "state": "CLOSED",
+  "apply_run": 30366072307,
+  "reverify_run": 30366176272
+ },
+ "families": [
+  {
+   "family": "technician-dataset-machinery",
+   "location": "factorylm_ai/{governance,adapters,dataset}/",
+   "runtime_role": "training-candidate factory + gates",
+   "rights": "corpus-source.v1 fail-closed",
+   "approval": "v0/v1 frozen; v1.1 dead; v2 built-unreviewed",
+   "lineage_key": "<mfr>:<doc> | tenant:<id>:document:<uuid>",
+   "volume": {
+    "v0": [
+     219,
+     119
+    ],
+    "v1": [
+     211,
+     105
+    ],
+    "v1_1": [
+     211,
+     0
+    ],
+    "v2": [
+     2148,
+     0
+    ]
+   },
+   "gaps": [
+    "v1.1 orphaned",
+    "console stale defaults",
+    "two ledger filenames"
+   ],
+   "adapter": "none",
+   "action": "v2 forward; archive v1.1; repoint console"
+  },
+  {
+   "family": "general-technician-behavior",
+   "location": null,
+   "runtime_role": "training source",
+   "rights": null,
+   "approval": null,
+   "lineage_key": null,
+   "volume": 0,
+   "gaps": [
+    "missing family \u2014 mission thesis confirmed"
+   ],
+   "adapter": "new candidate builder via existing pipeline",
+   "action": "build (Phase 4)"
+  },
+  {
+   "family": "drive-commander",
+   "location": "mira-bots/shared/drive_packs/ + tools/drive-pack-extract/",
+   "runtime_role": "deterministic evidence producer + training source",
+   "rights": "gs10+pf525 train-granted; pf40 HELD-OUT invariant",
+   "approval": "registry vs scorecard trust ladders disagree",
+   "lineage_key": "<mfr>:<manual-doc-number>",
+   "volume": {
+    "live_packs": 3,
+    "train_records_used": 45,
+    "magnetek_candidate": {
+     "faults": 77,
+     "params": 468
+    },
+    "g120": "sold-but-orphaned"
+   },
+   "gaps": [
+    "4 pack copies 1 guard",
+    "no observability",
+    "g120 unregistered"
+   ],
+   "adapter": "existing adapters/drive_commander.py",
+   "action": "reuse; register g120"
+  },
+  {
+   "family": "printsense",
+   "location": "printsense/ + mira-bots/shared/visual/",
+   "runtime_role": "evidence producer (prod vision) + training source",
+   "rights": "SCU2+real-photo customer-private LOCAL-ONLY UNREGISTERED; synthetic corpora safest",
+   "approval": "prod-activated v3.212.0",
+   "lineage_key": "content-hash (evidence) vs document_lineage_key (corpus) \u2014 unbridged",
+   "volume": {
+    "registry_rows": 26,
+    "v2_candidates": 165,
+    "internet_cases": 8
+   },
+   "gaps": [
+    "graph.json unversioned",
+    "corrections not correction-event.v1"
+   ],
+   "adapter": "extend adapters/printsense.py",
+   "action": "register SCU2 fail-closed; version graph.json"
+  },
+  {
+   "family": "kg-ontology",
+   "location": "mira-hub/db/migrations/{001,018,027,029} + ontology/",
+   "runtime_role": "evidence producer + approval workflow",
+   "rights": "tenant RLS (Hub family)",
+   "approval": "proposed/verified; ontology model richer than DB CHECK",
+   "lineage_key": "kg_entities.id; 3 provenance schemes",
+   "volume": {
+    "shacl_shapes": 42,
+    "shapes_without_fixtures": 31
+   },
+   "gaps": [
+    "TWO live kg schema families",
+    "ontology runtime-inert",
+    "3 stale canonical docs"
+   ],
+   "adapter": "evidence adapter into contract",
+   "action": "flag schema bridge; adapter"
+  },
+  {
+   "family": "retrieval",
+   "location": "mira-bots/shared/neon_recall.py + mira-hub/src/lib/manual-rag.ts",
+   "runtime_role": "evidence producer",
+   "rights": "hybrid law in 3 hand-copied dialects",
+   "approval": "verified gate flag; column unbackfilled",
+   "lineage_key": "knowledge_entries id + (tenant,source_url,chunk_index)",
+   "volume": "2 engines + >=8 bespoke readers",
+   "gaps": [
+    "no typed evidence out",
+    "fault_codes ungated"
+   ],
+   "adapter": "extend",
+   "action": "adapter -> contract"
+  },
+  {
+   "family": "live-state",
+   "location": "mira-relay/ + mira-hub migrations 020/033/035/038/040 + machine-context-packet.ts",
+   "runtime_role": "evidence producer",
+   "rights": "tenant + approved_tags allowlist",
+   "approval": "approved_tags human gate",
+   "lineage_key": "(tenant,source_system,source_tag_path); uns_path",
+   "volume": "modelled 3x, typed 1x",
+   "gaps": [
+    "simulated defaults disagree",
+    "normalize_tag_path x3"
+   ],
+   "adapter": "fold MachineContextPacket into contract",
+   "action": "overlay adapter"
+  },
+  {
+   "family": "approved-conversations-corrections",
+   "location": "mira-bots/shared/conversation_logger.py -> conversation_eval",
+   "runtime_role": "future real-data training source",
+   "rights": "UNRESOLVED \u2014 no corpus-source.v1 envelope",
+   "approval": "NOT approved for training",
+   "lineage_key": "none minted",
+   "volume": "unbounded, uncounted",
+   "gaps": [
+    "biggest ungoverned real source"
+   ],
+   "adapter": "corpus-source.v1 adapter (the missing piece)",
+   "action": "adapter spec; eval-only until rights"
+  },
+  {
+   "family": "context-contract",
+   "location": "materialized_evidence/schema.py (+machine-context-packet.ts overlay, agent_registry vocab)",
+   "runtime_role": "runtime context spine",
+   "rights": "tenant+environment scoped",
+   "approval": "ADR-0029 merged",
+   "lineage_key": "content/manifest hash (+NEW optional document_lineage_key backref)",
+   "volume": "runtime adoption thin",
+   "gaps": [
+    "missing task_mode/allowed_actions/unknowns"
+   ],
+   "adapter": "EXTEND \u2014 do not fork",
+   "action": "Phase 3"
+  },
+  {
+   "family": "decision-traces",
+   "location": "migrations 032/055 + shared/decision_trace.py",
+   "runtime_role": "post-hoc audit; de-facto contract, write-only",
+   "rights": "RLS append-only",
+   "approval": "technician_confirmed",
+   "lineage_key": "trace_id",
+   "volume": "2 divergent writers, 0 readers",
+   "gaps": [
+    "evidence not FK-resolved"
+   ],
+   "adapter": "reader/resolver",
+   "action": "consumer of contract"
+  },
+  {
+   "family": "eval-assets-frozen",
+   "location": "holdout_eval.py + simlab + printsense/benchmarks + internet_print_tests + DC gold/graders",
+   "runtime_role": "EVALUATION-ONLY",
+   "rights": "PF40 invariant; SimLab double-locked; SCU2-derived customer-private",
+   "approval": "frozen/CI-gated",
+   "lineage_key": "lineage + sha256 freeze files",
+   "volume": {
+    "frozen": 25,
+    "expanded": 108,
+    "grader_gate_cases": 2,
+    "sha256_corpora": 6,
+    "internet_cases": 8
+   },
+   "gaps": [
+    "internet judge uncalibrated",
+    "31 shapes fixture-less"
+   ],
+   "adapter": "none",
+   "action": "keep out of training (enforced)"
+  },
+  {
+   "family": "synth-substrate",
+   "location": "factorylm_ai/synth/",
+   "runtime_role": "generation governance (idle)",
+   "rights": "\u00a715 answer-key independence",
+   "approval": "shipped PR-A; 0 records",
+   "lineage_key": "case_key/execution_key",
+   "volume": 0,
+   "gaps": [
+    "producer stages B-E unbuilt"
+   ],
+   "adapter": "none",
+   "action": "use contracts for Phase-4 provenance"
+  },
+  {
+   "family": "legacy-flywheel",
+   "location": "factorylm_ai/flywheel/",
+   "runtime_role": "competing export path",
+   "rights": "drops sensitive",
+   "approval": "shipped, unused",
+   "lineage_key": "record-id hash (NOT lineage)",
+   "volume": null,
+   "gaps": [
+    "splits 70/10/10/10 competes",
+    "export bypasses paid_gate"
+   ],
+   "adapter": "none",
+   "action": "reconcile: gate or retire export"
+  }
+ ]
+}
