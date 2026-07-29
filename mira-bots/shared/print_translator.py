@@ -186,6 +186,14 @@ designation like K1, Q2, S3 or F4 means, name its device class (K = \
 contactor or relay, Q = circuit breaker or disconnect, S = switch or \
 selector, F = protective device such as a fuse or overload) plus the \
 instance number.
+- PRINTED SAFETY WARNINGS: if the sheet shows any DANGER / WARNING / CAUTION \
+box, a hard prohibition ("never", "do not", "must not", "shall not"), a \
+required reset behavior, a bypass/isolation restriction, or a safety-category \
+requirement, add a final section titled "Safety and Manufacturer Warnings" \
+that quotes that printed text VERBATIM and labels each item PRINTED (naming \
+where it appears) versus INFERRED (your own guidance). Never invent a safety \
+requirement that is not on the sheet; if none are printed, say "No printed \
+safety warnings are visible on this sheet."
 """
 
 
@@ -314,7 +322,13 @@ A print never shows live machine state — if the question touches present \
 state (energized, contact open/closed), say the technician must verify with \
 a meter. Do not describe schematic-software UI chrome. Be direct and \
 concise: answer the question first, and add nothing beyond what the \
-question needs — no filler sections, no component inventories."""
+question needs — no filler sections, no component inventories. \
+SAFETY EXCEPTION to brevity: if the sheet prints any DANGER / WARNING / \
+CAUTION box, a hard prohibition ("never", "do not", "must not"), or a \
+required reset / isolation / bypass instruction, you MUST add a final \
+"## Safety and Manufacturer Warnings" section that quotes that printed text \
+VERBATIM and labels each line PRINTED (and where on the sheet it appears) — \
+never invent a warning, and omit the section only when none are printed."""
 
 
 VERIFY_SYSTEM_PROMPT = """\
@@ -518,24 +532,97 @@ CONTACT_STATE_CAVEAT = (
 )
 
 
-def format_theory_reply(raw: str, drawing_type: str | None = None) -> str:
+# ── printed safety / manufacturer warnings elevation (2026-07-21) ─────────────
+# A print's printed DANGER/WARNING/CAUTION boxes and hard prohibitions ("never
+# wire a PLC between the relay and the MSC", "do not connect (0V) and (24V)") are
+# the most consequential text on the sheet — and the 2026-07-21 bench showed MIRA
+# reading a safety-relay's WIRING perfectly while silently dropping its two big
+# printed WARNINGs. This lane elevates them into a dedicated, SOURCE-FAITHFUL
+# section: the prompt asks the model to quote them; this deterministic backstop
+# guarantees any warning present in the photo's OWN OCR is surfaced verbatim even
+# if the model omits it. Quoting printed OCR text can never invent a warning.
+SAFETY_WARNINGS_HEADING = "Safety and Manufacturer Warnings"
+# High-precision: printed hazard headers + hard prohibitions only. Softer items
+# (reset/bypass/safety-category) are left to the model's section so the
+# deterministic backstop never surfaces noise (e.g. a plain "reset button" line).
+_WARNING_SIGNAL_RE = re.compile(
+    r"\b(DANGER|WARNING|CAUTION|NOTICE)\b"
+    r"|\b(never|do\s*not|must\s*not|shall\s*not|not\s+permitted|prohibited)\b",
+    re.IGNORECASE,
+)
+_SAFETY_SECTION_MARKERS = (
+    "safety and manufacturer warnings",
+    "safety warnings",
+    "manufacturer warnings",
+)
+
+
+def printed_warning_signals(vision_data: dict | None) -> list[str]:
+    """Deterministic ($0): printed warning-bearing lines from the photo's OWN OCR
+    (``ocr_items`` + ``tesseract_text``). Verbatim, so surfacing them can never
+    invent a warning. Empty when OCR is unavailable or nothing is printed — in
+    which case the prompt-driven section (the model reading the image) is the only
+    lane, which is correct for the no-OCR path."""
+    items = [str(t) for t in ((vision_data or {}).get("ocr_items") or [])]
+    tt = str((vision_data or {}).get("tesseract_text") or "")
+    lines = items + [ln for ln in tt.splitlines() if ln.strip()]
+    seen: set[str] = set()
+    out: list[str] = []
+    for ln in lines:
+        s = " ".join(ln.split()).strip()
+        key = s.lower()
+        if len(s) >= 4 and _WARNING_SIGNAL_RE.search(s) and key not in seen:
+            seen.add(key)
+            out.append(s)
+    return out[:12]
+
+
+def _reply_has_safety_section(raw: str) -> bool:
+    low = (raw or "").lower()
+    return any(m in low for m in _SAFETY_SECTION_MARKERS)
+
+
+def _safety_warnings_block(signals: list[str]) -> str:
+    """A source-faithful, clearly-delimited warnings section built ONLY from
+    verbatim printed OCR lines (each labeled PRINTED). Never inferred, never invented."""
+    lines = "\n".join(f"- PRINTED (on this sheet): “{s}”" for s in signals)
+    return (
+        f"## ⚠️ {SAFETY_WARNINGS_HEADING}\n"
+        "The following safety-relevant text is printed on this sheet — read it before working:\n"
+        f"{lines}\n"
+        "_These are quoted from the print itself (PRINTED). Follow the manufacturer's "
+        "printed instructions; verify against the physical equipment._"
+    )
+
+
+def format_theory_reply(
+    raw: str, drawing_type: str | None = None, vision_data: dict | None = None
+) -> str:
     """Post-process the model's reply for Telegram.
 
     If ``raw`` is empty (all providers failed) return ``FALLBACK_REPLY``.
-    Otherwise return ``raw`` unchanged — the prompt already enforces the
-    6-section format + hedged framing. Do NOT append generic prose, do NOT
-    fabricate content. The single sanctioned append is the deterministic
-    SAFETY caveat: a contact-convention verdict (\"normally open/closed\")
-    shipping without any verification language gets ``CONTACT_STATE_CAVEAT``
-    (UNSEEN-4) — a safety duty, not content.
+    Otherwise return ``raw`` — the prompt already enforces the format + hedged
+    framing. Two sanctioned deterministic appends, both safety duties (never
+    generic prose, never fabricated content):
+
+    1. Contact-state caveat (UNSEEN-4): a ``normally open/closed`` verdict shipped
+       without verification language gets ``CONTACT_STATE_CAVEAT``.
+    2. Printed-warnings backstop (2026-07-21): if the photo's OCR contains printed
+       DANGER/WARNING/CAUTION / hard-prohibition text and the reply has no safety
+       section, append a source-faithful ``Safety and Manufacturer Warnings``
+       block quoting that printed text verbatim. Grounded in OCR — never invents.
     """
     if not raw:
         return FALLBACK_REPLY
-    if _CONTACT_VERDICT_RE.search(raw) and not any(
-        marker in raw.lower() for marker in _CAVEAT_MARKERS
+    out = raw
+    signals = printed_warning_signals(vision_data)
+    if signals and not _reply_has_safety_section(out):
+        out = out + "\n\n" + _safety_warnings_block(signals)
+    if _CONTACT_VERDICT_RE.search(out) and not any(
+        marker in out.lower() for marker in _CAVEAT_MARKERS
     ):
-        return raw + "\n\n" + CONTACT_STATE_CAVEAT
-    return raw
+        out = out + "\n\n" + CONTACT_STATE_CAVEAT
+    return out
 
 
 # ── self-consistency reconciliation (PRINT_THEORY_SELF_CONSISTENCY) ───────────

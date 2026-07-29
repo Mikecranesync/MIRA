@@ -370,7 +370,12 @@ def ocr_lane_report() -> dict:
     rendered by /printsense_test ocr — the mechanism that makes a dead
     floor loud instead of a per-turn WARNING nobody reads (the 2026-07
     glm-ocr lane died silently for weeks)."""
-    expected = (os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0") == "1"
+    # ADR-0031 §6.5: OCR_REQUIRE_TESSERACT is the canonical knob; legacy
+    # OCR_EXPECT_TESSERACT keeps working through the migration. Either being
+    # "1" makes a missing floor DEAD (readiness-failing) instead of DEGRADED.
+    expected = (os.environ.get("OCR_REQUIRE_TESSERACT", "").strip() or "0") == "1" or (
+        os.environ.get("OCR_EXPECT_TESSERACT", "0").strip() or "0"
+    ) == "1"
     model_lane = "on" if _model_lane_on() else "off"
     try:
         version: str | None = _tesseract_version_impl()
@@ -390,6 +395,27 @@ def ocr_lane_report() -> dict:
         "expected_floor": expected,
         "verdict": verdict,
     }
+
+
+_OCR_AVAILABLE_CACHE: bool | None = None
+
+
+def _ocr_capability_available() -> bool:
+    """Whether the Tesseract OCR floor is installed in THIS process (cached — one probe).
+
+    Surfaced on vision_data as ``ocr_available`` so downstream graders can tell
+    "OCR ran and read nothing" (available=True, real signal) apart from "OCR
+    could not run at all" (available=False) — e.g. the autoeval ``tag_flood_without_ocr``
+    lane must not fire when the OCR capability is simply absent (a correct dense
+    reading would otherwise trip a false positive). Defaults True (safe) if unknowable."""
+    global _OCR_AVAILABLE_CACHE
+    if _OCR_AVAILABLE_CACHE is None:
+        try:
+            _tesseract_version_impl()
+            _OCR_AVAILABLE_CACHE = True
+        except Exception:  # noqa: BLE001 — absence is a state, not an error
+            _OCR_AVAILABLE_CACHE = False
+    return _OCR_AVAILABLE_CACHE
 
 
 class VisionWorker:
@@ -525,6 +551,7 @@ class VisionWorker:
             "ocr_items": ocr_items,
             "ocr_tokens": ocr_tokens_,
             "ocr_source": ocr_source,
+            "ocr_available": _ocr_capability_available(),
             "tesseract_text": tesseract_text,
             "drawing_type": drawing_type,
             "drawing_type_confidence": drawing_confidence,

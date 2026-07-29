@@ -1,0 +1,110 @@
+{
+  "blocking": [],
+  "checks": [
+    {
+      "detail": "every eligible record is governance-eligible AND approved",
+      "name": "all_records_dataset_eligible",
+      "passed": true
+    },
+    {
+      "detail": "every eligible record has valid chat training messages",
+      "name": "all_records_message_valid",
+      "passed": true
+    },
+    {
+      "detail": "119 eligible (need >= 100)",
+      "name": "min_records",
+      "passed": true
+    },
+    {
+      "detail": "23 lineages (need >= 20)",
+      "name": "min_lineages",
+      "passed": true
+    },
+    {
+      "detail": "66 uncertainty/refusal/correction (need >= 20)",
+      "name": "min_valued_interactions",
+      "passed": true
+    },
+    {
+      "detail": "every eligible source allows training; rights report referenced",
+      "name": "all_rights_training_allowed",
+      "passed": true
+    },
+    {
+      "detail": "leakage guard clean; all eligible on train side",
+      "name": "no_held_out_contamination",
+      "passed": true
+    },
+    {
+      "detail": "5 held-out lineages reserved (need >= 5)",
+      "name": "min_held_out_lineages",
+      "passed": true
+    },
+    {
+      "detail": "31 safety-sensitive examples (need >= 15)",
+      "name": "min_safety_sensitive",
+      "passed": true
+    },
+    {
+      "detail": "trainable printsense + drive_commander both present in the eligible set",
+      "name": "trainable_source_representation",
+      "passed": true
+    },
+    {
+      "detail": "frozen SimLab/MIRA benchmark baseline referenced",
+      "name": "frozen_benchmark_baseline",
+      "passed": true
+    },
+    {
+      "detail": "synthetic-composition report referenced",
+      "name": "synthetic_composition_disclosed",
+      "passed": true
+    },
+    {
+      "detail": "base-vs-tools benchmark referenced",
+      "name": "base_vs_tools_benchmark_complete",
+      "passed": true
+    },
+    {
+      "detail": "est $4.00 (cap $5.00)",
+      "name": "cost_within_cap",
+      "passed": true
+    },
+    {
+      "detail": "Qwen/Qwen3.5-9B FT support confirmed on together",
+      "name": "model_support_confirmed",
+      "passed": true
+    }
+  ],
+  "evidence": {
+    "base_vs_tools_benchmark_ref": "docs\\zta\\technician-dataset-v0\\reports\\base_vs_tools_benchmark.json",
+    "eligible_source_systems": [
+      "drive_commander",
+      "printsense"
+    ],
+    "est_cost_usd": 4.0,
+    "frozen_benchmark_baseline_ref": "docs\\zta\\technician-dataset-v0\\reports\\frozen_benchmark_baseline.json",
+    "held_out_lineage_count": 5,
+    "held_out_lineage_keys": [
+      "factorylm:cv-101-e-004",
+      "factorylm:factorylm-print-style-025",
+      "factorylm:public-domain-print-031",
+      "factorylm:technician-review-011",
+      "rockwell-automation:22b-um001j-en-e"
+    ],
+    "model_support": {
+      "checked_at": "2026-07-25T00:00:00Z",
+      "confirmed": true,
+      "method": "serverless-catalog",
+      "model_id": "Qwen/Qwen3.5-9B",
+      "provider": "together",
+      "receipt_ref": "docs/zta/2026-07-25-together-qwen35-9b-model-support-receipt.md",
+      "supported": true
+    },
+    "rights_report_ref": "docs\\zta\\technician-dataset-v0\\reports\\rights_report.json",
+    "synthetic_composition_report_ref": "docs\\zta\\technician-dataset-v0\\reports\\real_vs_synthetic_composition_report.json"
+  },
+  "passed": true,
+  "verdict": "PAID_GATE_PASS"
+}

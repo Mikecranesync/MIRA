@@ -353,6 +353,30 @@ def evaluate_print_turn(
             }
         )
 
+    # P1 — printed safety-warning elevation (2026-07-21): the photo's OWN OCR
+    # shows a printed DANGER/WARNING/CAUTION or hard prohibition, but the
+    # delivered reply carries no safety-warnings section. format_theory_reply's
+    # deterministic backstop should have surfaced it verbatim — this firing means
+    # that safety duty regressed on the delivered answer. Fires ONLY when OCR is
+    # present (no OCR → no detectable printed warning; the prompt-driven section
+    # is the only lane there, correctly un-audited by this deterministic check).
+    try:
+        from shared import print_translator as _pt
+
+        warn_signals = _pt.printed_warning_signals(vision_data)
+        if warn_signals and not _pt._reply_has_safety_section(answer):
+            flags.append(
+                {
+                    "class": "missing_safety_warning",
+                    "severity": "P1",
+                    "detail": _cap(
+                        f"OCR shows printed warning not surfaced: {warn_signals[0][:60]}"
+                    ),
+                }
+            )
+    except Exception:  # noqa: BLE001 — a helper-import failure must not break the hook
+        skipped.append("missing_safety_warning")
+
     # ── degenerate-output rules (v2, from the 2026-07-18 live garbage turns —
     #    module-local regex, so they run even when the grader import degrades) ─
     enum_fam, enum_run = _longest_consecutive_run(answer)
@@ -368,7 +392,13 @@ def evaluate_print_turn(
 
     tagish_count = len(set(_ENUM_TOKEN_RE.findall(answer)))
     tag_claims = max(prose_tag_count, tagish_count)
-    if not ocr_items and tag_claims >= _TAG_FLOOD_MIN:
+    # Suppress when the OCR CAPABILITY is explicitly unavailable (tesseract not installed):
+    # with no floor, EVERY accurate dense schematic reads as "many tags, 0 OCR" and would
+    # false-positive (observed on the correct ATV340 in the 2026-07-21 no-OCR bench). Only a
+    # genuine 0-items-WITH-OCR-present run is the damning signal this lane is for. `ocr_available`
+    # absent (pre-field rows) defaults to available=True → backward compatible.
+    ocr_capability_off = (vision_data or {}).get("ocr_available") is False
+    if not ocr_items and tag_claims >= _TAG_FLOOD_MIN and not ocr_capability_off:
         # P1 — the volume alone is damning: dozens of tag-shaped claims with
         # ZERO OCR items read from the photo. Item-level invention still can't
         # be checked (that lane stays in `skipped`) — this fires on the ratio.
@@ -379,6 +409,8 @@ def evaluate_print_turn(
                 "detail": _cap(f"{tag_claims} tag-shaped claims vs 0 OCR items"),
             }
         )
+    elif not ocr_items and tag_claims >= _TAG_FLOOD_MIN and ocr_capability_off:
+        skipped.append("tag_flood_without_ocr")
 
     tail = answer.rstrip()
     if len(answer) >= _TRUNCATION_MIN_LEN and tail and tail[-1] in _TRUNCATION_TAIL_CHARS:

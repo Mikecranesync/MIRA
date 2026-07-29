@@ -1,0 +1,16 @@
+# EXPECT-VIOLATION: mirash:AssertionShape
+#
+# Well-formedness — confidence outside [0,1]. kg_relationships.confidence is a FLOAT with no DB
+# constraint, so an extractor emitting a percentage (85) or an unnormalised score lands silently
+# and then sorts above every legitimate 0.0-1.0 value in any confidence-ranked query.
+#
+# Isolation: approval_state=proposed, no approver/supersession/trust, so no other shape applies.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:a_conf_bad a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:approval_state mira:approval_proposed ;
+    mira:confidence "1.5"^^xsd:decimal .

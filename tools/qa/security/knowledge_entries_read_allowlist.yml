@@ -74,7 +74,7 @@ compliant:
     status: compliant
     reason: Quickstart manufacturer list from OEM corpus
 
-  "mira-hub/src/lib/manual-rag.ts:430":
+  "mira-hub/src/lib/manual-rag.ts:332":
     classification: HYBRID
     status: compliant
     reason: Asset chat RAG uses (is_private=false OR tenant_id) hybrid filter for OEM+uploads
@@ -406,16 +406,20 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
-  "mira-hub/src/lib/manual-rag.ts:430":
+  "mira-hub/src/lib/manual-rag.ts:439":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "retrieveNodeChunks (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above)."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/node-knowledge-ingest.ts:161":
+  "mira-hub/src/lib/node-knowledge-ingest.ts:178":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "embedPendingNodeChunks embed-on-write pass — reads back ONLY the rows it
+      just wrote for THIS upload (scoped by tenant_id + source_url = node-doc/<uploadId>/…
+      + source_type='node_attachment' + embedding IS NULL) to fill their embeddings. Not a
+      user-facing corpus read, so the hybrid OEM filter (is_private=false OR …) does not
+      apply; the writer must only ever touch its own tenant's freshly-inserted chunks."
     query_snippet: |
       `SELECT id::text, content FROM knowledge_entries
                   WHERE tenant_id = $1 AND source_url = $2
@@ -909,21 +913,21 @@ approved:
       with _engine().connect() as conn:
                   tenant_count = conn.execute(text("SELECT COUNT(*) FROM tenants")).scalar()
                   ke_count = conn.execute(text("SELECT COUNT(*) FROM knowledge_entries")).scalar()
-  "mira-core/mira-ingest/db/neon.py:336":
+  "mira-core/mira-ingest/db/neon.py:343":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "knowledge_entry_exists dedup guard — checks whether THIS tenant already ingested this (source_url, chunk_index); cross-tenant visibility would wrongly skip ingest (legit TENANT-ONLY per the pure-tenant carve-out)"
     query_snippet: |
       with _engine().connect() as conn:
               count = conn.execute(
                   text(
-  "mira-core/mira-ingest/db/neon.py:505":
+  "mira-core/mira-ingest/db/neon.py:514":
     approved_classification: TENANT-ONLY
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                       WHERE tenant_id = :tid
                         AND source_type = 'manual'
-  "mira-core/mira-ingest/db/neon.py:735":
+  "mira-core/mira-ingest/db/neon.py:744":
     approved_classification: TENANT-ONLY
     reason: "TODO: justify this read pattern"
     query_snippet: |

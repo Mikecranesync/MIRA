@@ -1,0 +1,128 @@
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://ontology.factorylm.com/mira/drives>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/drives/0.1.0> ;
+    owl:versionInfo "0.1.0" ;
+    owl:imports <https://ontology.factorylm.com/mira/core> ,
+                <https://ontology.factorylm.com/mira/controls> ,
+                <https://ontology.factorylm.com/mira/evidence> ;
+    dcterms:title "MIRA Drives — Drive Commander families, fault codes, parameters, remedies" ;
+    rdfs:comment """Mirrors mira-bots/shared/drive_packs/schema.py + packs/*/pack.json.
+
+THE PROBLEM THIS MODULE EXISTS TO SOLVE: fault-code mnemonics are REUSED across unrelated drive
+families. 'F007' means one thing on a PowerFlex 40 and something else on a GS10. Pack storage is
+already family-keyed (packs/<family>/pack.json), but nothing in the graph forces a FaultCode to
+declare its scope — so a code lifted into kg_entities loses the family and becomes answerable for
+the wrong drive. FaultCodeScopeShape makes that unrepresentable.""" .
+
+##  Family and model  ##################################################
+
+mira:DriveFamily a owl:Class ; rdfs:subClassOf mira:DeviceFamily ; rdfs:label "Drive family" ;
+    rdfs:comment "The unit a pack is keyed on: manufacturer + series (+ aliases)." ;
+    mira:grounded_in "drive_packs/schema.py Family(manufacturer, series, aliases); packs/<pack_id>/pack.json" ;
+    mira:term_status "canonical" .
+
+mira:DriveModel a owl:Class ; rdfs:subClassOf mira:AssetClass ; rdfs:label "Drive model" ;
+    rdfs:comment "A specific catalogue model within a family. Narrower scope than DriveFamily; a FaultCode may be scoped to either." ;
+    mira:grounded_in "uns.py::model_path(); nameplate match_keywords resolving to a model" ;
+    mira:term_status "canonical" .
+
+mira:DrivePack a owl:Class ; rdfs:label "Drive pack" ;
+    rdfs:comment "The versioned data artifact carrying a family's decode tables, envelope and provenance. Data, not code (ADR-0025)." ;
+    mira:grounded_in "packs/*/pack.json keys: pack_id, schema_version, family, nameplate, live_decode, envelope, knowledge, provenance, parameters, keypad_navigation" ;
+    mira:term_status "canonical" .
+
+mira:FirmwareScope a owl:Class ; rdfs:label "Firmware scope" ;
+    rdfs:comment "Justified by schema_version-gated pack blocks: v1 packs lack `parameters`/`keypad_navigation`, so a decode's applicability is already version-bounded in practice." ;
+    mira:grounded_in "drive_packs pack.json schema_version 1 vs 2 gating" ; mira:term_status "proposed" .
+
+##  Fault codes  #######################################################
+
+mira:FaultCode a owl:Class ; rdfs:label "Fault code" ;
+    rdfs:comment "A device-reported code. MEANINGLESS without its family/model scope + source evidence." ;
+    mira:grounded_in "drive_packs LiveDecode.fault_codes; i3x object-types.ts CORE_TYPES 'fault_code'; uns.py::fault_code_path()" ;
+    mira:term_status "canonical" .
+
+mira:fault_mnemonic a owl:DatatypeProperty ; rdfs:label "fault_mnemonic" ; rdfs:domain mira:FaultCode ; rdfs:range xsd:string ;
+    rdfs:comment "The printed code as the drive shows it ('F007','oC','CE10'). NOT globally unique — see scoped_to." ;
+    mira:grounded_in "LiveDecode.fault_codes keys; docs/adr/0028 source-preserved mnemonic schema" ;
+    mira:term_status "canonical" .
+
+mira:scoped_to a owl:ObjectProperty ; rdfs:label "scoped_to" ; rdfs:domain mira:FaultCode ;
+    rdfs:comment "The DriveFamily or DriveModel this code is valid for. Mandatory — a code with no scope is not answerable. No inverse modeled: enumerating a family's fault codes is a pack.json file lookup (packs/<family>/pack.json), not a graph traversal from DriveFamily." ;
+    mira:grounded_in "packs/<family>/pack.json file-path keying of LiveDecode.fault_codes" ;
+    mira:term_status "proposed" .
+
+mira:fault_meaning a owl:DatatypeProperty ; rdfs:label "fault_meaning" ; rdfs:range xsd:string ;
+    mira:grounded_in "drive_packs/cards.py DiagnosticCard.meaning" ; mira:term_status "canonical" .
+
+##  Diagnosis content  #################################################
+
+mira:DiagnosticCondition a owl:Class ; rdfs:label "Diagnostic condition" ;
+    rdfs:comment "A fault-or-symptom a technician can be answered about — the addressable unit of Drive Commander's answer surface." ;
+    mira:grounded_in "drive_packs/cards.py DiagnosticCard.fault_or_symptom" ; mira:term_status "canonical" .
+
+mira:Remedy a owl:Class ; rdfs:label "Remedy" ;
+    rdfs:comment "A check or corrective step offered for a condition." ;
+    mira:grounded_in "drive_packs/cards.py DiagnosticCard.first_checks" ; mira:term_status "canonical" .
+
+mira:SafetyPrerequisite a owl:Class ; rdfs:label "Safety prerequisite" ;
+    rdfs:comment "What must be true before a Remedy is attempted (LOTO, arc-flash PPE, stored-energy discharge). Surfaced by the SAFETY_KEYWORDS escalation path, never buried inside step text." ;
+    mira:grounded_in "mira-bots/shared/guardrails.py SAFETY_KEYWORDS; .claude/skills/mira-industrial-safety" ;
+    mira:term_status "proposed" .
+
+mira:ParameterCard a owl:Class ; rdfs:subClassOf mira:Parameter ; rdfs:label "Parameter card" ;
+    rdfs:comment "A cited, view-only decode of one configurable setting. Never a write (ADR-0025)." ;
+    mira:grounded_in "drive_packs/schema.py ParameterCard; ValueMeaning(value, meaning)" ; mira:term_status "canonical" .
+
+mira:EnvelopeBand a owl:Class ; rdfs:label "Envelope band" ;
+    rdfs:comment "Expected nominal/min/max/rated for one analog signal. Unknown is None, never a guess." ;
+    mira:grounded_in "drive_packs/schema.py EnvelopeBand(nominal, min, max, rated, unit); Envelope(dc_bus, current, frequency)" ;
+    mira:term_status "canonical" .
+
+##  Properties  ########################################################
+
+mira:pack_id         a owl:DatatypeProperty ; rdfs:label "pack_id" ;         rdfs:domain mira:DrivePack ; rdfs:range xsd:string ; mira:grounded_in "pack.json pack_id" ; mira:term_status "canonical" .
+mira:schema_version  a owl:DatatypeProperty ; rdfs:label "schema_version" ;  rdfs:domain mira:DrivePack ; rdfs:range xsd:integer ; mira:grounded_in "pack.json schema_version" ; mira:term_status "canonical" .
+mira:describes_family a owl:ObjectProperty  ; rdfs:label "describes_family" ; rdfs:domain mira:DrivePack ; rdfs:range mira:DriveFamily ;
+    rdfs:comment "No inverse modeled: resolving which pack answers for a family is a lookup keyed on pack_id/match_keywords (drive_packs/resolver.py), not a graph walk from DriveFamily to DrivePack." ;
+    mira:grounded_in "pack.json family block" ; mira:term_status "proposed" .
+mira:match_keyword   a owl:DatatypeProperty ; rdfs:label "match_keyword" ;   rdfs:range xsd:string ; mira:grounded_in "drive_packs/schema.py Nameplate.match_keywords" ; mira:term_status "canonical" .
+mira:alias           a owl:DatatypeProperty ; rdfs:label "alias" ;           rdfs:range xsd:string ; mira:grounded_in "drive_packs/schema.py Family.aliases" ; mira:term_status "canonical" .
+
+mira:has_fault a owl:ObjectProperty ; rdfs:label "has_fault" ; rdfs:range mira:FaultCode ; owl:inverseOf mira:fault_of ;
+    mira:grounded_in "uns.py::fault_code_path() attaches codes under a model" ; mira:term_status "proposed" .
+mira:fault_of a owl:ObjectProperty ; rdfs:label "fault_of" ; owl:inverseOf mira:has_fault ;
+    mira:grounded_in "inverse of has_fault" ; mira:term_status "proposed" .
+
+mira:causes_fault a owl:ObjectProperty ; rdfs:label "causes_fault" ; owl:inverseOf mira:caused_by ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[causes_fault, caused_by]" ; mira:term_status "canonical" .
+mira:caused_by a owl:ObjectProperty ; rdfs:label "caused_by" ; owl:inverseOf mira:causes_fault ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[causes_fault, caused_by]" ; mira:term_status "canonical" .
+
+mira:resolved_by a owl:ObjectProperty ; rdfs:label "resolved_by" ; rdfs:range mira:Remedy ; owl:inverseOf mira:resolves ;
+    mira:grounded_in "DiagnosticCard.first_checks attached to a fault_or_symptom" ; mira:term_status "proposed" .
+mira:resolves a owl:ObjectProperty ; rdfs:label "resolves" ; owl:inverseOf mira:resolved_by ;
+    mira:grounded_in "inverse of resolved_by" ; mira:term_status "proposed" .
+
+mira:requires_safety a owl:ObjectProperty ; rdfs:label "requires_safety" ; rdfs:domain mira:Remedy ; rdfs:range mira:SafetyPrerequisite ;
+    rdfs:comment "No inverse modeled — 'what needs LOTO' is a reporting query, not an answer-path traversal." ;
+    mira:grounded_in "guardrails safety escalation attached to corrective steps" ; mira:term_status "proposed" .
+
+mira:decodes a owl:ObjectProperty ; rdfs:label "decodes" ; rdfs:domain mira:Register ; rdfs:range mira:MeasurementSignal ;
+    rdfs:comment "Register → the engineering signal it yields once scaled. No inverse modeled; the signal's own scaling edge carries the reverse meaning." ;
+    mira:grounded_in "drive_packs RegisterEntry.datapoint names the resulting engineering signal" ;
+    mira:term_status "proposed" .
+
+mira:has_scaling a owl:ObjectProperty ; rdfs:label "has_scaling" ; rdfs:domain mira:Register ; rdfs:range mira:ScalingRule ;
+    rdfs:comment "No inverse modeled: a ScalingRule exists to decode exactly one Register's raw value — there is no query that starts from a rule and asks which register owns it outside that single decode step." ;
+    mira:grounded_in "drive_packs RegisterEntry.scaling" ; mira:term_status "proposed" .
+
+mira:expected_band a owl:ObjectProperty ; rdfs:label "expected_band" ; rdfs:domain mira:MeasurementSignal ; rdfs:range mira:EnvelopeBand ;
+    rdfs:comment "No inverse modeled: an EnvelopeBand is only ever reached FROM the signal it bounds (decode → signal → expected_band); walking backward from a band to 'which signals expect this range' has no caller." ;
+    mira:grounded_in "drive_packs Envelope.dc_bus/current/frequency" ; mira:term_status "proposed" .

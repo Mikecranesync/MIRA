@@ -44,6 +44,7 @@ class DatasetType(str, Enum):
     CONTRADICTION = "ContradictionEvidence"
     HUMAN_REVIEW = "HumanReviewEvidence"
     PACK_BUILD = "PackBuildEvidence"
+    PRINT_INTERPRETATION = "PrintInterpretationEvidence"  # PrintSense paid-vision graph (PR G)
 
 
 class Environment(str, Enum):
