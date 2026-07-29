@@ -1872,17 +1872,22 @@ class Supervisor:
             except Exception:  # noqa: BLE001
                 model_used = None
 
+            session_id = self._ts_sessions.get(str(chat_id))
+            confidence = result.get("confidence")
+
             coro = write_trace(
                 tenant_id=tenant_id,
                 user_question=message,
                 recommendation=reply,
                 platform=platform,
                 uns_context=uns_context,
+                session_id=session_id,
                 tag_evidence=tag_evidence,
                 manual_sources=manual_sources,
                 outcome=outcome,
                 model_used=model_used,
                 latency_ms=latency_ms,
+                confidence=confidence,
             )
             # Hold a reference so the task isn't GC'd before it runs.
             task = asyncio.create_task(coro)
