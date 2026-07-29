@@ -14,6 +14,34 @@
 --
 -- Assertion (expect every row PASS):
 --   SELECT * FROM backfill_fixture_assert ORDER BY label;
+--
+-- == THIS IS A LOCAL TEST FIXTURE, NOT A SEED ================================
+-- It DROPs and recreates knowledge_entries against whatever database it is
+-- pointed at. It is deliberately kept OUTSIDE tools/seeds/ (see the "Regression
+-- fixture" block in the seed's header for why) so that production-capable
+-- workflows (apply-seeds.yml, apply-tag-scaling.yml, apply-approved-tags.yml)
+-- cannot resolve it by name. It must NEVER be added to any seed-applying
+-- workflow, and must never be pointed at a real (dev/staging/prod) database —
+-- only a throwaway container like the one in the run recipe above.
+--
+-- As defence-in-depth against the unsanitized-path-traversal weakness in those
+-- workflows (tracked separately — do not fix it here), this fixture refuses to
+-- run unless the caller explicitly opts in with
+--   -v allow_destructive_fixture=1
+-- which no workflow ever passes.
+
+\if :{?allow_destructive_fixture}
+\else
+\echo ''
+\echo '*** REFUSING TO RUN ***'
+\echo 'This fixture DROPs and recreates knowledge_entries. It is a local test'
+\echo 'fixture, never a seed. If you reached this from a deploy workflow, STOP.'
+\echo 'To run it deliberately against a throwaway database:'
+\echo '    psql ... -v allow_destructive_fixture=1 -f <this file>'
+\echo ''
+DO $$ BEGIN RAISE EXCEPTION 'destructive fixture refused: allow_destructive_fixture not set'; END $$;
+\quit
+\endif
 
 \if :{?tid_type}
 \else

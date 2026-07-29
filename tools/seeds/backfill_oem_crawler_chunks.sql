@@ -80,7 +80,7 @@
 --   docker run --rm -d --name oem-seed-fix -e POSTGRES_PASSWORD=test postgres:16
 --   docker cp tests/seeds/backfill_oem_crawler_chunks_fixture.sql oem-seed-fix:/tmp/fixture.sql
 --   docker cp tools/seeds/backfill_oem_crawler_chunks.sql oem-seed-fix:/tmp/seed.sql
---   docker exec oem-seed-fix psql -U postgres -v ON_ERROR_STOP=1 -f /tmp/fixture.sql   # add -v tid_type=text for the 2nd run
+--   docker exec oem-seed-fix psql -U postgres -v ON_ERROR_STOP=1 -v allow_destructive_fixture=1 -f /tmp/fixture.sql   # add -v tid_type=text for the 2nd run
 --   docker exec oem-seed-fix psql -U postgres -v ON_ERROR_STOP=1 -f /tmp/seed.sql
 --   docker exec oem-seed-fix psql -U postgres -c "SELECT * FROM backfill_fixture_assert ORDER BY label;"
 --   docker rm -f oem-seed-fix
