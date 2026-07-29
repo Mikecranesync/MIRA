@@ -1,3 +1,21 @@
+### v3.227.0 (2026-07-29) - feat(engine): Phase 9 — flaky-input / sensor-anomaly detector (#1661)
+
+Closes #1661. Implements the wedge demo: MIRA detects a proximity switch flickering 14×/hr that the technician cannot see.
+
+- **Migration 068**: extends `ai_suggestions.suggestion_type` CHECK to include `'flaky_signal_alert'` (follows mig 062 pattern).
+- **`mira-bots/shared/detection/flaky_input.py`**: four pure detection rules — `rapid_toggle` (boolean tag alternates too many times), `brown_out` (analog dips below threshold and recovers repeatedly), `intermittent_disc` (quality degrades/recovers cycle), `value_spike` (analog reading exceeds N σ from rolling mean). Each rule returns a `FlakySignal` dataclass or `None`. `run_all_rules()` dispatches all four.
+- **`mira-bots/agents/flaky_detector_runner.py`**: cron runner (every 5 min). Scans `tag_event_diffs` for the last 1 hour across all active tenants; suppresses until 7-day baseline established; deduplicates against open alerts in the last 5 min. Per hit: inserts `ai_suggestions` row (status=pending, proposed_by=rule:flaky_input_detector), then `flaky_input_signals` linked by FK. Alerts land in Hub `/proposals` queue — not pushed to technicians until validated.
+- **Tests**: `tests/test_flaky_rules.py` — 29 unit tests covering all four rules, edge cases (below/at/above thresholds, incomplete cycles, non-parseable values, multi-rule dispatch). All passing.
+
+### v3.226.0 (2026-07-29) - feat(engine): Phase 8 — confidence written to decision_traces, Hub UI page, replay script (#1660)
+
+Closes #1660. Three gaps from the Phase 8 DecisionTraceWriter spec:
+
+- **`confidence` column**: `decision_trace.py` now accepts `confidence` in `build_trace_row()` and writes it to `decision_traces` via `_INSERT_SQL` (migration 055 added the column; the writer was missing it). `engine.py` `_schedule_decision_trace` now passes `result.get("confidence")` through to `write_trace()`.
+- **Hub admin page**: `mira-hub/src/app/(hub)/decision-trace/[id]/page.tsx` — client-side read-only view fetching the existing `/api/decision-trace/[id]` route; renders trace context (platform, UNS path, confidence, outcome, model, latency), question, recommendation, and evidence blocks.
+- **Replay script**: `scripts/replay_trace.py` — CLI tool that fetches a `decision_traces` row from NeonDB by `trace_id` and prints a structured summary (question, evidence lists, recommendation, outcome). Usage: `NEON_DATABASE_URL=<url> python scripts/replay_trace.py <trace_id>`.
+- **Tests**: `tests/test_decision_trace.py` — unit tests for `build_trace_row()` and `citations_present_in()` covering the new `confidence` parameter, `_uns_confidence` independence, and the `_`-prefix exclusion gate.
+
 ### v3.225.1 (2026-07-28) - test(potd): port unique regression coverage from superseded #2865
 
 Reconciliation-only port of #2865's residual value onto the canonical Print-of-the-Day stack (#2866-#2868): a pure, backward-compatible `build_payload(pkg)` extraction in `tools/internet_print_test/mailer.py` plus two regression test files. No second view model, renderer, or send gate. Unblocks closing #2865 as superseded.

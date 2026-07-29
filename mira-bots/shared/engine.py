@@ -1883,6 +1883,7 @@ class Supervisor:
                 outcome=outcome,
                 model_used=model_used,
                 latency_ms=latency_ms,
+                confidence=result.get("confidence"),
             )
             # Hold a reference so the task isn't GC'd before it runs.
             task = asyncio.create_task(coro)

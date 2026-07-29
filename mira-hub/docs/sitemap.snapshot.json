@@ -1,7 +1,7 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 64,
+    "pages": 65,
     "apiRoutes": 161
   },
   "pages": [
@@ -21,6 +21,7 @@
     "/contextualization/review",
     "/contextualization/review/[batchId]",
     "/conversations",
+    "/decision-trace/[id]",
     "/demo/conveyor/[tag]",
     "/documents",
     "/documents/[id]",

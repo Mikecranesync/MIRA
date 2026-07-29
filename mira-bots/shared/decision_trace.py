@@ -46,7 +46,8 @@ _INSERT_SQL = """
 INSERT INTO decision_traces (
     tenant_id, session_id, platform, uns_path, user_question,
     tag_evidence, manual_evidence, kg_evidence, recommendation,
-    citations_present, technician_confirmed, outcome, model_used, latency_ms
+    citations_present, technician_confirmed, outcome, model_used, latency_ms,
+    confidence
 ) VALUES (
     CAST(:tenant_id AS UUID),
     CAST(:session_id AS UUID),
@@ -61,7 +62,8 @@ INSERT INTO decision_traces (
     :technician_confirmed,
     :outcome,
     :model_used,
-    :latency_ms
+    :latency_ms,
+    :confidence
 )
 """
 
@@ -124,6 +126,7 @@ def build_trace_row(
     outcome: Optional[str] = None,
     model_used: Optional[str] = None,
     latency_ms: Optional[int] = None,
+    confidence: Optional[str] = None,
 ) -> dict[str, Any]:
     """Assemble the decision_traces row from engine-turn inputs (pure).
 
@@ -151,7 +154,8 @@ def build_trace_row(
         "outcome": outcome,
         "model_used": model_used,
         "latency_ms": latency_ms,
-        # Carried for callers/tests; not a DB column.
+        "confidence": confidence,
+        # Carried for callers/tests; not DB columns.
         "_uns_source": ctx.get("source"),
         "_uns_confidence": ctx.get("confidence"),
     }
