@@ -46,7 +46,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: prod-seeds
+  group: seeds-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
