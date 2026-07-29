@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "case_id": "17",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 10,
+    "power_control_flow": 18,
+    "sequence_interlocks_logic": 8,
+    "evidence_grounding_unsupported_claims": 6,
+    "technician_usefulness_clarity": 6
+  },
+  "total": 58,
+  "deductions": [
+    {
+      "claim": "Main visible components in this diagram include: [power input terminals, motor terminals, E STOP, SCM, STO1/STO2, DI1-DI7, AI1/AI2, relay outputs, digital outputs, AO1]",
+      "evidence": "The print also visibly shows a DC reactor (optional), a jumper, DC-/DC+/+1/+2/B1/B2 brake-resistor terminals, a Circuit Breaker or Fuse with an MC/SA protective relay circuit (ON/OFF pushbuttons) noted at R1C-R1, a DOC common terminal, and a Modbus RS-485 block (SGND, SG+, SG-) plus Option Slot / USB Port section -- none of which appear anywhere in the response despite being clearly visible and labeled.",
+      "category": "component_label_recognition",
+      "points_deducted": 6,
+      "severity": "material",
+      "correction": "List the DC bus/brake-resistor terminals, the input protective MC circuit, the DOC common terminal, and the Modbus RS-485 / Option Slot / USB Port block among the visible components.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Relay outputs: R10, R1C, R1",
+      "evidence": "The terminal directly above R1C/R1 in the 'Multi-function relay output terminals' box is labeled 'R1O' (letter O, matching the output-terminal naming convention used elsewhere, e.g. DO/AO1), not 'R10'.",
+      "category": "component_label_recognition",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Terminal is R1O, not R10.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "connected to the safety circuit module (SCM)",
+      "evidence": "The diagram shows a labeled box 'Safety PLC' (with switch/contact symbols inside) wired between E STOP and the drive's SCM / +24V / STO1 / STO2 terminal block. No box or text reading 'safety circuit module' appears anywhere on the print; SCM is itself just one terminal in that four-terminal group, not a separate module.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "severe",
+      "correction": "Identify the visible 'Safety PLC' box as the external safety device wired to the SCM/+24V/STO1/STO2 terminals; do not invent a 'safety circuit module.'",
+      "confidence": "high"
+    },
+    {
+      "claim": "The power supply must be properly connected to R/L1, S/L2, and T/L3* [power-flow description omits the DC bus]",
+      "evidence": "The print shows an optional DC reactor and brake-resistor circuit (DC-, DC+/+1, +2/B1, B2) forming part of the DC bus/dynamic-braking power path; this is omitted from the power-flow explanation entirely.",
+      "category": "power_control_flow",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Mention the optional DC reactor / brake resistor DC-bus path as part of the power circuit.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The digital inputs (DI3 to DI7) are configured for multi-step speed control.",
+      "evidence": "The default-wiring legend on the left shows DI3='Multi-step speed 1', DI4='Multi-step speed 2', DI5='Multi-step speed 3', DI6='Multi-step speed 4', but DI7 is explicitly labeled 'N/A' -- not a multi-step speed input.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 6,
+      "severity": "severe",
+      "correction": "State DI3-DI6 are the default multi-step speed inputs; DI7 is labeled N/A (not assigned) by default.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The emergency stop (E STOP) is connected to the safety circuit module (SCM), which is linked to STO1 and STO2.",
+      "evidence": "The print shows E STOP wired into the 'Safety PLC' box, whose outputs land on the SCM / +24V / STO1 / STO2 terminals as four parallel terminals on the drive's control block -- SCM is not shown as an intermediary module that STO1/STO2 are 'linked to'; it is simply another terminal in the same group.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 6,
+      "severity": "severe",
+      "correction": "Describe the safety chain as E STOP -> Safety PLC -> SCM/+24V/STO1/STO2 drive terminals, without implying SCM is a module in series with STO1/STO2.",
+      "confidence": "high"
+    },
+    {
+      "claim": "the safety circuit module (SCM)",
+      "evidence": "No text on the print reads 'safety circuit module' or expands SCM this way; this is an invented device name presented as an observed fact about a safety circuit.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 8,
+      "severity": "hard_failure",
+      "correction": "Do not assert what SCM stands for beyond what's printed; describe only the visible 'Safety PLC' box and the SCM/+24V/STO1/STO2 terminal labels.",
+      "confidence": "high"
+    },
+    {
+      "claim": "All critical labels and connections seem clear based on the OCR data provided.",
+      "evidence": "This case was graded on image-only grounding with no OCR text supplied to the candidate; the response's claim of relying on 'OCR data provided' is not supported by the actual input and overstates its evidentiary basis.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Do not claim OCR grounding that wasn't actually available; state the assessment is based on the visible image alone.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The digital inputs (DI3 to DI7) are configured for multi-step speed control.",
+      "evidence": "DI7 is labeled 'N/A' on the print, contradicting the blanket claim; an assumption about DI7's function is stated as an observed fact rather than flagged as unassigned.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "material",
+      "correction": "Flag DI7 as N/A/unassigned rather than folding it into the multi-step-speed group.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the provided diagram. All critical labels and connections seem clear...",
+      "evidence": "The response omits roughly a third of the visible print content (DC bus/brake circuit, Modbus RS-485 block, Option Slot/USB port, input protective MC circuit) while mischaracterizing the safety E-stop/STO wiring (Safety PLC misnamed as 'safety circuit module') and the DI7 default -- a technician relying on this summary as complete could be misled about the safety-interlock wiring and the DI7 function.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Cover the full terminal set and avoid inventing safety-circuit terminology so a technician isn't misled on the E-stop/STO wiring.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "invented_safety_device_or_component",
+    "failure_to_separate_evidence_from_inference",
+    "reversed_or_materially_incorrect_sequence"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Print is a clean, legible AutomationDirect DURAPulse GS20/GS20X 'Full I/O Wiring Diagram' (Ch.2, p.2-38). Core I/O terminal identification (power, motor, DI1-DI6/DI7, AI1/AI2, DO/DO1/DO2, AO1, relay outputs) is largely accurate. Two safety-relevant issues drive the hard-failure: (1) the response invents a 'safety circuit module (SCM)' that does not appear on the print, in place of the actually-labeled 'Safety PLC' box, and describes it as an intermediary linked to STO1/STO2; (2) the response states DI7 is part of the multi-step-speed group when the print's own default legend labels DI7 'N/A'. The response also claims to be grounded 'based on the OCR data provided,' which is not supported (this case was graded image-only). Roughly a third of the visible print (DC bus/brake-resistor circuit, input protective MC circuit, Modbus RS-485 block, Option Slot/USB port, DOC terminal) is omitted from the 'main visible components' list despite that list's comprehensive framing."
+}

@@ -25,6 +25,7 @@ MIRA_UID="${MIRA_UID:-1001}"
 MIRA_GID="${MIRA_GID:-1001}"
 DATA_DIR="${DATA_DIR:-/opt/mira/data}"
 SESSIONS_DIR="${SESSIONS_DIR:-/opt/mira/mira-bridge/data/sessions}"
+VAR_LIB_MIRA="${VAR_LIB_MIRA:-/var/lib/mira}"
 
 echo "=== host_perm_setup: chowning SaaS data paths to $MIRA_UID:$MIRA_GID ==="
 
@@ -52,5 +53,10 @@ chown -R "$MIRA_UID:$MIRA_GID" "$DATA_DIR/ingest"
 if [ -d "$SESSIONS_DIR" ]; then
   chown -R "$MIRA_UID:$MIRA_GID" "$SESSIONS_DIR"
 fi
+
+# KB growth cron's runtime queue path — outside the repo tree so it survives
+# git checkout --force on deploy. The cron runs as root so the dir is 755 (all-read).
+mkdir -p "$VAR_LIB_MIRA"
+chmod 755 "$VAR_LIB_MIRA"
 
 echo "=== host_perm_setup: done ==="

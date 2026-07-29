@@ -1,0 +1,35 @@
+# MIRA Print Pack — Customer Intake Manifest (BLANK TEMPLATE)
+# Fill this in for your machine. Leave anything you do not KNOW blank —
+# a blank is honest; a guess becomes a wrong "verified" fact in your prints.
+# Field docs: intake_manifest.schema.yaml.
+
+pack_format_version: "1.0.0"
+
+asset:
+  uns_path: ""            # e.g. enterprise.<site>.<area>.<line>.<machine>  (lowercase, dotted)
+  tag: ""                 # e.g. CV-101
+  label: ""               # e.g. Garage conveyor
+
+customer:
+  name: ""
+  site: ""
+  contact: ""             # optional: support line printed on the pack
+  confidential: true
+
+model_source:
+  package_dir: ""         # path to the print package (model/, render_sheet.py, validate_model.py, ...)
+
+evidence: []              # list of { path, kind, provenance, redact }
+  # - path: photos/panel_front.jpg
+  #   kind: photo             # photo | manual | plc_export | datasheet | technician_statement
+  #   provenance: "bench photo, YYYY-MM-DD"
+  #   redact: true
+
+build:
+  as_of: ""               # YYYY-MM-DD  (must match --as-of on the build command)
+  requested_tier: "field_verification"   # field_verification | approvable
+
+signoff:
+  prepared_by: ""
+  engineering_reviewed_by: ""
+  customer_field_accepted_by: ""   # LEAVE BLANK — the customer's technician signs this in the field

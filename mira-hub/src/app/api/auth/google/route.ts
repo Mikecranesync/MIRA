@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { newState, stateCookieName } from "@/lib/oauth-state";
 import { sessionOr401 } from "@/lib/session";
-import { API_BASE, OAUTH_BASE } from "@/lib/config";
+import { OAUTH_BASE } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 

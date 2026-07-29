@@ -274,6 +274,7 @@ export async function countTransitions(
     tenantId: string;
     plcTag?: string | null;
     componentId?: string | null;
+    sourceSystem?: string | null;
     windowSeconds: number;
   },
 ): Promise<{
@@ -293,6 +294,12 @@ export async function countTransitions(
   if (!topicFilter) {
     throw Object.assign(new Error("plcTag_or_componentId_required"), { status: 400 });
   }
+  const sourceFilterSql = opts.sourceSystem
+    ? "AND (CASE WHEN source IN ('demo_simulator', 'simulator') THEN 'simulator' ELSE source END) = $4"
+    : "";
+  const params = opts.sourceSystem
+    ? [tenantId, topicFilter.param, String(windowSeconds), opts.sourceSystem]
+    : [tenantId, topicFilter.param, String(windowSeconds)];
 
   const { rows } = await client.query<{
     transitions: string;
@@ -311,6 +318,7 @@ export async function countTransitions(
        FROM live_signal_events
        WHERE tenant_id = $1
          AND ${topicFilter.sql}
+         ${sourceFilterSql}
          AND created_at > now() - ($3::text || ' seconds')::interval
      )
      SELECT
@@ -322,7 +330,7 @@ export async function countTransitions(
        (now() - ($3::text || ' seconds')::interval)::text AS window_start,
        (now())::text AS window_end
        FROM window_events`,
-    [tenantId, topicFilter.param, String(windowSeconds)],
+    params,
   );
 
   const row = rows[0] ?? { transitions: "0", window_start: "", window_end: "" };

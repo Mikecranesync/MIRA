@@ -1,0 +1,12 @@
+===== q01 (9.163692s) =====
+Based on general industrial knowledge (not from documentation specific to this equipment): The garage conveyor belt is currently in a soft-stop state due to a photo-eye jam latch. The main line contactor (DO_02) is still energized, but the variable frequency drive (VFD) has stopped the motor. To resume operation, the operator must press the Start button (DI_04) with the photo-eye beam clear to clear the latch and restart the drive. The current status indicates that there are no active faults, VFD communications are OK, the emergency stop is armed and OK, and the main line contactor is closed and energized. The frequency setpoint is 30.0 Hz. Steps to resume operation: 
+1. Ensure the photo-eye beam is clear.
+2. Press the Start button (DI_04) to clear the photo-eye jam latch and resume the drive.
+Note: For official documentation and support, visit automationdirect.com/support. [Source: general industrial knowledge]
+
+===== q04-fc14 (6.818385s) =====
+The AutomationDirect GS10 fault code table [Source: AutomationDirect — Fault Code Table] does not list a fault code 14. The provided fault code table [Source: AutomationDirect GS10] also does not mention a fault code 14. Therefore, I don't have documentation for fault code 14 in my records. As an unverified estimate, it's possible that the fault code is not a standard or documented code for this specific drive model. To troubleshoot, I recommend checking the drive's documentation and manufacturer's resources for any information on non-standard or custom fault codes. If the issue persists, it may be necessary to contact the manufacturer's support team for further assistance.
+
+===== q11-ce10 (8.033567s) =====
+The fault code CE10 on the AutomationDirect GS10 drive means a Modbus timeout, indicating that the GS10 stopped receiving Modbus packets from the master device (the Allen-Bradley Micro820 PLC) [Source: AutomationDirect — Fault Code Table]. This can be caused by a communication issue, such as a problem with the RS-485 wiring or the baud rate setting. To resolve this issue, check the Modbus communication connection and cable integrity, review the P09.03 setting for transmission timeout detection time, and verify that the host controller is transmitting data continuously to the AC motor drive [Source: AutomationDirect — Fault Code Table]. Send a Reset command to clear the error code, or press STOP/RESET on the GS10 keypad, or write value 2 to register 0x2002 over Modbus [Source: AutomationDirect GS10].
+

@@ -1,0 +1,87 @@
+From: MIRA beta-readiness orchestrator (Lens A re-audit, 2026-06-08)
+Subject: [PATCH] security(hub): rate-limit public /api/quickstart/ask LLM endpoint
+SUPERSEDES: 2026-06-07-quickstart-rate-limit.patch (that file had malformed @@
+            hunk counts and no longer `git apply`s — DO NOT use it; use this one).
+
+WHY: /api/quickstart/ask is unauthenticated and fires a cascadeComplete (Groq->
+Cerebras->Gemini, all shared free-tier) on every POST. No throttle => one script
+drains the provider quota for the whole beta cohort (cost + denial-of-service).
+Per-IP-hash in-memory limiter (20 req/IP/min), mirroring /api/public/report's
+proven IP-hash approach. In-memory is per-instance; the hub runs as ONE container
+today (root CLAUDE.md Container Map) so this is sufficient for the beta gate. Port
+to a shared store/quickstart_rate table if the hub scales horizontally.
+
+APPLY:
+  cd <repo-root-MIRA>
+  git checkout -b fix/quickstart-rate-limit
+  git apply wiki/orchestrator/patches/2026-06-08-quickstart-rate-limit.patch
+
+VERIFY:
+  cd mira-hub && npx tsc --noEmit            # types clean (uses existing node_modules; do NOT install)
+  # functional: 21st POST within 60s from one IP must return HTTP 429
+  for i in $(seq 1 21); do curl -s -o /dev/null -w "%{http_code}\n" \
+    -X POST localhost:3200/api/quickstart/ask \
+    -H 'content-type: application/json' -d '{"question":"test"}'; done | tail -3
+
+diff --git a/mira-hub/src/app/api/quickstart/ask/route.ts b/mira-hub/src/app/api/quickstart/ask/route.ts
+index 6ecb052b..e901df4e 100644
+--- a/mira-hub/src/app/api/quickstart/ask/route.ts
++++ b/mira-hub/src/app/api/quickstart/ask/route.ts
+@@ -1,4 +1,6 @@
+ import { NextResponse } from "next/server";
++import { headers } from "next/headers";
++import { createHash } from "crypto";
+ import { withTenantContext } from "@/lib/tenant-context";
+ import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
+ import {
+@@ -10,6 +12,29 @@ import {
+ 
+ export const dynamic = "force-dynamic";
+ 
++// Per-IP-hash rate limit for this public, unauthenticated LLM endpoint.
++// In-memory (per-instance) — sufficient while the hub runs as a single
++// container (see root CLAUDE.md Container Map). Mirrors the intent of
++// /api/public/report's DB-backed IP-hash limiter. If the hub scales
++// horizontally, port to a shared store / quickstart_rate table.
++const QUICKSTART_MAX_PER_MIN = 20;
++const QUICKSTART_WINDOW_MS = 60_000;
++const quickstartHits = new Map<string, number[]>();
++
++function quickstartRateLimited(ipHash: string): boolean {
++  const now = Date.now();
++  const cutoff = now - QUICKSTART_WINDOW_MS;
++  const hits = (quickstartHits.get(ipHash) ?? []).filter((t) => t > cutoff);
++  hits.push(now);
++  quickstartHits.set(ipHash, hits);
++  if (quickstartHits.size > 5000) {
++    for (const [k, v] of quickstartHits) {
++      if (v.every((t) => t <= cutoff)) quickstartHits.delete(k);
++    }
++  }
++  return hits.length > QUICKSTART_MAX_PER_MIN;
++}
++
+ // See /api/quickstart/manufacturers/route.ts for the rationale on
+ // QUICKSTART_TENANT_ID. Production sets it via Doppler / docker-compose;
+ // fallback is the founder's tenant where the seeded OEM corpus lives.
+@@ -69,6 +94,20 @@ export async function POST(req: Request) {
+     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+   }
+ 
++  // Rate limit before any work — we never store raw IPs.
++  const rlHdrs = await headers();
++  const rawIp =
++    rlHdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ??
++    rlHdrs.get("x-real-ip") ??
++    "unknown";
++  const ipHash = createHash("sha256").update(rawIp).digest("hex");
++  if (quickstartRateLimited(ipHash)) {
++    return NextResponse.json(
++      { error: "Too many requests — slow down and try again in a minute." },
++      { status: 429 },
++    );
++  }
++
+   let body: AskPayload;
+   try {
+     body = (await req.json()) as AskPayload;

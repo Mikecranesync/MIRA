@@ -1,0 +1,41 @@
+diff --git a/tests/canary/proposal_state_drift.sql b/tests/canary/proposal_state_drift.sql
+index fa7cd40..1a35499 100644
+--- a/tests/canary/proposal_state_drift.sql
++++ b/tests/canary/proposal_state_drift.sql
+@@ -49,3 +49,36 @@ JOIN relationship_proposals p
+   ON p.id = k.relationship_proposal_id
+ WHERE k.relationship_proposal_id IS NOT NULL
+   AND p.status <> 'verified';
++
++-- @check: terminal_proposal_pairs_stale_pending_suggestion
++-- The REVERSE-DRIFT invariant (ADR-0017), absent until #1845's helper landed and
++-- proposals GET began READING ai_suggestions. The TS helper
++-- applyHubProposalTransition() writes relationship_proposals AND ai_suggestions in
++-- one txn, so the Hub admin path cannot introduce this drift. BUT the engine-side
++-- Python helper (mira-bots/shared/proposal_transition.py) writes
++-- relationship_proposals.status WITHOUT projecting to ai_suggestions (it disowns
++-- that column by design). So an ENGINE-triggered accept/reject/supersede can leave
++-- the paired ai_suggestions row stuck at 'pending' while the proposal is terminal.
++-- Because mira-hub .../api/proposals GET now renders ai_suggestions, that stale
++-- 'pending' is user-visible in the admin queue (a "lie" about review state).
++--
++-- Carve-out — flag_review (->'reviewed') and contradict (->'contradicted') map to
++-- aiSuggestion='pending' BY DESIGN (PROPOSAL_TRANSITIONS in proposal-transition.ts),
++-- so 'reviewed'/'contradicted' + 'pending' is the CORRECT state and is excluded.
++-- Only the suggestion-terminal triggers (accept->verified, reject->rejected,
++-- supersede->deprecated) require the paired suggestion off 'pending'.
++--
++-- LEGACY-SAFE: joins on the explicit extracted_data->>'relationship_proposal_id'
++-- link, so the ~300 pre-#1716 auto-verified edges (no paired suggestion) never join.
++-- Healthy DB returns zero rows.
++SELECT
++  p.id              AS proposal_id,
++  p.status          AS proposal_status,
++  s.id              AS suggestion_id,
++  s.status          AS suggestion_status
++FROM relationship_proposals p
++JOIN ai_suggestions s
++  ON s.suggestion_type = 'kg_edge'
++ AND NULLIF(s.extracted_data ->> 'relationship_proposal_id', '')::uuid = p.id
++WHERE p.status IN ('verified', 'rejected', 'deprecated')
++  AND s.status = 'pending';

@@ -1,0 +1,15 @@
+2026-07-13 10:27:06,733 INFO fetching https://cdn.automationdirect.com/static/manuals/gs20m/ch2.pdf
+2026-07-13 10:27:07,430 INFO fetched 5559432 bytes (application/pdf)
+2026-07-13 10:27:07,884 INFO rendered PDF page 37 @ 200 dpi -> 360526 bytes PNG
+2026-07-13 10:27:07,886 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-13 10:30:03,685 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=True latency=175.72s
+2026-07-13 10:30:03,685 INFO running independent multimodal judge…
+2026-07-13 10:31:15,605 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — automationdirect-gs20-vfd — GS20 AC Drive User Manual — Ch.2 Power & Control Wiring (GS20M) — 86/100
+ATTACHMENTS:
+  [attach] original.pdf (5,559,432 B)
+  [attach] tested_page.png (360,526 B)
+  [attach] report.html (11,685 B)
+  [attach] telegram_response.json (55,328 B)
+HTML: 11,401 chars

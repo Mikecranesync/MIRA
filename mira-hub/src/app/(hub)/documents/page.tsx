@@ -41,6 +41,10 @@ export default function DocumentsPage() {
   if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
     return <LabsStub feature="Documents" />;
   }
+  return <DocumentsLabsPage />;
+}
+
+function DocumentsLabsPage() {
   const t = useTranslations("documents");
   const { toast } = useToast();
   const [query, setQuery] = useState("");
@@ -99,7 +103,10 @@ export default function DocumentsPage() {
   }, [toast]);
 
   useEffect(() => {
-    void fetchUploads();
+    const timeout = window.setTimeout(() => {
+      void fetchUploads();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchUploads]);
 
   useEffect(() => {

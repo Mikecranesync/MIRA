@@ -1,0 +1,148 @@
+{
+  "method": "Deterministic, no-inference comparison of VisionWorker._classify_photo across the pre-PR#2608 commit and the current worktree HEAD, run on each case's preserved vision.vision_result (ocr_items=[]) from docs/eval/print-translator-campaign/results/<id>.gate_bypassed.json. Classifier logic only — no LLM cascade call, no product/prompt change.",
+  "cases": [
+    {
+      "case_id": "03",
+      "category": "European/IEC",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.65,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.85,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    },
+    {
+      "case_id": "05",
+      "category": "NEMA Starters",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.65,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.85,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    },
+    {
+      "case_id": "07",
+      "category": "NEMA Starters",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.65,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.9,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    },
+    {
+      "case_id": "09",
+      "category": "Safety Relays",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.65,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.85,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    },
+    {
+      "case_id": "13",
+      "category": "PLC I/O",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.75,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.85,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    },
+    {
+      "case_id": "14",
+      "category": "PLC I/O",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.7,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.85,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    },
+    {
+      "case_id": "17",
+      "category": "VFD",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.65,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.85,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    },
+    {
+      "case_id": "18",
+      "category": "VFD",
+      "old_classification": "ELECTRICAL_PRINT",
+      "old_confidence": 0.76,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.8,
+      "old_triggered": true,
+      "new_triggered": true,
+      "flipped": false
+    },
+    {
+      "case_id": "20",
+      "category": "VFD",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.7,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.85,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    },
+    {
+      "case_id": "25",
+      "category": "Reversing/Braking",
+      "old_classification": "EQUIPMENT_PHOTO",
+      "old_confidence": 0.75,
+      "new_classification": "ELECTRICAL_PRINT",
+      "new_confidence": 0.8,
+      "old_triggered": false,
+      "new_triggered": true,
+      "flipped": true
+    }
+  ],
+  "aggregate": {
+    "n": 10,
+    "old_classifier_commit": "04a62c9c19804140c18796f1cf6c2a1ba1d9b5d1",
+    "new_classifier_commit_ref": "HEAD (descendant of c6e7c9b015e35d9f105aebf1bd997a9f27585edc, PR #2608)",
+    "old_trigger_rate": 0.1,
+    "new_trigger_rate": 1.0,
+    "old_triggered_ids": [
+      "18"
+    ],
+    "new_triggered_ids": [
+      "03",
+      "05",
+      "07",
+      "09",
+      "13",
+      "14",
+      "17",
+      "18",
+      "20",
+      "25"
+    ],
+    "flipped_ids": [
+      "03",
+      "05",
+      "07",
+      "09",
+      "13",
+      "14",
+      "17",
+      "20",
+      "25"
+    ]
+  }
+}

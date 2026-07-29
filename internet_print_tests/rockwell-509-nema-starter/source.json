@@ -1,0 +1,25 @@
+{
+  "test_id": "rockwell-509-nema-starter",
+  "source_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf",
+  "publisher": "Rockwell Automation",
+  "title": "Bulletin 509 NEMA Motor Starters \u2014 Wiring Diagrams (GI-WD005)",
+  "sheet": "Bulletin 509 Sizes 7 & 8 \u2014 3-Phase Starters, standard START-STOP pushbutton (booklet p.13)",
+  "equipment_type": "NEMA 3-phase magnetic motor starter",
+  "standard": "NEMA",
+  "category": "motor_starter",
+  "why_selected": "Page index 12 of the Rockwell WD booklet is a genuine NEMA 3-phase magnetic-starter wiring diagram (verified by render 2026-07-13): incoming L1/L2/L3, current transformers 1CT/2CT/3CT (terminals 20-25), motor T1/T2/T3, START-STOP pushbutton station, CR control relay, K1/K2, A1X-A4Y coil terminals, overloads, and a separate-control-source ladder. Pages 0-3 are cover/intro/contents/key-to-symbols (text) \u2014 page 12 is the first dense starter schematic. Publicly published on literature.rockwellautomation.com; provenance verified 2026-07-10 (httpx 200/206 application/pdf).",
+  "access_date_utc": "2026-07-13T13:10:37Z",
+  "original_sha256": "9d3f977104c86a6ee38aa3f85630a3ad9ff890ec138a43b0d85977479bde6993",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf",
+    "final_url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 5976314,
+    "host": "literature.rockwellautomation.com"
+  },
+  "license_note": "Publicly published OEM literature; ownership retained by Rockwell Automation; retained only for read-only interpreter testing."
+}

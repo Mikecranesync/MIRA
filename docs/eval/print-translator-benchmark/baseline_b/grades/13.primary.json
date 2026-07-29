@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "case_id": "13",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 16,
+    "power_control_flow": 17,
+    "sequence_interlocks_logic": 18,
+    "evidence_grounding_unsupported_claims": 18,
+    "technician_usefulness_clarity": 10
+  },
+  "total": 89,
+  "deductions": [
+    {
+      "claim": "Main visible components list: DC NPN Sensor (Sinking), DC PNP Sensor (Sourcing), Field Device, PLC DC Input, PLC DC Output.",
+      "evidence": "The image also carries several specifically labeled elements the response never names: the 'Supply' box and its '20-28 VDC' rating on the output diagram, the '+DC Power' terminal on the PLC DC Output box, the discrete terminal callouts (Input, Common, Output, Ground, Power), and the dual-diode/resistor/transistor symbols drawn inside the generic top-left 'PLC DC Input' diagram. The component list is accurate as far as it goes but is not exhaustive of what is legibly labeled.",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "minor",
+      "correction": "Include the terminal-level labels and supply/voltage callouts (Supply, 20-28 VDC, +DC Power, Input/Common/Output/Ground) alongside the device-level component list.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Omission: the response never discusses the generic top-left 'PLC DC Input' diagram or its dual diodes.",
+      "evidence": "The print's own intro text next to that diagram states: 'The dual diodes (shown in this diagram) allow current to flow in either direction. Inputs grouped by a common point must be either all sinking or all sourcing.' This is the print's general explanation of DC input circuit behavior and is skipped entirely in favor of only the two worked (NPN/PNP) examples.",
+      "category": "power_control_flow",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Cover the introductory generic diagram: the dual diodes allow bidirectional current flow, which is what lets a DC input be wired as either sinking or sourcing.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "'Inputs grouped by a common point must be either all sinking or all sourcing' — omitted from the response.",
+      "evidence": "This grouping/consistency rule is stated verbatim in the print's intro paragraph under 'DC Input Wiring Methods' but is not reflected anywhere in the candidate's theory-of-operation or 'what must be true' sections.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "State the common-point grouping constraint: all inputs sharing one common terminal must be wired the same way (all sinking or all sourcing) — they cannot be mixed.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "'The power supply must be connected to the common terminal for DC input and output circuits.'",
+      "evidence": "This generalizes the input-diagram wiring (where the Supply sits in series between the field device's Ground and the PLC's Common) onto the output diagram, but the output diagram shows a separate, distinctly labeled '+DC Power' terminal feeding the PLC DC Output box's 'Power' pin, in addition to the '20-28 VDC' load supply sitting in the Output/Common loop. The blanket statement collapses two visually distinct supply connections into one.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Distinguish the two supply connections in the output diagram: '+DC Power' powers the PLC's output driver circuit itself, while the '20-28 VDC' supply is the external load-loop supply between Output and Common — don't merge them into a single generic 'common terminal' statement.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "This case reads as a clean, well-grounded response. Every specific label/tag the candidate uses (DC NPN Sensor (Sinking), DC PNP Sensor (Sourcing), Field Device, PLC DC Input, PLC DC Output, Input/Output/Common/Ground, sourcing/sinking) is directly legible in the image, and the theory-of-operation section closely paraphrases the print's own caption text accurately for all three worked examples (NPN sinking input, PNP sourcing input, sinking output) with no reversed energization logic and no invented components, tags, or wire numbers. No hard-failure condition fires. Deductions are for completeness gaps (missed labels/symbols, the generic diode diagram, the common-point grouping rule) and one over-generalized supply-wiring statement, not for fabrication. The claim in section 6 ('Nothing major unreadable... all labels and regions appear clear and readable') is consistent with what is actually visible in this crisp manual scan, so it is not a false-certainty hard failure."
+}

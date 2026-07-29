@@ -24,12 +24,19 @@ import { test, expect } from "@playwright/test";
 const WEB = (process.env.WEB_URL ?? "https://factorylm.com").replace(/\/$/, "");
 const HUB = (process.env.HUB_URL ?? "https://app.factorylm.com").replace(/\/$/, "");
 
+// The paid product does not exist yet: there is no live Stripe SKU for anonymous
+// trial entry, so /api/checkout/session intentionally returns /pricing?checkout=error
+// rather than 303ing to checkout.stripe.com. The checkout→Stripe assertion is
+// NON-BLOCKING until a sellable product ships — set SMOKE_CHECKOUT_CHECK=1 (in
+// smoke-test.yml) to re-enable it once checkout is live. Wayfinder #2577 / DC money-slice.
+const RUN_CHECKOUT_CHECK = process.env.SMOKE_CHECKOUT_CHECK === "1";
+
 // ---------------------------------------------------------------------------
 // Pricing page — trial CTA + Stripe checkout gate
 // ---------------------------------------------------------------------------
 
 test.describe("factorylm.com/pricing — trial CTA", () => {
-  test("featured plan 'Book Your Assessment' is visible and links to /buy", async ({
+  test("featured plan 'Book Assessment' is visible and links to /buy", async ({
     page,
   }) => {
     const res = await page.goto(WEB + "/pricing", {
@@ -39,14 +46,14 @@ test.describe("factorylm.com/pricing — trial CTA", () => {
 
     // Production pricing uses .pricing-card.featured for the primary plan. Its
     // primary CTA is the assessment offer (data-cta="pricing-assessment") →
-    // "Book Your Assessment" → /buy. (The Stripe checkout path is exercised
+    // "Book Assessment" → /buy. (The Stripe checkout path is exercised
     // separately by the /api/checkout/session test below.)
     const featuredCard = page.locator(".pricing-card.featured");
     await expect(featuredCard).toBeVisible({ timeout: 10_000 });
 
     const cta = featuredCard.locator('[data-cta="pricing-assessment"]');
     await expect(cta).toBeVisible();
-    await expect(cta).toContainText(/book your assessment/i);
+    await expect(cta).toContainText(/book assessment/i);
 
     const href = await cta.getAttribute("href");
     expect(href).toMatch(/\/buy\b/);
@@ -55,6 +62,8 @@ test.describe("factorylm.com/pricing — trial CTA", () => {
   test("checkout session API: 303 redirects to checkout.stripe.com", async ({
     request,
   }) => {
+    // Non-blocking until a sellable product exists — see RUN_CHECKOUT_CHECK above.
+    test.skip(!RUN_CHECKOUT_CHECK, "checkout→Stripe gate is off until a sellable product ships (set SMOKE_CHECKOUT_CHECK=1)");
     // GET /api/checkout/session creates a Stripe Checkout session and 303s
     // to checkout.stripe.com — no tenant ID required (anonymous trial entry).
     const res = await request.get(WEB + "/api/checkout/session", {
@@ -103,12 +112,19 @@ test.describe("factorylm.com/cmms — magic link form", () => {
     // Two acceptable outcomes:
     //   200 success  → form hidden, #fl-form-success visible
     //   429 rate-limited → error says "Check your inbox"
+    // On a 429 the page keeps a HIDDEN #fl-form-success in the DOM alongside
+    // the visible #fl-form-error, so a bare `success.or(rateLimited)` matches
+    // two elements and toBeVisible() trips Playwright strict mode. The two
+    // outcomes are mutually exclusive in *visibility*, so filter the union to
+    // the visible element — exactly one matches regardless of which outcome.
     const success = page.locator("#fl-form-success");
     const rateLimited = page
       .locator("#fl-form-error")
       .filter({ hasText: /check your inbox/i });
 
-    await expect(success.or(rateLimited)).toBeVisible({ timeout: 15_000 });
+    await expect(
+      success.or(rateLimited).filter({ visible: true }),
+    ).toBeVisible({ timeout: 15_000 });
   });
 });
 

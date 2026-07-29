@@ -1,0 +1,39 @@
+{
+  "id": 18,
+  "oem": "ABB",
+  "document": "ACS355 Drive User Manual (EN_ACS355_UM_E_A5)",
+  "url": "library.e.abb.com/public/805f31a82d524d8aa8a750011e2cd001/EN_ACS355_UM_E_A5.pdf",
+  "rendered_page_number": 50,
+  "category": "VFD",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "explanation_of_mode": "REAL print_translator.build_theory_messages + REAL engine.router.complete + REAL format_theory_reply on the REAL rendered image. Skips ONLY the buggy classifier gate (vision_worker._classify_photo). Prompt is unchanged production code. NOT a mock. vision_data is the real captured vision output from results/18.json (ocr_items empty on this box).",
+  "caption_submitted": "Explain this print.",
+  "caption_is_theory_request": true,
+  "caption_note": "Caption governs ONLY print_translator.is_theory_request() (the trigger gate); it is NOT passed to build_theory_messages, so this explanation is caption-independent.",
+  "ocr_grounding": "unavailable_on_this_box",
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.76,
+    "drawing_type": "electrical drawing",
+    "drawing_type_confidence": 0.2,
+    "vision_result": "The image shows an electrical drawing, specifically a connection diagram for connecting power cables. The diagram illustrates the connections between various components, including input and output sections, with notes and labels providing additional information on proper installation and safety precautions.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 346,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "run_timestamp_utc": "2026-07-10T04:57:25.810249+00:00",
+  "inference": "ran",
+  "translator_reply": "## 1. What this appears to be\nThis appears to be a connection diagram for connecting power cables to a drive and motor system.\n\n## 2. Main visible components\nThe main visible components are:\n* A drive with input and output connections\n* A motor\n* Grounding points (PE)\n* Power supply lines (L1/L, L2/N, L3/-)\n* Brake resistor connections (BRK+, BRK-)\n\n## 3. Plain-English theory of operation\nThe drive appears to be connected to a motor with three-phase power lines (U1, V1, W1). The drive has input connections for power (L1/L, L2/N, L3/-) and output connections for the motor (U2, V2, W2). There are also connections for a brake resistor (BRK+, BRK-). The diagram shows grounding points (PE) for the drive and motor.\n\n## 4. What must be true for it to work\nFor the system to work, the following conditions must be met:\n* Proper connections between the drive, motor, and power supply\n* Correct grounding of the drive and motor (PE connections)\n* Optional brake resistor connected correctly (if used)\n\n## 5. What would stop it from working\nThe system would not work if:\n* Power supply connections are incorrect or missing\n* Grounding connections (PE) are not properly made\n* Brake resistor connections are incorrect or missing (if used)\n* Motor connections (U1, V1, W1) are incorrect or loose\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable in the provided image."
+}

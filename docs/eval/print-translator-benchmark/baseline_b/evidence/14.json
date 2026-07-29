@@ -1,0 +1,13 @@
+{
+  "case_id": "14",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\14.png",
+  "oem": "AutomationDirect",
+  "document": "D0\u201306 PLC I/O Configuration (User Manual, Ch. 2)",
+  "source_url": "cdn.automationdirect.com/static/manuals/d006userm/ch2.pdf",
+  "page": 31,
+  "category": "PLC I/O",
+  "standard": "Industrial 24VDC",
+  "question": "Describe the theory of operation.",
+  "candidate_response": "## 1. **What this appears to be**\nThis appears to be a wiring diagram for a D0-06AR PLC (Programmable Logic Controller) from Koyo, specifically showing its I/O (Input/Output) wiring configuration.\n\n## 2. **Main visible components**\n- The main component is the D0-06AR PLC.\n- The PLC has:\n  - Twenty AC input channels.\n  - Sixteen relay contact outputs.\n- The diagram includes:\n  - A derating chart for relay outputs.\n  - A table for typical relay life at room temperature.\n  - Equivalent circuits for inputs and outputs.\n\n## 3. **Plain-English theory of operation**\n- The D0-06AR PLC appears to operate by connecting external devices to its input and output terminals.\n- Inputs (X0-X23) are connected to external sensors or switches.\n- Outputs (Y0-Y17) are connected to external devices like motors or indicators.\n- The PLC uses a 100-240V AC power supply.\n- Input signals are expected in the range of 90-120V AC.\n- Output devices can be powered by 6-240V AC or 6-27V DC.\n\n## 4. **What must be true for it to work**\n- The PLC must be powered by a 100-240V AC supply.\n- Input signals must be within the 90-120V AC range.\n- Output devices must be compatible with the output ratings (6-240V AC or 6-27V DC, 2.0A max).\n- The ambient temperature must be within a range that does not require derating, according to the provided chart.\n\n## 5. **What would stop it from working**\n- Loss of power supply.\n- Incorrect wiring of inputs or outputs.\n- Overloading outputs beyond the 2.0A rating.\n- Input signals outside the 90-120V AC range.\n- Output devices requiring more than 2.0A.\n\n## 6. **Unclear or unreadable items**\n- Nothing major appears to be unreadable based on the provided image and OCR labels.",
+  "context_notes": "Judge whether EVERY specific identifier the candidate asserts (device tag, terminal, wire number, connector, component) is actually legible/present in the image. Any specific identifier asserted that is not visibly present is a grounding failure; if a safety/component identifier is asserted-but-not-present, apply the hard-failure rules. Score strictly against what you can see."
+}

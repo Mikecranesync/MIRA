@@ -1,0 +1,101 @@
+/* FactoryLM design tokens — the single source of truth for the FactoryLM/MIRA look.
+ *
+ * CANONICAL FILE. Plain-HTML tools <link> a COPY of this in their gui/ dir (so it bundles offline);
+ * React/Tailwind apps (mira-hub, mira-web) map these same values into their theme. Keep copies in
+ * sync with this file. Spec + usage: docs/design/factorylm-style.md.
+ *
+ * Doctrine: muted-gray normal state; strong color reserved for state/abnormal
+ * (green=ok/running, amber=warning, red=fault/stop) per .claude/rules/ui-style.md and the
+ * industrial-hmi-scada-design rule. Do NOT introduce new ad-hoc colors — extend tokens here.
+ */
+:root {
+  /* surfaces */
+  --fl-bg: #f3f4f6;          /* app background */
+  --fl-surface: #ffffff;     /* cards, panels, rows */
+  --fl-header: #111827;      /* top bar / dark chrome */
+  --fl-header-ink: #ffffff;
+  --fl-header-muted: #9ca3af;
+
+  /* text */
+  --fl-ink: #1f2937;         /* primary text */
+  --fl-muted: #6b7280;       /* secondary text */
+  --fl-faint: #9ca3af;       /* disabled / placeholder */
+
+  /* lines */
+  --fl-line: #e5e7eb;
+  --fl-line-strong: #d1d5db;
+
+  /* brand accent (actions, selection) */
+  --fl-accent: #4f46e5;      /* indigo 600 */
+  --fl-accent-hover: #4338ca;
+  --fl-accent-tint: #eef2ff; /* selected row / chip bg */
+  --fl-accent-ink: #3730a3;
+
+  /* STATE colors — reserved for status/abnormal, never decoration */
+  --fl-ok: #16a34a;          /* running / healthy / accepted */
+  --fl-ok-bg: #f0fdf4;
+  --fl-ok-ink: #15803d;      /* readable ok TEXT on light surfaces (green-700, ~5:1 on white) */
+  --fl-warn: #d97706;        /* warning / medium confidence */
+  --fl-warn-bg: #fffbeb;
+  --fl-fault: #dc2626;       /* fault / stop / rejected */
+  --fl-fault-bg: #fef2f2;
+  --fl-off: #9ca3af;         /* off / unknown / low confidence */
+
+  /* type */
+  --fl-font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --fl-mono: Consolas, "SF Mono", ui-monospace, monospace;
+  --fl-fs: 14px;            /* base size */
+  --fl-fs-sm: 12px;
+  --fl-fs-xs: 11px;
+
+  /* shape + spacing */
+  --fl-radius: 8px;
+  --fl-radius-sm: 6px;
+  --fl-gap: 8px;
+  --fl-pad: 12px;
+  --fl-shadow: 0 1px 2px rgba(0,0,0,.06);
+  --fl-shadow-pop: 0 4px 14px rgba(0,0,0,.25);
+
+  /* ── DARK DATASHEET THEME — public marketing/datasheet surfaces ─────────
+   * The ONE sanctioned dark look (Drive Commander family pages, PrintSense
+   * landing, future public technical pages). Same doctrine as the light
+   * workspace: muted-gray normal, ONE accent for actions/selection, strong
+   * color reserved for state. Never mix these with the light workspace
+   * tokens on the same surface. Added 2026-07-17 (de-slop pass). */
+
+  /* dark surfaces */
+  --fl-dark-bg: #0d0e11;
+  --fl-dark-bg-glass: rgba(13,14,17,.88); /* sticky-nav backdrop */
+  --fl-dark-surface: #13141a;
+  --fl-dark-surface-hi: #181a22;
+  --fl-dark-line: rgba(255,255,255,.07);
+  --fl-dark-line-hi: rgba(255,255,255,.12);
+
+  /* dark text */
+  --fl-dark-ink: #e8eaf0;
+  --fl-dark-muted: rgba(255,255,255,.62);
+  --fl-dark-faint: rgba(255,255,255,.40);
+
+  /* dark accent — brand orange (actions/selection ONLY, never status).
+   * Matches mira-web --fl-orange-500 so marketing and workspace share one
+   * brand accent; also frees amber for its state job (warning). */
+  --fl-dark-accent: #E67139;
+  --fl-dark-accent-hover: #f08a55;
+  --fl-dark-accent-tint: rgba(230,113,57,.10);
+  --fl-dark-accent-line: rgba(230,113,57,.38);
+
+  /* dark STATE colors — status/abnormal only, never decoration */
+  --fl-dark-ok: #2fbf71;          /* grounded / cited / pass / paid */
+  --fl-dark-ok-tint: rgba(47,191,113,.07);
+  --fl-dark-ok-line: rgba(47,191,113,.35);
+  --fl-dark-warn: #f0a000;        /* held / caution */
+  --fl-dark-warn-tint: rgba(240,160,0,.08);
+  --fl-dark-warn-line: rgba(240,160,0,.35);
+  --fl-dark-fault: #ff5d5d;       /* stop / escalate / fault */
+  --fl-dark-fault-tint: rgba(255,93,93,.08);
+  --fl-dark-fault-line: rgba(255,93,93,.35);
+
+  /* dark type (marketing stacks) */
+  --fl-dark-font: 'Inter', 'Helvetica Neue', -apple-system, sans-serif;
+  --fl-dark-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+}

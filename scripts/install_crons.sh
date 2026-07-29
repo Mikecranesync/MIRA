@@ -46,6 +46,21 @@ MIRA_HEALER_ALLOW_ROOT=1
 # Spec: docs/specs/kb-ingest-acceleration-spec.md  |  Closes #845
 0 * * * *     cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/cron/kb_growth_cron.py >> \$LOG_DIR/kb_growth.log 2>&1
 
+# Drive-pack build drain: every 15 min. Drains the Hub candidate-accept
+# "build_requested" markers on ai_suggestions → runs the trust-preserving
+# extractor+grader into staged candidates/ (guarded by assert_not_live_packs;
+# NEVER promotes to a served pack — that stays human-gated per ADR-0025).
+# No-op when the queue is empty. Needs Doppler for NEON_DATABASE_URL.
+# Issue #2544  |  PR #2549  |  docs/drive-commander/drive-pack-build-enqueue-and-drain.md
+*/15 * * * *  cd \$MIRA_DIR && doppler run -- $PYTHON tools/drive-pack-extract/registry/drain_build_requests.py >> \$LOG_DIR/drive_pack_drain.log 2>&1
+
+# OCR drain safety-net: daily 03:30 UTC. Re-OCRs (via Tika) any needs_ocr PDFs
+# that piled up while Tika was unreachable at ingest time. New scanned PDFs are
+# OCR'd inline by the hourly KB Growth run (#2548); this only sweeps the residue.
+# INERT until TIKA_URL=http://localhost:9998 is set in Doppler (host cron can't
+# reach the container-DNS default mira-tika:9998). Issue #2539  |  PR #2548
+30 3 * * *    cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/cron/kb_growth_cron.py --drain-needs-ocr >> \$LOG_DIR/kb_growth_ocr_drain.log 2>&1
+
 # Reddit corpus refresh: weekly Sunday 3 AM
 # Populates mira-bots/benchmarks/corpus/ with fresh Q&A for evals
 0 3 * * 0     cd \$MIRA_DIR && doppler run -- $PYTHON mira-bots/benchmarks/corpus/scraper.py --subreddits all --limit 500 --time-filter week >> \$LOG_DIR/corpus_refresh.log 2>&1
@@ -71,15 +86,15 @@ MIRA_HEALER_ALLOW_ROOT=1
 # Morning Brief: daily 5 AM ET (9 UTC)
 # Sends overnight WO summary via Telegram (dana)
 # -e flags pass Doppler secrets into the container without a full restart
-0 9 * * *     cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/morning_brief_runner.py >> \$LOG_DIR/morning_brief.log 2>&1
+0 9 * * *     cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN -e TELEGRAM_ALERT_CHAT_ID -e TELEGRAM_ALERT_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/morning_brief_runner.py >> \$LOG_DIR/morning_brief.log 2>&1
 
 # PM Escalation: daily 8 AM ET (12 UTC)
 # Flags overdue preventive maintenance tasks
-0 12 * * *    cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/pm_escalation_runner.py >> \$LOG_DIR/pm_escalation.log 2>&1
+0 12 * * *    cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN -e TELEGRAM_ALERT_CHAT_ID -e TELEGRAM_ALERT_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/pm_escalation_runner.py >> \$LOG_DIR/pm_escalation.log 2>&1
 
 # Safety Alert sweep: daily 6 AM ET (10 UTC)
 # Checks for safety keyword triggers in recent conversations
-0 10 * * *    cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/safety_alert_runner.py >> \$LOG_DIR/safety_alert.log 2>&1
+0 10 * * *    cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN -e TELEGRAM_ALERT_CHAT_ID -e TELEGRAM_ALERT_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/safety_alert_runner.py >> \$LOG_DIR/safety_alert.log 2>&1
 
 # ─── QUALITY ASSURANCE ──────────────────────────────────────────────────────
 

@@ -26,6 +26,7 @@ export type FunnelEvent =
   | "register_submitted"
   | "checkout_started"
   | "checkout_completed"
+  | "drive_commander_purchase"
   | "activation_completed"
   | "chat_sent";
 

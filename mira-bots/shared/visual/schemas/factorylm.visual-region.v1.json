@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm.visual-region.v1",
+  "title": "FactoryLM Visual Region v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "geometry"
+  ],
+  "properties": {
+    "schema": {
+      "const": "factorylm.visual-region.v1"
+    },
+    "region_id": {
+      "type": "string"
+    },
+    "evidence_id": {
+      "type": "string"
+    },
+    "page_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "origin": {
+      "enum": [
+        "user",
+        "system"
+      ]
+    },
+    "geometry": {
+      "$ref": "#/$defs/geometry"
+    },
+    "style": {
+      "type": "object"
+    },
+    "transform_to_original": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "created_from": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "coord": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "point_pair": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "minimum": 0.0,
+        "maximum": 1.0
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "geometry": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "point",
+            "rect",
+            "ellipse",
+            "polygon",
+            "polyline",
+            "freehand"
+          ]
+        },
+        "coordinate_space": {
+          "const": "normalized_original"
+        },
+        "x": {
+          "$ref": "#/$defs/coord"
+        },
+        "y": {
+          "$ref": "#/$defs/coord"
+        },
+        "width": {
+          "$ref": "#/$defs/coord"
+        },
+        "height": {
+          "$ref": "#/$defs/coord"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point_pair"
+          }
+        }
+      }
+    }
+  }
+}

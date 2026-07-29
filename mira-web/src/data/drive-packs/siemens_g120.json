@@ -1,0 +1,433 @@
+{
+ "pack_id": "siemens_g120",
+ "schema_version": 2,
+ "family": {
+  "manufacturer": "Siemens",
+  "series": "SINAMICS G120",
+  "aliases": [
+   "sinamics g120",
+   "g120",
+   "siemens g120",
+   "sinamics",
+   "g120c",
+   "sinamics g120c"
+  ]
+ },
+ "nameplate": {
+  "match_keywords": [
+   "sinamics g120",
+   "g120",
+   "siemens g120",
+   "g120c",
+   "sinamics g120c"
+  ]
+ },
+ "live_decode": {
+  "status_bits": {},
+  "cmd_word": {},
+  "fault_codes": {
+   "7011": "Motor overtemperature",
+   "30001": "Power unit: Overcurrent",
+   "30002": "Power unit: DC link voltage overvoltage",
+   "30003": "Power unit: DC link voltage undervoltage",
+   "30004": "Power unit: Overtemperature heat sink AC inverter",
+   "30005": "Power unit: Overload I2t",
+   "30011": "Power unit: Line phase failure in main circuit",
+   "30012": "Power unit: Temperature sensor heat sink wire breakage"
+  }
+ },
+ "envelope": {},
+ "knowledge": {},
+ "parameters": [
+  {
+   "parameter_id": "p0100",
+   "name": "IEC/NEMA mot stds",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "44",
+    "excerpt": "p0100 IEC/NEMA mot stds / IEC/NEMA mot stds"
+   }
+  },
+  {
+   "parameter_id": "p0210",
+   "name": "Drive unit line supply voltage",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F30002",
+    "F30003"
+   ],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "48",
+    "excerpt": "p0210 Drive unit line supply voltage / V_connect"
+   }
+  },
+  {
+   "parameter_id": "p0292",
+   "name": "Power unit temperature alarm threshold",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "51",
+    "excerpt": "p0292[0...1] Power unit temperature alarm threshold / PU T_alrm thresh"
+   }
+  },
+  {
+   "parameter_id": "p0300",
+   "name": "Motor type selection",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "52",
+    "excerpt": "p0300[0...n] Motor type selection / Mot type sel"
+   }
+  },
+  {
+   "parameter_id": "p0304",
+   "name": "Rated motor voltage",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "53",
+    "excerpt": "p0304[0...n] Rated motor voltage / Mot U_rated"
+   }
+  },
+  {
+   "parameter_id": "p0305",
+   "name": "Rated motor current",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "53",
+    "excerpt": "p0305[0...n] Rated motor current / Mot I_rated"
+   }
+  },
+  {
+   "parameter_id": "p0307",
+   "name": "Rated motor power",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F30005"
+   ],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "54",
+    "excerpt": "p0307[0...n] Rated motor power / Mot P_rated"
+   }
+  },
+  {
+   "parameter_id": "p0310",
+   "name": "Rated motor frequency",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "55",
+    "excerpt": "p0310[0...n] Rated motor frequency / Mot f_rated"
+   }
+  },
+  {
+   "parameter_id": "p0605",
+   "name": "Mot_temp_mod 1/2 threshold",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F07011"
+   ],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "70",
+    "excerpt": "p0605[0...n] Mot_temp_mod 1/2 threshold / Mod 1/2 threshold"
+   }
+  },
+  {
+   "parameter_id": "p0610",
+   "name": "Motor overtemperature response",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F07011"
+   ],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "70",
+    "excerpt": "p0610[0...n] Motor overtemperature response / Mot temp response"
+   }
+  },
+  {
+   "parameter_id": "p0640",
+   "name": "Current limit",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F30005"
+   ],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "74",
+    "excerpt": "p0640[0...n] Current limit / Current limit"
+   }
+  },
+  {
+   "parameter_id": "p1000",
+   "name": "Speed setpoint selection",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "106",
+    "excerpt": "p1000[0...n] Speed setpoint selection / n_set sel"
+   }
+  },
+  {
+   "parameter_id": "p1001",
+   "name": "Fixed speed setpoint 1",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "107",
+    "excerpt": "p1001[0...n] CO: Fixed speed setpoint 1 / n_set_fixed 1"
+   }
+  },
+  {
+   "parameter_id": "p1121",
+   "name": "Ramp-function generator ramp-down time",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F30002"
+   ],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "124",
+    "excerpt": "p1121[0...n] Ramp-function generator ramp-down time / RFG ramp-down time"
+   }
+  },
+  {
+   "parameter_id": "p1200",
+   "name": "Flying restart operating mode",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "129",
+    "excerpt": "p1200[0...n] Flying restart operating mode / FlyRest op_mode"
+   }
+  },
+  {
+   "parameter_id": "p1201",
+   "name": "Flying restart enable signal source",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "130",
+    "excerpt": "p1201[0...n] BI: Flying restart enable signal source / Fly_res enab S_src"
+   }
+  },
+  {
+   "parameter_id": "p1800",
+   "name": "Pulse frequency setpoint",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [
+    "F30004"
+   ],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "165",
+    "excerpt": "p1800[0...n] Pulse frequency setpoint / Pulse freq setp"
+   }
+  },
+  {
+   "parameter_id": "p2000",
+   "name": "Reference speed reference frequency",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "173",
+    "excerpt": "p2000 Reference speed reference frequency / n_ref f_ref"
+   }
+  },
+  {
+   "parameter_id": "p2010",
+   "name": "Comm IF baud rate",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "176",
+    "excerpt": "p2010 Comm IF baud rate / Comm baud"
+   }
+  },
+  {
+   "parameter_id": "p2011",
+   "name": "Comm IF address",
+   "purpose": "",
+   "default": null,
+   "range": null,
+   "unit": null,
+   "related_faults": [],
+   "related_parameters": [],
+   "value_meanings": [],
+   "source_citation": {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "176",
+    "excerpt": "p2011 Comm IF address / Comm add"
+   }
+  }
+ ],
+ "provenance": {
+  "items": {
+   "live_decode.fault_codes": "manual_cited",
+   "parameters": "manual_cited"
+  },
+  "sources": [
+   {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "498",
+    "excerpt": "F07011 Drive: Motor overtemperature — Cause: The motor temperature has exceeded the fault threshold (p0605)."
+   },
+   {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "522",
+    "excerpt": "F30001 Power unit: Overcurrent — Cause: The power unit has detected an overcurrent condition."
+   },
+   {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "523",
+    "excerpt": "F30002 Power unit: DC link voltage overvoltage — Cause: The power unit has detected an overvoltage condition in the DC link."
+   },
+   {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "524",
+    "excerpt": "F30003 Power unit: DC link voltage undervoltage — Cause: The power unit has detected an undervoltage condition in the DC link."
+   },
+   {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "524",
+    "excerpt": "F30004 Power unit: Overtemperature heat sink AC inverter — Cause: The temperature of the power unit heat sink has exceeded the permissible limit value."
+   },
+   {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "524",
+    "excerpt": "F30005 Power unit: Overload I2t — Cause: The power unit was overloaded (r0036 = 100 %)."
+   },
+   {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "525",
+    "excerpt": "F30011 Power unit: Line phase failure in main circuit — Cause: At the power unit, the DC link voltage ripple has exceeded the permissible limit value."
+   },
+   {
+    "doc": "SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA)",
+    "page": "525",
+    "excerpt": "F30012 Power unit: Temperature sensor heat sink wire breakage — Cause: The connection to a heat sink temperature sensor in the power unit is interrupted."
+   }
+  ],
+  "verification": {
+   "verified": "2026-07-17",
+   "method": "every fault name + parameter name read from the PDF text layer; page numbers are the manual's printed pages",
+   "manual_sha256": "82aad5dd75b1923230ef163f03fcaa730362d6948bf97bab483c13526bcda268",
+   "manual_url": "https://cache.industry.siemens.com/dl/files/780/99683780/att_863315/v1/G120C_List_Manual_LH13_0414_eng.pdf",
+   "note": "Replaces the unverifiable 'Operational Instructions (0319_en-US)' citations: F30006-F30010 and p0104/p0105/p0293/p0644/p0645 do not exist in the manual and were removed; all remaining meanings corrected to the manual's verbatim names."
+  }
+ }
+}

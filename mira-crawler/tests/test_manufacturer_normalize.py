@@ -79,6 +79,66 @@ class TestBrandParentReconciled:
         assert normalize_manufacturer("Rockwell Automation").canonical == "Rockwell Automation"
 
 
+class TestKnownVendorCanonicalization:
+    """#1596 Gap A: the ingest normalizer now also collapses known-vendor
+    casing/spelling variants to the resolver's canonical, so the catalog
+    groups a known OEM under ONE row instead of one-per-spelling. These keys
+    are shared with the resolver's VENDOR_ALIASES and locked by
+    ``tests/test_manufacturer_alias_consistency.py``.
+
+    Staging ground truth (2026-07-26) proved these fragment the live catalog:
+    ``siemens`` (514 chunks) split from ``Siemens`` (1948); ``Rockwell`` (18)
+    never joined ``Rockwell Automation`` (34186); ``Automation Direct`` (8) vs
+    ``AutomationDirect`` (4298); ``Yaskawa Electric Corporation`` (27) vs
+    ``Yaskawa`` (9340).
+    """
+
+    def test_siemens_casing_collapses(self):
+        # The single biggest live case: 514 lowercase "siemens" chunks.
+        r = normalize_manufacturer("siemens")
+        assert r.canonical == "Siemens"
+        assert r.method == "alias"
+
+    def test_rockwell_short_form_collapses_to_parent(self):
+        assert normalize_manufacturer("Rockwell").canonical == "Rockwell Automation"
+
+    def test_automation_direct_spacing_variant_collapses(self):
+        assert normalize_manufacturer("Automation Direct").canonical == "AutomationDirect"
+        assert normalize_manufacturer("automationdirect").canonical == "AutomationDirect"
+
+    def test_yaskawa_long_form_collapses(self):
+        assert normalize_manufacturer("Yaskawa Electric Corporation").canonical == "Yaskawa"
+
+    def test_more_known_vendor_casings(self):
+        cases = {
+            "SCHNEIDER": "Schneider Electric",
+            "schneider electric": "Schneider Electric",
+            "mitsubishi": "Mitsubishi Electric",
+            "DANFOSS": "Danfoss",
+            "abb": "ABB",
+            "rexroth": "Bosch Rexroth",
+            "sew": "SEW-Eurodrive",
+        }
+        for raw, expected in cases.items():
+            assert normalize_manufacturer(raw).canonical == expected, raw
+
+    def test_longtail_hoist_casing_collapses(self):
+        # Not in the resolver (no shared-key constraint) — evidence-driven.
+        for raw in ("COFFING", "coffing", "Coffing Hoists"):
+            assert normalize_manufacturer(raw).canonical == "Coffing", raw
+        assert normalize_manufacturer("HARRINGTON").canonical == "Harrington"
+
+    def test_known_vendor_result_is_idempotent(self):
+        # The stored canonical must itself normalize to itself.
+        for canon in ("Siemens", "Rockwell Automation", "AutomationDirect", "Yaskawa"):
+            assert normalize_manufacturer(canon).canonical == canon, canon
+
+    def test_unknown_vendor_still_passes_through(self):
+        # Divergence-safety invariant preserved: the resolver has no opinion on
+        # this vendor, so it must NOT be canonicalized here.
+        assert normalize_manufacturer("Acme Hoist").method == "identity"
+
+
 class TestFuzzyProposer:
     """The fuzzy layer PROPOSES (and logs) — it never merges. Intended for the
     gated catalog-backfill review, not for silent ingest-time merging."""

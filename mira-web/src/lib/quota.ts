@@ -586,4 +586,30 @@ export async function ensureSchema(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`;
   await db`CREATE INDEX IF NOT EXISTS idx_plg_audit_email_time ON plg_audit_log (email, created_at)`;
+
+  // Durable Stripe → Hub provisioning queue (see lib/hub-provisioning-queue.ts).
+  // A row lands here when the webhook's hub_users bridge didn't match a row
+  // (customer paid before registering on the Hub) or threw. Keyed on the
+  // Stripe event id so redeliveries of the same event are idempotent.
+  await db`
+    CREATE TABLE IF NOT EXISTS plg_pending_hub_provisioning (
+      stripe_event_id TEXT PRIMARY KEY,
+      email           TEXT NOT NULL,
+      tenant_id       TEXT,
+      kind            TEXT NOT NULL DEFAULT 'activate',
+      status          TEXT NOT NULL DEFAULT 'pending',
+      attempts        INTEGER NOT NULL DEFAULT 0,
+      last_error      TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at    TIMESTAMPTZ
+    )`;
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_plg_pending_hub_prov_pending
+      ON plg_pending_hub_provisioning (created_at)
+      WHERE status = 'pending'`;
+  await db`
+    CREATE INDEX IF NOT EXISTS idx_plg_pending_hub_prov_email
+      ON plg_pending_hub_provisioning (LOWER(email))
+      WHERE status = 'pending'`;
 }
