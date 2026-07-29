@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "case_id": "09",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 14,
+    "power_control_flow": 16,
+    "sequence_interlocks_logic": 12,
+    "evidence_grounding_unsupported_claims": 18,
+    "technician_usefulness_clarity": 8
+  },
+  "total": 78,
+  "deductions": [
+    {
+      "claim": "Mechanical Contacts (K1, K2): These are the output contactors controlled by the safety relay.",
+      "evidence": "K1 and K2 are drawn and labeled as contactor coils (circle/motor icon, feeding load-side terminals 13/23-14/24) on the output side of both Figure 45 and Figure 46; the page body text calls them 'contactors K1 and K2' throughout. The devices actually described in the body text as having 'mechanical contacts' are the two separate, unlabeled input switches at the upper-left of Figure 45 (closed before Reset is pressed), not K1/K2. Heading the K1/K2 entry 'Mechanical Contacts' contradicts the correct description ('output contactors') in the very next sentence.",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Label K1/K2 only as 'output contactors'; use a separate 'mechanical-contact input devices' entry for the two unlabeled switches near 24V DC at the upper-left of Figure 45.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(omission) — the LOGIC rotary selector switch is never listed as a component.",
+      "evidence": "Both Figure 45 and Figure 46 show a rotary dial labeled 'LOGIC' with positions 0-8 on the face of the DI 440R-D22R2 body; the Figure 46 body text explicitly references 'The DI safety relay logic setting is 6'. This is a clearly legible, functionally central component the response omits entirely from its component list.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "List the LOGIC rotary selector as a component and note it sets the AND/OR combination of the two safety inputs.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(omission) — the Y32 / 'To PLC' status output is never mentioned anywhere in the response.",
+      "evidence": "Both diagrams show a terminal labeled 'Y32' with an arrow labeled 'To PLC'; the body text states plainly, for both figures, 'When the DI safety relay is off, the auxiliary signal at terminal Y32 turns on and reports the status to a PLC.' This is a major functional relationship (a monitoring output distinct from the K1/K2 power outputs) that is fully legible and entirely absent from the candidate's power/control-flow explanation.",
+      "category": "power_control_flow",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Add Y32 as a status/monitoring output to a PLC that turns on when the safety relay is de-energized/off, separate from the K1/K2 load outputs.",
+      "confidence": "high"
+    },
+    {
+      "claim": "For the system to operate, the safety mat must be configured for AND logic with the interlock closed.",
+      "evidence": "The body text for Figure 46 states 'The DI safety relay must be configured for AND logic for the two inputs' — it is the relay's logic setting (via the LOGIC dial) that combines the safety-mat and interlock inputs with AND logic, not the safety mat itself being 'configured for AND logic'. The candidate's sentence misattributes the configured component.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "State that the DI safety relay (via its LOGIC selector) is configured for AND logic, combining the safety-mat and interlock inputs — not that the safety mat itself is configured for AND logic.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(omission) — the specific numeric logic setting is never stated.",
+      "evidence": "The Figure 46 body text explicitly reads 'The DI safety relay logic setting is 6: (IN1 AND IN2) OR L12 with automatic reset' — legible printed text directly above the diagram, and the LOGIC dial graphic shows numbered positions 0-8. The candidate response never states which position (6) or what it means.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "State the specific logic-selector position (6) and its Boolean meaning, (IN1 AND IN2) OR L12 with automatic reset, as printed in the source text.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(omission) — the power-up/configuration precondition for the safety mat and interlock is never mentioned.",
+      "evidence": "The body text states 'during configuration and for each power-up, the safety mat must be clear and the interlock closed' — an explicit interlock precondition not covered anywhere in the candidate's 'what must be true' or 'what would stop it from working' sections.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Add the power-up precondition: the safety mat must be clear and the interlock closed at each power-up and during configuration.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the provided image. All critical components and connections are clearly labeled.",
+      "evidence": "The underlying print is in fact fully legible (large printed body text, clear terminal labels), so this claim is not false on its face — but the response itself failed to report several clearly legible, functionally important labeled items it claims are 'clearly labeled' (the LOGIC dial and its setting '6', the Y32/'To PLC' terminal), so the completeness claim overstates what the response actually captured.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Either report the omitted-but-legible items (LOGIC dial, Y32) or qualify the completeness claim to only what the response actually covered.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(omission) — no practical field-check is offered for the LOGIC dial position.",
+      "evidence": "The rotary LOGIC dial (visible, labeled 0-8, body text ties it to setting '6' for the AND-logic/safety-mat configuration in Figure 46) is exactly the kind of field-verifiable setting a maintenance technician would want flagged; the response never surfaces it as an actionable check despite the source text supporting it.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Add a practical technician note: verify the LOGIC dial is set to position 6 for the Figure 46 AND-logic/safety-mat configuration.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Unusual case: image_path is a full manual page (Rockwell 440R-UM013 p.42), not a stripped diagram crop — the page's large printed body text is directly legible to any image-reading model, so despite context_notes stating OCR was unavailable, most of the candidate's specific claims (S34, Y32, S11/S21/S22/S12, AND logic, logic setting 6, mechanical-contacts vs. contactors language) are independently checkable against that same legible body text, not just the diagram symbols. No invented tags/labels found — deductions are for a self-contradictory K1/K2 label and several omissions of clearly legible, functionally relevant content (LOGIC dial + its setting, Y32/PLC output, power-up precondition), plus one misattribution of which component is 'configured for AND logic'. No hard-failure conditions were triggered: the sequence description matches the source text, no dangerous troubleshooting advice is given, and no component is asserted to exist without visible/textual support."
+}

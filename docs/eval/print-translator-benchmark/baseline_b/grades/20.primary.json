@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "case_id": "20",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 10,
+    "power_control_flow": 16,
+    "sequence_interlocks_logic": 10,
+    "evidence_grounding_unsupported_claims": 10,
+    "technician_usefulness_clarity": 7
+  },
+  "total": 63,
+  "deductions": [
+    {
+      "claim": "Various connections and terminals labeled with designations such as +UD, -UD, U, V, W, XC90, XC25A, XC25B, XU, XV, XW, and XVent.",
+      "evidence": "No \"XC90\" label appears anywhere in the drawing. The only XC-prefixed terminal designators visible are XC47U/XC47V/XC47W (top IFSC-to-UP11 stub), XC46U/XC46V/XC46W (middle stub), XC45U/XC45V/XC45W (bottom stub), XC60 (two occurrences: at CC11 and at the 24 Vcc pins), and XC25A/XC25B (Safety stop connection). \"XC90\" is not printed at any of these locations or elsewhere on the page.",
+      "category": "component_label_recognition",
+      "points_deducted": 6,
+      "severity": "hard_failure",
+      "correction": "Remove \"XC90\"; the actual terminal/connector designators visible are XC47U/V/W, XC46U/V/W, XC45U/V/W, XC60, and XC25A/XC25B.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The XC90, XC25A, and XC25B labels likely represent connectors or terminals. ... Nothing major appears to be unreadable in the provided image. All labels and connections seem clear based on the OCR data provided.",
+      "evidence": "\"XC90\" is asserted as a directly-read, legible label and explicitly reaffirmed as \"clear\" in the candidate's own unclear/unreadable-items section, yet it is not present anywhere in the image. This is a fabricated identifier presented with full certainty rather than flagged as uncertain or absent.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 10,
+      "severity": "hard_failure",
+      "correction": "Do not assert specific tag/terminal identifiers that cannot be verified against the image; if a label is uncertain or not present, say so instead of listing it alongside confirmed labels as \"clear.\"",
+      "confidence": "high"
+    },
+    {
+      "claim": "The XC90, XC25A, and XC25B labels likely represent connectors or terminals.",
+      "evidence": "The image prints the words \"Safety stop connection\" vertically immediately to the left of the XC25A/XC25B terminal block (pins 1-4 on XC25A, 1-3 on XC25B). This explicit visible label identifying the terminals' function is never used; the candidate's theory-of-operation narrative never mentions a safety-stop interlock at all.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 10,
+      "severity": "material",
+      "correction": "Identify XC25A/XC25B as the \"Safety stop connection\" inputs to IFSC and explain that this is a safety interlock/permissive the drive logic depends on -- a core control-flow element that belongs in a theory-of-operation answer for this print.",
+      "confidence": "high"
+    },
+    {
+      "claim": "A human-machine interface (HMI) labeled as UC11 and CC11.",
+      "evidence": "\"UC11\" is the label on the outer dashed enclosure containing both the handheld unit (separately labeled \"HMI\") and the \"CC11\" board; \"CC11\" is a distinct component inside that enclosure, wired to IFSC via the XC60 cable. The candidate collapses three distinct visible labels (UC11 enclosure, CC11 board, HMI handheld) into one HMI description.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Describe UC11 as the assembly enclosure containing the CC11 interface board and the HMI handheld keypad, with CC11 (not the HMI directly) wired to IFSC via the XC60 cable.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Various connections and terminals labeled with designations such as ... XC90 ...",
+      "evidence": "The three distinct terminal groups between IFSC and each UP11 (XC47U/V/W to the top module, XC46U/V/W to the middle module, XC45U/V/W to the bottom module) are legibly printed but never individually named in the response, which instead substitutes the fabricated \"XC90\".",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Name the three actual per-module terminal groups: XC47U/V/W, XC46U/V/W, and XC45U/V/W.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The 24 Vdc labels suggest that there is ... a 24-volt DC power supply involved.",
+      "evidence": "The image shows two distinct labeled power feeds: \"24 Vcc\" on three pins (XC60) at the IFSC's left side, separate from \"24 Vdc\" printed under each UP11's XVent connector. The response only mentions the XVent-adjacent \"24 Vdc\" and never mentions the separate \"24 Vcc\" control-power feed.",
+      "category": "power_control_flow",
+      "points_deducted": 4,
+      "severity": "minor",
+      "correction": "Note the separate \"24 Vcc\" control-power feed on the IFSC's XC60 pins 1-3, distinct from the per-module \"24 Vdc\" fan/vent supply near XVent.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the provided image. All labels and connections seem clear based on the OCR data provided.",
+      "evidence": "This blanket confidence statement is paired with a fabricated terminal designator (\"XC90\") and an omission of the explicit \"Safety stop connection\" label, which together would mislead a technician into trusting a non-existent terminal reference and overlooking a real safety interlock.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Reserve blanket \"everything is clear\" statements for cases where every cited identifier has actually been verified against the image; flag any uncertain reads explicitly.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "false_certainty_from_unreadable_evidence"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "The candidate correctly reads the large majority of visible labels (UC11/CC11/HMI, IFSC, three UP11 modules, MOTOR, +UD/-UD, U/V/W, XVent, 24 Vdc, XC25A/XC25B, XU/XV/XW) and gives a structurally accurate account of the paralleled-power-module topology (three UP11 modules sharing a common +UD/-UD DC bus and feeding one motor via U/V/W), correctly hedged with \"likely\"/\"appears\" language in most places. The grade is pulled down by one fabricated terminal designator (\"XC90\", not present anywhere in the image) asserted with full confidence, and by a complete omission of the explicitly labeled \"Safety stop connection\" interlock (XC25A/XC25B), which is a significant miss for a \"theory of operation\" answer on a drive with a visible safety-stop input."
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "source_entity_id": "PLC1",
+    "source_terminal": "I-00",
+    "dest_entity_id": "PS1",
+    "dest_terminal": "OUT",
+    "wire_number": "W200",
+    "cable_id": null,
+    "gauge_awg": 18,
+    "color": "red",
+    "function_class": "signal",
+    "drawing_reference": "E-005: Input stage",
+    "approval_state": "verified",
+    "proposed_by": null,
+    "evidence_summary": {
+      "source": "electrical_print_scan",
+      "asset": "cv-101",
+      "sheet": "E-005",
+      "from": "PLC1.I-00",
+      "to": "PS1.OUT",
+      "model_status": "verified",
+      "signal": "24VDC_input"
+    }
+  },
+  {
+    "source_entity_id": "MOTOR",
+    "source_terminal": "T1",
+    "dest_entity_id": "GS10_VFD",
+    "dest_terminal": "U",
+    "wire_number": "W900",
+    "cable_id": null,
+    "gauge_awg": 14,
+    "color": "brown",
+    "function_class": "power",
+    "drawing_reference": "E-001: Power distribution",
+    "approval_state": "proposed",
+    "proposed_by": "telegram:wiring_intake",
+    "evidence_summary": {
+      "source": "telegram:chat:12345",
+      "asset": "cv-101",
+      "sheet": "E-001",
+      "from": "MOTOR.T1",
+      "to": "GS10_VFD.U",
+      "model_status": "needs_field_verify"
+    }
+  }
+]

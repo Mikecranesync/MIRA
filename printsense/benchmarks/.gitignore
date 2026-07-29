@@ -1,0 +1,16 @@
+# Derived / large eval images — the JSON graphs, grades, and summaries are the
+# durable, reviewable artifacts. Source photos live outside the repo.
+_eval_inputs/
+*.jpg
+*.jpeg
+*.png
+
+# Confidential local corpora: EVERY underscore-prefixed directory here is
+# ignored by default (tracked rule — survives fresh clones, unlike a local
+# in-dir .gitignore). The two pre-existing tracked artifact dirs are
+# explicitly re-included.
+_*/
+!_brief_eval/
+!_brief_eval/**
+!_eval_outputs/
+!_eval_outputs/**

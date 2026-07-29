@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Database, Plug, Webhook, Key, ExternalLink, CheckCircle2, Clock, ChevronRight } from "lucide-react";
+import { Database, Plug, Webhook, Key, ExternalLink, Clock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 

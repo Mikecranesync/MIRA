@@ -22,8 +22,8 @@ RUN PERMIT = contactor DO_02 in AND e-stop healthy AND photo-eye not latched. Di
 DI_00=FWD, DI_01=REV, neither=OFF; both = direction fault→STOP. Start=DI_04 (re-arms
 photo-eye latch with beam clear, resumes drive).
 
-VFD COMMAND WORD (reg 0x2000, FC06): 1=STOP, 18=FWD+RUN, 20=REV+RUN (REV may be 34 on some
-configs—verify on bench). Freq setpoint reg 0x2001=Hz×10. Fault reset=write 2 to 0x2002.
+VFD COMMAND WORD (reg 0x2000, PLC-owned): 1=STOP, 18=FWD+RUN, 20=REV+RUN (REV may be 34 on some
+configs—verify on bench). Freq setpoint reg 0x2001=Hz×10. The kiosk is view-only; do not issue drive writes from it.
 GS10 only accepts Modbus when P00.21=2 (run src RS-485) AND P00.20=1 (freq src RS-485).
 
 E-STOP (dual-channel, must disagree when healthy): DI_02=NC healthy=TRUE; DI_03=NO
@@ -38,8 +38,8 @@ beam clear to clear pe_latched and resume.
 GS10 FAULT CODES (vfd_fault_code, 0=none): 4=GFF ground fault; 12=Lvd undervoltage on decel;
 21=oL overload (load/jam); 49=EF external fault; 54=CE1 comm illegal cmd (bad function code);
 55=CE2 comm illegal addr; 56=CE3 comm illegal data; 57=CE4 slave error (power-cycle);
-58=CE10 modbus timeout (check 9600 8N1/wiring). Clear via keypad STOP/RESET or write 2 to
-0x2002; if stuck, power-cycle.
+58=CE10 modbus timeout (check 9600 8N1/wiring). Clear via keypad STOP/RESET or the
+approved site/OEM workflow; if stuck, power-cycle.
 
 GS10 STATUS WORD (reg 0x2101) low 2 bits: 00=stopped, 01=decel, 10=standby, 11=running.
 

@@ -16,7 +16,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-DEFAULT_LOG_PATH = "mira-crawler/data/ingest_latency.jsonl"
+# Absolute, cwd-INDEPENDENT default: latency.py lives in mira-crawler/metrics/,
+# so parent.parent is mira-crawler/. A cwd-relative string would double to
+# mira-crawler/mira-crawler/data/… under the daemon's cwd (run.sh does
+# `cd $SCRIPT_DIR` and does not export MIRA_INGEST_LATENCY_LOG), writing latency
+# rows to a phantom dir nobody reads. Resolve from __file__ instead — the same
+# fix already applied to heartbeat.py (which cited this module as the bad case).
+DEFAULT_LOG_PATH = str(Path(__file__).resolve().parent.parent / "data" / "ingest_latency.jsonl")
 
 
 def _utc_now() -> datetime:

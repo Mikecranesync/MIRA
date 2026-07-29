@@ -1,0 +1,49 @@
+{
+  "id": "root_cause_analysis",
+  "name": "Root Cause Analysis Agent",
+  "version": "0.1.0",
+  "scope": "Build an evidence-backed timeline and ranked root-cause hypothesis for a fault, stop, quality event, abnormal trend, or repeat maintenance issue. Suggests next checks; does not claim a final root cause unless evidence is strong and approved. Separates facts from hypotheses.",
+  "risk_level": "medium",
+  "allowed_tools": [
+    "context_graph.query",
+    "documents.search",
+    "tags.read_current",
+    "historian.query_window",
+    "events.search",
+    "work_orders.search",
+    "logic_refs.search",
+    "traces.create",
+    "evals.score"
+  ],
+  "blocked_tools": [
+    "plc.write",
+    "tag.write",
+    "machine.reset",
+    "work_order.submit_without_review",
+    "cmms.close_work_order",
+    "safety_bypass"
+  ],
+  "required_context": [
+    "approved_asset",
+    "approved_signals",
+    "approved_documents",
+    "recent_events"
+  ],
+  "required_outputs": [
+    "summary",
+    "timeline",
+    "ranked_hypotheses",
+    "supporting_evidence",
+    "contradicting_evidence",
+    "missing_context",
+    "recommended_next_checks",
+    "confidence",
+    "citations",
+    "human_review_notice"
+  ],
+  "eval_pack": "rca_starter",
+  "route_signals": [
+    "why did", "what caused", "root cause", "what changed before",
+    "repeat failure", "downtime", "contributed to", "evidence supports"
+  ]
+}

@@ -22,7 +22,17 @@ const RIFF = [0x52, 0x49, 0x46, 0x46];
 const WEBP = [0x57, 0x45, 0x42, 0x50];
 const FTYP = [0x66, 0x74, 0x79, 0x70];
 // HEIC/HEIF brand codes that follow `ftyp` — there are several.
-const HEIC_BRANDS = new Set(["heic", "heix", "hevc", "hevx", "heim", "heis", "heif", "mif1", "msf1"]);
+const HEIC_BRANDS = new Set([
+  "heic",
+  "heix",
+  "hevc",
+  "hevx",
+  "heim",
+  "heis",
+  "heif",
+  "mif1",
+  "msf1",
+]);
 
 function startsWith(buf: Uint8Array, sig: number[], offset = 0): boolean {
   if (buf.length < offset + sig.length) return false;
@@ -43,7 +53,12 @@ export function sniffMime(buf: Uint8Array): SniffedKind {
   if (startsWith(buf, RIFF) && startsWith(buf, WEBP, 8)) return "webp";
   // HEIC/HEIF: ftyp box at byte 4, brand at byte 8 (4 ASCII chars)
   if (startsWith(buf, FTYP, 4) && buf.length >= 12) {
-    const brand = String.fromCharCode(buf[8], buf[9], buf[10], buf[11]).toLowerCase();
+    const brand = String.fromCharCode(
+      buf[8],
+      buf[9],
+      buf[10],
+      buf[11],
+    ).toLowerCase();
     if (HEIC_BRANDS.has(brand)) return "heic";
   }
   return null;
@@ -58,7 +73,15 @@ export function sniffMime(buf: Uint8Array): SniffedKind {
  * extension labeled as image/png) — that's a UX nuisance, not a security
  * concern, since both end up in the same image-processing pipeline.
  */
-export function isMimeCompatible(declared: string, sniffed: SniffedKind): boolean {
+export function isMimeCompatible(
+  declared: string,
+  sniffed: SniffedKind,
+): boolean {
+  // Text formats (markdown/plain, #2277) have no magic-byte signature, so a
+  // well-formed text file sniffs as null. Accept a declared text/* MIME ONLY
+  // when nothing binary was detected — a .txt whose bytes start with %PDF-/PNG/
+  // etc. is a spoof and stays rejected.
+  if (declared.startsWith("text/")) return sniffed === null;
   if (sniffed === null) return false;
   if (sniffed === "pdf") return declared === "application/pdf";
   // Any non-pdf sniff is an image; reject if declared isn't an image MIME.

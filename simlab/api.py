@@ -18,15 +18,28 @@ logger = logging.getLogger("simlab.api")
 # Lazy FastAPI import — sim core loads bare without it.
 try:
     from fastapi import FastAPI, HTTPException
-    from fastapi.responses import PlainTextResponse
+    from fastapi.responses import HTMLResponse, PlainTextResponse
     _HAS_FASTAPI = True
 except ImportError:  # pragma: no cover
     _HAS_FASTAPI = False
     FastAPI = None  # type: ignore[assignment,misc]
     HTTPException = None  # type: ignore[assignment]
     PlainTextResponse = None  # type: ignore[assignment]
+    HTMLResponse = None  # type: ignore[assignment]
 
 _DOCS_ROOT = Path(__file__).parent / "docs"
+_DASHBOARD_HTML_PATH = Path(__file__).parent / "dashboard.html"
+
+
+def _dashboard_html() -> str:
+    """The self-scoring dashboard page (read from disk; small, cached per process)."""
+    global _DASHBOARD_HTML_CACHE
+    if _DASHBOARD_HTML_CACHE is None:
+        _DASHBOARD_HTML_CACHE = _DASHBOARD_HTML_PATH.read_text(encoding="utf-8")
+    return _DASHBOARD_HTML_CACHE
+
+
+_DASHBOARD_HTML_CACHE: Optional[str] = None
 
 
 def build_app(
@@ -57,6 +70,45 @@ def build_app(
         engine = SimEngine(line)
     if approvals is None:
         approvals = ApprovalStore()
+
+    # Live MQTT feed (opt-in): set SIMLAB_MQTT_HOST to stream every advance() to a broker, read-only.
+    # Unset -> no publisher attached -> the sim behaves exactly as before (pull-only /snapshot).
+    import os
+
+    mqtt_host = os.getenv("SIMLAB_MQTT_HOST", "").strip()
+    if mqtt_host:
+        from simlab.publishers import MqttPublisher
+
+        mqtt_port = int(os.getenv("SIMLAB_MQTT_PORT", "1883"))
+        engine.add_publisher(MqttPublisher(host=mqtt_host, port=mqtt_port))
+        logger.info("SimLab live MQTT feed enabled -> %s:%d", mqtt_host, mqtt_port)
+
+    # Live HTTP relay feed (opt-in): set SIMLAB_RELAY_URL to POST every advance()
+    # snapshot to mira-relay /api/v1/tags/ingest, landing rows in tag_events +
+    # live_signal_cache (UNS-mapped) — the shortest path to "SimLab data landed
+    # against a real UNS". Read-only / publish-out only; no PLC writes.
+    #   SIMLAB_RELAY_HMAC_KEY  -> production-shaped HMAC auth (tenant authoritative)
+    #   SIMLAB_RELAY_API_KEY   -> bench bearer auth (needs relay RELAY_LEGACY_BEARER=1)
+    #   SIMLAB_RELAY_TENANT_ID -> override the reserved SIMLAB_TENANT_ID (default)
+    relay_url = os.getenv("SIMLAB_RELAY_URL", "").strip()
+    if relay_url:
+        from simlab import SIMLAB_TENANT_ID
+        from simlab.publishers import RelayIngestPublisher
+
+        tenant_id = os.getenv("SIMLAB_RELAY_TENANT_ID", "").strip() or SIMLAB_TENANT_ID
+        hmac_key = os.getenv("SIMLAB_RELAY_HMAC_KEY", "").strip()
+        api_key = os.getenv("SIMLAB_RELAY_API_KEY", "").strip()
+        engine.add_publisher(
+            RelayIngestPublisher(
+                relay_url, tenant_id=tenant_id, api_key=api_key, hmac_key=hmac_key
+            )
+        )
+        logger.info(
+            "SimLab live relay feed enabled -> %s (tenant=%s, auth=%s)",
+            relay_url,
+            tenant_id,
+            "hmac" if hmac_key else ("bearer" if api_key else "open"),
+        )
 
     _line = engine._line  # noqa: SLF001
     _factory = build_factory()
@@ -304,6 +356,54 @@ def build_app(
 
         uns = _ap(asset_id)
         return {"asset_id": asset_id, "uns_path": uns, **approvals.gate(uns)}
+
+    # ------------------------------------------------------------------
+    # Evaluation scorecard + self-scoring dashboard (Phase P5)
+    #
+    # The dashboard is the ProveIt demo surface: it runs every scenario through
+    # the deterministic P1 evaluation service and renders the five graded
+    # dimensions live — "watch the platform score itself against known truth".
+    # The answerer is INJECTED (simlab/ stays LLM-free): `oracle` is the positive
+    # control (100%), `evidence_only` shows what evidence alone yields (it misses
+    # root-cause — that's MIRA's reasoning job). The real-Supervisor answerer is a
+    # staging concern, not wired into the package.
+    # ------------------------------------------------------------------
+    from simlab import evaluation
+
+    _ANSWERERS = {
+        "oracle": evaluation.ground_truth_answerer,
+        "evidence_only": evaluation.evidence_only_answerer,
+    }
+
+    def _resolve_answerer(name: str) -> Any:
+        fn = _ANSWERERS.get(name)
+        if fn is None:
+            raise HTTPException(
+                400, f"unknown answerer {name!r}; choose one of {sorted(_ANSWERERS)}"
+            )
+        return fn
+
+    @app.get("/simlab/eval/scorecard")
+    def eval_scorecard(answerer: str = "oracle") -> dict:
+        """Score every scenario via the P1 evaluation service (answerer: oracle|evidence_only)."""
+        scores = evaluation.run_all(_resolve_answerer(answerer))
+        out = evaluation.to_json(scores)
+        out["answerer"] = answerer
+        out["answerers"] = sorted(_ANSWERERS)
+        return out
+
+    @app.get("/simlab/eval/{scenario_id}")
+    def eval_scenario(scenario_id: str, answerer: str = "oracle") -> dict:
+        try:
+            scenario = get_scenario(scenario_id)
+        except KeyError:
+            raise HTTPException(404, f"scenario {scenario_id!r} not found")
+        score = evaluation.run_scenario(scenario, _resolve_answerer(answerer))
+        return evaluation.to_json([score])["scenarios"][0]
+
+    @app.get("/simlab/dashboard", response_class=HTMLResponse)
+    def dashboard() -> Any:
+        return HTMLResponse(_dashboard_html())
 
     return app
 

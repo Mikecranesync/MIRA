@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
   ASSET_AGENT_STATES,
@@ -25,6 +26,10 @@ export async function POST(
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  // Driving the asset-agent approval/deploy gate is an admin action
+  // (train-before-deploy spec; approval records an admin actor). #2360.
+  const denied = requireCapability(ctx, "asset_agent.transition");
+  if (denied) return denied;
 
   const { id } = await params;
   const body = (await req.json().catch(() => ({}))) as {

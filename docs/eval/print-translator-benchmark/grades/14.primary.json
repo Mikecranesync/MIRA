@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "case_id": "14",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 15,
+    "power_control_flow": 15,
+    "sequence_interlocks_logic": 18,
+    "evidence_grounding_unsupported_claims": 18,
+    "technician_usefulness_clarity": 9
+  },
+  "total": 85,
+  "deductions": [
+    {
+      "claim": "The main visible components include: - A detailed I/O wiring diagram for the D0-06AR PLC - A derating chart for relay outputs - A table for typical relay life (operations) at room temperature - Equivalent circuit diagrams for input and output",
+      "evidence": "The terminal strips legibly print individual designators (G, LG, 0V, AC(L), AC(N), 24V, commons C0-C4, X0-X23, Y0-Y17, N.C.) and the equivalent-circuit panels contain labeled symbols (optical isolator, varistor/MOV, 'Internal module circuitry' block) that the response never itemizes, only naming the diagram sections in general terms.",
+      "category": "component_label_recognition",
+      "points_deducted": 5,
+      "severity": "minor",
+      "correction": "List the specific terminal designators visible on the strip (G, LG, 0V, AC(L)/AC(N), 24V, C0-C4, N.C.) and the symbols in the equivalent circuits (optical isolator, varistor, internal module circuitry) rather than only naming the diagram sections.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The D0-06AR PLC has twenty AC input channels and sixteen relay contact outputs. ... The outputs are configurable for 6-240V AC or 6-27V DC. [no mention of input voltage/current rating anywhere in the response]",
+      "evidence": "The label '90-120 VAC' next to the input wiring and the spec line 'INPUT: 90-120V~ 7-15mA' printed directly above the X terminal row are clearly legible, giving the field-input voltage/current rating that is distinct from the PLC's own 100-240VAC power and the 6-240VAC/6-27VDC output range. The response covers PLC power and output ratings but omits the input rating entirely.",
+      "category": "power_control_flow",
+      "points_deducted": 5,
+      "severity": "material",
+      "correction": "State that field inputs are wired for 90-120VAC at 7-15mA per the printed INPUT spec line, distinct from the 100-240VAC PLC power and the 6-240VAC/6-27VDC output range.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Inputs must be connected to the appropriate terminals (X0-X23). ... Outputs must be connected to the appropriate terminals (Y0-Y17).",
+      "evidence": "The terminal strips use octal-style addressing (input row reads X0 X1 X2 X3 X4 X5 X6 X7 X10 X11 X12 X13 X14 X15 X16 X17 X20 X21 X22 X23, skipping X8/X9/X18/X19; the output row is Y0-Y7, Y10-Y17, skipping Y8/Y9) rather than a continuous decimal 0-23/0-17 range implied by the shorthand 'X0-X23' / 'Y0-Y17'.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Note the octal-style terminal numbering (X0-X7, X10-X17, X20-X23) rather than implying a continuous decimal range.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "[omission] the response never notes that this page shows physical field wiring only, with no ladder logic, permissive, or interlock scheme",
+      "evidence": "The print contains only terminal/wiring symbols and the two equivalent-circuit panels; there are no ladder rungs, relay-logic coils/contacts in a program sense, or permissive/interlock notation anywhere on the page.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Explicitly note this page documents physical I/O wiring only -- no interlock or sequence logic is shown or inferable from this print.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "[omission] no caution that the relay outputs can be field-wired for either AC or DC loads and the field supply class must match the intended load",
+      "evidence": "The OUTPUT spec line lists two separate ratings on the same relay contact terminals ('6-240V~ 50-60Hz 2.0A, 6-27V dc 2.0A'), implying the same physical output can serve either an AC or DC external circuit depending on field wiring -- a point worth flagging for a technician wiring the module.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Add a brief note that the relay outputs can be wired for either AC or DC loads within the printed ratings, so field wiring must match the intended load type.",
+      "confidence": "low"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Image is a well-legible manual page (D0-06AR I/O wiring diagram, DL06 Micro PLC User Manual Ch.2 p.31). Candidate's narrative closely and accurately paraphrases the manual's own body text (input/output counts, power terminal count, bank structure, power/output voltage ranges) and correctly frames sections 4-5 as inference rather than direct observation. No invented components, no reversed sequence (none exists on this static wiring page), and no unsafe troubleshooting directives -- so no hard failure. Deductions are for incomplete component/label itemization, an omitted but clearly-legible input voltage/current spec, imprecise octal-terminal-range shorthand, and missing notes on the absence of logic content and on AC/DC output wiring caution."
+}

@@ -15,6 +15,7 @@
 
 import type { BlogPost } from "../data/blog-posts.js";
 import type { FaultCode } from "../data/fault-codes.js";
+import { driveCommanderSitemapLocs } from "./drive-pack-data.js";
 
 type ChangeFreq = "weekly" | "monthly" | "yearly";
 
@@ -62,6 +63,13 @@ export function buildSitemapXml(
       priority: "0.7",
       freq: "monthly" as const,
       lastmod: fc.updated ?? today,
+    })),
+    // Drive Commander pack pages (landing + fault codes + parameters).
+    ...driveCommanderSitemapLocs().map((loc) => ({
+      loc,
+      priority: "0.7",
+      freq: "monthly" as const,
+      lastmod: today,
     })),
   ];
 

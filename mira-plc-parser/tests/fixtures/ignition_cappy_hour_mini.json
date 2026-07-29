@@ -1,0 +1,104 @@
+{
+  "name": "Cappy Hour Inc",
+  "tagType": "Folder",
+  "tags": [
+    {
+      "name": "Site 1",
+      "tagType": "Folder",
+      "tags": [
+        {
+          "name": "Filler Production",
+          "tagType": "Folder",
+          "tags": [
+            {
+              "name": "FillingLine03",
+              "tagType": "Folder",
+              "tags": [
+                {
+                  "name": "CapLoader",
+                  "typeId": "Models/Equipment/Process/CapLoader",
+                  "tagType": "UdtInstance",
+                  "parameters": {
+                    "MesTagPath": {
+                      "dataType": "String",
+                      "value": "[MES]Cappy Hour Inc/Site 1/Filler Production/FillingLine03/CapLoader"
+                    },
+                    "TagPath": {
+                      "dataType": "String",
+                      "value": "[ProveIt Edge]CappyHour/Plant1/FillerProduction/FillingLine03/Caploader"
+                    }
+                  },
+                  "tags": [
+                    {
+                      "name": "ProductionRun",
+                      "tagType": "UdtInstance",
+                      "tags": [
+                        { "name": "Running", "tagType": "AtomicTag", "dataType": "Boolean" },
+                        { "name": "CapCount", "tagType": "AtomicTag", "dataType": "Int4", "engUnit": "caps", "value": 0 }
+                      ]
+                    },
+                    { "name": "Faulted", "tagType": "AtomicTag", "dataType": "Boolean" }
+                  ]
+                },
+                {
+                  "name": "Filler",
+                  "typeId": "Models/Equipment/Process/Filler",
+                  "tagType": "UdtInstance",
+                  "parameters": {
+                    "MesTagPath": {
+                      "dataType": "String",
+                      "value": "[MES]Cappy Hour Inc/Site 1/Filler Production/FillingLine03/Filler"
+                    },
+                    "TagPath": {
+                      "dataType": "String",
+                      "value": "[ProveIt Edge]CappyHour/Plant1/FillerProduction/FillingLine03/Filler"
+                    }
+                  },
+                  "tags": [
+                    { "name": "FillVolume", "tagType": "AtomicTag", "dataType": "Float8", "engUnit": "mL", "value": 0 },
+                    { "name": "Running", "tagType": "AtomicTag", "dataType": "Boolean" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Packaging",
+          "tagType": "Folder",
+          "tags": [
+            {
+              "name": "LabelerLine01",
+              "tagType": "Folder",
+              "tags": [
+                {
+                  "name": "Labeler",
+                  "typeId": "Models/Equipment/Process/Labeler",
+                  "tagType": "UdtInstance",
+                  "parameters": {
+                    "MesTagPath": {
+                      "dataType": "String",
+                      "value": "[MES]Cappy Hour Inc/Site 1/Packaging/LabelerLine01/Labeler"
+                    }
+                  },
+                  "tags": [
+                    {
+                      "name": "MachineIdentification",
+                      "tagType": "UdtInstance",
+                      "tags": [
+                        { "name": "Manufacturer", "tagType": "AtomicTag", "dataType": "String", "value": "Krones" },
+                        { "name": "Model", "tagType": "AtomicTag", "dataType": "String", "value": "Contiroll HS" }
+                      ]
+                    },
+                    { "name": "Running", "tagType": "AtomicTag", "dataType": "Boolean" },
+                    { "name": "LabelCount", "tagType": "AtomicTag", "dataType": "Int4", "engUnit": "labels", "value": 0 }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -55,6 +55,121 @@ def _post(tc, payload: dict):
     )
 
 
+def _real_assess_from_paths():
+    """Import the real shared.live_snapshot.assess_from_paths, adding mira-bots to
+    sys.path (the mira-pipeline conftest only adds mira-pipeline/). In the prod
+    container `shared` is already importable — mira-pipeline runs the Supervisor —
+    so ignition_chat's defensive import resolves the real fn; this just guarantees
+    it in the test env too."""
+    import os
+    import sys
+
+    mb = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "mira-bots",
+    )
+    if mb not in sys.path:
+        sys.path.insert(0, mb)
+    from shared.live_snapshot import assess_from_paths
+
+    return assess_from_paths
+
+
+def test_assessment_reaches_prompt_for_vfd_fault(client, monkeypatch):
+    """A VFD snapshot with an active fault produces a deterministic Assessment
+    line + the reasoning-separation instruction in the engine prompt (the HMI
+    mirror of the Hub packet / engine section)."""
+    tc, engine = client
+    monkeypatch.setattr(ignition_chat, "_assess_from_paths", _real_assess_from_paths())
+
+    async def _passthrough(snap, tenant_id):
+        return snap
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _passthrough)
+
+    resp = _post(
+        tc,
+        {
+            "query": "why did the conveyor stop?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {
+                "[default]Mira_Monitored/CV-101/vfd_fault_code": {"value": "58", "quality": "Good"},
+                "[default]Mira_Monitored/CV-101/vfd_comm_ok": {"value": "true", "quality": "Good"},
+            },
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    # Deterministic assessment from the scaling-immune enum facts.
+    assert "Assessment: Active VFD fault: CE10 modbus timeout" in message
+    # The reasoning-separation instruction reaches the prompt.
+    assert "clearly separate" in message
+    # The raw live-tag block is still preserved.
+    assert "vfd_fault_code" in message
+
+
+def test_fault_diagnostic_card_reaches_prompt_for_mapped_gs10_fault(client, monkeypatch):
+    """A mapped GS10 fault (GOOD comms) on the Ignition direct-connection surface
+    now carries the SAME fault-diagnostic card as the engine path (Drive
+    Commander DriveSense Ignition-enrich follow-up) — proves the enrichment is
+    actually visible end-to-end, not just at the shared.live_snapshot unit-test
+    layer."""
+    tc, engine = client
+    monkeypatch.setattr(ignition_chat, "_assess_from_paths", _real_assess_from_paths())
+
+    async def _passthrough(snap, tenant_id):
+        return snap
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _passthrough)
+
+    resp = _post(
+        tc,
+        {
+            "query": "why did the conveyor stop?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {
+                "[default]Mira_Monitored/CV-101/vfd_fault_code": {"value": "4", "quality": "Good"},
+                "[default]Mira_Monitored/CV-101/vfd_comm_ok": {"value": "true", "quality": "Good"},
+            },
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "Assessment: Active VFD fault: GFF ground fault" in message
+    assert "### Fault diagnostic:" in message
+    assert "Likely causes:" in message
+
+
+def test_healthy_but_stopped_assessment_from_enum_facts(client, monkeypatch):
+    tc, engine = client
+    monkeypatch.setattr(ignition_chat, "_assess_from_paths", _real_assess_from_paths())
+
+    async def _passthrough(snap, tenant_id):
+        return snap
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _passthrough)
+
+    resp = _post(
+        tc,
+        {
+            "query": "why won't it run?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {
+                "[default]Mira_Monitored/CV-101/vfd_fault_code": {"value": "0"},
+                "[default]Mira_Monitored/CV-101/vfd_comm_ok": {"value": "true"},
+                "[default]Mira_Monitored/CV-101/vfd_cmd_word": {"value": "1"},  # STOP
+                # analog value present but never re-scaled into the assessment
+                "[default]Mira_Monitored/CV-101/vfd_frequency": {"value": "0.0"},
+            },
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "Assessment:" in message
+    assert "healthy" in message and "stopped" in message
+    assert "command/permissive/interlock" in message
+
+
 def test_asset_id_marks_direct_connection(client):
     tc, engine = client
     resp = _post(tc, {"query": "why did the conveyor stop?", "asset_id": "[default]Conv/State"})
@@ -155,3 +270,127 @@ def test_no_tag_snapshot_means_no_tag_evidence(client):
     resp = _post(tc, {"query": "status?", "asset_id": "[default]Conv/State"})
     assert resp.status_code == 200
     assert engine.process.await_args.kwargs.get("tag_evidence") is None
+
+
+def test_tag_preamble_enriched_with_verified_entities(client, monkeypatch):
+    """Verified tag_entities metadata (units, data_type) appears in the prompt preamble.
+
+    _enrich_tag_snapshot_with_semantics is mocked so no live DB is required.
+    This verifies the handler wires enrichment before _format_tag_preamble, and
+    that _format_tag_preamble renders the merged fields.
+
+    Join-key contract (enforced by Phase 1's tag_classifier): source_address in
+    tag_entities must store the same path string that tag_snapshot uses as its key.
+    """
+    tc, engine = client
+
+    async def _mock_enrich(tag_snapshot, tenant_id):
+        return {
+            k: ({**v, "units": "A", "data_type": "REAL"} if isinstance(v, dict) else v)
+            for k, v in tag_snapshot.items()
+        }
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _mock_enrich)
+
+    resp = _post(
+        tc,
+        {
+            "query": "is the motor overloaded?",
+            "asset_id": "[default]Conv/State",
+            "tag_snapshot": {"Motor_Current_A": {"value": 11.2, "quality": "good"}},
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "11.2 A" in message
+    assert "REAL" in message
+
+
+def _real_analog():
+    """The real analog assessment + scaling adapter, with mira-bots on sys.path
+    (mirrors `_real_assess_from_paths`)."""
+    import os
+    import sys
+
+    mb = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "mira-bots",
+    )
+    if mb not in sys.path:
+        sys.path.insert(0, mb)
+    from shared.live_snapshot import assess_analog_from_paths
+    from shared.wire_scaling import from_jsonb
+
+    return assess_analog_from_paths, from_jsonb
+
+
+def _use_real_analog(monkeypatch):
+    assess_analog, from_jsonb = _real_analog()
+    monkeypatch.setattr(ignition_chat, "_assess_analog_from_paths", assess_analog)
+    monkeypatch.setattr(ignition_chat, "_tag_scaling_from_jsonb", from_jsonb)
+
+
+def test_analog_card_reaches_prompt_for_explicitly_scaled_dc_bus(client, monkeypatch):
+    """A dc_bus tag with a verified raw_register scaling contract is scaled to
+    engineering units and assessed against the pack envelope; the self-explaining
+    card reaches the engine prompt. End-to-end proof of the scaling contract."""
+    tc, engine = client
+    _use_real_analog(monkeypatch)
+
+    dc = "[default]Mira_Monitored/CV-101/vfd_dc_bus"
+
+    async def _mock_enrich(tag_snapshot, tenant_id):
+        # Verified tag_entities row: raw_register scaling + units for this tag.
+        return {
+            k: (
+                {**v, "units": "V", "scaling": {"mode": "raw_register", "scale": 0.1}}
+                if isinstance(v, dict)
+                else v
+            )
+            for k, v in tag_snapshot.items()
+        }
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _mock_enrich)
+
+    resp = _post(
+        tc,
+        {
+            "query": "is the DC bus healthy?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {dc: {"value": "3200", "quality": "Good"}},
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "DC bus: 320 V" in message
+    assert "Source value: 3200" in message
+    assert "Normal band: 300–340 V" in message
+    assert "Assessment: normal" in message
+
+
+def test_no_analog_card_when_scaling_unknown(client, monkeypatch):
+    """Without a verified scaling contract, the dc_bus value is still shown in the
+    preamble but NEVER assessed — no card, no false undervoltage from '3200'."""
+    tc, engine = client
+    _use_real_analog(monkeypatch)
+
+    dc = "[default]Mira_Monitored/CV-101/vfd_dc_bus"
+
+    async def _passthrough(snap, tenant_id):
+        return snap  # no enrichment → no scaling → unknown
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _passthrough)
+
+    resp = _post(
+        tc,
+        {
+            "query": "is the DC bus healthy?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {dc: {"value": "3200", "quality": "Good"}},
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "3200" in message  # raw value still visible in the preamble
+    assert "Normal band" not in message  # but no analog assessment card
+    assert "undervoltage" not in message

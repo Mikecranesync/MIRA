@@ -5,6 +5,7 @@
  *   STRIPE_SECRET_KEY    — Stripe API secret
  *   STRIPE_WEBHOOK_SECRET — Webhook endpoint signing secret (whsec_...)
  *   STRIPE_PRICE_ID      — Price ID for $97/mo beta subscription
+ *   STRIPE_DRIVE_COMMANDER_PRICE_ID — Price ID for Drive Commander Pro ($29/mo)
  */
 
 import Stripe from "stripe";
@@ -107,6 +108,43 @@ export async function createDirectCheckoutSession(): Promise<string> {
     customer: customer.id,
     success_url: "https://app.factorylm.com/feed/?checkout=success",
     cancel_url: `${base}/pricing?checkout=cancelled`,
+    allow_promotion_codes: true,
+  });
+
+  if (!session.url) throw new Error("Stripe session created without URL");
+  return session.url;
+}
+
+/**
+ * Create a Stripe Checkout session for Drive Commander Pro (individual, $29/mo).
+ * Stripe collects email + card on its hosted page; the webhook records the
+ * purchase WITHOUT running CMMS tenant activation or Hub provisioning
+ * (different product, different buyer — see the drive-commander-pro branch
+ * in /api/stripe/webhook).
+ */
+export async function createDriveCommanderCheckoutSession(): Promise<string> {
+  const priceId = process.env.STRIPE_DRIVE_COMMANDER_PRICE_ID;
+  if (!priceId) throw new Error("STRIPE_DRIVE_COMMANDER_PRICE_ID not set");
+
+  const stripe = getStripe();
+  const base = BASE_URL();
+
+  // Same Accounts-V2 pattern as createDirectCheckoutSession: pre-create an
+  // anonymous customer so Stripe collects email+card on its hosted page.
+  const customer = await stripe.customers.create({
+    metadata: { source: "drive_commander_funnel" },
+  });
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    line_items: [{ price: priceId, quantity: 1 }],
+    customer: customer.id,
+    metadata: { product: "drive-commander-pro" },
+    subscription_data: {
+      metadata: { product: "drive-commander-pro" },
+    },
+    success_url: `${base}/drive-commander/siemens-g120?checkout=success`,
+    cancel_url: `${base}/drive-commander/siemens-g120?checkout=cancelled`,
     allow_promotion_codes: true,
   });
 

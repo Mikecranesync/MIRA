@@ -145,7 +145,11 @@ def _make_post_fn():
     import system.net
 
     def _post(url, body_bytes, headers, timeout_ms):
-        client = system.net.httpClient()
+        # HTTP/1.1 pinned: Java's HttpClient defaults to HTTP_2 and sends an
+        # h2c Upgrade on plain http://, which uvicorn/httptools answers by
+        # dropping the request body — the relay then hashes an empty body and
+        # rejects every POST with 401 signature_mismatch (bench-proven 2026-07-03).
+        client = system.net.httpClient(version="HTTP_1_1")
         return client.post(
             url,
             data=body_bytes,

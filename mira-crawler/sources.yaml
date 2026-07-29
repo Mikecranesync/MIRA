@@ -91,7 +91,9 @@ tiers:
       description: "GS20 AC Drive user manual — parameters, wiring, fault codes"
 
     automationdirect_gs10:
-      url: "https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf"
+      # AutomationDirect split gs10m.pdf into per-chapter files; gs10usermanual.pdf
+      # is the current combined manual (old gs10m.pdf now 404s). Verified 2026-07-27.
+      url: "https://cdn.automationdirect.com/static/manuals/gs10m/gs10usermanual.pdf"
       type: equipment_manual
       format: pdf
       manufacturer: AutomationDirect
@@ -99,17 +101,10 @@ tiers:
       crawl_pattern: direct
       description: "GS10 AC Drive user manual — parameters, wiring, fault codes"
 
-    wago_topjob_s:
-      url: "https://www.wago.com/global/download/fe_topjob_s_en.pdf"
-      type: equipment_manual
-      format: pdf
-      manufacturer: WAGO
-      equipment_id: TOPJOB-S
-      crawl_pattern: direct
-      description: "WAGO TOPJOB S DIN-rail terminal block installation and wiring guide"
-
     wago_750_8202:
-      url: "https://www.wago.com/global/download/75008202e.pdf"
+      # WAGO moved manuals off /global/download/ onto /wagoweb/documentation/
+      # (old 75008202e.pdf now 404s). Verified 2026-07-27.
+      url: "https://www.wago.com/wagoweb/documentation/750/eng_manu/coupler_controller/m07508202_xxxxxxxx_0en.pdf"
       type: equipment_manual
       format: pdf
       manufacturer: WAGO
@@ -117,7 +112,62 @@ tiers:
       crawl_pattern: direct
       description: "WAGO 750-8202 PFC200 2ETH RS programmable fieldbus controller manual"
 
-    # ABB, FANUC, KUKA, Siemens, Rockwell — URLs to be verified and added
+    # NOTE: wago_topjob_s removed 2026-07-27 — old URL 404s and WAGO publishes no
+    # zero-login official replacement (only distributor catalogs); low diagnostic
+    # value (DIN-rail terminal block). Re-add if an official wago.com PDF surfaces.
+
+    # ── Rockwell Automation (PowerFlex drives) — literature.rockwellautomation.com
+    # is publicly downloadable, zero-login. All URLs verified 200/application/pdf 2026-07-27.
+    rockwell_powerflex_525:
+      url: "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Rockwell
+      equipment_id: PowerFlex-525
+      crawl_pattern: direct
+      description: "PowerFlex 523/525 AC Drive user manual (520-UM001) — parameters, wiring, fault/alarm codes"
+
+    rockwell_powerflex_755:
+      url: "https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/750-pm001_-en-p.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Rockwell
+      equipment_id: PowerFlex-755
+      crawl_pattern: direct
+      description: "PowerFlex 750-Series AC Drive programming manual (750-PM001) — parameters, faults, alarms"
+
+    # ── Siemens (SINAMICS drives) — cache.industry.siemens.com/dl/files/ is public,
+    # zero-login (robots.txt disallows only /dl/dl-media/ + /dl/media/, not /dl/files/).
+    # List Manuals carry the full fault/alarm/parameter reference. Verified 2026-07-27.
+    siemens_sinamics_g120c_list:
+      url: "https://cache.industry.siemens.com/dl/files/922/109817922/att_1133717/v1/G120C_list_man_0223_en-US.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Siemens
+      equipment_id: SINAMICS-G120C
+      crawl_pattern: direct
+      description: "SINAMICS G120C List Manual (02/2023) — parameters, faults (Fxxxxx), alarms (Axxxxx)"
+
+    siemens_sinamics_g120_cu240:
+      url: "https://cache.industry.siemens.com/dl/files/919/109817919/att_1133702/v1/G120_CU240BE-2_list_man_0223_en-US.pdf"
+      type: equipment_manual
+      format: pdf
+      manufacturer: Siemens
+      equipment_id: SINAMICS-G120-CU240
+      crawl_pattern: direct
+      description: "SINAMICS G120 CU240B-2/CU240E-2 List Manual (02/2023) — parameters, fault/alarm codes"
+
+    # ── ABB: no tier-3 equipment manual added here — the ABB reference PDFs under
+    # 5_reference (nameplate/softstarter/VFD guides) are already crawled by the
+    # --filter abb nightly job (#2959 broadened it to scan every tier).
+
+    # ── FANUC & KUKA (industrial robots): NO zero-login, publicly-hosted official
+    # manuals exist. Both publish exclusively via authenticated dealer/customer
+    # portals (my.kuka.com, FANUC CRC/partner portal); every public copy found is a
+    # third-party re-host (Scribd/ManualsLib/PDFCoffee) that is login-walled and/or
+    # copyright-infringing — disqualified by the zero-login + license rules above.
+    # Intentionally omitted (searched + verified 2026-07-27). Re-add only if an
+    # official, login-free fanuc.*/kuka.* PDF surfaces.
 
   # ── TIER 4: Open Educational ────────────────────────────────────
   4_educational:

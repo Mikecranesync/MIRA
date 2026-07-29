@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PrintSense / FactoryLM — Landing Page Design Style Guide</title>
+<style>
+  :root{
+    --ink:#0A0E14; --ink-2:#0F1621; --panel:#131C2A; --panel-2:#0c131e;
+    --line:#20304A; --line-2:#2b3e5c;
+    --paper:#E8EEF6; --muted:#8A9BB4; --white:#F4F8FF;
+    --cyan:#2DD4E8; --cyan-deep:#14A3B8;
+    --lime:#9BE861; --amber:#F5B33C; --red:#FF5C6C; --violet:#8B7CF6;
+    --navy:#1B365D; /* inherited FactoryLM brand */
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ink);color:var(--paper);font-family:var(--sans);line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+  .mono{font-family:var(--mono)}
+  a{color:var(--cyan);text-decoration:none}
+
+  /* header */
+  header{border-bottom:1px solid var(--line);padding:64px 0 48px;background:
+    radial-gradient(ellipse 70% 80% at 50% 0%,rgba(45,212,232,.08),transparent 70%)}
+  .tag{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase;
+    color:var(--cyan);border:1px solid var(--line);padding:6px 14px;border-radius:100px;background:rgba(45,212,232,.05)}
+  h1{font-size:clamp(34px,5.5vw,54px);font-weight:800;letter-spacing:-1.5px;line-height:1.05;margin:22px 0 14px}
+  header p{color:var(--muted);font-size:19px;max-width:640px}
+  .meta{margin-top:22px;font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+  .meta b{color:var(--paper)}
+
+  /* section shell */
+  section{padding:70px 0;border-bottom:1px solid var(--line)}
+  .snum{font-family:var(--mono);font-size:12px;letter-spacing:2px;color:var(--cyan);text-transform:uppercase}
+  h2{font-size:clamp(24px,3.4vw,34px);font-weight:800;letter-spacing:-.8px;margin:12px 0 10px;line-height:1.12}
+  .intro{color:var(--muted);font-size:17px;max-width:680px;margin-bottom:34px}
+  h3{font-size:18px;font-weight:700;margin:28px 0 14px}
+  p{color:var(--paper)}
+  .sub-muted{color:var(--muted)}
+
+  /* principles */
+  .principles{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.principles{grid-template-columns:1fr}}
+  .principle{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;border-left:3px solid var(--cyan)}
+  .principle .k{font-family:var(--mono);font-size:12px;color:var(--cyan);letter-spacing:1px}
+  .principle h4{font-size:17px;font-weight:700;margin:6px 0 6px}
+  .principle p{color:var(--muted);font-size:14px}
+
+  /* reference table */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);position:sticky}
+  td:first-child{font-weight:600;color:var(--white);white-space:nowrap}
+  td:nth-child(2){color:var(--cyan);font-family:var(--mono);font-size:12px;white-space:nowrap}
+  td:last-child{color:var(--muted)}
+  .cat-row td{background:var(--panel-2);font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber)}
+
+  /* color swatches */
+  .swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:720px){.swatches{grid-template-columns:1fr 1fr}}
+  .sw{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+  .sw .chip{height:70px}
+  .sw .info{padding:12px 14px}
+  .sw .name{font-weight:700;font-size:14px}
+  .sw .hex{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .sw .use{font-size:12px;color:var(--muted);margin-top:4px}
+  .role{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .role span{font-family:var(--mono);font-size:12px;padding:6px 11px;border-radius:7px;border:1px solid var(--line)}
+
+  /* type scale */
+  .type-row{display:flex;align-items:baseline;gap:20px;border-bottom:1px solid var(--line);padding:16px 0;flex-wrap:wrap}
+  .type-row .lbl{font-family:var(--mono);font-size:12px;color:var(--muted);width:150px;flex-shrink:0}
+  .t-display{font-size:44px;font-weight:800;letter-spacing:-1.5px}
+  .t-h2{font-size:30px;font-weight:800;letter-spacing:-.8px}
+  .t-h3{font-size:20px;font-weight:700}
+  .t-body{font-size:17px;color:var(--paper)}
+  .t-small{font-size:14px;color:var(--muted)}
+  .t-mono{font-family:var(--mono);font-size:13px;color:var(--cyan)}
+
+  /* component demos */
+  .demo{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px;margin-top:16px}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:11px 20px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+  .btn-primary{background:var(--cyan);color:var(--ink);box-shadow:0 0 24px rgba(45,212,232,.3)}
+  .btn-ghost{border-color:var(--line);color:var(--paper);background:transparent}
+  .btn-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+
+  /* THE cited answer card — centerpiece component */
+  .answer{background:linear-gradient(180deg,var(--panel),var(--ink-2));border:1px solid var(--line-2);
+    border-radius:16px;padding:0;overflow:hidden;box-shadow:0 24px 60px -24px rgba(0,0,0,.7)}
+  .answer .q{display:flex;gap:12px;align-items:flex-start;padding:20px 22px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+  .answer .q .avatar{width:30px;height:30px;border-radius:8px;background:var(--line);display:grid;place-items:center;font-size:14px;flex-shrink:0}
+  .answer .q .qt{font-size:15.5px;font-weight:600;color:var(--white)}
+  .answer .q .qs{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+  .answer .a{padding:22px}
+  .answer .a .mira{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+  .answer .a .mira .b{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--cyan),var(--cyan-deep));
+    display:grid;place-items:center;color:var(--ink);font-weight:800;font-size:13px}
+  .answer .a .mira .n{font-weight:700;font-size:14px}
+  .answer .a .mira .n small{color:var(--muted);font-weight:500;font-family:var(--mono);font-size:11px;margin-left:6px}
+  .answer .a .body{font-size:15px;color:var(--paper);line-height:1.7}
+  .answer .a .body mark{background:rgba(45,212,232,.14);color:var(--cyan);padding:1px 4px;border-radius:4px;font-weight:600}
+  .cites{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .cite{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--paper);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:7px 11px}
+  .cite .ico{color:var(--cyan)}
+  .cite:hover{border-color:var(--cyan)}
+  .answer .foot{display:flex;align-items:center;gap:10px;padding:13px 22px;border-top:1px solid var(--line);
+    background:var(--panel-2);font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .badge{font-family:var(--mono);font-weight:700;font-size:11px;padding:4px 10px;border-radius:6px}
+  .badge.grounded{background:rgba(155,232,97,.15);color:var(--lime);border:1px solid rgba(155,232,97,.3)}
+  .badge.stop{background:rgba(255,92,108,.14);color:var(--red);border:1px solid rgba(255,92,108,.32)}
+
+  /* stat blocks / bento */
+  .bento{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:720px){.bento{grid-template-columns:1fr 1fr}}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .stat .big{font-size:30px;font-weight:800;letter-spacing:-1px}
+  .stat .big.ok{color:var(--lime)} .stat .big.cy{color:var(--cyan)}
+  .stat .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+  /* blueprint / section order */
+  .blueprint{display:flex;flex-direction:column;gap:10px;counter-reset:step}
+  .bp{display:flex;gap:16px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:16px 18px}
+  .bp .n{counter-increment:step;font-family:var(--mono);font-size:12px;color:var(--cyan);border:1px solid var(--line);
+    min-width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex-shrink:0}
+  .bp .n::before{content:counter(step,decimal-leading-zero)}
+  .bp h4{font-size:15.5px;font-weight:700}
+  .bp p{color:var(--muted);font-size:13.5px}
+
+  /* do/dont */
+  .dd{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.dd{grid-template-columns:1fr}}
+  .do,.dont{border-radius:12px;padding:20px;border:1px solid var(--line)}
+  .do{background:#0f1712;border-color:rgba(155,232,97,.25)}
+  .dont{background:#161016;border-color:rgba(255,92,108,.22)}
+  .do h4{color:var(--lime)} .dont h4{color:var(--red)}
+  .dd ul{list-style:none;margin-top:12px;display:flex;flex-direction:column;gap:9px}
+  .dd li{font-size:13.5px;color:var(--paper);display:flex;gap:9px}
+  .do li:before{content:"✓";color:var(--lime);font-weight:800}
+  .dont li:before{content:"✕";color:var(--red);font-weight:800}
+
+  .note{font-size:12.5px;color:var(--muted);font-family:var(--mono);margin-top:14px;border-left:2px solid var(--line);padding-left:12px}
+  .foot-final{padding:40px 0;color:var(--muted);font-size:13px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <span class="tag">PrintSense · FactoryLM — Design System</span>
+    <h1>Landing page style guide</h1>
+    <p>A convincing, credibility-first design system for the hook products — grounded in a teardown of 25 industry landing pages. The centerpiece is the one thing competitors can't fake: a real MIRA answer citing a real manual.</p>
+    <div class="meta">v1.0 · scope: <b>printsense</b> + <b>drivecommander</b> hooks, aligned to <b>factorylm.com</b> · July 2026</div>
+  </div>
+</header>
+
+<!-- 1. PRINCIPLES -->
+<section>
+  <div class="wrap">
+    <div class="snum">01 — Principles</div>
+    <h2>Five rules everything else obeys</h2>
+    <p class="intro">These come straight from what the best pages in your space actually do. When a design decision is unclear, the answer is whichever option serves these five.</p>
+    <div class="principles">
+      <div class="principle"><div class="k">01</div><h4>Show the output, don't describe it</h4><p>Linear and Vercel put the real product on screen above the fold. Your product's output is a <b style="color:var(--paper)">cited answer</b>. Lead with it — no stock illustrations, ever.</p></div>
+      <div class="principle"><div class="k">02</div><h4>Credibility beats cleverness</h4><p>Technical buyers punish hype. Evidence, real fault codes, real manual sections, and honest limits convert them. Keep FactoryLM's "no AI hype" voice.</p></div>
+      <div class="principle"><div class="k">03</div><h4>One page, one job</h4><p>The hook page has exactly one goal: claim 5 free reads. Every section either builds trust toward that or gets cut.</p></div>
+      <div class="principle"><div class="k">04</div><h4>Motion clarifies, never decorates</h4><p>Subtle scan-lines, scroll reveals, a citation that expands. Motion that explains "how it's grounded." Nothing that slows the page.</p></div>
+      <div class="principle"><div class="k">05</div><h4>Trust is a color</h4><p>Green = grounded/pass. Amber = held/verify. Red = stop/fault. Never decorative. The palette itself tells the safety story.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. THE 25 -->
+<section>
+  <div class="wrap">
+    <div class="snum">02 — The teardown</div>
+    <h2>25 landing pages, one lesson each</h2>
+    <p class="intro">Studied across three buckets: your direct industrial-maintenance competitors, the "answers-from-documents" AI tools that are your closest structural analog, and the B2B benchmarks everyone copies. The right-hand column is the single move worth stealing.</p>
+    <table>
+      <thead><tr><th>Page</th><th>Category</th><th>The one move to steal</th></tr></thead>
+      <tbody>
+        <tr class="cat-row"><td colspan="3">Direct — industrial maintenance / IoT</td></tr>
+        <tr><td>Tractian</td><td>CMMS+IoT</td><td>Real-time asset data shown as live cards; "one unified system" clarity. Bold, simple, confident.</td></tr>
+        <tr><td>MaintainX</td><td>CMMS</td><td>Phone-native proof — screenshots of the actual mobile work order. Frontline, not boardroom.</td></tr>
+        <tr><td>Limble</td><td>CMMS</td><td>Counter-example: dense, dated, too many fields. Shows what to avoid — don't out-feature, out-clarify.</td></tr>
+        <tr><td>UpKeep</td><td>CMMS</td><td>Role-segmented hero ("for technicians / managers") — mirror your Tier-0/1/2 audiences.</td></tr>
+        <tr><td>Fiix</td><td>CMMS</td><td>Integration logos as trust wall; asset-health visual language.</td></tr>
+        <tr><td>Augury</td><td>Machine health AI</td><td>"Diagnosis with confidence" framing; downtime-cost stat above the fold.</td></tr>
+        <tr><td>Samsara</td><td>Ops platform</td><td>Enterprise credibility bar: named customers + hard ROI numbers early.</td></tr>
+        <tr><td>Uptake / Cognite</td><td>Industrial AI</td><td>Data-to-decision diagram; how messy inputs become trusted output.</td></tr>
+        <tr><td>Tulip</td><td>Frontline ops</td><td>"No-code for the floor" — value even if you never scroll.</td></tr>
+        <tr class="cat-row"><td colspan="3">Closest analog — answers from documents (RAG / cited AI)</td></tr>
+        <tr><td>Harvey (legal AI)</td><td>Cited answers</td><td>THE model. The cited answer IS the hero. Citation chips under every claim. Copy this pattern exactly.</td></tr>
+        <tr><td>Glean</td><td>Enterprise search</td><td>"Answers with sources from your systems" — grounding is the whole pitch. Source pills.</td></tr>
+        <tr><td>Hebbia</td><td>Doc intelligence</td><td>Shows the document + the extracted answer side by side. See-the-evidence layout.</td></tr>
+        <tr><td>Perplexity</td><td>Answer engine</td><td>Numbered inline citations as a visual signature. Makes "grounded" legible at a glance.</td></tr>
+        <tr><td>Anthropic / Claude</td><td>AI platform</td><td>Calm, honest, safety-forward tone for a technical audience. Restraint reads as trust.</td></tr>
+        <tr><td>Sana</td><td>AI knowledge</td><td>Ask-a-question interactive hero — let visitors type and see a grounded reply.</td></tr>
+        <tr><td>Ironclad / Robin AI</td><td>Contract AI</td><td>Before/after: raw document → structured, verified output. Your print → graph story.</td></tr>
+        <tr class="cat-row"><td colspan="3">Benchmarks — B2B SaaS everyone copies</td></tr>
+        <tr><td>Linear</td><td>Dev tool</td><td>Whole page is the real UI in dark mode. Trial = the demo. Friction-free CTA.</td></tr>
+        <tr><td>Vercel</td><td>Dev platform</td><td>Product is the proof; specs and speed over marketing fluff. Ship the CTA straight to action.</td></tr>
+        <tr><td>Stripe</td><td>Payments</td><td>Answers the buyer's questions before they ask (the structured table). Technical + polished.</td></tr>
+        <tr><td>Ramp</td><td>Fintech</td><td>Quantified outcome in the headline ("save X"). Hard number, not adjective.</td></tr>
+        <tr><td>Retool</td><td>Internal tools</td><td>Bento grid of capabilities; code + UI side by side.</td></tr>
+        <tr><td>Notion</td><td>Productivity</td><td>Story-driven hero; narrative headline + micro-animation showing transformation.</td></tr>
+        <tr><td>Scale AI</td><td>AI data</td><td>Logo wall of serious customers as instant enterprise credibility.</td></tr>
+        <tr><td>Cursor</td><td>AI IDE</td><td>Show-don't-tell demo loop of the product doing the work in seconds.</td></tr>
+        <tr><td>Framer</td><td>Web builder</td><td>Kinetic type + oversized headline; motion as brand identity.</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Buckets weighted deliberately: your closest analog isn't a CMMS — it's the cited-answer AI tools (Harvey, Glean, Perplexity). That's where the winning pattern lives.</p>
+  </div>
+</section>
+
+<!-- 3. CENTERPIECE COMPONENT -->
+<section style="background:radial-gradient(ellipse 60% 60% at 50% 0%,rgba(45,212,232,.06),transparent 70%)">
+  <div class="wrap">
+    <div class="snum">03 — The centerpiece component</div>
+    <h2>The Cited Answer Card</h2>
+    <p class="intro">This is the whole guide in one object. A real technician question, MIRA's grounded answer, and the manual sections it's built on — shown, not claimed. It leads the hero and repeats as social proof. Everything else is scaffolding around this.</p>
+
+    <div class="answer">
+      <div class="q">
+        <div class="avatar">🔧</div>
+        <div>
+          <div class="qt">"PowerFlex 755 is tripping F5 at about 1,200 RPM overnight. What do I check?"</div>
+          <div class="qs">Asset POW-755-A12 · Line 3 · sent via Telegram 02:14</div>
+        </div>
+      </div>
+      <div class="a">
+        <div class="mira"><span class="b">M</span><span class="n">MIRA <small>grounded answer</small></span></div>
+        <div class="body">
+          F5 on this drive is a <mark>DC bus undervoltage</mark> fault. The last 7 days show <mark>4 trips in the same RPM band, all overnight</mark> — a pattern consistent with sagging bus voltage under load, not a random fault. The manual's fault-recovery section points to the <mark>DC bus capacitor bank</mark> as the first check, and your own PM history flags it: the 2024-12-14 inspection noted bulging on capacitor 3. Start there before touching drive parameters.
+        </div>
+        <div class="cites">
+          <span class="cite"><span class="ico">📄</span> PowerFlex 755 Manual · §6.2 Fault F5</span>
+          <span class="cite"><span class="ico">🗂️</span> Fault history · POW-755-A12 · 7 d</span>
+          <span class="cite"><span class="ico">🛠️</span> PM record · 2024-12-14</span>
+        </div>
+      </div>
+      <div class="foot">
+        <span class="badge grounded">◆ GROUNDED 5/5</span>
+        <span>3 sources · 0 unsupported claims · read-only</span>
+      </div>
+    </div>
+
+    <h3>Anatomy &amp; rules</h3>
+    <table>
+      <tbody>
+        <tr><td>Question header</td><td>required</td><td>Real technician phrasing (fault code + symptom + asset). Never a marketing question. Shows the channel it came in on.</td></tr>
+        <tr><td>Grounded claims</td><td>highlight</td><td>Every fact that traces to a source is <mark>cyan-highlighted</mark>. If it isn't highlighted, it isn't cited — and shouldn't be in the answer.</td></tr>
+        <tr><td>Citation chips</td><td>required</td><td>One chip per source: manual §, fault history, PM/work order, PLC tag. This is the Harvey/Glean/Perplexity move. Chips are the proof.</td></tr>
+        <tr><td>Grounding badge</td><td>required</td><td>The 1–5 groundedness score + source count + "read-only." Turns the trust claim into a number.</td></tr>
+        <tr><td>Safety variant</td><td>conditional</td><td>When a safety keyword fires, the card flips to a red <span class="badge stop">⚠ STOP</span> header ("MIRA escalates, it never acts"). Reinforces the honest-limits brand.</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Examples are representative of MIRA's real output shape and grounded on OEM documentation of the type FactoryLM indexes; swap in verified §/page numbers from a specific manual before any answer is presented as a factual claim.</p>
+  </div>
+</section>
+
+<!-- 4. COLOR -->
+<section>
+  <div class="wrap">
+    <div class="snum">04 — Color</div>
+    <h2>Ink, blueprint, and the three states</h2>
+    <p class="intro">Dark by default (2026 is a dark-mode expectation, and it reads as "engineered"). A single cyan action color, plus a strict traffic-light state system that carries the safety story. Inherits FactoryLM navy as the bridge to the parent brand.</p>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:#0A0E14"></div><div class="info"><div class="name">Ink</div><div class="hex">#0A0E14</div><div class="use">Page base</div></div></div>
+      <div class="sw"><div class="chip" style="background:#131C2A"></div><div class="info"><div class="name">Panel</div><div class="hex">#131C2A</div><div class="use">Cards, surfaces</div></div></div>
+      <div class="sw"><div class="chip" style="background:#20304A"></div><div class="info"><div class="name">Line</div><div class="hex">#20304A</div><div class="use">Borders, grid</div></div></div>
+      <div class="sw"><div class="chip" style="background:#1B365D"></div><div class="info"><div class="name">Brand navy</div><div class="hex">#1B365D</div><div class="use">FactoryLM link</div></div></div>
+      <div class="sw"><div class="chip" style="background:#2DD4E8"></div><div class="info"><div class="name">Cyan / action</div><div class="hex">#2DD4E8</div><div class="use">CTAs, highlights, links</div></div></div>
+      <div class="sw"><div class="chip" style="background:#9BE861"></div><div class="info"><div class="name">Lime / PASS</div><div class="hex">#9BE861</div><div class="use">Grounded, ok, running</div></div></div>
+      <div class="sw"><div class="chip" style="background:#F5B33C"></div><div class="info"><div class="name">Amber / HELD</div><div class="hex">#F5B33C</div><div class="use">Verify, warning</div></div></div>
+      <div class="sw"><div class="chip" style="background:#FF5C6C"></div><div class="info"><div class="name">Red / STOP</div><div class="hex">#FF5C6C</div><div class="use">Fault, safety stop, fail</div></div></div>
+    </div>
+    <h3>The one hard rule</h3>
+    <div class="role">
+      <span style="color:var(--cyan);border-color:var(--cyan)">cyan = action &amp; grounded evidence</span>
+      <span style="color:var(--lime);border-color:rgba(155,232,97,.4)">green = pass / ok</span>
+      <span style="color:var(--amber);border-color:rgba(245,179,60,.4)">amber = held / verify</span>
+      <span style="color:var(--red);border-color:rgba(255,92,108,.4)">red = stop / fault</span>
+    </div>
+    <p class="note">State colors are NEVER decorative. A green thing is a passing thing. This mirrors the FactoryLM UI token doctrine (muted normal; color = state only) so the hook and the platform feel like one company.</p>
+  </div>
+</section>
+
+<!-- 5. TYPE -->
+<section>
+  <div class="wrap">
+    <div class="snum">05 — Typography</div>
+    <h2>Two families. Oversized display, mono for proof.</h2>
+    <p class="intro">A clean grotesk sans for everything human (Inter / system stack), and a monospace for anything that signals "machine truth" — fault codes, citations, tags, scores. The mono is a trust device: it makes evidence look like evidence.</p>
+    <div class="demo">
+      <div class="type-row"><span class="lbl">Display / H1 · 800 · -1.5</span><span class="t-display">Trust the graph</span></div>
+      <div class="type-row"><span class="lbl">H2 · 800 · -0.8</span><span class="t-h2">Read any print</span></div>
+      <div class="type-row"><span class="lbl">H3 · 700</span><span class="t-h3">How it works</span></div>
+      <div class="type-row"><span class="lbl">Body · 400/600 · 17px</span><span class="t-body">Send a photo of a drawing; get a typed, evidence-backed graph.</span></div>
+      <div class="type-row"><span class="lbl">Small / muted · 14px</span><span class="t-small">No card. 5 free interpretations, then paid.</span></div>
+      <div class="type-row"><span class="lbl">Mono / proof · 13px</span><span class="t-mono">F5 · DC_BUS_UNDERVOLTAGE · §6.2 · GROUNDED 5/5</span></div>
+    </div>
+    <p class="note">Max two families. Mono is reserved — if it isn't machine data, it isn't mono. Oversized headlines (2026 trend) but kept legible; kinetic/scroll type only on the hero.</p>
+  </div>
+</section>
+
+<!-- 6. COMPONENTS -->
+<section>
+  <div class="wrap">
+    <div class="snum">06 — Component kit</div>
+    <h2>The reusable pieces</h2>
+    <p class="intro">Beyond the Cited Answer Card, five components carry every page. Consistent radii (10–16px), 1px lines, one accent.</p>
+
+    <h3>Buttons</h3>
+    <div class="demo"><div class="btn-row">
+      <span class="btn btn-primary">Claim 5 free reads →</span>
+      <span class="btn btn-ghost">See how it works</span>
+    </div><p class="sub-muted" style="font-size:13px;margin-top:14px">Primary = cyan, glow, one per view. Ghost = outline. Never two primaries competing.</p></div>
+
+    <h3>Stat / proof bento</h3>
+    <div class="bento" style="margin-top:16px">
+      <div class="stat"><div class="big cy">68,000+</div><div class="lbl">OEM doc chunks</div></div>
+      <div class="stat"><div class="big ok">91.7/A</div><div class="lbl">live read quality</div></div>
+      <div class="stat"><div class="big ok">0</div><div class="lbl">confident misreads</div></div>
+      <div class="stat"><div class="big cy">&lt;60s</div><div class="lbl">photo → verdict</div></div>
+    </div>
+    <p class="note">Bento grids: used by 67% of top SaaS pages, correlated with higher dwell + CTR. Use for proof stats and capability tiles — not for body copy.</p>
+
+    <h3>Verdict badges</h3>
+    <div class="demo"><div class="btn-row">
+      <span class="badge grounded">◆ GROUNDED 5/5</span>
+      <span class="badge" style="background:rgba(155,232,97,.15);color:var(--lime);border:1px solid rgba(155,232,97,.3)">PASS · importable</span>
+      <span class="badge" style="background:rgba(245,179,60,.14);color:var(--amber);border:1px solid rgba(245,179,60,.32)">HELD · review</span>
+      <span class="badge stop">⚠ STOP · escalate</span>
+    </div></div>
+  </div>
+</section>
+
+<!-- 7. SECTION BLUEPRINT -->
+<section>
+  <div class="wrap">
+    <div class="snum">07 — Page blueprint</div>
+    <h2>The section order that converts</h2>
+    <p class="intro">Sequenced so the page delivers value even if the visitor never scrolls, then stacks proof before the ask. This is the recommended order for the PrintSense hook page.</p>
+    <div class="blueprint">
+      <div class="bp"><div class="n"></div><div><h4>Hero = a live Cited Answer Card + one-line promise + "5 free reads" CTA</h4><p>Show the output first. Headline states the outcome, not the feature. Interactive if possible (type a question).</p></div></div>
+      <div class="bp"><div class="n"></div><div><h4>Proof strip — 68k chunks, manufacturer logos, 0 misreads</h4><p>Instant credibility wall. Real numbers, real OEM names.</p></div></div>
+      <div class="bp"><div class="n"></div><div><h4>The thesis — good prose ≠ a trustworthy graph</h4><p>The ATV340 81/B-with-P0-errors story. Your differentiator, stated plainly.</p></div></div>
+      <div class="bp"><div class="n"></div><div><h4>Manual Q&amp;A gallery — 3–4 more Cited Answer Cards, different manufacturers</h4><p>The convincing core. Rotate AB / Siemens / Schneider so buyers see their own gear answered.</p></div></div>
+      <div class="bp"><div class="n"></div><div><h4>How it works — photo → read → gate → verdict (4 steps)</h4><p>Demystify. Reinforce read-only + deterministic gate.</p></div></div>
+      <div class="bp"><div class="n"></div><div><h4>Generic-AI vs PrintSense comparison</h4><p>The same question, two answers. Sharpens why grounding matters.</p></div></div>
+      <div class="bp"><div class="n"></div><div><h4>Pricing — Free (5) → Pro → Team</h4><p>Answer price before they ask (Stripe move). Team tier upsell = export to FactoryLM namespace.</p></div></div>
+      <div class="bp"><div class="n"></div><div><h4>Ecosystem ladder — PrintSense → MIRA → FactoryLM</h4><p>"You are here." Show the platform without competing for the free-tool conversion.</p></div></div>
+      <div class="bp"><div class="n"></div><div><h4>Final CTA — email capture to unlock 5 reads</h4><p>Single field. Restate: no card, read-only, nothing writes back.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. MOTION + VOICE -->
+<section>
+  <div class="wrap">
+    <div class="snum">08 — Motion &amp; voice</div>
+    <h2>How it moves, how it talks</h2>
+    <div class="dd">
+      <div class="do">
+        <h4>Motion — do</h4>
+        <ul>
+          <li>Scroll-reveal sections (subtle fade + rise, ~600ms)</li>
+          <li>A scan-line sweeping the print in the hero</li>
+          <li>Citation chips that expand to show the source on hover</li>
+          <li>Counters that tick up on stats when in view</li>
+          <li>Respect prefers-reduced-motion</li>
+        </ul>
+      </div>
+      <div class="dont">
+        <h4>Motion — don't</h4>
+        <ul>
+          <li>Auto-playing carousels or parallax that fights scroll</li>
+          <li>Anything that delays the hero paint</li>
+          <li>Decorative floating blobs / particles</li>
+          <li>Motion on the safety STOP card — it must feel instant &amp; sober</li>
+        </ul>
+      </div>
+    </div>
+    <h3>Voice</h3>
+    <div class="dd">
+      <div class="do">
+        <h4>Say it like this</h4>
+        <ul>
+          <li>"Get a graph you can actually trust."</li>
+          <li>"An A-grade read, correctly held for review."</li>
+          <li>"MIRA escalates. It never acts."</li>
+          <li>"Nothing writes back to your systems — ever."</li>
+          <li>Plain, technician-first, quantified.</li>
+        </ul>
+      </div>
+      <div class="dont">
+        <h4>Never this</h4>
+        <ul>
+          <li>"Revolutionary AI-powered synergy platform."</li>
+          <li>Vague superlatives with no number behind them.</li>
+          <li>Over-promising autonomy or control.</li>
+          <li>Corporate hedging. Keep FactoryLM's "no AI hype" spine.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="border-bottom:none">
+  <div class="wrap">
+    <div class="snum">09 — In one line</div>
+    <h2>Show a real answer, cite a real manual, and let honesty do the selling.</h2>
+    <p class="intro">Everything in this guide serves that sentence. The Cited Answer Card is the product; the rest is a frame that gets a skeptical technician to trust it in under 60 seconds.</p>
+  </div>
+</section>
+
+<div class="wrap foot-final">
+  PrintSense / FactoryLM design system v1.0 · built from a 25-page industry teardown · aligned to factorylm.com brand &amp; UI token doctrine.
+</div>
+
+</body>
+</html>
