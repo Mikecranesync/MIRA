@@ -35,7 +35,6 @@ echo "=== MIRA Smoke Test ==="
 echo "Base URL: $BASE"
 echo ""
 
-check "open-webui"       "${BASE}:3000/health"
 check "mira-ingest"      "${BASE}:8002/health"
 check "mira-mcp"         "${BASE}:8001/health"
 check "mira-mcpo"        "${BASE}:8003/mira-mcp/docs"

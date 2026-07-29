@@ -58,66 +58,15 @@ services:
       timeout: 5s
       retries: 3
 
-  mira-core:
-    image: ghcr.io/open-webui/open-webui:v0.8.10
-    container_name: mira-core-saas
-    entrypoint: ["/bin/bash", "/entrypoint-mira.sh"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "127.0.0.1:3010:8080"
-    environment:
-      - WEBUI_AUTH=true
-      - ENABLE_SIGNUP=true
-      - DEFAULT_USER_ROLE=pending
-      - ENABLE_API_KEYS=true
-      - ENABLE_COMMUNITY_SHARING=false
-      - ENABLE_FORWARD_USER_INFO_HEADERS=true
-      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
-      - WEBUI_NAME=MIRA
-      - WEBUI_ENABLE_TELEMETRY=false
-      - WEBUI_CHECK_FOR_UPDATES=false
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - OPENAI_API_BASE_URLS=http://mira-pipeline-saas:9099/v1
-      - OPENAI_API_KEYS=${PIPELINE_API_KEY:-}
-      - DEFAULT_MODELS=mira-diagnostic
-      # Content extraction: Apache Tika (OW-endorsed for production). Replaced
-      # Docling 2026-06-06 — Docling pinned at 95%+ of its 3 GB cap on this
-      # 8 GB box and chronically 504-timed-out on /v1/convert/file, failing
-      # every PDF extraction (see docs/known-issues/2026-06-06-hub-upload-
-      # failures-docling-oom.md). Tika is ~0.6-1 GB (JVM + Tesseract OCR),
-      # Apache 2.0, and handles scanned PDFs. NOTE: CONTENT_EXTRACTION_ENGINE
-      # is a PersistentConfig var — on an EXISTING OW DB the persisted value
-      # (docling) wins over this env. Run scripts/set-ow-extraction-engine.sh
-      # once after deploy to flip the DB value. Fresh DBs seed from env.
-      - CONTENT_EXTRACTION_ENGINE=tika
-      - TIKA_SERVER_URL=http://mira-tika-saas:9998
-      # Admin key — used by entrypoint-mira.sh to self-heal the persisted
-      # extraction engine to tika on boot (PersistentConfig DB value otherwise
-      # wins over the env above). Same key mira-ingest uses.
-      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
-      # STT — Groq Whisper free tier (voice-to-text)
-      - AUDIO_STT_ENGINE=openai
-      - AUDIO_STT_OPENAI_API_BASE_URL=https://api.groq.com/openai/v1
-      - AUDIO_STT_OPENAI_API_KEY=${GROQ_API_KEY:-}
-      - AUDIO_STT_MODEL=whisper-large-v3-turbo
-      # TTS — browser Web Speech API (zero cost)
-      - AUDIO_TTS_ENGINE=
-    volumes:
-      - mira-webui-data:/app/backend/data
-      - ./mira-core/entrypoint-mira.sh:/entrypoint-mira.sh:ro
-      - ./mira-core/branding:/branding:ro
-    networks:
-      - mira-net
-    restart: unless-stopped
-    mem_limit: 1.5g
-    memswap_limit: 1.5g
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+  # mira-core (Open WebUI v0.8.10) removed 2026-07-29 — zero non-health
+  # requests in the prior 14 days on prod; the Hub replaced the UI (2026-05)
+  # and the citable ingest path extracts via unpdf + embeds via Ollama
+  # directly, so nothing called it. The mira-webui-data volume is KEPT:
+  # mira-pipeline still ro-mounts it for feedback_sync.py (frozen webui.db)
+  # until feedback is repointed at the Hub. mira-tika stays — mira-crawler
+  # uses it independently. All former callers (rag_worker fallback,
+  # mira-ingest KB push, Hub delete-mirror) fail open by design.
+  # Code-path cleanup tracked as the OW-sunset slice 3.
 
   # mira-sidecar removed 2026-05-20 per ADR-0014 (product-led wedge) +
   # ADR-0008 (sidecar deprecation, 2026-04). Active chat path is
