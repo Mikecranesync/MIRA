@@ -72,6 +72,10 @@ def trust_label(
     if state is EvidenceState.MACHINE_VERIFIED or meta_trust == "machine_verified":
         return "Shown on the drawing (verified)"
     if state is EvidenceState.VISIBLE:
+        # Equipment-photo evidence reads off a nameplate, not a drawing —
+        # keep the technician-facing wording honest per surface.
+        if extractor == "nameplate_worker":
+            return "Shown on the nameplate"
         return "Shown on the drawing"
     if state is EvidenceState.DOCUMENTED:
         return "Documented"
@@ -89,6 +93,7 @@ def trust_label(
 _TRUST_BUCKETS = (
     ("Shown on the drawing (verified)", "shown on drawing"),
     ("Shown on the drawing", "shown on drawing"),
+    ("Shown on the nameplate", "shown on nameplate"),
     ("Documented", "documented"),
     ("Derived (not verified)", "derived"),
     ("Reported by technician", "reported by technician"),
@@ -98,6 +103,7 @@ _TRUST_BUCKETS = (
 )
 _BUCKET_ORDER = (
     "shown on drawing",
+    "shown on nameplate",
     "documented",
     "derived",
     "reported by technician",

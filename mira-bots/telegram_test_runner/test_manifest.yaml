@@ -133,3 +133,43 @@ cases:
     speed_timeout: 30
     intent: "Partial nameplate — top-third crop only"
     adversarial: true
+
+  # ── Photo-memory conversation cases (photo → text follow-ups) ──────────────
+  # Prove the bot REMEMBERS the photo: after one nameplate photo, text turns
+  # with no image must answer from the persisted workspace ledger (nameplate
+  # fields / identity / vision summary), deterministically. Runner support:
+  # `followups` — each sends a TEXT message and checks must_contain
+  # (case-insensitive); any miss fails the case (FOLLOWUP_FAILURE).
+  - name: photo_memory_micro820
+    image: test-assets/sample_tags/ab_micro820_tag.jpg
+    caption: "Can you identify this industrial component from the nameplate?"
+    expected:
+      make: Allen-Bradley
+      model: Micro820
+      catalog: 2080-LC20-20QWB
+      component_type: PLC
+    must_contain: [Allen-Bradley]
+    intent: "Photo memory — follow-up questions answered from the stored photo"
+    followups:
+      - text: "what was the model number?"
+        must_contain: [model]
+      - text: "who makes it?"
+        must_contain: [Allen-Bradley]
+      - text: "what did that photo show?"
+        must_contain: [read]
+
+  - name: photo_memory_gs10
+    image: test-assets/sample_tags/gs10_vfd_tag.jpg
+    caption: "Analyze this equipment photo"
+    expected:
+      make: AutomationDirect
+      model: GS10
+      catalog: GS10-20P5
+      component_type: VFD
+    must_contain: [GS10]
+    intent: "Photo memory on the bench VFD — serial/voltage recall"
+    followups:
+      - text: "what voltage is it rated for?"
+        must_contain: [voltage]
+      - text: "what did that photo show?"
+        must_contain: [read]
