@@ -423,17 +423,36 @@ def test_source_page_checker_catches_violations():
 # defect the 2026-07-29 audit found and pulled tools/seeds/backfill_oem_*.sql
 # for (see SP1 commit 3b7cebdcb).
 #
-# The rule's own escape hatch: "a promotion must either (a) be restricted to
-# rows whose provenance is provable from stored data, or (b) not happen."
-# Two predicates are recognized here as provable provenance:
-#   - a source_url restriction (host/domain match) — the row's origin URL is
-#     directly checkable against the source that fetched it;
-#   - a tenant_id restriction to a literal UUID constant — valid ONLY because
-#     the crawler write path (this branch) makes tenant_id the trust boundary
-#     (oem_tenant_id vs mira_tenant_id); tools/seeds/backfill_verified_corpus.sql
-#     is the pre-existing example (cross-referenced by the rule itself).
-# source_type / manufacturer, alone or together, are NEVER accepted — that is
-# precisely the shape-only pattern the rule forbids.
+# FIX ROUND 1 (this comment documents the correction): the first version of
+# this guard accepted ANY literal tenant_id anywhere in the statement as
+# provable provenance, including one that appeared in the SET clause. The
+# real pulled backfill (git show 0bde5f2e5:tools/seeds/backfill_oem_crawler_chunks.sql)
+# does exactly that:
+#     UPDATE knowledge_entries ke
+#        SET tenant_id = '78917b56-...',   -- MOVES the row to the shared tenant
+#            verified  = true
+#      WHERE ke.tenant_id::text = 'e88bd0e8-...'   -- the row's OLD (garage) tenant
+#        AND ke.source_type = 'equipment_manual'
+#        AND ke.manufacturer <> '';
+# The WHERE-clause tenant_id literal there identifies the tenant being moved
+# FROM, not evidence about who wrote the row — the actual selector doing the
+# work is the shape predicate (source_type/manufacturer). The old regex
+# matched "tenant_id = '<uuid>'" wherever it appeared (including inside the
+# SET clause, which isn't even a restriction) and let this straight through.
+#
+# The corrected rule distinguishes two genuinely different statement shapes:
+#   - SAME-TENANT promotion (no `tenant_id` reassignment in SET): a literal
+#     tenant_id in WHERE IS provable provenance — the row already lives in a
+#     pinned trust-boundary tenant (tools/seeds/backfill_verified_corpus.sql:
+#     `SET verified = true WHERE tenant_id = '<shared>'`). Accept source_url
+#     OR a literal tenant_id in WHERE.
+#   - CROSS-TENANT promotion (SET reassigns `tenant_id`): the statement moves
+#     rows across the trust boundary AND trusts them in the same step. A
+#     tenant_id literal in WHERE only ever describes the SOURCE tenant (the
+#     untrusted side) — it can never justify the move. Only a source_url
+#     restriction (the row's individually re-fetchable origin) is accepted.
+# source_type / manufacturer, alone or together, are NEVER accepted in either
+# shape — that is precisely the shape-only pattern the rule forbids.
 
 _SEEDS_DIR = "tools/seeds"
 
@@ -445,40 +464,85 @@ _UPDATE_KE_STMT_RE = re.compile(
 # comparison like "verified IS DISTINCT FROM true", which this regex does not
 # match because it requires the literal "= true"/"=true" shape).
 _SETS_VERIFIED_TRUE_RE = re.compile(r"\bverified\s*=\s*true\b", re.IGNORECASE)
-# Accepted provenance predicate #1: a source_url host/domain restriction.
+# The SET clause reassigns tenant_id — i.e. this statement moves rows across
+# a tenant boundary, not merely promotes rows already inside one. Matched
+# against the pre-WHERE portion of the statement only (see scan below) so a
+# tenant_id literal that happens to live in a subquery's WHERE can't be
+# mistaken for a SET-clause assignment.
+_SET_TENANT_ID_RE = re.compile(r"\bSET\b.*?\btenant_id\s*=", re.IGNORECASE | re.DOTALL)
+# Accepted provenance predicate #1 (either shape): a source_url host/domain
+# restriction — the row's origin URL is directly checkable.
 _SOURCE_URL_RESTRICTION_RE = re.compile(
     r"\bsource_url\s*(?:like|ilike|~|~\*|=)\s*'", re.IGNORECASE
 )
-# Accepted provenance predicate #2: tenant_id pinned to a literal UUID.
+# Accepted provenance predicate #2 (SAME-TENANT shape only): tenant_id pinned
+# to a literal UUID in the WHERE clause. Optional ::type cast tolerated
+# (e.g. "tenant_id::text = '...'", "tenant_id = '...'::uuid") since both
+# forms appear in real seeds.
 _TENANT_ID_LITERAL_RE = re.compile(
-    r"\btenant_id\s*=\s*'[0-9a-fA-F-]{36}'", re.IGNORECASE
+    r"\btenant_id\s*(?:::\w+)?\s*=\s*'[0-9a-fA-F-]{36}'", re.IGNORECASE
 )
 
 
 def scan_verified_promotion(rel_path: str, source: str) -> list[str]:
     """Return violations where a seed promotes knowledge_entries rows to
-    verified=true without a provable-provenance predicate (source_url or a
-    literal tenant_id) in the same statement.
+    verified=true without a provable-provenance predicate in the same
+    statement.
 
-    Pure function — unit-tested directly against fixtures below so the guard
-    is proven to catch a shape-only promotion (not just trusted). Text/regex
-    scan, not a SQL parser: matches literal UPDATE...; statement bodies only
+    Pure function — unit-tested directly against fixtures below (including
+    the REAL historical defect, recovered from git) so the guard is proven
+    to catch a shape-only promotion, not just trusted. Text/regex scan, not
+    a SQL parser: matches literal UPDATE...; statement bodies only
     (INSERT ... VALUES (..., true, ...) seeding rows one at a time is NOT in
     scope — the doctrine's "shape alone" defect is specifically a bulk
-    backfill selector, which is always an UPDATE)."""
+    backfill selector, which is always an UPDATE).
+
+    A statement is split at its first top-level WHERE into `set_part` (used
+    only to detect a cross-tenant SET tenant_id = ...) and `where_part` (used
+    to look for the accepted provenance predicates). See the Contract 7
+    comment block above for why a WHERE-clause tenant_id literal is valid
+    provenance for a same-tenant promotion but NOT for a cross-tenant one."""
     violations: list[str] = []
     for m in _UPDATE_KE_STMT_RE.finditer(source):
         stmt = m.group(0)
         if not _SETS_VERIFIED_TRUE_RE.search(stmt):
             continue
-        if _SOURCE_URL_RESTRICTION_RE.search(stmt) or _TENANT_ID_LITERAL_RE.search(stmt):
+
+        parts = re.split(r"\bWHERE\b", stmt, maxsplit=1, flags=re.IGNORECASE)
+        set_part, where_part = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        cross_tenant = bool(_SET_TENANT_ID_RE.search(set_part))
+        has_source_url = bool(_SOURCE_URL_RESTRICTION_RE.search(where_part))
+        has_tenant_literal = bool(_TENANT_ID_LITERAL_RE.search(where_part))
+
+        if cross_tenant:
+            # Moves rows across the trust boundary AND trusts them in the
+            # same step — only an individually re-fetchable source_url
+            # counts. A WHERE tenant_id literal here names the untrusted
+            # SOURCE tenant, never provenance for the promotion.
+            ok = has_source_url
+            reason = (
+                "reassigns tenant_id (crosses a tenant boundary) while also "
+                "setting verified=true, but has no source_url restriction — "
+                "a WHERE tenant_id literal only identifies the untrusted "
+                "source tenant here, it is not provenance for the move"
+            )
+        else:
+            # Promotes rows already inside a pinned tenant — the tenant
+            # literal genuinely is stored provenance.
+            ok = has_source_url or has_tenant_literal
+            reason = (
+                "has no source_url or literal tenant_id restriction — shape "
+                "predicates (source_type/manufacturer) alone are not "
+                "provable provenance"
+            )
+
+        if ok:
             continue
         line = _line_of(source, m.start())
         violations.append(
-            f"{rel_path}:{line} promotes knowledge_entries rows to verified=true "
-            f"without a source_url or literal tenant_id restriction — shape "
-            f"predicates (source_type/manufacturer) alone are not provable "
-            f"provenance. See .claude/rules/oem-crawler-trusted.md."
+            f"{rel_path}:{line} promotes knowledge_entries rows to "
+            f"verified=true but {reason}. See .claude/rules/oem-crawler-trusted.md."
         )
     return violations
 
@@ -511,11 +575,45 @@ def test_seeds_never_promote_verified_on_shape_alone():
     )
 
 
+# The REAL pulled backfill's UPDATE statement, verbatim, recovered via:
+#   git show 0bde5f2e5:tools/seeds/backfill_oem_crawler_chunks.sql
+# This is the actual historical defect .claude/rules/oem-crawler-trusted.md
+# describes: it reassigns tenant_id (moves rows from the garage tenant into
+# the shared OEM tenant) AND sets verified=true, selecting purely on shape
+# (source_type/manufacturer) plus the SOURCE tenant's own id — never on
+# anything that identifies who actually wrote the row. Fix-round-1 exists
+# because the first version of scan_verified_promotion passed this exact
+# statement (it matched the SET clause's destination tenant_id literal as if
+# it were a WHERE-clause restriction).
+_REAL_PULLED_BACKFILL_STMT = """\
+UPDATE knowledge_entries ke
+   SET tenant_id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3',   -- MIRA_SHARED_TENANT_ID
+       verified  = true,
+       metadata  = ke.metadata || jsonb_build_object(
+                     'backfilled_from', 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe',
+                     'backfilled_at', now()::text)
+ WHERE ke.tenant_id::text = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'  -- garage MIRA_TENANT_ID
+   AND ke.metadata->>'source' = 'mira_crawler'
+   AND ke.source_type = 'equipment_manual'
+   AND ke.manufacturer <> ''
+   AND NOT EXISTS (
+     SELECT 1 FROM knowledge_entries dup
+      WHERE dup.tenant_id::text = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'
+        AND dup.source_url = ke.source_url
+        AND (dup.metadata->>'chunk_index')::int = (ke.metadata->>'chunk_index')::int
+   );
+"""
+
+
 def test_verified_promotion_checker_catches_violations():
-    """The Contract 7 guard must FAIL on the known bad shape (the pulled
-    backfill's selector) and PASS on provenance-restricted promotions."""
+    """The Contract 7 guard must FAIL on the known bad shapes — most
+    importantly the REAL historical defect, verbatim — and PASS on
+    provenance-restricted promotions of both shapes (same-tenant and
+    cross-tenant-with-source_url)."""
     bad_cases = {
-        "source_type + manufacturer shape (the pulled backfill's selector)": (
+        "the REAL pulled backfill, verbatim (0bde5f2e5, cross-tenant + shape-only)":
+            _REAL_PULLED_BACKFILL_STMT,
+        "source_type + manufacturer shape, no tenant reassignment": (
             "UPDATE knowledge_entries\n"
             "   SET verified = true\n"
             " WHERE source_type = 'equipment_manual'\n"
@@ -526,21 +624,36 @@ def test_verified_promotion_checker_catches_violations():
             "WHERE manufacturer = 'AutomationDirect';\n"
         ),
         "no predicate at all": "UPDATE knowledge_entries SET verified = true;\n",
+        "cross-tenant move with a tenant_id literal but no source_url "
+        "(the exact fix-round-1 gap)": (
+            "UPDATE knowledge_entries ke\n"
+            "   SET tenant_id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3',\n"
+            "       verified  = true\n"
+            " WHERE ke.tenant_id::text = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe';\n"
+        ),
     }
     for label, sql in bad_cases.items():
         assert scan_verified_promotion("bad.sql", sql), f"checker missed a violation: {label}"
 
     good_cases = {
-        "host-restricted promotion": (
+        "host-restricted promotion, no tenant reassignment": (
             "UPDATE knowledge_entries\n"
             "   SET verified = true\n"
             " WHERE source_url LIKE 'https://www.automationdirect.com/%';\n"
         ),
-        "literal tenant_id restriction (backfill_verified_corpus.sql shape)": (
+        # tools/seeds/backfill_verified_corpus.sql's real shape: promotes rows
+        # ALREADY inside the shared tenant, no SET tenant_id reassignment.
+        "literal tenant_id restriction, same-tenant (backfill_verified_corpus.sql shape)": (
             "UPDATE knowledge_entries\n"
             "   SET verified = true\n"
             " WHERE tenant_id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'::uuid\n"
             "   AND verified IS DISTINCT FROM true;\n"
+        ),
+        "cross-tenant move WITH a source_url restriction": (
+            "UPDATE knowledge_entries ke\n"
+            "   SET tenant_id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3',\n"
+            "       verified  = true\n"
+            " WHERE ke.source_url LIKE 'https://www.automationdirect.com/%';\n"
         ),
         "no verified promotion at all": (
             "UPDATE knowledge_entries SET is_private = true WHERE tenant_id = 'x';\n"
