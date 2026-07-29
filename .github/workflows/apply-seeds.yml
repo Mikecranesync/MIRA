@@ -227,8 +227,8 @@ jobs:
             echo "#### $f" >> "$GITHUB_STEP_SUMMARY"
             echo '```sql' >> "$GITHUB_STEP_SUMMARY"
             # 80, not 40: a seed's header comment IS the operator runbook (it is
-            # all mode=dry-run shows), and backfill_oem_crawler_chunks.sql's runs
-            # to line 78 — a 40-line preview would cut off mid-runbook.
+            # all mode=dry-run shows), and a long runbook comment can run past 40
+            # lines — a shorter preview would cut off mid-runbook.
             head -80 "$f" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           done < .seed_plan
