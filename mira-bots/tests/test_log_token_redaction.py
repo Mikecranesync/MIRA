@@ -38,7 +38,7 @@ def test_filter_masks_plain_message():
     assert TokenRedactionFilter().filter(rec) is True
     out = rec.getMessage()
     assert "AAHfake" not in out
-    assert "/bot<REDACTED>" in out
+    assert "/bot<redacted>" in out.lower()  # case-insensitive: newer python-telegram-bot pre-redacts httpx URLs as <redacted>; our filter emits <REDACTED>
 
 
 def test_filter_masks_percent_style_args():
@@ -70,7 +70,7 @@ def test_install_covers_httpx_logger_end_to_end():
 
     out = buf.getvalue()
     assert "AAHfake" not in out
-    assert "/bot<REDACTED>" in out
+    assert "/bot<redacted>" in out.lower()  # case-insensitive: newer python-telegram-bot pre-redacts httpx URLs as <redacted>; our filter emits <REDACTED>
 
 
 def test_clean_messages_pass_untouched():
