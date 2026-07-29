@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "case_id": "07",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 13,
+    "power_control_flow": 7,
+    "sequence_interlocks_logic": 7,
+    "evidence_grounding_unsupported_claims": 15,
+    "technician_usefulness_clarity": 8
+  },
+  "total": 60,
+  "deductions": [
+    {
+      "claim": "Main visible components ... The power circuit includes: Mains supply (L1, L2, L3); Feeder cables; Isolation and protection switch-gear (provided by the customer); Mechanical interlock; Forward contactor (C1); Reversing contactor (C2); Induction motor.",
+      "evidence": "The list omits the SR44 soft-starter device itself: the print shows a labeled box \"SR44\" with input terminals \"1 L1, 3 L2, 5 L3\" and output terminals \"2 T1, 4 T2, 6 T3\" wired between the contactors and the \"Induction Motor.\" It is the central power device on this page of a Soft Starter User Manual and is never listed.",
+      "category": "component_label_recognition",
+      "points_deducted": 5,
+      "severity": "material",
+      "correction": "List the SR44 soft-starter power unit (terminals 1/3/5 = L1/L2/L3 in, 2/4/6 = T1/T2/T3 out) as a power-circuit component, since it is the device that actually delivers current to the motor.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Main visible components ... The power circuit includes: ... Induction motor.",
+      "evidence": "The print shows an \"Electrical Ground\" symbol/label next to the SR44 output terminals; it is never listed among the power-circuit components.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Add the electrical ground connection to the component list.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The start button, once pressed, appears to energize the motor starter coil provided the e-stop is released and the control voltage switch is set properly.",
+      "evidence": "No pushbutton on the print is labeled \"START\" — only \"FORWARD\" and \"REVERSE\" pushbuttons are shown and labeled.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Refer to it as the FORWARD (or REVERSE) pushbutton, matching the printed label, rather than an unlabeled generic \"start button.\"",
+      "confidence": "high"
+    },
+    {
+      "claim": "6. Unclear or unreadable items — Nothing major appears to be unreadable.",
+      "evidence": "The SR44 Electronic Control Card's terminals (\"11 K1 14\", \"21 K2 24\", \"S1 S0 I/p1\") are legible as text labels, but their wiring destination and function are not clearly traceable in the print, and the response never explains or even mentions what these terminals do. Declaring nothing unreadable conflates legible text with a fully understood circuit and overstates completeness.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Flag the Electronic Control Card's K1/K2 relay terminals and S1/S0 input as present but of unclear function/wiring destination from this view, rather than declaring nothing unreadable.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "3. Plain-English theory of operation (entire section) — never describes the main power current path.",
+      "evidence": "The power-circuit half of the print shows a clear series chain: Mains L1/L2/L3 → Isolation/Protection switch-gear (customer-provided) → feeder cables → C1/C2 contactor → SR44 input terminals 1/3/5 → SR44 output terminals 2/4/6 → Induction Motor. None of this current path is described anywhere in the response.",
+      "category": "power_control_flow",
+      "points_deducted": 9,
+      "severity": "severe",
+      "correction": "Describe the current path: mains power passes through the customer's isolation/protection switchgear and feeder cables to whichever contactor (C1 forward or C2 reverse) is energized, then into the SR44 soft starter's L1/L2/L3 input terminals, and out T1/T2/T3 to the induction motor.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Main visible components ... SR44 electronic control card (listed with no functional description anywhere in the response).",
+      "evidence": "The print labels this card's terminals as \"11 K1 14\", \"21 K2 24\", and \"S1 S0 I/p1\" — the response names the card as present but never describes what these relay outputs / input terminal do or how they relate to the reversing logic.",
+      "category": "power_control_flow",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Note the K1/K2 relay contacts and S1/S0 input as part of the control card, and flag their exact function as not fully determinable from this view if uncertain, rather than omitting them.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The mechanical interlock prevents both forward and reverse contactors from being energized simultaneously. (No mention of any other interlock.)",
+      "evidence": "In addition to the labeled \"Mechanical Interlock\" between the two branches, the print shows a normally-closed auxiliary contact symbol labeled \"C2\" wired in series immediately before the \"C1\" coil on the FORWARD (top) branch, and a normally-closed contact labeled \"C1\" wired in series immediately before the \"C2\" coil on the REVERSE (bottom) branch — a distinct electrical interlock never mentioned in the response.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 7,
+      "severity": "material",
+      "correction": "Describe the electrical interlock: a normally-closed auxiliary contact of the opposite contactor (C2 for the forward branch, C1 for the reverse branch) is wired in series with each coil, so the contactors cannot both energize even if the mechanical interlock linkage fails.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The circuit allows for motor reversing using forward and reverse buttons. (No mention of how the momentary buttons hold the contactor energized.)",
+      "evidence": "The print shows a contact labeled \"C1\" wired in parallel with the FORWARD pushbutton, and a contact labeled \"C2\" wired in parallel with the REVERSE pushbutton — the standard seal-in/latching arrangement that lets a momentary button press hold the contactor energized. This is never described.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 6,
+      "severity": "material",
+      "correction": "Explain that each contactor's own auxiliary contact (C1 or C2) is wired in parallel with its pushbutton to hold (\"seal in\") the coil energized after the momentary FORWARD/REVERSE button is released, until STOP or E-STOP is pressed.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Overall response structure (confident 6-section writeup ending \"Nothing major appears to be unreadable\").",
+      "evidence": "The response reads as a complete theory of operation, but the main power path through the SR44 soft starter and the seal-in/electrical-interlock contact logic — both clearly visible and central to how the circuit actually operates — are omitted without being flagged as gaps.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Either include the power-path and interlock/seal-in logic, or explicitly note in section 6 that the electronic control card's terminal functions and the full contact-interlock scheme are not fully covered by this explanation.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Print is a clean, high-legibility vector diagram (not a scan) — essentially everything referenced in the deductions above (SR44 power terminals, ground symbol, C1/C2 NC interlock contacts, C1/C2 seal-in contacts, K1/K2/S1/S0 labels) is directly readable in image_path, so omissions are scored as content gaps, not excused by the no-OCR context_notes caveat. The response is accurate and well-hedged where it does speak (no hard-failure pattern: no invented components, no reversed sequence, no dangerous advice, no false certainty about actually-illegible content), but it only covers about half of the print's story — the pilot/control-circuit pushbutton logic — and is silent on the power path through the soft starter and on a second, distinct interlock mechanism."
+}

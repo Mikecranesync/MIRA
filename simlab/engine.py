@@ -84,6 +84,9 @@ class SimEngine:
         self._active_alarms: dict[tuple[str, str], dict] = {}
         self._tick: int = 0
         self._scenario: Optional["Scenario"] = None
+        # Optional live publishers (MQTT / relay): when present, advance() pushes a snapshot after
+        # each advance call so the sim factory streams live. Empty by default -> zero behavior change.
+        self._publishers: list = []
         self.reset()
 
     # ------------------------------------------------------------------
@@ -149,6 +152,25 @@ class SimEngine:
             self._update_run_states()
             self._evaluate_alarms()
             self._record_tick(self._tick)
+        if self._publishers:
+            self.publish_snapshot()
+
+    def add_publisher(self, publisher: Any) -> None:
+        """Attach a live publisher (e.g. MqttPublisher). After each advance() the engine pushes a
+        snapshot to every attached publisher, turning the deterministic sim into a live feed."""
+        self._publishers.append(publisher)
+
+    def publish_snapshot(self) -> None:
+        """Push the current snapshot to every attached publisher (best-effort; one bad publisher
+        must not stop the others or the sim)."""
+        if not self._publishers:
+            return
+        readings = self.snapshot()
+        for pub in self._publishers:
+            try:
+                pub.publish(readings)
+            except Exception as exc:  # noqa: BLE001 — a live feed must not crash the sim
+                logger.warning("publisher %r failed: %s", type(pub).__name__, exc)
 
     @property
     def tick(self) -> int:

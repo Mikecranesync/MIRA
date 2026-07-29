@@ -18,19 +18,24 @@ export function AssetIntelligencePanel({ assetId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const resp = await fetch(`/hub/api/assets/${assetId}/enrich`);
+      const resp = await fetch(`/hub/api/assets/${assetId}/enrich/`);
       if (resp.ok) setReport(await resp.json());
     } finally {
       setLoading(false);
     }
   }, [assetId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
 
   const runEnrichment = async () => {
     setRunning(true);
     try {
-      const resp = await fetch(`/hub/api/assets/${assetId}/enrich`, { method: "POST" });
+      const resp = await fetch(`/hub/api/assets/${assetId}/enrich/`, { method: "POST" });
       if (resp.ok) setReport(await resp.json());
     } finally {
       setRunning(false);

@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-07-07",
+  "pack": {
+    "pack_id": "powerflex_525",
+    "manufacturer": "Rockwell Automation",
+    "series": "PowerFlex 525",
+    "schema_version": 2
+  },
+  "manual": {
+    "path": "pf525_520-um001.pdf",
+    "sha256": "b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6"
+  },
+  "extractor_commit": "974e79df",
+  "extraction_command": "grading/grade.py --pack powerflex_525 --gold gold/powerflex_525/gold.json --manual pf525_520-um001.pdf --generated-at 2026-07-07 --out candidates/powerflex_525",
+  "fault_count": 48,
+  "parameter_count": 45,
+  "bench_verified_live_decode": false,
+  "layers": {
+    "schema": {
+      "name": "schema",
+      "status": "pass",
+      "summary": "schema OK (schema_version=2) \u2014 48 fault codes, 45 parameters",
+      "details": [],
+      "metrics": {
+        "fault_count": 48,
+        "param_count": 45,
+        "schema_version": 2
+      }
+    },
+    "cite_integrity": {
+      "name": "cite_integrity",
+      "status": "pass",
+      "summary": "cite-integrity: 93 verified, 0 unverifiable",
+      "details": [],
+      "metrics": {
+        "verified_count": 93,
+        "unverifiable_count": 0,
+        "dropped_diagnostic_critical": []
+      }
+    },
+    "gold_score": {
+      "name": "gold_score",
+      "status": "pass",
+      "summary": "gold score: overall recall=100% precision=100%; diagnostic-critical recall=100% precision=100%; fault recall=100% (diagnostic-critical fault recall=100%)",
+      "details": [
+        "edge_case comma_group_skip:P046,P048,P050: PASS \u2014 correctly skipped",
+        "edge_case multi_id_shared_desc:C129,C130,C131,C132: PASS \u2014 each id present with a distinct, non-empty name",
+        "edge_case related_parameters_not_faults:t094: PASS \u2014 no related_parameters entries leaked into related_faults"
+      ],
+      "metrics": {
+        "total_gold": 74,
+        "matched_gold": 74,
+        "overall_recall": 1.0,
+        "overall_precision": 1.0,
+        "diagnostic_critical_recall": 1.0,
+        "diagnostic_critical_precision": 1.0,
+        "overall_fault_recall": 1.0,
+        "diagnostic_critical_fault_recall": 1.0,
+        "fabrication_detected": false,
+        "edge_case_results": {
+          "comma_group_skip:P046,P048,P050": "pass",
+          "multi_id_shared_desc:C129,C130,C131,C132": "pass",
+          "related_parameters_not_faults:t094": "pass"
+        }
+      }
+    },
+    "domain_rules": {
+      "name": "domain_rules",
+      "status": "pass",
+      "summary": "domain rules: clean",
+      "details": [],
+      "metrics": {}
+    }
+  },
+  "residuals": [],
+  "trust_status": "beta",
+  "trust_status_reasons": [
+    "schema + domain + cite-integrity all pass",
+    "diagnostic-critical precision 100%, fault recall 100%",
+    "overall fault recall 100% >= 90%",
+    "no undeclared residuals",
+    "automated ceiling is 'beta' \u2014 promotion to 'trusted' requires a recorded human sign-off (runbook-pr-b-acceptance.md), never automatic"
+  ]
+}

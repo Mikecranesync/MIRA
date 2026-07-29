@@ -12,22 +12,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
+import { addInterval } from "@/lib/pm-interval";
 
 export const dynamic = "force-dynamic";
-
-function addInterval(base: Date, value: number, unit: string): Date {
-  const d = new Date(base);
-  switch (unit) {
-    case "hours":  d.setHours(d.getHours() + value); break;
-    case "days":   d.setDate(d.getDate() + value); break;
-    case "weeks":  d.setDate(d.getDate() + value * 7); break;
-    case "months": d.setMonth(d.getMonth() + value); break;
-    case "years":  d.setFullYear(d.getFullYear() + value); break;
-    default:       d.setDate(d.getDate() + value); break;
-  }
-  return d;
-}
 
 export async function PATCH(
   req: NextRequest,
@@ -39,6 +28,8 @@ export async function PATCH(
 
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "pm_schedules.write");
+  if (denied) return denied;
 
   const { id } = await params;
 

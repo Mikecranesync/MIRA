@@ -7,8 +7,9 @@
  *
  * Data: wizard progress, the asset list, and the asset-agent status/Q&A are mocked
  * via page.route() so the screenshot is deterministic and needs no dev-DB seed.
- * The flow: wizard restores at "Review" → Create namespace → Try MIRA → Train &
- * approve → pick an asset → AssetValidateTab (#1783) renders the lifecycle.
+ * The flow: wizard restores at "Review" → Create namespace → Upload manual (#1993)
+ * → Try MIRA → Train & approve → pick an asset → AssetValidateTab (#1783) renders
+ * the lifecycle.
  *
  * Captures desktop (1440×900) + mobile (412×915) into docs/promo-screenshots/.
  *
@@ -107,7 +108,8 @@ test("onboarding wizard — Train & approve step renders the asset-agent lifecyc
   await page.route("**/api/assets/*/validation-qa/**", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(QA) }),
   );
-  await page.route("**/api/assets", (route) =>
+  // Trailing slash required (#1976 routed client fetches through `${API_BASE}/api/assets/`).
+  await page.route("**/api/assets/", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(ASSETS) }),
   );
   await page.route("**/api/wizard/**", (route) => {
@@ -122,8 +124,13 @@ test("onboarding wizard — Train & approve step renders the asset-agent lifecyc
   await page.goto("/onboarding", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("step-review")).toBeVisible({ timeout: 15_000 });
 
-  // 2) Create namespace → Try MIRA → Train & approve.
+  // 2) Create namespace → upload step (#1993) → Try MIRA → Train & approve.
   await page.getByTestId("onboarding-finish").click();
+  // #1993 inserted an "upload" step between Review and Try. The wizard-finish
+  // response is mocked empty, so lineNode stays null → UploadStep renders its
+  // no-manual branch (step-upload + a Continue button) → Continue advances to Try.
+  await expect(page.getByTestId("step-upload")).toBeVisible();
+  await page.getByTestId("onboarding-upload-continue").click();
   await expect(page.getByTestId("step-try")).toBeVisible();
   await page.getByTestId("onboarding-train-approve").click();
   await expect(page.getByTestId("step-validate")).toBeVisible();

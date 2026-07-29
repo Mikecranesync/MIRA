@@ -1,0 +1,7 @@
+# Containerized Print of the Day — pinned runtime deps (ADR-0031 PR 6).
+# Mirrors the versions the bot images pin so the reused stages behave identically.
+httpx==0.28.1
+pydantic==2.12.4
+Pillow==11.3.0
+pytesseract==0.3.13
+PyYAML==6.0.3

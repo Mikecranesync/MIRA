@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FactoryLM Competitor Intelligence — June 2026</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4f6f9; color: #1a1a2e; }
+  header { background: #1B365D; color: white; padding: 32px 40px; }
+  header h1 { font-size: 28px; font-weight: 700; }
+  header p { margin-top: 6px; color: #a0b4d0; font-size: 14px; }
+  .summary-bar { background: #e8f0fe; border-left: 4px solid #1B365D; padding: 16px 40px; font-size: 14px; color: #333; }
+  .summary-bar strong { color: #1B365D; }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  h2.tier { font-size: 18px; font-weight: 700; color: #1B365D; margin: 36px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #1B365D; display: flex; align-items: center; gap: 10px; }
+  h2.tier span.badge { font-size: 12px; font-weight: 600; background: #1B365D; color: white; padding: 3px 10px; border-radius: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .card { background: white; border-radius: 10px; padding: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: box-shadow 0.2s; }
+  .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.10); }
+  .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .card-num { font-size: 11px; font-weight: 700; color: #999; background: #f0f0f0; border-radius: 4px; padding: 2px 7px; white-space: nowrap; }
+  .card h3 { font-size: 16px; font-weight: 700; color: #1B365D; }
+  .card .url { font-size: 12px; color: #4a7abf; text-decoration: none; display: block; margin-bottom: 10px; }
+  .card .url:hover { text-decoration: underline; }
+  .card p { font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 10px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+  .tag.threat { background: #fde8e8; color: #c0392b; }
+  .tag.funding { background: #e8f5e9; color: #2e7d32; }
+  .tag.enterprise { background: #e8eaf6; color: #3949ab; }
+  .tag.infra { background: #fff3e0; color: #e65100; }
+  .tag.startup { background: #f3e5f5; color: #7b1fa2; }
+  .card .threat-note { background: #fff8e1; border-left: 3px solid #f59e0b; padding: 8px 10px; border-radius: 4px; font-size: 12px; color: #555; margin-top: 8px; }
+  footer { text-align: center; padding: 32px; font-size: 12px; color: #999; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FactoryLM — Competitor Intelligence Report</h1>
+  <p>Generated: June 14, 2026 &nbsp;|&nbsp; 25 companies &nbsp;|&nbsp; Scope: Industrial AI maintenance, CMMS, IIoT, maintenance copilots, UNS platforms</p>
+</header>
+
+<div class="summary-bar">
+  <strong>Context:</strong> FactoryLM structures plant maintenance reality (manuals, PLC tags, tribal knowledge) into a grounded Maintenance Intelligence Namespace, then runs MIRA (AI) on top for cited, contextual troubleshooting via Telegram, web, and CMMS. Competitors are grouped by proximity to this thesis.
+</div>
+
+<main>
+
+<!-- TIER 1 -->
+<h2 class="tier">🎯 Tier 1 — Direct AI Maintenance Copilots <span class="badge">Closest Competition</span></h2>
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#1</div>
+        <h3>MaintainX CoPilot</h3>
+      </div>
+    </div>
+    <a href="https://www.getmaintainx.com" class="url" target="_blank">getmaintainx.com</a>
+    <p>Mobile-first CMMS with an AI copilot that ingests OEM manuals and work order history to generate actionable maintenance guidance. The closest public analog to MIRA — same "manual ingestion + grounded answers" thesis. Backed by $200M+ in venture funding and a large customer base in manufacturing, food &amp; beverage, and facilities.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> MaintainX is a generalist CMMS first; their copilot is a feature add-on. FactoryLM inverts this — the namespace and grounding is the product, the CMMS is secondary. MIRA also grounds to PLC tags and live OT context; MaintainX does not.</p>
+    <div class="tags"><span class="tag threat">Direct threat</span><span class="tag funding">$200M+ raised</span></div>
+    <div class="threat-note">Watch: They are actively marketing "AI from OEM manuals" — exact same wedge as MIRA.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#2</div>
+        <h3>Fabrico</h3>
+      </div>
+    </div>
+    <a href="https://www.fabrico.io" class="url" target="_blank">fabrico.io</a>
+    <p>Factory-specific OEE + CMMS platform with an AI assistant designed for manufacturing operations. Positions against MaintainX and UpKeep by adding real machine connectivity (PLC/OPC-UA data feeds). Offers a "Fabrico Assistant" that ingests specific factory knowledge for chat-based queries.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Fabrico focuses on OEE/downtime metrics; FactoryLM focuses on fault diagnosis grounded in the full knowledge namespace. Fabrico does not structure tribal knowledge or PLC tag reconciliation the way MIRA does.</p>
+    <div class="tags"><span class="tag threat">Direct threat</span><span class="tag startup">Startup</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#3</div>
+        <h3>UpKeep</h3>
+      </div>
+    </div>
+    <a href="https://www.upkeep.com" class="url" target="_blank">upkeep.com</a>
+    <p>Ranked #1 CMMS on G2 Winter 2026. Has added AI features including anomaly detection, parts prediction, natural language analytics, and real-time repair assistance. Mobile-first, strong reactive maintenance workflow, large installed base in facilities and manufacturing.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> UpKeep's AI is analytics on top of work order data — not grounded in UNS/PLC tag context. No manual ingestion pipeline. FactoryLM's grounding architecture is fundamentally different.</p>
+    <div class="tags"><span class="tag threat">Adjacent threat</span><span class="tag funding">Well funded</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#4</div>
+        <h3>Siemens Industrial Copilot</h3>
+      </div>
+    </div>
+    <a href="https://www.siemens.com/en-us/company/insights/generative-ai-industrial-copilot/" class="url" target="_blank">siemens.com/industrial-copilot</a>
+    <p>Built with Microsoft, this generative AI copilot helps maintenance professionals write PLC programming code, track software bugs, and diagnose equipment faults via natural language chat. Integrated deeply into Siemens TIA Portal and SIMATIC ecosystems — extremely powerful within Siemens-heavy plants.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Locked to the Siemens ecosystem. FactoryLM is vendor-agnostic and works across Allen-Bradley, ABB, Yaskawa, etc. Siemens won't help you with a Rockwell drive.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span><span class="tag threat">Ecosystem threat</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#5</div>
+        <h3>Microsoft Copilot for Manufacturing</h3>
+      </div>
+    </div>
+    <a href="https://www.microsoft.com/en-us/industry/manufacturing" class="url" target="_blank">microsoft.com/manufacturing</a>
+    <p>Microsoft's Factory Operations Agent allows workers to analyze machine data using natural language without programming knowledge. Integrates with Azure IoT, Fabric, and Teams. Demoed at major industrial conferences in 2025–26 as "AI for the factory floor." Backed by Microsoft's industrial cloud partnerships.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Horizontal platform, not maintenance-specific. Requires significant Azure infrastructure investment and IT teams. FactoryLM is a done-for-you namespace + AI layer aimed at plants without large IT teams.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span><span class="tag threat">Platform threat</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#6</div>
+        <h3>Fogwing Industrial AI Copilot</h3>
+      </div>
+    </div>
+    <a href="https://www.fogwing.io/industrial-ai-copilot/" class="url" target="_blank">fogwing.io</a>
+    <p>Industrial cloud platform with an AI copilot (Spike) that uses generative AI and NLP to let plant operators ask voice/text questions about asset specifications, maintenance schedules, and diagnostics. Positions across CMMS, EAM, and APM. Strong presence in Asian manufacturing markets.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Fogwing is cloud-IoT-first; FactoryLM's namespace structuring is the differentiator — particularly PLC tag reconciliation and OEM manual grounding with citations. Fogwing does not appear to do the upfront structuring work FactoryLM does.</p>
+    <div class="tags"><span class="tag threat">Direct threat</span></div>
+  </div>
+
+</div>
+
+<!-- TIER 2 -->
+<h2 class="tier">📡 Tier 2 — Sensor-Led Predictive Maintenance AI <span class="badge">Hardware + AI</span></h2>
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#7</div>
+        <h3>Augury</h3>
+      </div>
+    </div>
+    <a href="https://www.augury.com" class="url" target="_blank">augury.com</a>
+    <p>Proprietary IoT sensors (vibration, temperature) + AI diagnostic platform with human vibration analysts who validate alerts before delivery. The "human expert in the loop" model is their key differentiator. Targets manufacturing, HVAC, and critical industrial assets. Significant enterprise traction.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Augury requires sensor hardware install. FactoryLM works from existing PLC tags and docs. Different entry point — Augury is hardware-led, FactoryLM is knowledge-led.</p>
+    <div class="tags"><span class="tag funding">Well funded</span><span class="tag enterprise">Enterprise</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#8</div>
+        <h3>Tractian</h3>
+      </div>
+    </div>
+    <a href="https://tractian.com" class="url" target="_blank">tractian.com</a>
+    <p>São Paulo-founded industrial AI company combining high-frequency vibration IoT sensors with an AI platform that detects equipment failures before unplanned downtime. Also offers an AI-powered CMMS that unifies maintenance execution with real-time condition monitoring. Raised $196M total (Y Combinator, General Catalyst, Next47).</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Hardware + software bundle targeting mid-large manufacturing. FactoryLM is software + services only, targeting smaller plants where sensor hardware is a barrier.</p>
+    <div class="tags"><span class="tag funding">$196M raised</span><span class="tag threat">Growing fast</span></div>
+    <div class="threat-note">Watch: Tractian is expanding in North America aggressively and moving into the CMMS + AI copilot space.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#9</div>
+        <h3>SparkCognition</h3>
+      </div>
+    </div>
+    <a href="https://www.sparkcognition.com" class="url" target="_blank">sparkcognition.com</a>
+    <p>Austin-based industrial AI company with automated machine learning (AutoML) for predictive maintenance — builds and deploys predictive models without requiring data science expertise. Serves oil &amp; gas, energy, utilities, and manufacturing. Platform-agnostic — layers over existing SCADA/historian data.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> SparkCognition requires historical sensor data to model; FactoryLM works from day one with documents and tribal knowledge, making it accessible to plants without clean data infrastructure.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span><span class="tag funding">VC backed</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#10</div>
+        <h3>Uptake</h3>
+      </div>
+    </div>
+    <a href="https://www.uptake.com" class="url" target="_blank">uptake.com</a>
+    <p>Industrial AI platform with Asset Performance Management (APM) that connects operational data from assets with ML models to predict failures. Deployed across railroad, energy, construction equipment, and manufacturing. Strong in heavy industry / asset-intensive sectors where sensors are already installed.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Uptake is sensor/data-lake first; FactoryLM is document and knowledge namespace first — a fundamentally different wedge for a different buyer.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#11</div>
+        <h3>Factory AI (f7i.ai)</h3>
+      </div>
+    </div>
+    <a href="https://f7i.ai" class="url" target="_blank">f7i.ai</a>
+    <p>Combined sensor-agnostic Predictive Maintenance + CMMS platform that deploys in under 14 days. No-code environment, claims fastest time-to-value in the mid-market segment. Positions specifically for "mix of old and new machines." Active content marketing in the 2026 manufacturing AI space.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Factory AI is no-code PdM software; FactoryLM does the namespace structuring work (manual indexing, PLC tag mapping) as a done-for-you professional service, then runs MIRA on top. Different GTM: Factory AI is self-serve, FactoryLM is high-touch.</p>
+    <div class="tags"><span class="tag startup">Startup</span><span class="tag threat">Adjacent threat</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#12</div>
+        <h3>Oxmaint</h3>
+      </div>
+    </div>
+    <a href="https://oxmaint.com" class="url" target="_blank">oxmaint.com</a>
+    <p>AI maintenance platform connecting signals, IoT data, drone inspections, and field workflows into one system. Active in 2026 content positioning on AI-driven downtime reduction (claims 40% reduction). Covers manufacturing plants, power plants, and field operations with predictive AI layer.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Broader operational platform (drones, field workflows). FactoryLM is narrowly focused on maintenance intelligence grounded in the OEM and OT namespace — deeper but not wider.</p>
+    <div class="tags"><span class="tag startup">Startup</span></div>
+  </div>
+
+</div>
+
+<!-- TIER 3 -->
+<h2 class="tier">🏭 Tier 3 — Enterprise Industrial AI Platforms <span class="badge">Large Deal / Enterprise</span></h2>
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#13</div>
+        <h3>AspenTech — Aspen Mtell</h3>
+      </div>
+    </div>
+    <a href="https://www.aspentech.com/en/products/apm/aspen-mtell" class="url" target="_blank">aspentech.com/aspen-mtell</a>
+    <p>Prescriptive and predictive maintenance solution from AspenTech — a heavyweight in process industries (refining, chemicals, pharma, power). Aspen Mtell uses pattern recognition to detect failure precursors early and recommend corrective actions. Deep integration with historian/process control systems.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> AspenTech targets $50M+ companies with dedicated reliability engineers. FactoryLM targets SMB/mid-market manufacturers where Aspen's price tag and complexity are prohibitive.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#14</div>
+        <h3>C3.ai</h3>
+      </div>
+    </div>
+    <a href="https://c3.ai" class="url" target="_blank">c3.ai</a>
+    <p>Enterprise AI software company (NYSE: AI) offering industry-specific AI applications including Predictive Maintenance, Reliability, and Manufacturing suite. Strong ML/AI modeling depth. Works with Shell, Baker Hughes, US Air Force, and other large industrial operators. Requires significant data science infrastructure.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> C3.ai requires clean data lakes and data science teams. FactoryLM is designed to work with messy maintenance reality — no data lake required.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span><span class="tag funding">Public (NYSE: AI)</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#15</div>
+        <h3>PTC ThingWorx / Velotic</h3>
+      </div>
+    </div>
+    <a href="https://www.ptc.com/en/products/thingworx" class="url" target="_blank">ptc.com/thingworx</a>
+    <p>ThingWorx is now under Velotic, a new industrial software company spun out from PTC. Offers IIoT connectivity, LLM integration (v10.0), natural language capabilities, vision AI, and agentic automation for manufacturing operations. Strategic alliance with Rockwell (FactoryTalk Innovation Suite).</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> PTC/Velotic is infrastructure and platform for large OEMs and SI partners. FactoryLM is a delivered solution. They could become a platform FactoryLM builds on rather than a direct competitor.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#16</div>
+        <h3>Sight Machine</h3>
+      </div>
+    </div>
+    <a href="https://sightmachine.com" class="url" target="_blank">sightmachine.com</a>
+    <p>Enterprise manufacturing data platform that unifies operational data from disparate factory systems into a coherent data model, then layers analytics and AI. Works with global manufacturers like Nissan, Dow, and Corning. Strong at OEE analytics and production intelligence.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Sight Machine is OEE/production analytics focused for big manufacturers; FactoryLM is maintenance intelligence for small-to-mid plants. Different buyer, different budget.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span><span class="tag funding">VC backed</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#17</div>
+        <h3>Energent.ai</h3>
+      </div>
+    </div>
+    <a href="https://www.energent.ai" class="url" target="_blank">energent.ai</a>
+    <p>AI platform that transforms unstructured PDFs, spreadsheets, and maintenance records into predictive models with 94.4% accuracy on the HuggingFace DABstep leaderboard. Trusted by 100k+ companies globally. Focuses on automating core business functions including predictive maintenance intelligence.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Energent is a horizontal AI data platform; FactoryLM is purpose-built for industrial maintenance with UNS/ISA-95 structure, PLC tag reconciliation, and grounded MIRA diagnostics.</p>
+    <div class="tags"><span class="tag threat">Adjacent threat</span></div>
+  </div>
+
+</div>
+
+<!-- TIER 4 -->
+<h2 class="tier">🗂 Tier 4 — Traditional CMMS with AI Upgrades <span class="badge">Incumbent Risk</span></h2>
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#18</div>
+        <h3>IBM Maximo Application Suite</h3>
+      </div>
+    </div>
+    <a href="https://www.ibm.com/products/maximo" class="url" target="_blank">ibm.com/maximo</a>
+    <p>Category leader for global enterprise asset management. Maximo Application Suite now integrates generative AI, advanced analytics, and IoT in a unified lifecycle management solution. Covers maintenance, inspection, and reliability for critical infrastructure across 50+ site deployments. Dominant in utilities, oil &amp; gas, and public sector.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> IBM Maximo is priced and scoped for the Fortune 500 — FactoryLM's $499/mo operating layer addresses the 90% of manufacturers who can't afford Maximo implementation costs.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span><span class="tag funding">Public (IBM)</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#19</div>
+        <h3>SAP Intelligent Asset Management</h3>
+      </div>
+    </div>
+    <a href="https://www.sap.com/products/scm/intelligent-asset-management.html" class="url" target="_blank">sap.com/intelligent-asset-management</a>
+    <p>SAP's unified asset management suite covering predictive maintenance, asset performance, and equipment intelligence. The standard for global conglomerates requiring deep financial integration across business units. Integrates with SAP S/4HANA for end-to-end asset lifecycle management.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> SAP requires a full ERP relationship. FactoryLM works in plants with zero SAP footprint — a completely different buyer profile and a massive underserved market.</p>
+    <div class="tags"><span class="tag enterprise">Enterprise</span><span class="tag funding">Public (SAP)</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#20</div>
+        <h3>Fiix (Rockwell Automation)</h3>
+      </div>
+    </div>
+    <a href="https://www.fiixsoftware.com" class="url" target="_blank">fiixsoftware.com</a>
+    <p>Cloud-native CMMS acquired by Rockwell Automation, with "Fiix Foresight" AI for work order insights, anomaly detection, and PM optimization. Positioned for mid-market manufacturing. Strong at work order management and preventive maintenance scheduling. Relies on third-party sensors rather than native monitoring hardware.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Fiix is a digitized work order system with AI features. FactoryLM structures the underlying knowledge namespace first — a prerequisite Fiix doesn't address. MIRA can write back to CMMS systems like Fiix.</p>
+    <div class="tags"><span class="tag enterprise">Mid-market</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#21</div>
+        <h3>Limble CMMS</h3>
+      </div>
+    </div>
+    <a href="https://limblecmms.com" class="url" target="_blank">limblecmms.com</a>
+    <p>Popular mid-market CMMS known for ease of use and strong PM organization, especially in job shop and discrete manufacturing environments. Has added AI features including intelligent work order suggestions and failure analysis. Active in 2026 with AI-powered content positioning in the CMMS market.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Limble is a software tool; FactoryLM is a done-for-you service layer that structures the plant and then runs AI on it. Limble users still need to do the structuring work themselves.</p>
+    <div class="tags"><span class="tag threat">Adjacent threat</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#22</div>
+        <h3>iMaintain</h3>
+      </div>
+    </div>
+    <a href="https://imaintain.uk" class="url" target="_blank">imaintain.uk</a>
+    <p>UK-based maintenance intelligence platform positioning around "human-centred intelligence" for manufacturing. Produces comparative guides on CMMS and maintenance AI platforms for 2026. Appears focused on the mid-market manufacturing and facilities management sector in the UK/Europe.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> iMaintain appears to be a software/analytics platform without the deep namespace structuring and OT/PLC integration layer that defines FactoryLM's moat. Geography: UK/Europe vs North America focus.</p>
+    <div class="tags"><span class="tag startup">Startup</span></div>
+  </div>
+
+</div>
+
+<!-- TIER 5 -->
+<h2 class="tier">🔌 Tier 5 — Infrastructure & Namespace Players <span class="badge">Foundational Layer</span></h2>
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#23</div>
+        <h3>HiveMQ</h3>
+      </div>
+    </div>
+    <a href="https://www.hivemq.com" class="url" target="_blank">hivemq.com</a>
+    <p>Enterprise MQTT broker and IoT messaging platform. Increasingly recognized as the infrastructure backbone for Unified Namespace (UNS) implementations in manufacturing. Published practical IIoT UNS guides and is a key enabler for the ISA-95/Sparkplug B architecture that FactoryLM builds on. Used by BMW, Audi, and other major manufacturers.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> HiveMQ is plumbing — they move data. FactoryLM structures the meaning of that data into a grounded namespace. Potential partner, not true competitor.</p>
+    <div class="tags"><span class="tag infra">Infrastructure</span><span class="tag funding">VC backed</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#24</div>
+        <h3>Proxus</h3>
+      </div>
+    </div>
+    <a href="https://proxus.io" class="url" target="_blank">proxus.io</a>
+    <p>Unified Namespace architecture consultancy and platform publishing deep technical implementation guides for IIoT UNS in 2026. Covers the hierarchical MQTT topic structure that serves as the central data bus for manufacturing data. Active in the smart manufacturing / Industry 4.0 architecture space.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> Proxus is architectural guidance and software tooling for the UNS layer. FactoryLM delivers the populated namespace — the structured content, not just the infrastructure to hold it.</p>
+    <div class="tags"><span class="tag infra">Infrastructure</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-num">#25</div>
+        <h3>eMaint / Fluke Reliability</h3>
+      </div>
+    </div>
+    <a href="https://www.emaint.com" class="url" target="_blank">emaint.com</a>
+    <p>Cloud CMMS from Fluke (industrial test equipment leader) with integrated condition monitoring. Unique advantage: Fluke's hardware ecosystem allows eMaint to pull in vibration, thermal, and power quality data natively. Strong in manufacturing plants that already use Fluke instruments on the floor.</p>
+    <p><strong>Differentiator vs FactoryLM:</strong> eMaint/Fluke is hardware-led and instrument-centric. FactoryLM's value is in structuring the existing knowledge (manuals, PLC tags, tribal knowledge) — assets eMaint doesn't systematically organize.</p>
+    <div class="tags"><span class="tag enterprise">Mid-market</span></div>
+  </div>
+
+</div>
+
+<!-- Summary Table -->
+<h2 class="tier">📊 Quick Reference Summary</h2>
+<div style="overflow-x:auto; margin-top: 12px;">
+<table style="width:100%; border-collapse:collapse; font-size:13px; background:white; border-radius:10px; overflow:hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+  <thead>
+    <tr style="background:#1B365D; color:white;">
+      <th style="padding:10px 14px; text-align:left;">#</th>
+      <th style="padding:10px 14px; text-align:left;">Company</th>
+      <th style="padding:10px 14px; text-align:left;">URL</th>
+      <th style="padding:10px 14px; text-align:left;">Category</th>
+      <th style="padding:10px 14px; text-align:left;">Threat Level</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">1</td><td>MaintainX CoPilot</td><td><a href="https://www.getmaintainx.com" target="_blank">getmaintainx.com</a></td><td>AI Copilot CMMS</td><td>🔴 High</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">2</td><td>Fabrico</td><td><a href="https://www.fabrico.io" target="_blank">fabrico.io</a></td><td>AI Copilot CMMS</td><td>🔴 High</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">3</td><td>UpKeep</td><td><a href="https://www.upkeep.com" target="_blank">upkeep.com</a></td><td>CMMS + AI</td><td>🟠 Medium</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">4</td><td>Siemens Industrial Copilot</td><td><a href="https://www.siemens.com/en-us/company/insights/generative-ai-industrial-copilot/" target="_blank">siemens.com</a></td><td>AI Copilot (OEM)</td><td>🟠 Medium</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">5</td><td>Microsoft Copilot for Manufacturing</td><td><a href="https://www.microsoft.com/en-us/industry/manufacturing" target="_blank">microsoft.com</a></td><td>AI Platform</td><td>🟡 Low-Med</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">6</td><td>Fogwing</td><td><a href="https://www.fogwing.io" target="_blank">fogwing.io</a></td><td>AI Copilot CMMS</td><td>🟠 Medium</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">7</td><td>Augury</td><td><a href="https://www.augury.com" target="_blank">augury.com</a></td><td>IoT + AI PdM</td><td>🟡 Low-Med</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">8</td><td>Tractian</td><td><a href="https://tractian.com" target="_blank">tractian.com</a></td><td>IoT + AI CMMS</td><td>🔴 High</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">9</td><td>SparkCognition</td><td><a href="https://www.sparkcognition.com" target="_blank">sparkcognition.com</a></td><td>Industrial AI</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">10</td><td>Uptake</td><td><a href="https://www.uptake.com" target="_blank">uptake.com</a></td><td>Industrial AI APM</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">11</td><td>Factory AI (f7i.ai)</td><td><a href="https://f7i.ai" target="_blank">f7i.ai</a></td><td>PdM + CMMS</td><td>🟠 Medium</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">12</td><td>Oxmaint</td><td><a href="https://oxmaint.com" target="_blank">oxmaint.com</a></td><td>AI Maintenance</td><td>🟡 Low-Med</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">13</td><td>AspenTech Aspen Mtell</td><td><a href="https://www.aspentech.com/en/products/apm/aspen-mtell" target="_blank">aspentech.com</a></td><td>Enterprise PdM</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">14</td><td>C3.ai</td><td><a href="https://c3.ai" target="_blank">c3.ai</a></td><td>Enterprise AI</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">15</td><td>PTC ThingWorx / Velotic</td><td><a href="https://www.ptc.com/en/products/thingworx" target="_blank">ptc.com</a></td><td>IIoT Platform</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">16</td><td>Sight Machine</td><td><a href="https://sightmachine.com" target="_blank">sightmachine.com</a></td><td>Mfg Data Platform</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">17</td><td>Energent.ai</td><td><a href="https://www.energent.ai" target="_blank">energent.ai</a></td><td>AI Data Platform</td><td>🟠 Medium</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">18</td><td>IBM Maximo</td><td><a href="https://www.ibm.com/products/maximo" target="_blank">ibm.com/maximo</a></td><td>Enterprise EAM</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">19</td><td>SAP Intelligent Asset Mgmt</td><td><a href="https://www.sap.com/products/scm/intelligent-asset-management.html" target="_blank">sap.com</a></td><td>Enterprise EAM</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">20</td><td>Fiix (Rockwell Automation)</td><td><a href="https://www.fiixsoftware.com" target="_blank">fiixsoftware.com</a></td><td>CMMS + AI</td><td>🟠 Medium</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">21</td><td>Limble CMMS</td><td><a href="https://limblecmms.com" target="_blank">limblecmms.com</a></td><td>CMMS + AI</td><td>🟠 Medium</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">22</td><td>iMaintain</td><td><a href="https://imaintain.uk" target="_blank">imaintain.uk</a></td><td>Maintenance Intel</td><td>🟡 Low</td></tr>
+    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 14px;">23</td><td>HiveMQ</td><td><a href="https://www.hivemq.com" target="_blank">hivemq.com</a></td><td>UNS / MQTT Infra</td><td>⚪ Partner</td></tr>
+    <tr style="border-bottom:1px solid #eee; background:#f9f9f9;"><td style="padding:8px 14px;">24</td><td>Proxus</td><td><a href="https://proxus.io" target="_blank">proxus.io</a></td><td>UNS Architecture</td><td>⚪ Partner</td></tr>
+    <tr><td style="padding:8px 14px;">25</td><td>eMaint / Fluke Reliability</td><td><a href="https://www.emaint.com" target="_blank">emaint.com</a></td><td>CMMS + Instruments</td><td>🟡 Low</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- Key Takeaways -->
+<h2 class="tier" style="margin-top: 40px;">💡 Key Takeaways for FactoryLM</h2>
+<div style="background:white; border-radius:10px; padding:24px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.06); margin-top:12px;">
+  <p style="font-size:14px; line-height:1.7; color:#333; margin-bottom:12px;">
+    <strong>Your moat is clear:</strong> No competitor does the upfront namespace structuring work the way FactoryLM does — scan nameplates, reconcile PLC tags to asset names, index OEM manuals with citations, capture tribal knowledge, map fault history. MaintainX is closest (manual ingestion) but lacks the OT grounding layer.
+  </p>
+  <p style="font-size:14px; line-height:1.7; color:#333; margin-bottom:12px;">
+    <strong>Biggest threat to watch:</strong> Tractian ($196M raised) is moving into the CMMS + AI copilot space from a hardware-first position. MaintainX CoPilot is investing heavily in OEM manual ingestion. Both could blur the line between sensor-led and knowledge-led maintenance AI within 18 months.
+  </p>
+  <p style="font-size:14px; line-height:1.7; color:#333; margin-bottom:12px;">
+    <strong>Underserved by everyone:</strong> PLC tag reconciliation, UNS-grounded troubleshooting, and cross-vendor (Allen-Bradley + Siemens + ABB in one plant) maintenance intelligence. This is FactoryLM's clearest product defensibility.
+  </p>
+  <p style="font-size:14px; line-height:1.7; color:#333;">
+    <strong>Partner candidates:</strong> HiveMQ and Proxus are building the UNS infrastructure FactoryLM populates — potential GTM partners for enterprise and OEM channel deals.
+  </p>
+</div>
+
+</main>
+
+<footer>
+  FactoryLM Competitor Intelligence &nbsp;|&nbsp; Auto-generated June 14, 2026 &nbsp;|&nbsp; Sources: IIoT World, TrustSignals, Fabrico, f7i.ai, Tractian, StartUs Insights, ARC Advisory Group, MaintainX, Siemens, Fogwing, IBM, SAP, Fiix, Limble, iMaintain, Energent.ai, Oxmaint, HiveMQ, Proxus
+</footer>
+
+</body>
+</html>

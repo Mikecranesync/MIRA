@@ -1,0 +1,31 @@
+{
+  "id": 1,
+  "oem": "Siemens",
+  "document": "3RT2 Contactors Manual (60306557)",
+  "url": "https://cache.industry.siemens.com/dl/files/557/60306557/att_111612/v1/manual_contactors_3RT2_en-US.pdf",
+  "manifest_page_ref": "Ch. 2–3, power & control circuits",
+  "print_type": "Power contactor diagram",
+  "standard": "IEC 60947-4-1",
+  "category": "European/IEC",
+  "rendered_page_number": 48,
+  "image_path": "docs/eval/print-translator-campaign/images/01.png",
+  "run_timestamp_utc": "2026-07-10T12:07:50.357809+00:00",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "caption": "Describe the theory of operation.",
+  "image_sha256": "47429e6b52b7d8e8c081de6b0257c5b9a98dea58a7ef6b24129e714e58e0d045",
+  "drawing_type": null,
+  "ocr_item_count": 0,
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 306,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "response": "## 1. What this appears to be\nThis appears to be a table from a technical manual or catalog for power contactors and contactor relays, specifically detailing drive system and coil selection options.\n\n## 2. Main visible components\nThe main visible component is a table that compares different operating mechanisms and coil specifications for power contactors and contactor relays. The table includes columns for:\n* Size: S00 to S2\n* AC operating mechanisms\n* DC operating mechanisms\n* Electronic operating mechanism (AC/DC operating mechanism)\n\n## 3. Plain-English theory of operation\nThe table provides information on the operating mechanisms and coil specifications for power contactors and contactor relays. It appears to explain the different options for driving the coils, including:\n* AC operation\n* DC operation\n* Electronic operating mechanism (AC/DC operating mechanism)\n\n## 4. What must be true for it to work\nAccording to this print, for the drive system and coil selection to work, the following must be true:\n* The operating mechanism type must be compatible with the coil voltage\n* The coil surge suppressor must be properly configured\n* The operating range must be within the specified limits\n\n## 5. What would stop it from working\nThe following could stop the drive system and coil selection from working:\n* Incompatible operating mechanism and coil voltage\n* Improperly configured coil surge suppressor\n* Operating range outside of specified limits\n\n## 6. Unclear or unreadable items\nNothing major unreadable."
+}

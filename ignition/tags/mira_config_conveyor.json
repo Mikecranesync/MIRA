@@ -1,0 +1,32 @@
+{
+  "name": "default",
+  "tagType": "Provider",
+  "tags": [
+    {
+      "name": "MIRA",
+      "tagType": "Folder",
+      "tags": [
+        {
+          "name": "Config",
+          "tagType": "Folder",
+          "tags": [
+            {
+              "name": "conveyor",
+              "tagType": "Folder",
+              "tags": [
+                {
+                  "name": "map",
+                  "tagType": "AtomicTag",
+                  "valueSource": "memory",
+                  "dataType": "String",
+                  "tooltip": "VFD Analyzer auto-map: tag->role config for asset 'conveyor' (JSON). Edit via the TagMapper setup view; read by mira_diagnose + TrendChart.",
+                  "value": "{\"schemaVersion\":1,\"assetId\":\"conveyor\",\"driveFamily\":\"GS10\",\"unsPath\":\"enterprise.garage.demo_cell.cv_101\",\"updatedBy\":\"seed\",\"approved\":false,\"approvedBy\":null,\"roles\":{\"vfd/vfd101/comm_ok\":{\"tag\":\"[default]MIRA_IOCheck/VFD/vfd_comm_ok\",\"divisor\":null,\"source\":\"seed\",\"confidence\":\"verified\",\"evidence\":\"migrated_from_LEAF_MAP\"},\"vfd/vfd101/current_a\":{\"tag\":\"[default]MIRA_IOCheck/VFD/vfd_current\",\"divisor\":100.0,\"source\":\"seed\",\"confidence\":\"verified\",\"evidence\":\"migrated_from_LEAF_MAP\"},\"vfd/vfd101/dc_bus_v\":{\"tag\":\"[default]MIRA_IOCheck/VFD/vfd_dc_bus\",\"divisor\":10.0,\"source\":\"seed\",\"confidence\":\"verified\",\"evidence\":\"migrated_from_LEAF_MAP\"},\"vfd/vfd101/freq\":{\"tag\":\"[default]MIRA_IOCheck/VFD/vfd_frequency\",\"divisor\":100.0,\"source\":\"seed\",\"confidence\":\"verified\",\"evidence\":\"migrated_from_LEAF_MAP\"},\"vfd/vfd101/freq_setpoint\":{\"tag\":\"[default]MIRA_IOCheck/VFD/vfd_freq_cmd\",\"divisor\":100.0,\"source\":\"seed\",\"confidence\":\"verified\",\"evidence\":\"migrated_from_LEAF_MAP\"},\"vfd/vfd101/cmd_word\":{\"tag\":\"[default]MIRA_IOCheck/VFD/vfd_cmd_word\",\"divisor\":1.0,\"source\":\"seed\",\"confidence\":\"verified\",\"evidence\":\"migrated_from_LEAF_MAP\"},\"vfd/vfd101/fault_code\":{\"tag\":\"[default]MIRA_IOCheck/VFD/vfd_fault_code\",\"divisor\":1.0,\"source\":\"seed\",\"confidence\":\"verified\",\"evidence\":\"migrated_from_LEAF_MAP\"},\"vfd/vfd101/warn_code\":{\"tag\":\"[default]MIRA_IOCheck/VFD/vfd_warn_code\",\"divisor\":1.0,\"source\":\"seed\",\"confidence\":\"verified\",\"evidence\":\"migrated_from_LEAF_MAP\"}}}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

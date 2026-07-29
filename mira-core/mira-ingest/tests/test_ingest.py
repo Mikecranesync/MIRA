@@ -175,3 +175,41 @@ def test_health_endpoint_returns_200(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# document-kb upload size cap (MIRA_MAX_UPLOAD_MB, default 50)
+# Locks the 2026-06-13 fix: the Telegram-era 20 MB cap is raised to 50 MB and
+# made env-configurable, and MUST stay in sync with the Hub's
+# NEXT_PUBLIC_MAX_UPLOAD_MB. The size gate rejects before any Open WebUI
+# forward, so these need no OW mock.
+# ---------------------------------------------------------------------------
+
+
+def _post_pdf(client, size_bytes: int):
+    data = b"%PDF-1.4\n" + b"0" * max(0, size_bytes - 9)
+    return client.post(
+        "/ingest/document-kb",
+        files={"file": ("big.pdf", io.BytesIO(data), "application/pdf")},
+    )
+
+
+def test_document_kb_accepts_31mb_pdf_size_gate(client):
+    # The 31.5 MB GS10 manual that the old 20 MB cap rejected now clears the
+    # size gate (it then proceeds to the OW forward, which we don't exercise
+    # here — a 200/500 both mean the size gate passed; only 413 means rejected).
+    resp = _post_pdf(client, 31 * 1024 * 1024 + 512 * 1024)
+    assert resp.status_code != 413, resp.text
+
+
+def test_document_kb_rejects_over_default_50mb_cap(client):
+    resp = _post_pdf(client, 51 * 1024 * 1024)
+    assert resp.status_code == 413
+    assert "50MB limit" in resp.json()["detail"]
+
+
+def test_document_kb_cap_is_env_configurable(client, monkeypatch):
+    monkeypatch.setenv("MIRA_MAX_UPLOAD_MB", "1")
+    resp = _post_pdf(client, 2 * 1024 * 1024)
+    assert resp.status_code == 413
+    assert "1MB limit" in resp.json()["detail"]

@@ -1,6 +1,7 @@
 // mira-hub/src/lib/mira-ingest-client.ts
 import { sniffMime, isMimeCompatible } from "./sniff-mime";
 import { composeTimeout, isAbortError } from "./abort-helpers";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "./config";
 
 const INGEST_TIMEOUT_MS = 120_000; // mira-ingest can poll OpenWebUI for ~40s+ on large PDFs
 
@@ -8,7 +9,9 @@ export class MimeMismatchError extends Error {
   declared: string;
   sniffed: string | null;
   constructor(declared: string, sniffed: string | null) {
-    super(`content_does_not_match_declared_mime: declared=${declared} sniffed=${sniffed}`);
+    super(
+      `content_does_not_match_declared_mime: declared=${declared} sniffed=${sniffed}`,
+    );
     this.name = "MimeMismatchError";
     this.declared = declared;
     this.sniffed = sniffed;
@@ -30,7 +33,7 @@ export interface PhotoIngestResult {
   photoPath: string | null;
 }
 
-const MAX_BYTES = 20 * 1024 * 1024;
+const MAX_BYTES = MAX_UPLOAD_BYTES;
 
 /**
  * Resolve the mira-ingest base URL, or throw a clear, user-facing error.
@@ -65,7 +68,9 @@ async function streamToBlob(
     if (done) break;
     total += value.byteLength;
     if (total > MAX_BYTES) {
-      throw new Error(`file exceeds 20 MB limit (${(total / 1024 / 1024).toFixed(1)} MB)`);
+      throw new Error(
+        `file exceeds ${MAX_UPLOAD_MB} MB limit (${(total / 1024 / 1024).toFixed(1)} MB)`,
+      );
     }
     chunks.push(value);
   }
@@ -77,7 +82,10 @@ async function streamToBlob(
  * declared MIME's general category. Throws MimeMismatchError on rejection
  * so the upload pipeline can mark the row failed with a clear reason.
  */
-async function assertMimeMatchesBlob(blob: Blob, declared: string): Promise<void> {
+async function assertMimeMatchesBlob(
+  blob: Blob,
+  declared: string,
+): Promise<void> {
   const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
   const sniffed = sniffMime(head);
   if (!isMimeCompatible(declared, sniffed)) {
@@ -118,7 +126,10 @@ export async function forwardToIngest(
       signal: composeTimeout(opts.signal, INGEST_TIMEOUT_MS),
     });
   } catch (err) {
-    if (isAbortError(err)) throw new Error(`timeout: mira-ingest document-kb (${INGEST_TIMEOUT_MS}ms)`);
+    if (isAbortError(err))
+      throw new Error(
+        `timeout: mira-ingest document-kb (${INGEST_TIMEOUT_MS}ms)`,
+      );
     throw err;
   }
   const json = await res.json().catch(() => ({}));
@@ -177,12 +188,15 @@ export async function forwardToPhotoIngest(
       signal: composeTimeout(opts.signal, INGEST_TIMEOUT_MS),
     });
   } catch (err) {
-    if (isAbortError(err)) throw new Error(`timeout: mira-ingest photo (${INGEST_TIMEOUT_MS}ms)`);
+    if (isAbortError(err))
+      throw new Error(`timeout: mira-ingest photo (${INGEST_TIMEOUT_MS}ms)`);
     throw err;
   }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(`photo ingest ${res.status}: ${json.detail ?? res.statusText}`);
+    throw new Error(
+      `photo ingest ${res.status}: ${json.detail ?? res.statusText}`,
+    );
   }
   return {
     status: "ok",
@@ -193,7 +207,9 @@ export async function forwardToPhotoIngest(
   };
 }
 
-export function inferKindFromMime(mime: string | null | undefined): "document" | "photo" {
+export function inferKindFromMime(
+  mime: string | null | undefined,
+): "document" | "photo" {
   if (!mime) return "document";
   if (mime.startsWith("image/")) return "photo";
   return "document";
@@ -208,7 +224,17 @@ export const SUPPORTED_IMAGE_MIMES = new Set([
   "image/heif",
 ]);
 
+// Plain-text manual/procedure formats (#2277). A maintenance procedure is often
+// a .md/.txt, not a PDF; these ingest through the same v2 citable node path as
+// PDFs (writeTextChunksForNode), the bytes ARE the text (no extraction needed).
+export const SUPPORTED_TEXT_MIMES = new Set(["text/markdown", "text/plain"]);
+
 export const SUPPORTED_MIMES = new Set<string>([
   "application/pdf",
   ...SUPPORTED_IMAGE_MIMES,
+  ...SUPPORTED_TEXT_MIMES,
 ]);
+
+export function isTextMime(mime: string | null | undefined): boolean {
+  return !!mime && SUPPORTED_TEXT_MIMES.has(mime);
+}

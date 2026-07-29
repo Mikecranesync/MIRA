@@ -1,0 +1,105 @@
+# MIRA Print Pack — Customer Intake Manifest SCHEMA
+# ---------------------------------------------------------------------------
+# This is the ONLY customer-authored input to a Print Pack build. Everything
+# else in the bundle is generated from the machine's model + this manifest.
+#
+# Format: a plain-YAML document. This file documents every field, its type,
+# whether it is required, and the honesty rules that govern it. A blank,
+# ready-to-fill copy is `intake_manifest.template.yaml`.
+#
+# HARD RULE: unknown fields stay BLANK. The build never invents a destination,
+# terminal, rating, or device relationship to fill a gap. A blank is honest;
+# a guess is a defect (see SPEC.md §8, and the NEVER-INFERRED list §5).
+# ---------------------------------------------------------------------------
+
+pack_format_version:
+  type: string
+  required: true
+  desc: Must match machine-print-pack/VERSION (e.g. "1.0.0"). Pins the manifest to a build format.
+
+asset:
+  required: true
+  desc: The one physical machine this pack documents. A pack is instance-keyed (one machine), not family-keyed.
+  fields:
+    uns_path:
+      type: string
+      required: true
+      desc: >
+        UNS/ISA-95 dotted path, lowercase (e.g. enterprise.garage.demo_cell.cv_101).
+        Built only by the UNS path builders — do not hand-format. See .claude/rules/uns-compliance.md.
+    tag:
+      type: string
+      required: true
+      desc: Short asset tag as marked on the machine (e.g. "CV-101").
+    label:
+      type: string
+      required: true
+      desc: Human name (e.g. "Garage conveyor").
+
+customer:
+  required: true
+  desc: Ownership + site. Redactable — the example bundle blanks these (see redact.py / --redact).
+  fields:
+    name:        { type: string, required: true,  desc: Customer / company name. }
+    site:        { type: string, required: true,  desc: Facility / site name or address line. }
+    contact:     { type: string, required: false, desc: "Support contact printed on the pack: 'questions -> ___'." }
+    confidential:
+      type: bool
+      required: false
+      default: true
+      desc: If true, the cover/footer carries a "Company Confidential — for <customer> internal use" marking.
+
+model_source:
+  required: true
+  desc: The model/*.yaml directory that IS the source of truth for this machine's prints.
+  fields:
+    package_dir:
+      type: string
+      required: true
+      desc: >
+        Path to the print package (contains model/, render_sheet.py, validate_model.py,
+        emit_matrices.py). For CV-101: plc/conv_simple_electrical.
+
+evidence:
+  required: true
+  desc: >
+    Everything the customer hands over that backs a "verified" claim. Each item is a path the build
+    can resolve + a one-line provenance note. Photos/manuals/PLC-exports. Missing evidence is not an
+    error — it just means more items stay field_verify. NEVER cite evidence you do not have.
+  item_fields:
+    path:      { type: string, required: true,  desc: Repo/relative path to the artifact (photo, manual, PLC export). }
+    kind:      { type: enum,   required: true,  desc: "One of: photo | manual | plc_export | datasheet | technician_statement." }
+    provenance:{ type: string, required: true,  desc: One line — where it came from + date (e.g. "bench photo, 2026-07-11"). }
+    redact:    { type: bool,   required: false, default: false, desc: If true, blur/redact before embedding in the example bundle. }
+
+build:
+  required: true
+  desc: What to build and as of when.
+  fields:
+    as_of:
+      type: string (date)
+      required: true
+      desc: >
+        The ONLY source of "now" for the build (YYYY-MM-DD). Pins every timestamp so rebuilds are
+        byte-identical. Passed as --as-of; must equal this field.
+    requested_tier:
+      type: enum
+      required: true
+      desc: >
+        The tier the customer is buying against: "field_verification" (APPROVABLE WITH FIELD
+        VERIFICATION — the standard sellable tier) or "approvable" (requires all field-verify items
+        closed + named field sign-off). The build computes the ACHIEVED tier and fails if it is below
+        the requested one — it never labels up.
+
+signoff:
+  required: false
+  desc: >
+    Names known at build time. The customer_field_accepted_by line is intentionally left blank until
+    the customer's own technician works the docket and signs in the field — the build must not fill it.
+  fields:
+    prepared_by:            { type: string, required: false, desc: Who prepared the pack (defaults to model meta.drawn_by). }
+    engineering_reviewed_by:{ type: string, required: false, desc: The review panel/authority that graded it. }
+    customer_field_accepted_by:
+      type: string
+      required: false
+      desc: LEAVE BLANK. Populated only by the customer's technician after their own field verification.

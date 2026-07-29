@@ -24,7 +24,7 @@ export default function QuickstartPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/quickstart/manufacturers`)
+    fetch(`${API_BASE}/api/quickstart/manufacturers/`)
       .then((r) => (r.ok ? r.json() : { manufacturers: [] }))
       .then((d: { manufacturers: Manufacturer[] }) => setManufacturers(d.manufacturers ?? []))
       .catch(() => setManufacturers([]));
@@ -37,7 +37,7 @@ export default function QuickstartPage() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch(`${API_BASE}/api/quickstart/ask`, {
+      const res = await fetch(`${API_BASE}/api/quickstart/ask/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ manufacturer: manufacturer || undefined, question }),
@@ -241,7 +241,13 @@ export default function QuickstartPage() {
                         {c.index}
                       </span>
                       <span className="leading-relaxed">
-                        {c.url ? (
+                        {/* Only link real web URLs. Source urls are often
+                            internal refs (e.g. internal://… manual chunks) that
+                            don't resolve in a browser — rendering those as a
+                            link is a dead control that erodes the "cited answer"
+                            trust promise (#1893 dogfood #4). Show the title as
+                            plain text instead. */}
+                        {c.url && /^https?:\/\//i.test(c.url) ? (
                           <a
                             href={c.url}
                             target="_blank"

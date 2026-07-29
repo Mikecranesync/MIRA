@@ -1,0 +1,123 @@
+{
+  "custom": {},
+  "params": { "rangeMinutes": 15 },
+  "propConfig": { "params.rangeMinutes": { "paramDirection": "input" } },
+  "props": { "defaultSize": { "width": 1000, "height": 720 } },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "props": { "direction": "column", "style": { "backgroundColor": "#0d1117", "height": "100%", "gap": "6px", "padding": "8px" } },
+    "children": [
+      {
+        "type": "ia.container.flex",
+        "meta": { "name": "controls" },
+        "position": { "basis": "34px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "title" },
+            "position": { "grow": 1, "shrink": 1 },
+            "props": { "text": "GS10 DRIVE — LIVE TRENDS (native tag historian, engineering units)", "style": { "color": "#e6edf3", "fontSize": "14px", "fontWeight": 700, "letterSpacing": "0.04em" } }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "rangeLabel" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "props": { "text": "Range", "style": { "color": "#8b949e", "fontSize": "12px" } }
+          },
+          {
+            "type": "ia.input.dropdown",
+            "meta": { "name": "rangePicker" },
+            "position": { "basis": "130px", "shrink": 0 },
+            "props": {
+              "value": 15,
+              "options": [
+                { "value": 5, "label": "5 min" },
+                { "value": 15, "label": "15 min" },
+                { "value": 60, "label": "1 hour" },
+                { "value": 480, "label": "8 hours" }
+              ],
+              "style": { "backgroundColor": "#161b22", "color": "#e6edf3", "border": "1px solid #30363d" }
+            },
+            "propConfig": {
+              "props.value": { "binding": { "type": "property", "config": { "path": "view.params.rangeMinutes" }, "bidirectional": true } }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.chart.timeseries",
+        "meta": { "name": "GS10Trend" },
+        "position": { "grow": 1, "basis": "1" },
+        "propConfig": {
+          "props.series[0].data": {
+            "binding": {
+              "type": "tag-history",
+              "config": {
+                "aggregate": "Average",
+                "avoidScanClassValidation": true,
+                "dateRange": { "mostRecent": "{view.params.rangeMinutes}", "mostRecentUnits": "MIN" },
+                "ignoreBadQuality": false,
+                "polling": { "enabled": true, "rate": "5" },
+                "preventInterpolation": false,
+                "returnFormat": "Wide",
+                "returnSize": { "type": "ON_CHART_REFRESH" },
+                "valueFormat": "DATASET",
+                "tags": [
+                  { "path": "[default]MIRA_IOCheck/VFD/vfd_frequency", "alias": "OutputHz" },
+                  { "path": "[default]MIRA_IOCheck/VFD/vfd_freq_sp", "alias": "SetpointHz" },
+                  { "path": "[default]MIRA_IOCheck/VFD/vfd_current", "alias": "Current_A" },
+                  { "path": "[default]MIRA_IOCheck/VFD/vfd_dc_bus", "alias": "DCBus_V" }
+                ]
+              },
+              "transforms": [
+                {
+                  "type": "script",
+                  "code": "\t# Scale raw GS10 counts to engineering units (OutputHz/SetpointHz/Current x100, DCBus x10).\n\t# Keeps the timestamp column untouched; clean column names drive the legend.\n\timport system\n\tif value is None:\n\t\treturn value\n\tscales = {\"OutputHz\": 100.0, \"SetpointHz\": 100.0, \"Current_A\": 100.0, \"DCBus_V\": 10.0}\n\tcols = list(value.getColumnNames())\n\tpds = system.dataset.toPyDataSet(value)\n\tout = []\n\tfor row in pds:\n\t\tnr = []\n\t\tfor i in range(len(cols)):\n\t\t\tv = row[i]\n\t\t\ts = scales.get(cols[i])\n\t\t\tif s is not None and v is not None:\n\t\t\t\tnr.append(round(v / s, 2))\n\t\t\telse:\n\t\t\t\tnr.append(v)\n\t\tout.append(nr)\n\treturn system.dataset.toDataSet(cols, out)\n"
+                }
+              ]
+            }
+          }
+        },
+        "props": {
+          "defaultStyles": { "colorScheme": "Paired" },
+          "legend": { "visible": true },
+          "series": [
+            { "name": "OutputHz" },
+            { "name": "SetpointHz" },
+            { "name": "Current_A" },
+            { "name": "DCBus_V" }
+          ],
+          "plots": [
+            {
+              "relativeWeight": 2,
+              "axes": [],
+              "markers": [],
+              "trends": [
+                { "series": "SetpointHz", "type": "line", "interpolation": "curveLinear", "breakLine": true, "visible": true, "axis": "", "radius": 0, "stack": false, "baselines": [], "columns": [] },
+                { "series": "OutputHz",   "type": "line", "interpolation": "curveLinear", "breakLine": true, "visible": true, "axis": "", "radius": 0, "stack": false, "baselines": [], "columns": [] }
+              ]
+            },
+            {
+              "relativeWeight": 1,
+              "axes": [],
+              "markers": [],
+              "trends": [
+                { "series": "Current_A", "type": "line", "interpolation": "curveLinear", "breakLine": true, "visible": true, "axis": "", "radius": 0, "stack": false, "baselines": [], "columns": [] }
+              ]
+            },
+            {
+              "relativeWeight": 1,
+              "axes": [],
+              "markers": [],
+              "trends": [
+                { "series": "DCBus_V", "type": "line", "interpolation": "curveLinear", "breakLine": true, "visible": true, "axis": "", "radius": 0, "stack": false, "baselines": [], "columns": [] }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

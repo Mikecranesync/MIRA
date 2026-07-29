@@ -1,0 +1,534 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.85,
+  "drawing_type": "wiring diagram",
+  "vision_description": "The image shows an electrical drawing, specifically a circuit diagram. The type of diagram appears to be a wiring diagram for typical circuits for 3SK1 Standard solid-state basic units or 3SK1 Advanced basic units.",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+  "final_text": "📋 Manual page 128 — two typical application circuits for a Siemens 3SK1 two-channel safety relay driving contactors Q1/Qn and a motor M (Table 7-8 E-STOP with monitored start; Table 7-9 with autostart).\n\nThese are wiring examples for a 3SK1 safety relay (types 3SK1112 Standard solid-state, or 3SK112/3SK122 Advanced). A two-channel safety sensor with two normally-closed contacts (e.g. an EMERGENCY STOP in Table 7-8) feeds inputs IN1 and IN2. The unit sends test pulses out of T1/T2 and reads them back on IN1/IN2 so a short between the two channels (cross-circuit / cross-fault) is detected — this is enabled by DIP switch 2 = ON. When both channels are healthy and closed, the relay energizes and its enable output picks up two contactors, Q1 and Qn, which each switch three phases to motor M; using two contactors gives the redundancy needed for PL e / SILCL 3. The only difference between the two circuits is the start behaviour: in Table 7-8 DIP 1 is ON = 'Monitored Start' (operator must press a start button and the relay checks the Q1 feedback contact before enabling), while in Table 7-9 DIP 1 is OFF = 'Autostart' (the output enables automatically once inputs are healthy). Supply is applied to A1 (+) / A2 (-) across the L+ / L- rails.\n\n🔑 Signals\n• Positive control supply into the unit\n• Negative control supply / return\n• Safety channel 1 input (from NC sensor contact)\n• Safety channel 2 input (from NC sensor contact)\n• Cross-circuit test pulse output, channel 1\n• Cross-circuit test pulse output, channel 2\n• Feedback / start-loop terminal (monitored start, circuit 8)\n• Enable output driving the two contactors\n• DIP switch 1 — Autostart / Monitored Start\n• DIP switch 2 — Cross fault detection OFF / ON\n• DIP switch 3 — 2 single-ch. sensors / 1 double-ch. sensor\n• DIP switch 4 — Startup Test yes / no\n• SET / RESET input\n\n🔧 Devices\n• Two-channel safety relay basic unit (Standard solid-state) (3SK1112)\n• Two-channel safety relay basic unit (Advanced alternative) (3SK112/3SK122)\n• Output contactor #1 (switches motor phases, provides feedback) (Q1)\n• Output contactor #2 (redundant, switches motor phases) (Qn)\n• Three-phase motor load (M)\n• Two-channel safety sensor / EMERGENCY STOP (2 NC contacts) (Sensor (2 NC))\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• Exact letters of terminals 'INK', 'INF', 'INS' (feedback/start terminals) — small, closely spaced text.\n• Exact wiring of the monitored-start loop and Q1 feedback contact in Table 7-8.\n• Control-supply voltage for L+/L- is not printed on this page.\n• No motor/contactor wire numbers or cable IDs are given (generic example).\n\n⚠️ For any continuity/resistance checks of the sensor contacts, input channels, or feedback loop, de-energize, lock out, and verify absence of voltage first. The control supply is shown as L+ / L- (DC), but NO voltage value is printed on this page — do not assume a level; obtain it from the device rating plate or datasheet. The motor branch (Q1/Qn to M) carries three-phase power; treat it as live and separate from the control-supply testing. This is a generic manual example, so it does not prove the actual field wiring or present energization state of any specific installation.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list.",
+  "all_messages": [
+    "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+    "📋 Manual page 128 — two typical application circuits for a Siemens 3SK1 two-channel safety relay driving contactors Q1/Qn and a motor M (Table 7-8 E-STOP with monitored start; Table 7-9 with autostart).\n\nThese are wiring examples for a 3SK1 safety relay (types 3SK1112 Standard solid-state, or 3SK112/3SK122 Advanced). A two-channel safety sensor with two normally-closed contacts (e.g. an EMERGENCY STOP in Table 7-8) feeds inputs IN1 and IN2. The unit sends test pulses out of T1/T2 and reads them back on IN1/IN2 so a short between the two channels (cross-circuit / cross-fault) is detected — this is enabled by DIP switch 2 = ON. When both channels are healthy and closed, the relay energizes and its enable output picks up two contactors, Q1 and Qn, which each switch three phases to motor M; using two contactors gives the redundancy needed for PL e / SILCL 3. The only difference between the two circuits is the start behaviour: in Table 7-8 DIP 1 is ON = 'Monitored Start' (operator must press a start button and the relay checks the Q1 feedback contact before enabling), while in Table 7-9 DIP 1 is OFF = 'Autostart' (the output enables automatically once inputs are healthy). Supply is applied to A1 (+) / A2 (-) across the L+ / L- rails.\n\n🔑 Signals\n• Positive control supply into the unit\n• Negative control supply / return\n• Safety channel 1 input (from NC sensor contact)\n• Safety channel 2 input (from NC sensor contact)\n• Cross-circuit test pulse output, channel 1\n• Cross-circuit test pulse output, channel 2\n• Feedback / start-loop terminal (monitored start, circuit 8)\n• Enable output driving the two contactors\n• DIP switch 1 — Autostart / Monitored Start\n• DIP switch 2 — Cross fault detection OFF / ON\n• DIP switch 3 — 2 single-ch. sensors / 1 double-ch. sensor\n• DIP switch 4 — Startup Test yes / no\n• SET / RESET input\n\n🔧 Devices\n• Two-channel safety relay basic unit (Standard solid-state) (3SK1112)\n• Two-channel safety relay basic unit (Advanced alternative) (3SK112/3SK122)\n• Output contactor #1 (switches motor phases, provides feedback) (Q1)\n• Output contactor #2 (redundant, switches motor phases) (Qn)\n• Three-phase motor load (M)\n• Two-channel safety sensor / EMERGENCY STOP (2 NC contacts) (Sensor (2 NC))\n\n🩺 If you're chasing a fault\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• Exact letters of terminals 'INK', 'INF', 'INS' (feedback/start terminals) — small, closely spaced text.\n• Exact wiring of the monitored-start loop and Q1 feedback contact in Table 7-8.\n• Control-supply voltage for L+/L- is not printed on this page.\n• No motor/contactor wire numbers or cable IDs are given (generic example).\n\n⚠️ For any continuity/resistance checks of the sensor contacts, input channels, or feedback loop, de-energize, lock out, and verify absence of voltage first. The control supply is shown as L+ / L- (DC), but NO voltage value is printed on this page — do not assume a level; obtain it from the device rating plate or datasheet. The motor branch (Q1/Qn to M) carries three-phase power; treat it as live and separate from the control-supply testing. This is a generic manual example, so it does not prove the actual field wiring or present energization state of any specific installation.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list."
+  ],
+  "map_text": "📐 Electrical print\n\n🔌 Signals (exact — source → destination)\n• Positive control supply into the unit — A1  @ A1 (+)  → L+ supply rail · conf 0.90\n• Negative control supply / return — A2  @ A2 (-)  → L- supply rail · conf 0.90\n• Safety channel 1 input (from NC sensor contact) — IN1  @ IN1  → 3SK1 safety unit input, tested by T1 · conf 0.85\n• Safety channel 2 input (from NC sensor contact) — IN2  @ IN2  → 3SK1 safety unit input, tested by T2 · conf 0.85\n• Cross-circuit test pulse output, channel 1 — T1  @ T1  → sensor channel 1 NC contact, returns on IN1 · conf 0.82\n• Cross-circuit test pulse output, channel 2 — T2  @ T2  → sensor channel 2 NC contact, returns on IN2 · conf 0.82\n• Feedback / start-loop terminal (monitored start, circuit 8) — INF/INS  @ INF, INS (reading uncertain)  → start button and Q1 feedback contact (Table 7-8) · conf 0.55\n• Enable output driving the two contactors — Q1 / Qn  @ contactor coils Q1, Qn  → motor M (3-phase) via Q1 and Qn main contacts · conf 0.80\n• DIP switch 1 — Autostart / Monitored Start — DIP1  → Table 7-8: ON/right = Monitored Start; Table 7-9: OFF/left = Autostart · conf 0.90\n• DIP switch 2 — Cross fault detection OFF / ON — DIP2  → ON/right in both circuits (cross-fault detection enabled) · conf 0.90\n• DIP switch 3 — 2 single-ch. sensors / 1 double-ch. sensor — DIP3  → ON/right in both circuits (1 double-channel sensor) · conf 0.90\n• DIP switch 4 — Startup Test yes / no — DIP4  → not set ('—') in both circuits · conf 0.85\n• SET / RESET input — SET / RESET  → reset/start pushbutton on the safety unit · conf 0.80\n\n🔧 Devices (7)\n• 3SK1112 — safety relay basic unit (Standard solid-state) (Named applicable device: '3SK1112 Standard solid-state and 3SK112/3SK122 Advanced'. Two-channel monitoring unit with DIP switches 1-4 and SET/RESET.) · conf 0.90\n• 3SK112/3SK122 — safety relay basic unit (Advanced) (Advanced basic units listed as alternative applicable devices for the same circuit.) · conf 0.88\n• Q1 — contactor (Output contactor switching the motor load; shown breaking three phases to motor M. Also provides a feedback contact into the monitored-start loop (circuit 8).) · conf 0.85\n• Qn — contactor (Second (redundant) output contactor switching the motor load; shown breaking three phases to motor M.) · conf 0.85\n• M — motor (3-phase load) (Motor driven through the Q1 and Qn contactor contacts (three lines drawn per contactor).) · conf 0.90\n• Sensor — safety sensor / E-STOP (2 NC contacts) (Two normally-closed contacts feeding the two input channels; described as 'Sensor: 2 NC contacts' / '1 x two-channel'. In Table 7-8 the application is EMERGENCY STOP.) · conf 0.85\n• SET / RESET — reset input / start button (Labeled 'SET / RESET' on the device symbol. For monitored start (circuit 8) a start push-button and Q1 feedback contact are wired in the start loop.) · conf 0.80\n\n🔗 Wires / cables\n• Q1/Qn to M — 3-phase motor cable (implied) · conf 0.60\n• L+ rail — DC positive supply conductor · conf 0.85\n• L- rail — DC negative supply conductor · conf 0.85\n\n⚠️ Couldn't read (retake or crop closer):\n• Exact letters of terminals 'INK', 'INF', 'INS' (feedback/start terminals) — small, closely spaced text.\n• Exact wiring of the monitored-start loop and Q1 feedback contact in Table 7-8.\n• Control-supply voltage for L+/L- is not printed on this page.\n• No motor/contactor wire numbers or cable IDs are given (generic example).\n\n… (truncated — reply \"map\" for detail)",
+  "graph": {
+    "package": {
+      "document": "3SK1 safety relays Manual",
+      "section": "7.2 Typical circuits — Circuit diagrams",
+      "heading": "Typical circuits for 3SK1 Standard solid-state basic units or 3SK1 Advanced basic units",
+      "page": "128",
+      "manual_ref": "Manual, 02/2014, A5E02526190021A/RS-AB/002",
+      "sheets": [
+        "Table 7-8 (Typical circuit 8): EMERGENCY STOP two-channel, with cross-circuit detection, with monitored start",
+        "Table 7-9 (Typical circuit 9): Two-channel, with cross-circuit detection, with autostart"
+      ],
+      "note": "This is a manufacturer manual/application page showing two typical application circuits, not a project cabinet wiring set. No project drawing number, cabinet ID, or wire numbers are printed.",
+      "confidence": 0.9
+    },
+    "devices": [
+      {
+        "tag": "3SK1112",
+        "type": "safety relay basic unit (Standard solid-state)",
+        "detail": "Named applicable device: '3SK1112 Standard solid-state and 3SK112/3SK122 Advanced'. Two-channel monitoring unit with DIP switches 1-4 and SET/RESET.",
+        "connects": [],
+        "evidence": "'3SK1112 Standard solid-state and 3SK112/3SK122 Advanced'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "3SK112/3SK122",
+        "type": "safety relay basic unit (Advanced)",
+        "detail": "Advanced basic units listed as alternative applicable devices for the same circuit.",
+        "connects": [],
+        "evidence": "'3SK112/3SK122 Advanced'",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "Q1",
+        "type": "contactor",
+        "detail": "Output contactor switching the motor load; shown breaking three phases to motor M. Also provides a feedback contact into the monitored-start loop (circuit 8).",
+        "connects": [],
+        "evidence": "'Q1' near contact symbols and at motor 'Q1' 3-pole contact block",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "Qn",
+        "type": "contactor",
+        "detail": "Second (redundant) output contactor switching the motor load; shown breaking three phases to motor M.",
+        "connects": [],
+        "evidence": "'Qn' near contact symbols and at motor 'Qn' 3-pole contact block",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "M",
+        "type": "motor (3-phase load)",
+        "detail": "Motor driven through the Q1 and Qn contactor contacts (three lines drawn per contactor).",
+        "connects": [],
+        "evidence": "Circle labeled 'M' with three-phase lines from Q1/Qn contacts",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "Sensor",
+        "type": "safety sensor / E-STOP (2 NC contacts)",
+        "detail": "Two normally-closed contacts feeding the two input channels; described as 'Sensor: 2 NC contacts' / '1 x two-channel'. In Table 7-8 the application is EMERGENCY STOP.",
+        "connects": [],
+        "evidence": "'Sensor: 2 NC contacts', '1 x two-channel', title 'EMERGENCY STOP two-channel'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "SET / RESET",
+        "type": "reset input / start button",
+        "detail": "Labeled 'SET / RESET' on the device symbol. For monitored start (circuit 8) a start push-button and Q1 feedback contact are wired in the start loop.",
+        "connects": [],
+        "evidence": "'SET / RESET' text with pushbutton symbol",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      }
+    ],
+    "terminals": [
+      {
+        "tag": "A1",
+        "type": "supply terminal (+)",
+        "detail": "Positive supply input, marked with '+'.",
+        "connects": [
+          "L+"
+        ],
+        "evidence": "'A1' with '+' below",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "A2",
+        "type": "supply terminal (-)",
+        "detail": "Negative supply return, marked with '-'.",
+        "connects": [
+          "L-"
+        ],
+        "evidence": "'A2' with '-' above",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "INK",
+        "type": "input/feedback terminal",
+        "detail": "Terminal labeled 'INK' at top terminal row (reading uncertain — see unresolved).",
+        "connects": [],
+        "evidence": "top terminal row 'A1 INK T1 IN1 T2 IN2 INF INS'",
+        "confidence": 0.55,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "T1",
+        "type": "test/pulse output terminal (channel 1)",
+        "detail": "Cross-circuit test output paired with input IN1.",
+        "connects": [
+          "IN1"
+        ],
+        "evidence": "'T1' in top terminal row",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "IN1",
+        "type": "safety input terminal (channel 1)",
+        "detail": "First safety channel input from NC sensor contact.",
+        "connects": [],
+        "evidence": "'IN1' in top terminal row",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "T2",
+        "type": "test/pulse output terminal (channel 2)",
+        "detail": "Cross-circuit test output paired with input IN2.",
+        "connects": [
+          "IN2"
+        ],
+        "evidence": "'T2' in top terminal row",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "IN2",
+        "type": "safety input terminal (channel 2)",
+        "detail": "Second safety channel input from NC sensor contact.",
+        "connects": [],
+        "evidence": "'IN2' in top terminal row",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "INF",
+        "type": "feedback terminal",
+        "detail": "Terminal labeled 'INF' (feedback loop) at top terminal row; reading uncertain.",
+        "connects": [],
+        "evidence": "'INF' in top terminal row",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "INS",
+        "type": "start/reset input terminal",
+        "detail": "Terminal labeled 'INS' (start) at top terminal row; reading uncertain.",
+        "connects": [],
+        "evidence": "'INS' in top terminal row",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      }
+    ],
+    "conductors": [
+      {
+        "tag": "L+ rail",
+        "type": "DC positive supply conductor",
+        "detail": "Top horizontal rail feeding A1(+) and the sensor/start circuit taps.",
+        "connects": [
+          "L+",
+          "A1"
+        ],
+        "evidence": "'L+' at top-left with horizontal line",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "L- rail",
+        "type": "DC negative supply conductor",
+        "detail": "Bottom rail returning from A2(-).",
+        "connects": [
+          "L-",
+          "A2"
+        ],
+        "evidence": "'L-' at bottom-left with horizontal line",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      }
+    ],
+    "cables": [
+      {
+        "tag": "Q1/Qn to M",
+        "type": "3-phase motor cable (implied)",
+        "detail": "Three lines drawn from each contactor block (Q1, Qn) down to motor M; no cable/wire number printed.",
+        "connects": [
+          "Q1",
+          "Qn",
+          "M"
+        ],
+        "evidence": "three parallel lines from Q1 and Qn contact blocks to 'M'",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      }
+    ],
+    "contacts": [
+      {
+        "tag": "Sensor NC ch.1",
+        "type": "NC contact",
+        "detail": "Normally-closed sensor contact in channel 1 (T1/IN1 path).",
+        "connects": [],
+        "evidence": "NC switch symbol on left input channel; 'Sensor: 2 NC contacts'",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "Sensor NC ch.2",
+        "type": "NC contact",
+        "detail": "Normally-closed sensor contact in channel 2 (T2/IN2 path).",
+        "connects": [],
+        "evidence": "NC switch symbol on right input channel; 'Sensor: 2 NC contacts'",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "Q1 feedback",
+        "type": "NC feedback contact (circuit 8)",
+        "detail": "Contactor feedback contact wired into the monitored-start loop in Table 7-8 (top-right of device symbol).",
+        "connects": [],
+        "evidence": "contact symbol labeled 'Q1' at top-right of circuit 8",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "Table 7-8"
+      },
+      {
+        "tag": "Q1 main",
+        "type": "power contact (3-pole)",
+        "detail": "Q1 main contacts switching three phases to motor M.",
+        "connects": [],
+        "evidence": "'Q1' 3-line contact block at motor",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "Qn main",
+        "type": "power contact (3-pole)",
+        "detail": "Qn main contacts switching three phases to motor M.",
+        "connects": [],
+        "evidence": "'Qn' 3-line contact block at motor",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      }
+    ],
+    "power_domains": [
+      {
+        "tag": "L+",
+        "type": "DC supply positive",
+        "detail": "Positive control supply rail feeding A1(+). Voltage level not printed on this page.",
+        "connects": [],
+        "evidence": "'L+' label",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      },
+      {
+        "tag": "L-",
+        "type": "DC supply negative",
+        "detail": "Negative control supply rail connected to A2(-). Voltage level not printed on this page.",
+        "connects": [],
+        "evidence": "'L-' label",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "Table 7-8 / 7-9"
+      }
+    ],
+    "pe_bonds": [],
+    "off_page_references": [],
+    "plc_io_channels": [],
+    "network_links": [],
+    "functional_paths": [
+      {
+        "name": "Circuit 8 — E-STOP two-channel with cross-circuit detection, monitored start",
+        "sheet": "Table 7-8",
+        "sequence": [
+          "L+",
+          "A1(+)",
+          "T1",
+          "Sensor NC ch.1",
+          "IN1",
+          "T2",
+          "Sensor NC ch.2",
+          "IN2",
+          "monitored-start loop (INS + Q1 feedback)",
+          "3SK1112 safety unit",
+          "enable output",
+          "Q1 / Qn contactors",
+          "M motor",
+          "A2(-)",
+          "L-"
+        ]
+      },
+      {
+        "name": "Circuit 9 — Two-channel with cross-circuit detection, autostart",
+        "sheet": "Table 7-9",
+        "sequence": [
+          "L+",
+          "A1(+)",
+          "T1",
+          "Sensor NC ch.1",
+          "IN1",
+          "T2",
+          "Sensor NC ch.2",
+          "IN2",
+          "3SK1112 safety unit (autostart, DIP1 OFF)",
+          "enable output",
+          "Q1 / Qn contactors",
+          "M motor",
+          "A2(-)",
+          "L-"
+        ]
+      }
+    ],
+    "physical_layout_matches": [],
+    "unresolved": [
+      {
+        "item": "Top-row terminal designations 'INK', 'INF', 'INS'",
+        "status": "reading uncertain — small font, closely spaced labels",
+        "resolution": "Higher-resolution crop of the terminal row 'A1 INK T1 IN1 T2 IN2 INF INS' to confirm exact letters (feedback/start terminal names)."
+      },
+      {
+        "item": "Exact wiring of the monitored-start loop and Q1 feedback contact in circuit 8",
+        "status": "topology partially obscured at top-right",
+        "resolution": "Crop of the upper-right start-button / Q1-feedback area of Table 7-8."
+      },
+      {
+        "item": "Control supply voltage for L+/L-",
+        "status": "not printed on this page",
+        "resolution": "Refer to device datasheet / rated control-supply section; not derivable from this drawing."
+      }
+    ],
+    "cross_sheet_notes": "Two tables on one page show the SAME basic unit and terminal set (A1, INK, T1, IN1, T2, IN2, INF, INS, A2) wired to the same Q1/Qn contactors and motor M. They differ ONLY in DIP-switch 1: Table 7-8 = ON/right = Monitored Start (with a Q1 feedback + start button); Table 7-9 = OFF/left = Autostart. In both, DIP 2 = ON (cross-fault detection ON) and DIP 3 = ON (1 double-channel sensor). Both circuits achieve PL e (ISO 13849-1) and SILCL 3 (IEC 62061).",
+    "brief": {
+      "sheet_title": "Manual page 128 — two typical application circuits for a Siemens 3SK1 two-channel safety relay driving contactors Q1/Qn and a motor M (Table 7-8 E-STOP with monitored start; Table 7-9 with autostart).",
+      "purpose": "These are wiring examples for a 3SK1 safety relay (types 3SK1112 Standard solid-state, or 3SK112/3SK122 Advanced). A two-channel safety sensor with two normally-closed contacts (e.g. an EMERGENCY STOP in Table 7-8) feeds inputs IN1 and IN2. The unit sends test pulses out of T1/T2 and reads them back on IN1/IN2 so a short between the two channels (cross-circuit / cross-fault) is detected — this is enabled by DIP switch 2 = ON. When both channels are healthy and closed, the relay energizes and its enable output picks up two contactors, Q1 and Qn, which each switch three phases to motor M; using two contactors gives the redundancy needed for PL e / SILCL 3. The only difference between the two circuits is the start behaviour: in Table 7-8 DIP 1 is ON = 'Monitored Start' (operator must press a start button and the relay checks the Q1 feedback contact before enabling), while in Table 7-9 DIP 1 is OFF = 'Autostart' (the output enables automatically once inputs are healthy). Supply is applied to A1 (+) / A2 (-) across the L+ / L- rails.",
+      "key_signals": [
+        {
+          "signal": "Positive control supply into the unit",
+          "tag": "A1",
+          "terminal": "A1 (+)",
+          "destination": "L+ supply rail",
+          "confidence": 0.9
+        },
+        {
+          "signal": "Negative control supply / return",
+          "tag": "A2",
+          "terminal": "A2 (-)",
+          "destination": "L- supply rail",
+          "confidence": 0.9
+        },
+        {
+          "signal": "Safety channel 1 input (from NC sensor contact)",
+          "tag": "IN1",
+          "terminal": "IN1",
+          "destination": "3SK1 safety unit input, tested by T1",
+          "confidence": 0.85
+        },
+        {
+          "signal": "Safety channel 2 input (from NC sensor contact)",
+          "tag": "IN2",
+          "terminal": "IN2",
+          "destination": "3SK1 safety unit input, tested by T2",
+          "confidence": 0.85
+        },
+        {
+          "signal": "Cross-circuit test pulse output, channel 1",
+          "tag": "T1",
+          "terminal": "T1",
+          "destination": "sensor channel 1 NC contact, returns on IN1",
+          "confidence": 0.82
+        },
+        {
+          "signal": "Cross-circuit test pulse output, channel 2",
+          "tag": "T2",
+          "terminal": "T2",
+          "destination": "sensor channel 2 NC contact, returns on IN2",
+          "confidence": 0.82
+        },
+        {
+          "signal": "Feedback / start-loop terminal (monitored start, circuit 8)",
+          "tag": "INF/INS",
+          "terminal": "INF, INS (reading uncertain)",
+          "destination": "start button and Q1 feedback contact (Table 7-8)",
+          "confidence": 0.55
+        },
+        {
+          "signal": "Enable output driving the two contactors",
+          "tag": "Q1 / Qn",
+          "terminal": "contactor coils Q1, Qn",
+          "destination": "motor M (3-phase) via Q1 and Qn main contacts",
+          "confidence": 0.8
+        },
+        {
+          "signal": "DIP switch 1 — Autostart / Monitored Start",
+          "tag": "DIP1",
+          "terminal": null,
+          "destination": "Table 7-8: ON/right = Monitored Start; Table 7-9: OFF/left = Autostart",
+          "confidence": 0.9
+        },
+        {
+          "signal": "DIP switch 2 — Cross fault detection OFF / ON",
+          "tag": "DIP2",
+          "terminal": null,
+          "destination": "ON/right in both circuits (cross-fault detection enabled)",
+          "confidence": 0.9
+        },
+        {
+          "signal": "DIP switch 3 — 2 single-ch. sensors / 1 double-ch. sensor",
+          "tag": "DIP3",
+          "terminal": null,
+          "destination": "ON/right in both circuits (1 double-channel sensor)",
+          "confidence": 0.9
+        },
+        {
+          "signal": "DIP switch 4 — Startup Test yes / no",
+          "tag": "DIP4",
+          "terminal": null,
+          "destination": "not set ('—') in both circuits",
+          "confidence": 0.85
+        },
+        {
+          "signal": "SET / RESET input",
+          "tag": "SET / RESET",
+          "terminal": null,
+          "destination": "reset/start pushbutton on the safety unit",
+          "confidence": 0.8
+        }
+      ],
+      "key_devices": [
+        {
+          "device": "Two-channel safety relay basic unit (Standard solid-state)",
+          "tag": "3SK1112",
+          "confidence": 0.9
+        },
+        {
+          "device": "Two-channel safety relay basic unit (Advanced alternative)",
+          "tag": "3SK112/3SK122",
+          "confidence": 0.85
+        },
+        {
+          "device": "Output contactor #1 (switches motor phases, provides feedback)",
+          "tag": "Q1",
+          "confidence": 0.82
+        },
+        {
+          "device": "Output contactor #2 (redundant, switches motor phases)",
+          "tag": "Qn",
+          "confidence": 0.82
+        },
+        {
+          "device": "Three-phase motor load",
+          "tag": "M",
+          "confidence": 0.9
+        },
+        {
+          "device": "Two-channel safety sensor / EMERGENCY STOP (2 NC contacts)",
+          "tag": "Sensor (2 NC)",
+          "confidence": 0.8
+        }
+      ],
+      "troubleshooting_example": "Symptom: the safety unit will not enable and the motor won't start. Because cross-circuit detection is ON (DIP 2) and it is a two-channel NC sensor, check BOTH channels discriminatingly. First, with the circuit de-energized and locked out, verify continuity through each sensor contact into IN1 and into IN2 with the E-STOP released: an open contact or broken wire on one channel keeps the unit tripped. If both input channels read closed but the unit still won't set, the fault is instead in the start path — for Table 7-8 (Monitored Start) confirm the start button operates and the Q1 feedback contact into the start loop (INF/INS) is closed when Q1 is dropped out; for Table 7-9 (Autostart) there is no start button, so a no-enable with good inputs points to the unit's output stage or the contactor coils Q1/Qn themselves. Distinguishing points: if IN1/IN2 are both good but the enable/feedback loop at the start terminals is open, it is the start wiring/feedback, not the sensor. NOTE: the internal enable/reset logic lives inside the 3SK1 unit and is NOT drawn on this page, so its exact response cannot be read from this drawing.",
+      "safety_context": "For any continuity/resistance checks of the sensor contacts, input channels, or feedback loop, de-energize, lock out, and verify absence of voltage first. The control supply is shown as L+ / L- (DC), but NO voltage value is printed on this page — do not assume a level; obtain it from the device rating plate or datasheet. The motor branch (Q1/Qn to M) carries three-phase power; treat it as live and separate from the control-supply testing. This is a generic manual example, so it does not prove the actual field wiring or present energization state of any specific installation.",
+      "unresolved_items": [
+        "Exact letters of terminals 'INK', 'INF', 'INS' (feedback/start terminals) — small, closely spaced text.",
+        "Exact wiring of the monitored-start loop and Q1 feedback contact in Table 7-8.",
+        "Control-supply voltage for L+/L- is not printed on this page.",
+        "No motor/contactor wire numbers or cable IDs are given (generic example)."
+      ],
+      "detailed_map_available": true,
+      "purpose_confidence": 0.85
+    }
+  },
+  "interpreter_used": true,
+  "model": "claude-opus-4-8",
+  "provider": "anthropic",
+  "effort": "xhigh",
+  "max_tokens": 32000,
+  "latency_s": 111.75,
+  "error": null
+}

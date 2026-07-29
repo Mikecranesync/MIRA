@@ -95,6 +95,13 @@ and takes the read law above instead.
 
 - ✅ `/api/documents` — hybrid read filter + `cmms_equipment` tenant scope (#1833).
 - ✅ `/api/documents/upload` — writes `is_private = true`.
+- ✅ `mira-hub/src/lib/manual-rag.ts` (`runBm25Query`) + the **asset chat**
+  (`/api/assets/[id]/chat`) and **quickstart** (`/api/quickstart/ask`) RAG surfaces —
+  hybrid read filter `(is_private = false OR tenant_id = $1)`; asset chat reads on the
+  **raw owner pool** (not `withTenantContext`) so RLS can't hide the OEM corpus, and
+  keeps the explicit `cmms_equipment.tenant_id = $caller` IDOR guard (#2178/#2190).
+  This was THE secret-shopper P0: a customer's asset chat saw 0 OEM chunks for *every*
+  manufacturer (corpus is system-tenant + `is_private=false`) and refused.
 - ❌ Migration 045 — **DROPPED (Option A, 2026-06-09).** The backfill was unnecessary and
   unsafe: prod has a single system tenant owning every row (no leaked uploads to backfill),
   and `tenant_id ~ uuid-regex` would have privatized the entire shared OEM corpus. Future
@@ -102,7 +109,7 @@ and takes the read law above instead.
   `docs/xprize/2026-06-09-1841-schema-drift-resolution.md`.
 - ⏳ **Follow-up (tracked):** apply the hybrid read filter to the remaining
   per-tenant document/RAG surfaces (`/api/assets/[id]/documents`,
-  `mira-hub/src/lib/manual-rag.ts`, `mira-hub/src/lib/agents/asset-intelligence.ts`)
+  `mira-hub/src/lib/agents/asset-intelligence.ts`)
   and set `is_private = true` in the production upload write path
   (`mira-crawler/ingest/store.py` + the folder=brain ingest task, which must
   distinguish customer-upload ingest from OEM/public crawl). Until that ships,

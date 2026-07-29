@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from typing import Optional
 
 logger = logging.getLogger("mira-gsd")
 
@@ -72,6 +73,15 @@ _FAULT_CONTEXT_RE = re.compile(
     r"\b(fault|error|alarm|trip|code|warning|drive|vfd|inverter|showing|display|flashing|reading)\b",
     re.IGNORECASE,
 )
+# A code-like token only counts as a fault code when a fault-context word appears
+# within this many tokens of it (#2208). Proximity — not mere presence anywhere in
+# the sentence — is what stops "the DRIVE in bay 12"→"BAY-12" and "re-do the VFD
+# setup"→"REDO": the context word must be adjacent to the candidate, not just
+# somewhere in the message. Empirically all real phrasings put the trigger within
+# 3 tokens ("drive is showing F0004", "warning A501", "getting F4 on my drive").
+_FAULT_PROXIMITY = 3
+# Leading alphabetic prefix of a candidate code (e.g. "F" of "F0004", "OC" of "OC1").
+_CODE_ALPHA_PREFIX_RE = re.compile(r"^[A-Za-z]+")
 
 # Product name patterns in user queries — matches "PowerFlex 40", "Micro820",
 # "GS20", "CompactLogix", "ControlLogix", etc.
@@ -96,7 +106,7 @@ _PRODUCT_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
-MIN_SIMILARITY = float(os.getenv("MIRA_MIN_SIMILARITY", "0.70"))
+_DEFAULT_MIN_SIMILARITY = float(os.getenv("MIRA_MIN_SIMILARITY", "0.70"))
 
 # Shared OEM knowledge pool — 61K entries ingested under the original tenant.
 # All tenants search this pool in addition to their own entries so they have
@@ -108,10 +118,60 @@ SHARED_TENANT_ID = os.getenv("MIRA_SHARED_TENANT_ID", "78917b56-f85f-43bb-9a08-1
 # degrades gracefully to positional priority when BM25 is empty.
 HYBRID_ENABLED = os.getenv("MIRA_RETRIEVAL_HYBRID_ENABLED", "true").lower() == "true"
 
+
+# Approval-gated retrieval (2026-06-24). When ON, restrict knowledge_entries
+# retrieval to human-APPROVED chunks (verified=true) — the column added in
+# docs/migrations/001_knowledge_entries.sql that retrieval historically never
+# queried (Architecture Unification Assessment, PR #2287). This is what makes the
+# Hub approval workflow AUTHORITATIVE rather than cosmetic: a chunk a human has not
+# approved is not citable when the gate is on.
+#   DEFAULT OFF → byte-identical to prior behavior (zero regression).
+#   Before turning ON, backfill the shared OEM/seeded corpus to verified=true
+#   (tools/seeds/backfill_verified_corpus.sql) — otherwise retrieval returns ~0 rows.
+# Only the four knowledge_entries streams (vector/BM25/ILIKE/product) are gated; the
+# structured fault_codes table has no verified column (a separate governance question).
+def approval_gate_enabled() -> bool:
+    """Read the gate flag live (not frozen at import) so it can toggle without a
+    process restart and tests can exercise both modes."""
+    return os.getenv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "false").lower() == "true"
+
+
+def _approval_filter_sql() -> str:
+    """SQL fragment appended to each knowledge_entries WHERE when the approval gate
+    is enabled. Empty string when off → the query is byte-identical to prior behavior."""
+    return " AND verified = true" if approval_gate_enabled() else ""
+
+
 # Reciprocal Rank Fusion constant (Cormack et al. 2009). 60 is the canonical
 # default — small enough that top ranks dominate, large enough that mid-rank
 # agreements across streams still contribute.
 RRF_K = int(os.getenv("MIRA_RRF_K", "60"))
+
+# Equipment-aware reranking (page-picking fix, 2026-06-22). RRF is vendor-blind:
+# "GS10 overcurrent" can rank a Yaskawa V1000 chunk above the GS10 one because
+# both match the topic. When enabled, after RRF we overfetch candidates and float
+# chunks whose manufacturer/model matches the query's extracted equipment to the
+# top (positive boost only — no vendor denylist, so a real V1000 question still
+# returns V1000). No equipment in the query => no-op. Plan:
+# docs/plans/2026-06-22-retrieval-page-picking-equipment-rerank.md
+EQUIPMENT_RERANK_ENABLED = os.getenv("MIRA_EQUIPMENT_RERANK", "0") == "1"
+EQUIPMENT_RERANK_OVERFETCH = int(os.getenv("MIRA_EQUIPMENT_RERANK_OVERFETCH", "4"))
+
+# Alias map so query tokens match how chunks spell the equipment (GS10 / GS-10 /
+# GS 10; Micro820 / 2080-LC*). Extend as new families are served.
+_EQUIPMENT_ALIASES: dict[str, set[str]] = {
+    "gs11": {"gs11", "gs-11", "gs 11"},
+    "gs10": {"gs10", "gs-10", "gs 10"},
+    "gs20": {"gs20", "gs-20", "gs 20"},
+    "gs30": {"gs30", "gs-30", "gs 30"},
+    "micro820": {"micro820", "micro 820", "micro-820", "2080-lc20", "2080-lc30", "2080-lc"},
+    "micro850": {"micro850", "micro 850", "2080-lc50"},
+    "powerflex": {"powerflex", "power flex"},
+    "compactlogix": {"compactlogix", "compact logix"},
+    "controllogix": {"controllogix", "control logix"},
+    "v1000": {"v1000", "v-1000"},
+    "a1000": {"a1000", "a-1000"},
+}
 
 # Max distinct OR-terms in a BM25 tsquery. Direct-connection surfaces (the
 # Ignition /ask kiosk) prepend a ~440-token MACHINE_CONTEXT block to every
@@ -224,55 +284,77 @@ def _normalise_fault_query(query_text: str) -> str:
 
 
 def _extract_fault_codes(query_text: str) -> list[str]:
-    """Extract fault code tokens from raw user query.
+    """Extract fault code tokens from a raw user query.
 
-    Permissive — accepts common syntax errors and spacing variations:
-      1. Alphanumeric codes: F4, F-012, OC1, A501, E014
-      2. Compound alpha codes: E-OC, E-OV, GF-A (letter-dash-letter)
-      3. Alpha-only VFD codes: OC, GF, OH — with or without fault-context words
-      4. No-dash variants tried alongside dashed form for all of the above
+    ONE contract for all three code shapes (#2208): a candidate is a fault code
+    only when (a) a fault-context word sits within ``_FAULT_PROXIMITY`` tokens of
+    it, AND (b) the token has a plausible fault-code SHAPE. Proximity + shape
+    together are what let "drive is showing F0004" → F0004 while rejecting
+    "the DRIVE in bay 12" → BAY-12 and "re-do the VFD setup" → REDO, even though
+    both carry an equipment word.
+
+    Shapes:
+      1. Alphanumeric (letter+digits): F4, F-012, OC1, A501, E014 — the alpha
+         prefix must be ≤ 2 chars, so "BAY-12" (prefix "BAY") is rejected while
+         "F4"/"OC1" pass.
+      2. Compound alpha-alpha (E-OC, E-OV): only when the no-dash form is a known
+         VFD code, so "RE-DO"/"CO-OP" are rejected while "E-OC" passes.
+      3. Alpha-only VFD codes (OC, GF, OCA): must be in ``_VFD_ALPHA_CODES``.
+
+    Trade-off (documented): a bare code with no nearby context word no longer
+    extracts; real technician messages carry context ("fault F0004", "showing
+    F0004"). Staging fault-recall eval gates this.
     """
     if not query_text:
         return []
 
-    normalised = _normalise_fault_query(query_text)
+    tokens = _normalise_fault_query(query_text).split()
+    context_positions = [i for i, tok in enumerate(tokens) if _FAULT_CONTEXT_RE.search(tok)]
+    if not context_positions:
+        # No fault-context word anywhere → nothing is a fault code.
+        return []
+
+    def _near_context(i: int) -> bool:
+        return any(abs(i - c) <= _FAULT_PROXIMITY for c in context_positions)
+
     codes: set[str] = set()
+    for i, raw in enumerate(tokens):
+        if not _near_context(i):
+            continue
+        tok = raw.strip(".,!?:;()\"'")  # keep internal/leading dash
+        up = tok.upper()
 
-    # Pattern 1: alphanumeric codes (original)
-    for m in _FAULT_CODE_RE.findall(normalised):
-        codes.add(m.upper())
+        # Shape 1: alphanumeric code with a short (≤2) alpha prefix.
+        if _FAULT_CODE_RE.fullmatch(tok):
+            prefix = _CODE_ALPHA_PREFIX_RE.match(tok)
+            if prefix and len(prefix.group(0)) <= 2:
+                codes.add(up)
+                continue
 
-    # Pattern 2: compound alpha-alpha codes like E-OC, E-OV
-    for m in _COMPOUND_ALPHA_RE.finditer(normalised):
-        dashed = m.group(0).upper()  # "E-OC"
-        nodash = (m.group(1) + m.group(2)).upper()  # "EOC"
-        codes.add(dashed)
-        codes.add(nodash)
+        # Shape 2: compound alpha-alpha, only if the no-dash form is a known code.
+        m = _COMPOUND_ALPHA_RE.fullmatch(tok)
+        if m:
+            nodash = (m.group(1) + m.group(2)).upper()
+            if nodash in _VFD_ALPHA_CODES:
+                codes.add(up)  # dashed "E-OC"
+                codes.add(nodash)  # "EOC"
+                if m.group(2).upper() in _VFD_ALPHA_CODES:
+                    codes.add(m.group(2).upper())  # bare "OC"
+                continue
 
-    # Pattern 3: alpha-only VFD codes — check with and without fault context
-    has_fault_context = bool(_FAULT_CONTEXT_RE.search(query_text))
-    for word in normalised.upper().split():
-        cleaned = word.strip(".,!?:;()\"'-")
-        if cleaned in _VFD_ALPHA_CODES:
-            codes.add(cleaned)
-        # Also try stripping a leading "E-" prefix (Yaskawa E-series style)
-        if cleaned.startswith("E-") and cleaned[2:] in _VFD_ALPHA_CODES:
-            codes.add(cleaned)  # keep full "E-OC"
-            codes.add(cleaned[2:])  # also try bare "OC"
-
-    # Fallback: if still empty and fault context present, scan original text too
-    if not codes and has_fault_context:
-        for word in query_text.upper().split():
-            cleaned = word.strip(".,!?:;()\"'-")
-            if cleaned in _VFD_ALPHA_CODES:
-                codes.add(cleaned)
+        # Shape 3: alpha-only known VFD code (with an optional "E-" prefix form).
+        if up in _VFD_ALPHA_CODES:
+            codes.add(up)
+        elif up.startswith("E-") and up[2:] in _VFD_ALPHA_CODES:
+            codes.add(up)
+            codes.add(up[2:])
 
     return list(codes)
 
 
 def recall_fault_code(
     code: str,
-    tenant_id: str,
+    tenant_id: str | None,
     model: str | None = None,
 ) -> list[dict]:
     """Deterministic fault code lookup from structured fault_codes table.
@@ -331,21 +413,34 @@ def _extract_product_names(query_text: str) -> list[str]:
     return list({m.strip() for m in _PRODUCT_NAME_RE.findall(query_text)})
 
 
-def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) -> list[dict]:
+def _like_search(
+    conn, text_fn, tenant_id: Optional[str], codes: list[str], limit: int
+) -> list[dict]:
     """Run ILIKE keyword search for fault codes against content column.
 
-    Searches both the caller's tenant entries and the shared OEM knowledge pool.
+    Hybrid corpus read: searches both the shared OEM knowledge pool and the
+    caller's tenant entries (if tenant_id is provided).
+    When tenant_id is None (anonymous surfaces), returns only shared OEM rows.
     """
     if not codes:
         return []
     conditions = []
-    params: dict = {"tid": tenant_id, "shared_tid": SHARED_TENANT_ID, "lim": limit}
+    params: dict = {"shared_tid": SHARED_TENANT_ID, "lim": limit}
     for i, code in enumerate(codes[:5]):
         key = f"pat{i}"
         conditions.append(f"content ILIKE :{key}")
         params[key] = f"%{code}%"
 
     where_clause = " OR ".join(conditions)
+
+    # Hybrid corpus filter: shared OEM (is_private=false) + tenant's own rows (if tenant provided)
+    if tenant_id:
+        tenant_filter = "(is_private = false OR tenant_id = :tid)"
+        params["tid"] = tenant_id
+    else:
+        # Anonymous surfaces: shared OEM only, never leak private rows
+        tenant_filter = "is_private = false"
+
     sql = text_fn(f"""
         SELECT
             content,
@@ -356,20 +451,41 @@ def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) ->
             source_url,
             source_page,
             metadata,
+            verified,
             0.5 AS similarity
         FROM knowledge_entries
-        WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-          AND ({where_clause})
+        WHERE {tenant_filter}
+          AND ({where_clause}){_approval_filter_sql()}
         LIMIT :lim
     """)
     rows = conn.execute(sql, params).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
+def _model_suffix_exclude_regex(name: str) -> str:
+    """POSIX regex matching MODEL SUFFIX VARIANTS of `name` to exclude from a
+    product search — for "PowerFlex 40" it matches "PowerFlex 400",
+    "PowerFlex 401", "PowerFlex 40P" but NOT the standalone "PowerFlex 40".
+
+    Used with ``NOT (model_number ~* :exclude_re)``. Replaces the old
+    ``NOT ILIKE '%{name}0%'`` (#2914) which only caught the single ``0`` suffix
+    and let ``401``-``409`` / letter-suffixed variants (``40A``, ``40P``) bleed
+    into the base model's results. The base model survives because it is `name`
+    followed by a word boundary (end-of-string or a non-alphanumeric char),
+    which does not match ``{name}[0-9A-Za-z]``.
+
+    `name` is escaped for POSIX ERE metacharacters so a model name containing
+    ``.``/``+``/``(`` etc. cannot corrupt the pattern. Verified against real
+    Neon PowerFlex 40/400/40P rows on staging (#2914).
+    """
+    escaped = re.sub(r"([\\.^$*+?()\[\]{}|])", r"\\\1", name)
+    return f"(^|[^0-9A-Za-z]){escaped}[0-9A-Za-z]"
+
+
 def _product_search(
     conn,
     text_fn,
-    tenant_id: str,
+    tenant_id: Optional[str],
     products: list[str],
     embedding: list[float],
     limit: int,
@@ -380,49 +496,62 @@ def _product_search(
     orders by cosine similarity to the user's query embedding. This surfaces
     the most RELEVANT chunks from the right manual — not just arbitrary rows.
 
-    Searches both the caller's tenant entries and the shared OEM knowledge pool.
+    Hybrid corpus read: searches both the shared OEM knowledge pool and the
+    caller's tenant entries (if tenant_id is provided).
+    When tenant_id is None (anonymous surfaces), returns only shared OEM rows.
     """
     if not products:
         return []
     results: list[dict] = []
     seen: set[str] = set()
 
+    # Hybrid corpus filter: shared OEM (is_private=false) + tenant's own rows (if tenant provided)
+    if tenant_id:
+        tenant_filter = "(is_private = false OR tenant_id = :tid)"
+    else:
+        # Anonymous surfaces: shared OEM only, never leak private rows
+        tenant_filter = "is_private = false"
+
     for name in products[:3]:
-        # Use word-boundary-safe pattern: "PowerFlex 40" must not match "PowerFlex 400"
+        # Word-boundary-safe: "PowerFlex 40" must not match "PowerFlex 400"/"40P".
+        # The regex excludes any alphanumeric suffix; the base model is kept (#2914).
         exact_pat = f"%{name}%"
-        exclude_pat = f"%{name}0%"
+        exclude_re = _model_suffix_exclude_regex(name)
 
         # CTE forces Postgres to materialize the filtered set BEFORE vector sort.
         # Without this, pgvector's IVFFlat index scans cells and filters post-scan,
         # returning far fewer results than LIMIT when matching rows are sparse
         # across index cells (e.g., 2 of 278 PF40 chunks).
+        params = {
+            "shared_tid": SHARED_TENANT_ID,
+            "pat": exact_pat,
+            "exclude_re": exclude_re,
+            "emb": str(embedding),
+            "lim": limit,
+        }
+        if tenant_id:
+            params["tid"] = tenant_id
+
         rows = (
             conn.execute(
                 text_fn(
                     "WITH product_chunks AS ("
                     "  SELECT content, manufacturer, model_number, equipment_type, "
-                    "  source_type, source_url, source_page, metadata, embedding "
+                    "  source_type, source_url, source_page, metadata, verified, embedding "
                     "  FROM knowledge_entries "
-                    "  WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
+                    f"  WHERE {tenant_filter} "
                     "  AND model_number ILIKE :pat "
-                    "  AND model_number NOT ILIKE :exclude "
-                    "  AND embedding IS NOT NULL"
+                    "  AND NOT (model_number ~* :exclude_re) "
+                    f"  AND embedding IS NOT NULL{_approval_filter_sql()}"
                     ") "
                     "SELECT content, manufacturer, model_number, equipment_type, "
-                    "source_type, source_url, source_page, metadata, "
+                    "source_type, source_url, source_page, metadata, verified, "
                     "1 - (embedding <=> cast(:emb AS vector)) AS similarity "
                     "FROM product_chunks "
                     "ORDER BY embedding <=> cast(:emb AS vector) "
                     "LIMIT :lim"
                 ),
-                {
-                    "tid": tenant_id,
-                    "shared_tid": SHARED_TENANT_ID,
-                    "pat": exact_pat,
-                    "exclude": exclude_pat,
-                    "emb": str(embedding),
-                    "lim": limit,
-                },
+                params,
             )
             .mappings()
             .fetchall()
@@ -440,7 +569,7 @@ def _product_search(
 def _recall_bm25(
     conn,
     text_fn,
-    tenant_id: str,
+    tenant_id: Optional[str],
     query_text: str,
     limit: int,
 ) -> list[dict]:
@@ -472,8 +601,11 @@ def _recall_bm25(
 
     Returns [] if query_text is blank, has no usable tokens, or the query
     fails — never raises. The tsquery `@@` predicate is a hard gate, so
-    MIN_SIMILARITY filtering is not applied here. Searches both the caller's
-    tenant entries and the shared OEM pool.
+    MIN_SIMILARITY filtering is not applied here.
+
+    Hybrid corpus read: searches both the shared OEM knowledge pool and the
+    caller's tenant entries (if tenant_id is provided).
+    When tenant_id is None (anonymous surfaces), returns only shared OEM rows.
     """
     if not query_text or not query_text.strip():
         return []
@@ -497,25 +629,36 @@ def _recall_bm25(
     if not tokens:
         tokens = list(dict.fromkeys(raw_tokens))[:BM25_MAX_TERMS]
     ts_query = " | ".join(tokens)
+
+    # Hybrid corpus filter: shared OEM (is_private=false) + tenant's own rows (if tenant provided)
+    if tenant_id:
+        tenant_filter = "(is_private = false OR tenant_id = :tid)"
+    else:
+        # Anonymous surfaces: shared OEM only, never leak private rows
+        tenant_filter = "is_private = false"
+
     try:
+        params = {
+            "tsq": ts_query,
+            "shared_tid": SHARED_TENANT_ID,
+            "lim": limit,
+        }
+        if tenant_id:
+            params["tid"] = tenant_id
+
         rows = (
             conn.execute(
                 text_fn(
                     "SELECT content, manufacturer, model_number, equipment_type, "
-                    "source_type, source_url, source_page, metadata, "
+                    "source_type, source_url, source_page, metadata, verified, "
                     "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
                     "FROM knowledge_entries "
-                    "WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
-                    "  AND content_tsv @@ to_tsquery('english', :tsq) "
+                    f"WHERE {tenant_filter} "
+                    f"  AND content_tsv @@ to_tsquery('english', :tsq){_approval_filter_sql()} "
                     "ORDER BY similarity DESC "
                     "LIMIT :lim"
                 ),
-                {
-                    "tsq": ts_query,
-                    "tid": tenant_id,
-                    "shared_tid": SHARED_TENANT_ID,
-                    "lim": limit,
-                },
+                params,
             )
             .mappings()
             .fetchall()
@@ -637,13 +780,60 @@ def _merge_results(
     return merged, path
 
 
+def _equipment_tokens(equipment_list: list[str]) -> set[str]:
+    """Map extracted equipment names to the substring set chunks may use."""
+    tokens: set[str] = set()
+    for tag in equipment_list:
+        key = tag.lower().strip()
+        tokens |= _EQUIPMENT_ALIASES.get(key, {key})
+    return tokens
+
+
+def _rerank_for_equipment(rows: list[dict], query_text: str) -> list[dict]:
+    """Float chunks matching the query's equipment to the top (stable).
+
+    Positive boost only: +5 per equipment token in manufacturer/model, +1 per
+    token in content-only. Non-matching chunks keep their RRF order below the
+    matches (tie-break by original index). No vendor denylist — a question about
+    a V1000 still returns V1000. No equipment extracted => unchanged order.
+
+    Ported to production from the bench harness (`tests/mira_bench.py
+    _rerank_for_equipment`), which was the ONLY place this ran — so live surfaces
+    shipped vendor-blind retrieval (e.g. "GS10 overcurrent" -> Yaskawa V1000 #1).
+    """
+    equipment = _extract_product_names(query_text)
+    if not equipment:
+        return rows
+    tokens = _equipment_tokens(equipment)
+    scored: list[tuple[int, int, dict]] = []
+    for idx, ch in enumerate(rows):
+        meta_blob = " ".join(
+            [str(ch.get("manufacturer") or ""), str(ch.get("model_number") or "")]
+        ).lower()
+        content_blob = str(ch.get("content") or "").lower()
+        meta_pos = sum(1 for tok in tokens if tok in meta_blob)
+        content_pos = sum(1 for tok in tokens if tok in content_blob and tok not in meta_blob)
+        score = 5 * meta_pos + 1 * content_pos
+        scored.append((-score, idx, ch))
+    scored.sort(key=lambda t: (t[0], t[1]))
+    return [t[2] for t in scored]
+
+
 def recall_knowledge(
-    embedding: list[float] | None,
-    tenant_id: str,
+    embedding: Optional[list[float]],
+    tenant_id: Optional[str],
     limit: int = 3,
     query_text: str = "",
+    min_similarity: Optional[float] = None,
+    product_hint: Optional[str] = None,
 ) -> list[dict]:
     """Hybrid retrieval: vector + fault code + product name + BM25.
+
+    Hybrid corpus read: when tenant_id is provided, returns both shared OEM
+    knowledge and the tenant's own uploads (is_private=true rows). When
+    tenant_id is None (anonymous bot surfaces like Telegram/Slack), returns
+    only the shared OEM corpus (is_private=false rows). Never leaks per-tenant
+    uploads to anonymous callers.
 
     When `embedding` is None or empty (e.g. Ollama embed sidecar unreachable),
     vector and product-name stages are skipped but BM25, structured fault, and
@@ -651,10 +841,16 @@ def recall_knowledge(
     whenever the embedding was missing, which short-circuited BM25 even
     though it doesn't need an embedding — the GS11 demo regression.
 
+    min_similarity: optional cosine threshold for vector-stream filtering.
+    Defaults to env MIRA_MIN_SIMILARITY (0.70). Triage-relaxed thresholds
+    (0.55 for medium, 0.45 for low) should be passed here to enable chunking
+    at weaker confidence (#2207). The post-retrieval quality gate provides
+    precision backstop; this controls what reaches the worker.
+
     Returns a list of dicts with keys:
         content, manufacturer, model_number, equipment_type, source_type, similarity
 
-    Results below MIN_SIMILARITY are filtered out.
+    Results below the vector-stream min_similarity are filtered out.
     Returns [] on any failure — never raises.
     """
     url = os.environ.get("NEON_DATABASE_URL")
@@ -665,14 +861,12 @@ def recall_knowledge(
             )
             recall_knowledge._warned_url = True
         return []
-    if not tenant_id:
-        return []
     has_embedding: bool = bool(embedding)
     if not has_embedding:
         logger.info(
             "NEON_RECALL_NO_EMBEDDING tenant=%s — vector + product stages skipped, "
             "lexical streams (BM25/fault/structured) still run",
-            tenant_id,
+            tenant_id or "<anonymous>",
         )
 
     try:
@@ -689,15 +883,44 @@ def recall_knowledge(
             connect_args={"sslmode": "require"},
             pool_pre_ping=True,
         )
+        # Effective cosine threshold: use provided min_similarity or default.
+        eff_min_similarity = (
+            min_similarity if min_similarity is not None else _DEFAULT_MIN_SIMILARITY
+        )
+
+        # Hybrid corpus filter: shared OEM (is_private=false) + tenant's own rows (if tenant provided)
+        if tenant_id:
+            tenant_filter = "(is_private = false OR tenant_id = :tid)"
+        else:
+            # Anonymous surfaces: shared OEM only, never leak private rows
+            tenant_filter = "is_private = false"
+
         with engine.connect() as conn:
-            # Stage 1: Dense vector search — searches tenant entries + shared OEM pool.
+            # Overfetch candidates when equipment rerank is on, so a right-vendor
+            # chunk ranked just outside `limit` can be floated to the top before
+            # truncation. Disabled => eff_limit == limit (no behavior change).
+            eff_limit = (
+                limit * EQUIPMENT_RERANK_OVERFETCH
+                if (EQUIPMENT_RERANK_ENABLED and limit)
+                else limit
+            )
+
+            # Stage 1: Dense vector search — hybrid corpus read (shared OEM + tenant's entries if provided).
             # Skipped when the embedding sidecar was unreachable (has_embedding=False);
             # BM25 + structured-fault stages below carry the load in that case.
             vector_results: list[dict] = []
             if has_embedding:
+                vector_params = {
+                    "emb": str(embedding),
+                    "shared_tid": SHARED_TENANT_ID,
+                    "lim": eff_limit,
+                }
+                if tenant_id:
+                    vector_params["tid"] = tenant_id
+
                 vector_rows = (
                     conn.execute(
-                        text("""
+                        text(f"""
                         SELECT
                             content,
                             manufacturer,
@@ -707,24 +930,22 @@ def recall_knowledge(
                             source_url,
                             source_page,
                             metadata,
+                            verified,
                             1 - (embedding <=> cast(:emb AS vector)) AS similarity
                         FROM knowledge_entries
-                        WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                          AND embedding IS NOT NULL
+                        WHERE {tenant_filter}
+                          AND embedding IS NOT NULL{_approval_filter_sql()}
                         ORDER BY embedding <=> cast(:emb AS vector)
                         LIMIT :lim
                     """),
-                        {
-                            "emb": str(embedding),
-                            "tid": tenant_id,
-                            "shared_tid": SHARED_TENANT_ID,
-                            "lim": limit,
-                        },
+                        vector_params,
                     )
                     .mappings()
                     .fetchall()
                 )
-                vector_results = [dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY]
+                vector_results = [
+                    dict(r) for r in vector_rows if r["similarity"] >= eff_min_similarity
+                ]
 
             # Stage 2: Fault code — structured lookup first, ILIKE fallback
             fault_codes = _extract_fault_codes(query_text)
@@ -765,10 +986,16 @@ def recall_knowledge(
             # Vector-rerank requires an embedding; if none, skip — BM25 still
             # surfaces product-matching chunks via lexical match below.
             product_names = _extract_product_names(query_text)
+            # Stranger-upload fallback (#2211): the hardcoded _PRODUCT_NAME_RE only
+            # knows curated families (PowerFlex/GS/Micro/…). When it finds nothing
+            # but the resolver gave us a model, use it so novel equipment still gets
+            # the product-rerank stream instead of silently skipping it.
+            if not product_names and product_hint and product_hint.strip():
+                product_names = [product_hint.strip()]
             product_results: list[dict] = []
             if product_names and has_embedding:
                 product_results = _product_search(
-                    conn, text, tenant_id, product_names, embedding, limit
+                    conn, text, tenant_id, product_names, embedding, eff_limit
                 )
 
             # Stage 4: BM25 keyword stream (Unit 6). Pulled alongside vector
@@ -777,7 +1004,7 @@ def recall_knowledge(
             bm25_results: list[dict] = []
             if HYBRID_ENABLED:
                 bm25_results = _recall_bm25(
-                    conn, text, tenant_id, query_text, limit * 2 if limit else 6
+                    conn, text, tenant_id, query_text, eff_limit * 2 if eff_limit else 6
                 )
 
         # Merge via RRF; truncate to `limit` after fusion so cross-stream
@@ -787,8 +1014,19 @@ def recall_knowledge(
             like_results,
             product_results,
             bm25_results=bm25_results,
-            limit=limit,
+            limit=eff_limit,
         )
+
+        # Equipment-aware rerank (vendor-blind RRF fix). Floats query-equipment
+        # chunks to the top of the overfetched pool, then truncate to `limit`.
+        # Disabled => no-op (eff_limit == limit, slice is a no-op).
+        if EQUIPMENT_RERANK_ENABLED and results:
+            reranked = _rerank_for_equipment(results, query_text)
+            if reranked is not results:  # equipment extracted from the query
+                results = reranked
+                retrieval_path = "eqrerank+" + retrieval_path
+        if limit:
+            results = results[:limit]
 
         # Structured fault codes go at the very top (highest confidence,
         # deterministic — bypass RRF).
@@ -801,7 +1039,7 @@ def recall_knowledge(
             "NEON_RECALL tenant=%s hits=%d retrieval_path=%s "
             "fault_codes=%s products=%s top_vector_score=%.3f "
             "like_hits=%d product_hits=%d structured_faults=%d bm25_hits=%d",
-            tenant_id,
+            tenant_id or "<anonymous>",
             len(results),
             retrieval_path,
             fault_codes or [],
@@ -827,16 +1065,17 @@ def recall_knowledge(
 KB_COVERAGE_MIN_CHUNKS = int(os.getenv("MIRA_KB_COVERAGE_MIN_CHUNKS", "3"))
 
 
-def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]:
+def kb_has_coverage(vendor: str, model: str, tenant_id: Optional[str]) -> tuple[bool, str]:
     """Return (True, reason) if the KB has ≥KB_COVERAGE_MIN_CHUNKS chunks for vendor.
 
     Uses a direct COUNT query against NeonDB — no embedding required.
-    Checks both tenant-scoped entries and the shared OEM pool.
+    Hybrid corpus read: checks both tenant-scoped entries and the shared OEM pool
+    (if tenant_id provided), or shared OEM only (if tenant_id is None).
 
     Args:
         vendor: Manufacturer name (e.g. "AutomationDirect", "Yaskawa").
         model:  Model string — currently used only for logging (future: row filter).
-        tenant_id: Active tenant for the conversation.
+        tenant_id: Active tenant for the conversation (None for anonymous surfaces).
 
     Returns:
         (True,  "kb_N_chunks")         — KB has coverage, N ≥ KB_COVERAGE_MIN_CHUNKS
@@ -864,6 +1103,14 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
             connect_args={"sslmode": "require"},
             pool_pre_ping=True,
         )
+
+        # Hybrid corpus filter: shared OEM (is_private=false) + tenant's own rows (if tenant provided)
+        if tenant_id:
+            tenant_filter = "(is_private = false OR tenant_id = :tid)"
+        else:
+            # Anonymous surfaces: shared OEM only, never leak private rows
+            tenant_filter = "is_private = false"
+
         with engine.connect() as conn:
             # Drop the embedding-not-null filter — a row reachable only via
             # BM25 (content_tsv) is still KB coverage, and the pre-check
@@ -872,20 +1119,23 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
             # gs10/gs11 rows had NULL embeddings and were invisible to
             # this pre-check, so the engine routed every Modbus question
             # to the LLM hallucination fallback).
+            query_params = {
+                "shared_tid": SHARED_TENANT_ID,
+                "vendor_pat": f"%{vendor_clean}%",
+            }
+            if tenant_id:
+                query_params["tid"] = tenant_id
+
             row = conn.execute(
                 text(
-                    """
+                    f"""
                     SELECT COUNT(*) AS cnt
                     FROM knowledge_entries
-                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+                    WHERE {tenant_filter}
                       AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
                     """
                 ),
-                {
-                    "tid": tenant_id,
-                    "shared_tid": SHARED_TENANT_ID,
-                    "vendor_pat": f"%{vendor_clean}%",
-                },
+                query_params,
             ).fetchone()
         count = int(row[0]) if row else 0
         if count >= KB_COVERAGE_MIN_CHUNKS:
@@ -913,7 +1163,7 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
 KB_PAIR_COVERAGE_MIN_CHUNKS = int(os.getenv("MIRA_KB_PAIR_COVERAGE_MIN_CHUNKS", "1"))
 
 
-def kb_has_pair_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, int]:
+def kb_has_pair_coverage(vendor: str, model: str, tenant_id: Optional[str]) -> tuple[bool, int]:
     """Strict-pair coverage probe — does the KB have chunks tagged with BOTH
     this vendor AND this model?
 
@@ -921,6 +1171,9 @@ def kb_has_pair_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool,
     pairings like ("AutomationDirect", "820") — the resolver can name them,
     but no row in ``knowledge_entries`` has them together, so the count is
     zero and the caller drops the candidate before speaking it.
+
+    Hybrid corpus read: checks both tenant-scoped entries and the shared OEM pool
+    (if tenant_id provided), or shared OEM only (if tenant_id is None).
 
     Returns (covered, count). ``covered`` is True when count ≥
     ``KB_PAIR_COVERAGE_MIN_CHUNKS`` (default 1 — any chunk counts as proof
@@ -950,24 +1203,35 @@ def kb_has_pair_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool,
             connect_args={"sslmode": "require"},
             pool_pre_ping=True,
         )
+
+        # Hybrid corpus filter: shared OEM (is_private=false) + tenant's own rows (if tenant provided)
+        if tenant_id:
+            tenant_filter = "(is_private = false OR tenant_id = :tid)"
+        else:
+            # Anonymous surfaces: shared OEM only, never leak private rows
+            tenant_filter = "is_private = false"
+
         with engine.connect() as conn:
+            query_params = {
+                "shared_tid": SHARED_TENANT_ID,
+                "vendor_pat": f"%{vendor_clean}%",
+                "model_pat": f"%{model_clean}%",
+            }
+            if tenant_id:
+                query_params["tid"] = tenant_id
+
             row = conn.execute(
                 text(
-                    """
+                    f"""
                     SELECT COUNT(*) AS cnt
                     FROM knowledge_entries
-                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+                    WHERE {tenant_filter}
                       AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
                       AND LOWER(model_number) LIKE LOWER(:model_pat)
                       AND embedding IS NOT NULL
                     """
                 ),
-                {
-                    "tid": tenant_id,
-                    "shared_tid": SHARED_TENANT_ID,
-                    "vendor_pat": f"%{vendor_clean}%",
-                    "model_pat": f"%{model_clean}%",
-                },
+                query_params,
             ).fetchone()
         count = int(row[0]) if row else 0
         covered = count >= KB_PAIR_COVERAGE_MIN_CHUNKS

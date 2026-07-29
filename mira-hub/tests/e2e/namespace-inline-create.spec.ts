@@ -562,6 +562,35 @@ test.describe("Namespace create + doc attach", () => {
     }
   });
 
+  test("Scenario 12 — #1917: New Folder is disabled until tree load resolves (hydration-race guard)", async ({ page }) => {
+    // Regression guard for #1917: on a fresh empty namespace the toolbar
+    // "New Folder" click was fired before React hydrated and silently dropped,
+    // so the inline input never appeared and a brand-new user couldn't create
+    // their first node. The fix gates the button on `loading` (true until the
+    // initial /api/namespace/tree fetch resolves in a post-hydration effect), so
+    // the button is non-interactive until the page is genuinely ready.
+    //
+    // Reproduce deterministically WITHOUT an empty tenant by delaying the tree
+    // fetch: while it's in flight `loading` is true and the button MUST be
+    // disabled; once it resolves the button enables and the input opens. This
+    // proves the mechanism on the existing seeded user — no race, no flake.
+    await page.route("**/api/namespace/tree", async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
+    await page.goto(`${HUB}/namespace`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+
+    const newFolder = page.getByTestId("toolbar-new-folder");
+    // During the (forced) loading window the button is disabled — an early click
+    // is natively blocked instead of dropped.
+    await expect(newFolder).toBeDisabled();
+    // Once the tree load resolves, it enables…
+    await expect(newFolder).toBeEnabled({ timeout: 10_000 });
+    // …and clicking now reliably opens the inline folder-name input.
+    await newFolder.click();
+    await expect(page.getByTestId("new-folder-input")).toBeVisible({ timeout: 10_000 });
+  });
+
   test("Scenario 9 — regression: existing tree features still work", async ({ page }) => {
     // Tree rows are drag-draggable.
     const firstRow = page.locator('[data-testid="namespace-node"]').first();

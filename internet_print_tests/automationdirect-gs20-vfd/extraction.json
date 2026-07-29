@@ -1,0 +1,1357 @@
+{
+  "package": {
+    "drawing_title": "Full I/O Wiring Diagram — Control Circuit Wiring Diagrams (continued)",
+    "chapter": "Chapter 2: Installation and Wiring",
+    "manufacturer": "AutomationDirect",
+    "document": "DURApulse GS20 & GS20X Drive User Manual – 1st Edition, Rev E",
+    "page": "2-38",
+    "drawing_type": "schematic",
+    "note": "Manufacturer manual wiring diagram (not an IEC 81346 tagged panel print); labels transcribed verbatim from terminal designations."
+  },
+  "devices": [
+    {
+      "tag": "GS20 / GS20X Drive",
+      "type": "AC drive / VFD",
+      "detail": "Variable-frequency drive; central device — all main-circuit and control terminals belong to it",
+      "connects": [
+        "R/L1",
+        "S/L2",
+        "T/L3*",
+        "U/T1",
+        "V/T2",
+        "W/T3",
+        "DC-",
+        "DC+/+1",
+        "+2/B1",
+        "B2"
+      ],
+      "evidence": "Title 'Full I/O Wiring Diagram', footer 'DURApulse GS20 & GS20X Drive User Manual'",
+      "confidence": 0.95,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "Motor 3~",
+      "type": "three-phase motor",
+      "detail": "Fed from drive output terminals U/T1, V/T2, W/T3; motor frame bonded to PE",
+      "connects": [
+        "U/T1",
+        "V/T2",
+        "W/T3"
+      ],
+      "evidence": "Motor symbol labeled '3~' at top right, 'Motor'",
+      "confidence": 0.95,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "Circuit Breaker or Fuse",
+      "type": "upstream protection",
+      "detail": "Three contacts feeding R/L1, S/L2, T/L3* input lines",
+      "connects": [
+        "R/L1",
+        "S/L2",
+        "T/L3*"
+      ],
+      "evidence": "'Circuit Breaker or Fuse' label over three switch symbols on input phases",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "MC",
+      "type": "magnetic contactor",
+      "detail": "Main contactor between protection and drive input; control note describes MC contact switching ON at fault to shut off power",
+      "connects": [
+        "R/L1",
+        "S/L2",
+        "T/L3*",
+        "R1C",
+        "R1"
+      ],
+      "evidence": "'MC' labels on line contacts and in control ladder (SA, ON, OFF, MC coil)",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DC reactor (optional)",
+      "type": "DC link reactor",
+      "detail": "Optional reactor connected across DC+/+1 and +2/B1 (jumper removed when fitted)",
+      "connects": [
+        "DC+/+1",
+        "+2/B1"
+      ],
+      "evidence": "'DC reactor (optional)' coil symbol with dashed box at top",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "Brake resistor (optional)",
+      "type": "dynamic braking resistor",
+      "detail": "Optional resistor connected across +2/B1 and B2",
+      "connects": [
+        "+2/B1",
+        "B2"
+      ],
+      "evidence": "'Brake resistor (optional)' resistor symbol with dashed box",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "Safety PLC",
+      "type": "safety controller",
+      "detail": "External safety PLC drives STO circuit; supplies dual channels to STO1/STO2 via SCM, uses +24 VDC",
+      "connects": [
+        "SCM",
+        "STO1",
+        "STO2",
+        "+24 V (STO)"
+      ],
+      "evidence": "'Safety PLC' box with E STOP and dual contacts feeding STO terminals",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "E STOP",
+      "type": "emergency stop device",
+      "detail": "Wired into the Safety PLC / STO input chain",
+      "connects": [
+        "Safety PLC"
+      ],
+      "evidence": "'E STOP' label with contact symbol at left of STO section",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "5KΩ potentiometer",
+      "type": "speed reference potentiometer",
+      "detail": "Wiper to AI1, ends to +10V and ACM; provides analog speed reference",
+      "connects": [
+        "+10 V",
+        "AI1",
+        "ACM"
+      ],
+      "evidence": "'5KΩ' with 3-2-1 potentiometer symbol at analog-input section",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "Modbus RS-485 connector (RJ45)",
+      "type": "serial communication port",
+      "detail": "RJ45 (8←1) carrying SGND, SG+, SG- for Modbus RS-485",
+      "connects": [
+        "SGND",
+        "SG+",
+        "SG-"
+      ],
+      "evidence": "RJ45 symbol '8←1' with 'Modbus RS-485'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "Option Slot",
+      "type": "communication / option card slot",
+      "detail": "For Communication card / DC 24V external power supply card",
+      "connects": [],
+      "evidence": "'Option Slot' box and 'Communication card / DC 24V external power supply card'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "USB Port",
+      "type": "USB port",
+      "detail": "On-drive USB port",
+      "connects": [],
+      "evidence": "'USB Port' box",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "terminals": [
+    {
+      "tag": "DC-",
+      "type": "main circuit terminal",
+      "detail": "DC bus negative",
+      "connects": [],
+      "evidence": "'DC-' open-circle terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DC+/+1",
+      "type": "main circuit terminal",
+      "detail": "DC bus positive / +1 (DC reactor)",
+      "connects": [
+        "DC reactor (optional)"
+      ],
+      "evidence": "'DC+/+1' open-circle terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "+2/B1",
+      "type": "main circuit terminal",
+      "detail": "+2 / B1 (brake / reactor)",
+      "connects": [
+        "DC reactor (optional)",
+        "Brake resistor (optional)"
+      ],
+      "evidence": "'+2/B1' terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "B2",
+      "type": "main circuit terminal",
+      "detail": "Brake resistor terminal",
+      "connects": [
+        "Brake resistor (optional)"
+      ],
+      "evidence": "'B 2' terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "R/L1",
+      "type": "main circuit input terminal",
+      "detail": "Line input phase R/L1",
+      "connects": [
+        "Circuit Breaker or Fuse",
+        "MC"
+      ],
+      "evidence": "'R/L1' open-circle terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "S/L2",
+      "type": "main circuit input terminal",
+      "detail": "Line input phase S/L2",
+      "connects": [
+        "Circuit Breaker or Fuse",
+        "MC"
+      ],
+      "evidence": "'S/L2' terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "T/L3*",
+      "type": "main circuit input terminal",
+      "detail": "Line input phase T/L3 (asterisk = three-phase only)",
+      "connects": [
+        "Circuit Breaker or Fuse",
+        "MC"
+      ],
+      "evidence": "'T/L3*' terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "U/T1",
+      "type": "main circuit output terminal",
+      "detail": "Motor output U",
+      "connects": [
+        "Motor 3~"
+      ],
+      "evidence": "'U/T1' terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "V/T2",
+      "type": "main circuit output terminal",
+      "detail": "Motor output V",
+      "connects": [
+        "Motor 3~"
+      ],
+      "evidence": "'V/T2' terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "W/T3",
+      "type": "main circuit output terminal",
+      "detail": "Motor output W",
+      "connects": [
+        "Motor 3~"
+      ],
+      "evidence": "'W/T3' terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "R1C",
+      "type": "relay output terminal",
+      "detail": "Relay output common (note: 'R1C and R1 are the relay output terminals')",
+      "connects": [
+        "R1",
+        "R1O"
+      ],
+      "evidence": "'R1C' terminal with note",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "R1",
+      "type": "relay output terminal",
+      "detail": "Relay output NC contact terminal",
+      "connects": [
+        "R1C"
+      ],
+      "evidence": "'R1' terminal with note",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "R1O",
+      "type": "relay output terminal",
+      "detail": "Multi-function relay output NO contact",
+      "connects": [
+        "R1C"
+      ],
+      "evidence": "'R1O' at multi-function relay output section",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "+24 V (a)",
+      "type": "control terminal",
+      "detail": "24 VDC supply output",
+      "connects": [],
+      "evidence": "'+24 V' filled-circle terminal (top of control block)",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "+24 V (b)",
+      "type": "control terminal",
+      "detail": "24 VDC supply output (second)",
+      "connects": [],
+      "evidence": "second '+24 V' filled-circle terminal",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI1/FWD",
+      "type": "digital input terminal",
+      "detail": "Default: FWD/STOP",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI1/FWD' with 'FWD/STOP'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI2/REV",
+      "type": "digital input terminal",
+      "detail": "Default: REV/STOP",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI2/REV' with 'REV/STOP'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI3",
+      "type": "digital input terminal",
+      "detail": "Default: Multi-step speed 1",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI3' with 'Multi-step speed 1'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI4",
+      "type": "digital input terminal",
+      "detail": "Default: Multi-step speed 2",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI4' with 'Multi-step speed 2'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI5",
+      "type": "digital input terminal",
+      "detail": "Default: Multi-step speed 3",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI5' with 'Multi-step speed 3'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI6",
+      "type": "digital input terminal",
+      "detail": "Default: Multi-step speed 4",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI6' with 'Multi-step speed 4'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI7",
+      "type": "digital input terminal",
+      "detail": "Default N/A; can input 33 kHz pulses",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI7' with 'N/A' and note '*DI7 can input 33 kHz pulses'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DCM",
+      "type": "control common terminal",
+      "detail": "Digital Signal Common",
+      "connects": [],
+      "evidence": "'DCM' with 'Digital Signal Common'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DO",
+      "type": "digital output terminal",
+      "detail": "Multi-function output frequency terminal, 30 VDC / 30 mA 33 kHz (photocoupler)",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DO' with 'Multi-function output frequency terminals 30 VDC / 30 mA 33 kHz'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DCM (output common)",
+      "type": "control common terminal",
+      "detail": "Common for DO frequency output",
+      "connects": [],
+      "evidence": "'DCM' at DO section",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DO1",
+      "type": "digital output terminal",
+      "detail": "Multi-function output terminal 48 VDC / 50 mA",
+      "connects": [
+        "DOC"
+      ],
+      "evidence": "'DO1' with '48 VDC / 50 mA'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DO2",
+      "type": "digital output terminal",
+      "detail": "Multi-function output terminal 48 VDC / 50 mA",
+      "connects": [
+        "DOC"
+      ],
+      "evidence": "'DO2' with '48 VDC / 50 mA'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DOC",
+      "type": "control common terminal",
+      "detail": "Multi-function output common terminal (photocoupler)",
+      "connects": [
+        "DO1",
+        "DO2"
+      ],
+      "evidence": "'DOC' with 'common terminal (photocoupler)'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "AO1",
+      "type": "analog output terminal",
+      "detail": "Analog multi-function output 0-10 VDC / 0-20 mA / 4-20 mA",
+      "connects": [
+        "ACM"
+      ],
+      "evidence": "'AO1' with 'Analog Multi-function output terminal 0 - 10 VDC / 0 - 20 mA / 4 - 20 mA'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "ACM (analog common a)",
+      "type": "analog common terminal",
+      "detail": "Analog Signal common (AO1 section)",
+      "connects": [],
+      "evidence": "'ACM' with 'Analog Signal common'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "SGND",
+      "type": "communication terminal",
+      "detail": "Modbus RS-485 signal ground",
+      "connects": [
+        "Modbus RS-485 connector (RJ45)"
+      ],
+      "evidence": "'SGND'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "SG+",
+      "type": "communication terminal",
+      "detail": "Modbus RS-485 SG+",
+      "connects": [
+        "Modbus RS-485 connector (RJ45)"
+      ],
+      "evidence": "'SG+  Modbus  RS-485'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "SG-",
+      "type": "communication terminal",
+      "detail": "Modbus RS-485 SG-",
+      "connects": [
+        "Modbus RS-485 connector (RJ45)"
+      ],
+      "evidence": "'SG-'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "SCM",
+      "type": "STO common terminal",
+      "detail": "STO signal common",
+      "connects": [
+        "Safety PLC"
+      ],
+      "evidence": "'SCM' at STO section",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "+24 V (STO)",
+      "type": "STO supply terminal",
+      "detail": "+24 V for STO only, cannot be used for any other purpose (note *2)",
+      "connects": [
+        "Safety PLC"
+      ],
+      "evidence": "'+24 V' with note '*2: The +24 V is for STO only'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "STO1",
+      "type": "Safe Torque Off input terminal",
+      "detail": "STO channel 1",
+      "connects": [
+        "Safety PLC"
+      ],
+      "evidence": "'STO1'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "STO2",
+      "type": "Safe Torque Off input terminal",
+      "detail": "STO channel 2",
+      "connects": [
+        "Safety PLC"
+      ],
+      "evidence": "'STO2'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "+10 V",
+      "type": "analog reference terminal",
+      "detail": "+10 VDC / 20 mA reference for potentiometer",
+      "connects": [
+        "5KΩ potentiometer"
+      ],
+      "evidence": "'+10 V' with '+10 VDC / 20 mA'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "AI1",
+      "type": "analog input terminal",
+      "detail": "0-10 VDC / -10 VDC to +10 VDC analog input",
+      "connects": [
+        "5KΩ potentiometer"
+      ],
+      "evidence": "'AI1' with '0 - 10 VDC' and '-10 VDC - +10 VDC'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "AI2",
+      "type": "analog input terminal",
+      "detail": "0-20 mA / 4-20 mA / 0-10 VDC analog input",
+      "connects": [],
+      "evidence": "'AI2' with '0 - 20 mA / 4 - 20 mA' and '0 - 10 VDC'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "ACM (analog common b)",
+      "type": "analog common terminal",
+      "detail": "Analog Signal common (AI section)",
+      "connects": [
+        "5KΩ potentiometer"
+      ],
+      "evidence": "'ACM' with 'Analog Signal common'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "conductors": [],
+  "cables": [
+    {
+      "tag": "Shielded control leads/cable",
+      "type": "shielded cable",
+      "detail": "Legend shows shielded leads & cable symbol; used on analog and pulse output/input lines (DO, AO1/ACM, AI, DCM shield grounds shown)",
+      "connects": [],
+      "evidence": "Legend 'Shielded leads & Cable' plus shield/ground symbols on DCM, ACM, DO, AI runs",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "contacts": [
+    {
+      "tag": "MC line contacts",
+      "type": "power contactor contacts (3)",
+      "detail": "In series with each input phase between protection and drive input",
+      "connects": [
+        "R/L1",
+        "S/L2",
+        "T/L3*"
+      ],
+      "evidence": "'MC' contact symbols on the three input phases",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "R1O-R1C (NO)",
+      "type": "relay NO contact",
+      "detail": "Multi-function relay NO — Resistive 3.0 A@250VAC / 5.0 A@30VDC; Inductive(COS0.4) 1.2 A@250VAC / 2.0 A@30VDC",
+      "connects": [
+        "R1O",
+        "R1C"
+      ],
+      "evidence": "Relay symbol with rating table 'Resistive Load' / 'Inductive Load (COS 0.4)'",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "R1-R1C (NC)",
+      "type": "relay NC contact",
+      "detail": "Multi-function relay NC — 3.0 A@250VAC / 3.0 A@30VDC (resistive); 1.2 A (inductive)",
+      "connects": [
+        "R1",
+        "R1C"
+      ],
+      "evidence": "Relay symbol with rating table",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "power_domains": [
+    {
+      "tag": "AC line input (1-ph / 3-ph)",
+      "type": "power domain",
+      "detail": "R/L1, S/L2, T/L3* — one-phase or three-phase input power",
+      "connects": [
+        "R/L1",
+        "S/L2",
+        "T/L3*"
+      ],
+      "evidence": "'Input: one-phase / three-phase* power'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DC bus",
+      "type": "power domain",
+      "detail": "DC-, DC+/+1, +2/B1, B2 — internal DC link with reactor/brake options",
+      "connects": [
+        "DC-",
+        "DC+/+1",
+        "+2/B1",
+        "B2"
+      ],
+      "evidence": "DC bus terminals with reactor/brake connections",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "Motor output (VFD U/V/W)",
+      "type": "power domain",
+      "detail": "Variable-frequency 3-phase output U/T1, V/T2, W/T3 to motor",
+      "connects": [
+        "U/T1",
+        "V/T2",
+        "W/T3"
+      ],
+      "evidence": "Output terminals to Motor 3~",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "+24 VDC control",
+      "type": "power domain",
+      "detail": "Drive-supplied 24 VDC for digital inputs and STO",
+      "connects": [
+        "+24 V (a)",
+        "+24 V (b)",
+        "+24 V (STO)"
+      ],
+      "evidence": "'+24 V' terminals and '+24 VDC' label",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "+10 VDC reference",
+      "type": "power domain",
+      "detail": "+10 VDC / 20 mA analog reference supply",
+      "connects": [
+        "+10 V"
+      ],
+      "evidence": "'+10 VDC / 20 mA'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "pe_bonds": [
+    {
+      "tag": "PE (drive input ground)",
+      "type": "protective earth",
+      "detail": "Ground symbol at drive input near T/L3*/R1C",
+      "connects": [],
+      "evidence": "earth symbol below input terminals",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "PE (motor ground)",
+      "type": "protective earth",
+      "detail": "Motor frame / output ground bonded to earth",
+      "connects": [
+        "Motor 3~"
+      ],
+      "evidence": "earth symbols at motor output side",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "PE (control/shield ground - digital)",
+      "type": "signal/shield earth",
+      "detail": "Shield ground on DCM/digital-common side",
+      "connects": [],
+      "evidence": "earth symbol near DCM",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "PE (control/shield ground - analog)",
+      "type": "signal/shield earth",
+      "detail": "Shield ground on ACM/analog-common side",
+      "connects": [],
+      "evidence": "earth symbol near ACM/AO1 and AI ACM",
+      "confidence": 0.7,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "off_page_references": [],
+  "plc_io_channels": [
+    {
+      "tag": "DI1/FWD",
+      "type": "digital input",
+      "detail": "Forward/Stop run command (default)",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI1/FWD' 'FWD/STOP'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI2/REV",
+      "type": "digital input",
+      "detail": "Reverse/Stop run command (default)",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI2/REV' 'REV/STOP'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI3",
+      "type": "digital input",
+      "detail": "Multi-step speed 1 (default)",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI3' 'Multi-step speed 1'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI4",
+      "type": "digital input",
+      "detail": "Multi-step speed 2 (default)",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI4' 'Multi-step speed 2'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI5",
+      "type": "digital input",
+      "detail": "Multi-step speed 3 (default)",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI5' 'Multi-step speed 3'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI6",
+      "type": "digital input",
+      "detail": "Multi-step speed 4 (default)",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI6' 'Multi-step speed 4'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DI7",
+      "type": "digital input / high-speed pulse",
+      "detail": "N/A default; can input 33 kHz pulses",
+      "connects": [
+        "DCM"
+      ],
+      "evidence": "'DI7' 'N/A', note 'DI7 can input 33 kHz pulses'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DO",
+      "type": "digital/pulse output",
+      "detail": "Multi-function frequency output 30 VDC / 30 mA / 33 kHz",
+      "connects": [
+        "DCM (output common)"
+      ],
+      "evidence": "'DO' rating text",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DO1",
+      "type": "digital output",
+      "detail": "Multi-function output 48 VDC / 50 mA (photocoupler)",
+      "connects": [
+        "DOC"
+      ],
+      "evidence": "'DO1' rating",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "DO2",
+      "type": "digital output",
+      "detail": "Multi-function output 48 VDC / 50 mA (photocoupler)",
+      "connects": [
+        "DOC"
+      ],
+      "evidence": "'DO2' rating",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "AI1",
+      "type": "analog input",
+      "detail": "0-10 VDC / -10 to +10 VDC (voltage/pot reference)",
+      "connects": [
+        "+10 V",
+        "ACM (analog common b)"
+      ],
+      "evidence": "'AI1' rating",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "AI2",
+      "type": "analog input",
+      "detail": "0-20 mA / 4-20 mA / 0-10 VDC",
+      "connects": [
+        "ACM (analog common b)"
+      ],
+      "evidence": "'AI2' rating",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "AO1",
+      "type": "analog output",
+      "detail": "0-10 VDC / 0-20 mA / 4-20 mA multi-function analog output",
+      "connects": [
+        "ACM (analog common a)"
+      ],
+      "evidence": "'AO1' rating",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "R1 relay (R1O/R1C/R1)",
+      "type": "relay output",
+      "detail": "Multi-function form-C relay output with rated resistive/inductive contacts",
+      "connects": [
+        "R1O",
+        "R1C",
+        "R1"
+      ],
+      "evidence": "'Multi-function relay output terminals' with rating table",
+      "confidence": 0.85,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "STO1",
+      "type": "safety input",
+      "detail": "Safe Torque Off channel 1",
+      "connects": [
+        "SCM"
+      ],
+      "evidence": "'STO1'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "STO2",
+      "type": "safety input",
+      "detail": "Safe Torque Off channel 2",
+      "connects": [
+        "SCM"
+      ],
+      "evidence": "'STO2'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "network_links": [
+    {
+      "tag": "Modbus RS-485",
+      "type": "serial fieldbus",
+      "detail": "SG+, SG-, SGND on RJ45 (8←1) — Modbus RS-485 serial link",
+      "connects": [
+        "SG+",
+        "SG-",
+        "SGND",
+        "Modbus RS-485 connector (RJ45)"
+      ],
+      "evidence": "'SG+ Modbus RS-485', 'SG-', 'SGND', RJ45 '8←1'",
+      "confidence": 0.9,
+      "trust": "proposed",
+      "sheet": null
+    },
+    {
+      "tag": "Option/Communication card slot",
+      "type": "expansion communication interface",
+      "detail": "Option Slot for Communication card / DC 24V external power supply card; USB Port present",
+      "connects": [
+        "Option Slot",
+        "USB Port"
+      ],
+      "evidence": "'Communication card / DC 24V external power supply card', 'Option Slot', 'USB Port'",
+      "confidence": 0.8,
+      "trust": "proposed",
+      "sheet": null
+    }
+  ],
+  "functional_paths": [
+    {
+      "name": "Main power path to motor",
+      "sheet": null,
+      "sequence": [
+        "AC line input (1-ph / 3-ph)",
+        "Circuit Breaker or Fuse",
+        "MC line contacts",
+        "R/L1",
+        "S/L2",
+        "T/L3*",
+        "GS20 / GS20X Drive",
+        "U/T1",
+        "V/T2",
+        "W/T3",
+        "Motor 3~"
+      ]
+    },
+    {
+      "name": "DC bus with optional reactor/brake",
+      "sheet": null,
+      "sequence": [
+        "DC+/+1",
+        "DC reactor (optional)",
+        "+2/B1",
+        "Brake resistor (optional)",
+        "B2",
+        "DC-"
+      ]
+    },
+    {
+      "name": "Run command (digital inputs, NPN sink default)",
+      "sheet": null,
+      "sequence": [
+        "+24 V (a)",
+        "DI1/FWD",
+        "DCM",
+        "GS20 / GS20X Drive"
+      ]
+    },
+    {
+      "name": "Speed reference from potentiometer",
+      "sheet": null,
+      "sequence": [
+        "+10 V",
+        "5KΩ potentiometer",
+        "AI1",
+        "ACM (analog common b)",
+        "GS20 / GS20X Drive"
+      ]
+    },
+    {
+      "name": "Safe Torque Off",
+      "sheet": null,
+      "sequence": [
+        "+24 V (STO)",
+        "E STOP",
+        "Safety PLC",
+        "STO1",
+        "STO2",
+        "SCM",
+        "GS20 / GS20X Drive"
+      ]
+    },
+    {
+      "name": "Modbus RS-485 communications",
+      "sheet": null,
+      "sequence": [
+        "Modbus RS-485 connector (RJ45)",
+        "SG+",
+        "SG-",
+        "SGND"
+      ]
+    }
+  ],
+  "physical_layout_matches": [],
+  "unresolved": [
+    {
+      "item": "R1C/R1 appear both at the power-side relay (left) and as R1O/R1C/R1 at the multi-function relay section (right)",
+      "status": "ambiguous grouping",
+      "resolution": "Confirm whether these are the same physical form-C relay terminals shown twice; crop both relay areas."
+    },
+    {
+      "item": "Exact routing of shield/PE grounds for DCM vs ACM commons",
+      "status": "partially legible",
+      "resolution": "Higher-resolution crop of the shield-ground symbols near DCM and ACM."
+    },
+    {
+      "item": "NPN/PNP mode selector detail (N-P jumper block near DCM)",
+      "status": "small symbol",
+      "resolution": "Crop of the 'NPN/PNP' jumper graphic to confirm sink/source selection."
+    }
+  ],
+  "cross_sheet_notes": "This is a continuation sheet ('Control Circuit Wiring Diagrams (continued)') of the DURApulse GS20/GS20X manual; references NPN/PNP mode wiring elsewhere ('Please refer to the wiring of NPN mode and PNP mode.').",
+  "brief": {
+    "sheet_title": "Full I/O wiring diagram (page 2-38) for the DURApulse GS20 / GS20X variable-frequency drive — the complete power and control terminal hookup.",
+    "purpose": "This drawing shows how to wire an AC drive (VFD) that runs a three-phase motor. Incoming one- or three-phase power passes through a circuit breaker/fuse and a main contactor (MC) into the drive input terminals R/L1, S/L2, T/L3, and the drive puts out variable-frequency three-phase power on U/T1, V/T2, W/T3 to the motor. An internal DC bus (DC-, DC+/+1, +2/B1, B2) can take an optional DC reactor and an optional brake resistor. On the control side the drive supplies +24 V for digital inputs DI1–DI7 (defaults: DI1=Forward/Stop, DI2=Reverse/Stop, DI3–DI6=multi-step speeds, DI7 spare/33 kHz pulse), all returning to the digital common DCM, wired NPN/sink by default. A 5 kΩ potentiometer across +10 V / AI1 / ACM (or a 0-10 V / 4-20 mA signal on AI2) sets the speed reference. Outputs include a form-C multi-function relay (R1O/R1C/R1), transistor/photocoupler outputs DO/DO1/DO2 with common DOC, an analog output AO1 (0-10 V or 0/4-20 mA), a Modbus RS-485 port, and a Safe-Torque-Off (STO1/STO2) circuit driven from a Safety PLC/E-STOP.",
+    "key_signals": [
+      {
+        "signal": "Forward run / stop command",
+        "tag": "DI1/FWD",
+        "terminal": "DI1/FWD",
+        "destination": "GS20 drive digital input, return DCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Reverse run / stop command",
+        "tag": "DI2/REV",
+        "terminal": "DI2/REV",
+        "destination": "GS20 drive digital input, return DCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Multi-step speed 1",
+        "tag": "DI3",
+        "terminal": "DI3",
+        "destination": "GS20 drive digital input, return DCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Multi-step speed 2",
+        "tag": "DI4",
+        "terminal": "DI4",
+        "destination": "GS20 drive digital input, return DCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Multi-step speed 3",
+        "tag": "DI5",
+        "terminal": "DI5",
+        "destination": "GS20 drive digital input, return DCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Multi-step speed 4",
+        "tag": "DI6",
+        "terminal": "DI6",
+        "destination": "GS20 drive digital input, return DCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Spare digital input / 33 kHz pulse input",
+        "tag": "DI7",
+        "terminal": "DI7",
+        "destination": "GS20 drive digital input, return DCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Digital signal common (return for DI1–DI7)",
+        "tag": "DCM",
+        "terminal": "DCM",
+        "destination": "GS20 drive",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Analog speed reference from potentiometer/voltage",
+        "tag": "AI1",
+        "terminal": "AI1",
+        "destination": "GS20 drive analog input (5 kΩ pot across +10 V and ACM)",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Analog speed reference (current/voltage)",
+        "tag": "AI2",
+        "terminal": "AI2",
+        "destination": "GS20 drive analog input",
+        "confidence": 0.9
+      },
+      {
+        "signal": "+10 V reference supply for pot",
+        "tag": "+10 V",
+        "terminal": "+10 V",
+        "destination": "5 kΩ potentiometer",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Analog multi-function output (0-10 V / 0-20 mA / 4-20 mA)",
+        "tag": "AO1",
+        "terminal": "AO1",
+        "destination": "external meter/PLC, return ACM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Multi-function pulse/frequency output (30 VDC/30 mA/33 kHz)",
+        "tag": "DO",
+        "terminal": "DO",
+        "destination": "external load, return DCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Multi-function transistor output 1 (48 VDC/50 mA)",
+        "tag": "DO1",
+        "terminal": "DO1",
+        "destination": "external load, common DOC",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Multi-function transistor output 2 (48 VDC/50 mA)",
+        "tag": "DO2",
+        "terminal": "DO2",
+        "destination": "external load, common DOC",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Multi-function relay output (form-C)",
+        "tag": "R1O/R1C/R1",
+        "terminal": "R1O, R1C, R1",
+        "destination": "external contactor/annunciator",
+        "confidence": 0.85
+      },
+      {
+        "signal": "Safe Torque Off channel 1",
+        "tag": "STO1",
+        "terminal": "STO1",
+        "destination": "Safety PLC / E-STOP circuit, common SCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Safe Torque Off channel 2",
+        "tag": "STO2",
+        "terminal": "STO2",
+        "destination": "Safety PLC / E-STOP circuit, common SCM",
+        "confidence": 0.9
+      },
+      {
+        "signal": "Modbus RS-485 comms",
+        "tag": "SG+/SG-/SGND",
+        "terminal": "SG+, SG-, SGND (RJ45)",
+        "destination": "Modbus RS-485 master",
+        "confidence": 0.9
+      }
+    ],
+    "key_devices": [
+      {
+        "device": "AC variable-frequency drive (VFD)",
+        "tag": "GS20 / GS20X",
+        "confidence": 0.95
+      },
+      {
+        "device": "Three-phase motor",
+        "tag": "Motor 3~",
+        "confidence": 0.95
+      },
+      {
+        "device": "Upstream circuit breaker or fuse",
+        "tag": "Circuit Breaker or Fuse",
+        "confidence": 0.9
+      },
+      {
+        "device": "Main magnetic contactor",
+        "tag": "MC",
+        "confidence": 0.85
+      },
+      {
+        "device": "Optional DC link reactor",
+        "tag": "DC reactor (optional)",
+        "confidence": 0.85
+      },
+      {
+        "device": "Optional dynamic-braking resistor",
+        "tag": "Brake resistor (optional)",
+        "confidence": 0.85
+      },
+      {
+        "device": "External safety PLC / E-STOP driving STO",
+        "tag": "Safety PLC",
+        "confidence": 0.85
+      },
+      {
+        "device": "Speed-reference potentiometer",
+        "tag": "5KΩ",
+        "confidence": 0.85
+      },
+      {
+        "device": "Modbus RS-485 RJ45 port",
+        "tag": "SG+/SG-/SGND",
+        "confidence": 0.9
+      },
+      {
+        "device": "Communication / option card slot and USB port",
+        "tag": "Option Slot / USB Port",
+        "confidence": 0.8
+      }
+    ],
+    "troubleshooting_example": "Motor won't start on a Forward command: with the drive powered, meter DI1/FWD to DCM while the FWD contact is closed — you should see the drive's ~24 V input voltage collapse/appear per the sink wiring. Then meter the same contact directly at the +24 V and DI1/FWD terminals: if +24 V is present and the closed field contact does NOT pull DI1/FWD to DCM, the fault is in the external switch/wiring; if DI1/FWD does toggle correctly at the drive terminal but the drive still won't run, the fault is inside the drive (or an interlock such as STO). Note: this sheet does NOT show the drive's internal run logic or parameter settings, so confirm the run source and STO status separately — an open STO1/STO2 (E-STOP / Safety PLC) will also inhibit running regardless of the run command.",
+    "safety_context": "This is a drive with high-energy circuits. The AC input is one- or three-phase mains and the DC bus retains a lethal charge after power-off — the sheet does not print the exact line/bus voltage, so treat it as unknown-but-dangerous and verify with the drive's rating label. For any continuity/resistance checks on motor leads, DC-bus, or brake resistor, de-energize, lock out, and confirm the DC bus has discharged to a safe level with a meter before touching. Control terminals carry the printed low levels (+24 VDC control, +10 VDC reference, DO 30 VDC, DO1/DO2 48 VDC, relay up to 250 VAC/30 VDC) — the relay contact can carry up to 250 VAC even when the drive appears 'off', so treat R1O/R1C/R1 as potentially live. STO is a safety function; do not defeat the STO wiring or reinsert the factory jumper as a workaround.",
+    "unresolved_items": [
+      "Whether the left-side R1C/R1 relay and the right-side R1O/R1C/R1 are the same physical relay shown twice.",
+      "Exact NPN vs PNP (sink/source) jumper configuration for the digital inputs (small symbol; diagram states default NPN/SINK and to refer to separate NPN/PNP wiring).",
+      "Detailed shield/PE grounding of the DCM and ACM commons."
+    ],
+    "detailed_map_available": true,
+    "purpose_confidence": 0.9
+  }
+}

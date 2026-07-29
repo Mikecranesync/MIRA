@@ -26,14 +26,14 @@
 | Photo | Filename | Score | Bucket | Bot Response |
 |-------|----------|-------|--------|--------------|
 | 01 | PXL_20260219_043746450.jpg | 0/6 | TRANSPORT_FAILURE | *(no reply — likely first-message timing delay)* |
-| 02 | PXL_20260219_045141856.MACRO_FOCUS.jpg | 5/6 | NO_FAULT_CAUSE | Wiring diagram — Good read — 30 labels extracted. Labels: Point, 2400WK0266_HDW_AVL_220, 2400WK0266_OPM_Ride_V1, 1280, File C:/Users/703156457/Downloads/2400WK0266_HDW_AB01_US_250115.pdf, Universal Destinati..., UO Technical Servi..., KRONOS TimeKee... — Ask me to trace a wire run or identify connection points. |
+| 02 | PXL_20260219_045141856.MACRO_FOCUS.jpg | 5/6 | NO_FAULT_CAUSE | Wiring diagram — Good read — 30 labels extracted. Labels: Point, [DWG]_HDW_AVL_220, [DWG]_OPM_Ride_V1, 1280, File [local]/[DWG]_HDW_AB01_US_250115.pdf, [park operator]..., [operator technical services]..., KRONOS TimeKee... — Ask me to trace a wire run or identify connection points. |
 | 03 | PXL_20260219_045632544.MACRO_FOCUS.jpg | 3/6 | IDENTIFICATION_ONLY | Wiring diagram — Couldn't extract text — try better lighting or a closer shot. Labels: (no text extracted) — Ask me to trace a wire run or identify connection points. |
 | 04 | PXL_20260219_045640877.jpg | 3/6 | IDENTIFICATION_ONLY | Wiring diagram — Couldn't extract text — try better lighting or a closer shot. Labels: (no text extracted) — Ask me to trace a wire run or identify connection points. |
 | 05 | PXL_20260219_045647225.MACRO_FOCUS.jpg | 5/6 | NO_FAULT_CAUSE | Ladder logic diagram — Good read — 51 labels extracted. Labels: A \| a \| Ask Copilot, of 3742, L110/S/18, K0.1, connector 1-2 double brake, K0.2, connector 1-2 double brake, L110/S/18 — Describe a fault symptom or ask what a specific rung does. |
-| 06 | PXL_20260219_045654220.jpg | 5/6 | NO_FAULT_CAUSE | Wiring diagram — Partial read — 17 labels extracted. Labels: 1 2 3 4 5 6 7, official, logical hardware, date 12.04.2022, number 1401, class 1.1, MACKRIDES, customer Universal Orlando — Ask me to trace a wire run or identify connection points. |
-| 07 | PXL_20260219_045719632.jpg | 5/6 | NO_FAULT_CAUSE | Wiring diagram — Good read — 152 labels extracted. Labels: SharePoint, 2400WK0266_HDW_AVL_22, 2400WK0266_OPM_Ride_V1, 1280_1280_0006, 2400WK0266_HDW_AB01_U, File C:/Users/703156457/Downloads/2400WK0266_HDW_AB01_US_250115.pdf, Verify it's you, Bihl — Ask me to trace a wire run or identify connection points. |
+| 06 | PXL_20260219_045654220.jpg | 5/6 | NO_FAULT_CAUSE | Wiring diagram — Partial read — 17 labels extracted. Labels: 1 2 3 4 5 6 7, official, logical hardware, date 12.04.2022, number 1401, class 1.1, [OEM], customer [park operator] — Ask me to trace a wire run or identify connection points. |
+| 07 | PXL_20260219_045719632.jpg | 5/6 | NO_FAULT_CAUSE | Wiring diagram — Good read — 152 labels extracted. Labels: SharePoint, [DWG]_HDW_AVL_22, [DWG]_OPM_Ride_V1, 1280_1280_0006, [DWG]_HDW_AB01_U, File [local]/[DWG]_HDW_AB01_US_250115.pdf, Verify it's you, Bihl — Ask me to trace a wire run or identify connection points. |
 | 08 | PXL_20260219_045737047.MACRO_FOCUS.jpg | 5/6 | NO_FAULT_CAUSE | Panel schedule — Good read — 66 labels extracted. Labels: HUG.184.2012.01, 15, -W-JB03.31, 520.20.20, HUG.520.20.20, 16, -W-JB04.31, WAZU 184.2012.01 — Ask me to look up a specific entry. |
-| 09 | PXL_20260219_045802513.MP.jpg | 5/6 | NO_FAULT_CAUSE | Wiring diagram — Good read — 88 labels extracted. Labels: Order, Factual Rechnung, National Universal Orlando, Project Racing Coaster, EMIS, Temperature monitoring (Klimaan) 2 dätter per 5.8, Document Date, Structural Engineering Information — Ask me to trace a wire run or identify connection points. |
+| 09 | PXL_20260219_045802513.MP.jpg | 5/6 | NO_FAULT_CAUSE | Wiring diagram — Good read — 88 labels extracted. Labels: Order, Factual Rechnung, [park operator], Project [coaster project], [partner], Temperature monitoring (Klimaan) 2 dätter per 5.8, Document Date, Structural Engineering Information — Ask me to trace a wire run or identify connection points. |
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### Photo 02
 > Wiring diagram — Good read — 30 labels extracted. (some labels may be screen UI, not drawing content)
-> Labels I can see: Point, 2400WK0266_HDW_AVL_220, 2400WK0266_OPM_Ride_V1, 1280, File C:/Users/703156457/Downloads/2400WK0266_HDW_AB01_US_250115.pdf, Universal Destinati..., UO Technical Servi..., KRONOS TimeKee...
+> Labels I can see: Point, [DWG]_HDW_AVL_220, [DWG]_OPM_Ride_V1, 1280, File [local]/[DWG]_HDW_AB01_US_250115.pdf, [park operator]..., [operator technical services]..., KRONOS TimeKee...
 > Ask me to trace a wire run or identify connection points.
 
 ### Photo 03
@@ -64,12 +64,12 @@
 
 ### Photo 06
 > Wiring diagram — Partial read — 17 labels extracted.
-> Labels I can see: 1 2 3 4 5 6 7, official, logical hardware, date 12.04.2022, number 1401, class 1.1, MACKRIDES, customer Universal Orlando
+> Labels I can see: 1 2 3 4 5 6 7, official, logical hardware, date 12.04.2022, number 1401, class 1.1, [OEM], customer [park operator]
 > Ask me to trace a wire run or identify connection points.
 
 ### Photo 07
 > Wiring diagram — Good read — 152 labels extracted. (some labels may be screen UI, not drawing content)
-> Labels I can see: SharePoint, 2400WK0266_HDW_AVL_22, 2400WK0266_OPM_Ride_V1, 1280_1280_0006, 2400WK0266_HDW_AB01_U, File C:/Users/703156457/Downloads/2400WK0266_HDW_AB01_US_250115.pdf, Verify it's you, Bihl
+> Labels I can see: SharePoint, [DWG]_HDW_AVL_22, [DWG]_OPM_Ride_V1, 1280_1280_0006, [DWG]_HDW_AB01_U, File [local]/[DWG]_HDW_AB01_US_250115.pdf, Verify it's you, Bihl
 > Ask me to trace a wire run or identify connection points.
 
 ### Photo 08
@@ -79,7 +79,7 @@
 
 ### Photo 09
 > Wiring diagram — Good read — 88 labels extracted.
-> Labels I can see: Order, Factual Rechnung, National Universal Orlando, Project Racing Coaster, EMIS, Temperature monitoring (Klimaan) 2 dätter per 5.8, Document Date, Structural Engineering Information
+> Labels I can see: Order, Factual Rechnung, [park operator], Project [coaster project], [partner], Temperature monitoring (Klimaan) 2 dätter per 5.8, Document Date, Structural Engineering Information
 > Ask me to trace a wire run or identify connection points.
 
 ---
@@ -99,7 +99,7 @@ The bot responded correctly to what it saw. The FAIL scores are rubric artifacts
 | Correct document classification | Bot identified wiring diagrams, ladder logic, panel schedule — all accurate |
 | OCR working on most photos | 7/9 photos yielded label extractions (30–152 labels per photo) |
 | Context-appropriate follow-up prompts | Bot offered to trace wires, look up panel entries, explain rungs |
-| Project context from OCR | Extracted "Universal Orlando", "Racing Coaster", "MACKRIDES" — real project metadata visible in photos |
+| Project context from OCR | Extracted "[park operator]", "[coaster project]", "[OEM]" — real project metadata visible in photos |
 | Macro crop degrades OCR | Photos 03/04 (tight MACRO_FOCUS crop) yielded 0 labels — insufficient text context |
 
 ### Photos 03 and 04 — MACRO_FOCUS limitation

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "case_id": "05",
+  "category_scores": {
+    "classification_answerability": 8,
+    "component_label_recognition": 11,
+    "power_control_flow": 6,
+    "sequence_interlocks_logic": 8,
+    "evidence_grounding_unsupported_claims": 5,
+    "technician_usefulness_clarity": 6
+  },
+  "total": 44,
+  "deductions": [
+    {
+      "claim": "Nothing major appears to be unreadable in the provided image.",
+      "evidence": "The page contains a device labeled \"(L.B.)\" with an \"M\" in a circle (appears twice, top schematic \"6-(M)-9\" and bottom schematic in the coil-feed rung) whose function is never named on the page, plus dense terminal/pin markings (A1X/A2X/A3X/A4X, A1Y/A2Y/A3Y/A4Y, 13, K1, K2) with no legend disambiguating their exact role. Declaring nothing unclear overstates the certainty a careful reading actually supports.",
+      "category": "classification_answerability",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Acknowledge that most labels are legible but that the exact function of \"(L.B.)\" and the precise electrical role of K1/K2 are not fully disambiguated by the page alone.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "A control transformer (component list, §2); \"Open circuit in the control transformer\" (§5)",
+      "evidence": "The only transformer-like labels visible near the incoming lines read \"1 C.T.\", \"2 C.T.\", \"3 C.T.\" feeding T1/T2/T3 leads — the standard abbreviation for current transformers, not a control (power) transformer. The bottom ladder diagram explicitly labels the control-circuit supply \"Separate Control Source\", which contradicts sourcing control power from an on-page transformer.",
+      "category": "component_label_recognition",
+      "points_deducted": 5,
+      "severity": "material",
+      "correction": "Identify the C.T. blocks as current transformers (likely feeding the overload-relay sensing circuit) and note the control circuit is fed from an external \"Separate Control Source\", not a transformer shown on this page.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Omission — component list never mentions the rectifier bridge or the MOV",
+      "evidence": "A bridge-rectifier symbol labeled \"Rect.\" (with visible +/- polarity marks and pins 4/8/9/12) and a surge-suppression device labeled \"Mov.\" both appear twice on the page (once in the top physical-layout diagram, once in the bottom ladder schematic) and are clearly legible.",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "List the rectifier bridge (\"Rect.\") and MOV (\"Mov.\") as visible components of the coil-economizer circuit.",
+      "confidence": "high"
+    },
+    {
+      "claim": "\"the control relay (CR) energizes, which in turn energizes the motor starter coils (K1, K2). The motor starter coils then close the main contacts to power the 3-phase motor.\"",
+      "evidence": "The bottom ladder diagram shows CR's own auxiliary contacts (labeled A2Y/A2X and A3X/A3Y) feeding a separate rectifier bridge (\"Rect.\"), which — through \"1 Res.\"/\"2 Res.\" and \"1/2 Econ. Cap.\" — energizes a coil explicitly labeled \"M\" (also visible in the top schematic as \"6-(M)-9\"). \"K1\" and \"K2\" appear only as terminal markings bracketing the CR coil itself (top: \"[3]-o-[13]  K1  K2\"; bottom: \"(K1) CR (K2)\"), not as a second device with its own main contacts.",
+      "category": "power_control_flow",
+      "points_deducted": 8,
+      "severity": "severe",
+      "correction": "Describe CR as the pilot relay whose auxiliary contacts route rectified/capacitor-assisted DC through a resistor network to the coil labeled \"M\", which is what actually closes the main power contacts.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Omission — the rectifier/resistor/capacitor economizer path (roughly half the drawing's area) is never explained as part of how power reaches the main coil",
+      "evidence": "\"1 Res.\", \"2 Res.\", \"1 Econ. Cap.\", \"2 Econ. Cap.\", \"Rect.\", and \"Mov.\" together form a visibly prominent DC assist/economizer network between CR's auxiliary contacts and coil \"M\", but §3 (\"theory of operation\") never describes what this network does.",
+      "category": "power_control_flow",
+      "points_deducted": 6,
+      "severity": "severe",
+      "correction": "Explain that the rectifier/capacitor path boosts pull-in current to coil M and the resistor network reduces it afterward for economized holding current — a standard large-NEMA-contactor economizer arrangement.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Omission — no mention of the two-stage CR contact structure (A1 seal-in vs. A2/A3/A4 economizer-path gating)",
+      "evidence": "The bottom schematic shows two distinct CR-contact-gated rungs: one seals in the Start pushbutton (contacts A1Y/A1X, in parallel with Start), and a separate rung (A2Y/A2X, A3X/A3Y) gates the coil-energizing/economizer path, with a further CR contact (A4X/A4Y) shown in parallel with \"2 Res.\" — a classic reduced-holding-current interlock. None of this two-stage interlock structure is addressed in §3 or §4.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 12,
+      "severity": "severe",
+      "correction": "Explain the two-stage CR contact structure: one set seals in the start command; a second set enables/switches the DC economizer path feeding the main coil.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "\"motor starter coils (K1, K2)\" stated as settled fact in §2, §3, and again in §5 (\"Faulty motor starter coils (K1, K2)\")",
+      "evidence": "As above: K1/K2 are only legible as terminal markings adjacent to the CR coil symbol; nothing on the page labels them as an independent \"motor starter\" with its own main contacts, and the page separately and unambiguously labels the actual main coil \"M\". The response converts an unconfirmed inference into a repeated, unqualified factual assertion, including in the failure-mode list where a technician might be sent looking for a nonexistent device.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 8,
+      "severity": "hard_failure",
+      "correction": "Flag K1/K2's exact role as uncertain from the page alone rather than repeatedly asserting a specific mechanism (a second coil closing the main contacts) as fact.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "\"A control transformer\" stated with no hedge (§2, §5) combined with \"Nothing major appears to be unreadable in the provided image\" (§6)",
+      "evidence": "The visible label is \"C.T.\" (current transformer), not a control/power transformer, and the drawing separately states the control power is a \"Separate Control Source\" — so this specific claim is both unsupported and contradicted by other visible text, while the response simultaneously asserts no part of the page is ambiguous.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 7,
+      "severity": "hard_failure",
+      "correction": "Identify C.T. as current transformers (or flag uncertainty) rather than asserting \"control transformer\", and acknowledge genuine remaining ambiguity (e.g. \"(L.B.)\" function, K1/K2 role).",
+      "confidence": "high"
+    },
+    {
+      "claim": "\"Open circuit in the control transformer\" / \"Faulty motor starter coils (K1, K2)\" offered as troubleshooting checkpoints (§5)",
+      "evidence": "Both items rest on the two unsupported component identifications above (control transformer, K1/K2 as a separate starter). Presented in a confident, formatted checklist, they risk sending a technician looking for a component that is not actually on this print, away from the real rectifier/resistor/capacitor economizer path and the \"M\" coil.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Caveat or drop the control-transformer and K1/K2-as-starter-coil failure points so troubleshooting guidance points only at verified visible components.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "failure_to_separate_evidence_from_inference",
+    "false_certainty_from_unreadable_evidence"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "medium",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 2,
+  "notes": "Response is well-organized and gets the macro Start/Stop/OL sequence right (order of energize/de-energize is not reversed), but commits confidently to an incorrect internal mechanism (K1/K2 as a separate 'motor starter coil' closing the main contacts) when the page clearly and separately labels the actual main coil 'M', and skips the prominent rectifier/capacitor/resistor economizer network almost entirely despite listing 'Economizer capacitors' as a component. It also mislabels the current-transformer (C.T.) blocks as a 'control transformer' while the page explicitly states control power comes from a 'Separate Control Source'. Declaring in §6 that nothing is unreadable, while these specific misreads are present, is the false-certainty pattern the protocol calls out. Did not independently verify against evidence/05.meta.json or any prior grade file (not read, per protocol)."
+}

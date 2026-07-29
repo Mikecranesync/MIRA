@@ -26,6 +26,7 @@ from tools.fix_proposer import (
     cluster_failures,
     find_latest_scorecard,
     parse_scorecard,
+    quorum_failures,
 )
 
 
@@ -277,3 +278,73 @@ def test_state_missing_returns_defaults(tmp_path):
     proposer = _make_proposer(tmp_path)
     state = proposer._load_state()
     assert state["last_run_ts"] is None
+
+
+# ── Quorum filter tests (median-across-N scorecards) ───────────────────────
+
+
+def _write_scorecard(runs_dir: Path, name: str, scenario_ids: list[str]) -> None:
+    """Write a minimal scorecard whose Failures section lists the given scenarios."""
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    blocks = "\n\n".join(
+        f"### {sid}\n- **cp_keyword_match** FAILED: No match from ['x']" for sid in scenario_ids
+    )
+    (runs_dir / name).write_text(f"# Scorecard\n\n## Failures\n\n{blocks}\n\n## Summary\n")
+
+
+def test_quorum_passthrough_when_fewer_than_window(tmp_path):
+    """Fewer than `window` scorecards → latest failures returned unchanged."""
+    runs = tmp_path / "runs"
+    _write_scorecard(runs, "2026-04-14.md", ["flaky_01"])
+    latest = parse_scorecard(runs / "2026-04-14.md")
+    # window=3 but only 1 scorecard exists → no filtering
+    out = quorum_failures(latest, runs, window=3)
+    assert {r.scenario_id for r in out} == {"flaky_01"}
+
+
+def test_quorum_passthrough_when_window_below_two(tmp_path):
+    """window < 2 disables the quorum (single-scorecard behavior)."""
+    runs = tmp_path / "runs"
+    _write_scorecard(runs, "2026-04-14.md", ["a", "b"])
+    latest = parse_scorecard(runs / "2026-04-14.md")
+    out = quorum_failures(latest, runs, window=1)
+    assert len(out) == 2
+
+
+def test_quorum_drops_flaky_keeps_persistent(tmp_path):
+    """A 1-of-3 flaky scenario is dropped; a 2-of-3 persistent one survives."""
+    runs = tmp_path / "runs"
+    # 3 scorecards. `persistent_02` fails in 2 of 3 (>= ceil(3/2)=2 → kept).
+    # `flaky_01` fails only in the latest (1 of 3 < 2 → dropped).
+    _write_scorecard(runs, "2026-04-12.md", ["persistent_02"])
+    _write_scorecard(runs, "2026-04-13.md", ["other_03"])
+    _write_scorecard(runs, "2026-04-14.md", ["flaky_01", "persistent_02"])
+    latest = parse_scorecard(runs / "2026-04-14.md")
+    out = quorum_failures(latest, runs, window=3)
+    ids = {r.scenario_id for r in out}
+    assert ids == {"persistent_02"}
+
+
+def test_quorum_keeps_failure_meeting_threshold(tmp_path):
+    """A scenario failing in exactly ceil(N/2) of N scorecards is retained."""
+    runs = tmp_path / "runs"
+    _write_scorecard(runs, "2026-04-13.md", ["edge_01"])
+    _write_scorecard(runs, "2026-04-14.md", ["edge_01"])
+    latest = parse_scorecard(runs / "2026-04-14.md")
+    # window=2 → threshold ceil(2/2)=1; edge_01 appears in both → kept
+    out = quorum_failures(latest, runs, window=2)
+    assert {r.scenario_id for r in out} == {"edge_01"}
+
+
+def test_run_phantom_cluster_suppressed_by_quorum(tmp_path):
+    """End-to-end: a phantom cluster present only in the latest scorecard is suppressed."""
+    proposer = _make_proposer(tmp_path)
+    proposer.cfg.quorum_window = 3
+    runs = proposer.cfg.runs_dir
+    # Older two scorecards have no failures; latest has a 3-member phantom cluster.
+    _write_scorecard(runs, "2026-04-12.md", [])
+    _write_scorecard(runs, "2026-04-13.md", [])
+    _write_scorecard(runs, "2026-04-14.md", ["ph_a", "ph_b", "ph_c"])
+    result = asyncio.run(proposer.run(dry_run=True))
+    assert result["status"] == "ok"
+    assert result["reason"] == "no_quorum_failures"

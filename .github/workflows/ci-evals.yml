@@ -37,12 +37,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio pyyaml
+          pip install pytest pytest-asyncio pyyaml httpx
 
-      - name: Run offline eval tests
+      - name: Run offline eval unit tests
         run: |
-          pytest tests/ -v -m "not network and not slow" \
-            --ignore=tests/regime5_nemotron/
+          # This workflow owns the eval/scoring framework. Root `tests/`
+          # collection belongs to ci.yml and package-specific workflows; doing
+          # it here pulls in unrelated import setups and makes the nightly eval red.
+          pytest tests/eval tests/scoring -v -m "not network and not slow"
 
   # Tier C: Full evaluation — only on schedule or manual dispatch
   eval-full:

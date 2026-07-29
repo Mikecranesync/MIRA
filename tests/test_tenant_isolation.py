@@ -97,7 +97,7 @@ async def test_rag_worker_accepts_per_call_tenant(tmp_path):
 
     recall_calls: list[dict] = []
 
-    def fake_recall(embedding, tenant_id, *, query_text="", limit=5):
+    def fake_recall(embedding, tenant_id, *, query_text="", limit=5, **kwargs):
         recall_calls.append({"tenant_id": tenant_id, "query_text": query_text})
         return []
 
@@ -136,7 +136,7 @@ async def test_rag_worker_falls_back_to_constructor_tenant(tmp_path):
     fake_embedding = [0.1] * 768
     recall_calls: list[dict] = []
 
-    def fake_recall(embedding, tenant_id, *, query_text="", limit=5):
+    def fake_recall(embedding, tenant_id, *, query_text="", limit=5, **kwargs):
         recall_calls.append({"tenant_id": tenant_id})
         return []
 
@@ -360,7 +360,7 @@ async def test_supervisor_no_mapping_no_env_safe(tmp_path):
     fake_embedding = [0.1] * 768
     recall_calls: list[dict] = []
 
-    def fake_recall(embedding, tenant_id, *, query_text="", limit=5):
+    def fake_recall(embedding, tenant_id, *, query_text="", limit=5, **kwargs):
         recall_calls.append({"tenant_id": tenant_id})
         return []
 

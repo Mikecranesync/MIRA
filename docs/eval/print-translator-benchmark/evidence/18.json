@@ -1,0 +1,13 @@
+{
+  "case_id": "18",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\18.png",
+  "oem": "ABB",
+  "document": "ACS355 Drive User Manual (EN_ACS355_UM_E_A5)",
+  "source_url": "library.e.abb.com/public/805f31a82d524d8aa8a750011e2cd001/EN_ACS355_UM_E_A5.pdf",
+  "page": 50,
+  "category": "VFD",
+  "standard": "IEC 61800-5-1",
+  "question": "Explain this print.",
+  "candidate_response": "## 1. What this appears to be\nThis appears to be a connection diagram for connecting power cables to a drive and motor system.\n\n## 2. Main visible components\nThe main visible components are:\n* A drive with input and output connections\n* A motor\n* Grounding points (PE)\n* Power supply lines (L1/L, L2/N, L3/-)\n* Brake resistor connections (BRK+, BRK-)\n\n## 3. Plain-English theory of operation\nThe drive appears to be connected to a motor with three-phase power lines (U1, V1, W1). The drive has input connections for power (L1/L, L2/N, L3/-) and output connections for the motor (U2, V2, W2). There are also connections for a brake resistor (BRK+, BRK-). The diagram shows grounding points (PE) for the drive and motor.\n\n## 4. What must be true for it to work\nFor the system to work, the following conditions must be met:\n* Proper connections between the drive, motor, and power supply\n* Correct grounding of the drive and motor (PE connections)\n* Optional brake resistor connected correctly (if used)\n\n## 5. What would stop it from working\nThe system would not work if:\n* Power supply connections are incorrect or missing\n* Grounding connections (PE) are not properly made\n* Brake resistor connections are incorrect or missing (if used)\n* Motor connections (U1, V1, W1) are incorrect or loose\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable in the provided image.",
+  "context_notes": "This candidate had NO OCR text extracted — it was grounded on the image only (ocr_grounding='unavailable_on_this_box'). Judge whether it correctly separates what is visibly readable from inference accordingly: do not penalize it for declining to cite a specific tag/wire-number string it could not have OCR'd, but do penalize it under evidence_grounding_unsupported_claims if it invents a specific tag/wire-number/label that is not actually legible in the image."
+}

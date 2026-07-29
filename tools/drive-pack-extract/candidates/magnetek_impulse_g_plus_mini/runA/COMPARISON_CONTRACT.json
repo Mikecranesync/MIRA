@@ -1,0 +1,80 @@
+{
+ "contract": "magnetek_impulse_g_plus_mini Run A vs Run B comparison",
+ "created": "2026-07-14",
+ "manual": {
+  "title": "Magnetek IMPULSE G+ Mini Technical Manual",
+  "part_number": "144-25085",
+  "firmware": "14515",
+  "url": "https://www.magnetekdrives.com/wp-content/uploads/sites/7/drives-g-mini-manual.pdf",
+  "sha256": "56075883958090ed9b59b5c201feb19f556f19d232dfc9138d0caf68900d00be",
+  "bytes": 2915657,
+  "pages": 182,
+  "verified_run_b": "2026-07-14 (byte-exact re-download on CHARLIE)"
+ },
+ "run_a": {
+  "pr": 2690,
+  "commit": "35fe261124c202895d5b40a34f8b1de62ee2884d",
+  "branch": "feat/magnetek-drive-commander",
+  "generated_at": "2026-07-14T02-02-06Z",
+  "fault_codes": 0,
+  "parameters": 0,
+  "citation_coverage": null,
+  "grade": "B",
+  "overall_score": 85.7,
+  "incomplete": true,
+  "promotable": false,
+  "note": "Grade covers schema+domain layers only, on an EMPTY pack \u2014 not a quality signal. Graded with PR #2690's grading/domain_rules.py (crane domain), which is NOT on main.",
+  "artifacts_frozen_at": "tools/drive-pack-extract/candidates/magnetek_impulse_g_plus_mini/runA/"
+ },
+ "run_b": {
+  "branch": "feat/magnetek-run-b",
+  "base": "origin/main (post-#2689)",
+  "commit": "HEAD-of-feat/magnetek-run-b (filled at PR)",
+  "fault_codes": 0,
+  "parameters": 468,
+  "citation_coverage": {
+   "faults": "77/77",
+   "parameters": "468/468"
+  },
+  "duplicate_rate": 0.0,
+  "ambiguous_rows": 53,
+  "grade": "A",
+  "overall_score": 100.0,
+  "promotable": false,
+  "artifacts_at": "tools/drive-pack-extract/candidates/magnetek_impulse_g_plus_mini/",
+  "generated_at": "2026-07-14",
+  "fault_entries": 77,
+  "fault_entries_unique": 76,
+  "incomplete": true,
+  "note": "Gold-set categories remain N/A (no gold set) \u2014 grade covers schema/cite/domain/provenance layers; promotion verdict NOT PROMOTABLE (INCOMPLETE), unchanged policy from Run A. No thresholds altered.",
+  "revision": "rev2 (post-adversarial-verification: 10 rows restored \u2014 dash page-refs + p.173 legend-bridge fix; 2 grouped-range rows deliberately skipped, logged)",
+  "known_limitations": [
+   "grouped-range parameter rows (F07.23-to-F07.32, F07.33-to-F07.42) skipped \u2014 one row defines 10 instances, per-id attribution impossible; loud log + documented (same posture as the PowerFlex comma-group skip)"
+  ]
+ },
+ "comparability_caveats": [
+  "Run A was graded on the #2690 branch which adds crane-domain grading rules absent from main; if Run B grades on main's rules, grade deltas are not apples-to-apples \u2014 extraction COUNTS and citation coverage are the primary Run B success metric.",
+  "Run A extraction used the same manual bytes (sha256 above); extraction-count delta is therefore attributable to extractor changes alone."
+ ],
+ "success_criteria": {
+  "primary": "fault_codes and parameters materially > 0 with page citations, source-preserved mnemonic identifiers, no fabricated rows",
+  "must_not": [
+   "regress GS10 / PF40 / PF525 / GS20 extraction or grading",
+   "invent integer keys for mnemonic faults",
+   "promote anything to runtime or gold/",
+   "manipulate grading thresholds"
+  ]
+ },
+ "delta": {
+  "fault_identifiers": "+77 (0 -> 77, all mnemonic strings, source-preserved)",
+  "parameters": "+468 (0 -> 468, dotted ids verbatim; +2 grouped rows deliberately skipped, logged)",
+  "citation_coverage": "n/a -> 100% both tables (cite-gate verified)",
+  "invented_integers": 0,
+  "schema_direction_evidence": "runtime dict[int,str] fault_codes CANNOT hold this family; candidate-layer fault_entries[] (string fault_id) loads through the real runtime loader untouched \u2014 supports a string-identifier fault schema in Run C."
+ },
+ "adversarial_verification": {
+  "round_1": "REJECT \u2014 12 parameters present in manual but not extracted (0 invented faults, 0 glyph errors, 0 column shifts, citations verbatim on all samples)",
+  "fix": "10 restored (dash page-refs accepted; p.173 legend-bridge geometry fixed); 2 grouped-range rows deliberately skipped + logged (per-id attribution impossible)",
+  "round_2": "ACCEPT \u2014 all 10 restorations verified against the manual text layer; 5-entry regression spot-check intact; verifier's 470 census reconciled (overstated by grouped-row endpoints); 'extraction rev2 is complete for all extractable parameters'"
+ }
+}

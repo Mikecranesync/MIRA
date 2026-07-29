@@ -1,0 +1,665 @@
+{
+  "metadata": {
+    "git_sha": "7c1433ca33511349d89e641022c2e5ca16b63186",
+    "git_branch": "docs/proof-packets",
+    "git_dirty": true,
+    "env": "staging (factorylm/stg)",
+    "config": {
+      "MIRA_TENANT_ID": "00000000-0000-0000-0000-000000515ab1",
+      "MIRA_SHARED_TENANT_ID": "00000000-0000-0000-0000-000000515ab1",
+      "MIRA_DIRECT_ANSWER_MODE": "1",
+      "MIRA_RETRIEVAL_HYBRID_ENABLED": null
+    },
+    "tenant_id": "00000000-0000-0000-0000-000000515ab1",
+    "shared_tenant_id": "00000000-0000-0000-0000-000000515ab1",
+    "corpus": {
+      "tenant_id": "00000000-0000-0000-0000-000000515ab1",
+      "knowledge_entries_chunks": 242,
+      "corpus_doc_set_md5": "977b0f975778435b6752b9fbbf26ba23",
+      "corpus_label": "SimLab synthetic juice-bottling docs (tools/seeds/seed-simlab-docs.py)"
+    },
+    "health": {
+      "embedder_ollama_reachable": true,
+      "embedder_model": "nomic-embed-text:latest",
+      "reranker_nvidia_configured": true,
+      "retrieval_hybrid_enabled": "true",
+      "langfuse_enabled": false,
+      "langfuse_version": "4.11.0",
+      "langfuse_note": "DISABLED \u2014 telemetry no-op (deployed Py3.12+langfuse2.50 emits 'supervisor.process'; this run's Python/langfuse are incompatible)",
+      "python": "3.14.2"
+    },
+    "grader": "simlab.diagnostic.grade (the repo's deterministic rubric \u2014 REUSED, not re-invented)"
+  },
+  "results": [
+    {
+      "scenario_id": "filler_underfill_low_bowl_pressure",
+      "title": "Filler 01 \u2014 Underfill from Low Bowl Pressure",
+      "asset": "filler01",
+      "question": "Why is Line 1 making bad bottles?",
+      "answer": "The filler01 is currently in an Idle state and has a fault code of F010, which is not defined in the provided reference documents [Source: intro]. The `fill_level_oz` is 12.7547, which is lower than the target fill level of 16.0 oz [Source: Process Tags]. The `filler_bowl_pressure` is 5.2998 PSI, which is below the normal range of 10-18 PSI [Source: Process Tags]. The `underfill_reject_count` is 7, indicating a systematic underfill issue [Source: intro]. Check the `tank_level_percent` to ensure it is not low, as this could be causing the underfill issue [Source: Process Tags].\n2. Inspect the pressure regulator to ensure it is not blocked or failed [Source: intro].\n3. Verify the AirSystem01 header pressure to ensure it is not low, as this could be affecting the pneumatic actuators [Source: intro].\n4. Check the nozzles for any blockages or issues [Source: intro].\n5. Adjust the `fill_level_target_oz` and `vfd_speed_hz` to optimize the fill level and production rate [Source: Process Tags].",
+      "citations": [
+        "intro",
+        "Process Tags",
+        "Process Tags",
+        "intro",
+        "Process Tags",
+        "intro",
+        "intro",
+        "intro",
+        "Process Tags"
+      ],
+      "retrieved": [
+        {
+          "source": "simlab://florida_natural_demo/line01/rinser01/plc_tag_description_sheet.md",
+          "snippet": "# Rinser 01 \u2014 PLC Tag Description Sheet  ## Process Tags  | Tag Name | Full UNS Path | Type | Unit | Normal Range | Description | |----------|--------------|---"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/casepacker01/troubleshooting.md",
+          "snippet": "# Case Packer 01 \u2014 Troubleshooting Guide  ## Jam Detected \u2014 Line Backs Up Upstream   **Condition:** `jam_detected` = TRUE; `run_state` = HELD or ABORTED; upstre"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/filler01/troubleshooting.md",
+          "snippet": "# Filler 01 \u2014 Troubleshooting Guide  ## Underfill / Low Fill Weights   **Condition:** `fill_level_oz` consistently below `fill_level_target_oz`; `underfill_reje"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/filler01/fault_code_table.md",
+          "snippet": "# Filler 01 \u2014 Fault Code Table  | Code | Label | Severity | Description | Likely Cause | Recommended Action | |------|-------|----------|-------------|---------"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/airsystem01/operator_quick_guide.md",
+          "snippet": "# Air System 01 \u2014 Operator Quick Guide  ## System Overview  Air System 01 is the plant compressed-air utility for Line 01. It supplies the entire juice bottling"
+        }
+      ],
+      "abnormal": [
+        {
+          "tag": "filler_bowl_pressure",
+          "observed": 5.2998,
+          "normal_baseline": 12.0
+        },
+        {
+          "tag": "fill_level_oz",
+          "observed": 12.7547,
+          "normal_baseline": 16.0
+        },
+        {
+          "tag": "underfill_reject_count",
+          "observed": 7,
+          "normal_baseline": 0
+        }
+      ],
+      "cache": [
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.faults.fault_code",
+          "value": "F010",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.faults.nozzle_fault_count",
+          "value": "0",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.motor.motor_current_amps",
+          "value": "8.4692",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.motor.vfd_speed_hz",
+          "value": "46.1013",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.bottles_per_minute",
+          "value": "0",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.fill_level_oz",
+          "value": "12.7547",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.fill_level_target_oz",
+          "value": "16",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.fill_level_variance",
+          "value": "0.6",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.filler_bowl_pressure",
+          "value": "5.2998",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.product_temperature",
+          "value": "38.4712",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.tank_level_percent",
+          "value": "74.1301",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.quality.overfill_reject_count",
+          "value": "0",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.quality.underfill_reject_count",
+          "value": "7",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.status.run_state",
+          "value": "Idle",
+          "simulated": true,
+          "source_system": "simulator"
+        }
+      ],
+      "ingest": {
+        "status": 200,
+        "accepted": 89,
+        "rejected": 0,
+        "tag_events_rows": 89,
+        "tag_events_distinct": 89,
+        "tag_events_all_sim": true,
+        "live_signal_cache_rows": 89
+      },
+      "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01",
+      "uns_source": "direct_connection",
+      "expected_root_cause": "Low filler bowl pressure causing underfill",
+      "expected_actions": [
+        "Check compressed-air header pressure at AirSystem01",
+        "Inspect and adjust filler bowl pressure regulator",
+        "Verify fill-valve air supply manifold",
+        "Inspect nozzle for clogging"
+      ],
+      "expected_citations": [
+        "troubleshooting.md",
+        "fault_code_table.md",
+        "operator_quick_guide.md"
+      ],
+      "expected_evidence_tags": [
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.filler_bowl_pressure",
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.fill_level_oz",
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.quality.underfill_reject_count",
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01.process.fill_level_variance"
+      ],
+      "retrieval_mode": "bm25-only (no vector/rerank \u2014 embedder/reranker down)",
+      "rubric": {
+        "root_cause_hit": true,
+        "asset_hit": true,
+        "evidence_recall": 0.75,
+        "citations_hit": [],
+        "actions_hit": [
+          "Inspect and adjust filler bowl pressure regulator"
+        ],
+        "rubric_passed": true
+      },
+      "checks": {
+        "ingest_200": true,
+        "no_trailing_question": true,
+        "rubric_root_cause": true,
+        "rubric_asset": true,
+        "rubric_evidence_recall>=0.5": true,
+        "grounded_in_simlab_kb": true,
+        "rubric_passed": true
+      },
+      "verdict": "PASS",
+      "langfuse": {
+        "trace_name": "supervisor.process",
+        "enabled_this_run": false,
+        "trace_id_this_run": null
+      }
+    },
+    {
+      "scenario_id": "capper_torque_fault",
+      "title": "Capper 01 \u2014 Cap Torque Out of Range",
+      "asset": "capper01",
+      "question": "Capper is producing loose caps \u2014 what is wrong?",
+      "answer": "The capper01 is producing loose caps due to the `cap_torque_inlb` being lower than the target value of 8.5 in-lb, currently at 5.951 in-lb [Source: Key I/O]. This is likely causing the caps to be under-torqued, resulting in loose caps. To fix this issue, the following steps can be taken: \n1. Check the clutch pads for wear or glazing [Source: intro].\n2. Verify the chuck fit and ensure it is not worn [Source: intro].\n3. Inspect the torque-head spring to ensure it is not weak [Source: intro].\n4. Adjust the torque setpoint to the recommended value of 8.5 in-lb if necessary [Source: intro].",
+      "citations": [
+        "Key I/O",
+        "intro",
+        "intro",
+        "intro",
+        "intro"
+      ],
+      "retrieved": [
+        {
+          "source": "simlab://florida_natural_demo/line01/capper01/fault_code_table.md",
+          "snippet": "# Capper 01 \u2014 Fault Code Table  | Code | Label | Severity | Description | Likely Cause | Recommended Action | |------|-------|----------|-------------|---------"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/capper01/electrical_io_notes.md",
+          "snippet": "# Capper 01 \u2014 Electrical & I/O Notes  ## Key I/O  | Address | Tag | Description | |---------|-----|-------------| | DI-CAP-01 | E-Stop OK | Interlocked with Fil"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/capper01/plc_tag_description_sheet.md",
+          "snippet": "# Capper 01 \u2014 PLC Tag Description Sheet  ## Process Tags  | Tag Name | Full UNS Path | Type | Unit | Normal Range | Description | |----------|--------------|---"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/capper01/troubleshooting.md",
+          "snippet": "# Capper 01 \u2014 Troubleshooting Guide  ## Cap Chute Empty / No Cap Present   **Condition:** `cap_chute_level` < 20%; `cap_present` = FALSE on multiple cycles; rej"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/capper01/troubleshooting.md",
+          "snippet": "# Capper 01 \u2014 Troubleshooting Guide  ## High Torque / Over-torque Rejects   **Condition:** `cap_torque_inlb` > 20 in-lb sustained; `reject_count` rising; `cap_t"
+        }
+      ],
+      "abnormal": [
+        {
+          "tag": "cap_torque_inlb",
+          "observed": 5.951,
+          "normal_baseline": 8.5
+        },
+        {
+          "tag": "cap_torque_variance",
+          "observed": 2.2333,
+          "normal_baseline": 0.2
+        },
+        {
+          "tag": "reject_count",
+          "observed": 2,
+          "normal_baseline": 0
+        }
+      ],
+      "cache": [
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.faults.fault_code",
+          "value": "CA001",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.motor.motor_current_amps",
+          "value": "4.1021",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.process.cap_torque_inlb",
+          "value": "5.951",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.process.cap_torque_target",
+          "value": "8.5",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.process.cap_torque_variance",
+          "value": "2.2333",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.quality.reject_count",
+          "value": "2",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.status.cap_chute_level",
+          "value": "81.35",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.status.cap_present",
+          "value": "true",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.status.jam_detected",
+          "value": "false",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.status.run_state",
+          "value": "Idle",
+          "simulated": true,
+          "source_system": "simulator"
+        }
+      ],
+      "ingest": {
+        "status": 200,
+        "accepted": 89,
+        "rejected": 0,
+        "tag_events_rows": 89,
+        "tag_events_distinct": 89,
+        "tag_events_all_sim": true,
+        "live_signal_cache_rows": 89
+      },
+      "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01",
+      "uns_source": "direct_connection",
+      "expected_root_cause": "Capper chuck wear causing under-torque cap application",
+      "expected_actions": [
+        "Inspect capping chuck",
+        "Check and adjust clutch torque setting",
+        "Verify chuck wear and replace if necessary"
+      ],
+      "expected_citations": [
+        "troubleshooting.md",
+        "fault_code_table.md"
+      ],
+      "expected_evidence_tags": [
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.process.cap_torque_inlb",
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.process.cap_torque_variance",
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01.quality.reject_count"
+      ],
+      "retrieval_mode": "bm25-only (no vector/rerank \u2014 embedder/reranker down)",
+      "rubric": {
+        "root_cause_hit": false,
+        "asset_hit": true,
+        "evidence_recall": 0.333,
+        "citations_hit": [],
+        "actions_hit": [],
+        "rubric_passed": false
+      },
+      "checks": {
+        "ingest_200": true,
+        "no_trailing_question": true,
+        "rubric_root_cause": false,
+        "rubric_asset": true,
+        "rubric_evidence_recall>=0.5": false,
+        "grounded_in_simlab_kb": true,
+        "rubric_passed": false
+      },
+      "verdict": "REVIEW",
+      "langfuse": {
+        "trace_name": "supervisor.process",
+        "enabled_this_run": false,
+        "trace_id_this_run": null
+      }
+    },
+    {
+      "scenario_id": "casepacker_jam_upstream_block",
+      "title": "Case Packer 01 \u2014 Jam Causes Upstream Backpressure",
+      "asset": "casepacker01",
+      "question": "Line stopped \u2014 case packer is down, what do I do?",
+      "answer": "The case packer is currently in an Idle state with a fault code of CP001, indicating an E-Stop or interlock issue [Source: intro]. The `jam_detected` tag is also True, suggesting a blockage in the carousel or discharge [Source: intro]. To resolve this issue, you should: \n1. Check the E-stop button and interlock conditions to ensure they are cleared.\n2. Verify that the upstream equipment is ready to run.\n3. Clear the jam by following the standard operating procedure (SOP) for safe entry and jam clearance [Source: intro].\n4. Reset the PackML state after clearing the jam and interlock conditions.",
+      "citations": [
+        "intro",
+        "intro",
+        "intro"
+      ],
+      "retrieved": [
+        {
+          "source": "simlab://florida_natural_demo/line01/casepacker01/troubleshooting.md",
+          "snippet": "# Case Packer 01 \u2014 Troubleshooting Guide  ## Jam Detected \u2014 Line Backs Up Upstream   **Condition:** `jam_detected` = TRUE; `run_state` = HELD or ABORTED; upstre"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/casepacker01/fault_code_table.md",
+          "snippet": "# Case Packer 01 \u2014 Fault Code Table  | Code | Label | Severity | Description | Likely Cause | Recommended Action | |------|-------|----------|-------------|----"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/palletizer01/fault_code_table.md",
+          "snippet": "# Palletizer 01 \u2014 Fault Code Table  **Asset ID:** `palletizer01` **UNS Path:** `enterprise.florida_natural_demo.plant1.juice_bottling.line01.palletizer01`  | Co"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/casepacker01/operator_quick_guide.md",
+          "snippet": "# Case Packer 01 \u2014 Operator Quick Guide  ## Machine Overview  Case Packer 01 collates labeled bottles into groups of 12 and places them into formed corrugated c"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/casepacker01/troubleshooting.md",
+          "snippet": "# Case Packer 01 \u2014 Troubleshooting Guide  ## Symptom Index  - [Jam Detected \u2014 Line Backs Up Upstream](#jam-detected--line-backs-up-upstream) - [Case Former Not "
+        }
+      ],
+      "abnormal": [
+        {
+          "tag": "jam_detected",
+          "observed": true,
+          "normal_baseline": false
+        }
+      ],
+      "cache": [
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.faults.fault_code",
+          "value": "CP001",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.process.glue_temperature",
+          "value": "340.2222",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.production.bottle_infeed_count",
+          "value": "0",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.production.case_count",
+          "value": "0",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.quality.reject_count",
+          "value": "0",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.status.case_former_ready",
+          "value": "true",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.status.glue_level",
+          "value": "70.4396",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.status.jam_detected",
+          "value": "true",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.status.run_state",
+          "value": "Idle",
+          "simulated": true,
+          "source_system": "simulator"
+        }
+      ],
+      "ingest": {
+        "status": 200,
+        "accepted": 89,
+        "rejected": 0,
+        "tag_events_rows": 89,
+        "tag_events_distinct": 89,
+        "tag_events_all_sim": true,
+        "live_signal_cache_rows": 89
+      },
+      "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01",
+      "uns_source": "direct_connection",
+      "expected_root_cause": "Case packer infeed jam causing upstream line stop",
+      "expected_actions": [
+        "Clear jam at case packer infeed",
+        "Check downstream palletizer status",
+        "Restart case packer after clearing jam"
+      ],
+      "expected_citations": [
+        "troubleshooting.md",
+        "fault_code_table.md"
+      ],
+      "expected_evidence_tags": [
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.casepacker01.status.jam_detected",
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.conveyorzone02.status.blocked"
+      ],
+      "retrieval_mode": "bm25-only (no vector/rerank \u2014 embedder/reranker down)",
+      "rubric": {
+        "root_cause_hit": false,
+        "asset_hit": false,
+        "evidence_recall": 0.5,
+        "citations_hit": [],
+        "actions_hit": [],
+        "rubric_passed": false
+      },
+      "checks": {
+        "ingest_200": true,
+        "no_trailing_question": true,
+        "rubric_root_cause": false,
+        "rubric_asset": false,
+        "rubric_evidence_recall>=0.5": true,
+        "grounded_in_simlab_kb": true,
+        "rubric_passed": false
+      },
+      "verdict": "REVIEW",
+      "langfuse": {
+        "trace_name": "supervisor.process",
+        "enabled_this_run": false,
+        "trace_id_this_run": null
+      }
+    },
+    {
+      "scenario_id": "cip_supply_temp_low_SUBSTITUTE",
+      "title": "CIP Skid Supply Temperature Low (SUBSTITUTE for pasteurizer \u2014 no pasteurizer in SimLab)",
+      "asset": "cipskid01",
+      "substitute_note": "SimLab's juice-bottling line has NO pasteurizer. This is the closest real process-temperature fault (CIP002). Hand-injected, not an A-F replayable scenario.",
+      "question": "The CIP skid supply temperature is reading low during a heated step. What is wrong and what should I check?",
+      "answer": "The CIP skid supply temperature is reading low at 110.0 \u00b0F, which is below the expected range for a heated step [Source: Process Tags]. This issue is likely related to a problem with the heating system. To troubleshoot, check the heater element circuit to ensure it is functioning correctly [Source: CIP Skid 01 \u2014 Fault Code Table]. Additionally, verify the thermostat setpoint to ensure it is set to the correct temperature [Source: CIP Skid 01 \u2014 Fault Code Table]. You should also confirm that the hot-water supply pressure is adequate [Source: CIP Skid 01 \u2014 Fault Code Table]. The steps to check are: \n1. Check the heater element circuit for any issues.\n2. Verify the thermostat setpoint.\n3. Confirm the hot-water supply pressure.",
+      "citations": [
+        "Process Tags",
+        "CIP Skid 01 \u2014 Fault Code Table",
+        "CIP Skid 01 \u2014 Fault Code Table",
+        "CIP Skid 01 \u2014 Fault Code Table"
+      ],
+      "retrieved": [
+        {
+          "source": "simlab://florida_natural_demo/line01/filler01/fault_code_table.md",
+          "snippet": "# Filler 01 \u2014 Fault Code Table  | Code | Label | Severity | Description | Likely Cause | Recommended Action | |------|-------|----------|-------------|---------"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/cipskid01/plc_tag_description_sheet.md",
+          "snippet": "# CIP Skid 01 \u2014 PLC Tag Description Sheet  ## Process Tags  | Tag Name | Full UNS Path | Type | Unit | Normal Range | Description | |----------|--------------|-"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/cipskid01/fault_code_table.md",
+          "snippet": "# CIP Skid 01 \u2014 Fault Code Table  **Asset ID:** `cipskid01` **UNS Path:** `enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01`  | Code | Lab"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/filler01/troubleshooting.md",
+          "snippet": "# Filler 01 \u2014 Troubleshooting Guide  ## Underfill / Low Fill Weights   **Condition:** `fill_level_oz` consistently below `fill_level_target_oz`; `underfill_reje"
+        },
+        {
+          "source": "simlab://florida_natural_demo/line01/airsystem01/fault_code_table.md",
+          "snippet": "# Air System 01 \u2014 Fault Code Table  | Code | Label | Severity | Description | Likely Cause | Recommended Action | |------|-------|----------|-------------|-----"
+        }
+      ],
+      "abnormal": [
+        {
+          "tag": "supply_temp",
+          "observed": 110.0,
+          "normal_baseline": "140-170 F (CIP002 trips < 130 F)"
+        }
+      ],
+      "cache": [
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01.alarms.valve_fault",
+          "value": "false",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01.process.conductivity",
+          "value": "0",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01.process.return_temp",
+          "value": "0",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01.process.supply_temp",
+          "value": "110",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01.status.cip_active",
+          "value": "false",
+          "simulated": true,
+          "source_system": "simulator"
+        },
+        {
+          "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01.status.cycle_step",
+          "value": "idle",
+          "simulated": true,
+          "source_system": "simulator"
+        }
+      ],
+      "ingest": {
+        "status": 200,
+        "accepted": 89,
+        "rejected": 0,
+        "tag_events_rows": 89,
+        "tag_events_distinct": 89,
+        "tag_events_all_sim": true,
+        "live_signal_cache_rows": 89
+      },
+      "uns_path": "enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01",
+      "uns_source": "direct_connection",
+      "expected_root_cause": "Heater element failure / thermostat drift / inadequate hot-water supply (CIP002 Supply Temp Low)",
+      "expected_actions": [
+        "Check heater element circuit",
+        "Verify thermostat setpoint",
+        "Confirm hot-water supply pressure"
+      ],
+      "expected_citations": [
+        "cipskid01/fault_code_table.md",
+        "cipskid01/plc_tag_description_sheet.md"
+      ],
+      "expected_evidence_tags": [
+        "enterprise.florida_natural_demo.plant1.juice_bottling.line01.cipskid01.process.supply_temp"
+      ],
+      "retrieval_mode": "bm25-only (no vector/rerank \u2014 embedder/reranker down)",
+      "rubric": null,
+      "rubric_note": "No rubric grade: this is a hand-injected substitute, not a scenario with ground-truth in simlab/scenarios.py. Verdict uses heuristic checks + the cited CIP002 doc.",
+      "checks": {
+        "ingest_200": true,
+        "no_trailing_question": true,
+        "has_citation": true,
+        "names_asset": true,
+        "has_action": true
+      },
+      "verdict": "PASS",
+      "langfuse": {
+        "trace_name": "supervisor.process",
+        "enabled_this_run": false,
+        "trace_id_this_run": null
+      }
+    }
+  ]
+}

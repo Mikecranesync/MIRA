@@ -1,0 +1,109 @@
+{
+  "overall_score_provisional": 86,
+  "letter": "B",
+  "hard_failures": {
+    "invented_voltage_level": {
+      "failed": false,
+      "evidence": "All voltage values cited (+24V, +10V, 30VDC/30mA, 48VDC/50mA, 250VAC/30VDC relay ratings) match the printed specs next to DO, DO1/DO2, and R1O/R1C/R1 blocks; the response explicitly states the mains/DC-bus voltage is 'not printed' rather than inventing one."
+    },
+    "invented_device_tag": {
+      "failed": false,
+      "evidence": "All tags used (MC, Safety PLC, E STOP, 5KΩ pot, R1O/R1C/R1, STO1/STO2, SCM, AO1/ACM, SG+/SG-/SGND) appear verbatim on the drawing."
+    },
+    "incorrect_terminal_or_destination_as_fact": {
+      "failed": false,
+      "evidence": "Terminal-to-function mapping (DI1/FWD, DI2/REV, DI3-DI6 multi-step speed, DI7 pulse input, DCM common, AI1/AI2/ACM/+10V, DO/DO1/DO2/DOC, AO1/ACM, STO1/STO2/SCM, SG+/SG-/SGND) all correspond to labels visible in the diagram."
+    },
+    "missed_hazardous_voltage_clearly_shown": {
+      "failed": false,
+      "evidence": "Response explicitly warns about the DC bus retained charge, mains input, and relay contacts carrying up to 250VAC even when drive appears off, consistent with the 3.0A/5.0A@250VAC/30VDC relay rating block shown."
+    },
+    "false_certainty_on_illegible_area": {
+      "failed": false,
+      "evidence": "The 'Couldn't confirm' section appropriately flags ambiguous items like the duplicate R1C/R1 relay depiction and NPN/PNP jumper detail rather than asserting them as fact."
+    },
+    "non_electrical_image_treated_as_print": {
+      "failed": false,
+      "evidence": "Image is a legitimate electrical schematic (Full I/O Wiring Diagram) and was treated as such throughout."
+    }
+  },
+  "criteria": {
+    "sheet_identity": {
+      "score": 100,
+      "note": "Correctly identifies 'Full I/O Wiring Diagram,' page 2-38, Chapter 2, DURApulse GS20/GS20X — matches title block exactly."
+    },
+    "circuit_purpose": {
+      "score": 95,
+      "note": "Accurately summarizes power path (breaker→drive→motor), DC bus with optional reactor/brake resistor, and control/safety I/O sections, all visibly present."
+    },
+    "device_identification": {
+      "score": 82,
+      "note": "MC is described as a standard 'main contactor' inline in the summary ('passes through a circuit breaker/fuse and a main contactor (MC)') though the drawing's gray box and NOTE frame it as a recommended optional protective circuit, not standard equipment."
+    },
+    "wire_cable_identification": {
+      "score": 60,
+      "note": "Response defers wire/cable detail with '🔗 Wires / cables … (truncated — reply \"map\" for detail)', leaving this section largely unaddressed despite shielded-cable symbols shown in the legend."
+    },
+    "terminal_mapping": {
+      "score": 95,
+      "note": "Exhaustive terminal list (DI1-DI7, DCM, AI1/AI2/ACM/+10V, DO/DO1/DO2/DOC, AO1/ACM, R1O/R1C/R1, STO1/STO2/SCM, SG+/SG-/SGND) matches drawing labels precisely."
+    },
+    "voltage_identification": {
+      "score": 93,
+      "note": "Correctly cites printed values (30VDC/30mA 33kHz, 48VDC/50mA, 250VAC/30VDC relay ratings, +24V, +10V) without inventing the unspecified mains voltage."
+    },
+    "cross_reference_accuracy": {
+      "score": 88,
+      "note": "Correctly notes the R1C/R1 terminals appear twice (near input section and in the multi-function relay output block) and flags the duplication as unresolved — a real feature of the drawing."
+    },
+    "uncertainty_calibration": {
+      "score": 90,
+      "note": "Appropriately hedges on relay duplication, NPN/PNP jumper details, and grounding of DCM/ACM commons rather than asserting unclear details as fact."
+    },
+    "unsupported_or_invented_claims": {
+      "score": 85,
+      "note": "Mostly grounded in visible content; main soft issue is treating MC as a standard main contactor rather than the drawing's 'recommended' protective circuit per the NOTE box."
+    },
+    "technician_usefulness": {
+      "score": 90,
+      "note": "Provides clear operational summary, signal/device breakdown, and actionable safety guidance suitable for a technician reviewing this print."
+    },
+    "safety_language": {
+      "score": 95,
+      "note": "Explicitly warns about lethal DC bus charge, lockout/verification before touching motor/DC leads, and live relay contacts up to 250VAC — consistent with ratings printed on the sheet."
+    },
+    "readability": {
+      "score": 85,
+      "note": "Well-structured with headers and bullets, though emoji-heavy formatting is stylistic rather than substantive."
+    },
+    "response_completeness": {
+      "score": 72,
+      "note": "Both the initial response and the 'map' follow-up defer content ('… (more — reply \"map\")' and '… (truncated — reply \"map\" for detail)'), leaving device and wire lists incomplete."
+    },
+    "map_offer_supported": {
+      "score": 78,
+      "note": "The map follow-up delivers accurate signal and device detail as promised, but the wires/cables section is truncated again, only partially fulfilling the offer."
+    }
+  },
+  "verified_strengths": [
+    "Terminal labels (DI1-DI7, AI1/AI2, AO1/ACM, DO/DO1/DO2/DOC, R1O/R1C/R1, STO1/STO2/SCM, SG+/SG-/SGND) all match the drawing exactly.",
+    "Voltage/current ratings cited (30VDC/30mA, 48VDC/50mA, 250VAC/30VDC relay specs, +24V, +10V) are directly read from the printed spec blocks.",
+    "Correctly flags the R1C/R1 terminal appearing in two places on the sheet as an open question rather than asserting equivalence outright.",
+    "Safety commentary about DC bus residual charge and STO function is well-grounded and appropriately cautious."
+  ],
+  "suspected_errors_or_hallucinations": [
+    {
+      "claim": "\"Incoming one- or three-phase power passes through a circuit breaker/fuse and a main contactor (MC) into the drive input terminals\"",
+      "why": "The drawing's gray dashed box and accompanying NOTE describe the MC/R1C-R1 circuit as a recommended optional protective addition ('It is recommended that you install a protective circuit...'), not a standard main contactor always present in the power path."
+    }
+  ],
+  "items_requiring_technician_review": [
+    "Confirm whether the MC/protective circuit shown in the gray box is installed in the actual field wiring, since the print marks it as a recommendation, not a mandatory component.",
+    "Verify NPN vs PNP jumper position physically, since the diagram shows only a small symbol and the response could not confirm details from the image.",
+    "Complete the wires/cables listing and shielded-cable routing that were deferred in both responses."
+  ],
+  "summary": "The response is accurate and well-grounded against the visible terminal labels, voltage/current ratings, and functional blocks on the GS20/GS20X Full I/O Wiring Diagram, with no invented tags or voltages and good uncertainty calibration on ambiguous areas like the duplicated R1C/R1 relay. Minor deductions stem from characterizing the recommended MC protective circuit as a standard main contactor and from repeatedly deferring wire/cable details to a further 'map' reply that was itself truncated, leaving completeness incomplete.",
+  "judge_model": "claude-sonnet-5",
+  "provisional": true,
+  "hard_failure": false
+}

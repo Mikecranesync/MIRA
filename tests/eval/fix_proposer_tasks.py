@@ -18,6 +18,7 @@ Environment variables required:
 Optional tuning:
     FIX_PROPOSER_MIN_CLUSTER       Min failures per cluster (default: 3)
     FIX_PROPOSER_MAX_CLUSTERS      Max clusters per run (default: 3)
+    FIX_PROPOSER_QUORUM_WINDOW     Scorecards in the flakiness quorum (default: 3)
     FIX_PROPOSER_STATE_PATH        State JSON (default: /opt/mira/data/fix_proposer_state.json)
     FIX_PROPOSER_RUNS_DIR          Scorecards directory (default: /opt/mira/tests/eval/runs)
     CLAUDE_MODEL                   Model override (default: claude-sonnet-4-6)
@@ -104,6 +105,7 @@ def run_nightly() -> dict:
             claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6"),
             min_cluster_size=int(os.getenv("FIX_PROPOSER_MIN_CLUSTER", "3")),
             max_clusters_per_run=int(os.getenv("FIX_PROPOSER_MAX_CLUSTERS", "3")),
+            quorum_window=int(os.getenv("FIX_PROPOSER_QUORUM_WINDOW", "3")),
         ))
 
         result = asyncio.run(proposer.run(dry_run=False))
