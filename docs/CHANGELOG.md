@@ -1,3 +1,7 @@
+### v3.226.5 (2026-07-29) - fix(hub): collapse manufacturer alias fragments in the /api/knowledge rollup (re-cut of #2275)
+
+The Knowledge rollup grouped by raw INITCAP(manufacturer), so alias fragments ("Rockwell" vs "Rockwell Automation", "Automation Direct" vs "AutomationDirect") appeared as separate manufacturers with split chunk/doc counts. The route now maps each SQL group through `normalizeManufacturer` (the shared alias table already on main via the #1596 lineage) and re-aggregates counts (summing chunks/docs, keeping the max last-indexed). The alias additions from #2275 (bare "rockwell", AutomationDirect variants) were already on main; only this route-side re-aggregation was missing. Hub unit suite 1299/1299; tsc reports no errors in the route. Supersedes #2275.
+
 ### v3.226.3 (2026-07-29) - security(web): per-IP rate limit on /api/v1/inbox/email (re-cut of #891)
 
 P0.4 from the 2026-04-30 site-hardening plan, verified still absent on main. In-memory sliding window, 10 req/60s per source IP (X-Forwarded-For first hop → X-Real-IP → CF-Connecting-IP), 429 + Retry-After, gate runs BEFORE the HMAC compute so junk floods don't burn signature CPU, opportunistic GC bounds the map. 9 new tests (window, boundary, recovery, per-IP isolation, header precedence); 36/36 across both inbox test files. Ported from #891 (hunks applied clean); supersedes it.

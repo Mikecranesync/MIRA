@@ -19,12 +19,12 @@ compliant:
     reason: Reference implementation with (is_private = false OR tenant_id = $1) on raw pool
 
   # OEM rollup surfaces (universal, no tenant filter)
-  "mira-hub/src/app/api/knowledge/route.ts:41":
+  "mira-hub/src/app/api/knowledge/route.ts:42":
     classification: PUBLIC-ONLY
     status: compliant
     reason: Aggregate manufacturer rollup, intentionally universal (shows OEM corpus only)
 
-  "mira-hub/src/app/api/knowledge/route.ts:50":
+  "mira-hub/src/app/api/knowledge/route.ts:51":
     classification: PUBLIC-ONLY
     status: compliant
     reason: OEM corpus global stat, no tenant filtering needed
@@ -248,14 +248,14 @@ approved:
       FROM knowledge_entries
                 WHERE manufacturer IS NOT NULL AND manufacturer <> ''
                 GROUP BY manufacturer
-  "mira-hub/src/app/api/knowledge/route.ts:41":
+  "mira-hub/src/app/api/knowledge/route.ts:42":
     approved_classification: UNFILTERED
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
                GROUP BY 1
                ORDER BY manufacturer ASC`,
-  "mira-hub/src/app/api/knowledge/route.ts:50":
+  "mira-hub/src/app/api/knowledge/route.ts:51":
     approved_classification: UNFILTERED
     reason: "TODO: justify this read pattern"
     query_snippet: |
