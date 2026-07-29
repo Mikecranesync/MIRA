@@ -16,8 +16,8 @@ Usage (by flaky_detector_runner.py):
 
 from __future__ import annotations
 
-import math
 import logging
+import math
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("mira-flaky-input")
