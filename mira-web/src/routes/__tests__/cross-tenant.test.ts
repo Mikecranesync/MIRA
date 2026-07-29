@@ -266,17 +266,15 @@ describe("cross-tenant fail-closed (auth middleware + handler contract)", () => 
     expect(res.status).toBe(401);
   });
 
-  test("query-param token with A's signed JWT cannot be paired with B's tenant_id", async () => {
-    // The ?token= path is a supported auth mechanism. Verify the same
-    // JWT-wins-over-query rule applies: even when the token itself comes
-    // via query string, a sibling tenant_id query param can't override it.
+  test("query-param token is rejected — ?token= auth was removed (#890 P0.1)", async () => {
+    // Contract lock: tokens in URLs leak via logs/referrers/history. A valid
+    // signed JWT supplied only as ?token= must 401; re-adding the query path
+    // fails this test.
     const app = buildApp();
     const tokA = await jwtFor(TENANT_A);
     const res = await app.request(
       `/test/me?token=${encodeURIComponent(tokA)}&tenant_id=${TENANT_B.id}`,
     );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.tenant_id).toBe(TENANT_A.id);
+    expect(res.status).toBe(401);
   });
 });
