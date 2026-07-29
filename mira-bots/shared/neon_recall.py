@@ -1163,6 +1163,21 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: Optional[str]) -> tuple[
 KB_PAIR_COVERAGE_MIN_CHUNKS = int(os.getenv("MIRA_KB_PAIR_COVERAGE_MIN_CHUNKS", "1"))
 
 
+# No ``embedding IS NOT NULL`` filter — parity with ``kb_has_coverage`` (which
+# is a plain COUNT, "no embedding required"). A row reachable only via BM25
+# (content_tsv) is still KB coverage, and a freshly-seeded (vendor, model) pair
+# whose embeddings haven't been backfilled yet must NOT be judged chimeric and
+# dropped (UNS_PAIR_DROPPED) — the NULL-embedding bug class from #2085/#2213.
+# Module-level so the offline contract test can check it without a DB.
+_KB_PAIR_COVERAGE_SQL_TEMPLATE = """
+    SELECT COUNT(*) AS cnt
+    FROM knowledge_entries
+    WHERE {tenant_filter}
+      AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
+      AND LOWER(model_number) LIKE LOWER(:model_pat)
+"""
+
+
 def kb_has_pair_coverage(vendor: str, model: str, tenant_id: Optional[str]) -> tuple[bool, int]:
     """Strict-pair coverage probe — does the KB have chunks tagged with BOTH
     this vendor AND this model?
@@ -1221,16 +1236,7 @@ def kb_has_pair_coverage(vendor: str, model: str, tenant_id: Optional[str]) -> t
                 query_params["tid"] = tenant_id
 
             row = conn.execute(
-                text(
-                    f"""
-                    SELECT COUNT(*) AS cnt
-                    FROM knowledge_entries
-                    WHERE {tenant_filter}
-                      AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
-                      AND LOWER(model_number) LIKE LOWER(:model_pat)
-                      AND embedding IS NOT NULL
-                    """
-                ),
+                text(_KB_PAIR_COVERAGE_SQL_TEMPLATE.format(tenant_filter=tenant_filter)),
                 query_params,
             ).fetchone()
         count = int(row[0]) if row else 0
