@@ -69,7 +69,13 @@ class ManufacturerCrawler(BaseCrawler):
         urls: list[dict] = []
 
         for tier_key, sources in tiers.items():
-            if "manufacturer" not in tier_key:
+            # When crawling a SPECIFIC manufacturer, search every tier — the
+            # relevant docs (e.g. the ABB/SKF/Rockwell reference PDFs) live under
+            # 5_reference, not only 3_manufacturer, and the manufacturer filter
+            # below already restricts to matching entries. When crawling "all",
+            # stay in the manufacturer tier to avoid double-ingesting reference
+            # docs the reference/curriculum tiers own.
+            if not self.manufacturers and "manufacturer" not in tier_key:
                 continue
 
             if not isinstance(sources, dict):

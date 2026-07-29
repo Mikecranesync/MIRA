@@ -253,7 +253,9 @@ Any PR that touches shippable code must bump `/VERSION` (semver: feat→minor, f
 
 ## Sub-agents / Worktrees
 
-Any sub-agent dispatched for parallel work that will Edit/Write files MUST operate in its own isolated git worktree (`Agent` tool `isolation: "worktree"`) or have explicit confirmation there's no uncommitted foreign work in the shared checkout it could clobber — verified **before** running file/git commands, not after. See `.claude/rules/subagent-worktree-isolation.md`.
+Any sub-agent dispatched for parallel work that will Edit/Write files MUST operate in its own isolated git worktree (`Agent` tool `isolation: "worktree"`) or have explicit confirmation there's no uncommitted foreign work in the shared checkout it could clobber — verified **before** running file/git commands, not after.
+
+**Creating a worktree is an obligation to remove it.** The harness auto-removes one only when the agent made **no** changes, so cleanup never fires for a worktree that did work — push the branch, then `git worktree remove`. **Never leave a worktree holding `main`**: git allows one checkout per branch with no TTL, so a forgotten one blocks the shared checkout (this happened 2026-07-27; use `--detach origin/main` instead). Scripts that `git worktree add` must remove on **every** exit path via `trap … EXIT`, or deliberately reuse a **fixed** path with a defensive pre-clean — never a `$$`/timestamp-derived path. Don't delete other sessions' worktrees on a guess; `--merged` is a weak signal here (squash-merge). See `.claude/rules/subagent-worktree-isolation.md` and `docs/tech-debt/2026-07-27-worktree-clutter-rca.md`.
 
 ## Safety / Dangerous Commands
 
