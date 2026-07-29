@@ -269,6 +269,12 @@ jobs:
             docker rm -f "${svc}" 2>/dev/null || true
           done
 
+          # OW sunset (2026-07-29, v3.226.7): the mira-core (Open WebUI) service was
+          # removed from docker-compose.saas.yml; compose no longer manages it, so
+          # without this it would linger as a running orphan. `docker rm` does NOT
+          # touch the mira-webui-data named volume (kept for feedback_sync ro-mount).
+          docker rm -f mira-core-saas 2>/dev/null || true
+
           # Deploy identity (#2226) — bake the SHA/version/time into the hub image
           # so /api/version + /api/health report which code is live. Exported here
           # so docker-compose build.args pick them up; default "unknown" otherwise.
