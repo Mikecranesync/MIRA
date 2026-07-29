@@ -2,7 +2,8 @@
   "include": [
     "mira-bots/shared",
     "mira-core/mira-ingest",
-    "mira-mcp"
+    "mira-mcp",
+    "factorylm_ai"
   ],
   "exclude": [
     "mira-bots-phase1",

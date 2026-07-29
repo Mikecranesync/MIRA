@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { syncCmmsToKg } from "@/lib/knowledge-graph/cmms-sync";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,8 @@ export async function POST() {
 
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "namespace.admin");
+  if (denied) return denied;
 
   try {
     const result = await syncCmmsToKg(ctx.tenantId);

@@ -1,0 +1,12 @@
+2026-07-13 09:24:01,296 INFO regrade: reusing saved tested_page.png + telegram_response.json
+2026-07-13 09:24:01,298 INFO running independent multimodal judge…
+2026-07-13 09:25:34,231 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — rockwell-509-nema-starter — Bulletin 509 NEMA Motor Starters — Wiring Diagrams (GI-WD005) — 83/100
+ATTACHMENTS:
+  [attach] original.pdf (5,976,314 B)
+  [attach] tested_page.png (309,660 B)
+  [attach] report.html (11,238 B)
+  [attach] telegram_response.json (39,522 B)
+HTML: 10,971 chars
+2026-07-13 09:25:35,723 INFO email send: {'sent': True, 'status': 200, 'id': '24c52435-d08f-4d02-8a3e-4f4bc2caa422'}

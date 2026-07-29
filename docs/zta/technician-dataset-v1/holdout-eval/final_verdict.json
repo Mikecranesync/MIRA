@@ -1,0 +1,140 @@
+{
+ "result": {
+  "tuned": 14,
+  "base": 9,
+  "tie": 2
+ },
+ "per_record": {
+  "techv0-drive-021": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "right"
+  },
+  "techv0-drive-022": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "left"
+  },
+  "techv0-drive-023": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "right"
+  },
+  "techv0-drive-024": {
+   "winner": "tie",
+   "split": "1-1-1",
+   "tuned_side": "left"
+  },
+  "techv0-drive-025": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "right"
+  },
+  "techv0-drive-026": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "left"
+  },
+  "techv0-drive-027": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "left"
+  },
+  "techv0-drive-028": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "right"
+  },
+  "techv0-drive-029": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "right"
+  },
+  "techv0-drive-030": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "right"
+  },
+  "techv0-drive-031": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "left"
+  },
+  "techv0-drive-032": {
+   "winner": "tuned",
+   "split": "2-1",
+   "tuned_side": "right"
+  },
+  "techv0-drive-033": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "left"
+  },
+  "techv0-drive-034": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "left"
+  },
+  "techv0-drive-035": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "right"
+  },
+  "techv0-drive-036": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "left"
+  },
+  "techv0-drive-037": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "right"
+  },
+  "techv0-drive-038": {
+   "winner": "base",
+   "split": "2-1",
+   "tuned_side": "left"
+  },
+  "techv0-drive-039": {
+   "winner": "tie",
+   "split": "1-1-1",
+   "tuned_side": "right"
+  },
+  "techv0-drive-040": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "right"
+  },
+  "techv0-drive-041": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "left"
+  },
+  "techv0-drive-042": {
+   "winner": "tuned",
+   "split": "2-1",
+   "tuned_side": "left"
+  },
+  "techv0-drive-043": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "right"
+  },
+  "techv0-drive-044": {
+   "winner": "tuned",
+   "split": "3-0",
+   "tuned_side": "left"
+  },
+  "techv0-drive-045": {
+   "winner": "tuned",
+   "split": "2-1",
+   "tuned_side": "left"
+  }
+ },
+ "success_rule": "tuned >= 18/25",
+ "v0_baseline": {
+  "base": 13,
+  "tuned": 7,
+  "tie": 5
+ }
+}

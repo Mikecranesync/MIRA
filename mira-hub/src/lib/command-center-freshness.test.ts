@@ -6,6 +6,7 @@ import { expect, test, describe } from "vitest";
 import {
   DEFAULT_FRESHNESS_WINDOW_S,
   type FreshnessTagRow,
+  classifyTagFreshness,
   freshnessCounts,
   rollupFreshness,
   tagStatuses,
@@ -23,6 +24,33 @@ function row(over: Partial<FreshnessTagRow>): FreshnessTagRow {
     ...over,
   };
 }
+
+describe("classifyTagFreshness", () => {
+  test("recent real row → live", () => {
+    expect(classifyTagFreshness(row({ last_seen_at: secAgo(2) }), NOW)).toBe("live");
+  });
+
+  test("beyond default window → stale", () => {
+    expect(classifyTagFreshness(row({ last_seen_at: secAgo(DEFAULT_FRESHNESS_WINDOW_S + 10) }), NOW)).toBe("stale");
+  });
+
+  test("per-tag expected_freshness_seconds overrides default", () => {
+    expect(classifyTagFreshness(row({ last_seen_at: secAgo(8), expected_freshness_seconds: 5 }), NOW)).toBe("stale");
+    expect(classifyTagFreshness(row({ last_seen_at: secAgo(8), expected_freshness_seconds: 30 }), NOW)).toBe("live");
+  });
+
+  test("simulated → simulated regardless of age", () => {
+    expect(classifyTagFreshness(row({ simulated: true, last_seen_at: secAgo(1) }), NOW)).toBe("simulated");
+  });
+
+  test("null last_seen_at → unknown (never seen)", () => {
+    expect(classifyTagFreshness(row({ last_seen_at: null }), NOW)).toBe("unknown");
+  });
+
+  test("unparseable last_seen_at → unknown", () => {
+    expect(classifyTagFreshness(row({ last_seen_at: "not-a-date" }), NOW)).toBe("unknown");
+  });
+});
 
 describe("tagStatuses", () => {
   test("real + recent → live_real", () => {

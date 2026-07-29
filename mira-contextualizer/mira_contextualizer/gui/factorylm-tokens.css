@@ -1,0 +1,57 @@
+/* FactoryLM design tokens — the single source of truth for the FactoryLM/MIRA look.
+ *
+ * CANONICAL FILE. Plain-HTML tools <link> a COPY of this in their gui/ dir (so it bundles offline);
+ * React/Tailwind apps (mira-hub, mira-web) map these same values into their theme. Keep copies in
+ * sync with this file. Spec + usage: docs/design/factorylm-style.md.
+ *
+ * Doctrine: muted-gray normal state; strong color reserved for state/abnormal
+ * (green=ok/running, amber=warning, red=fault/stop) per .claude/rules/ui-style.md and the
+ * industrial-hmi-scada-design rule. Do NOT introduce new ad-hoc colors — extend tokens here.
+ */
+:root {
+  /* surfaces */
+  --fl-bg: #f3f4f6;          /* app background */
+  --fl-surface: #ffffff;     /* cards, panels, rows */
+  --fl-header: #111827;      /* top bar / dark chrome */
+  --fl-header-ink: #ffffff;
+  --fl-header-muted: #9ca3af;
+
+  /* text */
+  --fl-ink: #1f2937;         /* primary text */
+  --fl-muted: #6b7280;       /* secondary text */
+  --fl-faint: #9ca3af;       /* disabled / placeholder */
+
+  /* lines */
+  --fl-line: #e5e7eb;
+  --fl-line-strong: #d1d5db;
+
+  /* brand accent (actions, selection) */
+  --fl-accent: #4f46e5;      /* indigo 600 */
+  --fl-accent-hover: #4338ca;
+  --fl-accent-tint: #eef2ff; /* selected row / chip bg */
+  --fl-accent-ink: #3730a3;
+
+  /* STATE colors — reserved for status/abnormal, never decoration */
+  --fl-ok: #16a34a;          /* running / healthy / accepted */
+  --fl-ok-bg: #f0fdf4;
+  --fl-warn: #d97706;        /* warning / medium confidence */
+  --fl-warn-bg: #fffbeb;
+  --fl-fault: #dc2626;       /* fault / stop / rejected */
+  --fl-fault-bg: #fef2f2;
+  --fl-off: #9ca3af;         /* off / unknown / low confidence */
+
+  /* type */
+  --fl-font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --fl-mono: Consolas, "SF Mono", ui-monospace, monospace;
+  --fl-fs: 14px;            /* base size */
+  --fl-fs-sm: 12px;
+  --fl-fs-xs: 11px;
+
+  /* shape + spacing */
+  --fl-radius: 8px;
+  --fl-radius-sm: 6px;
+  --fl-gap: 8px;
+  --fl-pad: 12px;
+  --fl-shadow: 0 1px 2px rgba(0,0,0,.06);
+  --fl-shadow-pop: 0 4px 14px rgba(0,0,0,.25);
+}

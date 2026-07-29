@@ -1,10 +1,14 @@
 <modbusServer Version="3.0">
-  <!-- Micro820 v4.1.9 Modbus server map. 22 coils + 17 holding registers.
+  <!-- Micro820 v4.1.9 Modbus server map. 23 coils + 17 holding registers.
        Supersedes MbSrvConf_v3.xml (20 coils + 16 HRs); adds the v4.1.x VFD
        poll-state machine signals:
          coil 000021 vfd_poll_active          (Modbus message in flight to GS10)
          coil 000022 vfd_fault_reset_pending  (fault reset queued for next poll)
          HR   400117 vfd_poll_step            (1=read 2=cmd 3=freq 4=reset 5=status)
+       slave-map v2 (A12 photo-eye / #1668 flaky feed):
+         coil 000023 _IO_EM_DI_05             (PE-101 photo-eye wired to embedded DI 5)
+       Appended at 000023 (not 000021) because the VFD poll coils already hold
+       000021/000022; bridge reads it at pymodbus offset 22.
        Variable names MUST match the ladder globals exactly. Human-readable
        reference: docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
        (regenerate via tools/plc-modbus-map-pdf.py). Version="3.0" is the
@@ -76,6 +80,10 @@
       <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
     </mapping>
     <mapping variable="vfd_fault_reset_pending" parent="Micro820" dataType="Bool" address="000022">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <!-- slave-map v2: PE-101 photo-eye on embedded DI 5 (A12 rule + #1668 flaky feed) -->
+    <mapping variable="_IO_EM_DI_05" parent="Micro820" dataType="Bool" address="000023">
       <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
     </mapping>
   </modbusRegister>

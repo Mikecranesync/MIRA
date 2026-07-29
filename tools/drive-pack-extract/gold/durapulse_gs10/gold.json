@@ -1,0 +1,51 @@
+{
+  "manual": {
+    "vendor": "AutomationDirect",
+    "family": "DURApulse GS10",
+    "publication": "GS10 AC Drive User Manual (1st Ed., Rev B)",
+    "revision": "B",
+    "date": "unknown",
+    "filename": "gs10m.pdf",
+    "sha256": null,
+    "page_numbering": "GS10 uses CHAPTER-SECTION page labels (e.g. '4-188', '3-6'), NOT integer pdfplumber page numbers. As of 2026-07-07 the cite check is chapter-section-aware: a citation with such a label is verified WHOLE-DOCUMENT (cite_integrity.verify_excerpt_in_document — the excerpt must appear on some page; still catches fabrication, just not pinned to one page). So grading GS10 WITH a single manual PDF now scores citation fidelity. NOTE: the GS10 manual ships as separate chapter PDFs (ch3/ch4/…), so a merged/single PDF must be supplied; until then GS10 is graded without --manual (citation N/A) and stays INCOMPLETE.",
+    "notes": "Human-approved reference for the live durapulse_gs10 pack (schema_v2, the CE10->P09.03 comm-timeout proof). GS10 is a BENCH_VERIFIED pack for live_decode/envelope; only P09.03 + the keypad card are manual_cited. IDs use GS10 conventions: dotted params (P09.03) and alphanumeric fault mnemonics (GFF, Lvd, oL, EF, CE1..CE4, CE10) — NOT the PowerFlex A105/F081 style. Values mirror the pack's manual-cited data (P09.03 from page 4-188); the sha256 is null because the manual is not committed."
+  },
+  "faults": [
+    { "fault_id": "none", "code": 0, "name": "no active fault", "references_parameters": [], "page": null, "diagnostic_critical": false },
+    { "fault_id": "GFF", "code": 4, "name": "GFF ground fault", "references_parameters": [], "page": "6-x", "diagnostic_critical": true },
+    { "fault_id": "Lvd", "code": 12, "name": "Lvd undervoltage", "references_parameters": [], "page": "6-x", "diagnostic_critical": true },
+    { "fault_id": "oL", "code": 21, "name": "oL overload", "references_parameters": [], "page": "6-x", "diagnostic_critical": true },
+    { "fault_id": "EF", "code": 49, "name": "EF external fault", "references_parameters": [], "page": "6-x", "diagnostic_critical": false },
+    { "fault_id": "CE1", "code": 54, "name": "CE1 comm illegal cmd", "references_parameters": [], "page": "6-8", "diagnostic_critical": false },
+    { "fault_id": "CE2", "code": 55, "name": "CE2 comm illegal addr", "references_parameters": [], "page": "6-8", "diagnostic_critical": false },
+    { "fault_id": "CE3", "code": 56, "name": "CE3 comm illegal data", "references_parameters": [], "page": "6-8", "diagnostic_critical": false },
+    { "fault_id": "CE4", "code": 57, "name": "CE4 comm fail", "references_parameters": [], "page": "6-8", "diagnostic_critical": false },
+    {
+      "fault_id": "CE10", "code": 58, "name": "CE10 modbus timeout",
+      "references_parameters": ["P09.03"], "page": "6-8", "diagnostic_critical": true,
+      "note": "the GS10 comm-loss proof: CE10 (RS-485 Modbus transmission time-out) resolves to P09.03 [COM1 Time-out Detection] — the AutomationDirect analog of PowerFlex F081->C125 and PowerFlex 40 F81->A105"
+    }
+  ],
+  "parameters": [
+    {
+      "parameter_id": "P09.03",
+      "name": "COM1 Time-out Detection",
+      "range": "00–1000 sec",
+      "default": "00",
+      "unit": "sec",
+      "related_parameters": [],
+      "related_faults": ["CE10"],
+      "page": "4-188",
+      "diagnostic_critical": true,
+      "note": "dotted GS10 param id; manual_cited (page 4-188). Values mirror the pack; field grading (name/range/default) applies, citation fidelity does not (chapter-section page label — see manual.page_numbering)."
+    }
+  ],
+  "edge_cases": [
+    {
+      "kind": "related_parameters_not_faults",
+      "ids": ["P09.03"],
+      "page": "4-188",
+      "expectation": "P09.03.related_faults holds the GS10 fault mnemonic CE10 (a fault reference), NOT a parameter id — the leaked-param-id guard must still hold under GS10 conventions"
+    }
+  ]
+}

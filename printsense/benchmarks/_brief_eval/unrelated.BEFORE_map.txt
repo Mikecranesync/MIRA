@@ -1,0 +1,28 @@
+📐 Electrical print
+
+🔌 Signals (exact — source → destination)
+• Controller running — RUN  → Front-panel status LED on the Micro820 · conf 0.90
+• Controller fault — FAULT  → Front-panel status LED on the Micro820 · conf 0.90
+• Force active on I/O — FORCE  → Front-panel status LED on the Micro820 · conf 0.90
+• Serial communication activity — COMM  → Front-panel status LED on the Micro820 · conf 0.90
+• Ethernet link/activity — ENET  → Front-panel status LED on the Micro820 · conf 0.90
+• SD memory card status — SD  → Front-panel status LED on the Micro820 · conf 0.90
+• Digital input point indicators (12) — IN 0..11  → Embedded input LEDs / input terminal block on the Micro820 · conf 0.90
+• Digital output point indicators (7) — OUT 0..6  → Embedded output LEDs / output terminal block on the Micro820 · conf 0.90
+• Ethernet hardware address — 5C:88:16:D8:E4:D7  → Micro820 on-board Ethernet port · conf 0.95
+
+🔧 Devices (3)
+• 2080-LC20-20QBB — PLC controller (Allen-Bradley Micro820 programmable controller (20-point). Nameplate reads 'AB Allen-Bradley', 'Micro820', catalog '2080-LC20-20QBB'.) · conf 0.97
+• UNREADABLE — adjacent module (expansion/relay?) (Two/three light-gray modules mounted on the DIN rail to the right of the Micro820; no legible catalog or tag text visible. Function not determinable from photo.) · conf 0.40
+• UNREADABLE — DIN rail / mounting hardware (Metal DIN rail and gray DIN-rail end/mounting clips visible; carries the mounted assembly.) · conf 0.60
+
+🧩 8 PLC I/O · 1 network link(s): 5C:88:16:D8:E4:D7
+
+⚠️ Couldn't read (retake or crop closer):
+• No terminal numbers or wire numbers are legible on the green terminal blocks.
+• The gray modules on the DIN rail are unidentified (no legible catalog/tag).
+• The purpose of the blue conductors and white/cream cable bundle is not established.
+• No title block/drawing number — this is a hardware photo, not a print.
+• Input/output operating voltage is not printed on the visible label.
+
+🔎 Proposed interpretation from the drawing — not yet field-verified. Reply to confirm or correct any item.

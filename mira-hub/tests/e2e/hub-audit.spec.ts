@@ -4,7 +4,7 @@
  * Broken states are screenshotted and logged — tests don't fail-fast.
  */
 
-import { test, expect, Page, Browser } from "@playwright/test";
+import { test, Page } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -76,8 +76,6 @@ test("1. event-log — load, filters, row click", async ({ page }) => {
   // Check page loaded
   const hasError = await page.locator('text="Error"').isVisible().catch(() => false);
   const hasContent = await page.locator('[class*="event"], tr, [data-testid*="event"], table').first().isVisible().catch(() => false);
-  const bodyText = await page.locator("body").innerText().catch(() => "");
-
   if (hasError) {
     report("event-log", "fail", "Error state visible on load");
   } else {
@@ -169,7 +167,6 @@ test("4. alerts — load check", async ({ page }) => {
   await shot(page, "4a-alerts-loaded");
 
   const url = page.url();
-  const bodyText = await page.locator("body").innerText().catch(() => "");
   const redirectedAway = !url.includes("/alerts");
 
   if (redirectedAway) {
@@ -344,7 +341,6 @@ test("7. channels — load and connect buttons", async ({ page }) => {
   await goTo(page, "channels");
   await shot(page, "7a-channels-loaded");
 
-  const bodyText = await page.locator("body").innerText().catch(() => "");
   const hasContent = await page.locator('[class*="channel"], [class*="card"], li').count().then(n => n > 0).catch(() => false);
 
   report("channels", hasContent ? "pass" : "warn",
@@ -410,7 +406,6 @@ test("8. documents — upload flow", async ({ page }) => {
   await shot(page, "8a-documents-loaded");
 
   const url = page.url();
-  const bodyText = await page.locator("body").innerText().catch(() => "");
   const redirectedAway = !url.includes("/documents");
 
   if (redirectedAway) {
@@ -601,8 +596,6 @@ test("13. dark mode toggle", async ({ page }) => {
 
   // Find theme toggle
   const toggle = page.locator('button[aria-label*="theme" i], button[aria-label*="dark" i], button[title*="dark" i], button[title*="theme" i]').first();
-  const moreMenu = page.locator('a[href*="more"], button').filter({ hasText: /more/i }).first();
-
   let toggleFound = await toggle.isVisible().catch(() => false);
 
   // Check sidebar bottom for theme toggle
@@ -685,7 +678,7 @@ test("14. language selector", async ({ page }) => {
     const foundOnFeed = await langBtnFeed.isVisible().catch(() => false);
     await shot(page, "14b-feed-for-language");
     report("language-selector", "warn",
-      langFound ? "Language selector found but interaction incomplete" : "Language selector not found on more or feed page",
+      foundOnFeed ? "Language selector visible on feed but interaction incomplete" : "Language selector not found on more or feed page",
     );
   }
 });
@@ -707,7 +700,6 @@ test("15. mobile — bottom tabs and FAB", async ({ browser }) => {
   await shot(page, "15a-mobile-feed");
 
   // Find bottom nav tabs
-  const bottomNav = page.locator('nav, [class*="bottom"], [class*="tab-bar"]').filter({ hasNotText: /sidebar/i });
   const tabs = page.locator('a[href*="/hub/"], nav a').filter({ visible: true });
   const tabCount = await tabs.count().catch(() => 0);
 

@@ -1,0 +1,24 @@
+{
+  "schema": "factorylm.clf.rule-candidate.v1",
+  "rule_id": "clf-rule-no-abbrev-functional-expansion-v1",
+  "proposal_class": "deterministic_rule_approval",
+  "rationale": "Interpreters repeatedly expand a visible abbreviation into a full safety/functional name (e.g. STO -> 'Safe Torque Off') without corroborating source text or an approved manufacturer pack.",
+  "originating_cases": [
+    "automationdirect:an-gs-021",
+    "siemens:3sk1-safety-relay",
+    "banner:esfl-estop-relay"
+  ],
+  "evidence_pattern": "answer contains a functional expansion of a short token whose expansion is not present in OCR/source/pack",
+  "deterministic_expression": "flag any expanded functional name whose expansion is absent from the page OCR span, an approved manufacturer pack, or a cited manual passage",
+  "positive_tests": [
+    { "answer": "STO1/STO2 = Safe Torque Off circuit", "ocr_has_expansion": false, "expect": "flag" }
+  ],
+  "negative_tests": [
+    { "answer": "STO1/STO2 (Safe Torque Off per the printed legend)", "ocr_has_expansion": true, "expect": "pass" }
+  ],
+  "known_exceptions": ["expansion printed in the sheet legend or title block"],
+  "version": "v1",
+  "rollback_path": "disable rule id clf-rule-no-abbrev-functional-expansion-v1 in the grade_case rule registry",
+  "status": "proposed",
+  "approval": null
+}

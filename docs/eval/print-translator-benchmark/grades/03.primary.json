@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "case_id": "03",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 9,
+    "power_control_flow": 14,
+    "sequence_interlocks_logic": 6,
+    "evidence_grounding_unsupported_claims": 14,
+    "technician_usefulness_clarity": 6
+  },
+  "total": 59,
+  "deductions": [
+    {
+      "claim": "## **2. Main visible components** ... Power circuits; Control circuits for local and remote operation; Motor (M); Contactors (KM1, KM2, KM3); Thermal overload relay (FR1); Timer (KT)",
+      "evidence": "Both the 'Local Control' and 'Remote Control' diagrams clearly show a start pushbutton symbol ('I') feeding KM1's 23-24 auxiliary contact, and the 'Remote Control' diagram additionally shows a local/remote selector-switch symbol (drawn with 'O'/'I' positions, labeled '%I') plus a manual/auto reset-mode selector for FR1 (the paired 'R' / '%R' symbols ahead of contacts 95-96). None of these pilot/operator devices are named anywhere in the candidate's 'Main visible components' list, even though they are visually present as distinct symbols (not just OCR text the candidate lacked).",
+      "category": "component_label_recognition",
+      "points_deducted": 11,
+      "severity": "material",
+      "correction": "List the start pushbutton, the local/remote selector switch, and the FR1 reset-mode selector as visible control-circuit components alongside the contactors/OL relay/timer/motor.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The timer (KT) seems to control the transition between star and delta configurations.",
+      "evidence": "The KT block in the drawing carries two distinct labeled contacts, 't1' and 't1+t2' (visible in the Power Circuit inset and in both Local/Remote Control diagrams), implying a two-stage timed sequence. The Local/Remote diagrams also show separate coil rows for KM3 (under the 'Δ' label), KM2 (under the 'Y' label), and KM1 (under the 'L' label) with auxiliary contacts wired into each other's branches, consistent with an interlocked star-to-delta transition. The candidate's one-sentence, hedged statement never explains what 't1' vs 't1+t2' represents, never states which contactor picks up first (star) versus after the delay (delta), and never mentions the interlock between KM2 and KM3 that prevents both energizing together.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 14,
+      "severity": "material",
+      "correction": "Describe the actual sequence: start command energizes KM1 (line) + KT (timer) together with KM2 (star, per the 'Y' label); after the 't1' delay KM2 drops, and after the further 't1+t2' delay KM3 (delta, per the 'Δ' label) picks up; note the auxiliary-contact interlock between KM2 and KM3 visible in the coil rows.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "## **6. Unclear or unreadable items** Nothing major appears to be unreadable.",
+      "evidence": "The drawing contains numerous legible symbols and labels the response never engages with anywhere in its six sections: the pushbutton/selector-switch icons, the FR1 reset selector (R/%R), coil terminal numbers (A1/A2), auxiliary-contact numbers (13/14, 21/22, 23/24, 95-98, 15/16/18), motor lead labels (U1/V1/W1/U2/V2/W2), and the Y/Δ/L designators under the bottom coil row. Declaring nothing 'major' unreadable while silently dropping this much visible content overstates how completely the print was actually read.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 6,
+      "severity": "minor",
+      "correction": "Either address the pilot-device symbols and terminal numbering, or explicitly caveat that fine terminal/contact numbering was not resolved, rather than asserting nothing major is unreadable.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "In the power circuit, KM1 directly connects to the motor. KM2 and KM3 are used for star and delta configurations.",
+      "evidence": "The Local/Remote Control diagrams label the bottom coil positions 'Y' (under KM2), 'Δ' (under KM3), and 'L' (under KM1) -- confirming KM1=line, KM2=star, KM3=delta -- but the response never attributes a specific role to KM2 vs. KM3 individually, and never states that KM1 (line) stays engaged through both the star and delta stages while KM2/KM3 alternate, which is the core functional principle this print encodes.",
+      "category": "power_control_flow",
+      "points_deducted": 6,
+      "severity": "minor",
+      "correction": "State explicitly that KM2 = star contactor and KM3 = delta contactor (per the Y/Δ labels under the coils), and that KM1 (line) remains engaged through both the star and delta stages of the start sequence.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "## **4. What must be true for it to work** / ## **5. What would stop it from working** (both sections restate the same component list as generic pass/fail bullets)",
+      "evidence": "Sections 4 and 5 add no print-grounded, actionable troubleshooting content beyond 'components must function' / 'components could fail' -- no reference to the visible timer contacts (t1/t1+t2), the FR1 reset contacts (95-96), or the interlock aux contacts that a technician would actually check when diagnosing a starter that won't transition from star to delta.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 4,
+      "severity": "minor",
+      "correction": "Replace the generic pass/fail bullets with specific, print-grounded checks (e.g., verify FR1 contact 95-96 is closed, verify KT's t1/t1+t2 contacts operate, verify the KM2/KM3 interlock aux contacts) to give a technician something concrete to check.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "medium",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Candidate correctly and specifically classified the print (YKA/YDA Star-Delta Starter, open type, thermal O/L relay protection) essentially matching the title text, and invented no components/tags not present on the drawing (no hard-failure trigger). Its weakness is breadth and depth: it names only the five 'headline' devices (KM1-3, FR1, KT, motor) and entirely omits the pilot devices (start pushbutton, local/remote selector, FR1 reset selector) visible in the Local/Remote Control diagrams, and it gives almost no real sequence/interlock explanation despite the timer's two labeled contacts (t1, t1+t2) being directly legible. The drawing also shows a second, seemingly redundant motor circle in the Power Circuit section (same U/V/W terminal labels, tagged 'E1127D') whose purpose is ambiguous even on close reading; the candidate did not address it, which is not penalized here since it made no claim about it either way."
+}

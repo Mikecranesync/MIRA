@@ -1,0 +1,41 @@
+📋 Sheet 5 'PLC overview' of Sensor Control Unit 2 (SCU2) — the Beckhoff EtherCAT I/O station and its two fiber/LAN media converters that link the panel to remote sensor units SCU1 and SCU3.
+
+This sheet lays out the EtherCAT I/O rack: a bus coupler (-5/A100, read as EK1100) with a string of terminal modules — one 8-channel digital output (EL2008), two 8-channel digital inputs (EL1008), a 4-channel PT100/RTD temperature input (EL3204), two 2-channel 120...230VAC digital inputs (EL1722), and an end terminal (EL9011). The coupler is powered by 24V and 0V (from cross-references on other sheets) and earthed via PE. Its two Ethernet ports (ETH In / ETH Out) run to two Metz Connect media converters (-5/U1, -5/U2), which carry the network out over cables -W5445 and -W5473 ('LAN outdoor') to the remote units SCU1 and SCU3. The actual per-channel wiring is on the referenced detail sheets (/5.4, /6.4, /7.4).
+
+🔑 Signals
+• Network link to remote sensor unit SCU1
+• Network link to remote sensor unit SCU3 (outdoor LAN run)
+• 24V control supply into the coupler
+• 0V supply return into the coupler
+• Protective earth to the station
+• Digital outputs (8 ch) — detail continues on sheet 5.4
+• Digital inputs (8 ch) — detail on sheet 6.4
+• Digital inputs (8 ch) — detail on sheet 6.4
+• PT100 / RTD temperature inputs (4 ch) — detail on sheet 6.4
+• 230VAC digital inputs (2 ch) — detail on sheet 7.4
+• 230VAC digital inputs (2 ch) — detail on sheet 7.4
+• Bus end terminal (no I/O)
+
+🔧 Devices
+• EtherCAT bus coupler (Beckhoff EK1100) — head of the I/O station (-5/A100)
+• 8-channel digital output terminal (EL2008) (-5/A101)
+• 8-channel digital input terminal (EL1008) (-5/A102)
+• 8-channel digital input terminal (EL1008) (-5/A103)
+• 4-channel PT100/RTD temperature input terminal (EL3204) (-5/A104)
+• 2-channel 120...230VAC digital input terminal (EL1722) (-5/A105)
+• 2-channel 120...230VAC digital input terminal (EL1722) (-5/A106)
+• EtherCAT bus end terminal (EL9011) (-5/A107)
+• Ethernet-to-fiber/LAN media converter (Metz Connect 1309426003-E) serving SCU1 (-5/U1)
+• Ethernet-to-fiber/LAN media converter (Metz Connect 1309426003-E) serving SCU3 (-5/U2)
+
+🩺 If you're chasing a fault
+Suppose SCU1 drops off the network. Check the link at two distinct points. First, at the coupler side of converter -5/U1: confirm the copper Ethernet from -5/A100 'ETH In' is live/linked at -5/U1. If there is no copper link there, the fault is between the coupler and U1 (patch/port), not the outdoor run. Second, if the copper side at -5/U1 is good but the converter's outgoing side / cable -W5445 shows no link at the far end (+SCU1/5.3, -ETH.D), the fault is the media converter -5/U1 or the -W5445 run to SCU1. A dead copper link at U1 points to the coupler/patch; a good copper link with no far-end link isolates the converter or its outbound cable. Note: this sheet is only the physical/overview layout — it does not show the control logic, so it cannot tell you how the PLC application reacts to the loss.
+
+❓ Couldn't confirm (verify on the sheet):
+• Coupler part text (read 'EK1100') is vertical and slightly blurred — confirm EK1100 vs BK1100.
+• Media-converter part number 'Metz.1309426003-E' has faint trailing characters.
+• Title-block 'von' sheet-count field read as '1706' is uncertain.
+• Jumper routing between the coupler's 24V/0V and +/- power-contact terminals is not fully legible.
+…and 1 more (see 'map')
+
+… (truncated — reply "map" for detail)

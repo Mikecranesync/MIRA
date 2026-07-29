@@ -1,0 +1,5 @@
+# Bench capture artifacts — never commit raw logger output.
+*.jsonl
+*.csv
+!.gitignore
+*.out

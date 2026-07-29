@@ -1,0 +1,24 @@
+# EXPECT-VIOLATION: mirash:ApproverIsNotProposerShape
+#
+# R10b — the same agent proposed AND approved. Note the approver here is a real Technician with
+# full evidence and a timestamp, so R9 is fully satisfied: this fixture isolates the
+# self-approval defect exactly. Deterministic self-consistency from one actor is not independent
+# verification, even when that actor is human.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech1  a mira:Technician .
+ex:tech2  a mira:Technician .
+ex:llm    a mira:SoftwareAgent .
+ex:doc1   a mira:SourceDocument .
+ex:cite1  a mira:Citation ; mira:cite_doc ex:doc1 ; mira:cite_locator "p.114" .
+
+ex:a_r10b_bad a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:approval_state mira:approval_verified ;
+    mira:supported_by ex:cite1 ;
+    mira:proposed_by ex:tech1 ;
+    mira:approved_by ex:tech1 ;
+    mira:approved_at "2026-07-20T14:03:00Z"^^xsd:dateTime .

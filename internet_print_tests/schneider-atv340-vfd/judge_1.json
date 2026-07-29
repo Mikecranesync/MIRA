@@ -1,0 +1,108 @@
+{
+  "overall_score_provisional": 81,
+  "letter": "B",
+  "hard_failures": {
+    "invented_voltage_level": {
+      "failed": false,
+      "evidence": "The response explicitly states 'No absolute supply/motor voltage is printed on this sheet' and only cites voltages visibly printed on the drawing (±10Vdc, 0..10Vdc, 24V, 0V, 5V, 10V, 1Vpp near AI2/AI1/AQ1/CN2/CN5/ENC labels)."
+    },
+    "invented_device_tag": {
+      "failed": false,
+      "evidence": "All listed devices (ATV340, M, Braking resistor, ENC, PTI, PTO, PLC, HMI, SW1) correspond to labeled blocks visible in the drawing (e.g. 'ENC' box at CN3, 'PTO' box at CN4, 'SW1' box with SRC/SK/EXT)."
+    },
+    "incorrect_terminal_or_destination_as_fact": {
+      "failed": false,
+      "evidence": "Terminal names generally match visible labels (AI1, AQ1, DI1-DI5, DO1, DO2, DQCOM, R1A/B/C, R2A/C, STO_A/B). Minor liberty taken on AI2 naming ('AI2+/AI2-' vs printed 'AI2'/'+AI2') is a stated interpretation, not asserted with false certainty, and confidence is capped at 0.78."
+    },
+    "missed_hazardous_voltage_clearly_shown": {
+      "failed": false,
+      "evidence": "The response flags 'The power terminals (CN1 line, CN10 motor, CN9 PA/+/PC/- DC bus) are lethal live parts' which correctly covers the visible mains (L1/L2/L3), motor (U/V/W), and DC bus (PA/+, PC/-) terminals shown in the Power section."
+    },
+    "false_certainty_on_illegible_area": {
+      "failed": false,
+      "evidence": "The response explicitly hedges on the cramped CN8/CN9/PB/PA+/PC- grouping in the S3 block ('cramped and overlapping — verify exact terminal-to-connector assignment') rather than asserting it as fact."
+    },
+    "non_electrical_image_treated_as_print": {
+      "failed": false,
+      "evidence": "The image is a genuine electrical wiring diagram (title block 'ATV340 S1, S2 & S3 Wiring Diagrams'); the response correctly treats it as such."
+    }
+  },
+  "criteria": {
+    "sheet_identity": {
+      "score": 92,
+      "note": "Correctly identifies title 'ATV340 S1, S2 & S3 Wiring Diagrams', sheet 1/2, and the Power/Control split matching the drawing layout."
+    },
+    "circuit_purpose": {
+      "score": 88,
+      "note": "Description of Power section (mains, motor, DC bus, braking resistor) and Control section (STO, relays, AI/AO/DI/DO, comms) matches the visible blocks and labels."
+    },
+    "device_identification": {
+      "score": 80,
+      "note": "Captures ATV340, M, Braking resistor, ENC, PTI, PTO, PLC, HMI, SW1 correctly, but omits noting that the drawing shows two distinct PTI blocks (one near ENC/second ATV340, one at CN5/PLC)."
+    },
+    "wire_cable_identification": {
+      "score": 65,
+      "note": "Only two shielded-cable entries given ('AI2 shielded cable', 'AI1/AQ1 shielded cable'); the drawing also shows shield/ground symbols near DI1-DI3 which are not itemized as cables."
+    },
+    "terminal_mapping": {
+      "score": 78,
+      "note": "Terminal-to-connector mapping (CN1, CN9, CN10, CN2, CN6, CN7) is largely consistent with drawing labels; the AI2 terminal split into 'AI2+/AI2-' is a slight rewording of the printed 'AI2'/'+AI2' labels."
+    },
+    "voltage_identification": {
+      "score": 88,
+      "note": "Correctly states no mains/motor voltage is printed and lists only the control-side voltages actually shown (±10Vdc, 0..10Vdc, 24V/0V, 5V, 10V, 1Vpp)."
+    },
+    "cross_reference_accuracy": {
+      "score": 75,
+      "note": "Notes '1 off-page ref: 2/2' consistent with the sheet footer '1/2', but does not elaborate on what content is on sheet 2."
+    },
+    "uncertainty_calibration": {
+      "score": 88,
+      "note": "Explicit 'Couldn't confirm' section flags CN8/CN9 grouping, DISUP count, and 'VP12S' label as low-confidence, matching genuinely cramped/ambiguous areas of the drawing."
+    },
+    "unsupported_or_invented_claims": {
+      "score": 78,
+      "note": "Mostly grounded in visible labels; minor overreach in naming 'AI2-' which is not printed verbatim on the sheet (drawing shows 'AI2' and '+AI2')."
+    },
+    "technician_usefulness": {
+      "score": 85,
+      "note": "Provides a structured signal/terminal map and offers further detail ('reply map'), which is useful for a technician tracing wiring on this print."
+    },
+    "safety_language": {
+      "score": 90,
+      "note": "Correctly warns about lethal live power terminals and DC-bus capacitor charge, and instructs lockout/verify-absence-of-voltage before continuity checks, consistent with the exposed L1-L3/U-V-W/PA+/PC- terminals shown."
+    },
+    "readability": {
+      "score": 85,
+      "note": "Well-organized with headers, bullet lists, and a clear main-answer/map split, though dense with confidence values."
+    },
+    "response_completeness": {
+      "score": 82,
+      "note": "Covers Power and Control sections and follows through on the offered 'map' detail as promised in the initial reply."
+    },
+    "map_offer_supported": {
+      "score": 88,
+      "note": "The 'map' follow-up delivers a detailed signal/device list consistent with the original summary, fulfilling the 'reply map' offer."
+    }
+  },
+  "verified_strengths": [
+    "Correctly distinguishes S1&S2 CN1 (L1/L2/L3) from S3 CN1 (L1-R/L2-S/L3-T) as shown in the drawing.",
+    "Correctly notes the drawing does not print an absolute mains/motor voltage value, matching the absence of such text on the sheet.",
+    "Flags the cramped CN8/CN9/PB/PA+/PC- grouping on the S3 block as low-confidence rather than asserting a definite terminal assignment."
+  ],
+  "suspected_errors_or_hallucinations": [
+    {
+      "claim": "Analog input 2 bipolar ±10Vdc (differential) — AI2+ / AI2-  @ CN6:AI2+/AI2-",
+      "why": "The drawing labels the terminals 'AI2' and '+AI2', not 'AI2+/AI2-'; this is a paraphrase rather than the printed terminal designation."
+    }
+  ],
+  "items_requiring_technician_review": [
+    "S3 power block CN8/CN9 grouping (PA/+, PB, PC/-) terminal-to-connector assignment, as flagged by the assistant itself.",
+    "Exact count/location of DISUP terminals on CN6.",
+    "Whether CN7's 'VP12S' marking is a Modbus port designation as claimed."
+  ],
+  "summary": "The response is a reasonably careful, well-hedged reading of the ATV340 S1/S2/S3 wiring sheet, correctly identifying the Power/Control layout, key connectors (CN1, CN9, CN10, CN2, CN6, CN7), and control voltages actually printed, while appropriately flagging ambiguous areas (S3 CN8/CN9 grouping, DISUP count, VP12S label) instead of asserting them as fact. Minor issues include a slightly invented AI2 terminal suffix and under-detailed wire/cable itemization, but no hard hallucinations of voltage levels, device tags, or hazardous terminal facts were found.",
+  "judge_model": "claude-sonnet-5",
+  "provisional": true,
+  "hard_failure": false
+}

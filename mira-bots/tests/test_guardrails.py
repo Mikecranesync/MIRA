@@ -55,6 +55,17 @@ class TestExpandAbbreviations:
         result = expand_abbreviations("VFD")
         assert "variable frequency drive" in result
 
+    def test_model_alias_pf525_expands_to_powerflex_525(self):
+        # Retrieval-grounding fix: techs type "PF525", the corpus says
+        # "PowerFlex 525". Without expansion, BM25 never matches the manual
+        # (audit 2026-06-16: "PF525 showing F004" -> KB-gap, no citation).
+        result = expand_abbreviations("PF525 showing a fault")
+        assert "powerflex 525" in result.lower()
+
+    def test_model_alias_lowercase_and_uppercase(self):
+        assert "powerflex 525" in expand_abbreviations("pf525").lower()
+        assert "powerflex 755" in expand_abbreviations("PF755").lower()
+
 
 # ---------------------------------------------------------------------------
 # rewrite_question

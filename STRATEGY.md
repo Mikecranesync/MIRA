@@ -1,8 +1,14 @@
 # FactoryLM Go-To-Market Strategy
 
-**Mission:** Help industrial plants turn their messy maintenance reality — manuals in filing cabinets, PLC tags that don't match asset names, fault history in someone's head — into AI-ready infrastructure. MIRA is the execution layer; the **transformation** is the product.
+> **Canonical wedge: `NORTH_STAR.md` (2026-06-22). This GTM doc is reconciled to it.** The wedge is the
+> **maintenance-context layer (FactoryLM) + the grounded agent (MIRA) that proves it** — *lead with
+> context, not copilot.* **Product-led self-serve is the PRIMARY motion;** the $500 Assessment is a
+> *land-assist*, not the only door. The ICP, offer economics, GTM stages, and competitive table below
+> remain valid; the competitive map + the ProveIt! 2027 plan live in `NORTH_STAR.md`.
 
-**Positioning (one line):** FactoryLM is a **maintenance digital transformation firm**. We map your assets, documents, PLC context, and technician knowledge into a structured **Maintenance Intelligence Namespace**. Then AI can actually help.
+**Mission:** Help industrial plants turn their messy maintenance reality — manuals in filing cabinets, PLC tags that don't match asset names, fault history in someone's head — into trusted, AI-ready context. FactoryLM builds the context; MIRA is the agent that proves it by diagnosing with citations.
+
+**Positioning (one line):** FactoryLM is the **maintenance-context layer** that makes your messy reality (assets, documents, PLC tags, technician knowledge) trustworthy enough for AI — on top of *any* UNS. MIRA is the grounded agent that proves it. *(Delivered product-led + self-serve; hands-on structuring is a land-assist, not the only path.)*
 
 ---
 
@@ -10,10 +16,10 @@
 
 | We are | We are not |
 |---|---|
-| A maintenance digital transformation firm | An "AI CMMS" vendor |
-| Services + SaaS hybrid (assessment → pilot → operating layer) | A self-serve seat-licensed SaaS |
-| The team that structures your maintenance context | A bolt-on chatbot |
-| A subset of UNS (Unified Namespace) focused on the maintenance side | Trying to replace Ignition, MaintainX, or your historian |
+| The maintenance-context layer (FactoryLM) + the grounded agent that proves it (MIRA) | An "AI CMMS" vendor / a bolt-on copilot |
+| Product-led + self-serve (the $500 Assessment is a *land-assist*, not the only door) | A bare seat-licensed SaaS that assumes your data is already structured |
+| The layer that structures your maintenance context — on top of any UNS | Trying to replace Ignition, MaintainX, Fuuz, or your historian |
+| The maintenance side of UNS that copilots assume away | A pure plumbing/UNS platform with no diagnostic brain |
 
 **Walker rule:** infrastructure first, AI second. Never lead with "AI CMMS."
 

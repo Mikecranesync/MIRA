@@ -7,8 +7,8 @@ name: web-review canary
 # run — see issue body / wiki/reviews/2026-04-25-factorylm.com.md). GHA runners
 # have unrestricted egress + node + python out of the box.
 #
-# Output: appends to wiki/reviews/<date>-factorylm.com.md and commits to main.
-# The vault commit gives a diffable history without spamming the issue tracker.
+# Output: writes wiki/reviews/<date>-factorylm.com.md and uploads it as a run
+# artifact. `main` is branch-protected, so this canary cannot push directly.
 # Filing automation is gated until v2.6 of the v3-hardening plan ships
 # (`--auto-comment-only`); for now, humans triage anything new.
 
@@ -22,12 +22,10 @@ jobs:
     name: Headless audit (Lighthouse + headers + edges)
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # needed to commit the wiki report back to main
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0   # full history so the commit-and-push step doesn't surprise reviewers
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -87,17 +85,17 @@ jobs:
         run: |
           while IFS= read -r url; do
             [ -z "$url" ] && continue
-            hash=$(echo "$url" | sha256sum | cut -c1-8)
+            hash=$(printf '%s' "$url" | sha256sum | cut -c1-8)
             echo "::group::Lighthouse: $url"
             if lighthouse "$url" --quiet --output=json \
                 --only-categories=performance,accessibility,seo,best-practices \
                 --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
-                > /tmp/wr/lh-$hash.json 2>/tmp/wr/lh-$hash.err; then
-              python3 .claude/skills/web-review/scripts/audit.py --lighthouse /tmp/wr/lh-$hash.json \
-                > /tmp/wr/findings-$hash.json
-              echo "  findings: $(jq length /tmp/wr/findings-$hash.json)"
+                > "/tmp/wr/lh-${hash}.json" 2>"/tmp/wr/lh-${hash}.err"; then
+              python3 .claude/skills/web-review/scripts/audit.py --lighthouse "/tmp/wr/lh-${hash}.json" \
+                > "/tmp/wr/findings-${hash}.json"
+              echo "  findings: $(jq length "/tmp/wr/findings-${hash}.json")"
             else
-              echo "  Lighthouse failed: $(tail -3 /tmp/wr/lh-$hash.err)"
+              echo "  Lighthouse failed: $(tail -3 "/tmp/wr/lh-${hash}.err")"
             fi
             echo "::endgroup::"
           done < /tmp/wr/top5.txt
@@ -140,30 +138,13 @@ jobs:
             --out "wiki/reviews/$(date -u +%F)-factorylm.com.md"
           echo "::notice::Report written to wiki/reviews/$(date -u +%F)-factorylm.com.md"
 
-      - name: Commit + push wiki report
-        run: |
-          git config user.email "web-review-canary@factorylm.com"
-          git config user.name "web-review canary"
-          git add wiki/reviews/
-          if git diff --cached --quiet; then
-            echo "::notice::No wiki changes to commit (report unchanged)."
-            exit 0
-          fi
-          git commit -m "chore(web-review): daily canary $(date -u +%FT%H%MZ)"
-          # main moves under this scheduled canary (other pushes land while it
-          # runs), so a bare push hits `! [rejected] non-fast-forward`. Rebase
-          # onto latest main before pushing; retry a few times to absorb a
-          # concurrent push that lands mid-rebase. The report is an append-only
-          # new file, so the rebase never conflicts.
-          ok=0
-          for attempt in 1 2 3; do
-            if git pull --rebase origin main && git push origin HEAD:main; then
-              ok=1; break
-            fi
-            echo "::notice::push attempt $attempt raced a moving main; retrying"
-            sleep $((attempt * 3))
-          done
-          [ "$ok" = 1 ] || { echo "::error::web-review canary: push failed after 3 rebase attempts"; exit 1; }
+      - name: Upload wiki report artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-review-canary-${{ github.run_number }}
+          path: |
+            wiki/reviews/*-factorylm.com.md
+          retention-days: 30
 
       - name: Surface P0/P1 in run summary
         if: always()
@@ -183,5 +164,5 @@ jobs:
             echo "### High-severity items"
             jq -r '.[] | select(.severity == "P0" or .severity == "P1") | "- **" + .severity + "** \(.page) — \(.title)"' /tmp/wr/all.json
             echo ""
-            echo "Full report: \`wiki/reviews/$(date -u +%F)-factorylm.com.md\`"
+            echo "Full report artifact: \`web-review-canary-${{ github.run_number }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
