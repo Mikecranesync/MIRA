@@ -409,3 +409,142 @@ def test_source_page_checker_catches_violations():
     }
     for label, src in good_cases.items():
         assert scan_source_page_stamp("good.py", src) == [], f"false positive: {label}"
+
+
+# ---------------------------------------------------------------------------
+# Contract 7: no seed promotes knowledge_entries to verified=true on shape alone
+# ---------------------------------------------------------------------------
+# .claude/rules/oem-crawler-trusted.md, "The backfill selector is not a
+# provenance test": source_type='equipment_manual' AND manufacturer<>'' is an
+# output SHAPE shared by ManufacturerCrawler (curated, trusted), CSVCrawler
+# (heuristic, untrusted), and tasks/ingest.py::ingest_url (untrusted). No
+# column stored by insert_chunk records which writer produced a row, so a
+# promotion keyed on that shape silently trusts untrusted content — the exact
+# defect the 2026-07-29 audit found and pulled tools/seeds/backfill_oem_*.sql
+# for (see SP1 commit 3b7cebdcb).
+#
+# The rule's own escape hatch: "a promotion must either (a) be restricted to
+# rows whose provenance is provable from stored data, or (b) not happen."
+# Two predicates are recognized here as provable provenance:
+#   - a source_url restriction (host/domain match) — the row's origin URL is
+#     directly checkable against the source that fetched it;
+#   - a tenant_id restriction to a literal UUID constant — valid ONLY because
+#     the crawler write path (this branch) makes tenant_id the trust boundary
+#     (oem_tenant_id vs mira_tenant_id); tools/seeds/backfill_verified_corpus.sql
+#     is the pre-existing example (cross-referenced by the rule itself).
+# source_type / manufacturer, alone or together, are NEVER accepted — that is
+# precisely the shape-only pattern the rule forbids.
+
+_SEEDS_DIR = "tools/seeds"
+
+# One UPDATE ... knowledge_entries ... ; statement, across lines.
+_UPDATE_KE_STMT_RE = re.compile(
+    r"UPDATE\s+(?:public\.)?knowledge_entries\b.*?;", re.IGNORECASE | re.DOTALL
+)
+# The statement promotes rows to verified = true (the SET clause, not a WHERE
+# comparison like "verified IS DISTINCT FROM true", which this regex does not
+# match because it requires the literal "= true"/"=true" shape).
+_SETS_VERIFIED_TRUE_RE = re.compile(r"\bverified\s*=\s*true\b", re.IGNORECASE)
+# Accepted provenance predicate #1: a source_url host/domain restriction.
+_SOURCE_URL_RESTRICTION_RE = re.compile(
+    r"\bsource_url\s*(?:like|ilike|~|~\*|=)\s*'", re.IGNORECASE
+)
+# Accepted provenance predicate #2: tenant_id pinned to a literal UUID.
+_TENANT_ID_LITERAL_RE = re.compile(
+    r"\btenant_id\s*=\s*'[0-9a-fA-F-]{36}'", re.IGNORECASE
+)
+
+
+def scan_verified_promotion(rel_path: str, source: str) -> list[str]:
+    """Return violations where a seed promotes knowledge_entries rows to
+    verified=true without a provable-provenance predicate (source_url or a
+    literal tenant_id) in the same statement.
+
+    Pure function — unit-tested directly against fixtures below so the guard
+    is proven to catch a shape-only promotion (not just trusted). Text/regex
+    scan, not a SQL parser: matches literal UPDATE...; statement bodies only
+    (INSERT ... VALUES (..., true, ...) seeding rows one at a time is NOT in
+    scope — the doctrine's "shape alone" defect is specifically a bulk
+    backfill selector, which is always an UPDATE)."""
+    violations: list[str] = []
+    for m in _UPDATE_KE_STMT_RE.finditer(source):
+        stmt = m.group(0)
+        if not _SETS_VERIFIED_TRUE_RE.search(stmt):
+            continue
+        if _SOURCE_URL_RESTRICTION_RE.search(stmt) or _TENANT_ID_LITERAL_RE.search(stmt):
+            continue
+        line = _line_of(source, m.start())
+        violations.append(
+            f"{rel_path}:{line} promotes knowledge_entries rows to verified=true "
+            f"without a source_url or literal tenant_id restriction — shape "
+            f"predicates (source_type/manufacturer) alone are not provable "
+            f"provenance. See .claude/rules/oem-crawler-trusted.md."
+        )
+    return violations
+
+
+def _seed_sql_files() -> list[Path]:
+    seeds_dir = _ROOT / _SEEDS_DIR
+    if not seeds_dir.exists():
+        return []
+    return sorted(p for p in seeds_dir.rglob("*.sql") if p.is_file())
+
+
+def test_seeds_never_promote_verified_on_shape_alone():
+    """No tools/seeds/*.sql UPDATE promotes verified=true on shape alone.
+
+    Doctrine: .claude/rules/oem-crawler-trusted.md. Currently zero offenders —
+    the shape-only backfill was pulled in this branch (3b7cebdcb); the one
+    remaining UPDATE...verified=true seed (backfill_verified_corpus.sql) is
+    restricted by a literal tenant_id, which this repo's write path treats as
+    a trust boundary, not by source_type/manufacturer shape."""
+    offenders: list[str] = []
+    for path in _seed_sql_files():
+        rel = path.relative_to(_ROOT).as_posix()
+        offenders.extend(scan_verified_promotion(rel, path.read_text(errors="replace")))
+    assert not offenders, (
+        "A seed promotes knowledge_entries to verified=true on shape alone — "
+        "this is the exact defect .claude/rules/oem-crawler-trusted.md exists "
+        "to prevent. Restrict the UPDATE by source_url or a literal tenant_id, "
+        "or don't ship the backfill (re-acquire through the trusted crawler "
+        "instead).\n\n" + "\n".join(offenders)
+    )
+
+
+def test_verified_promotion_checker_catches_violations():
+    """The Contract 7 guard must FAIL on the known bad shape (the pulled
+    backfill's selector) and PASS on provenance-restricted promotions."""
+    bad_cases = {
+        "source_type + manufacturer shape (the pulled backfill's selector)": (
+            "UPDATE knowledge_entries\n"
+            "   SET verified = true\n"
+            " WHERE source_type = 'equipment_manual'\n"
+            "   AND manufacturer <> '';\n"
+        ),
+        "manufacturer alone": (
+            "UPDATE knowledge_entries SET verified = true "
+            "WHERE manufacturer = 'AutomationDirect';\n"
+        ),
+        "no predicate at all": "UPDATE knowledge_entries SET verified = true;\n",
+    }
+    for label, sql in bad_cases.items():
+        assert scan_verified_promotion("bad.sql", sql), f"checker missed a violation: {label}"
+
+    good_cases = {
+        "host-restricted promotion": (
+            "UPDATE knowledge_entries\n"
+            "   SET verified = true\n"
+            " WHERE source_url LIKE 'https://www.automationdirect.com/%';\n"
+        ),
+        "literal tenant_id restriction (backfill_verified_corpus.sql shape)": (
+            "UPDATE knowledge_entries\n"
+            "   SET verified = true\n"
+            " WHERE tenant_id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'::uuid\n"
+            "   AND verified IS DISTINCT FROM true;\n"
+        ),
+        "no verified promotion at all": (
+            "UPDATE knowledge_entries SET is_private = true WHERE tenant_id = 'x';\n"
+        ),
+    }
+    for label, sql in good_cases.items():
+        assert scan_verified_promotion("good.sql", sql) == [], f"false positive: {label}"

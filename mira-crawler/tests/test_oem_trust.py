@@ -11,6 +11,7 @@ import pytest
 import yaml
 from config import CrawlerConfig
 from crawler import base_crawler
+from crawler.csv_crawler import CSVCrawler
 from crawler.curriculum import CurriculumCrawler
 from crawler.manufacturer import ManufacturerCrawler
 
@@ -98,3 +99,50 @@ def test_curriculum_crawl_is_unchanged(tmp_path, captured) -> None:
 
 def test_base_crawler_defaults_to_untrusted() -> None:
     assert base_crawler.BaseCrawler.oem_trusted is False
+
+
+def test_index_crawl_resolves_direct_pdf_urls_not_portal_root(tmp_path, monkeypatch) -> None:
+    """The rule's auditability requirement: 'a row written by a trusted path
+    should carry a directly de-referenceable source_url (never a portal
+    root)' (.claude/rules/oem-crawler-trusted.md, "Why the backfill was
+    pulled"). This asserts EXISTING behavior of
+    ManufacturerCrawler._discover_index_urls (no production code touched):
+    each entry's "url" is the resolved PDF link (urljoin of the href), never
+    the index/portal page itself — that resolved url is exactly what
+    process() later stores as source_url. Guards against a future change to
+    _discover_index_urls silently starting to yield the base_url."""
+    crawler = ManufacturerCrawler(_make_config(tmp_path))
+
+    html = (
+        b'<html><body>'
+        b'<a href="/docs/gs10-manual.pdf">GS10 manual</a>'
+        b'<a href="https://cdn.example.com/gs20-manual.pdf">GS20 manual</a>'
+        b'</body></html>'
+    )
+    monkeypatch.setattr(crawler, "fetch", lambda url: html)
+
+    base_url = "https://www.automationdirect.com/vfd-drives/"
+    entries = crawler._discover_index_urls(base_url, {"manufacturer": "AutomationDirect"})
+    urls = [e["url"] for e in entries]
+
+    assert urls == [
+        "https://www.automationdirect.com/docs/gs10-manual.pdf",
+        "https://cdn.example.com/gs20-manual.pdf",
+    ]
+    assert base_url not in urls, "index() must never hand the portal root to process() as source_url"
+    assert all(u.endswith(".pdf") for u in urls)
+
+
+def test_oem_trusted_is_class_scoped() -> None:
+    """Trust is a property of the crawler CLASS, not a tier string or an
+    instance flag someone could flip at runtime — .claude/rules/oem-crawler-trusted.md
+    "What is trusted" / "What is NOT trusted". Asserted directly on each class
+    attribute so a future subclass flipping `oem_trusted = True` without a
+    curated sources.yaml entry fails here, not three hops away in a store call.
+
+    CSVCrawler explicitly included: a prior review flagged its absence from
+    this class-level coverage."""
+    assert base_crawler.BaseCrawler.oem_trusted is False
+    assert CurriculumCrawler.oem_trusted is False
+    assert CSVCrawler.oem_trusted is False
+    assert ManufacturerCrawler.oem_trusted is True
