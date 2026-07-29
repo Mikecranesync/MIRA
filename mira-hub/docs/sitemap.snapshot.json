@@ -21,6 +21,7 @@
     "/contextualization/review",
     "/contextualization/review/[batchId]",
     "/conversations",
+    "/decision-trace/[id]",
     "/demo/conveyor/[tag]",
     "/documents",
     "/documents/[id]",
