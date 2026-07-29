@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 64,
-    "apiRoutes": 161
+    "pages": 66,
+    "apiRoutes": 162
   },
   "pages": [
     "/admin",
@@ -21,6 +21,8 @@
     "/contextualization/review",
     "/contextualization/review/[batchId]",
     "/conversations",
+    "/decision-traces",
+    "/decision-traces/[id]",
     "/demo/conveyor/[tag]",
     "/documents",
     "/documents/[id]",
@@ -140,6 +142,7 @@
     "/api/contextualization/batches/[batchId]/review",
     "/api/contextualization/import",
     "/api/conversations",
+    "/api/decision-trace",
     "/api/decision-trace/[id]",
     "/api/decision-trace/[id]/feedback",
     "/api/demo/customer",
