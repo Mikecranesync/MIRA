@@ -97,6 +97,12 @@ describe("contextualization batch-review publish gate (ADR-0017)", () => {
       [TENANT_A],
     );
     expect(ent.rows[0].approval_state).toBe("verified");
+    const batch = await testPool.query(
+      `SELECT approved_by, approved_at FROM ctx_import_batches WHERE id=$1`,
+      [batchId],
+    );
+    expect(batch.rows[0].approved_by).toBe("human:u-test");
+    expect(batch.rows[0].approved_at).not.toBeNull();
   });
 
   it("approve does NOT overwrite an already-verified row (no-overwrite guard)", async () => {
@@ -123,6 +129,12 @@ describe("contextualization batch-review publish gate (ADR-0017)", () => {
     expect(body).toMatchObject({ reviewStatus: "rejected", published: 0 });
     const ent = await testPool.query(`SELECT 1 FROM kg_entities WHERE tenant_id=$1::uuid AND name='Conv_Run'`, [TENANT_A]);
     expect(ent.rowCount).toBe(0);
+    const batch = await testPool.query(
+      `SELECT approved_by, approved_at FROM ctx_import_batches WHERE id=$1`,
+      [batchId],
+    );
+    expect(batch.rows[0].approved_by).toBeNull();
+    expect(batch.rows[0].approved_at).toBeNull();
   });
 
   it("a batch owned by another tenant is invisible (404)", async () => {

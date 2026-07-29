@@ -6,9 +6,20 @@
 # conductor below is status: field_verify and its wire NUMBER is proposed_number.
 # The PLC terminal <-> function mapping IS verified (see terminals.yaml) and is
 # what makes this sheet useful even before the field wiring is confirmed.
+#
+# Multi-sheet conductor registry: every sheet (E-005 inputs, E-003 power, E-006 outputs,
+# E-007 comms) is indexed by the sheet: field on each wire row. Pseudo-nodes (rails,
+# buses, off-sheet sources) are listed in the nodes: allowlist below.
 
-sheet: E-005
-signal_family: PLC digital inputs (24 VDC)
+convention: "Conductor numbers are W[sheet-digit][line-2d] (e.g. W503 = sheet E-005, line 3) — all PROPOSED until as-built (OI-03/OI-19). Rail/bus labels (W24, W0V) are exempt. Comms sheets (E-007) use mnemonic conductor labels (485+/485-/SGND/SH) per CommsToVFD ancestry. Same electrical node = same wire number; a number changes only through a device."
+
+nodes:
+  - "+24V rail (this sheet)"
+  - "SUPPLY (source — see E-002)"
+  - "PE bus"
+  - "output return rail (E-006)"
+  - "230 V 1φ (E-002)"
+  - "control loads (E-005/E-006)"
 
 wires:
   # +24 VDC distribution to the input devices (source = PS1 on E-004)
@@ -18,50 +29,57 @@ wires:
     signal: "+24 VDC"
     type: control_24vdc
     status: field_verify
+    sheet: E-005
 
   # Direction selector -> I-00 / I-01
-  - proposed_number: "W200"
+  - proposed_number: "W500"
     from: SS1.FWD
     to: PLC1.I-00
     signal: dir_fwd
     type: input_24vdc
     status: field_verify
-  - proposed_number: "W201"
+    sheet: E-005
+  - proposed_number: "W501"
     from: SS1.REV
     to: PLC1.I-01
     signal: dir_rev
     type: input_24vdc
     status: field_verify
+    sheet: E-005
 
   # E-stop dual channel -> I-02 (NC) / I-03 (NO)
-  - proposed_number: "W202"
+  - proposed_number: "W502"
     from: S0.11-12
     to: PLC1.I-02
     signal: e_stop_nc (healthy=1)
     type: input_24vdc
     status: field_verify
-  - proposed_number: "W203"
+    sheet: E-005
+  - proposed_number: "W503"
     from: S0.23-24
     to: PLC1.I-03
     signal: e_stop_no (healthy=0)
     type: input_24vdc
     status: field_verify
+    sheet: E-005
 
   # Run PB -> I-04
-  - proposed_number: "W204"
+  - proposed_number: "W504"
     from: S2.3-4
     to: PLC1.I-04
     signal: run_pb
     type: input_24vdc
     status: field_verify
+    sheet: E-005
 
   # Photo-eye output -> I-05
-  - proposed_number: "W205"
+  - proposed_number: "W505"
     from: B1.BK
     to: PLC1.I-05
     signal: photo_eye
     type: input_24vdc
     status: field_verify
+    sheet: E-005
 
   # Input common return -> 0V (source = PS1 on E-004)
   - proposed_number: "W0V"
@@ -70,3 +88,238 @@ wires:
     signal: "0V / input common"
     type: control_0v
     status: field_verify
+    sheet: E-005
+
+  # ---- E-006 PLC OUTPUTS ----
+  # Bank 0 feed: PS1 +24V assumed (FIELD VERIFY source + polarity)
+  - proposed_number: "W600"
+    from: PS1.+24V
+    to: PLC1.+CM0
+    signal: "output bank 0 feed"
+    type: power_24vdc
+    status: field_verify
+    sheet: E-006
+
+  # Output 0: Run light (green PL1)
+  - proposed_number: "W601"
+    from: PLC1.O-00
+    to: PL1.X1
+    signal: "LightGreen (run light)"
+    type: control_output
+    status: field_verify
+    sheet: E-006
+
+  # Output 1: Fault light (red PL2)
+  - proposed_number: "W602"
+    from: PLC1.O-01
+    to: PL2.X1
+    signal: "LightRed (fault/e-stop light)"
+    type: control_output
+    status: field_verify
+    sheet: E-006
+
+  # Output 2: Contactor coil (Q1)
+  - proposed_number: "W603"
+    from: PLC1.O-02
+    to: Q1.A1
+    signal: "ContactorQ1 coil (safety power)"
+    type: control_output
+    status: field_verify
+    sheet: E-006
+
+  # Output 3: PB lamp (S2 illumination)
+  - proposed_number: "W604"
+    from: PLC1.O-03
+    to: S2.X1
+    signal: "PBRunLED (run button lamp)"
+    type: control_output
+    status: field_verify
+    sheet: E-006
+
+  # Spare outputs O-04..O-06 not drawn; +CM1/-CM1 bank unused
+
+  # Returns to output rail
+  - proposed_number: "W605"
+    from: PL1.X2
+    to: "output return rail (E-006)"
+    signal: "run light return"
+    type: control_return
+    status: field_verify
+    sheet: E-006
+  - proposed_number: "W606"
+    from: PL2.X2
+    to: "output return rail (E-006)"
+    signal: "fault light return"
+    type: control_return
+    status: field_verify
+    sheet: E-006
+  - proposed_number: "W607"
+    from: Q1.A2
+    to: "output return rail (E-006)"
+    signal: "contactor coil return"
+    type: control_return
+    status: field_verify
+    sheet: E-006
+  - proposed_number: "W608"
+    from: S2.X2
+    to: "output return rail (E-006)"
+    signal: "PB lamp return"
+    type: control_return
+    status: field_verify
+    sheet: E-006
+
+  # Bank 0 return: PS1 0V assumed (FIELD VERIFY)
+  - proposed_number: "W609"
+    from: PLC1.-CM0
+    to: PS1.0V
+    signal: "output bank 0 return"
+    type: power_0v
+    status: field_verify
+    sheet: E-006
+
+  # ---- E-003 VFD POWER ----
+  # Supply to branch protection — SINGLE-PHASE 230V (2-wire L1/L2), per
+  # technician field correction 2026-07-11 (review/PHOTO_EVIDENCE_V6.md).
+  # V5 wrongly drew a 3rd-phase supply leg (old W302) — DELETED in V6.
+  - proposed_number: "W300"
+    from: "SUPPLY (source — see E-002)"
+    to: CB1.1
+    signal: "L1 230V 1ph supply"
+    type: power_line
+    status: field_verify
+    sheet: E-003
+  - proposed_number: "W301"
+    from: "SUPPLY (source — see E-002)"
+    to: CB1.3
+    signal: "L2 230V 1ph supply"
+    type: power_line
+    status: field_verify
+    sheet: E-003
+
+  # Breaker -> Q1/MLC's two NO contacts (13-14, 43-44) -- the single-phase
+  # drive-supply switch (V6 correction: MLC is IN the power path, reversing
+  # the V4 removal). Q1's NO contacts then feed VFD1 R/L1 & S/L2 directly;
+  # T/L3 unused (1φ input). Coil A1/A2 <- O-02, shown on E-006.
+  - proposed_number: "W303"
+    from: CB1.2
+    to: Q1.13
+    signal: "L1 protected -> MLC"
+    type: power_line
+    status: field_verify
+    sheet: E-003
+  - proposed_number: "W304"
+    from: CB1.4
+    to: Q1.43
+    signal: "L2 protected -> MLC"
+    type: power_line
+    status: field_verify
+    sheet: E-003
+  - proposed_number: "W305"
+    from: Q1.14
+    to: VFD1.R/L1
+    signal: "L1 switched -> drive"
+    type: power_line
+    status: field_verify
+    sheet: E-003
+  - proposed_number: "W306"
+    from: Q1.44
+    to: VFD1.S/L2
+    signal: "L2 switched -> drive"
+    type: power_line
+    status: field_verify
+    sheet: E-003
+
+  # VFD to motor (output terminals)
+  - proposed_number: "W310"
+    from: VFD1.U/T1
+    to: M1.T1
+    signal: "motor phase U"
+    type: motor_lead
+    status: field_verify
+    sheet: E-003
+  - proposed_number: "W311"
+    from: VFD1.V/T2
+    to: M1.T2
+    signal: "motor phase V"
+    type: motor_lead
+    status: field_verify
+    sheet: E-003
+  - proposed_number: "W312"
+    from: VFD1.W/T3
+    to: M1.T3
+    signal: "motor phase W"
+    type: motor_lead
+    status: field_verify
+    sheet: E-003
+
+  # Grounding
+  - proposed_number: "W315"
+    from: VFD1.GND
+    to: "PE bus"
+    signal: "drive PE (≤0.1Ω)"
+    type: ground
+    status: field_verify
+    sheet: E-003
+  - proposed_number: "W316"
+    from: M1.PE
+    to: "PE bus"
+    signal: "motor frame PE"
+    type: ground
+    status: field_verify
+    sheet: E-003
+  - proposed_number: "W317"
+    from: "PE bus"
+    to: "SUPPLY (source — see E-002)"
+    signal: "PE to source"
+    type: ground
+    status: field_verify
+    sheet: E-003
+
+  # ---- E-004 24VDC CONTROL POWER (PS1 -> DB1 -> E-005/E-006 loads) ----
+  # AC feed to PS1 (Mean Well DIN supply, verified device/ratings — see
+  # devices.yaml); DC output distributed through DB1 (push-in block, verified
+  # to exist per photo) to the +24V/0V nodes consumed as PS1.+24V/PS1.0V on
+  # E-005 (W24/W0V) and E-006 (W600/W609). Every conductor FIELD VERIFY — no
+  # as-built wire map exists (same as every other sheet in this package).
+  - proposed_number: "W400"
+    from: "230 V 1φ (E-002)"
+    to: PS1.L
+    signal: "AC line in"
+    type: power_line
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W401"
+    from: "230 V 1φ (E-002)"
+    to: PS1.N
+    signal: "AC neutral in"
+    type: power_line
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W402"
+    from: PS1.+V
+    to: DB1.+24V-bus
+    signal: "+24 VDC distribution feed"
+    type: control_24vdc
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W403"
+    from: PS1.-V
+    to: DB1.0V-bus
+    signal: "0V distribution return"
+    type: control_0v
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W404"
+    from: DB1.+24V-bus
+    to: "control loads (E-005/E-006)"
+    signal: "+24V to E-005/E-006 loads"
+    type: control_24vdc
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W405"
+    from: DB1.0V-bus
+    to: "control loads (E-005/E-006)"
+    signal: "0V to E-005/E-006 loads"
+    type: control_0v
+    status: field_verify
+    sheet: E-004

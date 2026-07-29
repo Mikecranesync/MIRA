@@ -202,8 +202,10 @@ def test_v2_loads_from_disk(tmp_path, monkeypatch):
 
 
 def test_unsupported_schema_version_rejected():
+    # 3 became a supported version (fault_entries block, RUN_C C1); use 99 as the
+    # "genuinely unknown future version" example the loader must still reject.
     with pytest.raises(ValueError, match="unsupported schema_version"):
-        _parse_pack(_v2_raw(schema_version=3), PACK_ID, "<memory>")
+        _parse_pack(_v2_raw(schema_version=99), PACK_ID, "<memory>")
 
 
 def test_empty_view_only_warning_rejected():

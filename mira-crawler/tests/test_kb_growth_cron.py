@@ -7,7 +7,9 @@ Module under test: mira-crawler/cron/kb_growth_cron.py
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
@@ -242,6 +244,30 @@ class TestMissingQueueFile:
         stats = json.loads(capsys.readouterr().out)
         assert stats["total"] == 0
         assert stats["remaining"] == 0
+
+
+class TestLivenessHeartbeat:
+    """A drained/idle queue is a HEALTHY steady state — a no-eligible run must
+    still bump manual_queue.json mtime so heartbeat_monitor.check_kb_cron_freshness
+    doesn't read a live-but-idle cron as DOWN (kb_cron_stale) and flood Telegram.
+    Regression for the 2026-07-17 kb_cron self-healer escalation loop."""
+
+    def test_no_eligible_run_bumps_queue_mtime(self, tmp_path, monkeypatch, make_entry):
+        qf = tmp_path / "manual_queue.json"
+        # All entries terminal (done) → none eligible, but the queue is non-empty.
+        qf.write_text(json.dumps([make_entry(status="done")]))
+        monkeypatch.setattr(cron, "QUEUE_FILE", qf)
+        # Backdate mtime to 48h ago — the stale window heartbeat_monitor flags.
+        stale = time.time() - 48 * 3600
+        os.utime(qf, (stale, stale))
+
+        summary = cron.run_batch()
+
+        assert summary["processed"] == []  # nothing to do
+        # …but the cron proved it's alive by bumping the file's mtime.
+        assert qf.stat().st_mtime > stale + 3600
+        # Content is preserved (unchanged rewrite, not a wipe).
+        assert json.loads(qf.read_text()) == [make_entry(status="done")]
 
 
 # ─── batch processing (with mocked pipeline + dedup) ──────────────────────────

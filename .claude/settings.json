@@ -80,6 +80,17 @@
           {
             "type": "command",
             "command": "bash tools/hooks/prod-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash tools/hooks/rm-guard.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' 2>/dev/null || true); if [ -n \"$STAGED_PY\" ] && command -v ruff >/dev/null 2>&1; then ruff format --check --force-exclude $STAGED_PY >/tmp/mira-commit-format.log 2>&1 || echo 'heads up: staged Python file(s) are not ruff-formatted -- run: ruff format <file> (see /tmp/mira-commit-format.log)'; fi; STAGED=$(git diff --cached --name-only 2>/dev/null || true); NON_EXEMPT=$(printf '%s\\n' \"$STAGED\" | grep -vE '^(docs/|wiki/|VERSION$|LICENSE$|CHANGELOG|.*\\.(md|mdx|txt)$)' || true); if [ -n \"$NON_EXEMPT\" ] && [ -z \"$(git diff --cached --name-only -- VERSION 2>/dev/null || true)\" ]; then echo 'heads up: VERSION not bumped -- CI (version-gate.yml) requires a bump for code changes unless every staged file is docs/config-only (docs/versioning.md)'; fi; exit 0",
+            "timeout": 15,
+            "statusMessage": "Checking staged formatting + VERSION bump..."
           }
         ]
       },

@@ -1,0 +1,14 @@
+{
+  "test_id": "schneider-atv340-vfd",
+  "source_url": "https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&p_Doc_Ref=NVE97896",
+  "publisher": "Schneider Electric",
+  "title": "Altivar Machine ATV340 Wiring Diagrams (NVE97896)",
+  "sheet": "1/2 (S1/S2/S3 wiring diagrams)",
+  "equipment_type": "Variable frequency drive (VFD)",
+  "standard": "IEC 61800-5-1",
+  "original_sha256": "5d8d99b51ecee2eb5e8f085552c3e4b72f0b63295497b88aa7978135ee204785",
+  "original_ext": "pdf",
+  "access_date_utc": "2026-07-13T20:51:54Z",
+  "render_note": "The rendered page (tested_page.png) is gitignored. Re-fetch the PDF from source_url (verify original_sha256), then render sheet 1/2. Respect printsense/safety.py (robots.txt fail-closed, MIME allowlist, size/timeout caps).",
+  "license_note": "Publicly published OEM literature; ownership retained by Schneider Electric; retained only for read-only interpreter testing."
+}

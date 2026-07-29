@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 62,
-    "apiRoutes": 155
+    "pages": 64,
+    "apiRoutes": 161
   },
   "pages": [
     "/admin",
@@ -63,6 +63,8 @@
     "/team",
     "/upgrade",
     "/usage",
+    "/visual",
+    "/visual/[id]",
     "/workflows",
     "/workorders",
     "/workorders/[id]",
@@ -219,6 +221,12 @@
     "/api/usage",
     "/api/user/preferences",
     "/api/version",
+    "/api/visual/evidence/[id]/regions",
+    "/api/visual/evidence/[id]/view",
+    "/api/visual/regions/[id]",
+    "/api/visual/sessions",
+    "/api/visual/sessions/[id]",
+    "/api/visual/sessions/[id]/evidence",
     "/api/wizard/[step]",
     "/api/work-orders",
     "/api/work-orders/[id]",

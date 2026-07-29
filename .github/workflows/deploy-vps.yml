@@ -40,6 +40,16 @@ concurrency:
   group: deploy-vps
   cancel-in-progress: false  # never cancel a running deploy
 
+# The repo default token is READ-ONLY (org setting), so without this block the
+# staging-gate-bypass audit issue was silently never filed — every bypass fell
+# through to the ::warning:: fallback and the audit trail existed only in run
+# logs. contents:read = checkout; actions:read = the Staging Gate run lookup;
+# issues:write = the bypass audit issue.
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
 jobs:
   deploy:
     name: Deploy MIRA to production VPS
@@ -133,32 +143,44 @@ jobs:
           set -euo pipefail
           echo "Resolving PR head for merge commit $DEPLOY_SHA"
           # /commits/{sha}/pulls returns PRs that this commit was the merge of.
-          PR_HEAD_SHA=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" \
-            --jq '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty' 2>/dev/null || echo "")
+          # Call the API ONCE and fail loudly if the call itself errors: a 5xx /
+          # rate-limit used to be swallowed (2>/dev/null || echo "") and then
+          # reported as the definitive-sounding "No PR associated" — a false
+          # diagnosis for what is a transient outage. Both outcomes still fail
+          # closed; only the message (and the operator's next move) differs.
+          if ! PULLS_JSON=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" 2>gh_api_err.txt); then
+            echo "::error::GitHub API lookup failed for $DEPLOY_SHA — transient; re-run this workflow. stderr: $(cat gh_api_err.txt)"
+            exit 1
+          fi
+          PR_HEAD_SHA=$(echo "$PULLS_JSON" \
+            | jq -r '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty')
           if [ -z "$PR_HEAD_SHA" ]; then
             # Fallback: any PR associated with this commit (covers rebase-merge
             # corner cases where merge_commit_sha doesn't exactly match).
-            PR_HEAD_SHA=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" \
-              --jq '.[0].head.sha // empty' 2>/dev/null || echo "")
+            PR_HEAD_SHA=$(echo "$PULLS_JSON" | jq -r '.[0].head.sha // empty')
           fi
           if [ -z "$PR_HEAD_SHA" ]; then
-            echo "::error::No PR associated with $DEPLOY_SHA. Direct pushes to main are not allowed to deploy. Open a PR (which will run Staging Gate), or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
+            echo "::error::No PR associated with $DEPLOY_SHA (API call succeeded; the commit genuinely has no PR). Direct pushes to main are not allowed to deploy. Open a PR (which will run Staging Gate), or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
             exit 1
           fi
           echo "PR head SHA: $PR_HEAD_SHA"
-          STATUS=$(gh run list \
+          # Same discipline for the run lookup: an API failure is not "no run".
+          if ! STATUS=$(gh run list \
             --repo "$REPO" \
             --workflow "Staging Gate" \
             --commit "$PR_HEAD_SHA" \
             --limit 1 \
             --json status,conclusion \
-            --jq '.[0] | "\(.status):\(.conclusion)"' 2>/dev/null || echo "")
+            --jq '.[0] | "\(.status):\(.conclusion)"' 2>gh_run_err.txt); then
+            echo "::error::GitHub API run lookup failed for $PR_HEAD_SHA — transient; re-run this workflow. stderr: $(cat gh_run_err.txt)"
+            exit 1
+          fi
           echo "Most recent Staging Gate run on $PR_HEAD_SHA: $STATUS"
           case "$STATUS" in
             completed:success)
               echo "✓ staging gate passed — proceeding with deploy"
               ;;
-            "")
+            ""|"null:null")
               echo "::error::No Staging Gate run found for PR head $PR_HEAD_SHA. Re-run the gate (gh workflow run staging-gate.yml) or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
               exit 1
               ;;

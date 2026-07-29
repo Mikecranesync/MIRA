@@ -11,7 +11,7 @@
     "sha256": "b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6"
   },
   "extractor_commit": "fe2ae714",
-  "extraction_command": "grade.py --pack powerflex_525 --gold ../gold/powerflex_525/gold.json --manual C:/Users/hharp/AppData/Local/Temp/claude/C--Users-hharp-Documents-GitHub-MIRA/1ae2c078-540a-408c-8193-9a8542f51ea0/scratchpad/pf525_520-um001.pdf --packs-dir C:/Users/hharp/Documents/GitHub/mira-drivepack-promote/mira-bots/shared/drive_packs/packs --out grading_out --residual fault->param link recall gap: extractor did not link F100/F109 -> P053 (non-diagnostic-critical) --residual page 98 analog-output block (t088-t090) deferred: multi-column layout parses with bleed/duplicate; not diagnostic-critical, none in gold --residual PROMOTED TO LIVE 2026-07-06 by human approval (Mike): manual-cited-only scope waiver \u2014 no bench live_decode; trust status remains beta (deployed as a manual-cited pack, read-only)",
+  "extraction_command": "grade.py --pack powerflex_525 --gold ../gold/powerflex_525/gold.json --manual <local manual pdf> --packs-dir <local path> --out grading_out --residual fault->param link recall gap: extractor did not link F100/F109 -> P053 (non-diagnostic-critical) --residual page 98 analog-output block (t088-t090) deferred: multi-column layout parses with bleed/duplicate; not diagnostic-critical, none in gold --residual PROMOTED TO LIVE 2026-07-06 by human approval (Mike): manual-cited-only scope waiver \u2014 no bench live_decode; trust status remains beta (deployed as a manual-cited pack, read-only)",
   "fault_count": 48,
   "parameter_count": 45,
   "bench_verified_live_decode": false,

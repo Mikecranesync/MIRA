@@ -6,6 +6,9 @@ mira_copy/outputs/*
 .tmp_*
 .claude/worktrees/
 .worktrees/
+# nested audit worktrees — MUST stay ignored: CodeGraph indexes any non-ignored
+# nested worktree, inflating every caller/callee/impact count with duplicate copies.
+.audit-worktrees/
 .claude/scratchpad/
 
 # Auto-log target for .claude/hooks/stop.sh — per-machine session history
@@ -278,3 +281,43 @@ proof_simlab.db
 # survives deploy-vps.yml's `git checkout --force <tag>` on /opt/mira.
 # The mira-crawler/cron/ template is shipped as reference only (not runtime).
 mira-crawler/cron/manual_queue.json
+
+# regime3 golden-label local overlays (customer-project cases live local-only)
+tests/regime3_nameplate/golden_labels/**/*.local.json
+
+# print-eval runtime DB — holds the interaction record of every print run,
+# including confidential customer drawings. print_recall/ is already ignored;
+# this was not, so a `git add -A` after an eval would have committed it.
+tools/internet_print_test/_runner.sqlite
+tools/internet_print_test/print_recall/
+
+# factorylm_ai local data (never commit)
+factorylm_ai/data/
+factorylm_ai/proofpack/reports/
+.venv-flmai/
+
+# --- accumulated session artifacts (added 2026-07-27 worktree/orphan cleanup) ---
+# Playwright storageState from dogfood runs — contains LIVE SESSION COOKIES.
+# Ignore only the .auth/ subdir; the rest of dogfood-output/ is legitimately tracked.
+dogfood-output/.auth/
+
+# Repo-root graphify scratch. `.claude/rules/graphify-excluded.md` warns that a
+# graphify-out/ at the repo root triggers the global skill's code-navigation fast
+# path, which is FORBIDDEN here (CodeGraph is the only code-nav graph). The
+# orchestrator product KG builds in a temp dir and lands in wiki/orchestrator/kg/,
+# so this never affects it.
+graphify-out/
+
+# One-shot rollback scratch dirs left by working-tree cleanups (ORIG_* snapshots
+# + a finish-cleanup.sh). Superseded once the cleanup lands; several MB each.
+.cleanup-rollback-*/
+
+# lead-hunter cron runtime state (untracked 2026-07-27). Both are rewritten by the
+# hourly routine, so while tracked they made the shared working tree PERMANENTLY dirty
+# — and tools/hooks/safe-cron-pull.sh skips on a dirty tree, which is one of the two
+# conditions that left the nightly eval unable to update itself (#2952).
+# Neither is source: .hourly_state.json is 4 counters (city_index/requests_today/
+# last_date/total_discovered); hardening-alerts.jsonl is per-run health telemetry
+# (durations + step statuses), the same class as the eval run logs ignored above.
+tools/lead-hunter/.hourly_state.json
+marketing/prospects/hardening-alerts.jsonl

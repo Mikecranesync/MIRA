@@ -54,6 +54,18 @@ rejected→`--fl-fault-bg`. Chips: `--fl-accent-tint` bg, `--fl-accent-ink` text
   invent parallel colors.
 - **Ignition Perspective**: use the same hex values from the tokens for view styles.
 
+## 5b. Dark datasheet theme (public marketing/datasheet surfaces)
+
+Public technical pages (Drive Commander family/fault/parameter pages, the PrintSense landing)
+use the `--fl-dark-*` block in the canonical token file — the ONE sanctioned dark look. Same
+doctrine as the light workspace: muted normal, brand-orange `--fl-dark-accent` for actions only,
+green/amber/red strictly for state (cited/grounded=ok, held=warn, stop/fault=fault). Hard rules
+for these surfaces: no emoji as icons (inline SVG only), no glows/gradients/bevels, no duplicated
+content blocks, honest counts ("N faults in this pack", never "All N fault codes"). mira-web pages
+`<link>` `/_tokens.css` (which mirrors the block) and may alias tokens into short local vars in a
+`:root` remap — but never introduce a raw hex. Reference implementation:
+`mira-web/src/lib/drive-commander-renderer.ts`.
+
 ## 6. Sync rule (avoid drift)
 
 `docs/design/factorylm-tokens.css` is canonical. The per-tool copies must match it byte-for-byte.

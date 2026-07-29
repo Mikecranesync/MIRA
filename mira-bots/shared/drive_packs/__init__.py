@@ -17,7 +17,12 @@ contract), ``build_cards`` + ``DiagnosticCard``/``Citation``/``TemplateReader``
 
 from __future__ import annotations
 
-from .ask import DrivePackAnswer, answer_question
+from .ask import (
+    DrivePackAnswer,
+    answer_fault_code,
+    answer_question,
+    extract_pack_fault_codes,
+)
 from .asset_identity import AssetIdentityPacket, build_asset_identity
 from .cards import Citation, DiagnosticCard, TemplateReader, build_cards
 from .loader import list_packs, load_pack, resolve_pack
@@ -28,6 +33,7 @@ from .schema import (
     Envelope,
     EnvelopeBand,
     Family,
+    FaultEntry,
     KeypadNavigationCard,
     Knowledge,
     LiveDecode,
@@ -47,6 +53,7 @@ __all__ = [
     "Envelope",
     "EnvelopeBand",
     "Family",
+    "FaultEntry",
     "KeypadNavigationCard",
     "Knowledge",
     "LiveDecode",
@@ -57,8 +64,10 @@ __all__ = [
     "RegisterEntry",
     "TemplateReader",
     "ValueMeaning",
+    "answer_fault_code",
     "answer_question",
     "build_asset_identity",
+    "extract_pack_fault_codes",
     "build_cards",
     "list_packs",
     "load_pack",

@@ -36,6 +36,7 @@ PLC1:
       function: Photo-eye (beam blocked -> pe_latched)
       healthy_state: "0 = clear, 1 = blocked"
       status: verified
+      note: "CCW_VARIABLES v4.0 labels I-05 'Entry sensor (spare)' — superseded by live Prog_init v2.1 (_IO_EM_DI_05 -> pe_latched photo-eye). See OI-13."
     - id: I-06
       function: spare
       status: verified   # confirmed UNused (no program/doc reference)
@@ -58,6 +59,20 @@ PLC1:
     - id: COM0
       function: Digital-input common (return to 0V)
       status: field_verify   # sink/source jumpering + which COM serves I-00..I-05 not documented
+  outputs:   # CCW_VARIABLES_v4.0.txt:78-82 — I/O map "unchanged from v3.1"; O-02 corroborated
+             # by Prog_init v2.1 vfd_run_permit readback. Vintage caveat: see open item OI-13.
+    - {id: O-00, opc: _IO_EM_DO_00, function: "LightGreen -> PL1 (running)", status: verified}
+    - {id: O-01, opc: _IO_EM_DO_01, function: "LightRed -> PL2 (fault/e-stop)", status: verified}
+    - {id: O-02, opc: _IO_EM_DO_02, function: "ContactorQ1 coil (safety power)", status: verified}
+    - {id: O-03, opc: _IO_EM_DO_03, function: "PBRunLED -> S2 lamp", status: verified}
+    - {id: O-04, opc: _IO_EM_DO_04, function: spare, status: verified}
+    - {id: O-05, opc: _IO_EM_DO_05, function: spare, status: verified}
+    - {id: O-06, opc: _IO_EM_DO_06, function: spare, status: verified}
+  output_commons:   # names verbatim from CCW_VARIABLES; feed source + technology = FIELD VERIFY
+    - {id: "+CM0", function: "output bank 0 feed (O-00..O-03)", status: field_verify}
+    - {id: "-CM0", function: "output bank 0 return", status: field_verify}
+    - {id: "+CM1", function: "output bank 1 feed (O-04..O-06, spare)", status: field_verify}
+    - {id: "-CM1", function: "output bank 1 return", status: field_verify}
 
 # Field-device terminals — PROPOSED designations; must be confirmed on the device.
 S0:   # E-stop
@@ -76,3 +91,99 @@ B1:   # photo-eye (3-wire)
 PS1:  # 24VDC supply (detailed on E-004)
   - {id: "+24V", function: +24 VDC feed, status: field_verify}
   - {id: "0V", function: 0V return, status: field_verify}
+  # real nameplate terminal ids read directly off the device (photo wire_2.jpg,
+  # 2026-07-11) — NAMES verified; branch wiring from these to the +24V/0V
+  # functional terminals above = FIELD VERIFY (OI-25)
+  - {id: "+V", function: "DC output + (adjustable, +V ADJ pot)", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "-V", function: "DC output -", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "DC-OK", function: "DC-OK relay/LED output", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "L", function: "AC line in", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "N", function: "AC neutral in", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "PE", function: "AC protective earth in", status: verified, source: "photo review/photos/wire_2.jpg"}
+
+DB1:  # 24 VDC distribution block (push-in), fed from PS1 +V/-V (detailed on E-004).
+      # Rail ids are PROPOSED — the block's internal circuit/jumper layout is not
+      # documented (photo review/photos/dc_block_full.jpg); FIELD VERIFY (OI-25).
+  - {id: "+24V-bus", function: "+24 VDC distribution rail (proposed id; fed from PS1.+V)", status: field_verify}
+  - {id: "0V-bus", function: "0V distribution rail (proposed id; fed from PS1.-V)", status: field_verify}
+
+VFD1:  # power side — terminal NAMES verified from GS10 manual terminal table (GS10_UM.txt L1971-1986)
+  power_input:
+    - {id: "R/L1", function: "input power L1", status: verified, source: "GS10_UM.txt L1971/L1973"}
+    - {id: "S/L2", function: "input power L2", status: verified, source: "GS10_UM.txt L1971/L1973"}
+    - {id: "T/L3", function: "input power L3 (3-phase models only)", status: verified, source: "GS10_UM.txt L1973", note: "unused on single-phase 230 V input"}
+  power_output:
+    - {id: "U/T1", function: "motor output T1", status: verified, source: "GS10_UM.txt L1975 (prose form T1: L1773-1776)"}
+    - {id: "V/T2", function: "motor output T2", status: verified, source: "GS10_UM.txt L1975"}
+    - {id: "W/T3", function: "motor output T3", status: verified, source: "GS10_UM.txt L1975"}
+  dc_bus:
+    - {id: "+1", function: "DC reactor (factory jumper +1/+2 — leave unless reactor installed)", status: verified, source: "GS10_UM.txt L1824-1826, L1977-1978"}
+    - {id: "+2", function: "DC reactor jumper partner", status: verified, source: "GS10_UM.txt L1977-1978"}
+    - {id: "B1", function: "brake resistor (optional; else OPEN)", status: verified, source: "GS10_UM.txt L1842, L1980"}
+    - {id: "B2", function: "brake resistor partner (else OPEN)", status: verified, source: "GS10_UM.txt L1980"}
+    - {id: "DC+", function: "common DC bus (leave open; absent on 120VAC models)", status: verified, source: "GS10_UM.txt L1982, L1986"}
+    - {id: "DC-", function: "common DC bus (leave open)", status: verified, source: "GS10_UM.txt L1982, L1844"}
+  ground:
+    - {id: "GND", function: "drive ground terminal (manual table row L1984; silk-screen symbol — id GND is OUR label)", status: verified, source: "GS10_UM.txt L1984, L1760-1762"}
+  control:  # control-terminal legend read directly off the device (photo wire_4.jpg,
+            # 2026-07-11). NAMES verified; WHICH of these are actually landed = FIELD
+            # VERIFY (OI-22) — the connector is populated (hybrid Modbus + hardwired I/O).
+            # Full-res photo (2026-07-11, gs10_control_terminals.jpg): the TOP run/DI row
+            # (FWD/REV/DI3-5/+24V/DCM) is EMPTY; the BOTTOM analog/output row (+10V/ACM/
+            # AI/AO1/DO1/DOC/PE) is WIRED. Names below stay status: verified; the wiring
+            # (which bottom-row terminal does what) remains FIELD VERIFY (OI-22).
+    - {id: "FWD", function: "forward run command input", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "REV", function: "reverse run command input", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DI3", function: "digital input 3 (multi-function)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DI4", function: "digital input 4 (multi-function)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DI5", function: "digital input 5 (multi-function)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "+24V", function: "internal +24VDC supply for digital inputs", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DCM", function: "digital input common", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "+10V", function: "internal +10VDC reference for analog input", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "ACM", function: "analog common", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "AI", function: "analog input (speed reference)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "AO1", function: "analog output 1 (monitor)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DO1", function: "digital output 1 (open-collector)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DOC", function: "digital output 1 common", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "PE", function: "control-terminal-strip ground", status: verified, source: "photo review/photos/wire_4.jpg"}
+
+M1:   # motor terminal ids per manual prose convention; physical markings FIELD VERIFY
+  - {id: "T1", function: "motor lead 1", status: field_verify}
+  - {id: "T2", function: "motor lead 2", status: field_verify}
+  - {id: "T3", function: "motor lead 3 (swap any two to reverse — GS10_UM.txt L1773-1776)", status: field_verify}
+  - {id: "PE", function: "motor frame ground", status: field_verify}
+
+Q1:   # control relay (hand-labeled "MLC") — Schneider TeSys CA3KN22BD; terminal ids
+      # read directly off the device (photo wire_3.jpg, 2026-07-11). NOT a motor
+      # contactor — it has no main power poles (see OI-21).
+  - {id: "A1", function: "coil + (from PLC1 O-02, E-006)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "A2", function: "coil - (to output return)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "13", function: "aux contact 1 — NO (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "14", function: "aux contact 1 — NO (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "21", function: "aux contact 2 — NC (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "22", function: "aux contact 2 — NC (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "31", function: "aux contact 3 — NC (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "32", function: "aux contact 3 — NC (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "43", function: "aux contact 4 — NO (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "44", function: "aux contact 4 — NO (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+
+CB1:  # upstream protection — REQUIRED by manual (L1758-1759); device unconfirmed on bench
+  - {id: "1", function: "line in L1 (proposed)", status: field_verify}
+  - {id: "2", function: "load out L1 (proposed)", status: field_verify}
+  - {id: "3", function: "line in L2 (proposed)", status: field_verify}
+  - {id: "4", function: "load out L2 (proposed)", status: field_verify}
+  - {id: "5", function: "line in L3 (proposed, if 3φ)", status: field_verify}
+  - {id: "6", function: "load out L3 (proposed, if 3φ)", status: field_verify}
+
+PL1:  # Green RUNNING pilot
+  - {id: "X1", function: "pilot light terminal (proposed)", status: field_verify}
+  - {id: "X2", function: "pilot light terminal (proposed)", status: field_verify}
+
+PL2:  # Red FAULT/E-STOP pilot
+  - {id: "X1", function: "pilot light terminal (proposed)", status: field_verify}
+  - {id: "X2", function: "pilot light terminal (proposed)", status: field_verify}
+
+S2:   # Run PB (extended with lamp terminals)
+  - {id: "3-4", function: NO contact out -> I-04, status: field_verify}
+  - {id: "X1", function: "lamp terminal (proposed)", status: field_verify}
+  - {id: "X2", function: "lamp terminal (proposed)", status: field_verify}

@@ -1,0 +1,33 @@
+📋 Hookup wiring diagram (page 5) for a Banner ES-FL-2A emergency-stop monitoring safety relay and its two master stop contactors.
+
+This is the field-wiring diagram for a Banner ES-FL-2A E-stop safety relay. The relay is powered by 24V ac/dc at A1/A2 and monitors a dual-channel emergency-stop button wired into inputs S13/S14 and S23/S24. When every E-stop is released (both channels closed) and the reset button is pressed, the relay energizes its two internal redundant, forced-guided safety output contacts — K1A/K2A on channel A (terminals 13/14) and K1B/K2B on channel B (terminals 23/24). Those outputs feed the coils of the two master stop control contactors MSC1 and MSC2 (fed from L1, returning to L2), which are what actually let the machine run. Pressing any E-stop opens both channels, drops out the safety outputs, and de-energizes MSC1 and MSC2 to stop the machine. For fault detection, the normally-closed forced-guided monitor contacts of MSC1 and MSC2 are wired in series with the reset switch in the S33/S34 feedback loop, so the relay will not reset unless both contactors have actually dropped out. K3 (terminals 41/42) is a separate non-safety auxiliary monitor contact.
+
+🔑 Signals
+• 24V ac/dc control supply to the relay
+• Emergency-stop channel 1 input
+• Emergency-stop channel 2 input
+• Reset / contactor-monitor feedback loop
+• Safety output channel A (drives MSC1)
+• Safety output channel B (drives MSC2)
+• Non-safety auxiliary monitor contact
+
+🔧 Devices
+• Emergency-stop monitoring safety relay (ES-FL-2A)
+• Emergency stop pushbutton (dual NC contacts) (Emergency Stop Switch)
+• Reset pushbutton (Reset Switch)
+• Master stop control element / contactor #1 (MSC1)
+• Master stop control element / contactor #2 (MSC2)
+• Arc suppressors (optional, across MSC actuators) (* (see WARNING))
+
+🩺 If you're chasing a fault
+… (more — reply "map")
+
+❓ Couldn't confirm (verify on the sheet):
+• Exact internal contact routing of the dual-channel E-stop to S13/S14 vs S23/S24 (confirm from higher-resolution crop of the top of Figure 2 / Figure 3).
+• Which top-rail nodes (S24, 13, 23, 41) are bonded to L1 — verify the top distribution rail.
+• No drawing number, cabinet, or sheet-set index is printed (this is manual/datasheet page 5).
+
+⚠️ The printed supply level is 24V ac/dc at A1/A2; the L1/L2 contactor circuit voltage is NOT stated on this sheet, so treat it as unknown and potentially higher line voltage until verified in the field. For continuity/resistance checks of E-stop and feedback loops, de-energize, lock out, and verify absence of voltage first. For live voltage checks on the L1/L2 / MSC contactor branch, follow energized-work procedures with properly rated equipment. Heed the printed WARNINGS: install arc suppressors only across the MSC actuators (never across the relay output contacts, where a shorted suppressor creates an unsafe condition), and never wire a PLC or other intermediate device between the safety relay outputs and the master stop control elements.
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply "map" for the full terminal and wire list.

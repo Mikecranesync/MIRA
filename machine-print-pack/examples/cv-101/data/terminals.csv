@@ -1,0 +1,97 @@
+Device,Terminal,Function,Status
+B1,BK,output (black) -> I-05,field_verify
+B1,BN,+24V (brown),field_verify
+B1,BU,0V (blue),field_verify
+CB1,1,line in L1 (proposed),field_verify
+CB1,2,load out L1 (proposed),field_verify
+CB1,3,line in L2 (proposed),field_verify
+CB1,4,load out L2 (proposed),field_verify
+CB1,5,"line in L3 (proposed, if 3φ)",field_verify
+CB1,6,"load out L3 (proposed, if 3φ)",field_verify
+DB1,+24V-bus,+24 VDC distribution rail (proposed id; fed from PS1.+V),field_verify
+DB1,0V-bus,0V distribution rail (proposed id; fed from PS1.-V),field_verify
+M1,PE,motor frame ground,field_verify
+M1,T1,motor lead 1,field_verify
+M1,T2,motor lead 2,field_verify
+M1,T3,motor lead 3 (swap any two to reverse — GS10_UM.txt L1773-1776),field_verify
+PL1,X1,pilot light terminal (proposed),field_verify
+PL1,X2,pilot light terminal (proposed),field_verify
+PL2,X1,pilot light terminal (proposed),field_verify
+PL2,X2,pilot light terminal (proposed),field_verify
+PLC1,+CM0,output bank 0 feed (O-00..O-03),field_verify
+PLC1,+CM1,"output bank 1 feed (O-04..O-06, spare)",field_verify
+PLC1,-CM0,output bank 0 return,field_verify
+PLC1,-CM1,output bank 1 return,field_verify
+PLC1,COM0,Digital-input common (return to 0V),field_verify
+PLC1,I-00,dir_fwd (Forward selector),verified
+PLC1,I-01,dir_rev (Reverse selector),verified
+PLC1,I-02,E-stop NC channel,verified
+PLC1,I-03,E-stop NO channel,verified
+PLC1,I-04,Run pushbutton (rearm),verified
+PLC1,I-05,Photo-eye (beam blocked -> pe_latched),verified
+PLC1,I-06,spare,verified
+PLC1,I-07,spare,verified
+PLC1,I-08,spare,verified
+PLC1,I-09,spare,verified
+PLC1,I-10,spare,verified
+PLC1,I-11,spare,verified
+PLC1,O-00,LightGreen -> PL1 (running),verified
+PLC1,O-01,LightRed -> PL2 (fault/e-stop),verified
+PLC1,O-02,ContactorQ1 coil (safety power),verified
+PLC1,O-03,PBRunLED -> S2 lamp,verified
+PLC1,O-04,spare,verified
+PLC1,O-05,spare,verified
+PLC1,O-06,spare,verified
+PS1,+24V,+24 VDC feed,field_verify
+PS1,+V,"DC output + (adjustable, +V ADJ pot)",verified
+PS1,-V,DC output -,verified
+PS1,0V,0V return,field_verify
+PS1,DC-OK,DC-OK relay/LED output,verified
+PS1,L,AC line in,verified
+PS1,N,AC neutral in,verified
+PS1,PE,AC protective earth in,verified
+Q1,13,"aux contact 1 — NO (destination FIELD VERIFY, OI-26)",verified
+Q1,14,"aux contact 1 — NO (destination FIELD VERIFY, OI-26)",verified
+Q1,21,"aux contact 2 — NC (destination FIELD VERIFY, OI-26)",verified
+Q1,22,"aux contact 2 — NC (destination FIELD VERIFY, OI-26)",verified
+Q1,31,"aux contact 3 — NC (destination FIELD VERIFY, OI-26)",verified
+Q1,32,"aux contact 3 — NC (destination FIELD VERIFY, OI-26)",verified
+Q1,43,"aux contact 4 — NO (destination FIELD VERIFY, OI-26)",verified
+Q1,44,"aux contact 4 — NO (destination FIELD VERIFY, OI-26)",verified
+Q1,A1,"coil + (from PLC1 O-02, E-006)",verified
+Q1,A2,coil - (to output return),verified
+S0,11-12,NC channel out -> I-02,field_verify
+S0,23-24,NO channel out -> I-03,field_verify
+S2,3-4,NO contact out -> I-04,field_verify
+S2,X1,lamp terminal (proposed),field_verify
+S2,X2,lamp terminal (proposed),field_verify
+SS1,COM,common fed from +24V,field_verify
+SS1,FWD,FWD contact out -> I-00,field_verify
+SS1,REV,REV contact out -> I-01,field_verify
+VFD1,+1,DC reactor (factory jumper +1/+2 — leave unless reactor installed),verified
+VFD1,+10V,internal +10VDC reference for analog input,verified
+VFD1,+2,DC reactor jumper partner,verified
+VFD1,+24V,internal +24VDC supply for digital inputs,verified
+VFD1,ACM,analog common,verified
+VFD1,AI,analog input (speed reference),verified
+VFD1,AO1,analog output 1 (monitor),verified
+VFD1,B1,brake resistor (optional; else OPEN),verified
+VFD1,B2,brake resistor partner (else OPEN),verified
+VFD1,DC+,common DC bus (leave open; absent on 120VAC models),verified
+VFD1,DC-,common DC bus (leave open),verified
+VFD1,DCM,digital input common,verified
+VFD1,DI3,digital input 3 (multi-function),verified
+VFD1,DI4,digital input 4 (multi-function),verified
+VFD1,DI5,digital input 5 (multi-function),verified
+VFD1,DO1,digital output 1 (open-collector),verified
+VFD1,DOC,digital output 1 common,verified
+VFD1,FWD,forward run command input,verified
+VFD1,GND,drive ground terminal (manual table row L1984; silk-screen symbol — id GND is OUR label),verified
+VFD1,PE,control-terminal-strip ground,verified
+VFD1,R/L1,input power L1,verified
+VFD1,REV,reverse run command input,verified
+VFD1,S/L2,input power L2,verified
+VFD1,T/L3,input power L3 (3-phase models only),verified
+VFD1,U/T1,motor output T1,verified
+VFD1,V/T2,motor output T2,verified
+VFD1,W/T3,motor output T3,verified

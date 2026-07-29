@@ -21,7 +21,12 @@ Production-reliability ladder (worst -> best):
 Usage:  python tools/drive-pack-extract/scorecard.py [--json-only]
 """
 from __future__ import annotations
-import io, json, os, sys, glob
+
+import glob
+import io
+import json
+import os
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))  # tools/drive-pack-extract -> repo root

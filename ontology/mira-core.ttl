@@ -1,0 +1,219 @@
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://ontology.factorylm.com/mira/core>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/core/0.1.0> ;
+    owl:versionInfo "0.1.0" ;
+    dcterms:title "MIRA Core — physical hierarchy, asset class vs instance, documents" ;
+    rdfs:comment """Grounded module. Every term below abstracts an artifact that exists in
+the repository today (see mira:grounded_in). No OWL reasoning is performed anywhere in MIRA;
+owl:inverseOf is a machine-readable declaration consumed by tools/ontology_drift_check.py.""" .
+
+##  Ontology-level annotation properties  ##############################
+
+mira:grounded_in a owl:AnnotationProperty ;
+    rdfs:label "grounded in" ;
+    rdfs:comment "The repository artifact (file, table, column, CHECK list, dataclass, enum) this term abstracts. A term with no mira:grounded_in is a rule violation — see tools/validate_ontology.py." .
+
+mira:term_status a owl:AnnotationProperty ;
+    rdfs:label "term status" ;
+    rdfs:comment """One of:
+  "canonical" — the term is ALREADY a production identifier (a relationship_type string, a CHECK
+                value, an i3X registry entry). The drift check asserts it still exists in code.
+  "proposed"  — the term is new in the ontology and is NOT yet a production identifier. Exempt from
+                the drift check; listed in the ADR as a future-PR candidate. Nothing reads it at runtime.""" .
+
+mira:maps_to a owl:AnnotationProperty ;
+    rdfs:label "maps to" ;
+    rdfs:comment "An external-standard term this MIRA term aligns with. A MAPPING, not an import — the external vocabulary is never redistributed (see ontology/mappings/)." .
+
+##  Controlled vocabularies  ###########################################
+
+mira:ControlledVocabulary a owl:Class ;
+    rdfs:label "Controlled vocabulary" ;
+    rdfs:comment """Marker for a class whose members are a CLOSED enumeration mirroring a production
+CHECK constraint or Python Enum (quality, value_type, approval_state, trust, …). A property whose
+range is a ControlledVocabulary is an ATTRIBUTE, not a traversable relationship, and is therefore
+exempt from the inverse-completeness rule — 'what is the inverse of quality=good' is not a question.""" ;
+    mira:grounded_in "tag_events/wiring_connections/mig-029 CHECK lists; printsense TrustState enum; drive_packs Provenance tiers" ;
+    mira:term_status "proposed" .
+
+##  UNS / ISA-95 physical hierarchy  ###################################
+#  Grounded in: mira-plc-parser/mira_plc_parser/i3x.py::_LEVELS and _BASE_TYPES,
+#  mira-crawler/ingest/uns.py path builders, kg_entities.uns_path (LTREE).
+
+mira:UnsNode a owl:Class ;
+    rdfs:label "UNS node" ;
+    rdfs:comment "Any addressable node in the Unified Namespace. Abstract — instantiate a subclass." ;
+    mira:grounded_in "kg_entities.uns_path (LTREE); mira-crawler/ingest/uns.py::is_valid_path" ;
+    mira:term_status "canonical" .
+
+mira:Enterprise a owl:Class ; rdfs:subClassOf mira:UnsNode ;
+    rdfs:label "Enterprise" ;
+    mira:grounded_in "mira_plc_parser/i3x.py::_LEVELS[0]; uns.py::company_root(); urn:mira:type:enterprise" ;
+    mira:maps_to "IEC 62264 (ISA-95) Enterprise" ;
+    mira:term_status "canonical" .
+
+mira:Site a owl:Class ; rdfs:subClassOf mira:UnsNode ;
+    rdfs:label "Site" ;
+    mira:grounded_in "mira_plc_parser/i3x.py::_LEVELS[1]; uns.py::site_path(); urn:mira:type:site" ;
+    mira:maps_to "IEC 62264 (ISA-95) Site" ;
+    mira:term_status "canonical" .
+
+mira:Area a owl:Class ; rdfs:subClassOf mira:UnsNode ;
+    rdfs:label "Area" ;
+    mira:grounded_in "mira_plc_parser/i3x.py::_LEVELS[2]; uns.py::area_path(); urn:mira:type:area" ;
+    mira:maps_to "IEC 62264 (ISA-95) Area" ;
+    mira:term_status "canonical" .
+
+mira:Line a owl:Class ; rdfs:subClassOf mira:UnsNode ;
+    rdfs:label "Line" ;
+    rdfs:comment "ISA-95 calls this ProductionLine / ProcessCell depending on the branch. MIRA's UNS level is named `line` in code; we keep the code name canonical and map outward." ;
+    mira:grounded_in "mira_plc_parser/i3x.py::_LEVELS[3]; uns.py::line_path(); urn:mira:type:line" ;
+    mira:maps_to "IEC 62264 (ISA-95) ProductionLine / ProcessCell" ;
+    mira:term_status "canonical" .
+
+mira:WorkCell a owl:Class ; rdfs:subClassOf mira:UnsNode ;
+    rdfs:label "Work cell" ;
+    mira:grounded_in "mira-crawler/ingest/uns.py::work_cell_path()" ;
+    mira:maps_to "IEC 62264 (ISA-95) WorkCell" ;
+    mira:term_status "canonical" .
+
+mira:Asset a owl:Class ; rdfs:subClassOf mira:UnsNode ;
+    rdfs:label "Asset" ;
+    rdfs:comment "The UNS leaf-container level. Superclass of Equipment and Component." ;
+    mira:grounded_in "mira_plc_parser/i3x.py::_LEVELS[4]; urn:mira:type:asset; uns.py::assigned_equipment_path()" ;
+    mira:term_status "canonical" .
+
+##  Asset CLASS vs asset INSTANCE  #####################################
+#  The conflation this distinction prevents is a named Phase-0 finding: the Hub i3X registry
+#  exposes only `equipment`/`component` with no class/instance discriminator, while
+#  uns.py::model_path() and community_class_path() address reusable MODELS.
+
+mira:AssetClass a owl:Class ;
+    rdfs:label "Asset class" ;
+    rdfs:comment "A reusable MODEL/type (e.g. 'PowerFlex 525'). Has no live signals, no location, no work orders. Never a diagnosis target." ;
+    mira:grounded_in "uns.py::model_path(), community_class_path(); component_templates rows; drive_packs Family" ;
+    mira:term_status "canonical" .
+
+mira:AssetInstance a owl:Class ; rdfs:subClassOf mira:Asset ;
+    rdfs:label "Asset instance" ;
+    rdfs:comment "A PHYSICAL thing installed at a UNS path (e.g. the drive on CV-101). Diagnosis targets are always instances." ;
+    mira:grounded_in "cmms_equipment rows; kg_entities(entity_type='equipment') with uns_path" ;
+    mira:term_status "canonical" .
+
+mira:Equipment a owl:Class ; rdfs:subClassOf mira:AssetInstance ;
+    rdfs:label "Equipment" ;
+    mira:grounded_in "mira-hub/src/lib/i3x/object-types.ts CORE_TYPES 'equipment'; kg_entities.entity_type" ;
+    mira:term_status "canonical" .
+
+mira:Component a owl:Class ; rdfs:subClassOf mira:AssetInstance ;
+    rdfs:label "Component" ;
+    mira:grounded_in "mira-hub/src/lib/i3x/object-types.ts CORE_TYPES 'component'; kg_entities.entity_type" ;
+    mira:term_status "canonical" .
+
+##  Vendor identity  ###################################################
+
+mira:Manufacturer a owl:Class ;
+    rdfs:label "Manufacturer" ;
+    mira:grounded_in "uns.py::manufacturer_path(); drive_packs/schema.py Family.manufacturer" ;
+    mira:term_status "canonical" .
+
+mira:DeviceFamily a owl:Class ; rdfs:subClassOf mira:AssetClass ;
+    rdfs:label "Device family" ;
+    rdfs:comment "A manufacturer's product series (e.g. DuraPulse GS10). The unit a drive pack is keyed on." ;
+    mira:grounded_in "uns.py::family_path(); drive_packs/schema.py Family(manufacturer, series, aliases)" ;
+    mira:term_status "canonical" .
+
+##  Documents  #########################################################
+
+mira:Document a owl:Class ;
+    rdfs:label "Document" ;
+    mira:grounded_in "knowledge_entries rows; uns.py::manual_path()" ;
+    mira:term_status "canonical" .
+
+mira:SourceDocument a owl:Class ; rdfs:subClassOf mira:Document ;
+    rdfs:label "Source document" ;
+    rdfs:comment "A document used as EVIDENCE for an assertion. Carries a version/hash so a citation can be re-verified against the exact bytes that were read." ;
+    mira:grounded_in "drive_packs/schema.py Citation(doc, page, excerpt); knowledge_entries.metadata" ;
+    mira:term_status "canonical" .
+
+##  Datatype properties  ###############################################
+
+mira:uns_path a owl:DatatypeProperty ;
+    rdfs:label "uns_path" ;
+    rdfs:domain mira:UnsNode ; rdfs:range xsd:string ;
+    rdfs:comment "Lowercase dotted ltree path. Built ONLY by mira-crawler/ingest/uns.py builders (.claude/rules/uns-compliance.md rule 1)." ;
+    mira:grounded_in "kg_entities.uns_path LTREE; approved_tags.uns_path LTREE; tag_events.uns_path LTREE" ;
+    mira:term_status "canonical" .
+
+mira:display_name a owl:DatatypeProperty ;
+    rdfs:label "display_name" ; rdfs:range xsd:string ;
+    rdfs:comment "Human-facing label. NEVER a path segment — path segments come from uns.slug()." ;
+    mira:grounded_in "kg_entities.name; i3X ObjectTypeResponse.displayName" ;
+    mira:term_status "canonical" .
+
+##  Structural relationships (local names MIRROR kg_relationships.relationship_type)  ##
+#  Naming law: classes are CamelCase; properties are snake_case and are BYTE-IDENTICAL to the
+#  production predicate string, so ontology IRIs round-trip with the database with zero renaming.
+#  (Safety rule: "No silent renaming of existing production relationship types.")
+
+mira:has_parent a owl:ObjectProperty ;
+    rdfs:label "has_parent" ; rdfs:domain mira:UnsNode ; rdfs:range mira:UnsNode ;
+    owl:inverseOf mira:has_child ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[has_parent, has_child]" ;
+    mira:term_status "canonical" .
+
+mira:has_child a owl:ObjectProperty ;
+    rdfs:label "has_child" ; rdfs:domain mira:UnsNode ; rdfs:range mira:UnsNode ;
+    owl:inverseOf mira:has_parent ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[has_parent, has_child]" ;
+    mira:term_status "canonical" .
+
+mira:has_component a owl:ObjectProperty ;
+    rdfs:label "has_component" ; rdfs:domain mira:AssetInstance ; rdfs:range mira:Component ;
+    owl:inverseOf mira:component_of ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[has_component, component_of]" ;
+    mira:term_status "canonical" .
+
+mira:component_of a owl:ObjectProperty ;
+    rdfs:label "component_of" ; rdfs:domain mira:Component ; rdfs:range mira:AssetInstance ;
+    owl:inverseOf mira:has_component ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[has_component, component_of]" ;
+    mira:term_status "canonical" .
+
+mira:instance_of a owl:ObjectProperty ;
+    rdfs:label "instance_of" ; rdfs:domain mira:AssetInstance ; rdfs:range mira:AssetClass ;
+    owl:inverseOf mira:has_instance ;
+    rdfs:comment "Instance → class. The DIRECTION matters: an AssetInstance instance_of an AssetClass, never the reverse." ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[instance_of, has_instance]" ;
+    mira:term_status "canonical" .
+
+mira:has_instance a owl:ObjectProperty ;
+    rdfs:label "has_instance" ; rdfs:domain mira:AssetClass ; rdfs:range mira:AssetInstance ;
+    owl:inverseOf mira:instance_of ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[instance_of, has_instance]" ;
+    mira:term_status "canonical" .
+
+mira:documented_in a owl:ObjectProperty ;
+    rdfs:label "documented_in" ; rdfs:range mira:Document ;
+    rdfs:comment "No inverse is modeled: the reverse ('document describes N things') has no production predicate and no query that needs it. Documented per the inverse-completeness rule." ;
+    mira:grounded_in "knowledge_entries ↔ kg_entities linkage via metadata->>'node_id'" ;
+    mira:term_status "proposed" .
+
+mira:manufactured_by a owl:ObjectProperty ;
+    rdfs:label "manufactured_by" ; rdfs:range mira:Manufacturer ;
+    rdfs:comment "No inverse modeled — 'manufacturer makes N models' is a listing query, not a traversal MIRA performs." ;
+    mira:grounded_in "uns.py::manufacturer_path(); drive_packs Family.manufacturer" ;
+    mira:term_status "proposed" .
+
+mira:member_of_family a owl:ObjectProperty ;
+    rdfs:label "member_of_family" ; rdfs:domain mira:AssetInstance ; rdfs:range mira:DeviceFamily ;
+    rdfs:comment "Binds a physical drive to the DeviceFamily whose pack may answer for it. Load-bearing for the fault-code scope rule. No inverse modeled: resolution only ever runs forward, asset → family, from a single nameplate read (drive_packs/asset_identity.py::build_asset_identity); nothing in the codebase enumerates a family's instances in reverse." ;
+    mira:grounded_in "drive_packs/resolver.py family resolution; drive_packs/asset_identity.py" ;
+    mira:term_status "proposed" .

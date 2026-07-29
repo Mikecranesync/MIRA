@@ -67,6 +67,15 @@ links:
     source: "shield-one-end rule (both docs); exact PLC chassis point = field verify"
     notes: "Land drain at PLC end ONLY; tape/float at GS10 end."
 
+command_words:
+  register: "0x2000"
+  stop: 1
+  fwd_run: 18
+  rev_run: 34
+  rev_run_supersession: "34 NOT 20 — GS10_Integration_Guide.md (2026-03-16) and ControlsToVFD/original PhaseB.st print 20; corrected by PhaseB_V1.4 'FIX 2' (bit 5 REV + bit 1 Run), Beginner_Verify_V2 ('NOT 20!'), WI-001 Table 9, and live Prog_init v2.1 (vfd_cmd_word := 34)."
+  freq_register: "0x2001"
+  source: "Beginner_Verify_V2 §4.4 (GS10 manual p.6); WI-001 Tables 8-10; PhaseB_V1.4.st; Prog_init_ConvSimple_v2.1.st"
+
 serial_config:
   driver: "Modbus RTU, Master"
   baud: "9600"
@@ -74,10 +83,11 @@ serial_config:
   channel: "2"
   node: "1 (P09.00 = 1)"
   note: "Older GS10_Integration_Guide.md said 8N2 (P09.04=13) - SUPERSEDED by bench-verified 8N1."
+  oi20_note: "Line params pending re-verify (OI-20): 2026-05-20 export read 38.4k/8N2; 2026-05-26 bench sniff read 9600/8N1 (shown). Fresh keypad/readback to adjudicate."
 
 readback:
   - "vfd_comm_ok = TRUE proves the link is up (PLC global)."
-  - "Read 0x2103 (output freq, Hz x10) via FC03; nonzero readback confirms end-to-end."
+  - "Read 0x2103 (output freq, Hz x100) via FC03; nonzero readback confirms end-to-end. (Prog_init v2.1:164 'Hz x100'; GS10_UM.txt L15703-05 format XXX.XX Hz)"
 
 troubleshooting:
   - "Nothing after config -> swap 485+/485- (A/B polarity; vendors disagree)."

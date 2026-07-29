@@ -183,12 +183,50 @@ class KeypadNavigationCard:
     edit_warning: str | None = None
 
 
+# ─── v3 fault shape: string-identifier fault entries (mnemonic-coded drives) ──
+# schema_version 3 adds one OPTIONAL, pack-stored block — `fault_entries` — a
+# first-class, source-preserved list of the drive's fault identifiers keyed by a
+# STRING id (`oC`, `GF`, `BE0`, `LL1`), not the int-on-the-wire enum in
+# `live_decode.fault_codes`. It exists because mnemonic-coded families (Magnetek
+# IMPULSE crane VFDs, Durapulse GS10/GS20) have no numeric fault register at all
+# — the `dict[int, str]` shape cannot represent them (RUN_C_PLAN.md C1;
+# tools/drive-pack-extract/candidates/magnetek_impulse_g_plus_mini). It is purely
+# additive: `live_decode.fault_codes` (int-keyed) is untouched, `wire_value` is
+# `None` for mnemonic-only families (never a guessed integer), and v1/v2 packs
+# omit the block so they load unchanged.
+
+
+@dataclass(frozen=True)
+class FaultEntry:
+    """One source-preserved fault identifier for a mnemonic-coded drive.
+
+    ``fault_id`` is the manufacturer's exact string code, case-SENSITIVE — ``oC``
+    and ``OC`` are different codes and must never be casefolded together (RUN_C
+    decision #4). ``wire_value`` is the on-the-wire integer IF (and only if) the
+    family also exposes this fault as a numeric register — ``None`` for
+    mnemonic-only families, never a guess. All text is view-only; every entry is
+    expected to carry a ``source_citation`` (the extractor's cite-gate).
+    """
+
+    fault_id: str
+    name: str = ""
+    action: str = ""
+    source_citation: Citation = field(default_factory=lambda: Citation("", "", ""))
+    flashing: bool | None = None
+    secondary_label: str | None = None
+    references_parameters: list[str] = field(default_factory=list)
+    ambiguous_glyphs: list[dict[str, str | int]] = field(default_factory=list)
+    wire_value: int | None = None
+    provenance_tier: str = "manual_cited"
+
+
 @dataclass(frozen=True)
 class DrivePack:
     """A complete, validated drive-family pack.
 
-    ``parameters`` and ``keypad_navigation`` are the schema_version 2 additions
-    — empty for a v1 pack, so v1 packs load unchanged.
+    ``parameters`` and ``keypad_navigation`` are the schema_version 2 additions;
+    ``fault_entries`` is the schema_version 3 addition — all empty for an earlier
+    pack, so older packs load unchanged.
     """
 
     pack_id: str
@@ -201,3 +239,19 @@ class DrivePack:
     provenance: Provenance
     parameters: list[ParameterCard] = field(default_factory=list)
     keypad_navigation: list[KeypadNavigationCard] = field(default_factory=list)
+    fault_entries: list[FaultEntry] = field(default_factory=list)
+
+    def fault_entry(self, fault_id: str, *, case_sensitive: bool = True) -> FaultEntry | None:
+        """Address a ``FaultEntry`` by its string ``fault_id``.
+
+        Case-SENSITIVE by default — ``oC`` and ``OC`` are distinct codes (RUN_C
+        decision #4), so the stored id is never casefolded away. Pass
+        ``case_sensitive=False`` for a lenient convenience match (first
+        case-insensitive hit) that only widens the *comparison*, not the stored
+        value. Returns ``None`` when nothing matches. The list preserves source
+        order and any duplicates; this is a first-match accessor.
+        """
+        if case_sensitive:
+            return next((e for e in self.fault_entries if e.fault_id == fault_id), None)
+        target = fault_id.casefold()
+        return next((e for e in self.fault_entries if e.fault_id.casefold() == target), None)

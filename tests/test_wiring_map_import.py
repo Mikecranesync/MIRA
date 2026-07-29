@@ -38,7 +38,9 @@ def _rows():
 
 def test_yaml_loads_all_conductors():
     rows = _rows()
-    assert len(rows) == 8  # the eight E-005 PLC-input conductors in wires.yaml
+    # Multi-sheet registry: E-003:12 (VFD power) + E-004:6 (24VDC control power)
+    # + E-005:8 (PLC inputs) + E-006:10 (PLC outputs) = 36 conductors.
+    assert len(rows) == 36
 
 
 # --- (2) expected connections are produced ----------------------------------
@@ -46,16 +48,18 @@ def test_yaml_loads_all_conductors():
 
 def test_expected_connections_present():
     by_wire = {r.wire_number: r for r in _rows()}
-    assert set(by_wire) == {"W24", "W200", "W201", "W202", "W203", "W204", "W205", "W0V"}
+    # E-005 (PLC inputs) is one sheet within the full 36-conductor multi-sheet
+    # registry (E-003/E-004/E-005/E-006) — assert it's present as a subset.
+    assert {"W24", "W500", "W501", "W502", "W503", "W504", "W505", "W0V"} <= set(by_wire)
 
-    fwd = by_wire["W200"]
+    fwd = by_wire["W500"]
     assert fwd.source_label == "SS1.FWD" and fwd.dest_label == "PLC1.I-00"
     assert fwd.source_terminal == "FWD" and fwd.dest_terminal == "I-00"
     assert fwd.function_class == "signal"
 
     # e-stop channels classify as safety; the 24 V rail as power; the common as ground.
-    assert by_wire["W202"].function_class == "safety"  # e_stop NC
-    assert by_wire["W203"].function_class == "safety"  # e_stop NO
+    assert by_wire["W502"].function_class == "safety"  # e_stop NC
+    assert by_wire["W503"].function_class == "safety"  # e_stop NO
     assert by_wire["W24"].function_class == "power"  # +24 VDC distribution
     assert by_wire["W0V"].function_class == "ground"  # 0V / input common
 
@@ -78,16 +82,27 @@ def test_function_class_only_valid_values():
 
 
 def test_rows_preserve_source_and_evidence():
+    # Independently load each conductor's own `sheet:` field straight from the YAML
+    # (not via load_wiring_rows) so this test actually catches a seam that mis-resolves
+    # sheet attribution — the exact regression this test is here to prevent.
+    wires_doc = wmi._load_yaml(_MODEL_DIR / "wires.yaml")
+    sheet_by_wire = {
+        w.get("proposed_number"): w.get("sheet")
+        for w in wires_doc.get("wires", []) or []
+        if isinstance(w, dict) and w.get("from") and w.get("to")
+    }
+
     for r in _rows():
         ev = r.evidence_summary
         assert ev["source"].endswith("plc/conv_simple_electrical/model/wires.yaml")
-        assert ev["sheet"] == "E-005"
+        assert ev["sheet"]  # non-empty — every conductor must attribute to its real sheet
+        assert ev["sheet"] == sheet_by_wire[r.wire_number]  # matches wires.yaml's own per-wire sheet
         assert ev["model_status"] == "field_verify"  # preserved verbatim, not upgraded
         assert ev["from"] == r.source_label and ev["to"] == r.dest_label
         assert ev["signal"]  # non-empty signal name
         assert r.drawing_reference  # cites the sheet + signal
     # the verified PLC terminal map is reflected in provenance
-    fwd = next(r for r in _rows() if r.wire_number == "W200")
+    fwd = next(r for r in _rows() if r.wire_number == "W500")
     assert fwd.evidence_summary["dest_terminal_verified"] is True  # PLC1.I-00 is verified
 
 
@@ -131,12 +146,12 @@ def test_write_is_idempotent():
     cur = _FakeCursor()
 
     inserted, skipped = wmi.write_rows(cur, _TENANT, rows)
-    assert (inserted, skipped) == (8, 0)  # first run inserts all
-    assert len(cur.inserts) == 8
+    assert (inserted, skipped) == (36, 0)  # first run inserts all
+    assert len(cur.inserts) == 36
 
     inserted2, skipped2 = wmi.write_rows(cur, _TENANT, rows)
-    assert (inserted2, skipped2) == (0, 8)  # second run is a no-op
-    assert len(cur.inserts) == 8  # no new inserts
+    assert (inserted2, skipped2) == (0, 36)  # second run is a no-op
+    assert len(cur.inserts) == 36  # no new inserts
 
 
 def test_insert_params_carry_proposed_state_and_evidence_json():
