@@ -1,3 +1,7 @@
+### v3.225.1 (2026-07-28) - test(potd): port unique regression coverage from superseded #2865
+
+Reconciliation-only port of #2865's residual value onto the canonical Print-of-the-Day stack (#2866-#2868): a pure, backward-compatible `build_payload(pkg)` extraction in `tools/internet_print_test/mailer.py` plus two regression test files. No second view model, renderer, or send gate. Unblocks closing #2865 as superseded.
+
 ### v3.225.0 (2026-07-28) - feat(hubv3): approved_by + approved_at audit columns on ctx_import_batches (#2337)
 
 Migration 067 adds `ctx_import_batches.approved_by TEXT` + `approved_at TIMESTAMPTZ`, deferred from the Phase 4 batch-review gate (PR #2336). The batch-review route (`/api/contextualization/batches/[batchId]/review`) now stamps both — `approved_by = 'human:<userId>'`, `approved_at = now()` — only when a decision resolves to `review_status = 'approved'`; reject/needs_review leave them untouched (or null, on a batch never approved). Closes the audit gap the HITL sign-off runbook flagged: previously `approved` batches carried no durable record of who approved them or when, since `updated_at` gets overwritten by any later transition.

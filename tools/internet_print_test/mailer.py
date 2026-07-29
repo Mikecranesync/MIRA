@@ -67,12 +67,14 @@ def package_summary(pkg: EmailPackage) -> str:
     return "\n".join(lines)
 
 
-def send(pkg: EmailPackage) -> dict:
-    """Send via Resend. Returns {sent, status, id/error}. Requires RESEND_API_KEY (Doppler)."""
-    api_key = os.getenv("RESEND_API_KEY", "")
-    if not api_key:
-        return {"sent": False, "status": None, "error": "RESEND_API_KEY not set (load via Doppler)"}
+def build_payload(pkg: EmailPackage) -> dict:
+    """Pure Resend payload for a package — exactly what ``send`` POSTs.
 
+    Extracted from ``send`` (backward-compatibly) so the serialization can be
+    regression-tested in isolation. Serializes the HTML body, the optional
+    plain-text alternative (FR-9), conventional base64 attachments, and
+    CID-embedded inline images carrying ``content_id`` (FR-2). Reads attachment
+    bytes off disk; performs no network I/O. ``send``'s behavior is unchanged."""
     attachments = []
     for a in pkg.attachments:
         if not a["included"]:
@@ -98,6 +100,16 @@ def send(pkg: EmailPackage) -> dict:
     }
     if pkg.text:  # FR-9 plain-text alternative
         payload["text"] = pkg.text
+    return payload
+
+
+def send(pkg: EmailPackage) -> dict:
+    """Send via Resend. Returns {sent, status, id/error}. Requires RESEND_API_KEY (Doppler)."""
+    api_key = os.getenv("RESEND_API_KEY", "")
+    if not api_key:
+        return {"sent": False, "status": None, "error": "RESEND_API_KEY not set (load via Doppler)"}
+
+    payload = build_payload(pkg)
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.post(RESEND_ENDPOINT,
