@@ -133,6 +133,16 @@ These are real limitations that persist even on a fresh index (confirmed in the
    but 10 were `.audit-worktrees/*` duplicates and only 1 was real — this was
    pollution, **NOT** an import-alias fix; blind spot #3 was unchanged. Fixed by
    gitignoring `.audit-worktrees/`.)
+   **Now detected automatically (2026-07-28).** `tools/codegraph-preflight.sh`
+   enforces an **allowlist** — any in-repo worktree outside `.claude/worktrees/`,
+   `.worktrees/`, `.audit-worktrees/` is reported by path as `⚠ NESTED WORKTREE`.
+   The `.gitignore` list alone was a **denylist that fails open**: an ad-hoc
+   `git worktree add` at any other in-repo path escaped it (real case: `wt-verify`
+   at the repo root was being indexed). A gitignore glob cannot express
+   "directory containing a `.git` *file*", which is why the check lives in the
+   preflight. It is **WARN-only and does not change the verdict** — so a stray
+   worktree never blocks a session; you still have to act on the warning before
+   trusting caller counts.
 
 When a result depends on any of the above, the honest answer is CodeGraph **plus**
 a targeted grep — say so in the PR's "manual checks" line.

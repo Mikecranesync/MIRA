@@ -550,7 +550,9 @@ class PaidAuthorizationLedger:
                 consumed=True,
                 request_hash=str(expected_request_hash),
                 receipt_ref=authorization.receipt_ref,
-                ledger_ref=str(self.path),
+                # Basename only — emitted evidence must never carry an absolute
+                # local ledger path (#2928 acceptance criteria).
+                ledger_ref=self.path.name,
                 consumed_at=consumed_at,
                 blockers=[],
             )
