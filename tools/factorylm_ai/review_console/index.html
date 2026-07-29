@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technician Dataset v0 — Review Console</title>
+<link rel="stylesheet" href="factorylm-tokens.css">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fl-bg); color: var(--fl-ink);
+    font-family: var(--fl-font); font-size: var(--fl-fs);
+  }
+  header {
+    background: var(--fl-header); color: var(--fl-header-ink);
+    padding: 10px var(--fl-pad); display: flex; gap: var(--fl-gap);
+    align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: var(--fl-fs); margin: 0; font-weight: 600; }
+  header .sub { color: var(--fl-header-muted); font-size: var(--fl-fs-xs); font-family: var(--fl-mono); }
+  header .spacer { flex: 1; }
+
+  /* ---- gate meter: the whole point is that progress-to-PASS is visible ---- */
+  #gate { display: flex; gap: 6px; flex-wrap: wrap; }
+  .g {
+    background: var(--fl-dark-surface, #1f2937); border: 1px solid var(--fl-dark-line, #374151);
+    border-radius: var(--fl-radius-sm); padding: 3px 8px; min-width: 92px;
+    font-size: var(--fl-fs-xs); font-family: var(--fl-mono);
+  }
+  .g .lbl { color: var(--fl-header-muted); display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+  .g .val { color: var(--fl-header-ink); font-weight: 600; }
+  .g.ok { border-color: var(--fl-ok); }
+  .g.ok .val { color: var(--fl-ok); }
+  .g.short .val { color: var(--fl-warn); }
+
+  #verdict { padding: 4px 12px; border-radius: var(--fl-radius-sm); font-weight: 700;
+             font-size: var(--fl-fs-xs); letter-spacing: .04em; }
+  #verdict.blocked { background: var(--fl-fault-bg); color: var(--fl-fault); }
+  #verdict.pass { background: var(--fl-ok-bg); color: var(--fl-ok); }
+
+  main { max-width: 1080px; margin: 0 auto; padding: var(--fl-pad); }
+  .panel {
+    background: var(--fl-surface); border: 1px solid var(--fl-line);
+    border-radius: var(--fl-radius); box-shadow: var(--fl-shadow); padding: var(--fl-pad);
+    margin-bottom: var(--fl-gap);
+  }
+  .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip {
+    font-family: var(--fl-mono); font-size: var(--fl-fs-xs); padding: 2px 8px;
+    border-radius: 999px; border: 1px solid var(--fl-line-strong); color: var(--fl-muted);
+    background: var(--fl-bg);
+  }
+  .chip.safety { background: var(--fl-warn-bg); color: var(--fl-warn); border-color: var(--fl-warn); font-weight: 600; }
+  .chip.valued { background: var(--fl-accent-tint); color: var(--fl-accent); border-color: var(--fl-accent); }
+  .chip.newlin { background: var(--fl-ok-bg); color: var(--fl-ok); border-color: var(--fl-ok); font-weight: 600; }
+
+  .qa { margin: 0 0 12px; }
+  .qa .role { font-size: var(--fl-fs-xs); text-transform: uppercase; letter-spacing: .05em;
+              color: var(--fl-faint); margin-bottom: 3px; }
+  .qa .body { white-space: pre-wrap; line-height: 1.5; }
+  .qa.answer .body {
+    background: var(--fl-bg); border-left: 3px solid var(--fl-accent);
+    padding: 10px 12px; border-radius: var(--fl-radius-sm);
+  }
+
+  /* evidence = the ground truth being judged against; absent from the .md packages */
+  .evidence { background: var(--fl-bg); border: 1px dashed var(--fl-line-strong);
+              border-radius: var(--fl-radius-sm); padding: 10px 12px; }
+  .evidence h3 { margin: 0 0 6px; font-size: var(--fl-fs-xs); text-transform: uppercase;
+                 letter-spacing: .05em; color: var(--fl-muted); }
+  .evidence dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; }
+  .evidence dt { color: var(--fl-muted); font-size: var(--fl-fs-sm); }
+  .evidence dd { margin: 0; font-family: var(--fl-mono); font-size: var(--fl-fs-sm); word-break: break-word; }
+  .evidence .st-field_verify { color: var(--fl-warn); font-weight: 600; }
+  .evidence .st-verified { color: var(--fl-ok); font-weight: 600; }
+
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  button {
+    font-family: var(--fl-font); font-size: var(--fl-fs); cursor: pointer;
+    border-radius: var(--fl-radius-sm); border: 1px solid var(--fl-line-strong);
+    background: var(--fl-surface); color: var(--fl-ink); padding: 8px 14px;
+  }
+  button:hover { border-color: var(--fl-accent); }
+  button kbd { font-family: var(--fl-mono); font-size: 11px; opacity: .65; margin-right: 5px; }
+  button.approve { border-color: var(--fl-ok); color: var(--fl-ok); font-weight: 600; }
+  button.reject  { border-color: var(--fl-fault); color: var(--fl-fault); font-weight: 600; }
+  button.correct { border-color: var(--fl-warn); color: var(--fl-warn); font-weight: 600; }
+  button.primary { background: var(--fl-accent); color: var(--fl-accent-ink); border-color: var(--fl-accent); font-weight: 600; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* rationale is REQUIRED on every decision — presets keep it his reason, not his typing */
+  #rationale { margin-top: 10px; }
+  #rationale .opts { display: grid; gap: 5px; }
+  .opt { display: flex; gap: 8px; align-items: flex-start; padding: 6px 9px; border-radius: var(--fl-radius-sm);
+         border: 1px solid var(--fl-line); background: var(--fl-surface); cursor: pointer; text-align: left; width: 100%; }
+  .opt:hover, .opt.sel { border-color: var(--fl-accent); background: var(--fl-accent-tint); }
+  .opt kbd { font-family: var(--fl-mono); font-size: 11px; color: var(--fl-muted); }
+  textarea {
+    width: 100%; min-height: 76px; font-family: var(--fl-font); font-size: var(--fl-fs);
+    padding: 8px; border-radius: var(--fl-radius-sm); border: 1px solid var(--fl-line-strong);
+    background: var(--fl-surface); color: var(--fl-ink); margin-top: 6px;
+  }
+  .hint { color: var(--fl-muted); font-size: var(--fl-fs-sm); }
+  .bar { height: 5px; background: var(--fl-line); border-radius: 999px; overflow: hidden; margin: 8px 0 2px; }
+  .bar > i { display: block; height: 100%; background: var(--fl-accent); }
+  #setup label { display: block; margin: 8px 0 3px; font-size: var(--fl-fs-sm); color: var(--fl-muted); }
+  input[type=text], input[type=file] { width: 100%; padding: 7px; border: 1px solid var(--fl-line-strong);
+    border-radius: var(--fl-radius-sm); font-family: var(--fl-font); background: var(--fl-surface); color: var(--fl-ink); }
+  .err { color: var(--fl-fault); font-weight: 600; }
+  .done { text-align: center; padding: 30px 0; }
+  @media (prefers-color-scheme: dark) {
+    body { background: var(--fl-dark-bg, #0b0f16); color: var(--fl-dark-ink, #e5e7eb); }
+    .panel, button, .opt, textarea, input { background: var(--fl-dark-surface, #151b24);
+      border-color: var(--fl-dark-line, #2a3441); color: var(--fl-dark-ink, #e5e7eb); }
+    .qa.answer .body, .evidence, .chip { background: var(--fl-dark-bg-glass, #10161f); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Technician Dataset v0 — Review</h1>
+    <div class="sub" id="hdrsub">no build loaded</div>
+  </div>
+  <div class="spacer"></div>
+  <div id="gate"></div>
+  <div id="verdict" class="blocked">BLOCKED</div>
+</header>
+
+<main>
+  <section class="panel" id="setup">
+    <h2 style="margin-top:0">Load the frozen build</h2>
+    <p class="hint">
+      Runs entirely in this page — nothing is uploaded and no network call is made.
+      Decisions bind to the candidate manifest hash, so use the frozen build and do
+      <strong>not</strong> regenerate candidates before importing.
+    </p>
+    <label>reviewer_id (recorded on every decision)</label>
+    <input type="text" id="reviewer" placeholder="mike@cranesync.com">
+    <label>candidate_dataset.jsonl</label>
+    <input type="file" id="fJsonl" accept=".jsonl,.json">
+    <label>candidate_manifest.json</label>
+    <input type="file" id="fManifest" accept=".json">
+    <div style="margin-top:12px"><button class="primary" id="start">Start review</button></div>
+    <div id="setupErr" class="err" style="margin-top:8px"></div>
+  </section>
+
+  <section class="panel" id="card" hidden>
+    <div class="meta" id="chips"></div>
+    <div class="qa"><div class="role">Technician asks</div><div class="body" id="qUser"></div></div>
+    <div class="qa answer"><div class="role">MIRA answered</div><div class="body" id="qAsst"></div></div>
+    <div class="evidence" id="evidence"></div>
+    <div class="bar"><i id="progbar" style="width:0%"></i></div>
+    <div class="hint" id="progtxt"></div>
+  </section>
+
+  <section class="panel" id="decide" hidden>
+    <div class="actions">
+      <button class="approve" data-act="approve"><kbd>A</kbd>Approve</button>
+      <button class="correct" data-act="correct"><kbd>C</kbd>Correct</button>
+      <button class="reject"  data-act="reject"><kbd>R</kbd>Reject</button>
+      <button data-act="hold_out"><kbd>H</kbd>Hold out</button>
+      <button id="undo"><kbd>U</kbd>Undo</button>
+      <button id="skip"><kbd>&rarr;</kbd>Skip</button>
+      <div class="spacer" style="flex:1"></div>
+      <button class="primary" id="export">Export decisions.jsonl</button>
+    </div>
+    <div id="rationale" hidden>
+      <div class="hint" id="rTitle"></div>
+      <div class="opts" id="rOpts"></div>
+      <textarea id="rFree" placeholder="Or write your own reason…"></textarea>
+      <div id="corrWrap" hidden>
+        <div class="hint" style="margin-top:8px">Corrected answer (replaces MIRA's assistant message):</div>
+        <textarea id="corrText"></textarea>
+      </div>
+      <div class="actions" style="margin-top:8px">
+        <button class="primary" id="confirm"><kbd>&crarr;</kbd>Confirm</button>
+        <button id="cancel"><kbd>Esc</kbd>Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel done" id="done" hidden>
+    <h2>Queue complete</h2>
+    <p class="hint" id="doneTxt"></p>
+    <button class="primary" id="export2">Export decisions.jsonl</button>
+  </section>
+</main>
+
+<script>
+// Thresholds mirror factorylm_ai/dataset/paid_gate.py. The console never decides
+// eligibility — it only shows how close the reviewer's own decisions are to the gate.
+const T = { records: 100, lineages: 20, valued: 20, safety: 15 };
+const REQUIRED_SOURCES = ["printsense", "drive_commander"];
+const VALUED = new Set(["uncertainty", "refusal", "correction"]);
+const SCHEMA = "factorylm.technician-dataset.review-decision.v1";
+
+const PRESETS = {
+  approve: [
+    "Grounded in the cited evidence; matches field practice",
+    "Correct refusal — the evidence does not support an answer",
+    "Calibrated uncertainty is right here; source status is field_verify",
+    "Accurate terminal / fault / parameter reference",
+    "Safety handling is correct; no energized work authorized",
+  ],
+  reject: [
+    "Claim is not supported by the cited evidence",
+    "Unsafe — would authorize energized work or bypass a safety device",
+    "Wrong terminal / fault / parameter reference",
+    "Overconfident where the source says field_verify",
+    "Generic answer; not grounded in this machine",
+  ],
+  correct: [
+    "Right evidence, wrong wording — corrected the answer",
+    "Missing the field_verify caveat; added it",
+    "Terminal / fault reference corrected against the source",
+    "Tightened unsafe phrasing",
+  ],
+  hold_out: [
+    "Reserve for evaluation rather than training",
+    "Needs a second opinion before it trains anything",
+  ],
+};
+
+let recs = [], hashes = {}, manifestSha = "", reviewer = "";
+let queue = [], idx = 0, decisions = new Map(), pending = null, selPreset = -1;
+
+const $ = id => document.getElementById(id);
+const readFile = f => new Promise((res, rej) => {
+  const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(f);
+});
+
+$("start").onclick = async () => {
+  $("setupErr").textContent = "";
+  try {
+    reviewer = $("reviewer").value.trim();
+    if (!reviewer) throw new Error("reviewer_id is required — it is recorded on every decision.");
+    if (!$("fJsonl").files[0] || !$("fManifest").files[0]) throw new Error("Both files are required.");
+
+    const jsonl = await readFile($("fJsonl").files[0]);
+    const man = JSON.parse(await readFile($("fManifest").files[0]));
+    manifestSha = man.manifest_sha256;
+    (man.entries || []).forEach(e => { hashes[e.record_id] = e.content_hash; });
+
+    const all = jsonl.split(/\r?\n/).filter(l => l.trim()).map(l => JSON.parse(l));
+    // Only records that CAN become eligible. Reviewing anything else is wasted
+    // effort — approving one is refused as DECISION_GOVERNANCE_BLOCKED.
+    recs = all.filter(r => r.split === "train" && r.rights && r.rights.training_allowed === true);
+    if (!recs.length) throw new Error("No approvable records found in that file.");
+    if (!manifestSha) throw new Error("Manifest has no manifest_sha256.");
+
+    queue = orderForGateProgress(recs);
+    $("setup").hidden = true; $("card").hidden = false; $("decide").hidden = false;
+    $("hdrsub").textContent = `${recs.length} approvable · manifest ${manifestSha.slice(0,12)}…`;
+    render();
+  } catch (e) { $("setupErr").textContent = e.message; }
+};
+
+// Front-load records that unlock a NEW lineage, and seed a drive_commander record
+// early, so lineage + source coverage fill before the bulk of the count.
+function orderForGateProgress(rows) {
+  const byLin = new Map();
+  rows.forEach(r => {
+    const k = r.document_lineage_key;
+    if (!byLin.has(k)) byLin.set(k, []);
+    byLin.get(k).push(r);
+  });
+  const groups = [...byLin.values()];
+  groups.sort((a, b) => {
+    const rank = g => REQUIRED_SOURCES.indexOf(g[0].source_system);
+    return rank(a) - rank(b) || b.length - a.length;
+  });
+  // Round-robin across lineages: every early review adds a distinct lineage.
+  const out = [];
+  for (let i = 0; ; i++) {
+    let added = false;
+    for (const g of groups) if (i < g.length) { out.push(g[i]); added = true; }
+    if (!added) break;
+  }
+  return out;
+}
+
+function gate() {
+  const kept = [...decisions.values()].filter(d => d.action === "approve" || d.action === "correct");
+  const recOf = id => recs.find(r => r.record_id === id);
+  const rows = kept.map(d => recOf(d.record_id)).filter(Boolean);
+  return {
+    records: rows.length,
+    lineages: new Set(rows.map(r => r.document_lineage_key)).size,
+    valued: rows.filter(r => VALUED.has(r.interaction_type)).length,
+    safety: rows.filter(r => r.safety && r.safety.safety_sensitive).length,
+    sources: new Set(rows.map(r => r.source_system)),
+  };
+}
+
+function renderGate() {
+  const g = gate();
+  const missing = REQUIRED_SOURCES.filter(s => !g.sources.has(s));
+  const cells = [
+    ["records", g.records, T.records], ["lineages", g.lineages, T.lineages],
+    ["valued", g.valued, T.valued], ["safety", g.safety, T.safety],
+  ];
+  let html = cells.map(([l, v, t]) =>
+    `<div class="g ${v >= t ? "ok" : "short"}"><span class="lbl">${l}</span>
+     <span class="val">${v} / ${t}</span></div>`).join("");
+  html += `<div class="g ${missing.length ? "short" : "ok"}"><span class="lbl">sources</span>
+           <span class="val">${missing.length ? "need " + missing.join("+") : "both ✓"}</span></div>`;
+  $("gate").innerHTML = html;
+  const pass = cells.every(([, v, t]) => v >= t) && !missing.length;
+  $("verdict").className = pass ? "pass" : "blocked";
+  $("verdict").textContent = pass ? "GATE MET" : "BLOCKED";
+}
+
+function render() {
+  renderGate();
+  if (idx >= queue.length) {
+    $("card").hidden = true; $("decide").hidden = true; $("done").hidden = false;
+    $("doneTxt").textContent = `${decisions.size} decisions recorded of ${queue.length} records.`;
+    return;
+  }
+  const r = queue[idx];
+  const seenLin = new Set([...decisions.values()]
+    .filter(d => d.action === "approve" || d.action === "correct")
+    .map(d => (recs.find(x => x.record_id === d.record_id) || {}).document_lineage_key));
+
+  const chips = [
+    ["", r.record_id], ["", r.source_system], ["", r.interaction_type],
+    ["", r.document_lineage_key],
+  ];
+  let html = chips.map(([c, t]) => `<span class="chip ${c}">${esc(t)}</span>`).join("");
+  if (VALUED.has(r.interaction_type)) html += `<span class="chip valued">valued</span>`;
+  if (r.safety && r.safety.safety_sensitive) html += `<span class="chip safety">⚠ safety-sensitive</span>`;
+  if (!seenLin.has(r.document_lineage_key)) html += `<span class="chip newlin">+ new lineage</span>`;
+  $("chips").innerHTML = html;
+
+  const msgs = r.messages || [];
+  $("qUser").textContent = (msgs.find(m => m.role === "user") || {}).content || "";
+  $("qAsst").textContent = (msgs.find(m => m.role === "assistant") || {}).content || "";
+
+  const p = (r.answer_key && r.answer_key.withheld_payload) || {};
+  const st = p.status || "";
+  const rows = [
+    ["claim", p.claim], ["subject", p.subject], ["kind", p.kind],
+    ["sheet", p.sheet], ["source", p.source || (r.source_provenance || {}).source_reference],
+  ].filter(([, v]) => v);
+  $("evidence").innerHTML = `<h3>Evidence this answer must match</h3><dl>` +
+    rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`).join("") +
+    (st ? `<dt>status</dt><dd class="st-${esc(st)}">${esc(st)}</dd>` : "") + `</dl>`;
+
+  const pc = Math.round(idx / queue.length * 100);
+  $("progbar").style.width = pc + "%";
+  $("progtxt").textContent = `${idx + 1} of ${queue.length} · ${decisions.size} decided`;
+}
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => openRationale(b.dataset.act));
+
+function openRationale(act) {
+  if (idx >= queue.length) return;
+  pending = act; selPreset = -1;
+  $("rationale").hidden = false;
+  $("rTitle").textContent = `${act.toUpperCase()} — pick a reason (number key) or write one. Required on every decision.`;
+  $("rOpts").innerHTML = PRESETS[act].map((t, i) =>
+    `<button class="opt" data-i="${i}"><kbd>${i + 1}</kbd><span>${esc(t)}</span></button>`).join("");
+  $("rOpts").querySelectorAll(".opt").forEach(o => o.onclick = () => pickPreset(+o.dataset.i));
+  $("rFree").value = "";
+  $("corrWrap").hidden = act !== "correct";
+  if (act === "correct") {
+    const a = (queue[idx].messages || []).find(m => m.role === "assistant");
+    $("corrText").value = a ? a.content : "";
+  }
+}
+
+function pickPreset(i) {
+  selPreset = i;
+  $("rOpts").querySelectorAll(".opt").forEach(o => o.classList.toggle("sel", +o.dataset.i === i));
+}
+
+$("cancel").onclick = closeRationale;
+function closeRationale() { $("rationale").hidden = true; pending = null; selPreset = -1; }
+
+$("confirm").onclick = commit;
+function commit() {
+  if (!pending) return;
+  const free = $("rFree").value.trim();
+  const rationale = free || (selPreset >= 0 ? PRESETS[pending][selPreset] : "");
+  if (!rationale) { $("rTitle").innerHTML = `<span class="err">A reason is required.</span>`; return; }
+  const r = queue[idx];
+  const hash = hashes[r.record_id];
+  if (!hash) { alert("No manifest entry for " + r.record_id); return; }
+
+  const d = {
+    schema: SCHEMA, action: pending, record_id: r.record_id,
+    candidate_content_hash: hash, candidate_manifest_sha256: manifestSha,
+    reviewer_id: reviewer, rationale,
+    decided_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  };
+  // Shape rules from _validate_decision_shape: correction_messages ONLY for
+  // correct, rejection_reasons ONLY (and non-empty) for reject.
+  if (pending === "correct") {
+    const txt = $("corrText").value.trim();
+    if (!txt) { $("rTitle").innerHTML = `<span class="err">A corrected answer is required.</span>`; return; }
+    d.correction_messages = (r.messages || []).map(m =>
+      m.role === "assistant" ? { role: m.role, content: txt } : { role: m.role, content: m.content });
+  }
+  if (pending === "reject") d.rejection_reasons = [rationale];
+
+  decisions.set(r.record_id, d);
+  closeRationale();
+  idx++;
+  render();
+}
+
+$("skip").onclick = () => { if (idx < queue.length) { idx++; render(); } };
+$("undo").onclick = () => {
+  if (idx === 0) return;
+  idx--;
+  decisions.delete(queue[idx].record_id);
+  $("done").hidden = true; $("card").hidden = false; $("decide").hidden = false;
+  render();
+};
+
+function exportJsonl() {
+  if (!decisions.size) { alert("No decisions recorded yet."); return; }
+  const body = [...decisions.values()]
+    .map(d => JSON.stringify(d, Object.keys(d).sort())).join("\n") + "\n";
+  const url = URL.createObjectURL(new Blob([body], { type: "application/jsonl" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "decisions.jsonl"; a.click();
+  URL.revokeObjectURL(url);
+}
+$("export").onclick = exportJsonl;
+$("export2").onclick = exportJsonl;
+
+document.addEventListener("keydown", e => {
+  if ($("setup").hidden === false) return;
+  const typing = /^(TEXTAREA|INPUT)$/.test(e.target.tagName);
+  if (!$("rationale").hidden) {
+    if (e.key === "Escape") { closeRationale(); e.preventDefault(); return; }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !typing)) { commit(); e.preventDefault(); return; }
+    if (!typing && /^[1-9]$/.test(e.key)) {
+      const i = +e.key - 1;
+      if (i < PRESETS[pending].length) { pickPreset(i); e.preventDefault(); }
+      return;
+    }
+    return;
+  }
+  if (typing) return;
+  const k = e.key.toLowerCase();
+  if (k === "a") { openRationale("approve"); e.preventDefault(); }
+  else if (k === "c") { openRationale("correct"); e.preventDefault(); }
+  else if (k === "r") { openRationale("reject"); e.preventDefault(); }
+  else if (k === "h") { openRationale("hold_out"); e.preventDefault(); }
+  else if (k === "u") { $("undo").click(); e.preventDefault(); }
+  else if (e.key === "ArrowRight") { $("skip").click(); e.preventDefault(); }
+  else if (e.key === "ArrowLeft") { $("undo").click(); e.preventDefault(); }
+});
+</script>
+</body>
+</html>

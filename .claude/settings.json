@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruff check --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null; ruff format \"$CLAUDE_FILE_PATH\" 2>/dev/null; pyright \"$CLAUDE_FILE_PATH\" 2>/dev/null | tail -1; bash tools/review_hook.sh \"$CLAUDE_FILE_PATH\" 2>&1 || true"
+            "command": "ruff check --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null; ruff format \"$CLAUDE_FILE_PATH\" 2>/dev/null; pyright \"$CLAUDE_FILE_PATH\" 2>/dev/null | tail -1; bash tools/review_hook.sh \"$CLAUDE_FILE_PATH\" 2>&1 || true; (GITDIR=$(git rev-parse --git-common-dir 2>/dev/null || echo '.git') && mkdir -p \"${GITDIR}/claude-sessions\" 2>/dev/null && echo \"$CLAUDE_FILE_PATH\" | sort -u >> \"${GITDIR}/claude-sessions/${CLAUDE_CODE_SESSION_ID:-unknown}-touched-files\" 2>/dev/null) || true"
           }
         ]
       }
@@ -80,6 +80,26 @@
           {
             "type": "command",
             "command": "bash tools/hooks/prod-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash tools/hooks/rm-guard.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' 2>/dev/null || true); if [ -n \"$STAGED_PY\" ] && command -v ruff >/dev/null 2>&1; then ruff format --check --force-exclude $STAGED_PY >/tmp/mira-commit-format.log 2>&1 || echo 'heads up: staged Python file(s) are not ruff-formatted -- run: ruff format <file> (see /tmp/mira-commit-format.log)'; fi; STAGED=$(git diff --cached --name-only 2>/dev/null || true); NON_EXEMPT=$(printf '%s\\n' \"$STAGED\" | grep -vE '^(docs/|wiki/|VERSION$|LICENSE$|CHANGELOG|.*\\.(md|mdx|txt)$)' || true); if [ -n \"$NON_EXEMPT\" ] && [ -z \"$(git diff --cached --name-only -- VERSION 2>/dev/null || true)\" ]; then echo 'heads up: VERSION not bumped -- CI (version-gate.yml) requires a bump for code changes unless every staged file is docs/config-only (docs/versioning.md)'; fi; exit 0",
+            "timeout": 15,
+            "statusMessage": "Checking staged formatting + VERSION bump..."
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash tools/hooks/worktree-file-guard.sh"
           }
         ]
       }

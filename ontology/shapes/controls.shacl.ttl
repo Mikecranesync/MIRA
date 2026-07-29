@@ -1,0 +1,244 @@
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix mirash: <https://ontology.factorylm.com/mira/shapes#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://ontology.factorylm.com/mira/shapes/controls>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/shapes/controls/0.1.0> ;
+    rdfs:comment "Controls shapes: measurement completeness, bool/quantity, command-vs-feedback, registers, live-diagnosis eligibility, read-only policy." .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 1 — Measurement completeness
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:MeasurementCompletenessShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a mira:Observation ; mira:observed_signal ?sig .
+                ?sig a mira:MeasurementSignal .
+            }
+        """ ;
+    ] ;
+    rdfs:label "R1 measurement completeness" ;
+    rdfs:comment "A measurement observation a technician may act on must carry the full VQT+unit tuple. Targets only observations OF a MeasurementSignal — a bool status reading is not held to this bar." ;
+    sh:property [
+        sh:path mira:value ; sh:minCount 1 ;
+        sh:message "R1 measurement: observation {$this} has no value." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:quantity_kind ; sh:minCount 1 ; sh:class mira:QuantityKind ;
+        sh:message "R1 measurement: observation {$this} has no quantity_kind — a bare number is not a measurement (is 480 volts, hertz, or amps?)." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:unit ; sh:minCount 1 ; sh:datatype xsd:string ;
+        sh:message "R1 measurement: observation {$this} has no unit." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:event_timestamp ; sh:minCount 1 ; sh:datatype xsd:dateTime ;
+        sh:message "R1 measurement: observation {$this} has no event_timestamp." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:quality ; sh:minCount 1 ; sh:class mira:QualityState ;
+        sh:message "R1 measurement: observation {$this} has no quality — tag_events.quality is NOT NULL for exactly this reason." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:freshness ; sh:minCount 1 ; sh:class mira:FreshnessState ;
+        sh:message "R1 measurement: observation {$this} has no freshness state — without it a five-hour-old reading is indistinguishable from a live one." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:supported_by ; sh:minCount 1 ;
+        sh:message "R1 measurement: observation {$this} names no source. Every reading must identify where it came from." ; sh:severity sh:Violation ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 2 — Boolean / quantity mismatch
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:BooleanNotQuantityShape
+    a sh:NodeShape ;
+    sh:targetClass mira:MeasurementSignal ;
+    rdfs:label "R2 boolean is not a quantity" ;
+    sh:sparql [
+        sh:message "R2 bool/quantity: signal {$this} is classified as a MeasurementSignal (voltage/current/speed) but its observations carry value_type 'bool'. A one-bit contact state can never be an engineering measurement — this is the class of error that turns 'run contact closed' into 'speed = 1 Hz'." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                ?obs mira:observed_signal $this ; mira:value_type mira:valuetype_bool .
+            }
+        """ ;
+    ] .
+
+mirash:QuantityKindNeedsNonBoolShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Signal ;
+    rdfs:label "R2b quantity kind implies a numeric signal" ;
+    sh:sparql [
+        sh:message "R2b bool/quantity: signal {$this} declares a quantity_kind but is observed as value_type 'bool'. Drop the quantity_kind or fix the classification." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:quantity_kind ?qk .
+                ?obs mira:observed_signal $this ; mira:value_type mira:valuetype_bool .
+            }
+        """ ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 3 — Command is not feedback
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:CommandNotFeedbackShape
+    a sh:NodeShape ;
+    sh:targetClass mira:PhysicalStateClaim ;
+    rdfs:label "R3 command is not feedback" ;
+    rdfs:comment """The single most consequential rule in this file. 'Run command = 1' means the PLC
+ASKED for run. It does not mean the motor turned. A seized rotor, a tripped overload, a blown fuse
+and an open safety contactor all leave the command asserted and the shaft still. A claim about
+physical state supported ONLY by command-class observations is unsupported.""" ;
+    sh:sparql [
+        sh:message "R3 command≠feedback: claim {$this} asserts a physical state but every supporting observation is of a CommandSignal. A command proves intent, never occurrence — cite a FeedbackSignal (status/measurement) or withdraw the claim." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:supported_by ?obs .
+                ?obs mira:observed_signal ?sig .
+                ?sig a mira:CommandSignal .
+                FILTER NOT EXISTS {
+                    $this mira:supported_by ?fbObs .
+                    ?fbObs mira:observed_signal ?fbSig .
+                    ?fbSig a mira:FeedbackSignal .
+                }
+            }
+        """ ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 5 — Register interpretation
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:RegisterInterpretationShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT ?this WHERE { ?this a mira:Register ; mira:decodes ?sig . }
+        """ ;
+    ] ;
+    rdfs:label "R5 register needs datatype + scaling + unit" ;
+    rdfs:comment "Targets only registers actually USED as an engineering value (they `decodes` a signal). A register catalogued with addr=None and no decode is honest incompleteness, not a violation." ;
+    sh:property [
+        sh:path mira:datatype ; sh:minCount 1 ; sh:class mira:ValueType ;
+        sh:message "R5 register: {$this} is decoded to an engineering value but declares no datatype. A raw word read as signed vs unsigned differs by 65536." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:has_scaling ; sh:minCount 1 ; sh:class mira:ScalingRule ;
+        sh:message "R5 register: {$this} is decoded to an engineering value but has no ScalingRule. GS10 DC-bus raw 6000 is 600.0 V at scaling 0.01 — unscaled it reads as a ten-fold overvoltage that does not exist." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:unit ; sh:minCount 1 ;
+        sh:message "R5 register: {$this} is decoded to an engineering value but declares no unit." ; sh:severity sh:Violation ;
+    ] .
+
+mirash:ScalingRuleShape
+    a sh:NodeShape ;
+    sh:targetClass mira:ScalingRule ;
+    sh:property [
+        sh:path mira:scaling ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:decimal ;
+        sh:message "R5b scaling: ScalingRule {$this} carries no scaling multiplier." ; sh:severity sh:Violation ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 12 — Live diagnosis eligibility
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:LiveDiagnosisEligibilityShape
+    a sh:NodeShape ;
+    sh:targetClass mira:LiveDiagnosisClaim ;
+    rdfs:label "R12a live diagnosis needs fresh, healthy data" ;
+    sh:sparql [
+        sh:message "R12a live diagnosis: claim {$this} depends on live process data but rests on an observation whose quality is bad/stale/uncertain or whose freshness is stale. When comms are down MIRA must say so, not answer from the last good value." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:supported_by ?obs .
+                ?obs a mira:Observation .
+                { ?obs mira:quality ?q .
+                  FILTER(?q IN (mira:quality_bad, mira:quality_stale, mira:quality_uncertain)) }
+                UNION
+                { ?obs mira:freshness mira:freshness_stale }
+            }
+        """ ;
+    ] .
+
+mirash:StaleCommsNumericClaimShape
+    a sh:NodeShape ;
+    sh:targetClass mira:LiveDiagnosisClaim ;
+    rdfs:label "R12b no numeric claim over dead comms" ;
+    sh:sparql [
+        sh:message "R12b stale comms: claim {$this} reports a numeric drive value while the supporting measurement is not quality=good. A VFD that has stopped answering leaves its last register value in cache; reporting it as current invents data." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:supported_by ?obs .
+                ?obs mira:observed_signal ?sig .
+                ?sig a mira:MeasurementSignal .
+                FILTER NOT EXISTS { ?obs mira:quality mira:quality_good }
+            }
+        """ ;
+    ] .
+
+mirash:ClockProvenanceShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Observation ;
+    rdfs:label "R12c clock provenance" ;
+    rdfs:comment "tag_events carries TWO clocks: event_timestamp (device/gateway) and ingested_at (MIRA). An observation stamped only by MIRA's own clock must not present an event_timestamp — that would show a technician an ingest time as if it were the PLC's." ;
+    sh:sparql [
+        sh:message "R12c clock: observation {$this} declares clock_source 'ingest' (MIRA's own clock) yet carries an event_timestamp. Unavailable PLC clock data cannot be represented as an observed PLC timestamp." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:clock_source mira:clock_ingest ; mira:event_timestamp ?t .
+            }
+        """ ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 13 — Read-only policy is representable
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:ReadOnlyPolicyShape
+    a sh:NodeShape ;
+    sh:targetClass mira:ControlActionClaim ;
+    rdfs:label "R13 read-only policy" ;
+    rdfs:comment "MIRA is read-only troubleshooting intelligence; no control writes in beta. This shape makes the prohibition machine-checkable rather than doctrine-only." ;
+    sh:property [
+        sh:path mira:presents_action_as_permitted ;
+        sh:in ( false ) ;
+        sh:message "R13 read-only: claim {$this} presents a write/control action as currently permitted. MIRA is read-only for OT (.claude/rules/fieldbus-readonly.md) — a control action may be DESCRIBED, never offered as something MIRA can perform." ;
+        sh:severity sh:Violation ;
+    ] .
+
+mirash:WritableSignalShape
+    a sh:NodeShape ;
+    sh:targetClass mira:CommandSignal ;
+    rdfs:label "R13b command signals are read-only to MIRA" ;
+    sh:property [
+        sh:path mira:read_only ;
+        sh:not [ sh:in ( false ) ] ;
+        sh:message "R13b read-only: command signal {$this} is marked read_only=false, i.e. writable by MIRA. No customer-shipped MIRA surface opens a write path to a drive or PLC." ;
+        sh:severity sh:Violation ;
+    ] .

@@ -1,0 +1,22 @@
+--- a/mira-bots/shared/engine.py
++++ b/mira-bots/shared/engine.py
+@@ -1161,8 +1161,17 @@
+         UNS path (see .claude/rules/direct-connection-uns-certified.md). Default
+         None = a chat surface; the chat UNS gate applies unchanged. This marker
+         is recorded on ``state["context"]["uns_context"]["source"]`` and surfaced
+-        in the decision trace; it does NOT by itself alter gate firing (the full
+-        gate bypass is master-plan Phase 6).
++        in the decision trace. When set, this marker DOES cause
++        ``_should_fire_uns_gate`` to skip the chat confirmation gate (see
++        engine.py ~L5469) — the connection is the gate. What remains incomplete
++        is RESOLUTION-based certification: the Ignition surface stamps
++        ``direct_connection`` on the mere PRESENCE of an ``asset_id`` /
++        ``asset_context`` (ignition_chat.py:384), while the
++        ``asset_context -> (uns_path | equipment_id)`` resolver and the
++        ``ENFORCE_ASSET_AGENT_GATE`` belt-and-suspenders are still pending
++        (ignition_chat.py:254-259, default-off). Until they land, a
++        present-but-unresolvable identifier skips the gate on the HMAC-gated
++        Ignition surface only (master-plan Phase 6 hardening).
+ 
+         ``live_tags`` (optional) is a raw read-only PLC/VFD tag dict. It is
+         attached to the message ONLY after the UNS confirmation gate has passed

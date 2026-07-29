@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "case_id": "25",
+  "category_scores": {
+    "classification_answerability": 9,
+    "component_label_recognition": 12,
+    "power_control_flow": 10,
+    "sequence_interlocks_logic": 8,
+    "evidence_grounding_unsupported_claims": 19,
+    "technician_usefulness_clarity": 8
+  },
+  "total": 66,
+  "deductions": [
+    {
+      "claim": "This appears to be a standard connection diagram for a Yaskawa V1000 AC drive.",
+      "evidence": "Correct classification (header reads '3.1 Standard Connection Diagram', drive labeled 'V1000', figure caption 'Figure 3.1 Drive Standard Connection Diagram'), but the response never states that the print is fully legible/high-resolution and therefore sufficient to support a complete, confident answer — it just proceeds to answer without an explicit sufficiency judgment.",
+      "category": "classification_answerability",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Explicitly note that the diagram is a clean, fully legible vendor line drawing with all terminal labels readable, and therefore sufficient for a complete theory-of-operation answer.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Main visible components include: power supply, motor/fan, DC reactor, thermal relay, braking resistor, digital I/O, analog monitor output, MEMOBUS/Modbus (omission of the safety circuit)",
+      "evidence": "The drawing has a clearly labeled dashed box reading 'Safety switch', 'Safe Disable Input', a 'Jumper', and terminals 'HC'/'H1' (callout <7>) — a hardware safety interlock on the drive. This is not mentioned anywhere in the response's component list or theory of operation.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "List the Safe Disable Input / safety switch circuit (HC, H1, jumper) as a visible component and note its role as a hardware enable/disable interlock.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Main visible components include: power supply, motor/fan, DC reactor, thermal relay, braking resistor, digital I/O, analog monitor output, MEMOBUS/Modbus (omission of protective switchgear/relay logic)",
+      "evidence": "The lower-left ladder-logic inset clearly shows '1 MCCB', '2 MCCB', 'MC' contactor, 'THRX' thermal relay ('Thermal relay for motor cooling fan'), a 'Fault relay' with 'TRX'/'SA'/'MA' contacts, and OFF/ON pushbuttons — none of which appear in the response's component list.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Identify the MCCBs, the MC line contactor, THRX cooling-fan thermal relay, and the auxiliary fault-relay ladder logic shown in the lower-left inset.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Digital inputs and outputs / Analog monitor output / MEMOBUS/Modbus communication (bundled, generic)",
+      "evidence": "The print individually labels DIP switches S1 (sink/source), S2 (termination resistor), and S3 (input logic); the RS-485/422 terminals R+/R-/S+/S-/IG; pulse train I/O (RP input, MP output); and the fault-relay contacts MA/MB/MC specifically — the response never names any of these specific terminals, only a generic 'digital inputs and outputs' bullet.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Name the specific I/O terminal groups visible (DIP switches S1-S3, R+/R-/S+/S-/IG comm terminals, RP/MP pulse train I/O, MA/MB/MC fault relay) rather than a single generic bullet.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Power is supplied to the drive through the main circuit terminals. The drive controls the motor through the U, V, and W terminals.",
+      "evidence": "The main circuit clearly shows a DC bus with '+1'/'+2'/'⊖'/'B1'/'B2' terminals and a 'Braking resistor (option)' connected across B1/B2 — the DC-bus/dynamic-braking path is visible but never explained.",
+      "category": "power_control_flow",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Explain that the DC bus terminals (+1, +2, B1, B2) carry rectified DC and that the optional braking resistor dissipates regenerative energy across B1/B2 during deceleration.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Digital inputs (S1-S7) control the drive's operation... (no mention of control power)",
+      "evidence": "The print explicitly labels a control-power source '+24V 8mA 24V' feeding the digital inputs via SC, with a Sink/Source selector on DIP switch S3 — this enabling condition for the digital inputs is fully visible but never mentioned.",
+      "category": "power_control_flow",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Explain that the 24V control-power supply (with sink/source selectable via DIP switch S3) is what energizes the S1-S7 digital inputs, and is a precondition for those inputs to register a command.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Digital output ... (bundled, no explanation of output logic)",
+      "evidence": "The print labels distinct outputs with explicit trigger conditions: 'MA/MB/MC ... Fault' relay output, 'P1 ... During Run (photocoupler 1)', 'P2 ... Frequency agree (photocoupler 2)', and 'AM ... Analog monitor output' — none of these specific output/trigger relationships are explained in the response.",
+      "category": "power_control_flow",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Explain each labeled output and its trigger condition: MA/MB/MC energizes on a fault, P1 asserts during run, P2 asserts on frequency agreement, AM outputs an analog speed/frequency signal.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The following sequence of operation... (no interlock discussion)",
+      "evidence": "The lower-left ladder logic explicitly ties 1 MCCB/2 MCCB, MC contactor, and THRX thermal relay together with OFF/ON pushbuttons and a fault relay (TRX/SA/MA) — a visible hardware interlock chain for the cooling-fan motor circuit that the response never describes.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Describe the cooling-fan protection interlock: MC contactor is held in by the ON pushbutton/seal-in contact and drops out on a THRX thermal-overload trip, which also energizes the fault relay.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The following sequence of operation... (no mention of the Safe Disable interlock)",
+      "evidence": "The 'Safety switch' / 'Safe Disable Input' block (HC/H1, jumper) is a hardware permissive that gates whether the drive can run — this is a directly visible interlock element entirely absent from the response's sequence/logic discussion.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "State that the Safe Disable Input (HC/H1) is a hardware permissive/interlock — the jumper must be present (or the safety switch closed) for the drive to be enabled to run.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Digital inputs (S1-S7) control the drive's operation, including forward and reverse run/stop, external fault, fault reset, and multi-step speed control",
+      "evidence": "This correctly matches the visible mapping (S1 Forward run/stop, S2 Reverse run/stop, S3 External fault, S4 Fault reset, S5/S6 Multi-step speed, S7 Jog reference) but the response does not describe the operating sequence itself (e.g., that an external-fault input on S3 or a latched fault must be cleared via S4 before a run command on S1/S2 will be accepted).",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Add a brief sequence statement: a run command on S1/S2 is only accepted if no fault is latched; S3 forces an external fault; S4 clears a latched fault before run can resume.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(omission) no discussion of the fault-output relay's energization state",
+      "evidence": "The 'MA/MB/MC ... Fault' output is a labeled digital output but its normally-open/normally-closed / energize-on-fault vs de-energize-on-fault behavior is not printed on this page and cannot be confirmed from the visible evidence alone.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Mention the MA/MB/MC fault relay output exists and drives an external fault indication/interlock, while noting its specific NO/NC wiring cannot be confirmed from this page alone.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the image.",
+      "evidence": "This is a reasonable read of a clean, high-resolution vendor line drawing (all major labels are legible), but several small annotations (e.g., relay contact designators 'SA', DIP-switch position markings, the termination-resistor value '120 Ω, 1/2 W') are small enough that a technician working from a lower-quality copy could find them ambiguous; the blanket statement doesn't acknowledge that nuance.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Qualify the legibility statement slightly, e.g. 'all major labels are legible; a few small relay/DIP annotations may be hard to read depending on print/scan quality.'",
+      "confidence": "low"
+    },
+    {
+      "claim": "Overall response structure (headers, bullet lists) walking through what/components/theory/preconditions/failure modes/unclear items",
+      "evidence": "The walkthrough almost never references the print's actual terminal designators (S1-S7, MA/MB/MC, R/L1-S/L2-T/L3, U/T1-V/T2-W/T3, P1/P2/PC) beyond a single generic sentence, which limits how directly a technician could follow the explanation against the physical terminal strip.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Reference the actual terminal/tag names throughout (not just in one sentence) so a technician can trace the explanation directly onto the physical drive terminals.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "This print is an unusually clean, fully legible OEM vendor line diagram (Yaskawa V1000 standard connection diagram) with dense, explicit terminal labeling. The candidate correctly classifies the drawing and lists most major optional components without inventing anything not visible (no hard-failure triggers). Its main weakness is breadth/depth, not accuracy: it omits several clearly labeled, functionally important elements (the Safe Disable Input/safety-switch interlock, the MCCB/MC/THRX cooling-fan protection ladder logic, the DC-bus braking path, the 24V control-power source, and the specific MA/MB/MC and P1/P2 output trigger conditions), and its 'sequence of operation' section largely restates the S1-S7 input labels rather than explaining actual interlocks/permissives. All deductions are for missing/underexplained visible evidence, not fabricated claims."
+}

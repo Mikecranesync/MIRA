@@ -1,0 +1,25 @@
+{
+  "test_id": "schneider-atv340-vfd",
+  "source_url": "https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&p_Doc_Ref=NVE97896",
+  "publisher": "Schneider Electric",
+  "title": "Altivar Machine ATV340 Wiring Diagrams (NVE97896)",
+  "sheet": "Wiring diagram section (p. 3-5)",
+  "equipment_type": "Variable frequency drive (VFD)",
+  "standard": "IEC 61800-5-1",
+  "category": "vfd",
+  "why_selected": "Schneider ATV340 VFD: mains input (S1/S2/S3 variants), motor output, STO_A/STO_B safety, DI1-DI5, AI1-AI3/AQ1 analog, R1/R2 relays, DQ1/DQ2, encoder, Modbus/Sercos \u2014 a dense IEC drive to cross-check against the NEMA GS20. Page 0 verified by render 2026-07-13 as the wiring sheet (1/2). Caption chosen to satisfy the production is_print_question() gate (an initial 'Explain the power and control wiring\u2026' phrasing is gate-rejected). Publicly published instruction sheet on download.schneider-electric.com; provenance verified 2026-07-10.",
+  "access_date_utc": "2026-07-13T20:51:54Z",
+  "original_sha256": "5d8d99b51ecee2eb5e8f085552c3e4b72f0b63295497b88aa7978135ee204785",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&p_Doc_Ref=NVE97896",
+    "final_url": "https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&p_Doc_Ref=NVE97896",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 170468,
+    "host": "download.schneider-electric.com"
+  },
+  "license_note": "Publicly published OEM literature; ownership retained by Schneider Electric; retained only for read-only interpreter testing."
+}

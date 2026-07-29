@@ -1,0 +1,13 @@
+{
+  "case_id": "07",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\07.png",
+  "oem": "AutomationDirect",
+  "document": "SR44 Soft Starter User Manual (SFT44...)",
+  "source_url": "cdn.automationdirect.com/static/manuals/softstartersr44/ch2.pdf",
+  "page": 9,
+  "category": "NEMA Starters",
+  "standard": "NEMA industrial",
+  "question": "Describe the theory of operation.",
+  "candidate_response": "## **1. What this appears to be**\nThis appears to be a wiring diagram for a motor reversing circuit, specifically showing the power and contactor control circuits for motor reversing.\n\n## **2. Main visible components**\n- The diagram shows a control supply circuit and a power circuit.\n- The control supply circuit includes:\n  - E-stop\n  - Off-enable\n  - Stop\n  - Forward and reverse buttons\n  - SR44 control supply card\n  - SR44 electronic control card\n- The power circuit includes:\n  - Mains supply (L1, L2, L3)\n  - Feeder cables\n  - Isolation and protection switch-gear (provided by the customer)\n  - Mechanical interlock\n  - Forward contactor (C1)\n  - Reversing contactor (C2)\n  - Induction motor\n\n## **3. Plain-English theory of operation**\n- The start button, once pressed, appears to energize the motor starter coil provided the e-stop is released and the control voltage switch is set properly.\n- The circuit allows for motor reversing using forward and reverse buttons.\n- The mechanical interlock prevents both forward and reverse contactors from being energized simultaneously.\n\n## **4. What must be true for it to work**\n- The control voltage switch must be set to the proper control voltage (115VAC or 230VAC).\n- The e-stop must be released.\n- The off-enable switch must be in the enable position.\n\n## **5. What would stop it from working**\n- E-stop engaged\n- Control voltage switch not set properly\n- Mechanical interlock failure\n- Failure of either the forward or reversing contactor\n\n## **6. Unclear or unreadable items**\n- Nothing major appears to be unreadable.",
+  "context_notes": "This candidate had NO OCR text extracted — it was grounded on the image only (ocr_grounding='unavailable_on_this_box'). Judge whether it correctly separates what is visibly readable from inference accordingly: do not penalize it for declining to cite a specific tag/wire-number string it could not have OCR'd, but do penalize it under evidence_grounding_unsupported_claims if it invents a specific tag/wire-number/label that is not actually legible in the image."
+}

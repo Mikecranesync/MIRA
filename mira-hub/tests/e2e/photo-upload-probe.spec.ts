@@ -4,8 +4,6 @@
  * end-to-end. Assumes the hub is live at app.factorylm.com.
  */
 import { test, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 
 const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 

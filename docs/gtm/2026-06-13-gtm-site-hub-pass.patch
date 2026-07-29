@@ -1,0 +1,574 @@
+diff --git a/mira-hub/src/app/signup/page.tsx b/mira-hub/src/app/signup/page.tsx
+index 999e1da9..5987d260 100644
+--- a/mira-hub/src/app/signup/page.tsx
++++ b/mira-hub/src/app/signup/page.tsx
+@@ -86,7 +86,13 @@ export default function SignupPage() {
+             <Factory className="w-8 h-8 text-white" />
+           </div>
+           <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
+-          <p className="text-slate-400 text-sm mt-1">Create your account</p>
++          <p className="text-slate-400 text-sm mt-1">Create your workspace to:</p>
++          <ul className="mt-3 space-y-1.5 text-sm text-slate-300">
++            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Build your namespace — first site &amp; line</li>
++            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Ask MIRA a fault-code question, get a cited answer</li>
++            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Answers cite our OEM manual library — not guesses</li>
++          </ul>
++          <p className="text-slate-500 text-xs mt-3">No credit card.</p>
+         </div>
+ 
+         <div
+@@ -204,6 +210,14 @@ export default function SignupPage() {
+             </Link>
+           </p>
+         </div>
++
++        <p className="text-center text-sm text-slate-400 mt-4">
++          Want to try first?{" "}
++          <Link href="/quickstart" className="text-blue-400 hover:text-blue-300 font-medium">
++            Ask a sample question
++          </Link>{" "}
++          — no signup.
++        </p>
+       </div>
+     </div>
+   );
+diff --git a/mira-web/public/buy.html b/mira-web/public/buy.html
+index 91b7091e..a87941cf 100644
+--- a/mira-web/public/buy.html
++++ b/mira-web/public/buy.html
+@@ -228,8 +228,9 @@
+           <a href="/api/checkout/session?plan=assessment&amp;src=buy"
+              class="cta cta-primary"
+              data-cta="buy-assessment">
+-            Book Your Assessment — $500 →
++            Book Assessment — $500 →
+           </a>
++          <a href="/pricing#sample-assessment" class="card-link" data-cta="buy-assessment-sample" style="display:block;margin-top:10px;font-size:13px;color:var(--text-dim);text-decoration:underline;">See a sample report →</a>
+         </article>
+ 
+         <!-- Pilot -->
+@@ -244,11 +245,12 @@
+             <li>MIRA deployed on the pilot line</li>
+             <li>Before/after namespace report</li>
+           </ul>
+-          <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Pilot%20inquiry"
++          <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Pilot%20scope%20request"
+              class="cta cta-secondary"
+              data-cta="buy-pilot">
+-            Talk to Mike about a Pilot →
++            Request pilot scope →
+           </a>
++          <a href="/pricing#pilot-deliverables" class="card-link" data-cta="buy-pilot-includes" style="display:block;margin-top:10px;font-size:13px;color:var(--text-dim);text-decoration:underline;">What a pilot includes →</a>
+         </article>
+ 
+         <!-- Operating Layer -->
+@@ -263,10 +265,10 @@
+             <li>Continuous structuring as assets come online</li>
+             <li>Quarterly namespace quality audit</li>
+           </ul>
+-          <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Operating%20Layer%20inquiry"
++          <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Operating%20Layer%20%E2%80%94%20plant%20fit"
+              class="cta cta-secondary"
+              data-cta="buy-operating">
+-            Talk to Mike about Operating Layer →
++            Check plant fit →
+           </a>
+         </article>
+ 
+@@ -281,10 +283,10 @@
+             <li>SSO / SAML</li>
+             <li>SLA + named support</li>
+           </ul>
+-          <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Enterprise%20inquiry"
++          <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Enterprise%20deployment"
+              class="cta cta-secondary"
+              data-cta="buy-enterprise">
+-            Talk to Mike →
++            Talk enterprise deployment →
+           </a>
+         </article>
+ 
+diff --git a/mira-web/public/pricing.html b/mira-web/public/pricing.html
+index 98d1f68e..cfd71d7a 100644
+--- a/mira-web/public/pricing.html
++++ b/mira-web/public/pricing.html
+@@ -364,8 +364,8 @@
+               <li>Written report with prioritized roadmap</li>
+               <li>No software demo, no upsell</li>
+             </ul>
+-            <a href="/buy" class="card-cta card-cta-primary" data-cta="pricing-assessment">Book Your Assessment →</a>
+-            <p class="card-footnote">Limited slots — Central Florida onsite or remote anywhere</p>
++            <a href="/buy" class="card-cta card-cta-primary" data-cta="pricing-assessment">Book Assessment — $500 →</a>
++            <p class="card-footnote">Limited slots — Central Florida onsite or remote anywhere · <a href="#sample-assessment" data-cta="pricing-assessment-sample">See a sample report →</a></p>
+           </div>
+ 
+           <!-- Pilot -->
+@@ -381,8 +381,8 @@
+               <li>Before/after namespace report</li>
+               <li>Direct line to Mike + the team</li>
+             </ul>
+-            <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Pilot%20inquiry" class="card-cta card-cta-ghost" data-cta="pricing-pilot">Talk to Mike →</a>
+-            <p class="card-footnote">Scoped to one line / one cell during pilot</p>
++            <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Pilot%20scope%20request" class="card-cta card-cta-ghost" data-cta="pricing-pilot">Request pilot scope →</a>
++            <p class="card-footnote">Scoped to one line / one cell during pilot · <a href="#pilot-deliverables" data-cta="pricing-pilot-includes">What a pilot includes →</a></p>
+           </div>
+ 
+           <!-- Operating Layer -->
+@@ -398,7 +398,7 @@
+               <li>Quarterly namespace quality audit</li>
+               <li>14-day money-back guarantee</li>
+             </ul>
+-            <a href="/buy" class="card-cta card-cta-ghost" data-cta="pricing-operating">Subscribe →</a>
++            <a href="/buy" class="card-cta card-cta-ghost" data-cta="pricing-operating">Check plant fit →</a>
+             <p class="card-footnote">Recommended after a Pilot, or for plants already well-structured</p>
+           </div>
+ 
+@@ -406,6 +406,47 @@
+       </div>
+     </section>
+ 
++    <!-- What a pilot delivers (30/60/90) — anchor target from buy/pricing CTAs.
++         TODO: promote to a standalone /pilot page with a real before/after case study once one ships. -->
++    <section class="comparison" id="pilot-deliverables">
++      <div class="inner">
++        <h2>What a pilot delivers</h2>
++        <p>A pilot structures one line and stands MIRA up on it. Here's the shape of the work — scope, not promised metrics.</p>
++        <div class="comp-table" style="max-width:760px;">
++          <div class="comp-row header">
++            <div class="comp-cell">By day 30</div>
++            <div class="comp-cell">By day 60</div>
++            <div class="comp-cell">By day 90</div>
++          </div>
++          <div class="comp-row" style="grid-template-columns:1fr 1fr 1fr;text-align:left;">
++            <div class="comp-cell" style="text-align:left;">One line mapped · 20–50 assets structured · manuals bound to top assets · first cited fault-code answers live</div>
++            <div class="comp-cell" style="text-align:left;">PM candidates extracted from OEM manuals · fault history captured · CMMS write-back tested</div>
++            <div class="comp-cell" style="text-align:left;">Technician workflow live (Slack / Telegram / web) · namespace quality report · go / no-go rollout plan</div>
++          </div>
++        </div>
++        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">Exact scope is set in your assessment. <a href="/buy" data-cta="pilot-deliverables-book" style="color:var(--amber);text-decoration:underline;">Request a pilot scope →</a></p>
++      </div>
++    </section>
++
++    <!-- Sample assessment report — anchor target from buy/pricing CTAs.
++         TODO: replace the email CTA with a downloadable redacted sample PDF once one is produced. -->
++    <section class="comparison" id="sample-assessment">
++      <div class="inner">
++        <h2>What's in the assessment report</h2>
++        <p>The $500 assessment ends in a written report. Every section is evidence from your floor — no generic template.</p>
++        <div class="comp-table" style="max-width:560px;text-align:left;">
++          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Maintenance AI Readiness score</div></div>
++          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Asset hierarchy quality</div></div>
++          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Manual &amp; document coverage</div></div>
++          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">PLC tag hygiene</div></div>
++          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">CMMS hygiene</div></div>
++          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Top 5 gaps, prioritized</div></div>
++          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">30-day roadmap + pilot recommendation</div></div>
++        </div>
++        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">Want to see a sample before you book? Email <a href="mailto:mike@factorylm.com?subject=Sample%20assessment%20report" style="color:var(--amber);text-decoration:underline;">mike@factorylm.com</a> · <a href="/assess" data-cta="sample-assessment-scorecard" style="color:var(--amber);text-decoration:underline;">Take the free readiness scorecard →</a></p>
++      </div>
++    </section>
++
+     <!-- Why this stack, not seat-licensed SaaS -->
+     <section class="comparison">
+       <div class="inner">
+diff --git a/mira-web/src/views/__tests__/home.test.ts b/mira-web/src/views/__tests__/home.test.ts
+index e0b44bd4..17a06766 100644
+--- a/mira-web/src/views/__tests__/home.test.ts
++++ b/mira-web/src/views/__tests__/home.test.ts
+@@ -1,27 +1,38 @@
+ import { describe, expect, test } from "bun:test";
+ import { renderHome } from "../home.js";
+ 
+-describe("#SO-100 renderHome — homepage refactor acceptance", () => {
++// Re-baselined 2026-06-13 for the assessment-led "Maintenance Knowledge
++// Layer" homepage. The prior assertions described a superseded "AI
++// Workspace / Projects" design (Asset/Crew/Investigation cards, ChatGPT
++// Projects compare, $97/$497 pricing) and had been failing for some time.
++// This suite now locks the live page + the assessment-led CTA spine.
++
++describe("renderHome — assessment-led homepage", () => {
+   const html = renderHome("https://factorylm.com/");
+ 
+-  test("AC1: hero L1 message — H1 'FactoryLM', H2 workspace tagline, H3 MIRA", () => {
++  test("hero: H1 'FactoryLM', concrete-outcome H2, 'no CMMS rebuild' H3", () => {
+     expect(html).toContain('id="fl-hero-h1"');
+     expect(html).toMatch(/<h1[^>]*>FactoryLM<\/h1>/);
+-    expect(html).toMatch(/<h2[^>]*>Compound-interest knowledge for industrial maintenance\.<\/h2>/);
+-    expect(html).toMatch(/Meet <strong>MIRA<\/strong>/);
+-    expect(html).toMatch(/Manuals, sensors, photos, work orders, investigations/);
++    expect(html).toMatch(
++      /<h2[^>]*>Cited troubleshooting answers from your manuals, assets, and fault history\.<\/h2>/
++    );
++    expect(html).toMatch(/<h3[^>]*>Without rebuilding your CMMS\.<\/h3>/);
++    // Namespace positioning kept as support copy, not the headline.
++    expect(html).toContain("Maintenance Intelligence Namespace");
+   });
+ 
+-  test("AC1: primary CTA links to /cmms; secondary links to /pricing", () => {
++  test("hero CTAs: primary = Book $500 Assessment (/buy); secondary = sample MIRA answer (/quickstart)", () => {
+     expect(html).toMatch(
+-      /<a href="\/cmms"[^>]*class="fl-btn fl-btn-primary"[^>]*data-cta="hero-primary"[^>]*>Start Free — magic link<\/a>/
++      /<a href="\/buy"[^>]*class="fl-btn fl-btn-primary"[^>]*data-cta="hero-assessment"[^>]*>Book \$500 Assessment<\/a>/
+     );
+     expect(html).toMatch(
+-      /<a href="\/pricing"[^>]*class="fl-btn fl-btn-ghost"[^>]*data-cta="hero-secondary"[^>]*>See pricing →<\/a>/
++      /<a href="https:\/\/app\.factorylm\.com\/quickstart"[^>]*class="fl-btn fl-btn-ghost"[^>]*data-cta="hero-demo"[^>]*>Try a sample MIRA answer<\/a>/
+     );
++    // Sign-in is for existing customers only, demoted to the foot line.
++    expect(html).toContain('data-cta="hero-signin"');
+   });
+ 
+-  test("AC2: trust band with eyebrow + 8 OEM logos", () => {
++  test("trust band with eyebrow + 8 OEM logos", () => {
+     expect(html).toContain('class="fl-trust-band"');
+     expect(html).toContain("68,000+ chunks of OEM documentation indexed");
+     for (const oem of [
+@@ -38,25 +49,33 @@ describe("#SO-100 renderHome — homepage refactor acceptance", () => {
+     }
+   });
+ 
+-  test("AC3: 3-card row for Asset / Crew / Investigation Projects", () => {
++  test("3-card offer row — Assessment / Pilot / Operating Layer", () => {
+     expect(html).toContain('class="fl-project-row"');
+-    expect(html).toContain('aria-label="Asset Project"');
+-    expect(html).toContain('aria-label="Crew Project"');
+-    expect(html).toContain('aria-label="Investigation Project"');
++    expect(html).toContain('aria-label="Assessment"');
++    expect(html).toContain('aria-label="Pilot"');
++    expect(html).toContain('aria-label="Operating Layer"');
+   });
+ 
+-  test("AC4: single compareBlock — MIRA vs ChatGPT Projects", () => {
++  test("single compareBlock — generic AI vs MIRA on a namespace", () => {
+     expect(html).toContain('class="fl-compare"');
+-    expect(html).toContain("ChatGPT Projects");
+-    expect(html).toContain("MIRA");
++    expect(html).toContain("Generic AI");
+     expect(html).toContain("PowerFlex 755");
++    expect(html).toContain("F005");
+     const compareCount = (html.match(/class="fl-compare"/g) || []).length;
+     expect(compareCount).toBe(1);
+   });
+ 
+-  test("AC4b: cartoon row — three feature demos with mount IDs the script targets", () => {
++  test("how-it-works strip — linear scan→bind→map→ask→cite→draft", () => {
++    expect(html).toContain('id="fl-how-h"');
++    expect(html).toContain("How it works.");
++    expect(html).toContain("Scan assets");
++    expect(html).toContain("MIRA cites the source");
++    expect(html).toContain("Draft PMs");
++  });
++
++  test("cartoon row — three feature demos with mount IDs the script targets", () => {
+     expect(html).toContain('id="fl-cartoons-h"');
+-    expect(html).toContain("What MIRA does on the floor.");
++    expect(html).toContain("What we structure during a pilot.");
+     expect(html).toContain('id="cartoon-fd"');
+     expect(html).toContain('id="cartoon-cmms"');
+     expect(html).toContain('id="cartoon-vv"');
+@@ -64,7 +83,7 @@ describe("#SO-100 renderHome — homepage refactor acceptance", () => {
+     expect(html).toContain('<script src="/feature-cartoons.js" defer></script>');
+   });
+ 
+-  test("AC5: feature strip — 4 state badges + stop card", () => {
++  test("feature strip — 4 state badges + stop card", () => {
+     expect(html).toContain('class="fl-state fl-state-indexed"');
+     expect(html).toContain('class="fl-state fl-state-partial"');
+     expect(html).toContain('class="fl-state fl-state-failed"');
+@@ -73,42 +92,44 @@ describe("#SO-100 renderHome — homepage refactor acceptance", () => {
+     expect(html).toContain('role="alert"');
+   });
+ 
+-  test("AC6: pricing teaser links to /pricing", () => {
++  test("buyer-fit section — Built for / Not the right fit", () => {
++    expect(html).toContain('id="fl-fit-h"');
++    expect(html).toContain("Who it's for.");
++    expect(html).toContain("Built for");
++    expect(html).toContain("Not the right fit");
++    expect(html).toContain("standalone CMMS replacement");
++  });
++
++  test("pricing teaser leads with the $500 assessment → /buy", () => {
+     expect(html).toContain("fl-pricing-teaser");
+-    expect(html).toContain("$97/mo per plant");
+-    expect(html).toContain("$497/mo");
+-    expect(html).toMatch(/href="\/pricing"[^>]*data-cta="pricing-teaser-primary"/);
++    expect(html).toContain("$500 assessment");
++    expect(html).toMatch(/href="\/buy"[^>]*data-cta="pricing-teaser-primary"/);
+   });
+ 
+-  test("AC7: footer with /trust, /privacy, /terms (limitations disabled until page exists)", () => {
+-    // /limitations page not yet built — link uses href="#" with aria-disabled until the page exists
++  test("footer with /limitations, /trust, /privacy, /terms", () => {
+     expect(html).toContain('data-cta="footer-limitations"');
+-    expect(html).toContain('href="/trust"');
+-    expect(html).toContain('href="/privacy"');
+-    expect(html).toContain('href="/terms"');
++    expect(html).toMatch(/href="[^"]*\/trust"/);
++    expect(html).toMatch(/href="[^"]*\/privacy"/);
++    expect(html).toMatch(/href="[^"]*\/terms"/);
+   });
+ 
+-  test("AC8: sun-readable toggle is visible in DOM", () => {
++  test("sun-readable toggle is visible in DOM", () => {
+     expect(html).toContain('id="fl-sun-toggle"');
+     expect(html).toContain('class="fl-sun-toggle"');
+     expect(html).toContain("Sun-readable");
+     expect(html).toContain('<script src="/sun-toggle.js"></script>');
+   });
+ 
+-  test("AC9: every CTA carries a data-cta attribute (PostHog tracking)", () => {
++  test("every CTA carries a data-cta attribute (PostHog tracking)", () => {
+     const ctaAttrs = html.match(/data-cta="[^"]+"/g) ?? [];
+     expect(ctaAttrs.length).toBeGreaterThanOrEqual(8);
+-    expect(html).toContain('data-cta="hero-primary"');
+-    expect(html).toContain('data-cta="hero-secondary"');
++    expect(html).toContain('data-cta="hero-assessment"');
++    expect(html).toContain('data-cta="hero-demo"');
+     expect(html).toContain('data-cta="nav-cmms"');
+     expect(html).toContain('data-cta="footer-privacy"');
+   });
+ 
+-  test("AC9: posthog-init.js is referenced in head", () => {
+-    expect(html).toContain('<script src="/posthog-init.js"></script>');
+-  });
+-
+-  test("AC10: JSON-LD includes Organization, WebSite, and Person (Mike Harper)", () => {
++  test("JSON-LD includes Organization, WebSite, and Person (Mike Harper)", () => {
+     const jsonLdMatch = html.match(
+       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/
+     );
+@@ -146,17 +167,16 @@ describe("#SO-100 renderHome — homepage refactor acceptance", () => {
+ 
+   test("SEO: title, meta description, canonical match spec", () => {
+     expect(html).toContain(
+-      "<title>FactoryLM — AI Workspace for Industrial Maintenance</title>"
+-    );
+-    expect(html).toMatch(
+-      /<meta name="description" content="Manuals, sensors, photos, work orders[^"]+"/
++      "<title>FactoryLM — Maintenance Digital Transformation</title>"
+     );
++    expect(html).toMatch(/<meta name="description" content="[^"]+"/);
+     expect(html).toContain('<link rel="canonical" href="https://factorylm.com/">');
+   });
+ 
+-  test("Tokens + components stylesheets are linked", () => {
++  test("token, component, and dark-theme stylesheets are linked", () => {
+     expect(html).toContain('href="/_tokens.css"');
+     expect(html).toContain('href="/_components.css"');
++    expect(html).toContain('href="/_dark-theme.css"');
+   });
+ 
+   test("Document is well-formed HTML5", () => {
+diff --git a/mira-web/src/views/_topbar.ts b/mira-web/src/views/_topbar.ts
+index 6b508e7b..dbd13cea 100644
+--- a/mira-web/src/views/_topbar.ts
++++ b/mira-web/src/views/_topbar.ts
+@@ -65,7 +65,7 @@ export function navbar(opts: TopbarOpts = {}): string {
+   </nav>
+   <div class="fl-topbar-cta">
+     ${btnGhost("Sign in", { href: `${APEX}/cmms`, cta: signinCta })}
+-    ${btnPrimary("Get Started", { href: `${APEX}/buy`, cta: buyCta })}
++    ${btnPrimary("Book $500 Assessment", { href: `${APEX}/buy`, cta: buyCta })}
+   </div>
+ </header>`;
+ }
+diff --git a/mira-web/src/views/home.ts b/mira-web/src/views/home.ts
+index f4282f4e..6d5cb13d 100644
+--- a/mira-web/src/views/home.ts
++++ b/mira-web/src/views/home.ts
+@@ -90,16 +90,16 @@ const ORG_AND_SITE_LD = {
+ function hero(): string {
+   return `<section class="fl-hero" aria-labelledby="fl-hero-h1">
+   <div class="fl-hero-inner">
+-    <p class="fl-hero-eyebrow">Maintenance Digital Transformation</p>
++    <p class="fl-hero-eyebrow">The Maintenance Knowledge Layer</p>
+     <h1 id="fl-hero-h1" class="fl-hero-h1">FactoryLM</h1>
+-    <h2 class="fl-hero-h2">Turn your maintenance reality into AI-ready infrastructure.</h2>
+-    <h3 class="fl-hero-h3">Then <strong>MIRA</strong> makes it actionable.</h3>
+-    <p class="fl-hero-sub">Your manuals are in filing cabinets. Your fault history is in someone's head. Your PLC tags don't match your asset names. AI can't help until that's structured. We do the structuring — then MIRA runs on top.</p>
++    <h2 class="fl-hero-h2">Cited troubleshooting answers from your manuals, assets, and fault history.</h2>
++    <h3 class="fl-hero-h3">Without rebuilding your CMMS.</h3>
++    <p class="fl-hero-sub">Your manuals are in filing cabinets. Your fault history is in someone's head. Your PLC tags don't match your asset names — so generic AI guesses. We structure all of it into a Maintenance Intelligence Namespace — the AI-ready infrastructure <strong>MIRA</strong> runs on — then MIRA answers technicians with citations.</p>
+     <div class="fl-hero-cta">
+-      ${btnPrimary("Try MIRA Free →", { href: "/signup", cta: "hero-signup" })}
+-      ${btnGhost("Book a demo", { href: "/buy", cta: "hero-buy-secondary" })}
++      ${btnPrimary("Book $500 Assessment", { href: "/buy", cta: "hero-assessment" })}
++      ${btnGhost("Try a sample MIRA answer", { href: "https://app.factorylm.com/quickstart", cta: "hero-demo" })}
+     </div>
+-    <p class="fl-hero-cta-foot">7-day free trial, no credit card. Or book a $500 in-person assessment and skip the trial.</p>
++    <p class="fl-hero-cta-foot">Most plants start with the $500 on-site assessment — you leave with a written gap report and a namespace blueprint. Already a customer? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
+     <div class="fl-hero-screenshot" aria-hidden="true">
+       <img
+         src="/images/hero-fault-lookup-cartoon.jpg"
+@@ -239,6 +239,66 @@ function featureStrip(): string {
+ </section>`;
+ }
+ 
++function howItWorks(): string {
++  const steps = [
++    { n: "1", h: "Scan assets &amp; nameplates", b: "Every machine, sub-component, and motor — captured with its nameplate, in person or from a photo." },
++    { n: "2", h: "Bind manuals to assets", b: "OEM manuals, wiring diagrams, and datasheets indexed and attached to the asset they serve." },
++    { n: "3", h: "Map fault history, CMMS &amp; PLC tags", b: "Work-order history and PLC tag names reconciled to the right asset — the IT/OT gap, closed." },
++    { n: "4", h: "Ask MIRA", b: "A technician asks a fault-code or troubleshooting question in Slack, Telegram, or the web." },
++    { n: "5", h: "MIRA cites the source", b: "Every answer points to the manual section, fault-history entry, or PLC tag that grounds it." },
++    { n: "6", h: "Draft PMs &amp; work orders", b: "Validated answers become PM suggestions and work-order drafts — synced to your CMMS." },
++  ];
++  const cards = steps
++    .map(
++      (s) => `<article class="fl-project-card" aria-label="Step ${s.n}">
++    <div class="fl-project-card-glyph" aria-hidden="true">${s.n}</div>
++    <h3 class="fl-project-card-h">${s.h}</h3>
++    <p class="fl-project-card-body">${s.b}</p>
++  </article>`
++    )
++    .join("\n  ");
++  return `<section class="fl-section" aria-labelledby="fl-how-h">
++  <h2 id="fl-how-h" class="fl-section-h">How it works.</h2>
++  <p class="fl-section-sub">Structure first, answers second. The namespace is what makes the AI trustworthy.</p>
++  <div class="fl-project-row">
++  ${cards}
++  </div>
++</section>`;
++}
++
++function buyerFit(): string {
++  const forList = [
++    "Maintenance managers",
++    "Plant managers",
++    "Reliability engineers",
++    "Controls engineers &amp; integrators",
++  ];
++  const notList = [
++    "Teams with no manual or document access to structure",
++    "Buyers looking for a standalone CMMS replacement",
++    "Anyone expecting autonomous safety decisions — MIRA escalates, it doesn't act",
++  ];
++  const li = (items: string[]) => items.map((i) => `<li>${i}</li>`).join("\n      ");
++  return `<section class="fl-section" aria-labelledby="fl-fit-h">
++  <h2 id="fl-fit-h" class="fl-section-h">Who it's for.</h2>
++  <p class="fl-section-sub">We'd rather tell you up front. See the full list on <a href="/limitations" data-cta="fit-limitations">Limitations</a>.</p>
++  <div class="fl-fit-grid">
++    <div class="fl-fit-col fl-fit-for">
++      <h3 class="fl-fit-h3">Built for</h3>
++      <ul class="fl-fit-list">
++      ${li(forList)}
++      </ul>
++    </div>
++    <div class="fl-fit-col fl-fit-not">
++      <h3 class="fl-fit-h3">Not the right fit (yet)</h3>
++      <ul class="fl-fit-list">
++      ${li(notList)}
++      </ul>
++    </div>
++  </div>
++</section>`;
++}
++
+ function pricingTeaser(): string {
+   return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-pricing-h">
+   <h2 id="fl-pricing-h" class="fl-section-h">Start with a $500 assessment.</h2>
+@@ -444,6 +504,29 @@ const PAGE_STYLES = `
+ 
+ .fl-pricing-teaser { text-align: center; }
+ 
++.fl-fit-grid {
++  display: grid; gap: var(--fl-sp-5);
++  grid-template-columns: 1fr;
++}
++@media (min-width: 720px) {
++  .fl-fit-grid { grid-template-columns: 1fr 1fr; }
++}
++.fl-fit-col {
++  background: var(--fl-card-0);
++  border: 1px solid var(--fl-rule-200);
++  border-radius: var(--fl-radius-lg);
++  padding: var(--fl-sp-6);
++  box-shadow: var(--fl-shadow-sm);
++}
++.fl-fit-h3 {
++  font-size: var(--fl-type-lg); color: var(--fl-navy-900);
++  margin-bottom: var(--fl-sp-4);
++}
++.fl-fit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--fl-sp-3); }
++.fl-fit-list li { color: var(--fl-muted-600); line-height: 1.5; padding-left: var(--fl-sp-5); position: relative; }
++.fl-fit-for .fl-fit-list li::before { content: "✓"; position: absolute; left: 0; color: var(--fl-good, var(--fl-navy-900)); font-weight: 700; }
++.fl-fit-not .fl-fit-list li::before { content: "—"; position: absolute; left: 0; color: var(--fl-muted-600); font-weight: 700; }
++
+ .fl-footer {
+   border-top: 1px solid var(--fl-rule-200);
+   background: var(--fl-card-0);
+@@ -499,12 +582,14 @@ export function renderHome(reqUrl?: string): string {
+     ${trustBand("68,000+ chunks of OEM documentation indexed", OEMS)}
+     ${projectCardRow()}
+     ${compareSection()}
++    ${howItWorks()}
+     ${cartoonRow()}
+     ${featureStrip()}
++    ${buyerFit()}
+     ${pricingTeaser()}
+   </main>
+   ${footer()}
+-  <a href="/signup" class="fl-mobile-cta" data-cta="mobile-sticky-signup">Try MIRA Free →</a>
++  <a href="/buy" class="fl-mobile-cta" data-cta="mobile-sticky-assessment">Book $500 Assessment</a>
+   <script src="/sun-toggle.js"></script>
+   <script src="/feature-cartoons.js" defer></script>
+ </body>
+diff --git a/mira-web/src/views/limitations.ts b/mira-web/src/views/limitations.ts
+index 02bcaabb..86dc10b5 100644
+--- a/mira-web/src/views/limitations.ts
++++ b/mira-web/src/views/limitations.ts
+@@ -1,5 +1,5 @@
+ import { head } from "../lib/head.js";
+-import { btnPrimary, btnGhost } from "../lib/components.js";
++import { btnPrimary } from "../lib/components.js";
+ import { navbar, footer } from "./_topbar.js";
+ 
+ const PAGE_STYLES = `
+@@ -251,7 +251,7 @@ export function renderLimitations(reqUrl?: string): string {
+   </div>
+ 
+   <div class="fl-lim-cta">
+-    ${btnPrimary("Try it free — no credit card", { href: "/cmms", cta: "lim-cta-try" })}
++    ${btnPrimary("See if we're a fit — book a $500 assessment", { href: "/buy", cta: "lim-cta-assessment" })}
+     <p>
+       Spotted something we're not honest about?
+       <a href="mailto:mike@factorylm.com">Email mike@factorylm.com</a> — we'll add it.
+diff --git a/mira-web/src/views/security.ts b/mira-web/src/views/security.ts
+index bb7b5877..3f0bec76 100644
+--- a/mira-web/src/views/security.ts
++++ b/mira-web/src/views/security.ts
+@@ -1,5 +1,5 @@
+ import { head } from "../lib/head.js";
+-import { btnPrimary, btnGhost } from "../lib/components.js";
++import { btnPrimary } from "../lib/components.js";
+ import { navbar, footer } from "./_topbar.js";
+ 
+ const PAGE_STYLES = `
+@@ -325,6 +325,17 @@ export function renderSecurity(reqUrl?: string): string {
+     </div>
+   </section>
+ 
++  <div class="fl-sec-section">
++    <h2 class="fl-sec-section-h2">What matters, in plain terms</h2>
++    <ul class="fl-sec-list">
++      <li><strong>Your plant data is isolated by tenant.</strong> Row-level security means one customer can never read another's data — enforced in the database, not just the app.</li>
++      <li><strong>Your manuals never train external models.</strong> We use Groq, Cerebras, and Gemini inference-only; your documents and conversations stay yours.</li>
++      <li><strong>Safety-critical questions escalate.</strong> LOTO, arc flash, and confined-space prompts stop and route to your safety contact instead of getting a risky AI answer.</li>
++      <li><strong>Every answer cites its source.</strong> Technicians can verify MIRA against the manual section or fault record it pulled from — no uncited speculation.</li>
++      <li><strong>We're honest about the roadmap.</strong> We are not SOC 2 certified yet; readiness work is underway. The technical detail below says exactly where we stand.</li>
++    </ul>
++  </div>
++
+   ${renderSection("Infrastructure", INFRASTRUCTURE)}
+   ${renderSection("Data protection", DATA_PROTECTION)}
+   ${renderSection("Authentication &amp; access control", AUTH_ACCESS)}
+@@ -332,7 +343,7 @@ export function renderSecurity(reqUrl?: string): string {
+   ${renderSection("Compliance &amp; certifications", COMPLIANCE)}
+ 
+   <div class="fl-sec-cta">
+-    ${btnPrimary("Try it free — no credit card", { href: "/cmms", cta: "sec-cta-try" })}
++    ${btnPrimary("Book a $500 assessment", { href: "/buy", cta: "sec-cta-assessment" })}
+     <p>
+       Security question or vulnerability report?
+       <a href="mailto:security@factorylm.com">security@factorylm.com</a>

@@ -1,0 +1,52 @@
+{
+  "acceptance": [
+    {
+      "item": "digital output labels — CN6 is DQCOM / DQ1 / DQ2",
+      "covered": false,
+      "note": "Graph asserted DO1/DO2 (+ terminals CN6:DO1/CN6:DO2) for the printed DQ1/DQ2 (DQCOM correct). Caught by exact_label_mismatch + confident_misread. Verified on NVE97896-02 sheet 1/2."
+    },
+    {
+      "item": "PC/- is DC-bus, not part of either valid brake-resistor circuit",
+      "covered": false,
+      "note": "Graph merged DC-bus PC/- (and PA/+) into the S1&S2 brake path. S1&S2 brake = CN10:PBe<->CN10:PB; S3 brake = CN9:PA/+<->CN8:PB; PC/- is DC-bus, in neither. Caught by incompatible_functional_path. Confirmed by NVE97896-02 + Install. Manual NVE61069.06 p.117."
+    },
+    {
+      "item": "duplicate ids require DE-DUPLICATION (same terminal)",
+      "covered": false,
+      "note": "Graph carries unqualified duplicate ids M, CN9:PA/+, CN9:PC/-. CN9 is identical across frames, so these are the SAME terminal and need de-duplication (NOT variant-qualification). Caught by duplicate_identifier."
+    },
+    {
+      "item": "off-page references are electrical, not pagination",
+      "covered": false,
+      "note": "Graph modeled the footer '1/2' as an off_page_reference '2/2'. Caught by off_page_from_pagination."
+    },
+    {
+      "item": "RS422 on CN3/ENC is legitimate (NOT a defect)",
+      "covered": true,
+      "note": "CN3 supports 'Digital encoder 5V RS422 A/B/I' per Install. Manual NVE61069.06 p.132. RS422 is Schneider's shared differential standard across CN3/CN4/CN5. Correctly NOT gated (D1 reversed 2026-07-14; incorrect_connector_ownership removed)."
+    },
+    {
+      "item": "+AI2 / -AI2 differential analog input",
+      "covered": true,
+      "note": "Graph used AI2+/AI2- (a sign/order variant of the SAME terminal). NOT a graph defect; correctly not gated. The LLM judge false-flag is fixed in PR4 §10.6."
+    }
+  ],
+  "hard_failures": [
+    "exact_label_mismatch: printed DQ1/DQ2 read as DO1/DO2",
+    "confident_misread: DO1/DO2/CN6:DO1/CN6:DO2 asserted with structural confidence",
+    "incompatible_functional_path: DC-bus PC/- (and PA/+) merged into the S1&S2 brake loop",
+    "duplicate_identifier: unqualified duplicate M / CN9:PA/+ / CN9:PC/- (same terminal — de-dup)",
+    "off_page_from_pagination: footer '1/2' modeled as off-page ref '2/2'"
+  ],
+  "removed_after_primary_source_review_2026_07_14": [
+    "incorrect_connector_ownership (D1) — CONTRADICTED: CN3 legitimately supports 5V RS422 A/B/I (Install. Manual NVE61069.06 p.132).",
+    "variant_crossover — redundant with incompatible_functional_path; CN9 is not frame-variable (PB location varies CN10 vs CN8, not CN9).",
+    "dangling_reference (CN3) — CN3 is a real connector; require_refs_resolve=false. A generic non-gating reference diagnostic may run elsewhere."
+  ],
+  "score": 74,
+  "quality_tier": "USEFUL_DRAFT",
+  "import_verdict": "FAIL",
+  "bot_importable": false,
+  "truth_status": "frozen_human_confirmed",
+  "summary": "The defective ATV340 graph reads its tags with decent accuracy (score ~74/100, grader-derived) yet is structurally UNSAFE to import. FIVE deterministic gates fire (exact_label_mismatch, confident_misread, duplicate_identifier, off_page_from_pagination, incompatible_functional_path), each confirmed against the rendered NVE97896-02 sheet 1/2 and/or the official Install. Manual NVE61069.06 (see evidence_manifest.json). This is the negative calibration anchor: good prose (~74) does NOT imply a trustworthy graph (import_verdict=FAIL). D1 (RS422/CN3) was REVERSED after primary-source verification and its blocker removed, along with the redundant variant_crossover and the non-defect dangling_reference — the reduced set independently preserves FAIL. truth_status=draft_llm_authored: awaiting Mike's review-and-freeze (PRD §10.7)."
+}

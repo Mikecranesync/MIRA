@@ -1,0 +1,44 @@
+{
+  "id": 8,
+  "oem": "Siemens",
+  "document": "3RW Soft Starter Manual (SIRIUS 3RW40, doc 38752095)",
+  "url": "https://support.industry.siemens.com/cs/attachments/38752095/Manual_softstarter_3RW30_3RW40_en-US.pdf",
+  "manifest_page_ref": "Ch. 3–4, power & control terminals",
+  "print_type": "Soft starter terminal layout",
+  "standard": "IEC 60947",
+  "category": "NEMA Starters",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 177,
+  "image_sha256": "5be194f5554841fc29e0d52109f9538e48fe650872c7c1287bfa1f1b957720bb",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:08:13.356565+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.75,
+    "drawing_type": "electrical drawing",
+    "drawing_type_confidence": 0.2,
+    "vision_result": "The image shows an index page from an equipment manual for a Siemens 3RW30/3RW40 soft starter. The page lists various topics related to the device, including safety rules, installation, operation, and troubleshooting. There are no physical components or indicators visible in the image. Therefore, the answer is: electrical drawing, equipment manual index page.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 252,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "## 1. What this appears to be\nThis appears to be an index or table of contents from an equipment manual for a SIRIUS 3RW30 / 3RW40 device.\n\n## 2. Main visible components\nThe main visible component is a table of contents or index with alphabetical entries.\n\n## 3. Plain-English theory of operation\nThe table of contents seems to organize topics related to the operation and configuration of the SIRIUS 3RW30 / 3RW40 device, including starting modes, soft start, and motor protection.\n\n## 4. What must be true for it to work\nAccording to this index, for the device to work properly, various conditions and settings must be met, such as:\n* Proper installation altitude\n* Ambient temperature considerations\n* Parameter settings\n* Overload protection\n* Thermistor motor protection\n\n## 5. What would stop it from working\nPotential issues that could stop the device from working include:\n* Incorrect installation altitude\n* Ambient temperature out of range\n* Incorrect parameter settings\n* Overload conditions\n* Thermistor motor protection tripping\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable in the provided image."
+}

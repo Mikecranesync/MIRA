@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MIRA · Industrial Trend Viewer</title>
+  <link rel="stylesheet" href="css/trend.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="toolbar"></div>
+    <div id="body">
+      <div id="browser"></div>
+      <div id="right">
+        <div id="chartwrap">
+          <canvas id="chart"></canvas>
+          <div id="cursor"></div>
+          <div id="chart-empty" class="chart-empty">Select signals in the browser to trend them.</div>
+        </div>
+        <div id="penpanel"></div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

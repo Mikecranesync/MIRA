@@ -80,7 +80,10 @@ export function AssetValidateTab({ assetId }: { assetId: string }) {
   }, [assetId]);
 
   useEffect(() => {
-    void refresh();
+    const timeout = window.setTimeout(() => {
+      void refresh();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [refresh]);
 
   // Ask the question through the existing grounded asset chat (so the recorded

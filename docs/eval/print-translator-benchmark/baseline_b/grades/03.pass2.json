@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "case_id": "03",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 11,
+    "power_control_flow": 8,
+    "sequence_interlocks_logic": 4,
+    "evidence_grounding_unsupported_claims": 4,
+    "technician_usefulness_clarity": 3
+  },
+  "total": 40,
+  "deductions": [
+    {
+      "claim": "In the power circuit, KM1 and KM2 are used for delta operation, while KM3 is used for star operation.",
+      "evidence": "The Local Control and Remote Control diagrams (bottom of the page) each show the three contactor coil blocks in the order KM2, KM3, KM1, and directly beneath each coil block a single function label is printed: \"Y\" under KM2, a Δ (triangle) symbol under KM3, and \"L\" under KM1. This appears identically in both the Local Control and Remote Control diagrams. The visible labeling is therefore KM2 = star (Y), KM3 = delta (Δ), KM1 = line (L) — the candidate's assignment reverses KM2/KM3 and additionally misassigns KM1 (the line/mains contactor, common to both star and delta running) as a \"delta\" contactor, which it is not.",
+      "category": "power_control_flow",
+      "points_deducted": 12,
+      "severity": "hard_failure",
+      "correction": "State that KM1 is the line contactor (energized whenever the motor is running, in both star and delta), KM2 is the star contactor, and KM3 is the delta contactor, per the Y/Δ/L labels printed beneath each coil in the control diagrams.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Omission: no explanation of the actual star-to-delta operating sequence or of the interlock between the star and delta contactors. The only statement offered is the generic \"The control circuit must be properly wired to ensure that KM1, KM2, and KM3 operate in the correct sequence.\"",
+      "evidence": "The Local/Remote Control diagrams show the KM2 and KM3 coil branches wired through each other's auxiliary contacts (the 13/14 and 21/22 contact pairs shown next to the KM2/KM3/KM1 coils) and show the timer KT with two distinct contact pairs (15/16 marked \"t1\" and 18 marked \"t1+t2\") used to sequence and time the transition from star to delta. None of this visible interlock/timing wiring, nor the actual run sequence (start → star engages → timed transition → delta engages, with the star and delta contactors electrically prevented from closing together), is described. Interlocking between the star and delta contactors is safety-critical (simultaneous closure shorts two line phases through the motor windings), making this a material, not cosmetic, omission for a technician relying on the explanation.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 16,
+      "severity": "severe",
+      "correction": "Describe the actual timed transition and name the interlock: press start → KM3 (star) and KT energize together and KM1 (line) closes, motor runs in star; after KT's delay the star branch drops out and KM2 (delta) closes, with KM2/KM3 aux contacts wired to prevent both being closed at once.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the provided image. All labels and components seem to be clearly identified.",
+      "evidence": "This blanket certainty claim is contradicted by the response's own content: it never reports the Y/Δ/L function labels beneath the contactor coils (legible, appears twice), and it does not address the Local Control or Remote Control diagrams at all — including the start/stop pushbutton symbols, the FR1 95/96/97/98 terminals, the KT 15/16/18/t1/t1+t2 terminals, the R/%R reset-mode selector, or the KM1/KM2/KM3 auxiliary contact numbers (13/14, 21/22, 23/24). Declaring everything \"clearly identified\" while this much legible content went unread or unreported is an unsupported claim of completeness, and it is what allowed the incorrect star/delta/line assignment above to be stated as if it were an observed fact.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 10,
+      "severity": "hard_failure",
+      "correction": "Either address the control-circuit diagrams and the Y/Δ/L labels, or explicitly scope the \"nothing unclear\" statement to the power-circuit diagram only, and avoid stating the inferred KM1/KM2/KM3 roles as settled fact when they were not actually verified against the printed Y/Δ/L labels.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The following issues would likely prevent the star-delta starter from working: A blown fuse or tripped circuit breaker in the power supply.",
+      "evidence": "No fuse, circuit breaker, or other overcurrent protective device symbol is depicted anywhere in this print — only the three contactors, the FR1 thermal overload relay, the KT timer, and terminal points (1/L1, 3/L2, 5/L3) feeding from an unspecified upstream supply. This is presented as a specific probable-cause list item with no visible basis on this drawing.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 6,
+      "severity": "minor",
+      "correction": "Frame this as general troubleshooting knowledge not shown on this particular print (e.g., \"upstream protection, not shown on this sheet, should also be checked\") rather than listing it alongside print-grounded failure modes without distinction.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Omission: the response never mentions the Local Control or Remote Control diagrams or any of their components (start \"I\" / stop \"O\" pushbuttons, FR1 terminals 95/96/97/98, KT terminals 15/16/18/t1/t1+t2, the KM1/KM2/KM3 auxiliary contacts 13/14, 21/22, 23/24, the Us/N control-supply labels, or the Y/Δ/L function labels).",
+      "evidence": "These two diagrams occupy the lower two-thirds of the page and their labels are clearly printed and legible (e.g. \"KM3 : 5/L3\", \"Us\", \"N\", \"KM3 : 3/L2\", \"Y\", \"Δ\", \"L\", \"FR1\" with terminals 95/96/97/98, \"KT\" with terminals 15/16/18/t1/t1+t2).",
+      "category": "component_label_recognition",
+      "points_deducted": 9,
+      "severity": "material",
+      "correction": "Identify and describe the control-circuit components in both the Local Control and Remote Control diagrams, including the Y/Δ/L function labels.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Overall explanation, taken as a troubleshooting aid.",
+      "evidence": "Because the star/delta/line contactor roles are stated backwards (see the power_control_flow deduction above) and roughly half the print (the control/interlock circuitry) is not explained at all, a technician using this explanation to decide which contactor is misbehaving during a star-to-delta transition, or to check the star/delta interlock, would be actively misdirected rather than helped.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 7,
+      "severity": "severe",
+      "correction": "Correct the contactor role assignment and add a walk-through of the control circuit and interlock before presenting this as a usable troubleshooting explanation.",
+      "confidence": "high"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "reversed_or_materially_incorrect_sequence",
+    "failure_to_separate_evidence_from_inference"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 2,
+  "notes": "The print also contains a second, dashed/lightly-drawn motor block below the primary power circuit (drawing ref E1127D) that the candidate does not mention; its purpose (alternate lead reference vs. a second physical motor) is ambiguous from the image alone, so it was not scored as a deduction. The core, decisive finding is the reversed KM1/KM2/KM3 line/star/delta role assignment, directly contradicted by the Y/Δ/L labels printed beneath the coils in both the Local Control and Remote Control diagrams (same ordering, both places) — high confidence."
+}

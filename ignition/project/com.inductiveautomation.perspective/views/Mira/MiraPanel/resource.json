@@ -87,7 +87,7 @@
             "meta": { "name": "ChatEmbed" },
             "position": { "basis": "auto", "grow": 1 },
             "props": {
-              "source": "/system/webdev/FactoryLM/mira?asset=conveyor_demo",
+              "source": "http://127.0.0.1:8770/ask?source=replay&fixture=cv101_idle_healthy",
               "style": {
                 "border": "none",
                 "height": "100%",

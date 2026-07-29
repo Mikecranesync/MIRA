@@ -1,0 +1,30 @@
+📋 Sheet 20 of the Sensor Control Unit 2 (SCU2) drawings — the two fiber-optic opto-coupler modules that pass 'block occupied' signals between adjacent sensor control units.
+
+This sheet shows two identical fiber-optic opto-coupler modules (type ITS.LWL-K-01.2) that isolate and relay 'occupied' block-status signals between neighbouring Sensor Control Units over plastic optical fiber (POF), so no electrical connection runs between the units. The upstream module (-21/A13, 'Occupied Upstream') receives an optical signal on its LWL IN from +SCU2-BEL over fiber -W5497 and produces a digital output (DIG OUT) that goes off-sheet to 15.7 / -X3.9. The downstream module (-21/A14, 'Occupied Downstream') takes a digital input (DIG IN) from 16.6 / -X4.6 and drives an optical output (LWL OUT) over fiber -W5469 to +SCU1-BEL. Both modules are powered from the panel 24VDC (X24V.41) and 0V (X0V.41) rails shown at the top of the sheet.
+
+🔑 Signals
+• Upstream 'occupied' optical signal into the upstream coupler
+• Upstream 'occupied' digital output from the upstream coupler
+• Downstream 'occupied' digital input to the downstream coupler
+• Downstream 'occupied' optical signal out of the downstream coupler
+• 24VDC module supply
+• 0V module supply return
+
+🔧 Devices
+• Fiber-optic opto-coupler module, 'Occupied Upstream' (converts incoming POF signal to a digital output) (-21/A13)
+• Fiber-optic opto-coupler module, 'Occupied Downstream' (converts a digital input to an outgoing POF signal) (-21/A14)
+
+🩺 If you're chasing a fault
+Upstream path: if the digital 'occupied' output at -X3.9 (cross-ref 15.7) is missing, check two distinct points. First confirm the module has light at its LWL IN (fed by fiber -W5497 from +SCU2-BEL). If the optical input is present but the module's DIG OUT terminal on -21/A13 stays inactive, the opto-coupler module A13 is the fault. If DIG OUT is active right at the module but nothing shows up at -X3.9 (15.7), the fault is in the wiring between the module and that off-sheet terminal. Note: the control logic that acts on these occupied signals is not shown on this sheet, so this drawing cannot tell you what the controller does with the result.
+
+❓ Couldn't confirm (verify on the sheet):
+• Last digit of the supply-rail cross-references 'X24V.41 /20.9' and 'X0V.41 /20.9' (could be 20.8).
+• Exact module type suffix 'ITS.LWL-K-01.2' (small/blurred).
+• Routing of the dashed 24VDC vs GND drops from the top rails to each module (lines overlap).
+• LWL OUT of A13, LWL IN of A14, DIG IN of A13 and DIG OUT of A14 show no connection on this sheet — verify on adjacent sheets.
+
+⚠️ The only electrical level printed on this sheet is 24VDC (rails X24V.41 / X0V.41); no other voltage is established by the drawing. The LWL/-W5497/-W5469 links are plastic optical fiber carrying light, not voltage — do not look directly into fiber ends. For continuity/resistance checks on the digital wiring (-X3.9, -X4.6) de-energize the 24VDC supply, lock out, and verify absence of voltage first. This drawing does not prove the actual energized state of the panel in the field.
+
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply "map" for the full terminal and wire list.

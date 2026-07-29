@@ -56,7 +56,7 @@ const QA = [
   },
 ];
 
-let WIZARD_STEP = "company";
+const WIZARD_STEP = "company";
 const WIZARD_PAYLOADS: Record<string, unknown> = {};
 
 test.beforeAll(() => fs.mkdirSync(OUT, { recursive: true }));
@@ -92,7 +92,8 @@ test("onboarding walkthrough — full reel through Train & approve", async ({ pa
   await page.route("**/api/assets/*/validation-qa/**", (r) =>
     r.fulfill({ contentType: "application/json", body: JSON.stringify(QA) }),
   );
-  await page.route("**/api/assets", (r) =>
+  // Trailing slash required (#1976 routed client fetches through `${API_BASE}/api/assets/`).
+  await page.route("**/api/assets/", (r) =>
     r.fulfill({ contentType: "application/json", body: JSON.stringify(ASSETS) }),
   );
 
@@ -125,10 +126,20 @@ test("onboarding walkthrough — full reel through Train & approve", async ({ pa
   await page.getByTestId("input-line-description").fill("Sorts product by height before packaging");
   await page.getByTestId("onboarding-next").click();
 
+  // 3b) Tag-import (optional, #2074) → skip to review
+  await expect(page.getByTestId("step-tag-import")).toBeVisible();
+  await page.getByTestId("tag-import-continue").click();
+
   // 4) Review
   await expect(page.getByTestId("step-review")).toBeVisible();
   await shot("04-review");
   await page.getByTestId("onboarding-finish").click();
+
+  // 4b) Upload step (#1993, inserted between Review and Try). Wizard-finish is mocked
+  // empty so lineNode is null → UploadStep's no-manual branch → Continue → Try.
+  await expect(page.getByTestId("step-upload")).toBeVisible();
+  await shot("04b-upload");
+  await page.getByTestId("onboarding-upload-continue").click();
 
   // 5) Try MIRA
   await expect(page.getByTestId("step-try")).toBeVisible();

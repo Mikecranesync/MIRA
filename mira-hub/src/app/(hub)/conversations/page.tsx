@@ -83,6 +83,10 @@ export default function ConversationsPage() {
   if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
     return <LabsStub feature="Conversations" />;
   }
+  return <ConversationsLabsPage />;
+}
+
+function ConversationsLabsPage() {
   const t = useTranslations("conversations");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Conversation | null>(null);

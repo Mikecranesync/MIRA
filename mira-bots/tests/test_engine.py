@@ -117,6 +117,11 @@ class TestMakeResult:
             "next_state": "Q1",
             "dispatch_kind": "",
             "_citation_evidence": None,
+            # Print-turn observability provenance (default None off print turns).
+            "route": None,
+            "model": None,
+            "input_sha256": None,
+            "fallback_reason": None,
         }
 
     def test_defaults(self):

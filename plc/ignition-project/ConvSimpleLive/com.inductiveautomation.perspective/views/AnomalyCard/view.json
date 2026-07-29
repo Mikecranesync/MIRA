@@ -1,0 +1,174 @@
+{
+  "custom": {},
+  "params": {
+    "ruleId": "",
+    "severity": "",
+    "sevColor": "#8b949e",
+    "title": "",
+    "message": "",
+    "nextCheck": "",
+    "askText": ""
+  },
+  "props": {
+    "defaultSize": { "width": 760, "height": 118 }
+  },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "position": { "grow": 1 },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#161b22",
+        "border": "1px solid #30363d",
+        "borderLeft": "4px solid #8b949e",
+        "borderRadius": "8px",
+        "padding": "10px 12px",
+        "gap": "4px"
+      }
+    },
+    "propConfig": {
+      "props.style.borderLeft": {
+        "binding": {
+          "type": "expr",
+          "config": { "expression": "\"4px solid \" + {view.params.sevColor}" }
+        }
+      }
+    },
+    "children": [
+      {
+        "type": "ia.container.flex",
+        "meta": { "name": "topRow" },
+        "position": { "basis": "24px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "gap": "8px" } },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "sevPill" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "props": {
+              "text": "",
+              "style": {
+                "color": "#0d1117",
+                "backgroundColor": "#8b949e",
+                "fontSize": "10px",
+                "fontWeight": 700,
+                "letterSpacing": "0.06em",
+                "borderRadius": "4px",
+                "padding": "2px 7px"
+              }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": { "type": "property", "config": { "path": "view.params.severity" } }
+              },
+              "props.style.backgroundColor": {
+                "binding": { "type": "property", "config": { "path": "view.params.sevColor" } }
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "title" },
+            "position": { "grow": 1, "shrink": 1 },
+            "props": {
+              "text": "",
+              "style": { "color": "#e6edf3", "fontSize": "15px", "fontWeight": 700 }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": { "type": "property", "config": { "path": "view.params.title" } }
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "ruleChip" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "props": {
+              "text": "",
+              "style": {
+                "color": "#6b7480",
+                "fontFamily": "Consolas, monospace",
+                "fontSize": "11px",
+                "fontWeight": 600
+              }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": { "type": "property", "config": { "path": "view.params.ruleId" } }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.display.label",
+        "meta": { "name": "message" },
+        "position": { "basis": "auto", "shrink": 0 },
+        "props": {
+          "text": "",
+          "style": { "color": "#c9d1d9", "fontSize": "13px", "lineHeight": "1.45" }
+        },
+        "propConfig": {
+          "props.text": {
+            "binding": { "type": "property", "config": { "path": "view.params.message" } }
+          }
+        }
+      },
+      {
+        "type": "ia.container.flex",
+        "meta": { "name": "bottomRow" },
+        "position": { "basis": "auto", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px", "marginTop": "2px" } },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "nextCheck" },
+            "position": { "grow": 1, "shrink": 1 },
+            "props": {
+              "text": "",
+              "style": { "color": "#8b949e", "fontSize": "12px", "fontStyle": "italic" }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "type": "expr",
+                  "config": { "expression": "\"Next check: \" + {view.params.nextCheck}" }
+                }
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "meta": { "name": "askBtn" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "props": {
+              "text": "Ask MIRA about this",
+              "style": {
+                "backgroundColor": "#1f6feb",
+                "color": "#ffffff",
+                "fontSize": "12px",
+                "fontWeight": 700,
+                "borderRadius": "6px",
+                "border": "none",
+                "padding": "6px 12px"
+              }
+            },
+            "events": {
+              "component": {
+                "onActionPerformed": {
+                  "type": "script",
+                  "scope": "G",
+                  "config": {
+                    "script": "\tq = self.view.params.askText or \"\"\n\tsystem.perspective.openPopup(\n\t\t\"mira-ask\",\n\t\t\"MiraAsk\",\n\t\tparams={\"seedQuestion\": q},\n\t\ttitle=\"Ask MIRA\",\n\t\tshowCloseIcon=True,\n\t\tdraggable=True,\n\t\tresizable=True,\n\t\tmodal=False\n\t)\n"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

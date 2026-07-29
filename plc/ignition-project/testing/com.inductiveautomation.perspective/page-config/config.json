@@ -1,0 +1,49 @@
+{
+  "pages": {
+    "/": {
+      "title": "VFD Analyzer — Setup (Connect)",
+      "viewPath": "WizardConnect",
+      "docks": {}
+    },
+    "/setup": {
+      "title": "VFD Analyzer — Setup (Connect)",
+      "viewPath": "WizardConnect",
+      "docks": {}
+    },
+    "/verify": {
+      "title": "VFD Analyzer — Verify",
+      "viewPath": "WizardVerify",
+      "docks": {}
+    },
+    "/map": {
+      "title": "VFD Analyzer — Map",
+      "viewPath": "WizardMap",
+      "docks": {}
+    },
+    "/save": {
+      "title": "VFD Analyzer — Save",
+      "viewPath": "WizardSave",
+      "docks": {}
+    },
+    "/mapper": {
+      "title": "VFD Analyzer — Tag Mapper (single-screen fallback)",
+      "viewPath": "TagMapper",
+      "docks": {}
+    },
+    "/trend": {
+      "title": "GS10 Trend (sandbox)",
+      "viewPath": "TrendChart",
+      "docks": {}
+    },
+    "/maintenance": {
+      "title": "Maintenance (config-driven)",
+      "viewPath": "MaintenanceConfig",
+      "docks": {}
+    },
+    "/help": {
+      "title": "MIRA Sandbox",
+      "viewPath": "Sandbox",
+      "docks": {}
+    }
+  }
+}

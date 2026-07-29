@@ -1,0 +1,31 @@
+📐 31971 · sheet 18
+
+🔌 Signals (exact — source → destination)
+• ME05 stator over-temperature status return — DA6.1  @ -18/X2KL:2  → DA6 monitoring module input (sheet-column 12.0) · conf 0.70
+• ME06 stator over-temperature status return — DA6.5  @ -18/X2KL:4  → DA6 monitoring module input (sheet-column 12.1) · conf 0.68
+• ME07 stator over-temperature status return — DA6.2  @ -18/X2KL:6  → DA6 monitoring module input (sheet-column 12.5) · conf 0.68
+• ME08 stator over-temperature status return — DA6.6  @ -18/X2KL:8  → DA6 monitoring module input (sheet-column 12.6) · conf 0.66
+• 230 V monitoring-loop supply feed — 230V_2  @ -18/X2KL:1,3,5,7  → supply source on sheet 4.8 · conf 0.78
+
+🔧 Devices (4)
+• +EXT-3B105 — thermal switch (Klixon) (Stator temperature switch for channel ME05; two field terminals .1 and .2) · conf 0.72
+• +EXT-3B205 — thermal switch (Klixon) (Stator temperature switch for channel ME06; field terminals .1 and .2) · conf 0.68
+• +EXT-3B107 — thermal switch (Klixon) (Stator temperature switch for channel ME07; field terminals .1 and .2) · conf 0.68
+• +EXT-3B207 — thermal switch (Klixon) (Stator temperature switch for channel ME08; field terminals .1 and .2) · conf 0.68
+
+🔗 Wires / cables
+• -W5483 — cable 4x1 mm² (2 cores used) · conf 0.82
+• -W5485 — cable 4x1 mm² (2 cores used) · conf 0.82
+• -W5487 — cable 4x1 mm² (2 cores used) · conf 0.82
+• -W5489 — cable 4x1 mm² (2 cores used) · conf 0.82
+• 230V_2-bus — supply bus / horizontal line · conf 0.60
+
+🧩 13 off-page ref(s): DA6.1, DA6.5, DA6.2, DA6.6, 230V_2 / 4.8, +EXT-3B105.1, +EXT-3B105.2, +EXT-3B205.1
+
+⚠️ Couldn't read (retake or crop closer):
+• Bottom '+EXT/xx.x' sheet references (~13.7, 18.5, 13.5, 22.5) are small/rotated and only ~0.55 confident; ME07's two cores appear to cite different sheets (13.5 vs 18.5).
+• Terminal-strip tag read as '-18/X2KL' — the 'KL' suffix and whether the strip is 'X2' or 'X2KL' is unconfirmed.
+• Top DA6.x and 12.x cross-reference digits need confirmation to avoid digit drift.
+• The 230V bus feed vs. DA6 return split across terminals 1-8 is inferred from geometry, not a legible junction pattern.
+
+🔎 Proposed interpretation from the drawing — not yet field-verified. Reply to confirm or correct any item.

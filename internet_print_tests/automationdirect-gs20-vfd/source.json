@@ -1,0 +1,25 @@
+{
+  "test_id": "automationdirect-gs20-vfd",
+  "source_url": "https://cdn.automationdirect.com/static/manuals/gs20m/ch2.pdf",
+  "publisher": "AutomationDirect",
+  "title": "GS20 AC Drive User Manual \u2014 Ch.2 Power & Control Wiring (GS20M)",
+  "sheet": "Ch.2 power wiring & control terminal diagram",
+  "equipment_type": "Variable frequency drive (VFD)",
+  "standard": "NEMA ICS 6",
+  "category": "vfd",
+  "why_selected": "GS20 VFD: 3-phase motor power input, 24 VDC control-signal wiring, brake and relay outputs \u2014 a drive print, directly relevant to MIRA's Drive Commander product. Page 37 is the campaign-verified rendered schematic page (corpus_manifest.md first-10, entry #17). Publicly published OEM chapter PDF; provenance verified 2026-07-10. Caption chosen to satisfy the production print_translator.is_print_question() gate (an initial 'Explain the power and control wiring\u2026' phrasing was gate-rejected \u2014 see CAMPAIGN_SUMMARY gate finding).",
+  "access_date_utc": "2026-07-13T14:27:07Z",
+  "original_sha256": "641ed7a5bd5af2680d6a13f5a906ec31b89face22fc9cbe20127c70240854a49",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://cdn.automationdirect.com/static/manuals/gs20m/ch2.pdf",
+    "final_url": "https://cdn.automationdirect.com/static/manuals/gs20m/ch2.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 5559432,
+    "host": "cdn.automationdirect.com"
+  },
+  "license_note": "Publicly published OEM literature; ownership retained by AutomationDirect; retained only for read-only interpreter testing."
+}

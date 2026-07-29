@@ -65,6 +65,21 @@ def ensure_table(db_path: str) -> None:
         )
     except Exception as e:
         logger.debug("voice_enabled column already exists: %s", e)
+    # Print-turn provenance columns (2026-07-15 operator directive: every
+    # PrintSense request + full reply must be retrievable from THIS table).
+    # SQLite has no ADD COLUMN IF NOT EXISTS — guarded ALTERs upgrade a prod
+    # db in place and no-op on every later start.
+    for _col_ddl in (
+        "route TEXT",
+        "model TEXT",
+        "devices INTEGER",
+        "input_sha256 TEXT",
+        "fallback_reason TEXT",
+    ):
+        try:
+            db.execute(f"ALTER TABLE interactions ADD COLUMN {_col_ddl}")
+        except sqlite3.OperationalError:
+            pass  # already present
     db.commit()
     db.close()
 
@@ -167,16 +182,28 @@ def log_interaction(
     confidence: str = "",
     response_time_ms: int = 0,
     platform: str = "telegram",
+    route: str | None = None,
+    model: str | None = None,
+    devices: int | None = None,
+    input_sha256: str | None = None,
+    fallback_reason: str | None = None,
 ) -> None:
-    """Append-only log of every user/bot exchange for quality analysis."""
+    """Append-only log of every user/bot exchange for quality analysis.
+
+    The optional provenance fields (``route``/``model``/``devices``/
+    ``input_sha256``/``fallback_reason``) are populated by print turns so
+    "check the bot results" retrieves the full story without screenshots
+    (2026-07-15 operator directive).
+    """
     try:
         db = sqlite3.connect(db_path)
         db.execute("PRAGMA journal_mode=WAL")
         db.execute(
             """INSERT INTO interactions
                (chat_id, platform, user_message, bot_response, fsm_state,
-                intent, has_photo, confidence, response_time_ms)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                intent, has_photo, confidence, response_time_ms,
+                route, model, devices, input_sha256, fallback_reason)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 chat_id,
                 platform,
@@ -187,6 +214,11 @@ def log_interaction(
                 int(has_photo),
                 confidence,
                 response_time_ms,
+                route,
+                model,
+                devices,
+                input_sha256,
+                fallback_reason,
             ),
         )
         db.commit()

@@ -12,7 +12,8 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 
 const ID = "11111111-2222-3333-4444-555555555555";
-const session = { userId: "u_1", tenantId: "tenant-aaaa", email: "x@y" };
+// Driving the asset-agent lifecycle is an admin action (#2360).
+const session = { userId: "u_1", tenantId: "tenant-aaaa", email: "x@y", role: "admin" };
 const params = Promise.resolve({ id: ID });
 
 function mockClient(handlers: Array<[RegExp, { rows: unknown[] }]>) {
@@ -49,6 +50,19 @@ beforeEach(() => {
 it("400 on an invalid target state", async () => {
   const res = await post({ to: "wizard" });
   expect(res.status).toBe(400);
+});
+
+it("403: a non-admin tenant role (operator) cannot transition the asset agent (#2360)", async () => {
+  vi.mocked(sessionOr401).mockResolvedValue({ ...session, role: "operator" } as never);
+  const res = await post({ to: "training" });
+  expect(res.status).toBe(403);
+  expect(withTenantContext).not.toHaveBeenCalled();
+});
+
+it("403: an unrecognized/empty role cannot transition (least-privilege default)", async () => {
+  vi.mocked(sessionOr401).mockResolvedValue({ ...session, role: "" } as never);
+  const res = await post({ to: "training" });
+  expect(res.status).toBe(403);
 });
 
 it("404 when the asset does not exist", async () => {

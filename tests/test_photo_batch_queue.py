@@ -231,3 +231,27 @@ async def test_ack_message_id_can_be_set_late(queue):
     await queue.close_burst(bid)
     rec = await asyncio.wait_for(queue.dequeue(), timeout=1.0)
     assert rec.ack_message_id == 99999
+
+
+@pytest.mark.asyncio
+async def test_raw_photo_payload_round_trips_separately_from_resized(queue):
+    bid, _ = await queue.add_photo_to_burst(
+        "42",
+        "telegram",
+        "resized-page-1",
+        "what do these mean together",
+        raw_photo_b64="raw-page-1",
+    )
+    await queue.add_photo_to_burst(
+        "42",
+        "telegram",
+        "resized-page-2",
+        DEFAULT_PHOTO_CAPTION,
+        raw_photo_b64="raw-page-2",
+    )
+
+    await queue.close_burst(bid)
+    rec = await asyncio.wait_for(queue.dequeue(), timeout=1.0)
+
+    assert rec.photos_b64 == ["resized-page-1", "resized-page-2"]
+    assert rec.raw_photos_b64 == ["raw-page-1", "raw-page-2"]
