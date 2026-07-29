@@ -1,3 +1,7 @@
+### v3.226.0 (2026-07-28) - chore(hub): hub_uploads schema moved to a versioned migration (#703)
+
+Migration 068 transcribes `hub_uploads`' schema (verbatim, from the runtime DDL as of today) into `mira-hub/db/migrations/` — a pure no-op on prod/staging since the table already has this exact shape. `ensureUploadsSchema()` in `mira-hub/src/lib/uploads.ts` no longer runs `CREATE TABLE`/`ALTER TABLE` on every cold start; it does a cheap memoized-per-process column check and fails loud (doesn't cache the failure — retries on next call) if migration 068 hasn't landed yet. Closes the three problems a 2026-04-26 backend review flagged: branch-to-branch DDL divergence with no review gate, race conditions on multi-replica startup, and no migration history to audit "when did column X appear?".
+
 ### v3.225.1 (2026-07-28) - test(potd): port unique regression coverage from superseded #2865
 
 Reconciliation-only port of #2865's residual value onto the canonical Print-of-the-Day stack (#2866-#2868): a pure, backward-compatible `build_payload(pkg)` extraction in `tools/internet_print_test/mailer.py` plus two regression test files. No second view model, renderer, or send gate. Unblocks closing #2865 as superseded.
