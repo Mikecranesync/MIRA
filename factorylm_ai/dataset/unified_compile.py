@@ -94,42 +94,42 @@ def _general_sources() -> dict[str, dict[str, Any]]:
     sha = hashlib.sha256(adr.read_bytes()).hexdigest() if adr.is_file() else ""
     out: dict[str, dict[str, Any]] = {}
     for family in _TRAIN_FAMILIES + EVAL_ONLY_FAMILIES:
-      for asset, _symptom in _ARCHETYPES:
-        key = f"{family}::{asset}"
-        doc = f"general-behavior-{family}-{_slug(asset)}"
-        out[key] = {
-            "schema": "factorylm.technician-dataset.source-registry.v1",
-            "source_id": doc,
-            "review_batch": "printsense",  # governance batch bucket; product_area below is truth
-            "product_area": "GeneralTechnician",
-            "source_system": "printsense",
-            "source_reference": "docs/adr/0033-one-technician-brain.md",
-            "source_exists_in_repo": True,
-            "source_sha256": sha,
-            "manufacturer": "FactoryLM",
-            "document_number": doc,
-            "document_lineage_key": f"factorylm:{doc}",
-            "split": "train",
-            "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
-            "corpus_source": {
-                "schema": "factorylm.clf.corpus-source.v1",
-                "license_class": "synthetic",
-                "confidentiality_class": "public",
-                "rights": {
-                    "rights_resolved": True,
-                    "training_allowed": True,
-                    "evaluation_allowed": True,
-                    "public_export_allowed": True,
-                    "cross_tenant_reuse_allowed": False,
-                    "derivatives_retained": True,
-                    "policy_ref": "docs/adr/0033-one-technician-brain.md",
+        for asset, _symptom in _ARCHETYPES:
+            key = f"{family}::{asset}"
+            doc = f"general-behavior-{family}-{_slug(asset)}"
+            out[key] = {
+                "schema": "factorylm.technician-dataset.source-registry.v1",
+                "source_id": doc,
+                "review_batch": "printsense",  # governance batch bucket; product_area below is truth
+                "product_area": "GeneralTechnician",
+                "source_system": "printsense",
+                "source_reference": "docs/adr/0033-one-technician-brain.md",
+                "source_exists_in_repo": True,
+                "source_sha256": sha,
+                "manufacturer": "FactoryLM",
+                "document_number": doc,
+                "document_lineage_key": f"factorylm:{doc}",
+                "split": "train",
+                "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
+                "corpus_source": {
+                    "schema": "factorylm.clf.corpus-source.v1",
+                    "license_class": "synthetic",
+                    "confidentiality_class": "public",
+                    "rights": {
+                        "rights_resolved": True,
+                        "training_allowed": True,
+                        "evaluation_allowed": True,
+                        "public_export_allowed": True,
+                        "cross_tenant_reuse_allowed": False,
+                        "derivatives_retained": True,
+                        "policy_ref": "docs/adr/0033-one-technician-brain.md",
+                    },
                 },
-            },
-            "source_class": "independently_grounded_synthetic",
-            "origin": "synthetic",
-            "target_record_count": 0,
-            "answer_key_ref": "docs/adr/0033-one-technician-brain.md",
-        }
+                "source_class": "independently_grounded_synthetic",
+                "origin": "synthetic",
+                "target_record_count": 0,
+                "answer_key_ref": "docs/adr/0033-one-technician-brain.md",
+            }
     return out
 
 
@@ -609,9 +609,7 @@ def compile_unified(
     def _over_cap(rows: list[ReviewCandidate]) -> ReviewCandidate | None:
         t = len(rows)
         fam_c = Counter(_family_of(c) for c in rows)
-        mfr_c = Counter(
-            _mfr_of(c) for c in rows if _mfr_of(c) not in HOUSE_MANUFACTURERS
-        )
+        mfr_c = Counter(_mfr_of(c) for c in rows if _mfr_of(c) not in HOUSE_MANUFACTURERS)
         tmpl_c = Counter(_template_family_of(c) for c in rows)
         for c in reversed(rows):
             fam = _family_of(c)
