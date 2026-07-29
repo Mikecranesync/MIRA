@@ -84,9 +84,42 @@ Rule + default behavior: for any task likely to exceed context (long evals, mult
 
 ---
 
-## P5 — Background eval loop w/ revert-on-regression  🟢 strategic
+## P5 — Background eval loop w/ revert-on-regression  ✅ DONE (2026-07-09, as the eval-fixer agent)
 
-`tools/eval-loop.sh` + thin skill: run eval detached → write per-fixture results to a checkpoint file → iterate {pick highest-impact failing fixture → minimal fix → re-run affected fixtures → keep only if net-passing increased, else `git checkout --` the change}. Pass-rate only climbs. Targets the 61%→80% goal without burning interactive context.
+Built as `.claude/agents/run-eval-fixer.sh` + `eval-fixer-instructions.md` (launchd
+`com.mira.eval-fixer`, nightly 05:00 UTC) rather than the originally-sketched
+`tools/eval-loop.sh` bash script — a Claude agent runs `tests/eval/eval_watchdog.py`,
+picks the single highest-impact failing file-cluster, baselines the offline eval,
+applies one minimal patch (hard limits: 1 file, ≤50 lines, no SAFETY/PLC/CRITICAL,
+never touches fixtures), re-runs the eval, and **`git checkout -- .` (revert) if the
+pass count didn't improve** — else opens a draft PR. Same algorithm as originally
+scoped; safer mechanism (PR review, not auto-merge to main).
+
+**Found broken 2026-07-09:** it was loaded and firing nightly but had failed silently
+every night since at least 2026-07-06 with `Error: Exceeded USD budget (1)` — the
+`--max-budget-usd 1.00` ceiling was far too low for a workflow that runs the full
+offline eval suite through live LLM inference *twice* (baseline + post-patch). Also
+its `git pull --ff-only origin "$CURRENT_BRANCH"` step grabbed whatever branch
+happened to be checked out in the shared working tree (often an unpushed feature
+branch), erroring `couldn't find remote ref`. Fixed both: bumped budget to $10.00,
+and routed the pull through the existing `tools/hooks/safe-cron-pull.sh` (skips
+cleanly unless the tree is clean/idle/on `main`, instead of erroring).
+
+> ⚠️ **Correction (2026-07-27):** "Fixed both" above was true only of a *working
+> tree*, not of `main`. Both fixes were committed to `fix/precommit-untracked-sigpipe`
+> (`017d5aa7`) and that branch was never merged, so `main` kept `--max-budget-usd 1.00`
+> for another 18 days. The nightly kept working purely by accident — launchd executes
+> the script from the shared checkout, which happened to have that branch checked out.
+> Actually landed on `main` 2026-07-27 in **#2951**. *"Fixed" means merged, not present
+> in a working tree.*
+>
+> The `safe-cron-pull.sh` routing also turned out to be a **partial** fix. That wrapper
+> skips when the tree is dirty, idle-locked, **or** off `main` — and the shared tree is
+> permanently dirty (cron rewrites tracked `tools/lead-hunter/.hourly_state.json` and
+> `marketing/prospects/hardening-alerts.jsonl` hourly) and was parked off `main` for
+> weeks. Net effect: the nightly graded a checkout up to 465 commits stale from 07-10
+> through 07-27, so every scorecard in that window measures pre-`main` code. Root cause
+> and the proposed `main`-pinned-worktree fix are tracked in **#2952**.
 
 ## P6 — Multi-session coordination  🟢 strategic
 

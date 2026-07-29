@@ -1,0 +1,13 @@
+{
+  "case_id": "17",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\17.png",
+  "oem": "AutomationDirect",
+  "document": "GS20 User Manual Ch. 2 (VFD Power & Control)",
+  "source_url": "cdn.automationdirect.com/static/manuals/gs20m/ch2.pdf",
+  "page": 37,
+  "category": "VFD",
+  "standard": "NEMA ICS 6",
+  "question": "Explain this print.",
+  "candidate_response": "## 1. What this appears to be\nThis appears to be a full I/O wiring diagram for a control circuit, specifically for a DURAPULSE GS20 & GS20X Drive.\n\n## 2. Main visible components\nThe main visible components include:\n* A circuit breaker or fuse\n* A DC reactor (optional)\n* A brake resistor (optional)\n* A motor\n* Multi-function relay output terminals\n* Multi-function output frequency terminals\n* Analog multi-function output terminals\n* Communication card/DC 24V external power supply card\n* Safety PLC\n* E-stop\n\n## 3. Plain-English theory of operation\nAccording to this print, the circuit appears to control a motor using a drive. The E-stop is connected to the safety PLC, which is connected to the drive's STO1 and STO2 terminals. The drive has various input and output terminals, including digital inputs (DI1-DI7), digital outputs (DO1-DO2), and analog outputs (AO1). The drive also has a communication card and a USB port.\n\n## 4. What must be true for it to work\nFor the circuit to work, the following conditions must be met:\n* The circuit breaker or fuse must be closed\n* The E-stop must be released\n* The safety PLC must be functioning correctly\n* The drive must be properly configured and powered\n* The motor must be connected and functioning correctly\n\n## 5. What would stop it from working\nThe following issues would prevent the circuit from working:\n* A blown fuse or tripped circuit breaker\n* A faulty E-stop or safety PLC\n* A misconfigured or malfunctioning drive\n* A faulty motor or motor connection\n* A communication issue with the communication card or USB port\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable.",
+  "context_notes": "This candidate had NO OCR text extracted — it was grounded on the image only (ocr_grounding='unavailable_on_this_box'). Judge whether it correctly separates what is visibly readable from inference accordingly: do not penalize it for declining to cite a specific tag/wire-number string it could not have OCR'd, but do penalize it under evidence_grounding_unsupported_claims if it invents a specific tag/wire-number/label that is not actually legible in the image."
+}

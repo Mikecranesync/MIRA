@@ -50,3 +50,28 @@ describe("middleware — unauthenticated callback preservation (#1952)", () => {
     expect(callbackOf(res).callbackUrl).toBe("/assets/");
   });
 });
+
+// The CSP header is applied to EVERY response (incl. the unauth redirect), so we
+// can assert directive membership off the redirect without a session.
+describe("middleware — CSP allows the cloud-picker SDKs (#1902)", () => {
+  function directive(res: Response, name: string): string {
+    const csp = res.headers.get("content-security-policy") ?? "";
+    return csp.split(";").map((d) => d.trim()).find((d) => d.startsWith(name + " ")) ?? "";
+  }
+
+  it("allows Dropbox dropins.js (script-src) so window.Dropbox is defined", async () => {
+    const res = await unauth("/knowledge/manuals/");
+    expect(directive(res, "script-src")).toContain("https://www.dropbox.com");
+  });
+
+  it("allows Dropbox XHR + Chooser iframe (connect-src + frame-src)", async () => {
+    const res = await unauth("/knowledge/manuals/");
+    expect(directive(res, "connect-src")).toContain("https://www.dropbox.com");
+    expect(directive(res, "frame-src")).toContain("https://www.dropbox.com");
+  });
+
+  it("still allows the Google Picker SDK (apis.google.com) in script-src", async () => {
+    const res = await unauth("/knowledge/manuals/");
+    expect(directive(res, "script-src")).toContain("https://apis.google.com");
+  });
+});

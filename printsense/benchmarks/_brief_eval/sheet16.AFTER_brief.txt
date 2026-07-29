@@ -1,0 +1,34 @@
+📋 Sheet 16 — the signal-output/interconnect terminal strip (-X4) of Sensor Control Unit 2 (SCU2), the sensor-monitoring wiring point.
+
+This sheet documents terminal strip -X4 inside Sensor Control Unit 2, where sensor-monitoring status signals are landed and routed to other sheets. Terminals LOK1–LOK4 (positions 2–5) carry 'Sensor Unit 5/6/7/8 Broken' status and go to a 'DA5' module on sheet 10. BEL (position 6, from German 'belegt' = occupied) reports 'Occupied Downstream' to the DA5 module (sheet 10.5) and also branches to terminal X4.6 on sheet 15.5. PP1–PP3 (positions 7–9) route to another module on sheet 20. Positions 1 and 10 are signal ground (Gnd). This is an interconnect/terminal sheet — the sensor logic itself is on the referenced sheets, not here.
+
+🔑 Signals
+• Sensor Unit 5 broken
+• Sensor Unit 6 broken
+• Sensor Unit 7 broken
+• Sensor Unit 8 broken
+• Occupied downstream (belegt)
+• PP1 (function not labeled on this sheet)
+• PP2 (function not labeled on this sheet)
+• PP3 (function not labeled on this sheet)
+• Signal ground
+• Signal ground
+
+🔧 Devices
+• Signal-output/interconnect terminal strip of Sensor Control Unit 2 (10 positions) (-X4)
+• Referenced module/network node (sheet 13) associated with tag TTS.SNET-SB01-4 (-13/A1)
+
+🩺 If you're chasing a fault
+To trace 'Sensor Unit 7 broken' (LOK3), take two discriminating measurements: (1) at terminal -X4:4 on this strip, and (2) at the DA5 module input on sheet 10.2 (DA5 pin 2). If the expected state is present at -X4:4 but does NOT appear at the DA5,2 input on sheet 10.2, the fault is in the wiring/cable between the terminal strip and the DA5 module. If the state is already absent/incorrect at -X4:4 itself, the fault is upstream in the sensor unit / SCU logic feeding the terminal — which is NOT detailed on this sheet, so follow it to the source sheets. Note: this sheet does not show the controller's response logic, so no claim about what DA5 does is made here.
+
+❓ Couldn't confirm (verify on the sheet):
+• Source tags for PP1–PP3 (read as 'LKK4,7 / LKK4,8 / LKK4,9') are low-confidence — first characters ambiguous; verify with a close-up.
+• Whether BEL (-X4:6) truly branches to both DA5,3 (10.5) and X4.6 (15.5) — the jogged line/label needs a sharper image.
+• Left-edge designation '-13/A1', '/13.1', 'TTS.SNET-SB01-4' is small/blurred; its role and any connection to the strip are unconfirmed.
+• Title-block 'von 1.706' sheet-count value is unusual and unverified.
+
+⚠️ No voltage level is printed on this sheet, so the drawing does not establish the operating voltage of these signals — do not assume a level. For continuity/wire-tracing between -X4 and the referenced sheets, de-energize, lock out, and verify absence of voltage first. If you must verify a live signal state, treat the circuit as potentially energized and use appropriately rated equipment. The 'Gnd' terminals here are signal reference, not protective earth — do not treat them as a safety ground.
+
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply "map" for the full terminal and wire list.

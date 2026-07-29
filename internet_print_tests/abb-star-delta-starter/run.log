@@ -1,0 +1,17 @@
+2026-07-13 16:28:14,964 INFO fetching https://library.e.abb.com/public/ac6b6e46df1ea3e6c1256e35004c9145/Star-delta%20Starters%20Open%20Type_technical%20data.pdf
+2026-07-13 16:28:15,797 INFO fetched 1172188 bytes (application/pdf)
+2026-07-13 16:28:16,090 INFO rendered PDF page 4 @ 200 dpi -> 171077 bytes PNG
+2026-07-13 16:28:16,092 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-13 16:30:34,004 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=True latency=137.56s
+2026-07-13 16:30:34,004 INFO running independent multimodal judge…
+2026-07-13 16:32:01,860 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — abb-star-delta-starter — STAR-DELTA Open-Type Starter — Technical Data — 78/100
+ATTACHMENTS:
+  [attach] original.pdf (1,172,188 B)
+  [attach] tested_page.png (171,077 B)
+  [attach] report.html (10,376 B)
+  [attach] judge_1.json (8,143 B)
+  [attach] telegram_response.json (36,865 B)
+HTML: 3,738 chars
+2026-07-13 16:32:02,972 INFO email send: {'sent': True, 'status': 200, 'id': 'c874b4c7-9c4d-404c-a47d-e88f8ddc163b'}

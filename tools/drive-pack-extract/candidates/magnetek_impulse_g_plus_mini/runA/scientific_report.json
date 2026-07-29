@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-07-14T02-02-06Z",
+  "pack_id": "magnetek_impulse_g_plus_mini",
+  "manufacturer": "Magnetek",
+  "series": "IMPULSE G+ Mini",
+  "schema_version": 2,
+  "overall_score": 85.7,
+  "grade": "B",
+  "grade_meaning": "Beta; waiver required for promotion",
+  "incomplete": true,
+  "not_applicable_categories": [
+    "fault_coverage_precision",
+    "fault_field_accuracy",
+    "parameter_coverage_precision",
+    "parameter_field_accuracy",
+    "relationship_accuracy"
+  ],
+  "categories": [
+    {
+      "key": "provenance_traceability",
+      "name": "Manual provenance and traceability",
+      "weight": 10,
+      "score": 50.0,
+      "gradeable": true,
+      "findings": [
+        "provenance.sources missing page+excerpt evidence"
+      ]
+    },
+    {
+      "key": "fault_coverage_precision",
+      "name": "Fault coverage and precision",
+      "weight": 20,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "fault_field_accuracy",
+      "name": "Fault field accuracy",
+      "weight": 20,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "parameter_coverage_precision",
+      "name": "Parameter coverage and precision",
+      "weight": 20,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "parameter_field_accuracy",
+      "name": "Parameter field accuracy",
+      "weight": 15,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "relationship_accuracy",
+      "name": "Relationship accuracy",
+      "weight": 10,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "citation_fidelity",
+      "name": "Citation fidelity",
+      "weight": 15,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    },
+    {
+      "key": "safety_usability",
+      "name": "Safety and technician usability",
+      "weight": 10,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    }
+  ],
+  "hard_gates": [
+    {
+      "key": "schema_validity",
+      "passed": true,
+      "detail": "schema OK (schema_version=2) \u2014 0 fault codes, 0 parameters"
+    },
+    {
+      "key": "runtime_compatibility",
+      "passed": true,
+      "detail": "pack loads + validates through the runtime drive_packs loader"
+    },
+    {
+      "key": "provenance_present",
+      "passed": true,
+      "detail": "provenance.items present with valid tiers"
+    }
+  ],
+  "critical_failures": [],
+  "fault_recall": null,
+  "fault_precision": null,
+  "parameter_recall": null,
+  "diagnostic_critical_precision": null,
+  "citation_accuracy": 100.0,
+  "missing_evidence": [
+    "gold set (author gold/<family>/gold.json) \u2014 coverage/accuracy unscored"
+  ],
+  "promotable": false,
+  "promotion_recommendation": "NOT PROMOTABLE (INCOMPLETE) \u2014 missing evidence prevents a full scientific grade; un-graded categories: ['fault_coverage_precision', 'fault_field_accuracy', 'parameter_coverage_precision', 'parameter_field_accuracy', 'relationship_accuracy']. Provide the missing evidence, then re-grade.",
+  "note": "COMPLEMENTS the beta/trusted trust-status (grade.py); does not replace it."
+}

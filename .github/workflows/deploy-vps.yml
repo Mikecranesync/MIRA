@@ -40,6 +40,16 @@ concurrency:
   group: deploy-vps
   cancel-in-progress: false  # never cancel a running deploy
 
+# The repo default token is READ-ONLY (org setting), so without this block the
+# staging-gate-bypass audit issue was silently never filed — every bypass fell
+# through to the ::warning:: fallback and the audit trail existed only in run
+# logs. contents:read = checkout; actions:read = the Staging Gate run lookup;
+# issues:write = the bypass audit issue.
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
 jobs:
   deploy:
     name: Deploy MIRA to production VPS
@@ -133,32 +143,44 @@ jobs:
           set -euo pipefail
           echo "Resolving PR head for merge commit $DEPLOY_SHA"
           # /commits/{sha}/pulls returns PRs that this commit was the merge of.
-          PR_HEAD_SHA=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" \
-            --jq '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty' 2>/dev/null || echo "")
+          # Call the API ONCE and fail loudly if the call itself errors: a 5xx /
+          # rate-limit used to be swallowed (2>/dev/null || echo "") and then
+          # reported as the definitive-sounding "No PR associated" — a false
+          # diagnosis for what is a transient outage. Both outcomes still fail
+          # closed; only the message (and the operator's next move) differs.
+          if ! PULLS_JSON=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" 2>gh_api_err.txt); then
+            echo "::error::GitHub API lookup failed for $DEPLOY_SHA — transient; re-run this workflow. stderr: $(cat gh_api_err.txt)"
+            exit 1
+          fi
+          PR_HEAD_SHA=$(echo "$PULLS_JSON" \
+            | jq -r '[.[] | select(.merge_commit_sha == "'"$DEPLOY_SHA"'") | .head.sha] | first // empty')
           if [ -z "$PR_HEAD_SHA" ]; then
             # Fallback: any PR associated with this commit (covers rebase-merge
             # corner cases where merge_commit_sha doesn't exactly match).
-            PR_HEAD_SHA=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" \
-              --jq '.[0].head.sha // empty' 2>/dev/null || echo "")
+            PR_HEAD_SHA=$(echo "$PULLS_JSON" | jq -r '.[0].head.sha // empty')
           fi
           if [ -z "$PR_HEAD_SHA" ]; then
-            echo "::error::No PR associated with $DEPLOY_SHA. Direct pushes to main are not allowed to deploy. Open a PR (which will run Staging Gate), or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
+            echo "::error::No PR associated with $DEPLOY_SHA (API call succeeded; the commit genuinely has no PR). Direct pushes to main are not allowed to deploy. Open a PR (which will run Staging Gate), or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
             exit 1
           fi
           echo "PR head SHA: $PR_HEAD_SHA"
-          STATUS=$(gh run list \
+          # Same discipline for the run lookup: an API failure is not "no run".
+          if ! STATUS=$(gh run list \
             --repo "$REPO" \
             --workflow "Staging Gate" \
             --commit "$PR_HEAD_SHA" \
             --limit 1 \
             --json status,conclusion \
-            --jq '.[0] | "\(.status):\(.conclusion)"' 2>/dev/null || echo "")
+            --jq '.[0] | "\(.status):\(.conclusion)"' 2>gh_run_err.txt); then
+            echo "::error::GitHub API run lookup failed for $PR_HEAD_SHA — transient; re-run this workflow. stderr: $(cat gh_run_err.txt)"
+            exit 1
+          fi
           echo "Most recent Staging Gate run on $PR_HEAD_SHA: $STATUS"
           case "$STATUS" in
             completed:success)
               echo "✓ staging gate passed — proceeding with deploy"
               ;;
-            "")
+            ""|"null:null")
               echo "::error::No Staging Gate run found for PR head $PR_HEAD_SHA. Re-run the gate (gh workflow run staging-gate.yml) or use workflow_dispatch with skip_staging_gate=true for verified hotfixes."
               exit 1
               ;;
@@ -185,9 +207,27 @@ jobs:
           set -euo pipefail
           cd /opt/mira
 
-          echo "=== Pull latest code ==="
-          git fetch origin main
-          git reset --hard origin/main
+          # Signal "deploy in progress" so the heartbeat + self-healer crons stand
+          # down instead of racing this deploy's container recreate and firing
+          # false 502/container-missing escalations every 15 min (incident
+          # 2026-07-08). Removed on exit (success OR failure) via trap; the healer
+          # also ages out a stale sentinel after 30 min in case this trap is missed.
+          touch /opt/mira/.deploy-in-progress
+          trap 'rm -f /opt/mira/.deploy-in-progress' EXIT
+
+          echo "=== Pull latest code (pin to release tag, not main HEAD) ==="
+          # Rollback target is only real if prod references a tag, not a moving main HEAD
+          # (docs/versioning.md). version-tag.yml lays vX.Y.Z on every merge commit, so we
+          # deploy that tag — prod's `git describe` then shows a clean release ref.
+          git fetch origin main --tags --force
+          RELEASE_TAG="$(git tag --points-at origin/main --list 'v[0-9]*' | sort -V | tail -1)"
+          if [ -n "$RELEASE_TAG" ]; then
+            echo "Deploying release tag $RELEASE_TAG (= origin/main HEAD)"
+            git -c advice.detachedHead=false checkout --force "$RELEASE_TAG"
+          else
+            echo "::warning::No vX.Y.Z tag at origin/main HEAD (version-tag.yml may be lagging) — falling back to origin/main"
+            git reset --hard origin/main
+          fi
 
           echo "=== Host permission setup (chown saas data dirs to UID 1001) ==="
           # PR #1219 dropped root in mira-pipeline/mira-mcp/mira-ingest Dockerfiles.
@@ -195,12 +235,26 @@ jobs:
           # Script is idempotent — safe on every deploy. See incident 2026-05-15.
           bash scripts/host_perm_setup.sh
 
+          echo "=== Reinstall agent crontab (keep host crons in sync with repo) ==="
+          # The crontab is a deployed artifact like everything else: install_crons.sh
+          # is the source of truth for every agent schedule (and, since 2026-07-08, the
+          # -e TELEGRAM_ALERT_* forwards that route the 3 container agents' ops traffic
+          # to the alert bot instead of @FactoryLM_Diagnose). Without this step the
+          # crontab silently drifts from the repo and every cron change needs a manual
+          # SSH. Idempotent — replaces the full crontab cleanly. Non-fatal: a cron
+          # hiccup must not block the service deploy (container rebuild is the critical
+          # path), so warn-don't-fail, mirroring the hub health check below.
+          bash scripts/install_crons.sh \
+            || echo "::warning::install_crons.sh failed — host crontab may be stale; re-run manually: ssh root@165.245.138.91 'cd /opt/mira && bash scripts/install_crons.sh'"
+
           # Resolve the rebuild list once so cleanup + build + up all agree.
           # mira-ask added 2026-06-06 (closes ops gap surfaced by AskMira P0 fix
           # cycle — engine changes shipped to telegram/slack but mira-ask-saas
           # stayed on the old image because it was missing from this default
           # list). See docs/runbooks/kiosk-askmira-deploy-and-verify.md.
-          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
+          # mira-web added 2026-07-04 - no stated exclusion rationale existed
+          # (docs/known-issues.md); marketing-site PRs silently did not auto-deploy.
+          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-web mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
           echo "Rebuild targets: $TARGETS"
 
           echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
@@ -214,6 +268,14 @@ jobs:
             docker rm -f "${svc}-saas" 2>/dev/null || true
             docker rm -f "${svc}" 2>/dev/null || true
           done
+
+          # Deploy identity (#2226) — bake the SHA/version/time into the hub image
+          # so /api/version + /api/health report which code is live. Exported here
+          # so docker-compose build.args pick them up; default "unknown" otherwise.
+          export MIRA_GIT_SHA="${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+          export MIRA_APP_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]' || echo unknown)"
+          export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
 
           echo "=== Rebuild containers ==="
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS

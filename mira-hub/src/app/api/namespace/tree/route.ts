@@ -109,13 +109,19 @@ export async function GET() {
     // the owner pool (not the tenant RLS context); a failure here must never break
     // the tree, so it degrades to the direct-upload count alone.
     try {
+      // Exclude uploads whose original is parked in namespace_direct_uploads
+      // (upload_id link) — those already count once via files_count above.
       const { rows } = await pool.query<{ kg_entity_id: string; n: string }>(
         `SELECT kg_entity_id, COUNT(*)::text AS n
-           FROM hub_uploads
+           FROM hub_uploads u
           WHERE tenant_id = $1
             AND kg_entity_id IS NOT NULL
             AND status = 'parsed'
             AND kind = 'document'
+            AND NOT EXISTS (
+              SELECT 1 FROM namespace_direct_uploads ndu
+               WHERE ndu.upload_id = u.id
+            )
           GROUP BY kg_entity_id`,
         [ctx.tenantId],
       );

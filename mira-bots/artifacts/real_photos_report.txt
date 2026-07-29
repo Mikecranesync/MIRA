@@ -15,7 +15,7 @@ I can see a P&ID with 0 labeled elements. Key labels: — SS. What would you lik
 
 Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
 
-I can see a P&ID with 18 labeled elements. Key labels: 2400WK0266_HDW_AVL_220, 2400WK0266_OPM_Ride_V1, 1280, file C:/Use... What would you like to know about this circuit?
+I can see a P&ID with 18 labeled elements. Key labels: [DWG]_HDW_AVL_220, [DWG]_OPM_Ride_V1, 1280, file [local]... What would you like to know about this circuit?
 
 ----------------------------------------------------------------------
 
@@ -71,7 +71,7 @@ I can see a panel schedule with 18 labeled elements. Key labels: W-J803.31 S20.2
 
 Caption: Please identify this industrial equipment. Note the make, model, and any issues visible.
 
-I can see a wiring diagram with 2 labeled elements. Key labels: EMIS, EMIS. What would you like to know about this circuit?
+I can see a wiring diagram with 2 labeled elements. Key labels: [partner], [partner]. What would you like to know about this circuit?
 
 ----------------------------------------------------------------------
 

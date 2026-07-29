@@ -128,9 +128,17 @@ export interface VendorTaggable {
  *   prove a conflict — safer than the Python substring filter, which would
  *   drop them).
  * - Drop only chunks positively identified as a DIFFERENT vendor.
- * - Never strip to empty: if the filter would remove every chunk, return the
- *   original set (a wrong-vendor citation beats no citation at all, and the
- *   cite-or-refuse prompt still guards the answer).
+ * - Strip to empty when EVERY chunk is a positively-different known vendor.
+ *   (#2183) The earlier "never strip to empty — a wrong-vendor citation beats
+ *   none" rule was wrong for the public quickstart demo: a "Yaskawa GS20 F030"
+ *   question retrieved only Rockwell/AutomationDirect "F030" chunks (the corpus
+ *   has no Yaskawa F030), and the never-empty guard kept them — so MIRA cited
+ *   Rockwell PowerMonitor pages for a Yaskawa fault, the exact fabrication the
+ *   demo footer promises it won't do ("if we can't cite a source, we say so").
+ *   Returning [] lets the cite-or-refuse prompt refuse honestly instead. The
+ *   guard only fires when a vendor positively resolves AND every chunk is a
+ *   different positively-resolved vendor — generic/untagged/unknown chunks are
+ *   still kept, so this never strips a result that had any usable chunk.
  *
  * @param queryVendor the manufacturer the user selected, or the raw question
  *   text to infer the vendor from.
@@ -142,11 +150,9 @@ export function stripConflictingVendors<T extends VendorTaggable>(
   const canonical = resolveVendor(queryVendor);
   if (!canonical || chunks.length === 0) return chunks;
 
-  const kept = chunks.filter((c) => {
+  return chunks.filter((c) => {
     if (!c.manufacturer || !c.manufacturer.trim()) return true;
     const chunkVendor = resolveVendor(c.manufacturer);
     return chunkVendor === null || chunkVendor === canonical;
   });
-
-  return kept.length > 0 ? kept : chunks;
 }

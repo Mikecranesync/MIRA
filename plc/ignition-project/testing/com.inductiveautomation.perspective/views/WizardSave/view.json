@@ -1,0 +1,102 @@
+{
+  "custom": {
+    "approved": false,
+    "status": ""
+  },
+  "params": {
+    "assetId": "conveyor",
+    "folder": "[default]",
+    "pollMs": 2000
+  },
+  "props": { "defaultSize": { "width": 1360, "height": 980 } },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "props": { "direction": "column", "style": { "backgroundColor": "#0d1117", "height": "100%" } },
+    "children": [
+      {
+        "type": "ia.container.flex", "meta": { "name": "header" }, "position": { "basis": "52px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderBottom": "1px solid #30363d", "padding": "0 18px", "gap": "14px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "brand" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "VFD ANALYZER — SETUP", "style": { "color": "#e6edf3", "fontSize": "16px", "fontWeight": 700, "letterSpacing": "0.08em" } } },
+          { "type": "ia.display.label", "meta": { "name": "assetLbl" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "asset", "style": { "color": "#8b949e", "fontSize": "13px" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"asset: \" + {session.custom.assetId}" } } } } },
+          {
+            "type": "ia.display.label", "meta": { "name": "gate" }, "position": { "basis": "auto", "shrink": 0 },
+            "props": { "text": "…", "style": { "color": "#fff", "backgroundColor": "#30363d", "fontSize": "13px", "fontWeight": 700, "borderRadius": "14px", "padding": "5px 14px" } },
+            "propConfig": {
+              "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.gate_text\", {session.custom.pollMs}, {session.custom.assetId})" } } },
+              "props.style.backgroundColor": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.gate_color\", {session.custom.pollMs}, {session.custom.assetId})" } } }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "steps" }, "position": { "basis": "42px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "stretch", "style": { "backgroundColor": "#0d1117", "padding": "8px 14px", "gap": "8px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "sp1" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "1  Connect ✓", "style": { "color": "#7ee787", "backgroundColor": "#1a4d2e", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp2" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "2  Verify ✓", "style": { "color": "#7ee787", "backgroundColor": "#1a4d2e", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp3" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "3  Map ✓", "style": { "color": "#7ee787", "backgroundColor": "#1a4d2e", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp4" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "4  SAVE", "style": { "color": "#fff", "backgroundColor": "#1f6feb", "fontSize": "13px", "fontWeight": 700, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "content" }, "position": { "grow": 1, "shrink": 1 },
+        "props": { "direction": "column", "style": { "padding": "16px 18px", "gap": "12px", "overflow": "hidden" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "title" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Review the map and finish", "style": { "color": "#e6edf3", "fontSize": "22px", "fontWeight": 700 } } },
+          {
+            "type": "ia.display.table", "meta": { "name": "map" }, "position": { "grow": 1, "shrink": 1 },
+            "props": {
+              "data": [],
+              "columns": [
+                { "field": "role", "header": { "title": "Role" }, "align": "left" },
+                { "field": "req", "header": { "title": "Req" }, "align": "left" },
+                { "field": "tag", "header": { "title": "Mapped tag" }, "align": "left" },
+                { "field": "scale", "header": { "title": "Scale" }, "align": "left" },
+                { "field": "live", "header": { "title": "Live" }, "align": "left" }
+              ],
+              "rows": { "pageSize": 0 },
+              "style": { "border": "1px solid #30363d", "borderRadius": "8px", "fontSize": "14px" }
+            },
+            "propConfig": { "props.data": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.rows_table\", {session.custom.pollMs}, {session.custom.assetId})" } } } }
+          },
+          {
+            "type": "ia.container.flex", "meta": { "name": "approveRow" }, "position": { "basis": "auto", "shrink": 0 },
+            "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "border": "1px solid #30363d", "borderRadius": "8px", "padding": "12px", "gap": "12px" } },
+            "children": [
+              {
+                "type": "ia.input.button", "meta": { "name": "approveToggle" }, "position": { "basis": "220px", "shrink": 0 },
+                "props": { "text": "◻ Approve for Ask MIRA", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "13px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "10px" } },
+                "propConfig": {
+                  "props.text": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.approved}, \"☑ Approved for Ask MIRA\", \"◻ Approve for Ask MIRA\")" } } },
+                  "props.style.backgroundColor": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.approved}, \"#1a7f37\", \"#30363d\")" } } }
+                },
+                "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.approved = not self.view.custom.approved\n" } } } }
+              },
+              { "type": "ia.display.label", "meta": { "name": "approveNote" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Trend + Decode + Anomaly work as soon as you save. Ask MIRA unlocks only when this map is approved.", "style": { "color": "#8b949e", "fontSize": "13px" } } }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "footer" }, "position": { "basis": "60px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderTop": "1px solid #30363d", "padding": "0 18px", "gap": "12px" } },
+        "children": [
+          {
+            "type": "ia.input.button", "meta": { "name": "back" }, "position": { "basis": "140px", "shrink": 0 },
+            "props": { "text": "◂ Back", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "14px", "borderRadius": "8px", "border": "none", "padding": "11px" } },
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/map\")\n" } } } }
+          },
+          { "type": "ia.display.label", "meta": { "name": "status" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "", "style": { "color": "#7ee787", "fontSize": "15px", "fontWeight": 600, "textAlign": "center" } }, "propConfig": { "props.text": { "binding": { "type": "property", "config": { "path": "view.custom.status" } } } } },
+          {
+            "type": "ia.input.button", "meta": { "name": "finish" }, "position": { "basis": "220px", "shrink": 0 },
+            "props": { "text": "✓ Save & Finish", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "12px" } },
+            "propConfig": { "props.enabled": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.is_ready\", {session.custom.pollMs}, {session.custom.assetId})" } } } },
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tasset = self.session.custom.assetId or \"conveyor\"\n\tuser = \"operator\"\n\ttry:\n\t\tu = self.session.props.auth.user.userName\n\t\tif u:\n\t\t\tuser = u\n\texcept Exception:\n\t\tuser = \"operator\"\n\tself.view.custom.status = mira_setup.finalize(asset, self.view.custom.approved, user)\n" } } } }
+          }
+        ]
+      }
+    ]
+  }
+}

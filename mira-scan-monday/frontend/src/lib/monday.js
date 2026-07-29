@@ -2,16 +2,27 @@ import mondaySdk from "monday-sdk-js";
 
 const monday = mondaySdk();
 
+const CONTEXT_TIMEOUT_MS = 3000;
+
+function withTimeout(promise, ms) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("context_timeout")), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
 export async function getMondayContext() {
   try {
-    const ctx = await monday.get("context");
+    const ctx = await withTimeout(monday.get("context"), CONTEXT_TIMEOUT_MS);
     const session = await monday.get("sessionToken").catch(() => ({ data: null }));
     return {
       ...ctx,
       sessionToken: session?.data || null,
     };
   } catch (err) {
-    console.warn("monday context unavailable (running outside iframe?)", err);
+    if (err?.message !== "context_timeout") {
+      console.warn("Board context unavailable (outside embedded view?)", err);
+    }
     return { data: null, sessionToken: null };
   }
 }

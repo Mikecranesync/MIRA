@@ -27,7 +27,7 @@ internal failure degrades to "pass" so a buggy gate cannot block the bot.
 Constraints honored:
 - No LangChain, no Anthropic SDK, no TensorFlow.
 - Pure stdlib heuristics. Judge call goes through the existing
-  InferenceRouter cascade (Groq → Cerebras → Gemini), so it inherits
+  InferenceRouter cascade (Groq → Cerebras → Together), so it inherits
   failover and PII sanitization.
 - Apache-2.0 / MIT compatible (project hard constraint).
 """

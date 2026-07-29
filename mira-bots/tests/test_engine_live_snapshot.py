@@ -54,8 +54,11 @@ async def test_snapshot_injected_after_gate(tmp_db):
     with patch.object(sup, "process_full", new=AsyncMock(return_value={"reply": "ok"})) as pf:
         await sup.process("c1", "why won't it start?", live_tags=LIVE_TAGS)
     sent = pf.call_args[0][1]  # process_full(chat_id, message, photo_b64)
-    assert sent.startswith("[LIVE CONVEYOR STATUS]")
-    assert "CE10 modbus timeout" in sent
+    # The engine now attaches the structured Live Machine Evidence section
+    # (decoded values + assessment + separation instruction).
+    assert sent.startswith("## Live Machine Evidence")
+    assert "CE10 modbus timeout" in sent  # decoded fault label preserved
+    assert "Assessment:" in sent
     assert "why won't it start?" in sent  # original question preserved
 
 
@@ -66,7 +69,7 @@ async def test_snapshot_withheld_before_gate(tmp_db):
     with patch.object(sup, "process_full", new=AsyncMock(return_value={"reply": "ok"})) as pf:
         await sup.process("c1", "why won't it start?", live_tags=LIVE_TAGS)
     sent = pf.call_args[0][1]
-    assert "LIVE CONVEYOR STATUS" not in sent
+    assert "Live Machine Evidence" not in sent
     assert sent == "why won't it start?"  # message untouched before the gate
 
 

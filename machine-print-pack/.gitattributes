@@ -1,0 +1,20 @@
+# MIRA Print Pack bundles are byte-compared by the golden CI guard
+# (tests/test_machine_print_pack.py: rebuild → diff vs the committed example).
+# The tooling writes LF on every platform, so pin the byte-compared artifacts to
+# LF here too — otherwise a fresh Windows checkout renders them CRLF and the
+# rebuild (LF) spuriously mismatches. Binaries stay binary (no EOL munging/diff).
+examples/**/*.csv   text eol=lf
+examples/**/*.json  text eol=lf
+examples/**/*.yaml  text eol=lf
+examples/**/*.md    text eol=lf
+examples/**/*.txt   text eol=lf
+examples/**/*.pdf   binary
+examples/**/*.png   binary
+examples/**/*.jpg   binary
+
+# Product tooling + docs — LF for ruff/format stability across platforms.
+build/*.py     text eol=lf
+schema/*.yaml  text eol=lf
+*.md           text eol=lf
+*.yaml         text eol=lf
+VERSION        text eol=lf

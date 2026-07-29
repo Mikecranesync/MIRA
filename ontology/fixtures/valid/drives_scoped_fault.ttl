@@ -1,0 +1,20 @@
+# SEED FIXTURE (ADR-0032 §8) — the template the fixture phase copies.
+#
+# A correctly-formed fault code: it declares the family it is scoped to, retains the source
+# evidence it came from, and carries its mnemonic. This must CONFORM to every shape.
+#
+# Its paired negative lives at ../invalid/drives_unscoped_fault.ttl — the two together prove the
+# harness can both accept a good graph and pin a bad one to the SPECIFIC rule it breaks.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:rockwell a mira:Manufacturer .
+ex:pf40     a mira:DriveFamily ; mira:manufactured_by ex:rockwell .
+ex:manual   a mira:SourceDocument .
+ex:cite     a mira:Citation ; mira:cite_doc ex:manual ; mira:cite_locator "p.114" .
+
+ex:f007 a mira:FaultCode ;
+    mira:fault_mnemonic "F007" ;
+    mira:scoped_to ex:pf40 ;
+    mira:supported_by ex:cite .

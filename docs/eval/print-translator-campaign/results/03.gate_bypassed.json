@@ -1,0 +1,39 @@
+{
+  "id": 3,
+  "oem": "ABB",
+  "document": "STAR DELTA Open-Type Starter Technical Data (1SXU...)",
+  "url": "library.e.abb.com/public/ac6b6e46df1ea3e6c1256e35004c9145/Star-delta%20Starters%20Open%20Type_technical%20data.pdf",
+  "rendered_page_number": 4,
+  "category": "European/IEC",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "explanation_of_mode": "REAL print_translator.build_theory_messages + REAL engine.router.complete + REAL format_theory_reply on the REAL rendered image. Skips ONLY the buggy classifier gate (vision_worker._classify_photo). Prompt is unchanged production code. NOT a mock. vision_data is the real captured vision output from results/03.json (ocr_items empty on this box).",
+  "caption_submitted": "Explain this print.",
+  "caption_is_theory_request": true,
+  "caption_note": "Caption governs ONLY print_translator.is_theory_request() (the trigger gate); it is NOT passed to build_theory_messages, so this explanation is caption-independent.",
+  "ocr_grounding": "unavailable_on_this_box",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for YKA..-30, YDA..-30 Star-Delta Starters Open Type Version Protection by Thermal O/L Relay. The diagram includes power circuits, local control, and remote control sections with various symbols and labels.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 351,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "run_timestamp_utc": "2026-07-10T04:56:46.779119+00:00",
+  "inference": "ran",
+  "translator_reply": "## **1. What this appears to be**\nThis appears to be a technical diagram for YKA and YDA Star-Delta starters, specifically the open-type version with protection by a thermal overload relay.\n\n## **2. Main visible components**\nThe main visible components include:\n- Power circuits\n- Control circuits for local and remote operation\n- Motor (M)\n- Contactors (KM1, KM2, KM3)\n- Thermal overload relay (FR1)\n- Timer (KT)\n\n## **3. Plain-English theory of operation**\nThe Star-Delta starter appears to operate as follows:\n- The motor (M) is controlled by contactors KM1, KM2, and KM3.\n- In the power circuit, KM1 directly connects to the motor.\n- KM2 and KM3 are used for star and delta configurations.\n- The thermal overload relay (FR1) provides protection.\n- The timer (KT) seems to control the transition between star and delta configurations.\n\n## **4. What must be true for it to work**\nFor the system to work:\n- The power supply must be connected correctly.\n- All contactors (KM1, KM2, KM3) must function properly.\n- The thermal overload relay (FR1) must be reset if tripped.\n- The timer (KT) must be set correctly.\n\n## **5. What would stop it from working**\nThe system would not work if:\n- Any of the contactors (KM1, KM2, KM3) fail.\n- The thermal overload relay (FR1) trips and is not reset.\n- The timer (KT) malfunction.\n\n## **6. Unclear or unreadable items**\nNothing major appears to be unreadable."
+}

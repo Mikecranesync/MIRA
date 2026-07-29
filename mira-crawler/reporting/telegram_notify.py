@@ -15,6 +15,34 @@ from datetime import datetime
 
 logger = logging.getLogger("telegram_notify")
 
+
+def alert_token(explicit: str | None = None) -> str:
+    """Resolve the OPS-ALERT bot token.
+
+    Ops/monitoring/report traffic must NOT land on the prod user-facing bot
+    (@FactoryLM_Diagnose = TELEGRAM_BOT_TOKEN). Prefer a dedicated alert bot
+    (TELEGRAM_ALERT_BOT_TOKEN, set to the staging bot in prod), then the staging
+    token, and only fall back to the prod token if neither is configured (so this
+    stays inert until the alert vars are set).
+    """
+    return (
+        explicit
+        or os.environ.get("TELEGRAM_ALERT_BOT_TOKEN")
+        or os.environ.get("TELEGRAM_BOT_TOKEN_STG")
+        or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    )
+
+
+def alert_chat_id(explicit: str | None = None) -> str:
+    """Resolve the OPS-ALERT destination chat (staging DM by default)."""
+    return (
+        explicit
+        or os.environ.get("TELEGRAM_ALERT_CHAT_ID")
+        or os.environ.get("TELEGRAM_CHAT_ID")
+        or os.environ.get("TELEGRAM_REPORT_CHAT_ID", "")
+    )
+
+
 AGENTS: dict[str, dict[str, str]] = {
     "morning_brief": {"name": "Dana (Morning Brief)", "emoji": "☀️"},
     "safety_alert": {"name": "Linda (Safety)", "emoji": "🛑"},
@@ -85,10 +113,8 @@ def notify(
 
     Returns True on success. Never raises — callers don't need to try/except.
     """
-    _token = token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    _chat_id = chat_id or os.environ.get(
-        "TELEGRAM_CHAT_ID", os.environ.get("TELEGRAM_REPORT_CHAT_ID", "")
-    )
+    _token = alert_token(token)
+    _chat_id = alert_chat_id(chat_id)
 
     if not _token or not _chat_id:
         logger.debug("telegram_notify: no token/chat_id — skipping")
@@ -104,8 +130,8 @@ def notify(
 
 def notify_raw(text: str, parse_mode: str = "Markdown") -> bool:
     """Send a raw message with no agent header — for roll calls and system messages."""
-    _token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    _chat_id = os.environ.get("TELEGRAM_CHAT_ID", os.environ.get("TELEGRAM_REPORT_CHAT_ID", ""))
+    _token = alert_token()
+    _chat_id = alert_chat_id()
     if not _token or not _chat_id:
         return False
     return _send(_token, _chat_id, text, parse_mode, label="raw")

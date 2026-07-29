@@ -1,0 +1,127 @@
+diff --git a/mira-hub/src/app/api/quickstart/ask/route.ts b/mira-hub/src/app/api/quickstart/ask/route.ts
+index e901df4e..b948d7ca 100644
+--- a/mira-hub/src/app/api/quickstart/ask/route.ts
++++ b/mira-hub/src/app/api/quickstart/ask/route.ts
+@@ -4,7 +4,7 @@ import { createHash } from "crypto";
+ import { withTenantContext } from "@/lib/tenant-context";
+ import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
+ import {
+-  retrieveManualChunks,
++  retrieveManualChunksScoped,
+   buildGroundedContext,
+   type ManualChunk,
+   type ManualSource,
+@@ -127,20 +127,39 @@ export async function POST(req: Request) {
+   }
+   const manufacturer = (body.manufacturer ?? "").trim() || null;
+ 
+-  // Pull the top-K chunks.
++  // Pull the top-K chunks. Track whether a named-manufacturer request had to
++  // fall back to an unscoped (cross-vendor) query — if so we must NOT cite the
++  // results as that manufacturer (C3 wrong-vendor lie). See manual-rag.ts.
+   let chunks: ManualChunk[] = [];
++  let fellBack = false;
+   try {
+-    chunks = await withTenantContext(quickstartTenantId(), async (client) =>
+-      retrieveManualChunks(client, quickstartTenantId(), question, {
++    const retrieval = await withTenantContext(quickstartTenantId(), async (client) =>
++      retrieveManualChunksScoped(client, quickstartTenantId(), question, {
+         manufacturer,
+         topK: 6,
+       }),
+     );
++    chunks = retrieval.chunks;
++    fellBack = retrieval.fellBack;
+   } catch (err) {
+     console.error("[quickstart/ask] retrieval failed:", err);
+     // Continue — the model can still refuse with no context.
+   }
+ 
++  // Refuse-on-fallback: a manufacturer was supplied but only other vendors'
++  // manuals came back. Answering off them and rendering them as citations is a
++  // wrong-vendor lie on the public money path. Refuse honestly instead —
++  // deterministic, no LLM call, no wrong-vendor citation cards.
++  if (fellBack) {
++    return NextResponse.json({
++      answer:
++        `I don't have ${manufacturer} manuals for that in the public knowledge ` +
++        `base yet — sign up to upload your own and I can help.`,
++      citations: [],
++      provider: null,
++    } as AskResponse);
++  }
++
+   const context = buildGroundedContext(chunks);
+   const userMsg = context
+     ? `CONTEXT:\n${context}\n\n---\n\nUSER QUESTION:\n${question}`
+diff --git a/mira-hub/src/lib/manual-rag.ts b/mira-hub/src/lib/manual-rag.ts
+index 64e74b77..32693131 100644
+--- a/mira-hub/src/lib/manual-rag.ts
++++ b/mira-hub/src/lib/manual-rag.ts
+@@ -34,26 +34,59 @@ export interface ManualSource {
+ 
+ const MAX_CONTENT_CHARS = 1200;
+ 
++export interface ScopedRetrieval {
++  chunks: ManualChunk[];
++  /**
++   * True when a manufacturer WAS requested but the scoped query returned zero
++   * hits, so retrieval fell back to an unscoped (cross-vendor) query. The
++   * caller MUST NOT present these chunks as citations for the requested
++   * manufacturer — they are other vendors' manuals. See the C3 wrong-vendor
++   * citation finding in wiki/orchestrator/BETA_READINESS.md (Lens C / Lens F).
++   */
++  fellBack: boolean;
++}
++
+ /**
+- * Run BM25 retrieval. Tries a manufacturer-scoped query first; falls
+- * back to a tenant-only query if zero hits or no manufacturer.
++ * Run BM25 retrieval and report whether a manufacturer-scoped request had to
++ * fall back to an unscoped query. Tries the manufacturer-scoped query first;
++ * falls back to a tenant-only query if zero hits or no manufacturer.
+  */
+-export async function retrieveManualChunks(
++export async function retrieveManualChunksScoped(
+   client: PoolClient,
+   tenantId: string,
+   query: string,
+   opts: { manufacturer?: string | null; topK?: number } = {},
+-): Promise<ManualChunk[]> {
++): Promise<ScopedRetrieval> {
+   const q = query.trim();
+-  if (!q) return [];
++  if (!q) return { chunks: [], fellBack: false };
+   const topK = opts.topK ?? 6;
+   const mfr = (opts.manufacturer ?? "").trim();
+ 
+   if (mfr) {
+     const scoped = await runBm25Query(client, tenantId, q, topK, mfr);
+-    if (scoped.length > 0) return scoped;
++    if (scoped.length > 0) return { chunks: scoped, fellBack: false };
++    // Manufacturer was requested but matched nothing — any unscoped results
++    // are other vendors' manuals. Flag the fallback so the caller can refuse
++    // rather than cite the wrong manufacturer.
++    const unscoped = await runBm25Query(client, tenantId, q, topK, null);
++    return { chunks: unscoped, fellBack: unscoped.length > 0 };
+   }
+-  return runBm25Query(client, tenantId, q, topK, null);
++  const chunks = await runBm25Query(client, tenantId, q, topK, null);
++  return { chunks, fellBack: false };
++}
++
++/**
++ * Back-compat wrapper: returns only the chunks (no fallback signal). Callers
++ * that do not surface citations to an anonymous user (e.g. the authenticated
++ * asset-chat route) keep their current behavior unchanged.
++ */
++export async function retrieveManualChunks(
++  client: PoolClient,
++  tenantId: string,
++  query: string,
++  opts: { manufacturer?: string | null; topK?: number } = {},
++): Promise<ManualChunk[]> {
++  return (await retrieveManualChunksScoped(client, tenantId, query, opts)).chunks;
+ }
+ 
+ async function runBm25Query(

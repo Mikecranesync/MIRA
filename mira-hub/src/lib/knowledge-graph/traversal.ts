@@ -96,7 +96,9 @@ export async function resolveEntityByUnsPath(
       `SELECT id, tenant_id, entity_type, entity_id, name, properties,
               uns_path::text AS uns_path, created_at, updated_at
          FROM kg_entities
-         WHERE tenant_id = $1 AND uns_path = $2::ltree
+         WHERE tenant_id = $1
+           AND approval_state = 'verified'
+           AND uns_path = $2::ltree
          LIMIT 1`,
       [tenantId, unsPath],
     );
@@ -120,6 +122,7 @@ export async function entitiesUnderUnsPath(
               uns_path::text AS uns_path, created_at, updated_at
          FROM kg_entities
          WHERE tenant_id = $1
+           AND approval_state = 'verified'
            AND uns_path <@ $2::ltree
          ORDER BY nlevel(uns_path), name
          LIMIT $3`,
@@ -160,7 +163,9 @@ export async function traverseChain(
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, 0, ARRAY[e.id::text]
            FROM kg_entities e
-           WHERE e.id = $1 AND e.tenant_id = $2
+           WHERE e.id = $1
+             AND e.tenant_id = $2
+             AND e.approval_state = 'verified'
          UNION ALL
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, w.depth + 1, w.path || e.id::text
@@ -169,9 +174,11 @@ export async function traverseChain(
              ON r.source_id = w.id
             AND r.tenant_id = $2
             AND r.relationship_type = ($3::text[])[w.depth + 1]
+            AND r.approval_state = 'verified'
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = $2
+            AND e.approval_state = 'verified'
           WHERE w.depth < $4
             AND NOT (e.id::text = ANY(w.path))
        )
@@ -213,7 +220,9 @@ export async function impactAnalysis(
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, 0, ARRAY[e.id::text]
            FROM kg_entities e
-           WHERE e.id = $1 AND e.tenant_id = $2
+           WHERE e.id = $1
+             AND e.tenant_id = $2
+             AND e.approval_state = 'verified'
          UNION ALL
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, d.depth + 1, d.path || e.id::text
@@ -222,9 +231,11 @@ export async function impactAnalysis(
              ON r.source_id = d.id
             AND r.tenant_id = $2
             AND r.relationship_type = 'feeds'
+            AND r.approval_state = 'verified'
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = $2
+            AND e.approval_state = 'verified'
           WHERE d.depth < $3
             AND NOT (e.id::text = ANY(d.path))
        )
@@ -241,8 +252,13 @@ export async function impactAnalysis(
       const { rows: altRows } = await client.query<{ target_id: string }>(
         `SELECT DISTINCT r.target_id
            FROM kg_relationships r
+           JOIN kg_entities src
+             ON src.id = r.source_id
+            AND src.tenant_id = r.tenant_id
+            AND src.approval_state = 'verified'
            WHERE r.tenant_id = $1
              AND r.relationship_type = 'feeds'
+             AND r.approval_state = 'verified'
              AND r.target_id = ANY($2)
              AND r.source_id <> $3
              AND NOT (r.source_id = ANY($2))`,
@@ -302,7 +318,9 @@ export async function rootCauseChain(
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, 0, ARRAY[e.id::text], 1.0
            FROM kg_entities e
-           WHERE e.id = $1 AND e.tenant_id = $2
+           WHERE e.id = $1
+             AND e.tenant_id = $2
+             AND e.approval_state = 'verified'
          UNION ALL
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, c.depth + 1, c.path || e.id::text,
@@ -312,9 +330,11 @@ export async function rootCauseChain(
              ON r.source_id = c.id
             AND r.tenant_id = $2
             AND r.relationship_type = 'caused_by'
+            AND r.approval_state = 'verified'
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = $2
+            AND e.approval_state = 'verified'
           WHERE c.depth < $3
             AND NOT (e.id::text = ANY(c.path))
        )
@@ -326,10 +346,14 @@ export async function rootCauseChain(
     const { rows: altRows } = await client.query<EntityRow>(
       `SELECT e.*
          FROM kg_relationships r
-         JOIN kg_entities e ON e.id = r.target_id AND e.tenant_id = r.tenant_id
+         JOIN kg_entities e
+           ON e.id = r.target_id
+          AND e.tenant_id = r.tenant_id
+          AND e.approval_state = 'verified'
         WHERE r.tenant_id = $1
           AND r.source_id = $2
           AND r.relationship_type = 'caused_by'
+          AND r.approval_state = 'verified'
         ORDER BY r.confidence DESC NULLS LAST
         LIMIT 5`,
       [tenantId, faultEntityId],
@@ -405,6 +429,7 @@ export async function maintenanceContext(
       `SELECT * FROM kg_entities
          WHERE tenant_id = $1
            AND entity_type = 'equipment'
+           AND approval_state = 'verified'
            AND (id::text = $2 OR entity_id = $2)
          LIMIT 1`,
       [tenantId, equipmentEntityId],
@@ -420,6 +445,7 @@ export async function maintenanceContext(
                 e.created_at, e.updated_at, 0, ARRAY[e.id::text]
            FROM kg_entities e
            WHERE e.id = $1
+             AND e.approval_state = 'verified'
          UNION ALL
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, u.depth + 1, u.path || e.id::text
@@ -428,9 +454,11 @@ export async function maintenanceContext(
              ON r.target_id = u.id
             AND r.tenant_id = $2
             AND r.relationship_type = 'parent_of'
+            AND r.approval_state = 'verified'
            JOIN kg_entities e
              ON e.id = r.source_id
             AND e.tenant_id = $2
+            AND e.approval_state = 'verified'
           WHERE u.depth < 5 AND NOT (e.id::text = ANY(u.path))
        )
        SELECT * FROM up WHERE depth > 0 ORDER BY depth`,
@@ -448,8 +476,12 @@ export async function maintenanceContext(
       // Components
       client.query<EntityRow>(
         `SELECT e.* FROM kg_relationships r
-           JOIN kg_entities e ON e.id = r.target_id AND e.tenant_id = r.tenant_id
+           JOIN kg_entities e
+             ON e.id = r.target_id
+            AND e.tenant_id = r.tenant_id
+            AND e.approval_state = 'verified'
           WHERE r.tenant_id = $1 AND r.source_id = $2 AND r.relationship_type = 'has_component'
+            AND r.approval_state = 'verified'
           ORDER BY e.name LIMIT 20`,
         [tenantId, equipment.id],
       ),
@@ -458,10 +490,14 @@ export async function maintenanceContext(
         `SELECT e.entity_id AS code, COUNT(*)::text AS count,
                 MAX((r.properties->>'occurred_at')::timestamptz) AS last_seen
            FROM kg_relationships r
-           JOIN kg_entities e ON e.id = r.target_id AND e.tenant_id = r.tenant_id
+           JOIN kg_entities e
+             ON e.id = r.target_id
+            AND e.tenant_id = r.tenant_id
+            AND e.approval_state = 'verified'
           WHERE r.tenant_id = $1
             AND r.source_id = $2
             AND r.relationship_type = 'had_fault'
+            AND r.approval_state = 'verified'
             AND COALESCE((r.properties->>'occurred_at')::timestamptz, r.created_at)
                 > now() - ($3 || ' days')::interval
           GROUP BY e.entity_id
@@ -471,34 +507,50 @@ export async function maintenanceContext(
       // Work orders (most recent N)
       client.query<EntityRow>(
         `SELECT e.* FROM kg_relationships r
-           JOIN kg_entities e ON e.id = r.target_id AND e.tenant_id = r.tenant_id
+           JOIN kg_entities e
+             ON e.id = r.target_id
+            AND e.tenant_id = r.tenant_id
+            AND e.approval_state = 'verified'
           WHERE r.tenant_id = $1 AND r.source_id = $2 AND r.relationship_type = 'has_work_order'
+            AND r.approval_state = 'verified'
           ORDER BY e.created_at DESC LIMIT $3`,
         [tenantId, equipment.id, maxWO],
       ),
       // Parts
       client.query<EntityRow>(
         `SELECT e.* FROM kg_relationships r
-           JOIN kg_entities e ON e.id = r.target_id AND e.tenant_id = r.tenant_id
+           JOIN kg_entities e
+             ON e.id = r.target_id
+            AND e.tenant_id = r.tenant_id
+            AND e.approval_state = 'verified'
           WHERE r.tenant_id = $1 AND r.source_id = $2 AND r.relationship_type = 'requires_part'
+            AND r.approval_state = 'verified'
           ORDER BY e.name LIMIT 30`,
         [tenantId, equipment.id],
       ),
       // Manuals — both direct references and via references_drawing
       client.query<EntityRow>(
         `SELECT DISTINCT e.* FROM kg_relationships r
-           JOIN kg_entities e ON e.id = r.target_id AND e.tenant_id = r.tenant_id
+           JOIN kg_entities e
+             ON e.id = r.target_id
+            AND e.tenant_id = r.tenant_id
+            AND e.approval_state = 'verified'
           WHERE r.tenant_id = $1
             AND r.source_id = $2
             AND e.entity_type = 'manual'
+            AND r.approval_state = 'verified'
           LIMIT 10`,
         [tenantId, equipment.id],
       ),
       // PM tasks
       client.query<EntityRow>(
         `SELECT e.* FROM kg_relationships r
-           JOIN kg_entities e ON e.id = r.target_id AND e.tenant_id = r.tenant_id
+           JOIN kg_entities e
+             ON e.id = r.target_id
+            AND e.tenant_id = r.tenant_id
+            AND e.approval_state = 'verified'
           WHERE r.tenant_id = $1 AND r.source_id = $2 AND r.relationship_type = 'has_pm'
+            AND r.approval_state = 'verified'
           ORDER BY e.name LIMIT 10`,
         [tenantId, equipment.id],
       ),
@@ -506,8 +558,12 @@ export async function maintenanceContext(
       opts.includeSimilar
         ? client.query<EntityRow>(
             `SELECT e.* FROM kg_relationships r
-               JOIN kg_entities e ON e.id = r.target_id AND e.tenant_id = r.tenant_id
+               JOIN kg_entities e
+                 ON e.id = r.target_id
+                AND e.tenant_id = r.tenant_id
+                AND e.approval_state = 'verified'
               WHERE r.tenant_id = $1 AND r.source_id = $2 AND r.relationship_type = 'similar_to'
+                AND r.approval_state = 'verified'
               ORDER BY (r.properties->>'similarity_score')::float DESC NULLS LAST
               LIMIT 5`,
             [tenantId, equipment.id],
