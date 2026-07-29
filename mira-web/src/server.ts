@@ -192,7 +192,22 @@ app.use("*", async (c, next) => {
   if (target) return c.redirect(target, 301);
   await next();
 });
-app.use("*", cors());
+// P0.3 (#890): CORS only on the API surface, with an explicit origin
+// allowlist (was app.use("*", cors()) = ACAO * on every route). Marketing/HTML
+// routes get no CORS header (browser same-origin default).
+const allowedOrigins = (
+  process.env.PLG_API_ALLOWED_ORIGINS ??
+  "https://factorylm.com,https://www.factorylm.com,https://app.factorylm.com,http://localhost:3000,http://localhost:3200"
+)
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+app.use(
+  "/api/*",
+  cors({
+    origin: (origin) => (allowedOrigins.includes(origin) ? origin : ""),
+  }),
+);
 
 // Ensure Content-Length is set on all non-streaming text responses.
 // Bun sends HTML/JSON with chunked transfer encoding; nginx cannot synthesize

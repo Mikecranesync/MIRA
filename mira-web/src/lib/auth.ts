@@ -19,7 +19,9 @@ export interface MiraTokenPayload extends JWTPayload {
   atlasRole: "ADMIN" | "USER"; // NEW
 }
 
-const JWT_EXPIRY = "30d";
+// P0.2 (#890): short-lived sessions. Existing 30d tokens keep their original
+// expiry; only newly-issued tokens are 7d.
+const JWT_EXPIRY = "7d";
 
 function getSecret(): Uint8Array {
   const secret = process.env.PLG_JWT_SECRET;
@@ -61,16 +63,17 @@ export async function verifyToken(
 }
 
 /**
- * Hono middleware — reads JWT from Authorization header, ?token= query param,
- * or `mira_session` cookie (lowest precedence so programmatic integrations
- * aren't affected).
+ * Hono middleware — reads JWT from Authorization header or `mira_session`
+ * cookie (lowest precedence so programmatic integrations aren't affected).
+ * ?token= query auth was removed (#890 P0.1).
  * Sets c.set("user", payload) on success, returns 401 on failure.
  */
 export async function requireAuth(c: Context, next: Next) {
   const header = c.req.header("Authorization");
-  const query = c.req.query("token");
+  // P0.1 (#890): no ?token= query auth — tokens in URLs leak via logs,
+  // referrers, and browser history. Header or cookie only.
   const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
-  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
+  const raw = header ? header.replace("Bearer ", "") : cookie;
 
   if (!raw) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -91,14 +94,15 @@ export async function requireAuth(c: Context, next: Next) {
  * Use requireAuth (not requireActive) for routes any authenticated user needs
  * (e.g., billing portal).
  *
- * Reads JWT from Authorization header, ?token= query, or `mira_session`
- * cookie (lowest precedence).
+ * Reads JWT from Authorization header or `mira_session` cookie (lowest
+ * precedence). ?token= query auth was removed (#890 P0.1).
  */
 export async function requireActive(c: Context, next: Next) {
   const header = c.req.header("Authorization");
-  const query = c.req.query("token");
+  // P0.1 (#890): no ?token= query auth — tokens in URLs leak via logs,
+  // referrers, and browser history. Header or cookie only.
   const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
-  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
+  const raw = header ? header.replace("Bearer ", "") : cookie;
 
   if (!raw) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -135,9 +139,10 @@ export async function requireActive(c: Context, next: Next) {
  */
 export async function requireAdmin(c: Context, next: Next) {
   const header = c.req.header("Authorization");
-  const query = c.req.query("token");
+  // P0.1 (#890): no ?token= query auth — tokens in URLs leak via logs,
+  // referrers, and browser history. Header or cookie only.
   const cookie = parseCookies(c.req.header("cookie"))["mira_session"];
-  const raw = header ? header.replace("Bearer ", "") : query ?? cookie;
+  const raw = header ? header.replace("Bearer ", "") : cookie;
 
   if (!raw) return c.json({ error: "Unauthorized" }, 401);
 
