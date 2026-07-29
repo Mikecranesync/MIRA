@@ -1046,3 +1046,19 @@ approved:
       FROM knowledge_entries
                       WHERE embedding IS NOT NULL
                       ORDER BY distance
+  "tests/test_architecture.py:600":
+    approved_classification: TENANT-ONLY
+    reason: "Not a live read path — this is an inert Python triple-quoted string
+      constant (_REAL_PULLED_BACKFILL_STMT) inside the Contract 7 guard
+      (test_verified_promotion_checker_catches_violations, see
+      .claude/rules/oem-crawler-trusted.md). It is the REAL historical
+      cross-tenant backfill UPDATE statement, recovered verbatim via
+      `git show 0bde5f2e5:tools/seeds/backfill_oem_crawler_chunks.sql`, kept
+      byte-for-byte as a bad-fixture so the guard proves it rejects the actual
+      defect it exists to catch — not a synthetic stand-in. It is asserted
+      against scan_verified_promotion() in-memory only and is never executed
+      against any database."
+    query_snippet: |
+      SELECT 1 FROM knowledge_entries dup
+       WHERE dup.tenant_id::text = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'
+         AND dup.source_url = ke.source_url
