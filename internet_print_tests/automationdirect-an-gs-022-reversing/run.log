@@ -1,0 +1,17 @@
+2026-07-13 17:01:31,210 INFO fetching https://support.automationdirect.com/docs/an-gs-022.pdf
+2026-07-13 17:01:32,536 INFO fetched 818183 bytes (application/pdf)
+2026-07-13 17:01:32,851 INFO rendered PDF page 1 @ 200 dpi -> 582057 bytes PNG
+2026-07-13 17:01:32,854 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-13 17:02:57,425 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=True latency=84.29s
+2026-07-13 17:02:57,425 INFO running independent multimodal judge…
+2026-07-13 17:04:37,219 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — automationdirect-an-gs-022-reversing — AN-GS-022: VFD Reversing & Dynamic Braking (Application Note) — 79/100
+ATTACHMENTS:
+  [attach] original.pdf (818,183 B)
+  [attach] tested_page.png (582,057 B)
+  [attach] report.html (9,909 B)
+  [attach] judge_1.json (7,713 B)
+  [attach] telegram_response.json (26,071 B)
+HTML: 3,379 chars
+2026-07-13 17:04:38,574 INFO email send: {'sent': True, 'status': 200, 'id': '7c2185b1-32d9-4dc4-b8ce-2985fb54f608'}

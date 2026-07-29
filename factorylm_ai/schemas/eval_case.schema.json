@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/eval_case.schema.json",
+  "title": "EvalCase",
+  "description": "One frozen evaluation case, split is always the literal 'eval' — never mixed into a training split. Built by factorylm_ai.flywheel.records.new_eval_case(). input/expected are intentionally untyped: shape varies per task (a routing phrase + expected route string, a question + expected chunk id, etc).",
+  "type": "object",
+  "properties": {
+    "case_id": { "type": "string", "minLength": 1 },
+    "source_interaction_ids": { "type": "array", "items": { "type": "string" } },
+    "input": {},
+    "expected": {},
+    "judge": {
+      "type": "string",
+      "enum": ["deterministic", "model", "human"]
+    },
+    "frozen": { "type": "boolean" },
+    "split": { "type": "string", "enum": ["eval"] },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": [
+    "case_id", "source_interaction_ids", "input", "expected", "judge", "frozen", "split", "tags"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "case_id": "ec_0001",
+      "source_interaction_ids": ["int_0002"],
+      "input": "fault on the vfd, what do I do",
+      "expected": "drive_fault_photo",
+      "judge": "deterministic",
+      "frozen": true,
+      "split": "eval",
+      "tags": ["m05"]
+    },
+    {
+      "case_id": "ec_0002",
+      "source_interaction_ids": [],
+      "input": {"query": "K1 coil terminal", "corpus_id": "print_corpus_v1"},
+      "expected": {"chunk_id": "chunk_014"},
+      "judge": "model",
+      "frozen": false,
+      "split": "eval",
+      "tags": ["m07", "retrieval"]
+    }
+  ]
+}

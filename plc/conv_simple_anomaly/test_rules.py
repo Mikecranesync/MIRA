@@ -93,6 +93,14 @@ def test_a6_not_responding_after_grace():
     assert "A6_DRIVE_NOT_RESPONDING" in ids(s, {**D0, "cmd_run_for_s": 4.0})      # past grace
 
 
+def test_a6_recognizes_reverse_run_cmd_34():
+    # Regression: REV+RUN on the GS10 is cmd word 34 (0x22), not 20. A6 must fire when
+    # the belt is commanded in REVERSE and the motor isn't running — same as forward (18).
+    s = healthy_snap(); s["vfd/vfd101/cmd_word"] = 34  # REV+RUN, motor not running
+    assert "A6_DRIVE_NOT_RESPONDING" in ids(s, {**D0, "cmd_run_for_s": 4.0})  # past grace
+    assert 34 in rules.DEFAULT_CFG["run_cmd_values"], "REV+RUN (34) must be a recognized run cmd"
+
+
 def test_a8_overcurrent():
     s = healthy_snap(); s["vfd/vfd101/current_a"] = 7.5  # > default FLA 5.0
     assert "A8_OVERCURRENT" in ids(s)

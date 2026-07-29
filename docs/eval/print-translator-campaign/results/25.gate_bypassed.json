@@ -1,0 +1,39 @@
+{
+  "id": 25,
+  "oem": "Yaskawa",
+  "document": "V1000 VFD Control Wiring (Technical Data WD.V1000.01)",
+  "url": "www.yaskawa.com/delegate/getAttachment?documentId=WD.V1000.01&cmd=documents&documentName=WD.V1000.01.pdf",
+  "rendered_page_number": 1,
+  "category": "Reversing/Braking",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "explanation_of_mode": "REAL print_translator.build_theory_messages + REAL engine.router.complete + REAL format_theory_reply on the REAL rendered image. Skips ONLY the buggy classifier gate (vision_worker._classify_photo). Prompt is unchanged production code. NOT a mock. vision_data is the real captured vision output from results/25.json (ocr_items empty on this box).",
+  "caption_submitted": "Describe the theory of operation.",
+  "caption_is_theory_request": true,
+  "caption_note": "Caption governs ONLY print_translator.is_theory_request() (the trigger gate); it is NOT passed to build_theory_messages, so this explanation is caption-independent.",
+  "ocr_grounding": "unavailable_on_this_box",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.75,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image displays an electrical drawing, specifically a standard connection diagram for a Yaskawa V1000 drive. The diagram illustrates the connections and configurations for the drive's installation and operation, including power supply, motor, and control circuit connections.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 359,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "run_timestamp_utc": "2026-07-10T04:57:36.263216+00:00",
+  "inference": "ran",
+  "translator_reply": "## 1. What this appears to be\nThis appears to be a standard connection diagram for a Yaskawa V1000 AC drive.\n\n## 2. Main visible components\nThe main visible components include:\n* Power supply connections for single-phase 200 V and three-phase power supplies\n* A motor with a cooling fan\n* A DC reactor (optional)\n* A thermal relay (optional)\n* Braking resistor (optional)\n* Digital inputs and outputs\n* Analog monitor output\n* MEMOBUS/Modbus communication\n\n## 3. Plain-English theory of operation\nThe drawing indicates the following sequence of operation:\n* Power is supplied to the drive through the main circuit terminals\n* The drive controls the motor through the U, V, and W terminals\n* Digital inputs (S1-S7) control the drive's operation, including forward and reverse run/stop, external fault, fault reset, and multi-step speed control\n* The drive has various optional components, such as a DC reactor, thermal relay, and braking resistor, which can be installed as needed\n\n## 4. What must be true for it to work\nThe following conditions must be satisfied for the drive to operate:\n* Power supply connections must be made correctly\n* Motor connections must be made correctly\n* Digital inputs must be configured correctly\n* Optional components must be installed and configured correctly\n\n## 5. What would stop it from working\nThe following issues would prevent the drive from working:\n* Incorrect power supply connections\n* Incorrect motor connections\n* Faulty or incorrectly configured digital inputs\n* Failure of optional components, such as the DC reactor or thermal relay\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable in the image."
+}

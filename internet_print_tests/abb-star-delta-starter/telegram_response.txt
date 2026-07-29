@@ -1,0 +1,35 @@
+📋 Sheet 2/4 of an ABB open-type star-delta motor starter (YKA/YDA ..-30) — the wiring diagrams for the power circuit plus two control-circuit options (local and remote), protected by a thermal overload relay.
+
+This sheet shows how to wire a star-delta (wye-delta) motor starter. Three contactors switch the motor: KM1 is the line/main contactor (marked 'L'), KM2 is the star contactor (marked 'Y'), and KM3 is the delta contactor (marked '△'). To limit inrush at start, the motor windings are first connected in star (KM1 + KM2). A timing relay KT then times out and hands over to delta (KM1 + KM3) for normal running. The thermal overload relay FR1 sits in the motor current path and its 95-96 trip contact opens the control circuit on overload. The bottom two diagrams give two ways to build the control side: 'Local Control' (start/reset pushbuttons on the panel) and 'Remote Control' (start/stop/reset from a remote station). The control supply is taken as Us/N, with reference points tied to KM3 terminals 5/L3 and 3/L2.
+
+🔑 Signals
+• Three-phase motor supply (line side)
+• Motor load / winding connections
+• Overload trip (control-circuit break)
+• Overload signalling contact
+• Star/delta transition timing
+• Control supply live reference
+• Control supply return reference
+• Reset / Auto-Manual selection at overload
+
+🔧 Devices
+• Line/main contactor ('L') (KM1)
+• Star contactor ('Y') (KM2)
+• Delta contactor ('△') (KM3)
+• Thermal overload relay (FR1)
+• Star-delta changeover timing relay (KT)
+• Three-phase induction motor (M 3~)
+
+🩺 If you're chasing a fault
+… (more — reply "map")
+
+❓ Couldn't confirm (verify on the sheet):
+• Supply/control voltage not printed on this sheet (check the rating/order-data sheet 1/4 or 4/4).
+• FR1 97-98 contact and its destination not clearly legible.
+• KT timer contact terminal routing (15/16/18, t1 vs t1+t2) is small and needs a zoom to confirm.
+• No explicit -W#### wire numbers appear on this wiring diagram; connections are shown graphically only.
+
+⚠️ No voltage value is printed anywhere on this sheet — the drawing does NOT establish the control-circuit or motor voltage, so do not assume a level. For continuity/resistance checks on FR1 contacts, contactor coils or the timer, de-energize, lock out, and verify absence of voltage first. If live verification of the control supply (Us/N) or the three-phase power terminals is required, treat it as energized work and use appropriately rated PPE and instruments; the drawing does not prove the present field state of the panel.
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply "map" for the full terminal and wire list.

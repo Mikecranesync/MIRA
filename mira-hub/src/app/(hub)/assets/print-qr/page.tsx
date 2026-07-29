@@ -24,7 +24,7 @@ export default function PrintQrPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/assets`)
+    fetch(`${API_BASE}/api/assets/`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

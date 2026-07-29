@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
+import { fetchMachineMemory, isUndefinedRelationOrColumn } from "@/lib/machine-memory";
 
 export const dynamic = "force-dynamic";
 
@@ -31,17 +32,79 @@ export async function GET(
 
   try {
     const result = await withTenantContext(ctx.tenantId, async (c) => {
+      // Resolve the asset from cmms_equipment — the canonical asset id-space the
+      // rest of the asset API uses (detail/documents/chat/validation-qa all key
+      // `cmms_equipment.id`). The old query looked the `[id]` up in kg_entities,
+      // which 404'd for every CMMS-registered asset that hasn't been promoted to
+      // a kg_entities row (the common case) — breaking the UNS confirmation-gate
+      // card for an asset that plainly exists. uns_path is enriched from
+      // kg_entities via the same `(id::text=$ OR entity_id=$)` bridge the chat
+      // route uses (null when the asset has no kg row).
       const assetRow = await c
         .query(
-          `SELECT id, entity_id, name, uns_path::text AS uns_path, properties
-             FROM kg_entities
-            WHERE tenant_id = $1 AND id = $2 AND entity_type = 'equipment'
+          `SELECT id, equipment_number, manufacturer, model_number
+             FROM cmms_equipment
+            WHERE id = $1 AND tenant_id = $2
             LIMIT 1`,
-          [ctx.tenantId, id],
+          [id, ctx.tenantId],
         )
         .then((r) => r.rows[0] ?? null);
 
       if (!assetRow) return null;
+
+      // Enrich uns_path from kg_entities via the same bridge the chat route uses.
+      // Separate query (not a join): cmms_equipment.tenant_id is TEXT but
+      // kg_entities.tenant_id is UUID, so a direct column compare errors
+      // (uuid = text). Param-binding compares each in its own type. Null when the
+      // asset has no kg_entities row (the common CMMS-only case).
+      const unsPath = await c
+        .query(
+          `SELECT uns_path::text AS uns_path
+             FROM kg_entities
+            WHERE tenant_id = $1
+              AND entity_type = 'equipment'
+              AND (id::text = $2 OR entity_id = $2)
+            LIMIT 1`,
+          [ctx.tenantId, id],
+        )
+        .then((r) => r.rows[0]?.uns_path ?? null);
+
+      // Machine memory (T2 / seam 3): latest run, state window, and up to 3
+      // recent anomaly diffs, so the confirmation card can show what the
+      // machine has been doing. Null when the asset has no uns_path, or when
+      // the 038/040 machine-memory tables aren't applied in this env yet.
+      //
+      // Review Q1 (PR #2414): unlike the chat route's `buildMachineMemorySection`,
+      // this block is returned as raw JSON *data* for a client to render — it is
+      // never interpolated into an LLM prompt — so it does NOT need
+      // neutralizeReferenceText/length-capping. Only prompt interpolations of
+      // these DB-sourced fields are a prompt-injection vector; plain API
+      // pass-through is not.
+      let machineMemory: {
+        latest_run: Record<string, unknown> | null;
+        latest_window: Record<string, unknown> | null;
+        latest_diffs: Record<string, unknown>[];
+        next_check: string | null;
+      } | null = null;
+      if (unsPath) {
+        try {
+          const memory = await fetchMachineMemory(c, ctx.tenantId, unsPath);
+          machineMemory = {
+            latest_run: memory.latest_run,
+            latest_window: memory.latest_window,
+            latest_diffs: memory.latest_diffs.slice(0, 3),
+            // The newest anomaly diff that carries a next_check in metadata.
+            next_check:
+              memory.latest_diffs.find((d) => d.next_check)?.next_check ?? null,
+          };
+        } catch (err) {
+          // 038 not applied in this env — machine memory simply isn't
+          // available. Anything else is a real error for the outer handler.
+          if (!isUndefinedRelationOrColumn(err)) throw err;
+          console.error("[api/assets/[id]/context GET] machine-memory tables unavailable (038/040 not applied?)", err);
+          machineMemory = null;
+        }
+      }
 
       const components = await c
         .query(
@@ -64,16 +127,14 @@ export async function GET(
         )
         .then((r) => Number(r.rows[0]?.n ?? 0));
 
-      const props = (assetRow.properties as Record<string, unknown> | null) ?? {};
-
       return {
         asset: {
           id: assetRow.id,
-          name: assetRow.name,
-          asset_tag: props.asset_tag ?? null,
-          manufacturer: props.manufacturer ?? null,
-          model: props.model ?? null,
-          uns_path: assetRow.uns_path,
+          name: assetRow.equipment_number ?? null,
+          asset_tag: assetRow.equipment_number ?? null,
+          manufacturer: assetRow.manufacturer ?? null,
+          model: assetRow.model_number ?? null,
+          uns_path: unsPath,
         },
         components: components.map((cmp: Record<string, unknown>) => ({
           id: cmp.id,
@@ -82,6 +143,7 @@ export async function GET(
           plc_tag: cmp.plc_tag,
         })),
         recent_signal_count_24h: signals,
+        machine_memory: machineMemory,
         ready_for_troubleshooting: components.length > 0,
       };
     });

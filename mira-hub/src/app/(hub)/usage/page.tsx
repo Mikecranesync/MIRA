@@ -38,10 +38,13 @@ export default function UsagePage() {
     allTime: { totalWorkOrders: number; totalKbChunks: number };
   } | null>(null);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/usage`)
+    fetch(`${API_BASE}/api/usage/`)
       .then(r => {
         if (r.status === 401) { router.push(`/login?callbackUrl=${API_BASE}/usage`); return null; }
         return r.json();

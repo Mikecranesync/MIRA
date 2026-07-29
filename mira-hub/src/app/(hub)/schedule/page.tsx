@@ -1,11 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles, Package, Wrench, ShieldAlert, BookOpen, Gauge, Download } from "lucide-react";
+import { Calendar, List, ChevronLeft, ChevronRight, Clock, User, RotateCcw, AlertCircle, X, Sparkles, Package, Wrench, ShieldAlert, BookOpen, Gauge, Download, Upload } from "lucide-react";
 import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
 import { API_BASE } from "@/lib/config";
+import { isScheduleEmpty, exportsDisabledWhenEmpty, EMPTY_CTAS, EXPORT_EMPTY_HINT_KEY } from "./schedule-empty";
+
+// Maps each empty-state CTA (by testid) to its lucide icon. Icons live here, not
+// in the JSX-free helper, so schedule-empty.ts stays unit-testable under node.
+const CTA_ICONS: Record<string, typeof Calendar> = {
+  "schedule-empty-cta-upload": Upload,
+  "schedule-empty-cta-assets": Package,
+  "schedule-empty-cta-extract": Sparkles,
+};
 
 type PM = {
   id: string;
@@ -65,11 +75,10 @@ export default function SchedulePage() {
   const [pms, setPms] = useState<PM[]>(FALLBACK_PMS);
   const [loading, setLoading] = useState(true);
   const [extractedCount, setExtractedCount] = useState(0);
-  const { toast } = useToast();
 
   // Fetch real PM schedules from API on mount
   useEffect(() => {
-    fetch(`${API_BASE}/api/pm-schedules`)
+    fetch(`${API_BASE}/api/pm-schedules/`)
       .then(r => r.json())
       .then((data: { count: number; schedules: PM[] }) => {
         if (data.schedules && data.schedules.length > 0) {
@@ -98,8 +107,17 @@ export default function SchedulePage() {
     else setMonth(m => m + 1);
   }
 
+  // Sync a server-persisted change back into local state so the UI matches a
+  // reload without a full refetch (optimistic, but mirrors what GET derives).
+  function applyPMPatch(patch: Partial<PM> & { id: string }) {
+    setPms(prev => prev.map(p => (p.id === patch.id ? { ...p, ...patch } : p)));
+    setSelectedPM(prev => (prev && prev.id === patch.id ? { ...prev, ...patch } : prev));
+  }
+
   const overdueCount = pms.filter(p => p.status === "overdue").length;
   const scheduledCount = pms.filter(p => p.status === "scheduled").length;
+  const empty = isScheduleEmpty(pms, loading);
+  const exportsDisabled = exportsDisabledWhenEmpty(pms);
 
   const sortedPMs = [...pms].sort((a, b) => {
     const order: Record<string, number> = { overdue: 0, inprogress: 1, scheduled: 2, completed: 3 };
@@ -133,22 +151,24 @@ export default function SchedulePage() {
                 <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{t("upcomingCount", { count: scheduledCount })}</span>
               </div>
             </div>
-            {/* Export buttons */}
+            {/* Export buttons — disabled while there's nothing to export (#1949) */}
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => { window.location.href = `${API_BASE}/api/pm/export.ics`; }}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-[var(--surface-1)]"
+                onClick={() => { if (!exportsDisabled) window.location.href = `${API_BASE}/api/pm/export.ics`; }}
+                disabled={exportsDisabled}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors enabled:hover:bg-[var(--surface-1)] disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
-                title="Export to Calendar (.ics)"
+                title={exportsDisabled ? t(EXPORT_EMPTY_HINT_KEY) : "Export to Calendar (.ics)"}
               >
                 <Download className="w-3 h-3" />
                 <span className="hidden sm:inline">Calendar</span>
               </button>
               <button
-                onClick={() => { window.location.href = `${API_BASE}/api/pm/export.csv`; }}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:bg-[var(--surface-1)]"
+                onClick={() => { if (!exportsDisabled) window.location.href = `${API_BASE}/api/pm/export.csv`; }}
+                disabled={exportsDisabled}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors enabled:hover:bg-[var(--surface-1)] disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ borderColor: "var(--border)", color: "var(--foreground-muted)" }}
-                title="Export CSV"
+                title={exportsDisabled ? t(EXPORT_EMPTY_HINT_KEY) : "Export CSV"}
               >
                 <Download className="w-3 h-3" />
                 <span className="hidden sm:inline">CSV</span>
@@ -187,7 +207,9 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {view === "calendar" ? (
+      {empty ? (
+        <EmptyState />
+      ) : view === "calendar" ? (
         <div className="px-4 md:px-6 py-4">
           {/* Day headers */}
           <div className="grid grid-cols-7 mb-1">
@@ -300,9 +322,50 @@ export default function SchedulePage() {
         <PMSheet
           pm={selectedPM}
           onClose={() => setSelectedPM(null)}
-          onComplete={() => { toast(`${selectedPM.title} ${t("completedToast")}`); setSelectedPM(null); }}
+          onUpdated={applyPMPatch}
         />
       )}
+    </div>
+  );
+}
+
+// Buyer-safe empty state shown in BOTH views when a tenant has no PMs (#1949).
+// Explains why the page is empty and offers real next actions instead of a
+// blank calendar/list. CTA list + copy come from schedule-empty.ts / i18n.
+function EmptyState() {
+  const t = useTranslations("schedule");
+  return (
+    <div className="px-4 md:px-6 py-10">
+      <div
+        className="mx-auto max-w-md rounded-xl border border-dashed p-8 text-center"
+        style={{ borderColor: "var(--border)", backgroundColor: "var(--surface-0)" }}
+        data-testid="schedule-empty"
+      >
+        <Calendar className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
+        <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>{t("emptyTitle")}</h2>
+        <p className="text-sm mb-5" style={{ color: "var(--foreground-muted)" }}>{t("emptyDesc")}</p>
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          {EMPTY_CTAS.map((cta, i) => {
+            const Icon = CTA_ICONS[cta.testid] ?? Calendar;
+            const primary = i === 0;
+            return (
+              <Link
+                key={cta.testid}
+                href={cta.href}
+                data-testid={cta.testid}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors"
+                style={
+                  primary
+                    ? { backgroundColor: "var(--brand-blue)", borderColor: "var(--brand-blue)", color: "white" }
+                    : { borderColor: "var(--border)", color: "var(--foreground-muted)" }
+                }
+              >
+                <Icon className="w-3.5 h-3.5" />{t(cta.labelKey)}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -345,10 +408,61 @@ function DayDetail({ selectedDay, pms, months, onClose, onSelectPM }: {
   );
 }
 
-function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onComplete: () => void }) {
+function PMSheet({ pm, onClose, onUpdated }: {
+  pm: PM; onClose: () => void; onUpdated: (patch: Partial<PM> & { id: string }) => void;
+}) {
   const t = useTranslations("schedule");
   const tCommon = useTranslations("common");
+  const { toast } = useToast();
   const cfg = STATUS_CFG[pm.status];
+
+  // Persist completion: rolls last_completed_at + next_due_at forward server-side,
+  // then syncs local state so the change survives a reload.
+  async function handleComplete() {
+    try {
+      const res = await fetch(`${API_BASE}/api/pm-schedules/${pm.id}/complete/`, { method: "POST" });
+      if (!res.ok) {
+        toast(t("completeFailedToast"), "error");
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      const nextDue = data?.schedule?.next_due_at ? String(data.schedule.next_due_at) : null;
+      onUpdated({
+        id: pm.id,
+        status: "completed",
+        date: nextDue ? nextDue.slice(0, 10) : pm.date,
+        meter_current: data?.schedule?.meter_current != null ? Number(data.schedule.meter_current) : pm.meter_current,
+      });
+      toast(`${pm.title} ${t("completedToast")}`, "success");
+      onClose();
+    } catch {
+      toast(t("completeFailedToast"), "error");
+    }
+  }
+
+  // Persist a trigger-type change. The API rejects switching to a meter trigger
+  // without a threshold (400) — surface that as an error toast rather than a
+  // silent no-op.
+  async function handleTriggerChange(tt: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/pm-schedules/${pm.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trigger_type: tt }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        toast(err?.error ?? t("triggerFailedToast"), "error");
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      onUpdated({ id: pm.id, trigger_type: data?.schedule?.trigger_type ?? tt });
+      toast(t("triggerUpdatedToast"), "success");
+    } catch {
+      toast(t("triggerFailedToast"), "error");
+    }
+  }
+
   const critColor: Record<string, string> = { critical: "#DC2626", high: "#F97316", medium: "#2563EB", low: "#64748B" };
   const crit = pm.criticality ?? "medium";
   return (
@@ -468,13 +582,7 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
               const active = (pm.trigger_type ?? "calendar") === tt;
               return (
                 <button key={tt}
-                  onClick={async () => {
-                    await fetch(`/hub/api/pm-schedules/${pm.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ trigger_type: tt }),
-                    });
-                  }}
+                  onClick={() => handleTriggerChange(tt)}
                   className="px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors"
                   style={{
                     backgroundColor: active ? "var(--brand-blue)" : "var(--surface-0)",
@@ -519,7 +627,7 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onComplete} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
+          <button onClick={handleComplete} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
             style={{ backgroundColor: "#16A34A" }}>
             {t("markComplete")}
           </button>

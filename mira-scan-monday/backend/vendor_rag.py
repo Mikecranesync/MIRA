@@ -13,6 +13,10 @@ Falls back to mira_rag.chat()'s existing mira-pipeline path when:
 - the asset isn't in the curated allowlist (no manufacturer patterns),
 - NeonDB is unavailable,
 - or all LLM providers fail.
+
+Returns a deterministic "no documentation indexed" message (instead of falling
+back) when the asset IS in the allowlist but has no KB chunks — this prevents
+the cross-vendor contamination that the mira-pipeline path would cause.
 """
 
 from __future__ import annotations
@@ -254,11 +258,17 @@ async def vendor_chat(
     chunks = await retrieve_vendor_chunks(patterns, message)
     if not chunks:
         logger.info(
-            "vendor RAG: no chunks for asset=%s patterns=%r — falling back",
+            "vendor RAG: no chunks for asset=%s patterns=%r — no documentation indexed",
             asset_id,
             patterns,
         )
-        return None
+        label = asset_label or (asset_id or "").replace("-", " ").strip() or "this equipment"
+        return (
+            f"I don't have documentation for **{label}** in the knowledge base yet. "
+            "Your MIRA administrator can add the OEM manual to unlock grounded fault "
+            "code and parameter answers.",
+            [],
+        )
 
     if not _providers():
         logger.warning(

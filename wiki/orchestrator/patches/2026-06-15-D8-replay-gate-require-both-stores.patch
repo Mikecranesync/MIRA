@@ -1,0 +1,21 @@
+diff --git a/.github/workflows/eval-replay-gate.yml b/.github/workflows/eval-replay-gate.yml
+index a66dabd..3021a74 100644
+--- a/.github/workflows/eval-replay-gate.yml
++++ b/.github/workflows/eval-replay-gate.yml
+@@ -43,7 +43,15 @@ jobs:
+       - name: Check for recorded replay store
+         id: store
+         run: |
+-          if [ -n "${{ hashFiles('tests/eval/fixtures/llm_replay/cascade.json') }}" ]; then
++          # Strict replay loads BOTH stores (tests/eval/llm_replay.py:40-41):
++          # cascade.json (LLM cascade) AND retrieval.json (neon_recall). Require
++          # both — otherwise a half-recorded store (e.g. cascade captured but the
++          # DB was down during record so retrieval.json never landed) would flip
++          # this gate ACTIVE and then raise on the first retrieval call, red-ing
++          # engine PRs for the wrong reason. Matches the activation runbook Step 1
++          # verify ("cascade.json + retrieval.json present, non-empty").
++          if [ -n "${{ hashFiles('tests/eval/fixtures/llm_replay/cascade.json') }}" ] \
++             && [ -n "${{ hashFiles('tests/eval/fixtures/llm_replay/retrieval.json') }}" ]; then
+             echo "present=true" >> "$GITHUB_OUTPUT"
+           else
+             echo "present=false" >> "$GITHUB_OUTPUT"

@@ -39,7 +39,7 @@ export default function MiraChat({ assetId, assetLabel, sessionToken }) {
     <div className="card">
       <h3 style={{ margin: 0, fontSize: 16 }}>Ask MIRA</h3>
       <p className="muted" style={{ marginTop: 4 }}>
-        Grounded in the OEM manual for this asset.
+        Ask questions about fault codes, procedures, and parameters for this asset.
       </p>
       <div className="chat-log" role="log">
         {history.length === 0 && (

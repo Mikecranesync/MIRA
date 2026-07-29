@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { findUserById } from "@/lib/users";
+import { getCapabilities } from "@/lib/capabilities";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,9 @@ export async function GET() {
       status: user.status,
       tenantId: user.tenantId,
       initials,
+      // Authorization for the nav — derived from the session (the email
+      // allowlist + status), the SAME source the API guards use. See #1932.
+      capabilities: getCapabilities(ctx),
     });
   } catch (err) {
     console.error("[api/me]", err);

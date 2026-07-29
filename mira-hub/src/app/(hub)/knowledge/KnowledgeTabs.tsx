@@ -19,13 +19,17 @@ export function KnowledgeTabs() {
   const pathname = usePathname();
   const [pending, setPending] = useState<number | null>(null);
 
-  // Best-effort pending-suggestion count for the badge; silent on failure.
+  // Best-effort pending count for the badge; silent on failure. Uses the cheap
+  // count-only mode (#1892) so the badge reflects the REAL pending total —
+  // relationship proposals + ai_suggestions — not just the first page of edge
+  // proposals (the old `proposals.length` undercounted past 100 and ignored
+  // suggestions entirely).
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/proposals?status=proposed`, { cache: "no-store" })
+    fetch(`${API_BASE}/api/proposals/?status=proposed&count=1`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { proposals?: unknown[] } | null) => {
-        if (!cancelled && Array.isArray(d?.proposals)) setPending(d.proposals.length);
+      .then((d: { pendingTotal?: number } | null) => {
+        if (!cancelled && typeof d?.pendingTotal === "number") setPending(d.pendingTotal);
       })
       .catch(() => {});
     return () => {

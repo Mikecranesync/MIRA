@@ -105,7 +105,7 @@ test("CRA-120/123/124 — /signup: labels + canonical + title", async ({ page })
 // Middleware redirects unauthenticated requests to /login before Next.js renders
 // the 404, so this test cannot pass without an authenticated session.
 test.skip("CRA-126 — hub 404: home link present", async ({ page }) => {
-  const res = await page.goto(`${HUB}/__nonexistent_path_qa__`, { waitUntil: "networkidle" });
+  await page.goto(`${HUB}/__nonexistent_path_qa__`, { waitUntil: "networkidle" });
   await shot(page, "hub-404");
 
   // Home link must appear
@@ -176,7 +176,7 @@ test("CRA-105 — factorylm.com/cmms: JSON-LD SoftwareApplication present", asyn
 // ─────────────────────────────────────────────────────────────
 
 test("CRA-109 — factorylm.com 404: home link present", async ({ page }) => {
-  const res = await page.goto(`${SITE}/notapage-qa-probe`, { waitUntil: "networkidle" });
+  await page.goto(`${SITE}/notapage-qa-probe`, { waitUntil: "networkidle" });
   await shot(page, "marketing-404");
 
   // Status should indicate not found (200 is acceptable if app renders a 404 page)

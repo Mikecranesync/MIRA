@@ -96,7 +96,7 @@ export default function WorkflowsPage() {
       const qs = new URLSearchParams();
       if (nameFilter.trim()) qs.set("workflow_name", nameFilter.trim());
       if (statusFilter) qs.set("status", statusFilter);
-      const res = await fetch(`${API_BASE}/api/workflows?${qs.toString()}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/workflows/?${qs.toString()}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json: ApiResponse = await res.json();
       setData(json);
@@ -110,8 +110,11 @@ export default function WorkflowsPage() {
   }, [nameFilter, statusFilter]);
 
   useEffect(() => {
-    setLoading(true);
-    load();
+    const timeout = window.setTimeout(() => {
+      setLoading(true);
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [load]);
 
   // Auto-refresh every 30s.

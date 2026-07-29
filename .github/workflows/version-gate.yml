@@ -1,0 +1,73 @@
+name: Version Gate
+
+# Every code PR to main MUST bump the repo-wide /VERSION counter (semver).
+# This guarantees the overall version always advances on merge, so every
+# merge is uniquely tagged + rollback-able (see .github/workflows/version-tag.yml
+# and docs/versioning.md).
+#
+# Designed to be SAFE as a REQUIRED status check: the job ALWAYS runs and
+# reports a status on every PR. It only *requires* a bump when the PR changes
+# code — docs/markdown/CHANGELOG/VERSION-only PRs pass without a bump, so a
+# required check never deadlocks a docs PR (same pattern as Hub Unit Tests).
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  version-bump:
+    name: Version Bump Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Require /VERSION bump for code changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$BASE_REF" --quiet
+          BASE="origin/$BASE_REF"
+          MERGE_BASE="$(git merge-base "$BASE" HEAD)"
+
+          # Files this PR changes vs the merge-base.
+          CHANGED="$(git diff --name-only "$MERGE_BASE"...HEAD)"
+          echo "Changed files:"; echo "$CHANGED"
+
+          # Docs/config-only changes don't require a version bump.
+          # (markdown, text, the changelogs, the VERSION file itself, LICENSE,
+          #  promo screenshots, and the wiki/docs trees.)
+          CODE="$(echo "$CHANGED" | grep -vE '(^docs/|^wiki/|(^|/)CHANGELOG|\.md$|\.mdx$|\.txt$|^VERSION$|^LICENSE$|^docs/promo-screenshots/)' || true)"
+
+          if [ -z "$CODE" ]; then
+            echo "✓ Docs/config-only PR — no VERSION bump required."
+            exit 0
+          fi
+
+          BASE_VER="$(git show "$MERGE_BASE:VERSION" 2>/dev/null | tr -d '[:space:]' || echo '')"
+          HEAD_VER="$(tr -d '[:space:]' < VERSION)"
+          echo "VERSION  base=$BASE_VER  head=$HEAD_VER"
+
+          if [ -z "$HEAD_VER" ]; then
+            echo "::error::/VERSION is empty or missing."
+            exit 1
+          fi
+
+          if [ "$BASE_VER" = "$HEAD_VER" ]; then
+            echo "::error::Code changed but /VERSION was not bumped (still $HEAD_VER). Bump it (semver: feat→minor, fix→patch, breaking→major) and add a CHANGELOG note. See docs/versioning.md."
+            exit 1
+          fi
+
+          # Monotonic: head must be strictly greater than base.
+          GREATER="$(printf '%s\n%s\n' "$BASE_VER" "$HEAD_VER" | sort -V | tail -1)"
+          if [ "$GREATER" != "$HEAD_VER" ] || [ "$BASE_VER" = "$HEAD_VER" ]; then
+            echo "::error::/VERSION must INCREASE ($BASE_VER → $HEAD_VER is not a forward bump)."
+            exit 1
+          fi
+
+          echo "✓ /VERSION advanced $BASE_VER → $HEAD_VER"

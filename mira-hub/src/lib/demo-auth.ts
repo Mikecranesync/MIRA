@@ -49,6 +49,8 @@ export async function sessionOrDemo(
       email: "demo@factorylm.com",
       status: "trial",
       trialExpiresAt: null,
+      // Public expo-booth session — least-privilege, never tenant-admin (#2360).
+      role: "viewer",
       isDemo: true,
     };
   }

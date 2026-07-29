@@ -12,7 +12,7 @@
  * ships.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Check, FileText, Loader2, Shield, X } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
@@ -64,14 +64,21 @@ const SUGGESTION_TYPE_LABELS: Record<string, string> = {
   component_profile: "Component profile",
   uns_confirmation: "UNS confirmation",
   namespace_move: "Namespace change",
+  drive_pack_update: "Drive-pack update",
 };
 
 interface ProposalsResponse {
   proposals: Proposal[];
   total: number;
+  hasMore?: boolean;
   suggestions?: Suggestion[];
   suggestionsTotal?: number;
+  suggestionsHasMore?: boolean;
 }
+
+// Page size for the proposals/suggestions queue. Matches the API default limit;
+// "Load more" advances the offset by this amount (#1892).
+const PAGE_SIZE = 100;
 
 const STATUS_TABS: Array<{ key: string; label: string }> = [
   { key: "proposed", label: "Pending" },
@@ -88,6 +95,13 @@ export default function ProposalsPage() {
   const [statusFilter, setStatusFilter] = useState("proposed");
   const [deciding, setDeciding] = useState<Record<string, "verify" | "reject" | undefined>>({});
   const [toast, setToast] = useState<string | null>(null);
+  // #1892: real totals + offset paging so large queues aren't silently truncated.
+  const [total, setTotal] = useState(0);
+  const [suggestionsTotal, setSuggestionsTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [suggestionsHasMore, setSuggestionsHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const offsetRef = useRef(0);
 
   async function decide(proposalId: string, decision: "verify" | "reject") {
     setDeciding((s) => ({ ...s, [proposalId]: decision }));
@@ -96,7 +110,7 @@ export default function ProposalsPage() {
       setProposals((cur) => cur.filter((p) => p.id !== proposalId));
     }
     try {
-      const res = await fetch(`${API_BASE}/api/proposals/${proposalId}/decide`, {
+      const res = await fetch(`${API_BASE}/api/proposals/${proposalId}/decide/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ decision }),
@@ -119,18 +133,55 @@ export default function ProposalsPage() {
     }
   }
 
+  async function decideSuggestion(suggestionId: string, decision: "verify" | "reject") {
+    setDeciding((s) => ({ ...s, [suggestionId]: decision }));
+    const previous = suggestions;
+    if (statusFilter === "proposed") {
+      setSuggestions((cur) => cur.filter((x) => x.id !== suggestionId));
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/suggestions/${suggestionId}/decide/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setToast(decision === "verify" ? "Suggestion accepted" : "Suggestion rejected");
+    } catch (e) {
+      setSuggestions(previous);
+      setToast(`Decide failed: ${(e as Error).message}`);
+    } finally {
+      setDeciding((s) => {
+        const next = { ...s };
+        delete next[suggestionId];
+        return next;
+      });
+      setTimeout(() => setToast(null), 4000);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
-    const fetchProposals = async () => {
+    const load = async () => {
+      setLoading(true);
+      offsetRef.current = 0;
       try {
-        const res = await fetch(`${API_BASE}/api/proposals?status=${statusFilter}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `${API_BASE}/api/proposals/?status=${statusFilter}&limit=${PAGE_SIZE}&offset=0`,
+          { cache: "no-store" },
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as ProposalsResponse;
         if (cancelled) return;
         setProposals(data.proposals);
         setSuggestions(data.suggestions ?? []);
+        setTotal(data.total ?? data.proposals.length);
+        setSuggestionsTotal(data.suggestionsTotal ?? data.suggestions?.length ?? 0);
+        setHasMore(Boolean(data.hasMore));
+        setSuggestionsHasMore(Boolean(data.suggestionsHasMore));
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -139,11 +190,37 @@ export default function ProposalsPage() {
         if (!cancelled) setLoading(false);
       }
     };
-    void fetchProposals();
+    void load();
     return () => {
       cancelled = true;
     };
   }, [statusFilter]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    const nextOffset = offsetRef.current + PAGE_SIZE;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/proposals/?status=${statusFilter}&limit=${PAGE_SIZE}&offset=${nextOffset}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as ProposalsResponse;
+      offsetRef.current = nextOffset;
+      setProposals((cur) => [...cur, ...data.proposals]);
+      setSuggestions((cur) => [...cur, ...(data.suggestions ?? [])]);
+      setTotal(data.total ?? 0);
+      setSuggestionsTotal(data.suggestionsTotal ?? 0);
+      setHasMore(Boolean(data.hasMore));
+      setSuggestionsHasMore(Boolean(data.suggestionsHasMore));
+    } catch (e) {
+      setToast(`Couldn't load more: ${(e as Error).message}`);
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, statusFilter]);
 
   const grouped = useMemo(() => groupByRiskLevel(proposals), [proposals]);
 
@@ -189,6 +266,9 @@ export default function ProposalsPage() {
         <EmptyState statusFilter={statusFilter} />
       ) : (
         <div className="space-y-6" data-testid="proposals-list">
+          <p className="text-xs text-slate-500" data-testid="proposals-count">
+            Showing {proposals.length + suggestions.length} of {total + suggestionsTotal}
+          </p>
           {grouped.safetyCritical.length > 0 && (
             <RiskSection
               title="Safety-critical"
@@ -229,7 +309,28 @@ export default function ProposalsPage() {
               onDecide={decide}
             />
           )}
-          {suggestions.length > 0 && <SuggestionSection suggestions={suggestions} />}
+          {suggestions.length > 0 && (
+            <SuggestionSection
+              suggestions={suggestions}
+              canDecide={statusFilter === "proposed"}
+              deciding={deciding}
+              onDecide={decideSuggestion}
+            />
+          )}
+          {(hasMore || suggestionsHasMore) && (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                data-testid="proposals-load-more"
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -388,7 +489,7 @@ function EmptyState({ statusFilter }: { statusFilter: string }) {
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-12 text-center" data-testid="proposals-empty">
       <FileText className="mx-auto h-10 w-10 text-slate-300" />
       <h2 className="mt-4 text-lg font-semibold text-slate-900">
-        No {statusFilter === "all" ? "" : statusFilter} proposals yet
+        No {statusFilter === "all" ? "" : statusFilter === "proposed" ? "pending" : statusFilter} proposals yet
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         {statusFilter === "proposed"
@@ -413,11 +514,20 @@ function groupByRiskLevel(proposals: Proposal[]): {
   };
 }
 
-// Non-edge ai_suggestions render read-only here — the precomputed title/body
-// carry the human-readable content (mig 027). Approve/reject lands once the
-// proposal-transition helper (#1662) ships; until then the technician reviews
-// these in context. See #1663.
-function SuggestionSection({ suggestions }: { suggestions: Suggestion[] }) {
+// Non-edge ai_suggestions (mig 027). Approve/reject goes through the ADR-0017
+// transition helper via POST /api/suggestions/[id]/decide — accepting a
+// kg_entity creates a verified kg_entities row (served by i3X).
+function SuggestionSection({
+  suggestions,
+  canDecide,
+  deciding,
+  onDecide,
+}: {
+  suggestions: Suggestion[];
+  canDecide: boolean;
+  deciding: Record<string, "verify" | "reject" | undefined>;
+  onDecide: (id: string, decision: "verify" | "reject") => void;
+}) {
   return (
     <section data-testid="suggestions-section">
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -425,18 +535,35 @@ function SuggestionSection({ suggestions }: { suggestions: Suggestion[] }) {
       </h2>
       <p className="mb-3 text-xs text-slate-400">
         Entity, tag, component, UNS, and namespace proposals from ingestion and photo
-        scans. Approve/reject is coming with the transition helper (#1662).
+        scans. Accepting an entity promotes it into the verified knowledge graph.
       </p>
       <div className="space-y-2">
         {suggestions.map((s) => (
-          <SuggestionCard key={s.id} suggestion={s} />
+          <SuggestionCard
+            key={s.id}
+            suggestion={s}
+            canDecide={canDecide}
+            decidingState={deciding[s.id]}
+            onDecide={onDecide}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
+function SuggestionCard({
+  suggestion,
+  canDecide,
+  decidingState,
+  onDecide,
+}: {
+  suggestion: Suggestion;
+  canDecide: boolean;
+  decidingState: "verify" | "reject" | undefined;
+  onDecide: (id: string, decision: "verify" | "reject") => void;
+}) {
+  const busy = decidingState !== undefined;
   const confidencePct = Math.round(suggestion.confidence * 100);
   const accent =
     suggestion.riskLevel === "safety_critical"
@@ -486,6 +613,38 @@ function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
         <time className="ml-2" dateTime={suggestion.createdAt}>
           {new Date(suggestion.createdAt).toLocaleDateString()}
         </time>
+        {canDecide && (
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(suggestion.id, "reject")}
+              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              data-testid="suggestion-reject"
+            >
+              {decidingState === "reject" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
+              Reject
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(suggestion.id, "verify")}
+              className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              data-testid="suggestion-verify"
+            >
+              {decidingState === "verify" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3" />
+              )}
+              Accept
+            </button>
+          </div>
+        )}
       </footer>
     </article>
   );

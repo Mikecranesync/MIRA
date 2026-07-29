@@ -1,0 +1,6 @@
+{
+  "pack_id": "impulse_gplus_mini",
+  "loaded": false,
+  "reason": "load_pack would raise FileNotFoundError (no shipped pack); a source-preserving mnemonic-keyed pack raises ValueError at loader.py:275 (_int_keyed). Either way: zero usable fault decode.",
+  "fault_codes_decoded": {}
+}
