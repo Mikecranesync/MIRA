@@ -28,6 +28,7 @@ OUTSIDE this contract (ADR-0033 rule 3 + fieldbus-readonly doctrine).
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -127,6 +128,14 @@ class EvidenceItem:
     document_lineage_key: str | None = None
     freshness: Freshness | None = None
     observed_at: str | None = None  # RFC3339, caller stamps
+    # Document coordinates (corpus-spine G4, spine PR B): where inside the
+    # source document this item came from. Only document-backed kinds
+    # (MANUAL_CHUNK, PRINT_OBSERVATION, ...) populate them; live / tenant-
+    # transient evidence leaves all three None. bbox is [x0, y0, x1, y1] in
+    # the producer's page/image coordinate space, carried verbatim.
+    page: int | None = None
+    section: str | None = None
+    bbox: list[float] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -260,8 +269,13 @@ def to_prompt_block(ctx: TechnicianContext) -> str:
             lines.append(f"[note: {ctx.live.dropped_tag_count} additional live tags not shown]")
     for item in sorted(ctx.evidence, key=lambda e: (e.kind.value, e.citation_id)):
         conf = f", confidence {item.confidence}" if item.confidence is not None else ""
+        where = ""
+        if item.page is not None:
+            where += f", page {item.page}"
+        if item.section:
+            where += f", section {item.section}"
         lines.append(
-            f"Evidence [{item.citation_id}] ({item.kind.value}, {item.trust}{conf}): "
+            f"Evidence [{item.citation_id}] ({item.kind.value}, {item.trust}{conf}{where}): "
             + _payload_line(item)
         )
     for c in ctx.contradictions:
@@ -284,11 +298,32 @@ def _payload_line(item: EvidenceItem) -> str:
 # No cross-package imports: callers pass plain dicts.
 # --------------------------------------------------------------------------
 def evidence_from_recall_chunks(chunks: list[dict[str, Any]]) -> list[EvidenceItem]:
-    """mira-bots ``recall_knowledge`` / Hub ``ManualChunk`` rows → items."""
+    """mira-bots ``recall_knowledge`` / Hub ``ManualChunk`` rows → items.
+
+    Document coordinates + corpus lineage (spine PR B): the page comes from
+    ``page_num`` (top-level, then ``metadata.page_num``) — NEVER from
+    ``source_page``, which on the legacy corpus holds the chunk ordinal, not a
+    PDF page (#2910/#2968; rendering it as a page would fabricate citations —
+    same law as ``rag_worker.py`` / ``response_formatter.py`` /
+    ``manual-rag.ts displayPage()``). ``metadata.section`` maps to ``section``,
+    and an EXPLICIT ``document_lineage_key`` (top-level or in metadata) is
+    carried through. The key is never synthesized from manufacturer/source_url
+    here — only the producer that holds the corpus registry may perform that
+    join (fail-closed: absent means None, per oem-crawler-trusted "a selector
+    is not a provenance test").
+    """
     items = []
     for i, ch in enumerate(chunks, 1):
         locator = str(ch.get("source_url") or ch.get("sourceUrl") or "")
         idx = ch.get("chunk_index", ch.get("chunkIndex", i))
+        meta = ch.get("metadata") if isinstance(ch.get("metadata"), dict) else {}
+        page = _first_present(ch, "page_num")
+        if page is None:
+            page = _first_present(meta, "page_num")
+        section = _first_present(ch, "section") or _first_present(meta, "section")
+        lineage = _first_present(ch, "document_lineage_key") or _first_present(
+            meta, "document_lineage_key"
+        )
         items.append(
             EvidenceItem(
                 kind=EvidenceKind.MANUAL_CHUNK,
@@ -298,6 +333,9 @@ def evidence_from_recall_chunks(chunks: list[dict[str, Any]]) -> list[EvidenceIt
                 confidence=ch.get("similarity"),
                 trust="verified" if ch.get("verified") else "candidate",
                 producer_name="recall_knowledge",
+                document_lineage_key=str(lineage) if lineage else None,
+                page=page if isinstance(page, int) and not isinstance(page, bool) else None,
+                section=str(section) if section else None,
             )
         )
     return items
@@ -339,6 +377,19 @@ def evidence_from_kg_context(paths: list[dict[str, Any]]) -> list[EvidenceItem]:
             )
         )
     return items
+
+
+def _first_present(d: dict[str, Any], *keys: str) -> Any:
+    """First key PRESENT with a usable value (not None / "").
+
+    Unlike an ``a or b`` chain this honors falsy-but-valid values (id ``0``)
+    and falls through a present-but-None key to the next candidate
+    (2026-07-29 adversarial-review findings, spine PR B).
+    """
+    for k in keys:
+        if k in d and d[k] not in (None, ""):
+            return d[k]
+    return None
 
 
 def _freshness(value: Any) -> Freshness:
@@ -418,6 +469,14 @@ def evidence_from_printsense_graph(
     for i, e in enumerate(entities, 1):
         tag = str(e.get("tag") or e.get("id") or f"entity{i}")
         detail = str(e.get("detail") or e.get("type") or "")
+        raw_bbox = e.get("bbox") or e.get("evidence_bbox")
+        bbox = (
+            [float(v) for v in raw_bbox]
+            if isinstance(raw_bbox, (list, tuple))
+            and len(raw_bbox) == 4
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in raw_bbox)
+            else None
+        )
         items.append(
             EvidenceItem(
                 kind=EvidenceKind.PRINT_OBSERVATION,
@@ -427,6 +486,7 @@ def evidence_from_printsense_graph(
                 confidence=e.get("confidence"),
                 trust=str(e.get("trust") or "candidate"),
                 producer_name="printsense",
+                bbox=bbox,
             )
         )
     return items
@@ -456,6 +516,198 @@ def evidence_from_ontology_validation(results: list[dict[str, Any]]) -> list[Evi
                 source_locator=str(r.get("focus") or r.get("shape") or ""),
                 trust="verified" if conforms else "rejected",
                 producer_name="ontology_validator",
+            )
+        )
+    return items
+
+
+# --------------------------------------------------------------------------
+# Spine PR B adapters — the four EvidenceKinds that had no producer path
+# (corpus-spine ledger G4/G8). Same discipline as the adapters above: pure
+# functions over plain dicts, no cross-package imports, fail-closed on rows
+# that cannot be cited or audited.
+# --------------------------------------------------------------------------
+def evidence_from_historian_window(windows: list[dict[str, Any]]) -> list[EvidenceItem]:
+    """Historian trend-window summaries → items (kind HISTORIAN_WINDOW).
+
+    Each window row: ``{tag_path, window_start|start, window_end|end,
+    summary? | stats?, ref?, freshness?, confidence?, trust?}``. Rows missing
+    a tag_path or either window bound are DROPPED (fail-closed — an
+    unanchored window cannot be cited or re-queried). Historian data is
+    tenant-transient: no document lineage, and freshness defaults to STALE
+    (it is history by definition) unless the producer says otherwise.
+    """
+    items: list[EvidenceItem] = []
+    for w in windows:
+        tag = str(w.get("tag_path") or w.get("tagPath") or "")
+        start = w.get("window_start") or w.get("start")
+        end = w.get("window_end") or w.get("end")
+        if not tag or not start or not end:
+            continue
+        summary = w.get("summary")
+        payload: dict[str, Any] = (
+            {"summary": summary}
+            if isinstance(summary, str) and summary
+            else {"stats": w.get("stats") or {}}
+        )
+        payload["tag_path"] = tag
+        payload["window"] = {"start": str(start), "end": str(end)}
+        items.append(
+            EvidenceItem(
+                kind=EvidenceKind.HISTORIAN_WINDOW,
+                citation_id=f"H{len(items) + 1}",
+                payload=payload,
+                source_locator=str(w.get("ref") or f"historian:{tag}@{start}/{end}"),
+                confidence=w.get("confidence"),
+                trust=str(w.get("trust") or "candidate"),
+                producer_name="historian_window",
+                freshness=(
+                    _freshness(w["freshness"])
+                    if w.get("freshness") is not None
+                    else Freshness.STALE
+                ),
+                observed_at=str(end),
+            )
+        )
+    return items
+
+
+def evidence_from_work_orders(orders: list[dict[str, Any]]) -> list[EvidenceItem]:
+    """CMMS work-order rows (Atlas / ``cmms_*`` dicts) → items (kind WORK_ORDER).
+
+    Rows without an id are DROPPED (fail-closed — an uncitable record). A
+    work order is a system-of-record row: what it SAYS is verifiable against
+    the CMMS, so trust defaults to "verified"; producers pass ``trust`` to
+    downgrade drafts/imports. Work orders are tenant-scoped operational
+    records — never a document lineage key.
+    """
+    items: list[EvidenceItem] = []
+    for o in orders:
+        oid = _first_present(o, "id", "work_order_id", "wo_number")
+        if oid is None:
+            continue
+        title = str(o.get("title") or o.get("summary") or "")
+        desc = str(o.get("description") or "")
+        status = str(o.get("status") or "unknown")
+        text_ = f"WO {oid} [{status}] {title}".strip()
+        if desc:
+            text_ = f"{text_}: {desc}"
+        when = _first_present(o, "completed_at", "updated_at", "created_at")
+        items.append(
+            EvidenceItem(
+                kind=EvidenceKind.WORK_ORDER,
+                citation_id=f"W{len(items) + 1}",
+                payload={"text": text_, "status": status},
+                source_locator=f"wo:{oid}",
+                trust=str(o.get("trust") or "verified"),
+                producer_name="cmms_work_orders",
+                observed_at=str(when) if when is not None else None,
+            )
+        )
+    return items
+
+
+def evidence_from_prior_decisions(traces: list[dict[str, Any]]) -> list[EvidenceItem]:
+    """``decision_traces`` rows → items (kind PRIOR_DECISION).
+
+    The real table (migration 032 / ``mira-bots/shared/decision_trace.py``)
+    stores its content in ``recommendation`` and its timestamp in ``ts`` —
+    both accepted here alongside the generic ``summary``/``decision``/
+    ``created_at`` spellings. Content is PII-sanitized at capture
+    (``decision_trace._sanitize``); this adapter carries it verbatim.
+
+    A prior MIRA decision is a HYPOTHESIS the policy may weigh, never ground
+    truth: trust is hard-coded "candidate" (not producer-overridable — a past
+    answer cannot promote itself; see the KG never-auto-verify law). Rows
+    without an id, or with no decision content, are DROPPED (fail-closed).
+    """
+    items: list[EvidenceItem] = []
+    for t in traces:
+        tid = _first_present(t, "id", "trace_id")
+        summary = str(_first_present(t, "summary", "decision", "recommendation") or "")
+        if tid is None or not summary:
+            continue
+        when = _first_present(t, "created_at", "ts")
+        items.append(
+            EvidenceItem(
+                kind=EvidenceKind.PRIOR_DECISION,
+                citation_id=f"R{len(items) + 1}",
+                payload={"summary": summary, "outcome": str(t.get("outcome") or "unknown")},
+                source_locator=f"decision:{tid}",
+                confidence=_first_present(t, "groundedness", "confidence"),
+                trust="candidate",
+                producer_name="decision_traces",
+                observed_at=str(when) if when is not None else None,
+            )
+        )
+    return items
+
+
+def evidence_from_technician_corrections(events: list[dict[str, Any]]) -> list[EvidenceItem]:
+    """Technician correction EVENTS → items (kind TECHNICIAN_CORRECTION).
+
+    Canonical shape: ``correction-event.v1``
+    (``docs/specs/continuous-learning-factory/schemas/``) — ``correction_id``
+    / ``at`` / ``corrected_answer``, with ``run_id`` naming the result being
+    corrected. Generic ``event_id``/``occurred_at``/``correction`` spellings
+    are tolerated for pre-schema producers.
+
+    Corrections are immutable events (corpus-spine G8): every event adapts
+    1:1 — never merged, never rewritten. Each item carries the event id +
+    timestamp as its audit anchor AND a content hash (``evidence_hash`` =
+    sha256 over id/at/text/run_id) so a replayed event whose text was
+    rewritten under the same id is detectable. Events missing the id, the
+    timestamp, or the correction text are DROPPED (fail-closed — an
+    unanchored correction cannot be audited; an ``action: accept`` event with
+    a null ``corrected_answer`` carries no citable text and is likewise
+    dropped).
+
+    The "what was corrected" pointer is durable, never per-context: ``run_id``
+    (and legacy ``corrected_claim`` free text) are carried; ephemeral
+    citation ids like "P1" are NOT accepted as pointers — they alias across
+    context assemblies.
+
+    Rights + trust are fail-closed by construction: a correction here is
+    runtime evidence ONLY — no ``document_lineage_key``, no training rights
+    (the correction/conversation rights class ships denied-until-registered,
+    spine PR D). Trust is hard-coded "candidate" exactly like PRIOR_DECISION:
+    a correction is the technician's claim, authoritative about what they
+    SAID, and cannot arrive pre-promoted (never-auto-verify law). Producers
+    MUST feed only the PII-sanitized capture stream (``conversation_eval`` /
+    ``decision_trace._sanitize`` precedent); this adapter carries text
+    verbatim and never de-redacts.
+    """
+    items: list[EvidenceItem] = []
+    for ev in events:
+        eid = _first_present(ev, "correction_id", "event_id", "id")
+        when = _first_present(ev, "at", "occurred_at", "created_at")
+        text_ = str(_first_present(ev, "corrected_answer", "correction", "text", "content") or "")
+        if eid is None or when is None or not text_:
+            continue
+        run_id = _first_present(ev, "run_id")
+        payload: dict[str, Any] = {"text": text_}
+        if ev.get("action"):
+            payload["action"] = str(ev["action"])
+        if run_id is not None:
+            payload["corrects_run_id"] = str(run_id)
+        corrected_claim = _first_present(ev, "corrected_claim")
+        if corrected_claim is not None:
+            payload["corrects"] = str(corrected_claim)
+        anchor = json.dumps(
+            {"at": str(when), "id": str(eid), "run_id": str(run_id or ""), "text": text_},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        items.append(
+            EvidenceItem(
+                kind=EvidenceKind.TECHNICIAN_CORRECTION,
+                citation_id=f"T{len(items) + 1}",
+                payload=payload,
+                source_locator=f"correction:{eid}",
+                trust="candidate",
+                producer_name="technician_corrections",
+                evidence_hash=hashlib.sha256(anchor.encode("utf-8")).hexdigest(),
+                observed_at=str(when),
             )
         )
     return items
