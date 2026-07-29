@@ -158,6 +158,36 @@ natural next rung (currently outside the spend law — separate Mike decision, ~
 - Treating a 25-record judged verdict as the program's primary metric.
 - Any claim that this teaches the model *facts* — knowledge stays in retrieval.
 
+## 3b. 2026-07-28 pre-flight amendments (Mike's requirements + HF audit)
+
+Adopted before any paid run; implemented in code the same day:
+
+1. **Expanded hold-out eval:** the frozen 25-record set is retained untouched; Phase D
+   runs the new **108-record set** (`holdout_eval.build_prompt_set_expanded`) — all 36
+   PF40 gold-pack facts × 3 tracks (evidence_absent / evidence_present / distractor).
+   `expanded_leakage_guard` fails the build if any PF40 claim or the PF40 lineage appears
+   in ANY training corpus (v0/v1/v2 reviewed + v2 train side).
+2. **Manual inspection ≥50:** `manual_inspection_sample.jsonl` (stratified) must be
+   human-read before a verdict is final (protocol v3 §Scoring).
+3. **Learning rate 1e-4** (TRL adapter guidance); r16/α32/dropout .05/packing/3 epochs/
+   seed 42/`train_on_inputs=false`/batch 8/ckpt 1 all retained
+   (`technician-dataset-v2/train_config.json`).
+4. **Validation monitoring:** lineage-based ~10% carve of approved train records
+   (`technician_v2.carve_validation`) → `validation_file`, `n_evals=3` (≥1/epoch).
+   Monitoring-only; no lineage shared with the training file.
+5. **Judge protocol v3** (`technician-dataset-v2/judge_panel_protocol_v3.md`): per-judge
+   side swap (`make_judge_views`/`unswap_verdict`, sealed mapping untouched), reasoning
+   before verdict, explicit length-bias warning, deterministic metrics take precedence.
+6. **Provider stop-gates:** two $0 verifications documented in
+   `docs/zta/2026-07-28-provider-verification-packing-template.md` — (a) packing
+   preserves the completion-only loss mask; (b) train/inference tokenizer + chat template
+   identical. **NOT PROVEN → no launch.** Same stop applies if Together does not support
+   `validation_file`+`n_evals` for LoRA, if the hold-out leaks, or any governance gate
+   fails.
+7. Unchanged: signed spend authorization (two-key), sealed blinding, A/B fact partition,
+   reproducibility (frozen manifests, fixed seed), append-only receipts. Human sitting on
+   :8379 + the deterministic admission gates remain the only path to a training file.
+
 ## 4. Decision points for Mike
 
 1. Approve Plan v2 (or edit strata/targets) — Phase B generation starts on approval.
