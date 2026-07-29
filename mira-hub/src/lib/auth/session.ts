@@ -13,7 +13,32 @@ import { requireSession as cookieSession } from "@/lib/session";
 // ---------------------------------------------------------------------------
 // Types
 
-export type Role = "owner" | "admin" | "member" | "viewer";
+// The real hub_users.role vocabulary (issue #2360). Any unrecognized string
+// normalizes to least-privilege so it can never satisfy a role gate.
+export type Role =
+  | "owner"
+  | "admin"
+  | "manager"
+  | "scheduler"
+  | "technician"
+  | "operator"
+  | "viewer";
+
+const KNOWN_ROLES: ReadonlySet<string> = new Set<Role>([
+  "owner",
+  "admin",
+  "manager",
+  "scheduler",
+  "technician",
+  "operator",
+  "viewer",
+]);
+
+/** Map a raw hub_users.role string to a known Role; unknown → least-privilege. */
+export function normalizeRole(raw: string | null | undefined): Role {
+  const r = (raw ?? "").toLowerCase().trim();
+  return KNOWN_ROLES.has(r) ? (r as Role) : "viewer";
+}
 
 export interface Session {
   userId: string;
@@ -44,12 +69,14 @@ export class HttpAuthError extends Error {
  * but is not used — next-auth reads cookies from next/headers globally.
  */
 export async function requireSession(_req?: Request): Promise<Session> {
+  void _req;
   try {
     const ctx = await cookieSession();
     return {
       userId: ctx.userId,
       tenantId: ctx.tenantId,
-      role: "member", // TODO(#578): derive from hub_members.role column
+      // Derived fresh from hub_users.role by cookieSession() (issue #2360).
+      role: normalizeRole(ctx.role),
       exp: Math.floor(Date.now() / 1000) + 3600,
     };
   } catch {
@@ -59,6 +86,7 @@ export async function requireSession(_req?: Request): Promise<Session> {
 
 /** Return session or null — never throws. For optional-auth routes. */
 export async function getSession(_req?: Request): Promise<Session | null> {
+  void _req;
   try {
     return await requireSession();
   } catch {

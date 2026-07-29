@@ -106,7 +106,10 @@ export default function BatchReviewPage() {
   }, [batchId]);
 
   useEffect(() => {
-    fetchDetail();
+    const timeout = window.setTimeout(() => {
+      void fetchDetail();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchDetail]);
 
   async function decide(decision: Decision) {

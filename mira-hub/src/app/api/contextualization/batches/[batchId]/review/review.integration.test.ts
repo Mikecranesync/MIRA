@@ -1,11 +1,11 @@
-// Integration test: the HubV3 batch-review PUBLISH gate (ADR-0017).
-// Exercises the REAL route handler (not shadow helpers) against a Postgres test DB.
-// Asserts: approve -> kg_entities proposed->verified + ai_suggestions pending->accepted;
-// no-overwrite guard protects an existing verified row; reject/needs_review do NOT publish;
-// cross-tenant batch is invisible (404); bad decision/id -> 400; missing DB -> 503.
+// Requires a disposable Postgres/Neon test DB.
 //
-// Setup is identical to import/import.integration.test.ts — see that file's header for the
-// docker + migrations 055/056 + factorylm_app role recipe. Run in the integration lane.
+//   $env:TEST_DATABASE_URL="postgres://..."
+//   $env:MIRA_TEST_DB_CONFIRM="DISPOSABLE"
+//   npm run test:integration:db
+//
+// The setup command creates the factorylm_app role, applies integration-only
+// fixtures, applies Hub migrations, and runs smoke checks before Vitest.
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import type { Pool } from "pg";
@@ -40,21 +40,29 @@ function reviewReq(decision: string): Request {
 
 // Seed one batch with one accepted, UNS-pathed extraction. Returns the batchId.
 async function seedBatch(tenantId: string, tagName: string): Promise<string> {
+  const project = await testPool.query(
+    `INSERT INTO contextualization_projects (tenant_id, name, status)
+     VALUES ($1::uuid, $2, 'active') RETURNING id`,
+    [tenantId, `Review fixture ${tagName}`],
+  );
+  const projectId = project.rows[0].id as string;
   const batch = await testPool.query(
-    `INSERT INTO ctx_import_batches (tenant_id, project_id, review_status)
-     VALUES ($1::uuid, $1::uuid, 'proposed') RETURNING id`,
-    [tenantId],
+    `INSERT INTO ctx_import_batches (tenant_id, project_id, ingest_route, review_status)
+     VALUES ($1::uuid, $2, 'offline', 'proposed') RETURNING id`,
+    [tenantId, projectId],
   );
   const batchId = batch.rows[0].id as string;
   const src = await testPool.query(
-    `INSERT INTO ctx_sources (tenant_id, import_batch_id, source_sha256, source_type)
-     VALUES ($1::uuid, $2, $3, 'st') RETURNING id`,
-    [tenantId, batchId, tagName + "-sha".padEnd(64, "0")],
+    `INSERT INTO ctx_sources
+       (tenant_id, project_id, import_batch_id, source_sha256, source_type, file_name, status)
+     VALUES ($1::uuid, $2, $3, $4, 'st', $5, 'done') RETURNING id`,
+    [tenantId, projectId, batchId, tagName + "-sha".padEnd(64, "0"), `${tagName}.st`],
   );
   await testPool.query(
-    `INSERT INTO ctx_extractions (tenant_id, source_id, tag_name, roles, uns_path_proposed, confidence, status)
-     VALUES ($1::uuid, $2, $3, ARRAY['output'], $4, 0.9, 'accepted')`,
-    [tenantId, src.rows[0].id, tagName, "enterprise/garage/demo/" + tagName],
+    `INSERT INTO ctx_extractions
+       (tenant_id, project_id, source_id, tag_name, roles, uns_path_proposed, confidence, status)
+     VALUES ($1::uuid, $2, $3, $4, ARRAY['output'], $5, 0.9, 'accepted')`,
+    [tenantId, projectId, src.rows[0].id, tagName, `enterprise.garage.demo.${tagName.toLowerCase()}`],
   );
   return batchId;
 }
@@ -73,6 +81,7 @@ beforeEach(async () => {
   await testPool.query("DELETE FROM ctx_extractions WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
   await testPool.query("DELETE FROM ctx_sources WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
   await testPool.query("DELETE FROM ctx_import_batches WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
+  await testPool.query("DELETE FROM contextualization_projects WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
 });
 
 describe("contextualization batch-review publish gate (ADR-0017)", () => {
@@ -88,6 +97,12 @@ describe("contextualization batch-review publish gate (ADR-0017)", () => {
       [TENANT_A],
     );
     expect(ent.rows[0].approval_state).toBe("verified");
+    const batch = await testPool.query(
+      `SELECT approved_by, approved_at FROM ctx_import_batches WHERE id=$1`,
+      [batchId],
+    );
+    expect(batch.rows[0].approved_by).toBe("human:u-test");
+    expect(batch.rows[0].approved_at).not.toBeNull();
   });
 
   it("approve does NOT overwrite an already-verified row (no-overwrite guard)", async () => {
@@ -114,6 +129,12 @@ describe("contextualization batch-review publish gate (ADR-0017)", () => {
     expect(body).toMatchObject({ reviewStatus: "rejected", published: 0 });
     const ent = await testPool.query(`SELECT 1 FROM kg_entities WHERE tenant_id=$1::uuid AND name='Conv_Run'`, [TENANT_A]);
     expect(ent.rowCount).toBe(0);
+    const batch = await testPool.query(
+      `SELECT approved_by, approved_at FROM ctx_import_batches WHERE id=$1`,
+      [batchId],
+    );
+    expect(batch.rows[0].approved_by).toBeNull();
+    expect(batch.rows[0].approved_at).toBeNull();
   });
 
   it("a batch owned by another tenant is invisible (404)", async () => {

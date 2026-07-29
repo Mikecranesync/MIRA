@@ -40,7 +40,7 @@ export function canAccess(role: Role, resource: string, action: string): boolean
 }
 
 export const accessControlProvider: AccessControlProvider = {
-  can: async ({ resource, action, params: _params }) => {
+  can: async ({ resource, action }) => {
     if (!resource) return { can: false };
 
     const session = await getSession();
@@ -95,6 +95,9 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },
   { key: "workorders",    label: "CMMS",          icon: "ClipboardList", href: "/workorders",    roles: [...ALL_ROLES], group: "secondary" },
   { key: "scan",          label: "Scan",          icon: "Cpu",           href: "/scan",          roles: [...ALL_ROLES], group: "secondary" },
+  // Visual Focus Workspace (PR V2) — annotate evidence photos/prints; regions
+  // persist to the shared visual ledger (migration 063).
+  { key: "visual",        label: "Visual Workspace", icon: "Focus", href: "/visual", roles: [...ALL_ROLES], group: "secondary" },
   // PLC program import — upload an offline L5X / tag-CSV export → parser report +
   // proposed UNS paths → reviewable tag_mapping/kg_entity proposals (read-only, no PLC writes).
   // Dev/internal tool — hidden from end users.

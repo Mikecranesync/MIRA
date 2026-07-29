@@ -71,6 +71,45 @@ def build_app(
     if approvals is None:
         approvals = ApprovalStore()
 
+    # Live MQTT feed (opt-in): set SIMLAB_MQTT_HOST to stream every advance() to a broker, read-only.
+    # Unset -> no publisher attached -> the sim behaves exactly as before (pull-only /snapshot).
+    import os
+
+    mqtt_host = os.getenv("SIMLAB_MQTT_HOST", "").strip()
+    if mqtt_host:
+        from simlab.publishers import MqttPublisher
+
+        mqtt_port = int(os.getenv("SIMLAB_MQTT_PORT", "1883"))
+        engine.add_publisher(MqttPublisher(host=mqtt_host, port=mqtt_port))
+        logger.info("SimLab live MQTT feed enabled -> %s:%d", mqtt_host, mqtt_port)
+
+    # Live HTTP relay feed (opt-in): set SIMLAB_RELAY_URL to POST every advance()
+    # snapshot to mira-relay /api/v1/tags/ingest, landing rows in tag_events +
+    # live_signal_cache (UNS-mapped) — the shortest path to "SimLab data landed
+    # against a real UNS". Read-only / publish-out only; no PLC writes.
+    #   SIMLAB_RELAY_HMAC_KEY  -> production-shaped HMAC auth (tenant authoritative)
+    #   SIMLAB_RELAY_API_KEY   -> bench bearer auth (needs relay RELAY_LEGACY_BEARER=1)
+    #   SIMLAB_RELAY_TENANT_ID -> override the reserved SIMLAB_TENANT_ID (default)
+    relay_url = os.getenv("SIMLAB_RELAY_URL", "").strip()
+    if relay_url:
+        from simlab import SIMLAB_TENANT_ID
+        from simlab.publishers import RelayIngestPublisher
+
+        tenant_id = os.getenv("SIMLAB_RELAY_TENANT_ID", "").strip() or SIMLAB_TENANT_ID
+        hmac_key = os.getenv("SIMLAB_RELAY_HMAC_KEY", "").strip()
+        api_key = os.getenv("SIMLAB_RELAY_API_KEY", "").strip()
+        engine.add_publisher(
+            RelayIngestPublisher(
+                relay_url, tenant_id=tenant_id, api_key=api_key, hmac_key=hmac_key
+            )
+        )
+        logger.info(
+            "SimLab live relay feed enabled -> %s (tenant=%s, auth=%s)",
+            relay_url,
+            tenant_id,
+            "hmac" if hmac_key else ("bearer" if api_key else "open"),
+        )
+
     _line = engine._line  # noqa: SLF001
     _factory = build_factory()
 

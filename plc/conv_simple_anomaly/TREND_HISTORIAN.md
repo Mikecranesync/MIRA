@@ -26,6 +26,33 @@ python plc/conv_simple_anomaly/trend_historian.py --bind 0.0.0.0
 ⚠ **Do NOT run `live_logger.py` / `live_check.py` while the historian is up** — the PLC has one
 Modbus connection slot; they will fight. Stop the historian first to take a labeled capture.
 
+## Run as a service (always-on — the 2026-07-13 fix)
+
+> **Root cause of the "TRENDS tab dead" outage (2026-07-13):** the historian was a
+> manually-launched script. After a laptop reboot/logoff nothing restarted it, so `:8766`
+> refused connections and the TRENDS iframe went blank. Compounding it, the iframe URL
+> defaulted to `127.0.0.1:8766` — which renders **only when viewed on the laptop itself**,
+> even with the historian up. The fix is (a) a boot-scoped Scheduled Task and (b) binding
+> `0.0.0.0` + pointing the iframe at the tailnet IP.
+
+One-time install, in an **elevated** PowerShell on the PLC laptop:
+
+```powershell
+cd C:\Users\hharp\Documents\MIRA-monorepo
+git pull
+gsudo powershell -ExecutionPolicy Bypass -File plc\conv_simple_anomaly\install_trend_historian_task.ps1
+```
+
+This registers **`MIRA Trend Historian`** as a Scheduled Task — Trigger **"At startup"**,
+**"Run whether user is logged on or not"** (SYSTEM), restart-on-failure every minute — running
+`run_trend_historian.bat` (`--bind 0.0.0.0`, log at `%LOCALAPPDATA%\mira-trend-historian.log`).
+Boot-scoped, NOT a Startup-folder launcher, per the DEPLOY.md gotcha (logon-scoped launchers
+die on logoff).
+
+- Stop for a labeled capture: `Stop-ScheduledTask -TaskName "MIRA Trend Historian"` (then
+  `Start-ScheduledTask …` when done) — the live_logger/live_check conflict above still applies.
+- Verify from any tailnet machine: `curl http://100.72.2.99:8766/health`
+
 ## Endpoints (read-only, default `:8766`)
 | Endpoint | Purpose |
 |---|---|
@@ -60,10 +87,16 @@ Quick check: `curl http://127.0.0.1:8766/trends/summary?window=30`
 > component is **`ia.display.iframe`**. Live Perspective views are 8.3 format
 > (`view.json` content + `resource.json` manifest) in the MIRA_PLC repo above.
 
-**Remote clients:** the iframe URL defaults to `127.0.0.1` (same-laptop). For a phone/remote
-Perspective session, point the Trends view iframe at the PLC laptop's Tailscale IP
-(e.g. `http://100.72.2.99:8766/viewer/index.html?source=historian`) and run the historian with
-`--bind 0.0.0.0`.
+**Remote clients:** the iframe URL defaults to `127.0.0.1` (same-laptop) — that URL renders
+**only when the Perspective session is viewed on the laptop itself** (127.0.0.1 is the
+*viewer's* machine, not the gateway's). For every other client (phone, Hub Command Center
+browser, travel laptop) it must be the PLC laptop's Tailscale IP:
+`http://100.72.2.99:8766/viewer/index.html?source=historian`, with the historian bound
+`0.0.0.0` (the service install above does this). **Change it in Designer on the laptop**
+(edit the `trendUrl` view param on `MaintenancePanel` / the Trends view in the as-built
+`ConvSimpleLive` project) — the monorepo copy of `view.json` is BEHIND the as-built project,
+so do not file-push it over the gateway. The tailnet URL also works on the laptop itself, so
+one URL serves all clients.
 
 ## Verify
 1. `/health` → `connection: ok`; `/trends/summary` lists the live signals.

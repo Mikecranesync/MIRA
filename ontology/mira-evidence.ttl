@@ -1,0 +1,240 @@
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://ontology.factorylm.com/mira/evidence>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/evidence/0.1.0> ;
+    owl:versionInfo "0.1.0" ;
+    owl:imports <https://ontology.factorylm.com/mira/core> ;
+    dcterms:title "MIRA Evidence — assertions, provenance, proposals, approval, supersession" ;
+    rdfs:comment """The keystone module. Everything MIRA asserts to a technician passes a shape here.
+
+STATEMENT-LEVEL EVIDENCE STRATEGY (ADR-0032 §6): reified assertion entity. NOT RDF-star (SHACL has
+no standard way to target quoted triples, so the rules below would be unenforceable), NOT named
+graphs (they would require a quad store MIRA does not have and the safety rules forbid). The
+reified form was chosen because it ALREADY EXISTS in the schema: kg_triples_log has literal
+subject / predicate / object columns, and kg_relationships rows carry approval_state + confidence +
+properties. mira:Assertion is the ontology view of that row — no migration, no new store.""" .
+
+##  The reified assertion  #############################################
+
+mira:Assertion a owl:Class ;
+    rdfs:label "Assertion" ;
+    rdfs:comment "One claim MIRA holds: subject–predicate–object, plus who said it, on what evidence, and how far it has been trusted." ;
+    mira:grounded_in "kg_triples_log(subject, predicate, object, confidence, source); kg_relationships row + approval_state (mig 029)" ;
+    mira:term_status "canonical" .
+
+mira:subject   a owl:ObjectProperty ; rdfs:label "subject" ;   rdfs:domain mira:Assertion ;
+    rdfs:comment "No inverse is modeled: subject/object are the structural endpoints of the reified triple (mirroring rdf:subject/rdf:object), not a domain relationship in their own right. 'Which assertions name entity E' is answered by filtering kg_relationships.source_id/target_id — a query, not a graph edge MIRA walks." ;
+    mira:grounded_in "kg_triples_log.subject / kg_relationships.source_id" ; mira:term_status "canonical" .
+mira:predicate a owl:DatatypeProperty ; rdfs:label "predicate" ; rdfs:domain mira:Assertion ; rdfs:range xsd:string ; mira:grounded_in "kg_triples_log.predicate / kg_relationships.relationship_type" ; mira:term_status "canonical" .
+mira:object    a owl:ObjectProperty ; rdfs:label "object" ;    rdfs:domain mira:Assertion ;
+    rdfs:comment "No inverse is modeled — same reasoning as mira:subject: it is the other structural endpoint of the reified triple, not an independently traversed relationship." ;
+    mira:grounded_in "kg_triples_log.object / kg_relationships.target_id" ; mira:term_status "canonical" .
+
+##  Approval state — the PRODUCTION vocabulary  ########################
+#  Grounded in mig 029 CHECK. NOTE the Phase-0 finding: kg_relationships.approval_state permits a
+#  5th value 'deprecated' that kg_entities.approval_state does NOT. Both are modelled; the drift
+#  check asserts the split still exists rather than papering over it.
+
+mira:ApprovalState a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ; rdfs:label "Approval state" ;
+    mira:grounded_in "mig 029_kg_approval_state.sql CHECK; proposal_transition.py KG_APPROVAL_STATES" ;
+    mira:term_status "canonical" .
+
+mira:approval_proposed     a mira:ApprovalState ; rdfs:label "proposed" ;     mira:grounded_in "mig 029 CHECK (both tables)" ; mira:term_status "canonical" .
+mira:approval_verified     a mira:ApprovalState ; rdfs:label "verified" ;     mira:grounded_in "mig 029 CHECK (both tables)" ; mira:term_status "canonical" .
+mira:approval_rejected     a mira:ApprovalState ; rdfs:label "rejected" ;     mira:grounded_in "mig 029 CHECK (both tables)" ; mira:term_status "canonical" .
+mira:approval_needs_review a mira:ApprovalState ; rdfs:label "needs_review" ; mira:grounded_in "mig 029 CHECK (both tables)" ; mira:term_status "canonical" .
+mira:approval_deprecated   a mira:ApprovalState ; rdfs:label "deprecated" ;
+    rdfs:comment "kg_relationships ONLY — kg_entities.approval_state has no such value (mig 029 lines 25 vs 31)." ;
+    mira:grounded_in "mig 029 CHECK (kg_relationships only)" ; mira:term_status "canonical" .
+
+##  Trust state — the PrintSense vocabulary  ###########################
+#  Phase-0 finding F1: PrintSense splits `verified` into machine_verified vs human_verified.
+#  kg_*.approval_state does NOT — it has one flat `verified`. That collapse is exactly what lets a
+#  deterministic self-consistency check masquerade as human approval, which the safety rules forbid.
+#  Both vocabularies are modelled AND the mapping between them is made explicit and lossy-by-record.
+
+mira:TrustState a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ; rdfs:label "Trust state" ;
+    mira:grounded_in "printsense/models.py TrustState enum" ; mira:term_status "canonical" .
+
+mira:trust_proposed         a mira:TrustState ; rdfs:label "proposed" ;         mira:grounded_in "printsense TrustState.proposed" ; mira:term_status "canonical" .
+mira:trust_machine_verified a mira:TrustState ; rdfs:label "machine_verified" ;
+    rdfs:comment "Deterministic replay + independent agreement + cross-checks. NOT human approval. Maps to kg approval_state 'proposed' — deliberately NOT to 'verified'." ;
+    mira:grounded_in "printsense TrustState.machine_verified" ; mira:term_status "canonical" .
+mira:trust_human_verified   a mira:TrustState ; rdfs:label "human_verified" ;
+    rdfs:comment "A qualified technician — the verifier of record — approved or corrected it. The ONLY trust state that maps to kg approval_state 'verified'." ;
+    mira:grounded_in "printsense TrustState.human_verified" ; mira:term_status "canonical" .
+mira:trust_unresolved       a mira:TrustState ; rdfs:label "unresolved" ;
+    rdfs:comment "Unreadable or contradictory. Never promoted by plausibility." ;
+    mira:grounded_in "printsense TrustState.unresolved" ; mira:term_status "canonical" .
+
+mira:maps_to_approval_state a owl:ObjectProperty ;
+    rdfs:label "maps_to_approval_state" ; rdfs:domain mira:TrustState ; rdfs:range mira:ApprovalState ;
+    mira:grounded_in "ADR-0032 §7 trust↔approval crosswalk" ; mira:term_status "proposed" .
+
+mira:trust_proposed         mira:maps_to_approval_state mira:approval_proposed .
+mira:trust_machine_verified mira:maps_to_approval_state mira:approval_proposed .
+mira:trust_human_verified   mira:maps_to_approval_state mira:approval_verified .
+mira:trust_unresolved       mira:maps_to_approval_state mira:approval_needs_review .
+
+##  Provenance tier — the drive-pack vocabulary  #######################
+#  Phase-0 finding F2: drive_packs/schema.py Provenance says, verbatim, «never bare "verified"
+#  (that word is reserved for kg_*.approval_state)». Provenance tier answers "how good is the
+#  SOURCE"; approval state answers "who signed off". They are orthogonal and must never merge.
+
+mira:ProvenanceTier a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ; rdfs:label "Provenance tier" ;
+    rdfs:comment "How strong the SOURCE is. Orthogonal to ApprovalState (who signed off). Never conflate." ;
+    mira:grounded_in "drive_packs/schema.py Provenance.items values" ; mira:term_status "canonical" .
+
+mira:tier_bench_verified a mira:ProvenanceTier ; rdfs:label "bench_verified" ; mira:grounded_in "drive_packs Provenance tier" ; mira:term_status "canonical" .
+mira:tier_manual_cited   a mira:ProvenanceTier ; rdfs:label "manual_cited" ;   mira:grounded_in "drive_packs Provenance tier; DiagnosticCard.provenance_tier default" ; mira:term_status "canonical" .
+
+##  Claims — what MIRA actually renders to a technician  ###############
+#  An Assertion is what MIRA HOLDS; a Claim is what MIRA SAYS. The distinction matters because the
+#  evidence bar is different: holding "CV-101 has_component MTR-3" at approval_state=proposed is
+#  fine, but SAYING "the motor is running" requires feedback-class evidence that is fresh and healthy.
+
+mira:DiagnosticClaim a owl:Class ; rdfs:subClassOf mira:Assertion ;
+    rdfs:label "Diagnostic claim" ;
+    rdfs:comment "An assertion rendered to a technician as part of an answer. Subject to citation compliance and groundedness scoring." ;
+    mira:grounded_in "mira-bots/shared/citation_compliance.py; engine.py groundedness 1-5 scoring" ;
+    mira:term_status "canonical" .
+
+mira:PhysicalStateClaim a owl:Class ; rdfs:subClassOf mira:DiagnosticClaim ;
+    rdfs:label "Physical state claim" ;
+    rdfs:comment "A claim about what the equipment IS DOING ('the motor is running'). A CommandSignal observation is never sufficient support — see CommandNotFeedbackShape." ;
+    mira:grounded_in "engine answer path asserting run/stop/fault state from live tags" ;
+    mira:term_status "proposed" .
+
+mira:LiveDiagnosisClaim a owl:Class ; rdfs:subClassOf mira:DiagnosticClaim ;
+    rdfs:label "Live diagnosis claim" ;
+    rdfs:comment "A claim whose truth depends on live process data. Requires fresh, healthy observations — see LiveDiagnosisEligibilityShape." ;
+    mira:grounded_in "mira-bots/shared/live_snapshot.py; Ask MIRA refusal-on-stale behavior" ;
+    mira:term_status "proposed" .
+
+mira:ControlActionClaim a owl:Class ; rdfs:subClassOf mira:DiagnosticClaim ;
+    rdfs:label "Control action claim" ;
+    rdfs:comment "A claim that a WRITE/control action is available or permitted. MIRA is read-only for OT; this class exists so the prohibition is representable and testable rather than merely documented." ;
+    mira:grounded_in ".claude/rules/fieldbus-readonly.md; mira-bots/tests/test_drive_packs_readonly.py" ;
+    mira:term_status "proposed" .
+
+mira:presents_action_as_permitted a owl:DatatypeProperty ;
+    rdfs:label "presents_action_as_permitted" ; rdfs:domain mira:ControlActionClaim ; rdfs:range xsd:boolean ;
+    mira:grounded_in "read-only gate assertions in test_drive_packs_readonly.py" ; mira:term_status "proposed" .
+
+##  Evidence and citation  #############################################
+
+mira:Evidence a owl:Class ; rdfs:label "Evidence" ;
+    rdfs:comment "Anything that supports an Assertion. Abstract — use Citation, ImageRegion, Observation, or a work-order reference." ;
+    mira:grounded_in "ai_suggestions evidence chain; relationship_evidence rows; wiring_connections.evidence_summary" ;
+    mira:term_status "canonical" .
+
+mira:Citation a owl:Class ; rdfs:subClassOf mira:Evidence ; rdfs:label "Citation" ;
+    mira:grounded_in "drive_packs/schema.py Citation(doc, page, excerpt); component_template_sources" ;
+    mira:term_status "canonical" .
+
+mira:cite_doc     a owl:ObjectProperty   ; rdfs:label "cite_doc" ;     rdfs:domain mira:Citation ; rdfs:range mira:SourceDocument ;
+    rdfs:comment "No inverse modeled: 'which citations reference this document' is a usage/coverage report, not a traversal the answer path performs." ;
+    mira:grounded_in "Citation.doc" ; mira:term_status "canonical" .
+mira:cite_locator a owl:DatatypeProperty ; rdfs:label "cite_locator" ; rdfs:domain mira:Citation ; rdfs:range xsd:string ;
+    rdfs:comment "Page, sheet, rung, region, tag path, register, or work-order reference — whichever the source supports." ;
+    mira:grounded_in "Citation.page; wiring_connections.drawing_reference" ; mira:term_status "canonical" .
+mira:cite_excerpt a owl:DatatypeProperty ; rdfs:label "cite_excerpt" ; rdfs:domain mira:Citation ; rdfs:range xsd:string ; mira:grounded_in "Citation.excerpt" ; mira:term_status "canonical" .
+mira:source_hash  a owl:DatatypeProperty ; rdfs:label "source_hash" ;  rdfs:domain mira:SourceDocument ; rdfs:range xsd:string ;
+    rdfs:comment "Version/hash of the exact bytes read, so a citation can be re-verified after a manual is updated (docs/drive-commander/runbook-do-not-silently-trust-updated-manuals.md)." ;
+    mira:grounded_in "drive-pack manual-update acceptance runbook" ; mira:term_status "proposed" .
+
+##  Agents and activities  #############################################
+
+mira:Agent a owl:Class ; rdfs:label "Agent" ;
+    mira:grounded_in "proposed_by / reviewed_by string prefixes: 'llm:groq' | 'human:user_xxx' | 'import:eplan' | 'rule:bom' (mig 026)" ;
+    mira:maps_to "W3C PROV-O prov:Agent (mapped, not imported)" ; mira:term_status "canonical" .
+
+mira:SoftwareAgent a owl:Class ; rdfs:subClassOf mira:Agent ; rdfs:label "Software agent" ;
+    mira:grounded_in "'llm:*' / 'rule:*' / 'import:*' proposed_by prefixes" ;
+    mira:maps_to "W3C PROV-O prov:SoftwareAgent" ; mira:term_status "canonical" .
+
+mira:Technician a owl:Class ; rdfs:subClassOf mira:Agent ; rdfs:label "Technician" ;
+    rdfs:comment "A human verifier of record. Only a Technician can produce an Approval." ;
+    mira:grounded_in "'human:<userId>' reviewerLabel (proposal-transition.ts); uns.py::technician_path()" ;
+    mira:maps_to "W3C PROV-O prov:Person" ; mira:term_status "canonical" .
+
+mira:ExtractionActivity a owl:Class ; rdfs:label "Extraction activity" ;
+    rdfs:comment "The run that produced a candidate assertion. Records model/tool + version so a bad extraction can be swept by generation." ;
+    mira:grounded_in "ai_suggestions row creation; mira-crawler/ingest extraction runs; drive-pack extractor runs" ;
+    mira:maps_to "W3C PROV-O prov:Activity" ; mira:term_status "canonical" .
+
+mira:agent_id      a owl:DatatypeProperty ; rdfs:label "agent_id" ;      rdfs:domain mira:Agent ; rdfs:range xsd:string ; mira:grounded_in "'llm:groq' / 'human:user_xxx' literal" ; mira:term_status "canonical" .
+mira:tool_version  a owl:DatatypeProperty ; rdfs:label "tool_version" ;  rdfs:domain mira:ExtractionActivity ; rdfs:range xsd:string ; mira:grounded_in "model/tool version recorded on extraction runs" ; mira:term_status "proposed" .
+
+##  Proposal / approval lifecycle  #####################################
+
+mira:MappingProposal a owl:Class ; rdfs:label "Mapping proposal" ;
+    rdfs:comment "A candidate awaiting human decision. One logical proposal projects onto ai_suggestions + relationship_proposals (ADR-0017)." ;
+    mira:grounded_in "ai_suggestions rows; relationship_proposals rows; proposal-transition.ts" ;
+    mira:term_status "canonical" .
+
+mira:Approval a owl:Class ; rdfs:label "Approval" ;
+    rdfs:comment "A DISTINCT event with its own actor and timestamp. An assertion cannot be verified without one — an inference can never self-approve." ;
+    mira:grounded_in "proposal-transition.ts trigger 'accept'; reviewed_by + reviewed_at columns" ;
+    mira:term_status "canonical" .
+
+mira:Rejection a owl:Class ; rdfs:label "Rejection" ;
+    mira:grounded_in "proposal-transition.ts trigger 'reject'" ; mira:term_status "canonical" .
+
+mira:Supersession a owl:Class ; rdfs:label "Supersession" ;
+    mira:grounded_in "proposal-transition.ts trigger 'supersede' → ai_suggestions 'superseded' / relationship_proposals 'deprecated'" ;
+    mira:term_status "canonical" .
+
+mira:ConfidenceAssessment a owl:Class ; rdfs:label "Confidence assessment" ;
+    mira:grounded_in "kg_relationships.confidence FLOAT; printsense Entity.confidence; DiagnosticCard.confidence" ;
+    mira:term_status "canonical" .
+
+mira:ValidityInterval a owl:Class ; rdfs:label "Validity interval" ;
+    rdfs:comment "When an assertion is true. Open-ended until superseded or invalidated." ;
+    mira:grounded_in "created_at / updated_at + supersede trigger; approved_tags.enabled" ; mira:term_status "proposed" .
+
+##  Assertion properties  ##############################################
+
+mira:approval_state a owl:ObjectProperty   ; rdfs:label "approval_state" ; rdfs:domain mira:Assertion ; rdfs:range mira:ApprovalState ; mira:grounded_in "kg_*.approval_state column" ; mira:term_status "canonical" .
+mira:trust          a owl:ObjectProperty   ; rdfs:label "trust" ;          rdfs:range mira:TrustState ; mira:grounded_in "printsense Entity.trust" ; mira:term_status "canonical" .
+mira:provenance_tier a owl:ObjectProperty  ; rdfs:label "provenance_tier" ; rdfs:range mira:ProvenanceTier ; mira:grounded_in "drive_packs Provenance.items values; DiagnosticCard.provenance_tier" ; mira:term_status "canonical" .
+mira:confidence     a owl:DatatypeProperty ; rdfs:label "confidence" ;     rdfs:range xsd:decimal ; mira:grounded_in "kg_relationships.confidence" ; mira:term_status "canonical" .
+mira:approved_at    a owl:DatatypeProperty ; rdfs:label "approved_at" ;    rdfs:range xsd:dateTime ; mira:grounded_in "ai_suggestions.reviewed_at / relationship_proposals.reviewed_at" ; mira:term_status "canonical" .
+
+mira:supported_by a owl:ObjectProperty ; rdfs:label "supported_by" ; rdfs:domain mira:Assertion ; rdfs:range mira:Evidence ;
+    rdfs:comment "No inverse modeled: 'evidence supports N assertions' is a reporting aggregate, not a traversal on the answer path." ;
+    mira:grounded_in "relationship_evidence rows; ai_suggestions evidence chain" ; mira:term_status "proposed" .
+
+mira:derived_from a owl:ObjectProperty ; rdfs:label "derived_from" ; rdfs:domain mira:Assertion ;
+    rdfs:comment "Marks an INFERRED assertion and names what it was inferred from. Presence of derived_from is what the InferenceCannotSelfApprove shape keys on. No inverse is modeled: MIRA always reads provenance forward from the inferred assertion — 'what did this assertion give rise to' is not a query any shape or answer path performs." ;
+    mira:grounded_in "inference worker edges; ai_suggestions extracted_data lineage" ;
+    mira:maps_to "W3C PROV-O prov:wasDerivedFrom" ; mira:term_status "proposed" .
+
+mira:proposed_by a owl:ObjectProperty ; rdfs:label "proposed_by" ; rdfs:domain mira:Assertion ; rdfs:range mira:Agent ;
+    rdfs:comment "No inverse modeled: 'what has agent X proposed' is an audit/activity-feed listing query (Hub review queue), not a traversal the diagnostic answer path performs." ;
+    mira:grounded_in "wiring_connections.proposed_by; ai_suggestions creator" ; mira:term_status "canonical" .
+
+mira:approved_by a owl:ObjectProperty ; rdfs:label "approved_by" ; rdfs:domain mira:Assertion ; rdfs:range mira:Agent ;
+    rdfs:comment "MUST be a mira:Technician for approval_state 'verified' — enforced by ApprovedAssertionEvidenceShape. No inverse modeled: same reasoning as mira:proposed_by — a technician's approval history is an audit listing, not an answer-path traversal." ;
+    mira:grounded_in "reviewed_by 'human:<userId>'; asset_agent_status.approved_by" ; mira:term_status "canonical" .
+
+mira:supersedes a owl:ObjectProperty ; rdfs:label "supersedes" ; rdfs:domain mira:Assertion ; rdfs:range mira:Assertion ;
+    owl:inverseOf mira:superseded_by ;
+    mira:grounded_in "proposal-transition trigger 'supersede'" ; mira:term_status "proposed" .
+mira:superseded_by a owl:ObjectProperty ; rdfs:label "superseded_by" ; owl:inverseOf mira:supersedes ;
+    mira:grounded_in "inverse of supersedes" ; mira:term_status "proposed" .
+
+mira:invalidates a owl:ObjectProperty ; rdfs:label "invalidates" ; rdfs:domain mira:Assertion ; rdfs:range mira:Assertion ;
+    owl:inverseOf mira:invalidated_by ;
+    mira:grounded_in "proposal-transition trigger 'contradict' → relationship_proposals 'contradicted'" ; mira:term_status "proposed" .
+mira:invalidated_by a owl:ObjectProperty ; rdfs:label "invalidated_by" ; owl:inverseOf mira:invalidates ;
+    mira:grounded_in "inverse of invalidates" ; mira:term_status "proposed" .
+
+mira:exposed_as_current a owl:DatatypeProperty ; rdfs:label "exposed_as_current" ; rdfs:domain mira:Assertion ; rdfs:range xsd:boolean ;
+    rdfs:comment "True when a surface renders this assertion as PRESENT-TENSE fact. A superseded/invalidated assertion may be shown as history, but never with exposed_as_current true." ;
+    mira:grounded_in "Hub/Ask MIRA answer rendering: verified edges are read as current state" ; mira:term_status "proposed" .

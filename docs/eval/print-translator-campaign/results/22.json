@@ -1,0 +1,14 @@
+{
+  "id": 22,
+  "oem": "Rockwell Automation",
+  "document": "Bulletin 505 Reversing Starters (GI-WD004)",
+  "url": "literature.rockwellautomation.com/.../GI-WD004_EN_E_P.pdf",
+  "manifest_page_ref": "Sheet 1–2, mechanical & electrical interlock",
+  "print_type": "NEMA reversing magnetic starter",
+  "standard": "NEMA ICS 2",
+  "category": "Reversing/Braking",
+  "manifest_status": "NEEDS-BROWSER",
+  "status": "unfetchable",
+  "reason": "Manifest URL is a literal '...' placeholder (never a real path). Web search for the real GI-WD004 document found no independently-hosted PDF at literature.rockwellautomation.com — the only real 'wiring diagrams' document search results return is GI-WD005 (already used for entry #5, which itself contains a Bulletin 505 section on pages 25-33). Fetching the literal manifest URL (https://literature.rockwellautomation.com/.../GI-WD004_EN_E_P.pdf) returns HTTP 200 but redirects to the Rockwell Automation marketing homepage (content-type text/html, ~205KB, final_url=https://www.rockwellautomation.com/en-us.html?utm_source=literature-library-overview...). PyMuPDF (fitz) will actually open that HTML as a flowable ~40-page document (marketing copy: '2025 Sustainability Report', 'Industrial AI Designed for Optimizing Operations') rather than erroring — running the campaign against it would silently classify Rockwell's marketing homepage as a photo submission, not a real electrical print. Not run, to avoid manufacturing a false result from the wrong content. Not substituted with GI-WD005 under entry #22's id, since that would double-count a document already recorded under entry #5.",
+  "run_timestamp_utc": "2026-07-10T04:37:30+00:00"
+}

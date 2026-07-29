@@ -60,15 +60,17 @@ way to break it.
    `dogfood-output/qa-runs/<script>-<timestamp>/` (script artifacts).
 4. **File issues** only with evidence (screenshot + console/network + repro steps).
 
-## Authenticated access — durable test account (preferred over fresh signup)
+## Authenticated access — legacy single-account path
 
-A **durable** production maintenance-manager account is provisioned for Hermes so
-you don't have to sign up fresh every pass (#2013). Credentials live in **Doppler
+The original #2013 path used one owner-level production account. Keep this path
+only as a backwards-compatible smoke check: #2331 supersedes it for real QA
+because an owner bypasses the RBAC matrix, and #2013 recorded that the old
+trial-backed account lapsed. Credentials, if renewed, live in **Doppler
 `factorylm/dev`** (the approved secret path — never in git, never in an issue):
 
 | Doppler key | What it is |
 |---|---|
-| `HERMES_QA_EMAIL` | `hermes-qa-maint@example.com` (Owner of its own isolated trial tenant) |
+| `HERMES_QA_EMAIL` | `hermes-qa-maint@example.com` (legacy owner smoke account) |
 | `HERMES_QA_PASSWORD` | password login (no OTP/magic-link needed) |
 | `HERMES_QA_NAME` | display name `Hermes QA Maintenance Manager` |
 
@@ -81,12 +83,47 @@ doppler run --project factorylm --config dev -- bash -c \
 
 `ok: true` with a `landed` URL under `/feed|/namespace|/hub|/onboarding` means the
 session is saved; the Playwright fallback scripts (and Hermes via the saved cookies)
-reuse it. Re-run whenever the session expires. The account starts on a **clean empty
-state** (onboarding wizard, no namespace) — build your own test namespace/asset per
-pass; don't expect seeded data (seed data is a tracked #2013 follow-up).
+reuse it. If the account lapses or the password is wrong, the helper exits non-zero
+instead of writing a false `ok:true`.
 
-Fresh throwaway `*@example.com` signups are still fine for multi-tenant / isolation
-tests — use the durable account for the normal single-tenant beta-flow pass.
+Fresh throwaway `*@example.com` signups are still fine for ad hoc multi-tenant /
+isolation checks, but the seeded #2331 role matrix below is the preferred path for
+repeatable edge testing.
+
+## RBAC matrix accounts for edge testing (#2331)
+
+The single durable owner account proves only the happy path. For real Hub QA, seed
+the synthetic tenant and store one password per role in Doppler `factorylm/dev`.
+`mira-hub/scripts/seed-synthetic-users.ts` now creates deterministic logins for
+all tenant roles, plus a second-tenant login for isolation probes:
+
+| Email | Tenant role | Doppler/env password key | Proves |
+|---|---|---|---|
+| `carlos@synthetic.test` | `technician` | `SYNTHETIC_CARLOS_PASSWORD` | Work-order create/edit allowed; asset create, WO delete, reports, team denied. |
+| `dana@synthetic.test` | `manager` | `SYNTHETIC_DANA_PASSWORD` | Asset/WO/report buyer workflow. |
+| `scheduler@synthetic.test` | `scheduler` | `SYNTHETIC_SCHEDULER_PASSWORD` | Schedule CRUD + reports; denied asset/WO mutation. |
+| `operator@synthetic.test` | `operator` | `SYNTHETIC_OPERATOR_PASSWORD` | Most-restricted list/show/request path. |
+| `plantmgr@synthetic.test` | `admin` | `SYNTHETIC_PLANTMGR_PASSWORD` | Tenant team CRUD and admin workspace UX. |
+| `cfo@synthetic.test` | `owner` | `SYNTHETIC_CFO_PASSWORD` | Owner bypass baseline. |
+| `isolation@synthetic.test` | `technician` in a different tenant | `SYNTHETIC_ISOLATION_PASSWORD` | Cross-tenant/RLS leakage probes. |
+
+The seeder is idempotent and updates `role` on conflict, so re-running repairs
+older all-owner rows from pre-#2331 seeds.
+
+```bash
+doppler run --project factorylm --config dev -- \
+  bun run mira-hub/scripts/seed-synthetic-users.ts
+```
+
+The Playwright auth helper is deliberately strict: `ok: true` means the saved
+state contains a `next-auth.session-token` / `__Secure-next-auth.session-token`
+cookie and the browser is no longer on `/login`. A bad password, lapsed account,
+or 401 exits non-zero so Hermes cannot silently proceed unauthenticated.
+
+**Platform admin is human-owned:** platform-staff access is keyed off the
+platform allowlist/status, not the tenant role. Create or elevate that account
+through the approved prod config/DB path, then store its password in Doppler;
+do not model it by changing a tenant role in the synthetic seed.
 
 ## Find duplicates before filing (required)
 

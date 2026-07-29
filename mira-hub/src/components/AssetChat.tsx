@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Send, AlertTriangle, RotateCcw, Loader2 } from "lucide-react";
+import { Bot, Send, AlertTriangle, RotateCcw, Loader2, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
 import WhyMiraThinksThis from "@/components/WhyMiraThinksThis";
@@ -12,6 +12,7 @@ interface ChatMessage {
   content: string;
   isSafetyStop?: boolean;
   traceId?: string;
+  nextCheck?: string;
 }
 
 interface AssetChatProps {
@@ -27,7 +28,8 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function MessageBubble({ msg }: { msg: ChatMessage }) {
+// Exported for the static render test (AssetChat.test.tsx).
+export function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === "user";
   const isSafety = msg.isSafetyStop;
 
@@ -70,6 +72,15 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
         >
           {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
         </div>
+        {msg.nextCheck && !isSafety && (
+          <div
+            className="mt-1.5 inline-flex items-center gap-1.5 text-xs"
+            style={{ color: "var(--foreground-subtle)" }}
+          >
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            Next check: {msg.nextCheck}
+          </div>
+        )}
         {msg.traceId && !isSafety && <WhyMiraThinksThis traceId={msg.traceId} />}
       </div>
     </div>
@@ -173,7 +184,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
           const data = trimmed.slice(5).trim();
           if (data === "[DONE]") break;
           try {
-            const parsed = JSON.parse(data) as { content?: string; traceId?: string };
+            const parsed = JSON.parse(data) as { content?: string; traceId?: string; next_check?: string };
             if (parsed.content) {
               setMessages((prev) => {
                 const next = [...prev];
@@ -191,6 +202,17 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
                 const last = next[next.length - 1];
                 if (last && last.role === "assistant") {
                   next[next.length - 1] = { ...last, traceId: tid };
+                }
+                return next;
+              });
+            }
+            if (parsed.next_check) {
+              const nc = parsed.next_check;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === "assistant") {
+                  next[next.length - 1] = { ...last, nextCheck: nc };
                 }
                 return next;
               });

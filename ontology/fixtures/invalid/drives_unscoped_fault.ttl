@@ -1,0 +1,23 @@
+# EXPECT-VIOLATION: mirash:FaultCodeScopeShape
+#
+# SEED FIXTURE (ADR-0032 §8) — the template the fixture phase copies.
+#
+# An invalid fixture must fail for a SPECIFIC, DECLARED reason: the EXPECT-VIOLATION header above
+# names the shape that must fire, and the validator fails the fixture if that shape stays silent
+# (even if some OTHER shape happens to fire). That is what makes a red run meaningful — "the graph
+# was rejected" is not evidence that the rule under test is the thing doing the rejecting.
+#
+# This is R4 — an unscoped fault code. 'F007' means one thing on a PowerFlex 40 and something else
+# on a GS10; packs are family-keyed on disk, so scope is implicit and safe there, but the moment a
+# code is lifted into the graph that scope is gone unless carried explicitly.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:manual a mira:SourceDocument .
+ex:cite   a mira:Citation ; mira:cite_doc ex:manual ; mira:cite_locator "p.114" .
+
+# No mira:scoped_to — the whole point of R4.
+ex:f007_orphan a mira:FaultCode ;
+    mira:fault_mnemonic "F007" ;
+    mira:supported_by ex:cite .

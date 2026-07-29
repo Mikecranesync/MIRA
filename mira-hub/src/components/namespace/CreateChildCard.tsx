@@ -150,11 +150,6 @@ function slugify(s: string): string {
   );
 }
 
-interface ExistingNameMap {
-  /** Map of parent unsPath → set of immediate child slugs already used. */
-  childSlugsByParent: Map<string, Set<string>>;
-}
-
 export function CreateChildCard({
   parentId,
   parentName,

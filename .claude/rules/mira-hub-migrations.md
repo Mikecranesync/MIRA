@@ -124,6 +124,70 @@ rename a migration that has already been applied to any environment. If ordering
 between two same-prefix files ever actually matters, encode it in the suffix, not
 by renumbering an applied file.
 
+## 8. NEVER rewrite a migration file after it has been applied to ANY env
+
+This is the rule whose violation caused the 2026-06-24 **staging-only `tag_events`/
+`approved_tags` drift** (full writeup: `docs/plans/2026-06-24-ingest-schema-reconciliation-plan.md`;
+process issue #2284). The mechanism is a silent trap:
+
+- `migration-verify.yml` auto-applies migrations to the **persistent staging Neon branch**
+  on every PR touching `mira-hub/db/migrations/`. So an **early draft** of a migration is
+  applied to staging *during development*.
+- The migration ledger keys on the **filename** (`schema_migrations.migration_name`, §7), and
+  `033`/`035` (like most table migrations) use **`CREATE TABLE IF NOT EXISTS`**.
+- If you then **rewrite the file** (change the table shape) before merge, the canonical version
+  later "applies" on staging — but the `CREATE` is **skipped** (table already exists) and the
+  ledger marks the filename "done." Result: **staging is frozen at the draft shape while the
+  ledger and the repo say it's current.** Invisible. (Prod escaped only because it receives
+  migrations *post-merge* via gated `apply-migrations.yml`, with no pre-existing draft table.)
+
+**Rules:**
+1. **An applied migration file is immutable.** Once a migration has run in *any* env (dev/staging/
+   prod — and staging counts, because `migration-verify` auto-applies drafts), **do not edit its
+   body.** To change the schema it created, write a **new, next-numbered** migration (an additive
+   `ALTER`, or a guarded reconciliation) — never reshape the original `CREATE`.
+2. **`CREATE TABLE IF NOT EXISTS` does not make a rewrite safe** — it makes the drift *silent*.
+   The ledger reports success while the table keeps its old shape.
+3. **During development, treat the first push that `migration-verify` applies as the commit.**
+   If the design is still in flux, develop the migration against an **ephemeral/local** DB and
+   only add the file to `mira-hub/db/migrations/` once its shape is settled.
+4. **Detection:** the read-only ingest-schema drift probe in `db-inspect.yml` (added 2026-06-24)
+   compares deployed `tag_events`/`approved_tags` against canonical `033`/`035`. Extend the same
+   pattern (deployed-vs-canonical column/constraint diff) for any table this matters for, and
+   prefer the **structural prevention** below over relying on detection.
+
+**Permanent prevention — content-fingerprinted ledger ✅ SHIPPED 2026-07-28.** #2284 was
+closed in June with only the one-off staging cleanup done; the prevention was never built,
+which is why the drift recurred as #2945. What shipped:
+
+**Migration `066`** adds `schema_migrations.content_sha256` (+ `content_sha256_at`), and
+`apply-migrations.yml` records the sha on apply and **fails loud** when a filename already
+in the ledger has different content on the current ref. That is what makes the *silence*
+impossible: the ledger keys on filename, and a stable key with mutable content cannot
+otherwise distinguish "this file was applied" from "a DIFFERENT VERSION of it was applied".
+The check runs **before** the skip filter — essential, because a drifted file is precisely
+one that *would* be skipped.
+
+**The backfill is what makes it real.** Pre-`066` rows carry `content_sha256 = NULL`,
+treated as "unknown" and never failed on (we cannot retroactively know what they ran).
+Because `mode=apply` *skips* already-applied files, those rows would never be stamped and
+the detector would sit **permanently dormant on exactly the historical files most likely to
+have drifted**. `mode=seed-ledger` therefore stamps current shas onto existing rows — run it
+once per target when that target's schema is believed canonical.
+
+⚠️ **The "ephemeral verify DB" half of #2284's proposal is NOT viable as written, and was
+withdrawn after being empirically disproved (2026-07-28).** A from-scratch apply of
+`mira-hub/db/migrations/` fails at the **third file**: `003_kb_hardening.sql` does
+`ALTER TABLE knowledge_entries` / `ENABLE ROW LEVEL SECURITY`, but **no file in that
+directory ever creates `knowledge_entries`**. Per `048`'s own header the base tables came
+from `001_saas_layer.sql` / `002_knowledge_base.sql`, which are **no longer in the repo**.
+So that directory is an *incremental* set layered on a base that no longer exists in
+source — it is not a complete schema definition, and no ephemeral from-scratch job can pass
+against it until a base-schema bootstrap exists. Tracked separately; do not re-attempt the
+ephemeral job without solving the bootstrap first.
+
+This immutability rule remains the doctrine layer above the guard.
+
 ## When this applies
 - Any new or altered file under `mira-hub/db/migrations/`.
 - Any new Hub table/column that is tenant-scoped or RLS-protected.

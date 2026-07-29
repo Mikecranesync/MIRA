@@ -46,6 +46,8 @@ _CONFIDENCE_SCORE = {"high": 1.0, "medium": 0.66, "low": 0.33, "none": 0.0, None
 PASS = "pass"
 PARTIAL = "partial"
 FAIL = "fail"
+XFAIL = "expected_fail"
+XPASS = "unexpected_pass"
 
 
 # --- per-item grading -------------------------------------------------------
@@ -56,6 +58,7 @@ class ItemResult:
     id: str
     severity: str
     status: str
+    mock_expected_failure: bool
     asset_hit: bool
     retrieval_accuracy: float
     citation_coverage: float
@@ -175,6 +178,7 @@ def grade_item(item: EvalItem, trace: AnswerTrace) -> ItemResult:
         id=item.id,
         severity=item.severity,
         status=status,
+        mock_expected_failure=False,
         asset_hit=asset_hit,
         retrieval_accuracy=round(retrieval_accuracy, 3),
         citation_coverage=round(citation_coverage, 3),
@@ -243,6 +247,8 @@ def _aggregate(results: list[ItemResult]) -> dict:
         "passed": sum(1 for r in results if r.status == PASS),
         "partial": sum(1 for r in results if r.status == PARTIAL),
         "failed": sum(1 for r in results if r.status == FAIL),
+        "expected_failed": sum(1 for r in results if r.status == XFAIL),
+        "unexpected_passed": sum(1 for r in results if r.status == XPASS),
         "asset_selection_accuracy": mean([1.0 if r.asset_hit else 0.0 for r in results]),
         "document_retrieval_accuracy": mean([r.retrieval_accuracy for r in results]),
         "citation_coverage": mean([r.citation_coverage for r in results]),
@@ -272,7 +278,8 @@ def _print_console(pack_name: str, mode: str, results: list[ItemResult], summary
     print(f"\n=== MIRA Eval - {pack_name} ({mode} mode) ===")
     print(
         f"{summary['total']} tests | "
-        f"PASS {summary['passed']}  PARTIAL {summary['partial']}  FAIL {summary['failed']}"
+        f"PASS {summary['passed']}  PARTIAL {summary['partial']}  FAIL {summary['failed']}  "
+        f"XFAIL {summary.get('expected_failed', 0)}  XPASS {summary.get('unexpected_passed', 0)}"
     )
     print(
         f"asset_acc {summary['asset_selection_accuracy']:.0%} | "
@@ -288,7 +295,7 @@ def _print_console(pack_name: str, mode: str, results: list[ItemResult], summary
     )
     print("\n  status   | id                         | asset retr cite pts | warnings")
     print("  ---------+----------------------------+---------------------+---------")
-    icon = {PASS: "PASS ", PARTIAL: "PART ", FAIL: "FAIL "}
+    icon = {PASS: "PASS ", PARTIAL: "PART ", FAIL: "FAIL ", XFAIL: "XFAIL", XPASS: "XPASS"}
     for r in results:
         print(
             f"  {icon[r.status]}    | {r.id[:26]:26} | "
@@ -338,7 +345,17 @@ def run(
                 answerer = MockAnswerer(item.mock_answer)
         trace = trace_answer(item.question, ctx, answerer, registry, mode=mode)
         trace.write_jsonl(traces_path)
-        results.append(grade_item(item, trace))
+        result = grade_item(item, trace)
+        if mode == "mock" and item.mock_expected_failure:
+            result.mock_expected_failure = True
+            if result.status == FAIL:
+                result.status = XFAIL
+            else:
+                result.status = XPASS
+                result.failure_reasons.append(
+                    "mock expected failure unexpectedly passed; check canned answer or grader"
+                )
+        results.append(result)
 
     summary = _aggregate(results)
     report = {
@@ -375,7 +392,7 @@ def main() -> None:
     )
     s = report["summary"]
     # Non-zero exit if anything failed — usable as a CI gate.
-    raise SystemExit(1 if s.get("failed", 0) else 0)
+    raise SystemExit(1 if s.get("failed", 0) or s.get("unexpected_passed", 0) else 0)
 
 
 if __name__ == "__main__":

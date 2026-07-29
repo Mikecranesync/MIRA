@@ -1,0 +1,37 @@
+{
+  "_provenance": "SYNTHETIC PROBE — NOT extracted manual content. Clearly-labeled test input whose ONLY purpose is to exercise the real production loader gate (mira-bots/shared/drive_packs/loader.py::_int_keyed) against source-preserved mnemonic fault identifiers. Not authoritative, not complete, not a candidate, never promoted. See raw_inputs/NO_SOURCE_MATERIAL.md.",
+  "_mnemonic_source": "Public IMPULSE-series fault-code NAMING CONVENTION (mnemonic alphanumeric codes, e.g. oC/oV/GF/BE). Codes stand in for 'any source-preserved mnemonic identifier'; the test is the loader's key-type contract, not per-code semantics.",
+  "_note_case_sensitivity": "Includes lowercase-leading tokens (oC, oV, oH) deliberately — the current int-keyed schema cannot represent them at all, and any future normalization MUST NOT casefold them away (oC vs OC is a real manufacturer distinction). Recorded for the Run-C case-sensitivity decision.",
+  "pack_id": "impulse_gplus_mini",
+  "schema_version": 1,
+  "family": {
+    "manufacturer": "Magnetek",
+    "series": "IMPULSE G+ Mini",
+    "aliases": ["IMPULSE G+ Mini", "G+ Mini", "IMPULSE Series 4"]
+  },
+  "nameplate": { "match_keywords": ["IMPULSE", "G+ Mini", "Magnetek"] },
+  "live_decode": {
+    "status_bits": {},
+    "cmd_word": {},
+    "fault_codes": {
+      "oC": "Overcurrent",
+      "oV": "DC bus overvoltage",
+      "Uv1": "DC bus undervoltage",
+      "oH": "Heatsink overheat",
+      "oL1": "Motor overload",
+      "oL2": "Drive overload",
+      "GF": "Ground fault",
+      "LL1": "Load check / light-load fault",
+      "BE2": "Brake answerback fault",
+      "SE1": "Sequence / travel-limit fault",
+      "CE": "Modbus communication error",
+      "EF": "External fault"
+    }
+  },
+  "envelope": {},
+  "knowledge": {},
+  "provenance": {
+    "items": { "live_decode.fault_codes": "manual_cited" },
+    "sources": []
+  }
+}

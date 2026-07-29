@@ -7,7 +7,7 @@
     },
     "trendUrl": {
       "paramType": "value",
-      "value": "http://127.0.0.1:8766/viewer/index.html?source=historian"
+      "value": "http://127.0.0.1:8770/trends?source=replay&fixture=cv101_idle_healthy"
     }
   },
   "props": {
@@ -74,7 +74,7 @@
               }
             },
             "props": {
-              "source": "http://127.0.0.1:8766/viewer/index.html?source=historian",
+              "source": "http://127.0.0.1:8770/trends?source=replay&fixture=cv101_idle_healthy",
               "style": {
                 "border": "none",
                 "height": "100%",

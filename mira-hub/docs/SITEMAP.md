@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **62** (8 dynamic) |
-| API routes | **146** (43 dynamic) |
+| Pages | **64** (9 dynamic) |
+| API routes | **161** (52 dynamic) |
 
-## Pages (62)
+## Pages (64)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -75,12 +75,14 @@
 | `/team` | static | `(hub)/team/page.tsx` |
 | `/upgrade` | static | `(hub)/upgrade/page.tsx` |
 | `/usage` | static | `(hub)/usage/page.tsx` |
+| `/visual` | static | `(hub)/visual/page.tsx` |
+| `/visual/[id]` | dynamic | `(hub)/visual/[id]/page.tsx` |
 | `/workflows` | static | `(hub)/workflows/page.tsx` |
 | `/workorders` | static | `(hub)/workorders/page.tsx` |
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (146)
+## API routes (161)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -101,7 +103,10 @@
 | `/api/assets/[id]/context` | dynamic | `api/assets/[id]/context/route.ts` |
 | `/api/assets/[id]/documents` | dynamic | `api/assets/[id]/documents/route.ts` |
 | `/api/assets/[id]/enrich` | dynamic | `api/assets/[id]/enrich/route.ts` |
+| `/api/assets/[id]/machine-memory` | dynamic | `api/assets/[id]/machine-memory/route.ts` |
+| `/api/assets/[id]/machine-memory/stream` | dynamic | `api/assets/[id]/machine-memory/stream/route.ts` |
 | `/api/assets/[id]/qr` | dynamic | `api/assets/[id]/qr/route.ts` |
+| `/api/assets/[id]/signal-history` | dynamic | `api/assets/[id]/signal-history/route.ts` |
 | `/api/assets/[id]/signals` | dynamic | `api/assets/[id]/signals/route.ts` |
 | `/api/assets/[id]/validation-qa` | dynamic | `api/assets/[id]/validation-qa/route.ts` |
 | `/api/assets/[id]/validation-qa/[qaId]/verdict` | dynamic | `api/assets/[id]/validation-qa/[qaId]/verdict/route.ts` |
@@ -127,7 +132,9 @@
 | `/api/channels` | static | `api/channels/route.ts` |
 | `/api/cmms/deep-link` | static | `api/cmms/deep-link/route.ts` |
 | `/api/cmms/health` | static | `api/cmms/health/route.ts` |
+| `/api/cmms/sso` | static | `api/cmms/sso/route.ts` |
 | `/api/cmms/stats` | static | `api/cmms/stats/route.ts` |
+| `/api/command-center/commissioning` | static | `api/command-center/commissioning/route.ts` |
 | `/api/command-center/display` | static | `api/command-center/display/route.ts` |
 | `/api/command-center/display/[id]` | dynamic | `api/command-center/display/[id]/route.ts` |
 | `/api/command-center/gateways` | static | `api/command-center/gateways/route.ts` |
@@ -161,6 +168,7 @@
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
 | `/api/export` | static | `api/export/route.ts` |
 | `/api/health` | static | `api/health/route.ts` |
+| `/api/hub/status` | static | `api/hub/status/route.ts` |
 | `/api/i3x/v1/info` | static | `api/i3x/v1/info/route.ts` |
 | `/api/i3x/v1/namespaces` | static | `api/i3x/v1/namespaces/route.ts` |
 | `/api/i3x/v1/objects` | static | `api/i3x/v1/objects/route.ts` |
@@ -189,6 +197,7 @@
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |
 | `/api/namespace/files/[id]` | dynamic | `api/namespace/files/[id]/route.ts` |
+| `/api/namespace/files/[id]/verify` | dynamic | `api/namespace/files/[id]/verify/route.ts` |
 | `/api/namespace/node` | static | `api/namespace/node/route.ts` |
 | `/api/namespace/node/[id]` | dynamic | `api/namespace/node/[id]/route.ts` |
 | `/api/namespace/node/[id]/chat` | dynamic | `api/namespace/node/[id]/chat/route.ts` |
@@ -215,6 +224,7 @@
 | `/api/sessions/[id]` | dynamic | `api/sessions/[id]/route.ts` |
 | `/api/sessions/confirm` | static | `api/sessions/confirm/route.ts` |
 | `/api/suggestions/[id]/decide` | dynamic | `api/suggestions/[id]/decide/route.ts` |
+| `/api/suggestions/drive-pack-candidate` | static | `api/suggestions/drive-pack-candidate/route.ts` |
 | `/api/team` | static | `api/team/route.ts` |
 | `/api/uns/browse` | static | `api/uns/browse/route.ts` |
 | `/api/uns/subtree` | static | `api/uns/subtree/route.ts` |
@@ -225,6 +235,13 @@
 | `/api/uploads/local` | static | `api/uploads/local/route.ts` |
 | `/api/usage` | static | `api/usage/route.ts` |
 | `/api/user/preferences` | static | `api/user/preferences/route.ts` |
+| `/api/version` | static | `api/version/route.ts` |
+| `/api/visual/evidence/[id]/regions` | dynamic | `api/visual/evidence/[id]/regions/route.ts` |
+| `/api/visual/evidence/[id]/view` | dynamic | `api/visual/evidence/[id]/view/route.ts` |
+| `/api/visual/regions/[id]` | dynamic | `api/visual/regions/[id]/route.ts` |
+| `/api/visual/sessions` | static | `api/visual/sessions/route.ts` |
+| `/api/visual/sessions/[id]` | dynamic | `api/visual/sessions/[id]/route.ts` |
+| `/api/visual/sessions/[id]/evidence` | dynamic | `api/visual/sessions/[id]/evidence/route.ts` |
 | `/api/wizard/[step]` | dynamic | `api/wizard/[step]/route.ts` |
 | `/api/work-orders` | static | `api/work-orders/route.ts` |
 | `/api/work-orders/[id]` | dynamic | `api/work-orders/[id]/route.ts` |

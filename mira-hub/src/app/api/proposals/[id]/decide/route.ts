@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
-import { applyHubProposalTransition } from "@/lib/proposal-transition";
+import { applyHubProposalTransition, type QueryClient } from "@/lib/proposal-transition";
 
 // Shape of an ai_suggestions row for tag_mapping decisions.
 interface TagSuggestionRow {
@@ -49,12 +50,44 @@ interface ProposalRow {
   reasoning: string | null;
 }
 
+async function markDocumentChunksVerified(
+  client: QueryClient,
+  tenantId: string,
+  proposal: ProposalRow,
+): Promise<void> {
+  if (proposal.relationship_type !== "HAS_DOCUMENT") return;
+
+  const docRes = await client.query(
+    `SELECT entity_id
+       FROM kg_entities
+      WHERE tenant_id = $1::uuid
+        AND entity_type = 'manual'
+        AND entity_id = $2
+      LIMIT 1`,
+    [tenantId, proposal.target_entity_id],
+  );
+  const entityId = String((docRes.rows[0] as { entity_id?: unknown } | undefined)?.entity_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(entityId)) return;
+
+  await client.query(
+    `UPDATE knowledge_entries
+        SET verified = true
+      WHERE tenant_id = $1::uuid
+        AND doc_id = $2::uuid
+        AND verified IS DISTINCT FROM true`,
+    [tenantId, entityId],
+  );
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  // Promotion proposed→verified is an admin action (CLAUDE.md / ADR-0017, #2360).
+  const denied = requireCapability(ctx, "proposals.decide");
+  if (denied) return denied;
 
   const { id } = await params;
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
@@ -157,6 +190,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       });
 
       if (decision === "verify") {
+        await markDocumentChunksVerified(c, ctx.tenantId, p);
+
         // Engine-side mirror in kg_relationships. Insert if missing, else
         // bump approval_state. Source/target/type defines the edge identity.
         const existingRes = await c.query<{ id: string }>(

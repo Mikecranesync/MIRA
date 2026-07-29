@@ -291,3 +291,81 @@ def test_endpoint_invalid_json():
         "/api/v1/tags/ingest", content=b"not json", headers={"Content-Type": "application/json"}
     )
     assert resp.status_code == 400
+
+
+# ── Server-authoritative freshness (2026-07-04) ─────────────────────────────
+# live_signal_cache.last_seen_at / last_changed_at MUST be stamped with the
+# server's NOW(), never the client-provided event_timestamp. Client tag
+# timestamps freeze when values stop changing (Ignition report-by-exception)
+# and drift with the gateway clock — trusting them turned a healthy 2 s stream
+# into a permanently-stale card (bench, 2026-07-04: ts frozen 23 min while
+# posts kept landing). Source-level pin on the NeonTagStore upsert SQL.
+
+
+def test_cache_upsert_stamps_server_time_not_client_ts():
+    import inspect
+
+    import tag_ingest
+
+    src = inspect.getsource(tag_ingest.NeonTagStore.persist_batch)
+    insert_cache = src.split("INSERT INTO live_signal_cache", 1)[1]
+    # VALUES stamps NOW() twice (last_seen_at, last_changed_at) …
+    assert "NOW(), NOW()," in insert_cache, (
+        "live_signal_cache upsert must stamp last_seen_at/last_changed_at with "
+        "server NOW(), not the client event_timestamp"
+    )
+    # … and the client ts must not reach the cache write at all.
+    assert ":seen" not in insert_cache, (
+        "client event_timestamp must not be bound into the live_signal_cache "
+        "upsert (freshness is server receipt time; history keeps the client ts "
+        "in tag_events.event_timestamp)"
+    )
+    # tag_events keeps the client event_timestamp (history is history).
+    events_part = src.split("INSERT INTO live_signal_cache", 1)[0]
+    assert ":event_timestamp" in events_part
+
+
+# ── one-connection-per-push regression (2026-07-04 relay ingest optimization) ─
+# ingest_batch must run allowlist + current-state + persist in ONE store session
+# (one Neon connection/txn) when the store provides session(). Guards the perf fix.
+
+
+def test_ingest_batch_opens_one_session_when_store_supports_it():
+    from contextlib import contextmanager
+
+    inner = _store_with_tag()
+
+    class SpyBound:
+        def __init__(self, s): self._s = s; self.calls = []
+        def load_allowlist(self, *a, **k): self.calls.append("allowlist"); return self._s.load_allowlist(*a, **k)
+        def current_state_simulated(self, *a, **k): self.calls.append("current_state"); return self._s.current_state_simulated(*a, **k)
+        def persist_batch(self, *a, **k): self.calls.append("persist"); return self._s.persist_batch(*a, **k)
+
+    class SpyStore:
+        def __init__(self, s): self._s = s; self.sessions = 0; self.bound = None
+        @contextmanager
+        def session(self, tenant_id):
+            self.sessions += 1
+            self.bound = SpyBound(self._s)
+            yield self.bound
+
+    spy = SpyStore(inner)
+    res = ingest_batch(_batch(), "t-1", spy)
+    assert res.accepted == 1
+    # exactly ONE session (one connection/txn) for the whole push
+    assert spy.sessions == 1
+    # all three pipeline ops ran INSIDE that session, in order
+    assert spy.bound.calls == ["allowlist", "current_state", "persist"]
+    # data still landed correctly through the bound store
+    assert len(inner.events) == 1
+    assert TAG in inner.state
+
+
+def test_ingest_batch_without_session_falls_back_to_direct_calls():
+    # The in-memory store has no session() — ingest_batch must still work
+    # (nullcontext fallback path). This is the existing test-double contract.
+    store = _store_with_tag()
+    assert not hasattr(store, "session")
+    res = ingest_batch(_batch(), "t-1", store)
+    assert res.accepted == 1
+    assert len(store.events) == 1

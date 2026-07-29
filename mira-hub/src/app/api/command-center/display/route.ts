@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { validateDisplayRegistration } from "@/lib/display-registration";
 
@@ -77,6 +78,8 @@ export async function POST(req: Request) {
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "namespace.admin");
+  if (denied) return denied;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const v = validateDisplayRegistration(body);
@@ -87,8 +90,9 @@ export async function POST(req: Request) {
 
   // SSRF lockdown for prod: when set, the registered host MUST be in the
   // operator allowlist (the tree route server-side-probes it). Unset = no
-  // restriction beyond the validator's link-local block (dev/bench). A future
-  // admin-role gate is blocked on #578 (Session.role is hardcoded "member").
+  // restriction beyond the validator's link-local block (dev/bench). The
+  // admin-role gate is now enforced above via requireCapability("namespace.admin")
+  // (#2360/#578 — Session.role is derived from hub_users.role).
   const allow = (process.env.COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST ?? "")
     .split(",").map((s) => s.trim()).filter(Boolean);
   if (allow.length > 0 && !allow.includes(host)) {

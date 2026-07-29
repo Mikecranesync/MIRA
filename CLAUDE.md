@@ -26,7 +26,7 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **Cloud LLMs:** Groq + Cerebras + Together cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
+2. **Cloud LLMs:** Groq + Cerebras + Together cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic in the diagnostic cascade** (removed PR #610 — never reintroduce there). Sole owner-authorized carve-out: the PrintSynth print-vision interpreter (PR #2661) — print-photo vision only, never chat/diagnosis.
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
@@ -175,6 +175,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
 - **Release notes:** `docs/CHANGELOG.md`
 - **Versioning & rollback (every merge bumps `/VERSION`, auto-tags `vX.Y.Z` + a rollback checkpoint):** `docs/versioning.md` — enforced by `version-gate.yml` (required) + `version-tag.yml`
+- **Product offering (signal difference engine + contextual supervisor):** `docs/product/mira_difference_engine_offering.md` (positioning), `docs/product/mira_signal_difference_engine_prd.md` (PRD), `docs/plans/2026-06-30-mira-difference-engine-backlog.md` (backlog). Sharpens the `NORTH_STAR.md` wedge — "MIRA finds what changed, groups differences into machine events, explains what they mean." ~70% already built (`mira-relay` ingest + `tag_diff_logger` grouping + Supervisor); gaps = learned baselines + continuous historian. Read-only, no overclaim.
 - **Kiosk / AskMira deploy + prod verify runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md` — read BEFORE shipping any `mira-bots/ask_api/`, kiosk-scoped engine fast-path, or AskMira `view.json` change. Documents the **`services=mira-ask`** dispatch + 9/10 Mode A hard-pass + Mode B browser verify.
 - **All env vars:** `docs/env-vars.md`
 - **Known issues / deferred / abandoned:** `docs/known-issues.md`
@@ -191,11 +192,13 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 - **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
 - **Debugging & verification conventions:** `.claude/rules/debugging-conventions.md` — multi-cause perf debugging; verify schema/API paths before guessing
+- **Materialized Evidence & recall-first architecture (North Star amendment 2026-07-20):** `docs/architecture/materialized-evidence.md` (5 layers) + `.claude/rules/materialized-evidence.md` (15 rules) + `docs/adr/0029-materialized-evidence.md` + inventory `docs/architecture/materialized-evidence-inventory.md`. Infer once, materialize every expensive discovery as durable typed versioned evidence, recall unless the evidence changed; the seed is `printsense/cas.py` (generalize, don't duplicate).
 - **Environments doctrine (dev / staging / prod):** `docs/environments.md`
 - **Enforcement layer:** `docs/specs/enforcement-layer-spec.md` — Playwright audit, write-path round-trip, enum drift, spec staleness, PR template, NeonDB canary
 - **Claude Code v2.1+ defaults (Opus 4.7, xhigh, /effort, /autofix-pr, Routines):** `wiki/references/claude-code-v2.1.md`
 - **MIRA Routines (cloud-side scheduled work):** `wiki/references/routines.md`
 - **CodeGraph (semantic code index + MCP):** `wiki/references/codegraph.md` — usage rules in `.claude/rules/codegraph-usage.md`. Run `tools/codegraph-preflight.sh` before non-doc code work; trust the call-graph only after freshness passes. **Graphify is excluded from code navigation** (`.claude/rules/graphify-excluded.md`).
+- **OCR regime (floor/model/paid lanes, recall gate, keep-alive):** docs/runbooks/ocr-regime.md
 
 ---
 
@@ -239,6 +242,28 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 **Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`, `actionlint`
 
 ---
+
+## Release / PR Workflow
+
+Any PR that touches shippable code must bump `/VERSION` (semver: feat→minor, fix→patch, breaking→major) and add a `docs/CHANGELOG.md` note. **CI-enforced** — `.github/workflows/version-gate.yml` (`Version Bump Check`) is a required status check on `main` and fails a code-touching PR that leaves `/VERSION` unchanged. Docs/wiki/markdown-only PRs are exempt (no bump required). See `docs/versioning.md` for semver conventions and the auto-tag-on-merge behavior.
+
+## Git Workflow
+
+`tools/hooks/git-state-guard.sh` (a `PreToolUse(Bash)` hook) blocks git mutators while the repo is mid-rebase or on a detached `HEAD` — **except** `git rebase --continue`/`--abort`/`--skip`/`--quit`, which are always allowed even mid-rebase, since they're the only way to resolve the wedge from inside a single Bash call. If a rebase gets wedged for a reason `--continue`/`--abort` can't resolve, **stop and ask the user** — don't retry with `MIRA_ALLOW_GIT_WEDGE=1`, `git reset --hard`, or by hand-deleting `.git/rebase-merge`. Those are destructive workarounds for a state a human should look at.
+
+## Sub-agents / Worktrees
+
+Any sub-agent dispatched for parallel work that will Edit/Write files MUST operate in its own isolated git worktree (`Agent` tool `isolation: "worktree"`) or have explicit confirmation there's no uncommitted foreign work in the shared checkout it could clobber — verified **before** running file/git commands, not after.
+
+**Creating a worktree is an obligation to remove it.** The harness auto-removes one only when the agent made **no** changes, so cleanup never fires for a worktree that did work — push the branch, then `git worktree remove`. **Never leave a worktree holding `main`**: git allows one checkout per branch with no TTL, so a forgotten one blocks the shared checkout (this happened 2026-07-27; use `--detach origin/main` instead). Scripts that `git worktree add` must remove on **every** exit path via `trap … EXIT`, or deliberately reuse a **fixed** path with a defensive pre-clean — never a `$$`/timestamp-derived path. Don't delete other sessions' worktrees on a guess; `--merged` is a weak signal here (squash-merge). See `.claude/rules/subagent-worktree-isolation.md` and `docs/tech-debt/2026-07-27-worktree-clutter-rca.md`.
+
+## Safety / Dangerous Commands
+
+Before running `rm -rf`, `git reset --hard`, `git clean -f[d]`, or any other command that irreversibly discards data, print the exact resolved absolute path/target first and confirm it matches the intended target before executing. A deterministic floor (`tools/hooks/rm-guard.sh`, `PreToolUse(Bash)`) also hard-blocks a recursive+force `rm` that resolves to `/`, `$HOME`, the repo root, or any `.git` dir (override: `MIRA_ALLOW_RM=1`); it's a floor, not a substitute for the print-the-path discipline. See `.claude/rules/dangerous-commands-safety.md`.
+
+## Security
+
+Credentials and passwords come from environment variables (Doppler-managed, `factorylm/{dev,stg,prd}`) — never hardcoded in scripts, including one-off `tools/`/`plc/` ops scripts and seed/migration scripts. Enforced by `.ast-grep-rules/hardcoded-secret.yml` (every PR, `code-review.yml`) and `gitleaks protect --staged` (pre-commit). See `.claude/rules/security-boundaries.md`.
 
 ## CLAUDE.md Maintenance
 

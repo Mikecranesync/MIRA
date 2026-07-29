@@ -174,10 +174,52 @@ class Controller:
     provenance: Provenance | None = None
 
 
+class NamespaceLevel(str, Enum):
+    """ISA-95 containment levels for a hierarchical source (Ignition tag tree, CESMII i3X)."""
+    ENTERPRISE = "enterprise"
+    SITE = "site"
+    AREA = "area"
+    LINE = "line"
+    ASSET = "asset"       # the equipment / work-unit (an Ignition UdtInstance with an Equipment typeId)
+    SIGNAL = "signal"     # a leaf data point (an Ignition AtomicTag)
+
+
+@dataclass
+class NamespaceNode:
+    """One node in an explicit ISA-95 containment hierarchy.
+
+    Additive to the IR: logic parsers (L5X / CSV / ST) leave `PLCProject.namespace` empty and fill
+    `controllers`; namespace parsers (Ignition tag JSON) do the reverse. Both live on PLCProject, so
+    analysis that needs containment reads `namespace` and analysis that needs ladder logic reads
+    `controllers` -- neither path disturbs the other.
+
+    `path` is the chain of RAW segment names from the enterprise root down to (and including) this
+    node, so a consumer can slug it any way it likes; `path[-1] == name` always. Containers
+    (enterprise..asset) and signal leaves are all NamespaceNodes -- `level` distinguishes them.
+    """
+    name: str
+    level: str                      # one of NamespaceLevel
+    path: list[str] = field(default_factory=list)
+    udt_type: str = ""              # Ignition typeId, e.g. "Models/Equipment/Process/CapLoader"
+    data_type: str = ""             # atomic-tag dataType (Boolean / Int4 / Float8 ...)
+    unit: str = ""                  # engineering unit (Ignition engUnit)
+    mes_path: str = ""              # parameters.MesTagPath -- the MES binding for an asset
+    tag_path: str = ""              # parameters.TagPath -- the edge/PLC binding for an asset
+    manufacturer: str = ""          # CESMII MachineIdentification (lifted onto the asset)
+    model: str = ""
+    serial: str = ""
+    provenance: Provenance | None = None
+
+    @property
+    def parent_path(self) -> list[str]:
+        return self.path[:-1]
+
+
 @dataclass
 class PLCProject:
     """Top of the IR. One parsed export package (may carry >1 controller in theory; usually one)."""
     controllers: list[Controller] = field(default_factory=list)
+    namespace: list[NamespaceNode] = field(default_factory=list)  # ISA-95 hierarchy (Ignition etc.)
     source_format: str = ""
     source_files: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

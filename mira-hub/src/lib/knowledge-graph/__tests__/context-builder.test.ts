@@ -1,5 +1,23 @@
-import { describe, test, expect } from "vitest";
-import { formatEntityContext } from "../context-builder";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { buildGraphContext, formatEntityContext } from "../context-builder";
+
+const { connectMock, queryMock } = vi.hoisted(() => {
+  const queryMock = vi.fn();
+  const client = {
+    query: queryMock,
+    release: vi.fn(),
+  };
+  return {
+    connectMock: vi.fn(async () => client),
+    queryMock,
+  };
+});
+
+vi.mock("@/lib/db", () => ({
+  default: {
+    connect: connectMock,
+  },
+}));
 
 // formatEntityContext is pure — no DB required.
 
@@ -23,6 +41,88 @@ const BASE_FULL = {
   incoming: [],
   triples: [],
 };
+
+const sqlCalls = () =>
+  queryMock.mock.calls
+    .map(([sql]) => (typeof sql === "string" ? sql : ""))
+    .filter(Boolean);
+
+describe("buildGraphContext answer-facing SQL filters", () => {
+  beforeEach(() => {
+    process.env.NEON_DATABASE_URL = "postgres://unit-test";
+    connectMock.mockClear();
+    queryMock.mockReset();
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM kg_entities") && sql.includes("entity_id = ANY")) {
+        return {
+          rows: [
+            {
+              id: "uuid-fault-1",
+              entity_type: "fault_code",
+              entity_id: "F004",
+              name: "F004",
+              properties: {},
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+  });
+
+  test("entity and relationship lookups only expose verified KG context", async () => {
+    await buildGraphContext("tenant-1", "Explain F004");
+
+    const entitySql = sqlCalls().find(
+      (sql) => sql.includes("FROM kg_entities") && sql.includes("entity_id = ANY"),
+    );
+    expect(entitySql).toMatch(/approval_state\s*=\s*'verified'/i);
+
+    const relationshipSql = sqlCalls()
+      .filter((sql) => sql.includes("FROM kg_relationships r"))
+      .join("\n");
+    expect(relationshipSql).toMatch(/r\.approval_state\s*=\s*'verified'/i);
+    expect(relationshipSql).toMatch(/src\.approval_state\s*=\s*'verified'/i);
+    expect(relationshipSql).toMatch(/tgt\.approval_state\s*=\s*'verified'/i);
+  });
+
+  test("does not read kg_triples_log or expose triple-log-only facts in answer context", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM kg_entities") && sql.includes("entity_id = ANY")) {
+        return {
+          rows: [
+            {
+              id: "uuid-fault-1",
+              entity_type: "fault_code",
+              entity_id: "F004",
+              name: "F004",
+              properties: {},
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM kg_triples_log")) {
+        return {
+          rows: [
+            {
+              subject: "F004",
+              predicate: "exhibited_fault",
+              object: "UNAPPROVED_TRIPLE_LOG_ONLY_FAULT",
+              extracted_at: "2026-06-25T12:00:00Z",
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const ctx = await buildGraphContext("tenant-1", "Explain F004");
+
+    expect(sqlCalls().join("\n")).not.toMatch(/kg_triples_log/i);
+    expect(ctx).not.toContain("UNAPPROVED_TRIPLE_LOG_ONLY_FAULT");
+    expect(ctx).not.toContain("Recent faults:");
+  });
+});
 
 describe("formatEntityContext — header", () => {
   test("includes entity_id in header", () => {

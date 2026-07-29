@@ -1,0 +1,8 @@
+# R9b satisfied — document + locator, so the claim can be re-checked against the source.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:doc1     a mira:SourceDocument .
+ex:cite_ok  a mira:Citation ; mira:cite_doc ex:doc1 ; mira:cite_locator "p.114 §3.2" .

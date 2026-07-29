@@ -1,0 +1,72 @@
+{
+  "acceptance": [
+    {
+      "item": "F1 UPS-supply breaker branch",
+      "covered": true,
+      "note": "-3/F1 'UPS Supply' B10A/2pol MOE.132702 device + UL/UN->USVL1/USVN power_domain + functional_path. Verified on sheet 3 (2-pole symbol, MOE.132702, USVL1/USVN arrows to 4.0)."
+    },
+    {
+      "item": "F2 heater breaker branch",
+      "covered": true,
+      "note": "-3/F2 'Heating' B10A/2pol MOE.132702 device + heater functional_path. Verified on sheet 3 (2-pole 'Heating' symbol)."
+    },
+    {
+      "item": "F3 (24V-side) branch",
+      "covered": true,
+      "note": "-4/F3 'Temperature Switches' B2 2pol MOE.132695. Verified on sheet 4 image (graph claimed sheet 4 not re-shot, but text/rating match the actual image exactly). Pole-2 (3-4) routing honestly flagged open."
+    },
+    {
+      "item": "G1 24 VDC supply",
+      "covered": true,
+      "note": "-4/G1 PSU 2,5A PXC.2909576, L/N in, +24V/0V out. Verified on sheet 4 (PXC.2909576, 2,5 A). Model name STEP-PS/1AC/24DC/2.5 correctly flagged INFERRED, not asserted."
+    },
+    {
+      "item": "S10/S11/E1 heater path (F2->S10->S11->X1->E1)",
+      "covered": true,
+      "note": "S10 RIT.3118.000, S11 RIT.3110000, X1, E1 250W-115V devices + full 'anti-condensation heater branch' functional_path. Verified on sheet 3. F2->S10:3/S11 internal tap and S11 top-terminal functions (5,6,7,1,2) are the least-certain part but honestly flagged in open_items."
+    },
+    {
+      "item": "A100-A107 EtherCAT station (EK1100 + EL terminals)",
+      "covered": true,
+      "note": "All 8: A100 EK1100 / A101 EL2008 / A102 EL1008 / A103 EL1008 / A104 EL3204 / A105 EL1722 / A106 EL1722 / A107 EL9011, plus E-bus network_link. Verified on sheet 5 (full lineup + EL9011 end cap)."
+    },
+    {
+      "item": "SCU1->SCU2->SCU3 network path",
+      "covered": true,
+      "note": "network_links + cables W5445/W5473(LAN outdoor) + U1/U2 Metz feed-throughs + power daisy W5443/W5471. Verified: sheet 5 ETH In(+SCU1/5.3) / ETH Out(+SCU3/5.2); sheet 3 power chain +SCU1->X0->+SCU3."
+    },
+    {
+      "item": "occupancy inputs",
+      "covered": true,
+      "note": "A102 EL1008 E1.0-E1.4: SensorUnit 5/6/7/8 occupied (X5:5-8) + Occupied Upstream (X3:9). Verified on sheet 6."
+    },
+    {
+      "item": "broken-sensor inputs",
+      "covered": true,
+      "note": "A103 EL1008 E1.0-E1.4: SensorUnit 5/6/7/8 Broken (X4:2-5) + Occupied Downstream (X4:6). Verified on sheet 6. Duplicate symbolic E1.0-E1.7 vs A102 correctly flagged."
+    },
+    {
+      "item": "position bits",
+      "covered": true,
+      "note": "A103 E1.5/E1.6/E1.7 Position Bit 1/2/3 from -20/A10/A11/A12 DIG OUT; plus A101 A1.1 'Position Bits on'. Verified on sheet 6."
+    },
+    {
+      "item": "ME05-ME08 RTD inputs (A104 EL3204)",
+      "covered": true,
+      "note": "A104 EL3204 4AI/RTD: PEW100/102/104/106 = ME05/06/07/08 Temperature, field +ME5-8-1.R:4, /11.x. Verified on sheet 6."
+    },
+    {
+      "item": "ME05-ME08 Klixon inputs (A105/A106 EL1722)",
+      "covered": true,
+      "note": "A105 E3.0/E3.1=ME05/ME06, A106 E4.0/E4.1=ME07/ME08, via -18/X2KL:2/4/6/8, /12.x, with 230V N + PE per module. Verified on sheet 7 (single clean drawing, Blatt 7)."
+    },
+    {
+      "item": "all visible terminal/cable/continuation/neutral/0V/PE paths",
+      "covered": true,
+      "note": "Comprehensive: terminals X0/X1/X2/X24VDC/X24GND; cables W5443/W5471/W5445/W5473; conductors L/N/PE/UL/UN/USVL1/USVN/X24V/X0V/230V_2/230V_N2; PE bonds (door/chassis/panel/spare) + PE nets; all off-page reciprocals (PE.5DA0, E1.PE, USVL1/USVN, X24V.3/X0V.3, ETH.D). Verified across sheets. Residual faint ties (X1:N->system N, X2 N1/N2 source, F3 pole-2) honestly flagged, not omitted."
+    }
+  ],
+  "hard_failures": [],
+  "score": 94,
+  "summary": "Independently re-opened all six sheets and cross-checked every asserted device, rating, terminal, cable, and continuation against pixels. Result: all 13 acceptance items covered, ZERO hard failures. No invented facts found — every rating (B10A, B2, 250W-115V, 2,5A) and part number (MOE.132702/132695, PXC.2909576, RIT.3118.000, Metz.1309426003-E, EK1100/EL2008/EL1008/EL3204/EL1722/EL9011) verifies on-image; the sole model name (STEP-PS/1AC/24DC/2.5) is explicitly flagged INFERRED. PE is meticulously segregated as pe_bonds/pe_nets and never merged into L/N/UL/UN. The graph's two self-corrections both check out from pixels: sheet 7 is a single clean drawing reading 'Blatt 7' (upper ~60% blank), NOT two superimposed drawings; and U1/U2 are RJ45 feed-throughs, not media converters. The A100-A107 station, ME05-ME08 dual RTD+Klixon design, occupancy/broken/position I/O map, and SCU1->SCU2->SCU3 power+EtherCAT chain are all directly evidenced. Highest-leverage residual gaps (all already flagged in 'unresolved', none are failures): (1) heater-control internal routing — the F2->S10:3/S11 tap and S11 top-row terminal functions (5,6,7,1,2) are partly inferred; a square-on macro of the S10/S11 boxes is the top retake. (2) Faint neutral ties — X1:N->system N via F2 pole-2 and X2 N1/N2 source; flatten the center fold and macro. (3) Cosmetic: S11 dropped dot (RIT.3110000 vs .3110.000) and G1 model name need the BOM. (4) Montageplatte has zero legible tags, so all six layout matches correctly remain form-factor CANDIDATEs (0.25-0.35) — appropriately never claimed certain. One process nit (not a factual error): the graph's 'sheet 4 not re-photographed' caveat is stale — sheet 4 imagery is present and every sheet-4 fact (G1/F3/X2/X24VDC/X24GND) verifies, so that confidence can be raised. Minor over-read risk: the '=LA2' aspect designation is at the resolution limit (only '+SCU2' is clearly legible). Deductions are limited to these trivial residual uncertainties inherent to photo quality; the interpretation is near-complete, pixel-accurate, and exemplary in evidence discipline."
+}

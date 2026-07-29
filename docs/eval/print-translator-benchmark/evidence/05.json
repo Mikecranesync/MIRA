@@ -1,0 +1,13 @@
+{
+  "case_id": "05",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\05.png",
+  "oem": "Rockwell Automation",
+  "document": "Bulletin 509 NEMA Motor Starters (GI-WD005)",
+  "source_url": "literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf",
+  "page": 12,
+  "category": "NEMA Starters",
+  "standard": "NEMA ICS 2",
+  "question": "Explain this print.",
+  "candidate_response": "## 1. What this appears to be\nThis appears to be a wiring diagram for a 3-phase starter, specifically Bulletin 509 Sizes 7 and 8, as indicated at the bottom of the page.\n\n## 2. Main visible components\nThe main visible components include:\n- A 3-phase motor\n- Start and stop pushbuttons\n- A control transformer\n- Overload protection (O.L.'s)\n- Control relay (CR)\n- Motor starter coils (K1, K2)\n- Economizer capacitors (Econ. Cap.)\n- Fuses (FU)\n\n## 3. Plain-English theory of operation\nThe plain-English theory of operation appears to be as follows:\n- When the start button is pressed, the control relay (CR) energizes, which in turn energizes the motor starter coils (K1, K2).\n- The motor starter coils then close the main contacts to power the 3-phase motor.\n- The overload protection (O.L.'s) is in series with the motor starter coils to protect the motor from overcurrent conditions.\n- When the stop button is pressed or an overload condition occurs, the motor starter coils de-energize, and the motor stops.\n\n## 4. What must be true for it to work\nFor the circuit to work, the following conditions must be met:\n- The start button must be pressed\n- The stop button must not be pressed\n- The overload protection (O.L.'s) must not be tripped\n- The control relay (CR) must be energized\n- The motor starter coils (K1, K2) must be energized\n\n## 5. What would stop it from working\nThe following conditions would stop the circuit from working:\n- Open circuit in the control transformer\n- Blown fuses (FU)\n- Tripped overload protection (O.L.'s)\n- Faulty motor starter coils (K1, K2)\n- Faulty control relay (CR)\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable in the provided image.",
+  "context_notes": "This candidate had NO OCR text extracted — it was grounded on the image only (ocr_grounding='unavailable_on_this_box'). Judge whether it correctly separates what is visibly readable from inference accordingly: do not penalize it for declining to cite a specific tag/wire-number string it could not have OCR'd, but do penalize it under evidence_grounding_unsupported_claims if it invents a specific tag/wire-number/label that is not actually legible in the image."
+}

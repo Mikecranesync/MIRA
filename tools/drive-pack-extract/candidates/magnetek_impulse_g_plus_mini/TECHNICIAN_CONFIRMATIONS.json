@@ -1,0 +1,57 @@
+{
+  "pack_id": "magnetek_impulse_g_plus_mini",
+  "schema_note": "Sidecar overlay — NOT part of the deterministic extractor output (pack.json). pack.json is regenerated from the manual and must never be hand-edited; human-confirmed application context lives here until Run C ships the confirmation-overlay merge + `technician_confirmed` provenance tier (see tools/drive-pack-extract/RUN_C_PLAN.md item 3). Grading (grading/domain_rules.py) does not read this file today; its provenance vocabulary is still {bench_verified, manual_cited}.",
+  "confirmations": [
+    {
+      "confirmation_id": "conf-2026-07-14-ll-crane-semantics",
+      "date": "2026-07-14",
+      "confirmed_by": "Mike Harper (owner; crane/PLC field technician)",
+      "channel": "operator session (Claude Code, CHARLIE node)",
+      "status": "confirmed",
+      "subject": {
+        "fault_ids": ["LL1", "LL2"],
+        "parameters": ["C03.04", "C03.05", "C03.06", "U01.10"]
+      },
+      "statement": "In a crane application the meaning of the LL1/LL2 (Lower Limit) inputs depends on which motion the IMPULSE drive controls. On a HOIST drive, LL1/LL2 are usually the hoist lower limit (LL1 = slow-down as the hook block approaches the lower limit, LL2 = stop at the lower limit). On a TRAVERSE drive (trolley or bridge), the same inputs serve as travel (end-of-travel) limits — LL1 slow-down, LL2 stop.",
+      "manual_grounding": [
+        {
+          "doc": "Magnetek IMPULSE G+ Mini Technical Manual (144-25085)",
+          "page": "138",
+          "excerpt": "LL1 Lower Limit 1—SLOW DOWN Indicator. Lower 1. May not require corrective action."
+        },
+        {
+          "doc": "Magnetek IMPULSE G+ Mini Technical Manual (144-25085)",
+          "page": "138",
+          "excerpt": "LL2 Lower Limit 2—STOP Indicator. Lower Limit 1. May not require corrective action."
+        },
+        {
+          "doc": "Magnetek IMPULSE G+ Mini Technical Manual (144-25085)",
+          "page": "147",
+          "excerpt": "C03.04 Lower Limit 1 (LL1) Speed 6.00 0.00–150.00 Hz 67"
+        }
+      ],
+      "consumption_notes": [
+        "LL1/LL2 are limit-switch INPUT indications (the manual: 'May not require corrective action'), not drive hardware faults — the indication means the axis reached its slow-down/stop limit switch on input terminal H01.XX (see U01.10).",
+        "Any MIRA/Drive Commander answer about LL1/LL2 on this family MUST first establish which motion the drive controls (hoist vs traverse) before naming the limit, or present both readings.",
+        "SAFETY: limit switches are a protective function. Never advise bypassing, jumpering, or defeating a limit input to clear the indication. Corrective guidance stays within the manual's cited actions: check limit-switch position, condition, and the H01.XX input terminal configuration."
+      ]
+    },
+    {
+      "confirmation_id": "prop-2026-07-14-ul-symmetry",
+      "date": "2026-07-14",
+      "confirmed_by": null,
+      "channel": "operator session (Claude Code, CHARLIE node)",
+      "status": "proposed",
+      "subject": {
+        "fault_ids": ["UL1", "UL2", "UL3"],
+        "parameters": []
+      },
+      "statement": "PROPOSED by symmetry with the confirmed LL1/LL2 semantics, NOT technician-confirmed: UL* (Upper Limit) inputs would read as the hoist UPPER limit on a hoist drive (safety-critical: upper-limit protection against two-blocking) and as the opposite-direction travel limit on a traverse drive. Requires explicit technician confirmation before any answer surface asserts it.",
+      "manual_grounding": [],
+      "consumption_notes": [
+        "Do NOT auto-promote: proposed → confirmed requires an explicit technician/admin sign-off (same doctrine as kg proposed→verified).",
+        "If confirmed for a hoist axis, the upper limit is the more safety-critical direction (block over-travel / two-blocking); the answer judge in Run C item 4 should treat UL* with the same never-bypass rule as LL*."
+      ]
+    }
+  ]
+}

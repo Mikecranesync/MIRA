@@ -1,0 +1,45 @@
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix mirash: <https://ontology.factorylm.com/mira/shapes#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://ontology.factorylm.com/mira/shapes/maintenance>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/shapes/maintenance/0.1.0> ;
+    rdfs:comment "Maintenance shapes. Deliberately thin — MIRA is not a CMMS; these constrain only what MIRA cites." .
+
+mirash:ResolutionEvidenceShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Resolution ;
+    rdfs:label "A resolution names its work order" ;
+    rdfs:comment "A Resolution is the strongest evidence MIRA can cite because it is plant ground truth. An orphan resolution ('someone once fixed this by…') is folklore." ;
+    sh:sparql [
+        sh:message "Maintenance: resolution {$this} is attached to no work order. Resolution is only citable as evidence when it is traceable to the job that produced it." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                FILTER NOT EXISTS { ?wo a mira:WorkOrder ; mira:closed_by $this . }
+            }
+        """ ;
+    ] .
+
+mirash:FaultNotFaultCodeShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Fault ;
+    rdfs:label "A fault is not a fault code" ;
+    sh:not [ sh:class mira:FaultCode ] ;
+    sh:message "Maintenance: {$this} is typed as both a Fault (an observed abnormal condition on an instance) and a FaultCode (a device's printed identifier). Collapsing them is how a code's manual text gets reported as an observation of this machine." ;
+    sh:severity sh:Violation .
+
+mirash:TechnicianObservationActorShape
+    a sh:NodeShape ;
+    sh:targetClass mira:TechnicianObservation ;
+    rdfs:label "A technician observation has a human behind it" ;
+    sh:property [
+        sh:path mira:proposed_by ; sh:minCount 1 ; sh:class mira:Technician ;
+        sh:message "Maintenance: technician observation {$this} names no Technician. A SoftwareAgent's summary of a chat turn is not a technician observation — that distinction is what lets a human confirmation satisfy the UNS gate." ;
+        sh:severity sh:Violation ;
+    ] .

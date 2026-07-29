@@ -7,13 +7,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# paths-ignore: docs-only changes skip the whole workflow.
-# The list below covers prose (markdown, wiki), the .claude config tree, and
-# image-only changes. Any PR or push that also touches code outside these
-# paths runs the full pipeline normally. Main pushes are always post-merge
-# (code flows through PRs), so a docs-only main push has no code to test —
-# the safety-net intent is preserved: any code-touching main push triggers
-# the full pipeline regardless of path filter.
+# Trigger policy — asymmetric on purpose:
+#   push:         docs-only pushes skip the whole workflow (post-merge, nothing
+#                 to test) via `paths-ignore`.
+#   pull_request: NO `paths-ignore`. A workflow skipped by a path filter leaves
+#                 its check contexts stuck "Pending", which BLOCKS any REQUIRED
+#                 check on a docs-only PR forever (GitHub's skipped-workflow rule
+#                 — the recurring "phantom check" / `--admin` pain). Instead this
+#                 workflow always runs on PRs to main and each expensive job
+#                 self-skips via the `changes` filter job below. A skipped JOB
+#                 reports "Success", so a docs-only PR sails through the required
+#                 `CI Gate` without running heavy work. See `changes` + `ci-gate`.
 on:
   push:
     branches: [main, dev]
@@ -28,17 +32,58 @@ on:
       - '**/*.gif'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'wiki/**'
-      - '**/*.md'
-      - '.claude/**'
-      - '**/*.webp'
-      - '**/*.png'
-      - '**/*.jpg'
-      - '**/*.gif'
 
 jobs:
+  # Detects whether any non-docs file changed, so heavy jobs can self-skip on
+  # docs-only PRs (skipped JOB => "Success" => never blocks the required gate),
+  # replacing the old workflow-level `paths-ignore` that stranded docs PRs.
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # `every`: a file counts as "code" only if it matches EVERY pattern —
+          # i.e. it's under `**` AND none of the doc/image exclusions. With the
+          # default `some` quantifier, `**` alone matches every file (negations
+          # don't subtract), so `code` would ALWAYS be true and docs-only PRs
+          # would never skip the heavy jobs. Verified: without this, a docs-only
+          # PR ran Unit Tests.
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!wiki/**'
+              - '!**/*.md'
+              - '!.claude/**'
+              - '!**/*.webp'
+              - '!**/*.png'
+              - '!**/*.jpg'
+              - '!**/*.gif'
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # Workflow-correctness gate, moved in-tree from the standalone actionlint.yml
+    # (removed) so it runs on EVERY PR to main and is part of the CI Gate. Catches
+    # the parse / schema / expression errors GitHub rejects at load time — e.g.
+    # the single-quotes-only expression rule that made the CI Gate itself fail to
+    # register. NOT gated by `changes`: it must run on docs-only PRs too (a bad
+    # workflow edit can hide in an otherwise docs-only PR). `-shellcheck=` disables
+    # the embedded shellcheck (run-block nits); .sh files are shellchecked apart.
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color -shellcheck=
+
   migration-order-check:
     name: Migration Order Check
     runs-on: ubuntu-latest
@@ -73,7 +118,9 @@ jobs:
             mira-bots/telegram/ \
             mira-bots/slack/ \
             mira-core/mira-ingest/ \
-            mira-mcp/
+            mira-mcp/ \
+            factorylm_ai/ \
+            tests/factorylm_ai/
 
       - name: Format check
         run: |
@@ -82,7 +129,9 @@ jobs:
             mira-bots/telegram/ \
             mira-bots/slack/ \
             mira-core/mira-ingest/ \
-            mira-mcp/
+            mira-mcp/ \
+            factorylm_ai/ \
+            tests/factorylm_ai/
 
       - name: Type check
         run: pyright
@@ -126,6 +175,10 @@ jobs:
 
       - name: Upload SARIF
         if: always()
+        # Informational (populates the code-scanning tab). Enforcement already
+        # happened in the previous step; a transient upload-sarif failure must
+        # not fail sast-semgrep, which the required ci-gate demands succeed.
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
@@ -153,13 +206,21 @@ jobs:
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
-    needs: lint-and-type-check
+    needs: [lint-and-type-check, changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          # Latency: cache the 4 requirement sets (cold pip install was ~1-2
+          # min of every Unit Tests run).
+          cache: "pip"
+          cache-dependency-path: |
+            mira-core/mira-ingest/requirements.txt
+            mira-bots/telegram/requirements.txt
+            mira-bots/teams/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -193,12 +254,135 @@ jobs:
         # clarification invariants. Hermetic, no LLM, runs in <1s.
         run: pytest tests/bot_regression.py -v
 
+      - name: Golden-case harvester (flywheel Phase 4a)
+        # Pure core of tools/harvest_golden_cases.py — renders corrected
+        # conversation_eval rows into paste-ready bot_regression GOLDEN_CASES.
+        # Hermetic, no DB/LLM. Root tests/ is NOT collected wholesale here, so
+        # this file is named explicitly (like bot_regression.py above).
+        run: pytest tests/test_harvest_golden_cases.py -v
+
+      - name: Manufacturer alias consistency + normalizer (#1596/#2263)
+        # Locks the cross-service drift guard: the manufacturer alias map is
+        # vendored in 3 places (crawler .py, mira-core .py, hub JSON) and must
+        # stay byte-equal AND agree with the resolver's VENDOR_ALIASES on every
+        # shared key. Hermetic (AST/JSON reads by path, stdlib-only). The
+        # crawler behavioral suite (mira-core's runs in the ingest step above)
+        # imports only stdlib, so no extra deps. Root tests/ is not collected
+        # wholesale here — named explicitly.
+        run: |
+          pytest tests/test_manufacturer_alias_consistency.py -v
+          (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)
+
+      - name: Relational distiller (flywheel Phase 4b)
+        # Pure core of tools/relational_distill.py — matched drive-pack fault
+        # turns → grounded HAS_FAILURE_MODE edge proposals (human-gated, never
+        # auto-verified). Hermetic, no DB/LLM. Named explicitly (root tests/ is
+        # not collected wholesale here).
+        run: pytest tests/test_relational_distill.py -v
+
+      - name: Flywheel benchmark (grades every distillation stage)
+        # Guards the whole flywheel: run the real stage cores over a ground-truth
+        # fixture and grade the 6-criterion rubric. The test also proves the
+        # graders can FAIL on a broken stage (so 100 isn't vacuous). Hermetic.
+        run: pytest tests/test_flywheel_benchmark.py -v
+
+      - name: Flywheel benchmark scorecard (visible in the log)
+        # Prints the scored rubric table; exits non-zero if the flywheel regresses.
+        run: python tools/flywheel_benchmark.py
+
+      - name: Migration drift detector (pure core)
+        # Guards tools/migration_drift.py — the fail-loud check that no env
+        # silently misses a repo migration (W3). Hermetic, no DB.
+        run: pytest tests/test_migration_drift.py -v
+
+      - name: Wiring-map import (wiring_connections seam proof)
+        # Pure core of tools/wiring_map_import.py — cited electrical-model YAML →
+        # proposed wiring_connections rows (idempotent, evidence-preserving,
+        # approval_state='proposed'). Hermetic, no DB/vision. Named explicitly
+        # (root tests/ is not collected wholesale here).
+        run: pytest tests/test_wiring_map_import.py -v
+
+      - name: Wiring schematic import (/api/kg/schematic → wiring_connections)
+        # Pure core of tools/wiring_schematic_import.py — schematic-extractor
+        # payload → the SAME WiringRow/write_rows seam (PR-2), over a fixture
+        # (no live vision). Only electrically_connected edges become conductors;
+        # provenance preserved; proposed + idempotent. Hermetic, no DB.
+        run: pytest tests/test_wiring_schematic_import.py -v
+
+      - name: Machine Print Pack (build determinism + commercial validator)
+        # Guards machine-print-pack/build/{build_pack,validate_pack}.py — the
+        # deterministic Print Pack build (text/data artifacts byte-identical on
+        # rebuild) + the M–R commercial bundle validator, against the committed
+        # CV-101 example bundle (the golden reference IS the graded PR #2631 package).
+        # Renders via PyMuPDF; redacts via Pillow — deps not in the job-level install.
+        run: |
+          pip install pyyaml pymupdf pillow
+          pytest tests/test_machine_print_pack.py -v
+
+      - name: PrintSense interpreter + grader gate (hermetic, no Anthropic SDK)
+        # Guards printsense/ — the isolated Anthropic print interpreter (client
+        # mocked), the deterministic Telegram renderer, the SCU2 gold fixture, and
+        # the deterministic grader (P/R/F1 + confident-misread count + A-gate) on
+        # injected-error fixtures. NO anthropic SDK is installed here, so the paid
+        # API structurally cannot be called — real interpret runs happen off-CI and
+        # are promoted deliberately. Root tests/ is not collected wholesale, so this
+        # dir is named explicitly (like the steps above). Pillow exercises the
+        # preprocess resize path; pytesseract is intentionally absent (auto-rotate
+        # degrades gracefully).
+        run: |
+          pip install pydantic pillow
+          pytest tests/printsense/ -v
+
+      - name: FactoryLM AI model-lab tests (hermetic, mock provider, no network)
+        # Guards factorylm_ai/ — the ZTA model lab: the provider network
+        # double-gate (TOGETHERAI_API_KEY + FACTORYLM_AI_ALLOW_NETWORK, neither
+        # set in CI so the Together provider structurally cannot be reached),
+        # the BudgetGuard spend law incl. the fine-tune $-precheck, the
+        # fail-closed artifact registry + promotion gate, flywheel export
+        # refusals (approval/sensitivity/holdout), and the proofpack dry-run.
+        # Root tests/ is not collected wholesale, so this dir is named
+        # explicitly (like the steps above). httpx comes from the telegram
+        # requirements installed at job start.
+        run: pytest tests/factorylm_ai/ -v
+
+      - name: Print of the Day tests (hermetic, no network, no docker)
+        # Guards printsense/print_of_day/ + tools/print_of_day/ (ADR-0031 PR 6):
+        # the provenance gates (git SHA / dirty / revision mismatch), the
+        # fail-closed readiness gate (Together+MiniMax-M3 + Tesseract, no silent
+        # substitution), the §19.3 send gate, duplicate-send protection, and the
+        # manifest provenance + Dockerfile packaging contract. Root tests/ is not
+        # collected wholesale, so this dir is named explicitly.
+        run: pytest tests/print_of_day/ -v
+
+      - name: Deploy-target guard (staging deploy must rebuild the bot)
+        # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
+        # default TARGETS must include mira-bot-telegram and must name only
+        # real services in docker-compose.staging-vps.yml. Hermetic (reads two
+        # repo files), pyyaml already installed above.
+        run: pytest tests/test_deploy_staging_targets.py -v
+
       - name: Connector framework tests
         # mira-connectors/ is its own package (pyproject pythonpath=["."]) — run from
         # inside it. Hermetic mock connectors (Maximo/Ignition/SAP/MaintainX/PI), no
         # network/DB/LLM, <1s. Guards the whole framework, not just the new connectors.
         working-directory: mira-connectors
         run: pytest tests/ -v
+
+      - name: Ontology validation (ADR-0032)
+        # Deterministic + offline: rdflib (BSD-3) + pyshacl (Apache-2.0), no network, no
+        # paid calls, no DB. Two layers, both cheap:
+        #   1. the validator itself — Turtle syntax, the grounding rule, term_status
+        #      vocabulary, inverse completeness/symmetry, and every fixture pair;
+        #   2. tests/test_ontology_attribution.py — locks down the blank-node
+        #      sh:sourceShape attribution fix, including the sh:or list-cell path that no
+        #      fixture exercises yet.
+        # Exits 0 today: absent fixture directories SKIP by design, so this stays green
+        # through the remaining fixture phases (ADR-0032 §8) and only reddens on a real
+        # regression.
+        run: |
+          pip install -r ontology/requirements.txt
+          python tools/validate_ontology.py
+          pytest tests/test_ontology_attribution.py -v
 
   mira-hub-unit:
     name: Hub Unit Tests
@@ -240,6 +424,45 @@ jobs:
         working-directory: mira-hub
         run: bun run test
 
+  mira-web-pack-tests:
+    # Deterministic mira-web subset guarding the Drive Commander pack truth +
+    # PrintSense landing (issue #2777). Scope note: the FULL mira-web bun suite
+    # is NOT run here — it is provably non-deterministic today (cross-file
+    # process.env pollution + env-dependent files; three consecutive full runs
+    # produce three different fail-sets). This subset was proven deterministic
+    # (3x identical: 70 pass / 0 fail, ~20 ms) and green on main. Intended to
+    # become a REQUIRED check once landed (see #2777).
+    name: mira-web pack tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: web
+        with:
+          filters: |
+            web:
+              - 'mira-web/**'
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.web.outputs.web == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install mira-web dependencies
+        if: steps.web.outputs.web == 'true'
+        working-directory: mira-web
+        run: bun install --frozen-lockfile
+
+      - name: Run deterministic pack-truth + landing suites
+        if: steps.web.outputs.web == 'true'
+        working-directory: mira-web
+        run: >
+          bun test
+          src/lib/__tests__/drive-commander.test.ts
+          src/__tests__/printsense-landing.test.ts
+          src/lib/__tests__/components.test.ts
+
   architecture-check:
     name: Architecture Check
     runs-on: ubuntu-latest
@@ -252,14 +475,33 @@ jobs:
           python-version: "3.12"
 
       - name: Install pytest + pyyaml
-        run: pip install pytest pyyaml
+        # pytest-asyncio: so the shared `asyncio_mode = "auto"` in pyproject.toml
+        # is a RECOGNIZED ini option here — without it pytest emits
+        # `PytestConfigWarning: Unknown config option: asyncio_mode`, which some
+        # pytest versions escalate to exit 1 despite all tests passing (#2553).
+        run: pip install pytest pytest-asyncio pyyaml
 
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
 
+      - name: Check env-var drift (docker-compose.saas.yml vs docs/env-vars.md + .env.template)
+        # Stdlib-only static check (docs/known-issues.md) -- no extra deps needed.
+        # Exits 1 on any used-but-undocumented or documented-but-unused var not
+        # already covered by tools/env_drift_allowlist.txt (pre-existing drift).
+        run: python3 tools/check_env_drift.py
+
+      - name: Check knowledge_entries read filters (hybrid corpus law)
+        # Enforce `.claude/rules/knowledge-entries-tenant-scoping.md`:
+        # HYBRID surfaces must filter (is_private=false OR tenant_id), not TENANT-ONLY
+        # alone (bug class #1761). All UNFILTERED and TENANT-ONLY reads must be in
+        # the explicit allowlist with documented reasons (deferred fixes, test code).
+        run: python3 tools/qa/security/check_knowledge_entries_filters.py
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     # Phase P0 of the SimLab platform-oracle plan. The deterministic, no-LLM
     # rubric grader is a merge gate: a diagnostic / UNS / citation regression on
     # any of the six juice-bottling scenarios goes red here and blocks merge.
@@ -276,7 +518,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install pytest + pyyaml
-        run: pip install pytest pyyaml
+        # pytest-asyncio: so the shared `asyncio_mode = "auto"` in pyproject.toml
+        # is a RECOGNIZED ini option here — without it pytest emits
+        # `PytestConfigWarning: Unknown config option: asyncio_mode`, which some
+        # pytest versions escalate to exit 1 despite all tests passing (#2553).
+        run: pip install pytest pytest-asyncio pyyaml
 
       # Deterministic, no-LLM SimLab oracle suite. Pure simlab/ + stdlib parser +
       # offline beta + guarded conformance — all collect + pass under pytest+pyyaml
@@ -293,6 +539,78 @@ jobs:
             tests/simlab/test_mutation.py \
             tests/simlab/test_dashboard.py \
             tests/beta/test_simlab_beta_gate.py -v
+
+  drive-pack-extract-tests:
+    name: Drive Pack Extract Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    # PR-A extractor + PR-B grading self-tests (ADR-0025 / docs/drive-commander/). OFFLINE ONLY —
+    # runs against the committed synthetic fixture (fixtures/pf_sample.pdf, ~4KB, no licensed
+    # manual content). Grading a real manual with grade.py is a documented LOCAL command
+    # (docs/drive-commander/runbook-pr-b-acceptance.md), never run in CI (no manual available).
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pdfplumber + reportlab + pypdf (pinned to match mira-core/mira-ingest/requirements.txt)
+        # pytest-asyncio here too — recognizes the shared `asyncio_mode` ini
+        # option so no PytestConfigWarning→exit-1 flake (#2553).
+        run: pip install pytest pytest-asyncio pdfplumber==0.11.9 reportlab pypdf
+
+      - name: Run extractor + grading + registry + fleet-status + bridge + pdf-extract + eval-scorer offline tests
+        # The crawler job-registry / heartbeat / health tests are stdlib-only by
+        # design (no docling/apscheduler) so they run in this minimal-deps job —
+        # they pin the scheduler's job table and the heartbeat-based health CLI
+        # (docs/ops/crawler-runtime.md). The scheduler↔registry tie test lives in
+        # tests/test_scheduler_registry.py and self-skips where heavy deps are absent.
+        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py mira-crawler/tests/test_job_registry.py mira-crawler/tests/test_heartbeat.py mira-crawler/tests/test_health.py -q
+
+      - name: Pack reliability gate (deterministic scorecard)
+        # Fails the build if ANY live/promoted drive pack regresses a reliability
+        # gate (schema, citation coverage, broken citations, fault<->param link
+        # consistency, fabrication, grading). See tools/drive-pack-extract/scorecard.py
+        # + docs/drive-commander/pack-reliability-benchmark.md. Deterministic, no LLM.
+        run: python tools/drive-pack-extract/scorecard.py --json-only --ci
+
+  ocr-recall-gate:
+    name: OCR Recall Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    # Task B1, docs/plans/2026-07-18-ocr-regime-repair.md PR-B. Real Tesseract recall
+    # vs the golden-corpus fixture truth (printsense/benchmarks/ocr_recall_bench.py) —
+    # the one CI job where an actual Tesseract/render/config regression can be caught.
+    # The "PrintSense interpreter + grader gate" step in the Unit Tests job (above)
+    # deliberately omits pytesseract and still collects this test file; it skips
+    # cleanly there. pydantic is required here even though no step imports it
+    # directly: importing anything under printsense. pulls in printsense/__init__.py
+    # -> printsense/models.py, which is pydantic-backed.
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install tesseract-ocr
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
+      - name: Install dependencies
+        # pytest-asyncio: recognizes the shared `asyncio_mode = "auto"` in
+        # pyproject.toml — without it pytest emits a PytestConfigWarning that
+        # some pytest versions escalate to exit 1 despite all tests passing
+        # (#2553; same guard as simlab-gate/architecture-check/drive-pack-extract-tests
+        # above — this standalone job needs its own copy of the safeguard).
+        # pyyaml: tests/conftest.py imports yaml at collection time; without it,
+        # pytest collection fails in this minimal env.
+        run: pip install pytest pytest-asyncio pyyaml pydantic pillow pytesseract
+
+      - name: OCR recall gate (-s so the measured recall lands in the CI log for floor calibration)
+        run: python -m pytest tests/printsense/test_ocr_recall_gate.py -q -s
 
   license-check:
     name: License Check
@@ -323,7 +641,10 @@ jobs:
   test-eval-offline:
     name: Eval Offline
     runs-on: ubuntu-latest
-    needs: test-unit
+    # Latency: run parallel with test-unit (was needs: test-unit — artificial
+    # serialization; a red unit suite still fails the PR on its own check).
+    needs: [lint-and-type-check, changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -379,7 +700,12 @@ jobs:
   docker-build-check:
     name: Docker Build Check
     runs-on: ubuntu-latest
-    needs: test-unit
+    # Latency: run parallel with test-unit. The old needs: test-unit chained
+    # lint (30s) -> unit (~6 min) -> docker (~6 min) into a ~12-minute PR wall;
+    # building doesn't need unit results (trade: a failing-unit PR now also
+    # spends build minutes — wall time matters more, per owner 2026-07-17).
+    needs: [lint-and-type-check, changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -419,9 +745,11 @@ jobs:
         run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-telegram:scan
 
       - name: Build mira-bot-slack
+        # Build context is the repo root (`.`) to match docker-compose.saas.yml
+        # and the Slack Dockerfile's PrintSense/OCR COPY paths.
         run: |
           docker buildx build \
-            -f mira-bots/slack/Dockerfile mira-bots/ \
+            -f mira-bots/slack/Dockerfile . \
             --cache-from type=gha,scope=mira-slack \
             --cache-to type=gha,mode=max,scope=mira-slack \
             -t mira-slack:scan --load
@@ -467,3 +795,109 @@ jobs:
             echo "::error::mira-pipeline image failed 'import main' — a module imported by main.py is missing from the image (check Dockerfile COPYs). This is the 2026-06-02 outage class (ModuleNotFoundError at startup)."
             exit 1
           fi
+
+  # ── Required merge gate ────────────────────────────────────────────────────
+  # ONE aggregated status context to require in branch protection, instead of
+  # pinning a brittle hand-picked list of individual job names. Because it always
+  # runs (`if: always()`), it reports on EVERY PR to main — including docs-only
+  # PRs, where the ONE heavy gated job (test-unit) self-skips via the `changes`
+  # filter while the fast correctness jobs still run.
+  #
+  # FAIL-CLOSED evaluation (no blanket "skipped == pass"):
+  #   * `changes` MUST succeed — a broken filter can never let the gate pass
+  #     (otherwise a failed `changes` could masquerade as "code unchanged").
+  #   * Every always-run gated job MUST equal `success` — `skipped`/`cancelled`
+  #     are NOT accepted.
+  #   * `test-unit` may be `skipped` ONLY when `changes` succeeded AND
+  #     `changes.outputs.code == 'false'` (a genuine docs-only PR). When code
+  #     changed it MUST equal `success`.
+  #
+  # Gated (must pass to merge): actionlint, migration-order-check,
+  #   lint-and-type-check, test-unit, mira-hub-unit, mira-web-pack-tests,
+  #   architecture-check, license-check, sast-semgrep, sast-bandit.
+  # Intentionally NOT in the gate yet (stay visible; promote once reliable):
+  #   secrets-scan (gitleaks license/rate flakes), docker-build-check (trivy
+  #   drive-by CVE flakes + ~6 min), and the heavy quality gates simlab-gate /
+  #   ocr-recall-gate / drive-pack-extract-tests / test-eval-offline.
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - changes
+      - actionlint
+      - migration-order-check
+      - lint-and-type-check
+      - test-unit
+      - mira-hub-unit
+      - mira-web-pack-tests
+      - architecture-check
+      - license-check
+      - sast-semgrep
+      - sast-bandit
+    steps:
+      - name: Evaluate gate (fail-closed)
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE_CHANGED: ${{ needs.changes.outputs.code }}
+          ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
+          MIGRATION_RESULT: ${{ needs.migration-order-check.result }}
+          LINT_RESULT: ${{ needs.lint-and-type-check.result }}
+          TEST_UNIT_RESULT: ${{ needs.test-unit.result }}
+          HUB_UNIT_RESULT: ${{ needs.mira-hub-unit.result }}
+          WEB_PACK_RESULT: ${{ needs.mira-web-pack-tests.result }}
+          ARCH_RESULT: ${{ needs.architecture-check.result }}
+          LICENSE_RESULT: ${{ needs.license-check.result }}
+          SEMGREP_RESULT: ${{ needs.sast-semgrep.result }}
+          BANDIT_RESULT: ${{ needs.sast-bandit.result }}
+        run: |
+          fail=0
+
+          # Fail-closed on the filter itself: if `changes` did not succeed we
+          # cannot trust CODE_CHANGED, so the gate must NOT pass.
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::changes job did not succeed (result: '$CHANGES_RESULT') — failing closed"
+            fail=1
+          fi
+          echo "changes: result='$CHANGES_RESULT' code='$CODE_CHANGED'"
+
+          # Jobs that must ALWAYS equal success (they never self-skip). `skipped`,
+          # `cancelled`, `failure` all fail the gate — no automatic skip pass.
+          require_success() {
+            if [ "$2" != "success" ]; then
+              echo "::error::$1 must succeed (result: '$2')"
+              fail=1
+            else
+              echo "$1: success"
+            fi
+          }
+          require_success actionlint            "$ACTIONLINT_RESULT"
+          require_success migration-order-check "$MIGRATION_RESULT"
+          require_success lint-and-type-check   "$LINT_RESULT"
+          require_success mira-hub-unit         "$HUB_UNIT_RESULT"
+          require_success mira-web-pack-tests   "$WEB_PACK_RESULT"
+          require_success architecture-check    "$ARCH_RESULT"
+          require_success license-check         "$LICENSE_RESULT"
+          require_success sast-semgrep          "$SEMGREP_RESULT"
+          require_success sast-bandit           "$BANDIT_RESULT"
+
+          # test-unit: the only gated job allowed to skip, and ONLY on a genuine
+          # docs-only PR (changes succeeded AND code did not change).
+          if [ "$CODE_CHANGED" = "true" ]; then
+            require_success test-unit "$TEST_UNIT_RESULT"
+          elif [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "false" ]; then
+            case "$TEST_UNIT_RESULT" in
+              success|skipped) echo "test-unit: '$TEST_UNIT_RESULT' (allowed — docs-only PR)" ;;
+              *) echo "::error::test-unit must be success or skipped on a docs-only PR (result: '$TEST_UNIT_RESULT')"; fail=1 ;;
+            esac
+          else
+            # changes failed or CODE_CHANGED is not a clean true/false — do not
+            # excuse test-unit; it must have actually succeeded.
+            require_success test-unit "$TEST_UNIT_RESULT"
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "CI Gate: FAIL"
+            exit 1
+          fi
+          echo "CI Gate: PASS"

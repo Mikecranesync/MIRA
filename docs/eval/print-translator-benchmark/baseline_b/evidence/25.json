@@ -1,0 +1,13 @@
+{
+  "case_id": "25",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\25.png",
+  "oem": "Yaskawa",
+  "document": "V1000 VFD Control Wiring (Technical Data WD.V1000.01)",
+  "source_url": "www.yaskawa.com/delegate/getAttachment?documentId=WD.V1000.01&cmd=documents&documentName=WD.V1000.01.pdf",
+  "page": 1,
+  "category": "Reversing/Braking",
+  "standard": "IEC 61800",
+  "question": "Describe the theory of operation.",
+  "candidate_response": "## 1. **What this appears to be**\nThis appears to be a standard connection diagram for a Yaskawa V1000 AC drive, as indicated by the title \"3.1 Standard Connection Diagram\" and \"Figure 3.1 Drive Standard Connection Diagram\" along with the model designation \"V1000\".\n\n## 2. **Main visible components**\nThe main visible components include:\n- Power supply connections: R/L1, S/L2, T/L3\n- Motor connections: U/T1, V/T2, W/T3\n- Control circuit components: MC, S1, S2, S3, S4, S5, S6, S7\n- Digital inputs and outputs\n- Analog output: AM\n- Option card connector\n\n## 3. **Plain-English theory of operation**\nAccording to this print, the V1000 AC drive appears to operate as follows:\n- Power is supplied to the drive through R/L1, S/L2, and T/L3.\n- The drive controls a motor connected to U/T1, V/T2, and W/T3.\n- The control circuit uses digital inputs (S1-S7) to control the drive's operation, including forward and reverse run/stop, external fault, fault reset, and multi-step speed control.\n- The drive has various configuration options using DIP switches (S1-S3).\n\n## 4. **What must be true for it to work**\nFor the drive to work, the following must be true:\n- Power must be supplied to R/L1, S/L2, and T/L3.\n- The motor must be connected to U/T1, V/T2, and W/T3.\n- Digital inputs must be properly configured and connected (S1-S7).\n- The control circuit must be properly wired and configured.\n\n## 5. **What would stop it from working**\nThe following could stop the drive from working:\n- Loss of power supply to R/L1, S/L2, and T/L3.\n- Incorrect or missing motor connections to U/T1, V/T2, and W/T3.\n- Faulty or improperly configured digital inputs (S1-S7).\n- Incorrect configuration of DIP switches (S1-S3).\n\n## 6. **Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image.",
+  "context_notes": "Judge whether EVERY specific identifier the candidate asserts (device tag, terminal, wire number, connector, component) is actually legible/present in the image. Any specific identifier asserted that is not visibly present is a grounding failure; if a safety/component identifier is asserted-but-not-present, apply the hard-failure rules. Score strictly against what you can see."
+}

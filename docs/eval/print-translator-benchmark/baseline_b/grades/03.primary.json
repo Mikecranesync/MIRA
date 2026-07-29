@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "case_id": "03",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 8,
+    "power_control_flow": 4,
+    "sequence_interlocks_logic": 6,
+    "evidence_grounding_unsupported_claims": 6,
+    "technician_usefulness_clarity": 4
+  },
+  "total": 38,
+  "deductions": [
+    {
+      "claim": "[Omission] No mention of the 'Local Control' or 'Remote Control' circuit diagrams, their pushbuttons ('I' stop, 'O'/'I' selector), or the 'Us'/'N'/'KM3:3-5/L' supply-tap labels.",
+      "evidence": "The lower half of the page contains two clearly headed, separate schematics — 'Local Control' and 'Remote Control' — each showing pushbutton symbols, a 'KM3:5/L3'/'Us' supply tap, and an 'N'/'KM3:3/L2' return line. None of this appears in the candidate's component list, which covers only the top 'Power Circuit' diagram.",
+      "category": "component_label_recognition",
+      "points_deducted": 8,
+      "severity": "severe",
+      "correction": "List the Local Control and Remote Control diagrams as part of the print and identify their pushbuttons and supply-tap labels.",
+      "confidence": "high"
+    },
+    {
+      "claim": "[Omission] No mention of the auxiliary contact numbers (13/14, 21/22, 23/24) on KM1-KM3, FR1's 95/96/97/98 contacts, KT's 15/16/18 timing contacts, or the 'R'/'%R' manual/auto reset-selector symbol.",
+      "evidence": "These numbered auxiliary contacts and the R/%R reset-selector symbol are drawn and labeled directly on the power-circuit and control-circuit diagrams (e.g. '95 97' / '96 98' beside FR1; '15/16', '18' beside KT; '21/22' etc. beside each contactor).",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Note the auxiliary/interlock contact numbering and the FR1 reset-selector symbol as visible components.",
+      "confidence": "high"
+    },
+    {
+      "claim": "\"In the power circuit, KM1 and KM2 are used for delta operation, while KM3 is used for star operation.\"",
+      "evidence": "The bottom of both the Local Control and Remote Control diagrams shows the letter 'Y' printed directly under the KM2 coil branch, the delta symbol 'Δ' printed directly under the KM3 coil branch, and 'L' printed directly under the KM1 coil branch — the standard IEC labeling for star/delta/line contactors. This means KM2 is the star contactor, KM3 is the delta contactor, and KM1 is the line contactor that remains closed through both stages — the reverse of, and additive to, what the candidate stated.",
+      "category": "power_control_flow",
+      "points_deducted": 16,
+      "severity": "hard_failure",
+      "correction": "State that KM2 is the star ('Y') contactor, KM3 is the delta ('Δ') contactor, and KM1 is the line ('L') contactor that stays closed through both the star and delta stages.",
+      "confidence": "high"
+    },
+    {
+      "claim": "\"The timer (KT) seems to be involved in the control circuit, likely for timing the transition from star to delta operation.\" / \"The control circuit must be properly wired to ensure that KM1, KM2, and KM3 operate in the correct sequence.\"",
+      "evidence": "The Local Control and Remote Control diagrams show the actual sequencing hardware — KT's two timing contacts (15/16 and 18) and the electrical interlock contacts between the KM2 and KM3 branches (21/22) that prevent both contactors from closing simultaneously — none of which the candidate describes. The response never states the actual sequence (line contactor + star contactor close together, timer runs, star drops out, delta closes) or explains the interlock's purpose.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 14,
+      "severity": "severe",
+      "correction": "Describe the sequence using the visible contacts: start closes KM1 (line) and KM2 (star, via the 21/22 permissive) together with KT; after the KT delay, KM2 opens and KM3 (delta) closes through the interlocked contact path, with KM2/KM3 mutually interlocked to prevent simultaneous closure.",
+      "confidence": "high"
+    },
+    {
+      "claim": "\"In the power circuit, KM1 and KM2 are used for delta operation, while KM3 is used for star operation.\" — presented as an observed fact, with no hedge or acknowledgment of the labeling it is based on.",
+      "evidence": "The legible Y/Δ/L labels beneath KM2/KM3/KM1 in both control diagrams directly contradict this statement. The candidate presents an incorrect reading with full confidence rather than treating the labeling as something to verify or flagging uncertainty.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 10,
+      "severity": "hard_failure",
+      "correction": "Read the Y/Δ/L labels directly and report the star/delta/line assignment they show, or explicitly flag uncertainty if genuinely unreadable, rather than asserting a role assignment as fact.",
+      "confidence": "high"
+    },
+    {
+      "claim": "\"Nothing major appears to be unreadable in the provided image. All labels and components seem to be clearly identified.\"",
+      "evidence": "This blanket completeness claim is contradicted by the page itself, which contains an entire second and third diagram (Local Control, Remote Control) and numerous auxiliary-contact/reset-selector labels the candidate never addressed or attempted to read.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Either address the Local/Remote Control diagrams and their labels, or explicitly note they were not covered, rather than asserting full completeness of the read.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "\"A blown fuse or tripped circuit breaker in the power supply.\"",
+      "evidence": "No fuse, circuit breaker, or other upstream overcurrent-protection symbol appears anywhere on this page — the print shows only the starter's contactors, thermal relay, timer, and motor wiring.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Frame this as generic troubleshooting knowledge not shown in this specific print, rather than listing it alongside print-grounded failure modes without qualification.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Overall explanation, particularly section 3 ('Plain-English theory of operation').",
+      "evidence": "The reversed star/delta/line contactor assignment (see the power_control_flow deduction) is exactly the kind of detail a technician would rely on while troubleshooting an energized starter; presenting it confidently and incorrectly reduces the practical usefulness of the explanation despite its clear formatting.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 6,
+      "severity": "material",
+      "correction": "Verify contactor role assignments against the Y/Δ/L labels before presenting the theory of operation, since an incorrect role assignment actively misleads troubleshooting rather than simply being unhelpful.",
+      "confidence": "high"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "reversed_or_materially_incorrect_sequence",
+    "failure_to_separate_evidence_from_inference"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Correctly identifies the document type/title, the three contactors, FR1, KT, and the motor/power terminals, and appropriately hedges the timer's role ('seems to be involved', 'likely'). However, it materially reverses the star/delta/line contactor assignment (KM2=star/Y, KM3=delta/Δ, KM1=line/L per the legible labels under each contactor in both control-circuit diagrams, not 'KM1 and KM2 for delta, KM3 for star' as stated) and presents that incorrect reading with full confidence. It also omits the entire Local Control and Remote Control circuit diagrams and most of the auxiliary/interlock labeling, then claims 'all labels and components seem to be clearly identified' despite that omission. No fabricated device/tag identifiers were found beyond the reversed role assignment and a generic, unqualified mention of fuses/breakers not shown on this page. No self-identification leak observed."
+}

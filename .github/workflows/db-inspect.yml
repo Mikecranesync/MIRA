@@ -252,11 +252,17 @@ jobs:
           SELECT conname AS fk_name, confrelid::regclass AS references
             FROM pg_constraint
            WHERE conrelid = 'knowledge_entries'::regclass AND contype = 'f';
+          -- tenants.id is UUID; hub_tenants.id is TEXT (see migration 051). The regex
+          -- guard skips legacy slug ids (which could never have a uuid tenants row
+          -- anyway), so orphan_hub_tenants = rows migration 051 still needs to backfill.
           SELECT
             (SELECT COUNT(*) FROM hub_tenants) AS hub_tenants,
             (SELECT COUNT(*) FROM tenants) AS tenants,
             (SELECT COUNT(*) FROM hub_tenants ht
-               WHERE NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = ht.id)) AS orphan_hub_tenants;
+               WHERE ht.id ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM tenants t WHERE t.id = ht.id::uuid
+                 )) AS orphan_hub_tenants;
           SQL
 
       - name: Secret-shopper testing prerequisites probe
@@ -295,4 +301,207 @@ jobs:
           FROM hub_users u
           WHERE u.tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
           ORDER BY u.email;
+          SQL
+
+      - name: Inspect ingest schema (tag_events + approved_tags) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY drift check: compares deployed tag_events / approved_tags
+          # against canonical 033_tag_events.sql / 035_approved_tags.sql.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === tag_events columns (canonical 033 = value/value_type/quality/source_system/...) ===
+          SELECT column_name, is_nullable, column_default
+          FROM information_schema.columns
+          WHERE table_name='tag_events' ORDER BY ordinal_position;
+          \echo === tag_events PK/unique ===
+          SELECT tc.constraint_type, kcu.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name
+          WHERE tc.table_name='tag_events' AND tc.constraint_type IN ('PRIMARY KEY','UNIQUE')
+          ORDER BY tc.constraint_type, kcu.ordinal_position;
+          \echo
+          \echo === approved_tags columns (canonical 035 = source_tag_path/normalized_tag_path/notes/...) ===
+          SELECT column_name, is_nullable, column_default
+          FROM information_schema.columns
+          WHERE table_name='approved_tags' ORDER BY ordinal_position;
+          \echo === approved_tags PK/unique (canonical = (tenant_id, source_system, source_tag_path)) ===
+          SELECT tc.constraint_type, kcu.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name
+          WHERE tc.table_name='approved_tags' AND tc.constraint_type IN ('PRIMARY KEY','UNIQUE')
+          ORDER BY tc.constraint_type, kcu.ordinal_position;
+          \echo
+          \echo === row counts (drift repair is data-safe if 0) ===
+          SELECT 'tag_events' AS t, count(*) FROM tag_events
+          UNION ALL SELECT 'approved_tags', count(*) FROM approved_tags;
+          SQL
+
+      - name: Machine memory scoreboard (038 layer) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. machine_run/run_step/run_baseline/run_diff are the 038
+          # machine-memory tables. The presence probe below tells the reader
+          # whether 038 is applied in this env; the machine_run/run_diff
+          # scoreboard queries error harmlessly under ON_ERROR_STOP=0 where
+          # 038 isn't applied yet.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === 038 machine-memory tables present? ===
+          SELECT t.name AS table_name,
+                 EXISTS(SELECT 1 FROM information_schema.tables
+                        WHERE table_schema='public' AND table_name = t.name) AS present
+          FROM (VALUES ('machine_run'),('run_step'),('run_baseline'),('run_diff')) AS t(name);
+
+          \echo === scoreboard: total tag_events ===
+          SELECT count(*) AS total_tag_events FROM tag_events;
+
+          \echo === scoreboard: tag_events by tenant / source_system / day (last 14 days) ===
+          SELECT tenant_id, source_system, date_trunc('day', event_timestamp) AS day, count(*) AS n
+            FROM tag_events
+           WHERE event_timestamp > now() - interval '14 days'
+           GROUP BY 1,2,3 ORDER BY day DESC, n DESC;
+
+          \echo === scoreboard: machine runs by tenant / uns_path / day ===
+          SELECT tenant_id, uns_path::text AS uns_path, date_trunc('day', started_at) AS day, status, count(*) AS n
+            FROM machine_run GROUP BY 1,2,3,4 ORDER BY day DESC, n DESC;
+
+          \echo === scoreboard: run_diffs by severity / tag_path / day ===
+          SELECT tenant_id, severity, tag_path, date_trunc('day', event_timestamp) AS day, count(*) AS n
+            FROM run_diff GROUP BY 1,2,3,4 ORDER BY day DESC, n DESC;
+
+          \echo === scoreboard: machine_state_window (040) by tenant / uns_path / state ===
+          SELECT tenant_id, uns_path::text AS uns_path, state, count(*) AS n,
+                 max(started_at) AS latest_started_at, max(ended_at) AS latest_ended_at
+            FROM machine_state_window GROUP BY 1,2,3 ORDER BY latest_started_at DESC NULLS LAST;
+
+          \echo === scoreboard: tag_events uns_path coverage (last 24h) ===
+          SELECT coalesce(uns_path::text, '(null)') AS uns_path, count(*) AS n
+            FROM tag_events
+           WHERE ingested_at > now() - interval '24 hours'
+           GROUP BY 1 ORDER BY n DESC LIMIT 10;
+
+          \echo === scoreboard: equipment kg_entities (asset->uns bridge for machine-memory card) ===
+          SELECT id, tenant_id, entity_id, name, uns_path::text AS uns_path
+            FROM kg_entities WHERE entity_type = 'equipment'
+           ORDER BY tenant_id, name LIMIT 30;
+
+          \echo === scoreboard: cmms_equipment columns (live schema) ===
+          SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+           WHERE table_name = 'cmms_equipment' ORDER BY ordinal_position;
+
+          \echo === scoreboard: garage-tenant cmms_equipment rows ===
+          SELECT id, tenant_id, equipment_number,
+                 coalesce(to_jsonb(cmms_equipment)->>'name','(no name col)') AS name_ish
+            FROM cmms_equipment
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+           ORDER BY equipment_number LIMIT 12;
+
+          \echo === scoreboard: live_signal_cache clock-skew probe (last_seen_at = client ts, updated_at = server NOW) ===
+          SELECT now() AS server_now,
+                 max(last_seen_at) AS max_last_seen,
+                 max(updated_at) AS max_updated,
+                 max(updated_at) - max(last_seen_at) AS client_clock_skew
+            FROM live_signal_cache
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe';
+          SELECT plc_tag, last_seen_at, updated_at, updated_at - last_seen_at AS skew, simulated
+            FROM live_signal_cache
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+           ORDER BY updated_at DESC LIMIT 8;
+
+          \echo === scoreboard: kg_relationships by type ===
+          SELECT relationship_type, count(*) AS n FROM kg_relationships GROUP BY 1 ORDER BY n DESC;
+
+          \echo === scoreboard: kg_entities NULL uns_path ===
+          SELECT count(*) AS null_uns_path_entities FROM kg_entities WHERE uns_path IS NULL;
+          SELECT id, tenant_id, entity_type, name FROM kg_entities WHERE uns_path IS NULL ORDER BY entity_type, name LIMIT 50;
+
+          \echo === scoreboard: work_orders schema probe (#2428 — source_run_diff_id / migration 060) ===
+          SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+           WHERE table_name = 'work_orders' ORDER BY ordinal_position;
+          SELECT migration_name FROM schema_migrations
+           WHERE migration_name >= '055' ORDER BY migration_name;
+
+          \echo === scoreboard: latest machine_state_window rows (bench tenant — State bubble truth) ===
+          SELECT state, started_at, ended_at, now() - coalesce(ended_at, now()) AS ended_age
+            FROM machine_state_window
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+           ORDER BY started_at DESC LIMIT 5;
+          SQL
+
+      - name: KB-growth feeder inventory (manual_cache un-ingested) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. The kb_growth_cron hourly job DRAINS manual_queue.json but
+          # nothing SCHEDULED refills it — the queue is fed only by the one-shot
+          # `--hydrate-from-cache` (manual_cache -> queue) and queue_populate.py
+          # (allowlist -> queue). A drained queue ("No eligible entries") is the
+          # designed steady state, NOT a dead cron. This probe answers the real
+          # question: is there LATENT inventory a hydrate would surface, i.e. has
+          # KB growth silently stalled? (Context: 2026-07-17 kb_cron flood.)
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === manual_cache present? ===
+          SELECT EXISTS(SELECT 1 FROM information_schema.tables
+                        WHERE table_schema='public' AND table_name='manual_cache') AS manual_cache_present;
+
+          \echo === manual_cache totals ===
+          SELECT count(*) AS total_rows,
+                 count(*) FILTER (WHERE manual_url IS NOT NULL AND manual_url <> '') AS rows_with_url
+            FROM manual_cache;
+
+          \echo === LATENT WORK: manual_cache rows with a URL not yet in knowledge_entries.source_url ===
+          \echo === (this is what `--hydrate-from-cache` would append to manual_queue.json) ===
+          SELECT count(*) AS uningested_manuals
+            FROM manual_cache mc
+           WHERE mc.manual_url IS NOT NULL AND mc.manual_url <> ''
+             AND NOT EXISTS (SELECT 1 FROM knowledge_entries ke
+                              WHERE ke.source_url = mc.manual_url);
+
+          \echo === un-ingested by manufacturer (top 25) ===
+          SELECT coalesce(mc.manufacturer, '(none)') AS manufacturer, count(*) AS n
+            FROM manual_cache mc
+           WHERE mc.manual_url IS NOT NULL AND mc.manual_url <> ''
+             AND NOT EXISTS (SELECT 1 FROM knowledge_entries ke
+                              WHERE ke.source_url = mc.manual_url)
+           GROUP BY 1 ORDER BY n DESC LIMIT 25;
+          SQL
+
+      - name: kb_cron flood-source health (system_health_log) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. Confirms the 2026-07-17 kb_cron Telegram flood stopped after
+          # the liveness-heartbeat fix (#2769) deployed: freshness rows (category=data)
+          # should flip DOWN→healthy once a drained-queue run bumps manual_queue.json
+          # mtime, and heal/escalation rows (category=heal) should stop firing.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === kb_cron rows, last 3h (freshness + heal timeline, newest first) ===
+          SELECT ts, category, status, action_taken,
+                 left(details, 200) AS details, extra->>'escalated' AS escalated
+            FROM system_health_log
+           WHERE service = 'kb_cron' AND ts > now() - interval '3 hours'
+           ORDER BY ts DESC LIMIT 40;
+
+          \echo === kb_cron escalation count: before vs after 2026-07-18 00:24Z (deploy) ===
+          SELECT CASE WHEN ts < timestamptz '2026-07-18 00:24:00+00' THEN 'before_deploy'
+                      ELSE 'after_deploy' END AS window,
+                 count(*) AS heal_rows,
+                 count(*) FILTER (WHERE extra->>'escalated' = 'true') AS escalations
+            FROM system_health_log
+           WHERE service = 'kb_cron' AND category = 'heal'
+             AND ts > now() - interval '6 hours'
+           GROUP BY 1 ORDER BY 1;
+
+          \echo === latest kb_cron freshness verdict ===
+          SELECT ts, status, left(details, 80) AS details
+            FROM system_health_log
+           WHERE service = 'kb_cron' AND category = 'data'
+           ORDER BY ts DESC LIMIT 3;
           SQL

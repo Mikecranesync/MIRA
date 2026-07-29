@@ -1,10 +1,24 @@
 # FactoryLM / MIRA — North Star
 
-> **Canonical strategy. Updated 2026-06-22.** This document supersedes every earlier wedge framing
-> (services-led "transformation firm", "Slack-first AI copilot", "self-serve quickstart copilot",
-> "Ignition module"). Those were front-doors and motions, not the wedge. The wedge below is the one
-> the June PRD identified and the 2026 competitive map independently confirmed. `STRATEGY.md`, the
-> root `CLAUDE.md` North Star, and the PRD are reconciled to *this*.
+> **Canonical strategy. Updated 2026-07-18.** This document states the infrastructure wedge — the
+> context layer and grounded agent. The **first product wedge** (Phase 1) is **Drive Commander**, a
+> read-only VFD troubleshooting tool, per issue #2577, PR #2504, and ADR-0025. This NORTH_STAR is
+> the foundation that Drive Commander (and future services) are built on; read NORTH_STAR first to
+> understand the product philosophy, then see **`docs/adr/0025-drive-intelligence-packs-and-drive-commander.md`**
+> for the first sellable motion. Earlier wedge framings (services-led "transformation firm",
+> "Slack-first AI copilot", "signal difference engine", "Ignition module") are archived in
+> `docs/product/`; see those files' superseded-by headers.
+>
+> **See also (2026-06-30):** the *engine* under this wedge is named in
+> `docs/product/mira_difference_engine_offering.md` — "signal difference engine with a contextual
+> supervisor" (find what changed → group into machine events → explain what they mean). A
+> **sharpening of this wedge, not a new one**; the context layer is still the lead. However, this
+> engine docs is now subordinate to the Drive Commander product execution; see ADR-0025 for
+> prioritization.
+>
+> **See also (2026-07-18):** ADR-0028 defines **Vision Zero-Token Architecture** for Visual
+> Technician, PrintSense, Drive Commander images, and the FactoryLM-owned model program. It is an
+> inference-cost and IP strategy under this wedge, not a new product wedge.
 
 ---
 
@@ -72,15 +86,10 @@ prerequisite of every flashy agent demo is a mature context layer. **We are that
 The thesis is right. The execution is **behind it.** Stated honestly so the roadmap stays pointed:
 
 - **Zero paying customers.** The 90-day MVP's "3 paying logos" window has passed with none.
-- **The *narrow* beta gate is MET — the *ProveIt-grade* one is not.** "A stranger uploads a manual →
-  cited answer, no Mike fixing it" now works on staging (#1592/#1863/#1911/#2100, un-xfailed #2077,
-  CI-enforced `beta-gate.yml`). **But it's only proven on our staging tenant — never on a *foreign,
-  messy UNS* or a real stranger's plant,** and the per-answer score + decision trace aren't surfaced
-  in-product yet. The real bar is "works on a factory we didn't seed," and that's untested.
+- **The *Hub NodeChat* beta gate is proven (staging only); generic-upload beta is deferred behind Drive Commander.** "A stranger uploads a manual → cited answer, no Mike fixing it" now works on the **Hub NodeChat surface** on staging (#1592/#1863/#1911/#2100, un-xfailed #2077, CI-enforced `beta-gate.yml`). However, bot surfaces (`neon_recall`) cannot yet retrieve folder=brain tenant-scoped uploads, and the per-answer score + decision trace aren't surfaced in-product. The Drive Commander wedge (issue #2577, PR #2504) is Phase 1; generic-upload beta is sequenced behind it. **See the product roadmap (ADR-0025) for the staged execution.**
 - **Never proven on foreign messy data.** Every live demo still runs on Mike's pre-seeded garage conveyor.
 - **Trust is half-built:** citation grounding *logs* but does not *enforce*; a cross-tenant documents
-  IDOR was live on `main`; a shipped Perspective view **violates the read-only anti-goal by writing to
-  the VFD** — fence both, they directly undercut the trust pitch.
+  IDOR was live on `main`; the shipped Perspective bundle's write paths were **removed in v3.26.1 (2026-06-17)** — read-only is now enforced by CI guard `test_no_customer_write_paths.py`, per `docs/mira-ignition-secure-architecture.md`.
 - The plumbing (engine, FSM, UNS gate, KB retrieval, parser, bench hardware) is genuinely mature.
   **The self-serve contextualization loop a stranger walks unaided is not.** Self-scored 6.5/10.
 
@@ -166,6 +175,79 @@ rules running **in-gateway, offline**) and one-tap explains it from the customer
 Read-only, always. (Status: live GS10 telemetry proven on bench; in-gateway diagnose seam built +
 tested — `83ea8e81`.)
 
+## Vision ZTA - the visual compiler and owned-model spine
+
+Vision work must follow the same North Star as the rest of MIRA: turn messy factory evidence into
+trusted context, then let the agent prove that context with cited answers. The strategy is **Vision
+Zero-Token Architecture**: infer locally only when the answer is not already known; verify it;
+compile it into deterministic artifacts; and never pay to reason through the same verified visual
+fact twice.
+
+This is not "replace every model call with a tiny local chatbot." It is a compiler flywheel:
+
+1. Secure intake, hash identity, and exact-result cache.
+2. Deterministic quality, rotation, crop, raster, dedup, page classification, and PrintSense grading.
+3. Local OCR/layout and verified pack/catalog/graph/regex/visual-similarity lookup.
+4. Local detector or small local VLM only for unresolved observations.
+5. Independent local reread or human review before promotion.
+6. Accepted facts compile into cache entries, OCR rules, drive/print packs, graph edges, exemplars,
+   detector labels, and regression fixtures.
+
+Paid vision APIs are **off by default**. A paid call is an explicit, budgeted, audited benchmark or
+operator exception, never an automatic fallback. Unresolved or contradictory identifiers go to review
+instead of being guessed.
+
+Fleet ownership is job-level, not cross-Mac model sharding. Alpha orchestrates, hashes, rasterizes,
+preprocesses, and grades. Bravo owns the fast interactive local VLM/OCR lane. **Charlie owns document
+OCR/layout, embeddings and visual-similarity indexing, batch corpus processing, benchmark/dataset
+curation, and only a resource-gated second VLM lane.** The VPS owns public ingress, tenant/session
+routing, job state, manifests, and cache metadata; it must not become a heavy vision host.
+
+The proprietary model program compounds the same loop. FactoryLM should own adapters, fine-tunes,
+OCR models, embedding/reranker pairs, detector datasets, model manifests, graders, and deterministic
+artifacts before dreaming about foundation-model pretraining. Do not train on private customer
+material without explicit consent; do not mix frozen benchmark cases into training; do not call a
+model "FactoryLM-owned" unless the owned base weights, adapters, datasets, graders, and deterministic
+artifacts are named separately.
+
+## Materialized Evidence and Recall-First Architecture
+
+MIRA works with industrial datasets whose processing cost may be measured in hours, days, or
+substantial model expense — multi-thousand-page print packages, hundreds of equipment photos, hours
+of machine video, PLC projects, years of historian signals. These do not fit a context window, and
+verifying them can itself cost another expensive pass. So the **dataset — not the chat session — is
+the unit of machine memory.**
+
+This is the same loop the Vision ZTA section states, generalized to *all* expensive industrial work:
+once MIRA has inspected a manual, drawing, photo, video, PLC export, log, or sensor dataset, the
+resulting discovery must become **durable, typed, versioned, searchable evidence.** MIRA must recall
+compatible prior evidence before recomputing it.
+
+Expensive stages must materialize reusable outputs carrying source hashes, lineage, schemas, producer
+versions (including model + prompt version where inference was used), approval state, known gaps, and
+cost metadata. **Intermediate stages are preserved** so a failed or changed downstream stage never
+forces reprocessing the whole source. Recompute only when the relevant source evidence or a
+dependency actually changed — and then only the affected descendants, never the unaffected 2,999
+pages.
+
+Three stores, three jobs, never conflated: **Materialized Evidence** preserves what MIRA discovered
+(including candidates and unresolved conflicts — not yet trusted). **Capability Packs** contain what
+FactoryLM has validated and promoted into reliable, versioned capability. **Temporal** coordinates the
+long-running work that moves evidence through extraction, review, compilation, and promotion — it
+passes identifiers and hashes, it does not store the industrial source. A model never promotes its own
+output to trusted truth; human review does, through the existing approval systems.
+
+The permanent rule, extending "infer once, validate, export, run without inference":
+
+> **Infer once. Materialize every expensive discovery. Validate and approve stable truth. Compile it
+> into Capability Packs. Recall it unless the evidence changed.**
+
+Or, plainly: **do not make the machine pay twice for the same understanding.** Doctrine is operational
+in `.claude/rules/materialized-evidence.md`; the layer architecture is `docs/architecture/materialized-evidence.md`;
+the platform decisions are `docs/adr/0029-materialized-evidence.md`. The seed already exists —
+`printsense/cas.py` is a content-addressed, producer-version-keyed derivation cache; this amendment
+generalizes it into a platform layer rather than replacing it.
+
 ## The flywheel + the moat
 
 1. We structure a plant → its **Maintenance Intelligence Namespace** is captured (assets, docs, tags,
@@ -196,6 +278,8 @@ seed — and prove it with a cited, scored answer?"** If not, it waits.
 
 - Reusable OEM manual parsing / tag auto-classification? **YES** — that *is* the loop.
 - Per-answer groundedness scoring surfaced to the user? **YES** — the differentiating knife.
+- Turning recurring visual interpretation into cache/rule/pack/graph/model artifacts? **YES** — that
+  is the Vision ZTA flywheel.
 - New chat adapter / pretty dashboard? **Only** if a paying plant or the ProveIt demo needs it.
 - Anything that writes to OT, or boils the whole-plant UNS before one asset works? **NO.**
 
@@ -211,3 +295,6 @@ seed — and prove it with a cited, scored answer?"** If not, it waits.
 5. **One storyline to February:** contextualize foreign data → cited diagnosis, proven on someone
    else's mess. Beta gate = ProveIt prerequisite = the same finish line.
 6. **Pricing:** one architecture, decided by Mike, then propagated (flagged above).
+7. **Vision ZTA:** visual inference is local-first, deterministic-first, review-before-paid, and
+   compile-to-artifact. FactoryLM-owned adapters/weights are a product moat only when provenance,
+   consent, evals, and rollback are recorded.

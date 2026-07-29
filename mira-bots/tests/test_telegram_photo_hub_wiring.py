@@ -1,9 +1,10 @@
-"""HubV3 Phase 6 — Telegram bot wiring → Hub intake (replaces mira-ingest).
+"""Telegram bot wiring → the Hub's citable folder-upload door (#2540).
 
-Confirms the photo and document handlers build the §2 telegram-route envelope
-and submit it to the Hub import endpoint (not mira-ingest), carrying raw bytes
-and the resolved tenant. Imports the real ``bot`` module so the wiring is
-exercised, not a stand-in.
+Confirms the photo and document handlers POST the raw file to the Hub folder
+door (``submit_file_to_hub_folder``), carrying the raw bytes and the tenant
+resolved by the *uploader* id (not the group chat id), and that both submit
+paths no-op when the Hub intake env is unset. Imports the real ``bot`` module so
+the wiring is exercised, not a stand-in.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ os.environ.setdefault("OPENWEBUI_BASE_URL", "http://localhost:8080")
 os.environ.setdefault("OPENWEBUI_API_KEY", "")
 os.environ.setdefault("KNOWLEDGE_COLLECTION_ID", "dummy-collection")
 os.environ.setdefault("VISION_MODEL", "qwen2.5vl:7b")
-os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_hubv3_wiring_test.db")
+os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_hub_wiring_test.db")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "telegram"))
 sys.modules.pop("chat_adapter", None)
@@ -36,16 +37,22 @@ def _fake_update(user_id=789, chat_id=42):
     )
 
 
-async def test_submit_photo_to_hub_builds_telegram_envelope(monkeypatch):
+def _configure(monkeypatch):
+    """Point the bot at a fake Hub so `_hub_intake_configured()` is True."""
+    monkeypatch.setattr(bot, "HUB_URL", "https://hub.example.com")
+    monkeypatch.setattr(bot, "HUB_BASE_PATH", "/hub")
+    monkeypatch.setattr(bot, "HUB_INGEST_TOKEN", "svc-token")
+
+
+async def test_submit_photo_to_hub_posts_folder_upload(monkeypatch):
     seen: dict = {}
 
-    async def _fake_submit(envelope, **kwargs):
-        seen["envelope"] = envelope
+    async def _fake_submit(**kwargs):
         seen["kwargs"] = kwargs
         return True
 
-    monkeypatch.setattr(bot, "submit_intake_to_hub", _fake_submit)
-    monkeypatch.setattr(bot, "HUB_IMPORT_URL", "https://hub.example.com")
+    _configure(monkeypatch)
+    monkeypatch.setattr(bot, "submit_file_to_hub_folder", _fake_submit)
 
     def _capture_resolve(cid):
         seen["resolve_arg"] = cid
@@ -59,52 +66,50 @@ async def test_submit_photo_to_hub_builds_telegram_envelope(monkeypatch):
         raw, "conveyor-1 nameplate", _fake_update(user_id=789, chat_id=-100200)
     )
 
-    env = seen["envelope"]
-    assert env["ingest_route"] == "telegram"
-    assert env["review_status"] == "proposed"
-    assert env["asset_hints"]["name"] == "conveyor-1"
-    assert env["source_metadata"]["uploader"] == "789"
-    assert env["source_metadata"]["mime"] == "image/jpeg"
-    assert seen["kwargs"]["raw_bytes"] == raw
-    assert seen["kwargs"]["tenant_id"] == "tenant-x"
+    kw = seen["kwargs"]
+    assert kw["raw_bytes"] == raw
+    assert kw["mime"] == "image/jpeg"
+    assert kw["filename"] == "photo.jpg"
+    assert kw["tenant_id"] == "tenant-x"
+    assert kw["token"] == "svc-token"
     # Tenant resolves by uploader user id, NOT the (group) chat id.
     assert seen["resolve_arg"] == "789"
 
 
-async def test_submit_doc_to_hub_builds_telegram_envelope(monkeypatch):
+async def test_submit_doc_to_hub_posts_folder_upload(monkeypatch):
     seen: dict = {}
 
-    async def _fake_submit(envelope, **kwargs):
-        seen["envelope"] = envelope
+    async def _fake_submit(**kwargs):
         seen["kwargs"] = kwargs
         return True
 
-    monkeypatch.setattr(bot, "submit_intake_to_hub", _fake_submit)
-    monkeypatch.setattr(bot, "HUB_IMPORT_URL", "https://hub.example.com")
+    _configure(monkeypatch)
+    monkeypatch.setattr(bot, "submit_file_to_hub_folder", _fake_submit)
     monkeypatch.setattr(bot.chat_tenant, "resolve", lambda cid: "tenant-y")
 
     pdf = b"%PDF-1.7 fake manual"
-    await bot._submit_doc_to_hub(pdf, "gs10manual.pdf", "drive manual", _fake_update())
+    ok = await bot._submit_doc_to_hub(pdf, "gs10manual.pdf", "drive manual", _fake_update())
 
-    env = seen["envelope"]
-    assert env["ingest_route"] == "telegram"
-    assert env["review_status"] == "proposed"
-    assert env["source_metadata"]["filename"] == "gs10manual.pdf"
-    assert env["source_metadata"]["mime"] == "application/pdf"
-    assert seen["kwargs"]["raw_bytes"] == pdf
-    assert seen["kwargs"]["filename"] == "gs10manual.pdf"
-    assert seen["kwargs"]["tenant_id"] == "tenant-y"
+    assert ok is True
+    kw = seen["kwargs"]
+    assert kw["raw_bytes"] == pdf
+    assert kw["filename"] == "gs10manual.pdf"
+    assert kw["mime"] == "application/pdf"
+    assert kw["tenant_id"] == "tenant-y"
 
 
 async def test_submit_photo_to_hub_noop_when_unconfigured(monkeypatch):
     called = {"n": 0}
 
-    async def _fake_submit(*a, **k):
+    async def _fake_submit(**k):
         called["n"] += 1
         return True
 
-    monkeypatch.setattr(bot, "submit_intake_to_hub", _fake_submit)
-    monkeypatch.setattr(bot, "HUB_IMPORT_URL", "")  # not configured
+    monkeypatch.setattr(bot, "submit_file_to_hub_folder", _fake_submit)
+    # Not configured — no base URL, no token.
+    monkeypatch.setattr(bot, "HUB_URL", "")
+    monkeypatch.setattr(bot, "HUB_IMPORT_URL", "")
+    monkeypatch.setattr(bot, "HUB_INGEST_TOKEN", "")
 
     await bot._submit_photo_to_hub(b"x", "cap", _fake_update())
-    assert called["n"] == 0  # no submit attempted when Hub URL absent
+    assert called["n"] == 0  # no submit attempted when Hub intake unconfigured
