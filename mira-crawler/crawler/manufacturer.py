@@ -25,6 +25,10 @@ logger = logging.getLogger("mira-crawler.manufacturer")
 class ManufacturerCrawler(BaseCrawler):
     """Crawl manufacturer documentation portals."""
 
+    #: Curated OEM sources — trusted by construction. The human gate is
+    #: sources.yaml curation (#2961), not per-chunk review.
+    oem_trusted = True
+
     def __init__(
         self, config: CrawlerConfig, manufacturers: list[str] | None = None
     ) -> None:

@@ -18,6 +18,15 @@ class CrawlerConfig:
     mira_tenant_id: str = field(
         default_factory=lambda: os.getenv("MIRA_TENANT_ID", "")
     )
+    # The shared OEM pool that retrieval actually reads
+    # (mira-bots/shared/neon_recall.py binds it as :shared_tid on every stream).
+    # Deliberately NOT mira_tenant_id: MIRA_TENANT_ID was repointed to the garage
+    # bench tenant during the CV-101 work, and OEM crawls must not follow it.
+    oem_tenant_id: str = field(
+        default_factory=lambda: os.getenv(
+            "MIRA_SHARED_TENANT_ID", "78917b56-f85f-43bb-9a08-1bb98a6cd6c3"
+        )
+    )
 
     # Ollama embedding
     ollama_base_url: str = field(
