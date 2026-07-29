@@ -1,3 +1,12 @@
+### v3.227.0 (2026-07-29) - feat(engine): Phase 9 — flaky-input / sensor-anomaly detector (#1661)
+
+Closes #1661. Implements the wedge demo: MIRA detects a proximity switch flickering 14×/hr that the technician cannot see.
+
+- **Migration 068**: extends `ai_suggestions.suggestion_type` CHECK to include `'flaky_signal_alert'` (follows mig 062 pattern).
+- **`mira-bots/shared/detection/flaky_input.py`**: four pure detection rules — `rapid_toggle` (boolean tag alternates too many times), `brown_out` (analog dips below threshold and recovers repeatedly), `intermittent_disc` (quality degrades/recovers cycle), `value_spike` (analog reading exceeds N σ from rolling mean). Each rule returns a `FlakySignal` dataclass or `None`. `run_all_rules()` dispatches all four.
+- **`mira-bots/agents/flaky_detector_runner.py`**: cron runner (every 5 min). Scans `tag_event_diffs` for the last 1 hour across all active tenants; suppresses until 7-day baseline established; deduplicates against open alerts in the last 5 min. Per hit: inserts `ai_suggestions` row (status=pending, proposed_by=rule:flaky_input_detector), then `flaky_input_signals` linked by FK. Alerts land in Hub `/proposals` queue — not pushed to technicians until validated.
+- **Tests**: `tests/test_flaky_rules.py` — 29 unit tests covering all four rules, edge cases (below/at/above thresholds, incomplete cycles, non-parseable values, multi-rule dispatch). All passing.
+
 ### v3.226.0 (2026-07-29) - feat(engine): Phase 8 — confidence written to decision_traces, Hub UI page, replay script (#1660)
 
 Closes #1660. Three gaps from the Phase 8 DecisionTraceWriter spec:
