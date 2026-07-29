@@ -1,5 +1,17 @@
 # OEM Crawler → Retrieval Bridge (SP1) Implementation Plan
 
+> **STATUS (2026-07-29): SHIPPED, WITH ONE TASK DROPPED.** Implementation landed as
+> **PR #2999** (`fix/oem-crawler-retrieval-bridge-sp1`, green, awaiting merge). Tasks
+> 1–3 and 5 (the `verified` flag, per-crawler-class trust, the `apply-seeds.yml`
+> staging target, the version bump) shipped as written. **Task 4 (the one-time
+> backfill seed) and Task 6 (applying it) were built, reviewed, and deliberately
+> dropped** — the seed's selector describes an output *shape*, not a verifiable
+> *origin*, and nothing recorded which writer produced a given row. Full reasoning is
+> on Task 4 ("Why this was dropped") and Task 6 (status note), kept intact rather than
+> deleted. Task 7 (crawler deploy) still applies, independent of Task 6. In place of
+> the backfill, 4 OEM manuals were added to `sources.yaml` so the trusted crawler
+> re-acquires them properly (issue #3000 tracks a follow-up corpus-health check).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the OEM manual chunks the Bravo crawler ingests reachable by MIRA's grounded answering — route them to the shared OEM tenant pool, mark them trusted, and retro-fit the chunks already written to the wrong tenant.
@@ -30,7 +42,7 @@
 
 - **Spec Unit 2c is wrong about where the flag goes.** It puts `verified=True` + `oem_tenant_id` at `base_crawler.py:151` — inside `BaseCrawler.process()`, which `CurriculumCrawler` and `CSVCrawler` both inherit (`csv_crawler.py:151` calls `super().process(...)`). As written it would auto-trust and re-tenant curriculum and CSV crawls too, which is wider than the Unit 1 doctrine allows. **Task 2 fixes this** with a class-level `oem_trusted` flag that only `ManufacturerCrawler` sets.
 - **Spec Unit 3 assumes `apply-seeds.yml` can target staging. It cannot** — it hardcodes `--config prd` and `environment: production`. **Task 3 adds a `target` input**, mirroring `db-inspect.yml:14-20` and `apply-migrations.yml:23-29`, so the staging gate is real rather than aspirational.
-- **Rollout order should be flipped.** The spec deploys the write-path change first, then backfills. Running the crawler against the shared pool *before* the backfill creates shared-pool copies of URLs already stored under the garage tenant, which the backfill's `NOT EXISTS` guard then skips — inflating orphan count. **Backfill first (Task 6), then deploy the code (Task 7).** The two are independent, so the reorder is free.
+- **Rollout order should be flipped.** The spec deploys the write-path change first, then backfills. Running the crawler against the shared pool *before* the backfill creates shared-pool copies of URLs already stored under the garage tenant, which the backfill's `NOT EXISTS` guard then skips — inflating orphan count. **Backfill first (Task 6), then deploy the code (Task 7).** The two are independent, so the reorder is free. *(Moot as of 2026-07-29 — Task 6 was dropped along with Task 4; only Task 7 ran. See Task 4's "Why this was dropped" and Task 6's status note.)*
 - **No knowledge-graph blast radius.** `BaseCrawler.process()` calls `store_chunks(...)` without `model_number`, so the KG branch in `store_chunks` (`if kg_writer is not None and manufacturer and model_number`) never fires on this path. Changing the tenant does **not** move `kg_entities` rows. Do not add KG handling.
 
 ---
@@ -593,7 +605,15 @@ git commit -m "ci(seeds): let apply-seeds target staging, not prod only"
 
 ---
 
-### Task 4: The one-time backfill seed
+### Task 4: The one-time backfill seed — SUPERSEDED, NOT SHIPPED
+
+> **STATUS (2026-07-29): dropped.** This task was implemented following the steps
+> below, reviewed, and then the seed was removed before PR #2999 merged. Kept
+> verbatim — not deleted — because the collision-guard design and the ephemeral-DB
+> test recipe below are the evidence the rejection argument (see "Why this was
+> dropped" at the end of this task) responds to. The file
+> `tools/seeds/backfill_oem_crawler_chunks.sql` does **not** exist on `main`; its bad
+> fixture was recovered verbatim into `tests/test_architecture.py` Contract 7 instead.
 
 **Files:**
 - Create: `tools/seeds/backfill_oem_crawler_chunks.sql`
@@ -727,6 +747,32 @@ git add tools/seeds/backfill_oem_crawler_chunks.sql
 git commit -m "feat(seeds): backfill orphaned OEM crawler chunks into the shared pool"
 ```
 
+#### Why this was dropped (added 2026-07-29)
+
+The collision guard above keys on `metadata->>'source' = 'mira_crawler'`, and review
+generalized the question to the shape-based selector `source_type =
+'equipment_manual' AND manufacturer <> ''`. Both describe an output **shape**, not an
+**origin** — three writers can produce that shape: `ManufacturerCrawler` (trusted),
+`CSVCrawler` (heuristic PDF resolution, untrusted), and `tasks/ingest.py::ingest_url`
+(untrusted). **No column stored by `insert_chunk` records which one wrote a given
+row.** An audit found only 10 of 311 `CSVCrawler` rows were ever ingested, and all 10
+re-verified as live valid PDFs from legitimate sources (zero third-party
+aggregators) — so this was not a document-quality problem. It was an
+**auditability** problem: for portal-scraped rows the crawler never persists the
+resolved PDF URL, so a future reviewer cannot confirm after the fact which rows a
+one-time `verified=true` promotion actually touched. That is exactly the pattern the
+Contract 7 guard in `tests/test_architecture.py` (added instead of this seed) now
+exists to reject — its bad fixture is this file, recovered verbatim from git.
+
+What shipped instead: class-scoped trust assertions
+(`mira-crawler/tests/test_oem_trust.py`), the Contract 7 guard, a `sources.yaml`
+well-formedness guard, and **re-acquisition, not reclassification** — 4 OEM manuals
+(Interroll MultiControl, Demag, Magnetek Impulse G+ Mini, Allen-Bradley 100-C30)
+added to `mira-crawler/sources.yaml` so the trusted crawler fetches them properly,
+instead of retroactively blessing rows a heuristic crawler already wrote. See the
+design doc's "Unit 3 — superseded" section for the full writeup, including the 28
+excluded re-acquisition candidates and follow-up issue #3000.
+
 ---
 
 ### Task 5: Version bump, changelog, and PR
@@ -785,7 +831,14 @@ Expected: green. `Version Bump Check` must pass — if it fails, `VERSION` did n
 
 ---
 
-### Task 6: Apply the backfill (staging → prod) — operator, gated
+### Task 6: Apply the backfill (staging → prod) — operator, gated — SUPERSEDED, NOT EXECUTED
+
+> **STATUS (2026-07-29): not run.** This task assumed Task 4's seed would ship. It
+> didn't (see Task 4's "Why this was dropped"), so none of the steps below ran — no
+> staging apply, no prod apply, no orphaned rows moved. Kept verbatim as the intended
+> operator runbook in case a future, better-audited backfill is proposed; do not run
+> it against the current repo, since `tools/seeds/backfill_oem_crawler_chunks.sql` no
+> longer exists on `main`.
 
 Do this **before** Task 7, so the crawler does not create shared-pool copies the guard then skips. Requires a human with workflow-dispatch rights; the agent cannot mutate prod (`MIRA_ALLOW_PROD=1` is human-only).
 
@@ -842,6 +895,9 @@ Same two dispatches with `target=prod`. Re-run the count query via `db-inspect.y
 
 ### Task 7: Deploy the crawler change to Bravo — operator
 
+> Independent of Task 6, which did not run (see its status note above). This task
+> still applies — it deploys the Unit 2 code change (Task 2), not the backfill.
+
 - [ ] **Step 1: Update the live crawler checkout**
 
 The production crawler runs from `~/mira-crawler-prod` on Bravo (a detached-HEAD worktree, currently at `1d58c8c6d`). Fast-forward it to the merged `main`:
@@ -880,6 +936,10 @@ Update `wiki/hot.md` with the outcome and the recorded counts, and note in PR #2
 ## Deferred / explicitly out of scope
 
 - **SP2 — PrintSense manual grounding.** `print_worker.py` is OCR-only and never calls `recall_knowledge`. Needs its own spec once SP1 is verified end-to-end.
-- **Duplicate sweep.** A `DELETE` of collision-skipped garage rows, only if Task 6 Step 3 shows a meaningful count.
+- **Duplicate sweep.** ~~A `DELETE` of collision-skipped garage rows, only if Task 6 Step 3 shows a meaningful count.~~ Moot — Task 4/6 (the backfill) never shipped, so no rows were ever moved and there is nothing to sweep duplicates from.
 - **The `MIRA_TENANT_ID` naming problem.** The var still means "garage bench tenant" while its name suggests otherwise. Renaming it is a separate cleanup with its own blast radius.
 - **#2968 mis-pagination remediation.** Tracked separately; do not fold in.
+- **The already-orphaned chunks stay orphaned (added 2026-07-29).** Dropping Task 4/6 means the crawler rows already written under the garage tenant remain unreachable by retrieval. Nothing rescues them — the accepted cost of not shipping an unauditable promotion. See Task 4's "Why this was dropped."
+- **`tasks/ingest.py::ingest_url` still writes OEM manuals to the garage tenant unverified (added 2026-07-29).** The third untrusted writer named in Task 4's rejection reasoning; unchanged by SP1.
+- **Issue #2989 — unsanitized path input in the seed-applying workflows (added 2026-07-29).** Surfaced during this review, tracked separately, not fixed here.
+- **Issue #3000 — periodic corpus-health check (added 2026-07-29).** Filed as the follow-up to dropping the backfill; deliberately an opt-in script, never a required CI gate.
