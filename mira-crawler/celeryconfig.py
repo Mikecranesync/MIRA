@@ -69,6 +69,11 @@ task_routes = {
     "tasks.historize_runs.*": {"queue": "historian"},
     "mira_crawler.tasks.tag_diff_historizer.*": {"queue": "historian"},
     "tasks.tag_diff_historizer.*": {"queue": "historian"},
+    # Conversation-eval auto-scorer (mira_eval.score_conversation_eval, built
+    # v3.116.0). Custom task name (not tasks.eval_scorer.*), so route on the exact
+    # name. Shares the historian queue — mira-historian-worker is the only prod
+    # worker with NEON_DATABASE_URL, which the scorer needs.
+    "mira_eval.score_conversation_eval": {"queue": "historian"},
     "mira_crawler.tasks.synthetic_dogfood.*": {"queue": "synthetic"},
     "tasks.synthetic_dogfood.*": {"queue": "synthetic"},
     # --- LinkedIn draft generation ---
@@ -133,10 +138,12 @@ _SYNTHETIC_DOGFOOD_SCHEDULE = {
     },
 }
 
-# Historian recording profile (prod mira-historian-beat). Schedules ONLY the
-# tag-diff historizer (#2343) + run-diff (#2341, self-gated by MIRA_RUN_DIFF_ENABLED)
-# — deliberately excludes the intent monitors so enabling history recording in
-# prod does not also start unrelated discovery jobs.
+# Historian recording profile (prod mira-historian-beat). Schedules the tag-diff
+# historizer (#2343) + run-diff (#2341, self-gated by MIRA_RUN_DIFF_ENABLED) plus
+# the conversation-eval auto-scorer (03:00 UTC daily) — the historian worker is
+# the only prod worker with NEON_DATABASE_URL, which the scorer needs. Still
+# deliberately excludes the intent monitors so enabling this profile in prod does
+# not also start unrelated discovery jobs.
 _HISTORIAN_SCHEDULE = {
     "tag-diff-historizer": {
         "task": "tasks.tag_diff_historizer.historize_tag_diffs",
@@ -145,6 +152,15 @@ _HISTORIAN_SCHEDULE = {
     "historize-runs": {
         "task": "tasks.historize_runs.historize_runs",
         "schedule": timedelta(seconds=30),
+    },
+    # Conversation-eval auto-scorer (built v3.116.0, wired here). Daily at 03:00
+    # UTC per docs/specs/bot-eval-loop-spec.md § "Schedule". Drive-pack rows score
+    # deterministically ($0, no LLM); engine rows are judged by the free-tier
+    # cascade only WHEN mira-bots/ is in the image + the cascade keys are mapped
+    # on the worker (deferred follow-up) — until then they fail-open-skip.
+    "score-conversation-eval": {
+        "task": "mira_eval.score_conversation_eval",
+        "schedule": crontab(hour=3, minute=0),
     },
 }
 
@@ -177,6 +193,12 @@ else:
         "historize-runs": {
             "task": "tasks.historize_runs.historize_runs",
             "schedule": timedelta(seconds=30),
+        },
+        # Conversation-eval auto-scorer — daily at 03:00 UTC (dev parity with the
+        # historian profile; see _HISTORIAN_SCHEDULE). Fail-open on missing DB.
+        "score-conversation-eval": {
+            "task": "mira_eval.score_conversation_eval",
+            "schedule": crontab(hour=3, minute=0),
         },
         **_SYNTHETIC_DOGFOOD_SCHEDULE,
     }

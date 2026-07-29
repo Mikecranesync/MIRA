@@ -21,6 +21,12 @@ items 3–5) and #2685 (GS20 — same schema class; one shared fix).
 ## In scope (Run C, sequenced as three PRs)
 
 ### PR C1 — string-identifier fault schema (code; unblocks #2685 too)
+> **Status (2026-07-16, v3.152.0):** items **1, 2, 4 LANDED** — `FaultEntry` +
+> `schema_version` 3 + loader `_fault_entries` + `DrivePack.fault_entry()`
+> (case-sensitive), 77-fault candidate round-trip green, GS10/PF40/PF525 +
+> extractor suite unchanged. Item **3 (grading `domain_rules.py` runtime crane
+> hard-fail) is OUTSTANDING** — deferred to keep the schema/loader slice
+> reviewable; must land before C2 promotion.
 1. Extend `mira-bots/shared/drive_packs/schema.py` so mnemonic fault
    identifiers are first-class. Direction locked by Run B evidence
    (`runA/COMPARISON_CONTRACT.json` → `delta.schema_direction_evidence`):

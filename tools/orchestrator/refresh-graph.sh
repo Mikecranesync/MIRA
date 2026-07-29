@@ -21,6 +21,13 @@ echo "refreshing graph against origin/main @ $MAINSHA"
 git worktree remove --force "$WT" 2>/dev/null
 git worktree add --detach "$WT" origin/main >/dev/null 2>&1 || { echo "worktree add failed"; exit 1; }
 
+# Remove it on EVERY exit path, not just the ones with an explicit remove below.
+# Without this, an unexpected failure or a Ctrl-C between here and the next
+# `worktree remove` leaks /tmp/mira-kg-wt into `git worktree list` forever
+# (`.claude/rules/subagent-worktree-isolation.md` § Scripts).
+cleanup_wt() { cd "$REPO" 2>/dev/null && git worktree remove --force "$WT" 2>/dev/null || true; }
+trap cleanup_wt EXIT INT TERM
+
 # stage scoped modules with the README exclude list
 rm -rf "$RUN"; mkdir -p "$RUN/scope/mira-bots" "$RUN/scope/mira-hub"
 EXCL=(--exclude __pycache__ --exclude '*.pyc' --exclude .git --exclude node_modules \

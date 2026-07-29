@@ -41,6 +41,26 @@ from .schema import Citation, DrivePack, KeypadNavigationCard, ParameterCard
 _PARAM_ID_RE = re.compile(r"\b[A-Za-z]\d{2}\.\d{2}\b|\b[A-Za-z]{1,3}\d{2,3}\b")
 _TIMEOUT_RE = re.compile(r"time[\s-]?out", re.IGNORECASE)
 
+# A numeric fault code is trusted ONLY when it carries a fault context: a word
+# like "fault"/"error"/"trip"/"code"/"alarm" immediately preceding the number,
+# OR a PowerFlex-style "F005"/"F5" display token (letter F directly before the
+# digits, NOT followed by a decimal — so a DuraPulse frequency display "F60.0"
+# is excluded). A BARE integer ("5 A", "45.0 Hz") is deliberately NOT a code —
+# a miss is safe, a confident wrong cited hit is a grounding-contract violation.
+_NUM_FAULT_CONTEXT_RE = re.compile(
+    r"(?:\bfaults?(?:\s+code)?|\berr(?:or)?s?|\btrips?|\bcode|\balarms?)\s*#?\s*0*(\d{1,3})\b"
+    r"|\bF0*(\d{1,3})\b(?![.\d])",
+    re.IGNORECASE,
+)
+# A "code-like" leading mnemonic — letters then REQUIRED digits (CE10, CE1,
+# F004). Requiring a digit is what keeps this safe: it excludes both the
+# plain-English fault names PowerFlex uses as its value ("OverVoltage", and the
+# word-leads "Auto"/"Load"/"Net"/"Comm"/"SW" of its multi-word names) AND the
+# pure-letter GS10 mnemonics ("oL"/"EF"/"GFF"/"Lvd") that could collide with
+# English words — none of which we auto-extract from OCR in v1. Those remain
+# answerable via an explicit ``answer_fault_code`` call.
+_CODE_LIKE_MNEMONIC_RE = re.compile(r"[A-Za-z]{1,3}\d{1,3}\Z")
+
 
 @dataclass
 class DrivePackAnswer:
@@ -97,7 +117,10 @@ def _keypad_for(pack: DrivePack, parameter_id: str) -> KeypadNavigationCard | No
 def _fault_answer(
     pack: DrivePack, mnemonic: str, card: DiagnosticCard
 ) -> tuple[str, list[dict[str, str]]]:
-    lines = [f"GS10 fault {mnemonic} — {card.meaning} (per the {pack.family.series} manual)."]
+    lines = [
+        f"{pack.family.series} fault {mnemonic} — {card.meaning} "
+        f"(per the {pack.family.series} manual)."
+    ]
     if card.likely_causes:
         lines.append("Likely cause: " + " ".join(card.likely_causes))
     if card.first_checks:
@@ -121,7 +144,7 @@ def _fault_answer(
 
 
 def _param_answer(pack: DrivePack, param: ParameterCard) -> tuple[str, list[dict[str, str]]]:
-    lines = [f"GS10 parameter {param.parameter_id} [{param.name}]: {param.purpose}"]
+    lines = [f"{pack.family.series} parameter {param.parameter_id} [{param.name}]: {param.purpose}"]
     spec = []
     if param.range is not None:
         spec.append(f"range {param.range}")
@@ -220,6 +243,145 @@ def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
         answer=(
             f"The {family} drive pack is loaded, but your question doesn't map to a fault code "
             f"or parameter it documents, so I won't guess.{covered}"
+        ),
+        citations=[],
+        answer_source="none",
+    )
+
+
+def extract_pack_fault_codes(pack: DrivePack, text: str) -> list[str]:
+    """The photo→pack bridge's gate: return the fault-code tokens in ``text``
+    that are REAL codes in ``pack`` — nothing else.
+
+    Two conservative sources, in order (deduped, first-seen order):
+    1. A digit-bearing display mnemonic (CE10, CE1) that is a real pack code,
+       matched only as a standalone whole-word token — never a substring of an
+       English word (so "oL" is not pulled from "overloaded").
+    2. A number that carries a fault context (``F005``, "Fault 5", "trip 12")
+       AND is a real code in the pack. A bare integer is never a code.
+
+    Returns tokens ready to hand to :func:`answer_fault_code` (mnemonics as-is;
+    numerics as the decimal string, e.g. ``"5"``). Pure/offline — no I/O."""
+    if not text:
+        return []
+    upper = text.upper()
+    fault_codes = pack.live_decode.fault_codes
+    found: list[str] = []
+    seen: set[str] = set()
+
+    # 1) digit-bearing display mnemonics that are real codes in THIS pack
+    for code, name in fault_codes.items():
+        if code == 0 or not name:
+            continue
+        lead = name.split()[0]
+        if not _CODE_LIKE_MNEMONIC_RE.fullmatch(lead):
+            continue
+        if lead not in seen and re.search(rf"\b{re.escape(lead.upper())}\b", upper):
+            seen.add(lead)
+            found.append(lead)
+
+    # 2) numeric codes that carry a fault context and are real codes in the pack
+    for match in _NUM_FAULT_CONTEXT_RE.finditer(text):
+        digits = match.group(1) or match.group(2)
+        code = int(digits)
+        token = str(code)
+        if code != 0 and code in fault_codes and token not in seen:
+            seen.add(token)
+            found.append(token)
+
+    return found
+
+
+# PowerFlex fault *names* start with ordinary words; these are NOT display codes
+# (the technician reads the number). Used only to pick a human label, never to
+# match — matching is always by exact code/mnemonic.
+_ENGLISH_LEAD_WORDS = frozenset(
+    {"AUTO", "LOAD", "OPT", "COMM", "NET", "POWER", "MOTOR", "HEATSINK", "AUXILIARY"}
+)
+
+
+def _display_code(name: str, code: int) -> str:
+    """The label to show for a numeric-keyed fault: its embedded display
+    mnemonic when the pack value starts with one (GS10 ``4`` -> "GFF ground
+    fault" -> ``GFF``; ``54`` -> "CE1 comm..." -> ``CE1``), else the numeric
+    code itself (PowerFlex ``5`` -> "OverVoltage" -> ``code 5``)."""
+    lead = name.split()[0] if name else ""
+    if lead and re.fullmatch(r"[A-Za-z]{1,3}\d{1,3}", lead):
+        return lead  # code-like with digits (CE10, CE1)
+    if lead and re.fullmatch(r"[A-Za-z]{2,4}", lead) and lead.upper() not in _ENGLISH_LEAD_WORDS:
+        return lead  # a short pure-letter display mnemonic (GFF, Lvd, oL, EF)
+    return f"code {code}"
+
+
+def answer_fault_code(pack_id: str, token: str) -> DrivePackAnswer:
+    """Answer an EXACT fault code (numeric ``"5"``/``"F005"`` or mnemonic
+    ``"CE10"``) grounded ONLY in the ``pack_id`` pack — the lookup half of the
+    photo→pack bridge, reusing the same cited, read-only card machinery as
+    :func:`answer_question`. Never guesses; an unknown code answers honestly.
+
+    Unlike :func:`answer_question`, this does not scan free text — the caller
+    (or :func:`extract_pack_fault_codes`) has already decided ``token`` is a
+    code, so a bare number here IS looked up. Keep the extractor as the gate."""
+    try:
+        pack = load_pack(pack_id)
+    except (FileNotFoundError, ValueError) as exc:
+        return DrivePackAnswer(
+            pack_id=pack_id,
+            resolved=False,
+            schema_version=None,
+            family=None,
+            matched=False,
+            matched_kind=None,
+            answer=f"The '{pack_id}' drive pack is not loaded ({exc}). I will not guess an answer.",
+            citations=[],
+            answer_source="none",
+        )
+
+    cards = build_cards(pack, template_reader=_template_reader(pack_id))
+    family = pack.family.series
+    t = (token or "").strip()
+
+    target: DiagnosticCard | None = None
+    display = t
+    numeric = re.fullmatch(r"[Ff]?0*(\d{1,3})", t)
+    if numeric:
+        code = int(numeric.group(1))
+        name = pack.live_decode.fault_codes.get(code)
+        if code != 0 and name:
+            target = next((c for c in cards if c.fault_or_symptom.startswith(f"{code} —")), None)
+            display = _display_code(name, code)
+    else:
+        for card in cards:
+            mnemonic = _fault_mnemonic(card)
+            if mnemonic and mnemonic.upper() == t.upper():
+                target = card
+                display = mnemonic
+                break
+
+    if target is not None:
+        answer, citations = _fault_answer(pack, display, target)
+        return DrivePackAnswer(
+            pack_id=pack.pack_id,
+            resolved=True,
+            schema_version=pack.schema_version,
+            family=family,
+            matched=True,
+            matched_kind="fault",
+            answer=answer,
+            citations=citations,
+            answer_source="drive_pack",
+        )
+
+    return DrivePackAnswer(
+        pack_id=pack.pack_id,
+        resolved=True,
+        schema_version=pack.schema_version,
+        family=family,
+        matched=False,
+        matched_kind=None,
+        answer=(
+            f"The {family} drive pack is loaded, but '{token}' isn't a fault code it "
+            f"documents, so I won't guess."
         ),
         citations=[],
         answer_source="none",

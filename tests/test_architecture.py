@@ -301,3 +301,111 @@ def test_one_pipeline_checker_catches_violations():
         "    return ingest_batch(build_ingest_batch('mqtt', tags), tenant, store)\n"
     )
     assert scan_ingest_module("good.py", good) == []
+
+
+# ---------------------------------------------------------------------------
+# Contract 6: KB write-sites never stamp the chunk ordinal into source_page
+# ---------------------------------------------------------------------------
+# knowledge_entries.source_page must hold the REAL document page (or NULL) —
+# never the chunker's sequential chunk index. Legacy write-sites that did this
+# mis-paginated ~73% of the corpus and made citations fabricate page numbers
+# ("p. 47" meaning "chunk 47") — issue #2968, render guard PR #2967. The
+# ordinal belongs in metadata.chunk_index (dedup key, migration 003 partial
+# unique index). Model write-sites: mira-crawler/ingest/store.py and
+# mira-hub/src/lib/node-knowledge-ingest.ts.
+
+_KB_WRITE_SURFACE_GLOBS = [
+    "mira-core/scripts/*.py",
+    "mira-core/mira-ingest/db/*.py",
+    "mira-crawler/ingest/*.py",
+    "mira-bots/tools/*.py",
+]
+
+
+def scan_source_page_stamp(rel_path: str, source: str) -> list[str]:
+    """Return violations where source_page is assigned a chunk-ordinal value.
+
+    Pure function — unit-tested against fixtures below so the guard is proven
+    to catch violations. Flags a dict literal or keyword argument that binds
+    "source_page" to a name/attribute containing "chunk" (chunk_idx,
+    chunk_index, self.chunk_index, ...)."""
+
+    def _is_chunk_valued(node: ast.expr) -> bool:
+        if isinstance(node, ast.Name):
+            return "chunk" in node.id.lower()
+        if isinstance(node, ast.Attribute):
+            return "chunk" in node.attr.lower()
+        return False
+
+    violations: list[str] = []
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:  # pragma: no cover - shouldn't happen on repo code
+        return [f"{rel_path}: unparseable ({exc})"]
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value == "source_page"
+                    and _is_chunk_valued(value)
+                ):
+                    violations.append(
+                        f"{rel_path}:{value.lineno} stamps a chunk ordinal into source_page "
+                        f"(use the real page_num or None; ordinal goes in metadata.chunk_index)"
+                    )
+        elif isinstance(node, ast.Call):
+            for kw in node.keywords:
+                if kw.arg == "source_page" and _is_chunk_valued(kw.value):
+                    violations.append(
+                        f"{rel_path}:{kw.value.lineno} passes a chunk ordinal as source_page "
+                        f"(use the real page_num or None; ordinal goes in metadata.chunk_index)"
+                    )
+    return violations
+
+
+def _kb_write_surface_files() -> list[Path]:
+    seen: set[Path] = set()
+    for pattern in _KB_WRITE_SURFACE_GLOBS:
+        for p in _ROOT.glob(pattern):
+            if not p.is_file() or p.suffix != ".py":
+                continue
+            parts = p.parts
+            if "__pycache__" in parts or "tests" in parts or p.name.startswith("test_"):
+                continue
+            seen.add(p)
+    return sorted(seen)
+
+
+def test_kb_writes_never_stamp_chunk_ordinal_as_source_page():
+    """No KB ingest write-site stamps the chunk index into source_page (#2968)."""
+    offenders: list[str] = []
+    for path in _kb_write_surface_files():
+        rel = path.relative_to(_ROOT).as_posix()
+        offenders.extend(scan_source_page_stamp(rel, path.read_text(errors="replace")))
+    assert not offenders, (
+        "source_page must be the real document page (or None), never the chunk "
+        "ordinal — see issue #2968 and Contract 6 in this file.\n\n" + "\n".join(offenders)
+    )
+
+
+def test_source_page_checker_catches_violations():
+    """The Contract 6 guard must FAIL on the known bad shapes."""
+    bad_cases = {
+        "dict literal chunk_idx": 'row = {"source_page": chunk_idx}\n',
+        "dict literal chunk_index": 'row = {"source_page": chunk_index}\n',
+        "keyword arg": "insert(source_page=chunk_index)\n",
+        "attribute value": 'row = {"source_page": self.chunk_index}\n',
+    }
+    for label, src in bad_cases.items():
+        assert scan_source_page_stamp("bad.py", src), f"checker missed: {label}"
+
+    good_cases = {
+        "real page dict": 'row = {"source_page": chunk.get("page_num")}\n',
+        "real page kwarg": "insert(source_page=page_num)\n",
+        "null page": 'row = {"source_page": None}\n',
+        "ordinal in metadata": 'meta = {"chunk_index": chunk_idx}\n',
+    }
+    for label, src in good_cases.items():
+        assert scan_source_page_stamp("good.py", src) == [], f"false positive: {label}"

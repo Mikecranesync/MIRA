@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **62** (8 dynamic) |
-| API routes | **155** (47 dynamic) |
+| Pages | **64** (9 dynamic) |
+| API routes | **161** (52 dynamic) |
 
-## Pages (62)
+## Pages (64)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -75,12 +75,14 @@
 | `/team` | static | `(hub)/team/page.tsx` |
 | `/upgrade` | static | `(hub)/upgrade/page.tsx` |
 | `/usage` | static | `(hub)/usage/page.tsx` |
+| `/visual` | static | `(hub)/visual/page.tsx` |
+| `/visual/[id]` | dynamic | `(hub)/visual/[id]/page.tsx` |
 | `/workflows` | static | `(hub)/workflows/page.tsx` |
 | `/workorders` | static | `(hub)/workorders/page.tsx` |
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (155)
+## API routes (161)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -234,6 +236,12 @@
 | `/api/usage` | static | `api/usage/route.ts` |
 | `/api/user/preferences` | static | `api/user/preferences/route.ts` |
 | `/api/version` | static | `api/version/route.ts` |
+| `/api/visual/evidence/[id]/regions` | dynamic | `api/visual/evidence/[id]/regions/route.ts` |
+| `/api/visual/evidence/[id]/view` | dynamic | `api/visual/evidence/[id]/view/route.ts` |
+| `/api/visual/regions/[id]` | dynamic | `api/visual/regions/[id]/route.ts` |
+| `/api/visual/sessions` | static | `api/visual/sessions/route.ts` |
+| `/api/visual/sessions/[id]` | dynamic | `api/visual/sessions/[id]/route.ts` |
+| `/api/visual/sessions/[id]/evidence` | dynamic | `api/visual/sessions/[id]/evidence/route.ts` |
 | `/api/wizard/[step]` | dynamic | `api/wizard/[step]/route.ts` |
 | `/api/work-orders` | static | `api/work-orders/route.ts` |
 | `/api/work-orders/[id]` | dynamic | `api/work-orders/[id]/route.ts` |

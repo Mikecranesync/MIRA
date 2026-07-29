@@ -1,0 +1,11 @@
+# AssertionShape satisfied — one approval_state drawn from the mig-029 CHECK set, confidence
+# inside [0,1].
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:a_conf_ok a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:approval_state mira:approval_proposed ;
+    mira:confidence "0.82"^^xsd:decimal .

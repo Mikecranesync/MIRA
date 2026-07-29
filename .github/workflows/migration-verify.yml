@@ -185,6 +185,11 @@ jobs:
 
       - name: Post / update PR comment
         if: always() && github.event_name == 'pull_request'
+        # Reporting only — must not decide the verdict. This job's conclusion is
+        # polled by staging-gate.yml ('Order after Migration Verify'), which
+        # refuses to grade on anything but success; an unpostable comment after
+        # a clean apply+verify would flip the required gate red (PR #2917 class).
+        continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: migration-verify

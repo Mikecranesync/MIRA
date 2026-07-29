@@ -214,3 +214,164 @@ describe("citation invariant — every public technical page is grounded", () =>
     });
   }
 });
+
+// ── Siemens G120 pack truth pins (2026-07-17) ────────────────────────────
+// The original pack (#2621) fabricated its data: fault meanings were shifted
+// (F30001 "DC link overvoltage" — the real manual says Overcurrent), five
+// fault codes (F30006–F30010) and five parameters (p0104/p0105/p0293/p0644/
+// p0645) do not exist in the manual at all, and every entry cited the same
+// page of an unverifiable document. These pins hold the pack to the genuine
+// SINAMICS G120C List Manual (LH13, 04/2014, A5E33840768B AA, sha256
+// 82aad5dd…bcda268) so a regenerated pack can never silently regress.
+describe("siemens g120 pack — manual-verified truth pins", () => {
+  const pack = getPack("siemens-g120")!;
+
+  test("fault meanings match the List Manual (the shifted originals stay dead)", () => {
+    expect(pack.faultCodes["30001"]).toContain("Overcurrent");
+    expect(pack.faultCodes["30002"]).toContain("overvoltage");
+    expect(pack.faultCodes["30003"]).toContain("undervoltage");
+    expect(pack.faultCodes["30011"]).toContain("Line phase failure");
+    expect(pack.faultCodes["7011"]).toContain("Motor overtemperature");
+  });
+
+  test("fabricated fault codes F30006–F30010 are gone", () => {
+    for (const k of ["30006", "30007", "30008", "30009", "30010"])
+      expect(pack.faultCodes[k]).toBeUndefined();
+  });
+
+  test("fabricated parameters are gone; verified ones carry real distinct pages", () => {
+    const ids = listParameters(pack).map((p) => p.parameter_id);
+    for (const dead of ["p0104", "p0105", "p0293", "p0644", "p0645", "P0104", "P0644"])
+      expect(ids).not.toContain(dead);
+    expect(getParameter(pack, "p0304")!.name).toBe("Rated motor voltage");
+    expect(getParameter(pack, "p2000")!.name).toContain("Reference speed");
+    const pages = new Set(listParameters(pack).map((p) => p.source_citation?.page));
+    expect(pages.size).toBeGreaterThan(5); // never again 18 entries all citing "413"
+  });
+
+  test("citations name the real, hash-pinned manual", () => {
+    for (const p of listParameters(pack)) {
+      expect(p.source_citation?.doc).toContain("List Manual");
+      expect(p.source_citation?.doc).not.toContain("0319_en-US");
+    }
+  });
+
+  test("fault→parameter links only where the manual's remedy names the parameter", () => {
+    const p0210 = getParameter(pack, "p0210")!;
+    expect(p0210.related_faults).toContain("F30002");
+    expect(p0210.related_faults).toContain("F30003");
+    expect(getParameter(pack, "p0605")!.related_faults).toContain("F07011");
+    // rated-motor-data params are cited but not fault-linked (manual doesn't link them)
+    expect(getParameter(pack, "p0304")!.related_faults).toEqual([]);
+  });
+});
+
+// ── De-slop invariants (2026-07-17) ──────────────────────────────────────
+// The public surface must stay on the shared dark-datasheet tokens with no
+// AI-slop markers: no emoji icons, no duplicated fault list, honest counts,
+// and a real post-payment state.
+describe("de-slop invariants", () => {
+  const pack = getPack("powerflex-525")!;
+  const landing = renderDriveLandingPage(pack);
+
+  test("no emoji or pictograph icons anywhere in the rendered pages", () => {
+    const pages = [
+      landing,
+      renderFaultPage(pack, getFault(pack, "F5")!),
+      renderParameterPage(pack, listParameters(pack)[0]!),
+    ];
+    // Pictographs, dingbats, misc symbols — the emoji ranges + the old
+    // &#128274;/&#128279; entities.
+    const emoji = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]|&#12827\d;/u;
+    for (const html of pages) expect(emoji.test(html)).toBe(false);
+  });
+
+  test("landing renders each fault chip exactly once (no duplicate list)", () => {
+    const first = listFaults(pack)[0]!;
+    const href = `/drive-commander/${pack.modelSlug}/faults/${first.display}`;
+    const count = landing.split(`href="${href}"`).length - 1;
+    expect(count).toBe(1);
+  });
+
+  test("landing does not overclaim 'All N fault codes'", () => {
+    expect(landing).not.toMatch(/All \d+ .* fault codes/);
+    expect(landing).toContain("faults in this pack");
+  });
+
+  test("every fault chip carries a tag (no empty trailing span)", () => {
+    const chips = landing.match(/<a class="fault-chip"[\s\S]*?<\/a>/g) ?? [];
+    expect(chips.length).toBeGreaterThan(0);
+    for (const chipHtml of chips.filter((c) => c.includes("/faults/")))
+      expect(/class="tag[ "]/.test(chipHtml)).toBe(true);
+  });
+
+  test("colors come from tokens: /_tokens.css linked, no hex outside theme-color meta", () => {
+    expect(landing).toContain('href="/_tokens.css"');
+    const body = landing.replace(/<meta name="theme-color"[^>]*>/, "");
+    expect(/#[0-9a-fA-F]{6}\b/.test(body.replace(/#[\w-]+"/g, ""))).toBe(false);
+  });
+
+  test("?checkout=success renders a confirmation and hides the Pro sell", () => {
+    const paid = renderDriveLandingPage(pack, { checkout: "success" });
+    expect(paid).toContain("Payment confirmed");
+    expect(paid).not.toContain("Unlock Drive Commander Pro");
+    // plain load still sells Pro and shows no banner
+    expect(landing).toContain("Unlock Drive Commander Pro");
+    expect(landing).not.toContain("Payment confirmed");
+  });
+
+  test("?checkout=cancelled renders the quiet note", () => {
+    const cancelled = renderDriveLandingPage(pack, { checkout: "cancelled" });
+    expect(cancelled).toContain("Checkout cancelled");
+    expect(cancelled).toContain("Unlock Drive Commander Pro");
+  });
+});
+
+// ── PowerFlex truth pins (2026-07-17, issue #2777 audit) ─────────────────
+// Both packs passed the source-pinned audit against the hash-pinned Rockwell
+// manuals (520-UM001O-EN-E: 48/48 faults + 45/45 params page-exact;
+// 22B-UM001J-EN-E: 26/26 + 9/9). These pins hold the audited meanings so a
+// regenerated pack can never silently shift them (the G120 failure class).
+describe("powerflex packs — manual-verified truth pins (#2777)", () => {
+  test("PF525 fault meanings match 520-UM001 (p.161 fault table)", () => {
+    const p = getPack("powerflex-525")!;
+    expect(p.faultCodes["4"]).toBe("UnderVoltage");
+    expect(p.faultCodes["5"]).toBe("OverVoltage");
+    expect(p.faultCodes["7"]).toBe("Motor Overload");
+    expect(p.faultCodes["8"]).toBe("Heatsink OvrTmp");
+  });
+
+  test("PF40 fault meanings match 22B-UM001 (Table 10, p.93)", () => {
+    const p = getPack("powerflex-40")!;
+    expect(p.faultCodes["4"]).toBe("UnderVoltage");
+    expect(p.faultCodes["5"]).toBe("OverVoltage");
+    expect(p.faultCodes["12"]).toBe("HW OverCurrent");
+  });
+
+  test("audited pack shapes stay stable (counts + hash-pinned verification block)", () => {
+    const p525 = getPack("powerflex-525")!;
+    const p40 = getPack("powerflex-40")!;
+    expect(Object.keys(p525.faultCodes).length).toBe(48);
+    expect(listParameters(p525).length).toBe(45);
+    expect(Object.keys(p40.faultCodes).length).toBe(26);
+    expect(listParameters(p40).length).toBe(9);
+    // verification blocks recorded at the pack of record and vendored through
+    expect((powerflex525 as any).provenance.verification.manual_sha256).toBe(
+      "b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6",
+    );
+  });
+
+  test("negative: codes absent from BOTH manuals stay unsupported", () => {
+    // F999/F200/F055 verified absent from 520-UM001O and 22B-UM001J text
+    // layers (regex sweep of all F-number tokens). NOTE: the first draft of
+    // this pin used F100 — which IS a real PF525 fault (Parameter Chksum);
+    // the pin itself caught the from-memory error. Negatives must come from
+    // the manual sweep, never from memory.
+    for (const slug of ["powerflex-525", "powerflex-40"]) {
+      const p = getPack(slug)!;
+      for (const bogus of ["F999", "F200", "F055"]) {
+        expect(getFault(p, bogus)).toBeNull();
+      }
+    }
+  });
+});

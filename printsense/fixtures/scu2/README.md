@@ -1,8 +1,8 @@
 # SCU2 — first PrintSynth gold package (Sensor Control Unit 2, AP31971)
 
 The first **learned** package for PrintSense — the seed + acceptance fixture. It is a real German
-INTRASYS control cabinet from the **Stardust Racers** ride (customer Mack / Universal, project "Hyper
-Launch", Orlando FL), drawing **AP31971** (`=LA2 +SCU2`), one of a `+SCU1 → +SCU2 → +SCU3` daisy chain.
+INTRASYS control cabinet from an industrial launch-coaster ride-control system,
+drawing **AP31971** (`=LA2 +SCU2`), one of a `+SCU1 → +SCU2 → +SCU3` daisy chain.
 
 ## Files
 
@@ -14,7 +14,7 @@ Launch", Orlando FL), drawing **AP31971** (`=LA2 +SCU2`), one of a `+SCU1 → +S
 
 ## Provenance (how it was made — reproducible)
 
-- **Source:** 6 phone photos of the physical print set (`~/Downloads/PXL_20260712_*.jpg`), preserved as
+- **Source:** 6 phone photos of the physical print set (`~/Downloads/corpus-photo-*.jpg (local-only)`), preserved as
   the immutable benchmark input (sheets `-3` 115 VAC heater, `-4` 24 VDC, `-5` EtherCAT overview,
   sheet 6 I/O map, sheet 7 230 V Klixon, + Montageplatte layout).
 - **Method:** ultracode Workflow `printsense-scu2-fixture` (run `wf_3a82c76b-9c9`) — **blind per-sheet

@@ -1,7 +1,7 @@
 # PrintSense — Path from D (43%) to A (≥90%)
 
 Synthesis of 5 parallel research agents (2026-07-12). Ranked by **accuracy-lift ÷ effort**.
-Grade + ground truth for the driving case: `printsense/benchmarks/scu2_ap31971_sheet20_opto.md`.
+Grade + ground truth for the driving case: `printsense/benchmarks/scu2_sheet20_opto.md`.
 
 ## What "A" means (make it a number — Agent 4)
 

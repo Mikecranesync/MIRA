@@ -245,7 +245,8 @@ def test_interpret_print_runs_preprocess_and_conf_gate(monkeypatch):
     class _Client:
         messages = types.SimpleNamespace(stream=lambda **kw: _Stream())
 
-    monkeypatch.setattr(interpret, "_client", lambda: _Client())
+    monkeypatch.setattr(interpret, "PROVIDER", "anthropic")  # anthropic-shaped mock
+    monkeypatch.setattr(interpret, "_client", lambda *a, **k: _Client())
 
     graph = interpret.interpret_print([(b"imgbytes", "image/jpeg")])
 
