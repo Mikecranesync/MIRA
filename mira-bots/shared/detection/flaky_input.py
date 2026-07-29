@@ -24,26 +24,27 @@ logger = logging.getLogger("mira-flaky-input")
 
 # ── Config (override via env if needed; sensible defaults for 1h window) ──────
 
-RAPID_TOGGLE_MEDIUM_THRESHOLD = 10   # transitions/window → medium confidence
-RAPID_TOGGLE_HIGH_THRESHOLD = 20     # transitions/window → high confidence
-BROWNOUT_CYCLE_THRESHOLD = 3         # dip+recover cycles to flag
+RAPID_TOGGLE_MEDIUM_THRESHOLD = 10  # transitions/window → medium confidence
+RAPID_TOGGLE_HIGH_THRESHOLD = 20  # transitions/window → high confidence
+BROWNOUT_CYCLE_THRESHOLD = 3  # dip+recover cycles to flag
 INTERMITTENT_DISC_CYCLE_THRESHOLD = 3  # degrade+recover cycles to flag
-VALUE_SPIKE_MIN_SAMPLES = 10         # minimum samples before stddev is reliable
-VALUE_SPIKE_STDDEV_FACTOR = 3.0      # how many σ above mean qualifies as spike
+VALUE_SPIKE_MIN_SAMPLES = 10  # minimum samples before stddev is reliable
+VALUE_SPIKE_STDDEV_FACTOR = 3.0  # how many σ above mean qualifies as spike
 
 
 @dataclass
 class FlakySignal:
-    rule: str                   # 'rapid_toggle' | 'brown_out' | 'intermittent_disc' | 'value_spike'
+    rule: str  # 'rapid_toggle' | 'brown_out' | 'intermittent_disc' | 'value_spike'
     tag_path: str
-    transition_count: int       # number of relevant events that triggered this
-    detection_window: str       # human-readable window, e.g. '1h'
+    transition_count: int  # number of relevant events that triggered this
+    detection_window: str  # human-readable window, e.g. '1h'
     evidence_diff_ids: list[str] = field(default_factory=list)
     confidence: str = "medium"  # 'low' | 'medium' | 'high'
     metadata: dict = field(default_factory=dict)
 
 
 # ── Rule: rapid_toggle ────────────────────────────────────────────────────────
+
 
 def rapid_toggle(diffs: list[dict], detection_window: str = "1h") -> FlakySignal | None:
     """Flag a boolean/discrete tag that alternates direction too many times.
@@ -52,9 +53,7 @@ def rapid_toggle(diffs: list[dict], detection_window: str = "1h") -> FlakySignal
     tag in the detection window indicates a flickering sensor (loose wiring,
     vibration, marginal threshold, or a genuinely faulting actuator).
     """
-    edge_events = [
-        d for d in diffs if d.get("diff_type") in ("rising_edge", "falling_edge")
-    ]
+    edge_events = [d for d in diffs if d.get("diff_type") in ("rising_edge", "falling_edge")]
     count = len(edge_events)
     if count < RAPID_TOGGLE_MEDIUM_THRESHOLD:
         return None
@@ -71,12 +70,15 @@ def rapid_toggle(diffs: list[dict], detection_window: str = "1h") -> FlakySignal
         detection_window=detection_window,
         evidence_diff_ids=evidence,
         confidence=confidence,
-        metadata={"rising": sum(1 for d in edge_events if d["diff_type"] == "rising_edge"),
-                  "falling": sum(1 for d in edge_events if d["diff_type"] == "falling_edge")},
+        metadata={
+            "rising": sum(1 for d in edge_events if d["diff_type"] == "rising_edge"),
+            "falling": sum(1 for d in edge_events if d["diff_type"] == "falling_edge"),
+        },
     )
 
 
 # ── Rule: brown_out ───────────────────────────────────────────────────────────
+
 
 def brown_out(diffs: list[dict], detection_window: str = "1h") -> FlakySignal | None:
     """Flag an analog tag that dips below threshold then recovers, repeatedly.
@@ -86,8 +88,7 @@ def brown_out(diffs: list[dict], detection_window: str = "1h") -> FlakySignal | 
     pattern (intermittent supply, marginal sensor, vibration at the threshold).
     """
     relevant = [
-        d for d in diffs
-        if d.get("diff_type") in ("threshold_cross_low", "threshold_cross_high")
+        d for d in diffs if d.get("diff_type") in ("threshold_cross_low", "threshold_cross_high")
     ]
     if not relevant:
         return None
@@ -125,6 +126,7 @@ def brown_out(diffs: list[dict], detection_window: str = "1h") -> FlakySignal | 
 
 # ── Rule: intermittent_disc ───────────────────────────────────────────────────
 
+
 def intermittent_disc(diffs: list[dict], detection_window: str = "1h") -> FlakySignal | None:
     """Flag a tag whose quality signal degrades and recovers repeatedly.
 
@@ -132,10 +134,7 @@ def intermittent_disc(diffs: list[dict], detection_window: str = "1h") -> FlakyS
     disconnection (bad cable, corroded terminal, loose plug) produces exactly
     this pattern: brief loss of quality that self-corrects.
     """
-    relevant = [
-        d for d in diffs
-        if d.get("diff_type") in ("quality_degraded", "quality_recovered")
-    ]
+    relevant = [d for d in diffs if d.get("diff_type") in ("quality_degraded", "quality_recovered")]
     if not relevant:
         return None
 
@@ -170,6 +169,7 @@ def intermittent_disc(diffs: list[dict], detection_window: str = "1h") -> FlakyS
 
 
 # ── Rule: value_spike ─────────────────────────────────────────────────────────
+
 
 def value_spike(diffs: list[dict], detection_window: str = "1h") -> FlakySignal | None:
     """Flag an analog tag with readings that deviate beyond N σ from the mean.
@@ -217,12 +217,17 @@ def value_spike(diffs: list[dict], detection_window: str = "1h") -> FlakySignal 
         detection_window=detection_window,
         evidence_diff_ids=[diff_id for _, diff_id in spikes],
         confidence=confidence,
-        metadata={"mean": round(mean, 4), "stddev": round(stddev, 4),
-                  "max_deviation_sigma": round(max_deviation, 2), "spike_count": len(spikes)},
+        metadata={
+            "mean": round(mean, 4),
+            "stddev": round(stddev, 4),
+            "max_deviation_sigma": round(max_deviation, 2),
+            "spike_count": len(spikes),
+        },
     )
 
 
 # ── Dispatcher ────────────────────────────────────────────────────────────────
+
 
 def run_all_rules(diffs: list[dict], detection_window: str = "1h") -> list[FlakySignal]:
     """Run all four rules against a list of diffs for ONE (tenant, tag_path).
@@ -239,6 +244,7 @@ def run_all_rules(diffs: list[dict], detection_window: str = "1h") -> list[Flaky
             if sig:
                 results.append(sig)
         except Exception as exc:
-            logger.warning("rule %s failed for tag %s: %s", rule_fn.__name__,
-                           diffs[0].get("tag_path"), exc)
+            logger.warning(
+                "rule %s failed for tag %s: %s", rule_fn.__name__, diffs[0].get("tag_path"), exc
+            )
     return results
