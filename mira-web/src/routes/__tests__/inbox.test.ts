@@ -93,7 +93,7 @@ mock.module("../../lib/audit.js", () => ({
   requestMetadata: () => ({ ip: "127.0.0.1", userAgent: "bun-test" }),
 }));
 
-const { inbox, extractSlug } = await import("../inbox.js");
+const { inbox, extractSlug, _testing } = await import("../inbox.js");
 
 // --- helpers ---------------------------------------------------------------
 function pdfAttachment(name: string, sizeBytes?: number) {
@@ -165,6 +165,11 @@ async function postWebhook(
 beforeEach(() => {
   sentReceipts.length = 0;
   auditEvents.length = 0;
+  // Reset the per-IP rate-limit state so each test starts with a clean
+  // bucket — otherwise the suite blows past INBOX_LIMIT_PER_MINUTE since
+  // every request shares ip="unknown" via the in-process inbox.request().
+  // See P0.4 (site-hardening 2026-04-30).
+  _testing.reset();
 });
 
 // --- pure-function tests ---------------------------------------------------
