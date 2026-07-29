@@ -1,3 +1,29 @@
+# Hot Cache — 2026-07-28 — Content-fingerprinted migration ledger + prod migration-tracker cleanup
+
+**Migration head: 066** (`066_migration_ledger_content_sha.sql`, PR #2969). Applied to prod today
+(`apply-migrations.yml` run 30398527589); drift-check re-ran green on both staging and prod right
+after. Both ledgers seeded with `content_sha256` baselines (`mode=seed-ledger`, prod run 30398623372 +
+staging run 30398705585) so the new drift guard protects retroactively, not just migrations applied
+from today forward.
+
+Audited all open GitHub issues tracking prod/staging DB migrations for staleness (18-agent workflow,
+verified each claim against actual repo/ledger state, not issue text) and closed 4 with evidentiary
+comments:
+- **#2972** — drift issue self-resolved by the 066 apply above.
+- **#832** — `001_knowledge_graph.sql` already deployed since 2026-05 (dry-run confirmed `skip
+  (already applied)`).
+- **#1474** — `mira-core/mira-ingest/db/migrations/003_asset_qr_tags.sql` already deployed
+  (`mira-web/src/lib/qr-tracker.ts` depends on it in prod today).
+- **#1677** — migrations 038/039 shipped (PR #1710); the 040-042 source-preservation layer was
+  formally abandoned per `wiki/orchestrator/HISTORY.md`, so nothing left to gate.
+
+5 stayed open with real remaining work: #1246 (backfill script never re-verified after a psycopg2
+fix), #2130 (this entry — the previous "current head" pointer was stale), #703 (`hub_uploads` still
+inline DDL), #2337 (`ctx_import_batches` approval columns still missing), #383 (V1000 chunk backfill
+stalled at 66%, blocked-tool since sunset). Working these off next, easiest→hardest.
+
+---
+
 # Hot Cache — 2026-07-26 (later) — Prod bot outage diagnosed + fixed + follow-ups shipped (v3.215.1 → v3.216.2)
 
 The v3.214.0 deploy (from the session below) took the prod Telegram/Slack bot DOWN. Diagnosed the
