@@ -562,7 +562,12 @@ jobs:
         run: pip install pytest pytest-asyncio pdfplumber==0.11.9 reportlab pypdf
 
       - name: Run extractor + grading + registry + fleet-status + bridge + pdf-extract + eval-scorer offline tests
-        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py -q
+        # The crawler job-registry / heartbeat / health tests are stdlib-only by
+        # design (no docling/apscheduler) so they run in this minimal-deps job —
+        # they pin the scheduler's job table and the heartbeat-based health CLI
+        # (docs/ops/crawler-runtime.md). The scheduler↔registry tie test lives in
+        # tests/test_scheduler_registry.py and self-skips where heavy deps are absent.
+        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py mira-crawler/tests/test_job_registry.py mira-crawler/tests/test_heartbeat.py mira-crawler/tests/test_health.py -q
 
       - name: Pack reliability gate (deterministic scorecard)
         # Fails the build if ANY live/promoted drive pack regresses a reliability

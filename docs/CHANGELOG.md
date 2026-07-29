@@ -1,3 +1,98 @@
+### v3.225.1 (2026-07-28) - test(potd): port unique regression coverage from superseded #2865
+
+Reconciliation-only port of #2865's residual value onto the canonical Print-of-the-Day stack (#2866-#2868): a pure, backward-compatible `build_payload(pkg)` extraction in `tools/internet_print_test/mailer.py` plus two regression test files. No second view model, renderer, or send gate. Unblocks closing #2865 as superseded.
+
+### v3.225.0 (2026-07-28) - feat(hubv3): approved_by + approved_at audit columns on ctx_import_batches (#2337)
+
+Migration 067 adds `ctx_import_batches.approved_by TEXT` + `approved_at TIMESTAMPTZ`, deferred from the Phase 4 batch-review gate (PR #2336). The batch-review route (`/api/contextualization/batches/[batchId]/review`) now stamps both — `approved_by = 'human:<userId>'`, `approved_at = now()` — only when a decision resolves to `review_status = 'approved'`; reject/needs_review leave them untouched (or null, on a batch never approved). Closes the audit gap the HITL sign-off runbook flagged: previously `approved` batches carried no durable record of who approved them or when, since `updated_at` gets overwritten by any later transition.
+
+### v3.224.4 (2026-07-28) - fix(ingest): stop stamping the chunk ordinal into knowledge_entries.source_page (#2968 step 1)
+
+The legacy ingest write-sites (`mira-core/scripts/ingest_manuals.py` ×2, `mira-core/mira-ingest/db/neon.py::insert_knowledge_entry`) stamped the chunker's sequential chunk index into `source_page`, which is how ~73% of the corpus (61,791/84,088 rows) ended up with fabricated page numbers — the trust bug PR #2967 had to suppress at render. They now stamp the real `page_num` (or NULL), matching the already-correct crawler (`mira-crawler/ingest/store.py`) and Hub node-attachment (`node-knowledge-ingest.ts`) paths. The chunk ordinal stays in `metadata.chunk_index`, and the `knowledge_entry_exists` dedup guard now keys on it (`(metadata->>'chunk_index')::int`) instead of `source_page` — backward-compatible (legacy rows carry it in metadata too) and covered by the migration-003 partial unique index. Recurrence is blocked by a new architecture Contract 6 (`tests/test_architecture.py::test_kb_writes_never_stamp_chunk_ordinal_as_source_page`), AST-based and fixture-proven; it flags all three pre-fix sites and passes post-fix. Corpus remediation (dedup + re-ingest of the mis-paginated legacy copies) remains tracked in #2968 steps 2-4.
+
+### v3.224.3 (2026-07-28) - security(factorylm-ai): emitted paid-authorization evidence no longer carries the absolute local ledger path (#2928)
+
+Closes the last failing acceptance criterion on the #2928 P0: `PaidAuthorizationLedger.verify_and_consume` stamped `ledger_ref=str(self.path)` (an absolute local filesystem path) into the emitted `PaidAuthorizationVerificationState` evidence, violating the "no absolute local ledger paths in emitted evidence" requirement — caught by `test_signed_receipt_is_request_bound_and_single_use` (the macOS `/private/var/...` tmp prefix tripped the secret-scan assertion). Now emits the ledger basename only. Everything else in the P0 (verifier injection removal, signed-registry verification, single-use consumption, request/spend-cap binding, revocation, fail-closed) was already shipped in #2881/#2925; with this, the full `tests/factorylm_ai` suite is green (621 passed).
+### v3.224.1 (2026-07-28) - chore(zta): technician-v1 Track-1 hold-out eval — harness repoint + scorecard
+
+Repoints `factorylm_ai/dataset/holdout_eval.py` at the v1 fine-tune (`mike_578c/Qwen3.5-9B-technician-v1-29ed546c`, merged v2 resource `ml_CdV9UHKVHPSJZkg9g15g5/rv_CdV9VYuPvSyHSZ5ut2MVs`, endpoint `holdout-eval-technician-v1`) and lands the eval evidence under `docs/zta/technician-dataset-v1/holdout-eval/`: frozen 3-judge panel protocol (sha `4e368ffb`), per-judge verdicts, pre-unseal locked scores (sha `03460467`), and the scorecard. Result: **tuned 14 / base 9 / tie 2** on the 25 byte-identical PF40 evidence-absent prompts — ≥18/25 honesty bar NOT met, but v0's 7-13 loss flipped, and the grounding lens went **18-0-7: zero fabrication losses**. Training: job `ft-6fe667a3-6b72`, $4.00. Eval spend <$1, teardown verified.
+
+### v3.224.0 (2026-07-28) - fix(migrations): content-fingerprinted ledger kills the draft-poisoning drift class (#2284 / #2945)
+
+Builds the prevention #2284 proposed in June but never shipped — it was closed COMPLETED the same day it was filed with only the one-off staging drop+recreate done, which is why the identical drift recurred a month later as #2945.
+
+**The mechanism:** *(migration-verify auto-applies DRAFTS to persistent staging)* × *(`CREATE TABLE IF NOT EXISTS`)* × *(ledger keyed on FILENAME only)* = staging silently frozen at a draft shape while `schema_migrations` reports "applied" and CI is green. It surfaces only when something writes the canonical shape and gets `column ... does not exist`.
+
+**What shipped — the content-fingerprinted ledger.** Migration `066` adds `schema_migrations.content_sha256` (+ `content_sha256_at`). `apply-migrations.yml` records the sha on apply and **fails loud** when a filename already in the ledger has different content on the current ref. The check runs **before** the skip filter — essential, because a drifted file is precisely one that *would* be skipped, so checking afterwards would never see it. Targets without `066` are tolerated (column absent → check skips, logged), so it is safe to land before promotion. This is what makes the *silence* impossible: the ledger keys on filename, and a stable key with mutable content cannot otherwise distinguish "applied" from "a different version was applied".
+
+**The backfill is what makes it real.** Pre-`066` rows are `NULL` (= "unknown", never failed on). Since `mode=apply` *skips* already-applied files, those rows would never be stamped and the detector would sit permanently dormant on exactly the historical files most likely to have drifted. `mode=seed-ledger` now stamps current shas onto existing rows to baseline it.
+
+**⚠️ The "ephemeral verify DB" half of #2284's proposal was attempted, empirically disproved, and withdrawn.** A from-scratch job was built and run in CI; it fails at the **third file**. `003_kb_hardening.sql` does `ALTER TABLE knowledge_entries` / `ENABLE ROW LEVEL SECURITY`, but **no file in `mira-hub/db/migrations/` ever creates `knowledge_entries`** — per `048`'s own header the base tables came from `001_saas_layer.sql` / `002_knowledge_base.sql`, which are no longer in the repo. That directory is an *incremental* set layered on a base that no longer exists in source, so **no ephemeral from-scratch job can pass against it** until a base-schema bootstrap exists. The job was removed rather than shipped permanently-red or coaxed green against a guessed-at base schema; `migration-verify.yml` is byte-identical to `main`. Filed separately — it also means there is currently **no reproducible way to build a Hub database from scratch from the repo**, which is a real disaster-recovery gap.
+
+Verified: `actionlint` issue count unchanged at the 9 pre-existing baseline; drift-detector comparison logic unit-proven against a fixture across all three cases (rewritten → detected, unchanged → OK, new/unrecorded → skipped); `066` is the next free number with no renumbering of applied files.
+
+### v3.223.3 (2026-07-28) - fix(hub): stop citing chunk-index as a page number on /quickstart (#2910)
+
+On the public money path (`/quickstart`), MIRA cited **PowerFlex 525 · p.1254** — but that manual (520-UM001) is ~140 pages. The "we cite the real OEM page" trust promise breaks. Root cause (traced against staging, not guessed): legacy ingest paths (Google-Drive ingest, `ingest_manuals.py`) stamped `knowledge_entries.source_page` with the chunk **ordinal**, not the real PDF page — so a 1254-chunk doc "cites" p.1254. The correctly-paginated crawler copy of the same manual exists (real pages 1..274), which yields a clean per-row discriminator: **a mis-stamped row has `source_page === (metadata->>'chunk_index')`** (verified: legacy copies 100% sp==cidx; crawler copy sp!=cidx for 1067/1069 rows).
+
+**Fix (render-side, zero DB mutation):** `manual-rag.ts` now selects `metadata->>'chunk_index'` into `ManualChunk.chunkIndex` and a new `displayPage()` helper suppresses the page label only when `sourcePage === chunkIndex`. Applied at both citation surfaces — `chunksToSources`, `buildGroundedContext`, and the `/quickstart` route's inline 1:1 citation map (kept 1:1 per #1875; not switched to `chunksToSources` to preserve that invariant). Real-page rows (crawler ingest; node `page_start`, where `chunkIndex` is null) still render their page. `sourceKey` keys on the raw page, so citation numbering/dedup is unchanged.
+
+**Scope note (not this PR):** the underlying corpus problem is large — ~61.8k/84k `knowledge_entries` rows have `source_page == chunk_index`, plus heavy document duplication (e.g. `gs10_fault_codes.pdf` ingested 158×). That is a separate, gated data-remediation + dedup program (overlaps #1596/#2263), tracked as its own issue — deliberately **not** folded into this P2 citation fix. A small ride-along could fix the ingest write-sites (`ingest_manuals.py`, `mira-ingest/db/neon.py`) to stop *new* mis-stamps. Tests: 5 new guard cases + 72 existing green (manual-rag + assets/node chat routes); typecheck + eslint clean.
+
+### v3.223.2 (2026-07-28) - chore(worktrees): CodeGraph nested-worktree allowlist + detection-only health report
+
+Implements fixes **3** and **4** from `docs/tech-debt/2026-07-27-worktree-clutter-rca.md` (#2958). Fix 3 and 4 only — the #2952 nightly redesign is tracked separately.
+
+**Fix 3 — nested-worktree allowlist (`tools/codegraph-preflight.sh`).** A git worktree nested inside the repo gets indexed unless gitignored, and each duplicate copy of a symbol counts as an extra caller — silently inflating `callers`/`callees`/`impact` (codegraph blind spot #5). `.gitignore` covered three fixed locations, but that is a **denylist and it fails open**: the real `wt-verify` worktree sat at the repo root, matched none of the patterns, and was being indexed. A gitignore glob cannot express "directory containing a `.git` *file*", so the allowlist is enforced in the preflight instead: any in-repo worktree outside `.claude/worktrees/`, `.worktrees/`, `.audit-worktrees/` is reported by path. **WARN only — deliberately does not change the verdict**, since a stray worktree shouldn't block a session and over-blocking pushes people to skip the preflight. Proven against a real stray (flagged) and a real allowed-path worktree (not flagged).
+
+**Fix 4 — `tools/worktree-health.sh`, detection only.** Reports: >1 holder of `main` (the RCA's highest-severity failure — git allows one checkout per branch with no TTL, and a forgotten worktree blocked the shared checkout on 2026-07-27); registered-but-missing paths, calling out **missing + locked** separately because `git worktree prune` skips those (how 19 dead entries survived while `worktree list` reported 0 prunable); deleted branch refs and detached HEADs reachable from no ref; worktrees older than `MIRA_WT_MAX_AGE_DAYS` (default 30) with dirty state; accumulation under `MIRA-wt/`; and an inventory with inferred owner. **It never deletes, prunes, or unlocks anything** — `--merged` is a weak signal in a squash-merging repo, so an automated sweep would eventually destroy live unpushed work. Always exits 0 (`--strict` opts into exit 1 for CI).
+
+11 hermetic tests in `tests/test_worktree_health.py` build a throwaway repo per case — including one asserting the worktree registry is byte-identical before and after a run, and one asserting `--strict` exits 1 only when findings exist. Live run: 32 worktrees, 2.4s, no side effects on the real checkout.
+### v3.223.1 (2026-07-28) - fix(crawler): latency.py default log path was cwd-doubled (same bug class as the heartbeat fix)
+
+`metrics/latency.py`'s `DEFAULT_LOG_PATH` was the cwd-relative string `"mira-crawler/data/ingest_latency.jsonl"`. The daemon runs with cwd = `mira-crawler/` (run.sh does `cd $SCRIPT_DIR`) and doesn't export `MIRA_INGEST_LATENCY_LOG`, so that relative path resolves to the **doubled** `mira-crawler/mira-crawler/data/ingest_latency.jsonl` — ingest latency rows were written to a phantom directory nobody reads. This is the exact bug the advisor caught in `heartbeat.py` last session (heartbeat.py's fix comment even cited latency.py as the outstanding bad case).
+
+**Fix (1 line):** `DEFAULT_LOG_PATH = str(Path(__file__).resolve().parent.parent / "data" / "ingest_latency.jsonl")` — absolute, resolved from the module location, cwd-independent. The `MIRA_INGEST_LATENCY_LOG` env override still wins. New regression test `tests/test_latency_path.py` mirrors `test_heartbeat.py`'s path guard (fails on the old relative default, passes on the fix); heartbeat + latency path tests green (15/15). Surgical — no other latency.py behavior touched.
+
+### v3.222.3 (2026-07-27) - fix(crawler): curate + verify OEM source URLs — closes the "crawls find nothing" content gap
+
+Closes the content gap the v3.222.1 note flagged: after the tier-scoping code fix, siemens/rockwell still discovered **0 URLs** because `sources.yaml` had no entries for them (a `# to be verified and added` placeholder). This adds real, curated OEM manual URLs and repairs dead existing ones. **Every URL was fetch-verified (`200` + `application/pdf` + sane size) and robots.txt-checked on 2026-07-27** — no URL was transcribed from a search snippet (guessed doc-numbers all 404'd in testing).
+
+**New tier-3 entries (wedge-first: drive manuals with fault/parameter tables):**
+- Rockwell **PowerFlex 525** user manual (`520-UM001`, 34 MB) + **PowerFlex 755** programming manual (`750-PM001`, 39 MB) — `literature.rockwellautomation.com`, public/zero-login.
+- Siemens **SINAMICS G120C** List Manual + **G120 CU240B-2/E-2** List Manual (fault `Fxxxxx`/alarm `Axxxxx`/parameter reference) — `cache.industry.siemens.com/dl/files/` (robots allows `/dl/files/`).
+
+**Repaired dead existing targets (all were 404):**
+- `automationdirect_gs10` → `gs10usermanual.pdf` (AD split `gs10m.pdf` into per-chapter files; combined manual is the current URL). The GS10 is the bench VFD.
+- `wago_750_8202` → moved from `/global/download/` to `/wagoweb/documentation/`.
+- `wago_topjob_s` **removed** — dead, no zero-login official replacement (distributor catalogs only), low diagnostic value (DIN-rail terminal block).
+
+**FANUC & KUKA intentionally omitted, documented in-file:** no zero-login official manuals exist (dealer/customer-portal only; every public copy is a login-walled or copyright-infringing third-party re-host), so they stay at 0 rather than carry a dead/non-compliant URL.
+
+**Verified via the real `ManufacturerCrawler.discover_urls()`:** rockwell 0→3, siemens 0→2, abb 4 (unchanged), automationdirect 3 (GS10 repaired), fanuc/kuka 0 (no public docs). `tests/test_manufacturer_discovery.py` + `tests/test_crawlers.py` green (13/13). No code changed — `sources.yaml` data only.
+
+### v3.222.1 (2026-07-27) - fix(crawler): manufacturer crawl finds reference-tier docs (tier-scoping bug)
+
+**Root cause (one line):** `ManufacturerCrawler.discover_urls()` filtered tiers with `if "manufacturer" not in tier_key: continue`, hard-scoping discovery to the single `3_manufacturer` tier. The OEM reference PDFs (ABB/SKF/Rockwell) are catalogued under the `5_reference` tier, so a `--filter abb` crawl skipped **4 ABB PDFs that already existed in `sources.yaml`** — discovering 0 URLs and reporting healthy `no_new` forever while finding nothing.
+
+**Fix (surgical):** when crawling a *specific* manufacturer, scan every tier — the existing manufacturer-name filter already restricts to matching entries. When crawling "all" (no filter), keep the manufacturer-tier-only behavior so reference/curriculum-owned docs aren't double-ingested. Verified: `crawl_abb` 0 → 4 URLs discovered. A hermetic regression test (`tests/test_manufacturer_discovery.py`) pins this — it fails against the pre-fix code and passes on the fix.
+
+**Note — separate content gap (not this fix):** FANUC/KUKA/Siemens/Rockwell still discover 0 because they have no source URLs anywhere in `sources.yaml` (a `# to be verified and added` placeholder). That needs source curation, not code.
+
+### v3.221.0 (2026-07-27) - feat(crawler): per-job heartbeat + health CLI + single-source job registry
+
+Runtime hardening (Tier A) for the Bravo manufacturer crawler. Fixes the "registration ≠ success" trap: the old 30-minute `healthcheck` only proved `CrawlerConfig()` constructs — it never proved a crawl *ran*, let alone succeeded. Now every scheduled job leaves a per-job heartbeat and a dependency-free `health.py` CLI judges the whole schedule from that evidence.
+
+**Single source of truth for the schedule.** `mira-crawler/job_registry.py` defines the 9 jobs (id / trigger / cadence) as data. Both `main._setup_scheduler` (the write side — what fires) and `health.py` (the read side — what's judged healthy) read it, so they can't drift. It is stdlib-only by design so the minimal-deps CI job imports it without docling/apscheduler.
+
+**Heartbeat evidence, mirroring `metrics/latency.py`.** `metrics/heartbeat.py` appends one JSONL row per job run — `ok` (did work), `no_new` (ran, nothing new — 0 URLs discovered is **healthy**, per Phase 0), or `failed` (raised / every URL errored) — classified from the base crawler's `{total_urls, stored_chunks, errors, …}`. Fail-soft readers, injectable clock.
+
+**Honest, graceful health.** `health.py` judges each job against its stale window: cold start reads `no_evidence_yet` and exits 0 (a fresh box is **never** "unhealthy"); `ran-0-new` is distinct from `failed` and from `never_ran`; a weekly job not yet due doesn't raise a false alarm; and the 30-minute healthcheck going `stale` (silent > 40 min) is the daemon-dead signal that drives overall `degraded` (exit 1).
+
+**Detection-only watchdog** (`mira-crawler/ops/`): a LaunchAgent template (no secrets — paths only), an install/uninstall/rollback script, and a shellcheck-clean detection script that checks launchd liveness + `health.py --json` and **alerts without ever restarting** the crawler. Docs: `docs/ops/crawler-runtime.md` (runtime reference), `docs/ops/crawler-watchdog.md` (install/rollback), `docs/ops/crawler-data-relocation-assessment.md` (Phase 5 — assessed, execution deferred).
+
+**No behavior deployed.** The running daemon stays on its pinned SHA; deploying this `main.py` and installing the watchdog is a reviewed, SHA-changing follow-up. Verified: 43 new tests green (registry / heartbeat / health hermetic; scheduler↔registry tie self-skips where heavy deps absent), ruff + shellcheck clean, watchdog exercised end-to-end on healthy/cold-start/degraded logs, no regressions in the existing crawler suite (pre-existing optional-dep failures unchanged). Refs `docs/ops/2026-07-27-crawler-runtime-hardening-phase0.md`.
+
 ### v3.219.0 (2026-07-26) - feat(ontology): evidence-module fixture coverage (ADR-0032 Phase 1)
 
 Phase 1 of the ADR-0032 §8 follow-up: the **evidence** module — the keystone, and the "an AI approves its own work" class of rules — is now pinned by fixtures. Shape coverage **1/42 → 11/42**.
@@ -2161,3 +2256,18 @@ For current build state, see `CLAUDE.md` in project root.
 
 ## 3.217.2
 - fix(finetune): thread optional batch_size through the canonical fine-tune request + Together provider (Together resolved a zero default batch size for Qwen/Qwen3.5-9B — "HTTP 400: batch size is zero"); omitted batch_size keeps prior hashes byte-stable
+
+## 3.219.1
+- fix(providers): Together Dedicated Endpoints v2 deployment lifecycle (together_v2.py) — v1 endpoints API retired by Together; adds project/endpoint/deployment create, PATCH-to-zero stop with etag+transient retries, observed-STOPPED verification, append-only lease ledger with crash recovery (cleanup_orphaned_v2_deployments), env-only trusted verifier (no injection), budget precheck before consume. 13 hermetic teardown tests mirror the v1 suite. No live calls.
+
+## 3.223.0
+- feat(review-console): review-by-exception workflow — console v2 vendored into the repo (verbatim base commit) + bulk "Approve recommended low-risk cards" with two-step confirmation (token bound to the current eligible set), server-side hard gate re-verified per record (safety-sensitive / correction / held-out / no-rights / already-decided cards can NEVER bulk-approve, regardless of the advice file), deterministic 10% QA sampling of recommended approvals routed to individual human review with >2% sampled-error auto-disable, filters (uncertain/safety/corrections/recommended/QA) + a/r/c/s/n keyboard shortcuts, and full audit fields on every ledger event (mode individual|bulk|sampled, policy_version, evidence_hash, confidence, reviewer). Recommendations come from `factorylm_ai/dataset/review_recommendations.py` (policy review-by-exception.v1): deterministic checks (schema, evidence-contract, readability) AND an independent reviewer must agree — the model being trained is structurally forbidden as a reviewer (fail-closed). Access-key auth unchanged; ledger stays append-only; 14 new pytest cases + 30 new console selftest checks (65 total). Runtime NOT deployed.
+
+## 3.222.0
+- feat(dataset): technician-dataset v1 builder — the evidence-contract build (`factorylm_ai/dataset/technician_v1.py`). Fixes the v0 root cause (all 119 training rows referenced evidence never present in the prompt): Pattern A puts the deterministic evidence line IN the user turn and cites it; Pattern B withholds the fact and trains an explicit useful cite-or-refuse (claim provably absent from B answers); Pattern C valued interactions split with/without-evidence by fact-hash parity. Reuses the frozen v0 pipeline under a context-managed constant/seam override (v0 byte-stability test-asserted); hard-caps durapulse_gs10 at its 12 real facts (removes 8 cycled v0 duplicates); 211-candidate pool (134 diagnostic A/B + 77 valued), manifest frozen `53ca7bc1…`, gate reachability now a REAL test (125 simulated approvals → PAID_GATE_PASS on a temp ledger). Artifacts under docs/zta/technician-dataset-v1/. No spend; review sitting + ceremonies remain Mike-gated.
+
+## 3.221.1
+- fix(eval): disable Qwen3.5 thinking mode on both live holdout-eval sides (`chat_template_kwargs.enable_thinking=false`) — the 2026-07-27 first live run produced 50 EMPTY answers because the reasoning model spent the whole 300-token cap in `message.reasoning` and `content` never populated; unified `_call_chat` for base (serverless) + tuned (v2 dedicated), 400-fallback retries once without the kwarg at 4x tokens, and an empty answer now fails loudly instead of being recorded. Run declared invalid before unsealing; ~$0.55 spent of the $5 declaration.
+
+## 3.220.0
+- feat(eval): blinded hold-out evaluation harness (base vs technician-v0 LoRA) — deterministic prompt set + leakage guard over the 25 reserved PowerFlex 40 records, sealed-mapping blinding, deterministic scoring, mock dry-run, live path gated on a fresh single-use signed authorization; proposal in docs/zta/2026-07-27-holdout-eval-proposal.md. Live path runs the tuned model on a Together v2 dedicated deployment (merged model, verified teardown). No paid calls.

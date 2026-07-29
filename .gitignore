@@ -295,3 +295,29 @@ tools/internet_print_test/print_recall/
 factorylm_ai/data/
 factorylm_ai/proofpack/reports/
 .venv-flmai/
+
+# --- accumulated session artifacts (added 2026-07-27 worktree/orphan cleanup) ---
+# Playwright storageState from dogfood runs — contains LIVE SESSION COOKIES.
+# Ignore only the .auth/ subdir; the rest of dogfood-output/ is legitimately tracked.
+dogfood-output/.auth/
+
+# Repo-root graphify scratch. `.claude/rules/graphify-excluded.md` warns that a
+# graphify-out/ at the repo root triggers the global skill's code-navigation fast
+# path, which is FORBIDDEN here (CodeGraph is the only code-nav graph). The
+# orchestrator product KG builds in a temp dir and lands in wiki/orchestrator/kg/,
+# so this never affects it.
+graphify-out/
+
+# One-shot rollback scratch dirs left by working-tree cleanups (ORIG_* snapshots
+# + a finish-cleanup.sh). Superseded once the cleanup lands; several MB each.
+.cleanup-rollback-*/
+
+# lead-hunter cron runtime state (untracked 2026-07-27). Both are rewritten by the
+# hourly routine, so while tracked they made the shared working tree PERMANENTLY dirty
+# — and tools/hooks/safe-cron-pull.sh skips on a dirty tree, which is one of the two
+# conditions that left the nightly eval unable to update itself (#2952).
+# Neither is source: .hourly_state.json is 4 counters (city_index/requests_today/
+# last_date/total_discovered); hardening-alerts.jsonl is per-run health telemetry
+# (durations + step statuses), the same class as the eval run logs ignored above.
+tools/lead-hunter/.hourly_state.json
+marketing/prospects/hardening-alerts.jsonl
