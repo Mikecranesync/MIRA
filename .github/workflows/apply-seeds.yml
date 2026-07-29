@@ -1,6 +1,7 @@
 name: Apply KB Seeds
 
-# Manually-triggered workflow to apply tools/seeds/*.sql against prod NeonDB.
+# Manually-triggered workflow to apply tools/seeds/*.sql against staging or prod
+# NeonDB. Default target is staging — promote to prod only after verifying.
 # All target seeds use WHERE NOT EXISTS guards keyed on
 # (tenant_id, source_url, source_page) and are idempotent — re-running is safe.
 #
@@ -14,6 +15,14 @@ name: Apply KB Seeds
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: 'NeonDB target. staging = factorylm/stg, prod = factorylm/prd. Default staging — promote to prod only after staging is verified.'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
       seeds:
         description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, simlab-docs, all. NOTE: simlab-docs is a Python seed (tools/seeds/seed-simlab-docs.py) with its own fixed SimLab tenant — it ignores the tenant_id input and only runs once PR #1816 (simlab/docs/) is on the checked-out ref.'
         required: true
@@ -44,7 +53,7 @@ jobs:
   apply:
     name: Apply seeds (${{ inputs.mode }})
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 15
 
     steps:
@@ -69,7 +78,9 @@ jobs:
             echo "::error::DOPPLER_TOKEN secret not set."
             exit 1
           fi
-          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          DOPPLER_CFG=$([ "${{ inputs.target }}" = "prod" ] && echo "prd" || echo "stg")
+          echo "Doppler config: factorylm/${DOPPLER_CFG}"
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
           if [ -z "$DATABASE_URL" ]; then
             echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong?"
             exit 1
