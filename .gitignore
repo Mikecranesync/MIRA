@@ -321,3 +321,6 @@ graphify-out/
 # (durations + step statuses), the same class as the eval run logs ignored above.
 tools/lead-hunter/.hourly_state.json
 marketing/prospects/hardening-alerts.jsonl
+
+# MIRA Sight SDK-watch run output (packets ship as CI artifacts, not commits)
+artifacts/mira-sight/

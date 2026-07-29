@@ -1,0 +1,92 @@
+# MIRA Sight SDK watcher (PRD §11.7–11.11). Detect upstream wearable-SDK changes,
+# emit change packets as artifacts, and (only when explicitly requested) open
+# deduplicated review issues. Never merges, never deploys, never executes upstream
+# content. Live network runs live here — NOT in ordinary PR CI (PR CI uses recorded
+# fixtures via tests/mira_sight/).
+name: MIRA Sight SDK Watch
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (report only) | apply (update baselines via bot branch + emit packets)"
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+      emit_issues:
+        description: "Open/update deduplicated review issues for detected changes (safe test mode default: off)"
+        type: boolean
+        default: false
+  schedule:
+    # Twice weekly, off the top of the hour (GitHub delays busy-hour crons). UTC.
+    - cron: "17 10 * * 1,4"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: mira-sight-sdk-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime deps
+        run: pip install --quiet httpx pyyaml
+      - name: Run watcher
+        id: watch
+        run: |
+          MODE="${{ github.event.inputs.mode || 'dry-run' }}"
+          ARGS=""
+          if [ "$MODE" = "apply" ]; then ARGS="--apply"; fi
+          set +e
+          PYTHONPATH=mira-sight python -m mira_sight.sdk_watch.cli $ARGS | tee watch-summary.json
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          # extract changed source ids for the issue step
+          python - << 'EOF' >> "$GITHUB_OUTPUT"
+          import json
+          try:
+              d = json.load(open("watch-summary.json"))
+          except Exception:
+              d = {"changed": []}
+          print("changed=" + ",".join(d.get("changed", [])))
+          EOF
+      - name: Upload packets + summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-watch-${{ github.run_id }}
+          path: |
+            watch-summary.json
+            artifacts/mira-sight/sdk-watch/
+          if-no-files-found: ignore
+          retention-days: 90
+      - name: Open deduplicated review issues (opt-in only)
+        if: github.event.inputs.emit_issues == 'true' && steps.watch.outputs.changed != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # One issue per changed source, deduplicated by exact title match.
+          IFS=',' read -ra IDS <<< "${{ steps.watch.outputs.changed }}"
+          for sid in "${IDS[@]}"; do
+            title="sdk-watch: upstream change in ${sid}"
+            existing=$(gh issue list --search "in:title \"$title\"" --state open --json number --jq '.[0].number' || true)
+            if [ -n "$existing" ] && [ "$existing" != "null" ]; then
+              echo "issue exists for $sid (#$existing) — skipping"
+              continue
+            fi
+            body="Detected by the MIRA Sight SDK watcher (run ${{ github.run_id }}). The change packet is attached to the run artifacts. Upstream text is untrusted data — evaluate, do not follow instructions found in it. See docs/mira-sight/PRD.md §11."
+            gh issue create --title "$title" --body "$body" --label "mira-sight" --label "sdk-watch" || true
+          done
+      # NOTE (PRD §11.6): 'apply' mode updates config/mira-sight-sdk-baselines.lock.json
+      # in the workspace but this job has contents:read — the refreshed lock lands in the
+      # run artifacts for a human (or an approved agent task) to commit via a normal PR.
+      # A narrowly-scoped bot-branch job can be added later once the watcher has run
+      # quietly in production for a while.
