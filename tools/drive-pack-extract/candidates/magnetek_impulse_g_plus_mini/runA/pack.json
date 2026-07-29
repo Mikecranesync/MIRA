@@ -1,0 +1,41 @@
+{
+  "pack_id": "magnetek_impulse_g_plus_mini",
+  "schema_version": 2,
+  "family": {
+    "manufacturer": "Magnetek",
+    "series": "IMPULSE G+ Mini",
+    "aliases": [
+      "impulse g+ mini",
+      "g+ mini",
+      "gplus mini",
+      "impulse gplus mini"
+    ]
+  },
+  "nameplate": {
+    "match_keywords": [
+      "impulse g+ mini",
+      "g+ mini",
+      "magnetek impulse",
+      "gplus mini"
+    ]
+  },
+  "live_decode": {
+    "status_bits": {},
+    "cmd_word": {},
+    "fault_codes": {},
+    "registers": {}
+  },
+  "envelope": {},
+  "knowledge": {
+    "scout_provenance": "scout 2026-07-14: magnetekdrives.com/.../drives-g-mini-manual.pdf sha256=56075883958090ed (2915657 bytes); whole-doc extract"
+  },
+  "provenance": {
+    "items": {
+      "live_decode.fault_codes": "manual_cited",
+      "parameters": "manual_cited"
+    },
+    "sources": []
+  },
+  "parameters": [],
+  "keypad_navigation": []
+}

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="34.00" TargetName="ConveyorCell" TargetType="Controller" ContainsContext="false" Owner="MIRA" ExportDate="Mon Jun 16 08:00:00 2026">
+  <Controller Use="Target" Name="ConveyorCell" ProcessorType="1756-L83E" MajorRev="34" MinorRev="11">
+    <DataTypes>
+      <DataType Name="Drive_Status" Family="NoFamily" Class="User">
+        <Members>
+          <Member Name="Running" DataType="BOOL" Dimension="0" Radix="Decimal"/>
+          <Member Name="Faulted" DataType="BOOL" Dimension="0" Radix="Decimal"/>
+          <Member Name="OutputHz" DataType="REAL" Dimension="0" Radix="Float"/>
+        </Members>
+      </DataType>
+    </DataTypes>
+    <Tags>
+      <Tag Name="Start_PB" TagType="Base" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
+        <Description><![CDATA[Operator start pushbutton]]></Description>
+      </Tag>
+      <Tag Name="Stop_PB" TagType="Base" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
+        <Description><![CDATA[Operator stop pushbutton]]></Description>
+      </Tag>
+      <Tag Name="EStop_OK" TagType="Base" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
+        <Description><![CDATA[Emergency stop healthy (safety circuit)]]></Description>
+      </Tag>
+      <Tag Name="Photoeye_1" TagType="Base" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
+        <Description><![CDATA[Jam detection photo-eye]]></Description>
+      </Tag>
+      <Tag Name="Auto_Mode" TagType="Base" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
+        <Description><![CDATA[Line in automatic mode]]></Description>
+      </Tag>
+      <Tag Name="Motor_Run" TagType="Base" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
+        <Description><![CDATA[Conveyor VFD run command]]></Description>
+      </Tag>
+      <Tag Name="Conv_Fault" TagType="Base" DataType="BOOL" Radix="Decimal" ExternalAccess="Read/Write">
+        <Description><![CDATA[Conveyor fault latch]]></Description>
+      </Tag>
+      <Tag Name="VFD_Frequency" TagType="Base" DataType="REAL" Radix="Float" ExternalAccess="Read Only">
+        <Description><![CDATA[Drive output frequency Hz]]></Description>
+      </Tag>
+      <Tag Name="VFD_Current" TagType="Base" DataType="REAL" Radix="Float" ExternalAccess="Read Only">
+        <Description><![CDATA[Drive output current Amps]]></Description>
+      </Tag>
+      <Tag Name="VFD_FaultCode" TagType="Base" DataType="DINT" Radix="Decimal" ExternalAccess="Read Only">
+        <Description><![CDATA[Active drive fault code]]></Description>
+      </Tag>
+      <Tag Name="Run_Timer" TagType="Base" DataType="TIMER" ExternalAccess="Read/Write">
+        <Description><![CDATA[Conveyor run-time accumulator]]></Description>
+      </Tag>
+    </Tags>
+    <Programs>
+      <Program Name="MainProgram" MainRoutineName="MainRoutine">
+        <Tags/>
+        <Routines>
+          <Routine Name="MainRoutine" Type="RLL">
+            <RLLContent>
+              <Rung Number="0" Type="N">
+                <Comment><![CDATA[Run the conveyor motor in auto when started, no e-stop, no fault]]></Comment>
+                <Text><![CDATA[XIC(Start_PB)XIO(Stop_PB)XIC(EStop_OK)XIC(Auto_Mode)XIO(Conv_Fault)OTE(Motor_Run);]]></Text>
+              </Rung>
+              <Rung Number="1" Type="N">
+                <Comment><![CDATA[Accumulate conveyor run time]]></Comment>
+                <Text><![CDATA[XIC(Motor_Run)TON(Run_Timer,?,?);]]></Text>
+              </Rung>
+              <Rung Number="2" Type="N">
+                <Comment><![CDATA[Photo-eye blocked while running latches a jam fault]]></Comment>
+                <Text><![CDATA[XIC(Motor_Run)XIC(Photoeye_1)OTL(Conv_Fault);]]></Text>
+              </Rung>
+            </RLLContent>
+          </Routine>
+          <Routine Name="FaultRoutine" Type="ST">
+            <STContent>
+              <Line Number="0"><![CDATA[IF VFD_FaultCode > 0 THEN Conv_Fault := 1; END_IF;]]></Line>
+              <Line Number="1"><![CDATA[IF Stop_PB THEN Conv_Fault := 0; END_IF;]]></Line>
+            </STContent>
+          </Routine>
+        </Routines>
+      </Program>
+    </Programs>
+  </Controller>
+</RSLogix5000Content>

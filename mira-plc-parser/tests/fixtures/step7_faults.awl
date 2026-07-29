@@ -1,0 +1,16 @@
+DATA_BLOCK DB_FAULTS
+TITLE = DB_FAULTS
+AUTHOR:LEI
+FAMILY:W3276
+NAME:DB_FAULTS
+VERSION:0.1
+  STRUCT
+   Alarm0000 :BOOL:=0; // #0 Fault Block 1 -F2 24VDC NORMAL-BUS TRIPPED
+   Alarm0001 :BOOL:=0; // #1 Fault Block 1 -F4 24VDC SAFETY-BUS TRIPPED
+   Alarm0059 :BOOL:=0; // #59 Fault Block 1 -A1 VFD FAULT
+   Alarm0060 :BOOL:=0; // #60 Fault Block 1 -A1 VFD DOES NOT STOP
+   Alarm0062 :BOOL:=0; // #62 Fault Block 1 -F1.1 THERMISTOR FAULT
+   Spare0001 :BOOL:=0; // spare marker should stay out of the alarm parser
+  END_STRUCT ;
+BEGIN
+END_DATA_BLOCK

@@ -150,6 +150,24 @@ jobs:
             echo "result=pass" >> $GITHUB_OUTPUT
           fi
 
+      - name: verify-agent-symbols — fabricated first-party imports on the PR diff
+        id: verify_agent_symbols
+        run: |
+          # Backstop for the local pre-commit check (.githooks/pre-commit §6),
+          # which is warn-only to avoid Stop-hook thrash in the shared working
+          # tree (session-discipline.md). This runs on the full PR diff vs the
+          # base branch — see tools/verify_agent_symbols.py for scope/limits.
+          if ! OUTPUT=$(python3 tools/verify_agent_symbols.py --base "origin/${{ github.base_ref }}" 2>&1); then
+            {
+              echo ""
+              echo "🔴 **Possibly fabricated import(s)** (tools/verify_agent_symbols.py):"
+              echo '```'
+              echo "$OUTPUT"
+              echo '```'
+            } >> /tmp/shellcheck-output.txt
+          fi
+          echo "$OUTPUT"
+
       - name: Collect static analysis summary
         id: static_summary
         run: |

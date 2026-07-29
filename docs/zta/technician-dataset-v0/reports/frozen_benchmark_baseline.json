@@ -1,0 +1,18 @@
+{
+  "build_id": "2026-07-23-technician-dataset-v0",
+  "frozen_eval_material_policy": "evaluation_only_never_training",
+  "held_out_keys_valid": true,
+  "held_out_lineage_keys": [
+    "factorylm:cv-101-e-004",
+    "rockwell-automation:22b-um001j-en-e",
+    "factorylm:factorylm-print-style-025",
+    "factorylm:public-domain-print-031",
+    "factorylm:technician-review-011"
+  ],
+  "refs": [
+    "docs/eval/visual-technician-corpus/README.md",
+    "docs/eval/print-translator-benchmark/BASELINE_A_FROZEN.md"
+  ],
+  "schema": "factorylm.technician-dataset.frozen-benchmark-baseline.v1",
+  "simlab_mira_training_allowed": false
+}

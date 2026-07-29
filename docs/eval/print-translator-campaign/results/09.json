@@ -1,0 +1,32 @@
+{
+  "id": 9,
+  "oem": "Rockwell Automation",
+  "document": "Guardmaster 440R Safety Relay Module (440R-UM013)",
+  "url": "literature.rockwellautomation.com/idc/groups/literature/documents/um/440r-um013_-en-p.pdf",
+  "manifest_page_ref": "Ch. 2–3, wiring & terminal diagrams",
+  "print_type": "Dual-channel safety relay termination",
+  "standard": "ISO 13849-1 PLd",
+  "category": "Safety Relays",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 41,
+  "image_sha256": "54bed80a9ec4fa701d2977b77c08018af8f39400d293deeff0018fda5104a091",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T04:35:34.904328+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": false,
+  "vision_called": true,
+  "router_called": false,
+  "inference": "not_triggered",
+  "reason": "vision classified as 'EQUIPMENT_PHOTO', not ELECTRICAL_PRINT",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for a DI Safety Relay (Cat. No. 440R-D22R2). The diagram illustrates two devices with mechanical contacts and monitored manual reset, as well as a safety mat and device with OSSD outputs.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  }
+}

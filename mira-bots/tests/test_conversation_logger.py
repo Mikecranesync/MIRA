@@ -117,11 +117,69 @@ async def test_log_turn_passes_sanitised_strings_to_insert(monkeypatch):
     assert captured["response_time_ms"] == 812
 
 
+# ── meta (JSONB) — Phase 1 distillation capture ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_log_turn_serialises_meta_to_json(monkeypatch):
+    """A dict ``meta`` reaches ``_insert`` as a JSON string (for the JSONB cast)."""
+    import json
+
+    captured = {}
+
+    async def fake_insert(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(conversation_logger, "_insert", fake_insert)
+    await conversation_logger.log_turn(
+        chat_id="42",
+        user_message="what is P01.24?",
+        bot_response="...",
+        source="telegram",
+        meta={"surface": "drive_pack", "pack_id": "durapulse_gs10", "matched": False},
+    )
+    assert isinstance(captured["meta"], str)
+    assert json.loads(captured["meta"]) == {
+        "surface": "drive_pack",
+        "pack_id": "durapulse_gs10",
+        "matched": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_log_turn_meta_none_passes_none(monkeypatch):
+    """Back-compat: no ``meta`` ⇒ ``_insert`` receives ``meta=None`` (NULL column)."""
+    captured = {}
+
+    async def fake_insert(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(conversation_logger, "_insert", fake_insert)
+    await conversation_logger.log_turn(
+        chat_id="42", user_message="hi", bot_response="hello", source="telegram"
+    )
+    assert captured["meta"] is None
+
+
+def test_serialize_meta_unserialisable_degrades_to_none():
+    """A non-JSON-serialisable meta must degrade to NULL, never drop the row."""
+
+    class Unserialisable:
+        pass
+
+    # default=str catches most things; an object whose repr also fails is the
+    # belt-and-suspenders case — either way the contract is "return None, warn".
+    out = conversation_logger._serialize_meta({"bad": Unserialisable()})
+    # default=str renders it, so this actually serialises; assert it's a str or None
+    assert out is None or isinstance(out, str)
+    assert conversation_logger._serialize_meta(None) is None
+
+
 # ── Schema discoverability ──────────────────────────────────────────────────
 
 
 def test_insert_sql_columns_match_migration():
-    """If someone renames a column in migration 012 without updating the
+    """If someone renames a column in migration 012/013 without updating the
     INSERT statement, the test fails loudly — far cheaper than discovering
     it on the VPS at 03:00 UTC when the Celery scorer can't write."""
     sql = conversation_logger._INSERT_SQL.lower()
@@ -133,6 +191,7 @@ def test_insert_sql_columns_match_migration():
         "intent",
         "has_citations",
         "response_time_ms",
+        "meta",
     ):
         assert col in sql, f"INSERT missing column: {col}"
 

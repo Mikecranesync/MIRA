@@ -1,0 +1,61 @@
+{
+  "$comment": [
+    "Northwind / Discharge Conveyor CV-200 — Command Center display + tag-ingest config.",
+    "SEPARATE from the garage conveyor config (mira-hub/db/seeds/command_center_conveyor.sql,",
+    "tools/seeds/approved_tags_conveyor.sql) which stays bound to",
+    "enterprise.home_garage.conveyor_lab.conveyor_1 and is NOT touched here. This is the",
+    "explicit, machine-readable encoding of where the CV-200 live Perspective view is framed",
+    "per environment, and how the PLC-laptop gateway feeds CV-200 tags. READ-ONLY: this only",
+    "ever records where to *watch* a display and how tags come *in* — never a control endpoint.",
+    "Production framing decision: ADR-0024 (dedicated FactoryLM-controlled origin per gateway).",
+    "Source handoff: docs/handoffs/2026-06-28-plc-laptop-northwind-cv200-perspective.md.",
+    "Pinned by tests/test_northwind_cv200_seed_and_config.py."
+  ],
+  "tenant_id": "00000000-0000-0000-0000-0000000000b1",
+  "uns_path": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
+  "perspective_view": "NorthwindBottling",
+  "display": {
+    "display_type": "web_iframe",
+    "path": "/data/perspective/client/NorthwindBottling",
+    "label": "Discharge Conveyor CV-200 (live)",
+    "environments": {
+      "dev": {
+        "scheme": "http",
+        "host": "127.0.0.1",
+        "port": 8890,
+        "note": "Origin-root XFO-stripping reverse proxy in front of the WHOLE PLC-laptop gateway. DEV/STAGING ONLY. Apply via mira-hub/db/seeds/command_center_northwind_cv200.sql."
+      },
+      "staging": {
+        "scheme": "http",
+        "host": "127.0.0.1",
+        "port": 8890,
+        "note": "Same origin-root proxy as dev. Verify framing (green dot + live tags) before any prod registration."
+      },
+      "production": {
+        "scheme": "https",
+        "host": "northwind-cv200.factorylm-gateways.com",
+        "port": null,
+        "status": "PENDING_INFRA",
+        "note": "Dedicated FactoryLM-controlled origin per gateway/customer (ADR-0024). NOT the raw Ignition gateway, NOT the dev-only 8890 proxy. Origin not yet provisioned. When it is: register via POST /api/command-center/display, and this host MUST be present in COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST while the raw gateway and 127.0.0.1:8890 MUST NOT be."
+      }
+    },
+    "raw_gateway_reference_DO_NOT_FRAME": {
+      "tailscale": "http://100.72.2.99:8088/data/perspective/client/NorthwindBottling",
+      "lan": "http://192.168.1.20:8088/data/perspective/client/NorthwindBottling",
+      "why": "Gateway sends X-Frame-Options: SAMEORIGIN gateway-wide; Perspective is an absolute-path SPA. Direct framing is blocked, and the raw gateway must never be a production display target (ADR-0024)."
+    }
+  },
+  "ingest": {
+    "endpoint": "/api/v1/tags/ingest",
+    "service": "mira-relay",
+    "source_system": "ignition",
+    "source_connection_id": "northwind-cv200-gw",
+    "stream_tag_folder": "[default]MIRA_IOCheck",
+    "stream_tag_folder_note": "Set the gateway tag-stream timer's STREAM_TAG_FOLDER to this. The CV-200 live rig tags (VFD telemetry, DI/DO) live under [default]MIRA_IOCheck — the garage default ([default]Mira_Monitored) would stream the wrong folder. The fail-closed allowlist (allowlist_seed) still gates every tag, so a broader folder is safe but unnecessary.",
+    "hmac_env": "MIRA_IGNITION_HMAC_KEY",
+    "hmac_headers": ["X-MIRA-Tenant", "X-MIRA-Nonce", "X-MIRA-Timestamp", "X-MIRA-Signature"],
+    "allowlist_seed": "tools/seeds/approved_tags_northwind_cv200.sql",
+    "fail_closed": true,
+    "note": "Ignition gateway timer reads CV-200 OPC tags and POSTs the canonical batch (build_ingest_batch shape) as tenant_id above, source_system 'ignition'. Tags not in the Northwind allowlist seed are rejected fail-closed. One-pipeline law: no forked normalizer/allowlist/persist (.claude/rules/one-pipeline-ingest.md)."
+  }
+}

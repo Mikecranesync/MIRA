@@ -1,0 +1,198 @@
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix mirash: <https://ontology.factorylm.com/mira/shapes#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://ontology.factorylm.com/mira/shapes/evidence>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/shapes/evidence/0.1.0> ;
+    rdfs:comment "Evidence shapes: approved-assertion evidence, no self-approval, supersession, provenance-tier vs approval-state separation." .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 9 — An approved assertion carries evidence, an approver and a time
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:ApprovedAssertionEvidenceShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT ?this WHERE { ?this mira:approval_state mira:approval_verified . }
+        """ ;
+    ] ;
+    rdfs:label "R9 verified assertion needs evidence + approver + timestamp" ;
+    sh:property [
+        sh:path mira:supported_by ; sh:minCount 1 ;
+        sh:message "R9 approval: verified assertion {$this} cites no evidence. 'Verified' means a human confirmed a claim that was grounded in something — an approval with nothing behind it launders a guess into a fact." ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:approved_by ; sh:minCount 1 ; sh:class mira:Technician ;
+        sh:message "R9 approval: verified assertion {$this} has no approving Technician. Promotion to verified is an admin/technician action; a SoftwareAgent cannot occupy this slot." ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:approved_at ; sh:minCount 1 ; sh:datatype xsd:dateTime ;
+        sh:message "R9 approval: verified assertion {$this} has no approval timestamp." ;
+        sh:severity sh:Violation ;
+    ] .
+
+mirash:CitationCompletenessShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Citation ;
+    rdfs:label "R9b citation completeness" ;
+    sh:property [
+        sh:path mira:cite_doc ; sh:minCount 1 ; sh:class mira:SourceDocument ;
+        sh:message "R9b citation: {$this} names no source document." ; sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:cite_locator ; sh:minCount 1 ; sh:datatype xsd:string ;
+        sh:message "R9b citation: {$this} has no locator (page/sheet/rung/region/register). A whole-document citation is not re-verifiable." ;
+        sh:severity sh:Violation ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 10 — Inference cannot self-approve
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:InferenceCannotSelfApproveShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Assertion ;
+    rdfs:label "R10a inferred assertion needs a distinct approval event" ;
+    rdfs:comment """An assertion carrying derived_from was INFERRED. Reaching approval_state=verified
+requires an Approval — a separate event with a human actor. Without this, an inference worker's own
+confidence becomes indistinguishable from a technician's sign-off.""" ;
+    sh:sparql [
+        sh:message "R10a self-approval: inferred assertion {$this} (it has derived_from) is marked verified with no approving Technician. An inference cannot promote itself — a distinct human approval event is required." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:derived_from ?src ; mira:approval_state mira:approval_verified .
+                FILTER NOT EXISTS { $this mira:approved_by ?a . ?a a mira:Technician . }
+            }
+        """ ;
+    ] .
+
+mirash:ApproverIsNotProposerShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Assertion ;
+    rdfs:label "R10b approver must differ from proposer" ;
+    rdfs:comment "Deterministic self-consistency from the same agent is not independent verification. The proposing agent may not also be the approving agent." ;
+    sh:sparql [
+        sh:message "R10b self-approval: assertion {$this} was approved by the same agent that proposed it. Self-consistency from one model is not independent verification." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:proposed_by ?agent ; mira:approved_by ?agent .
+            }
+        """ ;
+    ] .
+
+mirash:MachineVerifiedIsNotApprovedShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Assertion ;
+    rdfs:label "R10c machine_verified ≠ verified" ;
+    rdfs:comment "PrintSense TrustState.machine_verified maps to kg approval_state 'proposed', never 'verified'. This shape enforces that crosswalk on the assertion itself." ;
+    sh:sparql [
+        sh:message "R10c trust crosswalk: assertion {$this} carries trust=machine_verified but approval_state=verified. Deterministic replay + independent agreement is a strong PROPOSAL; only a human verifier of record produces 'verified'." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:trust mira:trust_machine_verified ; mira:approval_state mira:approval_verified .
+            }
+        """ ;
+    ] .
+
+mirash:ProvenanceTierIsNotApprovalShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Assertion ;
+    rdfs:label "R10d provenance tier is not approval" ;
+    rdfs:comment """drive_packs/schema.py Provenance says verbatim: «never bare "verified" (that word
+is reserved for kg_*.approval_state)». Provenance tier answers 'how good is the source'; approval
+state answers 'who signed off'. A bench_verified source is still only a proposal until approved.""" ;
+    sh:sparql [
+        sh:message "R10d tier≠approval: assertion {$this} is marked verified on the strength of its provenance_tier alone, with no approving Technician. A bench-verified or manual-cited SOURCE does not constitute a human APPROVAL." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:provenance_tier ?tier ; mira:approval_state mira:approval_verified .
+                FILTER NOT EXISTS { $this mira:approved_by ?a . ?a a mira:Technician . }
+            }
+        """ ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 14 — Supersession
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:SupersededNotCurrentShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Assertion ;
+    rdfs:label "R14a superseded assertions are not current" ;
+    sh:sparql [
+        sh:message "R14a supersession: assertion {$this} has been superseded by a newer assertion yet is still exposed as current fact. It may be shown as history with explicit context, never as present tense." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                ?newer mira:supersedes $this .
+                $this mira:exposed_as_current true .
+            }
+        """ ;
+    ] .
+
+mirash:InvalidatedNotCurrentShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Assertion ;
+    rdfs:label "R14b invalidated assertions are not current" ;
+    sh:sparql [
+        sh:message "R14b supersession: assertion {$this} has been invalidated by contradicting evidence yet is still exposed as current fact." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                ?other mira:invalidates $this .
+                $this mira:exposed_as_current true .
+            }
+        """ ;
+    ] .
+
+mirash:SupersededStateShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Assertion ;
+    rdfs:label "R14c superseded assertions leave the verified set" ;
+    sh:sparql [
+        sh:message "R14c supersession: assertion {$this} is superseded but still carries approval_state=verified. Per ADR-0017 a supersede trigger moves the row to 'deprecated' — a superseded edge left verified stays in every downstream verified-only query." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                ?newer mira:supersedes $this .
+                $this mira:approval_state mira:approval_verified .
+            }
+        """ ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## Assertion well-formedness
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:AssertionShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Assertion ;
+    sh:property [
+        sh:path mira:approval_state ; sh:maxCount 1 ; sh:class mira:ApprovalState ;
+        sh:message "Assertion {$this} carries an approval_state outside the mig-029 CHECK set (proposed|verified|rejected|needs_review|deprecated)." ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:confidence ; sh:maxCount 1 ; sh:minInclusive 0.0 ; sh:maxInclusive 1.0 ;
+        sh:message "Assertion {$this} has a confidence outside [0,1]." ; sh:severity sh:Violation ;
+    ] .

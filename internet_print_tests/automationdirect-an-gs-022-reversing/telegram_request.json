@@ -1,0 +1,7 @@
+{
+  "test_id": "automationdirect-an-gs-022-reversing",
+  "caption": "Describe the theory of operation.",
+  "tested_page_sha256": "de30c010f7df378bc914b85dc13d467d72a388418d1683acec6d1a112c1d1664",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

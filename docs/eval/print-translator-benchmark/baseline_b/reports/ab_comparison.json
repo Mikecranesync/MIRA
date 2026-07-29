@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "title": "Baseline A vs Baseline B: OCR Grounding Impact",
+  "timestamp": "2026-07-10",
+  "ocr_configuration": {
+    "baseline_a": "image-only",
+    "baseline_b": "image + cascade-vision-OCR PROXY (NOT production glm-ocr)"
+  },
+  "aggregate_scores": {
+    "mean": {
+      "a": 65.4,
+      "b": 66.6,
+      "delta": 1.2,
+      "percent_change": 1.8
+    },
+    "median": {
+      "a": 64.5,
+      "b": 68.0,
+      "delta": 3.5,
+      "percent_change": 5.4
+    },
+    "std_dev": {
+      "a": 17.4,
+      "b": 16.8,
+      "delta": -0.6
+    },
+    "min": {
+      "a": 31,
+      "b": 38,
+      "delta": 7
+    },
+    "hard_failure_count": {
+      "a": 2,
+      "b": 4,
+      "total_cases": 10,
+      "a_rate": "20%",
+      "b_rate": "40%",
+      "delta": "+2 NEW"
+    }
+  },
+  "per_case_results": [
+    {
+      "case_id": "03",
+      "scores": {
+        "a": 59,
+        "b": 38,
+        "delta": -21
+      },
+      "hard_failure": {
+        "a": false,
+        "b": true,
+        "transition": "CLEAN → HF"
+      },
+      "failure_reason": "reversed_star_delta_contactor_assignment",
+      "notes": "Model read Y/Δ labels correctly but inverted the meaning; stated KM1+KM2 delta / KM3 star (opposite of what labels show). New hard-failure."
+    },
+    {
+      "case_id": "05",
+      "scores": {
+        "a": 31,
+        "b": 44,
+        "delta": 13
+      },
+      "hard_failure": {
+        "a": true,
+        "b": true,
+        "transition": "HF → HF"
+      },
+      "failure_reason": "persistent_k1_k2_mislabel",
+      "notes": "Both A and B claim K1/K2 are separate contactor coils. Reality: K1/K2 are wire-numbers on CR coil's own leads. OCR present in B but didn't resolve structural misunderstanding. +13 improvement from A but still hard-failure."
+    },
+    {
+      "case_id": "07",
+      "scores": {
+        "a": 60,
+        "b": 73,
+        "delta": 13
+      },
+      "hard_failure": {
+        "a": false,
+        "b": false,
+        "transition": "CLEAN → CLEAN"
+      },
+      "improvement": true,
+      "notes": "Largest positive delta. OCR text helped clarify timing sequence logic."
+    },
+    {
+      "case_id": "09",
+      "scores": {
+        "a": 78,
+        "b": 79,
+        "delta": 1
+      },
+      "hard_failure": {
+        "a": false,
+        "b": false,
+        "transition": "CLEAN → CLEAN"
+      },
+      "improvement": false,
+      "notes": "Stable performance. OCR provided minimal additional value."
+    },
+    {
+      "case_id": "13",
+      "scores": {
+        "a": 82,
+        "b": 89,
+        "delta": 7
+      },
+      "hard_failure": {
+        "a": false,
+        "b": false,
+        "transition": "CLEAN → CLEAN"
+      },
+      "improvement": true,
+      "notes": "Steady improvement. OCR text supported better component identification."
+    },
+    {
+      "case_id": "14",
+      "scores": {
+        "a": 85,
+        "b": 78,
+        "delta": -7
+      },
+      "hard_failure": {
+        "a": false,
+        "b": false,
+        "transition": "CLEAN → CLEAN"
+      },
+      "regression": true,
+      "notes": "Unexplained regression despite OCR present. Model may have over-indexed on OCR text and missed visual context."
+    },
+    {
+      "case_id": "17",
+      "scores": {
+        "a": 63,
+        "b": 58,
+        "delta": -5
+      },
+      "hard_failure": {
+        "a": false,
+        "b": true,
+        "transition": "CLEAN → HF"
+      },
+      "failure_reason": "invented_safety_ppc_component",
+      "notes": "New hard-failure. Invented 'Safety PLC' as a component. Real component likely has a simpler label. OCR did not prevent semantic hallucination."
+    },
+    {
+      "case_id": "18",
+      "scores": {
+        "a": 88,
+        "b": 85,
+        "delta": -3
+      },
+      "hard_failure": {
+        "a": false,
+        "b": false,
+        "transition": "CLEAN → CLEAN"
+      },
+      "notes": "Minor regression. Stable overall."
+    },
+    {
+      "case_id": "20",
+      "scores": {
+        "a": 42,
+        "b": 63,
+        "delta": 21
+      },
+      "hard_failure": {
+        "a": true,
+        "b": true,
+        "transition": "HF → HF"
+      },
+      "failure_reason": "error_propagation_ocr_hallucination",
+      "notes": "Largest positive delta but remains hard-failure. A: fabricated 'XC00' (eliminated in B via OCR). B: OCR proxy returned 'XC90' (unverified on real print). Model repeated it. CAVEAT: proxy quality issue; production glm-ocr needs testing."
+    },
+    {
+      "case_id": "25",
+      "scores": {
+        "a": 66,
+        "b": 59,
+        "delta": -7
+      },
+      "hard_failure": {
+        "a": false,
+        "b": false,
+        "transition": "CLEAN → CLEAN"
+      },
+      "regression": true,
+      "notes": "Regression. OCR may have introduced ambiguity."
+    }
+  ],
+  "category_analysis": {
+    "component_label_recognition": {
+      "a_avg": 8.1,
+      "b_avg": 7.9,
+      "trend": -0.2,
+      "direction": "neutral"
+    },
+    "sequence_interlocks_logic": {
+      "a_avg": 6.2,
+      "b_avg": 6.8,
+      "trend": 0.6,
+      "direction": "slight_improvement"
+    },
+    "evidence_grounding": {
+      "a_avg": 8.9,
+      "b_avg": 7.5,
+      "trend": -1.4,
+      "direction": "REGRESSION",
+      "note": "OCR grounding decreased confidence that claims are evidence-supported; two new hard-failures are confident-wrong readings."
+    },
+    "power_control_flow": {
+      "a_avg": 10.3,
+      "b_avg": 9.8,
+      "trend": -0.5,
+      "direction": "neutral"
+    },
+    "technician_usefulness": {
+      "a_avg": 6.2,
+      "b_avg": 6.1,
+      "trend": -0.1,
+      "direction": "neutral"
+    }
+  },
+  "hallucination_summary": {
+    "eliminated_by_ocr": [
+      {
+        "case": 5,
+        "baseline_a_fabrication": "control transformer supplies control power",
+        "truth": "C.T. in print = current transformers (not control transformer)",
+        "baseline_b_result": "Prevented by OCR labels showing 'C.T. = current transformers'"
+      },
+      {
+        "case": 20,
+        "baseline_a_fabrication": "connector XC00",
+        "truth": "not present on print; only XC45/46/47/60/25A/25B",
+        "baseline_b_result": "Prevented by OCR labels (though B introduced new error: XC90)"
+      }
+    ],
+    "new_or_persisted_errors": [
+      {
+        "case": 3,
+        "error": "reversed_star_delta_contactor_assignment",
+        "baseline_a": "not_present",
+        "baseline_b": "present (new hard-failure)",
+        "mechanism": "Model read Y/Δ labels correctly but inverted their meaning; confident-wrong semantic assignment, not OCR failure"
+      },
+      {
+        "case": 17,
+        "error": "invented_safety_ppc_component",
+        "baseline_a": "not_present",
+        "baseline_b": "present (new hard-failure)",
+        "mechanism": "Semantic hallucination; OCR did not prevent confident naming of non-existent component"
+      },
+      {
+        "case": 5,
+        "error": "k1_k2_mislabel",
+        "baseline_a": "present",
+        "baseline_b": "present",
+        "mechanism": "Structural misunderstanding (claimed separate coils vs. wire-numbers on single coil); OCR text present but didn't resolve"
+      }
+    ],
+    "error_propagation_caveat": {
+      "case": 20,
+      "baseline_b_hallucination": "connector XC90",
+      "status": "OCR proxy returned unverified label; model repeated it",
+      "note": "Cascade-vision-OCR proxy is NOT production glm-ocr. Whether production glm-ocr exhibits the same propagation pattern is unknown. Requires staging/compose retest against production glm-ocr."
+    }
+  },
+  "decision": {
+    "headline": "OCR grounding does NOT reliably reduce hallucinations",
+    "mechanisms": [
+      {
+        "type": "pure_fabrication_reduction",
+        "outcome": "favorable",
+        "description": "OCR text anchors responses when model would otherwise invent (cases 05, 20). Real device fabrications eliminated."
+      },
+      {
+        "type": "error_propagation",
+        "outcome": "unfavorable",
+        "description": "OCR proxy returned unverified 'XC90' where none existed. Model believed and repeated it. Production glm-ocr retest needed."
+      },
+      {
+        "type": "confident_wrong_assignment",
+        "outcome": "unfavorable",
+        "description": "Even with OCR text present, model inverts semantic meaning (case 03: Y/Δ labels read backward) or invents non-existent devices with confidence (cases 03, 17). Not OCR-fixable without semantic guardrails.",
+        "root_cause": "OCR-independent structural misunderstandings"
+      }
+    ],
+    "recommendation": "Build SMALLEST DETERMINISTIC evidence-binding guard that prevents translator from asserting specific identifiers (component names, connector part numbers) without visible legible support. Guard must be EXPERIMENTAL, not optimized against judge, not deployed to production.",
+    "caveats": [
+      "Baseline B uses cascade-vision-OCR proxy, not production glm-ocr. Error propagation (case 20: XC90) may be proxy-quality artifact.",
+      "Corpus N=10 (1 question each). Hard-failure rate doubling (20% → 40%) is real on this set but low power. Need ≥25 cases for reliable trend.",
+      "Corpus expanding; these are initial-stage results."
+    ]
+  }
+}

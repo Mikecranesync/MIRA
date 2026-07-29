@@ -1,0 +1,25 @@
+{
+  "test_id": "automationdirect-an-gs-022-reversing",
+  "source_url": "https://support.automationdirect.com/docs/an-gs-022.pdf",
+  "publisher": "AutomationDirect",
+  "title": "AN-GS-022: VFD Reversing & Dynamic Braking (Application Note)",
+  "sheet": "Reversing contactor + braking circuit (p. 1-6)",
+  "equipment_type": "VFD reversing + dynamic-braking control circuit",
+  "standard": "NEMA ICS 2",
+  "category": "reversing_braking",
+  "why_selected": "GS10 VFD reversing scheme with mechanical interlock, dynamic-braking relay and motor-coast timeout \u2014 an interlock/braking control circuit, the category most likely to expose interlock-logic misreads. Application-note PDF (short document; page 1 carries the circuit). Publicly published on support.automationdirect.com; provenance verified 2026-07-10.",
+  "access_date_utc": "2026-07-13T21:01:32Z",
+  "original_sha256": "acc80cff067a461907c2f80b044170d8684a929102a711190d13ac1f77b8c73e",
+  "original_ext": "pdf",
+  "download": {
+    "requested_url": "https://support.automationdirect.com/docs/an-gs-022.pdf",
+    "final_url": "https://support.automationdirect.com/docs/an-gs-022.pdf",
+    "redirect_chain": [],
+    "status_code": 200,
+    "content_type_header": "application/pdf",
+    "content_type_sniffed": "application/pdf",
+    "bytes": 818183,
+    "host": "support.automationdirect.com"
+  },
+  "license_note": "Publicly published OEM literature; ownership retained by AutomationDirect; retained only for read-only interpreter testing."
+}

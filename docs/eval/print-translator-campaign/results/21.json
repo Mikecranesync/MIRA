@@ -1,0 +1,32 @@
+{
+  "id": 21,
+  "oem": "AutomationDirect",
+  "document": "AN-GS-022: Reversing & Braking (Technical Note)",
+  "url": "support.automationdirect.com/docs/an-gs-022.pdf",
+  "manifest_page_ref": "Entire note (p. 1–6)",
+  "print_type": "Reversing contactor + dynamic braking circuit",
+  "standard": "NEMA ICS 2",
+  "category": "Reversing/Braking",
+  "manifest_status": "NEEDS-BROWSER",
+  "rendered_page_number": 1,
+  "image_sha256": "d0177d4e732af20cedbc9c631853bab1b707573e880964146e5202fc7090e7ef",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T04:36:29.382384+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": false,
+  "vision_called": true,
+  "router_called": false,
+  "inference": "not_triggered",
+  "reason": "vision classified as 'NAMEPLATE', not ELECTRICAL_PRINT",
+  "vision": {
+    "classification": "NAMEPLATE",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an \"Application Note\" document from Automation Direct, detailing common wiring scenarios for start/stop and forward/reverse control. It includes text descriptions and diagrams for various configurations, such as 2-wire and 3-wire start/stop circuits, with tables and flowcharts illustrating the connections and settings.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  }
+}

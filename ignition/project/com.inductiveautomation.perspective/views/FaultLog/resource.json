@@ -110,33 +110,6 @@
       {
         "children": [
           {
-            "events": {
-              "component": {
-                "onActionPerformed": {
-                  "script": "    # Write 2 to HR400115 (VFD_CmdWord) — maps to GS10 register 0x2002 bit 1 (fault reset)\n    system.tag.writeBlocking(['[default]Conveyor/VFD_CmdWord'], [2])\n"
-                }
-              }
-            },
-            "meta": { "name": "ClearFaultsButton" },
-            "position": { "basis": "auto" },
-            "props": {
-              "style": {
-                "backgroundColor": "#FF4444",
-                "border": "none",
-                "borderRadius": "8px",
-                "color": "#FFFFFF",
-                "fontSize": "15px",
-                "fontWeight": "bold",
-                "height": "52px",
-                "letterSpacing": "1px",
-                "marginRight": "16px",
-                "padding": "0 32px"
-              },
-              "text": "CLEAR FAULTS  (writes 2 → HR400115)"
-            },
-            "type": "ia.input.button"
-          },
-          {
             "meta": { "name": "ClearNote" },
             "position": { "basis": "auto" },
             "props": {
@@ -144,7 +117,7 @@
                 "color": "#666666",
                 "fontSize": "12px"
               },
-              "text": "Or press STOP/RESET on VFD keypad. If fault won't clear: power cycle VFD."
+              "text": "MIRA is read-only. To clear a fault, press STOP/RESET on the VFD keypad. If it won't clear: power cycle the VFD."
             },
             "type": "ia.display.label"
           }

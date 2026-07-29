@@ -1,0 +1,7 @@
+{
+  "test_id": "schneider-atv340-vfd",
+  "caption": "Explain this wiring diagram.",
+  "tested_page_sha256": "cfb816119352d6c72874d0c785cfb6a40c8699c4d7a62eaa4c07537fb04e86be",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

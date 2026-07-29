@@ -1,0 +1,17 @@
+2026-07-13 16:51:53,577 INFO fetching https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&p_Doc_Ref=NVE97896
+2026-07-13 16:51:54,590 INFO fetched 170468 bytes (application/pdf)
+2026-07-13 16:51:54,820 INFO rendered PDF page 0 @ 200 dpi -> 174282 bytes PNG
+2026-07-13 16:51:54,822 INFO submitting through the real handler (bot._try_print_translator_reply)…
+2026-07-13 16:54:55,485 INFO handled=True classification=ELECTRICAL_PRINT interpreter_used=True latency=180.4s
+2026-07-13 16:54:55,485 INFO running independent multimodal judge…
+2026-07-13 16:56:37,738 INFO email package built:
+TO: harperhousebuyers@gmail.com
+SUBJECT: MIRA Print Translator Test — schneider-atv340-vfd — Altivar Machine ATV340 Wiring Diagrams (NVE97896) — 81/100
+ATTACHMENTS:
+  [attach] original.pdf (170,468 B)
+  [attach] tested_page.png (174,282 B)
+  [attach] report.html (11,417 B)
+  [attach] judge_1.json (6,915 B)
+  [attach] telegram_response.json (51,761 B)
+HTML: 3,581 chars
+2026-07-13 16:56:38,860 INFO email send: {'sent': True, 'status': 200, 'id': 'd44d65c1-95a6-4dcd-b640-63697a16cb70'}

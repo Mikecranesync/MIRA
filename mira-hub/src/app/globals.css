@@ -9,6 +9,7 @@
 
   /* Status */
   --status-green: #16A34A;
+  --status-green-ink: #15803D; /* readable ok TEXT on light surfaces (green-700, ~5:1 on white) */
   --status-yellow: #EAB308;
   --status-red: #DC2626;
   --status-gray: #64748B;
@@ -18,6 +19,7 @@
   --status-red-bg: #FEE2E2;
   --status-gray-bg: #F1F5F9;
   --status-orange-bg: #FFF7ED;
+  --status-blue-bg: #DBEAFE;
 
   /* Light mode surfaces */
   --background: #FAFAFA;
@@ -115,6 +117,7 @@
   --border-default: #2D333B;
   --border-strong: #3D4451;
   --status-orange-bg: #431407;
+  --status-green-ink: #4ADE80; /* green-400 — LIGHTER green is the readable ink on dark surfaces */
 
   --card: var(--surface-0);
   --card-foreground: var(--foreground);
@@ -144,6 +147,7 @@
 
   /* Status colors exposed as Tailwind utilities */
   --color-status-green: var(--status-green);
+  --color-status-green-ink: var(--status-green-ink);
   --color-status-yellow: var(--status-yellow);
   --color-status-red: var(--status-red);
   --color-status-gray: var(--status-gray);
@@ -217,6 +221,16 @@ body {
 .badge-gray   { color: var(--status-gray);   background: var(--status-gray-bg); }
 .badge-orange { color: var(--status-orange); background: var(--status-orange-bg); }
 .badge-blue   { color: var(--brand-blue);    background: #EFF6FF; }
+
+/* ─── Live-signal change flash (attention cue, neutral surface tone — not a
+       state color; state colors stay reserved for status) ─────────────── */
+@keyframes signal-flash {
+  from { background-color: var(--surface-2); }
+  to   { background-color: transparent; }
+}
+.signal-flash {
+  animation: signal-flash 0.8s ease-out;
+}
 
 /* ─── Status Dot ────────────────────────────────────────────────────── */
 .status-dot {

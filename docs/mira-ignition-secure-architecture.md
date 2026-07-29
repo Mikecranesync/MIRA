@@ -124,7 +124,7 @@ The product wedge depends on this being a **boring** install for the customer's 
 ### 4.2 Tag access
 
 - **Allowlist-first.** `approved_tags.json` lives in the Ignition project. A tag NOT in this file is invisible to MIRA — the WebDev tag-browse endpoint filters to the allowlist; gateway-script subscriptions only subscribe to allowlisted paths.
-- **Read-only by default.** No WebDev or gateway-script path in MIRA's bundle calls `system.tag.writeBlocking`. (Distinct from `plc/live_monitor.py` which writes — that script ships in the *bench-development* tree, never in the customer module — see §11.)
+- **Read-only by default.** No WebDev or gateway-script path in MIRA's bundle calls `system.tag.writeBlocking`. (Distinct from `plc/live_monitor.py` which writes — that script ships in the *bench-development* tree, never in the customer module — see §11.) **Enforced** by `tests/regime7_ignition/test_no_customer_write_paths.py` (CI fails if a shipped Perspective view re-introduces `system.tag.write*`). The `SpeedControl` control view and the `FaultLog` clear-faults write were removed from the bundle on 2026-06-17 (v3.26.1) — VFD control is bench-only.
 - **Writes require explicit two-step approval.** Even in a future "operator-assisted" mode: (1) tag added to a `writable_tags.json` by an Ignition admin (out-of-band) AND (2) cloud-side per-prompt approval bypass token. MVP ships with this feature **disabled** and the code path absent.
 - **Per-tag observability.** Every read goes into `audit_log` with `{tag_path, asset_id, requester (chat/tag-stream), timestamp}`. The admin Perspective page shows a live tail.
 
@@ -208,12 +208,12 @@ The minimum customer-deployable artifact for **first paying customer**:
 | 4 | Gateway tag-change script → outbound POST | `ignition/gateway-scripts/tag-stream.py` | ⚠️ Exists. Verify it batches + uses HMAC + respects allowlist. |
 | 5 | `deploy_ignition.ps1` — 3-command installer | `ignition/deploy_ignition.ps1` | ✅ Exists. Idempotent. |
 | 6 | `mira-relay` — cloud tag ingest + auth | `mira-relay/` | ✅ Exists. Bearer auth + WebSocket + REST. Needs HMAC upgrade. |
-| 7 | Cloud chat endpoint that the WebDev `/chat` calls | `mira-mcp` or `mira-hub` API | ⚠️ Engine exists; needs an Ignition-shaped wrapper (`POST /api/v1/ignition/chat`). |
+| 7 | Cloud chat endpoint that the WebDev `/chat` calls | `mira-mcp` or `mira-hub` API | ✅ Built: `mira-pipeline/ignition_chat.py` — HMAC-signed POST /api/v1/ignition/chat + /api/v1/audit (commit `48e2685c`). |
 | 8 | UNS gate, citation compliance, cascade | `mira-bots/shared/engine.py` | ✅ Active on Slack today. Adapter-agnostic. |
-| 9 | Tag-import wizard (CSV → `ai_suggestions` of type `tag_mapping`) | `mira-hub` + `mira-mcp` | 🔲 Spec'd in `maintenance-namespace-builder-spec.md`; not built. |
-| 10 | Admin audit view in Perspective + cloud audit query | new | 🔲 Not built. |
+| 9 | Tag-import wizard (CSV → `ai_suggestions` of type `tag_mapping`) | `mira-hub` + `mira-mcp` | ✅ Built: tag-import wizard step + connector POST + tag_mapping accept/reject + semantic enrichment (commit `874f770a`, `48e2685c`). |
+| 10 | Admin audit view in Perspective + cloud audit query | new | ⚠️ `/api/v1/audit` endpoint live (migration 031 + ignition_audit.py). Perspective admin view not yet built. |
 | 11 | Ignition Exchange listing (manifest + screenshots + install doc) | `ignition/EXCHANGE/` | 🔲 Not built. Gate to first customer install. |
-| 12 | One real end-to-end test on the bench: Micro 820 → Ignition (laptop) → MIRA Cloud → grounded answer back in Perspective | live | 🔲 Done partial (live tag stream works; chat round-trip not verified end-to-end). |
+| 12 | One real end-to-end test on the bench: Micro 820 → Ignition (laptop) → MIRA Cloud → grounded answer back in Perspective | live | ✅ Cloud API verified: `ignition_chat_roundtrip.py` 4/4 green (HMAC sign → `/api/v1/ignition/chat` → engine → audit_log). Full Micro 820 → Ignition hardware loop deferred to next bench session. |
 
 **Single demo loop that defines MVP done:**
 
@@ -247,16 +247,16 @@ These are the anti-patterns that fall out of the architecture above. Each is a h
 
 Ordered. Each item is independently shippable.
 
-- [ ] **D1 — Allowlist enforcement** (`ignition/project/` + `ignition/webdev/FactoryLM/api/tags/doGet.py`). Add `approved_tags.json`, filter tag-browse to allowlist, reject `/chat` snapshots containing non-allowlisted paths. Add unit test in `ignition/tests/test_allowlist.py`.
-- [ ] **D2 — Repoint WebDev `/chat` to MIRA Cloud.** Change [`ignition/webdev/FactoryLM/api/chat/doPost.py:73`](ignition/webdev/FactoryLM/api/chat/doPost.py:73) from `http://localhost:5000/rag` to `https://api.factorylm.com/api/v1/ignition/chat`. Add HMAC signing. Env-var the URL.
-- [ ] **D3 — Cloud chat endpoint** `POST /api/v1/ignition/chat` in `mira-mcp` or `mira-hub` that takes `{query, asset_id, tag_snapshot, tenant_id, signed_with}`, calls `mira-bots/shared/engine.py` through the existing engine entrypoint, returns `{answer, sources, confidence, suggested_actions}`. Citation compliance flips to enforcing for this path.
-- [ ] **D4 — `mira-relay` HMAC upgrade.** Replace bearer token with HMAC+nonce+tenant header in [`mira-relay/relay_server.py:154`](mira-relay/relay_server.py:154). Keep bearer as a fallback for the existing bench bridge until D5 migrates it.
+- [x] **D1 — Allowlist enforcement** (`ignition/webdev/FactoryLM/api/tags/allowlist.py` — module-level allowlist with lazy cache, env-var path override, unit-testable in standard Python 3; integrated into `doGet.py`).
+- [x] **D2 — Repoint WebDev `/chat` to MIRA Cloud.** `ignition/webdev/FactoryLM/api/chat/doPost.py:54-57` reads `MIRA_CLOUD_URL` env var (default `https://api.factorylm.com/api/v1/ignition/chat`); HMAC signing live.
+- [x] **D3 — Cloud chat endpoint** `POST /api/v1/ignition/chat` — implemented as `mira-pipeline/ignition_chat.py` (300+ lines); UNS gate, tag snapshot ingestion, citation compliance enforcing.
+- [x] **D4 — `mira-relay` HMAC upgrade.** `mira-relay/relay_server.py:192-195` tries HMAC first (`X-MIRA-Signature` header + `verify_hmac()`); bearer retained as fallback per original plan.
 - [ ] **D5 — Move `plc/live-plc-bridge/bridge.py` out of the customer-shipped story.** Rename / fence under `bench/` or document it as "bench developer tool, never deployed". This is the bench harness, not the product. Update `docker-compose.fault-detective.yml` comments accordingly.
 - [ ] **D6 — Perspective ChatPanel view.** New view under `ignition/project/com.inductiveautomation.perspective/views/ChatPanel/resource.json`. Input box + answer pane with clickable citations.
-- [ ] **D7 — Audit log.** Append `(tenant_id, user, channel='ignition', prompt, sources_json, tag_reads, latency_ms)` for every chat round-trip. Surface via `/api/v1/audit` and a Perspective admin view.
-- [ ] **D8 — Tag-import wizard MVP slice.** CSV upload in Hub → `ai_suggestions` of type `tag_mapping` per [`docs/specs/maintenance-namespace-builder-spec.md`](specs/maintenance-namespace-builder-spec.md) §AI Pipeline. Manual approval in `/proposals`.
+- [x] **D7 — Audit log.** Migration 031 (`ignition_audit_log`) shipped. `ignition_audit.py` appends `(tenant_id, user, channel='ignition', prompt, sources_json, tag_reads, latency_ms)` for every round-trip. `/api/v1/audit` live. Perspective admin view deferred (item 10 above).
+- [x] **D8 — Tag-import wizard MVP slice.** `tag-import` wizard step + connector POST endpoint + `tag_mapping` accept/reject in `/api/proposals/[id]/decide` (commit `874f770a`). Tag snapshot semantic enrichment (`_enrich_tag_snapshot_with_semantics` joining `tag_entities.source_address` for verified rows) wired in `mira-pipeline/ignition_chat.py` (Phase 4a, unit-tested 9/9 green).
 - [ ] **D9 — Ignition Exchange manifest.** `ignition/EXCHANGE/manifest.json`, screenshots in `docs/promo-screenshots/`, install doc, license, listing copy.
-- [ ] **D10 — End-to-end bench test.** Single script that: deploys module, posts a chat, asserts grounded answer with citations + audit_log row. Lives in `tests/e2e/ignition_chat_roundtrip.py`.
+- [x] **D10 — End-to-end bench test.** `tests/e2e/ignition_chat_roundtrip.py` — 4/4 green on bench (2026-06-16): signed chat round-trip ✅, unsigned 401 ✅, audit row written ✅, tag allowlist integrity ✅. Run: `MIRA_IGNITION_HMAC_KEY=<key> NEON_DATABASE_URL=<dev> PIPELINE_URL=http://localhost:9099 python3.12 -m pytest tests/e2e/ignition_chat_roundtrip.py -v`.
 - [ ] **D11 — Sparkplug B subscriber spec** `docs/specs/sparkplug-uns-bridge-spec.md`. Design only, no code yet. Establishes `mira-connect` as the non-Ignition path.
 - [ ] **D12 — Document & ADR.** New ADR-0019 (or 0020) "Ignition-Module-First Edge Architecture" capturing the decisions in this doc as durable record.
 

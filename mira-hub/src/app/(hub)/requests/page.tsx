@@ -83,6 +83,10 @@ export default function RequestsPage() {
   if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
     return <LabsStub feature="Requests" />;
   }
+  return <RequestsLabsPage />;
+}
+
+function RequestsLabsPage() {
   const tReq = useTranslations("requests");
   const tCommon = useTranslations("common");
   const tPriority = useTranslations("priority");

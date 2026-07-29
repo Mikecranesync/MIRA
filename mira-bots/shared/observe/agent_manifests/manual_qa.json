@@ -1,0 +1,32 @@
+{
+  "id": "manual_qa",
+  "name": "Manual Q&A Agent",
+  "version": "0.1.0",
+  "scope": "Answer a question directly from approved manuals and drawings. Cites document, page, and chunk for every claim. Does not diagnose live equipment state and does not recommend physical actions.",
+  "risk_level": "low",
+  "allowed_tools": [
+    "documents.search",
+    "documents.read_chunk",
+    "context_graph.query",
+    "traces.create"
+  ],
+  "blocked_tools": [
+    "plc.write",
+    "tag.write",
+    "machine.reset",
+    "work_order.submit_without_review"
+  ],
+  "required_context": [
+    "approved_documents"
+  ],
+  "required_outputs": [
+    "answer",
+    "citations"
+  ],
+  "eval_pack": "conveyor_demo",
+  "route_signals": [
+    "what does the manual", "according to the manual", "in the documentation",
+    "what is the spec", "rated", "datasheet", "wiring diagram", "part number",
+    "torque spec", "what does the drawing"
+  ]
+}

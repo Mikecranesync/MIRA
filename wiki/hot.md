@@ -1,4 +1,327 @@
-# Hot Cache — 2026-06-08 — CHARLIE
+# Hot Cache — 2026-07-28 — Content-fingerprinted migration ledger + prod migration-tracker cleanup
+
+**Migration head: 066** (`066_migration_ledger_content_sha.sql`, PR #2969). Applied to prod today
+(`apply-migrations.yml` run 30398527589); drift-check re-ran green on both staging and prod right
+after. Both ledgers seeded with `content_sha256` baselines (`mode=seed-ledger`, prod run 30398623372 +
+staging run 30398705585) so the new drift guard protects retroactively, not just migrations applied
+from today forward.
+
+Audited all open GitHub issues tracking prod/staging DB migrations for staleness (18-agent workflow,
+verified each claim against actual repo/ledger state, not issue text) and closed 4 with evidentiary
+comments:
+- **#2972** — drift issue self-resolved by the 066 apply above.
+- **#832** — `001_knowledge_graph.sql` already deployed since 2026-05 (dry-run confirmed `skip
+  (already applied)`).
+- **#1474** — `mira-core/mira-ingest/db/migrations/003_asset_qr_tags.sql` already deployed
+  (`mira-web/src/lib/qr-tracker.ts` depends on it in prod today).
+- **#1677** — migrations 038/039 shipped (PR #1710); the 040-042 source-preservation layer was
+  formally abandoned per `wiki/orchestrator/HISTORY.md`, so nothing left to gate.
+
+5 stayed open with real remaining work: #1246 (backfill script never re-verified after a psycopg2
+fix), #2130 (this entry — the previous "current head" pointer was stale), #703 (`hub_uploads` still
+inline DDL), #2337 (`ctx_import_batches` approval columns still missing), #383 (V1000 chunk backfill
+stalled at 66%, blocked-tool since sunset). Working these off next, easiest→hardest.
+
+---
+
+# Hot Cache — 2026-07-26 (later) — Prod bot outage diagnosed + fixed + follow-ups shipped (v3.215.1 → v3.216.2)
+
+The v3.214.0 deploy (from the session below) took the prod Telegram/Slack bot DOWN. Diagnosed the
+real cause, shipped the fix, then closed two follow-ups it surfaced — all verified live, not asserted.
+
+- **Root cause was NOT the "slow model" the handoff blamed.** Symptom: prod bot silent (30s
+  `PROCESS_TIMEOUT`); staging "MIRA ran into an unexpected problem" + KB-gap — for a plain
+  `PowerFlex 525 showing F004`. Real cause: a stuck `ELECTRICAL_PRINT` session (from prior PrintSense
+  photo testing) trapped EVERY later text turn — the guard in `Supervisor.process()`
+  (`mira-bots/shared/engine.py`) dispatched on `state=="ELECTRICAL_PRINT"` alone, no intent check.
+  Downstream, same trap: prod's print/vision path is Together `MiniMaxAI/MiniMax-M3` (~77s → timeout);
+  staging's print endpoint is `disabled://` → httpx crash. **MiniMax-M3 is the PrintSense VISION
+  model (ADR-0031), not the diagnose cascade — the "slow-model routing" was a red herring.**
+  Rollback would NOT have fixed it (the guard was identical in v3.182.0). Details: memory
+  `project_electrical_print_state_trap`.
+- **#2921 (v3.215.1) — the fix.** `_PRINT_STATE_EXIT_INTENTS = {diagnose_equipment,
+  greeting_or_chitchat}` releases a stale print state to IDLE; genuine follow-ups
+  (`answer_question`/`continue_current`) still stay. Regression test
+  `mira-bots/tests/test_engine_print_state_exit.py`. **Per-session unblock = `/new`**
+  (`engine.reset(chat_id)`) — used to restore Mike's live bot with no deploy. Verified live via a
+  round-trip after `/new`.
+- **#2922 + #2923 (v3.216.2, PR #2929) — follow-ups.** (a) `PrintWorker` now fails SOFT on a
+  `disabled://` endpoint (graceful notice, no crash). (b) Grew into a **staging schema-drift
+  reconciliation**: `migration-verify` runs RLS integration tests against the persistent staging
+  Neon branch, which surfaced §8 drift in `decision_traces` (superseded shape, engine's inserts
+  silently dropped) AND `flaky_input_signals` (wholesale-different shape). Migration
+  `063_reconcile_staging_schema_drift.sql` fixes both: additive for decision_traces, guarded
+  drop+recreate to canonical 034 for flaky. **Prod is canonical (0 drift warnings) → 063 is a
+  verified no-op there**; applied to prod cleanly. Details: memory `project_staging_migration_drift`.
+- **Ops gotchas learned (in memory):** `apply-migrations.yml migrations=NNN` globs `NNN_*.sql` — a
+  bare number pulls in duplicate-prefix files (`063` → also `063_visual_sessions.sql`), and explicit
+  lists don't auto-skip applied files. Target one file with a stem prefix (`063_reconcile`). And
+  `gh pr merge --delete-branch` fails when `main` is checked out in another worktree — merge plain,
+  then `git push origin --delete`.
+
+---
+
+# Hot Cache — 2026-07-26 — Wire-designation shipped + deploy-freeze root-caused + fleet hardening + LoRA PRs landed (v3.214.0→v3.215.0)
+
+FIVE PRs merged and LIVE in prod, each proven by watching the real chain run. The through-line: a
+false instrument reading started it (dead metric), and a false instrument reading nearly ended it
+(a red activation run that was actually a comment-permission error got auto-deploy disabled).
+
+- **#2915 (v3.214.0) — PrintSense wire designations + 10-finding adversarial hardening.** The
+  handoff branch (5 commits, C:/wt-wire) pushed, rebased, hardened by a 29-agent ultracode review
+  (22 raw → 10 confirmed), merged, deployed. Extraction defect NOT fixed (0/9 exact acceptance —
+  honest negative; escalation still Mike's call). What shipped is the instrumentation: dead-metric
+  paths closed (empty-expected guard, duplicate-denominator, None-tag, JSON-string crash), near-miss
+  pairing narrowed to homoglyph-class edits only (was fabricating misreads from sequential wire
+  numbers), false prompt exemplar fixed (`P9DI900-0` claimed to hold a `1` it does not → `P9DI910-0`),
+  privacy allowlist given teeth (old one admitted `N7:CUSTOMERNAME` as "fictional"; truth block now
+  checked; 12 rejection controls). Every fix mutation-verified. **Confidentiality incident (agent's
+  own):** seeded the teeth-test probes with the REAL customer designation — the leak arrives THROUGH
+  the guard (test asserts rejection, passes, commits the secret). Caught by post-edit rescan;
+  scrubbed from tree+messages via filter-branch; memory `reference_negative_control_probes_leak_vector`.
+- **DEPLOY FREEZE ROOT-CAUSED.** Merged #2915 sat undeployed ~6h: `Deploy to VPS` was
+  `disabled_manually` (workflow_run cannot fire on a disabled workflow; dispatch 422s too). Cause
+  chain: `PrintSense Production Activation` had failed on EVERY run — but the activation always
+  SUCCEEDED; only the success REPORTER died (`gh pr comment` needs `pull-requests: write`;
+  `issues: write` is not sufficient), flipping the job red and posting a FALSE "checks did not
+  complete" message. Someone reasonably disabled auto-deploy on that signal. Mike re-enabled;
+  scoped dispatch `services="mira-bot-telegram mira-bot-slack"` shipped v3.214.0.
+- **#2917 (v3.214.1) — activation reporting fix.** `pull-requests: write` + both reporters
+  `continue-on-error` (a notification must never decide the verdict). Proven live: first green
+  activation run in the workflow's history, success comment posted on #2903, failure reporter
+  correctly skipped.
+- **#2918 (v3.214.2) — fleet verdict hardening.** 17-agent sweep of all 49 workflows (13 raw → 12
+  confirmed): **staging-gate.yml (HIGH — the required check + deploy gate) had 3 reporting steps
+  able to flip a passing eval red**; deploy-vps had NO permissions block so the bypass-audit issue
+  was silently never filed (read-only default token); swallowed API 5xxs masqueraded as "No PR
+  associated"; activation's workflow_run re-verification could strand prod bots on legacy compose
+  defaults after a hotfix-bypass deploy (now trusts the deploy's gate decision); drift-check filed
+  P1 "ledger drift" issues for Doppler outages; smoke said "broken on production" for lockfile
+  flakes. All fixed, no gate loosened. Proven live on the merge deploy: rewritten PR-trace lookup
+  green, activation verify SKIPPED on workflow_run, activation green, comment posted.
+- **Traps confirmed this session:** disabled workflow = silent chain dead-end (the last link just
+  is not listening — check `gh workflow list --all | grep disabled` when a workflow_run chain
+  stops); a conflicting PR (`mergeable: CONFLICTING`) schedules ZERO checks (looks like stuck CI;
+  rebase first); backticks inside a bash-interpolated python string get command-substituted —
+  use a quoted heredoc (`py - <<'QUOTED'`) for any content carrying markdown.
+- **#2881 (v3.214.3) — paid Together authorization trust root — MERGED+DEPLOYED on Mike's order.**
+  Ed25519-signed offline operator approvals over request-bound `PaidEventAuthorization`; runtime
+  holds only the public key, cannot mint approvals; paid entry points reject caller-supplied
+  verifiers; signed-registry match required before ledger consumption; explicit
+  `allow_ledger_injection_for_tests()` seam replaces the `PYTEST_CURRENT_TEST` heuristic. Both stale
+  PRs were `CONFLICTING` (main moved 3 releases) — resolved by MERGING main in (both branches carry
+  prior main-merges; rebase replays old resolutions), VERSION renumbered (branch claimed stale
+  numbers), and #2881's changelog.d fragment renumbered + a missing CHANGELOG.md entry written.
+- **#2911 (v3.215.0) — technician dataset v0 paid-gate reachable + review console — MERGED+DEPLOYED
+  on Mike's explicit order with the rights-basis caveat ACKNOWLEDGED.** The gate was unpassable by
+  construction (drive candidates all `training_allowed=false` → 0 eligible). OEM grant scoped to
+  exactly `durapulse_gs10`+`powerflex_525` (PF40 held-out invariant intact 5/5); cv101 padding
+  fixed (approvable facts 42→111, dupes 26→0); `--import-decisions` + `--model-support-receipt`;
+  offline review console with live gate meter. Dry-run sim reaches `PAID_GATE_PASS` 15/15; real
+  ledger still EMPTY, awaiting the human review sitting. **The `<basis pending>` rights wording is
+  STILL owed by Mike — merging did not close it.** 555 factorylm_ai tests green post-merge with
+  #2881's trust root (the two compose).
+- **Docker Hub flaked twice during CI** (staging-gate ollama pull, actionlint image pull) — both
+  produced ACCURATE diagnoses under the new verdict-hardening and went green on `gh run rerun
+  --failed`. A `pending` check can race a just-dispatched rerun — re-arm watchers with a lead-in
+  sleep.
+- **Auto-deploy is ACTIVE again** (freeze cause fixed; deliberate decision with Mike). Chain
+  self-proves: merge → Smoke → Deploy → Activation, all green twice in a row.
+- **NEXT / owed to Mike:** rclone OAuth token rotation (STILL highest priority, carried 2 handoffs);
+  LoRA **rights-basis wording** (now the sole blocker before the review sitting — #2911's console
+  makes the sitting cheap once wording lands; C:/wt-train now on merged main); PrintSense extraction
+  escalation decision (crop re-read / stronger model / deterministic OCR). Merge calls on #2881
+  + #2911: DONE this session. Drift-tool residual: a DB connection error inside
+  `tools/migration_drift.py` still counts as drift — needs the tool to classify its own exit.
+- Handoff: `C:/Users/hharp/AppData/Local/Temp/handoff-2026-07-26-mira.md`.
+
+---
+
+# Hot Cache — 2026-07-18 — UNSEEN stack + $0 vision fix + reply chunking ALL LIVE (v3.160.0→v3.162.3)
+
+Five PRs merged, staging+prod deployed, acceptance-verified. The PrintSense free path is fully
+operational again after the Groq vision deprecation.
+
+- **#2784/#2785/#2786 UNSEEN stack (v3.160.0–3.162.0):** deterministic print-QA fast-path BEFORE any
+  model call (`printsense/deterministic_qa.py`, hooked in `bot._try_print_translator_reply`); German
+  routing signals; negation-aware state-claim grading; deterministic contact caveat; frozen
+  `printsense/benchmarks/unseen_lane/` (never-calibrate law) + `/printsense_test unseen` + weekly
+  $0 workflow. Unseen benchmark 4/10 → 6/10 all-deterministic through a total model outage.
+- **#2788 $0 VISION FIX (v3.162.2):** Groq delisted ALL vision models → free photo classification was
+  dead fleet-wide. Fix: `GROQ_VISION_MODEL` defaults empty (skip, not 404); Together carries images
+  via **`google/gemma-3n-E4B-it`** — the ONLY serverless vision model on the account.
+  **QUALIFICATION LAW: Together catalog per-token pricing ≠ serverless access** (every
+  Qwen-VL/Llama-4/Kimi/GLM id rejects "non-serverless"; micro-probe any candidate id live before
+  shipping). Six hardcoded dead-id compose sites → `${GROQ_VISION_MODEL:-}` pass-throughs; the
+  `or`-form parse is load-bearing (compose `${VAR:-}` delivers empty strings). Verified in-container:
+  classify ELECTRICAL_PRINT 0.90 live via together/gemma at ~$0.0001/probe.
+- **#2792 reply chunking (v3.162.3):** gemma's verbose replies blew Telegram's 4096-char sendMessage
+  cap → 400 → silent turn death (caught by Mike's live poke). `bot._chunk_reply`/`_reply_chunked`
+  now split at 4000 on line boundaries, deliver in order, and surface residual failures instead of
+  swallowing them.
+- **Traps confirmed live this session:** gh CLI truncates big job logs (read the job ANNOTATION +
+  raw `api /logs` before calling a mid-run death a crash — a "flake" was a real assert in root
+  `tests/test_inference_router.py`); a PR-branch E2E smoke racing a main-merge prod deploy fails
+  with mass 502s (check `gh run list` for a concurrent Deploy-to-VPS, rerun after it settles);
+  grep BOTH test trees (`tests/` AND `mira-bots/tests/`) for pinned defaults.
+- **NEXT (designed, not built): per-turn $0 auto-eval hook** — full implementation plan at
+  `docs/plans/2026-07-18-print-autoeval-hook.md` (deterministic truth-free grading of every print
+  reply, conversation_eval meta, flood-guarded ntfy P0 alerts; fold in open PR #2714). Awaiting
+  build go. Also awaiting Mike: OpenAI dashboard cap, credits → paid Lane-A, Phase 5 thresholds.
+- **OCR regime keep-alive + runbook (v3.168.0, branch `feat/ocr-keepalive`):** deterministic Tesseract floor is provenance-tagged (`ocr_source`) end-to-end, autoeval P0 `ocr_floor_dead` pages on a dead floor, `ocr-lane-health` scheduled probe watches staging — lane map + failure-mode first moves at `docs/runbooks/ocr-regime.md`.
+
+---
+
+# Hot Cache — 2026-06-25 — Hub one-board Command Center status view
+
+Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
+`/command-center`: `HubStatusBoard` polls `/api/hub/status` every 2s and renders conveyor cell plus
+Stardust block-zone running/blocked/faulted/stale states in a compact responsive grid. Mounted below
+the connected-gateways bar so it avoids PR #2274's live-view button hunk. Tests: affected Hub status
+slice 8/8 green, full Hub vitest 883/883 green, targeted lint green, default `npm run build` green.
+Full repo-wide Hub lint still fails on unrelated existing lint debt. Browser proof used local
+production `next start` with the existing Command Center auth-cookie pattern plus mocked status/tree
+routes; desktop/mobile screenshots in ignored `mira-hub/test-results/hub-one-board-task3/`.
+
+---
+
+# Hot Cache — 2026-06-23 — SimLab→UNS ingest: HTTP relay path turnkey (L1+L2)
+
+Branch `feat/simlab-relay-ingest-emit` off `fix/heartbeat-docling-to-tika` (carries the proveit/cappy
+commits). Built the two **no-infra** bricks the ingest roadmap named — **Gaps A/B/C now CLOSED**, the
+HTTP relay path (SimLab → `live_signal_cache`, UNS-mapped) is turnkey.
+- `fc5790f7` **L1 — emit wiring.** `RelayIngestPublisher` now carries a required `tenant_id` + two auth
+  modes matching `mira-relay/auth.py`: **HMAC** (signs the four `X-MIRA-*` headers over the exact body
+  bytes via httpx `content=`; relay treats `X-MIRA-Tenant` as authoritative) and **bench bearer**
+  (tenant in body, needs `RELAY_LEGACY_BEARER=1`). `build_app` attaches it env-gated on
+  `SIMLAB_RELAY_URL` (defaults tenant to reserved `SIMLAB_TENANT_ID`; `SIMLAB_RELAY_{HMAC_KEY,API_KEY,
+  TENANT_ID}`). Additive; best-effort. 16 tests incl. a **real round-trip against `auth.py:verify_hmac`**
+  + tamper-detection.
+- `03971bbc` **L2 — `simulator` allowlist seed.** `tools/seeds/gen_approved_tags_simulator.py` →
+  89-row `approved_tags_simulator.sql` (reserved `SIMLAB_TENANT_ID`, idempotent). Test pins the
+  generator's normalizer to the authoritative `mira-relay/tag_ingest.normalize_tag_path` (fail-closed
+  match can't drift) + a stale-seed guard.
+- Full simlab suite **78 passed, 3 skipped**; ruff clean. No infra touched.
+- **To land data now (Mike/infra):** apply `tools/seeds/approved_tags_simulator.sql` (staging first) →
+  run `mira-relay` → `SIMLAB_RELAY_URL=$RELAY SIMLAB_RELAY_HMAC_KEY=… python -m simlab` + advance →
+  rows appear in `tag_events` + `live_signal_cache`. **Remaining roadmap work:** Lane 3 (MQTT
+  subscriber / foreign feed), Lanes 4–5 (Command Center value panel + prod engine bridge).
+- Roadmap matrix updated: `docs/plans/2026-06-22-simlab-uns-ingest-roadmap.md`.
+
+---
+
+# Hot Cache — 2026-06-22 — ProveIt buildout (Cappy Hour import + sim-live)
+
+Branch `feat/cappy-hour-import-engine` off main. Goal: contextualize the real ProveIt factory +
+make the sim live. **7 commits, 214 tests green** (no infra needed; licensed corpus NEVER committed).
+- `36adfd84` **Cappy Hour import engine** — `mira-plc-parser/parsers/ignition_json.py` + additive IR
+  `NamespaceNode` → real `Enterprise B/tags.json` becomes 1 ent·1 site·4 areas·15 lines·**43 assets**·
+  **4,090 signals** (4,154 nodes); i3x-export = 4,154 instances, single root, 0 dangling.
+- `b67d3445` **MqttPublisher hardened** (3 bugs: frozen ts, get_event_loop(), GC'd task).
+- `cfe42179` **SimEngine live feed** — `advance()` streams a snapshot; opt-in `SIMLAB_MQTT_HOST`.
+- `cb97ae2e` **Pilot DB → 6,023 citable chunks** (`tools/proveit/pilot_db_chunks.py`, offline).
+- `5e075b89` **batch inserter honors per-row `is_private`** — proveit corpus lands `is_private=true`
+  (item 2's code precondition; OEM callers unchanged).
+- `afa36872` **manual→chunks + end-to-end dry-run CLI** — `manual_chunks.py` (section chunks + lazy
+  Docling PDF hook + Vessel-spec **Asset ID→UNS** roster) + `cli.py report`. Real dry-run: **6,198
+  `knowledge_entries` rows** ready (3,000/6,000 WOs grounded to vat paths; 175 manual chunks), all
+  `is_private`, unembedded, no DB writes.
+- `0763992a` resume/handoff: `docs/RESUME_2026-06-22_proveit-buildout.md`.
+**Agent-side Phase 2 DONE. Remaining = pure infra** (provision `proveit` tenant + Hub migrations &
+ingestion endpoint, embed+insert the 6,198 rows, Mosquitto/Flexware broker stand-up; real PDF
+optional — code path exists) — handed off in the resume doc. Dry-run:
+`python tools/proveit/cli.py report "../proveit-factory/uns-docs/Enterprise B" --out /tmp/proveit`.
+PR needs `--admin` (phantom Hub E2E check). `python -m simlab` already serves live.
+**SimLab→UNS ingest roadmap:** `docs/plans/2026-06-22-simlab-uns-ingest-roadmap.md` — full emit→land→UNS→consume
+pipeline (done-vs-needed matrix + 6 parallel-agent work-tree lanes + infra/ops checklist). Thesis: HTTP relay
+path is ~90% built (one wire: `RelayIngestPublisher` not attached in `build_app` + no `simulator` allowlist seed);
+MQTT path is emit-only (no subscriber = foreign-feed gap). Live values already cited via Hub `/api/mira/ask`.
+
+---
+
+# Hot Cache — 2026-06-21 — HubV3/i3x
+
+**Migration head: 056** (contextualization + intake). Three Round 13 fix branches open:
+- `fix/ctx-zipbomb-cap` — A13-1 zip-bomb decompression guard (unzip.ts + import/route.ts 413 pre-check)
+- `fix/publish-gate-integration-test` — B12-1 batch-review route integration test
+- `fix/ctx-signals-verified-only` — C12-1 ctx_enrichment verified-only (ENGINE CHANGE, needs staging gate)
+
+---
+
+# Hot Cache — 2026-06-12 — PLC laptop
+
+## Session — 2026-06-13 (Trends V2 layer-1 CORRECTED — built on the REAL Prog_init)
+
+**Mike caught a version mismatch mid-walkthrough; verified against the live CCW project.**
+The deployed **Conv_Simple_1.8** runs **Prog1 (ladder I/O) + Prog_init (ST comms, V1.8) on
+Channel 2** — NOT a monolithic "Prog2" ST on Channel 0. The repo `plc/Prog2.stf` /
+`Micro820_v4.1.9_Program.st` are a dead pre-1.8 lineage. My 2026-06-12b "deployed = v5.0.0
+Channel 0" claim was **backwards**; live is Channel 2 (serial_sniff 2026-05-26). Fixed the
+`feedback_micro820_channel0` memory (was asserting Channel 0).
+
+**Rebuilt layer 1 (commit after `35c0549b`):**
+- `plc/Prog_init_ConvSimple_v1.9.st` — extends the REAL V1.8 POU. **Option C** tiered polling
+  (researched industry standard — flowfuse/dpstele): one MSG per 500ms tick on shared Ch2, so
+  monitor block keeps 2 of 3 read-ticks (~1.5s; faults+freq/current/DC-bus), torque/rpm + power
+  interleaved (~6s); **writes unchanged ~1Hz**. Keeps bench-proven **Addr = wire+1** off-by-one.
+  Splits 0x2100 → fault(low)/warn(high), captures 0x2102 freq-cmd echo, latches vfd_last_fault
+  (operator clear coil 24).
+- `plc/MbSrvConf_ConvSimple_v1.9.xml` — surgical superset of the LIVE map (Version 2.0, 13 coils
+  + 5 HRs) + 8 new HRs (offsets 117-124 = HR_SPECS) + clear coil. Drops v4-lineage vars that may
+  not exist in 1.8. Dry-run verified vs the live project.
+- `plc/CCW_VARIABLES_ConvSimple_v1.9_DELTA.md` — real CCW types + the deploy sequence.
+- Removed the wrong `Micro820_v5.1.0_Program.st` / `MbSrvConf_v5.1.xml` / v5.1.0 delta.
+- Layers 2+3 unchanged (48 pytest / 41 node green; offsets line up). Historian left RUNNING.
+- **Next:** Mike runs the delta-doc deploy sequence on Conv_Simple_1.8 (declare 17 vars → paste
+  Prog_init V1.9 → build/download/Run), then live acceptance (freq-scale check).
+
+## Session — 2026-06-12b (Trends V2 — SUPERSEDED by the 2026-06-13 correction above)
+
+**Shipped (commits `215f0f2a` + `9cda0169`, branch `docs/plc-1668-feed-resume`):**
+- **Layer 2 (historian):** `live_logger.py` HR_SPECS 117–124 (`vfd_status_word`/`error_code`/
+  `warn_code`/`freq_cmd`÷100/`torque_pct`÷10/`motor_rpm`/`power_kw`÷1000/`last_fault`);
+  `trend_accumulator.py` units + `torque_hi_pct` 150% threshold + rpm-lags-cmd slip note.
+  48/48 pytest. Tags silently absent until reflash. ⚠ plan said power ÷100 — manual says
+  X.XXX kW (÷1000); manual won.
+- **Layer 3 (viewer):** `mira-trend-viewer/js/adapters/gs10.js` — REAL GS10 tables transcribed
+  from `conveyor-evidence/manuals/GS10_UM.pdf` (faults p5-4, warning IDs ch6 — warn ids ≠ fault
+  ids! CE10 warn=5 fault=58; SM2 bits p4-196). New WORD `fields` decode for the 2-bit packed
+  enums (op_status, direction) → ENUM child lanes; single-bit decode would lie. 41/41 node tests.
+- **Layer 1 PREP (flash-ready, Mike's CCW step remains):** `plc/Micro820_v5.1.0_Program.st` —
+  based on DEPLOYED v5.0.0 `Prog2.stf` (Channel 0!), NOT the stale v4.1.9 .st (Channel 2 +
+  bogus SM2 bit-13-fault comment). Step-1 read widened to 0x2100×7; SM1 byte-split feeds
+  vfd_fault_code (red light finally live) + vfd_warn_code; last-fault latch w/ operator clear
+  coil C24; steps 5/6 read torque/rpm (0x210B×2) + power (0x210F×1). `plc/MbSrvConf_v5.1.xml`
+  24 coils + 25 HRs (vfd_* = Word per deployed CCW truth); `deploy_modbus_map.py` dry-run
+  verified vs `CCW/MIRA_PLC/Conv_Simple_1.8`. Sequence: `plc/CCW_VARIABLES_v5.1.0_DELTA.md`.
+- **Next:** Mike runs the delta-doc deploy sequence (stop historian → deploy map → declare vars
+  → paste v5.1.0 → flash). Then live acceptance per the plan doc (freq-cmd-vs-actual scale
+  check step 6!) + screenshots. Same flash wakes dormant A2/A12.
+
+## Session — 2026-06-12 (trend-viewer v2 — last-fault + status-bit decode + Perspective embed)
+
+**Shipped (commit `a55bf2f3`, branch `docs/plc-1668-feed-resume`, 33/33 node tests):**
+- `mira-trend-viewer/` v2: per-VFD `last_fault` ENUM register (persists trip cause after
+  `fault_code` resets — the intermittent-trip workhorse); status-word **bit decode** — a WORD
+  tag declaring `bits:{0:"Running",5:"Faulted",…}` expands ONCE in the store (like scaling)
+  into named boolean child tags, each an indented checkbox row + digital step lane, parent
+  updates fan out with honest null/quality.
+- **Perspective wiring:** `trend_historian.py` now mounts the viewer at `/viewer` (same origin
+  as `/trends/summary` → no CORS, no extra server); `app.js` auto-targets the serving origin;
+  `Trends/TrendPanel` embeds `/viewer/index.html?source=historian` alongside Ask MIRA (route
+  `/trends` + NavBar TRENDS unchanged). Deploy to gateway: `ignition\deploy_ignition.ps1`.
+- Verified: live browser check (Fault Code "No fault" + Last Fault "ocA"; 0x0007 →
+  Running/At Speed/Ready ON) + smoke of `/viewer` mount on scratch port 8799; promo screenshots
+  in `docs/promo-screenshots/2026-06-12_trend-viewer-v2-*`.
+- **LIVE DEPLOY (same day, tagged `trends-v1` / MIRA_PLC `trends-hmi-v1`):** the real gateway
+  project is **ConvSimpleLive** (NOT monorepo `ignition/project/` ConveyorMIRA — never loads on
+  8.3.4; `ia.display.webBrowser` isn't a Perspective component, `ia.display.iframe` is).
+  Shipped + browser-verified: `/trends` page + **≋ TRENDS toggle buttons** (Ask-MIRA popup
+  pattern) on Conveyor + home; DC bus 321.6 V GOOD drawing live in the popup. Source:
+  `CCW/MIRA_PLC/ignition/ConvSimpleLive` @ `a3f79b0`; deploy = `gsudo APPLY_TRENDS.cmd`.
+- **Next: Trends V2 — full GS10 monitoring.** Plan: `docs/plans/2026-06-12-trends-v2-full-vfd-monitoring.md`;
+  resume prompt: `plc/RESUME_TRENDS_V2.md`. Blocked on the slave-map reflash for layer 1;
+  layers 2–3 (historian HR_SPECS/UNITS + viewer GS10 bits/fault tables) buildable now.
 
 ## ⭐ MASTER GTM CHECKLIST — `docs/gtm/go-to-market-hardening-checklist.md`
 
@@ -887,3 +1210,176 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 35/57 passing (61%) — runs/2026-06-03T0109-offline-text.md
 - Action: issue-filed (#1678)
 - 22 patchable failures but BOTH hard-stops tripped (>15 failures AND 3 file clusters: engine.py, guardrails.py, active.yaml). Broad FSM-routing regression — fixtures stuck in AWAITING_UNS_CONFIRMATION/Q1/IDLE or over-advancing to ASSET_IDENTIFIED. Needs human bisect of recent engine.py state-machine edits.
+# Hot Cache - 2026-06-25 - Context spine unification audit
+
+Read-only FactoryLM/MIRA context spine investigation completed in `C:\Users\hharp\.codex\worktrees\a113\MIRA`.
+- Deliverables:
+  - `docs/investigations/2026-06-25-context-spine-subagent-audit.md`
+  - `docs/plans/2026-06-25-context-spine-unification-plan.md`
+- Verdict: MIRA Hub is the canonical self-serve spine; FactoryLM should feed it as a read-only edge/demo/proof source, not become a parallel KG/approval/readiness product.
+- Existing spine: Offline Contextualizer / PLC parser -> Hub contextualization staging -> human approve/reject -> UNS/KG + `knowledge_entries` -> readiness -> approved-context MIRA answers -> optional relay-approved telemetry -> SimLab proof.
+- Main glue gaps: legacy bundle import vs JSON intake semantics, document chunks not consistently counted in readiness/approval, approved-only retrieval is flag-gated and not visibly enforced everywhere, `/api/mira/ask` relationship filtering needs verified-only proof, and SimLab/live proof is not yet one command.
+- Smallest PR plan from the audit was docs/contract alignment first, then import review unification, approved-context readiness/answer gates, and SimLab proof runner.
+- Follow-up implementation slice: legacy bundle import now computes a bundle SHA, upserts/returns `ctx_import_batches`, attaches `ctx_sources.import_batch_id`, updates batch counts, and treats same-bundle re-import as idempotent. Added `mira-hub/src/app/api/contextualization/import/__tests__/route.bundle.test.ts`; verified with focused Vitest + ESLint.
+
+---
+# Hot Cache - 2026-06-25 - Hub DB integration harness planned and partially implemented
+
+Context spine work is in progress on the local worktree. Investigation and plan docs are present:
+`docs/investigations/2026-06-25-context-spine-subagent-audit.md`,
+`docs/plans/2026-06-25-context-spine-unification-plan.md`, and
+`docs/superpowers/plans/2026-06-25-hub-db-integration-test-database.md`.
+
+Sub-agent-driven DB harness status:
+- Complete/reviewed: integration-only CMMS/RLS fixture at `mira-hub/db/integration-fixtures/000_base_cmms_rls.sql`.
+- Complete/reviewed: disposable setup script at `mira-hub/scripts/setup-integration-db.mjs`.
+- Complete/reviewed: `mira-hub` npm scripts `db:integration:setup` and `test:integration:db`, plus integration test headers.
+- Added guarded Doppler-dev runner: `mira-hub/scripts/run-dev-integration-tests.mjs` and `npm run test:integration:dev`.
+- Applied contextualization migrations 055/056 to Doppler `factorylm/dev` (guarded to `ep-lingering-salad`); before tables were missing, after `contextualization_projects` and `ctx_import_batches` exist.
+- Green against real dev Neon: `doppler run --project factorylm --config dev -- npm run test:integration:dev -- src/app/api/contextualization/import/import.integration.test.ts "src/app/api/contextualization/batches/[batchId]/review/review.integration.test.ts"` -> 2 files, 9 tests passed, cleanup ran.
+- Full dev integration still fails only on `src/lib/auth/__tests__/rls-deny.integration.test.ts`: shared dev lacks `cmms_areas`/`cmms_sites`, and the integration CMMS fixture assumes UUID `tenants.id` while dev's existing tenant schema is not compatible. Keep this suite on the disposable-branch path.
+- Verified: package JSON parses; ESLint passes for touched scripts/tests; setup script refuses missing/unguarded DB env.
+
+---
+
+# Hot Cache - 2026-06-25 - Hub DB integration harness proven on disposable Neon
+
+Continuation result:
+- Created disposable Neon branch `br-super-cake-ahzi2o9f` from dev branch `br-fancy-firefly-aha05dz2`; branch was created with an 8-hour expiry.
+- Created clean test database `hub_integration_test4` on that branch.
+- `npm run test:integration:db` is green from empty schema: setup applied integration fixture plus allowlisted migrations `001`, `010`, `026`, `027`, `029`, `055`, `056`; smoke check passed; Vitest passed 3 files / 17 tests.
+- The setup harness intentionally does not replay every Hub migration; earlier full replay failed on unrelated legacy dependencies (`knowledge_entries`, then `work_orders`). The allowlist is the current DB contract for the integration slice under test.
+- Fixes made during proof: integration fixture handles missing app tenant settings with `NULLIF(..., '')::uuid`; RLS missing-context test now drops to `factorylm_app`; setup grants `factorylm_app` the KG table permissions needed by contextualization approval publishing.
+- Verification after the pass: ESLint on touched DB scripts/tests passed, `package.json` parses, `git diff --check` passed with only normal CRLF warnings.
+- Note: Node `pg` emits the current sslmode warning for Neon `ssl=require`; this is a dependency warning, not a test failure.
+
+---
+
+# Hot Cache - 2026-06-25 - Synthetic dogfood Celery loop PR #2293
+
+Branch `codex/synthetic-dogfood-agents` / PR #2293 adds the autonomous beta-polish loop Mike asked for:
+seeded Hub personas run via Celery + Playwright, raw artifacts land under `/opt/mira/data/synthetic-dogfood`,
+and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noise stays in reports.
+- Core code: `mira-crawler/agents/synthetic_dogfood.py`, `agents/github_issue_reporter.py`,
+  `tasks/synthetic_dogfood.py`.
+- SaaS wiring: `mira-crawler/Dockerfile.synthetic-dogfood` plus `docker-compose.saas.yml` services
+  `mira-redis`, `mira-synthetic-dogfood-worker`, and `mira-synthetic-dogfood-beat`.
+- Safety switches: default off (`SYNTHETIC_DOGFOOD_ENABLED=0`) and dry-run issues
+  (`DOGFOOD_ISSUE_MODE=dry_run`). Flip Doppler `factorylm/prd` only after the first artifact looks sane.
+- Runbook: `docs/runbooks/synthetic-dogfood-agents.md`.
+- Verified locally: `python -m pytest tests/test_synthetic_dogfood.py -q` = 11 passed; `py_compile` green;
+  Python YAML parse confirmed compose services/volume. Not run: `docker compose config` because Docker is
+  not installed in this Windows remote session.
+
+---
+
+## eval-fixer run — 2026-06-28
+- Scorecard: 47/57 passing (82%) — from 2026-06-27T2229 run
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop: failures span engine.py (8 fixtures, FSM state mismatches) + guardrails.py/prompts (1 fixture, gs3_ground_fault keyword miss). Autopatch skipped; next steps in issue comment.
+
+<!-- Backfill 2026-07-27: eval-fixer entries 07-10 → 07-26 were stranded on the
+     unmerged branch fix/precommit-untracked-sigpipe (334 commits behind main).
+     Copied verbatim here so main carries the full run history. See #2759. -->
+## eval-fixer run — 2026-07-10
+- Scorecard: 47/57 passing (82%) — from 2026-07-10T0116 run
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop: 9 patchable failures span engine.py (8 fixtures, FSM stuck at Q1/Q2/IDLE instead of advancing) + guardrails.py/prompts (keyword misses, mostly downstream of the FSM cluster). 1 non-patchable wrong-vendor citation (ABB fixture citing Rockwell). Autopatch skipped; diagnosis + next steps in issue comment.
+
+## eval-fixer run — 2026-07-11
+- Scorecard: 45/57 passing (79%) — from 2026-07-11T0358 run (down 2 from 2026-07-10's 47/57)
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop again: 11 patchable failures span engine.py (9 fixtures, FSM pacing — stuck at Q1/Q2 or dropping to IDLE instead of advancing to DIAGNOSIS) + guardrails.py/prompts (2 keyword misses in KB-gap replies). 1 non-patchable wrong-vendor citation (gs10_overcurrent_01 citing Rockwell for an AutomationDirect GS10 — retrieval layer). Autopatch skipped; diagnosis + next steps in issue comment.
+
+## eval-fixer run — 2026-07-12
+- Scorecard: 50/57 passing (88%) — from 2026-07-12T0234 run (up 5 from 2026-07-11's 45/57)
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop, third night running: 6 patchable failures span engine.py (5 fixtures — FSM stuck at Q1 instead of Q2 ×3, DIAGNOSIS_REVISION not reaching RESOLVED on the CMMS WO fixture, IDLE not entering Q1) + guardrails.py/prompts (2 keyword misses, incl. gs3_ground_fault_14 falling to the KB-miss clarification). 1 non-patchable wrong-vendor citation (ABB ACS580 fixture citing Rockwell pflex manual). The Q1→Q2 progression cluster is the recurring highest-leverage fix; diagnosis + next steps in issue comment.
+
+## eval-fixer run — 2026-07-13
+- Scorecard: 47/57 passing (82%) — from 2026-07-13T0120 run (down 3 from 2026-07-12's 50/57)
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop, **fourth night running**: 10 patchable failures span engine.py (7 fixtures — FSM pacing: Q1→Q2 stall on vague/abbreviated openers ×3, Q2→DIAGNOSIS short ×2, IDLE-not-entering-Q1, Q2→Q3 short) + guardrails.py/prompts (4 keyword misses). **Infra caveat:** 2 of those (`pf520_hw_overcurrent_17`, `yaskawa_j1000_thermal_24`) ended on the "taking longer than usual" timeout placeholder — LLM-latency flakes, not logic; real failure count is likely ~8. The engine.py Q1→Q2→…→DIAGNOSIS pacing cluster is the same recurring highest-leverage human fix (4th night). Genuine cluster-B misses (gs3_ground_fault_14, lenze_thermal_30) look like KB-gap over-trigger routing thermal/ground-fault to the generic manufacturer prompt. Diagnosis + next steps in issue comment.
+
+## eval-fixer run — 2026-07-14
+- Scorecard: 51/57 passing (89%)
+- Action: issue-filed (commented rolling tracker #1876)
+- 6 failures / 3 patchable, but spanned 3 file_clusters (engine.py, guardrails.py, active.yaml) → single-file guardrail tripped, no autopatch. Dominant real signal = cross-vendor citation (AutomationDirect/ABB assets pulling Rockwell PowerFlex chunks) → retrieval-precision work (#2083/#2085), not an FSM/keyword patch.
+
+## eval-fixer run — 2026-07-15
+- Scorecard: 51/57 passing (89%) — from 2026-07-15T0348 run (flat vs 2026-07-14's 51/57)
+- Action: issue-filed (commented rolling tracker #1876)
+- Multi-file cluster hard stop, **fifth night running**: 6 failures / 5 patchable spanning 3 clusters (engine.py, guardrails.py, active.yaml) → single-file guardrail tripped, no autopatch. Cluster A = engine.py FSM state (4 fixtures: pf525_f004_02 Q2-not-DIAGNOSIS, vague_opener_05 & asset_change_08 Q1-not-Q2, self_critique_34 IDLE-not-Q1) — same recurring Q1→Q2→DIAGNOSIS pacing fix, 5th night. Cluster B = gs3_ground_fault_14 falling to KB-miss honesty fallback (guardrails/prompt). Non-patchable = vfd_abb_01_acs580 wrong-vendor citation (ABB→Rockwell), same cross-vendor bleed as #2083/#2085. Highest-leverage human fix remains the engine.py FSM pacing cluster (4 of 5 patchable failures).
+
+## eval-fixer run — 2026-07-16
+- Scorecard: 32/57 passing (56%) — from 2026-07-16T0235 run
+- Action: issue-filed (commented rolling tracker #1876)
+- **Flaky/provider-degraded run, NOT a regression.** Runtime ~45 min (2723s) vs a healthy fast run; 32/57 is a sharp downward outlier against the five prior same-day runs (46/49/44/49/51). **13 of 25 failures returned the provider-timeout placeholder** ("This is taking longer than usual…") — the cascade timed out and never produced a diagnostic answer, so those fixtures failed cp_reached_state + cp_keyword_match purely for lack of output. Watchdog flagged 0 regressions; engine unchanged. Autopatch skipped on both hard stops (24 patchable > 15; 3 file clusters). **Next step = re-run the suite before treating anything as real**; if it returns to the 44–51 band it was provider flake. Real-signal leftovers if they recur on a clean run: engine.py FSM Q1→Q2→DIAGNOSIS pacing (pf525_02, vfd_ab_02, vague_05, asset_change_08, gs1_12, reset_09), yaskawa_j1000_24 context bleed, and non-patchable vfd_siemens_04 wrong-vendor citation (Siemens→Rockwell).
+
+## eval-fixer run — 2026-07-17
+- Scorecard: 44/57 passing (77%) — from 2026-07-17T0100 run (runtime 2170s); low end of the normal 44–51 band, **not** a regression (watchdog flagged 0 regressions)
+- Action: issue-filed — **new meta issue #2759** + scorecard comment on rolling tracker #1876
+- **🔑 Root finding: the autopatch gate is structurally unsatisfiable — filed #2759.** `eval_watchdog.py` builds `file_clusters` as the *union of static candidate files* per checkpoint (`CHECKPOINT_META`), so a single `cp_keyword_match` failure emits 2 cluster keys (guardrails.py + active.yaml) **by itself** → the "multiple file_clusters → hard stop" rule fires on essentially every run. Only a pure-`cp_reached_state` run could ever autopatch. This explains **9+ consecutive nights of hard-stop-no-patch** (06-28 → 07-17) — the agent has never been *able* to patch. The gate also contradicts the spec's own next line ("pick the single file cluster with the most failing fixtures"). Proposed fix in #2759: collapse to a dominant primary target before testing the stop. **Not self-applied** — it guards an unsupervised engine.py patcher, and single-run verification can't beat the documented ~15pt eval noise.
+- Honest decomposition: 13 raw failures → **8 genuine engine.py FSM-pacing + 2 genuine keyword misses + 3 provider timeouts**. The 3 timeouts (`gs10_overcurrent_01`, `vague_opener_stuck_state_05`, `cmms_wo_creation_32`) returned the "taking longer than usual" placeholder and fail BOTH checkpoints, single-handedly inflating all 3 clusters.
+- Cluster A (engine.py FSM pacing, **6th night**): over-qualifying — asset_change_08 & gs1_12 (Q1→Q2), abbreviation_10 (IDLE→Q2), reset_09 & self_critique_34 (IDLE→Q1), vfd_ab_02 & vfd_siemens_01 (Q2→DIAGNOSIS), vfd_abb_04 (Q1→DIAGNOSIS). Several replies are substantively good but land one state short. Still the highest-leverage human fix; needs bisect against a multi-run mean.
+- Cluster B (2 fixtures): gs3_ground_fault_14 → KB-miss honesty fallback; lenze_thermal_30 → generic fault-code clarification. KB-gap over-trigger.
+
+## eval-fixer run — 2026-07-18
+- Scorecard: 47/57 passing (82%) — from 2026-07-18T0427 run; **squarely in the normal 44–51 band, 0 regressions flagged.**
+- Action: issue-filed (escalation comment on rolling tracker #1876, cross-ref #2759)
+- **Consecutive no-patch night #10+.** Same #2759 structurally-unsatisfiable gate: 10 failures / 9 patchable, but the two `cp_keyword_match` fixtures each map statically to guardrails.py + active.yaml, so the watchdog emitted 3 file_clusters (engine.py, guardrails.py, active.yaml) and the "multiple clusters → hard stop" fired.
+- **No patch warranted regardless of the gate:** 47/57 is in-band with no regression, and single-run `new_pass > baseline_pass` can't beat ±3–4pt noise — patching core engine.py FSM logic on that signal would ship an unvalidated change to a shared module. Did **not** attempt to fix the gate (#2759) autonomously: it lives in `eval_watchdog.py` (outside the 4-file mandate) and this branch is 14 behind main + a grab-bag.
+- Real signal (steady-state, unchanged): engine.py FSM over-qualifies by one state (8 fixtures: vague_05, asset_change_08, abbreviation_10, gs1_12, self_critique_34, vfd_ab_02, vfd_danfoss_03, cmms_32) + 2 keyword misses (gs3_ground_fault_14 KB-miss honesty fallback, cmms_32). Non-patchable: vfd_abb_01_acs580 wrong-vendor citation (ABB→Rockwell), same cross-vendor bleed as #2083/#2085.
+
+## eval-fixer run — 2026-07-21
+- Scorecard: 51/57 passing (89%) — from 2026-07-21T0117 run; **top of the normal 44–51 band, 0 regressions flagged.**
+- Action: issue-filed (scorecard comment on rolling tracker #1876, cross-ref #2759)
+- **Consecutive no-patch night #11+.** Same #2759 structurally-unsatisfiable gate: 6 failures / 6 patchable, but `gs3_ground_fault_14`'s `cp_keyword_match` maps statically to guardrails.py + active.yaml, so the watchdog emitted 3 file_clusters (engine.py, guardrails.py, active.yaml) → "multiple clusters → hard stop" fired.
+- **No patch warranted regardless of the gate:** Cluster A (engine.py, 5 fixtures) is **heterogeneous** — 3 over-question (pf525_f004_02 Q2→DIAGNOSIS, vfd_ab_02_pf755 Q1→DIAGNOSIS, abbreviation_10 Q1→Q2), 1 under-questions (self_critique_34 **IDLE→Q1**, opposite direction), 1 mid-session asset swap (asset_change_08 Q1→Q2). A single "advance faster" skip change would fix the 3 over-questioners but push self_critique_34 further off and risk the 51 passing fixtures. Not a single-shot minimal fix. Cluster B = gs3_ground_fault_14 KB-miss honesty fallback (needs retrieval-vs-honesty triage: is GS3 ground-fault actually in KB?).
+- Did **not** attempt the #2759 gate fix autonomously (lives in `eval_watchdog.py`, outside the 4-file mandate; branch fix/precommit-untracked-sigpipe carries unrelated WIP).
+
+## eval-fixer run — 2026-07-22
+- Scorecard: 46/57 passing (81%) — from 2026-07-22T0440 run; **in the normal 44–51 band, 0 regressions flagged.**
+- Action: issue-filed (scorecard comment on rolling tracker #1876, cross-ref #2759)
+- **Consecutive no-patch night #12+.** Same #2759 structurally-unsatisfiable gate: 11 failures / 10 patchable, but the `cp_keyword_match` fixtures map statically to guardrails.py + active.yaml, so the watchdog emitted 3 file_clusters (engine.py, guardrails.py, active.yaml) → "multiple clusters → hard stop" fired.
+- **No patch warranted regardless of the gate:** the dominant engine.py cluster (8 fixtures) is **heterogeneous/contradictory** — 3 over-question (pf525_f004_02, self_critique_35, pf520_17: Q2→DIAGNOSIS), 2 under-question (asset_change_08, gs1_12: Q1→Q2), 1 IDLE→Q1 (self_critique_34), 1 Q2→Q3 (vfd_danfoss_03), 1 DIAGNOSIS_REVISION→RESOLVED (cmms_32). A single pacing knob regresses one direction while fixing the other — not a single-shot minimal fix.
+- Also: 2 fixtures (`pf520_hw_overcurrent_17`, `vfd_ab_03_pf525_wrong_model`) returned the "taking longer than usual" async placeholder — provider-latency artifacts inflating the count, not diagnosable engine bugs.
+- Non-patchable: `vfd_abb_01_acs580_fault_2310` wrong-vendor citation (ABB→Rockwell), same cross-vendor bleed as #2083/#2085 → retrieval-diagnostics, not FSM/keyword.
+- Did **not** attempt the #2759 gate fix autonomously (lives in `eval_watchdog.py`, outside the 4-file mandate; branch fix/precommit-untracked-sigpipe carries unrelated WIP).
+
+## eval-fixer run — 2026-07-25
+- Scorecard: 31/57 passing (54%)
+- Action: issue-filed (commented on rolling tracker #1876)
+- No patch: two hard-stops hit (23 patchable > 15; failures span 3 file clusters). Dominant signal = 14/26 failures ended on the "taking longer than usual" provider-timeout placeholder (FSM fell back to IDLE), not a code bug — the scorecard is confounded by transient latency and should be re-run. Real residual problems: 3 wrong-vendor citations + 1 ABB cross-load leak (retrieval vendor-scoping, non-patchable via engine/guardrails/prompt).
+
+## eval-fixer run — 2026-07-26
+- Scorecard: **27/57 passing (47%)** — from 2026-07-26T0457 run (runtime 2987s). Trend: 51 (07-15) → 44 (07-17) → 47 (07-18) → 51 (07-21) → 46 (07-22) → **31 (07-25) → 27 (07-26)**. The last two nights sit well below the normal 44–51 band.
+- Action: issue-filed (comment on rolling tracker #1876 — no new issue)
+- No patch: both hard stops fired (24 patchable > 15; 3 file clusters).
+- **Quantified the timeout artifact for the first time.** 10/30 failures ended on the `TIMEOUT_WARNING` placeholder (`engine.py:1261`, `MIRA_PROCESS_TIMEOUT` default **30s**). It fails `cp_reached_state` AND `cp_keyword_match` together, and all 10 are `autopatch_eligible: true`. Excluding them: patchable **24→14** (under the limit), clusters **engine.py 19→12, guardrails.py 12→2, active.yaml 12→2**. ⇒ the >15 hard stop fired *solely* because of latency artifacts; the genuine signal is one dominant cluster of ~12 engine.py FSM-pacing failures.
+- **Did NOT bump `MIRA_PROCESS_TIMEOUT`** even though `engine.py` is on the allowed-file list — that changes production bot behaviour to paper over eval-harness latency. Wrong lever.
+- **Chronic-fix proposal filed (4th night running, cf. 07-18/07-21/07-22/07-25):** `tests/eval/eval_watchdog.py` should classify a failure whose last response equals `TIMEOUT_WARNING` as infra/non-patchable — excluded from `patchable_failures` and `file_clusters`, reported as a separate `timeout_failures` count. The string is already a shared constant in `fallback_responses.py` (`quality_gate.is_known_fallback` special-cases it today). Outside the eval-fixer's 4-file mandate, hence a proposal not a patch. Same root as #2759.
+- ⚠️ **Genuine degradation, not just noise:** non-timeout failures grew 12 (07-25: 26 fail − 14 timeouts) → 20 (07-26: 30 fail − 10 timeouts) even as timeouts fell. Watchdog flagged 0 regressions, but the underlying pass rate is sliding — worth a human look independent of the timeout confound.
+- Non-patchable residual: 6 wrong-vendor citations (`gs10_overcurrent_01`, `gs20_phase_loss_16`, `vfd_abb_01/03/04`, `vfd_danfoss_01`) — Rockwell/PowerFlex chunks cited for AutomationDirect/ABB/Danfoss assets. Retrieval vendor-scoping (cf. #2083/#2085), unreachable from the allowed patch files.
+
+## eval-fixer run — 2026-07-27
+- Scorecard: **49/57 passing (86%)** — from 2026-07-27T0057 run (runtime 1992.7s). Trend: 51 (07-21) → 46 (07-22) → 31 (07-25) → 27 (07-26) → **49 (07-27)**. Back inside/above the normal 44–51 band.
+- Action: issue-filed (comment on rolling tracker #1876 — no new issue)
+- **The 27→49 recovery is mostly the timeout confound clearing, not a code fix.** **Zero of tonight's 8 failures ended on the `TIMEOUT_WARNING` placeholder** — verified per-fixture against the watchdog JSON's `last_response_snippet` (all 8 end on substantive FSM responses), which is the same measure the 07-26 entry used to count 10/30. Runtime also fell 2987s → 1992s. ⚠️ The comparison counts (07-26: 10, 07-25: 14) are **quoted from those nights' wiki entries, not re-derived here** — those scorecards are not retained in `tests/eval/runs/` (only tonight's remains), so this run could not independently reproduce them.
+- ⚠️ **Method note for future runs:** grepping a scorecard for the literal string `TIMEOUT_WARNING` is **vacuous** — that is the constant's *name* in `fallback_responses.py:39`; the rendered text is *"This is taking longer than usual — I'm still working on it."* A grep for the constant name returns 0 on every scorecard regardless of timeouts. Count timeouts via the per-fixture `last_response_snippet`, or grep the rendered prose.
+- Non-timeout failures also improved genuinely (20 → 8), so the last two nights' "degradation" was largely provider latency, not a regression. No code changed in between — reinforces that single-run deltas can't distinguish a fix from noise.
+- No patch: the multi-file-cluster hard stop fired (3 keys: engine.py, guardrails.py, active.yaml). This is the **#2759 structural gate defect**, not a property of tonight's failures — `cp_keyword_match` maps to 2 static candidate files on its own, so one keyword miss guarantees ≥2 clusters. Tonight only `engine.py` (6 of 8 fixtures) had a real majority, which the spec's own next line says to pick.
+- Signal: 6/8 failures are `cp_reached_state` FSM pacing — 3× under-advance (Q1≠Q2), 1× over-advance (Q2≠DIAGNOSIS, kept qualifying), 2× never entered the FSM (IDLE). One qualification-skip fix likely moves several.
+- Both `cp_keyword_match` failures (`gs3_ground_fault_14`, `vfd_siemens_04_v20_startup`) are honesty/KB-gap paths **replacing** rather than prefixing the substantive answer — the reply carries no domain terms at all.
+- Non-patchable residual: `vfd_ab_03_pf525_wrong_model` cited PowerFlex **400** sources for a PF525 fixture — retrieval vendor/model scoping (cf. #2083/#2085), unreachable from the 4 allowed patch files.
+- Backfilled entries 07-10 → 07-26 into this file in the same commit; they had been stranded on an unmerged branch since 07-10.
+- 🚨 **Read every scorecard above with this caveat: none of them measure `main`.** The nightly runs out of the **shared** working tree — `.claude/agents/run-eval-fixer.sh:7` pins `REPO="/Users/charlienode/MIRA"` — and its safe-pull step (`tools/hooks/safe-cron-pull.sh`) only pulls when that tree is clean *and on `main`*, otherwise it no-ops by design. With an interactive session's WIP branch (`fix/precommit-untracked-sigpipe`) left checked out since ~07-10, every run in this backfill graded a months-stale snapshot of the engine rather than shipped code. So the recurring FSM-pacing cluster and the 07-25/07-26 "degradation" may be partly or wholly artifacts of the checkout, and some fixtures may already pass on `main`. (Stated as a mechanism on purpose — the behind-by-N counts quoted in #2916/#2942 disagree with each other and with today's, because the gap grows every time `main` moves.) **Root fix: give the nightly its own `main`-pinned checkout or worktree instead of the shared tree** — tracked separately; not changed by this docs PR.
+
+## eval-fixer run — 2026-07-28
+- **Evaluated commit: `c89086ef` (main)** — first honest measurement of shipped code in ~13 nights. Established from reflog, not from the scorecard (which still doesn't stamp a SHA — #2952).
+- Scorecard: **36/57 (63%)** — `tests/eval/runs/2026-07-28T0320-offline-text.md`. 8 patchable / 13 need human review.
+- Action: **issue-filed** (comment on rolling tracker #1876). No patch — the 3-key `file_clusters` hard stop fired again (#2759, unchanged; `cp_keyword_match` alone emits 2 keys).
+- 🔎 **The prior "normal band 44–51/57" was the *stale branch's* band, not `main`'s.** The shared tree left the 481-behind `fix/precommit-untracked-sigpipe` at 07-27 17:53 EDT. Four runs before that switch: 45–49/57. Both runs after it: **35, 36/57**. `main`'s band is n=2 — with the documented ~15pt swing on this suite that does **not** establish a regression, but the two `main` runs are tight and sit below all four stale runs. Harness comparability verified: `grader.py` byte-identical between `eeeb09f1` and `main`, same 57 fixtures in the same order.
+- **Cluster 1 (lead, actionable):** 7 fixtures end on the *identical* generic clarification turn ("could you share one more detail — what exact fault code…") — `danfoss_*_27/28`, `sew_overcurrent_29`, `cmms_wo_creation_32`, `vfd_abb_01/03`, `vfd_siemens_03`. One behaviour, not seven failures; 6 of 7 passed on the stale branch. Several of these fixtures already supply a fault code.
+- **Cluster 2 (do NOT "fix" yet):** citation-vendor failures jumped 1/57 → 13/57. `cp_citation_vendor_relevance` is **fail-open** (`grader.py:376-407`) — it passes when nothing recognized is cited. So the stale passes are equally consistent with (a) correct citations → real precision regression, or (b) citing nothing → vacuous passes, and `main` regressed only by *starting* to retrieve. Scorecards keep response text for failures only, so this is **not resolvable from the artifacts**. Discriminating experiment: re-run at `eeeb09f1` retaining passing responses and compare citation *presence*, not relevance.
+- ⚠️ The shared-tree fix is correct-**by-configuration**, not by construction: the next session that leaves a branch checked out or a file modified re-breaks nightly grading. #2952 (dedicated `main`-pinned worktree + SHA stamping) is the real fix and is still open.

@@ -1,0 +1,44 @@
+{
+  "id": 11,
+  "oem": "Banner Engineering",
+  "document": "ES-FL-2A Safety Light Curtain (Product Code 46262)",
+  "url": "https://info.bannerengineering.com/cs/groups/public/documents/literature/46262.pdf",
+  "manifest_page_ref": "Wiring diagram & connector pinout",
+  "print_type": "Safety sensor terminal wiring",
+  "standard": "ISO 13850/EN 418 + EN 954-1 Cat.4",
+  "category": "Safety Relays",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 4,
+  "image_sha256": "5f0813f53999a2b9f272eb162065cdd744f130e2d1a9ce13123cb9b40c053a21",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:11:27.927118+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.9,
+    "drawing_type": "wiring diagram",
+    "drawing_type_confidence": 0.65,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for an E-Stop Safety Relay. The diagram includes a detailed schematic of the relay's connections and components, along with warnings and important notes regarding its installation and use.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 401,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "## **1. What this appears to be**\nThis appears to be a technical diagram for an E-Stop Safety Relay, specifically showing the hookup of an ES-FL-2A Emergency Stop Monitoring Safety Relay.\n\n## **2. Main visible components**\n- ES-FL-2A safety relay\n- Emergency Stop Switch\n- Reset Switch\n- Master Stop Control Elements (MSC1 and MSC2)\n- Internal Redundant Safety Relay Outputs (K1A, K1B, K2A, K2B)\n- Non-safety Auxiliary Monitor Contact (K3)\n- Arc suppressors (optional)\n\n## **3. Plain-English theory of operation**\nThe Emergency Stop Switch, when activated (e.g., pressed), appears to interrupt power to the ES-FL-2A safety relay. The reset switch must be activated to restore power. The Master Stop Control Elements (MSC1 and MSC2) are monitored by the safety relay. If both are in a proper state and the Emergency Stop Switch is not activated, the Internal Redundant Safety Relay Outputs (K1 and K2) will be energized. The Non-safety Auxiliary Monitor Contact (K3) seems to monitor the state of the safety relay outputs.\n\n## **4. What must be true for it to work**\n- The Emergency Stop Switch must not be activated (not pressed).\n- The Reset Switch must have been activated if the system was previously stopped.\n- Both Master Stop Control Elements (MSC1 and MSC2) must be in their proper state (likely not pressed or in a safe condition).\n\n## **5. What would stop it from working**\n- The Emergency Stop Switch being activated (pressed).\n- The Reset Switch not being activated after an Emergency Stop.\n- One or both of the Master Stop Control Elements (MSC1 and MSC2) not being in their proper state.\n\n## **6. Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image."
+}

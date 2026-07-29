@@ -11,6 +11,11 @@ import { useTranslations } from "next-intl";
 
 const DEFAULT_CMMS_URL = "https://cmms.factorylm.com";
 
+function buildCmmsSsoUrl(appPath: string) {
+  const redirect = appPath.startsWith("/app/") ? appPath : "/app/work-orders";
+  return `${API_BASE}/api/cmms/sso?redirect=${encodeURIComponent(redirect)}`;
+}
+
 const STATIC_SUMMARY = {
   workOrders: { open: 12, inprogress: 4, overdue: 2, completed: 89 },
   assets: { total: 47, active: 44, inactive: 3 },
@@ -82,7 +87,11 @@ export default function CMMSPage() {
   }, []);
 
   useEffect(() => {
-    if (configured) fetchStats();
+    if (!configured) return undefined;
+    const timeout = window.setTimeout(() => {
+      void fetchStats();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [configured]);
 
   function connect() {
@@ -114,7 +123,7 @@ export default function CMMSPage() {
               </p>
             </div>
             {configured === true && (
-              <a href={config.url} target="_blank" rel="noopener noreferrer">
+              <a href={buildCmmsSsoUrl("/app/work-orders")} target="_blank" rel="noopener noreferrer">
                 <Button size="sm" className="h-8 gap-1.5 text-xs">
                   <ExternalLink className="w-3.5 h-3.5" />{t("openAtlas")}
                 </Button>
@@ -163,7 +172,7 @@ export default function CMMSPage() {
             </div>
 
             {/* Open CMMS CTA */}
-            <a href={config.url} target="_blank" rel="noopener noreferrer" className="block">
+            <a href={buildCmmsSsoUrl("/app/work-orders")} target="_blank" rel="noopener noreferrer" className="block">
               <Button className="w-full h-11 gap-2 text-sm font-semibold"
                 style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
                 <ExternalLink className="w-4 h-4" />{t("openAtlasFull")}
@@ -243,12 +252,12 @@ export default function CMMSPage() {
               <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--foreground-subtle)" }}>{t("quickLinks")}</h3>
               <div className="space-y-2">
                 {[
-                  { label: "Work Orders",  path: "/workorders" },
-                  { label: "Assets",       path: "/assets" },
-                  { label: "PM Schedule",  path: "/schedule" },
-                  { label: "Reports",      path: "/reports" },
+                  { label: "Work Orders",  path: "/app/work-orders" },
+                  { label: "Assets",       path: "/app/assets" },
+                  { label: "PM Schedule",  path: "/app/preventive-maintenances" },
+                  { label: "Reports",      path: "/app/analytics/work-orders/status" },
                 ].map(({ label, path }) => (
-                  <a key={path} href={`${config.url}${path}`} target="_blank" rel="noopener noreferrer"
+                  <a key={path} href={buildCmmsSsoUrl(path)} target="_blank" rel="noopener noreferrer"
                     className="flex items-center justify-between p-2.5 rounded-lg transition-colors hover:bg-[var(--surface-1)]">
                     <span className="text-sm" style={{ color: "var(--foreground)" }}>{label}</span>
                     <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--foreground-subtle)" }} />

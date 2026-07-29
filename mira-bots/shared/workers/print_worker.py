@@ -8,6 +8,17 @@ import httpx
 
 logger = logging.getLogger("mira-gsd")
 
+# Shown when the print-analysis backend isn't configured in this environment
+# (e.g. staging/cloud-only sets openwebui_url to a "disabled://" sentinel). A
+# disabled optional backend must fail SOFT — never surface as a generic engine
+# error (#2923). Honest, no invented content, routes the tech to a working path.
+PRINT_BACKEND_UNAVAILABLE_MESSAGE = (
+    "I can't analyze the electrical print in this environment right now — the "
+    "print-analysis backend isn't available here. Tell me the specific "
+    "component, terminal, wire number, or symbol you're asking about and I'll "
+    "help from the manuals and wiring references."
+)
+
 ELECTRICAL_PRINT_PROMPT = """\
 You are MIRA, an expert industrial electrician and controls technician \
 with 20 years of experience reading electrical prints.
@@ -51,8 +62,26 @@ class PrintWorker:
         self.openwebui_url = openwebui_url.rstrip("/")
         self.api_key = api_key
 
+    def _backend_available(self) -> bool:
+        """True only when the print backend is a real HTTP(S) endpoint.
+
+        Staging / cloud-only envs point this at a ``disabled://`` sentinel (or
+        leave it empty). Any non-http(s) scheme means the print-analysis backend
+        is not configured here — callers must degrade gracefully rather than
+        attempt an httpx call that raises ``unsupported protocol`` (#2923).
+        """
+        url = (self.openwebui_url or "").strip().lower()
+        return url.startswith("http://") or url.startswith("https://")
+
     async def process(self, message: str, state: dict) -> str:
         """Build print-specialist prompt and call LLM. Returns raw response."""
+        if not self._backend_available():
+            logger.warning(
+                "PRINT_BACKEND_DISABLED openwebui_url=%r — returning graceful "
+                "notice instead of calling a disabled endpoint",
+                self.openwebui_url,
+            )
+            return PRINT_BACKEND_UNAVAILABLE_MESSAGE
         messages = self._build_print_prompt(state, message)
         return await self._call_llm(messages)
 

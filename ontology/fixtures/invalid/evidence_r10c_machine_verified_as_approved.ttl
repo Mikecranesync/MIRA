@@ -1,0 +1,27 @@
+# EXPECT-VIOLATION: mirash:MachineVerifiedIsNotApprovedShape
+#
+# R10c — the PrintSense/kg crosswalk violation. trust=machine_verified means deterministic replay
+# plus independent agreement: a STRONG proposal, never a human sign-off. Mapping it to
+# approval_state=verified is exactly the collapse ADR-0032 §7 exists to forbid.
+#
+# Isolation: R9 is fully satisfied (evidence + Technician approver + timestamp) and proposer
+# differs from approver, so ONLY R10c fires. The defect is the trust-to-approval mapping itself.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech1  a mira:Technician .
+ex:tech2  a mira:Technician .
+ex:llm    a mira:SoftwareAgent .
+ex:doc1   a mira:SourceDocument .
+ex:cite1  a mira:Citation ; mira:cite_doc ex:doc1 ; mira:cite_locator "p.114" .
+
+ex:a_r10c_bad a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:trust mira:trust_machine_verified ;
+    mira:approval_state mira:approval_verified ;
+    mira:supported_by ex:cite1 ;
+    mira:proposed_by ex:llm ;
+    mira:approved_by ex:tech1 ;
+    mira:approved_at "2026-07-20T14:03:00Z"^^xsd:dateTime .

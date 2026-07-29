@@ -104,7 +104,6 @@ export function UploadSummaryCard({ uploadId }: { uploadId: string }) {
     }
 
     void poll();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadId]);
 
   if (fetchError) {

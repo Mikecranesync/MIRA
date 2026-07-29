@@ -1,0 +1,1 @@
+{"package": {"drawing_no": "31971" "sheet": 6}, "devices": []}

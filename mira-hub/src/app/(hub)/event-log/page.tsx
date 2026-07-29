@@ -169,7 +169,25 @@ export default function EventLogPage() {
     }
   }, []);
 
-  useEffect(() => { loadEvents(); }, [loadEvents]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/events/`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled) {
+          setEvents(Array.isArray(data) ? data.map(apiRowToEvent) : []);
+        }
+      })
+      .catch((e) => {
+        console.error(e);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = events.filter(e =>
     (filterChannel === "all" || e.channel === filterChannel) &&
@@ -432,7 +450,7 @@ function EventDetailDrawer({ event, onClose }: { event: EventRow; onClose: () =>
           {/* Tech message */}
           <DrawerSection icon="💬" title={t("techMessage")} color="#2563EB">
             <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>
-              "{event.detail.techMessage}"
+              &quot;{event.detail.techMessage}&quot;
             </p>
             <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>
               — {event.tech} via {CHANNEL_LABELS[event.channel]}
