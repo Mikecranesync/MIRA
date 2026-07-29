@@ -66,5 +66,5 @@ pinned to `MIRA_SHARED_TENANT_ID` so OEM writes can never drift with it again.
 - `.claude/rules/knowledge-entries-tenant-scoping.md` — the `is_private` + shared-tenant hybrid
 - `tools/seeds/backfill_verified_corpus.sql` — the pre-existing trusted-by-default policy
 - `tools/seeds/backfill_oem_crawler_chunks.sql` — the one-time backfill (its header is the
-  operator runbook); guarded by `tools/seeds/tests/backfill_oem_crawler_chunks_fixture.sql`
+  operator runbook); guarded by `tests/seeds/backfill_oem_crawler_chunks_fixture.sql`
 - `docs/superpowers/specs/2026-07-28-oem-crawler-retrieval-bridge-design.md` — the design

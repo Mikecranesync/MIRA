@@ -53,8 +53,13 @@
 --    GROUP BY 1;
 --
 -- == Running it ==============================================================
--- STAGING FIRST: apply-seeds.yml target=staging mode=apply, verify retrieval, then
--- prod. Never psql prod. A RED workflow run after a SUCCESSFUL apply is EXPECTED: the
+-- STAGING FIRST: apply-seeds.yml target=staging seeds=backfill_oem_crawler_chunks
+-- mode=apply, verify retrieval, then prod with target=prod
+-- seeds=backfill_oem_crawler_chunks mode=apply. The seeds default is "all" — that
+-- runs THREE UNRELATED hardcoded seeds (gs10-vfd-knowledge, gs11-field-guide-knowledge,
+-- demo-conveyor-001) and NOT this backfill, so seeds=backfill_oem_crawler_chunks is
+-- REQUIRED on every dispatch, staging and prod alike. Never psql prod. A RED workflow
+-- run after a SUCCESSFUL apply is EXPECTED: the
 -- post-apply embedding-coverage gate (#2094) is corpus-wide and stays red against prod
 -- until the separate backfill (#2093) runs — its own comment says so. Confirm success
 -- from the "Apply seeds" step's own OK row, NOT the job conclusion, and do not
@@ -66,10 +71,14 @@
 -- Idempotent: a moved row can never re-match the garage-tenant predicate.
 --
 -- == Regression fixture ======================================================
--- tools/seeds/tests/backfill_oem_crawler_chunks_fixture.sql (move / collision-skipped /
--- garage-native + negative rows that must NOT move). Run BOTH column types:
+-- tests/seeds/backfill_oem_crawler_chunks_fixture.sql (move / collision-skipped /
+-- garage-native + negative rows that must NOT move). Lives OUTSIDE tools/seeds/ on
+-- purpose — it DROPs knowledge_entries, and apply-seeds.yml/apply-tag-scaling.yml/
+-- apply-approved-tags.yml all resolve their seed/seeds input under tools/seeds/, so
+-- keeping it out of that tree keeps a plain (non-traversal) dispatch from ever
+-- resolving to it. Run BOTH column types:
 --   docker run --rm -d --name oem-seed-fix -e POSTGRES_PASSWORD=test postgres:16
---   docker cp tools/seeds/tests/backfill_oem_crawler_chunks_fixture.sql oem-seed-fix:/tmp/fixture.sql
+--   docker cp tests/seeds/backfill_oem_crawler_chunks_fixture.sql oem-seed-fix:/tmp/fixture.sql
 --   docker cp tools/seeds/backfill_oem_crawler_chunks.sql oem-seed-fix:/tmp/seed.sql
 --   docker exec oem-seed-fix psql -U postgres -v ON_ERROR_STOP=1 -f /tmp/fixture.sql   # add -v tid_type=text for the 2nd run
 --   docker exec oem-seed-fix psql -U postgres -v ON_ERROR_STOP=1 -f /tmp/seed.sql
