@@ -80,7 +80,15 @@ jobs:
             git reset --hard origin/main
           fi
 
-          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web}"
+          # mira-bot-telegram MUST be in the default set: the staging Telegram
+          # smoke (nameplate photo -> Drive Commander pack answer) runs against
+          # stg-mira-bot-telegram, and build/force-recreate below are scoped to
+          # $TARGETS, so omitting it leaves the bot on a stale image forever
+          # (a `docker compose up -d` alone never rebuilds). NOTE: mira-bot-slack
+          # is intentionally NOT here — staging runs no Slack bot (see the
+          # header comment in docker-compose.staging-vps.yml; SLACK_BOT_TOKEN is
+          # deliberately omitted), so adding it would fail `compose build`.
+          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram}"
           echo "Rebuild targets: $TARGETS"
 
           if [ "${RESET_VOLUMES:-false}" = "true" ]; then

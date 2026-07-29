@@ -1,0 +1,31 @@
+{
+  "id": 8,
+  "oem": "Siemens",
+  "document": "3RW Soft Starter Manual (SIRIUS 3RW40, doc 38752095)",
+  "url": "https://support.industry.siemens.com/cs/attachments/38752095/Manual_softstarter_3RW30_3RW40_en-US.pdf",
+  "manifest_page_ref": "Ch. 3–4, power & control terminals",
+  "print_type": "Soft starter terminal layout",
+  "standard": "IEC 60947",
+  "category": "NEMA Starters",
+  "rendered_page_number": 177,
+  "image_path": "docs/eval/print-translator-campaign/images/08.png",
+  "run_timestamp_utc": "2026-07-10T12:08:24.206027+00:00",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "caption": "Describe the theory of operation.",
+  "image_sha256": "60016d781618355b9870d86ca63c9913cffb1572d0b5673ff5c99b25eb150e0f",
+  "drawing_type": "electrical drawing",
+  "ocr_item_count": 0,
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 322,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "response": "## 1. What this appears to be\nThis appears to be an index or table of contents from an equipment manual for a motor control system, specifically for SIRIUS 3RW30 / 3RW40 devices.\n\n## 2. Main visible components\nThe main visible component is a table of contents or index with alphabetical entries (N, O, P, R, S, T, V) listing various topics related to motor control and protection.\n\n## 3. Plain-English theory of operation\nThe table of contents suggests that the manual covers the operation and configuration of soft starters (SIRIUS 3RW30 / 3RW40), including topics such as:\n* Starting and stopping modes\n* Overload protection\n* Thermistor motor protection\n* Troubleshooting\n\n## 4. What must be true for it to work\nAccording to this index, for the motor control system to work, the following topics must be considered:\n* Proper configuration of starting modes (page 83)\n* Overload protection settings (page 45)\n* Thermistor motor protection settings (pages 44, 46, 119, 134, 147)\n\n## 5. What would stop it from working\nPotential issues that could prevent the motor control system from working include:\n* Incorrect configuration of starting modes\n* Overload conditions (page 45)\n* Thermistor motor protection issues (pages 44, 46, 119, 134, 147)\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable in this index."
+}

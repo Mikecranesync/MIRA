@@ -1,0 +1,33 @@
+📋 Sheet 18 of drawing 31971 (Sensor Control Unit 2, =UA2 +SCU2) — the stator over-temperature monitoring circuit using Klixon thermal switches.
+
+This sheet documents four stator temperature-monitoring channels (ME05–ME08). A 230 V supply (230V_2, coming from sheet 4.8) is distributed across a terminal strip -18/X2KL. For each channel the supply is carried out through a 2-core cable to a Klixon thermal switch mounted at the stator, and the return conductor comes back to the terminal strip and up to a DA6 monitoring module input (cross-referenced around sheet-column 12). A Klixon is a normally-closed thermal switch: while the stator is cool it passes the loop signal; if a winding overheats the Klixon opens, the loop breaks, and the DA6 input drops out to flag the over-temperature. (Inference on the loop direction based on the drawing geometry — the exact bus junctions are not fully legible.)
+
+🔑 Signals
+• ME05 stator over-temperature status return
+• ME06 stator over-temperature status return
+• ME07 stator over-temperature status return
+• ME08 stator over-temperature status return
+• 230 V monitoring-loop supply feed
+
+🔧 Devices
+• Klixon stator thermal switch, channel ME05 (+EXT-3B105)
+• Klixon stator thermal switch, channel ME06 (+EXT-3B205)
+• Klixon stator thermal switch, channel ME07 (+EXT-3B107)
+• Klixon stator thermal switch, channel ME08 (+EXT-3B207)
+• Monitoring-loop terminal strip (-18/X2KL (terminals 1-8))
+• 2-core 4x1 mm² field cables to the Klixons (-W5483 / -W5485 / -W5487 / -W5489)
+
+🩺 If you're chasing a fault
+For an ME05 over-temp indication that will not clear: with the circuit isolated, locked out, and verified dead, measure continuity across the Klixon at its field terminals +EXT-3B105.1 to +EXT-3B105.2 — when cold and healthy it should read near 0 Ω; an open reading means the switch itself (or a genuinely hot/failed stator). If the switch checks good but you get no continuity through the loop from -18/X2KL:1 to -18/X2KL:2, the fault is in cable -W5483 or its terminations, not the Klixon. Those are two distinct measurement points: the field terminals isolate the device, the terminal-strip pair isolates the cable. Note: what the DA6 module does with this input is not shown on this sheet, so do not assume its response here.
+
+❓ Couldn't confirm (verify on the sheet):
+• Bottom '+EXT/xx.x' sheet references (~13.7, 18.5, 13.5, 22.5) are small/rotated and only ~0.55 confident; ME07's two cores appear to cite different sheets (13.5 vs 18.5).
+• Terminal-strip tag read as '-18/X2KL' — the 'KL' suffix and whether the strip is 'X2' or 'X2KL' is unconfirmed.
+• Top DA6.x and 12.x cross-reference digits need confirmation to avoid digit drift.
+• The 230V bus feed vs. DA6 return split across terminals 1-8 is inferred from geometry, not a legible junction pattern.
+
+⚠️ The feed on this sheet is printed as '230V_2' — treat the terminal strip -18/X2KL as live 230 V AC. Continuity/resistance checks on a Klixon or cable must be done de-energized: isolate, lock out, and verify absence of voltage first. If you must confirm the 230 V at the strip, use energized-work procedures and properly rated equipment. This drawing does not prove the present state of the field wiring, so verify actual conditions before contact.
+
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply "map" for the full terminal and wire list.

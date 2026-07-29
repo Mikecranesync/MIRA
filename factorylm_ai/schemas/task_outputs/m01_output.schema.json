@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm_ai/schemas/task_outputs/m01_output.schema.json",
+  "title": "M01VisionIntakeOutput",
+  "description": "ZTA task M01 (vision intake categorizer) chat output. Classifies one uploaded photo before any extraction/answer work happens -- this is triage only, not diagnosis. Model: google/gemma-3n-E4B-it (Together). Prompt: factorylm_ai/tasks/prompts/m01_vision_intake_v1.txt. Must accept factorylm_ai.providers.mock's canned M01 fixture variants verbatim.",
+  "type": "object",
+  "properties": {
+    "image_type": {
+      "type": "string",
+      "enum": [
+        "electrical_print",
+        "cabinet_photo",
+        "drive_keypad",
+        "nameplate",
+        "unreadable",
+        "irrelevant",
+        "unknown"
+      ]
+    },
+    "readability": {
+      "type": "string",
+      "enum": ["usable", "marginal", "unreadable"]
+    },
+    "visible_text": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Exact strings actually read off the photo (device tags, model/serial numbers, sheet numbers). Never inferred."
+    },
+    "candidate_devices": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Device identifiers visible in the photo, drawn only from visible_text or unambiguous symbols."
+    },
+    "recommended_next_action": {
+      "type": "string",
+      "enum": [
+        "route_to_printsense",
+        "route_to_drive_commander",
+        "ask_for_closeup",
+        "discard_no_value"
+      ]
+    }
+  },
+  "required": [
+    "image_type",
+    "readability",
+    "visible_text",
+    "candidate_devices",
+    "recommended_next_action"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "image_type": "electrical_print",
+      "readability": "usable",
+      "visible_text": ["K1", "X4"],
+      "candidate_devices": ["K1"],
+      "recommended_next_action": "route_to_printsense"
+    },
+    {
+      "image_type": "nameplate",
+      "readability": "usable",
+      "visible_text": ["POWERFLEX 525", "SN 4471"],
+      "candidate_devices": ["PowerFlex 525"],
+      "recommended_next_action": "route_to_printsense"
+    },
+    {
+      "image_type": "unknown",
+      "readability": "unreadable",
+      "visible_text": [],
+      "candidate_devices": [],
+      "recommended_next_action": "ask_for_closeup"
+    }
+  ]
+}

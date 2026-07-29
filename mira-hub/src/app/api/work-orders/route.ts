@@ -12,7 +12,7 @@ function woNumber(): string {
   return `WO-${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 }
 
-function rowToWO(r: Record<string, unknown>) {
+export function rowToWO(r: Record<string, unknown>) {
   const source = String(r.source ?? "");
   const isAutoPM = source === "auto_pm";
 
@@ -70,8 +70,11 @@ function rowToWO(r: Record<string, unknown>) {
     tenant_id: r.tenant_id ? String(r.tenant_id) : null,
     atlas_id: r.atlas_id ? String(r.atlas_id) : null,
     cmms_synced_at: r.cmms_synced_at ? new Date(String(r.cmms_synced_at)).toISOString() : null,
+    source_run_diff_id: r.source_run_diff_id ? String(r.source_run_diff_id) : null,
   };
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(req: NextRequest) {
   if (!process.env.NEON_DATABASE_URL) {
@@ -109,7 +112,7 @@ export async function GET(req: NextRequest) {
           suggested_actions, safety_warnings,
           status, priority, route_taken,
           tenant_id, created_at, updated_at,
-          atlas_id, cmms_synced_at
+          atlas_id, cmms_synced_at, source_run_diff_id
         FROM work_orders
         WHERE ${where}
         ORDER BY
@@ -160,6 +163,11 @@ export async function POST(req: NextRequest) {
   const priorityRaw =
     typeof body.priority === "string" ? body.priority.trim().toLowerCase() : "medium";
   const priority = PRIORITY_VALUES.has(priorityRaw) ? priorityRaw : "medium";
+  // Anomaly→work-order provenance link (master-plan T4). Nullable; only set
+  // when the WO was created from a MachineMemoryCard diff deep-link.
+  const sourceRunDiffIdRaw =
+    typeof body.source_run_diff_id === "string" ? body.source_run_diff_id.trim() : "";
+  const sourceRunDiffId = UUID_RE.test(sourceRunDiffIdRaw) ? sourceRunDiffIdRaw : null;
 
   if (!equipmentId) {
     return NextResponse.json({ error: "equipment_id is required" }, { status: 400 });
@@ -195,20 +203,22 @@ export async function POST(req: NextRequest) {
             title, description, fault_description,
             suggested_actions, safety_warnings,
             status, priority, route_taken,
-            tenant_id, user_id, created_at, updated_at
+            tenant_id, user_id, created_at, updated_at,
+            source_run_diff_id
           ) VALUES (
             gen_random_uuid(), $1, 'hub_ui', NULL,
             $2, $3, $4,
             $5, $6, $7,
             ARRAY[]::TEXT[], ARRAY[]::TEXT[],
             'open'::workorderstatus, $8::prioritylevel, NULL,
-            $9, $10, NOW(), NOW()
+            $9, $10, NOW(), NOW(),
+            $11
           )
           RETURNING id, work_order_number, source, created_by_agent,
             manufacturer, model_number, equipment_id,
             title, description, suggested_actions, safety_warnings,
             status, priority, route_taken, tenant_id, created_at, updated_at,
-            atlas_id, cmms_synced_at`,
+            atlas_id, cmms_synced_at, source_run_diff_id`,
         [
           woNumber(),
           equipment.manufacturer,
@@ -220,6 +230,7 @@ export async function POST(req: NextRequest) {
           priority,
           ctx.tenantId,
           ctx.userId,
+          sourceRunDiffId,
         ],
       );
       return result.rows[0] ?? null;

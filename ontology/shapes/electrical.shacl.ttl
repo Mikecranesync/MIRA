@@ -1,0 +1,124 @@
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix mirash: <https://ontology.factorylm.com/mira/shapes#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://ontology.factorylm.com/mira/shapes/electrical>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/shapes/electrical/0.1.0> ;
+    rdfs:comment "PrintSense shapes: conductor endpoints, terminal ownership, observation-vs-physical separation." .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 6 — A verified conductor has real endpoints, or says it doesn't
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:ConductorEndpointsShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Conductor ;
+    rdfs:label "R6 conductor endpoints" ;
+    rdfs:comment """A conductor with one end is a reading failure, not a wire. PrintSense already has
+the honest escape hatch — printsense.models.Unresolved — so the rule is: two resolved endpoints, OR
+endpoint_unresolved=true. What is forbidden is SILENT incompleteness, which is what makes a wiring
+trace stop mid-run with no explanation.""" ;
+    sh:or (
+        [ sh:property [ sh:path mira:terminates_at ; sh:minCount 2 ; sh:class mira:ConnectionPoint ] ]
+        [ sh:property [ sh:path mira:endpoint_unresolved ; sh:hasValue true ] ]
+    ) ;
+    sh:message "R6 conductor: {$this} has fewer than two resolved ConnectionPoint endpoints and is not explicitly flagged endpoint_unresolved=true. Either resolve both ends or record the gap honestly — a half-connected wire silently truncates every downstream trace." ;
+    sh:severity sh:Violation .
+
+mirash:ConnectionPointShape
+    a sh:NodeShape ;
+    sh:targetClass mira:ConnectionPoint ;
+    rdfs:label "R6b connection point is (device, terminal)" ;
+    sh:property [
+        sh:path mira:terminal_label ; sh:minCount 1 ; sh:datatype xsd:string ;
+        sh:message "R6b endpoint: ConnectionPoint {$this} has no terminal label. mig 026 stores endpoints as entity id AND terminal text ('X1:3') — an entity alone does not locate a landing." ;
+        sh:severity sh:Violation ;
+    ] .
+
+mirash:VerifiedConductorNoUnresolvedShape
+    a sh:NodeShape ;
+    sh:targetClass mira:Conductor ;
+    rdfs:label "R6c verified conductors are fully resolved" ;
+    sh:sparql [
+        sh:message "R6c conductor: {$this} is approved as verified while still flagged endpoint_unresolved=true. A human cannot approve a run whose destination was never read." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:endpoint_unresolved true ; mira:approval_state mira:approval_verified .
+            }
+        """ ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 7 — Terminal ownership
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:TerminalOwnershipShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT ?this WHERE { ?this a mira:Terminal ; mira:approval_state mira:approval_verified . }
+        """ ;
+    ] ;
+    rdfs:label "R7 verified terminal belongs to something" ;
+    rdfs:comment "Targets only VERIFIED terminals — a proposed terminal read off a print may legitimately be an orphan until its owner is identified." ;
+    sh:property [
+        sh:path mira:belongs_to_device ; sh:minCount 1 ;
+        sh:message "R7 terminal: verified terminal {$this} belongs to no device, terminal strip or approved connection structure. A floating terminal cannot be located in the panel, so no technician can act on a trace that ends there." ;
+        sh:severity sh:Violation ;
+    ] .
+
+## ───────────────────────────────────────────────────────────────────────
+## RULE 8 — A symbol on a drawing is not a device in a panel
+## ───────────────────────────────────────────────────────────────────────
+
+mirash:PrintObservationSeparationShape
+    a sh:NodeShape ;
+    sh:targetClass mira:PrintObservation ;
+    rdfs:label "R8 observation is not a physical asset" ;
+    rdfs:comment """The three-layer law of mira-electrical.ttl, made executable. A DeviceSymbol is
+something MIRA SAW. Promoting it to an AssetInstance requires an approved assertion — vision
+confidence is not existence. This is the guard against a mis-read symbol becoming a panel component
+that no one can find.""" ;
+    sh:not [ sh:class mira:AssetInstance ] ;
+    sh:message "R8 print separation: {$this} is typed as BOTH a PrintObservation (a mark seen on a sheet) and an AssetInstance (a physical thing that exists). A symbol becomes a component only through an approved assertion — use mira:observed_as to link the verified instance back to its symbol." ;
+    sh:severity sh:Violation .
+
+mirash:PrintObservationEvidenceShape
+    a sh:NodeShape ;
+    sh:targetClass mira:PrintObservation ;
+    rdfs:label "R8b every print observation cites its region" ;
+    sh:property [
+        sh:path mira:supported_by ; sh:minCount 1 ;
+        sh:message "R8b print evidence: observation {$this} cites no ImageRegion. printsense Entity.evidence exists precisely so a reading can be pointed at on the sheet." ;
+        sh:severity sh:Violation ;
+    ] ;
+    sh:property [
+        sh:path mira:trust ; sh:minCount 1 ; sh:class mira:TrustState ;
+        sh:message "R8b print evidence: observation {$this} carries no TrustState. printsense defaults Entity.trust to `proposed` for exactly this reason — an untagged reading is treated as fact by everything downstream." ;
+        sh:severity sh:Violation ;
+    ] .
+
+mirash:PromotedSymbolNeedsHumanShape
+    a sh:NodeShape ;
+    sh:targetClass mira:AssetInstance ;
+    rdfs:label "R8c promotion from a symbol requires a human" ;
+    sh:sparql [
+        sh:message "R8c print separation: asset instance {$this} was promoted from a print observation whose trust is not human_verified. Only a qualified technician — the verifier of record — turns a symbol into a component." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT $this WHERE {
+                $this mira:observed_as ?obs .
+                ?obs mira:trust ?t .
+                FILTER(?t != mira:trust_human_verified)
+            }
+        """ ;
+    ] .

@@ -43,6 +43,21 @@ ASSET_CONFIG_SRC = REPO / "ignition" / "webdev" / "FactoryLM" / "api" / "diagnos
 SCRIPT_SIGNAL_ROLES = SCRIPT_LIB / "mira_signal_roles" / "code.py"
 SCRIPT_ASSET_CONFIG = SCRIPT_LIB / "mira_asset_config" / "code.py"
 
+# NorthwindBottling: a SECOND Perspective project vendors the same four modules. It shipped
+# byte-identical but was never guarded (flagged P1-adjacent in
+# docs/discovery/duplicate-systems-audit.md + docs/discovery/machine-pack/) — silent-drift risk.
+# Every vendored (source, copy) pair across ALL gateway projects lives in this one table; a new
+# project that vendors these modules adds its rows here or fails discovery review.
+NW_LIB = (REPO / "plc" / "ignition-project" / "NorthwindBottling" / "ignition"
+          / "script-python")
+VENDORED_PAIRS = [
+    # (source of truth, vendored copy, re-sync destination label)
+    (RULES_CORE, NW_LIB / "mira_diagnose_core" / "code.py", "NorthwindBottling"),
+    (TAG_MAP_SRC, NW_LIB / "mira_tag_map" / "code.py", "NorthwindBottling"),
+    (SIGNAL_ROLES_SRC, NW_LIB / "mira_signal_roles" / "code.py", "NorthwindBottling"),
+    (ASSET_CONFIG_SRC, NW_LIB / "mira_asset_config" / "code.py", "NorthwindBottling"),
+]
+
 
 def _load(path, name):
     spec = importlib.util.spec_from_file_location(name, str(path))
@@ -176,3 +191,25 @@ def test_script_lib_asset_config_is_byte_identical():
         "mira_asset_config/code.py has drifted from asset_config.py -- re-sync with:\n"
         "  cp ignition/webdev/FactoryLM/api/diagnose/asset_config.py "
         "plc/ignition-project/ConvSimpleLive/ignition/script-python/mira_asset_config/code.py")
+
+
+# --- NorthwindBottling drift guard: the second project's vendored copies must not diverge ---
+@pytest.mark.parametrize(
+    "source,copy,project",
+    VENDORED_PAIRS,
+    ids=[p[1].parent.name for p in VENDORED_PAIRS],
+)
+def test_northwind_vendored_copies_are_byte_identical(source, copy, project):
+    assert copy.exists(), "missing vendored copy: %s" % copy
+    assert source.read_bytes() == copy.read_bytes(), (
+        "%s has drifted from %s -- re-sync with:\n  cp %s %s"
+        % (copy.relative_to(REPO), source.relative_to(REPO),
+           source.relative_to(REPO), copy.relative_to(REPO)))
+
+
+def test_northwind_core_imports_and_matches(core):
+    vend = _load(NW_LIB / "mira_diagnose_core" / "code.py", "nw_core_under_test")
+    for _id, _sev, snap, derived in GOLDENS:
+        a = [x.rule_id for x in core.evaluate(snap, derived)]
+        b = [x.rule_id for x in vend.evaluate(snap, derived)]
+        assert a == b

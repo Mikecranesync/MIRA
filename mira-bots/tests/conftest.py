@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+# Repo root on sys.path: telegram modules import the repo-root `printsense`
+# package (bot.py -> printsense_commercial -> printsense.*). CI invokes bare
+# `pytest`, which unlike `python -m pytest` does not put the cwd on sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 @pytest.fixture

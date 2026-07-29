@@ -25,7 +25,7 @@ The end-to-end loop for taking a change live: rebase → merge → deploy → ve
 1. **Pre-flight.** `git fetch origin`. Confirm HEAD branch. `git log origin/main..HEAD --oneline` — know exactly what's shipping.
 2. **Rebase on main.** `git rebase origin/main`. Resolve conflicts; if a conflict is non-trivial, surface it — don't guess a merge.
 3. **Gate.** Engine/RAG/retrieval change? Confirm the staging gate passed. UI? screenshots committed. Otherwise the merge is premature.
-4. **Merge** (only with explicit user approval — merges + deploys each need their own one-word OK). Squash, conventional title, delete branch after.
+4. **Merge** (only with explicit user approval — merges + deploys each need their own one-word OK). **Before pressing merge, re-verify the PR state once more** — GitHub API cache lag is real (up to ~5 seconds on status changes; see the `ship-pr` skill for the double-read pattern). If `gh pr view <PR#>` shows mergeable and matches what the user just said, proceed. If it conflicts with expectation, re-fetch: `sleep 2 && gh pr view <PR#> --json state,mergeable`. Trust only when two reads agree. Then squash, conventional title, delete branch after.
 5. **Deploy** the affected service via `deploy-vps.yml`:
    ```
    gh workflow run deploy-vps.yml --repo Mikecranesync/MIRA -f services="<service>"

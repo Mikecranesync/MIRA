@@ -1,0 +1,40 @@
+📋 Manual page 128 — two typical application circuits for a Siemens 3SK1 two-channel safety relay driving contactors Q1/Qn and a motor M (Table 7-8 E-STOP with monitored start; Table 7-9 with autostart).
+
+These are wiring examples for a 3SK1 safety relay (types 3SK1112 Standard solid-state, or 3SK112/3SK122 Advanced). A two-channel safety sensor with two normally-closed contacts (e.g. an EMERGENCY STOP in Table 7-8) feeds inputs IN1 and IN2. The unit sends test pulses out of T1/T2 and reads them back on IN1/IN2 so a short between the two channels (cross-circuit / cross-fault) is detected — this is enabled by DIP switch 2 = ON. When both channels are healthy and closed, the relay energizes and its enable output picks up two contactors, Q1 and Qn, which each switch three phases to motor M; using two contactors gives the redundancy needed for PL e / SILCL 3. The only difference between the two circuits is the start behaviour: in Table 7-8 DIP 1 is ON = 'Monitored Start' (operator must press a start button and the relay checks the Q1 feedback contact before enabling), while in Table 7-9 DIP 1 is OFF = 'Autostart' (the output enables automatically once inputs are healthy). Supply is applied to A1 (+) / A2 (-) across the L+ / L- rails.
+
+🔑 Signals
+• Positive control supply into the unit
+• Negative control supply / return
+• Safety channel 1 input (from NC sensor contact)
+• Safety channel 2 input (from NC sensor contact)
+• Cross-circuit test pulse output, channel 1
+• Cross-circuit test pulse output, channel 2
+• Feedback / start-loop terminal (monitored start, circuit 8)
+• Enable output driving the two contactors
+• DIP switch 1 — Autostart / Monitored Start
+• DIP switch 2 — Cross fault detection OFF / ON
+• DIP switch 3 — 2 single-ch. sensors / 1 double-ch. sensor
+• DIP switch 4 — Startup Test yes / no
+• SET / RESET input
+
+🔧 Devices
+• Two-channel safety relay basic unit (Standard solid-state) (3SK1112)
+• Two-channel safety relay basic unit (Advanced alternative) (3SK112/3SK122)
+• Output contactor #1 (switches motor phases, provides feedback) (Q1)
+• Output contactor #2 (redundant, switches motor phases) (Qn)
+• Three-phase motor load (M)
+• Two-channel safety sensor / EMERGENCY STOP (2 NC contacts) (Sensor (2 NC))
+
+🩺 If you're chasing a fault
+… (more — reply "map")
+
+❓ Couldn't confirm (verify on the sheet):
+• Exact letters of terminals 'INK', 'INF', 'INS' (feedback/start terminals) — small, closely spaced text.
+• Exact wiring of the monitored-start loop and Q1 feedback contact in Table 7-8.
+• Control-supply voltage for L+/L- is not printed on this page.
+• No motor/contactor wire numbers or cable IDs are given (generic example).
+
+⚠️ For any continuity/resistance checks of the sensor contacts, input channels, or feedback loop, de-energize, lock out, and verify absence of voltage first. The control supply is shown as L+ / L- (DC), but NO voltage value is printed on this page — do not assume a level; obtain it from the device rating plate or datasheet. The motor branch (Q1/Qn to M) carries three-phase power; treat it as live and separate from the control-supply testing. This is a generic manual example, so it does not prove the actual field wiring or present energization state of any specific installation.
+🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.
+
+Reply "map" for the full terminal and wire list.

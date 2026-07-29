@@ -38,6 +38,88 @@ CITATION_TAG_RE = re.compile(r"\[Source:[^\]]+\]", re.IGNORECASE)
 _LABEL_STRIP_RE = re.compile(r"[\r\n\[\]]+")
 
 
+# ── Evidence-relevance gate (blocker #2384) ──────────────────────────────────
+# Retrieval success != evidence coverage. recall_knowledge fuses streams whose
+# `similarity` fields are NOT on a common scale: vector = cosine in [0,1]; BM25 =
+# raw ts_rank_cd (unbounded, "NOT comparable to cosine" per neon_recall.py:502);
+# ILIKE = hardcoded 0.5; fault-code = deterministic exact match (authoritative).
+# The merge tags each row with `retrieval_streams` precisely so the coverage gate
+# can apply the cosine floor ONLY to vector-originated chunks. A chunk can
+# establish coverage only when it is cosine-comparable AND clears the floor, or is
+# an authoritative fault-code hit; BM25/ILIKE-only and unknown-provenance chunks
+# fail closed; junk/non-authoritative sources never count.
+_KB_COVERAGE_COSINE_MIN = float(os.getenv("MIRA_KB_COVERAGE_COSINE_MIN", "0.65"))
+_JUNK_SOURCE_RE = re.compile(r"(?i)(youtube\.com|youtu\.be|watch\?v=)")
+
+
+def _triage_relaxed_min_sim(state: dict) -> float | None:
+    """Triage-relaxed cosine floor for the vector stream (#2207).
+
+    Returns 0.55 for medium-confidence / enriched triage, 0.45 for low, and
+    None (→ recall_knowledge's env default of 0.70) otherwise. Passing this to
+    recall_knowledge() lets 0.45–0.70 chunks reach the worker's quality gate on
+    medium/low-triage queries; previously the hardcoded 0.70 retrieval floor
+    filtered them first, making the relaxed gate dead code → 0 chunks.
+    """
+    ctx = state.get("context") or {}
+    conf = (ctx.get("triage_result") or {}).get("confidence")
+    if conf == "medium" or ctx.get("triage_enriched"):
+        return 0.55
+    if conf == "low":
+        return 0.45
+    return None
+
+
+def _confident_query_vendor(state: dict) -> str | None:
+    """Return the query vendor for the cross-vendor suppression filter ONLY when the
+    resolver is confident enough to trust it (#2211).
+
+    ``uns_context.confidence`` is a float (0.5 = manufacturer-only, 0.7 =
+    manufacturer+model). Below 0.7 a false-positive alias ("delta pressure" →
+    "Delta Electronics" @0.5) would fully suppress all evidence, so we don't let it
+    drive suppression. Threshold is tunable — validate against the prod confidence
+    distribution on staging before tightening.
+    """
+    uns = (state.get("context") or {}).get("uns_context") or {}
+    vendor = uns.get("manufacturer")
+    if vendor and (uns.get("confidence") or 0.0) >= 0.7:
+        return vendor
+    return None
+
+
+def _is_junk_source(chunk: dict) -> bool:
+    """Non-authoritative sources (e.g. YouTube transcripts) must not back a cited
+    answer — checked against source_url / title / metadata.source_url."""
+    meta = chunk.get("metadata") or {}
+    blob = " ".join(
+        str(v or "") for v in (chunk.get("source_url"), chunk.get("title"), meta.get("source_url"))
+    )
+    return bool(_JUNK_SOURCE_RE.search(blob))
+
+
+def _chunk_supports_coverage(chunk: dict) -> bool:
+    """True only when the chunk is evidence that can actually support an answer:
+    a cosine-comparable vector chunk at/above the relevance floor, or an
+    authoritative deterministic fault-code hit. BM25/ILIKE-only chunks (non-cosine
+    scores) and unknown-provenance chunks fail closed; junk sources never qualify.
+    This is what stops a high BM25 ts_rank on an off-domain query from faking
+    coverage (#2384)."""
+    if _is_junk_source(chunk):
+        return False
+    meta = chunk.get("metadata") or {}
+    if meta.get("section") == "Fault Code Table":
+        # Deterministic exact fault-code match — authoritative, bypasses RRF.
+        return True
+    streams = chunk.get("retrieval_streams")
+    if streams is None:
+        # No provenance tag and not a fault hit -> score type unknown -> fail closed.
+        return False
+    if "vector" in streams:
+        return (chunk.get("similarity") or 0) >= _KB_COVERAGE_COSINE_MIN
+    # Known non-cosine streams only (bm25/like/product) -> not comparable -> fail closed.
+    return False
+
+
 def _sanitize_label_field(value: str) -> str:
     """Neutralize chunk metadata before embedding it in a source header."""
     if not value:
@@ -516,6 +598,17 @@ class RAGWorker:
                         # embeds_with_asset_context); embed_query keeps it.
                         recall_query = state.get("retrieval_query") or embed_query
 
+                        # Triage-relaxed cosine floor (#2207): pass the same
+                        # relaxed threshold the quality gate uses so 0.45–0.70
+                        # chunks actually reach retrieval on medium/low triage.
+                        _recall_min_sim = _triage_relaxed_min_sim(state)
+                        # Product-rerank fallback for stranger uploads (#2211):
+                        # feed the resolved model so novel equipment (not in the
+                        # curated product regex) still gets the product stream.
+                        _product_hint = ((state.get("context") or {}).get("uns_context") or {}).get(
+                            "model"
+                        )
+
                         sub_queries: list[str] = [embed_query]
                         if is_decompose_enabled():
                             try:
@@ -535,6 +628,8 @@ class RAGWorker:
                                         sq_emb,
                                         effective_tenant,
                                         query_text=sq,
+                                        min_similarity=_recall_min_sim,
+                                        product_hint=_product_hint,
                                     )
                                 )
                             neon_chunks = merge_subquery_results(per_sub, limit=6)
@@ -568,6 +663,8 @@ class RAGWorker:
                                 embedding,
                                 effective_tenant,
                                 query_text=recall_query,
+                                min_similarity=_recall_min_sim,
+                                product_hint=_product_hint,
                             )
                             _recall_ms = int((time.monotonic() - _t_rec) * 1000)
                             logger.info(
@@ -601,6 +698,8 @@ class RAGWorker:
                                             retry_emb,
                                             effective_tenant,
                                             query_text=reformulated,
+                                            min_similarity=_recall_min_sim,
+                                            product_hint=_product_hint,
                                         )
                                         if retry_chunks:
                                             logger.info(
@@ -627,12 +726,10 @@ class RAGWorker:
             # textual questions retrieved valid BM25/product chunks whose merged
             # `similarity` was below the cosine threshold and were suppressed.
             _triage_conf = (state.get("context") or {}).get("triage_result", {}).get("confidence")
-            _enriched = (state.get("context") or {}).get("triage_enriched", False)
-            if _triage_conf == "medium" or _enriched:
-                _min_sim = 0.55
-            elif _triage_conf == "low":
-                _min_sim = 0.45
-            else:
+            # Same triage-relaxed floor passed to recall_knowledge above (#2207);
+            # None → the default 0.70 the gate has always used.
+            _min_sim = _triage_relaxed_min_sim(state)
+            if _min_sim is None:
                 _min_sim = 0.70
 
             def _streams_of(c: dict) -> set[str]:
@@ -671,9 +768,7 @@ class RAGWorker:
             # yields results. Vendor is read from state["context"]["uns_context"]
             # (populated by the UNS resolver at the top of Supervisor.process_full).
             if chunk_texts and not photo_b64:
-                query_vendor = ((state.get("context") or {}).get("uns_context") or {}).get(
-                    "manufacturer"
-                )
+                query_vendor = _confident_query_vendor(state)
                 if query_vendor:
                     filtered_chunks = [
                         c
@@ -809,10 +904,16 @@ class RAGWorker:
             return raw
 
     def _compute_kb_status(self, neon_chunks: list[dict], has_chunks: bool) -> dict:
-        """Classify KB coverage and extract source citations for the citation gate."""
+        """Classify KB coverage and extract source citations for the citation gate.
+
+        Coverage is established only by chunks that ACTUALLY support the question —
+        cosine-comparable vector evidence above the relevance floor, or authoritative
+        fault-code hits. High BM25/ILIKE lexical scores alone, junk sources, and
+        unknown-provenance chunks do not count (see `_chunk_supports_coverage`, #2384).
+        """
         if not has_chunks:
             return {"status": "uncovered", "citations": []}
-        high_quality = [c for c in neon_chunks if c.get("similarity", 0) >= 0.65]
+        high_quality = [c for c in neon_chunks if _chunk_supports_coverage(c)]
         citations = []
         for c in high_quality[:3]:
             meta = c.get("metadata") or {}

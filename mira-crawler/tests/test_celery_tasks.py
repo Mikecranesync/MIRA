@@ -265,10 +265,12 @@ class TestCeleryConfig:
         """Beat schedule exists and matches the active CELERY_BEAT_PROFILE.
 
         Default profile: the intent-monitor trio + the tag-diff historizer +
-        run-diff historizer + the synthetic-dogfood cycle. The
-        'synthetic-dogfood' profile is the cycle alone. (The bulk of ingest
-        scheduling is still owned by Trigger.dev Cloud — these are the loops
-        kept self-contained in Celery Beat.)
+        run-diff historizer + the synthetic-dogfood cycle + the conversation-eval
+        auto-scorer. The 'historian' profile carries the historian tasks + the
+        eval scorer (the historian worker owns NEON_DATABASE_URL) and excludes the
+        intent monitors. The 'synthetic-dogfood' profile is the cycle alone. (The
+        bulk of ingest scheduling is still owned by Trigger.dev Cloud — these are
+        the loops kept self-contained in Celery Beat.)
         """
         import importlib
 
@@ -289,12 +291,26 @@ class TestCeleryConfig:
                 "tag-diff-historizer",
                 "historize-runs",
                 "synthetic-dogfood-cycle",
+                "score-conversation-eval",
             } <= default_keys
 
         # synthetic-dogfood profile: only the cycle.
         with patch.dict("os.environ", {"CELERY_BEAT_PROFILE": "synthetic-dogfood"}):
             importlib.reload(cfg)
             assert set(cfg.beat_schedule.keys()) == {"synthetic-dogfood-cycle"}
+
+        # historian profile: the historian tasks + the conversation-eval scorer,
+        # and NOT the intent monitors (this profile is deliberately narrow).
+        with patch.dict("os.environ", {"CELERY_BEAT_PROFILE": "historian"}):
+            importlib.reload(cfg)
+            historian_keys = set(cfg.beat_schedule.keys())
+            assert "score-conversation-eval" in historian_keys
+            assert "tag-diff-historizer" in historian_keys
+            assert "historize-runs" in historian_keys
+            assert "reddit-intent-scan" not in historian_keys
+            assert cfg.beat_schedule["score-conversation-eval"]["task"] == (
+                "mira_eval.score_conversation_eval"
+            )
 
         # Restore the default-profile module state for any later importers.
         import os
@@ -307,6 +323,11 @@ class TestCeleryConfig:
 
         assert "mira_crawler.tasks.discover.*" in cfg.task_routes
         assert "mira_crawler.tasks.ingest.*" in cfg.task_routes
+        # Conversation-eval scorer routes to the historian queue (the only prod
+        # worker with NEON_DATABASE_URL). Route key is the exact task name.
+        assert cfg.task_routes["mira_eval.score_conversation_eval"] == {
+            "queue": "historian"
+        }
 
     def test_sane_defaults(self):
         import celeryconfig as cfg

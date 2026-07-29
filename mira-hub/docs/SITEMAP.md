@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **62** (8 dynamic) |
-| API routes | **150** (43 dynamic) |
+| Pages | **64** (9 dynamic) |
+| API routes | **161** (52 dynamic) |
 
-## Pages (62)
+## Pages (64)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -75,12 +75,14 @@
 | `/team` | static | `(hub)/team/page.tsx` |
 | `/upgrade` | static | `(hub)/upgrade/page.tsx` |
 | `/usage` | static | `(hub)/usage/page.tsx` |
+| `/visual` | static | `(hub)/visual/page.tsx` |
+| `/visual/[id]` | dynamic | `(hub)/visual/[id]/page.tsx` |
 | `/workflows` | static | `(hub)/workflows/page.tsx` |
 | `/workorders` | static | `(hub)/workorders/page.tsx` |
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (150)
+## API routes (161)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -101,7 +103,10 @@
 | `/api/assets/[id]/context` | dynamic | `api/assets/[id]/context/route.ts` |
 | `/api/assets/[id]/documents` | dynamic | `api/assets/[id]/documents/route.ts` |
 | `/api/assets/[id]/enrich` | dynamic | `api/assets/[id]/enrich/route.ts` |
+| `/api/assets/[id]/machine-memory` | dynamic | `api/assets/[id]/machine-memory/route.ts` |
+| `/api/assets/[id]/machine-memory/stream` | dynamic | `api/assets/[id]/machine-memory/stream/route.ts` |
 | `/api/assets/[id]/qr` | dynamic | `api/assets/[id]/qr/route.ts` |
+| `/api/assets/[id]/signal-history` | dynamic | `api/assets/[id]/signal-history/route.ts` |
 | `/api/assets/[id]/signals` | dynamic | `api/assets/[id]/signals/route.ts` |
 | `/api/assets/[id]/validation-qa` | dynamic | `api/assets/[id]/validation-qa/route.ts` |
 | `/api/assets/[id]/validation-qa/[qaId]/verdict` | dynamic | `api/assets/[id]/validation-qa/[qaId]/verdict/route.ts` |
@@ -192,6 +197,7 @@
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |
 | `/api/namespace/files/[id]` | dynamic | `api/namespace/files/[id]/route.ts` |
+| `/api/namespace/files/[id]/verify` | dynamic | `api/namespace/files/[id]/verify/route.ts` |
 | `/api/namespace/node` | static | `api/namespace/node/route.ts` |
 | `/api/namespace/node/[id]` | dynamic | `api/namespace/node/[id]/route.ts` |
 | `/api/namespace/node/[id]/chat` | dynamic | `api/namespace/node/[id]/chat/route.ts` |
@@ -218,6 +224,7 @@
 | `/api/sessions/[id]` | dynamic | `api/sessions/[id]/route.ts` |
 | `/api/sessions/confirm` | static | `api/sessions/confirm/route.ts` |
 | `/api/suggestions/[id]/decide` | dynamic | `api/suggestions/[id]/decide/route.ts` |
+| `/api/suggestions/drive-pack-candidate` | static | `api/suggestions/drive-pack-candidate/route.ts` |
 | `/api/team` | static | `api/team/route.ts` |
 | `/api/uns/browse` | static | `api/uns/browse/route.ts` |
 | `/api/uns/subtree` | static | `api/uns/subtree/route.ts` |
@@ -229,6 +236,12 @@
 | `/api/usage` | static | `api/usage/route.ts` |
 | `/api/user/preferences` | static | `api/user/preferences/route.ts` |
 | `/api/version` | static | `api/version/route.ts` |
+| `/api/visual/evidence/[id]/regions` | dynamic | `api/visual/evidence/[id]/regions/route.ts` |
+| `/api/visual/evidence/[id]/view` | dynamic | `api/visual/evidence/[id]/view/route.ts` |
+| `/api/visual/regions/[id]` | dynamic | `api/visual/regions/[id]/route.ts` |
+| `/api/visual/sessions` | static | `api/visual/sessions/route.ts` |
+| `/api/visual/sessions/[id]` | dynamic | `api/visual/sessions/[id]/route.ts` |
+| `/api/visual/sessions/[id]/evidence` | dynamic | `api/visual/sessions/[id]/evidence/route.ts` |
 | `/api/wizard/[step]` | dynamic | `api/wizard/[step]/route.ts` |
 | `/api/work-orders` | static | `api/work-orders/route.ts` |
 | `/api/work-orders/[id]` | dynamic | `api/work-orders/[id]/route.ts` |

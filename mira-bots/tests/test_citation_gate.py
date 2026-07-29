@@ -57,12 +57,16 @@ def _make_worker() -> RAGWorker:
 
 
 def _chunk(manufacturer: str, model_number: str, similarity: float, section: str = "") -> dict:
+    # Real chunks reaching _compute_kb_status carry `retrieval_streams` from the
+    # RRF merge; vector-originated chunks are the cosine-comparable evidence the
+    # coverage gate scores against (#2384). These fixtures model that shape.
     return {
         "manufacturer": manufacturer,
         "model_number": model_number,
         "similarity": similarity,
         "metadata": {"section": section},
         "source_url": "",
+        "retrieval_streams": ["vector"],
     }
 
 

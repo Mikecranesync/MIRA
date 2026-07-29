@@ -1,0 +1,44 @@
+{
+  "id": 16,
+  "oem": "Mitsubishi",
+  "document": "FX3U PLC Input Module Wiring Caution (Technical Data JY997D19001)",
+  "url": "https://dl.mitsubishielectric.com/dl/fa/document/manual/plc_fx/jy997d19001(e)/jy997d19001(e)e.pdf",
+  "manifest_page_ref": "Schematic & terminal table (p. 2–4)",
+  "print_type": "PLC input module terminal layout",
+  "standard": "Industrial 24VDC",
+  "category": "PLC I/O",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 0,
+  "image_sha256": "57da94ad37c3bb86d1e0913899fdb97ffd322bcef3f2437d234322de15011f42",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:05:52.842829+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.85,
+    "drawing_type": "wiring diagram",
+    "drawing_type_confidence": 0.9,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for Mitsubishi Electric's FX3U Input Wiring. The diagram illustrates sink/source input wiring variations and includes examples for AC power and DC power types, with notes on terminal connections and safety precautions.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2365,
+    "output_tokens": 296,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "## 1. What this appears to be\nThis appears to be a technical notice from Mitsubishi Electric about proper wiring configurations for FX3U input types.\n\n## 2. Main visible components\nThe drawing shows:\n* Four wiring examples\n* Two types of power: AC and DC\n* Two wiring methods: sink and source\n* Terminal designations: S/S, 0V, 24V, X0, X1, X2\n\n## 3. Plain-English theory of operation\nThe notice provides guidance on wiring FX3U inputs correctly. It explains two wiring methods:\n* Sink input wiring\n* Source input wiring\n\nFor both AC and DC power types, the diagrams show how to properly connect:\n* Power supply\n* Input terminals (X0, X1, X2)\n* S/S terminal\n\n## 4. What must be true for it to work\nAccording to the diagrams:\n* The S/S terminal must be wired\n* For DC power:\n\t+ 0V and 24V terminals should not be connected to other terminals\n* Power supply must be connected to 24V and 0V terminals\n\n## 5. What would stop it from working\nPotential issues:\n* S/S terminal not wired\n* Incorrect wiring of 0V and 24V terminals\n* Missing connections between power supply and input terminals\n\n## 6. Unclear or unreadable items\nNothing major unreadable."
+}

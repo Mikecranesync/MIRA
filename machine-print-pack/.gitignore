@@ -1,0 +1,6 @@
+# The repo-root .gitignore has a bare `build/` rule (intended for build OUTPUT
+# dirs). This product's SOURCE tooling lives in machine-print-pack/build/, so
+# re-include it here (a deeper .gitignore overrides the root pattern). Python
+# bytecode stays ignored by the root's __pycache__/ + *.pyc rules.
+!build/
+!build/*.py

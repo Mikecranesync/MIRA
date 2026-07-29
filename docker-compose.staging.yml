@@ -26,6 +26,13 @@ x-staging-env: &staging-env
   NEON_DATABASE_URL: ${NEON_DATABASE_URL:?staging must point at a NeonDB staging branch}
   MIRA_TENANT_ID: ${MIRA_TENANT_ID:-staging}
   INFERENCE_BACKEND: ${INFERENCE_BACKEND:-cloud}
+  # CMMS work-order-history evidence (#2445). Default OFF — zero behavior change
+  # until ENABLE_WO_EVIDENCE=1 (Doppler factorylm/stg). Reads the staging Neon
+  # work_orders table directly (independent of the dummy MCP above). Both local
+  # staging engine services inherit these via `<<: *staging-env`.
+  ENABLE_WO_EVIDENCE: "${ENABLE_WO_EVIDENCE:-0}"
+  MIRA_WO_EVIDENCE_TIMEOUT_S: "${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}"
+  MIRA_WO_EVIDENCE_LIMIT: "${MIRA_WO_EVIDENCE_LIMIT:-5}"
   GROQ_API_KEY: ${GROQ_API_KEY:?GROQ_API_KEY required for cascade}
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
@@ -33,6 +40,8 @@ x-staging-env: &staging-env
   CEREBRAS_MODEL: ${CEREBRAS_MODEL:-gpt-oss-120b}
   TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
   TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+  TOGETHERAI_TIMEOUT: ${TOGETHERAI_TIMEOUT:-}
+  LLM_REASONING_RETRY_MAX_TOKENS: ${LLM_REASONING_RETRY_MAX_TOKENS:-}
   TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   # Open WebUI is not deployed in staging; this dummy is referenced but not hit
   # for text-only flows because RAGWorker retrieves via neon_recall.

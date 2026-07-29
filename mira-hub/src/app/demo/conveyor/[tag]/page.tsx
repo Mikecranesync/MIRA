@@ -230,16 +230,16 @@ export default function ConveyorDemoPage({
 
   if (session.status === "loading" || loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[--background]">
-        <Loader2 className="size-8 animate-spin text-[--foreground]/60" />
+      <div className="flex h-screen items-center justify-center bg-[var(--background)]">
+        <Loader2 className="size-8 animate-spin text-[var(--foreground)]/60" />
       </div>
     );
   }
 
   if (errorStatus) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-2 bg-[--background] p-8 text-center">
-        <AlertCircle className="size-10 text-[--destructive]" />
+      <div className="flex h-screen flex-col items-center justify-center gap-2 bg-[var(--background)] p-8 text-center">
+        <AlertCircle className="size-10 text-[var(--destructive)]" />
         <h1 className="text-lg font-semibold">Asset not available</h1>
         <p className="text-sm opacity-70">
           {errorStatus === 404
@@ -253,12 +253,12 @@ export default function ConveyorDemoPage({
   if (!equipment) return null;
 
   return (
-    <div className="min-h-screen bg-[--background] p-4 lg:p-6">
+    <div className="min-h-screen bg-[var(--background)] p-4 lg:p-6">
       <header className="mb-4">
         <div className="flex flex-wrap items-baseline gap-2">
-          <Wrench className="size-5 text-[--foreground]/70" />
+          <Wrench className="size-5 text-[var(--foreground)]/70" />
           <h1 className="text-xl font-semibold">{equipment.name}</h1>
-          <span className="rounded bg-[--muted] px-2 py-0.5 text-xs opacity-80">
+          <span className="rounded bg-[var(--muted)] px-2 py-0.5 text-xs opacity-80">
             {equipment.asset_tag ?? tag}
           </span>
         </div>
@@ -295,7 +295,7 @@ export default function ConveyorDemoPage({
                   {headlineSignals.map((s) => (
                     <li
                       key={s.plc_tag}
-                      className="flex items-center justify-between rounded border border-[--border] px-3 py-2 text-sm"
+                      className="flex items-center justify-between rounded border border-[var(--border)] px-3 py-2 text-sm"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">
@@ -306,7 +306,7 @@ export default function ConveyorDemoPage({
                         </p>
                       </div>
                       <span
-                        className="ml-2 rounded bg-[--muted] px-2 py-1 font-mono text-xs"
+                        className="ml-2 rounded bg-[var(--muted)] px-2 py-1 font-mono text-xs"
                         data-testid={`signal-value-${s.plc_tag}`}
                       >
                         {formatValue(s)}
@@ -330,7 +330,7 @@ export default function ConveyorDemoPage({
                   {equipment.components.map((c) => (
                     <li
                       key={c.id}
-                      className="flex items-center justify-between gap-2 rounded border border-[--border] px-3 py-2"
+                      className="flex items-center justify-between gap-2 rounded border border-[var(--border)] px-3 py-2"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{c.name}</p>
@@ -340,7 +340,7 @@ export default function ConveyorDemoPage({
                         </p>
                       </div>
                       {c.plc_tag ? (
-                        <code className="rounded bg-[--muted] px-2 py-1 font-mono text-xs">
+                        <code className="rounded bg-[var(--muted)] px-2 py-1 font-mono text-xs">
                           {c.plc_tag}
                         </code>
                       ) : null}
@@ -367,7 +367,7 @@ export default function ConveyorDemoPage({
           <CardContent className="flex flex-1 flex-col gap-3">
             <div
               ref={chatBoxRef}
-              className="flex-1 overflow-y-auto rounded border border-[--border] p-3 text-sm"
+              className="flex-1 overflow-y-auto rounded border border-[var(--border)] p-3 text-sm"
               data-testid="chat-history"
             >
               {chatHistory.length === 0 ? (
@@ -381,8 +381,8 @@ export default function ConveyorDemoPage({
                       key={i}
                       className={
                         t.role === "user"
-                          ? "self-end max-w-[80%] rounded-lg bg-[--primary] px-3 py-2 text-[--primary-foreground]"
-                          : "self-start max-w-[85%] rounded-lg bg-[--muted] px-3 py-2"
+                          ? "self-end max-w-[80%] rounded-lg bg-[var(--primary)] px-3 py-2 text-[var(--primary-foreground)]"
+                          : "self-start max-w-[85%] rounded-lg bg-[var(--muted)] px-3 py-2"
                       }
                     >
                       <p className="whitespace-pre-wrap">{t.text}</p>
@@ -397,7 +397,7 @@ export default function ConveyorDemoPage({
                     </li>
                   ))}
                   {asking ? (
-                    <li className="self-start max-w-[85%] rounded-lg bg-[--muted] px-3 py-2 text-xs opacity-70">
+                    <li className="self-start max-w-[85%] rounded-lg bg-[var(--muted)] px-3 py-2 text-xs opacity-70">
                       <Loader2 className="mr-1 inline size-3 animate-spin" />
                       thinking…
                     </li>

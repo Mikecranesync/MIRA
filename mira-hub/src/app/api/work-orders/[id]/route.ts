@@ -6,7 +6,7 @@ import { CLOSING_STATUSES, validateWOCompletion } from "@/lib/wo-completion-vali
 
 export const dynamic = "force-dynamic";
 
-function rowToWO(r: Record<string, unknown>) {
+export function rowToWO(r: Record<string, unknown>) {
   const source = String(r.source ?? "");
   const isAutoPM = source === "auto_pm";
 
@@ -71,6 +71,11 @@ function rowToWO(r: Record<string, unknown>) {
     tenant_id: r.tenant_id ? String(r.tenant_id) : null,
     atlas_id: r.atlas_id ? String(r.atlas_id) : null,
     cmms_synced_at: r.cmms_synced_at ? new Date(String(r.cmms_synced_at)).toISOString() : null,
+    // Closure fields — PATCH persists + RETURNs these, so GET must surface them too,
+    // otherwise a completed work order reads back with no resolution / close time (#2375).
+    resolution: r.resolution != null ? String(r.resolution) : null,
+    fault_description: r.fault_description != null ? String(r.fault_description) : null,
+    closed_at: r.closed_at ? new Date(String(r.closed_at)).toISOString() : null,
   };
 }
 
@@ -96,6 +101,7 @@ export async function GET(
           title, description,
           suggested_actions, safety_warnings,
           status, priority, route_taken,
+          resolution, fault_description, closed_at,
           tenant_id, created_at, updated_at,
           atlas_id, cmms_synced_at
         FROM work_orders

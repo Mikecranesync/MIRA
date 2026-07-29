@@ -10,6 +10,7 @@ import {
   forwardToIngest,
   forwardToPhotoIngest,
   inferKindFromMime,
+  isTextMime,
   SUPPORTED_MIMES,
 } from "@/lib/mira-ingest-client";
 import { makeUploadLogger } from "@/lib/upload-log";
@@ -21,7 +22,10 @@ import {
   deleteUploadBuffer,
 } from "@/lib/upload-buffer";
 import { resolveOrCreateInboxNode } from "@/lib/inbox-node";
-import { writePdfChunksForNode } from "@/lib/node-knowledge-ingest";
+import {
+  writePdfChunksForNode,
+  writeTextChunksForNode,
+} from "@/lib/node-knowledge-ingest";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
 export interface UploadAuthContext {
@@ -31,11 +35,17 @@ export interface UploadAuthContext {
 
 function extGuess(nameLower: string): string {
   if (nameLower.endsWith(".pdf")) return "application/pdf";
-  if (nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg")) return "image/jpeg";
+  if (nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg"))
+    return "image/jpeg";
   if (nameLower.endsWith(".png")) return "image/png";
   if (nameLower.endsWith(".webp")) return "image/webp";
   if (nameLower.endsWith(".heic")) return "image/heic";
   if (nameLower.endsWith(".heif")) return "image/heif";
+  // Plain-text manual/procedure formats (#2277). Browsers often send an empty
+  // File.type for .md, so the extension is the reliable signal.
+  if (nameLower.endsWith(".md") || nameLower.endsWith(".markdown"))
+    return "text/markdown";
+  if (nameLower.endsWith(".txt")) return "text/plain";
   return "";
 }
 
@@ -66,7 +76,11 @@ export async function handleLocalUpload(
   }
   if (file.size > MAX_UPLOAD_BYTES) {
     return NextResponse.json(
-      { error: "exceeds_size_limit", got: file.size, limitBytes: MAX_UPLOAD_BYTES },
+      {
+        error: "exceeds_size_limit",
+        got: file.size,
+        limitBytes: MAX_UPLOAD_BYTES,
+      },
       { status: 400 },
     );
   }
@@ -75,7 +89,11 @@ export async function handleLocalUpload(
   const mime = file.type || extGuess(nameLower) || "application/octet-stream";
   if (!SUPPORTED_MIMES.has(mime)) {
     return NextResponse.json(
-      { error: "unsupported_mime", got: mime, supported: Array.from(SUPPORTED_MIMES) },
+      {
+        error: "unsupported_mime",
+        got: mime,
+        supported: Array.from(SUPPORTED_MIMES),
+      },
       { status: 400 },
     );
   }
@@ -87,11 +105,15 @@ export async function handleLocalUpload(
   const assetTag = assetTagCheck.value;
 
   const unsPathRaw = (form.get("unsPath") as string | null)?.trim() ?? "";
-  const unsPath = unsPathRaw.length > 0 && /^[a-z0-9_]+(\.[a-z0-9_]+)*$/.test(unsPathRaw)
-    ? unsPathRaw
-    : null;
+  const unsPath =
+    unsPathRaw.length > 0 && /^[a-z0-9_]+(\.[a-z0-9_]+)*$/.test(unsPathRaw)
+      ? unsPathRaw
+      : null;
   if (unsPathRaw.length > 0 && !unsPath) {
-    return NextResponse.json({ error: "uns_path_invalid_format" }, { status: 400 });
+    return NextResponse.json(
+      { error: "uns_path_invalid_format" },
+      { status: 400 },
+    );
   }
 
   const kind = inferKindFromMime(mime);
@@ -100,7 +122,11 @@ export async function handleLocalUpload(
   const sniffed = sniffMime(buffer.subarray(0, 16));
   if (!isMimeCompatible(mime, sniffed)) {
     return NextResponse.json(
-      { error: "content_does_not_match_declared_mime", declared: mime, sniffed },
+      {
+        error: "content_does_not_match_declared_mime",
+        declared: mime,
+        sniffed,
+      },
       { status: 400 },
     );
   }
@@ -138,7 +164,10 @@ export async function handleLocalUpload(
     requestId,
   });
 
-  return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
+  return NextResponse.json(upload, {
+    status: 201,
+    headers: { "X-Request-Id": requestId },
+  });
 }
 
 interface LocalIngestParams {
@@ -176,25 +205,39 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
   // (writePdfChunksForNode), landing in the per-tenant Inbox node, so the chunks
   // reach knowledge_entries (ingest_route='v2', metadata.node_id) and NodeChat can
   // cite them — instead of landing Open-WebUI-KB-only. Single-writer; no second
-  // chunker. On ANY failure, fall through to the legacy OW path below so the door
-  // keeps working. Non-PDF + photo + remote-fetch (cloud) doors keep the OW path.
-  if (p.kind === "document" && p.mime === "application/pdf") {
+  // chunker. #2277 extends this to text/markdown + text/plain via the sibling
+  // writeTextChunksForNode (same v2 rows, is_private=true, embed-on-write; the
+  // bytes ARE the text so no PDF extraction). On ANY failure, fall through to the
+  // legacy OW path below so the door keeps working. Photo + remote-fetch (cloud)
+  // doors keep the OW path.
+  const isV2Doc =
+    p.kind === "document" &&
+    (p.mime === "application/pdf" || isTextMime(p.mime));
+  if (isV2Doc) {
     try {
       const inbox = await resolveOrCreateInboxNode(p.tenantId);
-      const chunkCount = await writePdfChunksForNode({
+      const nodeArgs = {
         tenantId: p.tenantId,
         uploadId: p.uploadId,
         nodeId: inbox.nodeId,
         unsPath: inbox.unsPath,
         filename: p.filename,
         buffer: p.buffer,
-      });
+      };
+      const chunkCount = isTextMime(p.mime)
+        ? await writeTextChunksForNode(nodeArgs)
+        : await writePdfChunksForNode(nodeArgs);
       await updateUploadStatus(p.uploadId, p.tenantId, "parsed", null, {
         kbChunkCount: chunkCount,
         kgEntityId: inbox.nodeId,
         ingestRoute: "v2",
       });
-      log.log("parsed", { kind: p.kind, route: "v2", nodeId: inbox.nodeId, kbChunkCount: chunkCount });
+      log.log("parsed", {
+        kind: p.kind,
+        route: "v2",
+        nodeId: inbox.nodeId,
+        kbChunkCount: chunkCount,
+      });
       await deleteUploadBuffer(p.uploadId);
       return;
     } catch (err) {
@@ -217,9 +260,15 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
         assetTag: p.assetTag,
         requestId: p.requestId,
       });
-      await updateUploadStatus(p.uploadId, p.tenantId, "parsed", result.description ?? null, {
-        kbFileId: result.photoId != null ? String(result.photoId) : undefined,
-      });
+      await updateUploadStatus(
+        p.uploadId,
+        p.tenantId,
+        "parsed",
+        result.description ?? null,
+        {
+          kbFileId: result.photoId != null ? String(result.photoId) : undefined,
+        },
+      );
       log.log("parsed", { photoId: result.photoId, kind: p.kind });
     } else {
       const result = await forwardToIngest(stream(), p.filename, p.mime, {
@@ -229,14 +278,23 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
         kbFileId: result.fileId ?? undefined,
         kbChunkCount: result.chunkCount ?? undefined,
       });
-      log.log("parsed", { kind: p.kind, kbFileId: result.fileId, kbChunkCount: result.chunkCount });
+      log.log("parsed", {
+        kind: p.kind,
+        kbFileId: result.fileId,
+        kbChunkCount: result.chunkCount,
+      });
     }
     // Success — reclaim the persisted buffer.
     await deleteUploadBuffer(p.uploadId);
   } catch (err) {
     log.error("failed", err);
-    await updateUploadStatus(p.uploadId, p.tenantId, "failed", (err as Error).message).catch(
-      (statusErr: unknown) => log.error("status_update_failed", statusErr),
+    await updateUploadStatus(
+      p.uploadId,
+      p.tenantId,
+      "failed",
+      (err as Error).message,
+    ).catch((statusErr: unknown) =>
+      log.error("status_update_failed", statusErr),
     );
     // Keep the buffer so the upload can be retried from /api/uploads/:id/retry.
   }
@@ -247,7 +305,10 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
  * 2026-06-06). Returns true if the buffer was found and the ingest was
  * re-triggered, false if the buffer is gone (caller must prompt re-upload).
  */
-export async function retryLocalUpload(row: Upload, requestId: string): Promise<boolean> {
+export async function retryLocalUpload(
+  row: Upload,
+  requestId: string,
+): Promise<boolean> {
   const buffer = await readUploadBuffer(row.id);
   if (!buffer) return false;
   await updateUploadStatus(row.id, row.tenantId, "parsing", "retry");

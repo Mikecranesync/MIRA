@@ -45,3 +45,7 @@
 *.jpg
 *.jpeg
 *.pdf
+
+# Confidential local eval corpora must never enter a Docker build context
+# (root-context builds tarball the whole tree before COPY allow-lists apply).
+printsense/benchmarks/_*/

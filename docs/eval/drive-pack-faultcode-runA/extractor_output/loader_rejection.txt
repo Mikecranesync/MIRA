@@ -1,0 +1,5 @@
+Field-level (_int_keyed):
+pack 'impulse_gplus_mini': non-numeric key 'oC' in live_decode.fault_codes — wire enum tables must be int-keyed
+
+Pack-level (_parse_pack):
+pack 'impulse_gplus_mini': non-numeric key 'oC' in live_decode.fault_codes — wire enum tables must be int-keyed

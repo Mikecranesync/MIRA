@@ -26,11 +26,13 @@ KNOWN_FORMATS = (
     "csv_tags",
     "plcopen_xml",
     "siemens_tia_xml",
+    "siemens_awl",
     "structured_text",
     "ignition_json",         # Ignition tag-export JSON (UNS tag tree) -- ProveIt import engine
     "rockwell_acd",          # closed binary project -> export L5X
     "siemens_tia_project",   # closed project -> Openness XML export
     "step7_project",         # closed project -> XML/SCL export
+    "drive_config_binary",   # closed drive configuration -> export parameter report
     "codesys_project",       # closed project -> PLCopen XML export
     "archive",               # zip/7z bundle -> unpack + export
     "unknown",
@@ -58,6 +60,8 @@ _CLOSED_PROJECTS = {
     ".rss": ("rockwell_acd", "Rockwell RSLogix 500 (.RSS) project (closed). Export the tag/program "
              "report or use an L5X-capable tool, and resend."),
     ".rsp": ("rockwell_acd", "Rockwell project file (closed). Export to L5X/report and resend."),
+    ".dno": ("drive_config_binary", "Drive configuration file (closed/binary). Export a drive "
+             "parameter report, fault list, or vendor text/XML export and resend that."),
 }
 # archive bundles -- often a wrapped project; ask the user to unpack + export
 _ARCHIVE_EXT = (".zip", ".7z", ".rar", ".tar", ".gz")
@@ -67,6 +71,11 @@ _L5X_RE = re.compile(r"<RSLogix5000Content", re.IGNORECASE)
 _PLCOPEN_RE = re.compile(r"<project\b[^>]*xmlns[^>]*plcopen", re.IGNORECASE)
 _PLCOPEN_RE2 = re.compile(r"http://www\.plcopen\.org/xml", re.IGNORECASE)
 _SIEMENS_RE = re.compile(r"<SW\.(Blocks|Types|Tags)\.|<Document\b.*Siemens|TIAPortal", re.IGNORECASE)
+_SIEMENS_AWL_RE = re.compile(
+    r"\b(DATA_BLOCK|FUNCTION_BLOCK|ORGANIZATION_BLOCK)\b.*\b(STRUCT|BEGIN|NETWORK)\b|"
+    r"\bAlarm\d+\s*:BOOL\s*(?::=\s*(?:0|1|TRUE|FALSE))?\s*;\s*//",
+    re.IGNORECASE | re.DOTALL,
+)
 _XML_RE = re.compile(r"^\s*<\?xml", re.IGNORECASE)
 # Ignition tag-export JSON: a JSON object whose tree uses Ignition's tagType vocabulary. We require
 # a Folder/UdtInstance/AtomicTag marker so a generic JSON config doesn't match.
@@ -109,6 +118,8 @@ def detect(filename: str, text: str) -> Detection:
         return Detection("plcopen_xml", "high", "found PLCopen XML namespace")
     if _SIEMENS_RE.search(head):
         return Detection("siemens_tia_xml", "high", "found Siemens TIA/Openness XML markers")
+    if _SIEMENS_AWL_RE.search(head):
+        return Detection("siemens_awl", "high", "found Siemens STEP 7 AWL source markers")
 
     # --- Ignition tag-export JSON (the UNS tag tree) ---
     if _JSON_OBJ_RE.search(head) and _IGNITION_RE.search(head):
@@ -131,6 +142,8 @@ def detect(filename: str, text: str) -> Detection:
         return Detection("plcopen_xml", "low", "generic .xml -- unconfirmed; try PLCopen")
     if name.endswith((".st", ".scl", ".exp", ".iecst")):
         return Detection("structured_text", "medium", "ST-family extension")
+    if name.endswith(".awl"):
+        return Detection("siemens_awl", "medium", "extension .awl (content not confirmed)")
     if name.endswith(".csv"):
         return Detection("csv_tags", "medium", "extension .csv")
     if name.endswith((".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff")):

@@ -14,18 +14,24 @@ Config (env):
   MIRA_TENANT_ID                   tenant UUID
   NEON_DATABASE_URL                Hub DB
   MIRA_RUN_TRIGGERS                "uns_path=tag_path:threshold,..."
+  MIRA_MACHINE_MEMORY_UNS_PATHS    extra uns_paths (comma-separated) to derive
+                                   state windows + A0-A12 anomaly diffs for,
+                                   even without a run trigger (migration 040)
   MIRA_RUN_K_SIGMA                 sigma multiplier for 'critical' (default 3.0)
   MIRA_BASELINE_NORMAL_RUN_COUNT   max normal runs in the baseline (default 5)
   MIRA_BASELINE_MIN_RUNS           min normal runs before scoring (default 2)
   MIRA_SNAPSHOT_PRE_SECONDS        evidence window pre-roll (default 300)
   MIRA_SNAPSHOT_POST_SECONDS       evidence window post-roll (default 300)
   MIRA_RUN_LOOKBACK_SECONDS        tag_events read horizon per beat (default 3600)
+  MIRA_ANOMALY_COOLDOWN_SECONDS    cross-window suppression for info-severity
+                                   anomalies (#2431; default 1800, 0 disables)
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 
 try:
     from mira_crawler.celery_app import app
@@ -33,10 +39,12 @@ except ImportError:
     from celery_app import app
 
 try:
+    from mira_crawler.run_engine.machine_memory import historize_machine_memory
     from mira_crawler.run_engine.models import Reading, parse_run_triggers
     from mira_crawler.run_engine.pipeline import run_historization
     from mira_crawler.run_engine.store import NeonRunStore
 except ImportError:
+    from run_engine.machine_memory import historize_machine_memory
     from run_engine.models import Reading, parse_run_triggers
     from run_engine.pipeline import run_historization
     from run_engine.store import NeonRunStore
@@ -81,6 +89,12 @@ def _read_recent_events(
         conn.execute(
             text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
         )
+        # Horizon + ordering run on ingested_at (SERVER receipt time), NOT the
+        # client event_timestamp: Ignition report-by-exception freezes the
+        # client ts when values stop changing, which (a) pinned the window
+        # clock and (b) aged perfectly-fresh rows out of this horizon
+        # (bench-proven 2026-07-04: windows frozen at 11:06 while rows landed
+        # at 6/s). event_timestamp is still read as source-observed metadata.
         rows = (
             conn.execute(
                 text(
@@ -88,12 +102,13 @@ def _read_recent_events(
                     SELECT tag_path, value, value_type, quality,
                            uns_path::text AS uns_path,
                            event_id::text AS event_id, simulated, source_system,
-                           extract(epoch FROM event_timestamp) AS ts
+                           extract(epoch FROM event_timestamp) AS ts,
+                           extract(epoch FROM ingested_at) AS ingested_ts
                       FROM tag_events
                      WHERE tenant_id = :tid
                        AND uns_path::text = ANY(:uns_paths)
-                       AND event_timestamp >= NOW() - (:lookback || ' seconds')::interval
-                     ORDER BY event_timestamp ASC
+                       AND ingested_at >= NOW() - (:lookback || ' seconds')::interval
+                     ORDER BY ingested_at ASC
                     """
                 ),
                 {
@@ -125,6 +140,7 @@ def _read_recent_events(
                 simulated=bool(r["simulated"]),
                 source_system=r["source_system"],
                 raw_value=raw,
+                ingested_ts=float(r["ingested_ts"]),
             )
         )
     return out
@@ -143,7 +159,17 @@ def historize_runs() -> dict:
         return {"status": "error", "error": "missing_config"}
 
     triggers = parse_run_triggers(os.getenv("MIRA_RUN_TRIGGERS"))
-    if not triggers:
+    # Machine memory (state windows + typed A0-A12 anomalies, migration 040)
+    # also runs for uns_paths WITHOUT a run trigger: idle/fault windows exist
+    # even when no run ever starts. Extra paths via MIRA_MACHINE_MEMORY_UNS_PATHS
+    # (comma-separated); same MIRA_RUN_DIFF_ENABLED gate, no new flag (D8).
+    extra_uns = [
+        p.strip()
+        for p in os.getenv("MIRA_MACHINE_MEMORY_UNS_PATHS", "").split(",")
+        if p.strip()
+    ]
+    uns_paths = list(dict.fromkeys(list(triggers.keys()) + extra_uns))
+    if not uns_paths:
         return {"status": "no_triggers"}
 
     k_sigma = float(os.getenv("MIRA_RUN_K_SIGMA", "3.0"))
@@ -157,30 +183,74 @@ def historize_runs() -> dict:
         readings = _read_recent_events(
             neon_url,
             tenant_id,
-            uns_paths=list(triggers.keys()),
+            uns_paths=uns_paths,
             lookback_seconds=lookback,
         )
         store = NeonRunStore(neon_url)
-        summary = run_historization(
-            readings,
-            store,
-            triggers,
-            tenant_id=tenant_id,
-            k_sigma=k_sigma,
-            normal_run_count=normal_run_count,
-            min_baseline_runs=min_baseline_runs,
-            pre_seconds=pre_seconds,
-            post_seconds=post_seconds,
-        )
+        summary = {"status": "ok"}
+        if triggers:
+            summary = run_historization(
+                readings,
+                store,
+                triggers,
+                tenant_id=tenant_id,
+                k_sigma=k_sigma,
+                normal_run_count=normal_run_count,
+                min_baseline_runs=min_baseline_runs,
+                pre_seconds=pre_seconds,
+                post_seconds=post_seconds,
+            )
+
+        # Machine memory: state windows + typed anomalies per uns_path.
+        # triggers=None — the run layer was already handled above; this pass
+        # only derives windows and A0-A12 anomaly diffs (migration 040).
+        rows = [
+            {
+                "event_id": r.event_id,
+                "tenant_id": tenant_id,
+                "uns_path": r.uns_path,
+                "tag_path": r.tag_path,
+                "value": r.raw_value if r.raw_value is not None else r.value,
+                "value_type": r.value_type,
+                "quality": r.quality,
+                "event_timestamp": r.event_timestamp,
+                "ingested_ts": r.ingested_ts,
+            }
+            for r in readings
+        ]
+        # Real wall-clock `now` so the final window's staleness (max_stale_s)
+        # grows when the stream stops — A0_OFFLINE can fire instead of the
+        # last state being pinned forever.
+        batch_now = time.time()
+        anomaly_cooldown = float(os.getenv("MIRA_ANOMALY_COOLDOWN_SECONDS", "1800"))
+        machine_memory: dict[str, dict] = {}
+        for uns_path in uns_paths:
+            mm = historize_machine_memory(
+                store,
+                tenant_id,
+                uns_path,
+                rows,
+                now=batch_now,
+                anomaly_cooldown_seconds=anomaly_cooldown,
+            )
+            machine_memory[uns_path] = {
+                "windows_upserted": mm["windows_upserted"],
+                "anomaly_diffs_written": mm["anomaly_diffs_written"],
+                "anomalies_cooldown_suppressed": mm["anomalies_cooldown_suppressed"],
+                "latest_window": mm["latest_window"],
+                "unmapped_tags": mm["unmapped_tags"],
+            }
+        summary["machine_memory"] = machine_memory
     except Exception as exc:  # noqa: BLE001
         logger.exception("historize_runs failed: %s", exc)
         return {"status": "error", "error": str(exc)}
 
     logger.info(
-        "historize_runs: opened=%d closed=%d anomalous=%d diffs=%d",
+        "historize_runs: opened=%d closed=%d anomalous=%d diffs=%d mm_paths=%d",
         summary.get("runs_opened", 0),
         summary.get("runs_closed", 0),
         summary.get("anomalous_runs", 0),
         summary.get("diffs_written", 0),
+        len(machine_memory),
     )
     return summary
