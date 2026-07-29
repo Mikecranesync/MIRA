@@ -56,6 +56,7 @@ _TASK_MODULES = (
     "component_template",
     "content",
     "discover",
+    "eval_scorer",
     "foundational",
     "freshness",
     "gdrive",

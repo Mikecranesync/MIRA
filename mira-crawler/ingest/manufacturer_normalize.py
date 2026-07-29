@@ -34,8 +34,14 @@ through unchanged** rather than imposing any canonical of our own.
 
 Two layers
 ----------
-1. ``OCR_VARIANT_ALIASES`` — a curated, deterministic seed map of the
-   variants named in #1596. Applied at ingest time (``confidence=1.0``).
+1. ``OCR_VARIANT_ALIASES`` — a curated, deterministic map applied at ingest
+   time (``confidence=1.0``). It carries two kinds of entry: the OCR/typo
+   variants named in #1596, AND (#1596 Gap A) known-vendor casing/spelling
+   canonicalization mirroring the manufacturer-NAME keys of the resolver's
+   ``VENDOR_ALIASES`` — so ``"siemens"``→``"Siemens"``,
+   ``"Rockwell"``→``"Rockwell Automation"`` collapse to one catalog row
+   instead of one-per-spelling. Exact key match only (no substring), so a
+   long-tail vendor is never over-collapsed.
 2. ``propose_fuzzy_canonical`` — a high-threshold fuzzy *proposer* that
    LOGS a candidate collapse but never merges. Intended for the gated,
    review-gated catalog backfill, not for silent ingest-time merging
@@ -95,6 +101,45 @@ OCR_VARIANT_ALIASES: dict[str, str] = {
     "desha": "Deshazo",
     "deshao": "Deshazo",
     "deshazzo": "Deshazo",
+    # --- Known-vendor casing/spelling canonicalization (#1596 Gap A) ---------
+    # Bridge the ingest catalog to the query-side resolver's canonical for
+    # vendors it KNOWS, so a known OEM groups under ONE catalog row instead of
+    # one-per-spelling. These keys mirror the manufacturer-NAME entries of
+    # VENDOR_ALIASES in mira-bots/shared/uns_resolver.py (NOT the model/family
+    # tokens like gs10 / pf525 / a1000) and MUST agree with it —
+    # tests/test_manufacturer_alias_consistency.py locks the agreement. Exact
+    # (whitespace-collapsed, case-insensitive) key match only; no substring
+    # match at the write boundary, so a long-tail vendor whose name merely
+    # contains "ab"/"delta"/"sew" is never over-collapsed. Staging (2026-07-26)
+    # proved these fragment the live catalog (e.g. 514 "siemens" chunks split
+    # from "Siemens").
+    "rockwell automation": "Rockwell Automation",
+    "rockwell": "Rockwell Automation",
+    "automationdirect": "AutomationDirect",
+    "automation direct": "AutomationDirect",
+    "siemens": "Siemens",
+    "mitsubishi electric": "Mitsubishi Electric",
+    "mitsubishi": "Mitsubishi Electric",
+    "danfoss": "Danfoss",
+    "schneider electric": "Schneider Electric",
+    "schneider": "Schneider Electric",
+    "bosch rexroth": "Bosch Rexroth",
+    "rexroth": "Bosch Rexroth",
+    "sew-eurodrive": "SEW-Eurodrive",
+    "sew": "SEW-Eurodrive",
+    "yaskawa": "Yaskawa",
+    "abb": "ABB",
+    "omron": "Omron",
+    "eaton": "Eaton",
+    "delta": "Delta Electronics",
+    "lenze": "Lenze",
+    "pilz": "Pilz",
+    # Long-tail known variants NOT in the resolver (no shared-key constraint);
+    # evidence-driven from the staging catalog.
+    "yaskawa electric corporation": "Yaskawa",
+    "coffing": "Coffing",
+    "coffing hoists": "Coffing",
+    "harrington": "Harrington",
 }
 
 

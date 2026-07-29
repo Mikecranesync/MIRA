@@ -1,21 +1,31 @@
-"""Independent multimodal judge — an out-of-band Sonnet reviewer that inspects BOTH the actual
+"""Independent multimodal judge — an out-of-band reviewer that inspects BOTH the actual
 drawing and the bot's exact response, and grades it.
 
-This is a SEPARATE model call from the production interpreter (which uses Opus): the judge never
-sees the interpreter's internal state, only the rendered page + the verbatim reply. Every deduction
-must cite a visible feature of the drawing or a specific sentence of the response. Hard-failure
-rules catch fabrication and missed hazards. The score is PROVISIONAL until Mike calibrates the rubric.
+Runs on the SAME approved FREE cascade as the interpreter (Groq -> Cerebras -> Together,
+OpenAI-compat vision) — **no Anthropic** (repointed 2026-07-21; the old Sonnet path 400'd
+under the No-Anthropic staging config and returned no grade). The judge sees only the
+rendered page + the verbatim reply, never the interpreter's internal state. Every deduction
+must cite a visible feature of the drawing or a specific sentence of the response.
+
+Independence caveat: because the judge shares the interpreter's free cascade, when the
+cascade selects the SAME vision model the interpreter used this is a same-model review, not a
+fully independent one. That is recorded on every verdict as ``judge_independence`` so the
+benchmark stays honest. The score is PROVISIONAL until Mike calibrates the rubric.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import concurrent.futures
 import json
 import os
 
 import safety  # sibling module — neutralize/redact: the response text is data to grade, not instructions
 
-JUDGE_MODEL = os.getenv("PRINT_JUDGE_MODEL", "claude-sonnet-5")
+# Informational only — the free cascade picks the actual model; recorded from usage.
+JUDGE_MODEL = os.getenv("PRINT_JUDGE_MODEL", "free-cascade")
+_JUDGE_MAX_TOKENS = int(os.getenv("PRINT_JUDGE_MAX_TOKENS") or "4000")
 
 _RUBRIC = [
     "sheet_identity", "circuit_purpose", "device_identification", "wire_cable_identification",
@@ -76,52 +86,68 @@ def _prompt(response_text: str, map_text: str | None, source_meta: dict, graph: 
     )
 
 
+def _run_async(coro):
+    """Run an async coroutine from the runner's synchronous context.
+
+    The runner is sync, but submit.py may leave an event loop around; if one is running,
+    execute in a fresh thread with its own loop so we never hit
+    ``asyncio.run() cannot be called from a running event loop``.
+    """
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is not None and running.is_running():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            return ex.submit(lambda: asyncio.run(coro)).result()
+    return asyncio.run(coro)
+
+
 def judge(image_bytes: bytes, response_text: str, map_text: str | None, source_meta: dict,
           *, media_type: str = "image/png", graph: dict | None = None) -> dict:
-    """Run the independent judge. Returns a dict (also written as judge_1.json).
+    """Run the independent judge on the FREE cascade. Returns a dict (also written as judge_1.json).
 
     Fails soft: on any error returns {'judge_error': ...} so the pipeline still records the run.
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return {"judge_error": "ANTHROPIC_API_KEY not set (load via Doppler)", "provisional": True}
     try:
-        import anthropic
+        # Deferred: mira-bots is only on sys.path once submit.py has run (before judge is called).
+        from shared.inference.router import InferenceRouter
     except ImportError as e:
-        return {"judge_error": f"anthropic SDK unavailable: {e}", "provisional": True}
+        return {"judge_error": f"InferenceRouter unavailable: {e}", "provisional": True}
 
-    client = anthropic.Anthropic(api_key=api_key)
-    content = [
-        {"type": "image", "source": {"type": "base64", "media_type": media_type,
-                                     "data": base64.b64encode(image_bytes).decode()}},
-        {"type": "text", "text": _prompt(response_text, map_text, source_meta, graph)},
+    b64 = base64.b64encode(image_bytes).decode()
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user", "content": [
+            {"type": "text", "text": _prompt(response_text, map_text, source_meta, graph)},
+            {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{b64}"}},
+        ]},
     ]
-    def _text_of(m) -> str:
-        return "".join(b.text for b in m.content if getattr(b, "type", "") == "text").strip()
-
     try:
-        # claude-sonnet-5 runs adaptive thinking by default; the budget must cover BOTH the
-        # thinking pass AND the JSON verdict, or thinking consumes it all and 0 text is emitted
-        # (stop_reason=max_tokens, empty thinking block). 16k fits most cases.
-        msg = client.messages.create(
-            model=JUDGE_MODEL, max_tokens=16000, thinking={"type": "adaptive"},
-            system=_SYSTEM, messages=[{"role": "user", "content": content}],
+        router = InferenceRouter()
+        if not getattr(router, "enabled", False):
+            return {"judge_error": "InferenceRouter not enabled (no provider keys in env)",
+                    "provisional": True}
+        # sanitize=False: the judge must grade verbatim terminal tags / serials, which the
+        # PII sanitizer (serial-number stripping) would corrupt.
+        raw, usage = _run_async(
+            router.complete(messages, max_tokens=_JUDGE_MAX_TOKENS,
+                            session_id="print_judge", sanitize=False)
         )
-        raw = _text_of(msg)
-        if not raw and getattr(msg, "stop_reason", "") == "max_tokens":
-            # A dense case can let adaptive thinking eat the WHOLE budget before the verdict.
-            # Retry with thinking OFF so every token goes to the JSON (proven reliable: end_turn).
-            msg = client.messages.create(
-                model=JUDGE_MODEL, max_tokens=8000, thinking={"type": "disabled"},
-                system=_SYSTEM, messages=[{"role": "user", "content": content}],
-            )
-            raw = _text_of(msg)
         if not raw:
-            return {"judge_error": f"judge returned no text (stop_reason={msg.stop_reason}; "
-                    f"output_tokens={msg.usage.output_tokens})", "provisional": True,
-                    "judge_model": JUDGE_MODEL}
+            return {"judge_error": f"judge returned no text (provider={ (usage or {}).get('provider') })",
+                    "provisional": True, "judge_usage": usage}
         data = _parse_json(raw)
-        data["judge_model"] = JUDGE_MODEL
+        model = (usage or {}).get("model") or ""
+        data["judge_model"] = model or JUDGE_MODEL
+        data["judge_provider"] = (usage or {}).get("provider")
+        data["judge_backend"] = "free_cascade"
+        interp_model = str(source_meta.get("interpreter_model") or "")
+        # Honest independence label: same model == self-review; same cascade == weakly independent.
+        data["judge_independence"] = (
+            "reduced_same_model" if model and interp_model and model == interp_model
+            else "reduced_same_cascade"
+        )
         data["provisional"] = True  # NOT authoritative technician approval until Mike calibrates
         data["hard_failure"] = any(v.get("failed") in (True, "true", "True")
                                    for v in (data.get("hard_failures") or {}).values())

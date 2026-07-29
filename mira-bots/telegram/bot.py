@@ -2,7 +2,9 @@
 
 import asyncio
 import base64
+import contextlib
 import io as _io
+import json
 import logging
 import os
 import re
@@ -18,7 +20,7 @@ from admin_commands import (
 )
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import chat_tenant, print_translator, tts, wiring_intake
+from shared import chat_tenant, print_autoeval, print_translator, tts, wiring_intake
 from shared.chat.dispatcher import ChatDispatcher
 from shared.contextualization_intake import (
     hub_folder_upload_configured,
@@ -50,6 +52,7 @@ from shared.photo_handler import (
     preserve_first_meaningful_caption,
 )
 from shared.tenant.authorizer import Authorizer
+from shared.workers.vision_worker import ocr_lane_report
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 from start_command import start_command
@@ -139,6 +142,7 @@ engine = Supervisor(
     tenant_id=os.environ.get("MIRA_TENANT_ID", ""),
     mcp_base_url=MCP_BASE_URL,
 )
+logger.info("OCR_LANES %s", json.dumps(ocr_lane_report()))
 
 # Multi-tenant infra (NeonDB-backed)
 ADMIN_TELEGRAM_IDS = os.environ.get("ADMIN_TELEGRAM_IDS", "")
@@ -974,6 +978,165 @@ def _print_interpreter_configured() -> bool:
     return interpret.is_configured()
 
 
+def _schedule_print_autoeval(
+    *,
+    question: str,
+    answer: str,
+    vision_data: dict | None,
+    branch: str,
+    t0: float,
+    update: Update,
+    raw_bytes: bytes | None = None,
+) -> None:
+    """Fire-and-forget the per-turn print autoeval AFTER the reply is delivered.
+
+    Usage attribution and latency are captured SYNCHRONOUSLY here — the paid
+    interpreter's usage lives in a module-global slot and PTB processes updates
+    sequentially, so yielding first would let the next turn clobber it. The
+    evaluation + persistence + alert then run as a task so the (2s log_turn +
+    10s push worst-case) I/O never holds the update loop. Never raises."""
+    import time as _time
+
+    try:
+        if not print_autoeval.enabled():
+            return
+        latency_s = _time.monotonic() - t0
+        usage = None
+        try:
+            from printsense import interpret as _interp
+
+            usage = _interp.pop_last_usage()
+        except Exception:  # noqa: BLE001 — attribution is best-effort telemetry
+            usage = None
+        if usage is None:
+            model_str = engine.router.last_model_for(str(update.effective_chat.id))
+            if model_str:
+                prov, _, mod = model_str.partition("/")
+                usage = {"provider": prov, "model": mod}
+        asyncio.create_task(
+            _autoeval_print_turn(
+                question=question,
+                answer=answer,
+                vision_data=vision_data,
+                usage=usage,
+                latency_s=latency_s,
+                branch=branch,
+                interpreter_configured=_print_interpreter_configured(),
+                chat_id=str(update.effective_chat.id),
+                update=update,
+                raw_bytes=raw_bytes,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — observability never touches the turn
+        logger.warning("PRINT_AUTOEVAL_SCHEDULE_ERROR %s", exc)
+
+
+async def _autoeval_print_turn(
+    *,
+    question: str,
+    answer: str,
+    vision_data: dict | None,
+    usage: dict | None,
+    latency_s: float,
+    branch: str,
+    interpreter_configured: bool,
+    chat_id: str,
+    update: Update,
+    raw_bytes: bytes | None = None,
+) -> None:
+    """Evaluate ($0, truth-free) → persist to conversation_eval → P0 ntfy push.
+
+    Mirrors _capture_drive_pack_turn: called after the reply, fail-open, no LLM,
+    no behaviour change to the reply. Design: docs/plans/2026-07-18-print-autoeval-hook.md."""
+    try:
+        result = print_autoeval.evaluate_print_turn(
+            question,
+            answer,
+            vision_data,
+            usage,
+            latency_s,
+            branch=branch,
+            interpreter_configured=interpreter_configured,
+        )
+        logger.info(
+            "PRINT_AUTOEVAL severity=%s flags=%s branch=%s provider=%s cost=%s latency=%.1fs",
+            result["severity"],
+            [f["class"] for f in result["flags"]],
+            branch,
+            result.get("provider"),
+            result.get("estimated_cost_usd"),
+            latency_s,
+        )
+        meta: dict = {"surface": "print_translator", "autoeval": result}
+        try:
+            _uploader, _captured_at, tenant_id = _intake_meta(update)
+            if tenant_id:
+                meta["tenant_id"] = tenant_id
+        except Exception:  # noqa: BLE001 — tenant is optional metadata
+            pass
+        await log_turn(
+            chat_id=chat_id,
+            user_message=question or "",
+            bot_response=answer or "",
+            source="telegram",
+            intent="print_translator",
+            has_citations=(branch == "deterministic_fastpath"),
+            response_time_ms=int(latency_s * 1000),
+            meta=meta,
+        )
+        # Print-turn persistence (2026-07-15 operator directive, supersedes
+        # PR #2714): every PrintSense request + full reply retrievable from
+        # the same SQLite `interactions` table as chat turns. This hook is
+        # the choke point the bot fast-path turns flow through (engine-path
+        # photo turns already log via engine.process). Provenance is derived
+        # at this layer: route from branch+provider, sha of the full-res
+        # input; `devices` stays None (the interpreter's graph isn't visible
+        # here — quota-dead paid path today). Best-effort, never raises.
+        try:
+            import hashlib as _hashlib
+
+            provider = (usage or {}).get("provider")
+            if branch == "deterministic_fastpath":
+                route, fallback_reason = "deterministic_fastpath", None
+            elif provider == "openai":
+                route, fallback_reason = "printsense", None
+            else:
+                route = "cascade"
+                fallback_reason = (
+                    "interpreter_fell_through"
+                    if interpreter_configured
+                    else "interpreter_not_configured"
+                )
+            engine._log_interaction(
+                chat_id,
+                question or "",
+                answer or "",
+                fsm_state="ELECTRICAL_PRINT",
+                intent="print",
+                has_photo=True,
+                response_time_ms=int(latency_s * 1000),
+                route=route,
+                model=(usage or {}).get("model"),
+                input_sha256=(_hashlib.sha256(raw_bytes).hexdigest() if raw_bytes else None),
+                fallback_reason=fallback_reason,
+            )
+        except Exception as exc:  # noqa: BLE001 — persistence is best-effort
+            logger.warning("PRINT_TURN_PERSIST_ERROR %s", type(exc).__name__)
+        if print_autoeval.should_alert(result):
+            classes = [f["class"] for f in result["flags"] if f["severity"] == "P0"]
+            if print_autoeval.ALERT_LIMITER.allow(classes):
+                await send_push(
+                    message=print_autoeval.format_alert(result),
+                    title="MIRA PrintSense autoeval P0",
+                    priority="high",
+                    tags=["triangular_flag"],
+                )
+            else:
+                logger.warning("AUTOEVAL_ALERT_SUPPRESSED classes=%s", classes)
+    except Exception as exc:  # noqa: BLE001 — observability never raises
+        logger.warning("PRINT_AUTOEVAL_ERROR %s", type(exc).__name__)
+
+
 async def _try_print_translator_reply(
     raw_bytes: bytes,
     vision_bytes: bytes,
@@ -984,11 +1147,11 @@ async def _try_print_translator_reply(
     """Print Translator: an electrical-print photo + any print QUESTION (explain
     / theory of operation, OR a device / wiring / tracing question like "what
     devices are listed in this print?") -> a plain-English, OCR-grounded answer.
-    Read-only generation — NO wiring DB writes, NO control writes. Falls through
-    (returns ``False``) for any caption that isn't a print question, and for
-    photos the vision worker does NOT classify as ``ELECTRICAL_PRINT`` — so
-    non-print photos and the existing nameplate/drive and wiring-intake flows are
-    untouched.
+    Read-only generation — NO wiring DB writes, NO control writes. Captions are
+    tie-breakers only; the image's visual classification decides whether to process
+    as a print. Falls through (returns ``False``) on vision classification error,
+    if the image is not ``ELECTRICAL_PRINT``, or if the caption is a wiring-intake
+    intent (routed to ``_try_wiring_intake_reply`` instead).
 
     Classification runs on the small ``vision_bytes`` (fast, local qwen), but the
     Anthropic PrintSynth interpreter reads the FULL-RESOLUTION ``raw_bytes`` — the
@@ -996,9 +1159,31 @@ async def _try_print_translator_reply(
     wasted (roadmap Phase 0.1). ``interpret.prepare_print_image`` then auto-uprights
     and resizes it to the 2576 px vision budget.
     """
-    if not print_translator.is_print_question(caption):
-        return False  # cheap reject, no vision call
+    # Visual-first routing (operator directive 2026-07-15): the IMAGE decides.
+    # The old caption pre-reject (`is_print_question(caption)`) meant a print
+    # with no caption — or a misleading one like the bot's own default
+    # "Analyze this equipment photo" — never reached the interpreter (proved
+    # live on the Bulletin 509 sheet). Classification runs first; captions only
+    # shape the QUESTION forwarded to the interpreter. Cost note: for non-print
+    # photos this adds one local qwen classify before the engine's own (the
+    # engine re-classifies on fall-through) — accepted to keep the dispatch
+    # surgical; the print path itself is unchanged in cost.
+    #
+    # ONE caption carve-out survives, and it is flow OWNERSHIP, not
+    # classification: an explicit wiring-INTAKE command ("CV-101 add this
+    # wiring") belongs to `_try_wiring_intake_reply`, which runs before us in
+    # `_dispatch_single_photo`. The image still decides WHAT the photo is;
+    # this only decides WHICH print-consuming flow the user explicitly
+    # invoked. Narrowed to kind=="intake" only (bench case c04, 2026-07-19):
+    # a wiring-phrased QUESTION ("...wired to...") accompanying a print photo
+    # is NOT an intake command — it must stay here so the image can decide;
+    # declining it pre-vision silently killed real print questions.
+    if wiring_intake.parse_wiring_intent(caption or "").kind == "intake":
+        return False  # wiring intake owns it — no vision call needed here
 
+    import time as _time
+
+    t0 = _time.monotonic()
     photo_b64 = base64.b64encode(vision_bytes).decode()
     try:
         vision_data = await engine.vision.process(photo_b64, caption)
@@ -1007,30 +1192,125 @@ async def _try_print_translator_reply(
         return False  # a vision hiccup shouldn't eat the turn — fall through
 
     if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
-        return False  # not a print → fall through unchanged
+        return False  # not a print → fall through unchanged (visual evidence wins)
+
+    # UNSEEN-1 deterministic fast-path (zero tokens, before ANY model call):
+    # closed-form question classes — contact conventions, designation meaning,
+    # cross-reference and wire lookups — answered from the deterministic spine
+    # with evidence + citation + caveat. Insufficient evidence → fall through
+    # to the model path below WITH the extracted evidence injected as
+    # grounding. See printsense/deterministic_qa.py + the fast-path rule.
+    try:
+        from printsense import deterministic_qa as _det_qa
+    except ImportError:
+        _det_qa = None
+    if _det_qa is not None:
+        try:
+            det = _det_qa.try_deterministic_answer(caption, vision_data)
+            if det:
+                logger.info("PRINT_DETERMINISTIC_FASTPATH class=%s", det.get("question_class"))
+                await _reply_chunked(update, det["reply_text"])
+                _schedule_print_autoeval(
+                    question=caption,
+                    answer=det["reply_text"],
+                    vision_data=vision_data,
+                    branch="deterministic_fastpath",
+                    t0=t0,
+                    update=update,
+                    raw_bytes=raw_bytes,
+                )
+                return True
+            pack = _det_qa.extract_evidence(caption, vision_data)
+            if pack.get("lines"):
+                vision_data = dict(vision_data or {})
+                vision_data["deterministic_evidence"] = pack["lines"]
+        except Exception as e:  # noqa: BLE001 — deterministic layer never eats the turn
+            logger.warning("print deterministic fast-path error: %s", e)
 
     # Grounded answer: Anthropic PrintSynth interpreter first (deep, typed,
     # never-invent), else the OCR-verbatim cascade. Both live in
     # engine._grounded_print_reply, which always returns a display-ready string.
-    # Ack the ~30-60 s Anthropic interpretation so the tech isn't left staring at
+    # Ack the paid interpretation (typically ~1-2 min at medium effort; up to
+    # ~5 min on multi-page packages at high) so the tech isn't left staring at
     # a silent chat.
     if _print_interpreter_configured():
         await update.message.reply_text(
-            "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…"
+            "🔍 Reading your electrical print — a full interpretation usually takes 1–2 minutes…"
         )
     interpret_b64 = base64.b64encode(raw_bytes).decode()
+    # Captions are weak evidence: a real caption rides along as the technician's
+    # question; an empty caption or the bot's own default means "interpret the
+    # whole sheet" (question=None). Mirrors the engine's ELECTRICAL_PRINT branch.
+    question = caption if caption and caption != DEFAULT_PHOTO_CAPTION else None
     async with typing_action(context, update.effective_chat.id):
         reply = await engine._grounded_print_reply(
             photo_b64,
-            caption,
+            question,
             vision_data,
             str(update.effective_chat.id),
             interpret_b64=interpret_b64,
         )
-    await update.message.reply_text(
-        reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
+    final_text = reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
+    await _reply_chunked(update, final_text)
+    _schedule_print_autoeval(
+        question=caption,
+        answer=final_text,
+        vision_data=vision_data,
+        branch="theory",
+        t0=t0,
+        update=update,
+        raw_bytes=raw_bytes,
     )
     return True
+
+
+def _chunk_reply(text: str, limit: int = 4000) -> list[str]:
+    """Split a reply into Telegram-deliverable chunks (hard API cap: 4096).
+
+    Splits on line boundaries so sections stay intact — for line-structured
+    text, joining the chunks with "\\n" reproduces the original. A single line
+    longer than the limit is hard-split (the split points become message
+    boundaries); no characters are ever dropped.
+    """
+    if len(text) <= limit:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for line in text.split("\n"):
+        while len(line) > limit:  # pathological single line — hard split
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(line[:limit])
+            line = line[limit:]
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) > limit:
+            chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+async def _reply_chunked(update: Update, text: str) -> None:
+    """Deliver a reply of any length; a delivery failure is logged, never silent.
+
+    The theory path's model reply can exceed Telegram's 4096-char sendMessage
+    cap (live-hit 2026-07-18: a 1068-token gemma reply 400'd and the turn died
+    silently after the ack). Chunk, and surface any residual send error to the
+    technician instead of eating it.
+    """
+    try:
+        for chunk in _chunk_reply(text):
+            await update.message.reply_text(chunk)
+    except Exception as e:  # noqa: BLE001 — delivery failure must be visible
+        logger.warning("print reply delivery failed: %s", e)
+        with contextlib.suppress(Exception):
+            await update.message.reply_text(
+                "⚠️ I built an answer but couldn't deliver it. Try a narrower question."
+            )
 
 
 async def _dispatch_single_photo(
@@ -1806,6 +2086,14 @@ def main():
     app.add_handler(CommandHandler("ps_review", printsense_commercial.ps_review_command))
     app.add_handler(
         CommandHandler("printsense_test", printsense_commercial.printsense_test_command)
+    )
+    app.add_handler(
+        CommandHandler(
+            "printsense_grade_session", printsense_commercial.printsense_grade_session_command
+        )
+    )
+    app.add_handler(
+        CommandHandler("printsense_compare", printsense_commercial.printsense_compare_command)
     )
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))

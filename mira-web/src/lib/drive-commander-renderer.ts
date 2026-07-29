@@ -10,8 +10,13 @@
  *   Drive Commander= the technician-facing product being sold here.
  *   PowerFlex pack = the value atom powering these pages.
  *
- * Aesthetic mirrors src/lib/feature-renderer.ts (dark industrial-HMI + amber),
- * with the palette declared once as :root CSS variables — no raw hex in markup.
+ * Aesthetic: the FactoryLM DARK DATASHEET theme. All colors come from the
+ * shared --fl-dark-* design tokens (public/_tokens.css, canonical copy in
+ * docs/design/factorylm-tokens.css) — no raw hex anywhere in this file. The
+ * local :root aliases below only REMAP token names for brevity (the sanctioned
+ * re-skin pattern in .claude/skills/factorylm-ui-style). Accent = brand orange
+ * (actions only); green/amber/red are STATE colors (cited=ok, held=warn,
+ * fault=fault) — never decoration. Icons are inline SVG, never emoji.
  *
  * FREE tier renders only: fault name + its cited related parameters (name, purpose,
  * and the manual citation shown as visible grounding proof). PRO content (full value
@@ -45,6 +50,14 @@ function escHtml(s: string): string {
 }
 const escAttr = escHtml;
 
+// Inline SVG micro-icons (stroke:currentColor) — never emoji (de-slop rule).
+const ICON_LOCK =
+  '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" style="vertical-align:-1px"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>';
+const ICON_CITE =
+  '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" style="vertical-align:-1px"><path d="M6.5 9.5l3-3"/><path d="M7.6 4.4l1-1a2.55 2.55 0 0 1 3.6 3.6l-1 1"/><path d="M8.4 11.6l-1 1a2.55 2.55 0 0 1-3.6-3.6l1-1"/></svg>';
+const ICON_CHECK =
+  '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M3 8.5l3.5 3.5L13 5"/></svg>';
+
 function productName(pack: DrivePackDisplay): string {
   return `${pack.family.manufacturer} ${pack.family.series}`.trim();
 }
@@ -54,13 +67,15 @@ function productName(pack: DrivePackDisplay): string {
 const STYLE = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --page-bg:#0d0e11; --surface:#13141a; --surface-hi:#181a22;
-    --border:rgba(255,255,255,0.07); --border-hi:rgba(255,255,255,0.12);
-    --text:#e8eaf0; --text-dim:rgba(255,255,255,0.62); --text-faint:rgba(255,255,255,0.40);
-    --text-label:rgba(255,255,255,0.45);
-    --amber:#f0a000; --amber-hot:#f5c542; --teal:#00d4aa; --red:#ff5d5d;
-    --font:'Inter','Helvetica Neue',sans-serif;
-    --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+    /* aliases → shared FL dark-datasheet tokens (see /_tokens.css) */
+    --page-bg:var(--fl-dark-bg); --surface:var(--fl-dark-surface); --surface-hi:var(--fl-dark-surface-hi);
+    --border:var(--fl-dark-line); --border-hi:var(--fl-dark-line-hi);
+    --text:var(--fl-dark-ink); --text-dim:var(--fl-dark-muted); --text-faint:var(--fl-dark-faint);
+    --accent:var(--fl-dark-accent); --accent-hover:var(--fl-dark-accent-hover);
+    --accent-line:var(--fl-dark-accent-line);
+    --ok:var(--fl-dark-ok); --ok-line:var(--fl-dark-ok-line); --ok-tint:var(--fl-dark-ok-tint);
+    --font:var(--fl-dark-font);
+    --font-mono:var(--fl-dark-mono);
     --max-w:1080px; --ease:cubic-bezier(0.16,1,0.3,1);
   }
   html { scroll-behavior:smooth; }
@@ -68,11 +83,11 @@ const STYLE = `
     font-size:15px; line-height:1.65; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
   .inner { max-width:var(--max-w); margin:0 auto; padding:0 32px; }
   a { color:inherit; }
-  nav#main-nav { position:sticky; top:0; z-index:50; background:rgba(13,14,17,0.88);
+  nav#main-nav { position:sticky; top:0; z-index:50; background:var(--fl-dark-bg-glass);
     backdrop-filter:blur(12px); border-bottom:1px solid var(--border); }
   .nav-inner { max-width:var(--max-w); margin:0 auto; padding:16px 32px; display:flex;
     align-items:center; justify-content:space-between; }
-  .nav-logo { display:flex; align-items:center; gap:10px; color:var(--amber);
+  .nav-logo { display:flex; align-items:center; gap:10px; color:var(--accent);
     text-decoration:none; font-weight:600; font-size:15px; }
   .nav-links { display:flex; gap:24px; list-style:none; font-size:13.5px; }
   .nav-links a { color:var(--text-dim); text-decoration:none; }
@@ -81,18 +96,18 @@ const STYLE = `
   .breadcrumb { font-family:var(--font-mono); font-size:11.5px; color:var(--text-faint);
     letter-spacing:0.04em; margin-bottom:22px; text-transform:uppercase; padding-top:28px; }
   .breadcrumb a { color:var(--text-dim); text-decoration:none; }
-  .breadcrumb a:hover { color:var(--amber); }
+  .breadcrumb a:hover { color:var(--accent); }
   .breadcrumb span { color:var(--text-faint); margin:0 6px; }
   .section-label { font-family:var(--font-mono); font-size:11px; letter-spacing:0.12em;
-    color:var(--amber); text-transform:uppercase; margin-bottom:16px; display:inline-block; }
+    color:var(--accent); text-transform:uppercase; margin-bottom:16px; display:inline-block; }
   h1.dc-h1 { font-size:clamp(30px,5vw,50px); line-height:1.08; font-weight:600;
     letter-spacing:-0.03em; margin-bottom:18px; max-width:820px; }
   .dc-lede { font-size:18px; line-height:1.55; color:var(--text-dim); max-width:660px;
     margin-bottom:24px; font-weight:300; }
   .hero { padding:8px 0 40px; border-bottom:1px solid var(--border); }
   .prov { display:inline-flex; align-items:center; gap:8px; font-family:var(--font-mono);
-    font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--teal);
-    border:1px solid rgba(0,212,170,0.3); background:rgba(0,212,170,0.06);
+    font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ok);
+    border:1px solid var(--ok-line); background:var(--ok-tint);
     padding:6px 12px; border-radius:4px; }
   .prov b { color:var(--text); font-weight:500; text-transform:none; letter-spacing:0; }
   section.block { padding:48px 0; border-top:1px solid var(--border); }
@@ -102,41 +117,49 @@ const STYLE = `
   .fault-chip { display:flex; flex-direction:column; gap:4px; padding:14px 16px;
     background:var(--surface); border:1px solid var(--border); border-radius:8px;
     text-decoration:none; transition:border-color 160ms var(--ease); }
-  .fault-chip:hover { border-color:rgba(240,160,0,0.35); }
-  .fault-chip .code { font-family:var(--font-mono); font-size:12px; color:var(--amber);
+  .fault-chip:hover { border-color:var(--accent-line); }
+  .fault-chip .code { font-family:var(--font-mono); font-size:12px; color:var(--accent);
     letter-spacing:0.06em; }
   .fault-chip .name { color:var(--text); font-size:14.5px; }
-  .fault-chip .tag { font-family:var(--font-mono); font-size:9.5px; color:var(--teal);
+  .fault-chip .tag { font-family:var(--font-mono); font-size:9.5px; color:var(--ok);
     text-transform:uppercase; letter-spacing:0.08em; }
+  .fault-chip .tag-plain { color:var(--text-faint); }
+  /* payment-return states (state colors: paid = ok) */
+  .checkout-ok { display:flex; gap:12px; align-items:flex-start; margin-top:24px;
+    padding:16px 18px; border:1px solid var(--fl-dark-ok-line); background:var(--fl-dark-ok-tint);
+    border-radius:8px; color:var(--text); font-size:14.5px; line-height:1.6; }
+  .checkout-ok svg { color:var(--ok); flex-shrink:0; margin-top:3px; }
+  .checkout-ok a { color:var(--ok); }
+  .checkout-note { margin-top:24px; padding:12px 16px; border:1px solid var(--border);
+    background:var(--surface); border-radius:8px; color:var(--text-dim); font-size:13.5px; }
   /* param card (cited, free tier) */
   .param-card { background:var(--surface); border:1px solid var(--border);
     border-radius:8px; padding:20px 22px; margin-bottom:14px; }
-  .param-card .p-id { font-family:var(--font-mono); font-size:11px; color:var(--amber);
+  .param-card .p-id { font-family:var(--font-mono); font-size:11px; color:var(--accent);
     letter-spacing:0.08em; }
   .param-card .p-name { font-size:16px; font-weight:600; margin:4px 0 8px; }
   .param-card .p-purpose { color:var(--text-dim); font-size:14.5px; line-height:1.6;
     font-weight:300; margin-bottom:14px; }
-  .cite { border-left:2px solid rgba(0,212,170,0.5); padding:8px 0 8px 14px;
-    background:rgba(0,212,170,0.03); }
-  .cite .cite-src { font-family:var(--font-mono); font-size:11px; color:var(--teal);
+  .cite { border-left:2px solid var(--ok-line); padding:8px 0 8px 14px;
+    background:var(--ok-tint); }
+  .cite .cite-src { font-family:var(--font-mono); font-size:11px; color:var(--ok);
     letter-spacing:0.04em; }
   .cite .cite-ex { color:var(--text-faint); font-size:13px; font-style:italic; margin-top:4px; }
   /* locked Pro */
   .pro-lock { position:relative; background:var(--surface-hi); border:1px dashed var(--border-hi);
     border-radius:10px; padding:28px 26px; margin-top:8px; }
   .pro-lock .lock-badge { font-family:var(--font-mono); font-size:10px; letter-spacing:0.14em;
-    text-transform:uppercase; color:var(--amber); margin-bottom:12px; display:inline-flex; gap:8px; }
+    text-transform:uppercase; color:var(--accent); margin-bottom:12px; display:inline-flex; gap:8px; }
   .pro-lock h3 { font-size:18px; font-weight:600; margin-bottom:10px; }
   .pro-lock ul { list-style:none; display:grid; gap:8px; margin:12px 0 20px; }
   .pro-lock li { color:var(--text-dim); font-size:14px; padding-left:20px; position:relative; }
   .pro-lock li::before { content:'\\25AA'; position:absolute; left:0; color:var(--text-faint); }
-  .cta { display:inline-flex; flex-direction:column; text-decoration:none; color:#0b0c0f;
-    background:linear-gradient(180deg,#f5c542 0%,#f0a000 50%,#c47e00 100%);
-    border:1px solid rgba(0,0,0,0.5); border-radius:8px; padding:12px 22px; font-weight:700;
-    line-height:1.15; }
+  .cta { display:inline-flex; flex-direction:column; text-decoration:none; color:var(--page-bg);
+    background:var(--accent); border:1px solid var(--accent-line); border-radius:8px;
+    padding:12px 22px; font-weight:700; line-height:1.15; }
   .cta small { font-size:10px; text-transform:uppercase; letter-spacing:0.14em; opacity:0.75;
     font-weight:600; }
-  .cta:hover { transform:translateY(-1px); }
+  .cta:hover { background:var(--accent-hover); }
   .price-note { font-family:var(--font-mono); font-size:12px; color:var(--text-faint);
     margin-top:12px; letter-spacing:0.03em; }
   .callout { color:var(--text-dim); font-size:14px; background:var(--surface);
@@ -146,7 +169,7 @@ const STYLE = `
     align-items:center; }
   .footer-links { display:flex; gap:20px; list-style:none; font-size:13px; }
   .footer-links a { color:var(--text-dim); text-decoration:none; }
-  .footer-links a:hover { color:var(--amber); }
+  .footer-links a:hover { color:var(--accent); }
   .muted { color:var(--text-faint); font-size:13px; }
 `;
 
@@ -166,11 +189,12 @@ function pageHead(title: string, description: string, canonical: string, jsonLd?
   <meta property="og:url" content="${escAttr(canonical)}">
   <meta property="og:image" content="${BASE_URL}/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="theme-color" content="#f0a000">
+  <meta name="theme-color" content="#0d0e11">
   <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   ${jl}
+  <link rel="stylesheet" href="/_tokens.css">
   <style>${STYLE}</style>`;
 }
 
@@ -211,7 +235,7 @@ function waitlistCTA(): string {
 // list) is rendered here — only the list of what unlocking provides.
 function proLock(): string {
   return `<div class="pro-lock">
-    <div class="lock-badge">&#128274; Drive Commander Pro</div>
+    <div class="lock-badge">${ICON_LOCK} Drive Commander Pro</div>
     <h3>The full cited pack</h3>
     <ul>
       <li>Every parameter reference with value/setting tables</li>
@@ -226,7 +250,7 @@ function proLock(): string {
 
 function citeBlock(p: ParameterCard): string {
   return p.source_citation
-    ? `<div class="cite"><div class="cite-src">&#128279; ${escHtml(p.source_citation.doc)}, p.${escHtml(
+    ? `<div class="cite"><div class="cite-src">${ICON_CITE} ${escHtml(p.source_citation.doc)}, p.${escHtml(
         p.source_citation.page,
       )}</div>${
         p.source_citation.excerpt
@@ -252,11 +276,18 @@ function paramCardFree(p: ParameterCard, modelSlug: string): string {
 
 // ── Pages ────────────────────────────────────────────────────────────────
 
-export function renderDriveLandingPage(pack: DrivePackDisplay): string {
+export function renderDriveLandingPage(
+  pack: DrivePackDisplay,
+  opts?: { checkout?: string },
+): string {
   const canonical = `${BASE_URL}/drive-commander/${pack.modelSlug}`;
   const product = productName(pack);
   const faults = listFaults(pack);
-  const withDetail = faults.filter((f) => f.hasDetail);
+  // ONE fault list, cited-detail first — never render the same chips twice.
+  const sortedFaults = [...faults].sort(
+    (a, b) => Number(b.hasDetail) - Number(a.hasDetail),
+  );
+  const detailCount = faults.filter((f) => f.hasDetail).length;
   const title = `${product} Fault Codes & Troubleshooting | Drive Commander`;
   const description = `Look up any ${product} fault code and get the meaning plus the cited parameters to check — straight from the OEM manual, not generic AI. Free fault lookup from Drive Commander.`;
   const jsonLd = {
@@ -269,12 +300,31 @@ export function renderDriveLandingPage(pack: DrivePackDisplay): string {
     isPartOf: { "@type": "WebSite", name: "FactoryLM" },
   };
 
+  // Every chip carries a consistent tag — no empty trailing spans.
   const chip = (f: FaultView) =>
     `<a class="fault-chip" href="/drive-commander/${pack.modelSlug}/faults/${escAttr(f.display)}">
       <span class="code">${escHtml(f.display)}</span>
       <span class="name">${escHtml(f.name)}</span>
-      ${f.hasDetail ? `<span class="tag">cited detail</span>` : ""}
+      <span class="tag${f.hasDetail ? "" : " tag-plain"}">${
+        f.hasDetail ? "cited detail" : "in pack"
+      }</span>
     </a>`;
+
+  // Payment return states (Stripe redirects back with ?checkout=…).
+  const checkoutBanner =
+    opts?.checkout === "success"
+      ? `<div class="checkout-ok" role="status">${ICON_CHECK}
+          <div><strong>Payment confirmed &mdash; Drive Commander Pro is active.</strong>
+          Your receipt is on its way from Stripe. Pro unlocks the full cited pack for this
+          drive: value/setting tables, wiring &amp; I/O checks, reset workflow, and
+          Ask-MIRA follow-ups. Reply to the receipt email or write
+          <a href="mailto:hello@factorylm.com">hello@factorylm.com</a> and we'll finish
+          your account setup within one business day.</div></div>`
+      : opts?.checkout === "cancelled"
+        ? `<div class="checkout-note" role="status">Checkout cancelled &mdash; no charge was made.
+            The free cited lookups below stay free.</div>`
+        : "";
+  const paid = opts?.checkout === "success";
 
   return `<!DOCTYPE html>
 <html lang="en"><head>${pageHead(title, description, canonical, jsonLd)}</head>
@@ -282,6 +332,7 @@ export function renderDriveLandingPage(pack: DrivePackDisplay): string {
   ${NAV}
   <main id="main-content"><div class="inner">
     <div class="breadcrumb"><a href="/">Home</a> <span>&rsaquo;</span> Drive Commander <span>&rsaquo;</span> ${escHtml(product)}</div>
+    ${checkoutBanner}
     <section class="hero">
       <div class="section-label">Drive Commander &middot; ${escHtml(product)}</div>
       <h1 class="dc-h1">${escHtml(product)} fault codes, decoded for the technician in front of the drive.</h1>
@@ -291,21 +342,14 @@ export function renderDriveLandingPage(pack: DrivePackDisplay): string {
       <div style="margin-bottom:8px">${provBadge(pack)}</div>
     </section>
 
-    ${
-      withDetail.length
-        ? `<section class="block">
-      <h2 class="dc-h2">Faults with cited troubleshooting detail</h2>
-      <div class="fault-grid">${withDetail.map(chip).join("")}</div>
-    </section>`
-        : ""
-    }
-
     <section class="block">
-      <h2 class="dc-h2">All ${faults.length} ${escHtml(pack.family.series)} fault codes</h2>
-      <p class="callout" style="margin-bottom:18px">Every code below is decoded from the ${escHtml(
+      <h2 class="dc-h2">${faults.length} ${escHtml(
+        pack.family.series,
+      )} faults in this pack${detailCount ? ` &middot; ${detailCount} with cited troubleshooting detail` : ""}</h2>
+      <p class="callout" style="margin-bottom:18px">Each code below is decoded from the ${escHtml(
         pack.manualDoc,
-      )}. Click one for the cited meaning and the parameters to check.</p>
-      <div class="fault-grid">${faults.map(chip).join("")}</div>
+      )} &mdash; the full manual covers more; we only publish what we can cite. Click a code for the cited meaning and the parameters to check.</p>
+      <div class="fault-grid">${sortedFaults.map(chip).join("")}</div>
     </section>
 
     <section class="block">
@@ -324,10 +368,14 @@ export function renderDriveLandingPage(pack: DrivePackDisplay): string {
         .join("")}</div>
     </section>
 
-    <section class="block">
+    ${
+      paid
+        ? ""
+        : `<section class="block">
       <h2 class="dc-h2">Go deeper with Drive Commander Pro</h2>
       ${proLock()}
-    </section>
+    </section>`
+    }
   </div></main>
   ${FOOTER}
 </body></html>`;

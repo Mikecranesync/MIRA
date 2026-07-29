@@ -393,7 +393,9 @@ def process_url(record: dict) -> int:
                 "content": text,
                 "embedding": str(embedding),
                 "source_url": url,
-                "source_page": chunk_idx,
+                # Real PDF page or NULL — never the chunk ordinal (#2968). The
+                # ordinal stays in metadata.chunk_index for dedup only.
+                "source_page": chunk.get("page_num"),
                 "metadata": json.dumps(meta),
                 "chunk_type": chunk.get("chunk_type", "text"),
             }
@@ -521,7 +523,9 @@ def process_local_pdf(pdf_path: str) -> int:
                 "content": chunk["text"],
                 "embedding": str(embedding),
                 "source_url": filename,
-                "source_page": chunk_idx,
+                # Real PDF page or NULL — never the chunk ordinal (#2968). The
+                # ordinal stays in metadata.chunk_index for dedup only.
+                "source_page": chunk.get("page_num"),
                 "metadata": json.dumps(meta),
                 "chunk_type": chunk.get("chunk_type", "text"),
             }

@@ -24,6 +24,7 @@ from shared.live_snapshot import _FAULT_CODES, normalize, render_status_block
 from ask_api.drive_pack import router as drive_pack_router
 from ask_api.gate_state import derive_uns_gate
 from ask_api.machine_context import MACHINE_CONTEXT
+from ask_api.readonly_guard import enforce_readonly_kiosk_reply
 
 logging.basicConfig(
     level=logging.INFO,
@@ -129,6 +130,7 @@ async def ask(req: AskRequest, x_mira_key: str = Header(None)):
             mira_user_id="ignition:kiosk",
             retrieval_query=retrieval_query,
         )
+        reply = enforce_readonly_kiosk_reply(reply)
         # Surface the UNS confirmation-gate state so the Perspective HMI can render
         # a distinct Yes/No confirm panel + location breadcrumb instead of treating
         # the gate prompt as a plain answer. Best-effort: never break the response.

@@ -279,7 +279,15 @@ def render_case_png(case: dict) -> bytes:
         img.save(buf, format="PNG")
         return buf.getvalue()
 
-    base = _base(case["base"])
+    return draw_print_page(_base(case["base"]))
+
+
+def draw_print_page(base: dict) -> bytes:
+    """Draw ONE synthetic print page (shared by Phase-2 cases and the Phase-3
+    session pages — same border/header/ladder-line-work/token layout so live
+    vision reads every page the same way)."""
+    from PIL import Image, ImageDraw  # noqa: PLC0415 — lazy: hermetic mode never needs PIL
+
     width = base.get("page_width", 1400)
     img = Image.new("RGB", (width, 900), "white")
     draw = ImageDraw.Draw(img)

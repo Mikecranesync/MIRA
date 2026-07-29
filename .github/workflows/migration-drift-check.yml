@@ -65,6 +65,7 @@ jobs:
       - name: Install psycopg2
         run: pip install psycopg2-binary
       - name: Check migration drift (staging — hard gate)
+        id: drift_staging
         env:
           DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
         run: |
@@ -77,9 +78,16 @@ jobs:
             cat /tmp/drift.out
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # Only the drift tool exiting non-zero counts as drift — infra failures
+          # (empty URL above, checkout, pip) never reach this line with RC set.
+          if [ "${RC:-0}" -ne 0 ]; then echo "drift=true" >> "$GITHUB_OUTPUT"; fi
           exit "${RC:-0}"
       - name: File/refresh drift issue on failure
-        if: failure()
+        # Gate on the drift step's own verdict, not job-level failure(): the P1
+        # issue body asserts a SPECIFIC cause ("a merged migration is not in the
+        # ledger"), which is false when the job died on infra (empty secret,
+        # install failure) before the tool ever ran.
+        if: failure() && steps.drift_staging.outputs.drift == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/migration-drift-issue.sh staging "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
@@ -107,6 +115,7 @@ jobs:
           echo "::add-mask::$URL"
           echo "DATABASE_URL=$URL" >> "$GITHUB_ENV"
       - name: Check migration drift (prod — hard gate)
+        id: drift_prod
         run: |
           set -euo pipefail
           # HARD gate since 2026-07-14: prod ledger baselined to zero drift
@@ -119,9 +128,15 @@ jobs:
             cat /tmp/drift.out
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # Only the drift tool exiting non-zero counts as drift — a Doppler
+          # failure in the resolve step (documented failure mode #2) never
+          # reaches this line with RC set.
+          if [ "${RC:-0}" -ne 0 ]; then echo "drift=true" >> "$GITHUB_OUTPUT"; fi
           exit "${RC:-0}"
       - name: File/refresh drift issue on failure
-        if: failure()
+        # Gate on the drift step's own verdict, not job-level failure() — see
+        # the staging job's rationale.
+        if: failure() && steps.drift_prod.outputs.drift == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/migration-drift-issue.sh prod "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

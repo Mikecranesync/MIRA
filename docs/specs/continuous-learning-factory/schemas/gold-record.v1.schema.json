@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factorylm.clf.gold-record.v1",
+  "title": "FactoryLM CLF Gold Record v1",
+  "description": "A promoted, approved gold example. A model answer CANNOT reach here without a policy-authorized approval (promotion-policy.md). Separate status fields (requirement 5) and FULL backward lineage (requirement 8). split_assignment is derived from document_lineage_key so no lineage crosses partitions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "gold_id", "run_id", "document_lineage_key", "split_assignment", "approval", "lineage"],
+  "properties": {
+    "schema": { "const": "factorylm.clf.gold-record.v1" },
+    "gold_id": { "type": "string" },
+    "run_id": { "type": "string", "description": "FK -> eval-result.v1.run_id" },
+    "document_lineage_key": { "type": "string", "description": "the split key" },
+    "split_assignment": { "enum": ["train", "validation", "test", "held_out"], "description": "assigned by document_lineage_key hash; all lineage siblings share it" },
+    "corrected_answer": { "type": ["string", "null"] },
+    "structured_facts": { "type": ["object", "null"], "additionalProperties": true },
+    "error_labels": { "type": "array", "items": { "type": "string" } },
+    "evidence_status": { "type": "object", "additionalProperties": true },
+    "deterministic_status": { "enum": ["passed", "failed", "not_run"], "default": "not_run" },
+    "judge_status": { "$comment": "factorylm.clf.judge-independence.v1", "type": ["object", "null"] },
+    "human_review": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "reviewer": { "type": ["string", "null"] },
+        "agreement": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "at": { "type": ["string", "null"] }
+      }
+    },
+    "gold_status": { "const": "gold" },
+    "training_eligibility": { "enum": ["ineligible", "eligible", "excluded"], "default": "ineligible" },
+    "approval": {
+      "type": "object",
+      "description": "How the promotion was authorized. mechanism must be a class promotion-policy.md permits for gold.",
+      "additionalProperties": false,
+      "required": ["mechanism", "independence_class", "at"],
+      "properties": {
+        "mechanism": { "enum": ["HUMAN_REVIEW", "INDEPENDENT_JUDGE", "DETERMINISTIC_PROOF"] },
+        "independence_class": { "type": "string", "$comment": "one of factorylm.clf.judge-independence.v1.independence_class" },
+        "actor": { "type": ["string", "null"] },
+        "proposal_id": { "type": ["string", "null"], "description": "FK to the gold_answer_approval proposal (promotion-policy.md)" },
+        "at": { "type": "string" }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "description": "FULL backward chain (requirement 8)",
+      "additionalProperties": false,
+      "required": ["source_id", "page_id", "raw_result_id"],
+      "properties": {
+        "source_id": { "type": "string" },
+        "page_id": { "type": "string" },
+        "region_refs": { "type": "array", "items": { "type": "string" } },
+        "raw_result_id": { "type": "string", "description": "the un-mutated interpreter eval-result run_id" },
+        "validator_findings_id": { "type": ["string", "null"] },
+        "judge_result_id": { "type": ["string", "null"] },
+        "correction_event_id": { "type": ["string", "null"] },
+        "approving_actor": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

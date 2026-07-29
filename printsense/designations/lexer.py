@@ -20,7 +20,13 @@ _TEXT_TOKEN = re.compile(r"[A-Za-z0-9_.,]+")
 
 # Bounded OCR-variant families (D15): substitutions offered only in the
 # character class + position where the confusion is real.
-_OCR_TAIL = [("O", "0"), ("I", "1"), ("l", "1"), ("Z", "2"), ("B", "8")]
+#
+# S/5 belongs here for the same reason as the other four — it is one of the five
+# pairs `designation_metrics.HOMOGLYPH_PAIRS` measures and the interpreter prompt
+# teaches. The pair must be added in THREE places: this list is inert on its own,
+# because both character classes in `_ocr_candidates` gate on the tail before the
+# substitution loop is reached.
+_OCR_TAIL = [("O", "0"), ("I", "1"), ("l", "1"), ("Z", "2"), ("B", "8"), ("S", "5")]
 _OCR_WHOLE = {"Al": ("A1", "l->1 after letter"), "AZ": ("A2", "Z->2 after letter"),
               "I3": ("13", "I->1 before digit")}
 
@@ -32,8 +38,8 @@ def _ocr_candidates(text: str) -> list[dict]:
         fixed, reason = _OCR_WHOLE[text]
         out.append({"kind": "ocr_correction", "text": fixed,
                     "reason": reason, "confidence": 0.6})
-    m = re.match(r"^([A-Za-z]+)([0-9OIlZB]+)$", text)
-    if m and re.search(r"[OIlZB]", m.group(2)):
+    m = re.match(r"^([A-Za-z]+)([0-9OIlZBS]+)$", text)
+    if m and re.search(r"[OIlZBS]", m.group(2)):
         tail = m.group(2)
         for bad, good in _OCR_TAIL:
             if bad in tail:

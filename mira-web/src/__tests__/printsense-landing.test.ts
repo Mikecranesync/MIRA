@@ -39,3 +39,26 @@ test("POST captures lead; analytics stays content-free", async () => {
   expect(funnel).not.toContain("tech@example.com"); // analytics never does
   expect(existsSync(join(dir, "funnel.jsonl"))).toBe(true);
 });
+
+test("2026-07-17 rebuild: showcase structure with honest claims, no slop markers", async () => {
+  const res = await printsensePage.request("/printsense");
+  const html = await res.text();
+  // showcase structure (from the exploration draft)
+  expect(html).toContain("IMPORT HELD");
+  expect(html).toContain("STOP &middot; ESCALATE");
+  expect(html).toContain("Generic AI");
+  expect(html).toContain("You are here");
+  // honest claims kept; invented stats stay dead
+  expect(html).toContain("human reviewer");
+  expect(html).toContain("synthetic material");
+  expect(html).not.toContain("68,000");
+  expect(html).not.toContain("confident misreads");
+  expect(html).not.toContain("MOST POPULAR");
+  // dark datasheet tokens, no emoji icons
+  expect(html).toContain('href="/_tokens.css"');
+  expect(html).toContain("--fl-dark-");
+  expect(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html)).toBe(false);
+  // the drive-pack truth: F004 = UnderVoltage (the draft's wrong "F5 undervoltage" is gone)
+  expect(html).toContain("UnderVoltage");
+  expect(html).not.toContain("DC bus undervoltage");
+});

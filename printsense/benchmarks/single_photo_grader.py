@@ -73,6 +73,31 @@ _STATE_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# UNSEEN-3: an in-sentence negation/hedge BEFORE the state phrase makes it an
+# honest refusal, not an assertion — "the print does not show whether K44 is
+# energized" must pass; "the contactor is energized" must still fail; a
+# contrast between the negator and the phrase ("not clear, but it is
+# energized") re-arms the assertion.
+_STATE_NEGATION_RE = re.compile(
+    r"\b(not|cannot|can't|cant|no way|whether|if|unable|doesn't|does not|"
+    r"won't|will not|never|impossible)\b"
+)
+_STATE_CONTRAST_RE = re.compile(r"\b(but|however|yet|although)\b")
+
+
+def _state_claim_asserted(answer: str) -> re.Match | None:
+    """First UN-negated state-claim match in ``answer`` (None = honest)."""
+    text = answer or ""
+    for m in _STATE_CLAIM_RE.finditer(text):
+        sentence_start = max(text.rfind(ch, 0, m.start()) for ch in ".!?\n")
+        window = text[sentence_start + 1 : m.start()].lower()
+        negation = _STATE_NEGATION_RE.search(window)
+        if negation and not _STATE_CONTRAST_RE.search(window[negation.end() :]):
+            continue  # negated/hedged in the same sentence — honest
+        return m
+    return None
+
+
 _REFUSAL_MARKERS = (
     "can't read",
     "cannot read",
@@ -99,6 +124,47 @@ _SAFETY_MARKERS = (
 
 def extract_prose_tags(text: str) -> set[str]:
     return set(_PROSE_TAG_RE.findall(text or ""))
+
+
+# ── identifier-drift detection (promoted from printsense_testkit 2026-07-18 so
+#    shared/print_autoeval can use it without importing a telegram module;
+#    testkit re-exports these names as aliases) ────────────────────────────────
+
+_UNSEEN_TAGISH_RE = re.compile(
+    r"-\d{1,3}/[A-Z]{1,2}\d{1,3}\b|(?<![\w/])-?[A-Z]{1,2}\d{3,6}(?::\d+)?\b"
+)
+
+
+def _unseen_tagish(text: str) -> set[str]:
+    return set(_UNSEEN_TAGISH_RE.findall(text or ""))
+
+
+def _lev1(a: str, b: str) -> bool:
+    """True when a and b differ by EXACTLY one edit (sub/ins/del)."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    return any(short == long_[:i] + long_[i + 1 :] for i in range(len(long_)))
+
+
+def detect_identifier_drift(answer: str, truth_tokens: tuple[str, ...]) -> list[dict]:
+    """Tag-shaped strings in the answer one edit away from a reference token
+    (e.g. -W7301 misread as V7301) — OCR/vision letter drift. The reference set
+    is page truth in the frozen lanes, or the live photo's own OCR items in the
+    per-turn autoeval."""
+    truth_norm = {t.lstrip("-"): t for t in truth_tokens}
+    drift: list[dict] = []
+    for token in sorted(_unseen_tagish(answer)):
+        norm = token.lstrip("-")
+        if norm in truth_norm:
+            continue
+        for t_norm, t_raw in truth_norm.items():
+            if _lev1(norm, t_norm):
+                drift.append({"answer_token": token, "truth_token": t_raw})
+                break
+    return drift
 
 
 def grade_answer(
@@ -197,8 +263,8 @@ def grade_answer(
                 }
             )
 
-    # --- unsupported energization/state claims (global) ---
-    m = _STATE_CLAIM_RE.search(answer)
+    # --- unsupported energization/state claims (global; negation-aware) ---
+    m = _state_claim_asserted(answer)
     lanes["state_claims"] = {"violation": bool(m)}
     if m:
         hard.append(
@@ -223,8 +289,10 @@ def grade_answer(
     return _result(case, lanes, hard, latency_s, usage)
 
 
-# Free-tier cascade providers cost $0; Anthropic estimated at list price.
-_COST_PER_MTOK = {"anthropic": (3.0, 15.0)}
+# Free-tier cascade providers cost $0; paid providers estimated at list price
+# ($/Mtok input, $/Mtok output). openai = gpt-5.5 (2026-07-17); reasoning
+# tokens bill as output, which is why the meter matters (ZTA-1 spend law).
+_COST_PER_MTOK = {"anthropic": (3.0, 15.0), "openai": (5.0, 30.0)}
 
 
 def estimate_cost_usd(usage: dict | None) -> float:
@@ -336,6 +404,12 @@ def phone_summary(envelope: dict) -> str:
         f" | max latency: {e['latency_max_s']}s"
         f" | est cost: ${e['estimated_cost_usd']}"
     )
+    budget = e.get("budget")
+    if budget:
+        lines.append(
+            f"budget: ${budget['spent_usd']:.2f} spent of ${budget['budget_usd']:.2f}"
+            + (" — BUDGET STOP" if budget.get("budget_stopped") else "")
+        )
     fails = [r["case_id"] for r in e["results"] if r["status"] != "pass"]
     lines.append("failing cases: " + (", ".join(fails) or "none"))
     lines.append(f"{e['baseline']}")

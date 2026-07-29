@@ -86,9 +86,12 @@ export async function POST(
 
       await c.query(
         `UPDATE ctx_import_batches
-            SET review_status = $1, updated_at = now()
+            SET review_status = $1,
+                updated_at = now(),
+                approved_by = CASE WHEN $1 = 'approved' THEN $4 ELSE approved_by END,
+                approved_at = CASE WHEN $1 = 'approved' THEN now() ELSE approved_at END
           WHERE id = $2 AND tenant_id = $3::uuid`,
-        [outcome.status, batchId, ctx.tenantId],
+        [outcome.status, batchId, ctx.tenantId, reviewerLabel],
       );
 
       if (!outcome.publish) {
