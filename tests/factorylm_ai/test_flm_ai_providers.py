@@ -316,8 +316,6 @@ async def test_create_finetune_job_dpo_method_accepted_and_gated(
 ) -> None:
     """training_method='dpo' with the DPO rate is accepted (no ValueError) and
     still stops at the network gate — the payload is built but no POST fires."""
-    from factorylm_ai.pricing import FT_LORA_DPO_USD_PER_MTOK_LE16B
-
     monkeypatch.delenv("TOGETHERAI_API_KEY", raising=False)
     monkeypatch.delenv("FACTORYLM_AI_ALLOW_NETWORK", raising=False)
     monkeypatch.setattr(httpx, "AsyncClient", _ExplodingAsyncClient)
@@ -329,7 +327,6 @@ async def test_create_finetune_job_dpo_method_accepted_and_gated(
             suffix="factorylm_dpo",
             budget=guard,
             est_training_tokens=500_000,
-            usd_per_mtok=FT_LORA_DPO_USD_PER_MTOK_LE16B,
             training_method="dpo",
         )
     assert guard.spent_usd == 0.0  # network gate fired before record()

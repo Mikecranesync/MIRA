@@ -37,6 +37,34 @@ OCR_VARIANT_ALIASES: dict[str, str] = {
     "desha": "Deshazo",
     "deshao": "Deshazo",
     "deshazzo": "Deshazo",
+    # Known-vendor casing/spelling canonicalization (#1596 Gap A). Mirrors the
+    # manufacturer-NAME entries of VENDOR_ALIASES in the crawler copy; keep
+    # byte-identical (guarded by tests/test_manufacturer_alias_consistency.py).
+    "rockwell automation": "Rockwell Automation",
+    "rockwell": "Rockwell Automation",
+    "automationdirect": "AutomationDirect",
+    "automation direct": "AutomationDirect",
+    "siemens": "Siemens",
+    "mitsubishi electric": "Mitsubishi Electric",
+    "mitsubishi": "Mitsubishi Electric",
+    "danfoss": "Danfoss",
+    "schneider electric": "Schneider Electric",
+    "schneider": "Schneider Electric",
+    "bosch rexroth": "Bosch Rexroth",
+    "rexroth": "Bosch Rexroth",
+    "sew-eurodrive": "SEW-Eurodrive",
+    "sew": "SEW-Eurodrive",
+    "yaskawa": "Yaskawa",
+    "abb": "ABB",
+    "omron": "Omron",
+    "eaton": "Eaton",
+    "delta": "Delta Electronics",
+    "lenze": "Lenze",
+    "pilz": "Pilz",
+    "yaskawa electric corporation": "Yaskawa",
+    "coffing": "Coffing",
+    "coffing hoists": "Coffing",
+    "harrington": "Harrington",
 }
 
 

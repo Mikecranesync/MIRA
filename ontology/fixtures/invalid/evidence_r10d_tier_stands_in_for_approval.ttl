@@ -1,0 +1,26 @@
+# EXPECT-VIOLATION: mirash:ProvenanceTierIsNotApprovalShape
+#
+# R10d — a bench_verified SOURCE treated as a human APPROVAL. drive_packs/schema.py says
+# verbatim: «never bare "verified" (that word is reserved for kg_*.approval_state)». Provenance
+# tier answers "how good is the source"; approval state answers "who signed off". Orthogonal.
+#
+# Co-firing (inherent): like R10a, R10d requires verified with no approving Technician, which R9
+# independently forbids. Both fire; they cannot be separated.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech1  a mira:Technician .
+ex:tech2  a mira:Technician .
+ex:llm    a mira:SoftwareAgent .
+ex:doc1   a mira:SourceDocument .
+ex:cite1  a mira:Citation ; mira:cite_doc ex:doc1 ; mira:cite_locator "p.114" .
+
+ex:a_r10d_bad a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:provenance_tier mira:tier_bench_verified ;
+    mira:approval_state mira:approval_verified ;
+    mira:supported_by ex:cite1 ;
+    mira:proposed_by ex:llm ;
+    mira:approved_at "2026-07-20T14:03:00Z"^^xsd:dateTime .

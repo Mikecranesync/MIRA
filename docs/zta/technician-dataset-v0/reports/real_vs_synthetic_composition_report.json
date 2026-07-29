@@ -1,12 +1,12 @@
 {
   "build_id": "2026-07-23-technician-dataset-v0",
   "origin_counts": {
-    "human_corrected": 140,
-    "synthetic": 40
+    "human_corrected": 202,
+    "synthetic": 17
   },
-  "real_or_human_corrected_pct": 0.7778,
+  "real_or_human_corrected_pct": 0.9224,
   "schema": "factorylm.technician-dataset.composition.v1",
-  "synthetic_pct": 0.2222,
+  "synthetic_pct": 0.0776,
   "target_comparison": {
     "passes_candidate_composition_target": true,
     "real_or_human_corrected_min_pct": 0.7,
