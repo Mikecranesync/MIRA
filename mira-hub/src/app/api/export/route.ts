@@ -3,24 +3,13 @@ import { PassThrough } from "stream";
 import archiver from "archiver";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+// Use the shared serialiser so this bulk export gets the same RFC 4180 quoting
+// AND spreadsheet formula-injection neutralisation as the per-table exports.
+// (Previously a local copy that quoted commas/quotes/newlines but neither
+// neutralised formulas nor handled CR — a CSV-injection hole.)
+import { toCsv } from "@/lib/csv-export";
 
 export const dynamic = "force-dynamic";
-
-function toCsv(rows: Record<string, unknown>[]): string {
-  if (rows.length === 0) return "";
-  const headers = Object.keys(rows[0]);
-  const escape = (v: unknown): string => {
-    const s = v == null ? "" : String(v);
-    return s.includes(",") || s.includes('"') || s.includes("\n")
-      ? `"${s.replace(/"/g, '""')}"`
-      : s;
-  };
-  const lines = [
-    headers.join(","),
-    ...rows.map((r) => headers.map((h) => escape(r[h])).join(",")),
-  ];
-  return lines.join("\n");
-}
 
 export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {

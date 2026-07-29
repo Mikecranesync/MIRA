@@ -1,0 +1,109 @@
+# RCA starter eval pack (pillar 1: Evaluation) — Root Cause Analysis Agent.
+#
+# The five blueprint starter cases for the Root Cause Analysis Agent
+# (docs/observability-and-preformatted-agents.md → manifest root_cause_analysis):
+#   1. Fault with a known blocked-photoeye cause.
+#   2. VFD not enabled / motor not running.
+#   3. Missing historian context — agent MUST say "insufficient evidence".
+#   4. Repeat fault — prior occurrence shown in events/work orders.
+#   5. Upstream/downstream ambiguity — agent MUST avoid overclaiming.
+#
+# Grounded in tests/simlab/scenarios/conveyor_jam_01.yaml. The RCA contract
+# (separate evidence from hypothesis, prefer "the evidence suggests", flag missing
+# context, cite causal claims) is what these mock answers demonstrate.
+#
+# mock_answer / simlab_scenario_id are harness-only fields (see conveyor_demo.yaml).
+# CI default runs mock mode. LIVE mode needs the RCA scenarios seeded with
+# historian + event + work-order context — pending (see the doc). Until then, run:
+#       python -m simlab.observe.run_eval rca_starter
+
+- id: rca_blocked_photoeye_cause
+  question: "Why did the conveyor fault out? What caused the downtime?"
+  expected_asset: "enterprise.plant1.packaging.line2.conv_belt_01"
+  expected_tags: ["pe_101.blocked", "pe_102.blocked", "vfd_gs20_01.fault_code"]
+  expected_documents: ["troubleshooting.md"]
+  expected_answer_points: ["evidence suggests", "physical jam", "blocked", "not a sensor"]
+  unacceptable_answer_patterns: ["the cause was definitely", "dual sensor failure"]
+  required_citations: ["troubleshooting.md"]
+  severity: production
+  active: true
+  simlab_scenario_id: conveyor_jam_01
+  mock_answer: >
+    Timeline: the belt stopped while both photoeyes read blocked and the VFD shows
+    no fault code (output 0.2 A). Most likely cause — the evidence suggests a
+    physical jam holding product across both photoeyes; the drive never faulted.
+    This is a hypothesis, not a confirmed root cause. Recommended next checks:
+    inspect the belt for an obstruction and confirm zero energy first.
+    [Source: troubleshooting.md]
+
+- id: rca_vfd_not_enabled
+  question: "What changed before the stop — is the drive the root cause?"
+  expected_asset: "enterprise.plant1.packaging.line2.conv_belt_01"
+  expected_tags: ["vfd_gs20_01.output_hz", "vfd_gs20_01.output_amps", "vfd_gs20_01.fault_code"]
+  expected_documents: ["fault_code_table.md"]
+  expected_answer_points: ["evidence suggests", "not running", "no fault code", "0 hz"]
+  unacceptable_answer_patterns: ["drive failure confirmed", "replace the vfd"]
+  required_citations: ["fault_code_table.md"]
+  severity: production
+  active: true
+  simlab_scenario_id: conveyor_jam_01
+  mock_answer: >
+    Most likely: the motor is not running (output_hz 0, output_amps 0.2 A) but the
+    VFD reports no fault code. The evidence suggests the drive is disabled or
+    holding, not failed — a drive fault is less likely without a fault code.
+    Supporting evidence: 0 Hz / 0.2 A. Contradicting a drive-failure hypothesis:
+    no fault code present. Next check: confirm the run/enable command and interlocks.
+    [Source: fault_code_table.md]
+
+- id: rca_insufficient_evidence
+  question: "Was this a repeat failure based on the historian trend?"
+  expected_asset: "enterprise.plant1.packaging.line2.conv_belt_01"
+  expected_tags: []
+  expected_documents: []
+  expected_answer_points: ["insufficient evidence", "historian", "missing", "cannot conclude"]
+  unacceptable_answer_patterns: ["this happened multiple times", "confirmed recurring fault"]
+  required_citations: []
+  severity: production
+  active: true
+  simlab_scenario_id: conveyor_jam_01
+  mock_answer: >
+    Insufficient evidence to conclude. No historian window or event log is available
+    for this asset, so I cannot determine whether a similar stop occurred earlier.
+    Missing context: historian trend, alarm log, and work-order history. Provide a
+    historian window to assess recurrence.
+
+- id: rca_repeat_fault_prior_occurrence
+  question: "Has this fault happened before? Is it a repeat?"
+  expected_asset: "enterprise.plant1.packaging.line2.conv_belt_01"
+  expected_tags: []
+  expected_documents: ["troubleshooting.md"]
+  expected_answer_points: ["evidence suggests", "prior", "work order", "repeat"]
+  unacceptable_answer_patterns: ["never happened before", "first occurrence guaranteed"]
+  required_citations: ["troubleshooting.md"]
+  severity: production
+  active: true
+  simlab_scenario_id: conveyor_jam_01
+  mock_answer: >
+    The evidence suggests this is a repeat: a prior work order and an earlier jam
+    event reference the same Zone 2 belt with a comparable signature (both photoeyes
+    blocked, no drive fault). This is a likely pattern, not a certainty — confirm by
+    reviewing the linked work orders. Recommended next check: pull the asset's
+    work-order history. [Source: troubleshooting.md]
+
+- id: rca_upstream_downstream_ambiguity
+  question: "Did an upstream or downstream asset contribute to this fault?"
+  expected_asset: "enterprise.plant1.packaging.line2.conv_belt_01"
+  expected_tags: []
+  expected_documents: []
+  expected_answer_points: ["evidence suggests", "cannot confirm", "upstream", "insufficient"]
+  unacceptable_answer_patterns: ["upstream asset is the cause", "caused by the downstream"]
+  required_citations: []
+  severity: production
+  active: true
+  simlab_scenario_id: conveyor_jam_01
+  mock_answer: >
+    The evidence suggests an upstream product backup could have fed the jam, but the
+    relationship is not established in the approved namespace, so I cannot confirm an
+    upstream or downstream contributor. Treat this as a plausible, unconfirmed
+    hypothesis. Missing context: upstream/downstream asset links and their event
+    windows. Next check: confirm the conveyor's upstream feed asset and its state.

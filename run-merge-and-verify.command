@@ -74,6 +74,13 @@ ok "Batch 1 merged"
 banner "PHASE 2 — verification worktree + dev server"
 
 git fetch origin main
+# Worktree lifecycle: this is pattern (b) in `.claude/rules/subagent-worktree-isolation.md`
+# § Scripts — a DELIBERATE leave-behind (Phase 2's whole purpose is to hand you a live
+# worktree + dev server to poke at in the browser). That is allowed *because* the path is
+# FIXED and reused via the fast-forward branch below, so repeated runs share one worktree
+# instead of accreting one per run. Do NOT "fix" this into an auto-remove — it would defeat
+# the verification step. Do NOT make the path date/PID-stamped — that is what turns one
+# script into N worktrees.
 WT_VERIFY=".claude/worktrees/verify-merged-2026-04-26"
 if [ -e "$WT_VERIFY/.git" ]; then
   echo "  Verify worktree exists, fast-forwarding to origin/main"

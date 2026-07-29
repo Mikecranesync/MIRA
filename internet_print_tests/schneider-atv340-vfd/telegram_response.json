@@ -1,0 +1,1295 @@
+{
+  "bot_importable": true,
+  "handled": true,
+  "classification": "ELECTRICAL_PRINT",
+  "classification_confidence": 0.9,
+  "drawing_type": "wiring diagram",
+  "vision_description": "The image shows an electrical drawing, specifically a wiring diagram for ATV340 S1, S2 & S3. The diagram includes various components and their connections, with labels and symbols indicating different parts of the system. It appears to be a technical document or schematic.",
+  "ocr_items": [],
+  "tesseract_text": "",
+  "ack": "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+  "final_text": "📋 Sheet 1/2 of Schneider Electric's ATV340 variable-speed drive wiring reference — the power terminals (for frame sizes S1, S2 and S3) and the shared control terminals.\n\nThis is a factory connection diagram for the Altivar ATV340 AC drive. The upper 'Power' half shows how to land three-phase incoming mains on connector CN1 (L1/L2/L3, or L1-R/L2-S/L3-T on the S3 frame), the motor output U/V/W (U/T1,V/T2,W/T3) on CN10 to the motor, the internal DC bus at PA/+ and PC/- (CN9), and an optional dynamic braking resistor on the PB/PBe terminals. An earth (PE) plate and ground terminals bond the chassis. The lower 'Control' half shows the low-voltage terminals: the Safe Torque Off safety inputs (STO_A/STO_B, 24V, 0V) on CN2, programmable relay outputs R1 (A/B/C) and R2 (A/C), analog I/O on CN6 (AI1 0..10V/20mA, AI2 ±10V, AQ1 output 0..10V/20mA), five digital inputs (DI1–DI5), two transistor outputs (DO1, DO2), a +10V pot reference, plus expansion/communication ports: HMI/Modbus on CN7, optional Ethernet or Sercos III (ETH1,2), an encoder interface (ENC, 1Vpp A/B/I) and pulse train ports PTI/PTO (CN3/CN4/CN5) and an RS422 link. A logic-type selector (SW1: SRC/SK/EXT) sets sink/source for the digital inputs. Screw torque is 0.5 N·m / 4.4 lb·in.\n\n🔑 Signals\n• Three-phase line input\n• Motor output to motor\n• DC bus terminals\n• Dynamic braking resistor\n• Safe Torque Off channel A\n• Safe Torque Off channel B\n• 24V / 0V control supply\n• Relay output 1 (form-C)\n• Relay output 2\n• Analog input 1 (0..10V / x..20mA), pot reference\n• Analog input 2 bipolar ±10Vdc (differential)\n• Analog output 1 (0..10V / x..20mA)\n• +10V potentiometer reference supply\n• Digital inputs 1–5\n• Transistor output 1\n• Transistor output 2\n• Digital output common\n• Digital input supply\n• HMI / Modbus serial port\n• Ethernet / Sercos III option ports\n• Encoder interface (1Vpp, A/B/I) / RS422\n• Pulse train output\n• Pulse train input\n\n🔧 Devices\n• Altivar ATV340 variable-speed drive (frames S1/S2/S3) (ATV340)\n• Three-phase AC motor (M)\n• Dynamic braking resistor (optional, 'if used') (Braking resistor)\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• S3 power block CN8/CN9 grouping (PB, PA/+, PC/-) is cramped and overlapping — verify exact terminal-to-connector assignment from a clean crop.\n• The repeated 'DISUP' terminal(s) at CN6 and their count are low-confidence.\n• CN7 Modbus marking 'VP12S' is uncertain.\n• No absolute supply/motor voltage is printed on this sheet — get it from the ATV340 rating plate/catalog.\n\n⚠️ The power terminals (CN1 line, CN10 motor, CN9 PA/+/PC/- DC bus) are lethal live parts; the DC-bus capacitors can hold a dangerous charge AFTER the mains disconnect, so treat PA/+/PC/- and the braking terminals as energized until proven discharged. This sheet does NOT print the actual line/motor voltage — determine it from the drive rating plate before working. For continuity/resistance checks (e.g. motor leads, resistor), de-energize, lock out, and verify absence of voltage including the DC bus. The only voltage values actually printed here are the control-side references: ±10Vdc and 0..10Vdc analog, 24V/0V, 5V, 10V and the 1Vpp encoder signal — for live checks on those use appropriately rated meters and energized-work procedures. Terminal screw torque printed as 0.5 N·m / 4.4 lb·in.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list.",
+  "all_messages": [
+    "🔍 Reading your electrical print — a full interpretation takes ~30–60 s…",
+    "📋 Sheet 1/2 of Schneider Electric's ATV340 variable-speed drive wiring reference — the power terminals (for frame sizes S1, S2 and S3) and the shared control terminals.\n\nThis is a factory connection diagram for the Altivar ATV340 AC drive. The upper 'Power' half shows how to land three-phase incoming mains on connector CN1 (L1/L2/L3, or L1-R/L2-S/L3-T on the S3 frame), the motor output U/V/W (U/T1,V/T2,W/T3) on CN10 to the motor, the internal DC bus at PA/+ and PC/- (CN9), and an optional dynamic braking resistor on the PB/PBe terminals. An earth (PE) plate and ground terminals bond the chassis. The lower 'Control' half shows the low-voltage terminals: the Safe Torque Off safety inputs (STO_A/STO_B, 24V, 0V) on CN2, programmable relay outputs R1 (A/B/C) and R2 (A/C), analog I/O on CN6 (AI1 0..10V/20mA, AI2 ±10V, AQ1 output 0..10V/20mA), five digital inputs (DI1–DI5), two transistor outputs (DO1, DO2), a +10V pot reference, plus expansion/communication ports: HMI/Modbus on CN7, optional Ethernet or Sercos III (ETH1,2), an encoder interface (ENC, 1Vpp A/B/I) and pulse train ports PTI/PTO (CN3/CN4/CN5) and an RS422 link. A logic-type selector (SW1: SRC/SK/EXT) sets sink/source for the digital inputs. Screw torque is 0.5 N·m / 4.4 lb·in.\n\n🔑 Signals\n• Three-phase line input\n• Motor output to motor\n• DC bus terminals\n• Dynamic braking resistor\n• Safe Torque Off channel A\n• Safe Torque Off channel B\n• 24V / 0V control supply\n• Relay output 1 (form-C)\n• Relay output 2\n• Analog input 1 (0..10V / x..20mA), pot reference\n• Analog input 2 bipolar ±10Vdc (differential)\n• Analog output 1 (0..10V / x..20mA)\n• +10V potentiometer reference supply\n• Digital inputs 1–5\n• Transistor output 1\n• Transistor output 2\n• Digital output common\n• Digital input supply\n• HMI / Modbus serial port\n• Ethernet / Sercos III option ports\n• Encoder interface (1Vpp, A/B/I) / RS422\n• Pulse train output\n• Pulse train input\n\n🔧 Devices\n• Altivar ATV340 variable-speed drive (frames S1/S2/S3) (ATV340)\n• Three-phase AC motor (M)\n• Dynamic braking resistor (optional, 'if used') (Braking resistor)\n… (more — reply \"map\")\n\n❓ Couldn't confirm (verify on the sheet):\n• S3 power block CN8/CN9 grouping (PB, PA/+, PC/-) is cramped and overlapping — verify exact terminal-to-connector assignment from a clean crop.\n• The repeated 'DISUP' terminal(s) at CN6 and their count are low-confidence.\n• CN7 Modbus marking 'VP12S' is uncertain.\n• No absolute supply/motor voltage is printed on this sheet — get it from the ATV340 rating plate/catalog.\n\n⚠️ The power terminals (CN1 line, CN10 motor, CN9 PA/+/PC/- DC bus) are lethal live parts; the DC-bus capacitors can hold a dangerous charge AFTER the mains disconnect, so treat PA/+/PC/- and the braking terminals as energized until proven discharged. This sheet does NOT print the actual line/motor voltage — determine it from the drive rating plate before working. For continuity/resistance checks (e.g. motor leads, resistor), de-energize, lock out, and verify absence of voltage including the DC bus. The only voltage values actually printed here are the control-side references: ±10Vdc and 0..10Vdc analog, 24V/0V, 5V, 10V and the 1Vpp encoder signal — for live checks on those use appropriately rated meters and energized-work procedures. Terminal screw torque printed as 0.5 N·m / 4.4 lb·in.\n🔎 Read from the drawing. Verify field conditions and use the correct procedure for the measurement.\n\nReply \"map\" for the full terminal and wire list."
+  ],
+  "map_text": "📐 sheet 1/2\n\n🔌 Signals (exact — source → destination)\n• Three-phase line input — CN1 L1/L2/L3 (S3: L1-R/L2-S/L3-T)  @ CN1  → AC mains supply · conf 0.85\n• Motor output to motor — CN10 U/V/W (S3: U/T1,V/T2,W/T3)  @ CN10  → Motor 'M' · conf 0.85\n• DC bus terminals — PA/+, PC/-  @ CN9  → internal DC link / external accessory · conf 0.75\n• Dynamic braking resistor — PB / PBe  @ CN10 (S1&S2), CN8 (S3)  → Braking resistor (if used) · conf 0.80\n• Safe Torque Off channel A — STO_A  @ CN2:STO_A  → safety wiring (not on this sheet) · conf 0.82\n• Safe Torque Off channel B — STO_B  @ CN2:STO_B  → safety wiring (not on this sheet) · conf 0.82\n• 24V / 0V control supply — 24V, 0V  @ CN2  → control-circuit supply · conf 0.80\n• Relay output 1 (form-C) — R1A / R1B / R1C  @ CN6  → programmable relay load · conf 0.72\n• Relay output 2 — R2A / R2C  @ CN6  → programmable relay load · conf 0.72\n• Analog input 1 (0..10V / x..20mA), pot reference — AI1  @ CN6:AI1  → speed-reference potentiometer (10V/COM) · conf 0.78\n• Analog input 2 bipolar ±10Vdc (differential) — AI2+ / AI2-  @ CN6:AI2+/AI2-  → PLC / external ±10V reference · conf 0.78\n• Analog output 1 (0..10V / x..20mA) — AQ1  @ CN6:AQ1  → meter · conf 0.78\n• +10V potentiometer reference supply — 10V  @ CN6:10V  → speed-reference pot · conf 0.80\n• Digital inputs 1–5 — DI1, DI2, DI3, DI4, DI5  @ CN6  → field control switches · conf 0.80\n• Transistor output 1 — DO1  @ CN6:DO1  → output load (via DQCOM) · conf 0.72\n• Transistor output 2 — DO2  @ CN6:DO2  → external PLC input 'Dix' · conf 0.72\n• Digital output common — DQCOM  @ CN6:DQCOM  → return for DO1/DO2 · conf 0.70\n• Digital input supply — DISUP  @ CN6:DISUP  → digital-input supply · conf 0.55\n• HMI / Modbus serial port — CN7 (Modbus, VP12S)  @ CN7  → HMI display / Modbus · conf 0.65\n• Ethernet / Sercos III option ports — ETH1, 2  @ ETH1,2  → network (optional) · conf 0.70\n• Encoder interface (1Vpp, A/B/I) / RS422 — ENC (CN3), RS422  @ CN3  → encoder / another ATV340 · conf 0.60\n• Pulse train output — PTO  @ CN4  → PTO device · conf 0.60\n• Pulse train input — PTI  @ CN5  → PLC (5V/24V) · conf 0.60\n\n🔧 Devices (10)\n• ATV340 — variable-speed drive (Altivar ATV340 VFD; power + control terminal set shown for frames S1/S2/S3) · conf 0.97\n• M — motor (3-phase AC motor fed from drive output U/V/W (S1&S2)) · conf 0.92\n• M — motor (3-phase AC motor fed from drive output U/T1, V/T2, W/T3 (S3)) · conf 0.90\n• Braking resistor — resistor (optional) (Dynamic braking resistor 'if used', connected to DC/brake terminals PB/PBe (S1&S2) and PB (S3)) · conf 0.88\n• ENC — encoder interface module (Encoder input, 1Vpp, A/B/I signals; also ATV340 encoder emulation over RS422) · conf 0.78\n• PTI — pulse train input module (Pulse train input, powered from PLC 5V/24V, connector CN5) · conf 0.72\n• PTO — pulse train output module (Pulse train output, connector CN4) · conf 0.72\n• PLC — external controller (External PLC referenced for PTI supply and for digital output loads (Dix)) · conf 0.70\n• HMI — operator display port (HMI / display terminal connection) · conf 0.75\n• SW1 — logic-type selector switch (Digital-input logic selector: SRC (source) / SK / EXT (external) sink/source setting) · conf 0.70\n\n🔗 Wires / cables\n• AI2 shielded cable — shielded analog cable · conf 0.65\n• AI1/AQ1 shielded cable — shielded analog cable · conf 0.60\n\n🧩 1 off-page ref(s): 2/2 · 11 PLC I/O · 5 network link(s): CN7 Modbus, ETH1, 2, RS422 (CN3 ENC), CN4 PTO, CN5 PTI · 3 PE bond(s)\n\n… (truncated — reply \"map\" for detail)",
+  "graph": {
+    "package": {
+      "drawing_number": "NVE97896-02",
+      "barcode": "NVE9789602",
+      "title": "ATV340 S1, S2 & S3 Wiring Diagrams",
+      "manufacturer": "Schneider Electric",
+      "website": "www.schneider-electric.com",
+      "date": "07/2018",
+      "sheet": "1/2",
+      "drawing_type": "wiring diagram",
+      "sections": [
+        "Power",
+        "Control"
+      ],
+      "frame_variants": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "torque_spec": "0.5 N·m / 4.4 lb·in (terminal screws)"
+    },
+    "devices": [
+      {
+        "tag": "ATV340",
+        "type": "variable-speed drive",
+        "detail": "Altivar ATV340 VFD; power + control terminal set shown for frames S1/S2/S3",
+        "connects": [],
+        "evidence": "Title 'ATV340', block 'ATV340' in Control section",
+        "confidence": 0.97,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "M",
+        "type": "motor",
+        "detail": "3-phase AC motor fed from drive output U/V/W (S1&S2)",
+        "connects": [
+          "CN10:U",
+          "CN10:V",
+          "CN10:W"
+        ],
+        "evidence": "Motor symbol 'M' at CN10 output, S1&S2 area",
+        "confidence": 0.92,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "M",
+        "type": "motor",
+        "detail": "3-phase AC motor fed from drive output U/T1, V/T2, W/T3 (S3)",
+        "connects": [
+          "CN10:U/T1",
+          "CN10:V/T2",
+          "CN10:W/T3"
+        ],
+        "evidence": "Motor symbol 'M' at CN10 output, S3 area",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "Braking resistor",
+        "type": "resistor (optional)",
+        "detail": "Dynamic braking resistor 'if used', connected to DC/brake terminals PB/PBe (S1&S2) and PB (S3)",
+        "connects": [],
+        "evidence": "Text 'Braking resistor (if used)' both variants",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "ENC",
+        "type": "encoder interface module",
+        "detail": "Encoder input, 1Vpp, A/B/I signals; also ATV340 encoder emulation over RS422",
+        "connects": [],
+        "evidence": "'ENC', '1Vpp, A/B/I', 'RS422', 'CN3'",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "PTI",
+        "type": "pulse train input module",
+        "detail": "Pulse train input, powered from PLC 5V/24V, connector CN5",
+        "connects": [],
+        "evidence": "'PTI', 'CN5', '5V, 24V', 'PLC'",
+        "confidence": 0.72,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "PTO",
+        "type": "pulse train output module",
+        "detail": "Pulse train output, connector CN4",
+        "connects": [],
+        "evidence": "'PTO', 'CN4'",
+        "confidence": 0.72,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "PLC",
+        "type": "external controller",
+        "detail": "External PLC referenced for PTI supply and for digital output loads (Dix)",
+        "connects": [],
+        "evidence": "'PLC' blocks near CN5 and near DO2/'Dix'",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "HMI",
+        "type": "operator display port",
+        "detail": "HMI / display terminal connection",
+        "connects": [],
+        "evidence": "'HMI' block near CN7",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "SW1",
+        "type": "logic-type selector switch",
+        "detail": "Digital-input logic selector: SRC (source) / SK / EXT (external) sink/source setting",
+        "connects": [],
+        "evidence": "'SW1', 'SRC', 'SK', 'EXT'",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "terminals": [
+      {
+        "tag": "CN1:L1",
+        "type": "power terminal",
+        "detail": "3-phase line input L1 (S1&S2)",
+        "connects": [],
+        "evidence": "CN1 block, 'L1'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN1:L2",
+        "type": "power terminal",
+        "detail": "3-phase line input L2 (S1&S2)",
+        "connects": [],
+        "evidence": "CN1 block, 'L2'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN1:L3",
+        "type": "power terminal",
+        "detail": "3-phase line input L3 (S1&S2)",
+        "connects": [],
+        "evidence": "CN1 block, 'L3'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN9:PA/+",
+        "type": "DC-bus terminal",
+        "detail": "DC bus + / PA (S1&S2)",
+        "connects": [],
+        "evidence": "CN9 block 'PA/+'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN9:PC/-",
+        "type": "DC-bus terminal",
+        "detail": "DC bus - / PC (S1&S2)",
+        "connects": [],
+        "evidence": "CN9 block 'PC/-'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN10:PBe",
+        "type": "brake terminal",
+        "detail": "Braking resistor terminal PBe (S1&S2)",
+        "connects": [],
+        "evidence": "CN10 block 'PBe'",
+        "confidence": 0.72,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN10:PB",
+        "type": "brake terminal",
+        "detail": "Braking resistor terminal PB (S1&S2)",
+        "connects": [],
+        "evidence": "CN10 block 'PB'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN10:U",
+        "type": "motor terminal",
+        "detail": "Motor output U (S1&S2)",
+        "connects": [],
+        "evidence": "CN10 block 'U'",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN10:V",
+        "type": "motor terminal",
+        "detail": "Motor output V (S1&S2)",
+        "connects": [],
+        "evidence": "CN10 block 'V'",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN10:W",
+        "type": "motor terminal",
+        "detail": "Motor output W (S1&S2)",
+        "connects": [],
+        "evidence": "CN10 block 'W'",
+        "confidence": 0.88,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN1:L1/R",
+        "type": "power terminal",
+        "detail": "3-phase line input L1/R (S3)",
+        "connects": [],
+        "evidence": "CN1 block 'L1 /R' (S3)",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN1:L2/S",
+        "type": "power terminal",
+        "detail": "3-phase line input L2/S (S3)",
+        "connects": [],
+        "evidence": "CN1 block 'L2 /S' (S3)",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN1:L3/T",
+        "type": "power terminal",
+        "detail": "3-phase line input L3/T (S3)",
+        "connects": [],
+        "evidence": "CN1 block 'L3 /T' (S3)",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN8:PB",
+        "type": "brake terminal",
+        "detail": "Braking terminal PB (S3)",
+        "connects": [],
+        "evidence": "'CN8', 'PB' (S3)",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN9:PA/+",
+        "type": "DC-bus terminal",
+        "detail": "DC bus + / PA (S3)",
+        "connects": [],
+        "evidence": "'CN9', 'PA/+' (S3)",
+        "confidence": 0.65,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN9:PC/-",
+        "type": "DC-bus terminal",
+        "detail": "DC bus - / PC (S3)",
+        "connects": [],
+        "evidence": "'CN9', 'PC/-' (S3)",
+        "confidence": 0.65,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN10:U/T1",
+        "type": "motor terminal",
+        "detail": "Motor output U/T1 (S3)",
+        "connects": [],
+        "evidence": "CN10 block 'U /T1' (S3)",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN10:V/T2",
+        "type": "motor terminal",
+        "detail": "Motor output V/T2 (S3)",
+        "connects": [],
+        "evidence": "CN10 block 'V /T2' (S3)",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN10:W/T3",
+        "type": "motor terminal",
+        "detail": "Motor output W/T3 (S3)",
+        "connects": [],
+        "evidence": "CN10 block 'W /T3' (S3)",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN2:STO_A",
+        "type": "safety input terminal",
+        "detail": "Safe Torque Off channel A input",
+        "connects": [],
+        "evidence": "CN2 'STO_A'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN2:STO_B",
+        "type": "safety input terminal",
+        "detail": "Safe Torque Off channel B input",
+        "connects": [],
+        "evidence": "CN2 'STO_B'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN2:24V",
+        "type": "supply terminal",
+        "detail": "24V supply for STO",
+        "connects": [],
+        "evidence": "CN2 '24V'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN2:0V",
+        "type": "supply terminal",
+        "detail": "0V common for STO",
+        "connects": [],
+        "evidence": "CN2 '0V'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:R1A",
+        "type": "relay-output terminal",
+        "detail": "Relay R1 output contact terminal A",
+        "connects": [],
+        "evidence": "CN6 'R1A'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:R1B",
+        "type": "relay-output terminal",
+        "detail": "Relay R1 output contact terminal B",
+        "connects": [],
+        "evidence": "CN6 'R1B'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:R1C",
+        "type": "relay-output terminal",
+        "detail": "Relay R1 output common terminal C",
+        "connects": [],
+        "evidence": "CN6 'R1C'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:R2A",
+        "type": "relay-output terminal",
+        "detail": "Relay R2 output contact terminal A",
+        "connects": [],
+        "evidence": "CN6 'R2A'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:R2C",
+        "type": "relay-output terminal",
+        "detail": "Relay R2 output common terminal C",
+        "connects": [],
+        "evidence": "CN6 'R2C'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:AI2-",
+        "type": "analog input terminal",
+        "detail": "Analog input 2 negative (+/-10Vdc range)",
+        "connects": [],
+        "evidence": "CN6 'AI2-', '+/-10Vdc'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:AI2+",
+        "type": "analog input terminal",
+        "detail": "Analog input 2 positive (+/-10Vdc range)",
+        "connects": [],
+        "evidence": "CN6 'AI2+', '+/-10Vdc'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:AI1",
+        "type": "analog input terminal",
+        "detail": "Analog input 1 (0..10Vdc / x..20mA), typically potentiometer wiper",
+        "connects": [],
+        "evidence": "CN6 'AI1', '0..10Vdc x..20mA'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:10V",
+        "type": "reference supply terminal",
+        "detail": "+10V reference supply for potentiometer",
+        "connects": [],
+        "evidence": "CN6 '10V'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:AQ1",
+        "type": "analog output terminal",
+        "detail": "Analog output 1 (0..10Vdc / x..20mA) to meter",
+        "connects": [],
+        "evidence": "CN6 'AQ1', meter symbol, '0..10Vdc x..20mA'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:COM",
+        "type": "analog common terminal",
+        "detail": "Analog common (multiple COM terminals shown)",
+        "connects": [],
+        "evidence": "CN6 'COM' (appears multiple times)",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:SHLD",
+        "type": "shield terminal",
+        "detail": "Cable shield / screen terminals for analog & digital I/O",
+        "connects": [],
+        "evidence": "CN6 'SHLD' (multiple)",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DI1",
+        "type": "digital input terminal",
+        "detail": "Digital input 1",
+        "connects": [],
+        "evidence": "CN6 'DI1'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DI2",
+        "type": "digital input terminal",
+        "detail": "Digital input 2",
+        "connects": [],
+        "evidence": "CN6 'DI2'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DI3",
+        "type": "digital input terminal",
+        "detail": "Digital input 3",
+        "connects": [],
+        "evidence": "CN6 'DI3'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DI4",
+        "type": "digital input terminal",
+        "detail": "Digital input 4",
+        "connects": [],
+        "evidence": "CN6 'DI4'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DI5",
+        "type": "digital input terminal",
+        "detail": "Digital input 5",
+        "connects": [],
+        "evidence": "CN6 'DI5'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DISUP",
+        "type": "digital input supply terminal",
+        "detail": "Digital-input supply terminal (two DISUP terminals shown)",
+        "connects": [],
+        "evidence": "CN6 'DISUP' x2",
+        "confidence": 0.55,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DO1",
+        "type": "digital output terminal",
+        "detail": "Digital/transistor output 1",
+        "connects": [],
+        "evidence": "CN6 'DO1'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DO2",
+        "type": "digital output terminal",
+        "detail": "Digital/transistor output 2 (shown driving 'Dix' PLC input)",
+        "connects": [],
+        "evidence": "CN6 'DO2', 'Dix PLC'",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN6:DQCOM",
+        "type": "digital output common terminal",
+        "detail": "Digital output common",
+        "connects": [],
+        "evidence": "CN6 'DQCOM'",
+        "confidence": 0.72,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "conductors": [],
+    "cables": [
+      {
+        "tag": "AI2 shielded cable",
+        "type": "shielded analog cable",
+        "detail": "Shielded pair for +/-10Vdc analog input 2 (AI2+/AI2-/SHLD)",
+        "connects": [
+          "CN6:AI2+",
+          "CN6:AI2-",
+          "CN6:SHLD"
+        ],
+        "evidence": "SHLD + shield symbol near AI2",
+        "confidence": 0.65,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "AI1/AQ1 shielded cable",
+        "type": "shielded analog cable",
+        "detail": "Shielded wiring for analog input 1 / analog output 1 with SHLD screens",
+        "connects": [
+          "CN6:AI1",
+          "CN6:AQ1",
+          "CN6:SHLD",
+          "CN6:10V",
+          "CN6:COM"
+        ],
+        "evidence": "SHLD symbols near AI1/AQ1",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "contacts": [
+      {
+        "tag": "R1 (R1A-R1B-R1C)",
+        "type": "relay changeover contact",
+        "detail": "Programmable relay output R1, form-C (A/B/C)",
+        "connects": [
+          "CN6:R1A",
+          "CN6:R1B",
+          "CN6:R1C"
+        ],
+        "evidence": "R1A/R1B/R1C with contact symbol",
+        "confidence": 0.72,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "R2 (R2A-R2C)",
+        "type": "relay contact",
+        "detail": "Programmable relay output R2 (A/C)",
+        "connects": [
+          "CN6:R2A",
+          "CN6:R2C"
+        ],
+        "evidence": "R2A/R2C with contact symbol",
+        "confidence": 0.72,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "power_domains": [
+      {
+        "tag": "3-phase line input",
+        "type": "AC mains",
+        "detail": "Three-phase supply at CN1 (L1/L2/L3, or L1-R/L2-S/L3-T on S3); voltage not printed on this sheet",
+        "connects": [
+          "CN1:L1",
+          "CN1:L2",
+          "CN1:L3",
+          "CN1:L1/R",
+          "CN1:L2/S",
+          "CN1:L3/T"
+        ],
+        "evidence": "CN1 with L1/L2/L3 labels",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "DC bus",
+        "type": "DC link",
+        "detail": "Internal DC bus available at PA/+ and PC/- (CN9)",
+        "connects": [
+          "CN9:PA/+",
+          "CN9:PC/-"
+        ],
+        "evidence": "'PA/+', 'PC/-' with +/- terminals",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "Motor output",
+        "type": "3-phase VFD output",
+        "detail": "Variable-frequency 3-phase output U/V/W (U/T1,V/T2,W/T3) to motor",
+        "connects": [
+          "CN10:U",
+          "CN10:V",
+          "CN10:W"
+        ],
+        "evidence": "CN10 U/V/W to motor 'M'",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "24V control supply",
+        "type": "DC control supply",
+        "detail": "24V / 0V control supply used for STO (CN2) and I/O",
+        "connects": [
+          "CN2:24V",
+          "CN2:0V"
+        ],
+        "evidence": "'24V', '0V' at CN2",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "+10V reference",
+        "type": "analog reference supply",
+        "detail": "+10V potentiometer reference (CN6 10V/COM)",
+        "connects": [
+          "CN6:10V",
+          "CN6:COM",
+          "CN6:AI1"
+        ],
+        "evidence": "'10V', '0..10Vdc'",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "pe_bonds": [
+      {
+        "tag": "PE Plate",
+        "type": "protective-earth plate",
+        "detail": "Earth/ground plate bonding point shown at top of Power section (S1&S2)",
+        "connects": [],
+        "evidence": "'PE Plate' with earth symbol",
+        "confidence": 0.85,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN1:PE",
+        "type": "protective-earth terminal",
+        "detail": "Ground terminal in CN1 power block (S1&S2)",
+        "connects": [
+          "PE Plate"
+        ],
+        "evidence": "Earth symbol within CN1 block",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "PE (S3)",
+        "type": "protective-earth terminal",
+        "detail": "Earth symbol/plate at top of S3 power block and CN1 ground",
+        "connects": [],
+        "evidence": "Earth symbols in S3 area",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "off_page_references": [
+      {
+        "tag": "2/2",
+        "type": "sheet continuation",
+        "detail": "This is sheet 1/2; a second sheet exists",
+        "connects": [],
+        "evidence": "Footer '1/2'",
+        "confidence": 0.9,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "plc_io_channels": [
+      {
+        "tag": "AI1",
+        "type": "analog input",
+        "detail": "0..10Vdc / x..20mA analog input (speed reference via pot)",
+        "connects": [
+          "CN6:AI1",
+          "CN6:10V",
+          "CN6:COM"
+        ],
+        "evidence": "'AI1', '0..10Vdc x..20mA', pot symbol",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "AI2",
+        "type": "analog input",
+        "detail": "+/-10Vdc bipolar analog input (differential AI2+/AI2-)",
+        "connects": [
+          "CN6:AI2+",
+          "CN6:AI2-"
+        ],
+        "evidence": "'AI2+', 'AI2-', '+/-10Vdc'",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "AQ1",
+        "type": "analog output",
+        "detail": "0..10Vdc / x..20mA analog output to a meter",
+        "connects": [
+          "CN6:AQ1",
+          "CN6:COM"
+        ],
+        "evidence": "'AQ1', meter symbol, '0..10Vdc x..20mA'",
+        "confidence": 0.78,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "DI1",
+        "type": "digital input",
+        "detail": null,
+        "connects": [
+          "CN6:DI1"
+        ],
+        "evidence": "'DI1'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "DI2",
+        "type": "digital input",
+        "detail": null,
+        "connects": [
+          "CN6:DI2"
+        ],
+        "evidence": "'DI2'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "DI3",
+        "type": "digital input",
+        "detail": null,
+        "connects": [
+          "CN6:DI3"
+        ],
+        "evidence": "'DI3'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "DI4",
+        "type": "digital input",
+        "detail": null,
+        "connects": [
+          "CN6:DI4"
+        ],
+        "evidence": "'DI4'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "DI5",
+        "type": "digital input",
+        "detail": null,
+        "connects": [
+          "CN6:DI5"
+        ],
+        "evidence": "'DI5'",
+        "confidence": 0.8,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "DO1",
+        "type": "digital output",
+        "detail": null,
+        "connects": [
+          "CN6:DO1",
+          "CN6:DQCOM"
+        ],
+        "evidence": "'DO1', 'DQCOM'",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "DO2",
+        "type": "digital output",
+        "detail": "Drives external PLC input ('Dix')",
+        "connects": [
+          "CN6:DO2",
+          "CN6:DQCOM"
+        ],
+        "evidence": "'DO2', 'Dix PLC'",
+        "confidence": 0.75,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "STO",
+        "type": "safety input",
+        "detail": "Safe Torque Off inputs STO_A/STO_B (CN2)",
+        "connects": [
+          "CN2:STO_A",
+          "CN2:STO_B"
+        ],
+        "evidence": "'STO_A', 'STO_B'",
+        "confidence": 0.82,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "network_links": [
+      {
+        "tag": "CN7 Modbus",
+        "type": "serial fieldbus",
+        "detail": "Modbus serial port (marked 'VP12S'), shared with HMI display",
+        "connects": [
+          "HMI"
+        ],
+        "evidence": "'CN7', 'Modbus', 'VP12S', 'HMI'",
+        "confidence": 0.68,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "ETH1, 2",
+        "type": "Ethernet / Sercos",
+        "detail": "Optional Ethernet ports (or Sercos III)",
+        "connects": [],
+        "evidence": "'ETH1, 2', 'Optional or Sercos III'",
+        "confidence": 0.7,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "RS422 (CN3 ENC)",
+        "type": "encoder serial link",
+        "detail": "RS422 encoder link to/from another ATV340",
+        "connects": [
+          "ENC",
+          "CN3",
+          "ATV340"
+        ],
+        "evidence": "'RS422', 'CN3', 'ENC', 'ATV340'",
+        "confidence": 0.6,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN4 PTO",
+        "type": "pulse train output port",
+        "detail": null,
+        "connects": [
+          "PTO"
+        ],
+        "evidence": "'CN4', 'PTO'",
+        "confidence": 0.65,
+        "trust": "proposed",
+        "sheet": "1/2"
+      },
+      {
+        "tag": "CN5 PTI",
+        "type": "pulse train input port",
+        "detail": null,
+        "connects": [
+          "PTI",
+          "PLC"
+        ],
+        "evidence": "'CN5', 'PTI', '5V, 24V', 'PLC'",
+        "confidence": 0.65,
+        "trust": "proposed",
+        "sheet": "1/2"
+      }
+    ],
+    "functional_paths": [
+      {
+        "name": "Main power path (S1&S2)",
+        "sheet": "1/2",
+        "sequence": [
+          "CN1:L1",
+          "CN1:L2",
+          "CN1:L3",
+          "ATV340",
+          "CN10:U",
+          "CN10:V",
+          "CN10:W",
+          "M"
+        ]
+      },
+      {
+        "name": "Main power path (S3)",
+        "sheet": "1/2",
+        "sequence": [
+          "CN1:L1/R",
+          "CN1:L2/S",
+          "CN1:L3/T",
+          "ATV340",
+          "CN10:U/T1",
+          "CN10:V/T2",
+          "CN10:W/T3",
+          "M"
+        ]
+      },
+      {
+        "name": "DC bus / dynamic braking",
+        "sheet": "1/2",
+        "sequence": [
+          "CN9:PA/+",
+          "CN9:PC/-",
+          "CN10:PB",
+          "CN10:PBe",
+          "Braking resistor"
+        ]
+      },
+      {
+        "name": "Speed reference (potentiometer)",
+        "sheet": "1/2",
+        "sequence": [
+          "CN6:10V",
+          "CN6:AI1",
+          "CN6:COM"
+        ]
+      },
+      {
+        "name": "Safe Torque Off",
+        "sheet": "1/2",
+        "sequence": [
+          "CN2:24V",
+          "CN2:STO_A",
+          "CN2:STO_B",
+          "CN2:0V"
+        ]
+      }
+    ],
+    "physical_layout_matches": [],
+    "unresolved": [
+      {
+        "item": "S3 power connector labels CN8 / CN9 (PB, PA/+, PC/-) overlap and are cramped; exact terminal-to-connector grouping uncertain",
+        "status": "unreadable-layout",
+        "resolution": "High-res crop of the S3 power block (CN8/CN9/CN10 area)"
+      },
+      {
+        "item": "Repeated 'DISUP' label at CN6 — reading of the digital-input supply terminal(s) and count not fully certain",
+        "status": "low-confidence",
+        "resolution": "Crop of the CN6 lower terminal list"
+      },
+      {
+        "item": "CN7 Modbus marking 'VP12S' — designation uncertain",
+        "status": "low-confidence",
+        "resolution": "Crop of HMI/CN7 block"
+      },
+      {
+        "item": "No absolute voltage ratings printed for line/motor/DC-bus (only relative/reference values shown: +/-10Vdc, 0..10Vdc, 24V, 5V, 10V, 1Vpp)",
+        "status": "not-shown",
+        "resolution": "Refer to ATV340 rating plate / catalog for supply voltage class"
+      }
+    ],
+    "cross_sheet_notes": "Manufacturer wiring reference sheet 1/2 for the Schneider ATV340 drive covering three frame families: S1 & S2 (left power block) and S3 (right power block). The Control section is common. A second sheet (2/2) is referenced but not shown.",
+    "brief": {
+      "sheet_title": "Sheet 1/2 of Schneider Electric's ATV340 variable-speed drive wiring reference — the power terminals (for frame sizes S1, S2 and S3) and the shared control terminals.",
+      "purpose": "This is a factory connection diagram for the Altivar ATV340 AC drive. The upper 'Power' half shows how to land three-phase incoming mains on connector CN1 (L1/L2/L3, or L1-R/L2-S/L3-T on the S3 frame), the motor output U/V/W (U/T1,V/T2,W/T3) on CN10 to the motor, the internal DC bus at PA/+ and PC/- (CN9), and an optional dynamic braking resistor on the PB/PBe terminals. An earth (PE) plate and ground terminals bond the chassis. The lower 'Control' half shows the low-voltage terminals: the Safe Torque Off safety inputs (STO_A/STO_B, 24V, 0V) on CN2, programmable relay outputs R1 (A/B/C) and R2 (A/C), analog I/O on CN6 (AI1 0..10V/20mA, AI2 ±10V, AQ1 output 0..10V/20mA), five digital inputs (DI1–DI5), two transistor outputs (DO1, DO2), a +10V pot reference, plus expansion/communication ports: HMI/Modbus on CN7, optional Ethernet or Sercos III (ETH1,2), an encoder interface (ENC, 1Vpp A/B/I) and pulse train ports PTI/PTO (CN3/CN4/CN5) and an RS422 link. A logic-type selector (SW1: SRC/SK/EXT) sets sink/source for the digital inputs. Screw torque is 0.5 N·m / 4.4 lb·in.",
+      "key_signals": [
+        {
+          "signal": "Three-phase line input",
+          "tag": "CN1 L1/L2/L3 (S3: L1-R/L2-S/L3-T)",
+          "terminal": "CN1",
+          "destination": "AC mains supply",
+          "confidence": 0.85
+        },
+        {
+          "signal": "Motor output to motor",
+          "tag": "CN10 U/V/W (S3: U/T1,V/T2,W/T3)",
+          "terminal": "CN10",
+          "destination": "Motor 'M'",
+          "confidence": 0.85
+        },
+        {
+          "signal": "DC bus terminals",
+          "tag": "PA/+, PC/-",
+          "terminal": "CN9",
+          "destination": "internal DC link / external accessory",
+          "confidence": 0.75
+        },
+        {
+          "signal": "Dynamic braking resistor",
+          "tag": "PB / PBe",
+          "terminal": "CN10 (S1&S2), CN8 (S3)",
+          "destination": "Braking resistor (if used)",
+          "confidence": 0.8
+        },
+        {
+          "signal": "Safe Torque Off channel A",
+          "tag": "STO_A",
+          "terminal": "CN2:STO_A",
+          "destination": "safety wiring (not on this sheet)",
+          "confidence": 0.82
+        },
+        {
+          "signal": "Safe Torque Off channel B",
+          "tag": "STO_B",
+          "terminal": "CN2:STO_B",
+          "destination": "safety wiring (not on this sheet)",
+          "confidence": 0.82
+        },
+        {
+          "signal": "24V / 0V control supply",
+          "tag": "24V, 0V",
+          "terminal": "CN2",
+          "destination": "control-circuit supply",
+          "confidence": 0.8
+        },
+        {
+          "signal": "Relay output 1 (form-C)",
+          "tag": "R1A / R1B / R1C",
+          "terminal": "CN6",
+          "destination": "programmable relay load",
+          "confidence": 0.72
+        },
+        {
+          "signal": "Relay output 2",
+          "tag": "R2A / R2C",
+          "terminal": "CN6",
+          "destination": "programmable relay load",
+          "confidence": 0.72
+        },
+        {
+          "signal": "Analog input 1 (0..10V / x..20mA), pot reference",
+          "tag": "AI1",
+          "terminal": "CN6:AI1",
+          "destination": "speed-reference potentiometer (10V/COM)",
+          "confidence": 0.78
+        },
+        {
+          "signal": "Analog input 2 bipolar ±10Vdc (differential)",
+          "tag": "AI2+ / AI2-",
+          "terminal": "CN6:AI2+/AI2-",
+          "destination": "PLC / external ±10V reference",
+          "confidence": 0.78
+        },
+        {
+          "signal": "Analog output 1 (0..10V / x..20mA)",
+          "tag": "AQ1",
+          "terminal": "CN6:AQ1",
+          "destination": "meter",
+          "confidence": 0.78
+        },
+        {
+          "signal": "+10V potentiometer reference supply",
+          "tag": "10V",
+          "terminal": "CN6:10V",
+          "destination": "speed-reference pot",
+          "confidence": 0.8
+        },
+        {
+          "signal": "Digital inputs 1–5",
+          "tag": "DI1, DI2, DI3, DI4, DI5",
+          "terminal": "CN6",
+          "destination": "field control switches",
+          "confidence": 0.8
+        },
+        {
+          "signal": "Transistor output 1",
+          "tag": "DO1",
+          "terminal": "CN6:DO1",
+          "destination": "output load (via DQCOM)",
+          "confidence": 0.72
+        },
+        {
+          "signal": "Transistor output 2",
+          "tag": "DO2",
+          "terminal": "CN6:DO2",
+          "destination": "external PLC input 'Dix'",
+          "confidence": 0.72
+        },
+        {
+          "signal": "Digital output common",
+          "tag": "DQCOM",
+          "terminal": "CN6:DQCOM",
+          "destination": "return for DO1/DO2",
+          "confidence": 0.7
+        },
+        {
+          "signal": "Digital input supply",
+          "tag": "DISUP",
+          "terminal": "CN6:DISUP",
+          "destination": "digital-input supply",
+          "confidence": 0.55
+        },
+        {
+          "signal": "HMI / Modbus serial port",
+          "tag": "CN7 (Modbus, VP12S)",
+          "terminal": "CN7",
+          "destination": "HMI display / Modbus",
+          "confidence": 0.65
+        },
+        {
+          "signal": "Ethernet / Sercos III option ports",
+          "tag": "ETH1, 2",
+          "terminal": "ETH1,2",
+          "destination": "network (optional)",
+          "confidence": 0.7
+        },
+        {
+          "signal": "Encoder interface (1Vpp, A/B/I) / RS422",
+          "tag": "ENC (CN3), RS422",
+          "terminal": "CN3",
+          "destination": "encoder / another ATV340",
+          "confidence": 0.6
+        },
+        {
+          "signal": "Pulse train output",
+          "tag": "PTO",
+          "terminal": "CN4",
+          "destination": "PTO device",
+          "confidence": 0.6
+        },
+        {
+          "signal": "Pulse train input",
+          "tag": "PTI",
+          "terminal": "CN5",
+          "destination": "PLC (5V/24V)",
+          "confidence": 0.6
+        }
+      ],
+      "key_devices": [
+        {
+          "device": "Altivar ATV340 variable-speed drive (frames S1/S2/S3)",
+          "tag": "ATV340",
+          "confidence": 0.95
+        },
+        {
+          "device": "Three-phase AC motor",
+          "tag": "M",
+          "confidence": 0.9
+        },
+        {
+          "device": "Dynamic braking resistor (optional, 'if used')",
+          "tag": "Braking resistor",
+          "confidence": 0.85
+        },
+        {
+          "device": "Encoder interface module (1Vpp A/B/I, RS422)",
+          "tag": "ENC",
+          "confidence": 0.7
+        },
+        {
+          "device": "Pulse train input module",
+          "tag": "PTI",
+          "confidence": 0.65
+        },
+        {
+          "device": "Pulse train output module",
+          "tag": "PTO",
+          "confidence": 0.65
+        },
+        {
+          "device": "External PLC (PTI supply / DO2 load)",
+          "tag": "PLC",
+          "confidence": 0.65
+        },
+        {
+          "device": "HMI / display terminal (Modbus CN7)",
+          "tag": "HMI",
+          "confidence": 0.7
+        },
+        {
+          "device": "Digital-input logic-type selector switch (source/sink/external)",
+          "tag": "SW1 (SRC/SK/EXT)",
+          "confidence": 0.68
+        },
+        {
+          "device": "PE / earth bonding plate",
+          "tag": "PE Plate",
+          "confidence": 0.82
+        }
+      ],
+      "troubleshooting_example": "Speed-reference not responding via the potentiometer on AI1: this sheet shows the pot fed by the +10V reference (CN6 '10V') with its wiper to AI1 and return to COM. First measure the 10V terminal to COM — a good ~10V proves the drive's reference supply is healthy. Then measure AI1 to COM while turning the pot: it should sweep from ~0V to ~10V (0..10Vdc as printed). If 10V is present but AI1 does not vary, the fault is in the potentiometer or its wiring, not the drive; if the 10V terminal itself reads dead, the drive's reference supply/board is at fault. Note: this sheet is a wiring reference only — it does not show the drive's internal parameter/logic behavior, so what the drive DOES with the reference must be confirmed in its parameters, not from this print.",
+      "safety_context": "The power terminals (CN1 line, CN10 motor, CN9 PA/+/PC/- DC bus) are lethal live parts; the DC-bus capacitors can hold a dangerous charge AFTER the mains disconnect, so treat PA/+/PC/- and the braking terminals as energized until proven discharged. This sheet does NOT print the actual line/motor voltage — determine it from the drive rating plate before working. For continuity/resistance checks (e.g. motor leads, resistor), de-energize, lock out, and verify absence of voltage including the DC bus. The only voltage values actually printed here are the control-side references: ±10Vdc and 0..10Vdc analog, 24V/0V, 5V, 10V and the 1Vpp encoder signal — for live checks on those use appropriately rated meters and energized-work procedures. Terminal screw torque printed as 0.5 N·m / 4.4 lb·in.",
+      "unresolved_items": [
+        "S3 power block CN8/CN9 grouping (PB, PA/+, PC/-) is cramped and overlapping — verify exact terminal-to-connector assignment from a clean crop.",
+        "The repeated 'DISUP' terminal(s) at CN6 and their count are low-confidence.",
+        "CN7 Modbus marking 'VP12S' is uncertain.",
+        "No absolute supply/motor voltage is printed on this sheet — get it from the ATV340 rating plate/catalog."
+      ],
+      "detailed_map_available": true
+    }
+  },
+  "interpreter_used": true,
+  "model": "claude-opus-4-8",
+  "provider": "anthropic",
+  "effort": "xhigh",
+  "max_tokens": 32000,
+  "latency_s": 180.4,
+  "error": null
+}

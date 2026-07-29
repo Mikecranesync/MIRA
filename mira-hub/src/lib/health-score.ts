@@ -30,6 +30,8 @@ export interface HealthScoreCounts {
   components: number;
   /** Documents (manuals, photos, tag lists) with at least one chunk. */
   docs: number;
+  /** Document chunks present but not yet approved/citable. */
+  docsPending: number;
   /** Proposals in `proposed` state on relationship_proposals. */
   proposalsPending: number;
   /** Proposals in `verified` state on relationship_proposals. */
@@ -40,12 +42,32 @@ export interface HealthScoreCounts {
   wizardCompleted: boolean;
 }
 
+export type MissingContextStatus = "missing" | "needs_review" | "ready";
+
+export interface MissingContextItem {
+  key:
+    | "site"
+    | "line_asset"
+    | "components"
+    | "approved_documents"
+    | "proposal_flywheel"
+    | "verified_relationships";
+  label: string;
+  status: MissingContextStatus;
+  count: number;
+  required: number;
+  pending?: number;
+  action: string;
+}
+
 export interface HealthScoreResult {
   level: ReadinessLevel;
   /** Display label, e.g. "L3 — Components attached". */
   levelName: string;
   /** Short next-step hint surfaced on the widget. */
   nextStep: string;
+  /** Actionable checklist explaining what context is ready, missing, or awaiting approval. */
+  missingContext: MissingContextItem[];
 }
 
 /**
@@ -58,6 +80,7 @@ export const EMPTY_COUNTS: HealthScoreCounts = {
   assets: 0,
   components: 0,
   docs: 0,
+  docsPending: 0,
   proposalsPending: 0,
   proposalsVerified: 0,
   unsPaths: 0,
@@ -76,7 +99,7 @@ const LEVEL_NAMES: Record<ReadinessLevel, string> = {
 
 const NEXT_STEP: Record<ReadinessLevel, string> = {
   0: "Run the onboarding wizard to declare your first site.",
-  1: "Add a production line with at least one asset.",
+  1: "Add at least one asset to a production line.",
   2: "Attach component templates so MIRA can map fault codes.",
   3: "Upload a manual or PLC tag list to ground the components.",
   4: "Confirm proposals as they arrive — turn LLM guesses into verified edges.",
@@ -93,7 +116,70 @@ export function computeHealthScore(
     level,
     levelName: LEVEL_NAMES[level],
     nextStep: NEXT_STEP[level],
+    missingContext: buildMissingContext(counts),
   };
+}
+
+function buildMissingContext(c: HealthScoreCounts): MissingContextItem[] {
+  const docsStatus: MissingContextStatus =
+    c.docs >= 1 ? "ready" : c.docsPending >= 1 ? "needs_review" : "missing";
+
+  return [
+    {
+      key: "site",
+      label: "Site declared",
+      status: c.sites >= 1 || c.wizardCompleted ? "ready" : "missing",
+      count: c.sites,
+      required: 1,
+      action: "Declare a site in onboarding or the namespace tree.",
+    },
+    {
+      key: "line_asset",
+      label: "Line and asset present",
+      status: c.lines >= 1 && c.assets >= 1 ? "ready" : "missing",
+      count: Math.min(c.lines, c.assets),
+      required: 1,
+      action: "Add at least one production line with one asset.",
+    },
+    {
+      key: "components",
+      label: "Components attached",
+      status: c.components >= 1 ? "ready" : "missing",
+      count: c.components,
+      required: 1,
+      action: "Attach a component template or imported component to an asset.",
+    },
+    {
+      key: "approved_documents",
+      label: "Approved document context",
+      status: docsStatus,
+      count: c.docs,
+      required: 1,
+      pending: c.docsPending,
+      action:
+        docsStatus === "needs_review"
+          ? "Review and approve uploaded document chunks so MIRA can cite them."
+          : "Upload and approve a manual, PLC tag list, or evidence document.",
+    },
+    {
+      key: "proposal_flywheel",
+      label: "Proposal queue active",
+      status: c.proposalsPending >= 1 || c.proposalsVerified >= 1 ? "ready" : "missing",
+      count: c.proposalsPending + c.proposalsVerified,
+      required: 1,
+      pending: c.proposalsPending,
+      action: "Import evidence or run extraction so MIRA can propose context for review.",
+    },
+    {
+      key: "verified_relationships",
+      label: "Verified relationships",
+      status: c.proposalsVerified >= 1 ? "ready" : "needs_review",
+      count: c.proposalsVerified,
+      required: 1,
+      pending: c.proposalsPending,
+      action: "Accept grounded proposals until at least one relationship is verified.",
+    },
+  ];
 }
 
 function pickLevel(c: HealthScoreCounts): ReadinessLevel {

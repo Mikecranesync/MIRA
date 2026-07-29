@@ -1,0 +1,81 @@
+{
+  "run": "A",
+  "subject": "IMPULSE G+ Mini fault-code baseline (frozen)",
+  "immutable": true,
+  "execution_timestamp_utc": "2026-07-14T04:18:21Z",
+  "commit_sha": "db1177c90adc37c86e00d41dd79ac275754a1b84",
+  "commit_branch_at_capture": "HEAD",
+  "python_version": "3.12.13",
+  "platform": "macOS-26.3-arm64-arm-64bit",
+  "schema_fault_codes_annotation": "dict[int, str]",
+  "loader_supported_schema_versions": [
+    1,
+    2
+  ],
+  "pack_versions": {
+    "durapulse_gs10": "2",
+    "powerflex_525": "2",
+    "powerflex_40": "2"
+  },
+  "extractor_dir": "tools/drive-pack-extract",
+  "extractor_version_note": "tools/drive-pack-extract has no version string; identity is the commit SHA above. GS10 is registered automatable=false (no generator+gold), and G+ Mini is absent from the registry entirely.",
+  "hash_algorithm": "sha256",
+  "self_excluded_from_hashing": [
+    "MANIFEST.json",
+    "MANIFEST.md",
+    "make_manifest.py"
+  ],
+  "artifact_count": 10,
+  "artifacts": [
+    {
+      "path": "BASELINE_REPORT.md",
+      "bytes": 5939,
+      "sha256": "1301f28cffd408ea63f458cc91d8ce3ef25ef082271cdf7ca7ae5fb25387572e"
+    },
+    {
+      "path": "RUN_B_DESIGN.md",
+      "bytes": 8238,
+      "sha256": "e8fa018617f534744f8e252a7aee4a86009d22e310693cda11af0105c1d70dcc"
+    },
+    {
+      "path": "env.json",
+      "bytes": 620,
+      "sha256": "1987b3b2ea950914a6d8843c75abfc715e071a118f32d31586c3059c83fb60e0"
+    },
+    {
+      "path": "extractor_output/gplus_mini_pack_result.json",
+      "bytes": 287,
+      "sha256": "5eada1a4145f8bfd72559c79cd8bab78135b92d33e97e20b75232b2337b2ac19"
+    },
+    {
+      "path": "extractor_output/loader_rejection.txt",
+      "bytes": 281,
+      "sha256": "ba045d20c845d9639b8eb596a78c02656f754b787f9833018c1239d87e7c283c"
+    },
+    {
+      "path": "metrics.json",
+      "bytes": 2039,
+      "sha256": "f098d45399331253a7c04200a8ea841993b1071215c75431ef08012503ef6dc2"
+    },
+    {
+      "path": "raw_inputs/NO_SOURCE_MATERIAL.md",
+      "bytes": 3117,
+      "sha256": "cfd62f2e47d03c7df5dc583c1c12f45427e8973b2f633bf5eeb8b15c74cf803b"
+    },
+    {
+      "path": "raw_inputs/gplus_mini_faultcodes_synthetic_probe.json",
+      "bytes": 1875,
+      "sha256": "63f41efb43677d336315e3ab524f708e77f2f1c01b077e0a7ac5185e5901d7c6"
+    },
+    {
+      "path": "run.log",
+      "bytes": 2024,
+      "sha256": "274771b2c8412460b53b5a96df3c926d4a098bdeb5bac1f32d7e0be59a7c5131"
+    },
+    {
+      "path": "run_a_freeze.py",
+      "bytes": 10433,
+      "sha256": "f9ca5e5a8145f3584ff85b8e3871f10ab0f72778158319c9c48ff8f73e4aafe4"
+    }
+  ]
+}

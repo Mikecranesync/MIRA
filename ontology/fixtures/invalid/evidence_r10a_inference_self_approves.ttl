@@ -1,0 +1,40 @@
+# EXPECT-VIOLATION: mirash:InferenceCannotSelfApproveShape
+#
+# R10a — THE highest-risk rule in the ontology. An assertion carrying derived_from was INFERRED.
+# Here the inference worker's own output is marked verified with a SoftwareAgent in the approver
+# slot and no human anywhere. Without this rule an inference worker's confidence is
+# indistinguishable from a technician's sign-off, and the bad edge is trusted forever.
+#
+# Co-firing (inherent, not sloppiness): any R10a violation is necessarily an R9 violation too —
+# R10a requires approval_state=verified with no approving Technician, which is exactly what R9's
+# approved_by (minCount 1, sh:class mira:Technician) forbids. The two rules overlap by design:
+# R9 is the general case, R10a the inference-specific one. They cannot be separated in a fixture.
+#
+# R10b is deliberately kept OUT: the approving agent (ex:llm_reviewer) differs from the proposing
+# agent (ex:llm), so this fixture fails for the inference-self-approval reason and NOT because one
+# actor did both jobs. Verified by the isolation audit — exactly {R10a, R9} fire, nothing else.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech1  a mira:Technician .
+ex:tech2  a mira:Technician .
+ex:llm    a mira:SoftwareAgent .
+ex:doc1   a mira:SourceDocument .
+ex:cite1  a mira:Citation ; mira:cite_doc ex:doc1 ; mira:cite_locator "p.114" .
+
+ex:a_src a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:approval_state mira:approval_proposed .
+
+ex:llm_reviewer a mira:SoftwareAgent .
+
+ex:a_r10a_bad a mira:Assertion ;
+    mira:subject ex:mtr3 ; mira:predicate "protected_by" ; mira:object ex:ol7 ;
+    mira:derived_from ex:a_src ;
+    mira:approval_state mira:approval_verified ;
+    mira:supported_by ex:cite1 ;
+    mira:proposed_by ex:llm ;
+    mira:approved_by ex:llm_reviewer ;
+    mira:approved_at "2026-07-20T14:03:00Z"^^xsd:dateTime .

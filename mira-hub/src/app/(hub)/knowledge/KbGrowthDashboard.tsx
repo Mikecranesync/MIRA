@@ -83,7 +83,8 @@ export function KbGrowthDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setMounted(true);
+    const timeout = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   useEffect(() => {
@@ -91,8 +92,8 @@ export function KbGrowthDashboard() {
     async function load() {
       try {
         const [statsRes, growthRes] = await Promise.all([
-          fetch(`${API_BASE}/api/knowledge/stats`, { cache: "no-store" }),
-          fetch(`${API_BASE}/api/knowledge/growth`, { cache: "no-store" }),
+          fetch(`${API_BASE}/api/knowledge/stats/`, { cache: "no-store" }),
+          fetch(`${API_BASE}/api/knowledge/growth/`, { cache: "no-store" }),
         ]);
         if (!statsRes.ok || !growthRes.ok) {
           if (!cancelled) setError(`stats=${statsRes.status} growth=${growthRes.status}`);

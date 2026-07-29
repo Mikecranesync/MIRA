@@ -95,7 +95,7 @@ export default function UpgradePage() {
           </div>
           <h1 className="text-3xl font-bold text-white mb-3">Your trial has ended</h1>
           <p className="text-slate-400 text-base max-w-xl mx-auto">
-            Three ways to work with us. Most plants start with the $500 Assessment — it's the easiest yes you'll make this quarter.
+            Three ways to work with us. Most plants start with the $500 Assessment — it&apos;s the easiest yes you&apos;ll make this quarter.
           </p>
         </div>
 

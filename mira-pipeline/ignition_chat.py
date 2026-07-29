@@ -18,6 +18,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import time
 from collections import OrderedDict
 from typing import Any, Callable, Optional
@@ -85,6 +86,25 @@ try:
     from shared.conversation_router import route_intent as _route_intent
 except Exception:  # pragma: no cover - shared not importable in this context
     _route_intent = None  # type: ignore[assignment]
+
+
+# Deterministic live-tag assessment (the same one the engine path + Hub packet
+# produce). Defensive import — degrades to no assessment if shared/ isn't
+# mounted, so a missing module never changes the endpoint's default behavior.
+try:
+    from shared.live_snapshot import assess_from_paths as _assess_from_paths
+except Exception:  # pragma: no cover - shared not importable in this context
+    _assess_from_paths = None  # type: ignore[assignment]
+
+# Analog assessment via the explicit per-tag scaling contract (Drive Commander
+# follow-up #2). Same defensive import — a missing module leaves the enum/bool
+# assessment and preamble untouched.
+try:
+    from shared.live_snapshot import assess_analog_from_paths as _assess_analog_from_paths
+    from shared.wire_scaling import from_jsonb as _tag_scaling_from_jsonb
+except Exception:  # pragma: no cover - shared not importable in this context
+    _assess_analog_from_paths = None  # type: ignore[assignment]
+    _tag_scaling_from_jsonb = None  # type: ignore[assignment]
 
 
 async def _is_asset_specific(question: str) -> bool:
@@ -202,7 +222,8 @@ def _format_tag_preamble(tag_snapshot: dict[str, Any], asset_id: str) -> str:
     """Render the tag snapshot as a short, deterministic preamble the engine can read.
 
     Keep it compact — the engine adds RAG context separately. Sort keys for
-    reproducibility in tests.
+    reproducibility in tests. Renders units and data_type when enriched by
+    _enrich_tag_snapshot_with_semantics.
     """
     if not tag_snapshot:
         return ""
@@ -214,11 +235,89 @@ def _format_tag_preamble(tag_snapshot: dict[str, Any], asset_id: str) -> str:
         if isinstance(entry, dict):
             value = entry.get("value", "")
             quality = entry.get("quality", "")
-            lines.append(f"  {path} = {value} ({quality})")
+            units = entry.get("units")
+            data_type = entry.get("data_type")
+            units_str = f" {units}" if units else ""
+            dtype_str = f" · {data_type}" if data_type else ""
+            lines.append(f"  {path} = {value}{units_str} ({quality}{dtype_str})")
         else:
             lines.append(f"  {path} = {entry}")
     lines.append("[END LIVE TAGS]")
     return "\n".join(lines)
+
+
+async def _enrich_tag_snapshot_with_semantics(
+    tag_snapshot: dict[str, Any], tenant_id: str
+) -> dict[str, Any]:
+    """Join verified tag_entities rows to add units and data_type to the snapshot.
+
+    Fails open — returns the raw snapshot unchanged when NEON_DATABASE_URL is
+    unset or the DB is unreachable. Only 'verified' rows contribute; proposed
+    mappings must never influence live diagnostic answers (grounded troubleshooting
+    doctrine, .claude/CLAUDE.md §"Component profiles").
+
+    Join key: tag_entities.source_address. Phase 1's tag_classifier MUST write
+    the Ignition browse path (e.g. '[default]Bench/Motor/Speed') into source_address
+    for this join to match. The idx_tag_entities_source_address index covers this
+    lookup (migration 025).
+    """
+    if not tag_snapshot:
+        return tag_snapshot
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        return tag_snapshot
+
+    tag_paths = list(tag_snapshot.keys())
+    try:
+        from sqlalchemy import NullPool, create_engine, text
+
+        _engine = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        try:
+            with _engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT source_address, units, data_type, scaling "
+                        "FROM tag_entities "
+                        "WHERE tenant_id::text = :tid "
+                        "  AND source_address = ANY(:paths) "
+                        "  AND approval_state = 'verified'"
+                    ),
+                    {"tid": tenant_id, "paths": tag_paths},
+                ).fetchall()
+        finally:
+            _engine.dispose()
+    except Exception:
+        logger.debug("_enrich_tag_snapshot: DB unavailable, enrichment skipped")
+        return tag_snapshot
+
+    # `scaling` (JSONB, the per-tag scaling contract — see shared.wire_scaling)
+    # rides alongside units/data_type so the analog assessment can read it; it is
+    # NOT rendered in the preamble (only units/data_type are).
+    enrichment: dict[str, dict[str, Any]] = {
+        row[0]: {
+            k: v
+            for k, v in {"units": row[1], "data_type": row[2], "scaling": row[3]}.items()
+            if v is not None
+        }
+        for row in rows
+        if row[0]
+    }
+    if not enrichment:
+        return tag_snapshot
+
+    return {
+        path: (
+            {**entry, **enrichment[path]}
+            if isinstance(entry, dict) and path in enrichment
+            else entry
+        )
+        for path, entry in tag_snapshot.items()
+    }
 
 
 # ── Asset-agent deployment gate (train-before-deploy) ────────────────────────
@@ -240,30 +339,90 @@ def _asset_context_token(asset_context: Optional[dict[str, Any]]) -> str:
     return ""
 
 
+_SLUG_NON_LABEL = re.compile(r"[^a-z0-9]+")
+
+
+def _slug(value: str) -> str:
+    """ISA-95 UNS label slug: lowercase, runs of non-alphanumeric → '_', trimmed.
+
+    A local copy of `mira-crawler/ingest/uns.py` `slug()` — mira-pipeline must NOT import
+    mira-crawler (architecture contract, `tests/test_architecture.py`). Keep the two in sync; the
+    resolver below relies on matching the exact slug the Hub stored in
+    `cmms_equipment.uns_path` / built from `equipment_number`.
+    """
+    if not value:
+        return ""
+    return _SLUG_NON_LABEL.sub("_", value.strip().lower()).strip("_")
+
+
+# The Phase-4 resolver query. It JOINs the bridge tables so an incoming Ignition token resolves to
+# the asset's lifecycle state by ANY of the forms a direct-connection surface actually sends:
+#   * a canonical `uns_path` string or `equipment_id` UUID (callers that already send the stored key),
+#   * an `asset_context` / display-name token → slug-matched against `cmms_equipment.equipment_number`
+#     (e.g. "GS10-VFD" → "gs10_vfd"); this does NOT depend on the nullable `cmms_equipment.uns_path`
+#     backfill, so it is the robust path,
+#   * a best-effort Ignition tag-path ("[default]Conv/State") → exact match on
+#     `installed_component_instances.plc_tag` when the customer has populated it.
+# `equipment_id` is the UUID PK of cmms_equipment (globally unique), and the row is already
+# tenant-scoped by `aas.tenant_id`, so the bridge JOINs key on `equipment_id` alone — avoiding the
+# TEXT(aas)/UUID(ici) tenant-type mismatch (mig 048 made asset_agent_status.tenant_id TEXT).
+# All comparisons are text (no ltree cast) so a non-ltree token never errors.
+_AGENT_STATE_SQL = """
+SELECT aas.state
+FROM asset_agent_status aas
+LEFT JOIN cmms_equipment e
+  ON e.id = aas.equipment_id
+LEFT JOIN installed_component_instances ici
+  ON ici.asset_id = aas.equipment_id
+WHERE aas.tenant_id = :tid
+  AND (
+        aas.uns_path::text = :token
+     OR aas.equipment_id::text = :token
+     OR trim(both '_' from regexp_replace(lower(trim(e.equipment_number)), '[^a-z0-9]+', '_', 'g')) = :slug
+     OR lower(e.equipment_number) = lower(:token)
+     OR ici.plc_tag = :token
+  )
+LIMIT 1
+"""
+
+
+def _agent_state_from_conn(conn, tenant_id: str, asset_id: str) -> Optional[str]:
+    """Resolve an Ignition token → `asset_agent_status.state` over an open SQLAlchemy connection.
+
+    The pure resolution seam (no engine/secret setup) so the query + param binding is unit-testable
+    with a fake connection. Binds both the raw token (canonical / plc_tag exact match) and its slug
+    (equipment_number fuzzy match). Returns None when nothing matches (→ the gate refuses).
+    """
+    from sqlalchemy import text
+
+    row = conn.execute(
+        text(_AGENT_STATE_SQL),
+        {"tid": tenant_id, "token": asset_id, "slug": _slug(asset_id)},
+    ).fetchone()
+    return row[0] if row else None
+
+
 def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
-    """Return the asset's lifecycle state from `asset_agent_status`, or None.
+    """Return the asset's lifecycle state from `asset_agent_status`, or None (→ the gate refuses).
 
-    Reads the table owned by PR #1783 (migrations 046/047): rows are keyed on
-    `equipment_id` (= cmms_equipment.id) with a carried `uns_path` (LTREE) that
-    that migration designates as the deployment-gate key. We match the caller's
-    token against either, as text (no ltree cast → never errors on a non-ltree
-    token). Returns None when there's no matching agent row (→ the gate refuses).
-    Raises on DB error so the caller can fail OPEN — a Neon blip must not brick
-    a working HMI.
+    Resolves the incoming Ignition identifier via `_agent_state_from_conn` (see its query for the
+    forms supported). Reads the table owned by PR #1783 (migrations 046/047). Raises on DB error so
+    the caller can fail OPEN — a Neon blip must not brick a working HMI.
 
-    NOTE — NON-FUNCTIONAL until an asset_context/asset_id → (uns_path | equipment_id)
-    resolver lands. An Ignition asset_id is a tag path ("[default]Conv/State")
-    and asset_context fields are display names; neither equals a stored
-    `uns_path` or `equipment_id` UUID today, so with the gate ON this returns
-    None for essentially every asset → refuse-all. Do NOT enable
-    ENFORCE_ASSET_AGENT_GATE until that resolver ships. See
-    docs/specs/asset-agent-validation-spec.md §7 and PR #1783.
+    RESOLUTION COVERAGE (Phase 4): a structured `asset_context`/display-name token resolves via
+    `cmms_equipment.equipment_number` (slug-normalized) — the robust path, independent of the
+    nullable `cmms_equipment.uns_path` backfill — plus the canonical `uns_path`/`equipment_id` forms
+    and a best-effort Ignition tag-path via `installed_component_instances.plc_tag`. RESIDUAL GAP:
+    a flat Ignition tag-path ("[default]Conv/State") only resolves when `plc_tag` is populated (e.g.
+    by the Ignition tag-CSV import); absent that, such turns return None → refuse. Keep
+    ENFORCE_ASSET_AGENT_GATE default-OFF until the deployment is proven for a tenant's identifier
+    shape. See docs/specs/asset-agent-validation-spec.md §7.
     """
     neon_url = os.getenv("NEON_DATABASE_URL", "")
     if not neon_url:
         raise RuntimeError("NEON_DATABASE_URL not set")
 
-    from sqlalchemy import NullPool, create_engine, text
+    from sqlalchemy import NullPool, create_engine
 
     engine = create_engine(
         neon_url,
@@ -273,18 +432,85 @@ def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
     )
     try:
         with engine.connect() as conn:
-            row = conn.execute(
-                text(
-                    "SELECT state FROM asset_agent_status "
-                    "WHERE tenant_id = :tid "
-                    "  AND (uns_path::text = :token OR equipment_id::text = :token) "
-                    "LIMIT 1"
-                ),
-                {"tid": tenant_id, "token": asset_id},
-            ).fetchone()
+            return _agent_state_from_conn(conn, tenant_id, asset_id)
     finally:
         engine.dispose()
-    return row[0] if row else None
+
+
+# ── Drive-pack asset binding (#2527 UNS follow-up) ───────────────────────────
+# Resolve the connected asset's manufacturer/model so a panel bound to a GS10
+# answers "what does CE10 mean?" WITHOUT the technician typing "gs10". The
+# descriptor is folded into the engine message (in the handler) so the
+# deterministic drive-pack fast-path (shared/engine.py, #2526) resolves the
+# pack; it also grounds general RAG to the right vendor. Read-only, best-effort,
+# tenant-scoped. `::text` on the tenant compare avoids a UUID-cast error on a
+# legacy slug tenant (cmms_equipment.tenant_id is TEXT — matches on either side).
+_DRIVE_INFO_SQL = """
+SELECT e.manufacturer, e.model_number
+FROM cmms_equipment e
+LEFT JOIN installed_component_instances ici
+  ON ici.asset_id = e.id
+WHERE e.tenant_id::text = :tid
+  AND (
+        e.id::text = :token
+     OR trim(both '_' from regexp_replace(lower(trim(e.equipment_number)), '[^a-z0-9]+', '_', 'g')) = :slug
+     OR lower(e.equipment_number) = lower(:token)
+     OR ici.plc_tag = :token
+  )
+LIMIT 1
+"""
+
+
+def _drive_info_from_conn(conn, tenant_id: str, token: str) -> Optional[str]:
+    """Resolve an Ignition asset token → "manufacturer model" descriptor, or None.
+
+    The pure resolution seam (no engine/secret setup) so the query + params are
+    unit-testable with a fake connection. Mirrors `_agent_state_from_conn` but
+    reads `cmms_equipment.manufacturer`/`model_number` directly. Returns None
+    when nothing matches or the row carries no make/model.
+    """
+    from sqlalchemy import text
+
+    row = conn.execute(
+        text(_DRIVE_INFO_SQL),
+        {"tid": tenant_id, "token": token, "slug": _slug(token)},
+    ).fetchone()
+    if not row:
+        return None
+    parts = [str(p).strip() for p in (row[0], row[1]) if p and str(p).strip()]
+    return " ".join(parts) if parts else None
+
+
+def _lookup_drive_info(tenant_id: str, token: str) -> Optional[str]:
+    """Best-effort "manufacturer model" for a connected asset, or None.
+
+    Unlike `_lookup_agent_state` (which raises so the gate can fail open), this
+    is purely additive enrichment: ANY failure (no DB, bad token, query error)
+    returns None so the turn proceeds with an un-enriched message. Never raises
+    — it must never break an Ignition chat turn.
+    """
+    if not token:
+        return None
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        return None
+    try:
+        from sqlalchemy import NullPool, create_engine
+
+        engine = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        try:
+            with engine.connect() as conn:
+                return _drive_info_from_conn(conn, tenant_id, token)
+        finally:
+            engine.dispose()
+    except Exception:
+        logger.debug("IGNITION_CHAT drive_info lookup failed (best-effort skip)", exc_info=True)
+        return None
 
 
 def _mark_deployed(tenant_id: str, asset_id: str) -> bool:
@@ -365,8 +591,62 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         asset_id = (req.asset_id or "").strip()
         chat_id = f"ignition:{tenant_id}:{asset_id or 'default'}"
 
-        preamble = _format_tag_preamble(req.tag_snapshot or {}, asset_id)
-        message = f"{preamble}\n\n{question}" if preamble else question
+        enriched_snapshot = await _enrich_tag_snapshot_with_semantics(
+            req.tag_snapshot or {}, tenant_id
+        )
+        preamble = _format_tag_preamble(enriched_snapshot, asset_id)
+        # A deterministic assessment from the scaling-immune enum/bool signals
+        # (fault / comms / cmd / status) — the same one the engine path (#2478)
+        # and the Hub packet (#2476) produce, adapted to the Ignition wire form.
+        # Analog values (freq/current/dc_bus) are shown in the preamble but never
+        # re-scaled here (ambiguous wire scaling). Best-effort: never breaks chat.
+        assessment = None
+        if _assess_from_paths is not None:
+            try:
+                assessment = _assess_from_paths(req.tag_snapshot or {})
+            except Exception:  # pragma: no cover - defensive
+                assessment = None
+
+        # Analog assessment — ONLY for tags carrying an explicit, verified scaling
+        # contract (tag_entities.scaling). Unknown/missing scaling ⇒ no card ⇒ the
+        # value is still shown in the preamble but not (mis)interpreted. The raw
+        # wire values live on the enriched snapshot alongside the scaling.
+        analog_assessment = None
+        if _assess_analog_from_paths is not None and _tag_scaling_from_jsonb is not None:
+            try:
+                scaling_by_path = {
+                    path: _tag_scaling_from_jsonb(entry.get("scaling"), unit=entry.get("units"))
+                    for path, entry in enriched_snapshot.items()
+                    if isinstance(entry, dict)
+                }
+                analog_assessment = _assess_analog_from_paths(enriched_snapshot, scaling_by_path)
+            except Exception:  # pragma: no cover - defensive
+                analog_assessment = None
+
+        # Bind the drive pack to the connected asset (#2527 UNS follow-up):
+        # resolve the asset's manufacturer/model and fold it into the message so
+        # the engine's drive-pack fast-path answers a bare "what does CE10 mean?"
+        # for a GS10-bound panel WITHOUT the technician naming the drive. Only
+        # for direct-connection turns (an asset identifier is present); purely
+        # additive + best-effort (never breaks chat). Placed in the message (not
+        # the retrieval query) so it never pollutes RAG recall.
+        _drive_token = asset_id or _asset_context_token(req.asset_context)
+        asset_descriptor = _lookup_drive_info(tenant_id, _drive_token) if _drive_token else None
+        asset_line = f"Asset: {asset_descriptor}" if asset_descriptor else None
+
+        if preamble:
+            evidence = [preamble]
+            if assessment:
+                evidence.append(f"Assessment: {assessment}")
+            if analog_assessment:
+                evidence.append(analog_assessment)
+            evidence.append(
+                "In your answer, clearly separate: (1) this LIVE evidence, (2) "
+                "asset/manual context, (3) your inference, and (4) the recommended next checks."
+            )
+            message = "\n\n".join(([asset_line] if asset_line else []) + evidence + [question])
+        else:
+            message = "\n\n".join(([asset_line] if asset_line else []) + [question])
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
 

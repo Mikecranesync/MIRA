@@ -5,6 +5,12 @@ description: "User asks about nonexistent VLT FC 360 (real model is FC 350) — 
 # not the 🔴 uncovered banner — no honesty signals generated. KB effectively matches via related model.
 # Honesty signals from "based on general knowledge" preserved; fixture validates behavior either way.
 expected_final_state: Q2
+# skip_fsm_check: this is a stochastic out-of-KB edge case — the Q→DIAGNOSIS gate
+# transition is LLM-non-deterministic, so the terminal FSM state flips Q1/Q2/DIAGNOSIS
+# run-to-run (caused 11/11 spurious FSM-only failures in the #1948 triage). Content
+# correctness (honest out-of-KB behavior) is validated by expected_keywords +
+# citation groundedness, not FSM depth. Mirrors 04_yaskawa_out_of_kb.yaml. See #2222.
+skip_fsm_check: true
 max_turns: 3
 expected_keywords: [alarm, Danfoss, VLT, documentation, model, fault, manual, searching]
 # 'alarm'/'fault'/'model'/'documentation' catch Q2 response about unknown FC 360 model

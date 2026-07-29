@@ -80,6 +80,10 @@ class TestExtractsGs10Fields:
         for field in NAMEPLATE_FIELDS:
             assert field in result, f"Missing field: {field}"
 
+        # raw_text must preserve the verbatim, untruncated model response as
+        # evidence — separate from the interpreted fields above.
+        assert result["raw_text"] == canned_json
+
 
 class TestHandlesMissingFields:
     """Router returns partial JSON (FANUC nameplate — fewer fields visible).
@@ -141,6 +145,51 @@ class TestHandlesInvalidJson:
         assert isinstance(result, dict)
         assert "parse_error" in result
         # Must NOT raise an exception — that's the key contract.
+
+        # raw_text must still be preserved verbatim on the parse-error path,
+        # even though the parse_error message itself is truncated to 120 chars.
+        assert result["raw_text"] == prose
+
+
+class TestPreservesRawTextOnParseError:
+    """Raw model output survives a parse failure, untruncated, alongside parse_error."""
+
+    @pytest.mark.asyncio
+    async def test_raw_text_untruncated_when_message_is_truncated(self):
+        # Longer than the 120-char truncation applied to the parse_error message.
+        long_prose = "not json at all, " * 20
+        assert len(long_prose) > 120
+
+        worker = _make_worker()
+        photo_b64 = _b64_fixture("nameplate_gs10.jpg")
+
+        with patch.object(
+            worker._router,
+            "complete",
+            new=AsyncMock(
+                return_value=(long_prose, {"provider": "groq", "input_tokens": 5, "output_tokens": 30})
+            ),
+        ):
+            result = await worker.extract(photo_b64)
+
+        assert "parse_error" in result
+        assert result["raw_text"] == long_prose
+        assert len(result["raw_text"]) > 120
+
+    @pytest.mark.asyncio
+    async def test_raw_text_is_none_on_empty_response(self):
+        worker = _make_worker()
+        photo_b64 = _b64_fixture("nameplate_gs10.jpg")
+
+        with patch.object(
+            worker._router,
+            "complete",
+            new=AsyncMock(return_value=("", {})),
+        ):
+            result = await worker.extract(photo_b64)
+
+        assert "parse_error" in result
+        assert result["raw_text"] is None
 
 
 class TestPromptAsksForJson:

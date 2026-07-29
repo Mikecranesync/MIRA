@@ -4,12 +4,20 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Factory, Loader2, Eye, EyeOff } from "lucide-react";
+import { Factory, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
 
 const MIN_PW = 8;
+// Public legal + trust pages are served by the marketing site (factorylm.com),
+// not the Hub (app.factorylm.com) — link to absolute URLs.
+const LEGAL = {
+  privacy: "https://factorylm.com/privacy",
+  terms: "https://factorylm.com/terms",
+  security: "https://factorylm.com/security",
+} as const;
+const SUPPORT_EMAIL = "support@factorylm.com";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -30,7 +38,7 @@ export default function SignupPage() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
+      const res = await fetch(`${API_BASE}/api/auth/register/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, name }),
@@ -86,7 +94,16 @@ export default function SignupPage() {
             <Factory className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
-          <p className="text-slate-400 text-sm mt-1">Create your account</p>
+          <p className="text-slate-400 text-sm mt-1">Create your workspace to:</p>
+          <ul className="mt-3 space-y-1.5 text-sm text-slate-300">
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Build your namespace — first site &amp; line</li>
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Ask MIRA a fault-code question, get a cited answer</li>
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Answers cite our OEM manual library — not guesses</li>
+          </ul>
+          <p className="text-slate-500 text-xs mt-3 max-w-xs text-center">
+            Track faults, work orders, assets, manuals, and shift handoffs in one place.
+          </p>
+          <p className="text-slate-500 text-xs mt-2">7-day free trial — no credit card.</p>
         </div>
 
         <div
@@ -101,7 +118,7 @@ export default function SignupPage() {
             type="button"
             onClick={handleGoogle}
             disabled={googleLoading}
-            className="w-full h-11 mb-4 flex items-center justify-center gap-3 rounded-md bg-white text-slate-900 font-medium hover:bg-slate-100 transition-colors disabled:opacity-60"
+            className="w-full h-11 min-h-[44px] mb-4 flex items-center justify-center gap-3 rounded-md bg-white text-slate-900 font-medium hover:bg-slate-100 transition-colors disabled:opacity-60"
           >
             {googleLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -132,7 +149,7 @@ export default function SignupPage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your name"
                 autoComplete="name"
-                className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
               />
             </div>
 
@@ -146,7 +163,7 @@ export default function SignupPage() {
                 placeholder="you@company.com"
                 autoComplete="email"
                 required
-                className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
               />
             </div>
 
@@ -162,13 +179,13 @@ export default function SignupPage() {
                   autoComplete="new-password"
                   required
                   minLength={MIN_PW}
-                  className="h-11 pr-10 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                  className="h-11 min-h-[44px] pr-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
                 <button
                   type="button"
                   aria-label={showPw ? "Hide password" : "Show password"}
                   onClick={() => setShowPw((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="absolute inset-y-0 right-0 flex items-center justify-center w-11 min-w-[44px] text-slate-400 hover:text-slate-200 transition-colors"
                 >
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -183,7 +200,7 @@ export default function SignupPage() {
 
             <Button
               type="submit"
-              className="w-full h-11 text-base font-semibold mt-2"
+              className="w-full h-11 min-h-[44px] text-base font-semibold mt-2"
               disabled={loading}
               style={{ background: loading ? undefined : "linear-gradient(135deg, #2563EB, #0891B2)" }}
             >
@@ -197,6 +214,36 @@ export default function SignupPage() {
             </Button>
           </form>
 
+          {/* Terms / Privacy — shown before account creation (#1958) */}
+          <p className="text-center text-xs text-slate-500 mt-4 leading-relaxed">
+            By creating an account you agree to our{" "}
+            <a href={LEGAL.terms} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-300">
+              Terms
+            </a>{" "}
+            and{" "}
+            <a href={LEGAL.privacy} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-300">
+              Privacy Policy
+            </a>
+            .
+          </p>
+
+          {/* Data-handling reassurance — mirrors the public Security posture (#1958) */}
+          <div className="mt-4 rounded-lg border border-slate-700/50 bg-slate-800/40 px-3 py-2.5 flex gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Your manuals and maintenance data stay private to your organization and are never used to
+              train external models.{" "}
+              <a
+                href={LEGAL.security}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
+                Security &amp; data handling
+              </a>
+            </p>
+          </div>
+
           <p className="text-center text-sm text-slate-400 mt-6">
             Already have an account?{" "}
             <Link href="/login" className="text-blue-400 hover:text-blue-300 font-medium">
@@ -204,6 +251,21 @@ export default function SignupPage() {
             </Link>
           </p>
         </div>
+
+        <p className="text-center text-sm text-slate-400 mt-4">
+          Want to try first?{" "}
+          <Link href="/quickstart" className="text-blue-400 hover:text-blue-300 font-medium">
+            Ask a sample question
+          </Link>{" "}
+          — no signup.
+        </p>
+
+        <p className="text-center text-xs text-slate-500 mt-3">
+          Questions about security or your data?{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-slate-400 hover:text-slate-300 underline">
+            Contact support
+          </a>
+        </p>
       </div>
     </div>
   );

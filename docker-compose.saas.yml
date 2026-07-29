@@ -22,14 +22,16 @@ x-bot-common-env: &bot-common-env
   OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct:free}
   GROQ_API_KEY: ${GROQ_API_KEY:-}
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
-  GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
+  GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-}
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
-  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-gpt-oss-120b}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
-  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
-  GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+  TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
+  TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+  TOGETHERAI_TIMEOUT: ${TOGETHERAI_TIMEOUT:-}
+  LLM_REASONING_RETRY_MAX_TOKENS: ${LLM_REASONING_RETRY_MAX_TOKENS:-}
+  TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
   LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
   LANGFUSE_PUBLIC_API_KEY: ${LANGFUSE_PUBLIC_API_KEY:-}
@@ -40,6 +42,22 @@ x-bot-common-env: &bot-common-env
   ASK_API_KEY: ${ASK_API_KEY:-}
 
 services:
+  mira-redis:
+    image: redis:7.4.2-alpine
+    container_name: mira-redis-saas
+    networks:
+      - mira-net
+    volumes:
+      - mira-redis-data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   mira-core:
     image: ghcr.io/open-webui/open-webui:v0.8.10
     container_name: mira-core-saas
@@ -110,7 +128,11 @@ services:
   # are referenced only by the legacy directory and migration scripts.
 
   mira-ingest:
-    build: ./mira-core/mira-ingest
+    # Repo-root context so the Dockerfile can COPY mira-plc-parser/ in (powers
+    # /ingest/plc-parse). A repo-root .dockerignore keeps the context small.
+    build:
+      context: .
+      dockerfile: mira-core/mira-ingest/Dockerfile
     container_name: mira-ingest-saas
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -158,8 +180,8 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - PIPELINE_BASE_URL=http://mira-pipeline-saas:9099
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MIRA_HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
       - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
     volumes:
@@ -197,11 +219,18 @@ services:
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_DRIVE_COMMANDER_PRICE_ID=${STRIPE_DRIVE_COMMANDER_PRICE_ID:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
       # Unit 3 — magic email inbox (Apps Script + Gmail plus-addressing)
       - INBOUND_HMAC_SECRET=${INBOUND_HMAC_SECRET:-}
       - MIRA_INGEST_URL=${MIRA_INGEST_URL:-http://mira-ingest-saas:8001}
       - INBOX_DOMAIN=${INBOX_DOMAIN:-factorylm.com}
+    volumes:
+      # PrintSense lead capture (src/routes/printsense.ts writes
+      # /data/printsense-leads/{leads,funnel}.jsonl). Without a volume the
+      # container's writable layer is wiped on every deploy — leads were
+      # lost to the 2026-07-17/18 redeploys. Keep this mount.
+      - mira-leads-data:/data/printsense-leads
     networks:
       - mira-net
       - cmms-ext
@@ -234,14 +263,23 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - VISION_MODEL=qwen2.5vl:7b
       - INFERENCE_BACKEND=cloud
+      # CMMS work-order-history evidence (#2445/#2472). Default OFF — zero runtime
+      # behavior change until ENABLE_WO_EVIDENCE=1 (Doppler). Wired so enabling is a
+      # one-var flip; see docs/env-vars.md. Applies to every service that runs the
+      # shared.engine.Supervisor diagnosis path.
+      - ENABLE_WO_EVIDENCE=${ENABLE_WO_EVIDENCE:-0}
+      - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
+      - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
-      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -281,6 +319,36 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - PRINTSENSE_COMMERCIAL_ROOT=${PRINTSENSE_COMMERCIAL_ROOT:-}
+      - PRINTSENSE_REVIEWER_CHAT_IDS=${PRINTSENSE_REVIEWER_CHAT_IDS:-}
+      # ISOLATED paid print-vision interpreter (PrintSense) — NOT part of the
+      # Groq->Cerebras->Together cascade below. openai default since 2026-07-17
+      # (v3.153.0), anthropic retained behind the knob; the engine's print path
+      # calls it only when the active provider's key is set — otherwise it falls
+      # back to the free OCR cascade. Keys in Doppler (prd: human-only).
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-openai}
+      # Interpreter tuning knobs (bench-decided; stg runs medium — see v3.154.2).
+      - PRINT_VISION_EFFORT=${PRINT_VISION_EFFORT:-xhigh}
+      - PRINT_VISION_MODEL=${PRINT_VISION_MODEL:-}
+      # ZTA spend guards (v3.156.0): per-call output cap + paid-lane $ budget.
+      - PRINT_VISION_MAX_TOKENS=${PRINT_VISION_MAX_TOKENS:-}
+      - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
+      # Per-turn $0 print autoeval (default ON; "0" disables). or-form parse in code.
+      - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
+      # Free-cascade print-theory reply cap (was hardcoded 1200; two 2026-07-18
+      # live turns truncated mid-sentence at that cap). Read at call time.
+      - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
+      - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
+      - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
+      - PRINT_THEORY_VERIFY=${PRINT_THEORY_VERIFY:-}
+      - PRINT_THEORY_SELF_CONSISTENCY=${PRINT_THEORY_SELF_CONSISTENCY:-}
+      # Production recall gate (v3.184.0): identical print turns reuse a stored
+      # interpretation with no model call. Default OFF; enable via Doppler (stg
+      # first, then prd). Store lives under /mira-db/print_recall (mounted volume).
+      - PRINT_RECALL_ENABLED=${PRINT_RECALL_ENABLED:-}
+      - PRINT_RECALL_ENV=${PRINT_RECALL_ENV:-prod}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -288,22 +356,40 @@ services:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
+      # Citable file intake → Hub folder-upload door (#2540). Unset token = skip.
+      - HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
+      - HUB_BASE_PATH=${HUB_BASE_PATH:-/hub}
+      - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
+      # CMMS work-order-history evidence (#2445/#2472). Default OFF — zero runtime
+      # behavior change until ENABLE_WO_EVIDENCE=1 (Doppler). Wired so enabling is a
+      # one-var flip; see docs/env-vars.md. Applies to every service that runs the
+      # shared.engine.Supervisor diagnosis path.
+      - ENABLE_WO_EVIDENCE=${ENABLE_WO_EVIDENCE:-0}
+      - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
+      - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
-      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
       - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
       - NTFY_TOPIC=${NTFY_TOPIC:-mira-factorylm-alerts}
+      # Model-OCR enrichment lane (off by default; free cascade floor is Tesseract).
+      - OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}
+      # Boot self-check Tesseract floor: 1 in containers (required), 0 on local dev.
+      - OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}
+      - OCR_REQUIRE_TESSERACT=${OCR_REQUIRE_TESSERACT:-}
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/mira-bridge/data/sessions:/data/sessions
@@ -313,7 +399,16 @@ services:
     mem_limit: 512m
     memswap_limit: 512m
     healthcheck:
-      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
+      # ADR-0031 FR-3: process alive AND the OCR floor verdict is ok — the same
+      # contract the Slack healthcheck enforces (tesseract ships in the image; a
+      # dead floor now flips the container unhealthy instead of degrading silently).
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py' && python -c \"import printsense, pytesseract; from shared.workers.vision_worker import ocr_lane_report; assert ocr_lane_report()['verdict'] == 'ok'\"",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -321,8 +416,8 @@ services:
 
   mira-bot-slack:
     build:
-      context: ./mira-bots
-      dockerfile: slack/Dockerfile
+      context: .
+      dockerfile: mira-bots/slack/Dockerfile
     container_name: mira-bot-slack
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -331,6 +426,29 @@ services:
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
       - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-}
       - SLACK_ALLOWED_CHANNELS=${SLACK_ALLOWED_CHANNELS:-}
+      - SLACK_EXPECTED_BOT_USER_ID=${SLACK_EXPECTED_BOT_USER_ID:-}
+      # ISOLATED paid print-vision interpreter (PrintSense) — NOT part of the
+      # Groq->Cerebras->Together cascade below. Mirrors mira-bot-telegram so
+      # Slack electrical-print photos and follow-ups use the same backend lane.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PRINT_VISION_PROVIDER=${PRINT_VISION_PROVIDER:-openai}
+      - PRINT_VISION_EFFORT=${PRINT_VISION_EFFORT:-xhigh}
+      - PRINT_VISION_MODEL=${PRINT_VISION_MODEL:-}
+      - PRINT_VISION_MAX_TOKENS=${PRINT_VISION_MAX_TOKENS:-}
+      - PRINT_BENCH_BUDGET_USD=${PRINT_BENCH_BUDGET_USD:-}
+      - PRINT_AUTOEVAL_ENABLED=${PRINT_AUTOEVAL_ENABLED:-}
+      - PRINT_THEORY_MAX_TOKENS=${PRINT_THEORY_MAX_TOKENS:-2000}
+      - PRINT_THEORY_FULL_RES=${PRINT_THEORY_FULL_RES:-}
+      - PRINT_THEORY_STYLE=${PRINT_THEORY_STYLE:-}
+      - PRINT_THEORY_VERIFY=${PRINT_THEORY_VERIFY:-}
+      - PRINT_THEORY_SELF_CONSISTENCY=${PRINT_THEORY_SELF_CONSISTENCY:-}
+      # Production recall gate (v3.184.0): identical print turns reuse a stored
+      # interpretation with no model call. Default OFF; enable via Doppler (stg
+      # first, then prd). Store lives under /mira-db/print_recall (mounted volume).
+      - PRINT_RECALL_ENABLED=${PRINT_RECALL_ENABLED:-}
+      - PRINT_RECALL_ENV=${PRINT_RECALL_ENV:-prod}
+      - MIRA_PROCESS_TIMEOUT=${MIRA_PROCESS_TIMEOUT:-60}
       - MIRA_DB_PATH=/mira-db/mira.db
       - OPENWEBUI_BASE_URL=http://mira-core-saas:8080
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
@@ -340,17 +458,29 @@ services:
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
+      # CMMS work-order-history evidence (#2445/#2472). Default OFF — zero runtime
+      # behavior change until ENABLE_WO_EVIDENCE=1 (Doppler). Wired so enabling is a
+      # one-var flip; see docs/env-vars.md. Applies to every service that runs the
+      # shared.engine.Supervisor diagnosis path.
+      - ENABLE_WO_EVIDENCE=${ENABLE_WO_EVIDENCE:-0}
+      - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
+      - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=llama-3.3-70b-versatile
-      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
+      - OCR_MODEL_LANE=${OCR_MODEL_LANE:-off}
+      - OCR_EXPECT_TESSERACT=${OCR_EXPECT_TESSERACT:-1}
+      - OCR_REQUIRE_TESSERACT=${OCR_REQUIRE_TESSERACT:-}
     volumes:
       - /opt/mira/data:/mira-db
       - /opt/mira/mira-bridge/data/sessions:/data/sessions
@@ -360,7 +490,13 @@ services:
     mem_limit: 512m
     memswap_limit: 512m
     healthcheck:
-      test: ["CMD", "python", "-c", "import slack_bolt"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import slack_bolt, printsense, pytesseract; from shared.workers.vision_worker import ocr_lane_report; assert ocr_lane_report()['verdict'] == 'ok'",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -400,6 +536,12 @@ services:
       # questions back) instead of the Guided Socratic Dialogue. Scoped to
       # mira-ask only; Telegram/Slack bots keep GSD.
       MIRA_DIRECT_ANSWER_MODE: "1"
+      # CMMS work-order-history evidence (#2445/#2472). Default OFF — zero runtime
+      # behavior change until ENABLE_WO_EVIDENCE=1 (Doppler). mira-ask runs the
+      # shared.engine.Supervisor (ask_api/app.py) so it needs these too.
+      ENABLE_WO_EVIDENCE: "${ENABLE_WO_EVIDENCE:-0}"
+      MIRA_WO_EVIDENCE_TIMEOUT_S: "${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}"
+      MIRA_WO_EVIDENCE_LIMIT: "${MIRA_WO_EVIDENCE_LIMIT:-5}"
     volumes:
       - /opt/mira/data:/mira-db
     networks:
@@ -431,7 +573,10 @@ services:
       - mira-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
+      # apache/tika image has no curl/wget — probe the Tika port with a bash
+      # /dev/tcp TCP connect (image is Ubuntu-based, so /bin/bash exists).
+      # The old curl test always failed → false "(unhealthy)" while Tika worked.
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/9998'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -442,7 +587,11 @@ services:
     build: ./mira-relay
     container_name: mira-relay
     ports:
-      - "127.0.0.1:8765:8765"
+      # Bind address is env-controlled: default loopback (nginx-fronted). Set
+      # RELAY_BIND_ADDR to the VPS Tailscale IP (100.68.120.99) to expose the
+      # relay tailnet-only for gateway ingest (WireGuard-encrypted + HMAC; no
+      # public surface). See docs/runbooks/cv101-bench-to-cloud-first-tag-row.md.
+      - "${RELAY_BIND_ADDR:-127.0.0.1}:8765:8765"
     environment:
       - MIRA_DB_PATH=/mira-db/mira.db
       - RELAY_PORT=8765
@@ -469,6 +618,49 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # ─── mira-sparkplug-consumer — Lane 3 / Phase 3b industrial ingest ──────────
+  # A read-only Sparkplug B MQTT subscriber: Ignition MQTT Transmission → Mosquitto
+  # → THIS consumer → tag_ingest.ingest_batch → tag_events + live_signal_cache, the
+  # SAME pipeline the HTTP relay route uses. The custom HTTP relay stays the
+  # bench/dev fallback; this is the preferred industrial path.
+  #
+  # OPT-IN: gated behind the "sparkplug" compose profile, so a normal
+  #   `docker compose -f docker-compose.saas.yml up` does NOT start it (and it is
+  #   absent from deploy-vps.yml TARGETS). Enable with:
+  #     docker compose -f docker-compose.saas.yml --profile sparkplug up -d mira-sparkplug-consumer
+  #
+  # BROKER REACHABILITY: this service joins `mosquitto-ext` (the broker's network,
+  #   mira-plc-dash_default) so MQTT_INGEST_BROKER_HOST=mira-mosquitto resolves.
+  #   The broker must be running first. Runbook:
+  #   docs/runbooks/2026-06-28-sparkplug-mqtt-consumer.md.
+  mira-sparkplug-consumer:
+    profiles: ["sparkplug"]
+    build:
+      context: ./mira-relay
+      dockerfile: Dockerfile.sparkplug
+    container_name: mira-sparkplug-consumer
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MQTT_INGEST_TENANT_ID=${MQTT_INGEST_TENANT_ID:-}
+      - MQTT_INGEST_BROKER_HOST=${MQTT_INGEST_BROKER_HOST:-mira-mosquitto}
+      - MQTT_INGEST_BROKER_PORT=${MQTT_INGEST_BROKER_PORT:-1883}
+      - MQTT_INGEST_TLS=${MQTT_INGEST_TLS:-0}
+      - MQTT_INGEST_USERNAME=${MQTT_INGEST_USERNAME:-}
+      - MQTT_INGEST_PASSWORD=${MQTT_INGEST_PASSWORD:-}
+      - MQTT_INGEST_SOURCE_SYSTEM=${MQTT_INGEST_SOURCE_SYSTEM:-ignition}
+      - MQTT_INGEST_GROUP_IDS=${MQTT_INGEST_GROUP_IDS:-}
+      - MQTT_INGEST_EDGE_NODES=${MQTT_INGEST_EDGE_NODES:-}
+      - MQTT_INGEST_DEVICES=${MQTT_INGEST_DEVICES:-}
+      - MQTT_INGEST_AUTO_DISCOVER=${MQTT_INGEST_AUTO_DISCOVER:-0}
+      - MQTT_INGEST_DRY_RUN=${MQTT_INGEST_DRY_RUN:-0}
+      - MQTT_INGEST_DEBUG=${MQTT_INGEST_DEBUG:-0}
+    networks:
+      - mira-net         # NeonDB egress + other saas services
+      - mosquitto-ext    # the MQTT broker's network (resolve mira-mosquitto by name)
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
 
   # Nango — credential vault and auth proxy for third-party CMMS/platform integrations
   # Dashboard: http://nango-server:3003 (internal) — nginx-proxy to /nango on public domain
@@ -548,11 +740,20 @@ services:
         # Public URL because hubDataProvider runs in the browser; nginx on
         # app.factorylm.com proxies /v1/ → mira-pipeline:9099.
         NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-https://app.factorylm.com}
+        # Deploy identity (#2226) — surfaced on /api/version + /api/health so QA
+        # can confirm which code is live. deploy-vps.yml exports these before build.
+        MIRA_GIT_SHA: ${MIRA_GIT_SHA:-unknown}
+        MIRA_APP_VERSION: ${MIRA_APP_VERSION:-unknown}
+        MIRA_BUILD_TIME: ${MIRA_BUILD_TIME:-unknown}
     container_name: mira-hub
     ports:
       - "127.0.0.1:3101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      # Command Center display registration SSRF lockdown (PR #1960): comma-separated
+      # exact hosts allowed as live-display probe targets. Empty = link-local/metadata
+      # block only (pure code). Set in Doppler factorylm/prd to bound the surface.
+      - COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST=${COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST:-}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
       # AES-256-GCM key for at-rest encryption of OAuth tokens in hub_channel_bindings
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
@@ -570,6 +771,9 @@ services:
       #   3. The old /hub/api/auth/callback/google URI can be removed once no
       #      active sessions reference it (safe to remove after 24h).
       - AUTH_SECRET=${AUTH_SECRET:-}
+      # Magic-link + team-invite email sender (Resend). Without this the Hub
+      # silently skips the send and logs the magic URL instead (login broken).
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/api/auth}
       - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/api/auth}
       # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with
@@ -588,6 +792,8 @@ services:
       # Slack — both bot-token shortcut and full OAuth are supported by the route
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
       - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
+      # Visual Focus Workspace (PR V2): optional HMAC secret for signed evidence-view tokens (fail-closed when unset).
+      - VISUAL_EVIDENCE_SIGNING_SECRET=${VISUAL_EVIDENCE_SIGNING_SECRET:-}
       - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
       # Microsoft 365 / Teams (single Azure app covers both)
       - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}
@@ -603,6 +809,11 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
       # mira-ingest target for Knowledge upload pipeline
       - INGEST_URL=${INGEST_URL:-http://mira-ingest-saas:8001}
+      # mira-ask drive-pack read-only pre-check (#2527) — asset-chat calls
+      # POST /drive-pack/ask before the LLM cascade; falls through on any
+      # error/non-match.
+      - MIRA_ASK_URL=${MIRA_ASK_URL:-http://mira-ask:8011}
+      - ASK_API_KEY=${ASK_API_KEY:-}
       # Where local-upload bytes are persisted so a FAILED local upload can be
       # retried without the user re-picking the file from disk (2026-06-06).
       # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed
@@ -617,21 +828,31 @@ services:
       # Nango — credential vault for CMMS and platform integrations
       - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://nango-server:3003}
       - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
-      # LLM cascade for AI Reports (Groq → Cerebras → Gemini)
+      # LLM cascade for AI Reports (Groq → Cerebras → Together)
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-gpt-oss-120b}
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_TIMEOUT=${TOGETHERAI_TIMEOUT:-}
+      - LLM_REASONING_RETRY_MAX_TOKENS=${LLM_REASONING_RETRY_MAX_TOKENS:-}
       # Atlas CMMS live stats — internal docker URL via shared cmms network.
       # Public cmms.factorylm.com nginx only proxies /auth/ + /api/ + /license/
       # to the Spring backend; /work-orders/*, /assets/*, /preventive-maintenances/*
       # fall through to the SPA and 405 on POST. Direct backend access bypasses
       # nginx. (Re-applies fix dc10a10f, regressed by 08db78e0.)
       - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}
+      # Browser-reachable Atlas URL handed to the client for "Open Atlas" + the
+      # CMMS quick links. HUB_CMMS_API_URL above is the internal docker hostname
+      # (server-side only); the browser must use this public host or the links
+      # crash (#2197).
+      - CMMS_PUBLIC_URL=${CMMS_PUBLIC_URL:-https://cmms.factorylm.com}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - HUB_SSO_SECRET=${HUB_SSO_SECRET:-}
+      - HUB_SSO_ISSUER=${HUB_SSO_ISSUER:-factorylm-hub}
+      - HUB_SSO_AUDIENCE=${HUB_SSO_AUDIENCE:-atlas-cmms}
       # /hub/admin/review reads filesystem assets relative to this root.
       # Must point at a directory that contains marketing/cartoons + docs/promo-screenshots
       # + tools/web-review-runs (see the volume mounts below).
@@ -660,6 +881,123 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  mira-synthetic-dogfood-worker:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.synthetic-dogfood
+    container_name: mira-synthetic-dogfood-worker
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q synthetic --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - SYNTHETIC_DOGFOOD_ENABLED=${SYNTHETIC_DOGFOOD_ENABLED:-0}
+      - DOGFOOD_ISSUE_MODE=${DOGFOOD_ISSUE_MODE:-dry_run}
+      - DOGFOOD_TARGET_URL=${DOGFOOD_TARGET_URL:-https://app.factorylm.com}
+      - DOGFOOD_REPORT_DIR=/mira-db/synthetic-dogfood
+      - DOGFOOD_TIMEOUT_SECONDS=${DOGFOOD_TIMEOUT_SECONDS:-600}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-Mikecranesync/MIRA}
+      - GITHUB_ISSUE_TOKEN=${GITHUB_ISSUE_TOKEN:-}
+      - SYNTHETIC_CARLOS_EMAIL=${SYNTHETIC_CARLOS_EMAIL:-}
+      - SYNTHETIC_CARLOS_PASSWORD=${SYNTHETIC_CARLOS_PASSWORD:-}
+      - SYNTHETIC_DANA_EMAIL=${SYNTHETIC_DANA_EMAIL:-}
+      - SYNTHETIC_DANA_PASSWORD=${SYNTHETIC_DANA_PASSWORD:-}
+      - SYNTHETIC_PLANTMGR_EMAIL=${SYNTHETIC_PLANTMGR_EMAIL:-}
+      - SYNTHETIC_PLANTMGR_PASSWORD=${SYNTHETIC_PLANTMGR_PASSWORD:-}
+      - SYNTHETIC_CFO_EMAIL=${SYNTHETIC_CFO_EMAIL:-}
+      - SYNTHETIC_CFO_PASSWORD=${SYNTHETIC_CFO_PASSWORD:-}
+    networks:
+      - mira-net
+    volumes:
+      - /opt/mira/data:/mira-db
+    restart: unless-stopped
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
+
+  mira-synthetic-dogfood-beat:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.synthetic-dogfood
+    container_name: mira-synthetic-dogfood-beat
+    command: celery -A mira_crawler.celery_app beat --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - CELERY_BEAT_PROFILE=synthetic-dogfood
+    networks:
+      - mira-net
+    volumes:
+      - /opt/mira/data:/mira-db
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+
+  # ─── Historian recording (#2338 epic) ───────────────────────────────────────
+  # Turns the ingested tag_events stream into the tag_event_diffs analysis
+  # stream (#2343) and — when MIRA_RUN_DIFF_ENABLED=1 — records machine runs +
+  # baselines + run-diffs (#2341). Dedicated worker/beat (mirrors the synthetic-
+  # dogfood pattern) on the isolated "historian" queue so it can't disturb other
+  # queues. Needs NEON_DATABASE_URL (same DB the relay ingests into) + migrations
+  # 037 + 057 (and 038 once run-diff is enabled). Run-diff ships OFF; enable only
+  # after the live-Postgres integration test passes on staging.
+  mira-historian-worker:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: mira-historian-worker
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q historian --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - TAG_DIFF_BATCH_SIZE=${TAG_DIFF_BATCH_SIZE:-1000}
+      - TAG_DIFF_CONFIG_JSON=${TAG_DIFF_CONFIG_JSON:-}
+      # Run-diff (#2341) — OFF until validated on staging (see epic #2338).
+      - MIRA_RUN_DIFF_ENABLED=${MIRA_RUN_DIFF_ENABLED:-0}
+      - MIRA_RUN_TRIGGERS=${MIRA_RUN_TRIGGERS:-}
+      - MIRA_BASELINE_NORMAL_RUN_COUNT=${MIRA_BASELINE_NORMAL_RUN_COUNT:-5}
+      - MIRA_BASELINE_MIN_RUNS=${MIRA_BASELINE_MIN_RUNS:-2}
+      - MIRA_SNAPSHOT_PRE_SECONDS=${MIRA_SNAPSHOT_PRE_SECONDS:-300}
+      - MIRA_SNAPSHOT_POST_SECONDS=${MIRA_SNAPSHOT_POST_SECONDS:-300}
+      # Machine-memory extension (#2404): trigger-less assets whose state
+      # windows should be derived (comma-separated ltree paths), and the
+      # sliding lookback. Omitting UNS_PATHS = no idle/fault windows derive.
+      - MIRA_MACHINE_MEMORY_UNS_PATHS=${MIRA_MACHINE_MEMORY_UNS_PATHS:-}
+      - MIRA_RUN_LOOKBACK_SECONDS=${MIRA_RUN_LOOKBACK_SECONDS:-3600}
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+
+  mira-historian-beat:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: mira-historian-beat
+    command: celery -A mira_crawler.celery_app beat --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - CELERY_BEAT_PROFILE=historian
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
 
   # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (P1) ───────────────────────
   # Long-running loop that pushes NeonDB changes to Atlas every 60s and pulls
@@ -696,9 +1034,17 @@ networks:
   cmms-ext:
     external: true
     name: factorylm-cmms_default
+  # The MQTT broker (mira-mosquitto) runs in the mira-plc-dash stack on its own
+  # network. The opt-in mira-sparkplug-consumer joins this to reach the broker by
+  # name. External: the broker must be up first. If the broker moves, update name.
+  mosquitto-ext:
+    external: true
+    name: mira-plc-dash_default
 
 volumes:
   mira-webui-data:
+  mira-leads-data:
+  mira-redis-data:
   mira-chroma:
   mira-docs:
   nango-db-data:

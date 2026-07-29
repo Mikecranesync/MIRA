@@ -40,6 +40,27 @@ describe("computeHealthScore — namespace readiness L0-L6", () => {
     expect(computeHealthScore({ ...c, docs: 1 }).level).toBe(4);
   });
 
+  it("returns a missing-context checklist with unapproved documents separated from readiness credit", () => {
+    const r = computeHealthScore({
+      sites: 1,
+      lines: 1,
+      assets: 1,
+      components: 1,
+      docs: 0,
+      docsPending: 3,
+    });
+
+    expect(r.level).toBe(3);
+    expect(r.missingContext).toContainEqual(
+      expect.objectContaining({
+        key: "approved_documents",
+        status: "needs_review",
+        count: 0,
+        pending: 3,
+      }),
+    );
+  });
+
   it("L5 — proposal flywheel — needs at least one verified and one pending", () => {
     const c = { sites: 1, lines: 1, assets: 1, components: 1, docs: 1 };
     expect(computeHealthScore({ ...c, proposalsPending: 5 }).level).toBe(4);

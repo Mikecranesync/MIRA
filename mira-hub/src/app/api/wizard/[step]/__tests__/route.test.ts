@@ -17,12 +17,16 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 
 const TENANT_ID = "tenant-aaaa-bbbb";
+// role:"owner" so the namespace.admin capability gate (#2360/#578) passes — the
+// onboarding wizard is admin/owner only; these tests cover wizard behavior, not
+// RBAC (the matrix is unit-tested in src/lib/__tests__/capabilities.test.ts).
 const goodSession = {
   userId: "user_1",
   tenantId: TENANT_ID,
   email: "x@y",
   status: "trial",
   trialExpiresAt: null,
+  role: "owner",
 };
 
 beforeEach(() => {
@@ -128,6 +132,37 @@ describe("POST /api/wizard/:step", () => {
     expect(sqls[3]).toMatch(/INSERT INTO namespace_versions/);
     expect(sqls[4]).toMatch(/INSERT INTO namespace_versions/);
     expect(sqls[5]).toMatch(/UPDATE wizard_progress[\s\S]+'completed'/);
+  });
+
+  it("accepts tag-import payload with proposals_created", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ current_step: "finish", status: "in_progress", step_payloads: { "tag-import": { proposals_created: 5 } } }],
+    });
+    (withTenantContext as ReturnType<typeof vi.fn>).mockImplementation(async (_t, fn) => fn({ query }));
+
+    const res = await POST(makeReq({ proposals_created: 5 }), paramsFor("tag-import"));
+    expect(res.status).toBe(200);
+    const body = await (res as NextResponse).json();
+    expect(body.ok).toBe(true);
+    expect(body.currentStep).toBe("finish");
+
+    const [sql, args] = query.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO wizard_progress/);
+    expect(args[1]).toBe("finish"); // nextStep("tag-import")
+    expect(args[2]).toBe("tag-import");
+    expect(JSON.parse(args[3])).toMatchObject({ proposals_created: 5 });
+  });
+
+  it("accepts tag-import with skipped:true", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ current_step: "finish", status: "in_progress", step_payloads: { "tag-import": { skipped: true } } }],
+    });
+    (withTenantContext as ReturnType<typeof vi.fn>).mockImplementation(async (_t, fn) => fn({ query }));
+
+    const res = await POST(makeReq({ skipped: true }), paramsFor("tag-import"));
+    expect(res.status).toBe(200);
+    const body = await (res as NextResponse).json();
+    expect(body.ok).toBe(true);
   });
 
   it("finish 400s when site or line payload is missing", async () => {

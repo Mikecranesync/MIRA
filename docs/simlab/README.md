@@ -263,3 +263,4 @@ The honest engine test uses the real Supervisor (via `tests/simlab/runner.py`) a
 - `tests/simlab/scenarios/` — YAML scenario definitions for runner.py
 - `docs/simlab/factory-io-optional-adapter.md` — Factory I/O visual layer (optional, not authoritative)
 - `docs/simlab/SIMLAB_BUILD_TASK.md` — full delegation spec (locked interfaces)
+- `docs/plans/2026-06-22-simlab-uns-ingest-roadmap.md` — **SimLab → real UNS ingest roadmap/runbook**: the full emit→land→UNS-map→consume pipeline (done-vs-needed matrix, parallel-agent work-tree lanes, infra/ops checklist)

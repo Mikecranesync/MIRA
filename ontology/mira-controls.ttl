@@ -1,0 +1,237 @@
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://ontology.factorylm.com/mira/controls>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/controls/0.1.0> ;
+    owl:versionInfo "0.1.0" ;
+    owl:imports <https://ontology.factorylm.com/mira/core> ;
+    dcterms:title "MIRA Controls — controllers, signals, observations, quality, registers" ;
+    rdfs:comment """Absorbs what an earlier draft split into a separate `mira-live` module: an
+Observation is not conceptually separable from the Signal it observes, and a module with no
+independent shapes or fixtures would have been a placeholder. See ADR-0032 §Module boundaries.""" .
+
+##  Control program structure  #########################################
+#  Grounded in mira-plc-parser/mira_plc_parser/ir.py (Controller/Program/Routine/Rung dataclasses).
+
+mira:Controller a owl:Class ; rdfs:subClassOf mira:AssetInstance ;
+    rdfs:label "Controller" ;
+    mira:grounded_in "mira_plc_parser/ir.py::Controller" ;
+    mira:term_status "canonical" .
+
+mira:Program a owl:Class ;
+    rdfs:label "Program" ;
+    mira:grounded_in "mira_plc_parser/ir.py::Program" ;
+    mira:term_status "canonical" .
+
+mira:Routine a owl:Class ;
+    rdfs:label "Routine" ;
+    mira:grounded_in "mira_plc_parser/ir.py::Routine, RoutineType" ;
+    mira:term_status "canonical" .
+
+mira:LogicElement a owl:Class ;
+    rdfs:label "Logic element" ;
+    rdfs:comment "One evaluable unit of control logic — a ladder rung, an ST statement, an FBD block." ;
+    mira:grounded_in "mira_plc_parser/ir.py::Rung" ;
+    mira:term_status "canonical" .
+
+##  Signals  ###########################################################
+#  Phase-0 finding: MIRA has NO signal-class vocabulary anywhere in code. The distinctions below
+#  are IMPLICIT in three unrelated places (drive-pack cmd_word vs status_bits vs fault_codes;
+#  Sparkplug SparkplugTopic.is_command; the PLC parser's flat `urn:mira:type:signal`). Every
+#  subclass here is therefore term_status "proposed" — this module is where the vocabulary is
+#  DEFINED for the first time, not where an existing one is mirrored. See ADR-0032 §Finding F3.
+
+mira:Signal a owl:Class ;
+    rdfs:label "Signal" ;
+    rdfs:comment "An addressable process variable. The thing an approved_tags row points at." ;
+    mira:grounded_in "approved_tags rows; mira_plc_parser/i3x.py urn:mira:type:signal; i3x object-types.ts 'datapoint'" ;
+    mira:term_status "canonical" .
+
+mira:CommandSignal a owl:Class ; rdfs:subClassOf mira:Signal ;
+    rdfs:label "Command signal" ;
+    rdfs:comment "An INTENT written toward the process. Observing a command tells you what was ASKED, never what HAPPENED. See shapes/controls.shacl.ttl CommandNotFeedbackShape." ;
+    mira:grounded_in "drive_packs/schema.py LiveDecode.cmd_word; mira-relay/mqtt_ingest/codecs/sparkplug_b.py SparkplugTopic.is_command (NCMD/DCMD)" ;
+    mira:term_status "proposed" .
+
+mira:FeedbackSignal a owl:Class ; rdfs:subClassOf mira:Signal ;
+    rdfs:label "Feedback signal" ;
+    rdfs:comment "A measured/reported ACTUAL state originating at the device. The only evidence class that can confirm a commanded state occurred." ;
+    mira:grounded_in "drive_packs/schema.py LiveDecode.status_bits" ;
+    mira:term_status "proposed" .
+
+mira:StatusSignal a owl:Class ; rdfs:subClassOf mira:FeedbackSignal ;
+    rdfs:label "Status signal" ;
+    mira:grounded_in "drive_packs/schema.py LiveDecode.status_bits" ;
+    mira:term_status "proposed" .
+
+mira:AlarmSignal a owl:Class ; rdfs:subClassOf mira:FeedbackSignal ;
+    rdfs:label "Alarm signal" ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[alarm_for, has_alarm]" ;
+    mira:term_status "proposed" .
+
+mira:FaultSignal a owl:Class ; rdfs:subClassOf mira:FeedbackSignal ;
+    rdfs:label "Fault signal" ;
+    mira:grounded_in "drive_packs/schema.py LiveDecode.fault_codes" ;
+    mira:term_status "proposed" .
+
+mira:MeasurementSignal a owl:Class ; rdfs:subClassOf mira:FeedbackSignal ;
+    rdfs:label "Measurement signal" ;
+    rdfs:comment "A signal carrying an ENGINEERING quantity (volts, amps, Hz). Requires a quantity kind and unit — a bare bool can never be one. See shapes BooleanNotQuantityShape." ;
+    mira:grounded_in "drive_packs/schema.py RegisterEntry(datapoint, unit, scaling); Envelope dc_bus/current/frequency" ;
+    mira:term_status "proposed" .
+
+##  Registers and parameters  ##########################################
+
+mira:Register a owl:Class ;
+    rdfs:label "Register" ;
+    rdfs:comment "A raw addressable word on the wire. A register is NOT an engineering value until a ScalingRule and unit are attached." ;
+    mira:grounded_in "drive_packs/schema.py RegisterEntry(addr, unit, scaling, datapoint)" ;
+    mira:term_status "canonical" .
+
+mira:ScalingRule a owl:Class ;
+    rdfs:label "Scaling rule" ;
+    rdfs:comment "raw → engineering transform. In pack v1/v2 this is a single multiplier (RegisterEntry.scaling)." ;
+    mira:grounded_in "drive_packs/schema.py RegisterEntry.scaling; docs/drive-commander/ignition-scaling-contract.md" ;
+    mira:term_status "canonical" .
+
+mira:Parameter a owl:Class ;
+    rdfs:label "Parameter" ;
+    rdfs:comment "A CONFIGURABLE setting on a device (pack v2 `parameters`). Distinct from Register (a transport address) and from Signal (a live process variable)." ;
+    mira:grounded_in "drive_packs/schema.py ParameterCard; pack.json['parameters'] (schema_version 2)" ;
+    mira:term_status "canonical" .
+
+##  Observations, quality, freshness, clock  ###########################
+#  Grounded in mira-hub/db/migrations/033_tag_events.sql and 036 (freshness_status),
+#  projected to i3X VQT by mira-hub/src/lib/i3x/quality.ts.
+
+mira:Observation a owl:Class ;
+    rdfs:label "Observation" ;
+    rdfs:comment "One recorded reading of a Signal at a time, with quality. Corresponds 1:1 to a tag_events row." ;
+    mira:grounded_in "mira-hub/db/migrations/033_tag_events.sql (one row = one Observation)" ;
+    mira:maps_to "W3C SOSA sosa:Observation (mapped, not imported — see mappings/README.md)" ;
+    mira:term_status "canonical" .
+
+mira:QualityState a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ;
+    rdfs:label "Quality state" ;
+    mira:grounded_in "tag_events.quality CHECK ('good','bad','stale','uncertain')" ;
+    mira:term_status "canonical" .
+
+mira:quality_good     a mira:QualityState ; rdfs:label "good" ;      mira:grounded_in "tag_events.quality CHECK" ; mira:term_status "canonical" .
+mira:quality_bad      a mira:QualityState ; rdfs:label "bad" ;       mira:grounded_in "tag_events.quality CHECK" ; mira:term_status "canonical" .
+mira:quality_stale    a mira:QualityState ; rdfs:label "stale" ;     mira:grounded_in "tag_events.quality CHECK" ; mira:term_status "canonical" .
+mira:quality_uncertain a mira:QualityState ; rdfs:label "uncertain" ; mira:grounded_in "tag_events.quality CHECK" ; mira:term_status "canonical" .
+
+mira:ValueType a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ;
+    rdfs:label "Value type" ;
+    mira:grounded_in "tag_events.value_type CHECK ('bool','int','float','string','enum')" ;
+    mira:term_status "canonical" .
+
+mira:valuetype_bool   a mira:ValueType ; rdfs:label "bool" ;   mira:grounded_in "tag_events.value_type CHECK" ; mira:term_status "canonical" .
+mira:valuetype_int    a mira:ValueType ; rdfs:label "int" ;    mira:grounded_in "tag_events.value_type CHECK" ; mira:term_status "canonical" .
+mira:valuetype_float  a mira:ValueType ; rdfs:label "float" ;  mira:grounded_in "tag_events.value_type CHECK" ; mira:term_status "canonical" .
+mira:valuetype_string a mira:ValueType ; rdfs:label "string" ; mira:grounded_in "tag_events.value_type CHECK" ; mira:term_status "canonical" .
+mira:valuetype_enum   a mira:ValueType ; rdfs:label "enum" ;   mira:grounded_in "tag_events.value_type CHECK" ; mira:term_status "canonical" .
+
+mira:ClockSource a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ;
+    rdfs:label "Clock source" ;
+    rdfs:comment """WHICH clock stamped an Observation. Grounded in a real distinction that already
+exists in the schema: tag_events carries BOTH event_timestamp (device/gateway clock) and
+ingested_at (MIRA's clock). Conflating them lets an ingest-time stamp be presented to a technician
+as an observed PLC time — the failure the LiveDiagnosisEligibility shape blocks.""" ;
+    mira:grounded_in "tag_events.event_timestamp vs tag_events.ingested_at (mig 033)" ;
+    mira:term_status "proposed" .
+
+mira:clock_plc     a mira:ClockSource ; rdfs:label "plc" ;     mira:grounded_in "tag_events.event_timestamp from a PLC-sourced ingest" ; mira:term_status "proposed" .
+mira:clock_gateway a mira:ClockSource ; rdfs:label "gateway" ; mira:grounded_in "tag_events.event_timestamp from Ignition/relay" ; mira:term_status "proposed" .
+mira:clock_ingest  a mira:ClockSource ; rdfs:label "ingest" ;  mira:grounded_in "tag_events.ingested_at (MIRA's own clock)" ; mira:term_status "proposed" .
+
+mira:FreshnessState a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ;
+    rdfs:label "Freshness state" ;
+    mira:grounded_in "mira-hub/db/migrations/036 freshness_status; i3x/quality.ts freshness 'live'|'stale'" ;
+    mira:term_status "canonical" .
+
+mira:freshness_live  a mira:FreshnessState ; rdfs:label "live" ;  mira:grounded_in "i3x/quality.ts default freshness" ; mira:term_status "canonical" .
+mira:freshness_stale a mira:FreshnessState ; rdfs:label "stale" ; mira:grounded_in "i3x/quality.ts stale downgrade" ; mira:term_status "canonical" .
+
+mira:QuantityKind a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ;
+    rdfs:label "Quantity kind" ;
+    rdfs:comment "What is being measured (voltage, current, frequency). MIRA holds a small controlled subset and REFERENCES QUDT by URI; QUDT is never imported or redistributed (see mappings/qudt.ttl)." ;
+    mira:grounded_in "drive_packs Envelope fields dc_bus / current / frequency" ;
+    mira:term_status "proposed" .
+
+mira:qk_voltage   a mira:QuantityKind ; rdfs:label "voltage" ;   mira:maps_to "http://qudt.org/vocab/quantitykind/Voltage" ;         mira:grounded_in "Envelope.dc_bus" ;   mira:term_status "proposed" .
+mira:qk_current   a mira:QuantityKind ; rdfs:label "current" ;   mira:maps_to "http://qudt.org/vocab/quantitykind/ElectricCurrent" ;  mira:grounded_in "Envelope.current" ;  mira:term_status "proposed" .
+mira:qk_frequency a mira:QuantityKind ; rdfs:label "frequency" ; mira:maps_to "http://qudt.org/vocab/quantitykind/Frequency" ;       mira:grounded_in "Envelope.frequency" ; mira:term_status "proposed" .
+
+##  Datatype properties  ###############################################
+
+mira:value          a owl:DatatypeProperty ; rdfs:label "value" ;          rdfs:domain mira:Observation ; mira:grounded_in "tag_events.value" ; mira:term_status "canonical" .
+mira:value_type     a owl:ObjectProperty   ; rdfs:label "value_type" ;     rdfs:domain mira:Observation ; rdfs:range mira:ValueType ;    mira:grounded_in "tag_events.value_type" ; mira:term_status "canonical" .
+mira:quality        a owl:ObjectProperty   ; rdfs:label "quality" ;        rdfs:domain mira:Observation ; rdfs:range mira:QualityState ; mira:grounded_in "tag_events.quality" ; mira:term_status "canonical" .
+mira:freshness      a owl:ObjectProperty   ; rdfs:label "freshness" ;      rdfs:domain mira:Observation ; rdfs:range mira:FreshnessState ; mira:grounded_in "mig 036 freshness_status" ; mira:term_status "canonical" .
+mira:clock_source   a owl:ObjectProperty   ; rdfs:label "clock_source" ;   rdfs:domain mira:Observation ; rdfs:range mira:ClockSource ;  mira:grounded_in "tag_events event_timestamp vs ingested_at" ; mira:term_status "proposed" .
+mira:event_timestamp a owl:DatatypeProperty ; rdfs:label "event_timestamp" ; rdfs:domain mira:Observation ; rdfs:range xsd:dateTime ;   mira:grounded_in "tag_events.event_timestamp" ; mira:term_status "canonical" .
+mira:observed_signal a owl:ObjectProperty  ; rdfs:label "observed_signal" ; rdfs:domain mira:Observation ; rdfs:range mira:Signal ;
+    rdfs:comment "No inverse modeled: enumerating every Observation of a given Signal is an unbounded time-series query over tag_events.tag_path, not a single-hop graph edge MIRA walks." ;
+    mira:grounded_in "tag_events.tag_path → approved_tags.normalized_tag_path" ; mira:term_status "proposed" .
+mira:quantity_kind  a owl:ObjectProperty   ; rdfs:label "quantity_kind" ;  rdfs:range mira:QuantityKind ; mira:grounded_in "Envelope band identity" ; mira:term_status "proposed" .
+mira:unit           a owl:DatatypeProperty ; rdfs:label "unit" ;           rdfs:range xsd:string ; mira:grounded_in "drive_packs RegisterEntry.unit, EnvelopeBand.unit" ; mira:term_status "canonical" .
+mira:scaling        a owl:DatatypeProperty ; rdfs:label "scaling" ;        rdfs:domain mira:ScalingRule ; rdfs:range xsd:decimal ; mira:grounded_in "drive_packs RegisterEntry.scaling" ; mira:term_status "canonical" .
+mira:register_addr  a owl:DatatypeProperty ; rdfs:label "register_addr" ;  rdfs:domain mira:Register ; rdfs:range xsd:integer ; rdfs:comment "None/absent when undocumented — never a guess (drive_packs/schema.py RegisterEntry docstring)." ; mira:grounded_in "drive_packs RegisterEntry.addr" ; mira:term_status "canonical" .
+mira:datatype       a owl:ObjectProperty   ; rdfs:label "datatype" ;       rdfs:domain mira:Register ; rdfs:range mira:ValueType ; mira:grounded_in "tag_events.value_type applied to a register decode" ; mira:term_status "proposed" .
+mira:read_only      a owl:DatatypeProperty ; rdfs:label "read_only" ;      rdfs:range xsd:boolean ;
+    rdfs:comment "Capability flag. MIRA is read-only for OT by default (.claude/rules/fieldbus-readonly.md). A Signal presented as writable must carry read_only=false explicitly AND be off the customer-shipped surface." ;
+    mira:grounded_in "mira-bots/tests/test_drive_packs_readonly.py gate; .claude/rules/fieldbus-readonly.md" ;
+    mira:term_status "proposed" .
+
+##  Control relationships  #############################################
+
+mira:controls a owl:ObjectProperty ; rdfs:label "controls" ; owl:inverseOf mira:controlled_by ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[controlled_by, controls]" ; mira:term_status "canonical" .
+mira:controlled_by a owl:ObjectProperty ; rdfs:label "controlled_by" ; owl:inverseOf mira:controls ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[controlled_by, controls]" ; mira:term_status "canonical" .
+
+mira:drives a owl:ObjectProperty ; rdfs:label "drives" ; owl:inverseOf mira:driven_by ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[drives, driven_by]" ; mira:term_status "canonical" .
+mira:driven_by a owl:ObjectProperty ; rdfs:label "driven_by" ; owl:inverseOf mira:drives ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[drives, driven_by]" ; mira:term_status "canonical" .
+
+mira:monitors a owl:ObjectProperty ; rdfs:label "monitors" ; owl:inverseOf mira:monitored_by ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[monitors, monitored_by]" ; mira:term_status "canonical" .
+mira:monitored_by a owl:ObjectProperty ; rdfs:label "monitored_by" ; owl:inverseOf mira:monitors ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[monitors, monitored_by]" ; mira:term_status "canonical" .
+
+mira:feeds a owl:ObjectProperty ; rdfs:label "feeds" ; owl:inverseOf mira:fed_by ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[feeds, fed_by]" ; mira:term_status "canonical" .
+mira:fed_by a owl:ObjectProperty ; rdfs:label "fed_by" ; owl:inverseOf mira:feeds ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[feeds, fed_by]" ; mira:term_status "canonical" .
+
+mira:alarm_for a owl:ObjectProperty ; rdfs:label "alarm_for" ; owl:inverseOf mira:has_alarm ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[alarm_for, has_alarm]" ; mira:term_status "canonical" .
+mira:has_alarm a owl:ObjectProperty ; rdfs:label "has_alarm" ; owl:inverseOf mira:alarm_for ;
+    mira:grounded_in "i3x/relationships.ts CANONICAL_PAIRS[alarm_for, has_alarm]" ; mira:term_status "canonical" .
+
+mira:commands a owl:ObjectProperty ; rdfs:label "commands" ; rdfs:domain mira:CommandSignal ; rdfs:range mira:AssetInstance ;
+    owl:inverseOf mira:commanded_by ;
+    mira:grounded_in "drive_packs LiveDecode.cmd_word targets the drive" ; mira:term_status "proposed" .
+mira:commanded_by a owl:ObjectProperty ; rdfs:label "commanded_by" ; owl:inverseOf mira:commands ;
+    mira:grounded_in "inverse of commands" ; mira:term_status "proposed" .
+
+mira:reports_feedback_for a owl:ObjectProperty ; rdfs:label "reports_feedback_for" ;
+    rdfs:domain mira:FeedbackSignal ; rdfs:range mira:AssetInstance ; owl:inverseOf mira:has_feedback ;
+    mira:grounded_in "drive_packs LiveDecode.status_bits report the drive's actual state" ; mira:term_status "proposed" .
+mira:has_feedback a owl:ObjectProperty ; rdfs:label "has_feedback" ; owl:inverseOf mira:reports_feedback_for ;
+    mira:grounded_in "inverse of reports_feedback_for" ; mira:term_status "proposed" .
+
+mira:interlocks a owl:ObjectProperty ; rdfs:label "interlocks" ; owl:inverseOf mira:interlocked_by ;
+    mira:grounded_in "plc/conv_simple_anomaly/rules_core.py permissive/interlock rules (A0-A12)" ; mira:term_status "proposed" .
+mira:interlocked_by a owl:ObjectProperty ; rdfs:label "interlocked_by" ; owl:inverseOf mira:interlocks ;
+    mira:grounded_in "inverse of interlocks" ; mira:term_status "proposed" .
+
+mira:indicates a owl:ObjectProperty ; rdfs:label "indicates" ; rdfs:domain mira:Signal ;
+    rdfs:comment "Signal → the condition it evidences. No inverse modeled: the reverse fan-out ('what indicates this fault') is served by the fault's own has_fault/caused_by edges." ;
+    mira:grounded_in "drive_packs fault_codes map a signal value to a fault meaning" ; mira:term_status "proposed" .

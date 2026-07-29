@@ -1,0 +1,17 @@
+# EXPECT-VIOLATION: mirash:ApprovedAssertionEvidenceShape
+#
+# R9 — "verified" with nothing behind it. No cited evidence, no approving Technician, no
+# timestamp. This is the shape of an approval that launders a guess into a fact.
+#
+# Isolation: trips ONLY R9 (3 property violations). It carries no derived_from, no
+# provenance_tier, no trust, no proposer — so R10a/R10c/R10d/R10b cannot fire.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:cv101 a mira:AssetInstance .
+
+ex:a_r9_bad a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:approval_state mira:approval_verified .

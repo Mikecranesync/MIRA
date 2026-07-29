@@ -1,0 +1,175 @@
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://ontology.factorylm.com/mira/electrical>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/electrical/0.1.0> ;
+    owl:versionInfo "0.1.0" ;
+    owl:imports <https://ontology.factorylm.com/mira/core> ,
+                <https://ontology.factorylm.com/mira/evidence> ;
+    dcterms:title "MIRA Electrical — PrintSense prints, symbols, terminals, conductors" ;
+    rdfs:comment """Every class mirrors a real collection on printsense.models.PrintSynthGraph or a
+column on wiring_connections (mig 026).
+
+THE LOAD-BEARING DISTINCTION (three layers, never collapsed):
+  1. mira:PrintObservation  — "I SAW this mark on this sheet"      (vision/LLM output; trust=proposed)
+  2. mira:Assertion         — "I THINK it means this"              (a candidate awaiting a human)
+  3. mira:AssetInstance     — "this physical thing EXISTS"         (only after human_verified)
+A DeviceSymbol is layer 1. It can never satisfy layer 3's constraints by itself — that is
+PrintObservationSeparationShape in shapes/electrical.shacl.ttl.""" .
+
+##  Layer 1 — what was SEEN on the print  ##############################
+
+mira:PrintPackage a owl:Class ; rdfs:label "Print package" ;
+    rdfs:comment "A drawing set. The document a technician holds." ;
+    mira:grounded_in "printsense/models.py PrintSynthGraph.package" ; mira:term_status "canonical" .
+
+mira:Sheet a owl:Class ; rdfs:subClassOf mira:SourceDocument ; rdfs:label "Sheet" ;
+    mira:grounded_in "printsense Entity.sheet; FunctionalPath.sheet" ; mira:term_status "canonical" .
+
+mira:PrintObservation a owl:Class ; rdfs:label "Print observation" ;
+    rdfs:comment "A visual reading of a print. Carries trust (printsense TrustState), never approval_state." ;
+    mira:grounded_in "printsense/models.py Entity (tag, type, evidence, confidence, trust, sheet)" ;
+    mira:term_status "canonical" .
+
+mira:ImageRegion a owl:Class ; rdfs:subClassOf mira:Evidence ; rdfs:label "Image region" ;
+    rdfs:comment "The on-sheet text/region supporting a reading. The atom of PrintSense evidence." ;
+    mira:grounded_in "printsense Entity.evidence ('the on-sheet text/region supporting this fact')" ;
+    mira:term_status "canonical" .
+
+mira:DeviceSymbol a owl:Class ; rdfs:subClassOf mira:PrintObservation ; rdfs:label "Device symbol" ;
+    rdfs:comment "A drawn symbol believed to denote a device. NOT a device." ;
+    mira:grounded_in "printsense PrintSynthGraph.devices" ; mira:term_status "canonical" .
+
+##  Layer 3 — verified physical electrical objects  ####################
+
+mira:Terminal a owl:Class ; rdfs:subClassOf mira:Component ; rdfs:label "Terminal" ;
+    mira:grounded_in "printsense PrintSynthGraph.terminals; wiring_connections.source_terminal/dest_terminal ('X1:3','TB2-14')" ;
+    mira:term_status "canonical" .
+
+mira:TerminalStrip a owl:Class ; rdfs:subClassOf mira:Component ; rdfs:label "Terminal strip" ;
+    mira:grounded_in "wiring_connections terminal notation prefix ('X1', 'TB2')" ; mira:term_status "proposed" .
+
+mira:ConnectionPoint a owl:Class ; rdfs:label "Connection point" ;
+    rdfs:comment "One end of a conductor: a (device, terminal) pair. Grounded in the fact that mig 026 stores endpoints as TWO columns — entity id AND terminal text." ;
+    mira:grounded_in "wiring_connections (source_entity_id, source_terminal) / (dest_entity_id, dest_terminal)" ;
+    mira:term_status "canonical" .
+
+mira:Conductor a owl:Class ; rdfs:label "Conductor" ;
+    rdfs:comment "One electrical run between two connection points. A wiring_connections row." ;
+    mira:grounded_in "printsense PrintSynthGraph.conductors; wiring_connections rows (wire_number, gauge_awg, color)" ;
+    mira:term_status "canonical" .
+
+mira:Cable a owl:Class ; rdfs:label "Cable" ;
+    mira:grounded_in "printsense PrintSynthGraph.cables; wiring_connections.cable_id" ; mira:term_status "canonical" .
+
+mira:Contact a owl:Class ; rdfs:subClassOf mira:Component ; rdfs:label "Contact" ;
+    mira:grounded_in "printsense PrintSynthGraph.contacts" ; mira:term_status "canonical" .
+
+mira:Coil a owl:Class ; rdfs:subClassOf mira:Component ; rdfs:label "Coil" ;
+    rdfs:comment "The energising half of a relay/contactor whose contacts appear elsewhere in the set — the reason cross_references exists." ;
+    mira:grounded_in "wiring_connections terminal notation 'COIL:6' (mig 026 example)" ; mira:term_status "canonical" .
+
+mira:PowerDomain a owl:Class ; rdfs:label "Power domain" ;
+    mira:grounded_in "printsense PrintSynthGraph.power_domains" ; mira:term_status "canonical" .
+
+mira:PowerSource a owl:Class ; rdfs:subClassOf mira:Component ; rdfs:label "Power source" ;
+    mira:grounded_in "wiring_connections terminal notation '24V+' (mig 026 example); printsense power_domains" ;
+    mira:term_status "canonical" .
+
+mira:PeBond a owl:Class ; rdfs:label "PE bond" ;
+    rdfs:comment "Protective-earth bonding. Kept distinct from a signal conductor because function_class 'ground' is a separate CHECK value." ;
+    mira:grounded_in "printsense PrintSynthGraph.pe_bonds; wiring_connections.function_class='ground'" ;
+    mira:term_status "canonical" .
+
+mira:CircuitProtectionDevice a owl:Class ; rdfs:subClassOf mira:Component ; rdfs:label "Circuit protection device" ;
+    rdfs:comment "Fuse, breaker, overload. Currently typed only as free text in printsense Entity.type — promoting it to a class is what makes the `protects` edge expressible." ;
+    mira:grounded_in "printsense Entity.type free-text values on PrintSynthGraph.devices" ; mira:term_status "proposed" .
+
+mira:CrossReference a owl:Class ; rdfs:label "Cross reference" ;
+    rdfs:comment "A pointer from one sheet to a continuation on another." ;
+    mira:grounded_in "printsense PrintSynthGraph.off_page_references; cross_sheet_notes" ; mira:term_status "canonical" .
+
+mira:PlcIoChannel a owl:Class ; rdfs:label "PLC I/O channel" ;
+    rdfs:comment "The join point between the electrical print and the control program: a physical terminal that is also an addressable PLC point. This is how a Conductor reaches a Signal." ;
+    mira:grounded_in "printsense PrintSynthGraph.plc_io_channels; mira_plc_parser/ir.py ModulePort" ;
+    mira:term_status "canonical" .
+
+mira:NetworkLink a owl:Class ; rdfs:label "Network link" ;
+    mira:grounded_in "printsense PrintSynthGraph.network_links; wiring_connections.function_class='comm'" ;
+    mira:term_status "canonical" .
+
+mira:FunctionalPath a owl:Class ; rdfs:label "Functional path" ;
+    rdfs:comment "An ordered walk through devices that accomplishes one function (e.g. the E-stop string)." ;
+    mira:grounded_in "printsense/models.py FunctionalPath(name, sheet, sequence)" ; mira:term_status "canonical" .
+
+##  Function class  ####################################################
+
+mira:FunctionClass a owl:Class ; rdfs:subClassOf mira:ControlledVocabulary ; rdfs:label "Function class" ;
+    mira:grounded_in "wiring_connections.function_class CHECK ('power','signal','safety','comm','ground','unknown')" ;
+    mira:term_status "canonical" .
+
+mira:fc_power   a mira:FunctionClass ; rdfs:label "power" ;   mira:grounded_in "mig 026 function_class CHECK" ; mira:term_status "canonical" .
+mira:fc_signal  a mira:FunctionClass ; rdfs:label "signal" ;  mira:grounded_in "mig 026 function_class CHECK" ; mira:term_status "canonical" .
+mira:fc_safety  a mira:FunctionClass ; rdfs:label "safety" ;  mira:grounded_in "mig 026 function_class CHECK" ; mira:term_status "canonical" .
+mira:fc_comm    a mira:FunctionClass ; rdfs:label "comm" ;    mira:grounded_in "mig 026 function_class CHECK" ; mira:term_status "canonical" .
+mira:fc_ground  a mira:FunctionClass ; rdfs:label "ground" ;  mira:grounded_in "mig 026 function_class CHECK" ; mira:term_status "canonical" .
+mira:fc_unknown a mira:FunctionClass ; rdfs:label "unknown" ; mira:grounded_in "mig 026 function_class CHECK" ; mira:term_status "canonical" .
+
+##  Properties  ########################################################
+
+mira:function_class a owl:ObjectProperty ; rdfs:label "function_class" ; rdfs:domain mira:Conductor ; rdfs:range mira:FunctionClass ;
+    mira:grounded_in "wiring_connections.function_class" ; mira:term_status "canonical" .
+
+mira:wire_number a owl:DatatypeProperty ; rdfs:label "wire_number" ; rdfs:domain mira:Conductor ; rdfs:range xsd:string ;
+    mira:grounded_in "wiring_connections.wire_number" ; mira:term_status "canonical" .
+
+mira:terminal_label a owl:DatatypeProperty ; rdfs:label "terminal_label" ; rdfs:domain mira:ConnectionPoint ; rdfs:range xsd:string ;
+    mira:grounded_in "wiring_connections.source_terminal / dest_terminal text" ; mira:term_status "canonical" .
+
+mira:endpoint_unresolved a owl:DatatypeProperty ; rdfs:label "endpoint_unresolved" ; rdfs:domain mira:Conductor ; rdfs:range xsd:boolean ;
+    rdfs:comment "Explicit 'we could not read where this goes'. Grounded in printsense Unresolved — an honest gap, not a missing field. A conductor may be endpoint-less ONLY if this is true." ;
+    mira:grounded_in "printsense/models.py Unresolved(item, status, resolution); PrintSynthGraph.unresolved" ;
+    mira:term_status "canonical" .
+
+mira:connected_to a owl:ObjectProperty ; rdfs:label "connected_to" ;
+    rdfs:comment "Symmetric electrical continuity. Its own inverse — documented rather than paired." ;
+    mira:grounded_in "printsense Entity.connects list" ; mira:term_status "proposed" .
+
+mira:terminates_at a owl:ObjectProperty ; rdfs:label "terminates_at" ; rdfs:domain mira:Conductor ; rdfs:range mira:ConnectionPoint ;
+    owl:inverseOf mira:terminates ;
+    mira:grounded_in "wiring_connections source/dest endpoint pairs" ; mira:term_status "proposed" .
+mira:terminates a owl:ObjectProperty ; rdfs:label "terminates" ; owl:inverseOf mira:terminates_at ;
+    mira:grounded_in "inverse of terminates_at" ; mira:term_status "proposed" .
+
+mira:belongs_to_device a owl:ObjectProperty ; rdfs:label "belongs_to_device" ; rdfs:domain mira:Terminal ;
+    rdfs:comment "A terminal's owner: a device, a terminal strip, or an approved connection structure. No inverse modeled — has_component already serves the downward traversal." ;
+    mira:grounded_in "wiring_connections.source_entity_id / dest_entity_id FK to the owning entity" ;
+    mira:term_status "proposed" .
+
+mira:powered_by a owl:ObjectProperty ; rdfs:label "powered_by" ; rdfs:range mira:PowerSource ; owl:inverseOf mira:powers ;
+    mira:grounded_in "printsense power_domains membership; function_class='power'" ; mira:term_status "proposed" .
+mira:powers a owl:ObjectProperty ; rdfs:label "powers" ; owl:inverseOf mira:powered_by ;
+    mira:grounded_in "inverse of powered_by" ; mira:term_status "proposed" .
+
+mira:protects a owl:ObjectProperty ; rdfs:label "protects" ; rdfs:domain mira:CircuitProtectionDevice ; owl:inverseOf mira:protected_by ;
+    mira:grounded_in "printsense devices of protective type upstream in a power_domain" ; mira:term_status "proposed" .
+mira:protected_by a owl:ObjectProperty ; rdfs:label "protected_by" ; owl:inverseOf mira:protects ;
+    mira:grounded_in "inverse of protects" ; mira:term_status "proposed" .
+
+mira:appears_on a owl:ObjectProperty ; rdfs:label "appears_on" ; rdfs:range mira:Sheet ; owl:inverseOf mira:shows ;
+    mira:grounded_in "printsense Entity.sheet" ; mira:term_status "proposed" .
+mira:shows a owl:ObjectProperty ; rdfs:label "shows" ; owl:inverseOf mira:appears_on ;
+    mira:grounded_in "inverse of appears_on" ; mira:term_status "proposed" .
+
+mira:cross_references a owl:ObjectProperty ; rdfs:label "cross_references" ;
+    rdfs:comment "Symmetric sheet-to-sheet continuation. Its own inverse." ;
+    mira:grounded_in "printsense off_page_references; cross_sheet_notes" ; mira:term_status "proposed" .
+
+mira:observed_as a owl:ObjectProperty ; rdfs:label "observed_as" ; rdfs:domain mira:AssetInstance ; rdfs:range mira:PrintObservation ;
+    rdfs:comment "Links a VERIFIED physical thing back to the symbol(s) that evidenced it. Direction is deliberate: you may only walk observation → physical after a human approval exists. No inverse is modeled in the other direction: a PrintObservation walking forward to 'the physical thing' before approval would bypass the trust gate this property exists to enforce." ;
+    mira:grounded_in "printsense PhysicalMatch(layout_feature, candidate_schematic_device, basis, trust)" ;
+    mira:term_status "proposed" .

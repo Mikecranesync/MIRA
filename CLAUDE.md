@@ -1,14 +1,15 @@
 # MIRA — Build State
 
-**Version:** v3.4.0 | **Updated:** 2026-05-07
-**One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Gemini (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
+**Version:** see `/VERSION` (authoritative overall counter; auto-tagged `vX.Y.Z` on merge — `docs/versioning.md`)
+**One-liner:** FactoryLM = the maintenance-context layer that makes messy factory data trustworthy for AI (on any UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Canonical wedge → `NORTH_STAR.md`** (lead with context, not copilot; adapters retained).
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Together (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
 
 ---
 
 ## North Star
-- **🚦 BETA GATE — No beta until a stranger can upload their own equipment manual and get a cited answer without Mike manually fixing anything.** This is the release gate for the "Path to Beta Testers" phase. Tracked by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until the gap closes) and `docs/plans/2026-06-07-path-to-beta.md`. Current blocker: upload→retrieval gap (document/manual uploads land in Open WebUI KB via mira-ingest `/ingest/document-kb`; chat retrieval reads only `knowledge_entries`) — see PR #1592.
+- **🧭 CANONICAL WEDGE — `NORTH_STAR.md` (2026-06-22).** FactoryLM = the maintenance-context layer (makes messy data trustworthy for AI on *any* UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Lead with the context platform, never the copilot.** Adapters (Slack/Telegram/Ignition/QR/web) are retained consumption surfaces — each renders the *same approved-context answer*. The competitive map + the **ProveIt! 2027 demo runbook** (`docs/plans/2026-06-22-proveit-2027-demo-runbook.md`) live there. Supersedes the older "Slack-first copilot" / "digital-transformation-firm" framings.
+- **🚦 BETA GATE — A stranger can upload their own equipment manual and get a cited answer without Mike manually fixing anything.** The release gate for the "Path to Beta Testers" phase. **Status (2026-06-17): MET / PASSING on deploy truth** — the upload→retrieval gap is **closed** (#1592 folder=brain + #1863 blind-upload Inbox node + #1911 `is_private=true` + #2100 embed-on-write; un-xfailed in #2077). `tests/beta/beta_ready_upload_retrieval_citation.py` is now a **real assertion**, CI-enforced by `.github/workflows/beta-gate.yml` against a stranger provisioned on staging Neon. Don't reintroduce the gap: per-tenant uploads land in `knowledge_entries` (`is_private=true`) and are citable on the Hub NodeChat path — `/api/uploads/folder` (Open WebUI KB only) is **not** a citable door. Keep it green; see `docs/plans/2026-06-07-path-to-beta.md` and `.claude/rules/knowledge-entries-tenant-scoping.md`.
 - **🧭 PRODUCT DIRECTION — Train before deploy.** The Command Center (`mira-hub`) builds the namespace and **validates** MIRA. Ignition/HMI **consumes approved intelligence** — it is a deployment surface, not the onboarding system. Doctrine: `.claude/rules/train-before-deploy.md`; lifecycle spec: `docs/specs/asset-agent-validation-spec.md`.
 - **PRIMARY FOCUS — Master implementation plan:** `docs/plans/2026-06-01-mira-master-architecture-plan.md` — 14-phase build plan governing all current development. Every session must align to this plan. No unrelated dev projects until all phases are complete.
 - **PRIMARY:** `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Read first before any feature work.
@@ -25,7 +26,7 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
+2. **Cloud LLMs:** Groq + Cerebras + Together cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic in the diagnostic cascade** (removed PR #610 — never reintroduce there). Sole owner-authorized carve-out: the PrintSynth print-vision interpreter (PR #2661) — print-photo vision only, never chat/diagnosis.
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
@@ -42,9 +43,9 @@
 | | DEV | STAGING | PROD |
 |---|---|---|---|
 | Where | CHARLIE local | CHARLIE + Neon staging branch | VPS (`165.245.138.91`) |
-| Compose | `docker-compose.yml` | `docker-compose.staging.yml` *(TODO)* | `docker-compose.saas.yml` |
+| Compose | `docker-compose.yml` | `docker-compose.staging.yml` (local-dev) + `docker-compose.staging-vps.yml` (VPS) | `docker-compose.saas.yml` |
 | Doppler | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
-| Telegram | `@MiraDevBot` or none | `@MiraStagingBot` *(TODO)* | `@FactoryLM_Diagnose` |
+| Telegram | `@MiraDevBot` or none | `@Mira_stagong_bot` (token `TELEGRAM_BOT_TOKEN_STG`) | `@FactoryLM_Diagnose` |
 | Safe to break | YES | YES (gate before promotion) | **NEVER** |
 
 **Hard rules (do not bypass — `prod-guard.sh` enforces #1–#3):**
@@ -162,7 +163,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Gemini key blocked** — 403 in Doppler. Cascade falls through to next provider; if all fail, falls through to Open WebUI/Ollama.
+- **Together AI is the third provider** — replaced Gemini (403-blocked in Doppler). Key-gated via `TOGETHERAI_API_KEY`; if all cloud providers fail, the cascade falls through to Open WebUI/Ollama.
 
 ---
 
@@ -170,8 +171,11 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 
 - **Architecture (layer map + dependency rules):** `docs/ARCHITECTURE.md`
 - **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
+- **Agent eval / tracing / observability audit + decision:** `docs/observability/mira-agent-eval-audit.md` — KEEP RAGAS/DeepEval/5-regime evals; EXTEND with `mira-bots/shared/agent_trace.py` (cloud-free per-turn trace + JSONL + optional OTel/Phoenix via `MIRA_OTEL_ENDPOINT`, off by default). Phoenix optional; no LangGraph (ADR-0011).
 - **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
 - **Release notes:** `docs/CHANGELOG.md`
+- **Versioning & rollback (every merge bumps `/VERSION`, auto-tags `vX.Y.Z` + a rollback checkpoint):** `docs/versioning.md` — enforced by `version-gate.yml` (required) + `version-tag.yml`
+- **Product offering (signal difference engine + contextual supervisor):** `docs/product/mira_difference_engine_offering.md` (positioning), `docs/product/mira_signal_difference_engine_prd.md` (PRD), `docs/plans/2026-06-30-mira-difference-engine-backlog.md` (backlog). Sharpens the `NORTH_STAR.md` wedge — "MIRA finds what changed, groups differences into machine events, explains what they mean." ~70% already built (`mira-relay` ingest + `tag_diff_logger` grouping + Supervisor); gaps = learned baselines + continuous historian. Read-only, no overclaim.
 - **Kiosk / AskMira deploy + prod verify runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md` — read BEFORE shipping any `mira-bots/ask_api/`, kiosk-scoped engine fast-path, or AskMira `view.json` change. Documents the **`services=mira-ask`** dispatch + 9/10 Mode A hard-pass + Mode B browser verify.
 - **All env vars:** `docs/env-vars.md`
 - **Known issues / deferred / abandoned:** `docs/known-issues.md`
@@ -184,14 +188,17 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Active namespace-builder plan:** `docs/plans/2026-05-15-maintenance-namespace-builder.md` — integrates with the 90-day plan (Units 2/4/9a fold in as Phase 1/2/4 components); has its own "Currently in-flight" section — check both.
+- **Maintenance Intelligence Module (self-onboarding Ignition module — "detect AND explain"):** resume `docs/RESUME_2026-06-14_maintenance-intelligence-module.md`; plan `~/.claude/plans/yes-map-the-path-warm-wadler.md`; proving plan `docs/plans/2026-06-14-proving-test-case-plan.md`. **Phase 1 DONE** (`83ea8e81`): the A0–A12 anomaly rules run **in-gateway** on a live Ignition tag snapshot (`ignition/webdev/FactoryLM/api/diagnose/`; rules in `plc/conv_simple_anomaly/rules_core.py`, dual Py2.7/3.12, drift-guarded by `tests/regime7_ignition/test_diagnose_parity.py`). NOTE: the Ignition **WebDev module is not installed** on the bench gateway (the HTTP endpoint 404s) — Phase 2 panel uses a Perspective project script, no WebDev needed.
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 - **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
 - **Debugging & verification conventions:** `.claude/rules/debugging-conventions.md` — multi-cause perf debugging; verify schema/API paths before guessing
+- **Materialized Evidence & recall-first architecture (North Star amendment 2026-07-20):** `docs/architecture/materialized-evidence.md` (5 layers) + `.claude/rules/materialized-evidence.md` (15 rules) + `docs/adr/0029-materialized-evidence.md` + inventory `docs/architecture/materialized-evidence-inventory.md`. Infer once, materialize every expensive discovery as durable typed versioned evidence, recall unless the evidence changed; the seed is `printsense/cas.py` (generalize, don't duplicate).
 - **Environments doctrine (dev / staging / prod):** `docs/environments.md`
 - **Enforcement layer:** `docs/specs/enforcement-layer-spec.md` — Playwright audit, write-path round-trip, enum drift, spec staleness, PR template, NeonDB canary
 - **Claude Code v2.1+ defaults (Opus 4.7, xhigh, /effort, /autofix-pr, Routines):** `wiki/references/claude-code-v2.1.md`
 - **MIRA Routines (cloud-side scheduled work):** `wiki/references/routines.md`
 - **CodeGraph (semantic code index + MCP):** `wiki/references/codegraph.md` — usage rules in `.claude/rules/codegraph-usage.md`. Run `tools/codegraph-preflight.sh` before non-doc code work; trust the call-graph only after freshness passes. **Graphify is excluded from code navigation** (`.claude/rules/graphify-excluded.md`).
+- **OCR regime (floor/model/paid lanes, recall gate, keep-alive):** docs/runbooks/ocr-regime.md
 
 ---
 
@@ -235,6 +242,28 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 **Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`, `actionlint`
 
 ---
+
+## Release / PR Workflow
+
+Any PR that touches shippable code must bump `/VERSION` (semver: feat→minor, fix→patch, breaking→major) and add a `docs/CHANGELOG.md` note. **CI-enforced** — `.github/workflows/version-gate.yml` (`Version Bump Check`) is a required status check on `main` and fails a code-touching PR that leaves `/VERSION` unchanged. Docs/wiki/markdown-only PRs are exempt (no bump required). See `docs/versioning.md` for semver conventions and the auto-tag-on-merge behavior.
+
+## Git Workflow
+
+`tools/hooks/git-state-guard.sh` (a `PreToolUse(Bash)` hook) blocks git mutators while the repo is mid-rebase or on a detached `HEAD` — **except** `git rebase --continue`/`--abort`/`--skip`/`--quit`, which are always allowed even mid-rebase, since they're the only way to resolve the wedge from inside a single Bash call. If a rebase gets wedged for a reason `--continue`/`--abort` can't resolve, **stop and ask the user** — don't retry with `MIRA_ALLOW_GIT_WEDGE=1`, `git reset --hard`, or by hand-deleting `.git/rebase-merge`. Those are destructive workarounds for a state a human should look at.
+
+## Sub-agents / Worktrees
+
+Any sub-agent dispatched for parallel work that will Edit/Write files MUST operate in its own isolated git worktree (`Agent` tool `isolation: "worktree"`) or have explicit confirmation there's no uncommitted foreign work in the shared checkout it could clobber — verified **before** running file/git commands, not after.
+
+**Creating a worktree is an obligation to remove it.** The harness auto-removes one only when the agent made **no** changes, so cleanup never fires for a worktree that did work — push the branch, then `git worktree remove`. **Never leave a worktree holding `main`**: git allows one checkout per branch with no TTL, so a forgotten one blocks the shared checkout (this happened 2026-07-27; use `--detach origin/main` instead). Scripts that `git worktree add` must remove on **every** exit path via `trap … EXIT`, or deliberately reuse a **fixed** path with a defensive pre-clean — never a `$$`/timestamp-derived path. Don't delete other sessions' worktrees on a guess; `--merged` is a weak signal here (squash-merge). See `.claude/rules/subagent-worktree-isolation.md` and `docs/tech-debt/2026-07-27-worktree-clutter-rca.md`.
+
+## Safety / Dangerous Commands
+
+Before running `rm -rf`, `git reset --hard`, `git clean -f[d]`, or any other command that irreversibly discards data, print the exact resolved absolute path/target first and confirm it matches the intended target before executing. A deterministic floor (`tools/hooks/rm-guard.sh`, `PreToolUse(Bash)`) also hard-blocks a recursive+force `rm` that resolves to `/`, `$HOME`, the repo root, or any `.git` dir (override: `MIRA_ALLOW_RM=1`); it's a floor, not a substitute for the print-the-path discipline. See `.claude/rules/dangerous-commands-safety.md`.
+
+## Security
+
+Credentials and passwords come from environment variables (Doppler-managed, `factorylm/{dev,stg,prd}`) — never hardcoded in scripts, including one-off `tools/`/`plc/` ops scripts and seed/migration scripts. Enforced by `.ast-grep-rules/hardcoded-secret.yml` (every PR, `code-review.yml`) and `gitleaks protect --staged` (pre-commit). See `.claude/rules/security-boundaries.md`.
 
 ## CLAUDE.md Maintenance
 

@@ -152,6 +152,7 @@ class ChatDispatcher:
             chat_id=chat_id,
             message=event.text,
             photo_b64=photo_b64,
+            platform=event.platform,
             tenant_id=mira_user.tenant_id,
             mira_user_id=mira_user.id,
         )

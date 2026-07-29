@@ -1,0 +1,19 @@
+# R10c satisfied — machine_verified maps to approval_state=proposed, per the ADR-0032 §7
+# crosswalk. The machine did strong work; it just does not get to call itself verified.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech1  a mira:Technician .
+ex:tech2  a mira:Technician .
+ex:llm    a mira:SoftwareAgent .
+ex:doc1   a mira:SourceDocument .
+ex:cite1  a mira:Citation ; mira:cite_doc ex:doc1 ; mira:cite_locator "p.114" .
+
+ex:a_r10c_ok a mira:Assertion ;
+    mira:subject ex:cv101 ; mira:predicate "has_component" ; mira:object ex:mtr3 ;
+    mira:trust mira:trust_machine_verified ;
+    mira:approval_state mira:approval_proposed ;
+    mira:supported_by ex:cite1 ;
+    mira:proposed_by ex:llm .

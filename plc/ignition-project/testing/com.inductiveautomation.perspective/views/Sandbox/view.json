@@ -1,0 +1,38 @@
+{
+  "custom": {},
+  "params": {},
+  "props": { "defaultSize": { "width": 1280, "height": 800 } },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "props": {
+      "direction": "column",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "style": { "backgroundColor": "#0d1117", "height": "100%", "gap": "10px", "padding": "24px" }
+    },
+    "children": [
+      {
+        "type": "ia.display.label",
+        "meta": { "name": "title" },
+        "position": { "basis": "auto", "shrink": 0 },
+        "props": { "text": "MIRA SANDBOX", "style": { "color": "#39d353", "fontSize": "28px", "fontWeight": 700, "letterSpacing": "0.12em" } }
+      },
+      {
+        "type": "ia.display.label",
+        "meta": { "name": "sub" },
+        "position": { "basis": "auto", "shrink": 0 },
+        "props": { "text": "Experimental Perspective views deploy here first. Live-test, then promote to ConvSimpleLive.", "style": { "color": "#8b949e", "fontSize": "14px", "textAlign": "center" } }
+      },
+      {
+        "type": "ia.display.markdown",
+        "meta": { "name": "howto" },
+        "position": { "basis": "auto", "shrink": 0 },
+        "props": {
+          "source": "**Workflow**\n\n1. Build a view in `plc/ignition-project/testing/.../views/`\n2. `DEPLOY_TESTING.ps1` (elevated) -> it lands here at `/data/perspective/client/testing/<route>`\n3. Live-test it. Nothing here can affect the live ConvSimpleLive project.\n4. When approved: `PROMOTE.ps1 <ViewName>` copies it into ConvSimpleLive + the repo.\n\n_Standalone project - sees the same gateway tags as live._",
+          "style": { "backgroundColor": "#161b22", "color": "#c9d1d9", "border": "1px solid #30363d", "borderRadius": "8px", "padding": "16px", "fontSize": "13px", "maxWidth": "560px" }
+        }
+      }
+    ]
+  }
+}

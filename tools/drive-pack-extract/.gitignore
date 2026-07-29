@@ -1,0 +1,23 @@
+# Real, licensed OEM drive manuals must NEVER be committed — see
+# `.claude/rules/knowledge-entries-tenant-scoping.md` (n/a) and
+# ADR-0025 / docs/adr/0025-drive-intelligence-packs-and-drive-commander.md
+# (packs ship EXTRACTED, cited data — never the source PDF).
+#
+# The reproducible SYNTHETIC test fixture (fixtures/pf_sample.pdf, built by
+# _make_pf_sample_pdf.py, no licensed content) is explicitly kept below.
+
+pf525_*.pdf
+*520-um001*
+*520-UM001*
+manuals/
+
+# Keep the synthetic fixture even though it matches no pattern above — belt
+# and suspenders in case a future pattern would otherwise catch it.
+!fixtures/pf_sample.pdf
+
+# Transient grading run output (regenerate with grade.py --out grading_out).
+# The durable acceptance report is committed next to the pack
+# (mira-bots/shared/drive_packs/packs/<family>/grading_report.md).
+grading/grading_out/
+__pycache__/
+*.pyc

@@ -1,0 +1,6 @@
+Let me carefully read this dense control sheet before emitting JSON.
+I can see a title block and one backplane module reference.
+
+{"package": {"drawing_no": "31971", "cabinet": "SCU2"}, "devices": [{"tag": "-5/A101", "type": "module", "confidence": 0.9, "trust": "proposed"}]}
+
+That completes the structured extraction for this sheet.

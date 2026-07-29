@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://factorylm.internal/schemas/print-translator-benchmark/grade_schema.json",
+  "title": "Print Translator Benchmark — Judge Grade",
+  "description": "One judge grade for one benchmark case. Written by a Sonnet judge subagent per docs/eval/print-translator-benchmark/JUDGE_PROTOCOL.md. schema_version tracks THIS file; judge_version tracks the judge instructions (JUDGE_PROTOCOL.md) that produced the grade.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "case_id",
+    "category_scores",
+    "total",
+    "deductions",
+    "hard_failure",
+    "hard_failure_reasons",
+    "answerable",
+    "refusal",
+    "overall_confidence",
+    "judge_version",
+    "judge_pass"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Version of this grade_schema.json. Bump only via a new, additive schema file — never silently reshape grades already on disk (session-discipline / mira-hub-migrations immutability doctrine applied to eval artifacts)."
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^[0-9]{2}$",
+      "description": "Zero-padded corpus manifest id, e.g. \"03\". Matches evidence/<case_id>.json and evidence/<case_id>.meta.json."
+    },
+    "category_scores": {
+      "type": "object",
+      "description": "Exact rubric categories, per SCHEMA.md / spec §5. Each value is points AWARDED (not deducted), 0..max for that category.",
+      "required": [
+        "classification_answerability",
+        "component_label_recognition",
+        "power_control_flow",
+        "sequence_interlocks_logic",
+        "evidence_grounding_unsupported_claims",
+        "technician_usefulness_clarity"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "classification_answerability": { "type": "number", "minimum": 0, "maximum": 10 },
+        "component_label_recognition": { "type": "number", "minimum": 0, "maximum": 20 },
+        "power_control_flow": { "type": "number", "minimum": 0, "maximum": 20 },
+        "sequence_interlocks_logic": { "type": "number", "minimum": 0, "maximum": 20 },
+        "evidence_grounding_unsupported_claims": { "type": "number", "minimum": 0, "maximum": 20 },
+        "technician_usefulness_clarity": { "type": "number", "minimum": 0, "maximum": 10 }
+      }
+    },
+    "total": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Sum of category_scores. Judge must compute this arithmetically, not estimate it."
+    },
+    "deductions": {
+      "type": "array",
+      "description": "One entry per point-deduction. May be empty (perfect score) but must be present. See JUDGE_PROTOCOL.md §6.",
+      "items": {
+        "type": "object",
+        "required": [
+          "claim",
+          "evidence",
+          "category",
+          "points_deducted",
+          "severity",
+          "correction",
+          "confidence"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "The EXACT translator statement (or omitted concept) being deducted for. Quote verbatim from candidate_response, or name the specific omission."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "What is visible in the drawing that supports, contradicts, or fails to support the claim. Must cite something observable (a label, a symbol, an absence of a symbol) — not a general assertion."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "classification_answerability",
+              "component_label_recognition",
+              "power_control_flow",
+              "sequence_interlocks_logic",
+              "evidence_grounding_unsupported_claims",
+              "technician_usefulness_clarity"
+            ]
+          },
+          "points_deducted": { "type": "number", "minimum": 0 },
+          "severity": {
+            "type": "string",
+            "enum": ["minor", "material", "severe", "hard_failure"]
+          },
+          "correction": {
+            "type": "string",
+            "description": "Concise recommended correction — what the translator should have said instead."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          }
+        }
+      }
+    },
+    "hard_failure": {
+      "type": "boolean",
+      "description": "True if ANY hard-failure condition (spec §7) is present, regardless of numeric total."
+    },
+    "hard_failure_reasons": {
+      "type": "array",
+      "description": "Must be non-empty iff hard_failure is true. Each entry names the specific hard-failure rule that fired.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "invented_safety_device_or_component",
+          "reversed_or_materially_incorrect_sequence",
+          "unsupported_dangerous_troubleshooting_advice",
+          "false_certainty_from_unreadable_evidence",
+          "failure_to_separate_evidence_from_inference"
+        ]
+      }
+    },
+    "answerable": {
+      "type": "boolean",
+      "description": "True if the visible evidence in the drawing was sufficient to attempt a real answer (independent of whether the translator answered well)."
+    },
+    "refusal": {
+      "type": "boolean",
+      "description": "True if the translator itself declined/deflected rather than attempting an explanation."
+    },
+    "overall_confidence": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Judge's overall confidence in this grade. low/hard_failure/>15pt-gap-vs-a-prior-pass triggers escalation to a second judge pass — see JUDGE_PROTOCOL.md §8."
+    },
+    "judge_version": {
+      "const": "benchmark-judge-v1",
+      "description": "Version of JUDGE_PROTOCOL.md the judge followed. Never silently change without bumping this string (spec §12 change control)."
+    },
+    "judge_pass": {
+      "type": "integer",
+      "enum": [1, 2],
+      "description": "1 = primary judge pass. 2 = independent second-judge pass (escalation). Both are preserved; never overwritten (spec §8)."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional free-text judge notes not captured elsewhere."
+    }
+  }
+}

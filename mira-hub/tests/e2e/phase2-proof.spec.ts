@@ -52,7 +52,7 @@ test("root redirects to /feed/ then /login/ (unauthenticated)", async ({ page })
 test("no service worker interference — /hub/ bookmark redirects to /feed/", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  const res = await page.goto(`${HUB}/hub/feed`, { waitUntil: "networkidle" });
+  await page.goto(`${HUB}/hub/feed`, { waitUntil: "networkidle" });
 
   // Should land at /feed/ (or /login/ if unauthenticated)
   const url = page.url();

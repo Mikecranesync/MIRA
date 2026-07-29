@@ -1,0 +1,91 @@
+@prefix mira:  <https://ontology.factorylm.com/mira#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://ontology.factorylm.com/mira/maintenance>
+    a owl:Ontology ;
+    owl:versionIRI <https://ontology.factorylm.com/mira/maintenance/0.1.0> ;
+    owl:versionInfo "0.1.0" ;
+    owl:imports <https://ontology.factorylm.com/mira/core> ,
+                <https://ontology.factorylm.com/mira/evidence> ;
+    dcterms:title "MIRA Maintenance — faults, failure modes, procedures, work orders, parts" ;
+    rdfs:comment """Deliberately the THINNEST module. MIRA is not a CMMS (Atlas is), so this module
+holds only the terms MIRA must reason over to answer a technician, each grounded in a UNS builder
+or an existing CMMS/pack artifact. The ISO 14224 failure-mode/cause/effect trio is aligned by
+mapping, not import — see mappings/README.md.""" .
+
+mira:Fault a owl:Class ; rdfs:label "Fault" ;
+    rdfs:comment "An observed abnormal condition on an asset instance. Distinct from FaultCode (the device's printed identifier for it)." ;
+    mira:grounded_in "plc/conv_simple_anomaly/rules_core.py A0-A12 anomaly rules; drive_packs DiagnosticCard.fault_or_symptom" ;
+    mira:term_status "canonical" .
+
+mira:FailureMode a owl:Class ; rdfs:label "Failure mode" ;
+    rdfs:comment "HOW the asset fails to perform its function." ;
+    mira:grounded_in "drive_packs/cards.py DiagnosticCard.meaning" ;
+    mira:maps_to "ISO 14224 failure mode (mapped, not imported)" ; mira:term_status "proposed" .
+
+mira:FailureCause a owl:Class ; rdfs:label "Failure cause" ;
+    mira:grounded_in "drive_packs/cards.py DiagnosticCard.likely_causes" ;
+    mira:maps_to "ISO 14224 failure cause" ; mira:term_status "canonical" .
+
+mira:FailureEffect a owl:Class ; rdfs:label "Failure effect" ;
+    rdfs:comment "The downstream consequence — what the line/operator experiences." ;
+    mira:grounded_in "plc ladder watchdog: vfd comm fault → conv_state=FAULT → motor stop (rules_core.py)" ;
+    mira:maps_to "ISO 14224 failure effect" ; mira:term_status "proposed" .
+
+mira:DetectionMethod a owl:Class ; rdfs:label "Detection method" ;
+    rdfs:comment "HOW the fault was found — which check surfaced it." ;
+    mira:grounded_in "drive_packs/cards.py DiagnosticCard.first_checks" ;
+    mira:maps_to "ISO 14224 detection method" ; mira:term_status "canonical" .
+
+mira:Procedure a owl:Class ; rdfs:label "Procedure" ;
+    mira:grounded_in "uns.py::pm_schedule_path(); knowledge_entries procedure chunks" ; mira:term_status "canonical" .
+
+mira:MaintenanceTask a owl:Class ; rdfs:label "Maintenance task" ;
+    mira:grounded_in "uns.py::pm_schedule_path(); Atlas CMMS PM scheduling" ; mira:term_status "canonical" .
+
+mira:WorkOrder a owl:Class ; rdfs:label "Work order" ;
+    mira:grounded_in "uns.py::work_order_path(); mira-cmms Atlas work orders; mira-mcp CMMS tools" ;
+    mira:term_status "canonical" .
+
+mira:Part a owl:Class ; rdfs:label "Part" ;
+    mira:grounded_in "uns.py::parts_list_path(); uns.py::inventory_path()" ; mira:term_status "canonical" .
+
+mira:Resolution a owl:Class ; rdfs:label "Resolution" ;
+    rdfs:comment "What actually fixed it — the closing fact on a work order. The highest-value evidence class MIRA can cite, because it is ground truth from the plant rather than from a manual." ;
+    mira:grounded_in "Atlas work-order completion records; work-order-history-miner skill" ;
+    mira:term_status "canonical" .
+
+mira:Inspection a owl:Class ; rdfs:subClassOf mira:MaintenanceTask ; rdfs:label "Inspection" ;
+    mira:grounded_in "uns.py::compliance_path(); PM schedules of inspection type" ; mira:term_status "proposed" .
+
+mira:TechnicianObservation a owl:Class ; rdfs:subClassOf mira:Evidence ; rdfs:label "Technician observation" ;
+    rdfs:comment "What a human reported in chat. Counts as evidence AND, when it confirms a gate, as approval input — but only a Technician agent can produce one." ;
+    mira:grounded_in "uns.py::technician_path(); engine UNS-gate confirmation turns" ; mira:term_status "canonical" .
+
+##  Properties  ########################################################
+
+mira:documented_procedure a owl:ObjectProperty ; rdfs:label "documented_procedure" ; rdfs:domain mira:Procedure ; rdfs:range mira:Document ;
+    rdfs:comment "No inverse modeled — reverse fan-out is a listing query." ;
+    mira:grounded_in "knowledge_entries chunks backing a procedure" ; mira:term_status "proposed" .
+
+mira:requires_part a owl:ObjectProperty ; rdfs:label "requires_part" ; rdfs:range mira:Part ; owl:inverseOf mira:part_required_by ;
+    mira:grounded_in "uns.py::parts_list_path(); work-order parts lines" ; mira:term_status "proposed" .
+mira:part_required_by a owl:ObjectProperty ; rdfs:label "part_required_by" ; owl:inverseOf mira:requires_part ;
+    mira:grounded_in "inverse of requires_part" ; mira:term_status "proposed" .
+
+mira:detected_by a owl:ObjectProperty ; rdfs:label "detected_by" ; rdfs:domain mira:Fault ; rdfs:range mira:DetectionMethod ;
+    rdfs:comment "No inverse modeled — 'what does this check find' is a documentation question, not a graph walk." ;
+    mira:grounded_in "DiagnosticCard.first_checks that surfaced the fault_or_symptom" ; mira:term_status "proposed" .
+
+mira:has_effect a owl:ObjectProperty ; rdfs:label "has_effect" ; rdfs:domain mira:FailureMode ; rdfs:range mira:FailureEffect ;
+    owl:inverseOf mira:effect_of ;
+    mira:grounded_in "ISO 14224 mode→effect chain; ladder fault propagation" ; mira:term_status "proposed" .
+mira:effect_of a owl:ObjectProperty ; rdfs:label "effect_of" ; owl:inverseOf mira:has_effect ;
+    mira:grounded_in "inverse of has_effect" ; mira:term_status "proposed" .
+
+mira:closed_by a owl:ObjectProperty ; rdfs:label "closed_by" ; rdfs:domain mira:WorkOrder ; rdfs:range mira:Resolution ;
+    rdfs:comment "No inverse modeled — a Resolution belongs to exactly one WorkOrder, so the reverse is a column read, not a traversal." ;
+    mira:grounded_in "Atlas work-order completion record" ; mira:term_status "proposed" .

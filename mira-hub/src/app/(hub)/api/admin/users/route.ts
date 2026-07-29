@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { listAllUsers, isSystemAccount } from "@/lib/users";
 import { requireSession, UnauthorizedError } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
     const session = await requireSession();
-    if (session.status !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // platform.users.read maps to the same status==="admin" gate this route
+    // always used — behavior-identical, now via the shared guard (#1932).
+    const denied = requireCapability(session, "platform.users.read");
+    if (denied) return denied;
     const includeSystem = new URL(req.url).searchParams.get("includeSystem") === "1";
     const all = await listAllUsers();
     const users = includeSystem ? all : all.filter(u => !isSystemAccount(u));

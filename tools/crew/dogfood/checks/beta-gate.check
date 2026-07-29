@@ -1,0 +1,134 @@
+# shellcheck shell=bash disable=SC2034  # sourced fragment; SCN_* are read by judge.sh
+# beta-gate.check — "can a stranger upload their manual and get a cited answer?"
+#
+# THE release gate, walked as a human against the live Hub: create a namespace
+# node (a "brain"), upload a manual we control through the REAL folder=brain door
+# (`/api/namespace/node/<id>/files/` → real ingest), wait for ingestion, then ask
+# the node-scoped chat a question the manual answers. Because node-chat reads ONLY
+# that node's brain, a cited answer PROVES retrieval of the upload — it cannot be
+# faked by the shared OEM corpus. This is the honest version of the beta gate
+# (`tests/beta/beta_ready_upload_retrieval_citation.py`), run daily against deploy
+# truth instead of a purpose-built CI Hub.
+#
+# Sourced by tools/crew/dogfood/judge.sh. Contract:
+#   inputs (env):  DF_BASE (hub root url)   DF_TOK (session token)   DF_PERSONA (name)
+#   run_check():   prints human EVIDENCE: lines, then a verdict on the LAST line:
+#                  GREEN | YELLOW:<business reason> | RED:<business reason> | INFRA:<reason>
+# Business-language reasons only — the report is read by a non-technical founder.
+
+SCN_PATH="Beta gate"
+SCN_TITLE="bug(hub): beta gate broken — a stranger's uploaded manual does not come back cited"
+SCN_IMPACT="The core beta promise fails: a customer uploads their own equipment manual, asks a question, and does NOT get a grounded answer citing that manual. This blocks inviting any external beta tester."
+SCN_LABELS="bug,hub,dogfood,needs-triage"
+SCN_FINDER="cfo"          # an owner — creating a node + uploading needs namespace.admin
+SCN_VERIFIER="plantmgr"   # a second admin-capable session must reproduce it
+SCN_DEDUPE="beta gate upload manual cited answer node chat"
+
+# The known-good manual + Q/A. Fixture is the same one the CI gate uses; the
+# manual fact for GS10 fault "oC" is *overcurrent*. Node-scoped chat guarantees
+# a citation of it comes from THIS upload, not the global corpus.
+BETA_FIXTURE="tests/beta/fixtures/gs10_fault_codes.pdf"
+BETA_QUESTION="What does GS10 fault code oC mean?"
+BETA_POLL_SECONDS="${BETA_POLL_SECONDS:-90}"
+
+run_check() {
+  local me nid up code files indexed ans markers fact
+  # 1) Session usable.
+  me=$(curl -sS -m 20 "$DF_BASE/api/me/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  if ! printf '%s' "$me" | grep -q '"email"'; then
+    echo "EVIDENCE: /api/me did not return a session for $DF_PERSONA (got: $(printf '%s' "$me" | head -c 80))"
+    echo "INFRA: could not authenticate $DF_PERSONA against the staging Hub"; return
+  fi
+  echo "EVIDENCE: logged in as $DF_PERSONA ($(printf '%s' "$me" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("role","?"))' 2>/dev/null))"
+
+  [ -f "$BETA_FIXTURE" ] || { echo "EVIDENCE: fixture $BETA_FIXTURE missing"; echo "INFRA: beta fixture manual not found in the repo"; return; }
+
+  # 2) Create a fresh brain (namespace node) to upload into. Unique name per run —
+  #    node UNS slugs are unique, so a fixed name collides ("Create failed") if a
+  #    prior run exited before its cleanup DELETE (e.g. on an upload INFRA).
+  local nname; nname="Dogfood BetaGate ${DF_PERSONA}-$(date +%s)-${RANDOM}"
+  local node; node=$(curl -sS -m 25 -X POST "$DF_BASE/api/namespace/node/" -H "Cookie: next-auth.session-token=$DF_TOK" \
+        -H "Content-Type: application/json" -d "{\"name\":\"$nname\",\"kind\":\"area\"}")
+  nid=$(printf '%s' "$node" | python3 -c 'import sys,json
+try: d=json.load(sys.stdin); print(d.get("node",d).get("id",""))
+except Exception: print("")' 2>/dev/null)
+  if [ -z "$nid" ]; then
+    echo "EVIDENCE: could not create a namespace node (got: $(printf '%s' "$node" | head -c 120))"
+    echo "INFRA: $DF_PERSONA cannot create a namespace node (needs namespace.admin) — cannot exercise upload"; return
+  fi
+  echo "EVIDENCE: created a folder/brain to upload into (node $nid)"
+
+  # 3) Upload the manual through the REAL folder=brain door.
+  up=$(curl -sS -m 90 -w '\n%{http_code}' -X POST "$DF_BASE/api/namespace/node/$nid/files/" \
+        -H "Cookie: next-auth.session-token=$DF_TOK" -F "file=@$BETA_FIXTURE;type=application/pdf")
+  code=$(printf '%s' "$up" | tail -n1); up=$(printf '%s' "$up" | sed '$d')
+  if [ "$code" != "201" ] && [ "$code" != "200" ]; then
+    local emsg; emsg=$(printf '%s' "$up" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("error",""))
+except Exception: print("")' 2>/dev/null)
+    echo "EVIDENCE: upload of the manual returned HTTP $code — \"$emsg\""
+    # A storage/constraint error means THIS tenant is not provisioned for uploads
+    # (its data-side `tenants` row is missing — knowledge_entries FK). That is a
+    # QA-seed provisioning gap, not proof the product is broken for real signups.
+    if printf '%s' "$emsg" | grep -qiE 'storage error|constraint|does not exist|violates'; then
+      echo "INFRA: this QA tenant cannot store uploads (data-side tenants row missing — re-seed with the fixed seed-synthetic-users.ts). Cannot prove the beta gate here."; return
+    fi
+    echo "INFRA: the manual upload door returned HTTP $code — cannot exercise the beta gate"; return
+  fi
+  echo "EVIDENCE: uploaded the manual ($(basename "$BETA_FIXTURE")) through the real folder=brain door (HTTP $code)"
+
+  # 4) Wait for ingestion — poll the node's file list until the manual is indexed.
+  indexed=""
+  local waited=0
+  while [ "$waited" -lt "$BETA_POLL_SECONDS" ]; do
+    files=$(curl -sS -m 20 "$DF_BASE/api/namespace/node/$nid/files/" -H "Cookie: next-auth.session-token=$DF_TOK")
+    indexed=$(printf '%s' "$files" | python3 -c 'import sys,json
+try:
+ d=json.load(sys.stdin); fs=d.get("files",[])
+ print("yes" if fs else "")
+except Exception: print("")' 2>/dev/null)
+    [ -n "$indexed" ] && break
+    sleep 5; waited=$((waited+5))
+  done
+  if [ -z "$indexed" ]; then
+    echo "EVIDENCE: after ${BETA_POLL_SECONDS}s the uploaded manual was not listed/indexed on the node"
+    echo "YELLOW: the manual uploaded but ingestion did not finish in ${BETA_POLL_SECONDS}s — a customer would wait and see nothing citable yet"; return
+  fi
+  echo "EVIDENCE: the manual is ingested and attached to the node (${waited}s to index)"
+
+  # 5) Ask the node-scoped chat the question the manual answers. Node-chat reads
+  #    ONLY this node's brain → a cited answer proves retrieval of the upload.
+  ans=$(curl -sS -m 90 -X POST "$DF_BASE/api/namespace/node/$nid/chat/" -H "Cookie: next-auth.session-token=$DF_TOK" \
+        -H "Content-Type: application/json" \
+        -d "{\"messages\":[{\"role\":\"user\",\"content\":\"$BETA_QUESTION\"}]}" \
+        | python3 -c '
+import sys,json
+parts=[]
+for line in sys.stdin:
+    line=line.strip()
+    if not line.startswith("data:"): continue
+    p=line[5:].strip()
+    if not p or p=="[DONE]": continue
+    try: o=json.loads(p)
+    except Exception: continue
+    if isinstance(o,dict) and o.get("content"): parts.append(o["content"])
+print("".join(parts))' 2>/dev/null)
+  # Best-effort cleanup of the throwaway node (ignore failure).
+  curl -sS -m 15 -X DELETE "$DF_BASE/api/namespace/node/$nid/" -H "Cookie: next-auth.session-token=$DF_TOK" >/dev/null 2>&1 || true
+
+  if [ -z "$ans" ]; then
+    echo "EVIDENCE: the node chat returned no answer for \"$BETA_QUESTION\""
+    echo "INFRA: the node chat endpoint streamed no answer — cannot judge the gate"; return
+  fi
+  # Does the answer state the manual fact (oC = overcurrent) AND cite a source?
+  fact=$(printf '%s' "$ans" | python3 -c "import sys; a=sys.stdin.read().lower(); print('yes' if ('overcurrent' in a or 'over current' in a or ('current' in a and any(k in a for k in ('exceed','200%','rated','excess','too high')))) else 'no')" 2>/dev/null)
+  markers=$(printf '%s' "$ans" | python3 -c 'import sys,re; print(len(set(re.findall(r"\[\d+\]", sys.stdin.read()))))' 2>/dev/null)
+  echo "EVIDENCE: asked \"$BETA_QUESTION\" → states-the-manual-fact=$fact, $markers inline citation marker(s)"
+  if [ "$fact" = "yes" ] && [ "${markers:-0}" -ge 1 ]; then
+    echo "GREEN"; return
+  fi
+  if [ "$fact" = "yes" ] && [ "${markers:-0}" -eq 0 ]; then
+    echo "RED: the uploaded manual's fact came back but WITHOUT a citation — the answer is right by luck, not grounded in the customer's document"; return
+  fi
+  echo "RED: a stranger uploaded a manual and asked what it answers, but MIRA did not return that manual's fact — the upload→cited-answer gate is broken"
+}
