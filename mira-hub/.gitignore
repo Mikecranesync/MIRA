@@ -44,3 +44,6 @@ next-env.d.ts
 test-results/
 playwright-report/
 tests/e2e/.state/
+
+# Playwright E2E artifacts (screenshots, results json) — not committed
+tests/e2e/.artifacts/

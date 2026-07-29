@@ -17,6 +17,13 @@ export interface HubUser {
   preferences: Record<string, unknown>;
 }
 
+export interface MagicTokenResult {
+  email: string;
+  tenantId: string | null;
+  role: string | null;
+  invitedBy: string | null;
+}
+
 let schemaReady: Promise<void> | null = null;
 
 export function ensureSchema(): Promise<void> {
@@ -171,10 +178,16 @@ function ensureMagicSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS hub_magic_tokens (
         token      TEXT PRIMARY KEY,
         email      TEXT NOT NULL,
+        tenant_id  TEXT,
+        role       TEXT,
+        invited_by TEXT,
         expires_at TIMESTAMPTZ NOT NULL,
         used_at    TIMESTAMPTZ
       )
     `);
+    await pool.query(`ALTER TABLE hub_magic_tokens ADD COLUMN IF NOT EXISTS tenant_id TEXT`);
+    await pool.query(`ALTER TABLE hub_magic_tokens ADD COLUMN IF NOT EXISTS role TEXT`);
+    await pool.query(`ALTER TABLE hub_magic_tokens ADD COLUMN IF NOT EXISTS invited_by TEXT`);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_magic_tokens_email ON hub_magic_tokens (email)
     `);
@@ -182,29 +195,45 @@ function ensureMagicSchema(): Promise<void> {
   return magicSchemaReady;
 }
 
-export async function createMagicToken(email: string): Promise<string> {
+export async function createMagicToken(
+  email: string,
+  opts: { tenantId?: string; role?: string; invitedBy?: string } = {},
+): Promise<string> {
   await ensureMagicSchema();
   const { randomUUID } = await import("crypto");
   const token = randomUUID();
   await pool.query(
-    `INSERT INTO hub_magic_tokens (token, email, expires_at)
-     VALUES ($1, $2, NOW() + INTERVAL '15 minutes')
+    `INSERT INTO hub_magic_tokens (token, email, tenant_id, role, invited_by, expires_at)
+     VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '15 minutes')
      ON CONFLICT (token) DO NOTHING`,
-    [token, email.toLowerCase()],
+    [
+      token,
+      email.toLowerCase(),
+      opts.tenantId ?? null,
+      opts.role ?? null,
+      opts.invitedBy ?? null,
+    ],
   );
   return token;
 }
 
-export async function validateMagicToken(token: string): Promise<{ email: string } | null> {
+export async function validateMagicToken(token: string): Promise<MagicTokenResult | null> {
   await ensureMagicSchema();
   const { rows } = await pool.query(
     `UPDATE hub_magic_tokens
      SET used_at = NOW()
      WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL
-     RETURNING email`,
+     RETURNING email, tenant_id, role, invited_by`,
     [token],
   );
-  return rows[0] ? { email: String(rows[0].email) } : null;
+  return rows[0]
+    ? {
+        email: String(rows[0].email),
+        tenantId: rows[0].tenant_id ? String(rows[0].tenant_id) : null,
+        role: rows[0].role ? String(rows[0].role) : null,
+        invitedBy: rows[0].invited_by ? String(rows[0].invited_by) : null,
+      }
+    : null;
 }
 
 export interface EnsureUserAndTenantInput {
@@ -251,6 +280,16 @@ export async function ensureUserAndTenant(
       [tenantName],
     );
     const tenantId = String(tenant.id);
+    // #1899b: the data-side `tenants` table (FK target of knowledge_entries.tenant_id)
+    // is separate from auth-side hub_tenants. Mirror the new tenant id here in the same
+    // transaction, so this tenant's first manual/document upload doesn't 23503 on
+    // knowledge_entries_tenant_id_fkey ("Server storage error" / folder-upload 500).
+    // tenants.name + contact_email are NOT NULL (no default); everything else defaults.
+    await client.query(
+      `INSERT INTO tenants (id, name, contact_email) VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO NOTHING`,
+      [tenantId, tenantName, input.email],
+    );
     const {
       rows: [user],
     } = await client.query(
@@ -273,6 +312,44 @@ export async function ensureUserAndTenant(
   } finally {
     client.release();
   }
+}
+
+export async function ensureInvitedUser(input: {
+  email: string;
+  tenantId: string;
+  role: string;
+}): Promise<{ id: string; tenantId: string; email: string }> {
+  await ensureSchema();
+  const email = input.email.trim().toLowerCase();
+  const role = input.role.trim() || "technician";
+  const existing = await findUserByEmail(email);
+
+  if (existing) {
+    if (existing.tenantId !== input.tenantId) {
+      throw new Error("email already belongs to another workspace");
+    }
+    await pool.query(
+      `UPDATE hub_users
+       SET role = $1,
+           status = CASE WHEN status = 'admin' THEN status ELSE 'approved' END,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [role, existing.id],
+    );
+    return { id: existing.id, tenantId: existing.tenantId, email: existing.email };
+  }
+
+  const { rows } = await pool.query(
+    `INSERT INTO hub_users (email, tenant_id, name, role, status)
+     VALUES ($1, $2, NULL, $3, 'approved')
+     RETURNING id, email, tenant_id`,
+    [email, input.tenantId, role],
+  );
+  return {
+    id: String(rows[0].id),
+    tenantId: String(rows[0].tenant_id),
+    email: String(rows[0].email),
+  };
 }
 
 // ── User preferences ───────────────────────────────────────────────────────────

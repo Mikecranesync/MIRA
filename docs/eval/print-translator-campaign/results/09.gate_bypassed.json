@@ -1,0 +1,39 @@
+{
+  "id": 9,
+  "oem": "Rockwell Automation",
+  "document": "Guardmaster 440R Safety Relay Module (440R-UM013)",
+  "url": "literature.rockwellautomation.com/idc/groups/literature/documents/um/440r-um013_-en-p.pdf",
+  "rendered_page_number": 41,
+  "category": "Safety Relays",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "explanation_of_mode": "REAL print_translator.build_theory_messages + REAL engine.router.complete + REAL format_theory_reply on the REAL rendered image. Skips ONLY the buggy classifier gate (vision_worker._classify_photo). Prompt is unchanged production code. NOT a mock. vision_data is the real captured vision output from results/09.json (ocr_items empty on this box).",
+  "caption_submitted": "Explain this print.",
+  "caption_is_theory_request": true,
+  "caption_note": "Caption governs ONLY print_translator.is_theory_request() (the trigger gate); it is NOT passed to build_theory_messages, so this explanation is caption-independent.",
+  "ocr_grounding": "unavailable_on_this_box",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for a DI Safety Relay (Cat. No. 440R-D22R2). The diagram illustrates two devices with mechanical contacts and monitored manual reset, as well as a safety mat and device with OSSD outputs.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 584,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "run_timestamp_utc": "2026-07-10T04:57:03.110547+00:00",
+  "inference": "ran",
+  "translator_reply": "## **1. What this appears to be**\nThis appears to be an electrical wiring diagram for a safety relay system, specifically for a DI Safety Relay (Cat. No. 440R-D22R2). The diagram shows two different configurations: one with two devices with mechanical contacts and monitored manual reset (Figure 45), and another with a safety mat and a device with OSSD outputs, monitored manual reset, and AC loads (Figure 46).\n\n## **2. Main visible components**\n- **DI Safety Relay (440R-D22R2)**: The central component that monitors safety inputs and controls the outputs.\n- **Safety Mat**: Shown in Figure 46, it is connected to the safety relay.\n- **Device with OSSD Outputs**: Also shown in Figure 46, it has outputs connected to the safety relay.\n- **Mechanical Contacts (K1, K2)**: These are the output contactors controlled by the safety relay.\n- **Reset Button**: A manually operated reset input to the safety relay.\n- **Power Supply**: 24V DC for the relay logic and 120/230V AC for the load side.\n\n## **3. Plain-English theory of operation**\n- In Figure 45, when two devices with mechanical contacts close, and the operator presses the reset button, the safety relay energizes contactors K1 and K2 if all safety conditions are met. The safety relay monitors the mechanically linked normally closed contacts in the reset circuit to ensure K1 and K2 are off.\n- In Figure 46, the safety relay monitors a safety mat and a device with OSSD outputs. For the system to operate, the safety mat must be configured for AND logic with the interlock closed. The safety relay verifies that contactors K1 and K2 are off by monitoring the mechanically linked normally closed contacts in the S34 circuit.\n\n## **4. What must be true for it to work**\n- All safety devices (mechanical contacts, safety mat, OSSD outputs) must be closed or in their safe state.\n- The reset button must be pressed after all safety conditions are met.\n- The mechanically linked normally closed contacts in the reset circuit (S34) must be closed, indicating K1 and K2 are off.\n- The safety relay must be properly configured for AND logic if using multiple inputs.\n\n## **5. What would stop it from working**\n- Open circuit in any safety loop (e.g., open contacts in S11, S21, S22, S12).\n- Failure of the safety relay itself.\n- K1 or K2 not being in their off state when the reset is attempted.\n- The safety mat or OSSD outputs not functioning correctly.\n\n## **6. Unclear or unreadable items**\n- Nothing major appears to be unreadable in the provided image. All critical components and connections are clearly labeled."
+}

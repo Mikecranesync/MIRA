@@ -6,10 +6,11 @@
 
 If a URI listed here is missing from the corresponding provider console,
 end users hit a `redirect_uri_mismatch` (or equivalent) error on sign-in.
-The CI canary `.github/workflows/oauth-redirect-canary.yml` runs daily and
+The CI canary `.github/workflows/oauth-redirect-canary.yml` runs hourly and
 on every push to `main`; if the canonical URI in this doc is no longer
-authorized at Google, the workflow fails and opens (or comments on) the
-canonical tracking issue.
+authorized at Google, the workflow fails and opens (or comments on) a
+deduplicated `oauth-incident` tracking issue — so a real sign-in break is
+caught within ~1h and reaches a human, not just the Actions tab.
 
 ---
 

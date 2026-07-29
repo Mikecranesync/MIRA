@@ -366,6 +366,20 @@ MAINTENANCE_ABBREVIATIONS = {
     "dmp": "damper",
     "exh": "exhaust",
     "intlk": "interlock",
+    # Equipment model shorthand → canonical model name. Techs type "PF525";
+    # the OEM corpus says "PowerFlex 525", so BM25/vector never matched without
+    # this expansion (audit 2026-06-16: "PF525 showing F004" → KB-gap, no
+    # citation, despite the manual being in the corpus). Only unambiguous,
+    # high-frequency drive shorthands — keep this list curated, not exhaustive.
+    "pf523": "powerflex 523",
+    "pf525": "powerflex 525",
+    "pf527": "powerflex 527",
+    "pf753": "powerflex 753",
+    "pf755": "powerflex 755",
+    "pf40": "powerflex 40",
+    "pf70": "powerflex 70",
+    "pf700": "powerflex 700",
+    "pf753t": "powerflex 753",
 }
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")

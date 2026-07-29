@@ -28,6 +28,11 @@ cd "$REPO_ROOT" || exit 2
 CG=(npx -y @colbymchenry/codegraph)
 TASK="${1:-}"
 
+# Freshness helpers (cg_newer_indexed_sources) — excludes generated / dependency
+# / cache / nested-worktree paths so build artifacts don't produce false STALE.
+# shellcheck source=tools/codegraph-freshness.sh
+. "$SCRIPT_DIR/codegraph-freshness.sh"
+
 # Shared modules: a codegraph_impact is required before editing any of these.
 SHARED_RE='engine\.py|inference/router\.py|uns_resolver\.py|citation_compliance\.py|guardrails\.py|crawler/ingest/uns\.py|mira-mcp/server\.py'
 
@@ -68,10 +73,11 @@ STALE=0
 # (a) any indexed-language source file newer than the index db. This is
 # precise: a docs-only commit won't flag the CODE index stale, but a
 # checkout/merge (git stamps files at checkout time) or an uncommitted edit
-# will. `-print -quit` stops at the first hit, so it's fast.
-NEWER="$(find . \( -name '*.py' -o -name '*.ts' -o -name '*.tsx' \) -newer "$DB" \
-  -not -path './node_modules/*' -not -path './.codegraph/*' -not -path './.git/*' \
-  -print -quit 2>/dev/null)"
+# will. cg_newer_indexed_sources excludes generated / dependency / cache /
+# nested-worktree paths (`.next/`, `node_modules/`, `.audit-worktrees/`, …) that
+# CodeGraph never indexes — otherwise a Next.js build or an ad-hoc worktree
+# produces a false STALE verdict on an index that is actually current.
+NEWER="$(cg_newer_indexed_sources "$DB" . 2>/dev/null | head -1)"
 if [ -n "$NEWER" ]; then
   echo "- **Freshness:** ⚠ source files are newer than the index (e.g. \`${NEWER#./}\`) — re-sync before trusting call edges"
   STALE=1
@@ -117,6 +123,43 @@ esac
 # ---- Graphify guard (WARN only; see .claude/rules/graphify-excluded.md) ----
 if [ -f "$REPO_ROOT/graphify-out/graph.json" ]; then
   echo "- **⚠ GRAPHIFY:** a repo-root \`graphify-out/graph.json\` exists. Graphify is **excluded from code navigation** (\`.claude/rules/graphify-excluded.md\`). Use CodeGraph; ignore this artifact for navigation."
+fi
+
+# ---- Nested-worktree allowlist (WARN only; blind spot #5) ------------------
+# A git worktree nested INSIDE the repo gets indexed unless it is gitignored,
+# and every duplicate copy of a symbol counts as an extra caller — silently
+# inflating callers/callees/impact (see .claude/rules/codegraph-usage.md #5).
+# .gitignore covers three fixed locations, but that is a DENYLIST and it fails
+# open: an ad-hoc `git worktree add` at any other in-repo path is invisible to
+# it. (Real case, 2026-07-27: `wt-verify` at the repo root matched none of the
+# three patterns and was being indexed.) A gitignore glob cannot express
+# "directory containing a .git FILE", so the allowlist is enforced here instead:
+# any in-repo worktree outside these prefixes is reported.
+# WARN only, and deliberately does NOT change the verdict — a stray worktree
+# should not block a session, and over-blocking would push people to skip the
+# preflight entirely. It names the offender so the fix is obvious.
+WT_ALLOWED_PREFIXES=".claude/worktrees/ .worktrees/ .audit-worktrees/"
+if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  STRAY=""
+  while IFS= read -r wtp; do
+    [ -n "$wtp" ] || continue
+    # only worktrees nested inside this repo can pollute the index
+    case "$wtp" in
+      "$REPO_ROOT") continue ;;
+      "$REPO_ROOT"/*) rel="${wtp#"$REPO_ROOT"/}" ;;
+      *) continue ;;
+    esac
+    ok=0
+    for pfx in $WT_ALLOWED_PREFIXES; do
+      case "$rel/" in "$pfx"*) ok=1; break ;; esac
+    done
+    [ "$ok" -eq 1 ] || STRAY="$STRAY $rel"
+  done <<EOF
+$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | sed -n 's|^worktree ||p')
+EOF
+  if [ -n "$STRAY" ]; then
+    echo "- **⚠ NESTED WORKTREE:** in-repo worktree(s) outside the allowlist —$STRAY. These are **indexed**, so \`callers\`/\`callees\`/\`impact\` counts may be inflated by duplicate symbols. Move under \`.claude/worktrees/\` (gitignored), or \`git worktree remove\` it, then \`index --force\`. Allowed:$(printf ' `%s`' $WT_ALLOWED_PREFIXES)"
+  fi
 fi
 
 # ---- Task context ---------------------------------------------------------

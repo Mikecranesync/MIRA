@@ -38,6 +38,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -106,6 +107,11 @@ class HealAction:
     succeeded: bool
     details: str
     escalated: bool = False
+    # Set when we've hit the retry cap and are suspending auto-heal for this
+    # service (crash-loop breaker). prior_gaveups = how many give-ups were
+    # already logged in the window, so main() can dedupe repeat escalations.
+    gave_up: bool = False
+    prior_gaveups: int = 0
 
 
 def _run(cmd: list[str], timeout: int = 60, cwd: str | None = None) -> tuple[int, str, str]:
@@ -294,6 +300,56 @@ ENDPOINT_TO_CONTAINER = {
 # ── Orchestration ────────────────────────────────────────────────────────────
 
 
+# Crash-loop breaker: after this many failed heals for one service inside the
+# window, STOP re-attempting (a recreate that keeps failing isn't healing — it's
+# churn) and escalate ONCE instead of every run. The 2026-07-08 incident fired an
+# escalation every 15 min for hours because there was no cap.
+MAX_HEAL_ATTEMPTS = int(os.environ.get("MAX_HEAL_ATTEMPTS", "4"))
+HEAL_HISTORY_WINDOW_MIN = int(os.environ.get("HEAL_HISTORY_WINDOW_MIN", "120"))
+
+
+def _heal_history(service: str, minutes: int) -> tuple[int, int]:
+    """(failed_attempts, give_ups) logged for `service` in the last `minutes`.
+
+    Returns (0, 0) on any DB error — fail toward attempting the heal, never
+    toward silently giving up on a service.
+    """
+    url = os.environ.get("NEON_DATABASE_URL", "")
+    if not url:
+        return (0, 0)
+    try:
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.pool import NullPool
+    except Exception:  # noqa: BLE001
+        return (0, 0)
+
+    engine = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"})
+    for attempt in range(3):
+        try:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT "
+                        "  COUNT(*) FILTER (WHERE status = 'heal_failed'), "
+                        "  COUNT(*) FILTER (WHERE status = 'heal_gaveup') "
+                        "FROM system_health_log "
+                        "WHERE service = :svc AND category = 'heal' "
+                        "  AND ts > NOW() - make_interval(mins => :mins)"
+                    ),
+                    {"svc": service, "mins": minutes},
+                ).first()
+            if not row:
+                return (0, 0)
+            return (int(row[0] or 0), int(row[1] or 0))
+        except Exception as exc:  # noqa: BLE001
+            if hb.is_retryable_db_error(exc) and attempt < 2:
+                time.sleep(0.2 * (attempt + 1))
+                continue
+            logger.warning("_heal_history failed: %s", exc)
+            return (0, 0)
+    return (0, 0)
+
+
 def heal_one(check: dict[str, Any], dry_run: bool = False) -> HealAction:
     service: str = check.get("service") or "?"
     hint: str = (check.get("extra") or {}).get("remediation_hint") or ""
@@ -305,6 +361,26 @@ def heal_one(check: dict[str, Any], dry_run: bool = False) -> HealAction:
     if dry_run:
         return HealAction(
             service, hint, f"DRY-RUN: would call {playbook.__name__}({target})", True, "dry-run"
+        )
+
+    # Crash-loop breaker: if we've already failed to heal this service
+    # MAX_HEAL_ATTEMPTS times in the window, stop churning and escalate.
+    failed, gaveups = _heal_history(service, HEAL_HISTORY_WINDOW_MIN)
+    if failed >= MAX_HEAL_ATTEMPTS:
+        logger.warning(
+            "giving up on %s — %d failed heals in %dm; auto-heal suspended",
+            service, failed, HEAL_HISTORY_WINDOW_MIN,
+        )
+        return HealAction(
+            service,
+            hint,
+            f"gave up after {failed} failed attempts",
+            False,
+            f"{failed} failed heal attempts in {HEAL_HISTORY_WINDOW_MIN}m — "
+            "auto-heal suspended, needs manual fix",
+            escalated=True,
+            gave_up=True,
+            prior_gaveups=gaveups,
         )
 
     logger.info("healing %s via %s (target=%s)", service, playbook.__name__, target)
@@ -346,26 +422,48 @@ def log_actions(actions: list[HealAction], dry_run: bool = False) -> None:
     try:
         from sqlalchemy import create_engine, text
         from sqlalchemy.pool import NullPool
-
-        engine = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"})
-        with engine.begin() as conn:
-            for a in actions:
-                conn.execute(
-                    text(
-                        "INSERT INTO system_health_log "
-                        "(service, status, latency_ms, details, category, action_taken, extra) "
-                        "VALUES (:service, :status, 0, :details, 'heal', :action, :extra)"
-                    ),
-                    {
-                        "service": a.service,
-                        "status": "healed" if a.succeeded else "heal_failed",
-                        "details": a.details[:500],
-                        "action": a.action[:200],
-                        "extra": json.dumps({"hint": a.hint, "escalated": a.escalated}),
-                    },
-                )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("log_actions failed: %s", exc)
+        logger.warning("log_actions failed (import): %s", exc)
+        return
+
+    engine = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"})
+    for attempt in range(3):
+        try:
+            with engine.begin() as conn:
+                for a in actions:
+                    status = (
+                        "healed" if a.succeeded else "heal_gaveup" if a.gave_up else "heal_failed"
+                    )
+                    conn.execute(
+                        text(
+                            "INSERT INTO system_health_log "
+                            "(service, status, latency_ms, details, category, action_taken, extra) "
+                            "VALUES (:service, :status, 0, :details, 'heal', :action, :extra)"
+                        ),
+                        {
+                            "service": a.service,
+                            "status": status,
+                            "details": a.details[:500],
+                            "action": a.action[:200],
+                            "extra": json.dumps({"hint": a.hint, "escalated": a.escalated}),
+                        },
+                    )
+            return
+        except Exception as exc:  # noqa: BLE001
+            if hb.is_retryable_db_error(exc) and attempt < 2:
+                logger.warning("log_actions: retryable DB error (attempt %d) — %s", attempt + 1, exc)
+                time.sleep(0.2 * (attempt + 1))
+                continue
+            logger.warning("log_actions failed: %s", exc)
+            return
+
+
+def _should_notify(actions: list[HealAction]) -> bool:
+    """Notify when there's new information: any non-give-up action, or the FIRST
+    give-up for a service (no give-up logged yet in the window). Suppresses the
+    every-run repeat escalation for services we've already alerted a give-up on
+    (the 2026-07-08 every-15-min spam)."""
+    return any(not a.gave_up or a.prior_gaveups == 0 for a in actions)
 
 
 def format_telegram_summary(actions: list[HealAction], post_status: dict[str, str]) -> str:
@@ -433,6 +531,13 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("refusing to run as root — set MIRA_HEALER_ALLOW_ROOT=1 to override")
         return 3
 
+    # Stand down during a deploy: the deploy is (re)creating the core stack, so
+    # "container missing" is expected. Acting now would race the deploy's own
+    # recreate and fire false escalations — the 2026-07-08 incident.
+    if not args.dry_run and hb.deploy_in_progress():
+        logger.info("deploy in progress — standing down (not touching containers)")
+        return 0
+
     report = load_input(args)
     down = report.get("down", [])
     if not down:
@@ -449,7 +554,17 @@ def main(argv: list[str] | None = None) -> int:
         print(summary)
         return 0
 
-    notify("system", summary)
+    # Escalation dedup: don't re-alert every run for a service we've already
+    # given up on. Notify when there's new information — any non-give-up action,
+    # or the FIRST give-up for a service (no give-up logged yet in the window).
+    should_notify = _should_notify(actions)
+    if summary and should_notify:
+        notify("system", summary)
+    elif summary:
+        logger.info(
+            "suppressing repeat escalation (already alerted): %s",
+            [a.service for a in actions if a.gave_up],
+        )
 
     failed = [
         a

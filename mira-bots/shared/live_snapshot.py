@@ -11,31 +11,91 @@ Hard boundary: this module NEVER writes, NEVER opens a socket, NEVER touches a
 fieldbus. It only reshapes data already received. No clock either — the caller
 passes ``ts`` so normalization stays deterministic and unit-testable.
 
-The GS10/Micro820 decode tables mirror ``mira-bots/ask_api/app.py`` and the
-machine card (``MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md``); keep them in sync.
+The GS10/Micro820 decode tables are sourced from the drive pack
+(``mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json``, co-located
+package data loaded once below via ``shared.drive_packs.load_pack``) rather
+than hardcoded here — see ADR-0025.
+They still mirror ``mira-bots/ask_api/app.py`` and the machine card
+(``MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md``); keep those in sync (Task 7
+mirrors the pack into the Hub's ``gs10-display.ts``).
 Trust rule (from ``ask_api/machine_context.py``): ``vfd_comm_ok`` is the master
 trust gate — when it is false, every VFD-derived value is marked ``stale``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any
 
-# --- GS10 decode tables (mirror ask_api/app.py) ---
-_STATUS_BITS = {0: "STOPPED", 1: "DECEL", 2: "STANDBY", 3: "RUNNING"}
-_CMD_WORD = {1: "STOP", 18: "FWD+RUN", 20: "REV+RUN"}
-_FAULT_CODES = {
-    0: "no active fault",
-    4: "GFF ground fault",
-    12: "Lvd undervoltage",
-    21: "oL overload",
-    49: "EF external fault",
-    54: "CE1 comm illegal cmd",
-    55: "CE2 comm illegal addr",
-    56: "CE3 comm illegal data",
-    57: "CE4 comm fail",
-    58: "CE10 modbus timeout",
+from shared.drive_fault_intel import build_gs10_template_reader
+from shared.drive_packs import (
+    DiagnosticCard,
+    KeypadNavigationCard,
+    ParameterCard,
+    build_cards,
+    load_pack,
+)
+from shared.drive_packs.schema import EnvelopeBand, RegisterEntry
+from shared.wire_scaling import TagScaling, to_engineering
+
+# --- GS10 decode tables, loaded once from the drive pack (ADR-0025) ---
+# Import-time load is deliberate: the pack ships in-repo, so a load failure
+# here is a real error we want surfaced loudly at import, not masked by a
+# fallback to stale literals.
+_GS10_PACK = load_pack("durapulse_gs10")
+_STATUS_BITS: dict[int, str] = _GS10_PACK.live_decode.status_bits
+_CMD_WORD: dict[int, str] = _GS10_PACK.live_decode.cmd_word
+_FAULT_CODES: dict[int, str] = _GS10_PACK.live_decode.fault_codes
+_REGISTERS: dict[str, RegisterEntry] = _GS10_PACK.live_decode.registers
+
+# This module's decode functions (`_scaled`/`_decode_one`) index `_REGISTERS`
+# by these keys directly. The generic pack loader (`drive_packs/loader.py`)
+# stays drive-agnostic and does not know these keys are required — so this
+# module validates its own dependency on the loaded pack, right after load,
+# and fails loudly and actionably at import time rather than with a bare
+# `KeyError` deep inside a decode call if a future `pack.json` edit renames
+# or removes one of them.
+_REQUIRED_REGISTER_KEYS = ("vfd_frequency", "vfd_freq_sp", "vfd_current", "vfd_dc_bus")
+_missing_register_keys = [k for k in _REQUIRED_REGISTER_KEYS if k not in _REGISTERS]
+if _missing_register_keys:
+    raise ValueError(
+        f"pack '{_GS10_PACK.pack_id}': live_decode.registers is missing required "
+        f"key(s) {_missing_register_keys!r} — shared.live_snapshot decodes these "
+        "directly and cannot start without them"
+    )
+
+# --- GS10 fault-card enrichment (Drive Commander follow-up #2) ---
+# First runtime caller of `build_cards` -- until now it was only exercised in
+# tests. The reader is the INTERIM offline adapter (`shared.drive_fault_intel`,
+# no DB/network); cards are derived once at import and looked up by fault
+# NAME (`card.meaning`) when rendering the Live Machine Evidence section.
+_GS10_READER = build_gs10_template_reader()
+_GS10_CARDS_BY_MEANING = {
+    c.meaning: c for c in build_cards(_GS10_PACK, template_reader=_GS10_READER)
+}
+
+# --- Envelope-driven analog assessment (ADR-0025 §4; Task 3) ---
+# `_GS10_PACK.envelope` is the SAME typed `Envelope` a future writer would read
+# to populate `tag_entities.expected_envelope` (per ADR-0025's "expected range
+# lives with the pack, not hand-maintained per tag" intent). This module does
+# not perform that DB write — it is read-only/pure (module docstring) — it only
+# reads the pack's bands to make an honest, additive analog observation below.
+# Maps a decoded datapoint key -> (envelope attribute name, display label) for
+# the three analog signals ADR-0025 calls out. Anything not listed here (or
+# whose pack band lacks both `min` and `max`) gets NO analog judgment — see
+# `_analog_band_observation`.
+_ANALOG_ENVELOPE_DATAPOINTS: dict[str, tuple[str, str]] = {
+    "vfd_dc_bus": ("dc_bus", "DC bus"),
+    "vfd_current": ("current", "Current"),
+    "vfd_frequency": ("frequency", "Frequency"),
+}
+_ANALOG_OUT_OF_BAND_GUIDANCE: dict[tuple[str, str], str] = {
+    ("dc_bus", "below"): "check input power / a possible undervoltage condition",
+    ("dc_bus", "above"): "check for overvoltage or a regenerative-energy condition on the bus",
+    ("current", "below"): "confirm the drive is actually loaded",
+    ("current", "above"): "check for a mechanical overload or a binding load",
+    ("frequency", "below"): "confirm the commanded speed / setpoint",
+    ("frequency", "above"): "check the speed reference and drive parameter limits",
 }
 
 # Quality bands.
@@ -63,6 +123,93 @@ class LiveTagSnapshot:
     ts: str
 
 
+@dataclass(frozen=True)
+class DriveDiagnostic:
+    """Surface-agnostic structured diagnosis for a drive at a moment in time.
+
+    Every DriveSense surface (engine Live Machine Evidence, Ignition Ask-MIRA,
+    and future Hub/Slack/Telegram) builds THIS from live snapshots, then renders
+    it — so all surfaces present the SAME deterministic assessment + cited fault
+    card. Read-only/offline; holds no live handles, only decoded values.
+
+    ``fault_card`` is the active fault's ``DiagnosticCard`` ONLY when the fault
+    snapshot is GOOD quality (a STALE/comms-lost fault yields ``None`` — the
+    assessment already carries the comms-LOST caveat); ``None`` also when there
+    is no active fault or no enrichment for it.
+
+    ``related_parameters`` / ``keypad_navigation`` are the DriveSense schema-v2
+    carry slots (parameter decode + how-to-reach-it keypad steps). They are
+    additive and default empty/None; ``build_drive_diagnostic`` populates them
+    from the module-global pack's ``parameters``/``keypad_navigation`` blocks
+    (whole-word-token match against the active fault card's ``meaning``) when
+    the pack ships them (schema_version 2). The shipped v1 pack ships neither
+    block, so both stay empty/``None`` and rendering is unchanged for it.
+    """
+
+    assessment: str | None
+    fault_card: DiagnosticCard | None
+    related_parameters: list[ParameterCard] = field(default_factory=list)
+    keypad_navigation: KeypadNavigationCard | None = None
+
+
+def _active_fault_card(snapshots: list[LiveTagSnapshot]) -> DiagnosticCard | None:
+    """The active, GOOD-quality fault's diagnostic card (the STALE-suppression
+    gate), or ``None``. Single source of truth for 'which card, if any'."""
+    fault = _dp(snapshots).get("vfd_fault_code")
+    if fault is None or fault.quality != GOOD or fault.value in (None, "no active fault"):
+        return None
+    card = _GS10_CARDS_BY_MEANING.get(str(fault.value))
+    if card is None or (not card.likely_causes and not card.first_checks):
+        return None
+    return card
+
+
+def _related_parameters(fault_card: DiagnosticCard | None) -> list[ParameterCard]:
+    """Pack ``ParameterCard``s whose ``related_faults`` whole-word-token-match
+    the active fault card's ``meaning`` (e.g. ``"CE10 modbus timeout"`` tokenizes
+    to ``{"CE10", "MODBUS", "TIMEOUT"}`` — a related-faults entry of ``"CE10"``
+    matches; ``"CE1"`` does not, avoiding a substring false-positive on
+    ``"CE10"``). Empty when ``fault_card`` is ``None`` or the pack ships no
+    ``parameters`` (the shipped v1 pack) -- a no-op by construction."""
+    if fault_card is None:
+        return []
+    fault_tokens = {t.upper() for t in fault_card.meaning.split()}
+    return [
+        p
+        for p in _GS10_PACK.parameters
+        if any(rf.upper() in fault_tokens for rf in p.related_faults)
+    ]
+
+
+def _keypad_for_top_parameter(
+    related: list[ParameterCard],
+) -> KeypadNavigationCard | None:
+    """The pack's ``KeypadNavigationCard`` for the top related parameter's id,
+    or ``None`` when there's no match (or no related parameter at all)."""
+    if not related:
+        return None
+    top_pid = related[0].parameter_id
+    return next((k for k in _GS10_PACK.keypad_navigation if k.parameter_id == top_pid), None)
+
+
+def build_drive_diagnostic(snapshots: list[LiveTagSnapshot]) -> DriveDiagnostic:
+    """Compose the deterministic assessment + the active-fault card into one
+    structured, surface-agnostic payload. Pure/offline.
+
+    Also populates the schema-v2 ``related_parameters``/``keypad_navigation``
+    slots from the module-global pack -- a no-op for the shipped v1 pack
+    (empty ``parameters``/``keypad_navigation`` lists), see ``DriveDiagnostic``.
+    """
+    fault_card = _active_fault_card(snapshots)
+    related = _related_parameters(fault_card)
+    return DriveDiagnostic(
+        assessment=assess_snapshots(snapshots),
+        fault_card=fault_card,
+        related_parameters=related,
+        keypad_navigation=_keypad_for_top_parameter(related),
+    )
+
+
 def _num(raw: Any) -> float | int | None:
     """Return raw as a number, or None if it isn't a plain numeric (bools excluded)."""
     if isinstance(raw, bool):
@@ -72,20 +219,47 @@ def _num(raw: Any) -> float | int | None:
     return None
 
 
+def _scaled(key: str, raw: Any) -> tuple[float, str | None] | None:
+    """Scale a raw analog register to its engineering value via the pack's
+    ``live_decode.registers[key].scaling``. ``n / (1 / scaling)`` rather than
+    ``n * scaling`` — for this pack's scalings (0.01, 0.1) the two are not
+    always bit-identical in float64 (e.g. 9999/100 != 9999*0.01), and the
+    division form matches the historical literals (``n / 100``, ``n / 10``)
+    exactly. None ⇒ raw wasn't a plain number.
+    """
+    n = _num(raw)
+    if n is None:
+        return None
+    entry = _REGISTERS[key]
+    return (n / (1 / entry.scaling), entry.unit)
+
+
 def _decode_one(key: str, raw: Any) -> tuple[Any, str | None, str] | None:
     """Decode a single known tag → (value, unit, label). None ⇒ unknown tag."""
     if key == "vfd_frequency":
-        n = _num(raw)
-        return None if n is None else (n / 100, "Hz", f"VFD output: {n / 100:.1f} Hz")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"VFD output: {value:.1f} {unit}")
     if key == "vfd_freq_sp":
-        n = _num(raw)
-        return None if n is None else (n / 100, "Hz", f"Freq setpoint: {n / 100:.1f} Hz")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"Freq setpoint: {value:.1f} {unit}")
     if key == "vfd_current":
-        n = _num(raw)
-        return None if n is None else (n / 100, "A", f"Current: {n / 100:.1f} A")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"Current: {value:.1f} {unit}")
     if key == "vfd_dc_bus":
-        n = _num(raw)
-        return None if n is None else (n / 10, "V", f"DC bus: {n / 10:.1f} V")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"DC bus: {value:.1f} {unit}")
     if key == "vfd_cmd_word":
         name = _CMD_WORD.get(raw, f"cmd {raw}")
         return (name, None, f"Command: {name}")
@@ -190,3 +364,532 @@ def render_status_block(snapshots: list[LiveTagSnapshot]) -> str:
         return ""
     lines = [s.label + (" [STALE]" if s.quality == STALE else "") for s in snapshots]
     return "[LIVE CONVEYOR STATUS]\n" + "\n".join(lines)
+
+
+def _dp(snapshots: list[LiveTagSnapshot]) -> dict[str, LiveTagSnapshot]:
+    return {s.datapoint: s for s in snapshots}
+
+
+@dataclass(frozen=True)
+class _BandStatus:
+    """Structured result of comparing one analog value to the pack envelope.
+
+    ``status`` is one of ``normal`` / ``below`` / ``above`` / ``no_band``. Shared
+    by the engine path (``_analog_band_observation``, out-of-band text only) and
+    the Ignition scaling-contract path (``assess_analog_from_paths``, which also
+    renders the ``normal`` case). One place owns the band lookup — no duplicate
+    envelope logic.
+    """
+
+    status: str
+    attr: str
+    label: str
+    band: EnvelopeBand
+
+
+def _analog_band_status(datapoint: str, value: float) -> _BandStatus | None:
+    """Compare a DECODED (engineering-unit) analog value to the pack's band.
+
+    ``None`` when ``datapoint`` isn't an envelope-covered analog signal.
+    ``status="no_band"`` when the pack ships no full ``[min, max]`` for it (e.g.
+    this pack's ``current``) — the caller must NOT guess a band. Otherwise
+    ``normal`` / ``below`` / ``above``. Pure; no I/O.
+    """
+    config = _ANALOG_ENVELOPE_DATAPOINTS.get(datapoint)
+    if config is None:
+        return None
+    attr, label = config
+    band: EnvelopeBand = getattr(_GS10_PACK.envelope, attr)
+    if band.min is None or band.max is None:
+        return _BandStatus("no_band", attr, label, band)
+    if band.min <= value <= band.max:
+        return _BandStatus("normal", attr, label, band)
+    return _BandStatus("below" if value < band.min else "above", attr, label, band)
+
+
+def _analog_band_observation(datapoint: str, snap: LiveTagSnapshot | None) -> str | None:
+    """Out-of-band-only observation for one decoded analog datapoint.
+
+    Honest by construction (ADR-0025 §4 — confidently wrong is worse than no
+    answer): returns ``None`` — i.e. stays silent — unless ALL of the following
+    hold, and states the value plainly (with the band) only then:
+
+    - ``datapoint`` is one of the three analog signals the pack's ``envelope``
+      covers (``vfd_dc_bus``/``vfd_current``/``vfd_frequency``);
+    - the snapshot is present, numeric, and ``GOOD`` quality (a ``STALE``
+      value — e.g. after a comm loss — is exactly the case we must NOT judge);
+    - the pack defines a FULL band for it (``min`` AND ``max`` both set — a
+      pack that ships only ``rated``/``nominal`` with no min/max, like this
+      pack's ``current`` band today, has no band to compare against, so it
+      stays silent rather than guess one);
+    - the value actually falls outside ``[min, max]``.
+
+    In-band values and datapoints with no usable band produce no text at all
+    (never an "in normal range" filler) — see ``_with_analog_notes``, which
+    only appends when this returns something.
+    """
+    if snap is None or snap.quality != GOOD:
+        return None
+    value = snap.value
+    if not isinstance(value, (int, float)):
+        return None
+    status = _analog_band_status(datapoint, value)
+    if status is None or status.status in ("normal", "no_band"):
+        return None
+    band = status.band
+    unit = band.unit or snap.unit or ""
+    unit_sfx = f" {unit}" if unit else ""
+    guidance = _ANALOG_OUT_OF_BAND_GUIDANCE.get(
+        (status.attr, status.status), "check wiring, load, and drive parameters"
+    )
+    return (
+        f"{status.label} {value:.1f}{unit_sfx} is {status.status} the normal "
+        f"{band.min:.0f}–{band.max:.0f}{unit_sfx} band — {guidance}."
+    )
+
+
+def _with_analog_notes(text: str, by: dict[str, LiveTagSnapshot]) -> str:
+    """Append any out-of-band analog observations to ``text`` as a SECONDARY,
+    additive sentence — the base assessment (comm/fault/command logic) always
+    leads and is never altered. Only ``assess_snapshots`` calls this: its
+    inputs are already-decoded (engineering-unit) snapshots, so an envelope
+    comparison is meaningful. ``assess_from_paths`` (Ignition wire form) never
+    reaches this — its analog leaves are filtered out before normalization
+    (see the boundary comment above ``assess_from_paths``), so this function
+    is simply never invoked for ambiguous-scaling wire values.
+    """
+    notes = [
+        note
+        for dp in _ANALOG_ENVELOPE_DATAPOINTS
+        if (note := _analog_band_observation(dp, by.get(dp))) is not None
+    ]
+    return f"{text} {' '.join(notes)}" if notes else text
+
+
+def assess_snapshots(snapshots: list[LiveTagSnapshot]) -> str | None:
+    """Deterministic one-line machine assessment from decoded snapshots.
+
+    The Python mirror of the Hub's ``deriveContextIntelligence`` summary
+    (``mira-hub/src/lib/machine-context-intelligence.ts``): it COMPOSES the
+    already-decoded VFD facts (comm_ok / fault_code / dc_bus / freq / cmd /
+    status) into an honest assessment — the "VFD-healthy-but-stopped" case above
+    all. It never invents a value; a missing signal is simply not asserted.
+    Returns ``None`` when there's nothing to assess. Pure / deterministic.
+    """
+    if not snapshots:
+        return None
+    by = _dp(snapshots)
+    comm = by.get("vfd_comm_ok")
+    fault = by.get("vfd_fault_code")
+    dc = by.get("vfd_dc_bus")
+    freq = by.get("vfd_frequency")
+    cmd = by.get("vfd_cmd_word")
+    status = by.get("vfd_status_word")
+    any_stale = any(s.quality == STALE for s in snapshots)
+
+    # 1. Comms lost — every VFD value is untrustworthy; say so first. (Every
+    # other vfd_* snapshot is STALE whenever we reach this branch — see
+    # `normalize()` — so `_with_analog_notes` is a no-op here by construction;
+    # wrapped anyway for a single, uniform "analog notes never override the
+    # lead" code path rather than a special case.)
+    if comm is not None and comm.value == "LOST":
+        return _with_analog_notes(
+            "VFD comms are LOST — the live VFD values can't be trusted. Check the drive's comm "
+            "cable, Modbus address, and control power before diagnosing further.",
+            by,
+        )
+    # 2. An active fault dominates.
+    if fault is not None and fault.value not in (None, "no active fault"):
+        return _with_analog_notes(
+            f"Active VFD fault: {fault.value}. Clear the cause and reset the drive; verify wiring "
+            "and comms before restart.",
+            by,
+        )
+
+    # 3. No fault, comms OK (or comm not reported) — assess running vs stopped.
+    facts: list[str] = []
+    if comm is not None and comm.value == "OK":
+        facts.append("comms OK")
+    if fault is not None and fault.value == "no active fault":
+        facts.append("no fault")
+    if dc is not None and isinstance(dc.value, (int, float)):
+        facts.append(f"DC bus {dc.value:.0f} V")
+    if freq is not None and isinstance(freq.value, (int, float)):
+        facts.append(f"output {freq.value:.1f} Hz")
+    facts_str = ", ".join(facts)
+
+    def _num(s: LiveTagSnapshot | None) -> float | None:
+        return s.value if s is not None and isinstance(s.value, (int, float)) else None
+
+    freq_n = _num(freq)
+    running = (
+        (status is not None and status.value == "RUNNING")
+        or (freq_n is not None and freq_n > 0.1)
+        or (cmd is not None and "RUN" in str(cmd.value))
+    )
+    stopped = (
+        (status is not None and status.value == "STOPPED")
+        or (cmd is not None and cmd.value == "STOP")
+        or (freq_n is not None and freq_n <= 0.1)
+    )
+    healthy = (
+        (comm is None or comm.value == "OK")
+        and (fault is None or fault.value == "no active fault")
+        and not any_stale
+    )
+
+    if running:
+        return _with_analog_notes(
+            f"Machine running{f' ({facts_str})' if facts_str else ''}. No active VFD fault.", by
+        )
+    if stopped:
+        if healthy and facts_str:
+            return _with_analog_notes(
+                f"VFD looks healthy ({facts_str}) but the machine is stopped. Most likely a "
+                "command/permissive/interlock, not the drive — check operator command, run "
+                "permissive, E-stop/interlock, and PLC logic.",
+                by,
+            )
+        return _with_analog_notes(
+            f"Machine stopped{f' ({facts_str})' if facts_str else ''}. Confirm comms, fault code, "
+            "and DC bus before isolating the cause.",
+            by,
+        )
+    return _with_analog_notes(
+        f"Live VFD readings{f' ({facts_str})' if facts_str else ''} — not enough to tell "
+        "running from stopped; confirm the command word and drive status.",
+        by,
+    )
+
+
+def _render_fault_card(card: DiagnosticCard) -> str:
+    """Render a ``DiagnosticCard`` (likely-causes/first-checks/citation) as the
+    ``### Fault diagnostic:`` block text. Pure formatting -- the caller decides
+    whether a card should render at all (the GOOD-quality / non-empty gates)."""
+    lines = [f"### Fault diagnostic: {card.fault_or_symptom}"]
+    if card.likely_causes:
+        lines.append("Likely causes: " + "; ".join(card.likely_causes))
+    if card.first_checks:
+        lines.append("First checks: " + " ".join(card.first_checks))
+    cites = "; ".join(f"{c.doc}{f' — {c.page}' if c.page else ''}" for c in card.citations if c.doc)
+    if cites:
+        lines.append(f"Source: {cites}")
+    return "\n".join(lines)
+
+
+def _render_parameter_card(p: ParameterCard) -> str:
+    """Render a ``ParameterCard`` as a ``### Related parameter:`` block. Pure
+    formatting -- the caller decides whether/when to render it at all."""
+    lines = [f"### Related parameter: {p.parameter_id} — {p.name}"]
+    if p.purpose:
+        lines.append(p.purpose)
+    range_bits = []
+    if p.range:
+        range_bits.append(f"Range {p.range}")
+    if p.default is not None:
+        range_bits.append(f"Default {p.default}")
+    if p.unit:
+        range_bits.append(f"Unit {p.unit}")
+    if range_bits:
+        lines.append(" / ".join(range_bits))
+    if p.source_citation.doc:
+        cite = p.source_citation.doc
+        if p.source_citation.page:
+            cite += f" — {p.source_citation.page}"
+        lines.append(f"Source: {cite}")
+    return "\n".join(lines)
+
+
+def _render_keypad_card(k: KeypadNavigationCard) -> str:
+    """Render a ``KeypadNavigationCard`` as a ``### Keypad (view-only):`` block.
+
+    SAFETY GUARD: the view-only warning is NON-OPTIONAL whenever any keypad
+    text renders -- if ``view_only_warning`` is empty/blank, this returns ``""``
+    (suppress the whole card) rather than ever render keypad steps without it.
+    The loader already forbids an empty warning at load time; this is
+    belt-and-suspenders against that invariant ever slipping. Pure formatting.
+    """
+    if not k.view_only_warning or not k.view_only_warning.strip():
+        return ""
+    lines = [f"### Keypad (view-only): {k.goal}"]
+    for i, step in enumerate(k.keypad_steps, start=1):
+        lines.append(f"{i}. {step}")
+    lines.append(f"⚠ View only: {k.view_only_warning}")
+    if k.source_citation.doc:
+        cite = k.source_citation.doc
+        if k.source_citation.page:
+            cite += f" — {k.source_citation.page}"
+        lines.append(f"Source: {cite}")
+    return "\n".join(lines)
+
+
+def render_fault_diagnostic(fault_name: str) -> str:
+    """Enriched diagnostic block for an active fault NAME (card likely-causes/
+    first-checks/citation), or "" when there's no enrichment. Pure/offline --
+    reads module-level cards built once via the offline FaultCodesTemplateReader.
+    """
+    card = _GS10_CARDS_BY_MEANING.get(fault_name)
+    if card is None or (not card.likely_causes and not card.first_checks):
+        return ""
+    return _render_fault_card(card)
+
+
+def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
+    """Render snapshots as a ``## Live Machine Evidence`` section for the engine.
+
+    The Python mirror of the Hub's ``renderMachineEvidenceSection``: the decoded
+    live values (with ``[STALE]`` markers) PLUS a deterministic assessment and
+    the live/context/inference/next-checks separation instruction. Returns ``""``
+    when there is nothing to report. Read-only text; the caller decides when to
+    attach it (the engine attaches only after the UNS gate).
+    """
+    if not snapshots:
+        return ""
+    # Embed the canonical ``[LIVE CONVEYOR STATUS]`` block verbatim — the engine
+    # keys the kiosk quality-gate bypass and the direct live-tag fast-path on that
+    # marker's presence (engine.py ``_LIVE_STATUS_HEADER``); dropping it would
+    # silently disable both. We only WRAP it with the section header + assessment.
+    parts = [
+        "## Live Machine Evidence (observed now)",
+        (
+            "Machine-observed live tags. In your answer, clearly separate: (1) this LIVE "
+            "evidence, (2) asset/manual context, (3) your inference, and (4) the recommended "
+            "next checks."
+        ),
+        "",
+        render_status_block(snapshots),
+    ]
+    # Both surfaces (this one and `assess_from_paths`) build the SAME
+    # structured `DriveDiagnostic` object, then render it -- see `DriveDiagnostic`.
+    diag = build_drive_diagnostic(snapshots)
+    if diag.assessment:
+        parts += ["", f"Assessment: {diag.assessment}"]
+    # Only render the authoritative per-fault card for a GOOD-quality fault — see
+    # `DriveDiagnostic`'s docstring for the STALE-suppression rule.
+    if diag.fault_card is not None:
+        parts += ["", _render_fault_card(diag.fault_card)]
+    # Schema-v2 carry slots -- empty/None for the shipped v1 pack (see
+    # `DriveDiagnostic`), so this is a no-op there and adds no text.
+    for p in diag.related_parameters:
+        parts += ["", _render_parameter_card(p)]
+    if diag.keypad_navigation is not None:
+        kp = _render_keypad_card(diag.keypad_navigation)
+        if kp:
+            parts += ["", kp]
+    return "\n".join(parts)
+
+
+# ── Assessment from the Ignition wire form ({full_path: str_value}) ───────────
+#
+# ``ignition_chat.py`` receives ``{ "[default]Mira_Monitored/<asset>/<leaf>":
+# {"value": str(qv.value), …} }`` (doPost.py) — full-path keys, string values,
+# and ambiguous analog scaling (raw register vs engineering). Only the ENUM/BOOL
+# canonical signals are scaling-immune, so ONLY those feed the assessment; the
+# analog values (freq/current/dc_bus) are shown in the preamble but never
+# re-scaled/re-interpreted here (a 10x/100x-wrong number is worse than none).
+#
+# HARD BOUNDARY (Task 3 / ADR-0025 §4): the envelope-driven analog check
+# (`_analog_band_observation` / `_with_analog_notes`) compares a DECODED,
+# engineering-unit value against the pack's ``min``/``max`` band — that
+# comparison is only meaningful when the scaling is known-good, which is true
+# for ``assess_snapshots`` (fed by already-scaled `LiveTagSnapshot`s) and NOT
+# true here. `assess_from_paths` filters analog leaves out of `raw` below
+# (they're not in ``_ASSESSABLE_INT_LEAVES``/``_ASSESSABLE_BOOL_LEAVES``), so
+# they never reach `normalize()`/`assess_snapshots()` from this path — the
+# envelope check is therefore structurally never applied to a wire-form value.
+# Do NOT add analog leaves to the assessable sets above to "get" an envelope
+# judgment here; that would silently reintroduce the ambiguous-scaling risk
+# this boundary exists to prevent.
+_ASSESSABLE_INT_LEAVES = {"vfd_fault_code", "vfd_warn_code", "vfd_cmd_word", "vfd_status_word"}
+_ASSESSABLE_BOOL_LEAVES = {
+    "vfd_comm_ok",
+    "pe_latched",
+    "DI_02",
+    "e_stop",
+    "DI_05",
+    "pe_beam",
+    "DO_02",
+    "mlc",
+}
+_TRUE_STRINGS = {"true", "t", "1", "1.0", "on", "yes"}
+_FALSE_STRINGS = {"false", "f", "0", "0.0", "off", "no"}
+
+
+def _leaf(path: str) -> str:
+    return str(path).rsplit("/", 1)[-1]
+
+
+def _coerce_int(v: Any) -> int | None:
+    if isinstance(v, bool):
+        return None
+    try:
+        return int(float(str(v).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_bool(v: Any) -> bool | None:
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in _TRUE_STRINGS:
+        return True
+    if s in _FALSE_STRINGS:
+        return False
+    return None
+
+
+def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
+    """Deterministic assessment from a ``{tag_path: value}`` map (Ignition wire
+    form). Keys may be full Ignition browse paths; entries may be bare scalars or
+    ``{"value": …}`` dicts. ONLY the enum/bool canonical leaves feed the
+    assessment — analog leaves are deliberately excluded (their wire scaling is
+    ambiguous). Returns ``None`` when nothing assessable is present — never a
+    fabricated assessment. Pure / deterministic.
+
+    When an active, GOOD-quality (comms-OK) GS10 fault is present, the same
+    per-fault diagnostic card the engine path renders is appended after the
+    one-line assessment — both surfaces build the same ``DriveDiagnostic``
+    (``build_drive_diagnostic``) and render its ``fault_card``. This is the
+    Ignition "Ask MIRA" enrichment (Drive Commander DriveSense). A STALE fault
+    (comms lost) never gets a card.
+    """
+    if not path_values:
+        return None
+    raw: dict[str, Any] = {}
+    for path, val in path_values.items():
+        if isinstance(val, dict):
+            val = val.get("value")
+        leaf = _leaf(path)
+        if leaf in _ASSESSABLE_INT_LEAVES:
+            n = _coerce_int(val)
+            if n is not None:
+                raw[leaf] = n
+        elif leaf in _ASSESSABLE_BOOL_LEAVES:
+            b = _coerce_bool(val)
+            if b is not None:
+                raw[leaf] = b
+    if not raw:
+        return None
+    snapshots = normalize(raw, "", source="ignition", ts="")
+    # Both surfaces (this one and `render_machine_evidence`) build the SAME
+    # structured `DriveDiagnostic` object, then render it -- see `DriveDiagnostic`.
+    diag = build_drive_diagnostic(snapshots)
+    # Blocks are appended ONLY when present, joined `\n\n` -- for the shipped v1
+    # pack `related_parameters`/`keypad_navigation` are always empty/None (see
+    # `DriveDiagnostic`), so this is byte-identical to the pre-v2 behavior:
+    # `f"{assessment}\n\n{card_text}"` when both present, `card_text` alone when
+    # assessment is falsy, `diag.assessment` (possibly `None`) when there's no card.
+    blocks: list[str] = []
+    if diag.assessment:
+        blocks.append(diag.assessment)
+    if diag.fault_card is not None:
+        blocks.append(_render_fault_card(diag.fault_card))
+    for p in diag.related_parameters:
+        blocks.append(_render_parameter_card(p))
+    if diag.keypad_navigation is not None:
+        kp = _render_keypad_card(diag.keypad_navigation)
+        if kp:
+            blocks.append(kp)
+    if not blocks:
+        return diag.assessment
+    return "\n\n".join(blocks)
+
+
+# ── Analog assessment from the Ignition wire form — the SCALING CONTRACT ──────
+#
+# This is the sanctioned way through the HARD BOUNDARY above (Drive Commander
+# follow-up #2). ``assess_from_paths`` abstains on analog because the wire
+# scaling is ambiguous. ``assess_analog_from_paths`` does NOT guess: it assesses
+# an analog wire value against the pack envelope ONLY when the caller supplies an
+# explicit, trusted ``TagScaling`` (from ``tag_entities.scaling`` — see
+# ``shared.wire_scaling``). ``unknown``/missing scaling ⇒ no card ⇒ the current
+# display-only behavior (never a false alarm). The boundary above stays intact:
+# analog leaves are still NOT in the enum/bool assessable sets; this is a
+# SEPARATE, opt-in path gated on explicit scaling, exactly as that comment
+# anticipates. Pure / read-only — the DB read that produces ``scaling_by_path``
+# lives in ``ignition_chat.py`` (an already-existing query), not here.
+
+
+def _fmt_num(v: float) -> str:
+    """Whole numbers render without a decimal (``320`` not ``320.0``); otherwise
+    one decimal — matches the ``DC bus: 320 V`` card style in the spec."""
+    return f"{v:.0f}" if float(v).is_integer() else f"{v:.1f}"
+
+
+def _render_analog_card(
+    raw_value: Any, eng_value: float, scaling: TagScaling, status: _BandStatus
+) -> str:
+    """Self-explaining analog assessment card: source value → scaling →
+    engineering value → band → assessment. Only called for an in-band or
+    out-of-band result (never ``no_band``)."""
+    band = status.band
+    unit = band.unit or scaling.unit or ""
+    unit_sfx = f" {unit}" if unit else ""
+    if scaling.mode == "raw_register":
+        scale_txt = f"raw register ×{scaling.scale:g} ({scaling.source})"
+    else:
+        scale_txt = f"already engineering units ({scaling.source})"
+    if status.status == "normal":
+        assessment = "normal"
+    else:
+        guidance = _ANALOG_OUT_OF_BAND_GUIDANCE.get(
+            (status.attr, status.status), "check wiring, load, and drive parameters"
+        )
+        assessment = (
+            f"{status.status} the {band.min:.0f}–{band.max:.0f}{unit_sfx} band — {guidance}"
+        )
+    return "\n".join(
+        [
+            f"{status.label}: {_fmt_num(eng_value)}{unit_sfx}",
+            f"Source value: {raw_value}",
+            f"Scaling: {scale_txt}",
+            f"Normal band: {band.min:.0f}–{band.max:.0f}{unit_sfx}",
+            f"Assessment: {assessment}",
+        ]
+    )
+
+
+def assess_analog_from_paths(
+    path_values: dict[str, Any] | None,
+    scaling_by_path: dict[str, TagScaling] | None,
+) -> str | None:
+    """Assess Ignition analog wire values against the pack envelope, gated on an
+    explicit per-tag scaling contract.
+
+    ``path_values`` is the Ignition wire form (``{tag_path: value}``; values may
+    be bare scalars or ``{"value": …}`` dicts). ``scaling_by_path`` maps the SAME
+    tag paths to a ``TagScaling``. A tag is assessed only when its ``TagScaling``
+    is explicit (``raw_register`` or ``engineering_value``) AND the pack defines a
+    full band for it. A ``raw_register`` tag with no explicit ``scale`` inherits
+    the pack's trusted register scaling. Anything ``unknown``/missing/ambiguous is
+    skipped — no card, no guess. Returns the joined card(s) or ``None``. Pure.
+    """
+    if not path_values:
+        return None
+    by_path = scaling_by_path or {}
+    cards: list[str] = []
+    for path, val in path_values.items():
+        leaf = _leaf(path)
+        if leaf not in _ANALOG_ENVELOPE_DATAPOINTS:
+            continue
+        scaling = by_path.get(path)
+        if scaling is None or scaling.mode == "unknown":
+            continue
+        # A raw_register tag may lean on the pack's trusted register scaling.
+        if scaling.mode == "raw_register" and scaling.scale is None:
+            reg = _REGISTERS.get(leaf)
+            if reg is None:
+                continue
+            scaling = replace(scaling, scale=reg.scaling)
+        raw_value = val.get("value") if isinstance(val, dict) else val
+        eng = to_engineering(raw_value, scaling)
+        if eng is None:
+            continue
+        status = _analog_band_status(leaf, eng)
+        if status is None or status.status == "no_band":
+            continue
+        cards.append(_render_analog_card(raw_value, eng, scaling, status))
+    if not cards:
+        return None
+    return "\n\n".join(cards)

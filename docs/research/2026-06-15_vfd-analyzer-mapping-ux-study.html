@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Making the VFD Analyzer Tag Setup World-Class</title>
+<style>
+  @page { size: Letter; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: #1f2328; font-size: 11pt; line-height: 1.5; margin: 0;
+  }
+  h1,h2,h3 { font-weight: 700; line-height: 1.2; color: #0d1117; }
+  h2 { font-size: 19pt; border-bottom: 3px solid #f0a90e; padding-bottom: 5px; margin: 0 0 12px; }
+  h3 { font-size: 13pt; color: #1a4b8f; margin: 18px 0 6px; }
+  p { margin: 7px 0; }
+  code, pre { font-family: "Consolas","SF Mono",monospace; }
+  pre { background:#0d1117; color:#e6edf3; padding:14px 16px; border-radius:8px;
+        font-size:8.6pt; line-height:1.35; overflow:hidden; white-space:pre; }
+  .muted { color:#57606a; }
+  .section { page-break-before: always; padding-top: 2mm; }
+  /* Cover */
+  .cover { background:#0d1117; color:#e6edf3; height:247mm; margin:-16mm -14mm 0;
+           padding:40mm 22mm 0; page-break-after: always; }
+  .cover .kicker { color:#f0a90e; letter-spacing:.22em; font-size:11pt; font-weight:700; text-transform:uppercase; }
+  .cover h1 { color:#fff; font-size:34pt; line-height:1.08; margin:14px 0 18px; }
+  .cover .thesis { color:#9fb3c8; font-size:14pt; max-width:150mm; }
+  .cover .meta { position:relative; margin-top:48mm; color:#6e7d90; font-size:10pt; }
+  .cover .pillrow { margin-top:26px; }
+  .cover .pill { display:inline-block; border:1px solid #30363d; border-radius:20px;
+                 padding:6px 16px; margin:4px 8px 4px 0; color:#c9d1d9; font-size:10.5pt; }
+  .cover .pill b { color:#58a6ff; }
+  /* callouts */
+  .bad  { background:#fff5e6; border-left:5px solid #f0a90e; padding:10px 14px; border-radius:5px; margin:9px 0; }
+  .good { background:#eaf6ee; border-left:5px solid #1a7f37; padding:10px 14px; border-radius:5px; margin:9px 0; }
+  .key  { background:#eef3fb; border-left:5px solid #1a4b8f; padding:10px 14px; border-radius:5px; margin:9px 0; }
+  .bad b { color:#9a6700;} .good b{color:#136229;} .key b{color:#1a4b8f;}
+  table { border-collapse:collapse; width:100%; font-size:9.4pt; margin:10px 0; }
+  th,td { border:1px solid #d0d7de; padding:6px 8px; vertical-align:top; text-align:left; }
+  th { background:#0d1117; color:#fff; font-weight:600; }
+  tr:nth-child(even) td { background:#f6f8fa; }
+  .tag { display:inline-block; font-size:8.3pt; font-weight:700; padding:1px 7px; border-radius:4px; }
+  .req { background:#f0a90e; color:#23270c; } .rec{ background:#dbe7f5; color:#1a4b8f;} .opt{background:#eaeef2;color:#57606a;}
+  .green{color:#1a7f37;font-weight:700;} .amber{color:#9a6700;font-weight:700;} .red{color:#cf222e;font-weight:700;}
+  figure { margin:10px 0; } figcaption{ font-size:8.6pt; color:#57606a; margin-top:4px;}
+  img.shot { width:100%; border:1px solid #30363d; border-radius:6px; }
+  .lead { font-size:12pt; color:#384049; }
+  ol.steps { margin:6px 0 6px 4px; padding-left:20px; }
+  ol.steps li { margin:5px 0; }
+  .small { font-size:9pt; } a { color:#1a4b8f; text-decoration:none; }
+  .grid2 { display:flex; gap:14px; } .grid2 > div { flex:1; }
+  .stepnum { display:inline-block; width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%;
+             background:#1a4b8f;color:#fff;font-weight:700;font-size:10pt;margin-right:7px; }
+  .foot { font-size:8.2pt; color:#8b949e; text-align:center; margin-top:6mm; }
+</style>
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<div class="cover">
+  <div class="kicker">MIRA VFD Analyzer &middot; UX Study &amp; Recommendation</div>
+  <h1>Making the Tag&nbsp;Setup<br>World-Class</h1>
+  <div class="thesis">How the best ~26 data-mapping tools in the world onboard a user &mdash;
+    and the elegant <b style="color:#f0a90e">Connect&nbsp;&rarr;&nbsp;Verify&nbsp;&rarr;&nbsp;Map&nbsp;&rarr;&nbsp;Save</b>
+    path that turns our confusing setup screen into something an 11-year-old can finish.</div>
+  <div class="pillrow">
+    <span class="pill"><b>26</b> tools studied</span>
+    <span class="pill"><b>4</b>-step pattern</span>
+    <span class="pill"><b>10</b> patterns to steal</span>
+    <span class="pill"><b>90%</b> reuse of existing code</span>
+  </div>
+  <div class="meta">
+    Prepared for Mike &middot; FactoryLM / MIRA &middot; June 15, 2026<br>
+    Detailed report &middot; plain English &middot; source: <code>docs/research/2026-06-15_vfd-analyzer-mapping-ux-study.*</code>
+  </div>
+</div>
+
+<!-- ===================== 1. EXEC SUMMARY ===================== -->
+<div class="section">
+  <h2>1 &nbsp;Executive summary</h2>
+  <p class="lead">You rebuilt the Tag Setup page into a big-slots matching game and it looks good &mdash; live
+  values flow in, the backbone is solid. But it still isn&rsquo;t a <i>guided</i> experience, and even you,
+  its designer, weren&rsquo;t sure what it was asking you to do. That&rsquo;s not a you problem. It&rsquo;s a
+  <b>structure</b> problem, and every world-class tool solves it the same way.</p>
+
+  <div class="key"><b>The one big idea:</b> great onboarding is a <b>gated, four-step funnel</b> &mdash;
+  <b>Connect</b> a data source, <b>Verify</b> it&rsquo;s really live, <b>Map</b> the fields, then <b>Save</b>
+  for reuse. You can&rsquo;t map before you&rsquo;ve seen live data, and you can&rsquo;t finish until the required
+  fields are done. Our page tries to do everything on one screen with no gates &mdash; which is exactly why it
+  feels like a wall.</p>
+
+  <h3>What we found studying 26 tools</h3>
+  <ul>
+    <li><b>The pattern is universal.</b> Flatfile, Fivetran, HighByte, Boomi, Hightouch, KEPServerEX &mdash;
+      CSV importers, industrial IIoT hubs, and data pipelines all converge on Connect&nbsp;&rarr;&nbsp;Verify&nbsp;&rarr;&nbsp;Map&nbsp;&rarr;&nbsp;Save.</li>
+    <li><b>Auto-suggest feels like magic, and it&rsquo;s cheap.</b> The best mappers fuzzy-match field names,
+      pre-fill the best guess, and ask you to confirm. We can do this <i>locally</i> on tag names &mdash; no AI, no cloud.</li>
+    <li><b>A &ldquo;Verify&rdquo; step builds trust.</b> Showing &ldquo;42 tags found, 38 live and good&rdquo; before mapping
+      is the single most-copied trust move across every category.</li>
+  </ul>
+
+  <div class="good"><b>The recommendation:</b> wrap the matching game (which is good!) inside a 4-step wizard,
+  add a Verify step in front of it, a required-field progress meter on it, and a lightweight
+  &ldquo;suggested &mdash; confirm?&rdquo; auto-fill. Three changes &mdash; <b>Verify step</b>, <b>suggested badges</b>,
+  <b>progress meter</b> &mdash; map directly to the tools your users already trust, and ~90% of the backend already exists.</p>
+  </div>
+</div>
+
+<!-- ===================== 2. PROBLEM ANALYSIS ===================== -->
+<div class="section">
+  <h2>2 &nbsp;Why the current page is confusing</h2>
+  <figure>
+    <img class="shot" src="2026-06-15_current-page.png" alt="current VFD Analyzer Tag Setup page">
+    <figcaption>The current Tag Setup page: a role dropdown + a 100+ row, 4-page table of every gateway tag
+    (mostly Boolean sensors reading &ldquo;bad&rdquo;), a scale field, and Set/Clear buttons &mdash; all on one screen.</figcaption>
+  </figure>
+
+  <p>It hits <b>five</b> of the classic onboarding anti-patterns &mdash; the same ones the best tools are built to avoid:</p>
+
+  <div class="bad"><b>1. The one-screen kitchen-sink.</b> Everything is visible at once: pick a role in a dropdown,
+  then hunt a paginated table of <i>every</i> tag in the gateway. There&rsquo;s no sense of &ldquo;do this, then this.&rdquo;</div>
+  <div class="bad"><b>2. No verify step.</b> You map against the tag list without ever confirming the source is live.
+  Most of the table reads <span class="red">bad</span> quality &mdash; noise you have to mentally filter.</div>
+  <div class="bad"><b>3. No progress / no finish line.</b> Nothing says &ldquo;you need 3 things and you&rsquo;ve done 1.&rdquo;
+  The required work is hidden inside a dropdown instead of shown as fillable slots.</div>
+  <div class="bad"><b>4. Abstract mapping.</b> You match a name to a name with no sample value beside it, so you can&rsquo;t
+  <i>see</i> that the tag reading 47.3 is the frequency. (Your big-slots rebuild already fixes much of this &mdash; good instinct.)</div>
+  <div class="bad"><b>5. No reuse.</b> A mapping you build can&rsquo;t be saved as a template and applied to the next
+  identical drive. Every asset starts from zero.</div>
+
+  <p class="muted small">Note: your big-slots redesign already corrected #4 (sample values) and partly #3 (slots).
+  This report is about finishing the job &mdash; the gated funnel around it.</p>
+</div>
+
+<!-- ===================== 3. WHAT GREAT LOOKS LIKE ===================== -->
+<div class="section">
+  <h2>3 &nbsp;What &ldquo;great&rdquo; looks like</h2>
+  <p class="lead">Across 26 tools and five categories, the winning shape is identical: a <b>gated, progressive
+  four-step funnel</b>. Each step does one job and unlocks the next only when it&rsquo;s valid.</p>
+
+<pre>
+  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+  │ 1. CONNECT   │──▶│ 2. VERIFY    │──▶│ 3. MAP       │──▶│ 4. SAVE      │
+  │ pick the     │   │ prove it's   │   │ match tags   │   │ store +      │
+  │ data source  │   │ really live  │   │ to roles     │   │ reuse        │
+  └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
+   provider +         "42 tags, 38      slots + only        readiness gate,
+   tag folder         good" sample      fitting tags,       approve, save as
+                      before mapping    suggested + live    reusable template
+        │                  │                  │                  │
+        └─ gate: a folder ─┴─ gate: ≥1 good ──┴─ gate: required ─┘
+           is chosen          live tag           fields all mapped
+</pre>
+
+  <div class="key"><b>Why gating matters.</b> Gates are not bureaucracy &mdash; they remove cognitive load.
+  You never face &ldquo;pick one of 18 roles AND search 300 tags&rdquo; at the same time. You answer one question per
+  screen, see proof it worked, and move on. That&rsquo;s what makes it feel easy.</div>
+
+  <p><b>The same idea, three industries:</b></p>
+  <table>
+    <tr><th>Tool</th><th>Connect</th><th>Verify</th><th>Map</th><th>Save</th></tr>
+    <tr><td><b>Flatfile</b> (CSV import)</td><td>upload file</td><td>preview &amp; header detect</td><td>auto-match columns &rarr; fields</td><td>submit / reusable config</td></tr>
+    <tr><td><b>Fivetran</b> (data pipeline)</td><td>pick source</td><td><b>Save &amp; Test</b> connection battery</td><td>include/exclude schema</td><td>saved connector</td></tr>
+    <tr><td><b>HighByte</b> (industrial)</td><td>connect OPC/MQTT</td><td>browse live values</td><td>Model &harr; Instance binding</td><td>deploy, reusable model</td></tr>
+    <tr><td><b>Hightouch</b> (reverse-ETL)</td><td>model + destination</td><td>preview rows</td><td><b>Suggest mappings</b> + confirm</td><td>saved sync</td></tr>
+  </table>
+</div>
+
+<!-- ===================== 4. PATTERN CATALOG ===================== -->
+<div class="section">
+  <h2>4 &nbsp;Pattern catalog &mdash; the 10 worth stealing</h2>
+  <p>Ranked by impact for our tag-setup case. &ldquo;Apply&rdquo; = how we&rsquo;d use it.</p>
+  <table>
+    <tr><th style="width:18%">Pattern</th><th style="width:30%">What it is</th><th style="width:23%">Who does it best</th><th style="width:29%">How we apply it</th></tr>
+    <tr><td><b>Test-connection gate</b></td><td>An explicit &ldquo;test&rdquo; before mapping; can&rsquo;t proceed until it passes.</td><td>Fivetran (Save&amp;Test), Matillion, Census, KEPServerEX (Quick Client)</td><td>A <b>Verify</b> step: scan the folder, show tag count + live sample, gate Next on &ge;1 good tag.</td></tr>
+    <tr><td><b>Auto-match + confidence</b></td><td>Fuzzy name-match pre-fills the target; user confirms.</td><td>Boomi Suggest (High/Med/Low tiers), Hightouch (Suggest mappings), Census (Generate Mappings)</td><td>Local fuzzy match of tag names &rarr; pre-fill each slot + a <b>&ldquo;suggested &mdash; confirm?&rdquo;</b> badge + Accept-all.</td></tr>
+    <tr><td><b>Required-field progress meter</b></td><td>&ldquo;Mapped 2 of 3 required&rdquo;; Save greyed until complete.</td><td>Flatfile, CSVbox, OneSchema, Stitch (&ldquo;Not Configured&rdquo;)</td><td>A live &ldquo;N of 3 required&rdquo; meter (we already compute this) + disabled Finish until 3/3.</td></tr>
+    <tr><td><b>Sample value beside each candidate</b></td><td>Show 3&ndash;5 live values so the user recognizes the right field.</td><td>Dromo, CSVbox, MuleSoft (live Preview)</td><td>Already in the big-slots table (live value + quality dot). Keep &amp; extend to Verify.</td></tr>
+    <tr><td><b>Datatype pre-filter</b></td><td>Only show candidates whose type fits the target.</td><td>Osmos, CSVbox, our own redesign</td><td>Already shipped: analog role &rarr; only Float/Int tags. Kills the Boolean wall.</td></tr>
+    <tr><td><b>Semantic / fuzzy naming</b></td><td>Match &ldquo;MSRP&rdquo;&harr;&ldquo;Price&rdquo;, not just exact strings.</td><td>Osmos (LLM), Flatfile (ML), Hightouch</td><td>Simple token match: <code>freq/hz</code>&rarr;Output frequency, <code>amp/current</code>&rarr;Output current.</td></tr>
+    <tr><td><b>Inline type validation</b></td><td>Green check / red X per row as you map.</td><td>Dromo, CSVbox, Power Automate (Flow checker)</td><td>Reuse our live preview &amp; quality color (amber needs / green good / red bad).</td></tr>
+    <tr><td><b>Issue filtering</b></td><td>Show only the rows with problems, not all 10,000.</td><td>Osmos, Flatfile, Dromo</td><td>Verify step flags only the bad-quality tags to fix first.</td></tr>
+    <tr><td><b>Save-as-reusable-template</b></td><td>Save the mapping; auto-apply to the next identical source.</td><td>OneSchema, Flatfile, HighByte (Model&harr;Instance)</td><td>Per-asset config today; a &ldquo;reuse on another drive&rdquo; template is the Slice-2 moat.</td></tr>
+    <tr><td><b>Back-navigable stepper</b></td><td>&ldquo;Step X of Y&rdquo;, emphasized current step, Back always allowed.</td><td>USWDS, W3C forms, Matillion, Stitch</td><td>4 numbered pills + show/hide sections; Next disabled until the step validates.</td></tr>
+  </table>
+</div>
+
+<!-- ===================== 5. RECOMMENDED DESIGN ===================== -->
+<div class="section">
+  <h2>5 &nbsp;The recommended MIRA design</h2>
+  <p class="lead">Keep the matching game &mdash; it&rsquo;s good. Wrap it in the four-step funnel, add Verify in front,
+  a progress meter on Map, and a lightweight auto-suggest. Here&rsquo;s the whole flow.</p>
+
+  <h3><span class="stepnum">1</span>Connect &mdash; pick the data source</h3>
+  <p>Choose the tag provider and the drive&rsquo;s folder (e.g. <code>[default]MIRA_IOCheck/VFD</code>). This replaces
+  today&rsquo;s hard-coded scope, so the analyzer works on <i>any</i> drive&rsquo;s tags.</p>
+<pre>
+ STEP 1 of 4 ─ CONNECT ──────────────────────────────────────────────
+  ● 1 Connect   ○ 2 Verify   ○ 3 Map   ○ 4 Save
+
+  Where are this drive's tags?
+   Provider:  [ default            ▼ ]
+   Folder:    [default]MIRA_IOCheck/VFD          [ Browse… ]
+              └ Plant/Line1/Drive3   └ MIRA_IOCheck/VFD  ◀ chosen
+                                                   [ Use this folder ]
+                                                          [ Next ▸ ]  (enabled)
+</pre>
+
+  <h3><span class="stepnum">2</span>Verify &mdash; prove it&rsquo;s really live</h3>
+  <p>One &ldquo;Test data source&rdquo; click scans the folder and shows what&rsquo;s really there, with live values moving.
+  This is the trust step every great tool has and ours never did.</p>
+<pre>
+ STEP 2 of 4 ─ VERIFY ───────────────────────────────────────────────
+  ✓ 1 Connect   ● 2 Verify   ○ 3 Map   ○ 4 Save     [ Test data source ]
+
+   Found 42 tags    ● 38 good    ● 4 bad           <span style="color:#7ee787">READY</span>
+   Types: Float 9 · Int 6 · Bool 25 · String 2
+
+   sample (live)                     value      quality
+   ─────────────────────────────────────────────────────
+   vfd_frequency                     47.31      ● good
+   vfd_current                        6.20      ● good
+   vfd_dc_bus                       320.10      ● good
+   sensor_bottle_present              false     ● bad   ← check link
+                                                          [ Next ▸ ]
+</pre>
+
+  <h3><span class="stepnum">3</span>Map &mdash; the matching game + suggestions</h3>
+  <p>Your big-slots screen, now scoped to the chosen folder, with a progress meter and <b>lightweight auto-suggest</b>:
+  we fuzzy-match tag names, pre-fill the best guess, and you confirm (or change).</p>
+<pre>
+ STEP 3 of 4 ─ MAP ──────────────────  Mapped <span style="color:#f0bf69">2 of 3 required</span>  ───────
+  ✓ 1 Connect   ✓ 2 Verify   ● 3 Map   ○ 4 Save   [ ✓ Accept all suggestions ]
+
+   ① Output frequency  Hz    suggested ▸ vfd_frequency  =47.3Hz  [✓][change]
+   ② Output current    A     suggested ▸ vfd_current    =6.2 A   [✓][change]
+   ③ Fault code        code  suggested ▸ vfd_fault_code =0       [✓][change]
+   ─────────────────────────────────────────────────────────────────────
+   [ + Add optional signals (15) ]
+</pre>
+  <div class="good"><b>The auto-suggest is local and honest.</b> It only pre-fills high-confidence name matches
+  (<code>freq</code>/<code>hz</code> &rarr; Output frequency). Anything unsure stays empty &mdash; never guessed.
+  No cloud, no AI service. Hightouch and Boomi both prove this small move feels like magic.</div>
+
+  <h3><span class="stepnum">4</span>Save &mdash; store &amp; (later) reuse</h3>
+  <p>Confirm the map, see the readiness gate, and save. The train-before-deploy approval stays: free features
+  (trend, fault decode, anomaly) work immediately; Ask&nbsp;MIRA unlocks on approval.</p>
+<pre>
+ STEP 4 of 4 ─ SAVE ─────────────────────────────────────────────────
+  ✓ 1 Connect   ✓ 2 Verify   ✓ 3 Map   ● 4 Save     <span style="color:#7ee787">3 of 3 ready</span>
+
+   Role               Mapped tag            Live
+   ───────────────────────────────────────────────
+   Output frequency   vfd_frequency         47.3 Hz  ✓
+   Output current     vfd_current            6.2 A   ✓
+   Fault code         vfd_fault_code         0       ✓
+
+   Approval:  ◻ not approved   "Trend + Decode + Anomaly work now;
+                                Ask MIRA unlocks on approval."
+                                            [ ✓ Save &amp; Finish ]
+</pre>
+</div>
+
+<!-- ===================== 6. IMPLEMENTATION SPEC ===================== -->
+<div class="section">
+  <h2>6 &nbsp;Implementation spec (how we build it)</h2>
+  <div class="good"><b>~90% already exists.</b> The matching-game view and its backend (browse, scan, live preview,
+  quality, readiness gate, save/validate) are done. The wizard is mostly <i>wrapping</i> + two small new steps.</div>
+
+  <h3>The stepper, with no stepper component</h3>
+  <p>Ignition Perspective 8.3.4 on the bench has no rich stepper widget (and no flex-repeater). We don&rsquo;t need one.
+  The whole pattern is buildable with plain containers, labels, and buttons &mdash; exactly what USWDS and W3C recommend:</p>
+  <ul>
+    <li><b>Header:</b> a row of 4 numbered &ldquo;pills&rdquo; (flex + label), each clickable to jump back to a completed step.</li>
+    <li><b>Body:</b> one container with 4 sections; each section&rsquo;s <code>visible</code> = &ldquo;current step == N&rdquo;
+      (the same show/hide we already use for the optional-signals panel).</li>
+    <li><b>Gating:</b> each step&rsquo;s <b>Next</b> button is <code>enabled</code> only when that step validates
+      (folder chosen / &ge;1 good tag / 3-of-3 required). You physically can&rsquo;t skip ahead.</li>
+  </ul>
+
+  <h3>Reuse map</h3>
+  <table>
+    <tr><th>Step</th><th>Reuses (already built)</th><th>New (small, additive)</th></tr>
+    <tr><td>1 Connect</td><td><code>browse_tags</code>, cached <code>_scan_all</code></td><td><code>provider_options</code>, <code>browse_nodes</code></td></tr>
+    <tr><td>2 Verify</td><td><code>scan_tags</code>, <code>_live</code>, quality checks</td><td><code>verify_summary</code>, <code>verify_sample</code>, <code>verify_breakdown</code></td></tr>
+    <tr><td>3 Map</td><td><b>entire current view</b> + <code>scan_for_role</code>, <code>preview</code>, <code>slot_*</code>, <code>set_role</code>, <code>gate_text</code></td><td><code>is_ready</code>, optional <code>suggest_for_role</code> (fuzzy)</td></tr>
+    <tr><td>4 Save</td><td><code>rows_markdown</code>, <code>gate_text/color</code>, <code>set_role</code></td><td><code>finalize</code> (approve + save)</td></tr>
+  </table>
+
+  <div class="key"><b>Risk notes for the build:</b> confirm <code>system.tag.getProviders()</code> on the gateway
+  (fail-soft to &ldquo;default&rdquo;); reuse the proven table pattern (flat rows + <code>onRowClick</code>); run one-shot
+  actions (Test, Save) from event scripts, not polling bindings. All new helpers are additive &amp; Jython-2.7-safe.</div>
+
+  <div class="bad"><b>Fixed already (this session):</b> the <code>assetId is required</code> save error.
+  Root cause: the writer only set <code>assetId</code> on a brand-new config; on an existing/edited tag it
+  re-validated without re-asserting it. Hardened the writer to always assert identity, and the view to pass a
+  non-empty asset. Proven against the real validator; 68 parity tests stay green.</div>
+</div>
+
+<!-- ===================== 7. ROADMAP ===================== -->
+<div class="section">
+  <h2>7 &nbsp;Roadmap</h2>
+  <table>
+    <tr><th style="width:14%">Phase</th><th style="width:43%">What ships</th><th>Why</th></tr>
+    <tr><td><b>Now</b> (done)</td><td>Save-bug fix + this report</td><td>Unblock saving; align on the path before building.</td></tr>
+    <tr><td><b>v1</b></td><td>4-step wizard (Connect / Verify / Map / Save) wrapping the matching game; manual mapping; required-field progress meter; Verify step.</td><td>The gated funnel. Turns a wall into a guided flow. ~90% reuse.</td></tr>
+    <tr><td><b>v1.1</b></td><td>Lightweight local auto-suggest (fuzzy tag-name match &rarr; pre-fill + &ldquo;suggested&rdquo; badge + Accept-all).</td><td>The &ldquo;magic&rdquo; moment, with zero cloud dependency.</td></tr>
+    <tr><td><b>Slice&nbsp;2</b></td><td>Cloud AI auto-classifier + Hub proposals + reusable templates across drives/projects.</td><td>The moat: map a new drive in seconds by adapting an approved template.</td></tr>
+  </table>
+
+  <div class="good"><b>Recommended next step:</b> build v1 (the 4-step wizard) in the <code>testing</code> sandbox,
+  live-test it, then promote to <code>ConvSimpleLive</code>. The full implementation blueprint is ready to execute on approval.</div>
+</div>
+
+<!-- ===================== 8. APPENDIX ===================== -->
+<div class="section">
+  <h2>8 &nbsp;Appendix &mdash; the 26-tool teardown</h2>
+  <p class="small muted">Per product: step model &middot; how it verifies &middot; mapping UX &middot; save/reuse. Sources listed at the end.</p>
+
+  <h3>CSV / data import wizards &mdash; the gold standard for &ldquo;map columns &rarr; required fields&rdquo;</h3>
+  <table>
+    <tr><th style="width:13%">Product</th><th>Step model &amp; verify</th><th>Mapping UX</th><th style="width:17%">Save / reuse</th></tr>
+    <tr><td><b>Flatfile</b></td><td>File &rarr; Map &rarr; Validate &rarr; Submit; header-detect preview</td><td>ML auto-match trained on millions of mappings; confirm/reject; concatenation</td><td>Reusable import config</td></tr>
+    <tr><td><b>OneSchema</b></td><td>Upload &rarr; Map &rarr; Configure &rarr; Resolve errors</td><td>Fuzzy &ldquo;inexact match&rdquo; algorithm; configure-once, auto-apply later</td><td>Saved header templates</td></tr>
+    <tr><td><b>Dromo</b></td><td>File &rarr; Map &rarr; Validate &rarr; Import; in-browser validation</td><td>AI header+synonym match (MSRP&harr;Price); drag-to-match; real-time errors</td><td>Schema Studio definitions</td></tr>
+    <tr><td><b>Osmos</b></td><td>Upload &rarr; AutoMap &rarr; Verify/Adjust &rarr; Submit</td><td>LLM semantic match; filter by mapped/required/error; 5 cleanup tools</td><td>Reusable transforms</td></tr>
+    <tr><td><b>CSVbox</b></td><td>File &rarr; Map &rarr; Validate &rarr; Submit; shows counts upfront</td><td>AI header detect; override; required/optional/ignored; mobile-friendly</td><td>Saved importer config</td></tr>
+    <tr><td><b>ImportCSV</b></td><td>Upload &rarr; Map (confidence %) &rarr; Validate &rarr; Import</td><td>Embedding similarity with <b>confidence %</b>; auto-approve high, review low</td><td>&mdash;</td></tr>
+    <tr><td><b>TableFlow</b></td><td>Upload &rarr; Header row &rarr; Preview &rarr; Map &rarr; Import</td><td>AI header detect + auto-map; multi-source combine</td><td>Importer template param</td></tr>
+  </table>
+
+  <h3>Industrial / IIoT / SCADA &mdash; the domain-correct analogs</h3>
+  <table>
+    <tr><th style="width:13%">Product</th><th>Step model &amp; verify</th><th>Mapping UX</th><th style="width:17%">Save / reuse</th></tr>
+    <tr><td><b>Ignition</b> (OPC)</td><td>Create connection &rarr; browse OPC &rarr; drag tags</td><td>Drag-drop from OPC browser; <b>hierarchy preserved</b>; live preview</td><td>Tags in Designer</td></tr>
+    <tr><td><b>HighByte</b></td><td>Connect &rarr; Model &rarr; Instance &rarr; Deploy</td><td><b>Model&harr;Instance</b>: blueprint then bind real data; no-code; lineage</td><td>Reusable models</td></tr>
+    <tr><td><b>KEPServerEX</b></td><td>Channel &rarr; Device &rarr; Tag; <b>Quick Client</b> verify</td><td>Device wizard; tag groups; naming conventions</td><td>Reusable device profiles</td></tr>
+    <tr><td><b>Litmus Edge</b></td><td>Auto-discover device &rarr; one-click onboard &rarr; schema</td><td>Automated discovery; structured schema output; drag flows</td><td>Schema templates</td></tr>
+    <tr><td><b>Tulip</b></td><td>Connector type &rarr; host &rarr; <b>Test connection</b> &rarr; use</td><td>HTTP/MQTT/SQL config; test-before-live; auth options</td><td>Reusable connectors</td></tr>
+    <tr><td><b>Element Unify</b></td><td>Connect &rarr; Model &rarr; Joins &rarr; Deploy</td><td>Fuzzy/contains match with <b>similarity threshold dial</b>; lineage</td><td>Asset data models</td></tr>
+    <tr><td><b>N3uron</b></td><td>Node &rarr; connectors &rarr; protocol &rarr; deploy</td><td>Drag-drop config; modular connectors; transform modules</td><td>Reusable nodes</td></tr>
+  </table>
+
+  <h3>iPaaS / workflow integration mappers</h3>
+  <table>
+    <tr><th style="width:13%">Product</th><th>Step model &amp; verify</th><th>Mapping UX</th><th style="width:17%">Save / reuse</th></tr>
+    <tr><td><b>Zapier</b></td><td>Trigger/action cards; <b>&ldquo;Test step&rdquo;</b> fetches a real record (or sample data)</td><td>Map prior output into fields as pills carrying source + sample value; flags missing required</td><td>Zaps + templates</td></tr>
+    <tr><td><b>Make</b></td><td>Node graph; <b>&ldquo;Run once&rdquo;</b> pins a real output bundle</td><td>Drag dynamic items into fields; hovering pulses the source module</td><td>Scenarios / blueprints</td></tr>
+    <tr><td><b>Workato</b></td><td>Linear recipe; test runs</td><td><b>Datapills</b> dragged from a datatree; type-matching enforced</td><td>Recipes (shareable)</td></tr>
+    <tr><td><b>Boomi</b></td><td>Map component; process test mode</td><td><b>Boomi Suggest</b>: community-sourced suggestions in <b>High/Med/Low</b> tiers; checkmark=accept; Clear-all</td><td>Reusable Map component</td></tr>
+    <tr><td><b>MuleSoft</b></td><td>Define I/O &rarr; map &rarr; preview; <b>live Preview</b> with sample data</td><td>Drag element-to-element; identical names auto-map; writes DataWeave</td><td>DataWeave scripts</td></tr>
+    <tr><td><b>Power Automate</b></td><td>Action cards; always-on <b>Flow checker</b> + Test Flow (mock results)</td><td>Dynamic-content tokens; per-connection green-check status</td><td>Solutions / templates</td></tr>
+  </table>
+
+  <h3>ETL / ELT / reverse-ETL &amp; CDP</h3>
+  <table>
+    <tr><th style="width:13%">Product</th><th>Step model &amp; verify</th><th>Mapping UX</th><th style="width:17%">Save / reuse</th></tr>
+    <tr><td><b>Fivetran</b></td><td>Source &rarr; dest &rarr; setup guide; <b>&ldquo;Save &amp; Test&rdquo;</b> named test battery</td><td>Schema include/exclude; blocking strategy</td><td>Saved connector; &ldquo;Save for later&rdquo;</td></tr>
+    <tr><td><b>Airbyte</b></td><td>Source+dest &rarr; <b>schema fetch</b> &rarr; select streams &rarr; set up</td><td>Stream/field toggles; auto-selects sync mode + primary keys</td><td>Saved connection</td></tr>
+    <tr><td><b>Hightouch</b></td><td>Model+dest &rarr; record-match &rarr; field mapping</td><td><b>&ldquo;Suggest mappings&rdquo;</b> fuzzy pre-fill, confirm before save; (recommended) badges; required + paired fields</td><td>Saved sync; reusable models</td></tr>
+    <tr><td><b>Census</b></td><td>Source &rarr; dest (&ldquo;Connect to save and test&rdquo;) &rarr; keys &rarr; mapping</td><td><b>&ldquo;Generate Mappings&rdquo;</b> auto-maps name matches; manual for the rest; non-destructive</td><td>Saved sync (scheduled)</td></tr>
+    <tr><td><b>Stitch</b></td><td>Connect &rarr; <b>structure-sync/discovery</b> &rarr; select tables; &ldquo;Not Configured&rdquo; until valid</td><td>Checkbox tables/columns; bulk select-all; replication method</td><td>Integration object</td></tr>
+    <tr><td><b>Matillion</b></td><td><b>Named-page wizard</b>; <b>Test</b> requires all fields populated</td><td>Field transforms later in job canvas</td><td>Environments / projects</td></tr>
+    <tr><td><b>Segment</b></td><td>Add source &rarr; add destination &rarr; confirm; shows &ldquo;consequences&rdquo; before connect</td><td>Tracking Plan (schema contract) governs validation</td><td>Plans applied to many sources</td></tr>
+    <tr><td><b>RudderStack</b></td><td>Source &rarr; destination &rarr; connect; <b>Live Events</b> confirms receipt</td><td>Destination settings + optional transformations</td><td>Saved sources/destinations</td></tr>
+  </table>
+
+  <h3 class="small">Two mechanics the design hinges on</h3>
+  <p class="small"><b>Stepper (plain components):</b> the lowest-tech compliant pattern (USWDS Step-Indicator, W3C multi-page
+  forms) is &ldquo;Step X of Y&rdquo; text + an emphasized current step name + Back/Next, with <b>Next disabled until the step
+  validates</b>. Matillion gates its Test button on &ldquo;all fields populated&rdquo;; Stitch uses a status label
+  (&ldquo;Not Configured&rdquo; &rarr; valid) as the whole progress model. No custom widget required.</p>
+  <p class="small"><b>Auto-match + confidence:</b> Boomi shows suggestions in High/Med/Low tiers with checkbox-accept and
+  a Clear-all reset; Hightouch fuzzy-pre-fills and tells you to confirm before saving; Census auto-maps the obvious and
+  leaves the ambiguous. <b>Simplest version that still feels smart</b> (our choice): fuzzy name-match &rarr; pre-fill +
+  a &ldquo;suggested&rdquo; badge to confirm + an Accept-all button. No fabricated percentage.</p>
+
+  <h3 class="small">Sources</h3>
+  <p class="small muted">
+  Flatfile (flatfile.com/blog) &middot; OneSchema (oneschema.co/blog) &middot; Dromo (dromo.io/blog) &middot;
+  Osmos (osmos.io/blog, docs.osmos.io) &middot; CSVbox (blog.csvbox.io) &middot; ImportCSV (importcsv.com/blog) &middot;
+  TableFlow (github.com/tableflowhq) &middot; Ignition (docs.inductiveautomation.com) &middot; HighByte (highbyte.com/blog) &middot;
+  KEPServerEX (PTC manual) &middot; Litmus (litmus.io/blog) &middot; Tulip (support.tulip.co) &middot;
+  Element Unify (aws.amazon.com/blogs/industries) &middot; N3uron (n3uron.com) &middot; Zapier (docs.zapier.com) &middot;
+  Make (help.make.com) &middot; Workato (docs.workato.com) &middot; Boomi (help.boomi.com) &middot;
+  MuleSoft (docs.mulesoft.com) &middot; Power Automate (learn.microsoft.com) &middot; Fivetran (fivetran.com/docs) &middot;
+  Airbyte (docs.airbyte.com) &middot; Hightouch (hightouch.com/docs) &middot; Census (docs.getcensus.com) &middot;
+  Stitch (stitchdata.com/docs) &middot; Matillion (docs.matillion.com) &middot; Segment (twilio.com/docs/segment) &middot;
+  RudderStack (rudderstack.com/docs) &middot; UX: USWDS Step-Indicator, W3C/WAI multi-page forms, Smart Interface Design Patterns.
+  </p>
+  <div class="foot">MIRA VFD Analyzer &mdash; UX Study &middot; June 15, 2026 &middot; FactoryLM</div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "case_id": "05",
+  "category_scores": {
+    "classification_answerability": 7,
+    "component_label_recognition": 8,
+    "power_control_flow": 4,
+    "sequence_interlocks_logic": 6,
+    "evidence_grounding_unsupported_claims": 3,
+    "technician_usefulness_clarity": 3
+  },
+  "total": 31,
+  "deductions": [
+    {
+      "claim": "6. Unclear or unreadable items — Nothing major appears to be unreadable in the provided image.",
+      "evidence": "The print contains a bridge rectifier block ('Rect.'), a varistor ('Mov.'), two labeled economizer resistors ('1 Res.', '2 Res.'), a distinct coil labeled 'M' with a mechanically-linked contact marked '(L.B.)', a small numbered terminal strip (1,2,3,4,6,7), and CT/overload wiring near '20 21 22 23 24 25' / '21 23 25' — several of these are small and require careful tracing. The candidate's own explanation never engages with any of them, which is inconsistent with a claim that nothing major is unreadable.",
+      "category": "classification_answerability",
+      "points_deducted": 3,
+      "severity": "hard_failure",
+      "correction": "Flag the rectifier/economizer sub-circuit (Rect., Mov., Res., M coil, L.B. contact) and the small terminal-strip numbering as lower-confidence areas rather than declaring nothing unreadable.",
+      "confidence": "high"
+    },
+    {
+      "claim": "A control transformer",
+      "evidence": "The diagram labels '1 C.T.', '2 C.T.', '3 C.T.' (current transformers feeding the 'O.L.'s' overload-relay block) and explicitly labels the control-circuit power source as 'Separate Control Source' at the top of the lower ladder diagram. No transformer symbol or 'control transformer' label appears anywhere on the page.",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Identify 1C.T./2C.T./3C.T. as current transformers for CT-actuated overload sensing, and note the control circuit is fed from a separate external source (via fuse FU/1A), not an on-board control transformer.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Motor starter coils (K1, K2)",
+      "evidence": "In both the upper schematic (small terminal box '[3]-o-[13]' printed beside the single relay outline next to 'CR') and the lower ladder diagram ('(K1) CR (K2)' — CR drawn as one circle with K1 and K2 printed as its flanking terminal labels), K1 and K2 read as the CR coil's own terminal numbers (3 and 13), not the names of two separate motor-starter coil devices.",
+      "category": "component_label_recognition",
+      "points_deducted": 5,
+      "severity": "hard_failure",
+      "correction": "Describe K1/K2 as the CR coil's terminal designations, not as separate 'motor starter coils'.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(omission) the rectifier, varistor, economizer resistors, and the separately-coiled main contactor are never mentioned",
+      "evidence": "Labels 'Rect.', 'Mov.', '1 Res.', '2 Res.', a circled 'M', and '(L.B.)' appear directly on the page in both the upper and lower schematics, and are the print's most distinctive content.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "List Rect. (rectifier), Mov. (varistor), 1 Res./2 Res. (economizer resistors), and the M coil (main contactor coil) among the visible components.",
+      "confidence": "high"
+    },
+    {
+      "claim": "When the start button is pressed, the control relay (CR) energizes, which in turn energizes the motor starter coils (K1, K2). The motor starter coils then close the main contacts to power the 3-phase motor.",
+      "evidence": "The lower ladder diagram shows CR's auxiliary contacts (A2X/A2Y, A3X/A3Y) routing power into a bridge rectifier ('Rect.'), whose DC output (through an economizer resistor/capacitor network) feeds a separate coil labeled 'M'. There is no path shown from CR directly to a device labeled 'K1' or 'K2' that then closes main contacts.",
+      "category": "power_control_flow",
+      "points_deducted": 10,
+      "severity": "hard_failure",
+      "correction": "Explain that CR's auxiliary contacts route AC through a rectifier to produce DC, which (via the economizer resistor/capacitor network) energizes the separate main coil 'M', which closes the motor's main power contacts.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The overload protection (O.L.'s) is in series with the motor starter coils to protect the motor from overcurrent conditions.",
+      "evidence": "In the lower ladder diagram the O.L. contact is wired in series with the CR coil (between the CR coil and return node 4), not with 'motor starter coils.' Overcurrent sensing appears to be via the '1 C.T./2 C.T./3 C.T.' current transformers on the motor line conductors feeding the 'O.L.'s' block — never mentioned in the response.",
+      "category": "power_control_flow",
+      "points_deducted": 6,
+      "severity": "material",
+      "correction": "State that O.L. is in series with the CR coil (interrupting the pilot circuit on trip), and that overload sensing appears to be CT-based rather than a simple in-line heater.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(overall sequence) Start -> CR -> 'K1/K2 coils' -> main contacts, described as a single direct step",
+      "evidence": "The print shows doubled '1 Econ. Cap.'/'2 Econ. Cap.' labels (appearing in both schematics) plus a resistor/rectifier network feeding coil 'M' — the defining feature of this specific Bulletin 509 Size 7/8 print (an economized-coil starter). None of this staged pull-in/economized-hold behavior is reflected in the response's sequence.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 9,
+      "severity": "hard_failure",
+      "correction": "Describe the two-stage energization: CR seals in first (via its own aux contact bypassing the momentary Start button), then CR's contacts feed the rectifier to pull in the M coil at full DC, after which the economizer resistor/capacitor network drops M to a reduced holding current.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Faulty motor starter coils (K1, K2) [listed as a would-stop-it-working cause]",
+      "evidence": "Same as the K1/K2 finding above — K1/K2 are terminal labels of the CR coil, not independently-failable coil devices as named.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Replace with 'faulty CR coil' or 'faulty M coil / rectifier / economizer components' to match what is actually drawn.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(omission) the '(L.B.)' contact interposed in the DC feed path is never addressed as part of the interlock/sequence",
+      "evidence": "An 'M (L.B.)' contact symbol sits directly in the feed path to the rectifier in the lower schematic.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Note the (L.B.) contact in the rectifier feed path as an additional interlock/limiting element, or flag its exact function as unclear.",
+      "confidence": "low"
+    },
+    {
+      "claim": "(overall) the coil/contactor causal chain is stated as flat fact without hedging",
+      "evidence": "No mention anywhere in the response of 'Rect.', 'Mov.', 'Res.', or the 'M' coil, despite these being prominently and repeatedly labeled — indicating the DC/rectifier stage was not traced, yet a specific (and incorrect) direct causal chain is asserted as observed fact.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 8,
+      "severity": "hard_failure",
+      "correction": "Hedge the coil/contactor causal chain as inferred wherever the DC/rectifier stage was not fully traced, rather than stating an unverified direct path as fact.",
+      "confidence": "high"
+    },
+    {
+      "claim": "A control transformer [stated as an observed component]",
+      "evidence": "No transformer symbol or label is present; the page explicitly states the control power source is a 'Separate Control Source.'",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 5,
+      "severity": "material",
+      "correction": "Do not assert a control transformer exists; the page states control power comes from a separate external source.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable, stated alongside a response that omits/misreads several legible labeled devices",
+      "evidence": "Rect., Mov., Res., M, and L.B. labels are legible on the page but are absent from or misrepresented in the response, an internal inconsistency that masks real extraction gaps.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "If the rectifier/economizer sub-circuit's exact function was not confidently resolved, say so in the unclear-items section instead of declaring nothing unreadable.",
+      "confidence": "high"
+    },
+    {
+      "claim": "What would stop it from working — open control transformer, faulty motor starter coils (K1, K2) [as the listed failure points]",
+      "evidence": "The Rect./Mov./Res./Econ. Cap. labels are this print's most starter-size-specific content and represent the field-failure points characteristic of a Size 7/8 economized-coil starter (rectifier diode failure, economizer cap/resistor failure, MOV failure, open CT/OL sensing) — none of which appear in the response's failure list.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 7,
+      "severity": "severe",
+      "correction": "Add rectifier, MOV, economizer resistor/capacitor, and CT/OL sensing-circuit failures to the likely-cause list, since these are the print's most distinctive (and failure-prone) elements.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "invented_safety_device_or_component",
+    "reversed_or_materially_incorrect_sequence",
+    "false_certainty_from_unreadable_evidence",
+    "failure_to_separate_evidence_from_inference"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "schema_version": 1,
+  "notes": "Classification (print type, bulletin/size) is correct and well-supported by the large legible caption. The core failure is that this print's entire point is a rectified/economized main-coil circuit (CR pilot relay -> rectifier -> economizer resistor/capacitor network -> main coil 'M'), which the candidate replaced with an invented, simpler 'CR energizes K1/K2 coils which close the main contacts' model, misreading K1/K2 (CR's own terminal numbers) as separate coil devices and never mentioning Rect./Mov./Res./M/L.B. at all, while simultaneously asserting nothing in the image was unreadable."
+}

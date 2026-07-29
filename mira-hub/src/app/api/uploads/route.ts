@@ -15,6 +15,7 @@ import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
 import { validateAssetTag } from "@/lib/asset-tag";
 import { runIngestPipeline } from "@/lib/upload-pipeline";
+import { MAX_UPLOAD_BYTES } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -60,10 +61,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const MAX = 20 * 1024 * 1024;
-  if (body.sizeBytes != null && body.sizeBytes > MAX) {
+  if (body.sizeBytes != null && body.sizeBytes > MAX_UPLOAD_BYTES) {
     return NextResponse.json(
-      { error: "exceeds_20mb_limit", got: body.sizeBytes },
+      { error: "exceeds_size_limit", got: body.sizeBytes, limitBytes: MAX_UPLOAD_BYTES },
       { status: 400 },
     );
   }

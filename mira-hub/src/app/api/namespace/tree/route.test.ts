@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTree, type NamespaceNode } from "./route";
+import { buildTree, isMaintenanceNamespacePath, type NamespaceNode } from "./route";
 
 interface EntityFixture {
   id: string;
@@ -8,6 +8,8 @@ interface EntityFixture {
   name: string;
   uns_path: string | null;
   created_at: string;
+  files_count: string;
+  equipment_status: string | null;
 }
 
 function entity(p: Partial<EntityFixture> & { id: string }): EntityFixture {
@@ -17,6 +19,8 @@ function entity(p: Partial<EntityFixture> & { id: string }): EntityFixture {
     name: p.name ?? p.id,
     uns_path: null,
     created_at: "2026-05-19T00:00:00Z",
+    files_count: "0",
+    equipment_status: null,
     ...p,
   };
 }
@@ -129,5 +133,31 @@ describe("buildTree — namespace tree", () => {
     // Loose tag stays as a root; the equipment forms its own synthesized tree.
     expect(roots.length).toBeGreaterThanOrEqual(2);
     expect(roots.some((r) => r.id === "orphan-1")).toBe(true);
+  });
+
+  it("excludes stray non-enterprise-rooted rows (audit test areas, #1983)", () => {
+    const entities = [
+      entity({ id: "site", entity_type: "site", name: "Lake Wales", uns_path: "enterprise.lake_wales" }),
+      entity({ id: "orphan", entity_type: "tag", name: "Loose Tag", uns_path: null }),
+      // Junk: flat 'audit_<rand>' areas from a historical test harness.
+      entity({ id: "a1", entity_type: "area", name: "Audit 0o494d 0O494D", uns_path: "audit_0o494d_0o494d" }),
+      entity({ id: "a2", entity_type: "area", name: "Audit 1ldrbh 1LDRBH", uns_path: "audit_1ldrbh_1ldrbh" }),
+    ];
+    const roots = buildTree(entities, []);
+    expect(findByPath(roots, "audit_0o494d_0o494d")).toBeNull();
+    expect(roots.some((r) => r.name.startsWith("Audit "))).toBe(false);
+    // Real enterprise node + the legitimately-unpathed orphan survive.
+    expect(findByPath(roots, "enterprise.lake_wales")?.kind).toBe("site");
+    expect(roots.some((r) => r.id === "orphan")).toBe(true);
+  });
+});
+
+describe("isMaintenanceNamespacePath", () => {
+  it("keeps enterprise-rooted and null paths, drops flat non-UNS roots", () => {
+    expect(isMaintenanceNamespacePath(null)).toBe(true);
+    expect(isMaintenanceNamespacePath("enterprise")).toBe(true);
+    expect(isMaintenanceNamespacePath("enterprise.lake_wales.line_a")).toBe(true);
+    expect(isMaintenanceNamespacePath("audit_0o494d_0o494d")).toBe(false);
+    expect(isMaintenanceNamespacePath("enterprises_fake")).toBe(false);
   });
 });

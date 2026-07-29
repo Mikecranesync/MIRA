@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -8,19 +8,37 @@ import {
   X,
   MessageSquare, AlertTriangle, BookOpen, Wrench,
   ClipboardList, CalendarDays, Inbox, Package, FileText,
-  TrendingUp, Radio, Plug, BarChart2, Users,
+  TrendingUp, Radio, Plug, BarChart2, Users, Settings, LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { API_BASE } from "@/lib/config";
+import { signOutToLogin } from "./sign-out-action";
 
 interface MobileDrawerProps {
   open: boolean;
   onClose: () => void;
 }
 
+type MeData = {
+  name?: string;
+  email?: string;
+  initials?: string;
+  role?: string;
+};
+
 export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
   const pathname = usePathname();
   const t = useTranslations("nav");
   const drawerRef = useRef<HTMLDivElement>(null);
+  const [me, setMe] = useState<MeData | null>(null);
+
+  useEffect(() => {
+    if (!open || me) return;
+    fetch(`${API_BASE}/api/me/`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: MeData | null) => d && setMe(d))
+      .catch(() => {});
+  }, [open, me]);
 
   // Close on Escape
   useEffect(() => {
@@ -68,6 +86,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
     { label: t("integrations"),  Icon: Plug,          href: "/integrations" },
     { label: t("usage"),         Icon: BarChart2,     href: "/usage" },
     { label: t("team"),          Icon: Users,         href: "/team" },
+    { label: "Settings",         Icon: Settings,      href: "/settings" },
   ];
 
   return (
@@ -146,6 +165,44 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
               </Link>
             );
           })}
+        </div>
+
+        <div
+          className="flex-shrink-0 space-y-3 p-3"
+          style={{ borderTop: "1px solid var(--sidebar-border)" }}
+        >
+          <div className="flex items-center gap-3 px-1">
+            <div
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
+              style={{ background: "var(--brand-blue)", color: "white" }}
+              aria-hidden
+            >
+              {me?.initials ?? "?"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium" style={{ color: "var(--sidebar-fg)" }}>
+                {me?.name ?? "Account"}
+              </p>
+              <p className="truncate text-xs" style={{ color: "var(--foreground-muted)" }}>
+                {me?.email ?? me?.role ?? ""}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={signOutToLogin}
+            className="flex w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors hover:bg-[var(--surface-1)]"
+            style={{
+              minHeight: 48,
+              color: "var(--foreground)",
+              border: "1px solid var(--sidebar-border)",
+            }}
+            aria-label={t("signOut")}
+          >
+            <LogOut className="h-5 w-5 flex-shrink-0" style={{ color: "var(--foreground-muted)" }} />
+            <span>{t("signOut")}</span>
+          </button>
         </div>
       </div>
     </>

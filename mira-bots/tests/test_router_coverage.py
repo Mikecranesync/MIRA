@@ -9,7 +9,7 @@ sys.path.insert(0, "mira-bots")
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from shared.inference.router import InferenceRouter, _is_gibberish
+from shared.inference.router import InferenceRouter, _build_providers, _is_gibberish
 
 # ---------------------------------------------------------------------------
 # sanitize_context (static method, no mocking needed)
@@ -166,3 +166,98 @@ class TestRouterComplete:
         sent = captured["messages"][0]["content"]
         assert "10.0.0.5" in sent
         assert "[IP]" not in sent
+
+
+# ---------------------------------------------------------------------------
+# Vision-model wiring — the 2026-07-18 Groq vision deprecation fix
+# ---------------------------------------------------------------------------
+
+
+class TestVisionModelConfig:
+    """Pin the cascade's vision wiring after Groq delisted every vision model.
+
+    Groq must default to NO vision model (a dead default id = a guaranteed 404
+    + latency tax on every photo turn before the cascade recovers); Together
+    must default to the one model this account can actually reach serverless.
+    The empty-string cases pin the compose ``${VAR:-}`` trap: enumerated env
+    blocks deliver "" in-container, so a plain getenv default would silently
+    disable vision on staging.
+    """
+
+    _ENV_CLOUD = {
+        "INFERENCE_BACKEND": "cloud",
+        "GROQ_API_KEY": "gsk_test",
+        "CEREBRAS_API_KEY": "csk_test",
+        "TOGETHERAI_API_KEY": "tk_test",
+    }
+
+    def test_groq_vision_defaults_empty(self):
+        with patch.dict("os.environ", self._ENV_CLOUD, clear=True):
+            groq = next(p for p in _build_providers() if p.name == "groq")
+            assert groq.vision_model == ""
+
+    def test_groq_vision_empty_env_stays_empty(self):
+        with patch.dict("os.environ", {**self._ENV_CLOUD, "GROQ_VISION_MODEL": ""}, clear=True):
+            groq = next(p for p in _build_providers() if p.name == "groq")
+            assert groq.vision_model == ""
+
+    def test_groq_vision_env_reenables(self):
+        with patch.dict(
+            "os.environ",
+            {**self._ENV_CLOUD, "GROQ_VISION_MODEL": "some/future-vision"},
+            clear=True,
+        ):
+            groq = next(p for p in _build_providers() if p.name == "groq")
+            assert groq.vision_model == "some/future-vision"
+
+    def test_together_vision_defaults_to_gemma(self):
+        with patch.dict("os.environ", self._ENV_CLOUD, clear=True):
+            together = next(p for p in _build_providers() if p.name == "together")
+            assert together.vision_model == "google/gemma-3n-E4B-it"
+
+    def test_together_vision_empty_env_gets_default(self):
+        """Compose maps ``${TOGETHERAI_VISION_MODEL:-}`` → "" in-container; the
+        ``or`` form must absorb it or staging vision dies silently."""
+        with patch.dict(
+            "os.environ", {**self._ENV_CLOUD, "TOGETHERAI_VISION_MODEL": ""}, clear=True
+        ):
+            together = next(p for p in _build_providers() if p.name == "together")
+            assert together.vision_model == "google/gemma-3n-E4B-it"
+
+    def test_together_vision_env_override(self):
+        with patch.dict(
+            "os.environ",
+            {**self._ENV_CLOUD, "TOGETHERAI_VISION_MODEL": "vendor/other-vl"},
+            clear=True,
+        ):
+            together = next(p for p in _build_providers() if p.name == "together")
+            assert together.vision_model == "vendor/other-vl"
+
+    async def test_image_request_skips_groq_lands_on_together(self):
+        """Cascade shape with defaults: a photo turn must skip Groq and
+        Cerebras (no vision model) and be served by Together."""
+        with patch.dict("os.environ", self._ENV_CLOUD, clear=True):
+            router = InferenceRouter()
+            called: list[str] = []
+
+            async def fake_call(provider, messages, *_args, **_kwargs):
+                called.append(provider.name)
+                return ("a schematic", {"provider": provider.name, "model": provider.name})
+
+            router._call_openai_compat = fake_call
+            content, _usage = await router.complete(
+                [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "classify this"},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "data:image/png;base64,x"},
+                            },
+                        ],
+                    }
+                ]
+            )
+            assert content == "a schematic"
+            assert called == ["together"]

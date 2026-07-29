@@ -1,0 +1,7 @@
+{
+  "test_id": "banner-esfl-estop-relay",
+  "caption": "What does this circuit do?",
+  "tested_page_sha256": "88588738a0ba7211a16171c30b4f011553148fb42572b42ded936433fb006f4e",
+  "submitted_as": "telegram photo (in-process real handler)",
+  "note": "PDF sources are rendered to a page image and submitted through the photo path, because prod interprets photos (not raw PDFs, which post to the Hub)."
+}

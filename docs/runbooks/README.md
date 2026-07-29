@@ -22,3 +22,11 @@ Step-by-step procedures. Each has **Prerequisites · Steps (exact commands) · E
 `atlas-wo-outbox.md`, `cmms-onboarding.md`, `edge-deploy.md`, `factorylm-vps.md`, `plc-integration-test.md`, `sidecar-oem-migration.md`, `staging-environment.md`, `staging-vps.md`, `vps-hang-recovery.md`, `hud-demo-setup.md`, plus dated event runbooks (florida-expo, etc.).
 
 **See also:** [../architecture/environment-quick-ref.md](../architecture/environment-quick-ref.md) and [../environments.md](../environments.md) (authoritative env doctrine).
+
+## HubV3 HITL acceptance testing (2026-06-27)
+
+| Runbook | Purpose |
+|---|---|
+| [hubv3-human-in-the-loop-testing.md](hubv3-human-in-the-loop-testing.md) | 11-step witness procedure for PRD §6 Test 12 (Garage Conveyor demo) |
+| [hubv3-hitl-agent-preflight-report.md](hubv3-hitl-agent-preflight-report.md) | Agent pre-flight report (Steps 1–5 automated, 2026-06-26) |
+| [hubv3-hitl-sign-off.md](hubv3-hitl-sign-off.md) | Sign-off report — all 12 MUST boxes pass (2026-06-27) |

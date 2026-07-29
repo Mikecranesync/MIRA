@@ -1,0 +1,13 @@
+# Secrets — never commit real keys
+.env
+.env.local
+
+# Dependencies
+node_modules/
+bun.lock
+bun.lockb
+package-lock.json
+
+# Editor / OS
+.DS_Store
+*.log

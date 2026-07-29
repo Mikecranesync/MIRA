@@ -1,0 +1,7 @@
+{
+  "title": "testing",
+  "description": "MIRA SANDBOX — experiment with Perspective views here. Live-test at /data/perspective/client/testing, then PROMOTE approved views into ConvSimpleLive. Standalone (does not touch the live project); sees the same gateway tags. Not customer-facing.",
+  "parent": "",
+  "enabled": true,
+  "inheritable": false
+}
