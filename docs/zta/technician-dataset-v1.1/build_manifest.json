@@ -1,0 +1,88 @@
+{
+  "build_id": "2026-07-28-technician-dataset-v1.1",
+  "built_at": "2026-07-28T00:00:00Z",
+  "candidate_count": 211,
+  "candidate_manifest_sha256": "6c47de9a5f08976e99f07ac3b23415c0133ee58d910be82b7a3b0a073be38fb6",
+  "dry_run": {
+    "authorization_consumed": false,
+    "deployment_occurred": false,
+    "dry_run": true,
+    "endpoint_created": false,
+    "executed": false,
+    "fine_tune_job_created": false,
+    "spend_occurred": false,
+    "upload_occurred": false
+  },
+  "files": {
+    "behavior_coverage": "docs\\zta\\technician-dataset-v1.1\\reports\\behavior_coverage_report.json",
+    "benchmark": "docs\\zta\\technician-dataset-v1.1\\reports\\base_vs_tools_benchmark.json",
+    "candidate_jsonl": "docs\\zta\\technician-dataset-v1.1\\candidate_dataset.jsonl",
+    "candidate_manifest": "docs\\zta\\technician-dataset-v1.1\\candidate_manifest.json",
+    "composition": "docs\\zta\\technician-dataset-v1.1\\reports\\real_vs_synthetic_composition_report.json",
+    "duplicate_leakage": "docs\\zta\\technician-dataset-v1.1\\reports\\duplicate_leakage_report.json",
+    "frozen_benchmark": "docs\\zta\\technician-dataset-v1.1\\reports\\frozen_benchmark_baseline.json",
+    "inventory_report": "docs\\zta\\technician-dataset-v1.1\\inventory_report.md",
+    "lineage_plan": "docs\\zta\\technician-dataset-v1.1\\reports\\lineage_split_report.json",
+    "phase3_paid_gate": "docs\\zta\\technician-dataset-v1.1\\reports\\phase3_paid_gate_report.json",
+    "readiness_package": "docs\\zta\\technician-dataset-v1.1\\training_readiness_package.md",
+    "rejection_report": "docs\\zta\\technician-dataset-v1.1\\reports\\rejection_report.json",
+    "review_cv101": "docs\\zta\\technician-dataset-v1.1\\review-packages\\cv101_review_package.md",
+    "review_decision_report": "docs\\zta\\technician-dataset-v1.1\\reports\\review_decision_report.json",
+    "review_drive": "docs\\zta\\technician-dataset-v1.1\\review-packages\\drive_review_package.md",
+    "review_printsense": "docs\\zta\\technician-dataset-v1.1\\review-packages\\printsense_review_package.md",
+    "reviewed_jsonl": "docs\\zta\\technician-dataset-v1.1\\reviewed_dataset.jsonl",
+    "reviewed_manifest": "docs\\zta\\technician-dataset-v1.1\\reports\\reviewed_manifest.json",
+    "rights_report": "docs\\zta\\technician-dataset-v1.1\\reports\\rights_report.json",
+    "source_registry": "docs\\zta\\technician-dataset-v1.1\\source_registry.json",
+    "token_cost": "docs\\zta\\technician-dataset-v1.1\\reports\\token_cost_estimate.json"
+  },
+  "phase3_paid_gate_passed": false,
+  "phase3_paid_gate_verdict": "PAID_GATE_BLOCKED",
+  "review_decisions": {
+    "build_id": "2026-07-28-technician-dataset-v1.1",
+    "built_at": "2026-07-28T00:00:00Z",
+    "candidate_count": 211,
+    "candidate_jsonl_mutated": false,
+    "candidate_manifest_sha256": "6c47de9a5f08976e99f07ac3b23415c0133ee58d910be82b7a3b0a073be38fb6",
+    "corrected_records": [],
+    "decision_count": 0,
+    "decision_counts": {
+      "approve": 0,
+      "correct": 0,
+      "hold_out": 0,
+      "reject": 0
+    },
+    "decisions": [],
+    "eligibility_delta": {
+      "delta": 0,
+      "eligible_after": 0,
+      "eligible_before": 0
+    },
+    "held_out_records": [],
+    "no_action_proof": {
+      "authorization_consumed": false,
+      "deployment_occurred": false,
+      "dry_run": true,
+      "endpoint_created": false,
+      "executed": false,
+      "fine_tune_job_created": false,
+      "spend_occurred": false,
+      "upload_occurred": false
+    },
+    "paid_gate_blocking": [
+      "min_records",
+      "min_lineages",
+      "min_valued_interactions",
+      "min_safety_sensitive",
+      "trainable_source_representation",
+      "model_support_confirmed"
+    ],
+    "paid_gate_passed": false,
+    "paid_gate_verdict": "PAID_GATE_BLOCKED",
+    "policy": "Review decisions are append-only events. Exact duplicate events are idempotent; changed decisions for an existing record id are rejected. Only approve/correct decisions set approved_by and gold_status, and the reviewed record must still pass SourceCandidate/DatasetRecord/assemble_dataset_v0.",
+    "rejected_records": [],
+    "reviewed_manifest_sha256": "3ff2b8b43e4330555aac23f9f15c60733b7af95a0423c15e46a084c6254510f4",
+    "schema": "factorylm.technician-dataset.review-decision-report.v1"
+  },
+  "schema": "factorylm.technician-dataset.build-manifest.v1"
+}

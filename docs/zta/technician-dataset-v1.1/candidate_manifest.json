@@ -1,0 +1,1487 @@
+{
+  "build_id": "2026-07-28-technician-dataset-v1.1",
+  "built_at": "2026-07-28T00:00:00Z",
+  "dataset_version": "factorylm-industrial-technician-v1.1",
+  "entries": [
+    {
+      "content_hash": "e0502c2396ac37c6579b35c99c0f4ed2d58009f8b59b00f69589b977d0d0824a",
+      "document_lineage_key": "factorylm:cv-101-e-001",
+      "record_id": "techv11-cv101-001",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "982b6765a4b25e890b311b94463c05a541ae12004539c71c922dcd31bdcd6f33",
+      "document_lineage_key": "factorylm:cv-101-e-001",
+      "record_id": "techv11-cv101-002",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "22c7b20c0c82e0394e10d36846d1f22d318b990e408e4f30164c4be95a39104f",
+      "document_lineage_key": "factorylm:cv-101-e-001",
+      "record_id": "techv11-cv101-003",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "5f9c27d1dd409cb52201f54edb676b302921f5ffe766446dc97c5d74cd27ae96",
+      "document_lineage_key": "factorylm:cv-101-e-001",
+      "record_id": "techv11-cv101-004",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "dc3afa6d111fd5029205fc5454e5681b5e4dd30d70353f5163d61ac3ac7dddf7",
+      "document_lineage_key": "factorylm:cv-101-e-001",
+      "record_id": "techv11-cv101-005",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "79535cad6fe72b07f05ecdbf4060a04950e6c34e6acf524fdf3cbe513e9f750d",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-006",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ae3538294cc95efcfad4513649631001bf21ecb9d311c3f5456cecb521ebcd95",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-007",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d80469cbf7b9c948cb90f79f61fe486e2b9997297788c9f93c735af96a6c25ba",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-008",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "56f6044826bbf116083afbbb1f6b1112175b83c2521ea71cb0a3aa6aea994456",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-009",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "462844bd3c18b8d52c3fdfdec2e44eee1baea7fe3a5655962b24c13940f48bd2",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-010",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "405dcd1cbaf9fcc405e97723a5552bd5f204a957c668164759caec9db32e5f19",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-011",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "581f9e7970b6fb7cc49e4a692373bc914ea369c30186b902d7df244f8f52188d",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-012",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8774d66e77fb54c1d7c0496ec2a5a69728333a2727c303c007d331b80352406e",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-013",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0423d02ddf0bd3ca618972211454f83de2f265899b2d50e66cbcaf338af28ee6",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-014",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "68ea2c8802276f1bfe4f5aaa1b43cdbf5db62ecd40db517070762b5d9b5c06c3",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-015",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a5776b6e9f772a5b9d241f683c64aba6038402b6f8074f4715e34a6a519d1653",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-016",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "40e9b058f133e81786d250345b8653c7984a8a2de2d5094682c04cd3fe16d7cd",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-017",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "de4beab16d5ab674bb19d48a5e7568cf88d12106744f6db73718601723c52898",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-018",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ffc39b17ba2de4029d8cb5d77d586f3852a30034868acae53d7256f6cbddea61",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-019",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e7ecaef81fca93006228fafe67c4bd909cff3a223b873752faf140c7eb885123",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-020",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e1a9d4fef75315bcae958a95335a0e1a32536cc1d668db8a59d3a2afcfb9322c",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-021",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1aecfc6f3c327a8133005ca238834659b9398ceda0afbe2fcbf374a6faa66dd2",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-022",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "19e178050fc17dacafa5af87ac99d76fb2c66eb79eab6d0e3f3668d03f3856c5",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-023",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e89b55a6df9aca7271c0e911b00d8a3c9a8de42e87b44f88db3532612e87225b",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-024",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "843a7bef89cb4148926a51d82e04c2e4c6639fc39f07c11dad22328d386fd287",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-025",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "21e8d510069ef08dc1a6189cc5afbd0ad60472ebf989d838cba03238b196398e",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-026",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0ad40224c563156fac9194be98360bf4c96ec64973b65a1b70935c528f15a2ef",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-027",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "747ea865ad809b80e3e9e9a543b081b5607bd6aff7e81827d877616b12586e6f",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-028",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "61e20663cbd41713c7f48a216e6c131bf74adf02026f09715ce142dc3e757601",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-029",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "dd8ece1bb984a5ec15b9985a506cc30634225dbbd1502a09c61e175193ee991f",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-030",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a24f8986e779b02d7e6522064039249b5ea822e4b6679b40545a408f10275bc4",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-031",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "4262f26725a9c850c69710a0c3fe63681284ad1a5acede96a86cf8fc7be00665",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-032",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ca3cc87140b375f997d148647572ac22384b3ae3fbb2cd40a4a57f725a7f3055",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-033",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e7d40a9a66d83040d23f6d9e027f37d38b416df5ee6066c0685643d4d147727c",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-034",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ac315832624e02d277601b558deb8a3827bed3de668876117a7babe8dcc2226b",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-035",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "7e28666d82d70828332aa0fcf1d601aad1967469535319cb45e76cb4de6acec9",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-036",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "db358b62e88a1beb3a67c65857c398cf8cc87fb456c3c665d6cc7b7f9e6338e3",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-037",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "276e4d08b989f3aa3d773149ca03c6ed9f53d3ee11ebdea6003f7be7ed4be92f",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-038",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "5fb105c4807e5dfe7dce960eed0ce043011af0a0c036509bf959542600e40061",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-039",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f9edec64fbc14b7a03a4a544201b649d1515fcf191b78cd202453981c2b7dc82",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-040",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "bfa0aba1a74f113dd07ccdd16dcc8a2a369512aa8b96baa30923103be6d278ee",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-041",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "99b0d5c40a928e5017f05bbef333c637d70a624328e5f46debccff5af53d9b1c",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-042",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "772f4330bc038f916bce25aa74baf6696d5929171fa50866361b4965bdc2bc89",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-043",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "04fae62d3f5e244bab8f02d348d020d9f59639e71d0888fa823790b320303c8e",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-044",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "40f8cdf353c766a3af20055bd4d0688918472eadb230dc88f3af91316bfb793a",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-045",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0357fba3923bc90244a9202317b17518003c39c405f3e433aa18ad7e62412c97",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-046",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "31a80dc181aab7fa7c7a1b57bec6ca4e9255fa05ca1f386ab1a1892513b3439d",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-047",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ace542953dd2eb91a49512a00cb9651e667dd1ceac1deb9b60cb43dac827ccf0",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-048",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0a9c06969836e141ffca7d788ccfb8c7fb4dd839e5e76d03c3eccf81e4fb9f3d",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-049",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2f0d3e29bc5c3a485c91d32c3c69b1510c2e3193430990fd654089cfc7531a86",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-050",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "320eaad7256efe484e8ae6c9b97a577b90e33bbe6884747287fb12a331063c76",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-051",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ff2d76adaddfcb03a1eeb3eaef3de2865537ca06f745e519fe9ba9723fb71295",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-052",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f9e764b418ed1bdb269cfecbf31ee70c77721209dc0774c7712ec250146cef43",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-053",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ba0a59836b304199df7a8520d8423b49b23c900b87a55e5fdef5c801ee1aeaf5",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-054",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1245ea499d2d28af710db7390770687d1dfc8e737a4ea4eabdf167f516652495",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-055",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8df4c8c9d4a91e8dd47275e61ae4454feb4cca6232fcbf447c9135757811e919",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-056",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "93b259dd298fd7cdb33b88596a8aeb1af6e9bbace943823e4552176d02bb5d71",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-057",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "3d56cb2862226b66ac082e51da22f06f7c98ba6ae296e651443435946a37996a",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-058",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "46b5ceab582ee8822663286b5f6f8e1056e9aef8d563947aad6117e5a2aa6a58",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-059",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ed3f47202e79e918e335591b3d29af90dd7eb918b3e8d358d128ddfb1c997d9f",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-060",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "580e7a991dc1994da61e9a18a4b99cc4023c9cbcd0aa0dfa62adbd05317fd2f7",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-061",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2f7102f1969629d188afcfbf9e20fda771c59559af2c1ec8038949b22f03e7fa",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-062",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f1cbe1de55ce75a3381d104cf17ece6f621f6d0c5267a232f3bd3cd4ca886826",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-063",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d5d7ffd27887808407143ea748d560a46bcd16550c17b15790832cc13cdddefb",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-064",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "9e1ba7fb5df880f42cade67a5eefa5d65519a422a118b6ac2ba6ea92f19977dd",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-065",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "426e36b529e2c792d00123cac50f892c3275b7f3d26ae5ea662978cc2f6c1c4f",
+      "document_lineage_key": "factorylm:cv-101-e-003",
+      "record_id": "techv11-cv101-066",
+      "split": "test",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "25565b45c414b405282d40f917294e178ec50717c9546ca6216adfd30b502c2d",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-067",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "3dc3a8ff6acfd1f75d5e2bb69c0d1ef8265c7374aab518fa4560510c1cc0c85f",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-068",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f786dd0112f653cb0681c7ada4856533b10e97765d75a870ff5fffbe3980bad0",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-069",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "59a0198925222f80bd29b2773abe6c010a296804b7e064f0abaafbe1649e132e",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-070",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8238742a15d0ea8908278ed8c5e774c900fdb56ba6ae3a6871cfd5bd067e495e",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-071",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f6093c7dbe5923186804780ecaaea6edb1792d589ea31adaeb2e919229821839",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-072",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "68c759b9627d716db9ab11501624f0728ecf981d27038bc6d0c4c82dda741377",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-073",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "5a2fe0f65878acfb43a5b81505e53d8b48924b1486e7a94333026a87983cda41",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-074",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1e912769afe66984bc1f86cd5749d98748882a23417d7cdffac6f9feef433f4d",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-075",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "113243728d5e8e65eb49f0e91c3cdd2dcb4de7abce5384edf710942d2369f853",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-076",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a89cb23970aa0b954b3d034bdb53b2021219a4bc4aed8f98065eec56477d72e1",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-077",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "fe315e7191b51eb4785ad8b214049aa1aacf590d1b41ca6572de3f05e3f3b9f0",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-078",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "555f0e2ec53ea10a8ba28e1c1e7f215dfa8b75841a4c3d0e8e7ad680366af521",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-079",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "74a1279ecaa673f8998ef98bd81758bcc2356dc205dafe1021a568128377bfea",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-080",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "3d96884908518617ff178035a749fde0ed24a8c7caeb9e5c33e4222c7bc880f2",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-081",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "4d37d8b495d8becf8c3731a4dc02a891c7b6554e9073bc6632c51cf0b5544963",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-082",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "64c6d4e4f3d913b2f110b2c6b180f4755157c1710c7425ad6dd90bfbe5fecf74",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-083",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "4d7b027f1d2894f77601f8f9d5c4519b996bc1752e66f0fecf019462a9893826",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-084",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a1ed3226da64d71b8d8bce5208b39be73902aeb65ed273d9668c6b7c5929b30c",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-085",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a8215f0803b553b1623d4437aaace7b4547e92336ce6694f7544010f812ae9bb",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-086",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "70c47258d036766bb6833e7104d9a9bfccf1cfbaeb7832a5a9732abd179d1a0d",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-087",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "deda5fc577c98c7ea687960244d5356208a3aedc3807d28ae4c61ca4fa4cecd4",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-088",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "9fe93a045cc5defd1d899d1e40bff3668d1b8305a17db650fd48554b5079cc49",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-089",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "013b4c5b959722a04205470374303f3875cf773e034f5787afd1615f2d2c7b8b",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-090",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "c9dc440688f80578827ed840b39c3c186ef69a3fa81dfd28a287570cd9a95384",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-091",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d1df728872e7bad6513b7e3c596999f28e1fe810981ec6e55b4f78c87cac8a93",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-092",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ad45a3fce5331c851b6721b7cf4b1bfdf3fcaf8a29053056629c7eaf994b347d",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-093",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ee16b056c7bad0bcf2ec06a945ae4779c4cf66dd638d57ef531d97039b455800",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-094",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2dede1c33d3ba263ee27c0a2256d2249e4bc9682fc734247ef522536e8300025",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-095",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "81aa0966a83fcd5c743e51768e7eea927a30614d3aee2d191566bd9fe6bd854f",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-096",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "82f99426fc203d3e2d6423fdcd750c4c640c5b544e48f5c36497b2bc9a84458b",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-097",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "15dfe2240a5295a4a19e1e0084da75180c1015c110d9f106285dfbed04b79b94",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-098",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "934ca73c9bb75c414d6b01ed397f7397cc6abacdfd3a3b96cf2415ff6b589398",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-099",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2618ceddd880dd7ead3db3afb0e75c9cdf9f39285ca06654022b3308d8f8b181",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-100",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "57b97e553a8363fb6e5b271759d201e858bc8651e689e6494bcf3123e8820412",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-101",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "318fceb8f7e67ad5e3c00218c4516071d9637d4d57e393d41d4a0ca10ddb8307",
+      "document_lineage_key": "factorylm:cv-101-e-005",
+      "record_id": "techv11-cv101-102",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f0bc8baba56966f9bffba58f282ebaf494fccf76016c3e2a83997d94758c62d3",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-103",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e0617cd9fa0c2dff613e89049241ce6c7cc0c77b3e98414eadaf136b39031154",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-104",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "c09cb8b9bf11618d12d1e2436b95f47c6324e55696f41925f8a20a8bf374b1c5",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-105",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2cc8199eb6e2296114a626b59416a528efccbe7ff7146a5c0391f4943e4f39c7",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-106",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "87c6143711d3cfd376fdecc42924d30a8a39227e132f1fd100206fbcccee7d76",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-107",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "30a48d550c4d4694a6b32c58b318f63b188eb44a89e3eaa5344efdfa5b6d61d8",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-108",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "7acd1dc89d169e086d87cc953b8a43eb07b8307832aa507746eaf70da8d0aa07",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-109",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "416d3d9937e24948e9579370cc886069554271bd6141a2e219447cd0aee617ec",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-110",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "840b221f394db383c76d94fbc822c2968217fb42924dd85f3a9196b9a4d79abd",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-111",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "771a4ddbf8099bdbfb858976c193dd8d007eee745fbb2800cbd30814e45d27f1",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-112",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1c2dc3cb637cee4dee67b477f7d2b6253cb77b5d907bc7152654482523044fc6",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-113",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "b982325bf4dfbeced2073828d1f411e28edd06e4cc347cf4c50fb5bfaffacdac",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-114",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "88f4d5f2dc56fa82acb18ff00cb5e1c6d0828ad6363b7c68c8873bb5ab70a432",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-115",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f849f3182bcbc37de59990b68bd76bf0da5bd7e6a3fa90df9432c216fbb7cc4c",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-116",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ebc53fa9e9c34be295f3c053ae47af99ba49fb0fee266618dc8ad8e4d49861c4",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-117",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "41692cfb9959ebbeecc92af6e7b870ef34775084af9fbc0c88cb6d03726aed24",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-118",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ae7bc9e1f0c05f5a33298e8ef696812e0fd7e65329e5ed6dc779847028875c3e",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-119",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "5ce318b54368f160d63225aaf9a3d5809b038ea424cfd697a4b0c6d31b6096ec",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-120",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0b2984c555130c6a290d6f22bac493deb38447591d737c467af4f64dba212616",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-121",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "99b88fed22b84df50390fedb54596a58fd7ebd12bdf589dcd55db3e66035fd34",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-122",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ff73ca4df2adbb8e7f0accb8c82e00b90e832c69ffec972fee6e7101d58ebba6",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-123",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "79adc4ae95bd8627db05c1a3e47e292a880bc444c9eef82204d9276faf457563",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-124",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2e2b69b70d6e45ef4979cb9aaa523666c74feaacf732d79d051090984cb7d15f",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-125",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e205b872db2b9c174a1a12af1101055fdebed4c7167e03e51d0ec99d4bf4dfa9",
+      "document_lineage_key": "factorylm:cv-101-e-006",
+      "record_id": "techv11-cv101-126",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "fdec4a680418eb76ff513d9d362e43b40d37d80131acae1279cae2a4b7266996",
+      "document_lineage_key": "factorylm:cv-101-e-007",
+      "record_id": "techv11-cv101-127",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e8b3d45750c6b165b8f9b73cde3570b16dc44189965ae5b49669136451ab37e4",
+      "document_lineage_key": "factorylm:cv-101-e-007",
+      "record_id": "techv11-cv101-128",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1701a4d3acb4f8d81da9cc49e288e8b1b44d15628bbc8879e502df633ea0262c",
+      "document_lineage_key": "factorylm:cv-101-e-007",
+      "record_id": "techv11-cv101-129",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "acbf725c7d27dd7099b157495ab3bd53aad3aa265f11aa5dcbacdefa393adcec",
+      "document_lineage_key": "factorylm:cv-101-e-007",
+      "record_id": "techv11-cv101-130",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d42ef39f45b8c9df295478c07fbb1e7cfb032d9db7f9e9b60f77bf34ad0a3986",
+      "document_lineage_key": "factorylm:cv-101-e-007",
+      "record_id": "techv11-cv101-131",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "de6932e4fb549052257e6fcbd3ae3cf49b2ee4d9c18cfd09cdd5f0221f708ac5",
+      "document_lineage_key": "factorylm:cv-101-e-008",
+      "record_id": "techv11-cv101-132",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1eaec36a818fa712def9d077c14ac18d354aef9736c67ed38636c26c54f0421e",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-001",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f7201447fc0ba7a4af01dacef7dcaaff64c596511fe10aecd2a6d2323d699ced",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-002",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ce2f03dee84d39ee12119473cc5de2ed32f3b00c23fcab46bf1ddcc204fa4260",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-003",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "95d77b40a68ff41fcc56e98e6585ddf92672193886ef8bcdb15b7326c0448c06",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-004",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "27a68edfdfc1e0d732994f4d3e1ef06fb18f6f1404b43cd69aed566ef3d23392",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-005",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "9416c4a1d9e488c6aca34437d59c640ff1fcdc9647651c5c42c5787bd5043550",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-006",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "3fa29d869e97d97914d0b5fbb8fec54bc620b032456c0e25088c1c1b27eb6dac",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-007",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d470aca9b40416f65275f2f20983523d83a175c9e2858eaf86e50ba92d36ec27",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-008",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "87cdddbda869c6b12e31a47667ccdfafe4bd4adab2af511625d2f11eaac3360a",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-009",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "c821762a5f2eddb939c67ffc6fc67c46c619a988feb6fc8a78e4e57cecba2aab",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-010",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "db2a5ec4794556ae5e38a506035da2131d5fd62cf564564f3e735d2daff76b6a",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-011",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ffc00607fa2676653a63a0b05322d817f39be3dd120594301215e0e383d4bd58",
+      "document_lineage_key": "automationdirect:gs10-um",
+      "record_id": "techv11-drive-012",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "5d878d2220dff17ba8549948ca9dceafc618ad117a908066268db43d9f9c9572",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-013",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a3c4e6753384c10a774a788db76bc7f56c9e41b46f9a1e2d6158d1caede49a07",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-014",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "95464fab1adfb6446a0d59ed80b3a266dc522d783231e08552ac18f1a2971c9c",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-015",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e157e358ee5bcdd9e82c843579bd5cdf2ae7aa8f32c64810f944f886252794e2",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-016",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "076b1f6ae745597c9af52930fb6d3f63f929fd3a6f30bbeb45815a1de9a008b9",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-017",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1bdc8a26611c3f447bc3b2e1124cf60aabe9674a080dd7197f5f503447c20a99",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-018",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "77450ccbe7373275f48521bfca65c2a02c3dfd7a6955694f9d118ae5465d167e",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-019",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "8a6cff624fba7171d75124240a8b7580ef8f0b263b7a3ab71b7c36d47e53b585",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-020",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a6748468c07cbba15503c298be71b83948667f7c66b18bc43a6e6f8e88c043ed",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-021",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "9e1ca0eb0c8920c1f9bb27d232d9365bda48123008b809d3b7340341a4952858",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-022",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "9b520eb2e23b15c1b38cec2e7acb6caa20b73a69ed694a277746dbd1dd9d8841",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-023",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d8d903ac29c8284854a6db33d34766b76f6941c21656e2fae0cebafe96562a4b",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-024",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "a48eabaa150790d3ba03938fd08efb0fda554c0ea10dc5778ffe1cf3b9ed441e",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-025",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "3c8d0c908ccdea9d4ddcd14df79cf2d33127faaee7d3005b18c494f0b1e33b21",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-026",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "60eecceb02ea9cacc0dbc653a58ac938120d12ad732093309398852b224bb347",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-027",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "71755163e3b428df0fda69bd5eb69e1850ff1275f06be952c2424f52a047d63c",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-028",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f0bdebb2c21cd37fb52c97f11af07dc801a29cc6f6a774086101974270c1c7b8",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-029",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0a235c929507848d20170ab2600f414f9afea6fb6e6892eaa4987028e637b13d",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-030",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "2944daf7980a034c7fc195809bb025a6fa0815718b5f08243e4ef0a5b17aed3a",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-031",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "c38912ff9513fa55cb9f7a95e7036569c7be9c754ab4f4fea38eb5e2ac9fce2d",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-032",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e1e8d3d059ec05aa6415752c71179466b4e6033800a3e3a755417abbb2ed7ef7",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-033",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "50d6902b7acf52d472fb85f4af580f7fbc0598b24078398101f44b2a7e25effd",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-034",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "89423e395617ea4fd53b71e776d4f2ca75e744785d4e890232e882bf9ae9af6e",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-035",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "833e97c6fd5a73a7e908457c841448882e216c57752909e555daabef4c67de2b",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-036",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "c097fd01fc016d6d99b42d6316bea7a26811df4412e2293370fca5a1b1ec99fe",
+      "document_lineage_key": "rockwell-automation:22b-um001j-en-e",
+      "record_id": "techv11-drive-037",
+      "split": "held_out",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "378531a3881212afc2da0ad2575b69309f74edba5844183a78d801580cfb891c",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-038",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "0848de253845db4ef195caebff1015942f9cef0299573d352ed96988f741c31e",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-039",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "46e2c569d7ac0ecd4b900475e6a7ff534c38f5973b37fae9e4f6e66767e092da",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-040",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "4356a7c32c317ca9fc256b9d8cadf49a621727dea18f8be57831ec63c8fc4140",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-041",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "52db79a3d4df65ad7d7cf9e9860d4d663e660240961f26a1fc21149a40218371",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-042",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ce675ce15fa59547cf45ab91f28e8355105b8048bc749a72c739806329c0b2ba",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-043",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "e0ec54d38da106493427bc69f61d955feee5e3e1c3b68d5967cdc3203242d1fb",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-044",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "268a83a27718af054a046895ab5011d511c0b3fba933c5701715884a5d335540",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-045",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "77587873844178a97825535268594f09768e76319f9f36a2ea5a8ba0297fc715",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-046",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "49a93f261ca31e0103f3d01fb6bd8b1a382d9e1ad7d407c9cc20caf4709d7634",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-047",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "7edca1ec48c4f0597748bdc2902b0c790e93578cf41d53b75b8e16cdde037994",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-048",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "3806e4bada4eedbef90f6368c87ce52ee25ff3b406672796f5c1ab836280beed",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-049",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "c913c206044deca2308b02812f673631206e8be65e4f0e5ce148109e7b2a194c",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-050",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "7c8d0b1ff8fd1701dad4eb2cf7e0e036fcaa53d313ee005d88332255e40e3c0e",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-051",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "9780a0957664ef389edbc4bd861b39bf918291bde7f3baf7e49673348e2687d0",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-052",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "cb9ea6395cf594a35c135baa545aa877aa1c76ccb84516084bc7ccebf2ec6d02",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-053",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1b350101d4b1db67ad22a6412cc576be478d7e9e3092b31554d8aa0058da5644",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-054",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "db5a48fba75068e6319a83a65987954922f95ad7dbc2241c6a309c755f2d4d1c",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-055",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "786de24dcc43cba33148cf50b71375aa899c9a03646c45555de07635f0ede594",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-056",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "5d8f77eecff7ee1af78610e96a3f31e75ae8a95f350669669cc7df65a9c80be1",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-057",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "9b04b0623345b57f009c2792b51a9615135bff4586a29c1fc220ed84d5d68d8c",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-058",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "29f40f7ce5b9be29845dc5fafc30f3d53aa8a523a9e16d41ee4fe4aa1f3c344f",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-059",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "80d640d89ed422856ec90ac37cf22993ac9b31ad50c60fe51de4ba92e1598df1",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-060",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "da4b472eb6eff53766f3b87d78feb4ba458b5a50e969b0f0a7011cce234afb90",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-061",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "1ff0d72bebb5e2c5d6f2af9cf86f6937eb5aa81f7eb2da35d87d7e77af1f1895",
+      "document_lineage_key": "rockwell-automation:520-um001o-en-e",
+      "record_id": "techv11-drive-062",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "beac4c0aac74339423b4b81500dab8c485ce104c43cf04553d0ef65d9a6a4b93",
+      "document_lineage_key": "factorylm:factorylm-print-style-002",
+      "record_id": "techv11-ps-style-001",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "6e3d6da060761c140d1f2382b7e698d9ad85012f13f7bc2973a9551d1ea0dd2f",
+      "document_lineage_key": "factorylm:factorylm-print-style-004",
+      "record_id": "techv11-ps-style-002",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "4b7a772a96b43d10891fa4286317693012e087f43ad22f6737ee9843a71e7189",
+      "document_lineage_key": "factorylm:factorylm-print-style-005",
+      "record_id": "techv11-ps-style-003",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "cea2e0f7c06466e048e9f1b69d06651eb38ee7c04d2c538eaf10169df9912ed5",
+      "document_lineage_key": "factorylm:factorylm-print-style-006",
+      "record_id": "techv11-ps-style-004",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "71cb02f4605da9444623552730662e8d259ee700251cc0c6aad635ea6b5a14b1",
+      "document_lineage_key": "factorylm:factorylm-print-style-009",
+      "record_id": "techv11-ps-style-005",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "232681bd14b321a6642bfabe8fa68a4ed0812f86eccedd6136ef7cbabc9c44d7",
+      "document_lineage_key": "factorylm:factorylm-print-style-010",
+      "record_id": "techv11-ps-style-006",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f4dfdc4512cb8d77986c28ccf83611f2ed052adbcf394c0b94c86eabf1826287",
+      "document_lineage_key": "factorylm:factorylm-print-style-011",
+      "record_id": "techv11-ps-style-007",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "d7761adf0d37a9a057adc8cb0d2a27c3ea8621a9d1c354320ccadc8d41e8e6dc",
+      "document_lineage_key": "factorylm:factorylm-print-style-012",
+      "record_id": "techv11-ps-style-008",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f1a98cc562a9f9120cb1a38c449b9b92b9ad54e8167b05d057cf7f71f744547e",
+      "document_lineage_key": "factorylm:factorylm-print-style-013",
+      "record_id": "techv11-ps-style-009",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "15c7910037aab5dc1413538a39817a391b7387b4d2f7bf29537891e02ed952ba",
+      "document_lineage_key": "factorylm:factorylm-print-style-015",
+      "record_id": "techv11-ps-style-010",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "dbf5dc1817502dec52f4a424765d632f393d4c916f3bcc1dede222d44db610ba",
+      "document_lineage_key": "factorylm:factorylm-print-style-018",
+      "record_id": "techv11-ps-style-011",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "cab51cbcff60d6183dfa89b3c687e70416bee0229779f43154b52eee009aa776",
+      "document_lineage_key": "factorylm:factorylm-print-style-019",
+      "record_id": "techv11-ps-style-012",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ace7f468c088017c61d8c8af77e28ca3b619855dc84c6a0ef31859422b614efc",
+      "document_lineage_key": "factorylm:factorylm-print-style-020",
+      "record_id": "techv11-ps-style-013",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "690f8ab8597a3dfd97395932c52ca72937509925f8f46959ea7c0ff71ded045d",
+      "document_lineage_key": "factorylm:factorylm-print-style-021",
+      "record_id": "techv11-ps-style-014",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "f8db4e880a57a04b8c99f0e1795e65733c2bb20b0a6adcf733ccdc1d601ca808",
+      "document_lineage_key": "factorylm:factorylm-print-style-022",
+      "record_id": "techv11-ps-style-015",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "ff890cd0c69f26299728de6aeedfb2d10e838ac623f4cb50926a0cc79d0b43ad",
+      "document_lineage_key": "factorylm:factorylm-print-style-023",
+      "record_id": "techv11-ps-style-016",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    },
+    {
+      "content_hash": "03f1670c3c38e336203c571652fb52b0b0c81ca40c6d98581e1d6a8e5568c3fe",
+      "document_lineage_key": "factorylm:factorylm-print-style-024",
+      "record_id": "techv11-ps-style-017",
+      "split": "train",
+      "training_eligibility": "ineligible"
+    }
+  ],
+  "manifest_sha256": "6c47de9a5f08976e99f07ac3b23415c0133ee58d910be82b7a3b0a073be38fb6",
+  "record_count": 211,
+  "schema": "factorylm.technician-dataset.candidate-manifest.v1"
+}
