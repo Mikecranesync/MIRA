@@ -710,7 +710,12 @@ _CI_GATE_JOB = "ci-gate"
 
 # A step whose `run:` matches this is running tests.
 _TEST_RUNNER_RE = re.compile(
-    r"(?:^|[\s;&|(])(?:"
+    # Lookbehind, not a leading char class: the scan runs over the SERIALISED job,
+    # so a command is often preceded by a quote or bracket (`{'run': 'pytest ...'}`)
+    # rather than whitespace. The first version required [\s;&|(] and therefore
+    # missed its own bad fixture — caught by test_ci_gate_checker_catches_violations,
+    # which is why those fixtures exist.
+    r"(?<![\w./-])(?:"
     r"pytest\b"
     r"|python3?\s+-m\s+pytest\b"
     r"|vitest\b"
@@ -718,7 +723,16 @@ _TEST_RUNNER_RE = re.compile(
     r"|bun\s+test\b"
     r"|node\s+--test\b"
     r"|npm\s+(?:run\s+)?test\b"
+    r"|bun\s+run\s+test\b"          # the repo's own mira-hub-unit job — the regex
+    r"|bun\s+(?:run\s+)?test:"      # missed it, and it is IN the gate by luck
+    r"|(?:uv|poetry|pdm)\s+run\s+.*pytest\b"
+    r"|python3?\s+-m\s+unittest\b"
+    r"|\btox\b"
+    r"|make\s+\S*test"
+    r"|go\s+test\b"
+    r"|cargo\s+test\b"
     r"|bash\s+tests/"
+    r"|\.github/actions/[\w-]*test"
     r")",
     re.IGNORECASE,
 )
@@ -752,8 +766,48 @@ def _load_ci_workflow() -> dict:
 
 
 def _job_runs_tests(job: dict) -> bool:
-    for step in job.get("steps") or []:
-        if _TEST_RUNNER_RE.search(str(step.get("run", "") or "")):
+    """True when this job plausibly executes tests.
+
+    Matched over the WHOLE serialised job, not just `step.run`. Scanning only
+    `run:` was refuted three ways, each demonstrated against the real ci.yml:
+      * `env: {TEST_CMD: pytest ...}` + `run: $TEST_CMD` — the command never
+        appears in any `run:` string;
+      * `strategy.matrix.cmd: [pytest tests/a]` + `run: ${{ matrix.cmd }}`;
+      * a job whose test step is `uses:` (composite / marketplace action).
+    Over-matching is the correct bias here: a false positive costs one explicit
+    _UNGATED_TEST_JOBS entry, a false negative silently un-guards a real suite.
+
+    A job with no `steps` is a reusable-workflow call (`jobs.<id>.uses`) — opaque
+    from here, so treat it as test-running rather than assume it is not.
+    """
+    if "steps" not in job and job.get("uses"):
+        return True
+    return bool(_TEST_RUNNER_RE.search(str(job)))
+
+
+def _gate_reads_result(gate: dict, job_id: str) -> bool:
+    """Does the gate's script ACT on `job_id`'s result, or merely mention it?
+
+    A raw substring search over the gate job was refuted: `needs.<job>.result`
+    satisfied it from an UNUSED `env:` var, a cosmetic step `name:`, or a `#`
+    comment inside a `run:` block scalar (block scalars keep comment lines as
+    literal text, so safe_load does not drop them). A full fake promotion passed.
+
+    So: resolve the env var that carries the expression and require the SCRIPT to
+    reference that variable, with comment lines stripped first.
+    """
+    expr = f"needs.{job_id}.result"
+    for step in gate.get("steps") or []:
+        script = str(step.get("run", "") or "")
+        code = "\n".join(
+            line for line in script.splitlines() if not line.lstrip().startswith("#")
+        )
+        env = step.get("env") or {}
+        for var, value in env.items():
+            if expr in str(value) and var in code:
+                return True
+        # Or the expression is interpolated directly into the script body.
+        if expr in code:
             return True
     return False
 
@@ -789,10 +843,9 @@ def scan_ci_gate_coverage(workflow: dict, ungated: dict[str, str]) -> list[str]:
             f"green result from it is not evidence"
         )
 
-    # (b) listed in needs but never read by the evaluate step = silent hole.
-    gate_text = str(gate)
+    # (b) listed in needs but never ACTED ON by the evaluate step = silent hole.
     for job_id in sorted(needs_set):
-        if f"needs.{job_id}.result" not in gate_text:
+        if not _gate_reads_result(gate, job_id):
             violations.append(
                 f"{job_id}: in {_CI_GATE_JOB}.needs but its result is never read by "
                 f"the gate (no `needs.{job_id}.result`) — the gate waits for the job "
@@ -835,9 +888,11 @@ def test_ci_gate_covers_a_plausible_number_of_test_jobs():
     """Guard the guard: if _TEST_RUNNER_RE stops matching, (a) passes vacuously."""
     jobs = _load_ci_workflow().get("jobs") or {}
     detected = [j for j, spec in jobs.items() if isinstance(spec, dict) and _job_runs_tests(spec)]
-    assert len(detected) >= 6, (
+    assert len(detected) >= 9, (
         "only %d test-running jobs detected in ci.yml (%s) — _TEST_RUNNER_RE has "
-        "probably stopped matching, which would make Contract 8 vacuous"
+        "probably stopped matching, which would make Contract 8 vacuous. 9 is the "
+        "count at the time of writing; if a test job was legitimately removed, "
+        "lower this deliberately rather than loosening the regex."
         % (len(detected), sorted(detected))
     )
 
