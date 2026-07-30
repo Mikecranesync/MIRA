@@ -19,12 +19,12 @@ sending raw equipment photos to a cloud API raises data privacy concerns on the 
 
 ## Decision
 
-**`INFERENCE_BACKEND` environment variable switches at runtime between `"claude"` and
-`"local"` (Open WebUI / Ollama).** Implementation uses `httpx` directly with no SDK or
-framework. `InferenceRouter.complete()` in `mira-bots/shared/inference/router.py` handles
-the Claude API path. Vision workers (`VisionWorker`, GLM-OCR) always call Ollama on
-the local host regardless of `INFERENCE_BACKEND`. LangChain is explicitly banned per
-project hard constraints.
+**`INFERENCE_BACKEND` switches at runtime between `"cloud"` and `"local"`
+(Open WebUI / Ollama).** Implementation uses `httpx` directly with no SDK or
+framework. `InferenceRouter.complete()` in `mira-bots/shared/inference/router.py`
+handles the Groq -> Cerebras -> Together cloud path. Policy revision 2.0 permits
+LangChain generally, but this edge inference path still uses direct provider
+calls because they are simpler and easier to test than an orchestration wrapper.
 
 ## Consequences
 
@@ -40,5 +40,5 @@ project hard constraints.
 
 ### Negative
 - Manual HTTP error handling instead of SDK-provided retry logic
-- Claude image block format differs from OpenAI `image_url` format — conversion handled
-  in `InferenceRouter.complete()` but adds code to maintain
+- Provider image payloads can differ from OpenAI `image_url` format — conversion
+  in `InferenceRouter.complete()` adds code to maintain

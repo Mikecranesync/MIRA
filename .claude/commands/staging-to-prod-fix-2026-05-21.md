@@ -169,7 +169,8 @@ E2E_HUB_PASSWORD=TestPass123 \
 ```
 
 **Verify:** 12/12 pass. Save the HTML report + new screenshot per the
-Screenshot Rule (`docs/promo-screenshots/YYYY-MM-DD_staging-audit_*.png`).
+Visual proof runbook (`docs/runbooks/visual-proof.md`;
+`docs/promo-screenshots/YYYY-MM-DD_staging-audit_*.png`).
 
 If anything fails, STOP. Don't push to prod.
 

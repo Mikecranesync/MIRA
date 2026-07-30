@@ -162,7 +162,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 ## Rules for code changes
 
 - **Conventional Commits**: `feat/fix/security/docs/refactor/test/chore/BREAKING`. Scope hint: module name (`feat(slack):`, `fix(uns):`, `fix(engine):`).
-- **No LangChain, TensorFlow, n8n** — see PRD §4 in root CLAUDE.md.
+- **Framework policy** — LangChain is permitted under root `CLAUDE.md` policy revision 2.0. Prefer direct provider calls for simple paths; adopt orchestration frameworks only when they reduce total complexity, preserve provider portability, and include tests. LangGraph remains excluded unless separately approved.
 - **Doppler for secrets** — `factorylm/dev` (local) / `factorylm/stg` (staging) / `factorylm/prd` (production). Never `.env` files in git. Never copy `prd` values into a dev shell.
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
@@ -190,7 +190,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Golden cases**: `tests/golden_factorylm.csv`, `tests/golden_hybrid.csv` — diagnostic engine truth set.
 - **New troubleshooting features**: add a golden case. Tweaking the gate? Add one or more.
 - **No "trust me" reviews** — Karpathy principle 4 (`evidence beats assertion`) + Cluster Law 1 (`evidence-only completion`).
-- **For UI changes** — Screenshot Rule (`docs/promo-screenshots/`).
+- **For UI changes** — visual proof runbook (`docs/runbooks/visual-proof.md`).
 
 ## Do not do
 
@@ -201,14 +201,14 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - ❌ **Invent plant data, PLC tag meaning, work-order history, fault codes, or manual references.** Always cite.
 - ❌ **Auto-promote `proposed` → `verified`** in the knowledge graph.
 - ❌ **Replace SCADA, replace CMMS, or expose arbitrary PLC writes.** That's out of scope. See `.claude/skills/mira-saas-scope-guard/SKILL.md`.
-- ❌ **Add a LangChain/n8n abstraction over the LLM call** (PRD §4).
+- ❌ **Add an orchestration framework without meeting policy revision 2.0 criteria** (complexity reduction, provider portability, tests, no rewrite of stable production paths solely for framework adoption).
 - ❌ **Reintroduce Anthropic into the diagnostic cascade** — removed PR #610, never reintroduce there. Cascade is Groq → Cerebras → Together. (Sole owner-authorized carve-out: PrintSynth print-vision interpretation, PR #2661 — vision on print photos only, never a chat/diagnosis provider.)
-- ❌ **Skip the screenshot rule** for visible mira-web UI changes.
+- ❌ **Skip the visual proof runbook** for visible UI changes.
 - ❌ **Cross environment boundaries** — no prod `psql`, no direct VPS `docker compose`, no feature-branch traffic to `@FactoryLM_Diagnose`, no hand-edited prod schema. See `docs/environments.md`.
 
 ## Cross-references
 
-- Root `CLAUDE.md` — build state, ports, env vars, repo map
+- Root `CLAUDE.md` — compact bootstrap policy and routing map
 - `docs/environments.md` — dev / staging / prod doctrine (env separation + promotion workflow)
 - `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)

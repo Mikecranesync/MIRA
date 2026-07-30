@@ -117,7 +117,7 @@ Source: `docker-compose.saas.yml` (fully read).
 
 **Dead env anchors** in `bot-common-env`: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL` are YAML anchors in saas.yml but Anthropic is NOT an active provider (removed PR #610). Do not use these values.
 
-**LLM cascade (prod):** Groq → Cerebras → Gemini. Never Anthropic. See `CLAUDE.md` Hard Constraints §2.
+**LLM cascade (prod):** Groq -> Cerebras -> Together. Never Anthropic. See root `CLAUDE.md` policy revision 2.0.
 
 ---
 

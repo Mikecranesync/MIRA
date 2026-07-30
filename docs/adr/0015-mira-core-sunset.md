@@ -70,7 +70,7 @@ Mapped from the live `docker-compose.saas.yml` and code grep (`OPENWEBUI_BASE_UR
 
 | Gap | Severity | Owned by | Notes |
 |-----|----------|----------|-------|
-| RAG fallback path in `rag_worker._call_openwebui()` | **High** | Engine | This is the catch-all if Groq/Cerebras/Gemini all fail. Need an equivalent fallback that does NOT route through Open WebUI. Options: (a) accept the cascade-failure error and return the structured "no grounded answer" payload, (b) replace the OWUI passthrough with a direct Ollama call on the same VPS, (c) drop the fallback (cascade already has 3 providers). |
+| RAG fallback path in `rag_worker._call_openwebui()` | **High** | Engine | This is the catch-all if Groq/Cerebras/Together all fail. Need an equivalent fallback that does NOT route through Open WebUI. Options: (a) accept the cascade-failure error and return the structured "no grounded answer" payload, (b) replace the OWUI passthrough with a direct Ollama call on the same VPS, (c) drop the fallback (cascade already has 3 providers). |
 | Nameplate worker OWUI fallback (`nameplate_worker._call_openwebui`) | **Medium** | Engine | Same calculus as above. Vision uses `qwen2.5vl:7b` via OWUI; can call Ollama directly. |
 | Print worker OWUI passthrough | **Medium** | Engine | Same as above. |
 | `mira-ingest`'s OWUI dependency for OEM document RAG indexing | **High** | Crawler / ingest | mira-ingest writes to OWUI's Knowledge collections (`OPENWEBUI_KB_*`). Need to confirm whether the new NeonDB-backed `knowledge_entries` path covers all the indexing flows. If yes, mira-ingest's OWUI dependency is gone. |
@@ -85,7 +85,7 @@ Mapped from the live `docker-compose.saas.yml` and code grep (`OPENWEBUI_BASE_UR
 ## 4. Risk assessment
 
 **HIGH risk:**
-- The RAG-cascade fallback to OWUI is load-bearing during cloud-provider outages. Removing it without a replacement reduces reliability during Groq/Cerebras/Gemini incidents.
+- The RAG-cascade fallback to OWUI is load-bearing during cloud-provider outages. Removing it without a replacement reduces reliability during Groq/Cerebras/Together incidents.
 - mira-ingest's KB upload pipeline writes to OWUI Knowledge collections; sunset before NeonDB-backed indexing is at 100% parity loses upload functionality.
 - mira-web's inbox is wired to OWUI. Cutting the cord with no replacement breaks the marketing-site inbox.
 

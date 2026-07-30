@@ -25,7 +25,7 @@ Produce or refresh a high-level map of the MIRA codebase, the critical product f
    - Are work-order creates draft-first?
 5. **Identify technical debt**:
    - Anthropic mentions (should be 0 — removed PR #610)
-   - LangChain / n8n / TensorFlow imports (banned per PRD §4)
+   - LLM/orchestration framework imports (check against root policy revision 2.0)
    - Hardcoded IPs or secrets (vs Doppler)
    - `:latest` / `:main` Docker tags (use pinned digests)
    - `mira-sidecar/` legacy references that still block sunset

@@ -61,7 +61,7 @@ The relay (`mira-relay/clock_resolver.py`, commit `d6064dd2`) computes real per-
 | **Langfuse** | Already present — leave as-is | Self-hostable, no-op without keys. The wrapper stays; we don't expand it. |
 | **Grafana/Prometheus** | Already defined — out of scope here | Metrics layer; not a per-turn LLM trace. |
 | **LangSmith** | **Skip** | Mandatory SaaS endpoint → violates "CI/local must not require a running external service"; LangChain-coupled. |
-| **LangGraph** | **Skip** | Violates PRD §4 #3 (no framework that abstracts the LLM call); **ADR-0011 (Accepted, current)** rejects it. Revisit only at multi-agent "Config 4+" with a formal constraint revision. Not obsolete. |
+| **LangGraph** | **Skip** | **ADR-0011 (Accepted, current)** rejects a diagnostic FSM migration. Revisit only with separate approval after showing it reduces total complexity, preserves provider portability, and has tests. |
 
 **Smallest practical improvement (implemented in this PR):** a lightweight, dependency-light, **cloud-free** structured agent-trace module with JSON export, plus an **optional** OpenInference/OTLP export that no-ops unless an endpoint is configured. Phoenix becomes a place you *can* point it, never a thing CI or local dev needs running.
 
@@ -133,4 +133,4 @@ Neither variable is set in CI or prod by default, so behavior there is unchanged
 
 - Audit basis: `mira-bots/shared/{engine.py,decision_trace.py,live_snapshot.py,telemetry.py,benchmark_db.py}`, `tests/eval/`, `evals/`, `docker-compose.observability.yml`
 - ADR-0011 (no LangGraph), ADR-0010 (Karpathy eval alignment), ADR-0022 (decision-trace & tag-stream storage)
-- Constraints: root `CLAUDE.md` PRD §4 (Apache-2.0/MIT, no LLM-abstraction framework, no Anthropic), `docs/environments.md`
+- Constraints: root `CLAUDE.md` policy revision 2.0 (Apache-2.0/MIT, framework adoption criteria, no Anthropic diagnostic cascade), `docs/environments.md`

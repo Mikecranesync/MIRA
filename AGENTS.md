@@ -2,8 +2,8 @@
 
 **Version:** v3.4.0 | **Updated:** 2026-04-17
 **One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Codex (cascade) | `local` → Open WebUI → qwen2.5vl:7b
-**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → GSDEngine → Anthropic API
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Together (cascade) | `local` → Open WebUI → qwen2.5vl:7b
+**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (`shared/engine.py`) → cascade providers
 
 ---
 
@@ -15,8 +15,8 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **No cloud except:** Anthropic Codex API + NeonDB (Doppler-managed secrets), plus the narrow governed Together exception in `docs/zta/together-governed-cloud-exception.md` for the FactoryLM AI paid-training workstream only.
-3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the Codex API call.
+2. **Cloud LLMs:** Groq + Cerebras + Together cascade. NeonDB for persistence. Doppler-managed secrets. No Anthropic in the diagnostic cascade; the only current owner-approved carve-out is the gated PrintSense print-vision interpreter.
+3. **Framework policy:** LangChain is permitted. Prefer direct provider calls for simple paths. Adopt orchestration frameworks only when they reduce total complexity, preserve provider portability, and include tests. Do not rewrite stable production paths solely to adopt a framework. LangGraph remains excluded unless separately approved.
 4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
 6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
@@ -102,7 +102,7 @@ bash install/smoke_test.sh
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Gemini key blocked** — 403 in Doppler. Cascade falls through to Groq/Codex.
+- **Gemini key blocked** — historical; Gemini was replaced by Together in the diagnostic cascade.
 
 ---
 
@@ -115,7 +115,7 @@ bash install/smoke_test.sh
 - **All env vars:** `docs/env-vars.md`
 - **Known issues / deferred / abandoned:** `docs/known-issues.md`
 - **ADRs:** `docs/adr/`
-- **Ops wiki:** `wiki/` — **Session start: read `wiki/hot.md`. Session end: update it.**
+- **Ops wiki:** `wiki/` — read `wiki/hot.md` before substantive work; after substantive project-state changes, update it.
 - **Wiki schema:** `wiki/SCHEMA.md`
 - **Skills:** `.Codex/skills/`
 - **Sprint state:** `.planning/STATE.md`

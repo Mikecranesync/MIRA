@@ -35,7 +35,7 @@ stay consistent (one CSS file, no framework, runs in any browser/WebView).
 ## Verify before done
 - App renders flat + on-brand; states show the correct color; no stray hardcoded hex.
 - Frozen build: `factorylm-tokens.css` present under `_internal/gui/`.
-- Web UI: honor the repo Screenshot Rule (`docs/promo-screenshots/`).
+- Web UI: honor `docs/runbooks/visual-proof.md` (`docs/promo-screenshots/`).
 
 ## Anti-patterns
 - ❌ Hardcoded hex in a component. ❌ New front end without the tokens. ❌ State color as decoration /
