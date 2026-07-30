@@ -1,4 +1,4 @@
-# live_snapshot.py — THE canonical Gateway live tag-snapshot adapter.
+# gateway_live_snapshot.py — THE canonical Gateway live tag-snapshot adapter.
 #
 # Importable from BOTH:
 #   * Jython 2.7 inside the Ignition Gateway (WebDev chat handler, timer scripts)

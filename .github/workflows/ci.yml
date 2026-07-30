@@ -324,6 +324,23 @@ jobs:
           pytest tests/test_manufacturer_alias_consistency.py -v
           (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)
 
+      - name: Ignition Gateway contracts (tags, allowlist, signing, live snapshot)
+        # tests/ignition/ was run by NO workflow before 2026-07-30 — the whole
+        # suite (allowlist fail-closed, HMAC signing, the tag collector, and now
+        # the canonical Gateway live-snapshot adapter) passed locally and was
+        # never enforced anywhere. Same blind-spot class as the pre-commit hook
+        # (v3.231.1): a guard nothing executes is a guard nobody knows is broken.
+        #
+        # Named explicitly because root tests/ is not collected wholesale here,
+        # and run as its OWN invocation: tests/conftest.py and
+        # mira-bots/tests/conftest.py both resolve to the module `tests.conftest`,
+        # so collecting both trees in one pytest process raises
+        # ImportPathMismatchError. That pre-existing collision is why every root
+        # tests/ entry above is a separate step too.
+        #
+        # Hermetic: all Ignition I/O is injected. No Gateway, PLC, network, or DB.
+        run: pytest tests/ignition/ -v
+
       - name: Relational distiller (flywheel Phase 4b)
         # Pure core of tools/relational_distill.py — matched drive-pack fault
         # turns → grounded HAS_FAILURE_MODE edge proposals (human-gated, never

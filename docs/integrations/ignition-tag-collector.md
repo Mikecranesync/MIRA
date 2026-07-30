@@ -136,20 +136,20 @@ Headers: `X-MIRA-Tenant`, `X-MIRA-Nonce`, `X-MIRA-Timestamp`, `X-MIRA-Signature`
 
 ## The canonical live-snapshot adapter (2026-07-30)
 
-`api/tags/live_snapshot.py` is **the single Gateway live tag-snapshot adapter**. Both
+`api/tags/gateway_live_snapshot.py` is **the single Gateway live tag-snapshot adapter**. Both
 Gateway transports render from it, so the same physical read cannot produce two shapes.
 
 ```
               system.tag.browseTags / readBlocking     (injected, read-only)
                               │
-                live_snapshot.read_tag_readings()
+        gateway_live_snapshot.read_tag_readings()
                               │
                  collector.build_reading()             ONE typed reading:
                               │                        {tag_path, value, value_type,
                 collector.filter_allowlisted()          quality, ts}  — fail-closed
                               │
               ┌───────────────┴───────────────┐
-   STREAM →   collector.build_payload()        live_snapshot.snapshot_from_readings()  ← CHAT
+   STREAM →   collector.build_payload()        gateway_live_snapshot.snapshot_from_readings()  ← CHAT
               list of readings                 dict keyed by tag_path
               POST /api/v1/tags/ingest         POST /api/v1/ignition/chat
               (mira-relay)                     (mira-pipeline/ignition_chat.py)
@@ -175,7 +175,7 @@ for "this asset has no tags."
 
 ### Deploying it
 
-`live_snapshot.py` sits beside `collector.py`, `allowlist.py` and `signing.py` in
+`gateway_live_snapshot.py` sits beside `collector.py`, `allowlist.py` and `signing.py` in
 `api/tags/` and imports `collector` as a flat sibling — the same script-library
 layout the collector already documents above. Copy all four into the project
 script library together.
@@ -183,7 +183,7 @@ script library together.
 ### Rules it must keep
 
 - **Read-only.** No Ignition runtime import; tags are reachable only through
-  injected callables. Asserted by `tests/ignition/test_live_snapshot.py`
+  injected callables. Asserted by `tests/ignition/test_gateway_live_snapshot.py`
   (`test_adapter_contains_no_write_or_fieldbus_path`,
   `test_adapter_imports_no_ignition_runtime`) — and those guards were
   mutation-tested, including a dotted `system.opc.write` that an earlier

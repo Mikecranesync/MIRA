@@ -1,4 +1,4 @@
-# tests/ignition/test_live_snapshot.py
+# tests/ignition/test_gateway_live_snapshot.py
 # Pytest suite for THE canonical Gateway live tag-snapshot adapter.
 #
 # Verifies that the chat path and the stream path now derive from ONE reading
@@ -6,19 +6,19 @@
 # strings), and a FAIL-CLOSED allowlist. All Ignition I/O is injected — no
 # Gateway, no PLC, no network, no DB.
 #
-# Run: python3 -m pytest tests/ignition/test_live_snapshot.py -v
+# Run: python3 -m pytest tests/ignition/test_gateway_live_snapshot.py -v
 
 import os
 import sys
 
 import pytest
 
-# collector.py / allowlist.py / live_snapshot.py live together in api/tags;
+# collector.py / allowlist.py / gateway_live_snapshot.py live together in api/tags;
 # collector adds api/chat to sys.path for signing.py.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../ignition/webdev/FactoryLM/api/tags"))
 
 import collector  # noqa: E402
-import live_snapshot  # noqa: E402
+import gateway_live_snapshot as gls  # noqa: E402
 
 
 # ── injected Ignition doubles ────────────────────────────────────────────────
@@ -77,7 +77,7 @@ def test_values_keep_their_type_and_quality_is_banded():
     browse_fn, read_fn = make_io(tag_values)
     allow = set(tag_values.keys())
 
-    snap, stats = live_snapshot.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist=allow)
+    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist=allow)
 
     assert stats == {"read": 3, "allowed": 3, "dropped": 0, "allowlist_loaded": True}
 
@@ -98,7 +98,7 @@ def test_no_value_is_stringified():
     """Explicit regression guard for the exact old behaviour."""
     (p,) = _paths("speed_hz")
     browse_fn, read_fn = make_io({p: FakeQV(48.5, "Good")})
-    snap, _ = live_snapshot.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
+    snap, _ = gls.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
     assert snap[p]["value"] != "48.5"
     assert not isinstance(snap[p]["value"], str)
 
@@ -113,7 +113,7 @@ def test_empty_allowlist_drops_everything():
     p1, p2 = _paths("speed_hz", "secret_recipe")
     browse_fn, read_fn = make_io({p1: FakeQV(1.0, "Good"), p2: FakeQV(2.0, "Good")})
 
-    snap, stats = live_snapshot.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist=set())
+    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist=set())
 
     assert snap == {}
     assert stats["read"] == 2
@@ -126,7 +126,7 @@ def test_non_allowlisted_tags_are_dropped():
     p_ok, p_no = _paths("speed_hz", "not_approved")
     browse_fn, read_fn = make_io({p_ok: FakeQV(1.0, "Good"), p_no: FakeQV(2.0, "Good")})
 
-    snap, stats = live_snapshot.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p_ok})
+    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p_ok})
 
     assert list(snap.keys()) == [p_ok]
     assert stats["dropped"] == 1
@@ -137,7 +137,7 @@ def test_non_allowlisted_tags_are_dropped():
 
 def test_missing_asset_id_yields_no_snapshot():
     browse_fn, read_fn = make_io({})
-    snap, stats = live_snapshot.collect_live_snapshot(browse_fn, read_fn, "", allowlist={"x"})
+    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, "", allowlist={"x"})
     assert snap == {}
     assert stats["read"] == 0
 
@@ -155,7 +155,7 @@ def test_io_failure_degrades_to_empty_not_an_exception(failing):
     browse_fn = boom if failing == "browse" else ok_browse
     read_fn = boom if failing == "read" else ok_read
 
-    snap, stats = live_snapshot.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
+    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
     assert snap == {}
     assert stats["allowed"] == 0
 
@@ -171,7 +171,7 @@ def test_ragged_read_result_skips_rather_than_invents():
     def read_fn(_paths):
         return [FakeQV(1.0, "Good")]  # one value for two paths
 
-    snap, stats = live_snapshot.collect_live_snapshot(
+    snap, stats = gls.collect_live_snapshot(
         browse_fn, read_fn, ASSET, allowlist={p1, p2}
     )
     assert list(snap.keys()) == [p1]
@@ -179,7 +179,7 @@ def test_ragged_read_result_skips_rather_than_invents():
 
 
 def test_empty_browse_yields_no_snapshot():
-    snap, stats = live_snapshot.collect_live_snapshot(
+    snap, stats = gls.collect_live_snapshot(
         lambda _f: [], lambda _p: [], ASSET, allowlist={"x"}
     )
     assert snap == {}
@@ -202,13 +202,13 @@ def test_chat_and_stream_paths_agree_on_every_reading():
     allow = set(tag_values.keys())
 
     # CHAT rendering
-    chat_snap, _ = live_snapshot.collect_live_snapshot(
+    chat_snap, _ = gls.collect_live_snapshot(
         browse_fn, read_fn, ASSET, allowlist=allow
     )
 
     # STREAM rendering — same readings through collector.build_payload
-    readings = live_snapshot.read_tag_readings(
-        browse_fn, read_fn, live_snapshot.monitored_folder(ASSET)
+    readings = gls.read_tag_readings(
+        browse_fn, read_fn, gls.monitored_folder(ASSET)
     )
     stream_payload = collector.build_payload(
         "tenant-1", collector.filter_allowlisted(readings, allow)
@@ -229,7 +229,7 @@ def test_browse_uses_the_monitored_folder_convention():
     seen = []
     (p,) = _paths("a")
     browse_fn, read_fn = make_io({p: FakeQV(1, "Good")}, folder_seen=seen)
-    live_snapshot.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
+    gls.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
     assert seen == ["[default]Mira_Monitored/cv_101"]
 
 
@@ -239,10 +239,10 @@ def test_now_fn_overrides_timestamp_else_tag_timestamp_wins():
     (p,) = _paths("a")
     browse_fn, read_fn = make_io({p: FakeQV(1, "Good", timestamp="TAG-TS")})
 
-    snap, _ = live_snapshot.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
+    snap, _ = gls.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
     assert snap[p]["ts"] == "TAG-TS"
 
-    snap2, _ = live_snapshot.collect_live_snapshot(
+    snap2, _ = gls.collect_live_snapshot(
         browse_fn, read_fn, ASSET, allowlist={p}, now_fn=lambda: "INJECTED"
     )
     assert snap2[p]["ts"] == "INJECTED"
@@ -254,7 +254,7 @@ def test_snapshot_entries_match_the_pipeline_consumer_contract():
     Keep those key names."""
     (p,) = _paths("a")
     browse_fn, read_fn = make_io({p: FakeQV(7, "Good")})
-    snap, _ = live_snapshot.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
+    snap, _ = gls.collect_live_snapshot(browse_fn, read_fn, ASSET, allowlist={p})
     entry = snap[p]
     assert "value" in entry and "quality" in entry
     assert isinstance(entry, dict)
@@ -277,7 +277,7 @@ FORBIDDEN_WRITE_TOKENS = (
 )
 
 _REPO_IGNITION = os.path.join(os.path.dirname(__file__), "../../ignition")
-ADAPTER_SRC = os.path.join(_REPO_IGNITION, "webdev/FactoryLM/api/tags/live_snapshot.py")
+ADAPTER_SRC = os.path.join(_REPO_IGNITION, "webdev/FactoryLM/api/tags/gateway_live_snapshot.py")
 CHAT_SRC = os.path.join(_REPO_IGNITION, "webdev/FactoryLM/api/chat/doPost.py")
 
 
@@ -355,7 +355,7 @@ def test_adapter_contains_no_write_or_fieldbus_path():
     Asserted on the code rather than trusting review."""
     code = code_only(ADAPTER_SRC)
     for token in FORBIDDEN_WRITE_TOKENS:
-        assert token not in code, "live_snapshot.py must never reference %r" % token
+        assert token not in code, "gateway_live_snapshot.py must never reference %r" % token
 
 
 def test_adapter_imports_no_ignition_runtime():
@@ -371,7 +371,7 @@ def test_chat_handler_no_longer_reads_tags_inline():
     browse/read there, the two shapes diverge again — the whole defect this closes."""
     code = code_only(CHAT_SRC)
     raw = open(CHAT_SRC).read()
-    assert "from live_snapshot import collect_live_snapshot" in raw
+    assert "from gateway_live_snapshot import collect_live_snapshot" in raw
     # The old stringifying read and the fail-open allowlist API must be gone
     # from the executing code.
     assert "str(qv.value)" not in code

@@ -58,7 +58,7 @@ messy factory" is the empty chair. Infrastructure first, AI second — *never* l
 > sometimes `48.5` and sometimes `"48.5"`; `quality` sometimes `good`, sometimes `Good_Unspecified`.
 >
 > The rule this establishes: **a producer has exactly one adapter, and transports are renderings over
-> it.** `ignition/webdev/FactoryLM/api/tags/live_snapshot.py` is now the single Gateway live-snapshot
+> it.** `ignition/webdev/FactoryLM/api/tags/gateway_live_snapshot.py` is now the single Gateway live-snapshot
 > adapter; both paths derive from `collector.build_reading()`, and a test asserts field-by-field that
 > the chat rendering and the stream rendering agree. A third Ignition transport adds a *rendering*,
 > never a second read. Read-only toward OT is enforced mechanically rather than by review: the adapter

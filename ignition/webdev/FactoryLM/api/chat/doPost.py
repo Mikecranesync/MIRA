@@ -85,7 +85,7 @@ def doPost(request, session):
 
     # --- Read live tag snapshot via THE canonical adapter ---
     #
-    # api/tags/live_snapshot.py is the single Gateway live-snapshot adapter, and
+    # api/tags/gateway_live_snapshot.py is the single Gateway live-snapshot adapter, and
     # it renders the SAME typed readings that gateway-scripts/tag-stream.py
     # streams to mira-relay (both go through collector.build_reading). Do not
     # read tags inline here again.
@@ -105,7 +105,7 @@ def doPost(request, session):
         if _tags_dir not in _sys.path:
             _sys.path.insert(0, _tags_dir)
 
-        from live_snapshot import collect_live_snapshot
+        from gateway_live_snapshot import collect_live_snapshot
 
         def _browse(folder):
             return system.tag.browseTags(parentPath=folder)
