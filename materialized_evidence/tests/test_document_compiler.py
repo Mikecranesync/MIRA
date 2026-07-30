@@ -17,9 +17,13 @@ from materialized_evidence import (
     ApprovalStatus,
     DatasetType,
     Environment,
+    RecallOutcome,
+    RecallQuery,
+    RecomputeDecision,
     RegistryError,
     StageStatus,
     TrustStatus,
+    resolve_recall,
     sha256_bytes,
 )
 from materialized_evidence.backends.file_registry import FileRegistry
@@ -399,6 +403,23 @@ class TestRegistryRoundTrip:
             source_hashes=[sha256_bytes(body)],
         )
         assert len(found) == 2
+
+        # The claim the docs make about this situation, actually executed: two
+        # versions with an identical content_hash must let the resolver SELECT one,
+        # not report CONFLICTING (`resolver.py` conflicts on distinct content
+        # hashes). Asserted rather than reasoned about, because NORTH_STAR.md and
+        # docs/architecture/materialized-evidence.md both state it.
+        result = resolve_recall(
+            RecallQuery(
+                tenant_id=TENANT,
+                dataset_type=DatasetType.OCR,
+                source_hashes=[sha256_bytes(body)],
+            ),
+            registry,
+        )
+        assert result.outcome is RecallOutcome.EXACT, result.reason
+        assert result.recompute_decision is RecomputeDecision.REUSED_EXACT
+        assert len(result.selected_versions) == 1
 
     def test_record_locators_are_content_addressed_not_urls(self):
         receipt = _compile()
