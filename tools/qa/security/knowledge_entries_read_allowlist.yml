@@ -756,9 +756,9 @@ approved:
       with conn.cursor() as cur:
                       cur.execute(
                           "SELECT 1 FROM knowledge_entries "
-  "mira-crawler/cron/kb_growth_cron.py:747":
+  "mira-crawler/cron/kb_growth_cron.py:774":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Ingest-queue dedup/backfill: lists the URLs THIS tenant has already ingested so the cron does not re-download them. Counting the tenant's own rows is the point — including the shared OEM corpus would make the crawler skip documents this tenant never ingested (legit TENANT-ONLY per the rule's pure-tenant carve-out, same class as quota.py:128). Re-keyed 747->774 by v3.235.0, which added _stamp_evidence_status above it; the query is unchanged."
     query_snippet: |
       SELECT DISTINCT source_url FROM knowledge_entries
                               WHERE tenant_id = %s::uuid AND source_url IS NOT NULL
