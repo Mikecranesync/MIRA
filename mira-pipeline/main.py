@@ -1374,7 +1374,7 @@ async def pm_extract(request: Request):
         store_pm_schedules,
     )
 
-    chunks = get_chunks_for_model(manufacturer, model_number)
+    chunks = get_chunks_for_model(manufacturer, model_number, tenant_id=tenant_id)
     if not chunks:
         return {
             "manufacturer": manufacturer,
