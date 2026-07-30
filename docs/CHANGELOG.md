@@ -1,3 +1,23 @@
+### v3.234.5 (2026-07-30) - test(ci): Contract 8 — a check that runs but cannot fail a merge is not a guard
+
+Two defects on 2026-07-30 turned out to be the same defect. The `.githooks/pre-commit` hook reported `✓ No debug artifacts found` over a diff it never read (`rg` absent, call ended `|| true`; fixed in v3.231.1). Then PR #3018 concluded `tests/ignition/` "was run by NO workflow" and added a step to fix it — **that conclusion was false**: `test-eval-offline` already swept the tree via `pytest tests/ -v -n auto -m "not network and not slow"`, with **184** matching lines in that PR's own run log. What was actually true is worse and quieter: `test-eval-offline` is not in the `ci-gate` needs list, so 74 Ignition tests ran on every code PR and **could not fail one**. The fix was right for the wrong reason.
+
+The class: **a check nobody can be blocked by is not enforcement, and "27 checks passed" does not distinguish the two.**
+
+**Contract 8** in `tests/test_architecture.py` (run by the gated `architecture-check` job) asserts three things about `.github/workflows/ci.yml`:
+
+- **(a) Default-deny.** Every job that runs tests is in `ci-gate.needs`, or is declared in `_UNGATED_TEST_JOBS` **with a written reason** — the same idiom as `_ONE_PIPELINE_ALLOWLIST` in Contract 5. Four exemptions are declared today (`test-eval-offline`, `simlab-gate`, `ocr-recall-gate`, `drive-pack-extract-tests`), each with the reason it is non-blocking.
+- **(b) Listed ≠ read.** Every job in `needs` must actually be read by the gate's evaluate step (`needs.<job>.result`). Being in `needs:` while the shell logic ignores your result is a silent hole that looks exactly like being gated.
+- **(c) The manifest cannot rot.** An exemption must name a real job, and must not still be declared once it is promoted into the gate — so you cannot do half of a promotion.
+
+Following Contract 5's precedent, the checker is a pure function unit-tested against bad fixtures, plus a vacuity guard (`test_ci_gate_covers_a_plausible_number_of_test_jobs`) so a broken runner regex fails loudly instead of making (a) pass over zero jobs.
+
+**Evidence — the guard was observed failing before being trusted.** Four mutations of the *real* `ci.yml`/test file, one at a time with byte-exact restore (md5) and green after: `test-unit` removed from `ci-gate.needs` → RED; a brand-new ungated test job → RED; a `needs` entry whose result the gate never reads → RED; the runner regex broken → caught by the vacuity guard → RED. `pytest tests/test_architecture.py` → **17 passed**.
+
+**What Contract 8 cannot know, stated in the code rather than implied away:** whether `CI Gate` is a *required status check* on `main`. **It is not** — required is `staging-gate`, `Version Bump Check`, `Hub E2E (command-center + onboarding)`, `mira-web pack tests` (`gh api repos/:owner/:repo/branches/main/protection`, `enforce_admins: false`). So `test-unit`, `architecture-check`, `lint-and-type-check`, `sast-*` and the pre-commit-hook tests are **all advisory today**, and this contract secures only the layer a test can reach. The last mile is a branch-protection admin action; it is listed in the PR body next to the pending removal of `Version Bump Check`, since both are the same two-minute visit to the same settings page. Also out of scope by design: `if:`/`continue-on-error`/runtime `skipif`, and workflows other than `ci.yml`.
+
+**Not fixed here, measured and recorded:** ~168 tracked Python test files are reached by no `pull_request`-triggered workflow at all (largest: `mira-crawler/tests` 50, `mira-plc-parser/tests` 15, `mira-contextualizer/tests` 14, `mira-relay/tests` 13 ≈ 191 tests, `materialized_evidence/tests` 7 ≈ 81, `mira-pipeline/tests` 6 ≈ 66, `mira-mcp/tests` 5 ≈ 67), plus JS/TS suites with no workflow reference at all (`mira-machine-logic-graph/tests`, `mira-trend-viewer/test`, `mira-scan-monday`). Wiring those in is a separate program per module — Contract 8 deliberately governs *gating*, which is one file and enforceable today, rather than *collection*, which is not.
+
 ### v3.234.4 (2026-07-30) - docs(architecture): unify the Bravo evidence lane — hub, catalog, runbooks, drift-guard
 
 Unifies the scattered evidence-spine documentation (ADRs 0027/0028/0029/0033, the C4 set, the materialized-evidence inventory, the context-spine plans) into one navigable, end-to-end architectural definition of the Bravo lane — for both agents and humans. **Documentation + one drift-guard test only; no runtime, schema, or behavior change.**

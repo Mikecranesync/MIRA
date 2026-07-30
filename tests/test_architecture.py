@@ -661,3 +661,249 @@ def test_verified_promotion_checker_catches_violations():
     }
     for label, sql in good_cases.items():
         assert scan_verified_promotion("good.sql", sql) == [], f"false positive: {label}"
+
+
+# ===========================================================================
+# Contract 8: a check that RUNS but cannot FAIL a merge is not a guard
+# ===========================================================================
+#
+# Earned on 2026-07-30, twice in one day, in this repo:
+#
+#   1. `.githooks/pre-commit` reported "no debug artifacts found" over a diff it
+#      never read, because `rg` was absent and the call ended `|| true`. Fixed in
+#      v3.231.1 by probing the tool and reporting SKIPPED instead of passed.
+#   2. PR #3018 concluded `tests/ignition/` "was run by NO workflow" and added a
+#      step to fix it. The conclusion was WRONG — `test-eval-offline` already
+#      swept the tree (184 matching lines in that PR's own run log). What was
+#      actually true is subtler and worse: `test-eval-offline` is not in the
+#      `ci-gate` needs list, so 74 Ignition tests ran on every code PR and could
+#      not fail one. The fix was right for the wrong reason.
+#
+# The class both belong to: a check nobody can be blocked by is not enforcement,
+# and a green "N checks passed" summary does not distinguish the two. Contract 5
+# unit-tests its checker against bad fixtures for exactly this reason; this
+# contract extends the idea from source files to CI itself.
+#
+# What this guard asserts about .github/workflows/ci.yml:
+#   (a) every job that runs tests is in `ci-gate`'s `needs`, or is declared
+#       ungated below WITH a written reason (default-deny, same idiom as
+#       _ONE_PIPELINE_ALLOWLIST);
+#   (b) every job in `needs` is actually READ by the gate's evaluate step —
+#       being listed in `needs:` while the shell logic ignores your result is a
+#       silent hole that looks exactly like being gated;
+#   (c) the ungated manifest cannot rot: entries must name real jobs, and must
+#       not still be listed once they are promoted into the gate.
+#
+# WHAT THIS GUARD CANNOT KNOW, stated rather than implied away:
+#   * Whether `CI Gate` is a REQUIRED status check on `main`. It is NOT, as of
+#     2026-07-30 — required is staging-gate / Version Bump Check / Hub E2E /
+#     mira-web pack tests (`gh api repos/:owner/:repo/branches/main/protection`).
+#     So this contract secures the layer it can reach, and the last mile stays a
+#     branch-protection admin action. No test in this repo can assert it.
+#   * `if:` conditions, `continue-on-error`, runtime `skipif` — a gated job can
+#     still decline to run. Handling skipped-vs-success is the gate script's own
+#     job, not this contract's.
+#   * Workflows other than ci.yml. Scope is deliberately the PR gate.
+
+_CI_WORKFLOW = _ROOT / ".github" / "workflows" / "ci.yml"
+_CI_GATE_JOB = "ci-gate"
+
+# A step whose `run:` matches this is running tests.
+_TEST_RUNNER_RE = re.compile(
+    r"(?:^|[\s;&|(])(?:"
+    r"pytest\b"
+    r"|python3?\s+-m\s+pytest\b"
+    r"|vitest\b"
+    r"|playwright\s+test\b"
+    r"|bun\s+test\b"
+    r"|node\s+--test\b"
+    r"|npm\s+(?:run\s+)?test\b"
+    r"|bash\s+tests/"
+    r")",
+    re.IGNORECASE,
+)
+
+# Test-running jobs deliberately OUTSIDE the merge gate. Every entry MUST carry a
+# reason — "it is flaky" is a reason; silence is not. Promoting one means deleting
+# its entry here AND adding it to `ci-gate.needs`; check (c) makes it impossible
+# to do only half of that.
+_UNGATED_TEST_JOBS: dict[str, str] = {
+    "test-eval-offline":
+        "Heavy offline eval sweep over all of root tests/ (-n auto, minutes). Kept "
+        "visible but non-blocking per the ci-gate design note; the suites that MUST "
+        "block are named individually inside the gated test-unit job instead.",
+    "simlab-gate":
+        "SimLab grader gate — a scenario-level quality bar, not a correctness check. "
+        "Scoring moves with model drift, so blocking merges on it would gate the repo "
+        "on provider behaviour.",
+    "ocr-recall-gate":
+        "OCR recall bar over fixture prints. Same reason as simlab-gate: a measurement "
+        "whose value moves with the provider, so it informs review rather than blocking.",
+    "drive-pack-extract-tests":
+        "Drive-pack extractor suite over real manuals — long-running and dependent on "
+        "large fixture PDFs; promote once runtime and flake rate are bounded.",
+}
+
+
+def _load_ci_workflow() -> dict:
+    import yaml  # the architecture-check job installs pyyaml
+
+    return yaml.safe_load(_CI_WORKFLOW.read_text(encoding="utf-8"))
+
+
+def _job_runs_tests(job: dict) -> bool:
+    for step in job.get("steps") or []:
+        if _TEST_RUNNER_RE.search(str(step.get("run", "") or "")):
+            return True
+    return False
+
+
+def scan_ci_gate_coverage(workflow: dict, ungated: dict[str, str]) -> list[str]:
+    """Return Contract 8 violations for a parsed workflow.
+
+    Pure, so it can be unit-tested against bad fixtures below — which is what
+    makes a green run on the real ci.yml mean something."""
+    violations: list[str] = []
+    jobs = workflow.get("jobs") or {}
+
+    gate = jobs.get(_CI_GATE_JOB)
+    if gate is None:
+        return [f"{_CI_GATE_JOB}: the merge gate job is gone — nothing is fail-closed"]
+
+    needs = gate.get("needs") or []
+    if isinstance(needs, str):
+        needs = [needs]
+    needs_set = set(needs)
+
+    # (a) default-deny: a test job is gated, or declared ungated with a reason.
+    for job_id, job in jobs.items():
+        if job_id == _CI_GATE_JOB or not isinstance(job, dict):
+            continue
+        if not _job_runs_tests(job):
+            continue
+        if job_id in needs_set or job_id in ungated:
+            continue
+        violations.append(
+            f"{job_id}: runs tests but is NOT in {_CI_GATE_JOB}.needs and is not "
+            f"declared in _UNGATED_TEST_JOBS — it can never fail a merge, so a "
+            f"green result from it is not evidence"
+        )
+
+    # (b) listed in needs but never read by the evaluate step = silent hole.
+    gate_text = str(gate)
+    for job_id in sorted(needs_set):
+        if f"needs.{job_id}.result" not in gate_text:
+            violations.append(
+                f"{job_id}: in {_CI_GATE_JOB}.needs but its result is never read by "
+                f"the gate (no `needs.{job_id}.result`) — the gate waits for the job "
+                f"and then ignores whether it passed"
+            )
+
+    # (c) the manifest cannot rot in either direction.
+    for job_id, reason in ungated.items():
+        if job_id not in jobs:
+            violations.append(
+                f"{job_id}: declared in _UNGATED_TEST_JOBS but no such job exists in "
+                f"ci.yml — stale entry, delete it"
+            )
+        elif job_id in needs_set:
+            violations.append(
+                f"{job_id}: declared ungated AND present in {_CI_GATE_JOB}.needs — it "
+                f"is gated now; remove the _UNGATED_TEST_JOBS entry"
+            )
+        if len(reason) < 30:
+            violations.append(f"{job_id}: needs a real written reason, not {reason!r}")
+
+    return violations
+
+
+def test_every_test_job_is_gated_or_declared_ungated():
+    """A test job either blocks a merge, or says in writing why it does not.
+
+    This is the tests/ignition/ blind spot approached from the correct direction:
+    not "is this tree collected?" (it was) but "can any of it fail a merge?"
+    (it could not)."""
+    violations = scan_ci_gate_coverage(_load_ci_workflow(), _UNGATED_TEST_JOBS)
+    assert not violations, (
+        "CI enforcement gap — a check that runs but cannot fail a merge is not a "
+        "guard.\nEither add the job to `ci-gate.needs` (and read its result there), "
+        "or declare it in _UNGATED_TEST_JOBS with a reason.\n\n" + "\n".join(violations)
+    )
+
+
+def test_ci_gate_covers_a_plausible_number_of_test_jobs():
+    """Guard the guard: if _TEST_RUNNER_RE stops matching, (a) passes vacuously."""
+    jobs = _load_ci_workflow().get("jobs") or {}
+    detected = [j for j, spec in jobs.items() if isinstance(spec, dict) and _job_runs_tests(spec)]
+    assert len(detected) >= 6, (
+        "only %d test-running jobs detected in ci.yml (%s) — _TEST_RUNNER_RE has "
+        "probably stopped matching, which would make Contract 8 vacuous"
+        % (len(detected), sorted(detected))
+    )
+
+
+def test_ci_gate_checker_catches_violations():
+    """The checker must FAIL on every shape it claims to catch."""
+    gate_reading = {
+        "needs": ["changes", "test-unit"],
+        "steps": [{"run": "x ${{ needs.changes.result }} ${{ needs.test-unit.result }}"}],
+    }
+
+    bad_cases = {
+        "ungated test job, undeclared": {
+            "jobs": {
+                "ci-gate": gate_reading,
+                "changes": {"steps": [{"run": "echo hi"}]},
+                "test-unit": {"steps": [{"run": "pytest tests/x.py"}]},
+                "sneaky-tests": {"steps": [{"run": "pytest tests/sneaky/"}]},
+            }
+        },
+        "in needs but result never read": {
+            "jobs": {
+                "ci-gate": {
+                    "needs": ["changes", "test-unit", "orphan-need"],
+                    "steps": [
+                        {"run": "x ${{ needs.changes.result }} ${{ needs.test-unit.result }}"}
+                    ],
+                },
+                "changes": {"steps": [{"run": "echo hi"}]},
+                "test-unit": {"steps": [{"run": "pytest tests/x.py"}]},
+                "orphan-need": {"steps": [{"run": "pytest tests/y.py"}]},
+            }
+        },
+        "gate job deleted entirely": {
+            "jobs": {"test-unit": {"steps": [{"run": "pytest tests/x.py"}]}}
+        },
+    }
+    for label, wf in bad_cases.items():
+        assert scan_ci_gate_coverage(wf, {}), f"checker missed a violation: {label}"
+
+    ok_wf = {
+        "jobs": {
+            "ci-gate": gate_reading,
+            "changes": {"steps": [{"run": "echo hi"}]},
+            "test-unit": {"steps": [{"run": "pytest tests/x.py"}]},
+        }
+    }
+    long_reason = "a reason long enough to be a real explanation of this exemption"
+    assert scan_ci_gate_coverage(ok_wf, {"gone-job": long_reason}), "missed a stale entry"
+    assert scan_ci_gate_coverage(ok_wf, {"test-unit": long_reason}), "missed gated-and-ungated"
+    assert scan_ci_gate_coverage(ok_wf, {"changes": "too short"}), "missed a reasonless exemption"
+
+    # A conforming workflow is clean: one gated test job, one declared ungated.
+    good = {
+        "jobs": {
+            "ci-gate": gate_reading,
+            "changes": {"steps": [{"run": "echo hi"}]},
+            "test-unit": {"steps": [{"run": "pytest tests/x.py"}]},
+            "heavy-eval": {"steps": [{"run": "pytest tests/heavy/ -n auto"}]},
+        }
+    }
+    assert scan_ci_gate_coverage(good, {"heavy-eval": long_reason}) == []
+
+
+def test_ungated_manifest_names_jobs_that_ci_yml_mentions():
+    """Keep the manifest and the ci-gate design comment from drifting apart."""
+    text = _CI_WORKFLOW.read_text(encoding="utf-8")
+    for job_id in _UNGATED_TEST_JOBS:
+        assert job_id in text, f"{job_id} is not mentioned in ci.yml at all"
