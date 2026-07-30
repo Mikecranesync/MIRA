@@ -24,6 +24,7 @@ from .redaction import (
     NETWORK_SCHEMES,
     redact_uri,
     redact_uris,
+    scrub_text_uris,
     uri_leaks_credentials,
 )
 from .registry import (
@@ -81,5 +82,6 @@ __all__ = [
     "NETWORK_SCHEMES",
     "redact_uri",
     "redact_uris",
+    "scrub_text_uris",
     "uri_leaks_credentials",
 ]

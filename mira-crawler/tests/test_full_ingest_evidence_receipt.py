@@ -366,3 +366,33 @@ class TestRepairJournal:
         ]
         assert len(lines) == 2
         assert all(json.loads(line)["status"] == "evidence_pending" for line in lines)
+
+
+class TestQuotedUrlInExceptionMessage:
+    """The exception message is persisted twice — into the journal's `reason` and
+    into the stdout report the cron captures. A URL is routinely *quoted* there."""
+
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "cannot open '{url}'",
+            'failed: "{url}"',
+            "url={url}, retrying",
+            "see ({url}).",
+        ],
+    )
+    def test_a_quoted_url_does_not_reach_the_journal(self, tmp_path, template):
+        url = "https://oem.example.test/dl/gs10.pdf?token=SECRETVALUE"
+        report = _report()
+        report.pdf_url = url
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError(template.format(url=url)),
+        ):
+            _run(tmp_path, report=report)
+
+        raw = evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8")
+        assert "SECRETVALUE" not in raw
+        assert "token=" not in raw
+        assert "https://oem.example.test/dl/gs10.pdf" in raw
+        assert "SECRETVALUE" not in report.evidence_status

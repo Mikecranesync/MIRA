@@ -418,6 +418,34 @@ class TestUriRedaction:
                 ]
             )
 
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "cannot open 'https://h.example.test/m.pdf?token=SECRET'",
+            'failed: "https://h.example.test/m.pdf?token=SECRET"',
+            "url=https://h.example.test/m.pdf?token=SECRET, retrying",
+            "see (https://h.example.test/m.pdf?token=SECRET).",
+            "fetching https://h.example.test/m.pdf?token=SECRET",
+            "<https://h.example.test/m.pdf?token=SECRET>",
+        ],
+    )
+    def test_a_url_quoted_inside_free_text_is_scrubbed(self, message):
+        """Prose that gets persisted (an exception message copied into the repair
+        journal) needs a regex, not a split on spaces: a quoted or comma-trailed URL
+        does not parse as a URI, so a per-token pass returns it untouched — a leak."""
+        from materialized_evidence import scrub_text_uris
+
+        out = scrub_text_uris(message)
+        assert "SECRET" not in out
+        assert "token=" not in out
+        assert "https://h.example.test/m.pdf" in out  # the origin+path survives
+
+    def test_scrubbing_free_text_leaves_non_url_prose_alone(self):
+        from materialized_evidence import scrub_text_uris
+
+        for benign in ("", "read-only filesystem", "sha256:deadbeef#page=2", "a:b://c"):
+            assert scrub_text_uris(benign) == benign
+
     def test_opaque_contract_locators_pass_through_byte_identical(self):
         """The contract's own locators use ``#`` structurally and feed content_hash —
         redaction must not touch them."""

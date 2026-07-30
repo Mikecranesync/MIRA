@@ -538,12 +538,17 @@ def _scrub_uris(text: str) -> str:
     An exception raised while writing a receipt can quote the fetch URL, and both
     the pipeline's stdout report and the repair journal are durable surfaces the
     cron persists. The URL's credentials must not ride along into either.
+
+    Delegates to `materialized_evidence.scrub_text_uris` — a regex over the prose,
+    not a split on spaces: a URL in a message is routinely quoted or comma-trailed
+    (`cannot open 'https://…?token=…'`), and those tokens do not parse as a URI, so
+    a per-token pass returns them untouched.
     """
     try:
-        from materialized_evidence import redact_uri
+        from materialized_evidence import scrub_text_uris
     except ImportError:
         return text
-    return " ".join(redact_uri(tok) for tok in text.split(" "))
+    return scrub_text_uris(text)
 
 
 def _record_evidence_repair_item(

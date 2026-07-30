@@ -37,6 +37,7 @@ Stdlib only. No I/O.
 
 from __future__ import annotations
 
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 # Schemes whose URIs are *fetched over a network* and can therefore carry
@@ -147,3 +148,40 @@ def redact_uris(values: list[str] | tuple[str, ...]) -> list[str]:
         if r not in out:
             out.append(r)
     return out
+
+
+# A network URI embedded in free text. Stops at whitespace and at the delimiters
+# that normally *wrap* a URL in a message — quotes, brackets, angle brackets — so a
+# quoted or parenthesized URL is still found. Trailing sentence punctuation is
+# trimmed separately (it belongs to the prose, not the path).
+_URI_IN_TEXT = re.compile(
+    r"(?:" + "|".join(sorted(NETWORK_SCHEMES, key=len, reverse=True)) + r")://[^\s'\"<>`]+",
+    re.IGNORECASE,
+)
+_TRAILING_PROSE = ".,;:!?)]}"
+
+
+def scrub_text_uris(text: str) -> str:
+    """Redact every network URI found inside a free-text string.
+
+    For prose that is itself persisted — an exception message copied into the repair
+    journal, a status line the cron stamps onto its queue. Splitting on spaces is
+    **not** sufficient: a URL is routinely wrapped in quotes (``cannot open
+    'https://…?token=…'``) or trailed by a comma, and those tokens do not parse as a
+    URI, so a naive per-token pass returns them untouched — i.e. leaks.
+
+    >>> scrub_text_uris("cannot open 'https://h/m.pdf?token=abc'")
+    "cannot open 'https://h/m.pdf'"
+    """
+    if not text:
+        return text
+
+    def _sub(match: re.Match[str]) -> str:
+        raw = match.group(0)
+        trailing = ""
+        while raw and raw[-1] in _TRAILING_PROSE:
+            trailing = raw[-1] + trailing
+            raw = raw[:-1]
+        return redact_uri(raw) + trailing
+
+    return _URI_IN_TEXT.sub(_sub, text)
