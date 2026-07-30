@@ -149,9 +149,7 @@ def test_decision_traces_rls_cross_tenant(conn):
                     "SELECT COUNT(*) FROM decision_traces WHERE trace_id = %s",
                     (trace_id,),
                 )
-                assert cur.fetchone()[0] == 1, (
-                    "tenant A must see its own decision_traces row"
-                )
+                assert cur.fetchone()[0] == 1, "tenant A must see its own decision_traces row"
 
     finally:
         if inserted:
@@ -191,22 +189,14 @@ def test_tag_events_rls_cross_tenant(conn):
         with conn:
             with conn.cursor() as cur:
                 _bind_tenant(cur, tenant_b, as_app_role=True)
-                cur.execute(
-                    "SELECT COUNT(*) FROM tag_events WHERE event_id = %s", (event_id,)
-                )
-                assert cur.fetchone()[0] == 0, (
-                    "RLS leak on tag_events: tenant B saw tenant A's row"
-                )
+                cur.execute("SELECT COUNT(*) FROM tag_events WHERE event_id = %s", (event_id,))
+                assert cur.fetchone()[0] == 0, "RLS leak on tag_events: tenant B saw tenant A's row"
 
         with conn:
             with conn.cursor() as cur:
                 _bind_tenant(cur, tenant_a, as_app_role=True)
-                cur.execute(
-                    "SELECT COUNT(*) FROM tag_events WHERE event_id = %s", (event_id,)
-                )
-                assert cur.fetchone()[0] == 1, (
-                    "tenant A must see its own tag_events row"
-                )
+                cur.execute("SELECT COUNT(*) FROM tag_events WHERE event_id = %s", (event_id,))
+                assert cur.fetchone()[0] == 1, "tenant A must see its own tag_events row"
 
     finally:
         if inserted:
@@ -255,9 +245,7 @@ def test_flaky_input_signals_rls_cross_tenant(conn):
                     "SELECT COUNT(*) FROM flaky_input_signals WHERE alert_id = %s",
                     (alert_id,),
                 )
-                assert cur.fetchone()[0] == 1, (
-                    "tenant A must see its own flaky_input_signals row"
-                )
+                assert cur.fetchone()[0] == 1, "tenant A must see its own flaky_input_signals row"
 
     finally:
         if inserted:
@@ -309,9 +297,7 @@ def test_approved_tags_rls_cross_tenant(conn):
                     " WHERE tenant_id = %s::uuid AND source_tag_path = %s",
                     (tenant_a, tag_path),
                 )
-                assert cur.fetchone()[0] == 1, (
-                    "tenant A must see its own approved_tags row"
-                )
+                assert cur.fetchone()[0] == 1, "tenant A must see its own approved_tags row"
 
     finally:
         if inserted:
@@ -375,9 +361,7 @@ def test_live_signal_cache_rls_cross_tenant(conn):
                     " WHERE tenant_id = %s::uuid AND plc_tag = %s",
                     (tenant_a, plc_tag),
                 )
-                assert cur.fetchone()[0] == 1, (
-                    "tenant A must see its own live_signal_cache row"
-                )
+                assert cur.fetchone()[0] == 1, "tenant A must see its own live_signal_cache row"
 
     finally:
         if inserted:
@@ -432,6 +416,197 @@ def test_tag_events_with_check_rejects_wrong_tenant(conn):
     # CheckViolation (23514) depending on PG version. Both prove enforcement.
     pgcode = exc_info.value.pgcode
     assert pgcode in ("42501", "23514"), (
-        f"Expected RLS or check violation (42501/23514), got SQLSTATE {pgcode}: "
-        f"{exc_info.value}"
+        f"Expected RLS or check violation (42501/23514), got SQLSTATE {pgcode}: {exc_info.value}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. SLUG-tenant regression for #3003 / migration 070
+#
+# The tests above bind UUID tenants and cast with `%s::uuid`. After migration
+# 070 changed decision_traces.tenant_id (and decision_trace_feedback.tenant_id)
+# from UUID to TEXT they still pass — TEXT accepts uuid-strings — so they prove
+# NOTHING about the bug that was actually reported.
+#
+# The real failure is a BOT SLUG tenant ('staging', 'default', a chat_tenant
+# slug): pre-070 the column was UUID and the writer cast to UUID, so the insert
+# died with InvalidTextRepresentation and, because write_trace is append-only
+# fire-and-forget, it failed SILENTLY — staging recorded zero traces.
+#
+# These tests exercise the REPAIRED path end to end under factorylm_app:
+# write as a slug tenant using the production writer's SQL shape (no tenant
+# cast), read it back, and prove a SECOND slug tenant cannot see it. The
+# negative control below proves this suite would have caught the original bug.
+# ---------------------------------------------------------------------------
+
+
+def _slug_tenant(prefix: str) -> str:
+    """A bot-shaped tenant slug: unique per run, and NOT a parseable UUID.
+
+    Unique so parallel runs on the shared staging branch cannot collide
+    (issue #2986); non-UUID so the test cannot silently degrade into another
+    UUID-tenant test if someone 'tidies' it later — that degradation is exactly
+    what left #3003 uncovered.
+    """
+    slug = f"{prefix}-{uuid.uuid4().hex[:8]}"
+    with pytest.raises(ValueError):
+        uuid.UUID(slug)  # guard: this MUST NOT be UUID-shaped
+    return slug
+
+
+def test_decision_traces_slug_tenant_write_read_and_isolation(conn):
+    """A bot slug tenant can write + read its own trace; another slug cannot see it."""
+    tenant_a = _slug_tenant("slugtest-a")
+    tenant_b = _slug_tenant("slugtest-b")
+    trace_id = str(uuid.uuid4())
+    inserted = False
+
+    try:
+        # WRITE as slug tenant A, using the production writer's shape:
+        # tenant_id bound as a plain parameter — no CAST(... AS UUID).
+        with conn:
+            with conn.cursor() as cur:
+                _bind_tenant(cur, tenant_a, as_app_role=True)
+                cur.execute(
+                    """INSERT INTO decision_traces
+                       (trace_id, tenant_id, user_question)
+                       VALUES (%s, %s, %s)""",
+                    (trace_id, tenant_a, "rls-test: slug tenant trace (#3003)"),
+                )
+                inserted = True
+
+        # READ BACK as slug tenant A — the half that silently failed before 070.
+        with conn:
+            with conn.cursor() as cur:
+                _bind_tenant(cur, tenant_a, as_app_role=True)
+                cur.execute(
+                    "SELECT tenant_id FROM decision_traces WHERE trace_id = %s",
+                    (trace_id,),
+                )
+                row = cur.fetchone()
+                assert row is not None, (
+                    "slug tenant could not read back its own decision_traces row "
+                    "— the #3003 write path is broken again"
+                )
+                assert row[0] == tenant_a
+
+        # ISOLATION: a DIFFERENT slug tenant sees nothing.
+        with conn:
+            with conn.cursor() as cur:
+                _bind_tenant(cur, tenant_b, as_app_role=True)
+                cur.execute(
+                    "SELECT COUNT(*) FROM decision_traces WHERE trace_id = %s",
+                    (trace_id,),
+                )
+                assert cur.fetchone()[0] == 0, (
+                    "RLS leak: slug tenant B saw slug tenant A's decision_traces row"
+                )
+    finally:
+        if inserted:
+            _owner_delete(conn, "decision_traces", "trace_id = %s", trace_id)
+
+
+def test_decision_traces_slug_tenant_with_check_rejects_foreign_write(conn):
+    """WITH CHECK still enforces on the TEXT policy — A cannot write as B."""
+    tenant_bound = _slug_tenant("slugtest-bound")
+    tenant_wrong = _slug_tenant("slugtest-wrong")
+    trace_id = str(uuid.uuid4())
+
+    with conn:
+        with conn.cursor() as cur:
+            _bind_tenant(cur, tenant_bound, as_app_role=True)
+            with pytest.raises(psycopg2.Error) as exc_info:
+                cur.execute(
+                    """INSERT INTO decision_traces
+                       (trace_id, tenant_id, user_question)
+                       VALUES (%s, %s, %s)""",
+                    (trace_id, tenant_wrong, "rls-test: foreign slug write"),
+                )
+        conn.rollback()
+
+    pgcode = exc_info.value.pgcode
+    assert pgcode in ("42501", "23514"), (
+        f"Expected RLS/check violation (42501/23514) on a foreign slug write, "
+        f"got SQLSTATE {pgcode}: {exc_info.value}"
+    )
+
+
+def test_old_writer_cast_still_fails_on_slug_tenant(conn):
+    """NEGATIVE CONTROL: the pre-#3003 writer shape must still reject a slug.
+
+    This is what makes the tests above meaningful. The old writer emitted
+    CAST(:tenant_id AS UUID); against a slug that is an InvalidTextRepresentation
+    (SQLSTATE 22P02) regardless of the column type. If this ever stops raising,
+    the suite is no longer reproducing the original defect.
+    """
+    tenant = _slug_tenant("slugtest-neg")
+    trace_id = str(uuid.uuid4())
+
+    with conn:
+        with conn.cursor() as cur:
+            _bind_tenant(cur, tenant, as_app_role=True)
+            with pytest.raises(psycopg2.Error) as exc_info:
+                cur.execute(
+                    """INSERT INTO decision_traces
+                       (trace_id, tenant_id, user_question)
+                       VALUES (%s, CAST(%s AS UUID), %s)""",
+                    (trace_id, tenant, "rls-test: old cast shape"),
+                )
+        conn.rollback()
+
+    assert exc_info.value.pgcode == "22P02", (
+        "the old CAST(... AS UUID) writer shape no longer fails on a slug tenant — "
+        f"got SQLSTATE {exc_info.value.pgcode}; this suite is no longer reproducing #3003"
+    )
+
+
+def test_decision_trace_feedback_slug_tenant_write_read_and_isolation(conn):
+    """The second table migration 070 converted enforces the same slug contract."""
+    tenant_a = _slug_tenant("slugfb-a")
+    tenant_b = _slug_tenant("slugfb-b")
+    trace_id = str(uuid.uuid4())
+    inserted = False
+
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                _bind_tenant(cur, tenant_a, as_app_role=True)
+                cur.execute(
+                    """INSERT INTO decision_traces
+                       (trace_id, tenant_id, user_question)
+                       VALUES (%s, %s, %s)""",
+                    (trace_id, tenant_a, "rls-test: slug feedback parent"),
+                )
+                inserted = True
+                cur.execute(
+                    """INSERT INTO decision_trace_feedback
+                       (trace_id, tenant_id, verdict)
+                       VALUES (%s, %s, %s)""",
+                    (trace_id, tenant_a, "good"),
+                )
+
+        with conn:
+            with conn.cursor() as cur:
+                _bind_tenant(cur, tenant_a, as_app_role=True)
+                cur.execute(
+                    "SELECT COUNT(*) FROM decision_trace_feedback WHERE trace_id = %s",
+                    (trace_id,),
+                )
+                assert cur.fetchone()[0] == 1, (
+                    "slug tenant could not read back its own decision_trace_feedback row"
+                )
+
+        with conn:
+            with conn.cursor() as cur:
+                _bind_tenant(cur, tenant_b, as_app_role=True)
+                cur.execute(
+                    "SELECT COUNT(*) FROM decision_trace_feedback WHERE trace_id = %s",
+                    (trace_id,),
+                )
+                assert cur.fetchone()[0] == 0, (
+                    "RLS leak: slug tenant B saw slug tenant A's feedback row"
+                )
+    finally:
+        if inserted:
+            # feedback cascades on the FK.
+            _owner_delete(conn, "decision_traces", "trace_id = %s", trace_id)
