@@ -174,8 +174,14 @@ Runner: `PYTHONUTF8=1 PYTHONPATH=<wt-me> <venv>/python.exe -m pytest`.
 ## Scope boundaries & follow-ups
 
 - **Default OFF** opt-in flag; flip to default-on later once proven.
-- Single-writer snapshot — fine because the print path runs serially (photo-batch
-  concurrency=1). Neon is the concurrent-safe follow-up.
+- ~~Single-writer snapshot — fine because the print path runs serially (photo-batch
+  concurrency=1). Neon is the concurrent-safe follow-up.~~ **Superseded 2026-07-30
+  (v3.235.0):** `FileRegistry` writes are now a locked read-modify-write
+  (`flock`/`msvcrt` on `<snapshot>.lock`, re-hydrating inside the lock), so the
+  snapshot is cross-process safe on its own. The `_XProcFileRegistry` wrapper this
+  spec's implementation added in `print_recall.py` is **deleted** — nesting it over
+  the class's own lock deadlocks (`flock` is per-open-file-description). Neon is
+  still the concurrent-safe *shared* backend follow-up.
 - Follow-ups (not this PR): two-tier question-neutral prompt; Telegram/engine path;
   Neon backend; recall-savings rollup (PR K economics).
 

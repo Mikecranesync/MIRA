@@ -31,35 +31,71 @@ writer's newest rows. That is a staleness bound, not a correctness bug (recall i
 optimization; a miss recomputes). Call ``refresh()`` for a read that must see other
 processes' latest writes.
 
-Platforms without ``fcntl`` (Windows) degrade to the previous single-writer
-behavior, surfaced on ``LOCKING_AVAILABLE`` rather than silently assumed. The
-concurrent-safe *shared* backend is still Neon (a later PR); this makes the file
+The lock is kernel-backed on every platform (``fcntl.flock`` on POSIX, an
+``msvcrt`` byte-range lock on Windows) and is released automatically if the holder
+crashes, so there is no stale lock file to reap. The platform branch is lifted from
+``mira-bots/shared/print_recall.py``, which built the same guard *around*
+``FileRegistry`` because the class did not provide it; that wrapper is now deleted
+in favor of this one — a single implementation instead of two, and no risk of the
+two nesting (``flock`` is per-open-file-description, so a process taking the same
+lock twice would block on itself forever).
+
+The concurrent-safe *shared* backend is still Neon (a later PR); this makes the file
 backend safe for the concurrent processes that actually exist today — the KB-growth
-cron's pipeline subprocesses, which inherit one ``MIRA_EVIDENCE_REGISTRY``.
+cron's pipeline subprocesses, which inherit one ``MIRA_EVIDENCE_REGISTRY``, and the
+Telegram/Slack containers sharing one print-recall snapshot.
 
 Nothing here logs payload bytes.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import sys
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import IO
 
 from ..registry import InMemoryRegistry, StatusOverlay
 from ..schema import EvidenceManifest
 from .serialization import manifest_from_dict, overlay_from_dict, overlay_to_dict
 
-try:  # POSIX only; Windows has no fcntl (see module docstring)
-    import fcntl
 
-    LOCKING_AVAILABLE = True
-except ImportError:  # pragma: no cover - platform-dependent
-    fcntl = None  # type: ignore[assignment]
-    LOCKING_AVAILABLE = False
+def _lock_fd(fd: int) -> None:
+    # sys.platform branching (not try/except) so a static type checker narrows to the
+    # right stdlib module per platform — fcntl on POSIX, msvcrt on Windows — and never
+    # flags the other's symbols.
+    if sys.platform == "win32":  # pragma: no cover - platform-dependent
+        import msvcrt
+        import time as _t
+
+        while True:  # LK_NBLCK + poll == a blocking acquire (LK_LOCK gives up after ~10s)
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                return
+            except OSError:
+                _t.sleep(0.02)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX)
+
+
+def _unlock_fd(fd: int) -> None:
+    if sys.platform == "win32":  # pragma: no cover - platform-dependent
+        import msvcrt
+
+        with contextlib.suppress(OSError):
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
 
 
 class FileRegistry(InMemoryRegistry):
@@ -83,12 +119,11 @@ class FileRegistry(InMemoryRegistry):
         """
         if not self._snapshot_path.exists():
             return
-        try:
-            data = json.loads(self._snapshot_path.read_text("utf-8"))
-        except json.JSONDecodeError:
-            # tmp+replace means a torn snapshot should be impossible; if one turns
-            # up anyway, treat it as empty rather than wedging every future write.
-            return
+        # A malformed snapshot RAISES rather than starting empty: callers quarantine
+        # it (`print_recall._open_registry_fresh`) so corruption is logged and moved
+        # aside. Swallowing it here would silently overwrite the bad file on the next
+        # persist and lose the evidence that anything went wrong.
+        data = json.loads(self._snapshot_path.read_text("utf-8"))
         for md in data.get("manifests", []):
             m = manifest_from_dict(md)
             self._manifests[m.dataset_version_id] = m
@@ -107,21 +142,19 @@ class FileRegistry(InMemoryRegistry):
         writes; without re-reading, a process still writes back its construction-time
         view and erases everything committed in between.
         """
-        self._snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-        if not LOCKING_AVAILABLE:  # pragma: no cover - platform-dependent
-            self._load()
-            yield
-            return
-        handle: IO[bytes] = open(self._lock_path, "ab+")
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(self._lock_path), os.O_RDWR | os.O_CREAT, 0o644)
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b"\0")  # msvcrt byte-range locking needs a byte present
+            _lock_fd(fd)
             try:
                 self._load()  # merge in everything committed since we last looked
                 yield
             finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                _unlock_fd(fd)
         finally:
-            handle.close()
+            os.close(fd)
 
     def _persist(self) -> None:
         data = {

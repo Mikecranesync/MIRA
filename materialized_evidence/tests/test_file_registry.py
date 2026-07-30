@@ -9,6 +9,7 @@ what the next process does.
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 import sys
 from pathlib import Path
 
@@ -184,3 +185,47 @@ def test_refresh_picks_up_another_processs_writes(tmp_path):
 
     reader.refresh()
     assert reader.get("ds@later", tenant_id="t1") is not None
+
+
+def _nested_lock_worker(repo_root: str, snapshot: str) -> None:
+    """Take an external lock on `<snapshot>.lock`, then call register (which takes it
+    again). Runs in a child so a deadlock is a join-timeout, not a hung test run."""
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    import fcntl
+
+    from materialized_evidence.backends import FileRegistry as FR
+
+    registry = FR(snapshot)
+    fd = os.open(snapshot + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    registry.register(_manifest("ds@nested"))
+
+
+def test_the_registry_owns_the_snapshot_lock_callers_must_not_take_it(tmp_path):
+    """`FileRegistry` locks `<snapshot>.lock` itself — a caller must not wrap it.
+
+    `mira-bots/shared/print_recall.py` used to, because the class didn't. Nesting the
+    two now blocks forever (`flock` is per-open-file-description, so a process taking
+    the same lock twice waits on itself), which is why that wrapper was deleted rather
+    than kept alongside. This test pins the hazard so it is not reintroduced.
+    """
+    snap = tmp_path / "reg.json"
+    FileRegistry(snap).register(_manifest("ds@1"))
+    assert (tmp_path / "reg.json.lock").exists(), "the registry must own this lock path"
+
+    ctx = mp.get_context("spawn")
+    p = ctx.Process(
+        target=_nested_lock_worker,
+        args=(str(Path(__file__).resolve().parents[2]), str(snap)),
+    )
+    p.start()
+    p.join(timeout=5)
+    deadlocked = p.is_alive()
+    if deadlocked:
+        p.terminate()
+        p.join(timeout=5)
+    assert deadlocked, (
+        "expected an externally-held snapshot lock to deadlock register(); if this "
+        "stops being true the lock is no longer doing its job"
+    )

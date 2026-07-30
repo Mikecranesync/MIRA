@@ -30,6 +30,27 @@ page-level extraction** are the next consumers, and neither is wired here. Also 
 attachments, Telegram, PrintSense, any chat answer path. And this slice makes **no** automatic
 recompute-or-skip decision — it never calls `resolve_recall`; it writes the durable identity a later
 recall decision can be built on.
+
+**Review round (2026-07-30, 4 blockers fixed — read this part if you touch the registry):**
+
+- **A download URL is a credential.** Presigned signatures, portal `?token=`, `user:pass@`. New
+  `materialized_evidence/redaction.py` strips userinfo/query/fragment from network-scheme URIs;
+  the compiler redacts at the producer boundary AND `validate_manifest` rejects an unredacted one on
+  every `register`, so the floor covers *any* producer. The KB reference is the document SHA, not
+  `source_url=…`. Watch for the **composite** shape — `urlsplit` reads
+  `knowledge_entries:https://…?token=…` as scheme `knowledge_entries` and calls it clean, so the
+  detector scans for embedded `scheme://` too.
+- **`FileRegistry` writes are now a locked read-modify-write** — and the **reload inside the lock is
+  the load-bearing half** (a lock alone still writes back a construction-time view; without it 1 of 6
+  concurrent manifests survives). ⚠️ **The registry owns `<snapshot>.lock` — never wrap it.**
+  `print_recall.py`'s `_XProcFileRegistry` did exactly that and is now **deleted**: nesting the two
+  deadlocks forever (`flock` is per-open-file-description). Two tests pin it.
+- **A receipt failure is journaled, not swallowed** — `<snapshot>.repair.jsonl`, an
+  `evidence_pending` item carrying the compiler's inputs verbatim so replay needs no re-download;
+  the cron stamps `evidence_status` on the queue entry. Ingest stays fail-open. The journal is
+  redacted on the same rule as the manifest.
+- **Page input is validated** — duplicate/non-positive page numbers collide record ids; a malformed
+  page hash would assert provenance the receipt cannot support.
 # Hot Cache — 2026-07-30 — Bravo VisualSession → context evidence seam (draft PR #3016, rebased on main + review fixes)
 
 **One technician brain, many evidence producers (ADR-0033):** the Bravo local VLM/OCR lane is a typed
