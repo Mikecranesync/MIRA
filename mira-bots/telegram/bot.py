@@ -878,6 +878,193 @@ async def _try_print_workspace_followup(
         return False
 
 
+# --- Equipment-photo memory follow-up rung -----------------------------------
+# A text turn that asks about the photo this chat already sent ("what was the
+# model number?", "who makes it?", "what did that photo show?") answers
+# deterministically from the persisted workspace ledger (nameplate fields +
+# equipment identity + vision summary) — ZERO LLM, citation-labeled via the
+# EvidenceAnswer contract, honest refusal when the plate didn't show the
+# field. Falls through unchanged for everything else (safety, FSM turns,
+# general troubleshooting). Mirrors `_try_print_workspace_followup` above.
+
+# Question keyword → nameplate field (shared.visual.equipment
+# NAMEPLATE_IDENTITY_FIELDS vocabulary). Phrases, not single common words, so
+# ordinary troubleshooting turns are never claimed by accident.
+_EQUIPMENT_FIELD_SYNONYMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("model", ("model number", "model no", "what model", "which model", "the model")),
+    ("manufacturer", ("manufacturer", "who makes", "who made", "what make", "what brand")),
+    ("serial", ("serial number", "serial no", "the serial")),
+    ("voltage", ("voltage", "how many volts", "rated volts", "volt rating")),
+    ("fla", ("full load amps", "how many amps", "rated amps", "the fla", "amp rating", "amperage")),
+    ("hp", ("horsepower", "how many hp", "the hp", "hp rating")),
+    ("frequency", ("what frequency", "rated frequency", "how many hertz", "the hz")),
+    ("rpm", ("rpm", "rated speed", "how fast does it spin")),
+)
+
+_EQUIPMENT_FIELD_LABELS = {
+    "model": "Model",
+    "manufacturer": "Manufacturer",
+    "serial": "Serial number",
+    "voltage": "Voltage",
+    "fla": "Full-load amps",
+    "hp": "Horsepower",
+    "frequency": "Frequency",
+    "rpm": "RPM",
+}
+
+# "what did that photo / the nameplate show" — generic recall of the photo.
+_PHOTO_RECALL_RE = re.compile(
+    r"\b(that|the|this|last|previous|my)\s+(photo|picture|pic|image|nameplate)\b"
+    r"|\bphoto\s+i\s+sent\b|\bwhat\s+(did|do)\s+you\s+see\b",
+    re.IGNORECASE,
+)
+
+_QUESTION_SHAPE_RE = re.compile(
+    r"\?|\b(what|which|who|how|tell me|show me|read|remind me|remember)\b", re.IGNORECASE
+)
+
+
+def _match_equipment_field(text: str) -> str | None:
+    """First nameplate field whose synonym phrase appears in the text."""
+    lowered = f" {text.lower()} "
+    for field_name, phrases in _EQUIPMENT_FIELD_SYNONYMS:
+        for phrase in phrases:
+            if phrase in lowered:
+                return field_name
+    return None
+
+
+async def _try_equipment_photo_followup(
+    text: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Equipment-photo memory TEXT rung — deterministic recall over the
+    persisted workspace ledger. Claims the turn ONLY when this chat has a
+    live workspace holding equipment evidence AND the text asks for a
+    nameplate field or refers to the photo itself. Zero LLM; every answer
+    carries EvidenceAnswer trust labels or is an honest refusal. Read-only
+    on evidence (records the Q&A turn only); fail-open.
+
+    Scope note: this rung handles TEXT turns only. A question captioned ON
+    the photo itself ("what model is this?" + photo) is answered by the
+    nameplate fast-path / engine from the live photo in the same turn — no
+    memory needed there, by design."""
+    try:
+        if not text:
+            return False
+        # Safety turns belong to the STOP gate, never to this rung.
+        if guardrails.classify_intent(text) == "safety":
+            return False
+        if not _QUESTION_SHAPE_RE.search(text):
+            return False
+        field_name = _match_equipment_field(text)
+        generic = bool(_PHOTO_RECALL_RE.search(text))
+        if not (field_name or generic):
+            return False
+
+        chat_id = str(update.effective_chat.id)
+        ws = print_workspace.get_workspace(chat_id, max_age_s=print_workspace.PRINT_WORKSPACE_TTL_S)
+        if ws is None:
+            return False
+        # Tenant re-validation (adversarial-review finding, defense-in-depth):
+        # the stored workspace must belong to the tenant THIS turn resolves
+        # to — a chat whose tenant mapping changed must not read the old
+        # tenant's evidence. Mismatch → fall through, never answer.
+        if _print_workspace_tenant(update) != ws.tenant_id:
+            return False
+        store = print_workspace._get_service().store
+        observations = await store.load_observations(ws.session_id, ws.tenant_id, active_only=True)
+        session = await store.get_session(ws.session_id, ws.tenant_id)
+
+        fields = print_workspace.latest_equipment_fields(observations)
+        identity = print_workspace.latest_equipment_identity(observations)
+        equipment_obs = [
+            o
+            for o in observations
+            if o.extractor in ("nameplate_worker", "equipment_resolver")
+            and (o.metadata or {}).get("field") != "raw_text"
+        ]
+        vision_summaries = [
+            o.raw_value for o in observations if o.extractor == "vision_worker" and o.raw_value
+        ]
+        if not equipment_obs and not (generic and vision_summaries):
+            return False  # nothing equipment-shaped stored — not our turn
+
+        if field_name:
+            value = fields.get(field_name)
+            label = _EQUIPMENT_FIELD_LABELS.get(field_name, field_name)
+            if value:
+                field_obs = [
+                    o for o in equipment_obs if (o.metadata or {}).get("field") == field_name
+                ]
+                ea = evidence_answer.build_evidence_answer(
+                    session,
+                    field_obs,
+                    text,
+                    None,
+                    "deterministic",
+                    f"{label}: {value} — read from the nameplate photo you sent.",
+                )
+            else:
+                ea = evidence_answer.build_evidence_answer(
+                    session,
+                    [],
+                    text,
+                    None,
+                    "none",
+                    f"The nameplate photo I have doesn't show a legible "
+                    f"{label.lower()} — send a closer, glare-free shot of the nameplate.",
+                )
+        else:
+            lines: list[str] = []
+            if identity:
+                lines.append(identity)
+            if fields:
+                lines.append(
+                    "Nameplate fields I read: "
+                    + "; ".join(
+                        f"{_EQUIPMENT_FIELD_LABELS.get(k, k)}: {v}" for k, v in fields.items()
+                    )
+                )
+            if not lines and vision_summaries:
+                lines.append(f"What I saw: {vision_summaries[-1][:300]}")
+            if not lines:
+                lines.append(
+                    "I have that photo on file but couldn't read identifying details "
+                    "from it — send a closer shot of the nameplate."
+                )
+            ea = evidence_answer.build_evidence_answer(
+                session,
+                equipment_obs,
+                text,
+                None,
+                "deterministic" if (identity or fields or vision_summaries) else "none",
+                "\n".join(lines),
+            )
+
+        rendered = evidence_answer.format_evidence_answer(
+            ea, "trace" if guardrails.detect_depth_request(text) else "plain"
+        )
+        await _reply_chunked(update, rendered)
+
+        # Post-delivery bookkeeping — fail-open; the reply already landed.
+        try:
+            await print_workspace.record_photo_turn_answer(
+                ws.session_id,
+                ws.tenant_id,
+                text,
+                rendered,
+                claims=evidence_answer.as_answer_claims(ea),
+            )
+        except Exception as e:  # noqa: BLE001 — bookkeeping never eats a delivered turn
+            logger.warning("EQUIPMENT_FOLLOWUP_POST_ERROR %s", type(e).__name__)
+        return True
+    except Exception as e:  # noqa: BLE001 — this rung must never raise into a turn
+        logger.warning("EQUIPMENT_FOLLOWUP_ERROR %s", type(e).__name__)
+        return False
+
+
 # --- Wiring loop (PR-4): photo -> proposed rows; text -> verified-only cited
 # Q&A (`shared/wiring_intake.py`). Additive, fall-through fast paths — mirror
 # the drive-pack precedent above. See `shared/wiring_intake.py` module
@@ -979,6 +1166,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ledger (evidence-labeled, read-only). Falls through unchanged for
     # anything that doesn't target the workspace.
     if await _try_print_workspace_followup(text, update, context):
+        return
+
+    # Equipment-photo memory: "what was the model number?" / "what did that
+    # photo show?" answers deterministically from the persisted workspace
+    # ledger (nameplate fields, identity, vision summary). Falls through
+    # unchanged for anything that doesn't target the remembered photo.
+    if await _try_equipment_photo_followup(text, update, context):
         return
 
     # Commercial PrintSense consent/question turns (PR-B) — claims the turn
@@ -1089,6 +1283,7 @@ async def _try_nameplate_drive_pack_reply(
     caption: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
+    memo: dict | None = None,
 ) -> bool:
     """Nameplate-photo -> drive-pack fast path (additive, read-only, no LLM
     fallback). Reuses ``engine.nameplate`` (the same ``NameplateWorker`` the
@@ -1112,6 +1307,12 @@ async def _try_nameplate_drive_pack_reply(
 
     if not isinstance(fields, dict) or "parse_error" in fields:
         return False
+
+    # Photo-memory: the extracted fields are evidence the dispatcher persists
+    # into the chat's photo workspace (whether or not this path claims the
+    # turn) — never re-extracted downstream (recall-first).
+    if memo is not None:
+        memo["nameplate_fields"] = fields
 
     resolution = resolve_service_pack(nameplate=fields)
 
@@ -1143,7 +1344,10 @@ async def _try_nameplate_drive_pack_reply(
         if has_question:
             async with typing_action(context, update.effective_chat.id):
                 result = await asyncio.to_thread(answer_question, resolution.pack_id, caption)
-            await update.message.reply_text(_format_drive_pack_reply(result))
+            pack_reply = _format_drive_pack_reply(result)
+            await update.message.reply_text(pack_reply)
+            if memo is not None:
+                memo["answer"] = pack_reply
             await _capture_drive_pack_turn(
                 question=caption,
                 result=result,
@@ -1160,10 +1364,13 @@ async def _try_nameplate_drive_pack_reply(
         # `conversation_state` (`_load_state`/`_save_state`, no public
         # accessor) and no clean migration-free per-chat KV exists outside
         # it. Deferred — see the PR description / runbook note.
-        await update.message.reply_text(
+        ident_reply = (
             f"\U0001f4c7 Identified: {pack.family.manufacturer} {pack.family.series} "
             f'— ask me about it, e.g. "what does CE10 mean?"'
         )
+        await update.message.reply_text(ident_reply)
+        if memo is not None:
+            memo["answer"] = ident_reply
         return True
 
     if has_question and "recognized manufacturer" in resolution.reason:
@@ -1172,6 +1379,8 @@ async def _try_nameplate_drive_pack_reply(
         # give the honest, actionable refusal instead of guessing or silently
         # falling through to a generic engine answer.
         await update.message.reply_text(resolution.reason)
+        if memo is not None:
+            memo["answer"] = resolution.reason
         return True
 
     # Nothing recognized at all (not a drive nameplate, or extraction was too
@@ -1456,6 +1665,47 @@ async def _persist_print_workspace_turn(
         logger.warning("PRINT_WORKSPACE_PERSIST_ERROR %s", type(exc).__name__)
 
 
+async def _persist_equipment_workspace_turn(
+    update: Update,
+    *,
+    raw_bytes: bytes,
+    caption: str,
+    answer: str,
+    vision_data: dict | None,
+    nameplate_fields: dict | None,
+) -> None:
+    """Persist a delivered NON-print photo turn (nameplate / equipment /
+    unknown) into the same per-chat visual workspace the print path uses.
+
+    Pure recall: ``vision_data`` and ``nameplate_fields`` are the results the
+    rungs already computed this turn (memo capture) — the spine replays them
+    through model-free adapters, so persistence never triggers a second
+    vision/nameplate call. Best-effort and fail-open: the reply was already
+    sent; a persistence failure is logged and swallowed."""
+    try:
+        if not raw_bytes or not (vision_data or nameplate_fields):
+            return
+        outcome = await print_workspace.persist_print_turn(
+            chat_id=str(update.effective_chat.id),
+            tenant_id=_print_workspace_tenant(update),
+            raw_bytes=raw_bytes,
+            vision_data=vision_data,
+            caption=caption,
+            answer=answer,
+            nameplate_fields=nameplate_fields,
+        )
+        if outcome:
+            logger.info(
+                "EQUIPMENT_WORKSPACE_PERSISTED chat=%s session=%s status=%s fields=%d",
+                str(update.effective_chat.id),
+                outcome.session_id,
+                outcome.status,
+                len(nameplate_fields or {}),
+            )
+    except Exception as exc:  # noqa: BLE001 — persistence never touches the turn
+        logger.warning("EQUIPMENT_WORKSPACE_PERSIST_ERROR %s", type(exc).__name__)
+
+
 def _print_workspace_tenant(update: Update) -> str:
     """Tenant for print-workspace persistence — chat_tenant mapping when
     available, else the literal ``"default"``. Never raises."""
@@ -1471,6 +1721,7 @@ async def _try_print_translator_reply(
     caption: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
+    memo: dict | None = None,
 ) -> bool:
     """Print Translator: an electrical-print photo + any print QUESTION (explain
     / theory of operation, OR a device / wiring / tracing question like "what
@@ -1521,6 +1772,12 @@ async def _try_print_translator_reply(
     except Exception as e:
         logger.warning("print translator vision classify failed: %s", e)
         return False  # a vision hiccup shouldn't eat the turn — fall through
+
+    # Photo-memory: keep the classification result for the dispatcher — on
+    # fall-through it becomes the equipment-photo workspace evidence instead
+    # of being discarded (recall-first; no second vision call downstream).
+    if memo is not None and vision_data:
+        memo["vision_data"] = vision_data
 
     if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
         return False  # not a print → fall through unchanged (visual evidence wins)
@@ -1689,7 +1946,23 @@ async def _dispatch_single_photo(
     ):
         return
 
-    if await _try_nameplate_drive_pack_reply(vision_bytes, caption, update, context):
+    # Photo-memory memo: rungs stash the evidence they already computed
+    # (nameplate fields, vision classification) so the workspace persistence
+    # below is pure recall — never a second vision/nameplate call.
+    memo: dict = {}
+
+    if await _try_nameplate_drive_pack_reply(vision_bytes, caption, update, context, memo=memo):
+        # The nameplate identified a drive (or refused honestly) — persist the
+        # extracted identity fields so text follow-ups ("what was the serial
+        # number?") answer from the photo's own evidence.
+        await _persist_equipment_workspace_turn(
+            update,
+            raw_bytes=raw_bytes,
+            caption=caption,
+            answer=memo.get("answer", ""),
+            vision_data={"classification": "NAMEPLATE"},
+            nameplate_fields=memo.get("nameplate_fields"),
+        )
         return
 
     # Wiring intake: propose rows into `wiring_connections` from an
@@ -1704,7 +1977,9 @@ async def _dispatch_single_photo(
     # unchanged for anything else. Passes the full-res raw_bytes so the
     # Anthropic interpreter reads the print at Claude's high-res budget, not
     # the 1024px-crushed vision_bytes. See `_try_print_translator_reply`.
-    if await _try_print_translator_reply(raw_bytes, vision_bytes, caption, update, context):
+    if await _try_print_translator_reply(
+        raw_bytes, vision_bytes, caption, update, context, memo=memo
+    ):
         return
 
     # Commercial PrintSense concierge (PR-B): explicit-intent only —
@@ -1744,6 +2019,19 @@ async def _dispatch_single_photo(
         final_reply += "\n\nPhoto submitted to the Hub for review."
 
     await update.message.reply_text(final_reply)
+
+    # Photo-memory: the engine handled a NON-print photo (equipment /
+    # nameplate / unknown). Persist the memo-captured evidence into the chat
+    # workspace so text follow-ups recall it instead of re-inferring.
+    # ELECTRICAL_PRINT never reaches here (the print rung claims it above).
+    await _persist_equipment_workspace_turn(
+        update,
+        raw_bytes=raw_bytes,
+        caption=caption,
+        answer=final_reply,
+        vision_data=memo.get("vision_data"),
+        nameplate_fields=memo.get("nameplate_fields"),
+    )
     await _maybe_send_voice(update, context, chat_id, final_reply)
 
 

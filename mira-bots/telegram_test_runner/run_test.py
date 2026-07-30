@@ -41,8 +41,18 @@ async def collect_reply(
 ) -> str | None:
     """Send photo and poll for bot reply using silence-detection."""
     sent = await client.send_file(bot_entity, image_path, caption=caption)
+    return await _collect_after(client, bot_entity, sent.id, timeout)
+
+
+async def collect_text_reply(client, bot_entity, text: str, timeout: int) -> str | None:
+    """Send a TEXT follow-up and poll for the bot reply (photo-memory cases)."""
+    sent = await client.send_message(bot_entity, text)
+    return await _collect_after(client, bot_entity, sent.id, timeout)
+
+
+async def _collect_after(client, bot_entity, last_id: int, timeout: int) -> str | None:
+    """Silence-detection reply collection shared by photo and text sends."""
     collected = []
-    last_id = sent.id
     silence_ticks = 0
     elapsed = 0
 
@@ -86,8 +96,14 @@ async def run_cases(cases: list[dict], dry_run: bool, timeout: int) -> list[dict
         print("[DRY RUN] Skipping Telethon — scoring all cases as TRANSPORT_FAILURE\n")
         for case in cases:
             print(f"  [DRY RUN] Would send: {case['image']} caption='{case.get('caption', '')}'")
+            for fu in case.get("followups") or []:
+                print(f"  [DRY RUN]   then text follow-up: '{fu['text']}'")
             result = judge_score(case, None)
             result["reply_text"] = ""
+            result["followups"] = [
+                {"text": fu["text"], "reply": "", "passed": False, "missing": ["TRANSPORT_FAILURE"]}
+                for fu in case.get("followups") or []
+            ]
             results.append(result)
         print()
         print_summary_table(results)
@@ -132,6 +148,36 @@ async def run_cases(cases: list[dict], dry_run: bool, timeout: int) -> list[dict
 
             result = judge_score(case, reply_text)
             result["reply_text"] = reply_text or ""
+
+            # Photo-memory follow-ups: text turns about the photo just sent.
+            # Each is judged by simple must_contain (case-insensitive); any
+            # transport/containment miss fails the whole case.
+            fu_results = []
+            for fu in case.get("followups") or []:
+                print(f"  follow-up: '{fu['text']}'")
+                try:
+                    fu_reply = await collect_text_reply(client, bot_entity, fu["text"], timeout)
+                except Exception as exc:
+                    print(f"    ERROR collecting follow-up reply: {exc}")
+                    fu_reply = None
+                lowered = (fu_reply or "").lower()
+                missing = [s for s in (fu.get("must_contain") or []) if s.lower() not in lowered]
+                fu_passed = fu_reply is not None and not missing
+                fu_results.append(
+                    {
+                        "text": fu["text"],
+                        "reply": fu_reply or "",
+                        "passed": fu_passed,
+                        "missing": missing if fu_reply is not None else ["TRANSPORT_FAILURE"],
+                    }
+                )
+                print(f"    {'PASS ✅' if fu_passed else f'FAIL ❌ missing={missing}'}")
+            if fu_results:
+                result["followups"] = fu_results
+                if not all(f["passed"] for f in fu_results):
+                    result["passed"] = False
+                    result["failure_bucket"] = result.get("failure_bucket") or "FOLLOWUP_FAILURE"
+
             results.append(result)
             status = "PASS ✅" if result["passed"] else f"FAIL ❌ [{result['failure_bucket']}]"
             print(f"  {status}  confidence={result['confidence']:.2f}\n")

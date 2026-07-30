@@ -212,6 +212,23 @@ class NullPrintWorker:
         return None
 
 
+class PrecomputedNameplate:
+    """Nameplate adapter that replays the bot's already-extracted fields, so
+    the spine's equipment route (``_record_equipment_observations``) never
+    triggers a second vision call. With no precomputed fields it returns the
+    parse_error shape — the spine's "unreadable" path, which deliberately
+    writes NO ``equipment_resolver`` observation and therefore never erases a
+    previously established identity (see ``ask_equipment`` docstring)."""
+
+    def __init__(self, fields: dict[str, Any] | None):
+        self._fields = dict(fields or {})
+
+    async def extract(self, photo_b64: str) -> dict[str, Any]:
+        if self._fields:
+            return dict(self._fields)
+        return {"parse_error": "no precomputed nameplate fields", "raw_text": None}
+
+
 async def _no_schematic(image_bytes: bytes) -> None:
     """Schematic adapter that skips symbol/connection extraction."""
     return None
@@ -262,6 +279,7 @@ async def ingest_print_photo(
     *,
     tenant_id: str = "default",
     page_ref: str | None = None,
+    nameplate_fields: dict[str, Any] | None = None,
 ) -> IngestOutcome | None:
     """Persist one print photo into the chat's workspace ledger.
 
@@ -304,6 +322,7 @@ async def ingest_print_photo(
             vision=PrecomputedVision(ingest_payload),
             print_worker=NullPrintWorker(),
             schematic=_no_schematic,
+            nameplate_worker=PrecomputedNameplate(nameplate_fields),
         )
         evidence_id = result.evidence_id
         page = page_ref if page_ref is not None else vision_data.get("page")
@@ -530,6 +549,57 @@ def graph_sink_for(chat_id: str) -> Callable[[Any], None]:
     return _sink
 
 
+# ── equipment-photo ledger readers (photo-memory follow-ups) ────────────────
+
+
+def latest_equipment_fields(observations: list[Observation]) -> dict[str, str]:
+    """Field → value map from the ledger's nameplate observations.
+
+    The spine writes one VISIBLE observation per read field
+    (``extractor="nameplate_worker"``, ``metadata={"field": name}``) on every
+    nameplate/equipment ingest. Later readings of the same field win (a
+    re-shot nameplate refreshes the value). ``raw_text`` is excluded — it is
+    raw OCR, not an interpreted field."""
+    fields: dict[str, str] = {}
+    try:
+        for obs in observations or []:
+            if getattr(obs, "extractor", None) != "nameplate_worker":
+                continue
+            meta = getattr(obs, "metadata", None) or {}
+            name = meta.get("field")
+            raw = getattr(obs, "raw_value", None)
+            if not name or name == "raw_text" or raw in (None, ""):
+                continue
+            fields[str(name)] = str(raw)
+    except Exception as exc:  # noqa: BLE001 — reader is best-effort
+        logger.warning("print_workspace: latest_equipment_fields failed (fail-open): %s", exc)
+    return fields
+
+
+def latest_equipment_identity(observations: list[Observation]) -> str | None:
+    """The most recent RESOLVED equipment identity line, or ``None``.
+
+    Follows ``ask_equipment``'s "latest equipment_resolver observation wins
+    outright" rule: the newest resolver row is inspected, and only a
+    DOCUMENTED (resolved) outcome yields a display line — so a legible photo
+    of a different/unsupported machine honestly blanks the identity instead
+    of echoing a stale one."""
+    try:
+        rows = [
+            o for o in (observations or []) if getattr(o, "extractor", None) == "equipment_resolver"
+        ]
+        if not rows:
+            return None
+        last = rows[-1]
+        state = getattr(last, "evidence_state", None)
+        if getattr(state, "value", state) != EvidenceState.DOCUMENTED.value:
+            return None
+        return last.normalized_value or last.raw_value
+    except Exception as exc:  # noqa: BLE001 — reader is best-effort
+        logger.warning("print_workspace: latest_equipment_identity failed (fail-open): %s", exc)
+        return None
+
+
 # ── ledger → vision_data reconstruction ─────────────────────────────────────
 
 
@@ -570,6 +640,7 @@ async def persist_print_turn(
     answer: str,
     *,
     page_ref: str | None = None,
+    nameplate_fields: dict[str, Any] | None = None,
 ) -> IngestOutcome | None:
     """Ingest the photo AND record the Q&A turn — the single call bot.py
     makes after a print reply is delivered. Returns the ingest outcome so
@@ -583,6 +654,7 @@ async def persist_print_turn(
             caption,
             tenant_id=tenant_id,
             page_ref=page_ref,
+            nameplate_fields=nameplate_fields,
         )
         if outcome is None:
             return None
