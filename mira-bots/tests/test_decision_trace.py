@@ -162,9 +162,7 @@ async def test_engine_process_schedules_trace(tmp_db):
         recorded.update(kwargs)
 
     with (
-        patch.object(
-            sup, "process_full", new=AsyncMock(return_value={"reply": "Check the VFD."})
-        ),
+        patch.object(sup, "process_full", new=AsyncMock(return_value={"reply": "Check the VFD."})),
         patch("shared.decision_trace.write_trace", new=fake_write_trace),
     ):
         reply = await sup.process(chat_id="c1", message="why stopped?", tenant_id="per_call_t")
@@ -222,7 +220,9 @@ def test_gate_suppressed_for_direct_connection(tmp_db):
         "asset_identified": "",
         "context": {"uns_context": {"source": "direct_connection"}},
     }
-    assert sup._should_fire_uns_gate("diagnose_equipment", direct_state, "conveyor down", {}) is False
+    assert (
+        sup._should_fire_uns_gate("diagnose_equipment", direct_state, "conveyor down", {}) is False
+    )
 
 
 @pytest.mark.asyncio
@@ -241,12 +241,44 @@ async def test_engine_reply_survives_trace_failure(tmp_db):
         raise RuntimeError("scheduling blew up")
 
     with (
-        patch.object(
-            sup, "process_full", new=AsyncMock(return_value={"reply": "ok"})
-        ),
+        patch.object(sup, "process_full", new=AsyncMock(return_value={"reply": "ok"})),
         patch("shared.decision_trace.write_trace", new=explode),
     ):
         # Even though trace scheduling raises, the reply must come through.
         reply = await sup.process(chat_id="c1", message="hi")
 
     assert reply == "ok"
+
+
+# ---------------------------------------------------------------------------
+# #3003 regression: the INSERT must not cast tenant_id to UUID.
+#
+# decision_traces.tenant_id is TEXT (migration 070) because the writers are the
+# BOT surfaces, whose tenant space is slugs ('staging', 'default', chat_tenant
+# slugs). A CAST(:tenant_id AS UUID) threw InvalidTextRepresentation and — since
+# the write is fire-and-forget — silently dropped every staging trace. The
+# migration alone does not fix it: this cast lives in the query, so it must be
+# asserted here or the bug returns the next time someone "restores symmetry"
+# with the neighbouring session_id cast.
+# ---------------------------------------------------------------------------
+def test_insert_sql_does_not_cast_tenant_id_to_uuid():
+    from shared import decision_trace
+
+    sql = decision_trace._INSERT_SQL
+    normalized = " ".join(sql.split()).lower()
+    assert "cast(:tenant_id as uuid)" not in normalized, (
+        "tenant_id must not be cast to UUID — bot surfaces write slug tenants (#3003)"
+    )
+    assert ":tenant_id" in sql, "tenant_id must still be bound as a parameter"
+
+
+def test_insert_sql_still_casts_session_id_to_uuid():
+    """session_id is a real FK to troubleshooting_sessions(id) — it stays UUID.
+
+    Guards the over-correction: a blanket 'remove the casts' edit would break
+    the FK binding, which is a different column with a different tenancy story.
+    """
+    from shared import decision_trace
+
+    normalized = " ".join(decision_trace._INSERT_SQL.split()).lower()
+    assert "cast(:session_id as uuid)" in normalized
