@@ -695,11 +695,15 @@ def test_verified_promotion_checker_catches_violations():
 #       not still be listed once they are promoted into the gate.
 #
 # WHAT THIS GUARD CANNOT KNOW, stated rather than implied away:
-#   * Whether `CI Gate` is a REQUIRED status check on `main`. It is NOT, as of
-#     2026-07-30 — required is staging-gate / Version Bump Check / Hub E2E /
-#     mira-web pack tests (`gh api repos/:owner/:repo/branches/main/protection`).
-#     So this contract secures the layer it can reach, and the last mile stays a
-#     branch-protection admin action. No test in this repo can assert it.
+#   * Whether `CI Gate` is a REQUIRED status check on `main`. As of 2026-07-30 it
+#     IS — required contexts are staging-gate / CI Gate / Hub E2E / mira-web pack
+#     tests (`gh api repos/:owner/:repo/branches/main/protection`), so this
+#     contract now has real teeth. But nothing here can assert that: branch
+#     protection is repo configuration, not code, and it can be changed back
+#     without touching this file. Treat the sentence above as a dated
+#     observation, not an invariant — verify it before relying on it. (An earlier
+#     revision of this comment said the opposite and went stale the moment the
+#     flip happened, which is the whole hazard.)
 #   * `if:` conditions, `continue-on-error`, runtime `skipif` — a gated job can
 #     still decline to run. Handling skipped-vs-success is the gate script's own
 #     job, not this contract's.
@@ -1054,6 +1058,19 @@ _UNCOLLECTED_SUITES: dict[str, str] = {
     "tools/internet_print_test":
         "Print-eval harness. Its runner reaches the network and paid providers "
         "by design, so it is a manual harness, not a merge gate.",
+    "mira-machine-logic-graph":
+        "4 Vitest suites (parser, server, tag-builder, live-troubleshoot) with "
+        "`\"test\": \"bun test\"` in package.json and ZERO workflow references. "
+        "This is the suite that proved Contract 9 was blind to TypeScript.",
+    "mira-trend-viewer":
+        "4 `.test.mjs` files run by `node --test`; no workflow references it. "
+        "Wire it with a node step, or retire the module if the ISA-101 trend "
+        "viewer has been superseded.",
+    "mira-scan-monday/tests/e2e":
+        "One Playwright spec; no package.json above it, so discovery reports the "
+        "directory rather than a package. The Python backend is declared "
+        "separately above. Needs a browser runner, so it is a bigger lift than a "
+        "pytest line.",
     "tools/internet_print_test/benchmarks/2026-07-18-towerop":
         "A captured benchmark run kept as a record. Not a suite to enforce.",
     "evals":
@@ -1077,6 +1094,33 @@ _UNCOLLECTED_SUITES: dict[str, str] = {
 }
 
 
+# JS/TS suites are discovered too. The first version of this contract globbed
+# only `test_*.py` and parsed only pytest, so it claimed "every test suite" while
+# being structurally blind to Vitest/Playwright — `mira-machine-logic-graph/tests`
+# had no workflow reference AND no manifest entry, and Contract 9 passed. A new
+# uncollected TS suite would have been invisible: exactly the regression this
+# contract exists to prevent, in the contract itself.
+_JS_TEST_GLOBS = ("*.test.ts", "*.test.tsx", "*.test.js", "*.test.mjs",
+                  "*.spec.ts", "*.spec.js")
+
+# JS runners collect by glob from a PACKAGE root, not per directory, so a TS
+# suite is attributed to its nearest package.json. Per-directory granularity
+# would list ~90 entries for mira-hub alone and mean nothing.
+_JS_RUNNER_RE = re.compile(
+    r"(vitest|playwright\s+test|bun\s+(?:run\s+)?test|npm\s+(?:run\s+)?test"
+    r"|node\s+--test|jest)", re.IGNORECASE)
+
+
+def _js_package_root(path: Path, root: Path) -> str:
+    """Nearest ancestor holding a package.json, else the file's own directory."""
+    cur = path.parent
+    while cur != root and cur != cur.parent:
+        if (cur / "package.json").is_file():
+            return cur.relative_to(root).as_posix()
+        cur = cur.parent
+    return path.parent.relative_to(root).as_posix()
+
+
 def _discover_suites(root: Path) -> list[str]:
     """Directories that look like a test suite root, as posix paths."""
     found = set()
@@ -1092,6 +1136,13 @@ def _discover_suites(root: Path) -> list[str]:
             i = parts.index("tests")
             rel = "/".join(parts[: i + 1])
         found.add(rel)
+
+    for glob in _JS_TEST_GLOBS:
+        for path in root.rglob(glob):
+            if any(part in _SUITE_EXCLUDE_PARTS for part in path.parts):
+                continue
+            found.add(_js_package_root(path, root))
+
     return sorted(found)
 
 
@@ -1118,6 +1169,34 @@ def _pytest_targets(workflow_text: str) -> set[str]:
     return targets
 
 
+def _js_collected_packages(workflow_text: str) -> set[str]:
+    """Packages whose JS/TS tests a workflow runs.
+
+    A JS runner rarely names a path — `bun run test` in `working-directory:
+    mira-hub` collects whatever the package config globs. So attribute a package
+    when a runner invocation appears NEAR a working-directory/cd naming it. The
+    window keeps an unrelated `working-directory:` elsewhere in the same workflow
+    from silently marking a package covered.
+    """
+    pkgs: set[str] = set()
+    lines = workflow_text.splitlines()
+    for i, line in enumerate(lines):
+        if not _JS_RUNNER_RE.search(line):
+            continue
+        for j in range(max(0, i - 6), min(len(lines), i + 2)):
+            m = re.search(r"working-directory:\s*['\"]?([\w./-]+)", lines[j])
+            if m:
+                pkgs.add(m.group(1).strip("/"))
+            m = re.search(r"cd\s+([\w./-]+)\s*&&", lines[j])
+            if m:
+                pkgs.add(m.group(1).strip("/"))
+        # a runner given an explicit path, e.g. `bun test src/lib/x.test.ts`
+        for tok in line.split():
+            if "/" in tok and re.search(r"\.(test|spec)\.[jt]sx?$", tok):
+                pkgs.add(tok.strip("'\"").split("/")[0])
+    return pkgs
+
+
 def scan_collection_coverage(suites, workflows: dict[str, str], declared: dict[str, str]) -> list[str]:
     """Return Contract 9 violations. Pure, so the fixtures below mean something."""
     violations: list[str] = []
@@ -1125,6 +1204,7 @@ def scan_collection_coverage(suites, workflows: dict[str, str], declared: dict[s
     collected: set[str] = set()
     for text in workflows.values():
         collected |= _pytest_targets(text)
+        collected |= _js_collected_packages(text)
 
     def is_collected(suite: str) -> bool:
         for t in collected:
