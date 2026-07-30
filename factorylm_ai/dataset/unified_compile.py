@@ -936,12 +936,31 @@ def main(argv: list[str] | None = None) -> int:
     out = v0.REPO_ROOT / args.out_dir
     out.mkdir(parents=True, exist_ok=True)
     manifest = v0.candidate_manifest_for(compiled)
+    # Write the manifest WHOLE. It used to be cherry-picked down to four summary
+    # keys, which silently dropped `entries` — the per-record
+    # `record_id` + `content_hash` rows that bind a review decision to the exact
+    # bytes it was made against. The review console requires them
+    # (`AppState.__init__` does `manifest["entries"]`), so the sitting on the
+    # unified manifest could not be scheduled at all: the console KeyErrors on
+    # boot. `candidate_manifest_for` already computed them; only the write
+    # threw them away.
+    #
+    # The four original keys are PRESERVED verbatim so anything already reading
+    # this file keeps working, and `manifest_sha256` is carried through
+    # untouched — it is `410e779e…`, the frozen digest the whole program
+    # references, and it must not move.
+    #
+    # Known wart, deliberately NOT "fixed" here: that digest is computed by
+    # `technician_v0._candidate_manifest` over ITS `DATASET_VERSION`
+    # ("…-technician-v0"), while the `dataset_version` field written below is
+    # the unified one. Aligning them would change the digest and invalidate the
+    # frozen manifest mid-program. Left as-is, stated out loud.
     (out / "compiled_manifest.json").write_text(
         json.dumps(
             {
+                **manifest,
                 "dataset_version": DATASET_VERSION,
                 "build_id": BUILD_ID,
-                "manifest_sha256": manifest["manifest_sha256"],
                 "records": len(compiled),
             },
             indent=1,
