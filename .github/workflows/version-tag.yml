@@ -1,18 +1,36 @@
 name: Version Tag
 
-# On every merge to main, advance the repo-wide overall version counter:
-#   - read /VERSION (the source of truth, gated to bump on every code PR)
-#   - if v<VERSION> doesn't exist yet, create it (annotated) at the merge commit
-#   - also drop a rollback/<date>-v<VERSION> checkpoint tag at the same commit
-#   - publish a GitHub Release for v<VERSION>
+# Every merge to main gets a unique save point: an annotated `v<X.Y.Z>` tag, a
+# paired `rollback/<date>-v<X.Y.Z>` checkpoint, and a GitHub Release whose notes
+# GitHub generates from the merged pull requests.
 #
-# This gives every merge a unique, trackable version tag and a paired rollback
-# point. No-ops when the tag already exists (e.g. a docs-only merge that didn't
-# bump VERSION, or a re-run), so it is safe to run on every push to main.
+# THE VERSION IS DERIVED FROM TAGS, NOT FROM A COMMITTED FILE.
 #
-# Note: the existing release.yml triggers on `mira-*-v*` tags (component
-# releases) — a different pattern — so the v<VERSION> tags created here do not
-# double-fire it.
+# Why that changed (2026-07-29): `/VERSION` was one monotonic line in a tracked
+# file and `docs/CHANGELOG.md` was prepended to at the top, so EVERY PR edited the
+# SAME line of the SAME file. Each merge therefore conflicted every other open PR
+# — and a conflicting PR receives NO CI at all, because GitHub cannot build the
+# merge ref, so it silently stops being verified while still looking healthy. That
+# happened four times in a single session.
+#
+# GitHub's documented model removes the shared line entirely:
+#   - releases are built on TAGS
+#     (docs/repositories/releasing-projects-on-github/about-releases) and the docs
+#     carry no guidance about storing a version in a repository file;
+#   - release notes are generated from merged PRs
+#     (…/automatically-generated-release-notes), configured in .github/release.yml.
+#
+# And critically: this repo's `main-branch-protection` ruleset targets `branch`
+# only, so TAGS ARE UNPROTECTED. This workflow creates tags without pushing to
+# `main`, so it needs no bot write access to the protected branch and no
+# branch-protection accommodation.
+#
+# `/VERSION` is still honoured as a FLOOR during the transition (the derived
+# version can never go backwards relative to it), so this is safe to land while
+# PRs still bump the file. See docs/versioning.md for the retirement steps.
+#
+# Note: release.yml triggers on `mira-*-v*` tags (component releases) — a
+# different pattern — so the `v<X.Y.Z>` tags created here do not double-fire it.
 
 on:
   push:
@@ -32,22 +50,48 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # Full history + tags: the version is derived from the tag list.
           fetch-depth: 0
 
-      - name: Tag v<VERSION> if new
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Derive the next version from tags
+        id: derive
         run: |
           set -euo pipefail
-          VER="$(tr -d '[:space:]' < VERSION)"
+          # Tags are needed explicitly: actions/checkout fetches them with
+          # fetch-depth:0, but a re-run against a shallow cache may not have them.
+          git fetch --tags --force --quiet || true
+
+          SUBJECT="$(git log -1 --pretty=%s)"
+          LATEST="$(git tag --list 'v*' --sort=-v:refname | head -1 || true)"
+          echo "latest tag : ${LATEST:-<none>}"
+          echo "subject    : $SUBJECT"
+
+          VER="$(python3 tools/release/next_version.py \
+                   --latest-tag "${LATEST:-}" --subject "$SUBJECT")"
           if [ -z "$VER" ]; then
-            echo "::warning::/VERSION is empty — skipping tag."
-            exit 0
+            echo "::error::could not derive a version — refusing to skip the save point."
+            exit 1
           fi
+          echo "derived    : $VER"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Tag + rollback checkpoint + release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VER: ${{ steps.derive.outputs.version }}
+        run: |
+          set -euo pipefail
           TAG="v$VER"
 
+          # Derivation always advances past the latest tag, so a collision here
+          # means something is wrong (a concurrent run, or a hand-made tag).
+          # Warn and stop rather than silently doing nothing.
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "$TAG already exists — no-op."
+            echo "::warning::$TAG already exists — another run may have tagged this commit. No-op."
             exit 0
           fi
 
@@ -63,8 +107,13 @@ jobs:
           git push origin "$TAG" "$ROLLBACK"
           echo "Tagged $TAG + $ROLLBACK at $SHORT"
 
-          # Best-effort GitHub Release; never fail the job on release hiccups.
+          # --generate-notes: GitHub composes the notes from the merged PRs in
+          # this release, grouped per .github/release.yml. Nothing to hand-write.
+          # Best-effort: a release hiccup must never lose the tag, which is the
+          # actual save point.
           gh release create "$TAG" \
             --title "$TAG" \
-            --notes "Auto-release for \`$TAG\` (merge \`$SHORT\`). Changes: see \`docs/CHANGELOG.md\` and \`mira-hub/CHANGELOG.md\`. Roll back with \`git checkout $ROLLBACK\`." \
-            || echo "::warning::Release creation skipped/failed for $TAG (tag still pushed)."
+            --generate-notes \
+            --notes-start-tag "$(git tag --list 'v*' --sort=-v:refname | sed -n 2p)" \
+            || gh release create "$TAG" --title "$TAG" --generate-notes \
+            || echo "::warning::Release creation failed for $TAG (tag still pushed — the save point exists)."

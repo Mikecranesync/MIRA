@@ -9,7 +9,7 @@ This is step 4 in the Auto-PM Pipeline:
 Usage:
     from shared.pm_extractor import get_chunks_for_model, extract_pm_schedules, store_pm_schedules
 
-    chunks = get_chunks_for_model("Yaskawa", "GA500")
+    chunks = get_chunks_for_model("Yaskawa", "GA500", tenant_id="mike")
     schedules = asyncio.run(extract_pm_schedules(chunks, "Yaskawa", "GA500"))
     store_pm_schedules(schedules, tenant_id="mike")
 """
@@ -66,6 +66,7 @@ def get_chunks_for_model(
     manufacturer: str,
     model_number: str,
     *,
+    tenant_id: str | None = None,
     limit: int = 400,
 ) -> list[dict[str, Any]]:
     """Fetch knowledge_entries chunks for a specific equipment model.
@@ -73,12 +74,34 @@ def get_chunks_for_model(
     Returns list of dicts with keys: id, content, source_url, source_page, metadata.
     Filters to PM-relevant chunks only (by keyword match in content).
     Deduplicates by first 120 chars of content to handle duplicate ingests.
+
+    Tenant scoping (.claude/rules/knowledge-entries-tenant-scoping.md):
+    knowledge_entries is a hybrid corpus — shared OEM rows (is_private = false)
+    plus per-tenant private uploads. Without a tenant_id only the shared OEM
+    corpus is visible; with a tenant_id the caller's own private uploads are
+    included via the hybrid read predicate. Never returns another tenant's
+    private rows.
     """
     from sqlalchemy import text
+
+    params: dict[str, Any] = {
+        "mfr": f"%{manufacturer.lower()}%",
+        "model": f"%{model_number.lower()}%",
+        "lim": limit,
+        # None → NULL, which disables the tenant branch below (OEM-only read).
+        "tenant_id": tenant_id,
+    }
 
     engine = _get_neon_engine()
     try:
         with engine.connect() as conn:
+            # Hybrid read law, literal in the SQL so the static checker
+            # (tools/qa/security/check_knowledge_entries_filters.py) classifies
+            # it HYBRID. tenant_id compared as text — legacy caller tenant ids
+            # can be non-UUID strings ('mike'); a ::uuid cast on those throws.
+            # LOWER() both sides: uuid::text renders lowercase-canonical, so a
+            # raw text compare would silently miss an uppercase caller UUID
+            # (uuid = uuid is case-insensitive natively; the cast loses that).
             rows = conn.execute(
                 text(
                     """
@@ -86,15 +109,14 @@ def get_chunks_for_model(
                     FROM knowledge_entries
                     WHERE LOWER(manufacturer) ILIKE :mfr
                       AND LOWER(model_number) ILIKE :model
+                      AND (is_private = false
+                           OR (:tenant_id IS NOT NULL
+                               AND LOWER(tenant_id::text) = LOWER(:tenant_id)))
                     ORDER BY source_page ASC NULLS LAST, created_at ASC
                     LIMIT :lim
                     """
                 ),
-                {
-                    "mfr": f"%{manufacturer.lower()}%",
-                    "model": f"%{model_number.lower()}%",
-                    "lim": limit,
-                },
+                params,
             ).fetchall()
     except Exception as exc:
         logger.error("get_chunks_for_model failed: %s", exc)

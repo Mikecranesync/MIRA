@@ -135,6 +135,53 @@ def test_insert_defaults_data_type_to_manual(engine_patch):
 
 
 @patch.object(neon, "_engine")
+def test_insert_defaults_visibility_to_shared_corpus_params(engine_patch):
+    # Visibility is bound as params (write law, knowledge-entries-tenant-scoping.md) —
+    # the SQL must no longer hardcode `false, false` for is_private/verified.
+    conn = _install_engine_mock(engine_patch)
+    neon.insert_knowledge_entry(
+        tenant_id="t1",
+        content="c",
+        embedding=[0.1],
+        manufacturer=None,
+        model_number=None,
+        source_url="s",
+        chunk_index=0,
+        page_num=None,
+        section=None,
+    )
+    sql_text, params = _sql_and_params(conn)
+    assert ":is_private" in sql_text
+    assert ":verified" in sql_text
+    assert "false, false" not in sql_text
+    # Defaults keep every existing OEM-ingest caller byte-identical.
+    assert params["is_private"] is False
+    assert params["verified"] is False
+
+
+@patch.object(neon, "_engine")
+def test_insert_honors_is_private_for_per_tenant_content(engine_patch):
+    # Per-tenant customer content (gdrive/gmail ingest) passes is_private=True so
+    # the hybrid read filter scopes it to its tenant (write law).
+    conn = _install_engine_mock(engine_patch)
+    neon.insert_knowledge_entry(
+        tenant_id="78917b56-f85f-43bb-9a08-1bb98a6cd6c3",
+        content="c",
+        embedding=[0.1],
+        manufacturer=None,
+        model_number=None,
+        source_url="s",
+        chunk_index=0,
+        page_num=None,
+        section=None,
+        is_private=True,
+    )
+    _, params = _sql_and_params(conn)
+    assert params["is_private"] is True
+    assert params["verified"] is False
+
+
+@patch.object(neon, "_engine")
 def test_insert_rejects_invalid_data_type(engine_patch):
     _install_engine_mock(engine_patch)
     with pytest.raises(ValueError):

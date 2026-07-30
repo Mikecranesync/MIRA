@@ -1,0 +1,59 @@
+# GitHub auto-generated release notes.
+#
+# Docs: https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes
+#
+# GitHub composes release notes from the MERGED PULL REQUESTS in a release, so
+# nobody has to hand-maintain a changelog file. This replaces the convention of
+# prepending to `docs/CHANGELOG.md` in every PR — which, being a shared top-of-file
+# line, made each merge conflict every other open PR (and a conflicting PR gets no
+# CI at all). See docs/versioning.md.
+#
+# Categories are matched by LABEL. A PR with no matching label falls into the
+# catch-all, so nothing is silently dropped from the notes.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: ⚠️ Breaking Changes
+      labels:
+        - breaking
+        - semver:major
+
+    - title: 🔐 Security
+      labels:
+        - security
+
+    - title: ✨ Features
+      labels:
+        - feat
+        - enhancement
+        - semver:minor
+
+    - title: 🐛 Fixes
+      labels:
+        - fix
+        - bug
+
+    - title: 🧪 Tests & CI
+      labels:
+        - test
+        - ci
+
+    - title: 📚 Docs
+      labels:
+        - docs
+        - documentation
+
+    - title: 🔧 Maintenance
+      labels:
+        - chore
+        - refactor
+        - dependencies
+
+    # Catch-all — REQUIRED. Without it, unlabelled PRs vanish from the notes,
+    # which is the silent-omission failure mode this repo has been bitten by
+    # elsewhere (a guard that reports success over work it never saw).
+    - title: Other Changes
+      labels:
+        - "*"

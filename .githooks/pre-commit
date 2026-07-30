@@ -7,6 +7,10 @@ set -euo pipefail
 PASS=0
 FAIL=0
 WARNINGS=0
+# Declared up front: `set -u` is on, and these are read in guards that can be
+# reached on paths where the resolving branch never ran.
+SHELLCHECK_BIN=""
+RG_BIN=""
 
 red()    { printf '\033[0;31m%s\033[0m\n' "$*"; }
 yellow() { printf '\033[0;33m%s\033[0m\n' "$*"; }
@@ -33,18 +37,53 @@ STAGED_SH=$(git diff --cached --name-only --diff-filter=ACM | grep '\.sh$' || tr
 STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
 
 # ------------------------------------------------------------------
+# Tool resolution: PROBE, don't assume.
+#
+# `command -v foo` only proves a path exists — it does not prove foo runs.
+# On Windows, %LOCALAPPDATA%\Microsoft\WindowsApps sits early on PATH and
+# holds App Execution Alias stubs (symlinks to AppInstallerPythonRedirector.exe)
+# named python.exe / python3.exe. They satisfy `command -v` and then exit 49.
+# The old `|| echo /opt/homebrew/bin/foo` fallbacks were macOS-only and could
+# never resolve anywhere else, so detection rested entirely on `command -v`.
+#
+# resolve_tool: echo the path of the first candidate that actually RUNS.
+# Returns 1 and echoes nothing when no candidate works.
+resolve_tool() {
+  local probe_arg="$1"; shift
+  local c
+  for c in "$@"; do
+    if command -v "$c" >/dev/null 2>&1 && "$c" "$probe_arg" >/dev/null 2>&1; then
+      command -v "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# ------------------------------------------------------------------
 # 1. shellcheck on staged .sh files
 # ------------------------------------------------------------------
 if [ -n "$STAGED_SH" ]; then
   bold "Checking shell scripts..."
-  SHELLCHECK_BIN=$(command -v shellcheck 2>/dev/null || echo "/opt/homebrew/bin/shellcheck")
-  if [ ! -x "$SHELLCHECK_BIN" ]; then
-    yellow "  shellcheck not found — skipping (install: brew install shellcheck)"
+  SHELLCHECK_BIN=$(resolve_tool --version shellcheck || true)
+  if [ -z "$SHELLCHECK_BIN" ]; then
+    yellow "  shellcheck not found — skipping (brew install shellcheck / winget install koalaman.shellcheck)"
     WARNINGS=$((WARNINGS + 1))
   else
     for f in $STAGED_SH; do
       if [ -f "$f" ]; then
-        if "$SHELLCHECK_BIN" -S warning "$f" 2>&1; then
+        # -f gcc, NOT the default format. The default formatter echoes the
+        # offending source line; shellcheck is a GHC binary whose stdout
+        # encoding comes from the system ANSI code page (GetACP, e.g. cp1252
+        # on Windows) rather than UTF-8, so a non-ASCII char in that echoed
+        # line is an unencodable write: shellcheck dies with
+        # "commitBuffer: invalid argument (cannot encode character ...)",
+        # exits 2, and SILENTLY DROPS every later finding in the file.
+        # 83/91 tracked .sh files here contain non-ASCII, so that is the
+        # common case. `chcp 65001` does not help (stdout is a pipe, so GHC
+        # uses GetACP, not the console CP). -f gcc never echoes source lines
+        # and matches what CI already runs (code-review.yml).
+        if "$SHELLCHECK_BIN" -S warning -f gcc "$f" 2>&1; then
           green "  ✓ $f"
           PASS=$((PASS + 1))
         else
@@ -62,9 +101,9 @@ fi
 # 2. gitleaks — secrets scan on staged changes (mirrors CI)
 # ------------------------------------------------------------------
 bold "Scanning staged changes for secrets (gitleaks)..."
-GITLEAKS_BIN=$(command -v gitleaks 2>/dev/null || echo "/opt/homebrew/bin/gitleaks")
-if [ ! -x "$GITLEAKS_BIN" ]; then
-  yellow "  gitleaks not found — skipping (install: brew install gitleaks)"
+GITLEAKS_BIN=$(resolve_tool version gitleaks || true)
+if [ -z "$GITLEAKS_BIN" ]; then
+  yellow "  gitleaks not found — skipping (brew install gitleaks / winget install Gitleaks.Gitleaks)"
   WARNINGS=$((WARNINGS + 1))
 else
   if "$GITLEAKS_BIN" protect --staged --redact --no-banner --config=.gitleaks.toml 2>&1; then
@@ -83,9 +122,20 @@ fi
 if [ -n "$STAGED_PY" ]; then
   bold "Scanning Python files for debug artifacts..."
   DEBUG_FOUND=0
+  # Resolve rg ONCE, up front, and warn loudly if it is missing. Previously
+  # this was resolved per-file with a `2>/dev/null || true` around the call,
+  # so a missing rg produced empty MATCHES for every file and the scan then
+  # printed "✓ No debug artifacts found" — a silent false pass over an
+  # unscanned diff. A scan that cannot run must never report success.
+  RG_BIN=$(resolve_tool --version rg || true)
+fi
+if [ -n "$STAGED_PY" ] && [ -z "$RG_BIN" ]; then
+  yellow "  rg not found — debug-artifact scan SKIPPED, not passed"
+  yellow "    (brew install ripgrep / winget install BurntSushi.ripgrep.MSVC)"
+  WARNINGS=$((WARNINGS + 1))
+elif [ -n "$STAGED_PY" ]; then
   for f in $STAGED_PY; do
     if [ -f "$f" ]; then
-      RG_BIN=$(command -v rg 2>/dev/null || echo "/opt/homebrew/bin/rg")
       MATCHES=$("$RG_BIN" --no-heading --line-number \
         '^\s*(import pdb|pdb\.set_trace|breakpoint\(\)|import ipdb|ipdb\.set_trace)' \
         "$f" 2>/dev/null || true)
@@ -195,9 +245,9 @@ fi
 STAGED_WORKFLOWS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
 if [ -n "$STAGED_WORKFLOWS" ]; then
   bold "Checking GitHub Actions workflows (actionlint)..."
-  ACTIONLINT_BIN=$(command -v actionlint 2>/dev/null || echo "/opt/homebrew/bin/actionlint")
-  if [ ! -x "$ACTIONLINT_BIN" ]; then
-    yellow "  actionlint not found — skipping (install: brew install actionlint)"
+  ACTIONLINT_BIN=$(resolve_tool --version actionlint || true)
+  if [ -z "$ACTIONLINT_BIN" ]; then
+    yellow "  actionlint not found — skipping (brew install actionlint / winget install rhysd.actionlint)"
     WARNINGS=$((WARNINGS + 1))
   else
     for f in $STAGED_WORKFLOWS; do
@@ -229,7 +279,21 @@ fi
 # ------------------------------------------------------------------
 if [ -n "$STAGED_PY" ]; then
   bold "Checking newly imported symbols for fabrication..."
-  if VERIFY_OUTPUT=$(python3 tools/verify_agent_symbols.py 2>&1); then
+  # python3/python are App Execution Alias stubs on Windows that resolve via
+  # `command -v` and then exit 49 with a Microsoft Store nag, so probe with
+  # `-c ''`. `py -3` is the working launcher there; python3 wins first on
+  # macOS/Linux, so behaviour off Windows is unchanged.
+  PY_BIN=$(resolve_tool --version python3 python || true)
+  PY_CMD=()
+  if [ -n "$PY_BIN" ]; then
+    PY_CMD=("$PY_BIN")
+  elif command -v py >/dev/null 2>&1 && py -3 --version >/dev/null 2>&1; then
+    PY_CMD=(py -3)
+  fi
+  if [ ${#PY_CMD[@]} -eq 0 ]; then
+    yellow "  no working python found — symbol check SKIPPED, not passed"
+    WARNINGS=$((WARNINGS + 1))
+  elif VERIFY_OUTPUT=$("${PY_CMD[@]}" tools/verify_agent_symbols.py 2>&1); then
     green "  ✓ $(echo "$VERIFY_OUTPUT" | tail -1)"
     PASS=$((PASS + 1))
   else

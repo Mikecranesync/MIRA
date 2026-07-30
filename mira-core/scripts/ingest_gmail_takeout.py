@@ -324,6 +324,10 @@ def main() -> None:
                     page_num=None,
                     section=subject[:100] if subject else None,
                     source_type="gmail",
+                    # Gmail takeout is per-tenant customer content — the write
+                    # law requires is_private=True so the hybrid read filter
+                    # scopes it to its tenant (knowledge-entries-tenant-scoping.md).
+                    is_private=True,
                 )
                 total_inserted += 1
             except Exception as exc:

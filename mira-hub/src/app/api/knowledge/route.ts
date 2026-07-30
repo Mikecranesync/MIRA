@@ -8,15 +8,16 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 // Returns the knowledge library rolled up by manufacturer.
-// Queries knowledge_entries directly (bypasses RLS via neondb_owner) with no
-// tenant filter — OEM manuals, datasheets, and reference documentation are
-// UNIVERSAL: every authenticated user sees the full corpus regardless of
-// session tenant. The legacy ingest pipeline tagged rows with whatever
-// MIRA_TENANT_ID was set in env (typically literal 'mike'), which does not
-// match the per-user UUID tenantIds minted by the multi-tenant signup flow
-// (migration 008). Filtering by ctx.tenantId returned 0 rows of 83K+ ingested
-// chunks. If per-tenant private docs are added later, switch to filtering on
-// is_private rather than tenant_id.
+// Queries knowledge_entries directly (bypasses RLS via neondb_owner). This is
+// an AGGREGATE OEM SURFACE per .claude/rules/knowledge-entries-tenant-scoping.md:
+// it shows only the shared OEM corpus (`is_private = false`) — per-tenant
+// private uploads (`is_private = true`) must never be counted or listed here.
+// Tenant_id filtering is deliberately avoided (#1761): the OEM corpus is owned
+// by a single system tenant, so a ctx.tenantId filter returned 0 rows of 83K+
+// ingested chunks. (History: the legacy ingest pipeline tagged rows with
+// whatever MIRA_TENANT_ID was set in env, which does not match the per-user
+// UUID tenantIds minted by the multi-tenant signup flow — migration 008.
+// Per-tenant private docs now exist, hence the is_private filter.)
 //
 // LIVE — no server-side cache (force-dynamic + force-no-store + revalidate=0).
 // Each request hits Neon directly so newly-ingested chunks from the Celery
@@ -40,6 +41,7 @@ export async function GET() {
            COUNT(DISTINCT source_url)::bigint AS doc_count,
            MAX(created_at) AS last_indexed
          FROM knowledge_entries
+         WHERE is_private = false
          GROUP BY 1
          ORDER BY manufacturer ASC`,
       ),
@@ -48,7 +50,8 @@ export async function GET() {
            COUNT(*)::bigint AS total_chunks,
            COUNT(DISTINCT source_url)::bigint AS total_docs,
            MAX(created_at) AS last_ingested
-         FROM knowledge_entries`,
+         FROM knowledge_entries
+         WHERE is_private = false`,
       ),
     ]);
 

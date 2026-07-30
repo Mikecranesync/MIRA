@@ -1,6 +1,6 @@
 {
  "dataset_version": "factorylm-industrial-technician-unified",
  "build_id": "2026-07-29-technician-unified",
- "manifest_sha256": "51fe7b490c9606b8931e20bc0e5e9b65388a3237f2e4796685e559b8e87ac1bc",
- "records": 180
+ "manifest_sha256": "410e779e0d81f8b57461c59094fd8d05dcd2572147918eeda4f5d3beb557121c",
+ "records": 760
 }

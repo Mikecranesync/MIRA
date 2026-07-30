@@ -19,6 +19,7 @@ const defaultMigrationFiles = [
   "029_kg_approval_state.sql",
   "055_contextualization.sql",
   "056_contextualization_intake.sql",
+  "067_ctx_import_batches_approval_cols.sql",
   "068_hub_uploads.sql",
 ];
 

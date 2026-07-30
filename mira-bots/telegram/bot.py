@@ -20,7 +20,15 @@ from admin_commands import (
 )
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import chat_tenant, print_autoeval, print_translator, tts, wiring_intake
+from shared import (
+    chat_tenant,
+    guardrails,
+    print_autoeval,
+    print_translator,
+    print_workspace,
+    tts,
+    wiring_intake,
+)
 from shared.chat.dispatcher import ChatDispatcher
 from shared.contextualization_intake import (
     hub_folder_upload_configured,
@@ -52,6 +60,7 @@ from shared.photo_handler import (
     preserve_first_meaningful_caption,
 )
 from shared.tenant.authorizer import Authorizer
+from shared.visual import evidence_answer, question_resolution
 from shared.workers.vision_worker import ocr_lane_report
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
@@ -612,6 +621,450 @@ async def _try_drive_pack_followup(
     return True
 
 
+_WORKSPACE_FOLLOWUP_SYSTEM_PROMPT = (
+    "You are MIRA's print-workspace assistant. Answer the technician's question "
+    "ONLY from the evidence lines provided — never from general knowledge of the "
+    "circuit. If the evidence is insufficient, say exactly what is missing. "
+    "Never assert a present-tense live electrical state; a print cannot show "
+    "whether anything is energized. Keep the answer short and direct."
+)
+
+
+async def _try_print_workspace_followup(
+    text: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Print-workspace follow-up TEXT rung (Package B) — deterministic-first
+    Q&A over the persisted print ledger (``shared/print_workspace.py``).
+
+    Mirrors the drive-pack precedent above: claims the turn ONLY when this
+    chat has a live print workspace AND the text targets it (a technician
+    measurement, a resolved ledger tag, or a print-shaped question). Answer
+    chain, first producer wins: (a) technician-measurement intake (zero LLM),
+    (b) the deterministic print spine, (c) the ledger composer
+    (``service.ask``), (d) a bounded, evidence-packet-grounded model
+    explanation, (e) an honest refusal when the question demonstrably
+    targeted the workspace. Everything else falls through unchanged
+    (returns ``False``) — FSM confirmations ("yes"), greetings, commercial
+    consent turns, and wiring questions stay with their own rungs. Every
+    delivered answer renders through the ``EvidenceAnswer`` contract
+    (trust labels, honest coordinates, safety class) and flows through
+    autoeval v2 with ``branch="workspace_followup"``. Read-only; fail-open.
+    """
+    import time as _time
+
+    t0 = _time.monotonic()
+    try:
+        if not text:
+            return False
+        # 1. Safety turns belong to the STOP gate, never to this rung.
+        if guardrails.classify_intent(text) == "safety":
+            return False
+        chat_id = str(update.effective_chat.id)
+        ws = print_workspace.get_workspace(chat_id, max_age_s=print_workspace.PRINT_WORKSPACE_TTL_S)
+        if ws is None:
+            return False
+
+        service = print_workspace._get_service()
+        store = service.store
+        observations = await store.load_observations(ws.session_id, ws.tenant_id, active_only=True)
+        session = await store.get_session(ws.session_id, ws.tenant_id)
+        known_tags = [o.raw_value for o in observations if o.extractor == "ocr" and o.raw_value]
+        resolved = question_resolution.resolve_question_focus(text, ws.last_entity, known_tags)
+        measurement = evidence_answer.detect_technician_observation(text)
+
+        # 2. Claim gate: a measurement report, a resolved ledger tag, or a
+        # print-shaped question. Anything else is not ours.
+        if not (measurement or resolved.focus_tag or print_translator.is_print_question(text)):
+            return False
+
+        vision_data = print_workspace.rebuild_vision_data(observations)
+        ea = None
+
+        # (a) Technician measurement → DOCUMENTED observation + ack. ZERO LLM.
+        if measurement:
+            obs_id = await print_workspace.append_technician_observation(
+                ws.session_id, ws.tenant_id, text, measurement
+            )
+            if obs_id:
+                observations = await store.load_observations(
+                    ws.session_id, ws.tenant_id, active_only=True
+                )
+                ack = evidence_answer.observation_ack_text(text, measurement, known_tags)
+                ea = evidence_answer.build_evidence_answer(
+                    session, observations, text, resolved.focus_tag, "observation_ack", ack
+                )
+
+        # Deterministic layers see the resolved focus even when the text only
+        # said "it" — append the tag as a grounding hint (text itself is not
+        # rewritten anywhere user-visible).
+        det_q = resolved.text
+        if resolved.focus_tag and resolved.focus_tag.lstrip("-+").upper() not in det_q.upper():
+            det_q = f"{resolved.text} {resolved.focus_tag}"
+        det_lines: list[str] = []
+
+        # (b) Deterministic print spine (contact conventions, designation
+        # meaning, xref/wire lookups) over the rebuilt ledger vision_data.
+        if ea is None:
+            try:
+                from printsense import deterministic_qa as _det_qa
+            except ImportError:
+                _det_qa = None
+            if _det_qa is not None:
+                try:
+                    det = _det_qa.try_deterministic_answer(det_q, vision_data)
+                    if det:
+                        answer_text = det["answer"]
+                        if det.get("source"):
+                            answer_text += f"\nSource: {det['source']}"
+                        if det.get("caveat"):
+                            answer_text += f"\n⚠️ {det['caveat']}"
+                        ea = evidence_answer.build_evidence_answer(
+                            session,
+                            observations,
+                            text,
+                            resolved.focus_tag,
+                            "deterministic",
+                            answer_text,
+                        )
+                    else:
+                        pack = _det_qa.extract_evidence(det_q, vision_data)
+                        det_lines = list((pack or {}).get("lines") or [])
+                except Exception as e:  # noqa: BLE001 — deterministic layer never eats the turn
+                    logger.warning("workspace followup deterministic error: %s", e)
+
+        # (c) Ledger composer: grounded claims (or the composer's safety
+        # short-circuit) from the accumulated observation ledger.
+        if ea is None:
+            try:
+                envelope = await service.ask(
+                    ws.session_id, ws.tenant_id, resolved.text, asked_by=chat_id
+                )
+            except Exception as e:  # noqa: BLE001 — composer failure falls through
+                logger.warning("workspace followup ask error: %s", e)
+                envelope = None
+            if envelope is not None:
+                grounded = [c for c in envelope.claims if c.supporting_observation_ids]
+                safety_envelope = bool(envelope.safety_notes) or any(
+                    c.safety_flag for c in envelope.claims
+                )
+                if grounded or safety_envelope:
+                    lead = (
+                        ""
+                        if safety_envelope
+                        else ("Here's what the stored print workspace shows for that:")
+                    )
+                    ea = evidence_answer.build_from_envelope(
+                        session,
+                        envelope,
+                        observations,
+                        text,
+                        resolved.focus_tag,
+                        "ledger",
+                        lead,
+                    )
+
+        # (d) Bounded model explanation — ONLY over a non-empty deterministic
+        # evidence packet (decoded evidence + technician observations), and
+        # only when the question carries workspace signal (focus or decoded
+        # evidence) so wiring/generic questions still fall through.
+        if ea is None:
+            tech_lines = [
+                o.raw_value for o in observations if o.extractor == "technician" and o.raw_value
+            ]
+            packet = det_lines + [f"technician reported: {t}" for t in tech_lines]
+            if packet and (det_lines or resolved.focus_tag):
+                messages = [
+                    {"role": "system", "content": _WORKSPACE_FOLLOWUP_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Question: {resolved.text}\n\n"
+                            "Evidence lines (the ONLY facts you may use):\n"
+                            + "\n".join(f"- {line}" for line in packet)
+                        ),
+                    },
+                ]
+                content = ""
+                try:
+                    content, _usage = await engine.router.complete(
+                        messages, max_tokens=700, session_id=chat_id
+                    )
+                except Exception as e:  # noqa: BLE001 — cascade failure falls through
+                    logger.warning("workspace followup model error: %s", e)
+                if content and content.strip():
+                    ea = evidence_answer.build_evidence_answer(
+                        session,
+                        observations,
+                        text,
+                        resolved.focus_tag,
+                        "model_explanation",
+                        content.strip(),
+                    )
+
+        # (e) Honest refusal — only when the question demonstrably targeted
+        # the workspace; otherwise fall through to the next rung/engine.
+        if ea is None:
+            if not (resolved.focus_tag or measurement):
+                return False
+            tag = resolved.focus_tag
+            refusal = (
+                f"The workspace has no legible evidence for that — send a closer "
+                f"photo of the {tag} area."
+                if tag
+                else "The workspace has no legible evidence for that — send a "
+                "closer photo of the area in question."
+            )
+            ea = evidence_answer.build_evidence_answer(session, [], text, tag, "none", refusal)
+
+        if resolved.alias_note:
+            ea.answer = f"[Derived (not verified)] {resolved.alias_note}\n{ea.answer}".strip()
+
+        mode = "trace" if guardrails.detect_depth_request(text) else "plain"
+        rendered = evidence_answer.format_evidence_answer(ea, mode)
+
+        # Enrichment note: the focus tag's earlier readings were re-read by a
+        # close-up (superseded rows exist for it in the full ledger).
+        if resolved.focus_tag:
+            try:
+                all_obs = await store.load_observations(
+                    ws.session_id, ws.tenant_id, active_only=False
+                )
+                note = evidence_answer.superseded_note_for(
+                    all_obs,
+                    resolved.focus_tag,
+                    getattr(session, "current_revision", None),
+                )
+                if note:
+                    rendered += f"\n\n{note}"
+            except Exception as e:  # noqa: BLE001 — enrichment never blocks the reply
+                logger.warning("workspace followup superseded-note error: %s", e)
+
+        await _reply_chunked(update, rendered)
+
+        # Post-delivery bookkeeping — all fail-open; the reply already landed.
+        try:
+            _schedule_print_autoeval(
+                question=text,
+                answer=rendered,
+                vision_data=vision_data,
+                branch="workspace_followup",
+                t0=t0,
+                update=update,
+                raw_bytes=None,
+                has_citations=bool(ea.claims),
+            )
+            if ea.answer_source in ("observation_ack", "deterministic", "model_explanation"):
+                # (c) records inside service.ask; refusals are not recorded.
+                await print_workspace.record_photo_turn_answer(
+                    ws.session_id,
+                    ws.tenant_id,
+                    text,
+                    rendered,
+                    claims=evidence_answer.as_answer_claims(ea),
+                )
+            print_workspace.set_workspace(
+                chat_id,
+                ws.session_id,
+                ws.tenant_id,
+                last_entity=resolved.focus_tag or ws.last_entity,
+            )
+        except Exception as e:  # noqa: BLE001 — bookkeeping never eats a delivered turn
+            logger.warning("PRINT_WORKSPACE_FOLLOWUP_POST_ERROR %s", type(e).__name__)
+        return True
+    except Exception as e:  # noqa: BLE001 — this rung must never raise into a turn
+        logger.warning("PRINT_WORKSPACE_FOLLOWUP_ERROR %s", type(e).__name__)
+        return False
+
+
+# --- Equipment-photo memory follow-up rung -----------------------------------
+# A text turn that asks about the photo this chat already sent ("what was the
+# model number?", "who makes it?", "what did that photo show?") answers
+# deterministically from the persisted workspace ledger (nameplate fields +
+# equipment identity + vision summary) — ZERO LLM, citation-labeled via the
+# EvidenceAnswer contract, honest refusal when the plate didn't show the
+# field. Falls through unchanged for everything else (safety, FSM turns,
+# general troubleshooting). Mirrors `_try_print_workspace_followup` above.
+
+# Question keyword → nameplate field (shared.visual.equipment
+# NAMEPLATE_IDENTITY_FIELDS vocabulary). Phrases, not single common words, so
+# ordinary troubleshooting turns are never claimed by accident.
+_EQUIPMENT_FIELD_SYNONYMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("model", ("model number", "model no", "what model", "which model", "the model")),
+    ("manufacturer", ("manufacturer", "who makes", "who made", "what make", "what brand")),
+    ("serial", ("serial number", "serial no", "the serial")),
+    ("voltage", ("voltage", "how many volts", "rated volts", "volt rating")),
+    ("fla", ("full load amps", "how many amps", "rated amps", "the fla", "amp rating", "amperage")),
+    ("hp", ("horsepower", "how many hp", "the hp", "hp rating")),
+    ("frequency", ("what frequency", "rated frequency", "how many hertz", "the hz")),
+    ("rpm", ("rpm", "rated speed", "how fast does it spin")),
+)
+
+_EQUIPMENT_FIELD_LABELS = {
+    "model": "Model",
+    "manufacturer": "Manufacturer",
+    "serial": "Serial number",
+    "voltage": "Voltage",
+    "fla": "Full-load amps",
+    "hp": "Horsepower",
+    "frequency": "Frequency",
+    "rpm": "RPM",
+}
+
+# "what did that photo / the nameplate show" — generic recall of the photo.
+_PHOTO_RECALL_RE = re.compile(
+    r"\b(that|the|this|last|previous|my)\s+(photo|picture|pic|image|nameplate)\b"
+    r"|\bphoto\s+i\s+sent\b|\bwhat\s+(did|do)\s+you\s+see\b",
+    re.IGNORECASE,
+)
+
+_QUESTION_SHAPE_RE = re.compile(
+    r"\?|\b(what|which|who|how|tell me|show me|read|remind me|remember)\b", re.IGNORECASE
+)
+
+
+def _match_equipment_field(text: str) -> str | None:
+    """First nameplate field whose synonym phrase appears in the text."""
+    lowered = f" {text.lower()} "
+    for field_name, phrases in _EQUIPMENT_FIELD_SYNONYMS:
+        for phrase in phrases:
+            if phrase in lowered:
+                return field_name
+    return None
+
+
+async def _try_equipment_photo_followup(
+    text: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Equipment-photo memory TEXT rung — deterministic recall over the
+    persisted workspace ledger. Claims the turn ONLY when this chat has a
+    live workspace holding equipment evidence AND the text asks for a
+    nameplate field or refers to the photo itself. Zero LLM; every answer
+    carries EvidenceAnswer trust labels or is an honest refusal. Read-only
+    on evidence (records the Q&A turn only); fail-open.
+
+    Scope note: this rung handles TEXT turns only. A question captioned ON
+    the photo itself ("what model is this?" + photo) is answered by the
+    nameplate fast-path / engine from the live photo in the same turn — no
+    memory needed there, by design."""
+    try:
+        if not text:
+            return False
+        # Safety turns belong to the STOP gate, never to this rung.
+        if guardrails.classify_intent(text) == "safety":
+            return False
+        if not _QUESTION_SHAPE_RE.search(text):
+            return False
+        field_name = _match_equipment_field(text)
+        generic = bool(_PHOTO_RECALL_RE.search(text))
+        if not (field_name or generic):
+            return False
+
+        chat_id = str(update.effective_chat.id)
+        ws = print_workspace.get_workspace(chat_id, max_age_s=print_workspace.PRINT_WORKSPACE_TTL_S)
+        if ws is None:
+            return False
+        # Tenant re-validation (adversarial-review finding, defense-in-depth):
+        # the stored workspace must belong to the tenant THIS turn resolves
+        # to — a chat whose tenant mapping changed must not read the old
+        # tenant's evidence. Mismatch → fall through, never answer.
+        if _print_workspace_tenant(update) != ws.tenant_id:
+            return False
+        store = print_workspace._get_service().store
+        observations = await store.load_observations(ws.session_id, ws.tenant_id, active_only=True)
+        session = await store.get_session(ws.session_id, ws.tenant_id)
+
+        fields = print_workspace.latest_equipment_fields(observations)
+        identity = print_workspace.latest_equipment_identity(observations)
+        equipment_obs = [
+            o
+            for o in observations
+            if o.extractor in ("nameplate_worker", "equipment_resolver")
+            and (o.metadata or {}).get("field") != "raw_text"
+        ]
+        vision_summaries = [
+            o.raw_value for o in observations if o.extractor == "vision_worker" and o.raw_value
+        ]
+        if not equipment_obs and not (generic and vision_summaries):
+            return False  # nothing equipment-shaped stored — not our turn
+
+        if field_name:
+            value = fields.get(field_name)
+            label = _EQUIPMENT_FIELD_LABELS.get(field_name, field_name)
+            if value:
+                field_obs = [
+                    o for o in equipment_obs if (o.metadata or {}).get("field") == field_name
+                ]
+                ea = evidence_answer.build_evidence_answer(
+                    session,
+                    field_obs,
+                    text,
+                    None,
+                    "deterministic",
+                    f"{label}: {value} — read from the nameplate photo you sent.",
+                )
+            else:
+                ea = evidence_answer.build_evidence_answer(
+                    session,
+                    [],
+                    text,
+                    None,
+                    "none",
+                    f"The nameplate photo I have doesn't show a legible "
+                    f"{label.lower()} — send a closer, glare-free shot of the nameplate.",
+                )
+        else:
+            lines: list[str] = []
+            if identity:
+                lines.append(identity)
+            if fields:
+                lines.append(
+                    "Nameplate fields I read: "
+                    + "; ".join(
+                        f"{_EQUIPMENT_FIELD_LABELS.get(k, k)}: {v}" for k, v in fields.items()
+                    )
+                )
+            if not lines and vision_summaries:
+                lines.append(f"What I saw: {vision_summaries[-1][:300]}")
+            if not lines:
+                lines.append(
+                    "I have that photo on file but couldn't read identifying details "
+                    "from it — send a closer shot of the nameplate."
+                )
+            ea = evidence_answer.build_evidence_answer(
+                session,
+                equipment_obs,
+                text,
+                None,
+                "deterministic" if (identity or fields or vision_summaries) else "none",
+                "\n".join(lines),
+            )
+
+        rendered = evidence_answer.format_evidence_answer(
+            ea, "trace" if guardrails.detect_depth_request(text) else "plain"
+        )
+        await _reply_chunked(update, rendered)
+
+        # Post-delivery bookkeeping — fail-open; the reply already landed.
+        try:
+            await print_workspace.record_photo_turn_answer(
+                ws.session_id,
+                ws.tenant_id,
+                text,
+                rendered,
+                claims=evidence_answer.as_answer_claims(ea),
+            )
+        except Exception as e:  # noqa: BLE001 — bookkeeping never eats a delivered turn
+            logger.warning("EQUIPMENT_FOLLOWUP_POST_ERROR %s", type(e).__name__)
+        return True
+    except Exception as e:  # noqa: BLE001 — this rung must never raise into a turn
+        logger.warning("EQUIPMENT_FOLLOWUP_ERROR %s", type(e).__name__)
+        return False
+
+
 # --- Wiring loop (PR-4): photo -> proposed rows; text -> verified-only cited
 # Q&A (`shared/wiring_intake.py`). Additive, fall-through fast paths — mirror
 # the drive-pack precedent above. See `shared/wiring_intake.py` module
@@ -706,6 +1159,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # instead of dropping to the enrollment-gated engine path with no memory of
     # the drive. Falls through unchanged for non-drive text.
     if await _try_drive_pack_followup(text, chat_id, update, context):
+        return
+
+    # Print-workspace continuity (Package B): a text follow-up while this chat
+    # has a live print workspace answers deterministic-first from the persisted
+    # ledger (evidence-labeled, read-only). Falls through unchanged for
+    # anything that doesn't target the workspace.
+    if await _try_print_workspace_followup(text, update, context):
+        return
+
+    # Equipment-photo memory: "what was the model number?" / "what did that
+    # photo show?" answers deterministically from the persisted workspace
+    # ledger (nameplate fields, identity, vision summary). Falls through
+    # unchanged for anything that doesn't target the remembered photo.
+    if await _try_equipment_photo_followup(text, update, context):
         return
 
     # Commercial PrintSense consent/question turns (PR-B) — claims the turn
@@ -816,6 +1283,7 @@ async def _try_nameplate_drive_pack_reply(
     caption: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
+    memo: dict | None = None,
 ) -> bool:
     """Nameplate-photo -> drive-pack fast path (additive, read-only, no LLM
     fallback). Reuses ``engine.nameplate`` (the same ``NameplateWorker`` the
@@ -839,6 +1307,12 @@ async def _try_nameplate_drive_pack_reply(
 
     if not isinstance(fields, dict) or "parse_error" in fields:
         return False
+
+    # Photo-memory: the extracted fields are evidence the dispatcher persists
+    # into the chat's photo workspace (whether or not this path claims the
+    # turn) — never re-extracted downstream (recall-first).
+    if memo is not None:
+        memo["nameplate_fields"] = fields
 
     resolution = resolve_service_pack(nameplate=fields)
 
@@ -870,7 +1344,10 @@ async def _try_nameplate_drive_pack_reply(
         if has_question:
             async with typing_action(context, update.effective_chat.id):
                 result = await asyncio.to_thread(answer_question, resolution.pack_id, caption)
-            await update.message.reply_text(_format_drive_pack_reply(result))
+            pack_reply = _format_drive_pack_reply(result)
+            await update.message.reply_text(pack_reply)
+            if memo is not None:
+                memo["answer"] = pack_reply
             await _capture_drive_pack_turn(
                 question=caption,
                 result=result,
@@ -887,10 +1364,13 @@ async def _try_nameplate_drive_pack_reply(
         # `conversation_state` (`_load_state`/`_save_state`, no public
         # accessor) and no clean migration-free per-chat KV exists outside
         # it. Deferred — see the PR description / runbook note.
-        await update.message.reply_text(
+        ident_reply = (
             f"\U0001f4c7 Identified: {pack.family.manufacturer} {pack.family.series} "
             f'— ask me about it, e.g. "what does CE10 mean?"'
         )
+        await update.message.reply_text(ident_reply)
+        if memo is not None:
+            memo["answer"] = ident_reply
         return True
 
     if has_question and "recognized manufacturer" in resolution.reason:
@@ -899,6 +1379,8 @@ async def _try_nameplate_drive_pack_reply(
         # give the honest, actionable refusal instead of guessing or silently
         # falling through to a generic engine answer.
         await update.message.reply_text(resolution.reason)
+        if memo is not None:
+            memo["answer"] = resolution.reason
         return True
 
     # Nothing recognized at all (not a drive nameplate, or extraction was too
@@ -965,9 +1447,10 @@ async def _try_wiring_intake_reply(
 # --- Print Translator: read-only LLM explanation of an electrical print,
 # NOT the wiring loop. See `shared/print_translator.py` module docstring for
 # the full grounding doctrine (OCR-only, hedged framing, no invention). This
-# fast path never writes to `wiring_connections`, never touches control, and
-# never persists anything — it reads the vision classification + OCR, calls
-# the inference cascade, and replies.
+# fast path never writes to `wiring_connections` and never touches control;
+# it reads the vision classification + OCR, calls the inference cascade,
+# replies, and then persists the turn into the per-chat print workspace
+# observation ledger (`shared/print_workspace.py` — best-effort, fail-open).
 def _print_interpreter_configured() -> bool:
     """True when the isolated paid PrintSynth interpreter is active
     (``PRINT_VISION_PROVIDER`` + that provider's key — ``interpret.is_configured()``
@@ -991,6 +1474,7 @@ def _schedule_print_autoeval(
     t0: float,
     update: Update,
     raw_bytes: bytes | None = None,
+    has_citations: bool | None = None,
 ) -> None:
     """Fire-and-forget the per-turn print autoeval AFTER the reply is delivered.
 
@@ -1029,6 +1513,7 @@ def _schedule_print_autoeval(
                 chat_id=str(update.effective_chat.id),
                 update=update,
                 raw_bytes=raw_bytes,
+                has_citations=has_citations,
             )
         )
     except Exception as exc:  # noqa: BLE001 — observability never touches the turn
@@ -1047,6 +1532,7 @@ async def _autoeval_print_turn(
     chat_id: str,
     update: Update,
     raw_bytes: bytes | None = None,
+    has_citations: bool | None = None,
 ) -> None:
     """Evaluate ($0, truth-free) → persist to conversation_eval → P0 ntfy push.
 
@@ -1084,7 +1570,9 @@ async def _autoeval_print_turn(
             bot_response=answer or "",
             source="telegram",
             intent="print_translator",
-            has_citations=(branch == "deterministic_fastpath"),
+            has_citations=(
+                (branch == "deterministic_fastpath") if has_citations is None else has_citations
+            ),
             response_time_ms=int(latency_s * 1000),
             meta=meta,
         )
@@ -1102,6 +1590,8 @@ async def _autoeval_print_turn(
             provider = (usage or {}).get("provider")
             if branch == "deterministic_fastpath":
                 route, fallback_reason = "deterministic_fastpath", None
+            elif branch == "workspace_followup":
+                route, fallback_reason = "workspace", None
             elif provider == "openai":
                 route, fallback_reason = "printsense", None
             else:
@@ -1117,7 +1607,7 @@ async def _autoeval_print_turn(
                 answer or "",
                 fsm_state="ELECTRICAL_PRINT",
                 intent="print",
-                has_photo=True,
+                has_photo=raw_bytes is not None,
                 response_time_ms=int(latency_s * 1000),
                 route=route,
                 model=(usage or {}).get("model"),
@@ -1141,21 +1631,109 @@ async def _autoeval_print_turn(
         logger.warning("PRINT_AUTOEVAL_ERROR %s", type(exc).__name__)
 
 
+async def _persist_print_workspace_turn(
+    update: Update,
+    *,
+    tenant_id: str,
+    raw_bytes: bytes,
+    vision_data: dict | None,
+    caption: str,
+    answer: str,
+) -> None:
+    """Persist a delivered print turn into the per-chat print workspace
+    (Package A spine). Best-effort and fail-open: the reply was already sent,
+    so a persistence failure is logged and swallowed — it must never eat,
+    duplicate, or delay-fail the turn. When a close-up superseded earlier
+    observations, a short enrichment ack tells the technician the print
+    model advanced."""
+    try:
+        outcome = await print_workspace.persist_print_turn(
+            chat_id=str(update.effective_chat.id),
+            tenant_id=tenant_id,
+            raw_bytes=raw_bytes,
+            vision_data=vision_data,
+            caption=caption,
+            answer=answer,
+        )
+        if outcome and outcome.superseded_ids:
+            await _reply_chunked(
+                update,
+                f"Close-up absorbed: {len(outcome.superseded_ids)} observations updated, "
+                "print model revision bumped.",
+            )
+    except Exception as exc:  # noqa: BLE001 — persistence never touches the turn
+        logger.warning("PRINT_WORKSPACE_PERSIST_ERROR %s", type(exc).__name__)
+
+
+async def _persist_equipment_workspace_turn(
+    update: Update,
+    *,
+    raw_bytes: bytes,
+    caption: str,
+    answer: str,
+    vision_data: dict | None,
+    nameplate_fields: dict | None,
+) -> None:
+    """Persist a delivered NON-print photo turn (nameplate / equipment /
+    unknown) into the same per-chat visual workspace the print path uses.
+
+    Pure recall: ``vision_data`` and ``nameplate_fields`` are the results the
+    rungs already computed this turn (memo capture) — the spine replays them
+    through model-free adapters, so persistence never triggers a second
+    vision/nameplate call. Best-effort and fail-open: the reply was already
+    sent; a persistence failure is logged and swallowed."""
+    try:
+        if not raw_bytes or not (vision_data or nameplate_fields):
+            return
+        outcome = await print_workspace.persist_print_turn(
+            chat_id=str(update.effective_chat.id),
+            tenant_id=_print_workspace_tenant(update),
+            raw_bytes=raw_bytes,
+            vision_data=vision_data,
+            caption=caption,
+            answer=answer,
+            nameplate_fields=nameplate_fields,
+        )
+        if outcome:
+            logger.info(
+                "EQUIPMENT_WORKSPACE_PERSISTED chat=%s session=%s status=%s fields=%d",
+                str(update.effective_chat.id),
+                outcome.session_id,
+                outcome.status,
+                len(nameplate_fields or {}),
+            )
+    except Exception as exc:  # noqa: BLE001 — persistence never touches the turn
+        logger.warning("EQUIPMENT_WORKSPACE_PERSIST_ERROR %s", type(exc).__name__)
+
+
+def _print_workspace_tenant(update: Update) -> str:
+    """Tenant for print-workspace persistence — chat_tenant mapping when
+    available, else the literal ``"default"``. Never raises."""
+    try:
+        return chat_tenant.resolve(str(update.effective_user.id)) or "default"
+    except Exception:  # noqa: BLE001 — tenant resolution must never eat the turn
+        return "default"
+
+
 async def _try_print_translator_reply(
     raw_bytes: bytes,
     vision_bytes: bytes,
     caption: str,
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
+    memo: dict | None = None,
 ) -> bool:
     """Print Translator: an electrical-print photo + any print QUESTION (explain
     / theory of operation, OR a device / wiring / tracing question like "what
     devices are listed in this print?") -> a plain-English, OCR-grounded answer.
     Read-only generation — NO wiring DB writes, NO control writes. Captions are
     tie-breakers only; the image's visual classification decides whether to process
-    as a print. Falls through (returns ``False``) on vision classification error,
-    if the image is not ``ELECTRICAL_PRINT``, or if the caption is a wiring-intake
-    intent (routed to ``_try_wiring_intake_reply`` instead).
+    as a print. After the reply is delivered, the turn is persisted (best-effort,
+    fail-open) into the per-chat print-workspace observation ledger
+    (``shared/print_workspace.py``). Falls through (returns ``False``) on vision
+    classification error, if the image is not ``ELECTRICAL_PRINT``, or if the
+    caption is a wiring-intake intent (routed to ``_try_wiring_intake_reply``
+    instead).
 
     Classification runs on the small ``vision_bytes`` (fast, local qwen), but the
     Anthropic PrintSynth interpreter reads the FULL-RESOLUTION ``raw_bytes`` — the
@@ -1195,8 +1773,16 @@ async def _try_print_translator_reply(
         logger.warning("print translator vision classify failed: %s", e)
         return False  # a vision hiccup shouldn't eat the turn — fall through
 
+    # Photo-memory: keep the classification result for the dispatcher — on
+    # fall-through it becomes the equipment-photo workspace evidence instead
+    # of being discarded (recall-first; no second vision call downstream).
+    if memo is not None and vision_data:
+        memo["vision_data"] = vision_data
+
     if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
         return False  # not a print → fall through unchanged (visual evidence wins)
+
+    tenant_id = _print_workspace_tenant(update)
 
     # UNSEEN-1 deterministic fast-path (zero tokens, before ANY model call):
     # closed-form question classes — contact conventions, designation meaning,
@@ -1222,6 +1808,14 @@ async def _try_print_translator_reply(
                     t0=t0,
                     update=update,
                     raw_bytes=raw_bytes,
+                )
+                await _persist_print_workspace_turn(
+                    update,
+                    tenant_id=tenant_id,
+                    raw_bytes=raw_bytes,
+                    vision_data=vision_data,
+                    caption=caption,
+                    answer=det["reply_text"],
                 )
                 return True
             pack = _det_qa.extract_evidence(caption, vision_data)
@@ -1253,6 +1847,7 @@ async def _try_print_translator_reply(
             vision_data,
             str(update.effective_chat.id),
             interpret_b64=interpret_b64,
+            graph_sink=print_workspace.graph_sink_for(str(update.effective_chat.id)),
         )
     final_text = reply or print_translator.format_theory_reply("", vision_data.get("drawing_type"))
     await _reply_chunked(update, final_text)
@@ -1264,6 +1859,14 @@ async def _try_print_translator_reply(
         t0=t0,
         update=update,
         raw_bytes=raw_bytes,
+    )
+    await _persist_print_workspace_turn(
+        update,
+        tenant_id=tenant_id,
+        raw_bytes=raw_bytes,
+        vision_data=vision_data,
+        caption=caption,
+        answer=final_text,
     )
     return True
 
@@ -1343,7 +1946,23 @@ async def _dispatch_single_photo(
     ):
         return
 
-    if await _try_nameplate_drive_pack_reply(vision_bytes, caption, update, context):
+    # Photo-memory memo: rungs stash the evidence they already computed
+    # (nameplate fields, vision classification) so the workspace persistence
+    # below is pure recall — never a second vision/nameplate call.
+    memo: dict = {}
+
+    if await _try_nameplate_drive_pack_reply(vision_bytes, caption, update, context, memo=memo):
+        # The nameplate identified a drive (or refused honestly) — persist the
+        # extracted identity fields so text follow-ups ("what was the serial
+        # number?") answer from the photo's own evidence.
+        await _persist_equipment_workspace_turn(
+            update,
+            raw_bytes=raw_bytes,
+            caption=caption,
+            answer=memo.get("answer", ""),
+            vision_data={"classification": "NAMEPLATE"},
+            nameplate_fields=memo.get("nameplate_fields"),
+        )
         return
 
     # Wiring intake: propose rows into `wiring_connections` from an
@@ -1358,7 +1977,9 @@ async def _dispatch_single_photo(
     # unchanged for anything else. Passes the full-res raw_bytes so the
     # Anthropic interpreter reads the print at Claude's high-res budget, not
     # the 1024px-crushed vision_bytes. See `_try_print_translator_reply`.
-    if await _try_print_translator_reply(raw_bytes, vision_bytes, caption, update, context):
+    if await _try_print_translator_reply(
+        raw_bytes, vision_bytes, caption, update, context, memo=memo
+    ):
         return
 
     # Commercial PrintSense concierge (PR-B): explicit-intent only —
@@ -1398,6 +2019,19 @@ async def _dispatch_single_photo(
         final_reply += "\n\nPhoto submitted to the Hub for review."
 
     await update.message.reply_text(final_reply)
+
+    # Photo-memory: the engine handled a NON-print photo (equipment /
+    # nameplate / unknown). Persist the memo-captured evidence into the chat
+    # workspace so text follow-ups recall it instead of re-inferring.
+    # ELECTRICAL_PRINT never reaches here (the print rung claims it above).
+    await _persist_equipment_workspace_turn(
+        update,
+        raw_bytes=raw_bytes,
+        caption=caption,
+        answer=final_reply,
+        vision_data=memo.get("vision_data"),
+        nameplate_fields=memo.get("nameplate_fields"),
+    )
     await _maybe_send_voice(update, context, chat_id, final_reply)
 
 
@@ -1571,6 +2205,35 @@ async def _try_multi_photo_printsense_reply(rec: PhotoBatchRecord) -> str | None
             "pages": page_contexts,
         },
     )
+
+    # Persist each classified page into the chat's print workspace (Package A
+    # spine) — best-effort, fail-open, no enrichment ack on the batch path.
+    # The Q&A answer is recorded once (with the final page) rather than
+    # duplicated per page.
+    if reply:
+        try:
+            last_idx = len(rec.raw_photos_b64) - 1
+            for idx0, page_b64 in enumerate(rec.raw_photos_b64):
+                try:
+                    page_bytes = base64.b64decode(page_b64)
+                except Exception:  # noqa: BLE001 — skip an undecodable page
+                    continue
+                page_ctx = dict(page_contexts[idx0]) if idx0 < len(page_contexts) else {}
+                # Every page was vision-classified ELECTRICAL_PRINT above —
+                # carry that into the evidence row's source_type.
+                page_ctx.setdefault("classification", "ELECTRICAL_PRINT")
+                await print_workspace.persist_print_turn(
+                    chat_id=rec.chat_id,
+                    tenant_id="default",
+                    raw_bytes=page_bytes,
+                    vision_data=page_ctx,
+                    caption=rec.caption or "",
+                    answer=reply if idx0 == last_idx else "",
+                    page_ref=str(idx0 + 1),
+                )
+        except Exception as exc:  # noqa: BLE001 — persistence never touches the reply
+            logger.warning("PRINT_WORKSPACE_BATCH_PERSIST_ERROR %s", type(exc).__name__)
+
     return reply or None
 
 
