@@ -203,6 +203,26 @@ OCR/layout, embeddings and visual-similarity indexing, batch corpus processing, 
 curation, and only a resource-gated second VLM lane.** The VPS owns public ingress, tenant/session
 routing, job state, manifests, and cache metadata; it must not become a heavy vision host.
 
+### Bravo runtime boundary — an evidence lane, never a second assistant
+
+Bravo owns the fast interactive local VLM/OCR lane, and that is *all* it owns in the runtime:
+
+- **Bravo emits typed *candidate* evidence, not technician answers.** Its VisualSession observations
+  (vision prose, OCR text, schematic inference) enter the runtime as
+  `EvidenceKind.PRINT_OBSERVATION` items — never as a conversational reply, never as a separate
+  chat personality. The sole conversational runtime remains `mira-pipeline` / the shared `Supervisor`.
+- **Every Bravo result entering context retains its provenance.** Source identity (evidence /
+  observation id, original content hash), producer + model provenance (the `extractor`, and the model
+  version only when actually supplied), explicit coordinates (page, bounding box) *only when the
+  source row contains them*, trust state, and known gaps all survive the crossing. Nothing — page,
+  coordinate, asset identity, or model version — is ever derived from a filename, list order, or prose.
+- **The common context contract is the only path** from Bravo evidence to the one technician policy
+  (`materialized_evidence/context_contract.py :: evidence_from_visual_session`). There is no second
+  context schema and no second evidence ledger.
+- **Human review, not model confidence, promotes trusted truth.** VLM/OCR output stays `candidate`
+  no matter how confident the model is; only the existing human `review_state` raises it, and rejected
+  or superseded observations never cross at all.
+
 The proprietary model program compounds the same loop. FactoryLM should own adapters, fine-tunes,
 OCR models, embedding/reranker pairs, detector datasets, model manifests, graders, and deterministic
 artifacts before dreaming about foundation-model pretraining. Do not train on private customer
