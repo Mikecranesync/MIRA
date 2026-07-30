@@ -515,6 +515,45 @@ def _webdev_python_files():
     return sorted(found)
 
 
+# The read-only rule stated as DEFAULT-DENY over the tag/OPC namespaces, because
+# a token blocklist was refuted: `system.tag.configure` and `system.tag.editTag`
+# both mutate tags, neither was in the list, and both passed. Any future
+# `system.tag.<something>` would too. So instead: only these members may be
+# touched from the WebDev surface, and anything else is a violation whether or
+# not anyone thought of it.
+_TAG_READ_MEMBERS = frozenset({
+    "browseTags", "browse", "readBlocking", "read", "exists", "getConfiguration",
+})
+_OPC_READ_MEMBERS = frozenset({"readValue", "readValues", "browse", "browseSimple", "getServers"})
+
+_SYSTEM_MEMBER_RE = re.compile(r"\bsystem\.(tag|opc)\.([A-Za-z_]\w*)")
+
+
+def test_no_webdev_handler_touches_a_non_read_tag_api():
+    """DEFAULT-DENY over system.tag.* / system.opc.* across the WebDev surface.
+
+    Replaces a token blocklist that was proved evadable: `system.tag.configure`
+    and `system.tag.editTag` mutate tags, were absent from the blocklist, and
+    passed. Enumerating writes is a losing game — enumerate the permitted READS
+    and deny the rest, so an API nobody anticipated fails closed.
+    """
+    offenders = []
+    for path in _webdev_python_files():
+        code = code_only(path)
+        for ns, member in _SYSTEM_MEMBER_RE.findall(code):
+            allowed = _TAG_READ_MEMBERS if ns == "tag" else _OPC_READ_MEMBERS
+            if member not in allowed:
+                offenders.append(
+                    "%s: system.%s.%s" % (os.path.relpath(path, _REPO_IGNITION), ns, member)
+                )
+    assert not offenders, (
+        "non-read tag/OPC API in the WebDev request surface — MIRA is read-only "
+        "toward OT (.claude/rules/fieldbus-readonly.md). If a member is genuinely "
+        "read-only, add it to _TAG_READ_MEMBERS/_OPC_READ_MEMBERS with a reason: %s"
+        % offenders
+    )
+
+
 def test_no_webdev_handler_writes_to_ot():
     """Every WebDev handler, not just the adapter — the gate must cover the files
     that CAN violate the invariant, not only the one that cannot.
@@ -559,6 +598,20 @@ def test_chat_handler_builds_no_second_snapshot():
         "snapshot build; the adapter is the only permitted source"
     )
 
+    # The `filtered_snapshot[` check alone was refuted: a second loop can build a
+    # DIFFERENTLY-NAMED dict (`_inline = {}`) and merge it later. What it cannot do
+    # is avoid touching the injected I/O wrappers. Each is defined once and used
+    # once — as an argument to collect_live_snapshot — so a count of 2 is exact and
+    # any extra reference is a second read path.
+    for wrapper in ("_browse", "_read"):
+        assert code.count(wrapper) == 2, (
+            "%s is referenced %d times in doPost.py (expected exactly 2: its "
+            "definition and the single collect_live_snapshot call). An extra "
+            "reference means a second tag-read path, which is how the two "
+            "evidence shapes diverged in the first place."
+            % (wrapper, code.count(wrapper))
+        )
+
     stringified = re.findall(r"\b(?:str|unicode|unicode_type)\(\s*[A-Za-z_][\w.]*\.value\b", code)
     assert not stringified, (
         "doPost.py stringifies a tag value (%r) — values must keep their Python "
@@ -566,24 +619,77 @@ def test_chat_handler_builds_no_second_snapshot():
     )
 
 
+def _unguarded_dunder_file(path):
+    """Every `__file__` reference NOT lexically inside a try/except that catches
+    NameError. Structural (AST), because a substring check is a decoy magnet."""
+    import ast
+
+    tree = ast.parse(open(path, encoding="utf-8").read())
+
+    guarded: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        catches_nameerror = False
+        for handler in node.handlers:
+            names = []
+            if isinstance(handler.type, ast.Name):
+                names = [handler.type.id]
+            elif isinstance(handler.type, ast.Tuple):
+                names = [e.id for e in handler.type.elts if isinstance(e, ast.Name)]
+            elif handler.type is None:
+                names = ["BaseException"]  # bare except catches it
+            if "NameError" in names or "BaseException" in names:
+                catches_nameerror = True
+        if not catches_nameerror:
+            continue
+        # only the protected body counts — not the handlers/else/finally
+        for stmt in node.body:
+            for sub in ast.walk(stmt):
+                if isinstance(sub, ast.Name) and sub.id == "__file__":
+                    guarded.add(sub.lineno)
+
+    return [
+        n.lineno
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Name) and n.id == "__file__" and n.lineno not in guarded
+    ]
+
+
 def test_chat_handler_survives_an_ignition_script_resource():
     """`__file__` is UNDEFINED in an Ignition script resource.
 
     collector.py:35-43 documents this trap and guards it with `except NameError`.
-    doPost.py's adapter import performs the same `__file__` path dance, so it
-    needs the same guard — unguarded, the NameError is swallowed by the broad
-    `except Exception`, logged at warn, and every turn silently ships an EMPTY
-    snapshot that looks exactly like "this asset has no tags". No CPython test
-    can observe that, because `__file__` always exists under pytest; this
-    assertion is the only available proof, so it is asserted on the source.
+    doPost.py does the same path dance TWICE — once for the adapter, once for
+    signing.py — and the second one sits outside any try, so on a Gateway it
+    raises an UNCAUGHT NameError: HTTP 500 on every turn, not a degraded answer.
+    No CPython test can observe either, because `__file__` always exists under
+    pytest (and `tests/regime7_ignition/` also runs doPost under CPython).
+
+    Asserted STRUCTURALLY, over the AST. The first version of this test was
+    `assert "except NameError" in code` — a bare substring, unbound to the
+    `__file__` expression, so a decoy handler elsewhere in the file satisfied it
+    while the real dance went unguarded. That is the third generation of the same
+    mistake this file keeps making: matching text that DESCRIBES the invariant
+    instead of the code that carries it.
     """
+    unguarded = _unguarded_dunder_file(CHAT_SRC)
+    assert not unguarded, (
+        "doPost.py dereferences __file__ at line(s) %s outside a try/except "
+        "NameError — undefined in an Ignition script resource" % unguarded
+    )
+
     code = code_only(CHAT_SRC)
     assert "__file__" in code, "test is stale — the path dance is gone"
-    assert "except NameError" in code, (
-        "doPost.py resolves the adapter via __file__ with no `except NameError` "
-        "— it will silently return an empty snapshot on a real Gateway"
-    )
     assert "except ImportError" in code, (
         "a missing adapter is a deployment fault and must be logged at ERROR, "
         "not folded into the best-effort warn path"
     )
+
+
+def test_collector_also_guards_dunder_file():
+    """The adapter's own dependency chain must survive a script resource too —
+    it is the module that documented the trap in the first place."""
+    for src in (ADAPTER_SRC, os.path.join(_REPO_IGNITION, "webdev/FactoryLM/api/tags/collector.py")):
+        unguarded = _unguarded_dunder_file(src)
+        assert not unguarded, "%s: unguarded __file__ at %s" % (os.path.basename(src), unguarded)

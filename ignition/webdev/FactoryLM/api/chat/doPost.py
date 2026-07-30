@@ -101,13 +101,20 @@ def doPost(request, session):
         import sys as _sys
 
         # `__file__` is UNDEFINED in an Ignition script resource — collector.py
-        # documents the same trap and guards it the same way. Unguarded, the
-        # NameError is swallowed by the broad `except Exception` below, which
-        # logs a WARN and yields an EMPTY snapshot: on a real Gateway that is
-        # indistinguishable from "this asset has no tags", and no CPython test
-        # can catch it because `__file__` always exists there. The sys.path
-        # dance is only needed for the repo source layout; on a Gateway the
-        # module is a flat sibling on the script path and imports without it.
+        # documents the same trap and guards it the same way. No CPython test can
+        # catch it, because `__file__` always exists under pytest (regime7 runs
+        # this handler under CPython too), so the guard is asserted on the AST by
+        # tests/ignition/test_gateway_live_snapshot.py.
+        #
+        # The consequence depends on where the dereference sits, and BOTH are real
+        # in this file: here, inside the try, an unguarded NameError is swallowed
+        # by `except Exception` below → warn + EMPTY snapshot, indistinguishable
+        # from "this asset has no tags". At the signing path dance further down it
+        # sits OUTSIDE any try → uncaught NameError → HTTP 500 on every turn. Do
+        # not read this block as covering the class; each site needs its own guard.
+        #
+        # The sys.path dance is only needed for the repo source layout; on a
+        # Gateway the module is a flat sibling on the script path.
         try:
             _api_dir = _osp.dirname(_osp.abspath(__file__))
             _tags_dir = _osp.join(_osp.dirname(_api_dir), "tags")
@@ -172,10 +179,18 @@ def doPost(request, session):
     import os.path as osp
     import sys
 
-    # Ensure the signing helper (sibling module) is importable from Jython
-    _chat_dir = osp.dirname(osp.abspath(__file__))
-    if _chat_dir not in sys.path:
-        sys.path.insert(0, _chat_dir)
+    # Ensure the signing helper (sibling module) is importable from Jython.
+    # Same `__file__` trap as the adapter import above, and this one is WORSE:
+    # it sits outside any try, so on an Ignition script resource the NameError is
+    # uncaught and the endpoint returns HTTP 500 on EVERY turn — not a degraded
+    # answer, no answer. Guarded identically; on a Gateway signing.py is a flat
+    # sibling on the script path, so the import below resolves without the dance.
+    try:
+        _chat_dir = osp.dirname(osp.abspath(__file__))
+        if _chat_dir not in sys.path:
+            sys.path.insert(0, _chat_dir)
+    except NameError:
+        pass  # script resource: flat sibling, no path setup required
 
     from signing import build_headers
 
