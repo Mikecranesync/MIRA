@@ -65,9 +65,7 @@ def test_good_row_accepted(tmp_path) -> None:
     assert "source_family_general" in c.record.tags
     assert "incomplete-symptoms" in c.record.tags
     d = c.to_dict()
-    assert d["document_lineage_key"].startswith(
-        "factorylm:general-behavior-incomplete-symptoms-"
-    )
+    assert d["document_lineage_key"].startswith("factorylm:general-behavior-incomplete-symptoms-")
     assert d["rights"]["training_allowed"] is True
 
 
@@ -150,9 +148,7 @@ def test_compile_with_variants_keeps_gates_green(tmp_path, monkeypatch) -> None:
             f"Utility pump number {i} out back quit twice today and the operator "
             "swears nothing changed. Where do I even start?"
         )
-    (p / "v.jsonl").write_text(
-        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
-    )
+    (p / "v.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
     monkeypatch.setattr(uc, "GENERATED_DIR", p)
     compiled, report = uc.compile_unified()
     assert report["gates"]["general_fraction_ok"] is True
