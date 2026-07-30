@@ -43,16 +43,20 @@ def _run(
     tmp_path, *, report=None, text=DOC_TEXT, snapshot: str | None = "ev.json", tenant=TENANT, **kw
 ):
     report = report or _report()
-    with patch("tasks.full_ingest_pipeline.TENANT_ID", tenant):
-        step_document_evidence(
-            _pdf(tmp_path),
-            text,
-            report.pdf_url,
-            kw.pop("ocr_requested", False),
-            report,
-            registry_path=str(tmp_path / snapshot) if snapshot else "",
-            **kw,
-        )
+    # The tenant is passed EXPLICITLY, never by patching a module global:
+    # `test_celery_app_resilient_imports` deletes every `sys.modules["tasks.*"]`
+    # entry, so `patch("tasks.full_ingest_pipeline.TENANT_ID", …)` would silently
+    # target a re-imported module and these tests would fail only in a full-suite run.
+    step_document_evidence(
+        _pdf(tmp_path),
+        text,
+        report.pdf_url,
+        kw.pop("ocr_requested", False),
+        report,
+        registry_path=str(tmp_path / snapshot) if snapshot else "",
+        tenant_id=tenant,
+        **kw,
+    )
     return report
 
 
@@ -75,12 +79,9 @@ class TestOptionalAndFailOpen:
 
     def test_receipt_write_failure_is_visible_but_never_blocks_ingest(self, tmp_path):
         report = _report()
-        with (
-            patch("tasks.full_ingest_pipeline.TENANT_ID", TENANT),
-            patch(
-                "materialized_evidence.document_compiler.write_receipt",
-                side_effect=OSError("read-only filesystem"),
-            ),
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("read-only filesystem"),
         ):
             step_document_evidence(
                 _pdf(tmp_path),
@@ -89,6 +90,7 @@ class TestOptionalAndFailOpen:
                 False,
                 report,
                 registry_path=str(tmp_path / "ev.json"),
+                tenant_id=TENANT,
             )
         assert report.evidence_status == "failed: read-only filesystem"
         assert report.evidence_datasets == []
@@ -98,15 +100,15 @@ class TestOptionalAndFailOpen:
 
     def test_missing_pdf_fails_open(self, tmp_path):
         report = _report()
-        with patch("tasks.full_ingest_pipeline.TENANT_ID", TENANT):
-            step_document_evidence(
-                tmp_path / "gone.pdf",
-                DOC_TEXT,
-                report.pdf_url,
-                False,
-                report,
-                registry_path=str(tmp_path / "ev.json"),
-            )
+        step_document_evidence(
+            tmp_path / "gone.pdf",
+            DOC_TEXT,
+            report.pdf_url,
+            False,
+            report,
+            registry_path=str(tmp_path / "ev.json"),
+            tenant_id=TENANT,
+        )
         assert report.evidence_status.startswith("failed:")
         assert report.errors == []
 

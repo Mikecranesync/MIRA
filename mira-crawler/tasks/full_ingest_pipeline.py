@@ -531,11 +531,18 @@ def step_document_evidence(
     report: PipelineReport,
     registry_path: str = "",
     environment: str = "dev",
+    tenant_id: str | None = None,
 ) -> None:
+    # `tenant_id` is an explicit parameter (defaulting to the module global) rather
+    # than read straight from `TENANT_ID`: `test_celery_app_resilient_imports`
+    # deletes every `sys.modules["tasks.*"]` entry, so a later
+    # `patch("tasks.full_ingest_pipeline.TENANT_ID")` would patch a re-imported
+    # module while this function's globals stayed on the orphaned original.
+    tid = TENANT_ID if tenant_id is None else tenant_id
     if not registry_path:
         report.evidence_status = "skipped (no registry configured)"
         return
-    if not TENANT_ID:
+    if not tid:
         report.evidence_status = "skipped (MIRA_TENANT_ID not set — evidence is tenant-scoped)"
         return
 
@@ -596,7 +603,7 @@ def step_document_evidence(
         receipt = compile_document_evidence(
             source=source,
             extraction=extraction,
-            tenant_id=TENANT_ID,
+            tenant_id=tid,
             environment=env,
             # No verified pages: this extraction layer supplies no page identity, and
             # `report.extract_pages` is a markdown-heading ESTIMATE, not provenance.
@@ -703,6 +710,7 @@ def run(
         report,
         registry_path=(evidence_registry if evidence_registry is not None else EVIDENCE_REGISTRY),
         environment=EVIDENCE_ENV,
+        tenant_id=TENANT_ID,
     )
 
     # 5. Quality gate
