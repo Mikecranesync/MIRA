@@ -996,9 +996,7 @@ async def _try_equipment_photo_followup(
             label = _EQUIPMENT_FIELD_LABELS.get(field_name, field_name)
             if value:
                 field_obs = [
-                    o
-                    for o in equipment_obs
-                    if (o.metadata or {}).get("field") == field_name
+                    o for o in equipment_obs if (o.metadata or {}).get("field") == field_name
                 ]
                 ea = evidence_answer.build_evidence_answer(
                     session,

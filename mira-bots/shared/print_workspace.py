@@ -586,9 +586,7 @@ def latest_equipment_identity(observations: list[Observation]) -> str | None:
     of echoing a stale one."""
     try:
         rows = [
-            o
-            for o in (observations or [])
-            if getattr(o, "extractor", None) == "equipment_resolver"
+            o for o in (observations or []) if getattr(o, "extractor", None) == "equipment_resolver"
         ]
         if not rows:
             return None
