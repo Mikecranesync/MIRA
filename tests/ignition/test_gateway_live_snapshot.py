@@ -9,6 +9,7 @@
 # Run: python3 -m pytest tests/ignition/test_gateway_live_snapshot.py -v
 
 import os
+import re
 import sys
 
 import pytest
@@ -17,6 +18,7 @@ import pytest
 # collector adds api/chat to sys.path for signing.py.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../ignition/webdev/FactoryLM/api/tags"))
 
+import allowlist  # noqa: E402
 import collector  # noqa: E402
 import gateway_live_snapshot as gls  # noqa: E402
 
@@ -136,10 +138,26 @@ def test_non_allowlisted_tags_are_dropped():
 
 
 def test_missing_asset_id_yields_no_snapshot():
-    browse_fn, read_fn = make_io({})
-    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, "", allowlist={"x"})
+    """An assetless turn must SHORT-CIRCUIT, not browse the bare monitored root.
+
+    Written this way deliberately: the first version used `make_io({})`, whose
+    browse_fn returns [] for any folder, so the assertions held whether or not
+    the guard existed — deleting `if not asset_id` kept the suite green. The
+    fixture must be able to return tags, and the proof is that browse was never
+    CALLED. (`monitored_folder("")` is `[default]Mira_Monitored/`, i.e. every
+    monitored asset on the Gateway.)
+    """
+    (p,) = _paths("speed_hz")
+    folder_seen = []
+    browse_fn, read_fn = make_io({p: FakeQV(48.5, "Good")}, folder_seen=folder_seen)
+
+    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, "", allowlist={p})
+
     assert snap == {}
     assert stats["read"] == 0
+    assert folder_seen == [], (
+        "assetless turn browsed %r — the short-circuit is gone" % folder_seen
+    )
 
 
 @pytest.mark.parametrize("failing", ["browse", "read"])
@@ -218,11 +236,73 @@ def test_chat_and_stream_paths_agree_on_every_reading():
     by_path = {r["tag_path"]: r for r in stream_payload["tags"]}
     assert set(by_path.keys()) == set(chat_snap.keys())
     for path, reading in by_path.items():
-        for field in ("value", "value_type", "quality"):
+        # `ts` is in the loop on purpose: it is the observation time a technician
+        # reads a value against. Without it the two renderings could disagree on
+        # when the reading happened and this test would still pass.
+        for field in ("value", "value_type", "quality", "ts"):
             assert chat_snap[path][field] == reading[field], (
                 "%s.%s diverged: chat=%r stream=%r"
                 % (path, field, chat_snap[path][field], reading[field])
             )
+
+
+# ── the branch PRODUCTION actually takes: allowlist resolved internally ─────
+#
+# Every fail-closed test above passes an explicit `allowlist=`. doPost.py does
+# NOT — it calls collect_live_snapshot(_browse, _read, asset_id), so production
+# takes the `allowlist is None` branch, which had ZERO coverage: a fail-open
+# reintroduction inside it passed the whole suite. These two tests cover it.
+#
+# MIRA_ALLOWLIST_PATH is pinned in both, because the real resolver falls back to
+# the installed-Gateway path (`C:/Program Files/.../approved_tags.json`, present
+# on the bench laptop) and then to the in-repo file — so an unpinned test would
+# assert against whatever the machine happens to have. Pinning keeps the suite
+# hermetic, which is the header's claim.
+
+
+def test_internally_resolved_allowlist_filters_fail_closed(tmp_path, monkeypatch):
+    """With no allowlist argument, the adapter loads one and STILL filters."""
+    p_ok, p_no = _paths("speed_hz", "not_approved")
+    approved = tmp_path / "approved_tags.json"
+    approved.write_text('{"tags": ["%s"]}' % p_ok)
+    monkeypatch.setenv("MIRA_ALLOWLIST_PATH", str(approved))
+
+    browse_fn, read_fn = make_io(
+        {p_ok: FakeQV(48.5, "Good"), p_no: FakeQV(1, "Good")}
+    )
+    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, ASSET)
+
+    assert list(snap.keys()) == [p_ok]
+    assert stats["dropped"] == 1
+    assert stats["allowlist_loaded"] is True
+
+
+def test_unresolvable_allowlist_drops_everything_not_fail_open(tmp_path, monkeypatch):
+    """No loadable allowlist ANYWHERE => EMPTY snapshot, never an unfiltered one.
+
+    This is the load-bearing claim of the module, asserted on the branch the
+    Gateway actually uses. An empty snapshot degrades the answer; an unfiltered
+    one breaks the tag contract, so empty is the correct failure.
+
+    Pointing MIRA_ALLOWLIST_PATH at a missing file is NOT enough to reach this
+    branch, which is worth writing down: `resolve_allowlist_path()` honours the
+    override only `if override and os.path.isfile(override)` and otherwise falls
+    through to `_DEFAULT_PATHS` — the installed-Gateway allowlist (58 tags on the
+    bench laptop) or the in-repo copy. A typo'd override therefore silently
+    substitutes a DIFFERENT allowlist rather than failing closed. So the search
+    path is emptied too, which is what "no allowlist deployed" actually means.
+    """
+    monkeypatch.setenv("MIRA_ALLOWLIST_PATH", str(tmp_path / "does_not_exist.json"))
+    monkeypatch.setattr(allowlist, "_DEFAULT_PATHS", [], raising=True)
+
+    (p,) = _paths("speed_hz")
+    browse_fn, read_fn = make_io({p: FakeQV(48.5, "Good")})
+    snap, stats = gls.collect_live_snapshot(browse_fn, read_fn, ASSET)
+
+    assert snap == {}
+    assert stats["read"] == 1          # the tags WERE readable …
+    assert stats["allowed"] == 0       # … and were dropped on purpose
+    assert stats["allowlist_loaded"] is False  # what doPost.py logs at ERROR
 
 
 def test_browse_uses_the_monitored_folder_convention():
@@ -380,3 +460,130 @@ def test_chat_handler_no_longer_reads_tags_inline():
     # hand I/O to the adapter — never in a second inline snapshot build.
     assert code.count("browseTags") <= 1
     assert code.count("readBlocking") <= 1
+
+
+# ── the guards below exist because the ones above were proved insufficient ────
+#
+# Mutation testing of this file (2026-07-30) found that the read-only gate was
+# pointed at the ONE file that cannot violate it. `gateway_live_snapshot.py` is
+# read-only by construction — it imports nothing from Ignition and reaches a tag
+# only through injected callables. `doPost.py` is the file with real `system.*`
+# access, and it was checked for three literal spellings. Both of these passed:
+#
+#   * `system.tag.write([asset_id], [0])` added to doPost.py            → green
+#   * the entire original defect re-added to doPost.py, using `unicode()`
+#     instead of `str()` and reusing the existing _browse/_read wrappers → green
+#
+# So the assertions below check the CLASS, over EVERY handler that could violate
+# it, not the previous spelling in one hand-picked module.
+#
+# HONEST LIMITS (do not read these guards as more than they are): this is a
+# token scan over source text. A write reached through `getattr(system, "tag")`
+# indirection, or through a callable injected by the caller, is NOT detected —
+# both were confirmed to slip through. Those need review, not grep. What this
+# does catch is the accidental reintroduction, which is the actual failure mode
+# observed twice in this file's own history.
+
+# OT/fieldbus writes — never permitted anywhere in the WebDev request surface.
+# Deliberately NOT including DB writes: `system.db.runPrepUpdate` is legitimate
+# here (doPost.py persists chat history; alerts/doGet.py acknowledges alarms).
+# .claude/rules/fieldbus-readonly.md is about tags and fieldbuses, not the audit
+# trail — conflating them would make the guard un-passable and get it deleted.
+_OT_WRITE_TOKENS = (
+    "system.tag.write",
+    "writeBlocking",
+    "writeAsync",
+    "system.opc.write",
+    "pymodbus",
+    "pycomm3",
+    "python-snap7",
+    "write_register",
+    "write_coil",
+)
+
+_WEBDEV_ROOT = os.path.join(_REPO_IGNITION, "webdev")
+
+
+def _webdev_python_files():
+    found = []
+    for dirpath, _dirnames, filenames in os.walk(_WEBDEV_ROOT):
+        if "__pycache__" in dirpath:
+            continue
+        for name in sorted(filenames):
+            if name.endswith(".py"):
+                found.append(os.path.join(dirpath, name))
+    return sorted(found)
+
+
+def test_no_webdev_handler_writes_to_ot():
+    """Every WebDev handler, not just the adapter — the gate must cover the files
+    that CAN violate the invariant, not only the one that cannot.
+
+    Scope note: `ignition/gateway-scripts/` is deliberately excluded.
+    tag-change-fsm-monitor.py and timer-stuck-state.py write anomaly JSON to an
+    HMI *memory* alert tag — a pre-existing, separate case (not a fieldbus or
+    control write). Widening this sweep to cover it is a judgement call about
+    memory-tag writes that belongs in its own change, not smuggled in here.
+    """
+    files = _webdev_python_files()
+    assert len(files) >= 5, "webdev tree not found — the sweep would vacuously pass"
+
+    violations = []
+    for path in files:
+        code = code_only(path)
+        for token in _OT_WRITE_TOKENS:
+            if token in code:
+                violations.append("%s: %s" % (os.path.relpath(path, _REPO_IGNITION), token))
+    assert not violations, (
+        "OT write in the WebDev request surface (MIRA is read-only toward OT — "
+        ".claude/rules/fieldbus-readonly.md): %s" % violations
+    )
+
+
+def test_chat_handler_builds_no_second_snapshot():
+    """The defect CLASS, not its previous spelling.
+
+    The original bug was an inline snapshot build in doPost.py that stringified
+    values and applied its allowlist fail-open. Re-adding it with `unicode()`
+    instead of `str()`, reusing the wrappers already defined for the adapter,
+    evaded every earlier assertion. Two structural facts kill the whole class:
+
+      1. `filtered_snapshot` is only ever assigned WHOLE (from the adapter, or
+         `{}` on failure). Any `filtered_snapshot[...] = ...` is a second build.
+      2. Nothing in this handler stringifies a `.value`, under any spelling.
+    """
+    code = code_only(CHAT_SRC)
+
+    assert "filtered_snapshot[" not in code, (
+        "doPost.py assigns into filtered_snapshot — that is a second, inline "
+        "snapshot build; the adapter is the only permitted source"
+    )
+
+    stringified = re.findall(r"\b(?:str|unicode|unicode_type)\(\s*[A-Za-z_][\w.]*\.value\b", code)
+    assert not stringified, (
+        "doPost.py stringifies a tag value (%r) — values must keep their Python "
+        "type; that divergence is the whole defect this module closes" % stringified
+    )
+
+
+def test_chat_handler_survives_an_ignition_script_resource():
+    """`__file__` is UNDEFINED in an Ignition script resource.
+
+    collector.py:35-43 documents this trap and guards it with `except NameError`.
+    doPost.py's adapter import performs the same `__file__` path dance, so it
+    needs the same guard — unguarded, the NameError is swallowed by the broad
+    `except Exception`, logged at warn, and every turn silently ships an EMPTY
+    snapshot that looks exactly like "this asset has no tags". No CPython test
+    can observe that, because `__file__` always exists under pytest; this
+    assertion is the only available proof, so it is asserted on the source.
+    """
+    code = code_only(CHAT_SRC)
+    assert "__file__" in code, "test is stale — the path dance is gone"
+    assert "except NameError" in code, (
+        "doPost.py resolves the adapter via __file__ with no `except NameError` "
+        "— it will silently return an empty snapshot on a real Gateway"
+    )
+    assert "except ImportError" in code, (
+        "a missing adapter is a deployment fault and must be logged at ERROR, "
+        "not folded into the best-effort warn path"
+    )

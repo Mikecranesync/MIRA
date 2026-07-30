@@ -100,10 +100,21 @@ def doPost(request, session):
         import os.path as _osp
         import sys as _sys
 
-        _api_dir = _osp.dirname(_osp.abspath(__file__))
-        _tags_dir = _osp.join(_osp.dirname(_api_dir), "tags")
-        if _tags_dir not in _sys.path:
-            _sys.path.insert(0, _tags_dir)
+        # `__file__` is UNDEFINED in an Ignition script resource — collector.py
+        # documents the same trap and guards it the same way. Unguarded, the
+        # NameError is swallowed by the broad `except Exception` below, which
+        # logs a WARN and yields an EMPTY snapshot: on a real Gateway that is
+        # indistinguishable from "this asset has no tags", and no CPython test
+        # can catch it because `__file__` always exists there. The sys.path
+        # dance is only needed for the repo source layout; on a Gateway the
+        # module is a flat sibling on the script path and imports without it.
+        try:
+            _api_dir = _osp.dirname(_osp.abspath(__file__))
+            _tags_dir = _osp.join(_osp.dirname(_api_dir), "tags")
+            if _tags_dir not in _sys.path:
+                _sys.path.insert(0, _tags_dir)
+        except NameError:
+            pass  # script resource: flat sibling, no path setup required
 
         from gateway_live_snapshot import collect_live_snapshot
 
@@ -135,6 +146,17 @@ def doPost(request, session):
                 "Tag snapshot for %s: %d allowlisted tag(s)"
                 % (asset_id or "(none)", snap_stats["allowed"])
             )
+    except ImportError as e:
+        # The adapter itself is not deployed/importable. That is a DEPLOYMENT
+        # fault, not a transient tag-read failure: EVERY turn silently loses its
+        # live evidence until it is fixed, so it is logged at ERROR, not warn.
+        # Deploy gateway_live_snapshot.py + collector.py + allowlist.py together
+        # — see docs/integrations/ignition-tag-collector.md.
+        logger.error(
+            "Canonical live-snapshot adapter not importable (%s) — no live tags "
+            "will reach ANY chat turn on this Gateway" % str(e)
+        )
+        filtered_snapshot = {}
     except Exception as e:
         # Snapshot is best-effort evidence: the turn stays answerable from
         # documentation, without live tags, rather than failing the request.

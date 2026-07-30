@@ -2,7 +2,7 @@
 #
 # Importable from BOTH:
 #   * Jython 2.7 inside the Ignition Gateway (WebDev chat handler, timer scripts)
-#   * Python 3 under pytest (tests/ignition/test_live_snapshot.py)
+#   * Python 3 under pytest (tests/ignition/test_gateway_live_snapshot.py)
 #
 # ── Why this module exists ───────────────────────────────────────────────────
 #
