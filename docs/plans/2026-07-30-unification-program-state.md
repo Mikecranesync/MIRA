@@ -23,9 +23,16 @@ WS1: context contract wired into ONE serving path
 ```
 
 **WS1 adoption is therefore on the critical path to spending money**, not a parallel nicety.
-Verified 2026-07-30: `evidence_from_prior_decisions()` (`materialized_evidence/context_contract.py:658`)
-has **zero production call sites** — referenced only from `tests/test_context_contract.py`.
-The contract and its adapters exist; nothing in a live answer path consumes them yet.
+Verified 2026-07-30 (morning): `evidence_from_prior_decisions()`
+(`materialized_evidence/context_contract.py:658`) had **zero production call sites** — referenced
+only from `tests/test_context_contract.py`.
+
+**Status change 2026-07-30 (evening): PR #3032 opens the first production call site.** It wires the
+contract through `Supervisor` (the path `mira-pipeline`, Telegram and Slack all share): prior
+`decision_traces` → `evidence_from_prior_decisions` → validated `TechnicianContext` → prompt block →
+`decision_traces.context_manifest` (migration 071). Flag-gated `MIRA_CONTEXT_CONTRACT`, **default
+off**; the flag is read per call so slice 13 can run one process both ways. **Slice 13 becomes
+buildable when #3032 merges** — it does NOT require the flag to default on.
 
 ## Shipped (verified, not asserted)
 
@@ -56,11 +63,11 @@ The contract and its adapters exist; nothing in a live answer path consumes them
 
 | # | Task | Note |
 |---|---|---|
-| A1 | **WS1: wire the context contract into ONE serving path** | The critical path (§ above). Highest value available. |
+| A1 | **WS1: wire the context contract into ONE serving path** | **IN REVIEW — PR #3032.** Prior-decision family only: retrieval still reaches the prompt through the RAG worker's reference block, so G6 holds for contract-sourced evidence and **not yet** for retrieval. Unifying that rendering is the next slice. |
 | A2 | **Unblock the review sitting** | Two defects: `tools/factorylm_ai/review_console_v2/server.py` defaults to `C:\wt-wire\…\technician-dataset-v0\…` (Windows path, stale worktree, **v0** dataset); **and** `compiled_manifest.json` writes only 4 summary keys while the console requires `manifest["entries"]` with per-record `record_id`+`content_hash`. `unified_compile.main()` *computes* the full manifest via `v0.candidate_manifest_for()` then discards the entries on write. Fix both, then generate the exception queue. |
 | A3 | Build the **$0 6-test packing proof suite** from #3001 | Flips the stop-gate from NOT PROVEN. |
 | A4 | Build **eval slice 11** (chat-shaped graph-reasoning fixtures) | Buildable now; no dependency. |
-| A5 | Slice 13 | **Blocked on A1.** |
+| A5 | Slice 13 | **Unblocked the moment #3032 merges** (the flag may stay off — the slice sets it itself). |
 | A6 | Adjacent: **#2987** staging migration drift · **#2952** eval-fixer grades wrong branch | Both corrupt signals this program depends on. |
 | A7 | Tailnet-reachability probe | #3014 follow-up — an expiring auth key is a scheduled outage with no alarm. |
 
