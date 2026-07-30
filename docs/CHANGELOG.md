@@ -1,3 +1,47 @@
+### v3.230.1 (2026-07-29) - fix(ci): execute the pre-commit hook in CI + changelog.d fragments to end the shared-line conflict
+
+Closes two blind spots found while auditing what has been built.
+
+**`.githooks/pre-commit` is now executed by CI.** It carries seven guards and was run
+by no workflow and no test — the only `githooks` reference under `.github/` was a
+comment in `code-review.yml`, which *reimplements* §6 as a backstop rather than running
+the hook. Three live defects were found in it on 2026-07-29, one of which (`rg` absent
+→ "✓ No debug artifacts found") had been reporting **success over a diff it never
+read**. `tests/hooks/test_precommit_hook.sh` stages fixtures against the real index and
+asserts: shellcheck reports *every* finding and blocks (the pre-fix default formatter
+aborted at a non-ASCII line and silently dropped later findings); a **dead** `rg` and a
+**dead** `python` report `SKIPPED, not passed` rather than a pass — the shims exit 49,
+reproducing the Windows App Execution Alias class of a tool that exists, is executable,
+and does not work; and a clean staged set still passes, because a guard that only ever
+fails gets disabled by the first developer it blocks. Wired into `ci.yml` as
+`precommit-hook-tests` and added to the fail-closed **CI Gate**. Verified non-vacuous:
+6 of its 11 assertions fail against the pre-fix hook (`c4ca0f92b^`), covering all three
+defect classes.
+
+**`changelog.d/` fragments remove the shared-line merge conflict.** `/VERSION` is one
+monotonic line and `docs/CHANGELOG.md` is prepended to at the top, so every PR edits
+the same line of the same file — meaning each merge to `main` conflicts every other
+open PR, and a conflicting PR receives **no CI at all** (GitHub cannot build the merge
+ref), silently ceasing to be verified while still looking healthy. With ~30 PRs open
+this is a structural throughput tax; it was observed twice within one hour on
+2026-07-29 (#3012 and #3011 both went `CONFLICTING` the moment #3010 merged). A
+fragment is one new file per change, so PRs never collide. `version-gate.yml` now
+accepts **either** a `/VERSION` bump (unchanged behaviour) **or** a new fragment — no
+flag day, and every in-flight PR keeps working. `tools/changelog/assemble.py`
+(dependency-free) computes the bump as the highest impact across pending fragments,
+prepends the entry, and deletes what it consumed; malformed fragments fail loudly
+rather than being skipped, since a skipped fragment is both a lost release note and a
+wrong version bump (22 tests).
+
+Assembly is intentionally **operator-triggered**. Deriving `/VERSION` at merge time
+needs a bot that pushes to `main`, which changes a required status check and the
+auto-tag contract in `docs/versioning.md` — a release-doctrine decision, not something
+to switch on inside an unrelated PR. There is also a live consequence to document:
+`version-tag.yml` no-ops when `v<VERSION>` already exists, so a **fragment-only merge
+gets no unique version tag and no rollback checkpoint** until assembly runs. That is
+exactly the gap automation must close, and why this PR assembles its own fragment
+rather than leaving it pending.
+
 ### v3.230.0 (2026-07-29) - feat(printsense): persistent print Q&A — workspace spine, follow-up rung, golden slice (#2798)
 
 A technician photographs an electrical print ONCE; the analysis becomes a durable, versioned per-chat workspace and every later question is answered from the persisted evidence ledger + conversation context + technician-reported measurements — never a fresh re-analysis, never ungrounded prose. Three packages in one slice: (A) `shared/print_workspace.py` — chat→session mapping over the dormant VisualSession spine (migration 063, its first live consumer), model-free ingest replaying the bot's existing vision result, bbox single-writer observations, tag-overlap supersede with revision bump, and a `graph_sink` seam so the paid PrintSynth interpretation persists to CAS instead of being discarded; (B) the follow-up rung in `handle_message` — deterministic-first answer chain (technician-measurement intake with zero LLM → deterministic print spine → ledger composer → bounded evidence-packet explanation → honest refusal) plus `visual/evidence_answer.py` (12-field EvidenceAnswer, trust labels Shown-on-drawing/Derived/Reported/Not-proven, honest coordinates) and `visual/question_resolution.py` (pronoun + K17↔K17.1 alias focus); (C) golden proof — synthetic K17 seal-in fixture + 5-turn acceptance test. 2,103 test lines across 6 files. Read-only: no wiring DB writes, no control writes; all persistence fail-open. Rebased across 11 days of print-branch churn (engine graph_sink plumbing re-applied onto the OpenAI-default print-vision seam).

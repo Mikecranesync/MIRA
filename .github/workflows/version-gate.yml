@@ -49,6 +49,25 @@ jobs:
             exit 0
           fi
 
+          # A changelog FRAGMENT satisfies the gate as an alternative to bumping
+          # /VERSION. Both paths are accepted — no flag day, and the ~30 PRs in
+          # flight keep working untouched.
+          #
+          # Why offer it: /VERSION is one monotonic line and docs/CHANGELOG.md is
+          # prepended to at the top, so every PR edits the SAME line of the SAME
+          # file. Each merge to main therefore conflicts every other open PR, and
+          # a conflicting PR gets NO CI at all (GitHub can't build the merge ref)
+          # — so it silently stops being verified while still looking healthy.
+          # Observed twice within an hour on 2026-07-29. A fragment is a new file
+          # per change, so PRs never collide. See changelog.d/README.md.
+          NEW_FRAGMENTS="$(git diff --name-only --diff-filter=A "$MERGE_BASE"...HEAD \
+            -- 'changelog.d/*.md' | grep -viE '(^|/)README\.md$' || true)"
+          if [ -n "$NEW_FRAGMENTS" ]; then
+            echo "✓ Changelog fragment(s) added — VERSION bump not required:"
+            echo "$NEW_FRAGMENTS" | sed 's/^/    /'
+            exit 0
+          fi
+
           BASE_VER="$(git show "$MERGE_BASE:VERSION" 2>/dev/null | tr -d '[:space:]' || echo '')"
           HEAD_VER="$(tr -d '[:space:]' < VERSION)"
           echo "VERSION  base=$BASE_VER  head=$HEAD_VER"
@@ -59,7 +78,7 @@ jobs:
           fi
 
           if [ "$BASE_VER" = "$HEAD_VER" ]; then
-            echo "::error::Code changed but /VERSION was not bumped (still $HEAD_VER). Bump it (semver: feat→minor, fix→patch, breaking→major) and add a CHANGELOG note. See docs/versioning.md."
+            echo "::error::Code changed but neither /VERSION was bumped (still $HEAD_VER) nor a changelog.d/ fragment was added. EITHER add changelog.d/<slug>.md with 'type: fix|feat|breaking' front matter (preferred — never conflicts with other PRs; see changelog.d/README.md) OR bump /VERSION (semver: feat→minor, fix→patch, breaking→major) and add a CHANGELOG note. See docs/versioning.md."
             exit 1
           fi
 
