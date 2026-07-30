@@ -208,11 +208,19 @@ def test_empty_browse_yields_no_snapshot():
 
 
 def test_chat_and_stream_paths_agree_on_every_reading():
-    """THE POINT OF THIS MODULE.
+    """Both RENDERINGS of one set of readings agree, field by field.
 
-    The same browse/read result must produce identical value / value_type /
-    quality whether it is rendered for the chat turn (dict keyed by path) or for
-    the relay stream (list of readings). Two transports, one reading contract.
+    Scope, stated precisely because the first version of this docstring claimed
+    more than the test does: this exercises `read_tag_readings` and renders the
+    result two ways. It does NOT execute `gateway-scripts/tag-stream.py`, which
+    is a Gateway timer script that calls `run()` at import and needs a live
+    `system`. While the stream owned a SECOND browse/read loop, this test was
+    therefore proof of nothing about the stream — the two agreed only because
+    both loops happened to call `collector.build_reading`, and they differed in
+    recursion and in ragged-read handling.
+
+    What closes that gap is the delegation itself, asserted structurally by
+    `test_stream_delegates_to_the_shared_reader` below.
     """
     p_speed, p_run = _paths("speed_hz", "running")
     tag_values = {p_speed: FakeQV(48.5, "Good_Unspecified"), p_run: FakeQV(False, "Bad_Stale")}
@@ -693,3 +701,134 @@ def test_collector_also_guards_dunder_file():
     for src in (ADAPTER_SRC, os.path.join(_REPO_IGNITION, "webdev/FactoryLM/api/tags/collector.py")):
         unguarded = _unguarded_dunder_file(src)
         assert not unguarded, "%s: unguarded __file__ at %s" % (os.path.basename(src), unguarded)
+
+
+# ── the deployment contract: one credential, one meaning ────────────────────
+#
+# A reviewer found that the two transports read DIFFERENT property names for the
+# same two secrets, and that the guide and the activation handler wrote only the
+# stream's pair. A gateway set up from the documentation streamed tags correctly
+# and returned HTTP 503 on every chat turn. Same defect shape as the two tag
+# payloads this module unifies, one layer down: two names for one thing, with
+# only one of them written down.
+
+STREAM_SRC = os.path.join(_REPO_IGNITION, "gateway-scripts/tag-stream.py")
+CONNECT_SRC = os.path.join(_REPO_IGNITION, "webdev/FactoryLM/api/connect/doPost.py")
+PROPS_TEMPLATE = os.path.join(_REPO_IGNITION, "config/factorylm.properties.template")
+
+_CANONICAL = ("MIRA_TENANT_ID", "MIRA_IGNITION_HMAC_KEY")
+_LEGACY = ("TENANT_ID", "MIRA_HMAC_KEY")
+
+
+@pytest.mark.parametrize("src,label", [(CHAT_SRC, "chat"), (STREAM_SRC, "stream")])
+def test_both_transports_accept_both_property_spellings(src, label):
+    """Neither transport may recognise only one spelling of a shared credential.
+
+    Canonical first, legacy second. If a reader drops the legacy name, every
+    gateway already in the field goes dark on upgrade; if it drops the canonical
+    name, the two transports disagree again.
+    """
+    # Raw source, not code_only(): property names ARE string literals, and
+    # code_only blanks those by design. Matching the CALL SITE
+    # (`getMiraConfig("NAME"`) keeps this precise — a mention in a comment
+    # cannot satisfy it.
+    raw = open(src, encoding="utf-8").read()
+    for name in _CANONICAL + _LEGACY:
+        assert re.search(r'getMiraConfig\(\s*"%s"' % re.escape(name), raw), (
+            "%s handler never calls getMiraConfig(%r) — a gateway configured "
+            "with that property name would silently lose this transport"
+            % (label, name)
+        )
+
+
+def test_activation_writes_the_canonical_tenant_id():
+    """Activation is what a real deployment runs, so it must leave the gateway in
+    a state BOTH transports can read. Writing only TENANT_ID is what produced a
+    streaming-but-503-on-chat gateway."""
+    raw = open(CONNECT_SRC, encoding="utf-8").read()
+    assert re.search(r'_write_config\(\s*"MIRA_TENANT_ID"', raw), (
+        "api/connect/doPost.py does not write MIRA_TENANT_ID — activation would "
+        "again leave the chat path unconfigured"
+    )
+
+
+def test_properties_template_documents_every_credential_both_transports_need():
+    """The template is the deployment contract. A credential a transport requires
+    but the template never mentions is a 503 waiting for a first customer."""
+    text = open(PROPS_TEMPLATE, encoding="utf-8").read()
+    # The DECLARATION (`NAME=` at line start), not a mention. A substring
+    # check passed here even with the real key line deleted, because the
+    # surrounding comment prose still named it — the same reading-the-prose
+    # mistake this file has now made four times. Caught by mutation, not review.
+    for name in _CANONICAL + ("MIRA_CLOUD_URL",):
+        assert re.search(r"(?m)^%s=" % re.escape(name), text), (
+            "factorylm.properties.template has no `%s=` line — a credential a "
+            "transport requires but the deployment contract never declares" % name
+        )
+
+
+# ── the unification claim, asserted on the STREAM as well ───────────────────
+
+
+def test_stream_delegates_to_the_shared_reader():
+    """tag-stream.py must not own a second browse/read loop.
+
+    This is the assertion the parity test could not make. `tag-stream.py` calls
+    `run()` at import and needs a live `system`, so it cannot be imported in a
+    unit test; the claim is therefore asserted on its source.
+
+    Before the delegation the two loops differed in ways that would have shown up
+    on any nested tag structure: the stream recursed into folders and UDT
+    instances, the chat path browsed one level and would have read a folder node
+    as a tag. `system.tag.*` may still appear here — but only inside the injected
+    wrappers handed to the shared reader.
+    """
+    code = code_only(STREAM_SRC)
+
+    assert "read_tag_readings" in code, (
+        "tag-stream.py no longer delegates to the shared reader — the 'one "
+        "adapter, both transports' claim is false again"
+    )
+    assert "build_reading" not in code, (
+        "tag-stream.py constructs readings itself; building a reading is the "
+        "shared reader's job, and doing it in two places is how the two "
+        "transports drifted apart"
+    )
+    # exactly one browse and one read, inside the injected wrappers
+    assert code.count("browseTags") == 1, "more than one browse site in tag-stream.py"
+    assert code.count("readBlocking") == 1, "more than one read site in tag-stream.py"
+
+
+def test_recursive_browse_finds_tags_the_old_flat_browse_missed():
+    """The behavioural half of the same fix.
+
+    The chat path used to take `.fullPath` of each direct child, so a tag nested
+    under a subfolder was invisible to it while the stream saw it. That is
+    exactly 'the two transports disagree about what exists'.
+    """
+    class Node(object):
+        def __init__(self, full_path, type_="AtomicTag"):
+            self.fullPath = full_path
+            self.type = type_
+
+    root = "[default]Mira_Monitored/cv_101"
+    tree = {
+        root: [Node(root + "/speed_hz"), Node(root + "/drive", "Folder")],
+        root + "/drive": [Node(root + "/drive/dc_bus"), Node(root + "/drive/fault")],
+    }
+
+    seen = []
+
+    def browse_fn(folder):
+        seen.append(folder)
+        return tree.get(folder, [])
+
+    paths = gls.browse_leaf_paths(browse_fn, root)
+
+    assert paths == [
+        root + "/speed_hz",
+        root + "/drive/dc_bus",
+        root + "/drive/fault",
+    ], "nested leaves missing — the chat path would not see what the stream sees"
+    assert root + "/drive" not in paths, "a folder node was returned as if it were a tag"
+    assert seen == [root, root + "/drive"], "did not recurse exactly once into the subfolder"

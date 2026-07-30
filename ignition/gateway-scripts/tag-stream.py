@@ -48,6 +48,16 @@ logger = system.util.getLogger("FactoryLM.Mira.TagStream")
 # ---------------------------------------------------------------------------
 
 try:
+    from factorylm import gateway_live_snapshot   # recommended: project script library
+except ImportError:
+    try:
+        import gateway_live_snapshot              # flat fallback (script path)
+    except ImportError:
+        gateway_live_snapshot = None
+        # logged in _read_readings; the stream refuses to fall back to a second
+        # read path, because a second read path is the defect being removed.
+
+try:
     from factorylm import collector            # recommended: project script library
 except ImportError:
     try:
@@ -96,45 +106,38 @@ def getMiraConfig(key, default_value=""):
 # Tag reading (READ-ONLY)
 # ---------------------------------------------------------------------------
 
-def _browse_leaf_tags(folder):
-    """Browse a tag folder recursively; return full paths of all leaf tags."""
-    leaf_paths = []
-    try:
-        results = system.tag.browseTags(parentPath=folder)
-        for tag in results:
-            tag_type = str(tag.type).lower()
-            if tag_type in ("folder", "udtinst"):
-                leaf_paths.extend(_browse_leaf_tags(str(tag.fullPath)))
-            else:
-                leaf_paths.append(str(tag.fullPath))
-    except Exception as e:
-        logger.warn("Browse failed for %s: %s" % (folder, str(e)))
-    return leaf_paths
-
-
 def _read_readings(folder):
-    """Read all leaf tags under folder. Returns a list of Phase-2 reading dicts
-    (full tag path retained so the allowlist + relay can match)."""
-    paths = _browse_leaf_tags(folder)
-    if not paths:
+    """Read all leaf tags under folder via THE shared reader.
+
+    This used to be its own browse+read loop. It is now a thin adapter over
+    gateway_live_snapshot.read_tag_readings — the same function the chat path
+    uses — because "both transports render the same reading" was only true by
+    coincidence while two separate loops both happened to call
+    collector.build_reading. Two loops meant two behaviours:
+
+      * this one recursed into folders/UDTs; the chat path did not, so it missed
+        nested tags and tried to read folder nodes as tags
+      * this one wrapped the WHOLE read in one try, so a short/ragged
+        readBlocking result silently truncated the batch; the shared reader
+        skips the individual tag instead and keeps the rest
+
+    Only the wire format is injected here. All Ignition I/O stays in this file;
+    the shared reader imports nothing from Ignition.
+    """
+    if gateway_live_snapshot is None:
+        logger.error(
+            "gateway_live_snapshot not importable — deploy it beside collector.py; "
+            "streaming is disabled rather than falling back to a second read path"
+        )
         return []
 
-    readings = []
-    try:
-        qvs = system.tag.readBlocking(paths)
-        for i, path in enumerate(paths):
-            qv = qvs[i]
-            readings.append(
-                collector.build_reading(
-                    tag_path=path,
-                    value=qv.value,
-                    ignition_quality=str(qv.quality),
-                    ts=str(qv.timestamp),
-                )
-            )
-    except Exception as e:
-        logger.warn("Bulk tag read failed: %s" % str(e))
-    return readings
+    def _browse(f):
+        return system.tag.browseTags(parentPath=f)
+
+    def _read(paths):
+        return system.tag.readBlocking(paths)
+
+    return gateway_live_snapshot.read_tag_readings(_browse, _read, folder)
 
 
 # ---------------------------------------------------------------------------
@@ -169,13 +172,23 @@ def run():
         return  # error already logged at import
 
     ingest_url = getMiraConfig("INGEST_URL", collector.DEFAULT_INGEST_URL)
-    tenant_id = getMiraConfig("TENANT_ID", "")
-    hmac_key = getMiraConfig("MIRA_HMAC_KEY", "")
+    # Canonical property names first, legacy second — the same shim as
+    # api/chat/doPost.py. Both transports must accept BOTH spellings, or a
+    # gateway configured for one of them silently loses the other. Before this,
+    # the activation handler wrote only TENANT_ID and the chat path only read
+    # MIRA_TENANT_ID, so activation enabled streaming and broke chat.
+    tenant_id = (getMiraConfig("MIRA_TENANT_ID", "")
+                 or getMiraConfig("TENANT_ID", ""))
+    hmac_key = (getMiraConfig("MIRA_IGNITION_HMAC_KEY", "")
+                or getMiraConfig("MIRA_HMAC_KEY", ""))
     tag_folder = getMiraConfig("STREAM_TAG_FOLDER", "[default]Mira_Monitored")
     source_conn = getMiraConfig("STREAM_SOURCE_CONNECTION_ID", "") or None
 
     if not tenant_id or not hmac_key:
-        logger.warn("MIRA tag-stream not configured (TENANT_ID / MIRA_HMAC_KEY missing)")
+        logger.warn(
+            "MIRA tag-stream not configured — need MIRA_TENANT_ID (or legacy "
+            "TENANT_ID) and MIRA_IGNITION_HMAC_KEY (or legacy MIRA_HMAC_KEY)"
+        )
         return
 
     try:

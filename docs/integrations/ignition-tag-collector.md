@@ -59,26 +59,48 @@ runs of non-alphanumerics → `_`).
    ```
    <project>/ignition/script-python/factorylm/
      ├── __init__.py
-     ├── collector.py     (from api/tags/collector.py)
-     ├── signing.py       (from api/chat/signing.py)
-     └── allowlist.py     (from api/tags/allowlist.py)
+     ├── collector.py              (from api/tags/collector.py)
+     ├── gateway_live_snapshot.py  (from api/tags/gateway_live_snapshot.py)
+     ├── signing.py                (from api/chat/signing.py)
+     └── allowlist.py              (from api/tags/allowlist.py)
    ```
    The timer falls back to a flat `import collector` if the modules are on the
    gateway script path instead.
+
+   ⚠️ **`gateway_live_snapshot.py` became a hard requirement of the timer on
+   2026-07-30.** The stream no longer has its own browse/read loop — it delegates
+   to that module, which is what makes "both transports render the same reading"
+   true rather than coincidental. If it is missing, the timer logs an error and
+   streams nothing; it will **not** fall back to a second read path, because a
+   second read path is precisely the defect being removed. Deploy it alongside
+   `collector.py` when upgrading an existing gateway.
 
 2. **Place the allowlist** at one of the paths `allowlist.resolve_allowlist_path()`
    searches (e.g. `<ignition-data>/projects/factorylm/approved_tags.json`), or
    set `MIRA_ALLOWLIST_PATH`.
 
-3. **Write `factorylm.properties`** (the timer reads it via `getMiraConfig`):
+3. **Write `factorylm.properties`** (both transports read it via `getMiraConfig`):
    ```properties
    INGEST_URL=https://api.factorylm.com/api/v1/tags/ingest
-   TENANT_ID=<tenant-uuid>
-   MIRA_HMAC_KEY=<per-tenant-hmac-key>          # matches relay MIRA_IGNITION_HMAC_KEY
+   MIRA_TENANT_ID=<tenant-uuid>
+   MIRA_IGNITION_HMAC_KEY=<per-tenant-hmac-key>  # same key the relay verifies with
+   MIRA_CLOUD_URL=https://api.factorylm.com/api/v1/ignition/chat
    STREAM_TAG_FOLDER=[default]Mira_Monitored
-   STREAM_SOURCE_CONNECTION_ID=<gateway-id>     # optional, stamped on every row
+   STREAM_SOURCE_CONNECTION_ID=<gateway-id>      # optional, stamped on every row
    STREAM_MAX_RETRIES=3
    ```
+
+   ⚠️ **These two credentials serve BOTH transports — configure them once, and
+   check both.** Until 2026-07-30 the stream read `TENANT_ID` / `MIRA_HMAC_KEY`
+   while the chat handler read `MIRA_TENANT_ID` / `MIRA_IGNITION_HMAC_KEY`, and
+   this guide documented only the stream's pair. A gateway set up from these
+   instructions streamed tags perfectly and returned **HTTP 503 on every chat
+   turn** — the failure was invisible because the half you were testing worked.
+
+   Both readers now accept either spelling (`MIRA_`-prefixed first, legacy
+   second), so existing gateways keep working untouched. Use the canonical names
+   above for anything new. The **HMAC key is not provisioned by activation** —
+   it is installed out of band; chat fails closed without it, by design.
    Standard search paths:
    `C:/Program Files/Inductive Automation/Ignition/data/factorylm/factorylm.properties`
    (Windows) or `/usr/local/bin/ignition/data/factorylm/factorylm.properties` /
@@ -90,7 +112,8 @@ runs of non-alphanumerics → `_`).
 
 5. **Verify.** Watch the gateway logger `FactoryLM.Mira.TagStream`:
    - `Streamed N/M allowlisted tags (attempts=1)` → working.
-   - `MIRA tag-stream not configured` → `TENANT_ID` / `MIRA_HMAC_KEY` missing.
+   - `MIRA tag-stream not configured` → tenant id / HMAC key missing under
+     *either* spelling.
    - `Tag ingest failed status=401` → HMAC key mismatch with the relay.
    - `No allowlisted tags to stream` → allowlist empty or no tags matched.
 

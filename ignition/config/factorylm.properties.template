@@ -187,9 +187,26 @@ DB_DATASOURCE=
 RELAY_URL=
 
 # Tenant UUID — identifies which MIRA customer this gateway belongs to.
-# Set automatically by the /api/connect WebDev activation handler.
+# Set automatically by the /api/connect WebDev activation handler, which writes
+# BOTH spellings. MIRA_TENANT_ID is canonical (it matches the cloud-side env
+# var); TENANT_ID is the legacy name, still accepted by both transports.
 # Default: (empty — tag streaming disabled until activated)
+MIRA_TENANT_ID=
 TENANT_ID=
+
+# Per-tenant HMAC signing key. Required by BOTH transports:
+#   * the tag stream signs every /api/v1/tags/ingest POST with it
+#   * the chat handler signs every /api/v1/ignition/chat POST with it, and
+#     returns HTTP 503 without it — fail-closed, it will never send unsigned
+# Must match the key the relay verifies with. NOT provisioned by activation:
+# it is a per-tenant secret installed out of band. MIRA_IGNITION_HMAC_KEY is
+# canonical; MIRA_HMAC_KEY is the legacy name and is still accepted.
+# Default: (empty — tag streaming disabled AND chat returns 503)
+MIRA_IGNITION_HMAC_KEY=
+
+# MIRA Cloud chat endpoint used by api/chat/doPost.py.
+# Default: https://api.factorylm.com/api/v1/ignition/chat
+MIRA_CLOUD_URL=
 
 # Root tag folder to stream. All leaf tags under this folder are read and
 # sent to the relay every STREAM_INTERVAL_MS milliseconds.

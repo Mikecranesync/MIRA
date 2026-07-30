@@ -86,6 +86,44 @@ def snapshot_from_readings(readings):
     return snapshot
 
 
+# Ignition browse node types that contain other tags rather than being one.
+_CONTAINER_TYPES = ("folder", "udtinst")
+
+
+def browse_leaf_paths(browse_fn, folder):
+    """Recursively collect the full paths of every LEAF tag under `folder`.
+
+    THE one browse both transports use, and the reason this function exists:
+    the two paths did not agree. `tag-stream.py` recursed into folders and UDT
+    instances; the chat path browsed a single level and took `.fullPath` of
+    whatever came back — which both MISSED tags nested under a subfolder and
+    tried to read the folder node itself as if it were a tag. On the flat bench
+    layout (`Mira_Monitored/<asset>/<tag>`) the two happen to agree, so nothing
+    surfaced it; on any UDT or nested folder they would have diverged, which is
+    precisely the class of defect this module was written to remove.
+
+    `browse_fn(folder)` returns Ignition browse results (objects with
+    `.fullPath`, and `.type` when the provider supplies it). Anything without a
+    recognisable container type is treated as a leaf, so a test double that
+    yields plain tag objects still behaves as before.
+    """
+    out = []
+    try:
+        results = browse_fn(folder)
+    except Exception:  # noqa: BLE001  (Jython: broad catch, caller logs)
+        return []
+    for node in results or []:
+        try:
+            full = str(node.fullPath)
+        except Exception:  # noqa: BLE001
+            continue
+        if str(getattr(node, "type", "")).lower() in _CONTAINER_TYPES:
+            out.extend(browse_leaf_paths(browse_fn, full))
+        else:
+            out.append(full)
+    return out
+
+
 def read_tag_readings(browse_fn, read_fn, folder, now_fn=None):
     """Browse `folder`, read the tags, and return typed readings.
 
@@ -105,17 +143,7 @@ def read_tag_readings(browse_fn, read_fn, folder, now_fn=None):
     missing) when the tag system is unreachable. The caller logs; this module
     stays pure.
     """
-    try:
-        browsed = browse_fn(folder)
-    except Exception:  # noqa: BLE001  (Jython: broad catch, caller logs)
-        return []
-    if not browsed:
-        return []
-
-    try:
-        paths = [str(t.fullPath) for t in browsed]
-    except Exception:  # noqa: BLE001
-        return []
+    paths = browse_leaf_paths(browse_fn, folder)
     if not paths:
         return []
 

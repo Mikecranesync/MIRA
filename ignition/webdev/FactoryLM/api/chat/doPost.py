@@ -49,8 +49,24 @@ def doPost(request, session):
     logger = system.util.getLogger("FactoryLM.Mira.Chat")
 
     # --- Config: read HMAC key, tenant id, and cloud URL ---
-    hmac_key = getMiraConfig("MIRA_IGNITION_HMAC_KEY", "")
-    tenant_id = getMiraConfig("MIRA_TENANT_ID", "")
+    #
+    # ONE CREDENTIAL, ONE CONTRACT — plus a compatibility shim.
+    # The two transports read DIFFERENT property names for the same two secrets:
+    # this handler wanted MIRA_TENANT_ID / MIRA_IGNITION_HMAC_KEY, while
+    # gateway-scripts/tag-stream.py wanted TENANT_ID / MIRA_HMAC_KEY. The
+    # install guide and the activation handler (api/connect/doPost.py) only ever
+    # wrote the stream's pair, so a freshly activated gateway streamed tags
+    # correctly and returned HTTP 503 on EVERY chat turn. That is the same
+    # defect shape this module exists to remove — two names for one thing —
+    # one layer down, in the deployment contract instead of the tag payload.
+    #
+    # Canonical is the MIRA_-prefixed pair: it matches the cloud side's env vars
+    # (docker-compose.saas.yml) and the relay's verifier. The legacy names are
+    # still accepted so gateways already in the field keep working on upgrade.
+    hmac_key = (getMiraConfig("MIRA_IGNITION_HMAC_KEY", "")
+                or getMiraConfig("MIRA_HMAC_KEY", ""))
+    tenant_id = (getMiraConfig("MIRA_TENANT_ID", "")
+                 or getMiraConfig("TENANT_ID", ""))
     cloud_url = getMiraConfig(
         "MIRA_CLOUD_URL",
         "https://api.factorylm.com/api/v1/ignition/chat"
@@ -58,7 +74,11 @@ def doPost(request, session):
 
     # Fail-fast: no unsigned requests permitted
     if not hmac_key:
-        logger.error("MIRA_IGNITION_HMAC_KEY is not configured — refusing unsigned request")
+        logger.error(
+            "No HMAC key configured (looked for MIRA_IGNITION_HMAC_KEY, then the "
+            "legacy MIRA_HMAC_KEY) in factorylm.properties — refusing to send an "
+            "unsigned request. See docs/integrations/ignition-tag-collector.md."
+        )
         return {
             "json": {"error": "MIRA HMAC key not configured"},
             "status": 503

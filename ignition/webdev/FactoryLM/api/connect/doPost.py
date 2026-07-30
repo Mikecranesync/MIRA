@@ -53,8 +53,19 @@ def doPost(request, session):
             logger.warn("Activation response missing tenant_id or relay_url")
             return {"json": {"error": "Invalid activation response"}, "status": 502}
 
+        # Write BOTH spellings of the tenant id. Activation previously wrote only
+        # TENANT_ID, which the tag stream reads — but the chat handler reads
+        # MIRA_TENANT_ID, so a successful activation enabled streaming and left
+        # chat unconfigured. Both readers now accept either name; writing both
+        # keeps a gateway activated by an OLD build working with a NEW script and
+        # vice versa, which is the only reason this is a pair and not a rename.
+        _write_config("MIRA_TENANT_ID", tenant_id)
         _write_config("TENANT_ID", tenant_id)
         _write_config("RELAY_URL", relay_url)
+
+        # NOTE: activation does not provision the HMAC key — it is a per-tenant
+        # secret installed out of band (see docs/integrations/ignition-tag-collector.md).
+        # Chat fails closed with HTTP 503 until it is present, by design.
 
         logger.info("MIRA Connect activated — tenant: %s, relay: %s" % (tenant_id, relay_url))
 
