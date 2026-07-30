@@ -57,7 +57,7 @@ The contract and its adapters exist; nothing in a live answer path consumes them
 | # | Task | Note |
 |---|---|---|
 | A1 | **WS1: wire the context contract into ONE serving path** | The critical path (§ above). Highest value available. |
-| A2 | **Unblock the review sitting** | Two defects: `review_console_v2/server.py` defaults to `C:\wt-wire\…\technician-dataset-v0\…` (Windows path, stale worktree, **v0** dataset); **and** `compiled_manifest.json` writes only 4 summary keys while the console requires `manifest["entries"]` with per-record `record_id`+`content_hash`. `unified_compile.main()` *computes* the full manifest via `v0.candidate_manifest_for()` then discards the entries on write. Fix both, then generate the exception queue. |
+| A2 | **Unblock the review sitting** | Two defects: `tools/factorylm_ai/review_console_v2/server.py` defaults to `C:\wt-wire\…\technician-dataset-v0\…` (Windows path, stale worktree, **v0** dataset); **and** `compiled_manifest.json` writes only 4 summary keys while the console requires `manifest["entries"]` with per-record `record_id`+`content_hash`. `unified_compile.main()` *computes* the full manifest via `v0.candidate_manifest_for()` then discards the entries on write. Fix both, then generate the exception queue. |
 | A3 | Build the **$0 6-test packing proof suite** from #3001 | Flips the stop-gate from NOT PROVEN. |
 | A4 | Build **eval slice 11** (chat-shaped graph-reasoning fixtures) | Buildable now; no dependency. |
 | A5 | Slice 13 | **Blocked on A1.** |

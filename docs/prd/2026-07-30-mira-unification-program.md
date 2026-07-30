@@ -117,14 +117,27 @@ rubric; keep per-slice regression detection as the program's acceptance instrume
 
 ## 6. Milestones
 
+> **Ordering correction (2026-07-30).** An earlier revision of this table placed *runtime
+> adoption* at M5, **after** the training run at M4. That contradicted §0's own dependency
+> chain: `eval-manifest.md` records slice 13 (task-mode consistency) as *"blocked on runtime
+> adoption"*, so WS1 adoption gates slice 13 → the eval-slice freeze → the acceptance bar a
+> training run is judged against. Adoption is therefore a **precondition** of spend, not a
+> follow-up. The table below is the corrected order. Current status is **not** tracked here —
+> see `docs/plans/2026-07-30-unification-program-state.md`.
+
 | M | Deliverable | Gate to pass |
 |---|---|---|
-| M0 ✅ | Phase 0–5 of the mission (inventory, ADR-0033, contract+adapters, unified compile 180 rec, eval manifest, NOT-READY decision) | shipped v3.229.0 + review fixes |
-| M1 | Mike reviews/accepts ADR-0033 + this PRD | ADR status → Accepted |
-| M2 | General family at scale + final compile + ONE sitting | mixture gates green on ≥~1,000-record general class; sitting recorded on frozen manifest |
-| M3 | Readiness blockers cleared (packing proof, slice manifest frozen) | training-readiness report superseded by a READY decision |
-| M4 | Training run + per-slice eval | signed authorization; no slice regresses vs base; receipts appended |
-| M5 | Runtime adoption + debt items 1–4 landed | G1/G6 metrics met; each debt PR carries its own proof |
+| M0 ✅ | Phase 0–5 of the mission (inventory, ADR-0033, contract+adapters, unified compile, eval manifest, NOT-READY decision) | shipped v3.229.0 + review fixes |
+| M1 | Mike reviews/accepts ADR-0033 + this PRD | ADR status → Accepted; PRD → ACTIVE |
+| M2 | **WS1 minimum runtime adoption** — one live serving path builds its prompt from the shared context contract **and** that same manifest is the source of the turn's audit row | G1 + G6 demonstrated on a real call site; slice 13 becomes buildable |
+| M3 | Gates cleared (these three are independent of each other; all require M1, and M3a additionally requires M2) — **a)** eval-slice manifest frozen: slice 11 filled, slice 13 filled **or recorded as a declared gap**; **b)** packing × completion-loss-mask PROVEN; **c)** ONE review-by-exception sitting recorded on the final compiled manifest | readiness report superseded by a READY decision carrying evidence for all three |
+| M4 | Training run + per-slice eval | fresh **signed single-use** authorization; **no slice regresses** vs base; receipts appended |
+| M5 | Remaining structural-debt items (WS4 1–4) landed | each debt PR carries its own proof |
+
+**Corpus scale (was M2's "general family at scale") is complete** — shipped v3.234.0: 760
+compiled records, 55.0% general+bridge, manifest `410e779e…`. It is deliberately **not** a
+remaining milestone. Per the readiness order, **no re-scale before the sitting** — the sitting
+happens once, on the final compile.
 
 ## 7. Risks
 
