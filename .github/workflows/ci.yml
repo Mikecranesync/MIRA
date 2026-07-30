@@ -84,6 +84,44 @@ jobs:
         with:
           args: -color -shellcheck=
 
+  precommit-hook-tests:
+    name: Pre-commit Hook Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Executable coverage for .githooks/pre-commit, which until 2026-07-29 was run
+    # by no CI job and no test. Three live defects were found in it that day, one
+    # of which ("No debug artifacts found" with rg absent) had been reporting
+    # SUCCESS over a diff it never read. A guard nothing exercises is a guard
+    # nobody knows is broken.
+    #
+    # NOT gated by `changes`: the hook governs every commit, and a change to the
+    # tools it resolves can arrive in an otherwise docs-only PR.
+    steps:
+      - uses: actions/checkout@v6
+
+      # The harness needs the real binaries the hook resolves, so that a SKIP
+      # asserted by a dead-tool shim is proven distinguishable from a genuine
+      # absence. ripgrep and shellcheck are not preinstalled on ubuntu-latest.
+      - name: Install hook dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends shellcheck ripgrep
+          shellcheck --version | head -2
+          rg --version | head -1
+          python3 --version
+
+      - name: Run pre-commit hook tests
+        run: bash tests/hooks/test_precommit_hook.sh
+
+      # The harness itself is a .sh file the hook would lint, so hold it to the
+      # same bar rather than exempting the tester from the test.
+      - name: shellcheck the harness and the hook
+        run: |
+          set -euo pipefail
+          shellcheck -S warning -f gcc tests/hooks/test_precommit_hook.sh
+          shellcheck -S warning -f gcc .githooks/pre-commit
+
   migration-order-check:
     name: Migration Order Check
     runs-on: ubuntu-latest
@@ -814,7 +852,8 @@ jobs:
   #
   # Gated (must pass to merge): actionlint, migration-order-check,
   #   lint-and-type-check, test-unit, mira-hub-unit, mira-web-pack-tests,
-  #   architecture-check, license-check, sast-semgrep, sast-bandit.
+  #   architecture-check, license-check, sast-semgrep, sast-bandit,
+  #   precommit-hook-tests.
   # Intentionally NOT in the gate yet (stay visible; promote once reliable):
   #   secrets-scan (gitleaks license/rate flakes), docker-build-check (trivy
   #   drive-by CVE flakes + ~6 min), and the heavy quality gates simlab-gate /
@@ -826,6 +865,7 @@ jobs:
     needs:
       - changes
       - actionlint
+      - precommit-hook-tests
       - migration-order-check
       - lint-and-type-check
       - test-unit
@@ -841,6 +881,7 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
           ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
+          PRECOMMIT_HOOK_RESULT: ${{ needs.precommit-hook-tests.result }}
           MIGRATION_RESULT: ${{ needs.migration-order-check.result }}
           LINT_RESULT: ${{ needs.lint-and-type-check.result }}
           TEST_UNIT_RESULT: ${{ needs.test-unit.result }}
@@ -872,6 +913,7 @@ jobs:
             fi
           }
           require_success actionlint            "$ACTIONLINT_RESULT"
+          require_success precommit-hook-tests  "$PRECOMMIT_HOOK_RESULT"
           require_success migration-order-check "$MIGRATION_RESULT"
           require_success lint-and-type-check   "$LINT_RESULT"
           require_success mira-hub-unit         "$HUB_UNIT_RESULT"
