@@ -29,7 +29,11 @@ The fix is GitHub's own documented model, which has no shared line:
 
 ## Transition status (as of 2026-07-29)
 
-`/VERSION` still exists and is still honoured as a **floor** — the derived version can never go backwards relative to it — so tag-derivation is safe to run while PRs are still bumping the file. Two operator steps finish the job:
+`/VERSION` still exists and is still honoured as a **floor** — the derived version can never go backwards relative to it — so tag-derivation is safe to run while PRs are still bumping the file.
+
+**One known consequence of the floor, so it isn't a surprise:** while `/VERSION` is hand-bumped *ahead* of the tags, the floor dominates and distinct bump levels collapse to the same number — a `fix` and a `feat` both land on the floor. The number is never wrong (it can't go backwards and can't collide), but the semver *signal* is muted during the changeover. It resolves on the first merge where the tags catch up to the file. Pinned by `test_floor_temporarily_flattens_the_bump_signal`; the end state is pinned by `test_steady_state_after_version_file_retires`.
+
+Two operator steps finish the job:
 
 1. **Remove `Version Bump Check` from `main`'s required status checks** (`main-branch-protection` ruleset). This is an admin action; an agent cannot do it. Until it happens, PRs must still bump `/VERSION` and the conflicts continue.
 2. Optionally delete `/VERSION`, `.github/workflows/version-gate.yml`, and stop hand-editing `docs/CHANGELOG.md` (the Releases page becomes the changelog). Keep the historical `docs/CHANGELOG.md` content as an archive.

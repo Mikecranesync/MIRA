@@ -135,3 +135,31 @@ def test_equal_floor_and_tag_still_advances() -> None:
 def test_bad_latest_tag_is_loud() -> None:
     with pytest.raises(nv.VersionError):
         nv.next_version("not-a-tag", "fix: a")
+
+
+def test_floor_temporarily_flattens_the_bump_signal() -> None:
+    """KNOWN transition consequence, pinned so it is not a surprise later.
+
+    While `/VERSION` is hand-bumped AHEAD of the tags, the floor dominates and
+    distinct bump levels collapse to the same number — a `fix` and a `feat` both
+    land on the floor. The semver *signal* is therefore muted during the
+    changeover window; it is not wrong (the number never goes backwards, and never
+    collides), just less informative.
+
+    It self-resolves the moment tags catch up to the file, which happens on the
+    first merge after this lands. Post-retirement behaviour is the steady-state
+    test below.
+    """
+    flattened_fix = nv.next_version("v3.231.0", "fix: a", floor=(3, 232, 0))
+    flattened_feat = nv.next_version("v3.231.0", "feat: a", floor=(3, 232, 0))
+    assert flattened_fix == flattened_feat == "3.232.0"
+
+
+def test_steady_state_after_version_file_retires() -> None:
+    """With no floor (i.e. `/VERSION` deleted), the tag alone drives and the
+    Conventional Commit type is fully honoured. This is the end state."""
+    assert nv.next_version("v3.232.0", "fix(x): a", floor=None) == "3.232.1"
+    assert nv.next_version("v3.232.0", "feat(x): a", floor=None) == "3.233.0"
+    assert nv.next_version("v3.232.0", "feat!: a", floor=None) == "4.0.0"
+    assert nv.next_version("v3.232.0", "chore: x", floor=None) == "3.232.1"
+    assert nv.next_version("v3.232.0", "Merge pull request #1", floor=None) == "3.232.1"
