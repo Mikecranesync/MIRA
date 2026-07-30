@@ -661,3 +661,628 @@ def test_verified_promotion_checker_catches_violations():
     }
     for label, sql in good_cases.items():
         assert scan_verified_promotion("good.sql", sql) == [], f"false positive: {label}"
+
+
+# ===========================================================================
+# Contract 8: a check that RUNS but cannot FAIL a merge is not a guard
+# ===========================================================================
+#
+# Earned on 2026-07-30, twice in one day, in this repo:
+#
+#   1. `.githooks/pre-commit` reported "no debug artifacts found" over a diff it
+#      never read, because `rg` was absent and the call ended `|| true`. Fixed in
+#      v3.231.1 by probing the tool and reporting SKIPPED instead of passed.
+#   2. PR #3018 concluded `tests/ignition/` "was run by NO workflow" and added a
+#      step to fix it. The conclusion was WRONG — `test-eval-offline` already
+#      swept the tree (184 matching lines in that PR's own run log). What was
+#      actually true is subtler and worse: `test-eval-offline` is not in the
+#      `ci-gate` needs list, so 74 Ignition tests ran on every code PR and could
+#      not fail one. The fix was right for the wrong reason.
+#
+# The class both belong to: a check nobody can be blocked by is not enforcement,
+# and a green "N checks passed" summary does not distinguish the two. Contract 5
+# unit-tests its checker against bad fixtures for exactly this reason; this
+# contract extends the idea from source files to CI itself.
+#
+# What this guard asserts about .github/workflows/ci.yml:
+#   (a) every job that runs tests is in `ci-gate`'s `needs`, or is declared
+#       ungated below WITH a written reason (default-deny, same idiom as
+#       _ONE_PIPELINE_ALLOWLIST);
+#   (b) every job in `needs` is actually READ by the gate's evaluate step —
+#       being listed in `needs:` while the shell logic ignores your result is a
+#       silent hole that looks exactly like being gated;
+#   (c) the ungated manifest cannot rot: entries must name real jobs, and must
+#       not still be listed once they are promoted into the gate.
+#
+# WHAT THIS GUARD CANNOT KNOW, stated rather than implied away:
+#   * Whether `CI Gate` is a REQUIRED status check on `main`. As of 2026-07-30 it
+#     IS — required contexts are staging-gate / CI Gate / Hub E2E / mira-web pack
+#     tests (`gh api repos/:owner/:repo/branches/main/protection`), so this
+#     contract now has real teeth. But nothing here can assert that: branch
+#     protection is repo configuration, not code, and it can be changed back
+#     without touching this file. Treat the sentence above as a dated
+#     observation, not an invariant — verify it before relying on it. (An earlier
+#     revision of this comment said the opposite and went stale the moment the
+#     flip happened, which is the whole hazard.)
+#   * `if:` conditions, `continue-on-error`, runtime `skipif` — a gated job can
+#     still decline to run. Handling skipped-vs-success is the gate script's own
+#     job, not this contract's.
+#   * Workflows other than ci.yml. Scope is deliberately the PR gate.
+
+_CI_WORKFLOW = _ROOT / ".github" / "workflows" / "ci.yml"
+_CI_GATE_JOB = "ci-gate"
+
+# A step whose `run:` matches this is running tests.
+_TEST_RUNNER_RE = re.compile(
+    # Lookbehind, not a leading char class: the scan runs over the SERIALISED job,
+    # so a command is often preceded by a quote or bracket (`{'run': 'pytest ...'}`)
+    # rather than whitespace. The first version required [\s;&|(] and therefore
+    # missed its own bad fixture — caught by test_ci_gate_checker_catches_violations,
+    # which is why those fixtures exist.
+    r"(?<![\w./-])(?:"
+    r"pytest\b"
+    r"|python3?\s+-m\s+pytest\b"
+    r"|vitest\b"
+    r"|playwright\s+test\b"
+    r"|bun\s+test\b"
+    r"|node\s+--test\b"
+    r"|npm\s+(?:run\s+)?test\b"
+    r"|bun\s+run\s+test\b"          # the repo's own mira-hub-unit job — the regex
+    r"|bun\s+(?:run\s+)?test:"      # missed it, and it is IN the gate by luck
+    r"|(?:uv|poetry|pdm)\s+run\s+.*pytest\b"
+    r"|python3?\s+-m\s+unittest\b"
+    r"|\btox\b"
+    r"|make\s+\S*test"
+    r"|go\s+test\b"
+    r"|cargo\s+test\b"
+    r"|bash\s+tests/"
+    r"|\.github/actions/[\w-]*test"
+    r")",
+    re.IGNORECASE,
+)
+
+# Test-running jobs deliberately OUTSIDE the merge gate. Every entry MUST carry a
+# reason — "it is flaky" is a reason; silence is not. Promoting one means deleting
+# its entry here AND adding it to `ci-gate.needs`; check (c) makes it impossible
+# to do only half of that.
+_UNGATED_TEST_JOBS: dict[str, str] = {
+    "test-eval-offline":
+        "Heavy offline eval sweep over all of root tests/ (-n auto, minutes). Kept "
+        "visible but non-blocking per the ci-gate design note; the suites that MUST "
+        "block are named individually inside the gated test-unit job instead.",
+    "simlab-gate":
+        "SimLab grader gate — a scenario-level quality bar, not a correctness check. "
+        "Scoring moves with model drift, so blocking merges on it would gate the repo "
+        "on provider behaviour.",
+    "ocr-recall-gate":
+        "OCR recall bar over fixture prints. Same reason as simlab-gate: a measurement "
+        "whose value moves with the provider, so it informs review rather than blocking.",
+    "drive-pack-extract-tests":
+        "Drive-pack extractor suite over real manuals — long-running and dependent on "
+        "large fixture PDFs; promote once runtime and flake rate are bounded.",
+}
+
+
+def _load_ci_workflow() -> dict:
+    import yaml  # the architecture-check job installs pyyaml
+
+    return yaml.safe_load(_CI_WORKFLOW.read_text(encoding="utf-8"))
+
+
+def _job_runs_tests(job: dict) -> bool:
+    """True when this job plausibly executes tests.
+
+    Matched over the WHOLE serialised job, not just `step.run`. Scanning only
+    `run:` was refuted three ways, each demonstrated against the real ci.yml:
+      * `env: {TEST_CMD: pytest ...}` + `run: $TEST_CMD` — the command never
+        appears in any `run:` string;
+      * `strategy.matrix.cmd: [pytest tests/a]` + `run: ${{ matrix.cmd }}`;
+      * a job whose test step is `uses:` (composite / marketplace action).
+    Over-matching is the correct bias here: a false positive costs one explicit
+    _UNGATED_TEST_JOBS entry, a false negative silently un-guards a real suite.
+
+    A job with no `steps` is a reusable-workflow call (`jobs.<id>.uses`) — opaque
+    from here, so treat it as test-running rather than assume it is not.
+    """
+    if "steps" not in job and job.get("uses"):
+        return True
+    return bool(_TEST_RUNNER_RE.search(str(job)))
+
+
+def _gate_reads_result(gate: dict, job_id: str) -> bool:
+    """Does the gate's script ACT on `job_id`'s result, or merely mention it?
+
+    A raw substring search over the gate job was refuted: `needs.<job>.result`
+    satisfied it from an UNUSED `env:` var, a cosmetic step `name:`, or a `#`
+    comment inside a `run:` block scalar (block scalars keep comment lines as
+    literal text, so safe_load does not drop them). A full fake promotion passed.
+
+    So: resolve the env var that carries the expression and require the SCRIPT to
+    reference that variable, with comment lines stripped first.
+    """
+    expr = f"needs.{job_id}.result"
+    for step in gate.get("steps") or []:
+        script = str(step.get("run", "") or "")
+        code = "\n".join(
+            line for line in script.splitlines() if not line.lstrip().startswith("#")
+        )
+        env = step.get("env") or {}
+        for var, value in env.items():
+            if expr in str(value) and var in code:
+                return True
+        # Or the expression is interpolated directly into the script body.
+        if expr in code:
+            return True
+    return False
+
+
+def scan_ci_gate_coverage(workflow: dict, ungated: dict[str, str]) -> list[str]:
+    """Return Contract 8 violations for a parsed workflow.
+
+    Pure, so it can be unit-tested against bad fixtures below — which is what
+    makes a green run on the real ci.yml mean something."""
+    violations: list[str] = []
+    jobs = workflow.get("jobs") or {}
+
+    gate = jobs.get(_CI_GATE_JOB)
+    if gate is None:
+        return [f"{_CI_GATE_JOB}: the merge gate job is gone — nothing is fail-closed"]
+
+    needs = gate.get("needs") or []
+    if isinstance(needs, str):
+        needs = [needs]
+    needs_set = set(needs)
+
+    # (a) default-deny: a test job is gated, or declared ungated with a reason.
+    for job_id, job in jobs.items():
+        if job_id == _CI_GATE_JOB or not isinstance(job, dict):
+            continue
+        if not _job_runs_tests(job):
+            continue
+        if job_id in needs_set or job_id in ungated:
+            continue
+        violations.append(
+            f"{job_id}: runs tests but is NOT in {_CI_GATE_JOB}.needs and is not "
+            f"declared in _UNGATED_TEST_JOBS — it can never fail a merge, so a "
+            f"green result from it is not evidence"
+        )
+
+    # (b) listed in needs but never ACTED ON by the evaluate step = silent hole.
+    for job_id in sorted(needs_set):
+        if not _gate_reads_result(gate, job_id):
+            violations.append(
+                f"{job_id}: in {_CI_GATE_JOB}.needs but its result is never read by "
+                f"the gate (no `needs.{job_id}.result`) — the gate waits for the job "
+                f"and then ignores whether it passed"
+            )
+
+    # (c) the manifest cannot rot in either direction.
+    for job_id, reason in ungated.items():
+        if job_id not in jobs:
+            violations.append(
+                f"{job_id}: declared in _UNGATED_TEST_JOBS but no such job exists in "
+                f"ci.yml — stale entry, delete it"
+            )
+        elif job_id in needs_set:
+            violations.append(
+                f"{job_id}: declared ungated AND present in {_CI_GATE_JOB}.needs — it "
+                f"is gated now; remove the _UNGATED_TEST_JOBS entry"
+            )
+        if len(reason) < 30:
+            violations.append(f"{job_id}: needs a real written reason, not {reason!r}")
+
+    return violations
+
+
+def test_every_test_job_is_gated_or_declared_ungated():
+    """A test job either blocks a merge, or says in writing why it does not.
+
+    This is the tests/ignition/ blind spot approached from the correct direction:
+    not "is this tree collected?" (it was) but "can any of it fail a merge?"
+    (it could not)."""
+    violations = scan_ci_gate_coverage(_load_ci_workflow(), _UNGATED_TEST_JOBS)
+    assert not violations, (
+        "CI enforcement gap — a check that runs but cannot fail a merge is not a "
+        "guard.\nEither add the job to `ci-gate.needs` (and read its result there), "
+        "or declare it in _UNGATED_TEST_JOBS with a reason.\n\n" + "\n".join(violations)
+    )
+
+
+def test_ci_gate_covers_a_plausible_number_of_test_jobs():
+    """Guard the guard: if _TEST_RUNNER_RE stops matching, (a) passes vacuously."""
+    jobs = _load_ci_workflow().get("jobs") or {}
+    detected = [j for j, spec in jobs.items() if isinstance(spec, dict) and _job_runs_tests(spec)]
+    assert len(detected) >= 9, (
+        "only %d test-running jobs detected in ci.yml (%s) — _TEST_RUNNER_RE has "
+        "probably stopped matching, which would make Contract 8 vacuous. 9 is the "
+        "count at the time of writing; if a test job was legitimately removed, "
+        "lower this deliberately rather than loosening the regex."
+        % (len(detected), sorted(detected))
+    )
+
+
+def test_ci_gate_checker_catches_violations():
+    """The checker must FAIL on every shape it claims to catch."""
+    gate_reading = {
+        "needs": ["changes", "test-unit"],
+        "steps": [{"run": "x ${{ needs.changes.result }} ${{ needs.test-unit.result }}"}],
+    }
+
+    bad_cases = {
+        "ungated test job, undeclared": {
+            "jobs": {
+                "ci-gate": gate_reading,
+                "changes": {"steps": [{"run": "echo hi"}]},
+                "test-unit": {"steps": [{"run": "pytest tests/x.py"}]},
+                "sneaky-tests": {"steps": [{"run": "pytest tests/sneaky/"}]},
+            }
+        },
+        "in needs but result never read": {
+            "jobs": {
+                "ci-gate": {
+                    "needs": ["changes", "test-unit", "orphan-need"],
+                    "steps": [
+                        {"run": "x ${{ needs.changes.result }} ${{ needs.test-unit.result }}"}
+                    ],
+                },
+                "changes": {"steps": [{"run": "echo hi"}]},
+                "test-unit": {"steps": [{"run": "pytest tests/x.py"}]},
+                "orphan-need": {"steps": [{"run": "pytest tests/y.py"}]},
+            }
+        },
+        "gate job deleted entirely": {
+            "jobs": {"test-unit": {"steps": [{"run": "pytest tests/x.py"}]}}
+        },
+    }
+    for label, wf in bad_cases.items():
+        assert scan_ci_gate_coverage(wf, {}), f"checker missed a violation: {label}"
+
+    ok_wf = {
+        "jobs": {
+            "ci-gate": gate_reading,
+            "changes": {"steps": [{"run": "echo hi"}]},
+            "test-unit": {"steps": [{"run": "pytest tests/x.py"}]},
+        }
+    }
+    long_reason = "a reason long enough to be a real explanation of this exemption"
+    assert scan_ci_gate_coverage(ok_wf, {"gone-job": long_reason}), "missed a stale entry"
+    assert scan_ci_gate_coverage(ok_wf, {"test-unit": long_reason}), "missed gated-and-ungated"
+    assert scan_ci_gate_coverage(ok_wf, {"changes": "too short"}), "missed a reasonless exemption"
+
+    # A conforming workflow is clean: one gated test job, one declared ungated.
+    good = {
+        "jobs": {
+            "ci-gate": gate_reading,
+            "changes": {"steps": [{"run": "echo hi"}]},
+            "test-unit": {"steps": [{"run": "pytest tests/x.py"}]},
+            "heavy-eval": {"steps": [{"run": "pytest tests/heavy/ -n auto"}]},
+        }
+    }
+    assert scan_ci_gate_coverage(good, {"heavy-eval": long_reason}) == []
+
+
+def test_ungated_manifest_names_jobs_that_ci_yml_mentions():
+    """Keep the manifest and the ci-gate design comment from drifting apart."""
+    text = _CI_WORKFLOW.read_text(encoding="utf-8")
+    for job_id in _UNGATED_TEST_JOBS:
+        assert job_id in text, f"{job_id} is not mentioned in ci.yml at all"
+
+
+# ===========================================================================
+# Contract 9: a test suite nothing COLLECTS is not a guard either
+# ===========================================================================
+#
+# Contract 8 asks "can this job fail a merge?". It cannot ask the prior
+# question: "does any workflow run these tests at all?" Measured 2026-07-30:
+# **160 tracked test files were collected by no pull_request-triggered
+# workflow**, including 697 tests that pass today and are protected by nothing.
+# `tests/ignition/` (the blind spot that started all this) was only the visible
+# instance of a much larger class.
+#
+# The failure mode is quiet in the worst way: the tests are green, so a reviewer
+# who runs them locally sees exactly what a reviewer who does not would see, and
+# nothing anywhere says the suite is unenforced.
+#
+# This contract makes every suite either COLLECTED or DECLARED. Adding a new
+# module with tests and forgetting to wire it now fails here, with the fix in
+# the failure message.
+#
+# WHAT IT CANNOT KNOW (same honesty as Contract 8):
+#   * It reads `run:` text. Tests collected through a `uses:` composite action
+#     or a reusable workflow are invisible to it.
+#   * "Collected" is not "gated" — that is Contract 8's job. A suite can satisfy
+#     this contract and still be unable to fail a merge (test-eval-offline).
+#   * It reasons about path prefixes, not pytest's real collection rules;
+#     `-k`/`-m`/`--ignore` filtering inside a target is out of scope.
+
+_SUITE_EXCLUDE_PARTS = {
+    "__pycache__", "node_modules", ".venv", "venv", ".git",
+    ".worktrees", ".audit-worktrees", ".codex", "site-packages",
+    # docs/ holds eval fixture corpora whose files are named test_*.py but are
+    # inputs, not suites. Excluded by path so they do not pad the manifest.
+    "docs",
+}
+
+# Suites that NO pull_request workflow collects. Every entry needs a reason, and
+# the reason should say what it would take to wire it in — an exemption without
+# a route back is just a permanent hole with paperwork.
+_UNCOLLECTED_SUITES: dict[str, str] = {
+    "mira-relay/tests":
+        "191 tests, green on main, and they guard the ONE-PIPELINE ingest law "
+        "(the runtime counterpart of Contract 5). Needs `pip install aiomqtt "
+        "starlette` in test-unit. Highest-value suite to wire next.",
+    "mira-mcp/tests":
+        "67 tests, green. Needs fastmcp, openpyxl, openviking, psycopg — the "
+        "heaviest dependency add of the group, so it is deferred rather than "
+        "bolted onto the gated job.",
+    "plc/conv_simple_anomaly":
+        "77 tests, green; the A0-A12 in-gateway anomaly rules. Needs aiomqtt + "
+        "pymodbus.",
+    "mira-fault-detective/tests":
+        "15 tests, green on main. Needs `pip install aiomqtt` in test-unit; "
+        "bundle it with the mira-relay wiring since they share the dependency.",
+    "mira-fault-sim/tests":
+        "13 tests, green on main. Needs aiomqtt, same as fault-detective.",
+    "mira-bots/shared":
+        "One stray test_few_shot_trainer.py sitting in the package dir rather "
+        "than a tests/ dir. Move it to mira-bots/tests/ and it is collected by "
+        "the existing step for free.",
+    "mira-bots/shared/tests":
+        "One file (test_ctx_enrichment.py). Same fix as above: fold into "
+        "mira-bots/tests/, which the gated job already collects.",
+    "mira-connect/tests":
+        "One file, and mira-connect is DEFERRED to post-MVP 'Config 4' per the "
+        "root CLAUDE.md module table. Wire it if and when that module wakes up.",
+    "mira-core/mira-ingest/db":
+        "Two DB-layer suites (21 tests) needing a live Postgres, so they belong "
+        "in an integration job with a service container, not in test-unit.",
+    "mira-core/sm_profiles":
+        "One profile-shape test. Small and hermetic; fold into the mira-core "
+        "ingest step that this job already runs.",
+    "plc":
+        "test_discover.py (10 tests) for the read-only fieldbus scanner. "
+        "Hermetic, but plc/ also holds bench-only tooling, so wire the file "
+        "explicitly rather than collecting the directory.",
+    "plc/litmus":
+        "Two suites for the LitmusEdge bench collector — bench hardware "
+        "integration, not a merge gate.",
+    "plc/live-plc-bridge/tests":
+        "BENCH-ONLY tooling per .claude/rules/fieldbus-readonly.md. It opens "
+        "Modbus sockets and must never be a customer-shipped path; keeping it "
+        "out of CI is deliberate, not an oversight.",
+    "tools":
+        "test_reconcile_manufacturers.py. Hermetic; wire it explicitly next to "
+        "the alias-consistency step it belongs beside.",
+    "tools/proof":
+        "test_proof_integrity.py. Hermetic; same treatment as tools/.",
+    "tools/internet_print_test":
+        "Print-eval harness. Its runner reaches the network and paid providers "
+        "by design, so it is a manual harness, not a merge gate.",
+    "mira-machine-logic-graph":
+        "4 Vitest suites (parser, server, tag-builder, live-troubleshoot) with "
+        "`\"test\": \"bun test\"` in package.json and ZERO workflow references. "
+        "This is the suite that proved Contract 9 was blind to TypeScript.",
+    "mira-trend-viewer":
+        "4 `.test.mjs` files run by `node --test`; no workflow references it. "
+        "Wire it with a node step, or retire the module if the ISA-101 trend "
+        "viewer has been superseded.",
+    "mira-scan-monday/tests/e2e":
+        "One Playwright spec; no package.json above it, so discovery reports the "
+        "directory rather than a package. The Python backend is declared "
+        "separately above. Needs a browser runner, so it is a bigger lift than a "
+        "pytest line.",
+    "tools/internet_print_test/benchmarks/2026-07-18-towerop":
+        "A captured benchmark run kept as a record. Not a suite to enforce.",
+    "evals":
+        "One eval harness file. Evals are measurements that move with provider "
+        "behaviour; per the ci-gate design note they stay visible, not gating.",
+    "mira-scan-monday/backend/tests":
+        "40 tests, green locally, but imports a top-level `backend` package that "
+        "only resolves from inside mira-scan-monday, plus psycopg. Needs a "
+        "working-directory step, not just a dependency.",
+    "mira-pipeline/tests":
+        "59 pass / 7 FAIL on main (async mock assertion, 'Expected process to "
+        "not have been awaited'). Fix the failures first, then wire — this is "
+        "also the suite holding the 422 uns_required direct-connection tests, so "
+        "it matters more than its size suggests.",
+    "mira-contextualizer/tests":
+        "84 pass / 1 FAIL on main. Fix the failure first, then wire.",
+    "mira-crawler/tests":
+        "Collection ImportError in tests/test_watcher.py, so the whole directory "
+        "cannot be collected wholesale. 8 of its 58 files are already named "
+        "individually elsewhere in ci.yml. Fix the import, then wire the rest.",
+}
+
+
+# JS/TS suites are discovered too. The first version of this contract globbed
+# only `test_*.py` and parsed only pytest, so it claimed "every test suite" while
+# being structurally blind to Vitest/Playwright — `mira-machine-logic-graph/tests`
+# had no workflow reference AND no manifest entry, and Contract 9 passed. A new
+# uncollected TS suite would have been invisible: exactly the regression this
+# contract exists to prevent, in the contract itself.
+_JS_TEST_GLOBS = ("*.test.ts", "*.test.tsx", "*.test.js", "*.test.mjs",
+                  "*.spec.ts", "*.spec.js")
+
+# JS runners collect by glob from a PACKAGE root, not per directory, so a TS
+# suite is attributed to its nearest package.json. Per-directory granularity
+# would list ~90 entries for mira-hub alone and mean nothing.
+_JS_RUNNER_RE = re.compile(
+    r"(vitest|playwright\s+test|bun\s+(?:run\s+)?test|npm\s+(?:run\s+)?test"
+    r"|node\s+--test|jest)", re.IGNORECASE)
+
+
+def _js_package_root(path: Path, root: Path) -> str:
+    """Nearest ancestor holding a package.json, else the file's own directory."""
+    cur = path.parent
+    while cur != root and cur != cur.parent:
+        if (cur / "package.json").is_file():
+            return cur.relative_to(root).as_posix()
+        cur = cur.parent
+    return path.parent.relative_to(root).as_posix()
+
+
+def _discover_suites(root: Path) -> list[str]:
+    """Directories that look like a test suite root, as posix paths."""
+    found = set()
+    for path in root.rglob("test_*.py"):
+        if any(part in _SUITE_EXCLUDE_PARTS for part in path.parts):
+            continue
+        parent = path.parent
+        rel = parent.relative_to(root).as_posix()
+        # Roll a nested dir up to its suite root (tests/ignition -> tests/ignition
+        # stays, but mira-x/tests/sub -> mira-x/tests) so the manifest stays small.
+        parts = rel.split("/")
+        if "tests" in parts:
+            i = parts.index("tests")
+            rel = "/".join(parts[: i + 1])
+        found.add(rel)
+
+    for glob in _JS_TEST_GLOBS:
+        for path in root.rglob(glob):
+            if any(part in _SUITE_EXCLUDE_PARTS for part in path.parts):
+                continue
+            found.add(_js_package_root(path, root))
+
+    return sorted(found)
+
+
+def _pytest_targets(workflow_text: str) -> set[str]:
+    """Paths collected by pytest invocations in a workflow's `run:` blocks."""
+    targets: set[str] = set()
+    for raw in workflow_text.splitlines():
+        line = raw.strip()
+        if "pytest" not in line or line.startswith("#"):
+            continue
+        prefix = ""
+        cd = re.search(r"cd\s+([\w./-]+)\s*&&", line)
+        if cd:
+            prefix = cd.group(1).strip("/") + "/"
+        after = line.split("pytest", 1)[1]
+        for tok in after.split():
+            if tok.startswith("-") or "=" in tok or tok in {"&&", "|", ")", "\\"}:
+                continue
+            tok = tok.strip("'\"()").rstrip("\\")
+            if not tok or tok.startswith("$"):
+                continue
+            if "/" in tok or tok.endswith(".py") or tok.isidentifier():
+                targets.add((prefix + tok).strip("/"))
+    return targets
+
+
+def _js_collected_packages(workflow_text: str) -> set[str]:
+    """Packages whose JS/TS tests a workflow runs.
+
+    A JS runner rarely names a path — `bun run test` in `working-directory:
+    mira-hub` collects whatever the package config globs. So attribute a package
+    when a runner invocation appears NEAR a working-directory/cd naming it. The
+    window keeps an unrelated `working-directory:` elsewhere in the same workflow
+    from silently marking a package covered.
+    """
+    pkgs: set[str] = set()
+    lines = workflow_text.splitlines()
+    for i, line in enumerate(lines):
+        if not _JS_RUNNER_RE.search(line):
+            continue
+        for j in range(max(0, i - 6), min(len(lines), i + 2)):
+            m = re.search(r"working-directory:\s*['\"]?([\w./-]+)", lines[j])
+            if m:
+                pkgs.add(m.group(1).strip("/"))
+            m = re.search(r"cd\s+([\w./-]+)\s*&&", lines[j])
+            if m:
+                pkgs.add(m.group(1).strip("/"))
+        # a runner given an explicit path, e.g. `bun test src/lib/x.test.ts`
+        for tok in line.split():
+            if "/" in tok and re.search(r"\.(test|spec)\.[jt]sx?$", tok):
+                pkgs.add(tok.strip("'\"").split("/")[0])
+    return pkgs
+
+
+def scan_collection_coverage(suites, workflows: dict[str, str], declared: dict[str, str]) -> list[str]:
+    """Return Contract 9 violations. Pure, so the fixtures below mean something."""
+    violations: list[str] = []
+
+    collected: set[str] = set()
+    for text in workflows.values():
+        collected |= _pytest_targets(text)
+        collected |= _js_collected_packages(text)
+
+    def is_collected(suite: str) -> bool:
+        for t in collected:
+            if suite == t or suite.startswith(t.rstrip("/") + "/"):
+                return True
+        return False
+
+    for suite in suites:
+        if is_collected(suite) or suite in declared:
+            continue
+        violations.append(
+            f"{suite}: collected by NO workflow and not declared in "
+            f"_UNCOLLECTED_SUITES — its tests cannot fail a merge, and nothing "
+            f"says so. Wire it into ci.yml or declare it with a reason."
+        )
+
+    for suite, reason in declared.items():
+        if len(reason) < 40:
+            violations.append(f"{suite}: exemption reason is too thin to be useful")
+        if is_collected(suite):
+            violations.append(
+                f"{suite}: declared uncollected but a workflow DOES collect it — "
+                f"delete the _UNCOLLECTED_SUITES entry"
+            )
+    return violations
+
+
+def _pr_workflows() -> dict[str, str]:
+    wf_dir = _ROOT / ".github" / "workflows"
+    out = {}
+    for f in sorted(wf_dir.glob("*.yml")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        if "pull_request" in text:
+            out[f.name] = text
+    return out
+
+
+def test_every_test_suite_is_collected_or_declared():
+    """A suite nothing collects is not a guard, however green it is."""
+    violations = scan_collection_coverage(
+        _discover_suites(_ROOT), _pr_workflows(), _UNCOLLECTED_SUITES
+    )
+    assert not violations, (
+        "Test suites that no pull_request workflow collects.\n"
+        "Either add a pytest step in .github/workflows/ci.yml, or add an entry to "
+        "_UNCOLLECTED_SUITES saying why not and what it would take.\n\n"
+        + "\n".join(violations)
+    )
+
+
+def test_collection_checker_catches_violations():
+    """The checker must fail on each shape it claims to catch."""
+    wf = {"ci.yml": "on: pull_request\n      run: pytest tests/unit -q\n"}
+
+    assert scan_collection_coverage(["mira-new/tests"], wf, {}), "missed an undeclared suite"
+    assert scan_collection_coverage(
+        ["tests/unit"], wf, {"tests/unit": "x" * 50}
+    ), "missed a declared-but-actually-collected suite"
+    assert scan_collection_coverage(
+        ["mira-new/tests"], wf, {"mira-new/tests": "too short"}
+    ), "missed a thin exemption reason"
+
+    # collected directly, and collected via an ancestor target
+    assert scan_collection_coverage(["tests/unit"], wf, {}) == []
+    assert scan_collection_coverage(["tests/unit/deep"], wf, {}) == []
+    # properly declared
+    assert scan_collection_coverage(
+        ["mira-new/tests"], wf, {"mira-new/tests": "y" * 45}
+    ) == []
+
+
+def test_pytest_target_parser_handles_the_repo_idioms():
+    """`(cd mira-crawler && pytest tests/x.py)` really does collect
+    mira-crawler/tests/x.py — the parser must not miss it, or every crawler
+    suite would look uncollected and the manifest would fill up with lies."""
+    assert "mira-crawler/tests/test_manufacturer_normalize.py" in _pytest_targets(
+        "          (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)"
+    )
+    assert "tests/ignition" in _pytest_targets("        run: pytest tests/ignition/ -v")
+    got = _pytest_targets('          pytest tests/ -v -n auto -m "not network and not slow"')
+    assert "tests" in got
