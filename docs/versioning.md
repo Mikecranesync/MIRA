@@ -1,10 +1,42 @@
 # Versioning & Rollback
 
-**Source of truth:** the repo-root [`VERSION`](../VERSION) file — the **overall** monorepo version counter (semver `MAJOR.MINOR.PATCH`).
+**Source of truth:** the **git tags** (`v<MAJOR>.<MINOR>.<PATCH>`). The version is *derived*, not stored.
 
-This doc defines the one rule the team kept forgetting: **every merge advances the version and leaves a rollback point.** It is now enforced by CI instead of memory.
+The goal has always been: **every merge advances the version and leaves a rollback point** — a save point you can go back to. That still holds. What changed on 2026-07-29 is *where the number comes from*.
 
-## The rule
+## Why it changed — the shared-line problem
+
+`/VERSION` was one monotonic line in a tracked file, and `docs/CHANGELOG.md` was prepended to at the top. So **every PR edited the same line of the same file.** Each merge to `main` therefore conflicted every other open PR — and **a conflicting PR receives no CI at all**, because GitHub cannot build the merge ref. It silently stops being verified while still looking open and healthy.
+
+With ~30 PRs open and several merges an hour that is a structural tax, not bad luck: it happened **four times in one session** (#3010 → #3012 and #3011; then #2798 and #3008 → #3013).
+
+The fix is GitHub's own documented model, which has no shared line:
+
+- **[Releases are built on tags](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases).** GitHub's docs contain *no* guidance about storing a version in a repository file — that was our invention, and it was the only thing causing the conflicts.
+- **[Release notes are generated from merged pull requests](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes)**, configured in [`.github/release.yml`](../.github/release.yml). Nobody hand-maintains a changelog line.
+- **Tags are not protected.** The `main-branch-protection` ruleset targets `branch` only, so the workflow creates tags **without pushing to `main`** — no bot write access to the protected branch, no branch-protection accommodation, no release-PR dance.
+
+## How it works now
+
+`.github/workflows/version-tag.yml`, on every push to `main`:
+
+1. reads the latest `v*` tag,
+2. derives the next semver with [`tools/release/next_version.py`](../tools/release/next_version.py), taking the bump from the merge commit's **Conventional Commit** type — which `CLAUDE.md` already mandates, so there is no new authoring discipline (`feat` → MINOR, `feat!`/`BREAKING CHANGE` → MAJOR, everything else → PATCH; an unrecognised subject is a PATCH, never a skip, because a merge without a tag loses a restore point),
+3. creates `v<X.Y.Z>` **and** `rollback/<date>-v<X.Y.Z>` at the merge commit,
+4. publishes a GitHub Release with `--generate-notes`.
+
+**You do nothing per PR.** No version bump, no changelog line. Label your PR (see `.github/release.yml`) and the notes categorise themselves.
+
+## Transition status (as of 2026-07-29)
+
+`/VERSION` still exists and is still honoured as a **floor** — the derived version can never go backwards relative to it — so tag-derivation is safe to run while PRs are still bumping the file. Two operator steps finish the job:
+
+1. **Remove `Version Bump Check` from `main`'s required status checks** (`main-branch-protection` ruleset). This is an admin action; an agent cannot do it. Until it happens, PRs must still bump `/VERSION` and the conflicts continue.
+2. Optionally delete `/VERSION`, `.github/workflows/version-gate.yml`, and stop hand-editing `docs/CHANGELOG.md` (the Releases page becomes the changelog). Keep the historical `docs/CHANGELOG.md` content as an archive.
+
+Do step 1 first and let a few merges flow before step 2.
+
+## Legacy rule (applies only until step 1 above is done)
 
 1. **Every code PR bumps `/VERSION`.** Pick the increment by change type:
    - **MAJOR** — a breaking change (API/schema/contract removal or incompatibility).
