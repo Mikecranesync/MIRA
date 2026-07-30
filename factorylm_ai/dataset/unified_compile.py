@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,9 @@ from factorylm_ai.dataset.technician_v0 import (
 DATASET_VERSION = "factorylm-industrial-technician-unified"
 BUILD_ID = "2026-07-29-technician-unified"
 DEFAULT_OUT_DIR = Path("docs/zta/technician-unified")
+# Agent-written general-behavior variants (the S4-style scale-up path, per the
+# training-readiness report): JSONL files folded through fold_general_generated.
+GENERATED_DIR = DEFAULT_OUT_DIR / "generated"
 
 GENERAL_FRACTION_MIN = 0.50
 PRODUCT_FAMILY_CAP = 0.25
@@ -96,6 +100,55 @@ def _slug(text: str) -> str:
     return "".join(ch if ch.isalnum() else "-" for ch in text.lower()).strip("-")[:32]
 
 
+def _adr_sha() -> str:
+    adr = v0.REPO_ROOT / "docs/adr/0033-one-technician-brain.md"
+    # newline-normalized so CRLF/LF checkouts hash identically (2026-07-29
+    # review: raw read_bytes made all general-record provenance drift by OS)
+    return (
+        hashlib.sha256(adr.read_text(encoding="utf-8").replace("\r\n", "\n").encode()).hexdigest()
+        if adr.is_file()
+        else ""
+    )
+
+
+def _mint_general_source(family: str, asset: str, sha: str) -> dict[str, Any]:
+    """One governed synthetic source entry for a (family, asset) pair."""
+    doc = f"general-behavior-{family}-{_slug(asset)}"
+    return {
+        "schema": "factorylm.technician-dataset.source-registry.v1",
+        "source_id": doc,
+        "review_batch": "printsense",  # governance batch bucket; product_area below is truth
+        "product_area": "GeneralTechnician",
+        "source_system": "printsense",
+        "source_reference": "docs/adr/0033-one-technician-brain.md",
+        "source_exists_in_repo": True,
+        "source_sha256": sha,
+        "manufacturer": "FactoryLM",
+        "document_number": doc,
+        "document_lineage_key": f"factorylm:{doc}",
+        "split": "train",
+        "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
+        "corpus_source": {
+            "schema": "factorylm.clf.corpus-source.v1",
+            "license_class": "synthetic",
+            "confidentiality_class": "public",
+            "rights": {
+                "rights_resolved": True,
+                "training_allowed": True,
+                "evaluation_allowed": True,
+                "public_export_allowed": True,
+                "cross_tenant_reuse_allowed": False,
+                "derivatives_retained": True,
+                "policy_ref": "docs/adr/0033-one-technician-brain.md",
+            },
+        },
+        "source_class": "independently_grounded_synthetic",
+        "origin": "synthetic",
+        "target_record_count": 0,
+        "answer_key_ref": "docs/adr/0033-one-technician-brain.md",
+    }
+
+
 def _general_sources() -> dict[str, dict[str, Any]]:
     """Mint one governed synthetic source entry per (family, archetype).
 
@@ -104,52 +157,11 @@ def _general_sources() -> dict[str, dict[str, Any]]:
     no family can vanish from training wholesale (the safety-boundary
     lesson), and off-train rows become governed eval material instead.
     """
-    adr = v0.REPO_ROOT / "docs/adr/0033-one-technician-brain.md"
-    # newline-normalized so CRLF/LF checkouts hash identically (2026-07-29
-    # review: raw read_bytes made all general-record provenance drift by OS)
-    sha = (
-        hashlib.sha256(adr.read_text(encoding="utf-8").replace("\r\n", "\n").encode()).hexdigest()
-        if adr.is_file()
-        else ""
-    )
+    sha = _adr_sha()
     out: dict[str, dict[str, Any]] = {}
     for family in _TRAIN_FAMILIES + EVAL_ONLY_FAMILIES:
         for asset, _symptom in _ARCHETYPES:
-            key = f"{family}::{asset}"
-            doc = f"general-behavior-{family}-{_slug(asset)}"
-            out[key] = {
-                "schema": "factorylm.technician-dataset.source-registry.v1",
-                "source_id": doc,
-                "review_batch": "printsense",  # governance batch bucket; product_area below is truth
-                "product_area": "GeneralTechnician",
-                "source_system": "printsense",
-                "source_reference": "docs/adr/0033-one-technician-brain.md",
-                "source_exists_in_repo": True,
-                "source_sha256": sha,
-                "manufacturer": "FactoryLM",
-                "document_number": doc,
-                "document_lineage_key": f"factorylm:{doc}",
-                "split": "train",
-                "rights_decision": "ALLOW_TRAIN_AFTER_GOLD_AND_HUMAN_APPROVAL",
-                "corpus_source": {
-                    "schema": "factorylm.clf.corpus-source.v1",
-                    "license_class": "synthetic",
-                    "confidentiality_class": "public",
-                    "rights": {
-                        "rights_resolved": True,
-                        "training_allowed": True,
-                        "evaluation_allowed": True,
-                        "public_export_allowed": True,
-                        "cross_tenant_reuse_allowed": False,
-                        "derivatives_retained": True,
-                        "policy_ref": "docs/adr/0033-one-technician-brain.md",
-                    },
-                },
-                "source_class": "independently_grounded_synthetic",
-                "origin": "synthetic",
-                "target_record_count": 0,
-                "answer_key_ref": "docs/adr/0033-one-technician-brain.md",
-            }
+            out[f"{family}::{asset}"] = _mint_general_source(family, asset, sha)
     return out
 
 
@@ -444,6 +456,221 @@ def general_candidates() -> list[ReviewCandidate]:
     return out
 
 
+# --------------------------------------------------------------------------
+# Agent-written general-behavior variants (the readiness-report scale-up path).
+# Agents write SURFACE TEXT only; every row passes the same strict gate as the
+# deterministic templates, inherits its family's canonical interaction_type /
+# safety flag, and mints the same governed synthetic source envelope. Fail-
+# closed on: unknown/eval-only family, malformed messages, gate violations,
+# real-OEM tokens (license_class stays honestly synthetic), duplicate suffixes,
+# and near-duplicate "fake diversity" against the base templates or earlier
+# accepted variants (Jaccard >= NEAR_DUP threshold on the varying user text).
+# --------------------------------------------------------------------------
+_GENVAR_NEAR_DUP_JACCARD = v2.NEAR_DUP_JACCARD
+_GENVAR_SUFFIX_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+
+# Real-manufacturer tokens that must never appear in synthetic general records.
+_REAL_MFR_TOKENS = frozenset(
+    """
+    rockwell allen-bradley allenbradley powerflex compactlogix controllogix micrologix
+    micro820 micro850 siemens sinamics simatic yaskawa abb schneider telemecanique
+    eaton cutler-hammer mitsubishi fanuc danfoss teco baldor weg sew-eurodrive sew
+    nord lenze omron automationdirect ironhorse durapulse gs10 gs20 gs4 pf525 pf40
+    magnetek demag interroll grainger honeywell emerson ge-fanuc keyence banner sick
+    phoenix-contact wago beckhoff bosch rexroth parker festo smc norgren
+    """.split()
+)
+
+
+def _family_canon(family: str) -> tuple[str, bool]:
+    """Canonical (interaction_type, safety_sensitive) for a train family."""
+    _, _, interaction, safety = _TRAIN_SCENARIOS[family]("asset", "symptom")
+    return interaction, safety
+
+
+def _user_grams(messages: list[dict[str, str]]) -> set:
+    """4-grams of the user turns minus Evidence lines — the varying axis."""
+    texts: list[str] = []
+    for m in messages:
+        if m.get("role") != "user":
+            continue
+        texts.extend(
+            line for line in m["content"].splitlines() if not line.strip().startswith("Evidence (")
+        )
+    return v2._ngrams("\n".join(texts))
+
+
+def fold_general_generated(
+    path: Path,
+) -> tuple[list[ReviewCandidate], list[dict[str, Any]]]:
+    """Fold one agent-written general-variants JSONL file.
+
+    Row schema: {"family": <train family>, "asset": <generic asset name>,
+    "record_suffix": <^[a-z0-9-]{1,32}$>, "messages": [...],
+    "generator": "<label>"}. interaction_type / safety_sensitive are NOT
+    trusted from the row — they are forced to the family's canonical values.
+    Returns (accepted, rejected); rejection is deterministic and fail-closed.
+    """
+    sha = _adr_sha()
+    accepted: list[ReviewCandidate] = []
+    rejected: list[dict[str, Any]] = []
+    seen_suffixes: set[tuple[str, str]] = set()
+
+    def _reject(row: dict[str, Any], why: str) -> None:
+        rejected.append(
+            {
+                "row": {k: row.get(k) for k in ("family", "asset", "record_suffix")},
+                "violations": [why],
+            }
+        )
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        family = row.get("family")
+        if family in EVAL_ONLY_FAMILIES:
+            _reject(row, "eval_only_family")
+            continue
+        if family not in _TRAIN_SCENARIOS:
+            _reject(row, "unknown_family")
+            continue
+        asset = str(row.get("asset") or "").strip()
+        suffix = str(row.get("record_suffix") or "")
+        if not asset or not _GENVAR_SUFFIX_RE.match(suffix):
+            _reject(row, "bad_asset_or_suffix")
+            continue
+        if (family, suffix) in seen_suffixes:
+            _reject(row, "duplicate_suffix")
+            continue
+        msgs = row.get("messages") or []
+        users = [m["content"] for m in msgs if m.get("role") == "user"]
+        asst = [m["content"] for m in msgs if m.get("role") == "assistant"]
+        if not users or not asst:
+            _reject(row, "bad_messages")
+            continue
+        all_text = "\n".join(users + asst).lower()
+        mfr_hits = _REAL_MFR_TOKENS & set(re.findall(r"[a-z0-9-]+", all_text))
+        if mfr_hits:
+            _reject(row, f"real_manufacturer_token:{sorted(mfr_hits)[0]}")
+            continue
+        interaction, safety = _family_canon(family)
+        user_all = "\n".join(users)
+        gate = bs.validate_training_record(
+            user_text=user_all,
+            answer=asst[-1],
+            evidence_text=user_all if "Evidence (" in user_all else "",
+            claim="",
+            evidence_present="Evidence (" in user_all,
+            interaction_type=interaction,
+            safety_sensitive=safety,
+        )
+        if gate:
+            rejected.append(
+                {
+                    "row": {k: row.get(k) for k in ("family", "asset", "record_suffix")},
+                    "violations": gate,
+                }
+            )
+            continue
+        seen_suffixes.add((family, suffix))
+        src = _mint_general_source(family, asset, sha)
+        payload = {
+            "family": family,
+            "asset": asset,
+            "behavior": "general",
+            "variant": suffix,
+        }
+        sys_msgs = [m for m in msgs if m.get("role") == "system"]
+        full = ([{"role": "system", "content": v0.SYSTEM_PROMPT}] if not sys_msgs else msgs[:1]) + [
+            m for m in msgs if m.get("role") in ("user", "assistant")
+        ]
+        record = _printsense_record_from_source(
+            src,
+            record_id=f"techgenvar-{family}-{suffix}",
+            messages=full,
+            tags=(
+                "general_technician",
+                family,
+                "task_mode_general_troubleshooting",
+                "source_family_general",
+                "stratum_genvar",
+            ),
+            interaction_type=interaction,
+            safety_sensitive=safety,
+        )
+        accepted.append(
+            ReviewCandidate(
+                record=record,
+                source_entry=src,
+                answer_key=_answer_key(
+                    key_type="factorylm_authored_rule",
+                    key_ref=f"{src['answer_key_ref']}#{family}:{asset}",
+                    evidence_hash=_stable_hash(payload),
+                    producer_type="deterministic",
+                    payload=payload,
+                ),
+                origin="synthetic",
+                source_class="independently_grounded_synthetic",
+                review_batch="printsense",
+                notes=(
+                    f"general-behavior variant {family}/{suffix}; surface by "
+                    f"{row.get('generator', 'unknown')}; ADR-0033.",
+                ),
+            )
+        )
+    return accepted, rejected
+
+
+def general_variant_candidates(
+    base: list[ReviewCandidate],
+) -> tuple[list[ReviewCandidate], dict[str, Any]]:
+    """Fold every generated JSONL file; drop near-dup variants deterministically.
+
+    A variant is dropped when its varying user text is Jaccard >= threshold
+    against ANY base record of the same family or an earlier-accepted variant
+    of the same family — word-swap-grade paraphrase is fake diversity.
+    """
+    gen_dir = v0.REPO_ROOT / GENERATED_DIR
+    stats: dict[str, Any] = {
+        "files": 0,
+        "accepted": 0,
+        "rejected": 0,
+        "near_dup_dropped": 0,
+        "rejected_reasons": {},
+    }
+    if not gen_dir.is_dir():
+        return [], stats
+    base_grams: dict[str, list[set]] = {}
+    for c in base:
+        fam = next((t for t in c.record.tags if t in _TRAIN_SCENARIOS), None)
+        if fam:
+            base_grams.setdefault(fam, []).append(_user_grams(c.record.messages))
+    reasons: Counter = Counter()
+    out: list[ReviewCandidate] = []
+    for f in sorted(gen_dir.glob("*.jsonl")):
+        stats["files"] += 1
+        accepted, rejected = fold_general_generated(f)
+        for r in rejected:
+            reasons[r["violations"][0].split(":")[0]] += 1
+        for c in accepted:
+            fam = next(t for t in c.record.tags if t in _TRAIN_SCENARIOS)
+            grams = _user_grams(c.record.messages)
+            dup = any(
+                grams and g and len(grams & g) / len(grams | g) >= _GENVAR_NEAR_DUP_JACCARD
+                for g in base_grams.get(fam, [])
+            )
+            if dup:
+                stats["near_dup_dropped"] += 1
+                continue
+            base_grams.setdefault(fam, []).append(grams)
+            out.append(c)
+    stats["accepted"] = len(out)
+    stats["rejected"] = sum(reasons.values())
+    stats["rejected_reasons"] = dict(reasons)
+    return out, stats
+
+
 def bridge_candidates() -> list[ReviewCandidate]:
     """Cross-domain records chaining existing ELIGIBLE evidence-present facts."""
     part = v2.fact_partition()
@@ -579,6 +806,8 @@ def compile_unified(
     stage: v0.BuildStage = "readiness",
 ) -> tuple[list[ReviewCandidate], dict[str, Any]]:
     general_all = general_candidates()
+    variants_all, variant_stats = general_variant_candidates(general_all)
+    general_all = general_all + variants_all
     general = [c for c in general_all if c.to_dict()["split"] == "train"]
     general_offtrain = len(general_all) - len(general)
     bridge_all = bridge_candidates()
@@ -685,6 +914,7 @@ def compile_unified(
         },
         "dropped": dict(dropped),
         "general_offtrain_records": general_offtrain,
+        "general_variants": variant_stats,
         "gates": {
             "general_fraction_ok": general_fraction >= GENERAL_FRACTION_MIN,
             # PREFIX match (2026-07-29 review: exact-membership on the family
