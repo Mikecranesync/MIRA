@@ -10,6 +10,10 @@ Steps
 3. CHUNK + EMBED  — ingest_text_inline() → knowledge_entries (pgvector)
 4. KG ENTITIES    — extract_equipment + extract_fault_codes → kg_entities + relationships
 5. QUALITY GATE   — compare 10 KB-sensitive cases before/after (optional, subprocess)
+6. EVIDENCE       — candidate Materialized Evidence receipt: byte identity + the real
+                    extraction method, referencing (never copying) the knowledge_entries
+                    materialization. Optional (`--evidence-registry` /
+                    `MIRA_EVIDENCE_REGISTRY`) and fail-open.
 
 CLI
 ---
@@ -50,6 +54,12 @@ for _p in [str(_CRAWLER_ROOT), str(_BOTS_ROOT)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+# Repo root, for `materialized_evidence` (step 6). APPENDED, not inserted: the
+# crawler's own imports must keep resolving first (repo-root `tests/`/`tools/`
+# would otherwise shadow them).
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.append(str(_REPO_ROOT))
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 for _noisy in ("httpx", "httpcore"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
@@ -64,6 +74,11 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
 NEON_URL = os.getenv("NEON_DATABASE_URL", "")
 MANUALS_ROOT = Path(os.getenv("MANUALS_ROOT", "/opt/mira/manuals"))
+
+# Materialized Evidence receipts (step 6) — OPTIONAL and fail-open. Unset means
+# ingest behaves exactly as before; no receipt is compiled and nothing is written.
+EVIDENCE_REGISTRY = os.getenv("MIRA_EVIDENCE_REGISTRY", "")
+EVIDENCE_ENV = os.getenv("MIRA_EVIDENCE_ENV", "dev")
 
 LARGE_SKIP_BYTES = 50 * 1024 * 1024     # 50 MB — skip extraction entirely
 
@@ -90,6 +105,12 @@ class PipelineReport:
     kg_proposals: int = 0
     kg_triples: int = 0
     quality_gate: str = "skipped"
+    # Materialized Evidence receipt (step 6). `evidence_status` is the authoritative
+    # surface for a receipt-write failure — deliberately NOT `errors`, because
+    # `errors` drives the CLI exit code and a non-zero exit would make a cron treat
+    # a successfully-ingested document as failed and retry it.
+    evidence_status: str = "skipped (no registry configured)"
+    evidence_datasets: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def print(self) -> None:
@@ -106,6 +127,9 @@ class PipelineReport:
               f"{self.kg_proposals} proposed (pending human review)")
         print(f"KG Triples:   {self.kg_triples} logged (source: manual_ingest)")
         print(f"Quality Gate: {self.quality_gate}")
+        print(f"Evidence:     {self.evidence_status}")
+        for dvid in self.evidence_datasets:
+            print(f"                • {dvid}")
         if self.errors:
             print(f"\nErrors ({len(self.errors)}):")
             for e in self.errors:
@@ -483,6 +507,113 @@ def step_kg(text: str, manufacturer: str, model: str,
 
 
 # ---------------------------------------------------------------------------
+# STEP 6: MATERIALIZED EVIDENCE RECEIPT (optional, fail-open)
+# ---------------------------------------------------------------------------
+# Records what this run actually discovered — byte identity of the PDF and the
+# real extraction method — as a durable, typed, `candidate` receipt (ADR-0029,
+# `.claude/rules/materialized-evidence.md`). A receipt is a POINTER: it references
+# the raw PDF and the `knowledge_entries` chunks this run already created, and
+# stores no document text.
+#
+# Boundaries this step does NOT cross:
+#   • it never decides to SKIP extraction (no `resolve_recall` call) — writing a
+#     receipt is purely additive, so it cannot turn a failed extraction into a
+#     success or retry a quarantined document;
+#   • it never promotes anything (trust stays candidate, approval pending);
+#   • it never blocks KB ingest — every failure lands in `report.evidence_status`.
+
+
+def step_document_evidence(
+    pdf_path: Path,
+    text: str,
+    source_url: str,
+    ocr_requested: bool,
+    report: PipelineReport,
+    registry_path: str = "",
+    environment: str = "dev",
+) -> None:
+    if not registry_path:
+        report.evidence_status = "skipped (no registry configured)"
+        return
+    if not TENANT_ID:
+        report.evidence_status = "skipped (MIRA_TENANT_ID not set — evidence is tenant-scoped)"
+        return
+
+    try:
+        from materialized_evidence import Environment, sha256_bytes
+        from materialized_evidence.backends.file_registry import FileRegistry
+        from materialized_evidence.document_compiler import (
+            DocumentExtraction,
+            DocumentSource,
+            MaterializationRef,
+            compile_document_evidence,
+            write_receipt,
+        )
+    except ImportError as exc:
+        report.evidence_status = f"skipped (evidence contract unavailable: {exc})"
+        return
+
+    try:
+        try:
+            env = Environment(environment)
+        except ValueError:
+            report.evidence_status = f"skipped (unknown MIRA_EVIDENCE_ENV {environment!r})"
+            return
+
+        raw = pdf_path.read_bytes()
+        source = DocumentSource(
+            source_uri=source_url,
+            content_sha256=sha256_bytes(raw),  # byte identity — never the URL/filename
+            byte_count=len(raw),
+            local_path=str(pdf_path),
+        )
+        extraction = DocumentExtraction(
+            method=report.extract_method,  # verbatim: pdfplumber | pypdf | tika_ocr | …
+            char_count=len(text),
+            text_sha256=sha256_bytes(text.encode("utf-8")) if text else None,
+            extractor_version=None,  # the extraction layer reports none — unknown, not guessed
+            ocr_requested=ocr_requested,
+            size_limit_bytes=LARGE_SKIP_BYTES,
+        )
+
+        # Only materializations this run genuinely produced. On a failed extraction
+        # this list is empty, so the receipt claims nothing that does not exist.
+        materializations: list[MaterializationRef] = []
+        if report.kb_chunks:
+            materializations.append(
+                MaterializationRef(
+                    kind="knowledge_entries",
+                    locator=f"source_url={source_url}",
+                    record_count=report.kb_chunks,
+                )
+            )
+        txt_sidecar = pdf_path.with_suffix(".txt")
+        if text and txt_sidecar.exists():
+            materializations.append(
+                MaterializationRef(kind="text_sidecar", locator=str(txt_sidecar))
+            )
+
+        receipt = compile_document_evidence(
+            source=source,
+            extraction=extraction,
+            tenant_id=TENANT_ID,
+            environment=env,
+            # No verified pages: this extraction layer supplies no page identity, and
+            # `report.extract_pages` is a markdown-heading ESTIMATE, not provenance.
+            verified_pages=None,
+            materializations=materializations,
+        )
+        report.evidence_datasets = write_receipt(receipt, FileRegistry(registry_path))
+        report.evidence_status = (
+            f"{len(report.evidence_datasets)} candidate receipt(s) → {registry_path}"
+        )
+        logger.info("Evidence: %s", report.evidence_status)
+    except Exception as exc:  # noqa: BLE001 — fail-open: ingest already succeeded
+        report.evidence_status = f"failed: {exc}"
+        logger.warning("Evidence receipt failed (document ingest unaffected): %s", exc)
+
+
+# ---------------------------------------------------------------------------
 # STEP 5: QUALITY GATE (subprocess)
 # ---------------------------------------------------------------------------
 
@@ -526,6 +657,7 @@ def run(
     baseline_path: str | None = None,
     no_quality_gate: bool = False,
     ocr: bool = False,
+    evidence_registry: str | None = None,
 ) -> PipelineReport:
     report = PipelineReport(pdf_url=pdf_url)
 
@@ -560,6 +692,19 @@ def run(
     if text:
         step_kg(text, manufacturer, model, manual_type, pdf_url, report)
 
+    # 6. Materialized Evidence receipt (optional; runs after KB+KG so it can
+    #    reference the knowledge_entries materialization this run produced, and on
+    #    the failed-extraction path so a failure is recorded rather than re-paid).
+    step_document_evidence(
+        dest,
+        text,
+        pdf_url,
+        ocr,
+        report,
+        registry_path=(evidence_registry if evidence_registry is not None else EVIDENCE_REGISTRY),
+        environment=EVIDENCE_ENV,
+    )
+
     # 5. Quality gate
     if not no_quality_gate:
         step_quality_gate(baseline_path, report)
@@ -587,6 +732,13 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--ocr", action="store_true",
                    help="Fall back to Tika OCR when local extraction finds no "
                         "text layer (scanned/image-only PDFs). Requires TIKA_URL.")
+    p.add_argument("--evidence-registry", default=None,
+                   help="Path to a Materialized Evidence JSON snapshot. When set, "
+                        "write a candidate document-evidence receipt (byte identity "
+                        "+ real extraction method) after ingest. Optional and "
+                        "fail-open — omit (or MIRA_EVIDENCE_REGISTRY) and ingest "
+                        "behaves exactly as before. Single-writer: do not point two "
+                        "concurrent runs at one snapshot.")
     return p.parse_args()
 
 
@@ -600,5 +752,6 @@ if __name__ == "__main__":
         baseline_path=args.baseline,
         no_quality_gate=args.no_quality_gate,
         ocr=args.ocr,
+        evidence_registry=args.evidence_registry,
     )
     sys.exit(1 if report.errors else 0)

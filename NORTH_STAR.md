@@ -268,6 +268,28 @@ the platform decisions are `docs/adr/0029-materialized-evidence.md`. The seed al
 `printsense/cas.py` is a content-addressed, producer-version-keyed derivation cache; this amendment
 generalizes it into a platform layer rather than replacing it.
 
+### The batch-document boundary (first working receipt)
+
+The first place this stops being architecture and starts being a receipt is **batch document
+ingest** — the OEM-manual lane on Charlie (`mira-crawler/tasks/full_ingest_pipeline.py`).
+
+Its boundary is deliberately narrow, and the narrowness is the point:
+
+- A batch document produces **typed, `candidate` evidence receipts** — byte identity (SHA-256 of the
+  actual downloaded bytes, never a URL, filename, or chunk ordinal) plus the **real** extraction
+  method recorded verbatim. A text-layer parse is never described as OCR.
+- A receipt is a **pointer, not a document store.** It references the raw PDF and the
+  `knowledge_entries` chunks that ingest already created; it carries no document text, no OCR text,
+  no tenant chunk contents.
+- Receipts **do not answer technicians and do not promote themselves.** Trust stays `candidate`,
+  approval stays `pending`, and promotion remains a human act through the existing approval systems
+  (ADR-0017). A byte hash is byte identity — never corpus lineage, training lineage, or a rights grant.
+- The lane is **optional and fail-open.** Unconfigured, document ingest behaves exactly as before; a
+  receipt failure is reported and never blocks, retries, or re-grades a document.
+
+What it does **not** yet do: it makes no automatic recompute-or-skip decision. It writes the durable
+identity that a later recall decision can safely be built on — it does not yet make that decision.
+
 ## The flywheel + the moat
 
 1. We structure a plant → its **Maintenance Intelligence Namespace** is captured (assets, docs, tags,
