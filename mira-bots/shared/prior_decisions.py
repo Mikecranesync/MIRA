@@ -17,11 +17,19 @@ Design constraints — deliberately NOT a copy of the writer's posture:
 - **Bounded.** This is on the critical path inside the engine's
   `MIRA_PROCESS_TIMEOUT` budget, unlike the fire-and-forget write. Hard timeout,
   small LIMIT, no retry.
-- **Tenant-bound the same way the writer binds.** `SET LOCAL` on BOTH
-  `app.tenant_id` and `app.current_tenant_id` — the dual form migration 070's
-  policy reads. `decision_traces.tenant_id` is **TEXT** since 070, so no
-  `::uuid` cast belongs anywhere near it (#3003 killed every staging trace that
-  way).
+- **Tenant-bound EXACTLY the way the writer binds** — `SET LOCAL` on
+  `app.current_tenant_id` and **nothing else**. Migration 070's policy reads
+  both spellings, so this one is sufficient, and setting `app.tenant_id` as well
+  is actively harmful: `NEON_DATABASE_URL` is a **PgBouncer pooler** endpoint,
+  and a GUC set on a pooled backend outlives the transaction as the empty
+  string. `app.tenant_id` is the setting the **UUID-family** policies cast
+  (`current_setting('app.tenant_id', true)::UUID`), so a leaked `''` turns every
+  later query on `tag_events` / `approved_tags` / `flaky_input_signals` /
+  `live_signal_cache` into `22P02 invalid input syntax for type uuid: ""` — for
+  an unrelated session that never touched this module. Staging caught exactly
+  that: five pre-existing RLS tests went red the moment this reader set it.
+  `decision_traces.tenant_id` is **TEXT** since 070, so no `::uuid` cast belongs
+  anywhere near it either (#3003 killed every staging trace that way).
 - **Lazy imports.** sqlalchemy is imported inside the worker thread so bot
   containers without it still boot (mirrors `decision_trace.py`).
 
@@ -130,9 +138,15 @@ async def fetch_prior_decisions(
             connect_args={"sslmode": "require"},
             pool_pre_ping=True,
         )
-        with engine.connect() as conn:
-            # RLS binding — dual setting form, no ::uuid cast (migration 070).
-            conn.execute(sql_text("SET LOCAL app.tenant_id = :tid"), {"tid": tenant_id})
+        with engine.begin() as conn:
+            # RLS binding. `begin()`, not `connect()`: SQLAlchemy 2.0 does not
+            # open a transaction until the first execute, and a SET LOCAL with
+            # no surrounding transaction is a no-op that Postgres only WARNs
+            # about — the binding would silently not apply.
+            #
+            # ONE setting, matching decision_trace.py. Do NOT also set
+            # `app.tenant_id`: see the module docstring — through the pooler it
+            # leaks as '' and breaks the UUID-family policies that cast it.
             conn.execute(sql_text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
             result = conn.execute(sql_text(sql), params)
             return _rows_to_dicts(result.fetchall())
