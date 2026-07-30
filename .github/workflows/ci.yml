@@ -311,6 +311,31 @@ jobs:
           pytest tests/test_manufacturer_alias_consistency.py -v
           (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)
 
+      - name: Module suites that no workflow ran (plc-parser, materialized-evidence, connectors)
+        # 294 tests that passed on every commit and could not fail one, because
+        # nothing collected them. Measured 2026-07-30: of the twelve module
+        # suites outside any workflow, these three are the ones that are BOTH
+        # green on main AND need no dependency this job does not already install
+        # (checked by diffing their imports against the pip lines above) — so
+        # wiring them is enforcement gained at zero dependency risk.
+        #
+        # Deliberately NOT included, and declared in _UNCOLLECTED_SUITES in
+        # tests/test_architecture.py rather than left invisible:
+        #   mira-relay (191) / plc conv_simple_anomaly (77) / fault-detective /
+        #   fault-sim  -> need aiomqtt (+ starlette, pymodbus)
+        #   mira-mcp (67)   -> needs fastmcp, openpyxl, openviking, psycopg
+        #   mira-pipeline   -> 7 pre-existing failures on main
+        #   mira-contextualizer -> 1 pre-existing failure on main
+        #   mira-crawler    -> collection ImportError in tests/test_watcher.py
+        #
+        # Separate invocations: tests/conftest.py and mira-bots/tests/conftest.py
+        # both resolve to module `tests.conftest`, which is why every entry in
+        # this job is its own pytest process.
+        run: |
+          pytest mira-plc-parser/tests -q
+          pytest materialized_evidence/tests -q
+          pytest mira-connectors/tests -q
+
       - name: Relational distiller (flywheel Phase 4b)
         # Pure core of tools/relational_distill.py — matched drive-pack fault
         # turns → grounded HAS_FAILURE_MODE edge proposals (human-gated, never

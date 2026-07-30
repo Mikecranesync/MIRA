@@ -962,3 +962,247 @@ def test_ungated_manifest_names_jobs_that_ci_yml_mentions():
     text = _CI_WORKFLOW.read_text(encoding="utf-8")
     for job_id in _UNGATED_TEST_JOBS:
         assert job_id in text, f"{job_id} is not mentioned in ci.yml at all"
+
+
+# ===========================================================================
+# Contract 9: a test suite nothing COLLECTS is not a guard either
+# ===========================================================================
+#
+# Contract 8 asks "can this job fail a merge?". It cannot ask the prior
+# question: "does any workflow run these tests at all?" Measured 2026-07-30:
+# **160 tracked test files were collected by no pull_request-triggered
+# workflow**, including 697 tests that pass today and are protected by nothing.
+# `tests/ignition/` (the blind spot that started all this) was only the visible
+# instance of a much larger class.
+#
+# The failure mode is quiet in the worst way: the tests are green, so a reviewer
+# who runs them locally sees exactly what a reviewer who does not would see, and
+# nothing anywhere says the suite is unenforced.
+#
+# This contract makes every suite either COLLECTED or DECLARED. Adding a new
+# module with tests and forgetting to wire it now fails here, with the fix in
+# the failure message.
+#
+# WHAT IT CANNOT KNOW (same honesty as Contract 8):
+#   * It reads `run:` text. Tests collected through a `uses:` composite action
+#     or a reusable workflow are invisible to it.
+#   * "Collected" is not "gated" — that is Contract 8's job. A suite can satisfy
+#     this contract and still be unable to fail a merge (test-eval-offline).
+#   * It reasons about path prefixes, not pytest's real collection rules;
+#     `-k`/`-m`/`--ignore` filtering inside a target is out of scope.
+
+_SUITE_EXCLUDE_PARTS = {
+    "__pycache__", "node_modules", ".venv", "venv", ".git",
+    ".worktrees", ".audit-worktrees", ".codex", "site-packages",
+    # docs/ holds eval fixture corpora whose files are named test_*.py but are
+    # inputs, not suites. Excluded by path so they do not pad the manifest.
+    "docs",
+}
+
+# Suites that NO pull_request workflow collects. Every entry needs a reason, and
+# the reason should say what it would take to wire it in — an exemption without
+# a route back is just a permanent hole with paperwork.
+_UNCOLLECTED_SUITES: dict[str, str] = {
+    "mira-relay/tests":
+        "191 tests, green on main, and they guard the ONE-PIPELINE ingest law "
+        "(the runtime counterpart of Contract 5). Needs `pip install aiomqtt "
+        "starlette` in test-unit. Highest-value suite to wire next.",
+    "mira-mcp/tests":
+        "67 tests, green. Needs fastmcp, openpyxl, openviking, psycopg — the "
+        "heaviest dependency add of the group, so it is deferred rather than "
+        "bolted onto the gated job.",
+    "plc/conv_simple_anomaly":
+        "77 tests, green; the A0-A12 in-gateway anomaly rules. Needs aiomqtt + "
+        "pymodbus.",
+    "mira-fault-detective/tests":
+        "15 tests, green on main. Needs `pip install aiomqtt` in test-unit; "
+        "bundle it with the mira-relay wiring since they share the dependency.",
+    "mira-fault-sim/tests":
+        "13 tests, green on main. Needs aiomqtt, same as fault-detective.",
+    "mira-bots/shared":
+        "One stray test_few_shot_trainer.py sitting in the package dir rather "
+        "than a tests/ dir. Move it to mira-bots/tests/ and it is collected by "
+        "the existing step for free.",
+    "mira-bots/shared/tests":
+        "One file (test_ctx_enrichment.py). Same fix as above: fold into "
+        "mira-bots/tests/, which the gated job already collects.",
+    "mira-connect/tests":
+        "One file, and mira-connect is DEFERRED to post-MVP 'Config 4' per the "
+        "root CLAUDE.md module table. Wire it if and when that module wakes up.",
+    "mira-core/mira-ingest/db":
+        "Two DB-layer suites (21 tests) needing a live Postgres, so they belong "
+        "in an integration job with a service container, not in test-unit.",
+    "mira-core/sm_profiles":
+        "One profile-shape test. Small and hermetic; fold into the mira-core "
+        "ingest step that this job already runs.",
+    "plc":
+        "test_discover.py (10 tests) for the read-only fieldbus scanner. "
+        "Hermetic, but plc/ also holds bench-only tooling, so wire the file "
+        "explicitly rather than collecting the directory.",
+    "plc/litmus":
+        "Two suites for the LitmusEdge bench collector — bench hardware "
+        "integration, not a merge gate.",
+    "plc/live-plc-bridge/tests":
+        "BENCH-ONLY tooling per .claude/rules/fieldbus-readonly.md. It opens "
+        "Modbus sockets and must never be a customer-shipped path; keeping it "
+        "out of CI is deliberate, not an oversight.",
+    "tools":
+        "test_reconcile_manufacturers.py. Hermetic; wire it explicitly next to "
+        "the alias-consistency step it belongs beside.",
+    "tools/proof":
+        "test_proof_integrity.py. Hermetic; same treatment as tools/.",
+    "tools/internet_print_test":
+        "Print-eval harness. Its runner reaches the network and paid providers "
+        "by design, so it is a manual harness, not a merge gate.",
+    "tools/internet_print_test/benchmarks/2026-07-18-towerop":
+        "A captured benchmark run kept as a record. Not a suite to enforce.",
+    "evals":
+        "One eval harness file. Evals are measurements that move with provider "
+        "behaviour; per the ci-gate design note they stay visible, not gating.",
+    "mira-scan-monday/backend/tests":
+        "40 tests, green locally, but imports a top-level `backend` package that "
+        "only resolves from inside mira-scan-monday, plus psycopg. Needs a "
+        "working-directory step, not just a dependency.",
+    "mira-pipeline/tests":
+        "59 pass / 7 FAIL on main (async mock assertion, 'Expected process to "
+        "not have been awaited'). Fix the failures first, then wire — this is "
+        "also the suite holding the 422 uns_required direct-connection tests, so "
+        "it matters more than its size suggests.",
+    "mira-contextualizer/tests":
+        "84 pass / 1 FAIL on main. Fix the failure first, then wire.",
+    "mira-crawler/tests":
+        "Collection ImportError in tests/test_watcher.py, so the whole directory "
+        "cannot be collected wholesale. 8 of its 58 files are already named "
+        "individually elsewhere in ci.yml. Fix the import, then wire the rest.",
+}
+
+
+def _discover_suites(root: Path) -> list[str]:
+    """Directories that look like a test suite root, as posix paths."""
+    found = set()
+    for path in root.rglob("test_*.py"):
+        if any(part in _SUITE_EXCLUDE_PARTS for part in path.parts):
+            continue
+        parent = path.parent
+        rel = parent.relative_to(root).as_posix()
+        # Roll a nested dir up to its suite root (tests/ignition -> tests/ignition
+        # stays, but mira-x/tests/sub -> mira-x/tests) so the manifest stays small.
+        parts = rel.split("/")
+        if "tests" in parts:
+            i = parts.index("tests")
+            rel = "/".join(parts[: i + 1])
+        found.add(rel)
+    return sorted(found)
+
+
+def _pytest_targets(workflow_text: str) -> set[str]:
+    """Paths collected by pytest invocations in a workflow's `run:` blocks."""
+    targets: set[str] = set()
+    for raw in workflow_text.splitlines():
+        line = raw.strip()
+        if "pytest" not in line or line.startswith("#"):
+            continue
+        prefix = ""
+        cd = re.search(r"cd\s+([\w./-]+)\s*&&", line)
+        if cd:
+            prefix = cd.group(1).strip("/") + "/"
+        after = line.split("pytest", 1)[1]
+        for tok in after.split():
+            if tok.startswith("-") or "=" in tok or tok in {"&&", "|", ")", "\\"}:
+                continue
+            tok = tok.strip("'\"()").rstrip("\\")
+            if not tok or tok.startswith("$"):
+                continue
+            if "/" in tok or tok.endswith(".py") or tok.isidentifier():
+                targets.add((prefix + tok).strip("/"))
+    return targets
+
+
+def scan_collection_coverage(suites, workflows: dict[str, str], declared: dict[str, str]) -> list[str]:
+    """Return Contract 9 violations. Pure, so the fixtures below mean something."""
+    violations: list[str] = []
+
+    collected: set[str] = set()
+    for text in workflows.values():
+        collected |= _pytest_targets(text)
+
+    def is_collected(suite: str) -> bool:
+        for t in collected:
+            if suite == t or suite.startswith(t.rstrip("/") + "/"):
+                return True
+        return False
+
+    for suite in suites:
+        if is_collected(suite) or suite in declared:
+            continue
+        violations.append(
+            f"{suite}: collected by NO workflow and not declared in "
+            f"_UNCOLLECTED_SUITES — its tests cannot fail a merge, and nothing "
+            f"says so. Wire it into ci.yml or declare it with a reason."
+        )
+
+    for suite, reason in declared.items():
+        if len(reason) < 40:
+            violations.append(f"{suite}: exemption reason is too thin to be useful")
+        if is_collected(suite):
+            violations.append(
+                f"{suite}: declared uncollected but a workflow DOES collect it — "
+                f"delete the _UNCOLLECTED_SUITES entry"
+            )
+    return violations
+
+
+def _pr_workflows() -> dict[str, str]:
+    wf_dir = _ROOT / ".github" / "workflows"
+    out = {}
+    for f in sorted(wf_dir.glob("*.yml")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        if "pull_request" in text:
+            out[f.name] = text
+    return out
+
+
+def test_every_test_suite_is_collected_or_declared():
+    """A suite nothing collects is not a guard, however green it is."""
+    violations = scan_collection_coverage(
+        _discover_suites(_ROOT), _pr_workflows(), _UNCOLLECTED_SUITES
+    )
+    assert not violations, (
+        "Test suites that no pull_request workflow collects.\n"
+        "Either add a pytest step in .github/workflows/ci.yml, or add an entry to "
+        "_UNCOLLECTED_SUITES saying why not and what it would take.\n\n"
+        + "\n".join(violations)
+    )
+
+
+def test_collection_checker_catches_violations():
+    """The checker must fail on each shape it claims to catch."""
+    wf = {"ci.yml": "on: pull_request\n      run: pytest tests/unit -q\n"}
+
+    assert scan_collection_coverage(["mira-new/tests"], wf, {}), "missed an undeclared suite"
+    assert scan_collection_coverage(
+        ["tests/unit"], wf, {"tests/unit": "x" * 50}
+    ), "missed a declared-but-actually-collected suite"
+    assert scan_collection_coverage(
+        ["mira-new/tests"], wf, {"mira-new/tests": "too short"}
+    ), "missed a thin exemption reason"
+
+    # collected directly, and collected via an ancestor target
+    assert scan_collection_coverage(["tests/unit"], wf, {}) == []
+    assert scan_collection_coverage(["tests/unit/deep"], wf, {}) == []
+    # properly declared
+    assert scan_collection_coverage(
+        ["mira-new/tests"], wf, {"mira-new/tests": "y" * 45}
+    ) == []
+
+
+def test_pytest_target_parser_handles_the_repo_idioms():
+    """`(cd mira-crawler && pytest tests/x.py)` really does collect
+    mira-crawler/tests/x.py — the parser must not miss it, or every crawler
+    suite would look uncollected and the manifest would fill up with lies."""
+    assert "mira-crawler/tests/test_manufacturer_normalize.py" in _pytest_targets(
+        "          (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)"
+    )
+    assert "tests/ignition" in _pytest_targets("        run: pytest tests/ignition/ -v")
+    got = _pytest_targets('          pytest tests/ -v -n auto -m "not network and not slow"')
+    assert "tests" in got
