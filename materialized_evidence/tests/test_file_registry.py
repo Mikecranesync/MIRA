@@ -8,6 +8,10 @@ what the next process does.
 
 from __future__ import annotations
 
+import multiprocessing as mp
+import sys
+from pathlib import Path
+
 import pytest
 
 from materialized_evidence import (
@@ -96,3 +100,87 @@ def test_immutable_version_conflict_still_enforced(tmp_path):
     with pytest.raises(RegistryError):
         # same dataset_version_id, different content -> different manifest_hash
         r.register(_manifest("ds@1", sources=("sha_DIFFERENT",)))
+
+
+# ── concurrent writers ───────────────────────────────────────────────────────
+# The snapshot is rewritten whole, so every write is a load-modify-replace of one
+# shared file. Atomic replace prevents a TORN file and does nothing about a LOST
+# one: two processes that each hydrate, each add a manifest, and each write the
+# whole thing back both report success while the last writer erases the other's
+# rows. These tests run REAL processes — threads would share the interpreter and
+# could pass against the broken code.
+
+_WORKERS = 6
+
+
+def _register_worker(repo_root: str, snapshot: str, index: int, barrier) -> None:
+    """Child process: hydrate, wait at the barrier, then register one manifest.
+
+    Hydrating BEFORE the barrier is the point — it gives every process the same
+    construction-time view of the snapshot, which is exactly the state a
+    lock-without-reload would write back over everyone else's commits.
+    """
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from materialized_evidence.backends import FileRegistry as FR
+
+    registry = FR(snapshot)
+    barrier.wait()
+    registry.register(_manifest(f"ds@{index}"))
+
+
+def _run_workers(snapshot: Path) -> None:
+    repo_root = str(Path(__file__).resolve().parents[2])
+    ctx = mp.get_context("spawn")  # macOS default; also the strictest (picklable target)
+    barrier = ctx.Barrier(_WORKERS)
+    procs = [
+        ctx.Process(target=_register_worker, args=(repo_root, str(snapshot), i, barrier))
+        for i in range(_WORKERS)
+    ]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join(timeout=60)
+    for i, p in enumerate(procs):
+        assert p.exitcode == 0, f"worker {i} exited {p.exitcode}"
+
+
+def test_concurrent_writers_do_not_lose_receipts(tmp_path):
+    """Every concurrently-written manifest survives — none is silently erased.
+
+    Verified non-vacuous: with the reload-inside-the-lock removed from
+    ``FileRegistry._transaction``, this fails (typically 1-2 of 6 survive).
+    """
+    snap = tmp_path / "reg.json"
+    _run_workers(snap)
+
+    fresh = FileRegistry(snap)
+    survived = {m.dataset_version_id for m in fresh.find(tenant_id="t1")}
+    assert survived == {f"ds@{i}" for i in range(_WORKERS)}, (
+        f"lost {sorted({f'ds@{i}' for i in range(_WORKERS)} - survived)}"
+    )
+
+
+def test_concurrent_writers_leave_a_readable_snapshot(tmp_path):
+    """Contention must not leave a half-written or non-JSON snapshot behind."""
+    import json
+
+    snap = tmp_path / "reg.json"
+    _run_workers(snap)
+
+    data = json.loads(snap.read_text("utf-8"))  # raises if torn
+    assert len(data["manifests"]) == _WORKERS
+    assert not list(tmp_path.glob("*.tmp"))  # no stray temp file left over
+
+
+def test_refresh_picks_up_another_processs_writes(tmp_path):
+    """A long-lived reader can opt into seeing concurrent commits."""
+    snap = tmp_path / "reg.json"
+    reader = FileRegistry(snap)
+    assert reader.find(tenant_id="t1") == []
+
+    FileRegistry(snap).register(_manifest("ds@later"))  # a second "process"
+    assert reader.get("ds@later", tenant_id="t1") is None  # reads are not locked
+
+    reader.refresh()
+    assert reader.get("ds@later", tenant_id="t1") is not None

@@ -15,6 +15,12 @@ methods, and references to where the text already lives (``knowledge_entries``,
 the raw PDF, a ``.txt`` sidecar). It never carries PDF bytes, extracted text, OCR
 text, tenant chunk contents, or secrets.
 
+"Or secrets" is enforced, not asserted: a fetch URL is redacted to scheme+host+path
+before it reaches a manifest, because a download URL is routinely a *credential* (a
+presigned signature, a portal ``?token=``, ``user:pass@``) and a manifest is durable.
+``validate_manifest`` rejects an unredacted one, so the floor holds for every
+producer, not just this one. See ``redaction.py``.
+
 Why ``DatasetType.OCR`` for a text-layer parse
 ----------------------------------------------
 The controlled vocabulary in ``schema.py`` names one extracted-text stage, and
@@ -74,6 +80,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from .hashing import canonical_json, content_hash, record_hash, sha256_bytes, with_hashes
+from .redaction import redact_uri, redact_uris
 from .registry import MaterializationRegistry
 from .schema import (
     ApprovalStatus,
@@ -196,7 +203,14 @@ class MaterializationRef:
     record_count: int | None = None
 
     def as_index_ref(self) -> str:
-        base = f"{self.kind}:{self.locator}"
+        """``kind:locator[#records=N]`` — with the locator redacted if it is a URL.
+
+        A caller SHOULD pass a content-addressed locator (``sha256:…``); the
+        redaction is the floor for one that passes a fetch URL anyway. A URL that
+        survives here would be doubly wrong: durable, and wrapped in a composite
+        string whose own ``#records=`` suffix makes it ambiguous to re-parse.
+        """
+        base = f"{self.kind}:{redact_uri(self.locator)}"
         return base if self.record_count is None else f"{base}#records={self.record_count}"
 
 
@@ -261,8 +275,10 @@ def _with_version_id(manifest: EvidenceManifest, records: list[EvidenceRecord]) 
     DIFFERENT ``manifest_hash``, and the registry's ADR-A3 immutability check would
     reject the write forever. Two such fields vary in real operation:
 
-    - ``source_objects`` — the fetch URL. A CDN change, a mirror, an added query
-      token, or http→https all change it while the bytes are identical.
+    - ``source_objects`` — the fetch URL (redacted to origin+path). A CDN change, a
+      mirror, or http→https all change it while the bytes are identical. Query
+      tokens no longer do, since they are stripped before persisting
+      (``redaction.py``) — but the other three still vary, so the point stands.
     - ``storage_ref`` — the local path, which differs per host (``MANUALS_ROOT``).
 
     Caught end-to-end on 2026-07-30: re-ingesting one PDF from a different port
@@ -292,6 +308,78 @@ def _source_locator(source_sha: str, page_number: int | None = None) -> str:
     """
     base = f"sha256:{source_sha}"
     return base if page_number is None else f"{base}#page={page_number}"
+
+
+_SHA256_LEN = 64
+
+
+def _is_sha256(value: str) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == _SHA256_LEN
+        and all(c in "0123456789abcdef" for c in value)
+    )
+
+
+def _validate_inputs(
+    source: DocumentSource, extraction: DocumentExtraction, pages: list[VerifiedPage]
+) -> None:
+    """Reject malformed caller input at the boundary, before it becomes durable.
+
+    Everything here is a *contract* violation, not a failed extraction — a failed
+    extraction is legitimate evidence (``_stage_status`` handles it). These are
+    values that would silently corrupt identity or provenance instead:
+
+    - a duplicate or non-positive page number collides record ids
+      (``{sha}:page:{n:05d}``), so two pages become one record and
+      ``record_count`` disagrees with the pages the caller believed it recorded;
+    - a negative count is not an observation, it is a bug in the caller;
+    - a malformed/absent page hash defeats the whole point of a Page Identity
+      dataset — the receipt would assert page provenance it cannot support.
+
+    Silently accepting any of these produces a receipt that *looks* authoritative
+    and is not, which is the exact failure the evidence layer exists to prevent.
+    """
+    if not _is_sha256(source.content_sha256):
+        raise DocumentCompilerError(
+            f"content_sha256 must be a 64-char lowercase hex sha256, got {source.content_sha256!r}"
+        )
+    if source.byte_count < 0:
+        raise DocumentCompilerError(f"byte_count must be non-negative, got {source.byte_count}")
+    if extraction.char_count < 0:
+        raise DocumentCompilerError(f"char_count must be non-negative, got {extraction.char_count}")
+    if extraction.text_sha256 is not None and not _is_sha256(extraction.text_sha256):
+        raise DocumentCompilerError(
+            f"extraction.text_sha256 must be a 64-char lowercase hex sha256 or None, "
+            f"got {extraction.text_sha256!r}"
+        )
+    if extraction.size_limit_bytes is not None and extraction.size_limit_bytes < 0:
+        raise DocumentCompilerError(
+            f"size_limit_bytes must be non-negative or None, got {extraction.size_limit_bytes}"
+        )
+
+    seen: set[int] = set()
+    for p in pages:
+        if p.page_number < 1:
+            raise DocumentCompilerError(
+                f"verified page numbers are 1-based and positive, got {p.page_number}"
+            )
+        if p.page_number in seen:
+            raise DocumentCompilerError(
+                f"duplicate verified page {p.page_number}: page numbers must be unique "
+                f"(two records would otherwise collide on one record_id)"
+            )
+        seen.add(p.page_number)
+        if p.char_count < 0:
+            raise DocumentCompilerError(
+                f"page {p.page_number}: char_count must be non-negative, got {p.char_count}"
+            )
+        if not _is_sha256(p.text_sha256):
+            raise DocumentCompilerError(
+                f"page {p.page_number}: text_sha256 must be a 64-char lowercase hex "
+                f"sha256, got {p.text_sha256!r} — a Page Identity record without real "
+                f"page identity is a fabricated claim"
+            )
 
 
 def _stage_status(extraction: DocumentExtraction) -> StageStatus:
@@ -370,6 +458,8 @@ def compile_document_evidence(
             "content_sha256 is required — byte identity is the whole point; it is "
             "never derived from a URL, filename, or chunk ordinal"
         )
+    pages = list(verified_pages or [])
+    _validate_inputs(source, extraction, pages)
 
     sha = source.content_sha256
     mode = extraction_mode(extraction.method)
@@ -377,9 +467,15 @@ def compile_document_evidence(
     status = _stage_status(extraction)
     producer_version = COMPILER_VERSION
 
-    source_objects = [source.source_uri]
+    # Provenance is scheme+host+path. The query string is how the fetch was
+    # AUTHORIZED (a presigned signature, `?token=`), and `user:pass@` is a raw
+    # credential — neither survives into a durable manifest (see `redaction.py`).
+    # This is the producer boundary; `validate_manifest` is the floor beneath it,
+    # so `_finalize` rejects a leak even if this line is ever bypassed.
+    origins = [source.source_uri]
     if source.local_path and source.local_path != source.source_uri:
-        source_objects.append(source.local_path)
+        origins.append(source.local_path)
+    source_objects = redact_uris(origins)
 
     common = {
         "tenant_id": tenant_id,
@@ -392,7 +488,7 @@ def compile_document_evidence(
         "producer_version": producer_version,
         "repository_commit": repository_commit,
         "configuration_hash": config_hash,
-        "storage_ref": source.local_path,
+        "storage_ref": redact_uri(source.local_path) if source.local_path else None,
         # trust/approval are the dataclass defaults (candidate/pending) — stated
         # here only to make the no-self-promotion invariant impossible to miss.
         "trust_status": TrustStatus.CANDIDATE,
@@ -400,7 +496,6 @@ def compile_document_evidence(
     }
 
     # ── dataset 1: page identity ────────────────────────────────────────────
-    pages = list(verified_pages or [])
     if pages:
         scope = f"pages:{min(p.page_number for p in pages)}-{max(p.page_number for p in pages)}"
         gaps: list[str] = []

@@ -10,6 +10,7 @@ Hermetic: a fake PDF on tmp_path, no network, no Neon, no Tika, no Ollama.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +19,7 @@ import pytest
 
 from tasks.full_ingest_pipeline import (
     PipelineReport,
+    evidence_repair_path,
     step_document_evidence,
 )
 
@@ -92,7 +94,7 @@ class TestOptionalAndFailOpen:
                 registry_path=str(tmp_path / "ev.json"),
                 tenant_id=TENANT,
             )
-        assert report.evidence_status == "failed: read-only filesystem"
+        assert report.evidence_status.startswith("failed: OSError: read-only filesystem")
         assert report.evidence_datasets == []
         # `errors` stays empty on purpose: it sets the CLI exit code, and a non-zero
         # exit would make a cron re-download and re-extract a document that is fine.
@@ -138,9 +140,10 @@ class TestReceiptContent:
         _run(tmp_path, report=_report(chunks=7))
         data = json.loads((tmp_path / "ev.json").read_text("utf-8"))
         extraction = next(m for m in data["manifests"] if m["dataset_type"] == "OCREvidence")
-        assert extraction["index_refs"] == [
-            "knowledge_entries:source_url=https://example.test/gs10.pdf#records=7"
-        ]
+        # Content-addressed, NOT `source_url=…`: the download URL can be a
+        # credential and an index_ref is persisted verbatim.
+        doc_sha = hashlib.sha256(_pdf(tmp_path).read_bytes()).hexdigest()
+        assert extraction["index_refs"] == [f"knowledge_entries:sha256:{doc_sha}#records=7"]
         assert extraction["storage_ref"] == str(_pdf(tmp_path))
 
     def test_no_document_text_reaches_the_snapshot(self, tmp_path):
@@ -217,3 +220,149 @@ class TestFailedExtractionPath:
         assert not second.evidence_status.startswith("failed")
         data = json.loads((tmp_path / "ev.json").read_text("utf-8"))
         assert len(data["manifests"]) == 2
+
+
+class TestSecretBearingUrls:
+    """A download URL is routinely a credential (presigned signature, portal
+    `?token=`, `user:pass@`), and everything this step writes is durable."""
+
+    PRESIGNED = "https://oem.example.test/dl/gs10.pdf?token=abc&X-Amz-Signature=deadbeefcafe"
+
+    def test_the_token_never_reaches_the_registry_snapshot(self, tmp_path):
+        report = _report()
+        report.pdf_url = self.PRESIGNED
+        _run(tmp_path, report=report)
+
+        raw = (tmp_path / "ev.json").read_text("utf-8")
+        assert "token=abc" not in raw
+        assert "deadbeefcafe" not in raw
+        assert "X-Amz-Signature" not in raw
+        # provenance survives: scheme + host + path
+        data = json.loads(raw)
+        for m in data["manifests"]:
+            assert "https://oem.example.test/dl/gs10.pdf" in m["source_objects"]
+
+    def test_the_kb_reference_is_the_document_sha_not_the_url(self, tmp_path):
+        report = _report(chunks=7)
+        report.pdf_url = self.PRESIGNED
+        _run(tmp_path, report=report)
+
+        data = json.loads((tmp_path / "ev.json").read_text("utf-8"))
+        extraction = next(m for m in data["manifests"] if m["dataset_type"] == "OCREvidence")
+        doc_sha = hashlib.sha256(_pdf(tmp_path).read_bytes()).hexdigest()
+        assert extraction["index_refs"] == [f"knowledge_entries:sha256:{doc_sha}#records=7"]
+
+    def test_the_repair_journal_is_redacted_too(self, tmp_path):
+        """The journal is exactly as durable as the snapshot — it must not become a
+        second copy of the leak this PR closes."""
+        report = _report()
+        report.pdf_url = self.PRESIGNED
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError(f"cannot write while fetching {self.PRESIGNED}"),
+        ):
+            _run(tmp_path, report=report)
+
+        raw = evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8")
+        assert "token=abc" not in raw
+        assert "deadbeefcafe" not in raw
+        item = json.loads(raw.strip())
+        assert item["source_uri"] == "https://oem.example.test/dl/gs10.pdf"
+        assert item["replay"]["source"]["source_uri"] == "https://oem.example.test/dl/gs10.pdf"
+        # …including the URL quoted inside the exception message
+        assert "https://oem.example.test/dl/gs10.pdf" in item["reason"]
+
+
+class TestRepairJournal:
+    """A receipt failure keeps ingest fail-open — but must no longer be silent.
+
+    Before this, the process exited zero, the cron marked the document done, and a
+    document with no receipt was indistinguishable from one with two.
+    """
+
+    def _fail(self, tmp_path, exc=OSError("read-only filesystem"), **kw):
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt", side_effect=exc
+        ):
+            return _run(tmp_path, **kw)
+
+    def test_a_failure_records_a_replayable_repair_item(self, tmp_path):
+        report = self._fail(tmp_path, report=_report(chunks=7))
+
+        journal = evidence_repair_path(str(tmp_path / "ev.json"))
+        assert journal.exists()
+        item = json.loads(journal.read_text("utf-8").strip())
+        assert item["status"] == "evidence_pending"
+        assert item["schema"] == "evidence_repair_item/1.0"
+        assert item["tenant_id"] == TENANT
+        assert "read-only filesystem" in item["reason"]
+        assert str(journal) in report.evidence_status
+
+        # the compiler's inputs, verbatim — replay needs no network and no re-extract
+        doc_sha = hashlib.sha256(_pdf(tmp_path).read_bytes()).hexdigest()
+        assert item["replay"]["source"]["content_sha256"] == doc_sha
+        assert item["replay"]["source"]["byte_count"] == len(_pdf(tmp_path).read_bytes())
+        assert item["replay"]["extraction"]["method"] == "pdfplumber"
+        assert item["replay"]["extraction"]["char_count"] == len(DOC_TEXT)
+        assert item["replay"]["materializations"] == [
+            {"kind": "knowledge_entries", "locator": f"sha256:{doc_sha}", "record_count": 7}
+        ]
+
+    def test_the_repair_item_actually_replays_into_a_receipt(self, tmp_path):
+        """The claim executed, not asserted: the journal is sufficient on its own."""
+        from materialized_evidence import Environment
+        from materialized_evidence.backends.file_registry import FileRegistry
+        from materialized_evidence.document_compiler import (
+            DocumentExtraction,
+            DocumentSource,
+            MaterializationRef,
+            compile_document_evidence,
+            write_receipt,
+        )
+
+        self._fail(tmp_path, report=_report(chunks=7))
+        item = json.loads(
+            evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8").strip()
+        )
+
+        receipt = compile_document_evidence(
+            source=DocumentSource(**item["replay"]["source"]),
+            extraction=DocumentExtraction(**item["replay"]["extraction"]),
+            tenant_id=item["tenant_id"],
+            environment=Environment(item["environment"]),
+            materializations=[MaterializationRef(**m) for m in item["replay"]["materializations"]],
+        )
+        snapshot = tmp_path / "repaired.json"
+        assert len(write_receipt(receipt, FileRegistry(snapshot))) == 2
+        assert len(json.loads(snapshot.read_text("utf-8"))["manifests"]) == 2
+
+    def test_a_success_writes_no_repair_item(self, tmp_path):
+        _run(tmp_path)
+        assert not evidence_repair_path(str(tmp_path / "ev.json")).exists()
+
+    def test_ingest_still_fails_open_with_a_journal(self, tmp_path):
+        """`errors` drives the CLI exit code; a receipt gap must not re-download a
+        document that ingested fine."""
+        report = self._fail(tmp_path)
+        assert report.errors == []
+        assert report.evidence_datasets == []
+
+    def test_an_unwritable_journal_never_breaks_ingest(self, tmp_path):
+        """Recording the failure must not itself become a failure."""
+        with patch("builtins.open", side_effect=OSError("disk full")):
+            report = self._fail(tmp_path)
+        assert report.errors == []
+        assert report.evidence_status.startswith("failed:")
+
+    def test_repeated_failures_append_rather_than_overwrite(self, tmp_path):
+        self._fail(tmp_path)
+        self._fail(tmp_path)
+        lines = [
+            line
+            for line in evidence_repair_path(str(tmp_path / "ev.json"))
+            .read_text("utf-8")
+            .splitlines()
+            if line.strip()
+        ]
+        assert len(lines) == 2
+        assert all(json.loads(line)["status"] == "evidence_pending" for line in lines)

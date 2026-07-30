@@ -200,12 +200,12 @@ class TestExtractionProvenance:
     def test_materializations_are_referenced_not_copied(self):
         receipt = _compile(
             materializations=[
-                MaterializationRef("knowledge_entries", "source_url=https://example.test/x", 42),
+                MaterializationRef("knowledge_entries", f"sha256:{sha256_bytes(b'x')}", 42),
                 MaterializationRef("text_sidecar", "/opt/mira/manuals/x.txt"),
             ]
         )
         assert receipt.extraction_manifest.index_refs == [
-            "knowledge_entries:source_url=https://example.test/x#records=42",
+            f"knowledge_entries:sha256:{sha256_bytes(b'x')}#records=42",
             "text_sidecar:/opt/mira/manuals/x.txt",
         ]
 
@@ -342,6 +342,147 @@ class TestSafetyInvariants:
 # ── registry round-trip (the durable-recall path) ────────────────────────────
 
 
+class TestUriRedaction:
+    """A manifest is durable, and a download URL is routinely a credential."""
+
+    PRESIGNED = (
+        "https://oem-portal.example.test/dl/gs10.pdf"
+        "?X-Amz-Signature=deadbeefcafe&X-Amz-Expires=900"
+    )
+
+    def test_a_presigned_url_never_reaches_the_manifest(self):
+        receipt = _compile(
+            source=DocumentSource(
+                source_uri=self.PRESIGNED,
+                content_sha256=sha256_bytes(b"pdf"),
+                byte_count=3,
+            )
+        )
+        for m in receipt.manifests:
+            assert m.source_objects == ["https://oem-portal.example.test/dl/gs10.pdf"]
+            assert "X-Amz-Signature" not in json.dumps(m.to_dict())
+
+    def test_userinfo_credentials_are_stripped(self):
+        receipt = _compile(
+            source=DocumentSource(
+                source_uri="https://svc:hunter2@mirror.example.test/a/gs10.pdf#p=4",
+                content_sha256=sha256_bytes(b"pdf"),
+                byte_count=3,
+            )
+        )
+        assert receipt.extraction_manifest.source_objects == [
+            "https://mirror.example.test/a/gs10.pdf"
+        ]
+        assert "hunter2" not in json.dumps(receipt.extraction_manifest.to_dict())
+
+    def test_a_secret_bearing_url_does_not_survive_into_the_durable_snapshot(self, tmp_path):
+        """The end-to-end claim: nothing a fetch URL carried is recoverable from disk."""
+        snapshot = tmp_path / "evidence.json"
+        write_receipt(
+            _compile(
+                source=DocumentSource(
+                    source_uri=self.PRESIGNED,
+                    content_sha256=sha256_bytes(b"pdf"),
+                    byte_count=3,
+                    local_path="/opt/mira/manuals/x.pdf",
+                )
+            ),
+            FileRegistry(snapshot),
+        )
+        raw = snapshot.read_text("utf-8")
+        assert "deadbeefcafe" not in raw
+        assert "X-Amz-Signature" not in raw
+        assert "oem-portal.example.test/dl/gs10.pdf" in raw  # provenance survives
+
+    def test_the_validator_is_the_floor_beneath_the_compiler(self):
+        """Redaction at the producer is not the only defence: a manifest carrying an
+        unredacted URI is rejected at ``register`` no matter which producer built it."""
+        from materialized_evidence import validate_manifest
+
+        m = dataclasses.replace(
+            _compile().extraction_manifest,
+            source_objects=["https://h.example.test/m.pdf?token=abc"],
+        )
+        assert any("unredacted network URI" in p for p in validate_manifest(m))
+
+    def test_a_url_embedded_in_a_composite_locator_is_caught(self):
+        """The actual leak shape: ``knowledge_entries:<url>#records=7``. ``urlsplit``
+        reads that string's scheme as ``knowledge_entries``, so a whole-value parse
+        calls it clean while a live token sits in the middle."""
+        with pytest.raises(DocumentCompilerError, match="unredacted network URI"):
+            _compile(
+                materializations=[
+                    MaterializationRef(
+                        "knowledge_entries", "source_url=https://h.example.test/m.pdf?token=abc", 7
+                    )
+                ]
+            )
+
+    def test_opaque_contract_locators_pass_through_byte_identical(self):
+        """The contract's own locators use ``#`` structurally and feed content_hash —
+        redaction must not touch them."""
+        from materialized_evidence import redact_uri, uri_leaks_credentials
+
+        for opaque in (
+            "knowledge_entries:sha256:deadbeef#records=7",
+            "sha256:deadbeef#page=12",
+            "cas://printsense/deadbeef",
+            "/opt/mira/manuals/AutomationDirect/GS10/gs10.pdf",
+        ):
+            assert redact_uri(opaque) == opaque
+            assert uri_leaks_credentials(opaque) is False
+
+
+class TestInputValidation:
+    """Malformed caller input is a contract violation, rejected before it is durable.
+    (A failed *extraction* is not — that is legitimate evidence.)"""
+
+    def _page(self, n=1, chars=10, sha=None):
+        return VerifiedPage(n, chars, sha if sha is not None else sha256_bytes(f"p{n}".encode()))
+
+    def test_duplicate_page_numbers_are_rejected(self):
+        """Two pages numbered 3 collide on one record_id (``{sha}:page:00003``): the
+        dataset would silently hold one record where the caller believed it had two."""
+        with pytest.raises(DocumentCompilerError, match="duplicate verified page 3"):
+            _compile(verified_pages=[self._page(3), self._page(3, chars=99)])
+
+    @pytest.mark.parametrize("bad", [0, -1, -12])
+    def test_non_positive_page_numbers_are_rejected(self, bad):
+        with pytest.raises(DocumentCompilerError, match="1-based and positive"):
+            _compile(verified_pages=[self._page(bad)])
+
+    def test_negative_page_char_count_is_rejected(self):
+        with pytest.raises(DocumentCompilerError, match="char_count must be non-negative"):
+            _compile(verified_pages=[self._page(1, chars=-5)])
+
+    @pytest.mark.parametrize("bad", ["", "not-a-hash", "ABCDEF" * 10 + "ABCD", "deadbeef"])
+    def test_malformed_page_hash_is_rejected(self, bad):
+        with pytest.raises(DocumentCompilerError, match="fabricated claim"):
+            _compile(verified_pages=[self._page(1, sha=bad)])
+
+    def test_valid_pages_still_compile(self):
+        """The negative control: validation must not reject legitimate page identity."""
+        receipt = _compile(verified_pages=[self._page(1), self._page(2), self._page(7)])
+        assert receipt.page_identity_manifest.page_or_segment_scope == "pages:1-7"
+        assert len(receipt.page_identity_records) == 3
+        assert len({r.record_id for r in receipt.page_identity_records}) == 3
+
+    @pytest.mark.parametrize("bad", ["", "not-hex", "abc123"])
+    def test_malformed_document_hash_is_rejected(self, bad):
+        with pytest.raises(DocumentCompilerError, match="sha256|byte identity"):
+            _compile(source=dataclasses.replace(_source(), content_sha256=bad))
+
+    def test_negative_counts_are_rejected(self):
+        with pytest.raises(DocumentCompilerError, match="byte_count must be non-negative"):
+            _compile(source=dataclasses.replace(_source(), byte_count=-1))
+        with pytest.raises(DocumentCompilerError, match="char_count must be non-negative"):
+            _compile(extraction=_extraction(char_count=-1))
+
+    def test_malformed_text_hash_is_rejected(self):
+        with pytest.raises(DocumentCompilerError, match="text_sha256"):
+            _compile(extraction=_extraction(text_sha256="nope"))
+
+
 class TestRegistryRoundTrip:
     def test_reingesting_the_same_document_is_idempotent(self, tmp_path):
         """Re-ingest must not raise: the version key excludes wall-clock/cost, so
@@ -363,9 +504,9 @@ class TestRegistryRoundTrip:
     def test_same_bytes_from_a_different_url_does_not_wedge_the_registry(self, tmp_path):
         """Regression, caught end-to-end 2026-07-30.
 
-        Re-ingesting one PDF from a different URL (CDN change, mirror, added query
-        token, http→https) or on a different host (``MANUALS_ROOT``) previously
-        produced the SAME ``dataset_version_id`` with a DIFFERENT ``manifest_hash``
+        Re-ingesting one PDF from a different URL (CDN change, mirror, http→https)
+        or on a different host (``MANUALS_ROOT``) previously produced the SAME
+        ``dataset_version_id`` with a DIFFERENT ``manifest_hash``
         → ``immutable version conflict`` → swallowed by the lane's fail-open path →
         recall silently dead forever. The version key now covers every varying
         manifest field, so this is a new version rather than a conflict.
@@ -383,6 +524,13 @@ class TestRegistryRoundTrip:
 
         second = _compile(source=mirrored)  # must NOT raise
         write_receipt(second, FileRegistry(snapshot))
+
+        # the mirror's `?token=abc` is provenance-irrelevant AND a credential: the
+        # origin+path survives, the token does not reach the durable snapshot
+        assert second.extraction_manifest.source_objects[0] == (
+            "https://mirror.example.test/gs10.pdf"
+        )
+        assert "token=abc" not in snapshot.read_text("utf-8")
 
         # byte identity still groups them: one dataset series, matched on source_hashes
         assert first.extraction_manifest.dataset_id == second.extraction_manifest.dataset_id

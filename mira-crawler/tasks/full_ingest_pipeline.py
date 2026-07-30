@@ -13,7 +13,11 @@ Steps
 6. EVIDENCE       — candidate Materialized Evidence receipt: byte identity + the real
                     extraction method, referencing (never copying) the knowledge_entries
                     materialization. Optional (`--evidence-registry` /
-                    `MIRA_EVIDENCE_REGISTRY`) and fail-open.
+                    `MIRA_EVIDENCE_REGISTRY`) and fail-open — a failure never fails the
+                    ingest, it is journaled as an `evidence_pending` repair item to
+                    `<snapshot>.repair.jsonl` carrying enough to replay the receipt
+                    without re-downloading. Fetch URLs are redacted before they reach
+                    either durable surface.
 
 CLI
 ---
@@ -523,6 +527,108 @@ def step_kg(text: str, manufacturer: str, model: str,
 #   • it never blocks KB ingest — every failure lands in `report.evidence_status`.
 
 
+def evidence_repair_path(registry_path: str) -> Path:
+    """The repair journal that sits beside a registry snapshot."""
+    return Path(registry_path + ".repair.jsonl")
+
+
+def _scrub_uris(text: str) -> str:
+    """Redact any network URI inside a free-text string (an exception message).
+
+    An exception raised while writing a receipt can quote the fetch URL, and both
+    the pipeline's stdout report and the repair journal are durable surfaces the
+    cron persists. The URL's credentials must not ride along into either.
+    """
+    try:
+        from materialized_evidence import redact_uri
+    except ImportError:
+        return text
+    return " ".join(redact_uri(tok) for tok in text.split(" "))
+
+
+def _record_evidence_repair_item(
+    *,
+    registry_path: str,
+    reason: str,
+    tenant_id: str,
+    environment: str,
+    pdf_path: Path,
+    source_url: str,
+    replay_inputs: dict | None,
+) -> str:
+    """Append an ``evidence_pending`` repair item; return its journal path (or "").
+
+    **Why this exists.** A receipt failure is deliberately kept out of
+    ``report.errors`` — ``errors`` drives the CLI exit code, and a non-zero exit
+    would make the KB-growth cron treat a document that ingested perfectly as
+    failed and re-download it. But that fail-open left no trace: the process exited
+    zero, the scheduler marked the document done, and a document with no evidence
+    receipt was indistinguishable from one with two. The journal is the missing
+    half — ingest still succeeds, and the gap is now *recorded* instead of lost.
+
+    The item carries the compiler's inputs verbatim, so replaying it needs neither
+    the network nor a re-extraction: byte identity, byte count, the real extraction
+    method and its char/text hashes, and the materializations this run produced.
+    Recovery is ``compile_document_evidence(**item) → write_receipt``.
+
+    ``source_uri`` is **redacted** (`materialized_evidence.redaction`) before it is
+    journaled. This file is exactly as durable as the registry snapshot, so the
+    presigned-link / ``?token=`` exposure that made raw URLs unfit for a manifest
+    makes them unfit here too.
+
+    Never raises: a failure to record the failure must not break document ingest.
+    """
+    if not registry_path:
+        return ""
+    try:
+        from materialized_evidence import redact_uri
+
+        journal = evidence_repair_path(registry_path)
+        item = {
+            "schema": "evidence_repair_item/1.0",
+            "status": "evidence_pending",
+            "at": _utc_now(),
+            "reason": reason,
+            "tenant_id": tenant_id,
+            "environment": environment,
+            "registry_path": registry_path,
+            "source_uri": redact_uri(source_url),
+            "local_path": str(pdf_path),
+            # None when the failure happened before the inputs were assembled (e.g.
+            # the PDF could not be re-read) — the item is still recorded, because a
+            # gap you cannot yet replay is still a gap you must know about.
+            "replay": _redact_replay(replay_inputs, redact_uri),
+        }
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        # One JSON object per line, opened O_APPEND: a single short line lands
+        # whole even with two pipeline processes writing concurrently.
+        with open(journal, "a", encoding="utf-8") as f:
+            f.write(json.dumps(item, sort_keys=True, ensure_ascii=False) + "\n")
+        return str(journal)
+    except Exception as exc:  # noqa: BLE001 — recording a failure must never fail loudly
+        logger.warning("Could not record evidence repair item: %s", exc)
+        return ""
+
+
+def _redact_replay(replay: dict | None, redact_uri) -> dict | None:
+    if not replay:
+        return None
+    out = json.loads(json.dumps(replay))
+    src = out.get("source") or {}
+    if "source_uri" in src:
+        src["source_uri"] = redact_uri(src["source_uri"])
+    for m in out.get("materializations") or []:
+        if isinstance(m.get("locator"), str):
+            m["locator"] = redact_uri(m["locator"])
+    return out
+
+
+def _utc_now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def step_document_evidence(
     pdf_path: Path,
     text: str,
@@ -546,6 +652,7 @@ def step_document_evidence(
         report.evidence_status = "skipped (MIRA_TENANT_ID not set — evidence is tenant-scoped)"
         return
 
+    replay_inputs: dict | None = None
     try:
         from materialized_evidence import Environment, sha256_bytes
         from materialized_evidence.backends.file_registry import FileRegistry
@@ -568,9 +675,10 @@ def step_document_evidence(
             return
 
         raw = pdf_path.read_bytes()
+        doc_sha = sha256_bytes(raw)  # byte identity — never the URL/filename
         source = DocumentSource(
             source_uri=source_url,
-            content_sha256=sha256_bytes(raw),  # byte identity — never the URL/filename
+            content_sha256=doc_sha,
             byte_count=len(raw),
             local_path=str(pdf_path),
         )
@@ -590,7 +698,12 @@ def step_document_evidence(
             materializations.append(
                 MaterializationRef(
                     kind="knowledge_entries",
-                    locator=f"source_url={source_url}",
+                    # Content-addressed, NOT `source_url=…`. A download URL is often a
+                    # credential (presigned signature, `?token=`), and an index_ref is
+                    # persisted verbatim into the registry snapshot. The document SHA
+                    # identifies the same chunks without carrying one, and matches the
+                    # compiler's own record locators.
+                    locator=f"sha256:{doc_sha}",
                     record_count=report.kb_chunks,
                 )
             )
@@ -599,6 +712,30 @@ def step_document_evidence(
             materializations.append(
                 MaterializationRef(kind="text_sidecar", locator=str(txt_sidecar))
             )
+
+        # Everything the compiler needs, captured BEFORE the call that can fail —
+        # so a repair item can replay the receipt without re-downloading or
+        # re-extracting the document. See `_record_evidence_repair_item`.
+        replay_inputs = {
+            "source": {
+                "source_uri": source.source_uri,
+                "content_sha256": doc_sha,
+                "byte_count": len(raw),
+                "local_path": str(pdf_path),
+            },
+            "extraction": {
+                "method": extraction.method,
+                "char_count": extraction.char_count,
+                "text_sha256": extraction.text_sha256,
+                "extractor_version": extraction.extractor_version,
+                "ocr_requested": extraction.ocr_requested,
+                "size_limit_bytes": extraction.size_limit_bytes,
+            },
+            "materializations": [
+                {"kind": m.kind, "locator": m.locator, "record_count": m.record_count}
+                for m in materializations
+            ],
+        }
 
         receipt = compile_document_evidence(
             source=source,
@@ -616,8 +753,20 @@ def step_document_evidence(
         )
         logger.info("Evidence: %s", report.evidence_status)
     except Exception as exc:  # noqa: BLE001 — fail-open: ingest already succeeded
-        report.evidence_status = f"failed: {exc}"
-        logger.warning("Evidence receipt failed (document ingest unaffected): %s", exc)
+        reason = _scrub_uris(f"{type(exc).__name__}: {exc}")
+        repair = _record_evidence_repair_item(
+            registry_path=registry_path,
+            reason=reason,
+            tenant_id=tid,
+            environment=environment,
+            pdf_path=pdf_path,
+            source_url=source_url,
+            replay_inputs=replay_inputs,
+        )
+        report.evidence_status = (
+            f"failed: {reason}" + (f" — repair item recorded → {repair}" if repair else "")
+        )
+        logger.warning("Evidence receipt failed (document ingest unaffected): %s", reason)
 
 
 # ---------------------------------------------------------------------------
@@ -745,8 +894,10 @@ def _parse_args() -> argparse.Namespace:
                         "write a candidate document-evidence receipt (byte identity "
                         "+ real extraction method) after ingest. Optional and "
                         "fail-open — omit (or MIRA_EVIDENCE_REGISTRY) and ingest "
-                        "behaves exactly as before. Single-writer: do not point two "
-                        "concurrent runs at one snapshot.")
+                        "behaves exactly as before. Concurrent runs may share one "
+                        "snapshot: writes take an exclusive lock on <snapshot>.lock "
+                        "and re-read before mutating. A receipt failure never fails "
+                        "the ingest; it is journaled to <snapshot>.repair.jsonl.")
     return p.parse_args()
 
 

@@ -640,3 +640,72 @@ class TestProcessEntryOCRFallback:
         assert post["status"] == "needs_ocr"
         assert "needs_ocr_at" in post
         assert "next_retry_at" not in post  # no retry schedule
+
+
+class TestEvidenceStatusStamp:
+    """A receipt gap must be visible on the queue entry.
+
+    Receipt writing is fail-open by design (a failure stays out of the pipeline's
+    exit code so a document that ingested fine is not re-downloaded) — which left
+    the cron marking an entry ``done`` whether the run produced two receipts or
+    none. The stamp is the operator-facing trace; the pipeline writes the
+    replayable repair item itself.
+    """
+
+    def _run(self, queue_file, make_entry, monkeypatch, tail):
+        entry = make_entry(status="pending", attempts=0)
+        queue_file.write_text(json.dumps([entry]))
+        monkeypatch.setattr(
+            cron, "run_pipeline", lambda e, ocr=False: (True, tail, 8)
+        )
+        queue = json.loads(queue_file.read_text())
+        cron._process_entry(queue[0], queue)
+        return json.loads(queue_file.read_text())[0]
+
+    def test_a_receipt_failure_is_stamped_on_a_done_entry(
+        self, queue_file, make_entry, monkeypatch, patch_io
+    ):
+        post = self._run(
+            queue_file,
+            make_entry,
+            monkeypatch,
+            "KB Chunks: 8 chunks created\n"
+            "Evidence:     failed: OSError: read-only filesystem — repair item "
+            "recorded → /var/mira/ev.json.repair.jsonl",
+        )
+        # `done` still means "the KB ingest succeeded" — evidence is not part of
+        # that verdict, so the document is NOT re-downloaded.
+        assert post["status"] == "done"
+        assert post["chunks_inserted"] == 8
+        assert "read-only filesystem" in post["evidence_status"]
+        assert "repair.jsonl" in post["evidence_status"]
+
+    def test_a_successful_receipt_is_stamped_too(
+        self, queue_file, make_entry, monkeypatch, patch_io
+    ):
+        post = self._run(
+            queue_file,
+            make_entry,
+            monkeypatch,
+            "KB Chunks: 8 chunks created\n"
+            "Evidence:     2 candidate receipt(s) → /var/mira/ev.json",
+        )
+        assert post["evidence_status"].startswith("2 candidate receipt(s)")
+
+    def test_an_unconfigured_registry_stamps_nothing(
+        self, queue_file, make_entry, monkeypatch, patch_io
+    ):
+        """The lane is optional — an unset registry must not add queue noise."""
+        post = self._run(
+            queue_file,
+            make_entry,
+            monkeypatch,
+            "KB Chunks: 8 chunks created\nEvidence:     skipped (no registry configured)",
+        )
+        assert "evidence_status" not in post
+
+    def test_a_pipeline_without_an_evidence_line_stamps_nothing(
+        self, queue_file, make_entry, monkeypatch, patch_io
+    ):
+        post = self._run(queue_file, make_entry, monkeypatch, "KB Chunks: 8 chunks created")
+        assert "evidence_status" not in post

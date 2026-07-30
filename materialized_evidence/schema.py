@@ -18,6 +18,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 
+from .redaction import uri_leaks_credentials
+
 SCHEMA_CONTRACT_VERSION = "1.0"
 
 
@@ -271,6 +273,12 @@ _REQUIRED_MANIFEST_FIELDS = (
     "environment",
 )
 
+# Manifest fields that can hold a fetched-from URI and are persisted verbatim.
+# `index_refs` is included because a producer builds those locators from whatever
+# it used to reach the materialization — in this repo, a source URL (that was the
+# actual leak: `knowledge_entries:source_url=…?token=…`).
+_URI_BEARING_MANIFEST_FIELDS = ("source_objects", "storage_ref", "index_refs")
+
 
 def validate_manifest(m: EvidenceManifest) -> list[str]:
     """Return a list of contract violations (empty == valid). Cheap, offline,
@@ -296,6 +304,19 @@ def validate_manifest(m: EvidenceManifest) -> list[str]:
         problems.append("trust_status=trusted requires approval_refs (no self-promotion — rule 9)")
     if m.approval_status == ApprovalStatus.APPROVED and not m.approval_refs:
         problems.append("approval_status=approved requires approval_refs")
+    # a manifest is DURABLE, so a fetch URL persisted verbatim persists whatever
+    # authorized the fetch — a presigned signature, a `?token=`, `user:pass@`.
+    # Byte identity (`source_hashes`) is what identifies the document; the query
+    # string is a credential, not provenance. See `redaction.py`.
+    for f in _URI_BEARING_MANIFEST_FIELDS:
+        value = getattr(m, f)
+        for uri in [value] if isinstance(value, str) else (value or []):
+            if uri_leaks_credentials(uri):
+                problems.append(
+                    f"{f} carries an unredacted network URI (query/fragment/userinfo "
+                    f"may be a credential — call materialized_evidence.redact_uri "
+                    f"before persisting)"
+                )
     return problems
 
 
