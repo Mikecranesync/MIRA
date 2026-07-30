@@ -1,3 +1,31 @@
+# Hot Cache — 2026-07-30 — Photo memory SHIPPED to prod (#2798 + #3008, v3.230.0/v3.231.0) + Tailscale outage found (#3014)
+
+The Telegram bot is now a stateful photo agent on prod: photograph a print or equipment nameplate
+once, ask follow-ups later, get deterministic cited answers from the persisted VisualSession
+workspace (zero LLM on the recall path).
+
+- **Merged:** #2798 (persistent print Q&A workspace, v3.230.0) then #3008 (equipment/nameplate photo
+  memory stacked on it, v3.231.0). Both squash-merged after full CI green; release + rollback tags
+  confirmed. Only rebase conflicts were VERSION/CHANGELOG; one ruff-format fixup on #3008.
+- **Migration 069** (`visual_* tenant_id UUID→TEXT` — the staging root-cause fix) applied to PROD
+  via `apply-migrations.yml` dry-run→apply (run 30510491086); it was the only pending file (ledger
+  through 068 already applied).
+- **Verified live, not asserted:** prod `/opt/mira` at `84b334bb`; `mira-bot-telegram` rebuilt
+  03:23Z, healthy, log shows `version=3.231.0`; `_try_equipment_photo_followup` present in the
+  container. Behavioral proof: `tools/qa/staging_photo_memory_e2e.py` run inside the freshly
+  redeployed `stg-mira-bot-telegram` (same commit) → **RESULT: PASS (print=True equipment=True)**,
+  incl. safety fall-through. CI E2E smoke green on the merge commit; factorylm.com/app 200.
+- **⚠️ Prod incident found (pre-existing): VPS logged out of Tailscale** → `mira-ask-saas` cannot
+  bind `100.68.120.99:8011` and is DOWN since ~00:55Z; every `deploy-vps.yml` run reports failure at
+  that final step (all other services deploy fine first). Human action needed: re-auth with Doppler
+  `TS_AUTH_KEY` (agent permission-gated from doing it). **Issue #3014** has the runbook. The `prod`
+  Tailscale SSH alias is dead until then — use `prod-public`.
+- Mike's staging re-test mystery is closed by shipping: persistence worked all along on his photo;
+  staging's perception layer (OCR floor + PrintSynth) is disabled by config there — prod has real
+  perception. Next real-world check: Mike sends a photo to `@FactoryLM_Diagnose` and asks a follow-up.
+
+---
+
 # Hot Cache — 2026-07-28 — Content-fingerprinted migration ledger + prod migration-tracker cleanup
 
 **Migration head: 066** (`066_migration_ledger_content_sha.sql`, PR #2969). Applied to prod today
