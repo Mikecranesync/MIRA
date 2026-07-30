@@ -429,9 +429,10 @@ def test_document_coordinates_flow_from_recall_chunks() -> None:
 def test_recall_chunk_page_never_read_from_source_page_misstamp() -> None:
     """The legacy corpus stamps `source_page` with the CHUNK ORDINAL, not a
     PDF page (#2910/#2968; rag_worker "p. 47 when we mean chunk 47" law,
-    manual-rag.ts displayPage guard). The adapter must read only
-    `page_num` / `metadata.page_num` — a source_page-only row gets NO page,
-    and a present-but-None page_num falls through to metadata."""
+    manual-rag.ts displayPage guard). A mis-stamp is exactly `source_page ==
+    chunk_index`, and it must yield NO page. `page_num` / `metadata.page_num`
+    take precedence over `source_page` either way, and a present-but-None
+    page_num falls through to metadata."""
     misstamped = {
         "content": "x",
         "source_url": "u",
@@ -446,12 +447,71 @@ def test_recall_chunk_page_never_read_from_source_page_misstamp() -> None:
         "content": "y",
         "source_url": "u",
         "chunk_index": 5,
-        "source_page": 1254,  # still ignored even when it looks page-like
+        "source_page": 1254,  # not consulted: metadata.page_num wins by precedence
         "page_num": None,  # present-but-None must not mask metadata
         "metadata": {"page_num": 12},
     }
     (item2,) = evidence_from_recall_chunks([real])
     assert item2.page == 12
+
+
+def test_recall_chunk_recovers_real_page_from_hub_source_page() -> None:
+    """A Hub-shaped chunk carries no `page_num` at all — its coordinates are
+    `sourcePage` + `chunkIndex`. Refusing `source_page` unconditionally dropped
+    the real OEM page off every crawler-sourced row (100% of the Hub corpus that
+    HAS a real page), which is exactly the coordinate loss this contract exists
+    to prevent. The mis-stamp test is the Hub's own: real page iff sp != cidx
+    (manual-rag.ts displayPage; staging: legacy 100% sp==cidx, crawler copy
+    sp!=cidx for 1067/1069)."""
+    # camelCase Hub dialect, genuine page.
+    (item,) = evidence_from_recall_chunks(
+        [{"text": "t", "sourceUrl": "u", "sourcePage": 42, "chunkIndex": 7}]
+    )
+    assert item.page == 42
+    assert item.source_locator == "u#chunk7"
+    assert "page 42" in to_prompt_block(_ctx(evidence=[item]))
+
+    # snake_case dialect, genuine page.
+    (item2,) = evidence_from_recall_chunks(
+        [{"content": "t", "source_url": "u", "source_page": 42, "chunk_index": 7}]
+    )
+    assert item2.page == 42
+
+    # Numeric string (the Hub does Number(r.source_page); drivers vary).
+    (item3,) = evidence_from_recall_chunks(
+        [{"content": "t", "source_url": "u", "sourcePage": "42", "chunkIndex": "7"}]
+    )
+    assert item3.page == 42
+
+    # Non-numeric source_page is not a page. Fail closed.
+    (item4,) = evidence_from_recall_chunks(
+        [{"content": "t", "source_url": "u", "sourcePage": "front-matter", "chunkIndex": 2}]
+    )
+    assert item4.page is None
+
+
+def test_recall_chunk_null_chunk_index_does_not_render_literal_none() -> None:
+    """Hub node rows carry `page_start` with `chunkIndex: null` (manual-rag.ts
+    displayPage docstring). `dict.get(k, default)` returns the STORED None for a
+    present-but-null key, so the default never fired and the locator rendered
+    the literal string "#chunkNone". No ordinal means no fragment — substituting
+    the loop counter would invent a coordinate the producer never gave."""
+    for key in ("chunkIndex", "chunk_index"):
+        (item,) = evidence_from_recall_chunks(
+            [{"content": "t", "source_url": "u", key: None, "source_page": 12}]
+        )
+        assert "None" not in item.source_locator, f"{key}: {item.source_locator}"
+        assert item.source_locator == "u"
+        # displayPage returns sourcePage when chunkIndex is null — so does this.
+        assert item.page == 12
+
+    # Absent entirely (not just null) behaves the same way.
+    (item2,) = evidence_from_recall_chunks([{"content": "t", "source_url": "u"}])
+    assert item2.source_locator == "u"
+
+    # A real 0 ordinal is falsy but valid — it must still render.
+    (item3,) = evidence_from_recall_chunks([{"content": "t", "source_url": "u", "chunk_index": 0}])
+    assert item3.source_locator == "u#chunk0"
 
 
 def test_printsense_bbox_positive_path() -> None:

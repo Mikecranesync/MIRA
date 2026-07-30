@@ -297,29 +297,77 @@ def _payload_line(item: EvidenceItem) -> str:
 # Adapters IN — pure functions over the dict shapes existing producers emit.
 # No cross-package imports: callers pass plain dicts.
 # --------------------------------------------------------------------------
+def _as_int(value: Any) -> int | None:
+    """Coerce a page/ordinal to int, or None. Mirrors the Hub's ``Number(...)``
+    on ``source_page`` (rows arrive as int or numeric string depending on the
+    driver). ``bool`` is rejected — it is an ``int`` subclass in Python and a
+    ``True`` page is meaningless."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def evidence_from_recall_chunks(chunks: list[dict[str, Any]]) -> list[EvidenceItem]:
     """mira-bots ``recall_knowledge`` / Hub ``ManualChunk`` rows → items.
 
     Document coordinates + corpus lineage (spine PR B): the page comes from
-    ``page_num`` (top-level, then ``metadata.page_num``) — NEVER from
-    ``source_page``, which on the legacy corpus holds the chunk ordinal, not a
-    PDF page (#2910/#2968; rendering it as a page would fabricate citations —
-    same law as ``rag_worker.py`` / ``response_formatter.py`` /
-    ``manual-rag.ts displayPage()``). ``metadata.section`` maps to ``section``,
-    and an EXPLICIT ``document_lineage_key`` (top-level or in metadata) is
-    carried through. The key is never synthesized from manufacturer/source_url
-    here — only the producer that holds the corpus registry may perform that
-    join (fail-closed: absent means None, per oem-crawler-trusted "a selector
-    is not a provenance test").
+    ``page_num`` (top-level, then ``metadata.page_num``), and then — for
+    Hub-shaped rows that carry no ``page_num`` at all — from
+    ``source_page``/``sourcePage`` under the SAME mis-stamp test the Hub itself
+    applies in ``manual-rag.ts displayPage()``: a row is a mis-stamp *exactly*
+    when the page equals the chunk index, so that case yields no page, while a
+    row whose page differs from its chunk index carries a real OEM page.
+
+    That test is the Hub's, not ours, and it is empirically grounded: legacy
+    ingest (gdrive / ``ingest_manuals.py``) stamped ``source_page`` with the
+    chunk ORDINAL and is 100% ``sp == cidx`` on staging, whereas the crawler
+    copy stores a real page and is ``sp != cidx`` for 1067/1069 rows
+    (#2910/#2968). Reading ``source_page`` *unconditionally* would fabricate
+    citations ("p. 47 when we mean chunk 47"); refusing it *unconditionally*
+    silently drops the real page off every crawler-sourced Hub chunk, which is
+    the coordinate loss this contract exists to prevent. Fail-closed stays the
+    default: when the mis-stamp test cannot clear the value, the page is None.
+
+    ``metadata.section`` maps to ``section``, and an EXPLICIT
+    ``document_lineage_key`` (top-level or in metadata) is carried through. The
+    key is never synthesized from manufacturer/source_url here — only the
+    producer that holds the corpus registry may perform that join (fail-closed:
+    absent means None, per oem-crawler-trusted "a selector is not a provenance
+    test").
     """
     items = []
     for i, ch in enumerate(chunks, 1):
         locator = str(ch.get("source_url") or ch.get("sourceUrl") or "")
-        idx = ch.get("chunk_index", ch.get("chunkIndex", i))
         meta = ch.get("metadata") if isinstance(ch.get("metadata"), dict) else {}
-        page = _first_present(ch, "page_num")
+        # An explicitly-null chunk index is a real Hub shape (node rows carry
+        # `page_start` with `chunkIndex: null`). `dict.get(k, default)` returns
+        # the stored None in that case, so the default never fires and the
+        # locator used to render the literal string "#chunkNone". Resolve to the
+        # first NON-None of either dialect; when the producer gave no ordinal,
+        # omit the fragment rather than substitute the loop counter — inventing
+        # an ordinal is the same class of fabrication as inventing a page.
+        idx = _as_int(ch.get("chunk_index"))
+        if idx is None:
+            idx = _as_int(ch.get("chunkIndex"))
+
+        page = _as_int(_first_present(ch, "page_num"))
         if page is None:
-            page = _first_present(meta, "page_num")
+            page = _as_int(_first_present(meta, "page_num"))
+        if page is None:
+            # Hub dialect: source_page is a real page iff it != the chunk index.
+            sp = _as_int(_first_present(ch, "source_page"))
+            if sp is None:
+                sp = _as_int(_first_present(ch, "sourcePage"))
+            if sp is not None and (idx is None or sp != idx):
+                page = sp
+
         section = _first_present(ch, "section") or _first_present(meta, "section")
         lineage = _first_present(ch, "document_lineage_key") or _first_present(
             meta, "document_lineage_key"
@@ -329,12 +377,12 @@ def evidence_from_recall_chunks(chunks: list[dict[str, Any]]) -> list[EvidenceIt
                 kind=EvidenceKind.MANUAL_CHUNK,
                 citation_id=f"M{i}",
                 payload={"text": str(ch.get("content") or ch.get("text") or "")},
-                source_locator=f"{locator}#chunk{idx}",
+                source_locator=f"{locator}#chunk{idx}" if idx is not None else locator,
                 confidence=ch.get("similarity"),
                 trust="verified" if ch.get("verified") else "candidate",
                 producer_name="recall_knowledge",
                 document_lineage_key=str(lineage) if lineage else None,
-                page=page if isinstance(page, int) and not isinstance(page, bool) else None,
+                page=page,
                 section=str(section) if section else None,
             )
         )
