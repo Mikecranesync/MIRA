@@ -5,7 +5,19 @@ gates standing between today's 760-record corpus and a justified training run. W
 execution order with an explicit owner per line, because the blocking set is a *mix* of human
 decisions and unbuilt prep work, and conflating them is why the readiness report has sat still.
 
+> ## ⚠️ This document is an EXECUTION ORDER, not a status board
+>
+> **For current status, read `docs/plans/2026-07-30-unification-program-state.md` — that file is
+> operational truth and is updated as work lands.** This plan describes *what to do and in what
+> order*; it deliberately does not track completion, so it cannot silently rot into a runbook that
+> tells an agent to redo finished work. If the two ever disagree, **the live-state document wins.**
+>
+> Items already closed as of 2026-07-30 and intentionally left described-but-marked-DONE below,
+> so the reasoning stays readable: **#3014** (prod restored), **#3001** (merged), **#3003/#3027**
+> (slug-tenant migration shipped), **#3028** (its regression proof).
+
 **Companion docs:** `docs/prd/2026-07-30-mira-unification-program.md` (the program),
+**`docs/plans/2026-07-30-unification-program-state.md` (live status — read this for "what is true now")**,
 `docs/zta/technician-unified/training-readiness-report.md` (the NOT-READY decision this closes out),
 `docs/zta/technician-unified/eval-manifest.md` (slice status), `docs/adr/0033-one-technician-brain.md`.
 
@@ -33,29 +45,26 @@ into one real answer path. Nothing about that requires Mike.
 
 ---
 
-## Track A — Unblock production (#3014). One human action, ~2 minutes.
+## Track A — Unblock production (#3014). ✅ **DONE 2026-07-30 — issue CLOSED, nothing to do here.**
 
-**State:** the VPS has been logged out of Tailscale since between 14:01Z and 00:55Z on 2026-07-29.
-`mira-ask-saas` binds `100.68.120.99:8011` by design (tailnet-only exposure,
-`docker-compose.saas.yml:471`), so it cannot start; every `deploy-vps.yml` run deploys all other
-services successfully and *then* reports failure on that bind. The kiosk surface is down.
+**Outcome:** production is restored. `mira-ask-saas` is `Up (healthy)` bound
+`100.68.120.99:8011->8011/tcp`, `/health` returns 200, `deploy-vps.yml` is green again (run
+`30582030527` — the first success since 2026-07-29T14:01Z), and the `prod` Tailscale SSH alias
+works. The node re-joined on the **same** IP, so the `docker-compose.saas.yml:471` /
+`RELAY_BIND_ADDR` hazard never materialised and no compose change was needed.
 
-**Why an agent cannot finish it:** re-auth requires presenting `TS_AUTH_KEY` (Doppler
-`factorylm/prd`) to the prod host. Two attempts were permission-gated this session — correctly,
-per the standing rule not to route around a credential gate. This is Mike's, once.
+> ### 🔑 CREDENTIAL CORRECTION — read before touching Tailscale again
+> The original remedy in this plan named **`TS_AUTH_KEY`**. That key was **expired/revoked**
+> (`invalid key: API key does not exist`) and has since been **DELETED from Doppler** (all three
+> configs, by Mike, 2026-07-30). **Do not look for it, and do not tell anyone to use it.**
+> The live credential is **`TAILSCALE_KEY`**, present in `factorylm/{prd,stg,dev}`.
+> Having two auth keys with one dead — and the runbook pointing at the dead one — is what turned
+> a two-minute fix into a multi-attempt investigation.
 
-| Step | Owner | Action |
-|---|---|---|
-| A1 | **Mike** | On the VPS: `tailscale up --auth-key=<TS_AUTH_KEY from Doppler factorylm/prd>` |
-| A2 | Agent | Verify: `tailscale status` reports logged-in AND `ip -4 addr show tailscale0` returns **100.68.120.99** |
-| A3 | Agent | **If the node re-joined on a different tailnet IP**, that IP is hardcoded in two places — `docker-compose.saas.yml:471` (`mira-ask` port bind) and `RELAY_BIND_ADDR`. Update both in one PR before redeploying, or the bind fails identically. |
-| A4 | Agent | `gh workflow run deploy-vps.yml -f services="mira-ask"` → confirm the container is `Up` and the run is green |
-| A5 | Agent | Close #3014 with the container status + green run id as evidence |
-
-**Hardening follow-up (agent, after A5):** the failure was silent for ~10 h because a logged-out
-tailnet only surfaces as a deploy error at the very last step. Add a tailnet-reachability probe to
-the existing self-healer/canary so the *next* logout pages within minutes rather than being found
-by accident during an unrelated ship. Track as its own issue; do not bundle into the fix.
+**Open hardening follow-up (agent, separate issue — do NOT bundle):** the logout went unnoticed
+~10 h because a logged-out tailnet surfaces only as a deploy error at the final bind step. An
+expiring auth key is a scheduled outage with no alarm. Add a tailnet-reachability probe to the
+self-healer/canary, and/or use a non-expiring key.
 
 ---
 
@@ -63,14 +72,47 @@ by accident during an unrelated ship. Track as its own issue; do not bundle into
 
 ### Gate 1 — Accept ADR-0033 + the PRD (M1)
 
-- **Owner:** Mike. **Blocked on:** reading two documents. **Prep an agent can do:** produce a
-  one-page decision brief that states the three decisions actually being accepted (one
-  conversational policy; specialists stay below the conversation as typed-evidence producers;
-  majority-general corpus enforced structurally) and the two things acceptance forecloses
-  (per-product conversational adapters without the rule-1 ladder; a second context schema).
-- **Exit:** ADR-0033 status `Proposed` → `Accepted`, PRD status `DRAFT` → `ACTIVE`.
+- **Owner:** Mike. **Blocked on:** reading two documents. **Exit:** ADR-0033 `Proposed` →
+  `Accepted`, PRD `DRAFT` → `ACTIVE`.
 - **Note:** nothing downstream *hard*-blocks on this, but shipping WS1/WS4 work against an
   unaccepted ADR risks rework. Cheapest gate; open it first.
+
+#### 📋 Gate-1 decision brief — what you are actually deciding
+
+**You are accepting three things:**
+
+1. **One conversational policy.** One base model carrying at most one general technician
+   behaviour adapter. Drive Commander, PrintSense, graph reasoning, live-state diagnosis and
+   work-order assistance become `task_mode` **metadata on a shared contract** — not separate
+   conversational models, not separate system-prompt identities, not stacked adapters.
+2. **Specialists stay *below* the conversation.** OCR, print decoding, drive-pack resolution,
+   PLC/tag parsing, classifiers, graph traversal, retrieval/reranking and safety gates remain
+   deterministic or narrow systems that **emit typed evidence with provenance and confidence**
+   into the shared contract. They never answer the technician directly.
+3. **The corpus stays majority-general by structural cap**, enforced by the compiler, not by
+   good intentions: ≥50% general/cross-domain, ≤25% any product family, ≤10% any real OEM,
+   ≤20% any template family. This is the guard against "the Drive Commander model".
+
+**What acceptance forecloses:**
+
+- **Per-product conversational adapters**, unless the ADR rule-1 ladder is exhausted first and
+  documented: better context assembly → better task metadata → dataset rebalancing → prompt
+  cleanup → more diverse general records, *then* lineage-clean evidence of negative transfer.
+- **A second runtime context schema.** The versioned `EvidenceManifest` (ADR-0029) is extended;
+  it is never forked. Untyped producers adapt **in**; they are not themselves extended.
+
+**What acceptance does NOT authorize** — each of these still needs its own separate gate:
+
+- ❌ No training spend. That needs a **fresh single-use signed authorization** (Gate 5).
+- ❌ No corpus re-scale. The review sitting happens **once**, on the final compile (Gate 2).
+- ❌ No schema break, migration, or deploy.
+- ❌ No paid provider call of any kind.
+- ❌ No promotion of model output to trusted truth — evidence stays `candidate` until a human
+  approves it through the existing approval systems (ADR-0017).
+
+**Cost of *not* deciding:** WS1/WS4 work proceeds against an unaccepted ADR, so any rework
+risk is carried by the agent side, not by you. Nothing downstream is hard-blocked — this gate
+is cheap, and opening it mainly removes ambiguity for every future session.
 
 ### Gate 2 — ONE review-by-exception sitting on manifest `410e779e…`
 
@@ -95,13 +137,14 @@ by accident during an unrelated ship. Track as its own issue; do not bundle into
 ### Gate 3 — Packing × completion-loss-mask proof
 
 - **Owner:** Mike picks the resolution; an agent builds the proof.
-- **State:** the design is **already done** — PR **#3001** (`docs/zta/2026-07-29-together-parquet-contract.md`
-  + `…-parquet-pretokenized-path-design.md`) pins Together's Parquet contract from primary sources:
-  `-100` masking PROVEN honored, server-side packing PROVEN a no-op on Parquet, and it specifies a
-  **6-test local proof suite** at $0. The PR is docs-only and merely `BEHIND`.
-- **Prep (agent):** merge #3001, then implement its 6-test suite (`$0` — tokenizer-level assertions,
-  no provider calls) so the "packing is a no-op / mask is honored" claim is mechanically proven in
-  CI rather than argued from documentation.
+- **State:** the design is done and **#3001 is MERGED** (`docs/zta/2026-07-29-together-parquet-contract.md`
+  + `…-parquet-pretokenized-path-design.md`). It pins Together's Parquet contract from primary
+  sources: `-100` masking PROVEN honored, server-side packing PROVEN a no-op on Parquet, and it
+  specifies a **6-test local proof suite** at $0.
+- **Remaining agent work — this is the ONLY open item in this gate:** implement that 6-test suite
+  ($0, tokenizer-level assertions, **no provider calls in CI**) so "packing is a no-op / the mask
+  is honored" is mechanically proven rather than argued from documentation. Do **not** re-merge
+  or re-litigate #3001.
 - **Open sub-item flagged in the design:** unpacked EOS-terminated rows still want a **$0 billing
   discriminator probe**. That probe is the only piece that touches a provider, and it is
   cost-free — but it is still a provider call and therefore declared, not sneaked in.
@@ -140,7 +183,7 @@ These are not the five gates, but they touch the same surfaces and will bite the
 
 | Item | Why it belongs here | Owner | Action |
 |---|---|---|---|
-| **#3003** `decision_traces.tenant_id` UUID rejects bot slug tenants — every staging trace insert fails | **Same bug class as migration 069**, which this session already fixed for the `visual_*` tables (bot surfaces produce TEXT slugs; the column was declared UUID). PRD goal **G6** makes `decision_traces` a *consumer* of the context contract — it must accept writes first. Confirmed live on staging last night. | Agent | Next-numbered migration, `UUID → TEXT`, mirroring 069's ordering (drop policy → drop indexes → ALTER → recreate → RLS compares in-type, no cast). High-confidence, pattern already proven. |
+| ~~**#3003** `decision_traces.tenant_id` UUID rejects bot slug tenants~~ | ✅ **DONE — do not re-open as a migration task.** Migration **070** (both `decision_traces` and `decision_trace_feedback`) + the writer's `CAST(:tenant_id AS UUID)` removal shipped in **#3027** (v3.234.2); the slug-tenant RLS regression that actually proves the repaired path shipped in **#3028** (v3.234.3) and **ran green on staging Neon** under `factorylm_app`. | — | **Nothing.** Note for G6: this made `decision_traces` *able to accept writes*; it did **not** make it a context-contract consumer — that is WS1/PR-2. |
 | **#2987** migration drift on staging — merged migrations not applied | Staging is the gate for engine/RAG work; drift makes every staging verdict suspect. | Agent | Reconcile via `apply-migrations.yml` dry-run → apply against staging; confirm the content-sha ledger (066) shows no drift afterward. |
 | **#2952** eval-fixer grades whatever branch is checked out, not main | Corrupts the eval signal this whole track depends on. | Agent | Pin the harness to `origin/main` (or an explicit ref) and record the ref in every run's output. |
 | Tailnet-reachability probe | The #3014 hardening above. | Agent | New issue; do not bundle with the fix. |
@@ -149,21 +192,28 @@ These are not the five gates, but they touch the same surfaces and will bite the
 
 ## Execution order (what happens next, concretely)
 
-**Now, unattended, no human needed:**
-1. **WS1 adoption** — wire `context_contract` into one serving path. *Critical path; unblocks slice 13.*
-2. Fix **#3003** (069 pattern) — small, proven, and G6 depends on it.
-3. Merge **#3001**, then build its 6-test packing proof suite ($0).
-4. Repoint + smoke-test the **review console** against `410e779e…`; generate the exception queue.
-5. Build **slice 11** (chat-shaped graph-reasoning eval fixtures).
-6. Write the **Gate-1 decision brief** (one page).
-7. Reconcile **#2987**; pin **#2952**.
+**Now, unattended, no human needed** (status lives in the live-state doc, not here):
+1. **WS1 adoption** — wire `context_contract` into one serving path: `mira-pipeline/main.py` →
+   `GSDEngine.process()` → `mira-bots/shared/engine.py`. **Critical path — unblocks slice 13.**
+   Deliberately *not* an Ignition-only or PrintSense-only route: a product-specific first
+   adoption would recreate the forked context lane this program exists to remove.
+2. **Unblock the sitting** — the review console has **two** defects (repo-relative default path,
+   **and** `compiled_manifest.json` must retain per-record `record_id`+`content_hash`); then
+   generate the exception queue.
+3. Build the **6-test packing proof suite** ($0) — #3001 is already merged.
+4. Build **slice 11** (chat-shaped graph-reasoning eval fixtures). Slice 13 only **after** item 1.
+5. Reconcile **#2987**; pin **#2952**; file the tailnet-reachability probe. *Separate PRs — do
+   not bundle these with the program work.*
+
+~~Fix #3003~~ ✅ shipped (#3027/#3028). ~~Merge #3001~~ ✅ merged. ~~Write the Gate-1 brief~~ ✅
+above in Gate 1.
 
 **Needs Mike, in this order:**
-- **A1** — Tailscale re-auth (2 min, unblocks prod + every deploy run's red status).
-- **Gate 1** — accept ADR-0033 + PRD (a read).
-- **Gate 2** — the sitting (1–2 h, once the console prep above is done).
+- ~~**A1** — Tailscale re-auth~~ ✅ **DONE** (#3014 closed; prod restored).
+- **Gate 1** — accept ADR-0033 + PRD (a read; brief above).
+- **Gate 2** — the sitting (1–2 h, once the console + manifest prep above lands).
 - **Gate 3** — pick the packing resolution once the proof suite reports.
-- **Gate 5** — sign the authorization, only after 1–4 are closed.
+- **Gate 5** — sign the single-use authorization, only after the others are closed.
 
 **Standing rules that do not bend for any of the above:** no paid inference outside a
 budget-declared validation of the artifact under test; no corpus re-scale before the sitting; no
@@ -174,7 +224,10 @@ run, not after.
 
 ## Definition of done for this plan
 
-- #3014 closed with live evidence; `mira-ask` `Up`; a `deploy-vps` run green end-to-end.
+- ✅ #3014 closed with live evidence; `mira-ask` `Up`; a `deploy-vps` run green end-to-end.
+- **WS1 minimum runtime adoption demonstrated** on a real serving call site — one manifest is
+  both the prompt's context source and the audit row's source (G1 + G6). *This is a precondition
+  of the training run, not a follow-up to it — see the PRD's corrected milestone table.*
 - ADR-0033 `Accepted`, PRD `ACTIVE`.
 - Sitting decisions recorded against manifest `410e779e…`.
 - Packing stop-gate PROVEN in CI.
