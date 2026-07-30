@@ -1,3 +1,33 @@
+# Hot Cache — 2026-07-30 (later) — Unification Program PRD + general-family scale-up (v3.234.0)
+
+Two things landed after the photo-memory ship below.
+
+- **PRD #3020 — `docs/prd/2026-07-30-mira-unification-program.md`.** The execution umbrella over
+  ADR-0033 ("One Technician Brain, Many Evidence Producers"): goals G1–G6, workstreams WS1–WS6
+  (contract adoption · one policy/product-modes · data path to a gated $4 run · ranked
+  structural-debt burn-down · rights governance · eval spine), milestones M0✅–M5, explicit
+  non-goals (no dual-KG merge yet, no contract fork, no specialist adapters, conversation data
+  eval-only until rights). Status DRAFT — **M1 is Mike accepting ADR-0033 + the PRD.**
+- **PR #3022 (v3.234.0) — WS3 step 1: the general-behavior family is no longer the bottleneck.**
+  The readiness report's blocker #1 fixed at **$0, zero paid inference**. New fail-closed fold path
+  (`unified_compile.fold_general_generated` / `general_variant_candidates`) accepts agent-written
+  surface text only when it names a train family, passes the strict behavior gate under the
+  family's *canonical* interaction/safety values, carries no real-OEM token, has a unique suffix,
+  and isn't a near-dup (4-gram Jaccard ≥0.85 on the **non-evidence** user text). 9 writer agents +
+  4 repair rounds → 448 accepted variants. **Compile 180 → 760 records**, general+bridge 55.0%,
+  per-family train 37–50, OEM caps at the 10% line, manifest `410e779e…` (the old `51fe7b49…`
+  still reproduces byte-identically with no generated dir). 668 tests green (+11 new).
+- **Traps worth remembering:** writer agents hide diversity inside `Evidence (` lines and
+  copy-paste the framing — the near-dup filter is what catches it. One agent escaped its worktree
+  and edited the *main* checkout (+ drifted the row schema); always re-validate agent output with
+  the canonical fold. `gh` auto-merge does **not** update BEHIND branches — main churns hourly, so
+  arm a background `gh pr update-branch` loop.
+- **Next gates are Mike's, in order:** accept ADR-0033/PRD → ONE review-by-exception sitting on
+  manifest `410e779e…` → packing×loss-mask proof → fill/accept the 2 eval slices → signed
+  single-use $4 authorization. Don't re-scale before the sitting; don't spend before all gates.
+
+---
+
 # Hot Cache — 2026-07-30 — Photo memory SHIPPED to prod (#2798 + #3008, v3.230.0/v3.231.0) + Tailscale outage found (#3014)
 
 The Telegram bot is now a stateful photo agent on prod: photograph a print or equipment nameplate
