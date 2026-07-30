@@ -82,3 +82,61 @@ The contract and its adapters exist; nothing in a live answer path consumes them
   not a prod signal. Use the public endpoints + container status instead.
 - The shared `~/MIRA` checkout regularly carries **another session's** in-flight commits and
   modified files on local `main`. Work in a worktree; never `git add -A`.
+
+---
+
+## WS1 / PR-2 design — verified against the real code (2026-07-30)
+
+Recorded so the next session does **not** re-derive this. Every claim below was checked
+against the tree, with a **READY** CodeGraph preflight (see the tooling gotcha at the end).
+
+**The serving path (confirmed, not assumed).** `mira-pipeline/main.py` imports `Supervisor`
+from `shared.engine` (line 38), instantiates it (line 256) and calls `engine.process(...)`
+(line 661). `Supervisor.process_full` is `mira-bots/shared/engine.py:2305`. This is the shared
+route — deliberately **not** an Ignition-only or PrintSense-only entry, which would recreate the
+forked context lane the program exists to remove.
+
+**The contract to build on (do NOT fork it).** `materialized_evidence/context_contract.py`:
+- `TechnicianContext` (line 197): `contract_version`, `task_mode`, `tenant_id`, `environment`,
+  `asset`, `question`, `conversation_state`, `evidence[]`, `live`, `contradictions`,
+  `unknowns[]`, `allowed_actions[]` (defaults to `ALLOWED_ACTION_VOCAB`), `authorization_state`
+  (defaults `"read_only"`).
+- `EvidenceItem` (line 110): `trust` defaults to **`"candidate"`** — so requirement 4 (prior
+  decisions never promoted to truth) is satisfied by construction; do not override it.
+- `evidence_from_prior_decisions()` (line 658) — **the adapter already exists.** CodeGraph
+  reports "3 callers"; a grep confirms all three are in `tests/test_context_contract.py`.
+  **Production call sites: 0.** That gap is exactly what PR 2 closes.
+
+**The audit seam.** `mira-bots/shared/decision_trace.py`: `write_trace(**kwargs)` →
+`build_trace_row(**kwargs)` (pure, unit-testable) → `_insert(row)`. `write_trace` has 3 callers,
+all in `engine.py` via `_schedule_decision_trace`. `build_trace_row` already carries
+`tag_evidence` / `manual_evidence` / `kg_evidence` JSONB. For G6, **the same manifest object that
+built the prompt must be what the trace records** — add a manifest/hash field rather than
+re-deriving evidence at trace time, or the two can silently diverge (that divergence is the whole
+point of G6).
+
+**Fail-open precedent to mirror, with one change.** `decision_trace.py` is explicitly fail-open
+(never raises; 2 s timeout; no-op when `NEON_DATABASE_URL` is unset). The prior-decisions READ
+must be equally fail-open **but** requirement 6 says a failed lookup must produce an *explicit
+observable unknown*, not silence — so on failure append to `TechnicianContext.unknowns` (e.g.
+`"prior_decisions_unavailable"`) instead of silently returning an empty list. Silence and "no
+prior context" must not be indistinguishable.
+
+**Tenant safety.** The read must bind the tenant the same way the writer does —
+`SET LOCAL app.current_tenant_id` — and `decision_traces.tenant_id` is **TEXT** since migration
+070, so bot slug tenants work and **no `::uuid` cast belongs anywhere near it** (#3003/#3027).
+`tests/integration/test_rls_tag_trace_tables.py` already has the slug-tenant + isolation
+pattern to copy (#3028).
+
+**CI gating (explicit requirement).** `mira-pipeline/tests` is **not** a reliably gated suite —
+the proof tests must run in a required job. `tests/integration/**` is already both a
+`migration-verify.yml` trigger path *and* explicitly invoked by that workflow, which is how
+#3028's tests were actually proven to execute rather than skip. Prefer that lane, or add the new
+tests to an existing required job; verify by reading the run log that they **ran**, not skipped.
+
+**Tooling gotcha (cost me a cycle — do not repeat).** `tools/codegraph-preflight.sh` reported
+**STALE** purely because `.codegraph/.last-sync` records the HEAD it was written at. Running
+`npx @colbymchenry/codegraph index --force` **does not** refresh that marker — only the hooks and
+the wrapper `tools/codegraph-force-reindex.sh` call `cg_write_sync_marker`. Run the **wrapper**;
+the raw npx command leaves the preflight permanently STALE even though the index is fine
+(canary healthy at 20 callers of `resolve_uns_path` throughout).
