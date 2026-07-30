@@ -500,13 +500,21 @@ def _stamp_evidence_status(entry: dict, tail: str) -> None:
     try:
         for line in tail.splitlines():
             s = line.strip()
-            if s.startswith("Evidence:"):
-                status = s.split(":", 1)[1].strip()
-                if status.startswith("skipped"):
-                    entry.pop("evidence_status", None)
-                else:
-                    entry["evidence_status"] = status[:300]
-                return
+            if not s.startswith("Evidence:"):
+                continue
+            status = s.split(":", 1)[1].strip()
+            # ONLY "no registry configured" is benign noise — the lane is off, so a
+            # missing receipt is expected and stamping it would clutter every entry.
+            # Every OTHER `skipped (…)` means the registry WAS configured and the
+            # receipt still did not happen: an unset MIRA_TENANT_ID, an unimportable
+            # `materialized_evidence`, an unknown MIRA_EVIDENCE_ENV. Those are
+            # misconfigurations that produce a document with no evidence — the exact
+            # invisibility this stamp exists to end — so they are recorded, not popped.
+            if status.startswith("skipped (no registry"):
+                entry.pop("evidence_status", None)
+            else:
+                entry["evidence_status"] = status[:300]
+            return
     except Exception:  # noqa: BLE001 — a status stamp must never break the cron
         pass
 

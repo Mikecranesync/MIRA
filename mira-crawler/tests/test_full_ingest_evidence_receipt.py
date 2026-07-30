@@ -348,11 +348,24 @@ class TestRepairJournal:
         assert report.evidence_datasets == []
 
     def test_an_unwritable_journal_never_breaks_ingest(self, tmp_path):
-        """Recording the failure must not itself become a failure."""
-        with patch("builtins.open", side_effect=OSError("disk full")):
-            report = self._fail(tmp_path)
+        """Recording the failure must not itself become a failure.
+
+        The failure is induced with a read-only parent dir rather than by patching
+        `builtins.open`: patching builtins fires first at `pdf_path.read_bytes()` —
+        pathlib routes through `io.open` — so the receipt would never get far enough
+        to journal, and the test would pass for the wrong reason.
+        """
+        registry = tmp_path / "ro" / "ev.json"
+        registry.parent.mkdir()
+        registry.parent.chmod(0o500)  # the journal's own open() -> PermissionError
+        try:
+            report = self._fail(tmp_path, snapshot="ro/ev.json")
+        finally:
+            registry.parent.chmod(0o700)
+        assert not evidence_repair_path(str(registry)).exists()
         assert report.errors == []
         assert report.evidence_status.startswith("failed:")
+        assert "repair item recorded" not in report.evidence_status
 
     def test_repeated_failures_append_rather_than_overwrite(self, tmp_path):
         self._fail(tmp_path)

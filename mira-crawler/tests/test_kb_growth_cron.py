@@ -704,6 +704,28 @@ class TestEvidenceStatusStamp:
         )
         assert "evidence_status" not in post
 
+    @pytest.mark.parametrize(
+        "status",
+        [
+            "skipped (MIRA_TENANT_ID not set — evidence is tenant-scoped)",
+            "skipped (evidence contract unavailable: No module named 'materialized_evidence')",
+            "skipped (unknown MIRA_EVIDENCE_ENV 'production')",
+        ],
+    )
+    def test_a_configured_lane_that_skips_is_still_stamped(
+        self, queue_file, make_entry, monkeypatch, patch_io, status
+    ):
+        """Only "no registry configured" is benign. Every other skip means the
+        registry WAS configured and the receipt still did not happen — a
+        misconfiguration that yields a document with no evidence, which is exactly
+        the invisibility this stamp exists to end. Popping these would reproduce the
+        original defect inside its own fix."""
+        post = self._run(
+            queue_file, make_entry, monkeypatch, f"KB Chunks: 8 chunks created\nEvidence:     {status}"
+        )
+        assert post["status"] == "done"  # KB ingest still succeeded; evidence is separate
+        assert post.get("evidence_status") == status
+
     def test_a_pipeline_without_an_evidence_line_stamps_nothing(
         self, queue_file, make_entry, monkeypatch, patch_io
     ):
