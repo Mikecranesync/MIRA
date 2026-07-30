@@ -38,9 +38,17 @@ from typing import Any
 
 logger = logging.getLogger("mira-gsd.prior_decisions")
 
-# Bounded by design (see module docstring). The engine's own KG-context
-# enrichment uses a comparable budget.
-DEFAULT_TIMEOUT_S = 1.5
+# Bounded by design (see module docstring). Sized against a COLD connect, not a
+# warm one: `NullPool` + a fresh `create_engine` per call means every lookup pays
+# a full TCP + TLS handshake to Neon (the writer accepts the same cost, but it is
+# fire-and-forget so nobody waits on it). A 1.5 s budget timed out on the very
+# first staging call and passed on every subsequent one — the classic cold-start
+# shape, and it degrades to "unavailable" rather than to a wrong answer, so it
+# fails safe but makes the unknown noise rather than signal.
+#
+# Latency is therefore a REAL cost of switching MIRA_CONTEXT_CONTRACT on, not a
+# rounding error: measure it before the flag is promoted to on-by-default.
+DEFAULT_TIMEOUT_S = 3.0
 DEFAULT_LIMIT = 3
 
 # The unknown a caller records when the lookup was ATTEMPTED and failed.
@@ -134,5 +142,13 @@ async def fetch_prior_decisions(
         rows = await asyncio.wait_for(loop.run_in_executor(None, _run), timeout=timeout_s)
         return rows, None
     except Exception as exc:  # noqa: BLE001 — recall must never fail the turn
-        logger.warning("PRIOR_DECISIONS_UNAVAILABLE tenant=%s: %s", tenant_id, exc)
+        # Log the exception CLASS, not just str(exc): asyncio.TimeoutError
+        # stringifies to the empty string, which turns the most likely failure
+        # here into a log line that says nothing at all.
+        logger.warning(
+            "PRIOR_DECISIONS_UNAVAILABLE tenant=%s error=%s: %s",
+            tenant_id,
+            type(exc).__name__,
+            exc,
+        )
         return [], UNKNOWN_UNAVAILABLE
