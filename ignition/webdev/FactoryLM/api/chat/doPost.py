@@ -83,39 +83,19 @@ def doPost(request, session):
         "Chat request — asset: %s, query: %.80s" % (asset_id or "(none)", query)
     )
 
-    # --- Read live tag snapshot for this asset ---
-    snapshot = {}
-
-    if asset_id:
-        tag_folder = "[default]Mira_Monitored/%s" % asset_id
-        try:
-            tag_results = system.tag.browseTags(parentPath=tag_folder)
-            tag_paths = [str(t.fullPath) for t in tag_results]
-
-            if tag_paths:
-                tag_values = system.tag.readBlocking(tag_paths)
-                for i, path in enumerate(tag_paths):
-                    qv = tag_values[i]
-                    snapshot[path] = {
-                        "value": str(qv.value),
-                        "quality": str(qv.quality),
-                        "timestamp": str(qv.timestamp)
-                    }
-                logger.debug(
-                    "Tag snapshot for %s: %d tags read" % (asset_id, len(snapshot))
-                )
-            else:
-                logger.debug("No tags found under %s" % tag_folder)
-
-        except Exception as e:
-            logger.warn(
-                "Tag read failed for asset %s: %s" % (asset_id, str(e))
-            )
-
-    # --- Apply allowlist filter to snapshot (D1 task owns allowlist.py) ---
-    # Import defensively: if task D1 has created the allowlist module, use it;
-    # otherwise pass the snapshot through unchanged.
-    filtered_snapshot = snapshot
+    # --- Read live tag snapshot via THE canonical adapter ---
+    #
+    # api/tags/live_snapshot.py is the single Gateway live-snapshot adapter, and
+    # it renders the SAME typed readings that gateway-scripts/tag-stream.py
+    # streams to mira-relay (both go through collector.build_reading). Do not
+    # read tags inline here again.
+    #
+    # This replaced a local read that stringified every value (`str(qv.value)`),
+    # forwarded the raw Ignition quality string unbanded, and applied the
+    # allowlist inside `except ImportError: pass` — i.e. FAIL-OPEN, shipping an
+    # unfiltered snapshot whenever that import failed. The adapter is fail-closed:
+    # no resolvable allowlist means an EMPTY snapshot, never an unfiltered one.
+    filtered_snapshot = {}
     try:
         import os.path as _osp
         import sys as _sys
@@ -125,21 +105,44 @@ def doPost(request, session):
         if _tags_dir not in _sys.path:
             _sys.path.insert(0, _tags_dir)
 
-        from allowlist import is_allowed_tag
-        filtered_snapshot = {
-            path: val for path, val in snapshot.items()
-            if is_allowed_tag(path)
-        }
-        if len(filtered_snapshot) < len(snapshot):
-            logger.warn(
-                "Allowlist filtered %d tag(s) from snapshot for asset %s"
-                % (len(snapshot) - len(filtered_snapshot), asset_id)
+        from live_snapshot import collect_live_snapshot
+
+        def _browse(folder):
+            return system.tag.browseTags(parentPath=folder)
+
+        def _read(paths):
+            return system.tag.readBlocking(paths)
+
+        filtered_snapshot, snap_stats = collect_live_snapshot(
+            _browse, _read, asset_id
+        )
+        if not snap_stats["allowlist_loaded"] and snap_stats["read"]:
+            # Loud: the tags were readable but no allowlist resolved, so the
+            # snapshot was dropped on purpose. Silence here would look like
+            # "this asset has no tags".
+            logger.error(
+                "No approved_tags allowlist resolved — dropped all %d tag(s) for "
+                "asset %s (fail-closed). Check approved_tags.json deployment."
+                % (snap_stats["read"], asset_id)
             )
-    except ImportError:
-        # Task D1 allowlist not yet present — pass through
-        pass
+        elif snap_stats["dropped"]:
+            logger.warn(
+                "Allowlist filtered %d of %d tag(s) for asset %s"
+                % (snap_stats["dropped"], snap_stats["read"], asset_id)
+            )
+        else:
+            logger.debug(
+                "Tag snapshot for %s: %d allowlisted tag(s)"
+                % (asset_id or "(none)", snap_stats["allowed"])
+            )
     except Exception as e:
-        logger.warn("Allowlist filter error (passing through): %s" % str(e))
+        # Snapshot is best-effort evidence: the turn stays answerable from
+        # documentation, without live tags, rather than failing the request.
+        # Fail-closed — filtered_snapshot stays empty.
+        logger.warn(
+            "Live snapshot unavailable for asset %s: %s" % (asset_id, str(e))
+        )
+        filtered_snapshot = {}
 
     # --- Build and sign the outgoing request ---
     import urllib2

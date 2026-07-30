@@ -131,3 +131,66 @@ runs of non-alphanumerics → `_`).
 Headers: `X-MIRA-Tenant`, `X-MIRA-Nonce`, `X-MIRA-Timestamp`, `X-MIRA-Signature`
 (HMAC-SHA256 over `tenant\nnonce\ntimestamp\nsha256(body)`). Response:
 `{status, accepted, events_written, state_upserts, cache_skipped, rejected[], simulated}`.
+
+---
+
+## The canonical live-snapshot adapter (2026-07-30)
+
+`api/tags/live_snapshot.py` is **the single Gateway live tag-snapshot adapter**. Both
+Gateway transports render from it, so the same physical read cannot produce two shapes.
+
+```
+              system.tag.browseTags / readBlocking     (injected, read-only)
+                              │
+                live_snapshot.read_tag_readings()
+                              │
+                 collector.build_reading()             ONE typed reading:
+                              │                        {tag_path, value, value_type,
+                collector.filter_allowlisted()          quality, ts}  — fail-closed
+                              │
+              ┌───────────────┴───────────────┐
+   STREAM →   collector.build_payload()        live_snapshot.snapshot_from_readings()  ← CHAT
+              list of readings                 dict keyed by tag_path
+              POST /api/v1/tags/ingest         POST /api/v1/ignition/chat
+              (mira-relay)                     (mira-pipeline/ignition_chat.py)
+```
+
+### What this fixed
+
+`api/chat/doPost.py` used to read tags itself and build
+`{path: {value: str(v), quality: str(q), timestamp: str(ts)}}`:
+
+| | old chat path | stream path | now (both) |
+|---|---|---|---|
+| `value` | `str(...)` — always a string | real type | **real type** |
+| `quality` | raw Ignition string (`Good_Unspecified`) | banded | **banded** `good\|bad\|stale\|uncertain` |
+| allowlist | `is_allowed_tag()` inside `except ImportError: pass` → **fail-open** | fail-closed | **fail-closed** |
+| timestamp | `str(qv.timestamp)` | `ts` | **`ts`** |
+
+The fail-open allowlist was the sharpest edge: if that import failed, a
+**non-allowlisted tag could reach the cloud**. The adapter returns an *empty*
+snapshot when no allowlist resolves — a degraded answer instead of a broken
+contract — and `doPost.py` logs that at **error** level so it can't be mistaken
+for "this asset has no tags."
+
+### Deploying it
+
+`live_snapshot.py` sits beside `collector.py`, `allowlist.py` and `signing.py` in
+`api/tags/` and imports `collector` as a flat sibling — the same script-library
+layout the collector already documents above. Copy all four into the project
+script library together.
+
+### Rules it must keep
+
+- **Read-only.** No Ignition runtime import; tags are reachable only through
+  injected callables. Asserted by `tests/ignition/test_live_snapshot.py`
+  (`test_adapter_contains_no_write_or_fieldbus_path`,
+  `test_adapter_imports_no_ignition_runtime`) — and those guards were
+  mutation-tested, including a dotted `system.opc.write` that an earlier
+  single-token version of the guard silently missed.
+- **One read.** `test_chat_handler_no_longer_reads_tags_inline` fails if an inline
+  browse/read reappears in `doPost.py`.
+- **Both transports agree.** `test_chat_and_stream_paths_agree_on_every_reading`
+  asserts `value` / `value_type` / `quality` field-by-field across the two
+  renderings.
+- **Jython 2.7 + Python 3.** No f-strings, no annotations (checked by AST).
