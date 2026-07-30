@@ -48,7 +48,12 @@ INSERT INTO decision_traces (
     tag_evidence, manual_evidence, kg_evidence, recommendation,
     citations_present, technician_confirmed, outcome, model_used, latency_ms
 ) VALUES (
-    CAST(:tenant_id AS UUID),
+    -- tenant_id is TEXT (migration 070): bot surfaces produce slug tenants
+    -- ('staging', 'default', chat_tenant slugs), not UUIDs. A CAST here threw
+    -- InvalidTextRepresentation and, because the write is fire-and-forget,
+    -- silently dropped every staging trace (#3003). session_id stays UUID —
+    -- it is a real FK to troubleshooting_sessions(id).
+    :tenant_id,
     CAST(:session_id AS UUID),
     :platform,
     CAST(:uns_path AS LTREE),

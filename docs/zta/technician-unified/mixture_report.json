@@ -1,52 +1,52 @@
 {
  "schema": "factorylm.technician-unified.mixture-report.v1",
- "records": 180,
+ "records": 760,
  "by_source_family": {
-  "general": 78,
+  "general": 397,
   "bridge": 21,
-  "drive_commander": 36,
-  "printsense": 45
+  "drive_commander": 152,
+  "printsense": 190
  },
  "by_task_mode": {
-  "task_mode_general_troubleshooting": 99,
-  "task_mode_product": 81
+  "task_mode_general_troubleshooting": 418,
+  "task_mode_product": 342
  },
  "by_manufacturer": {
-  "factorylm": 144,
-  "rockwell automation": 18,
-  "automationdirect": 18
+  "factorylm": 608,
+  "rockwell automation": 76,
+  "automationdirect": 76
  },
  "by_template_family": {
-  "ambiguous-identity": 7,
-  "incomplete-symptoms": 10,
-  "next-best-measurement": 9,
-  "safety-boundary": 9,
-  "evidence-vs-inference": 8,
-  "escalation-handoff": 10,
-  "work-order-history": 7,
-  "correction-acceptance": 10,
-  "cross-trade-reasoning": 8,
+  "ambiguous-identity": 44,
+  "incomplete-symptoms": 47,
+  "next-best-measurement": 45,
+  "safety-boundary": 45,
+  "evidence-vs-inference": 39,
+  "escalation-handoff": 45,
+  "work-order-history": 37,
+  "correction-acceptance": 45,
+  "cross-trade-reasoning": 50,
   "cross_domain_bridge": 21,
-  "stratum_voice": 12,
-  "stratum_format_table": 3,
-  "stratum_paraphrase": 28,
-  "stratum_safety_pushback": 5,
-  "s1_v11": 8,
-  "stratum_format_prose": 4,
-  "stratum_multiturn": 2,
-  "stratum_format_json": 2,
-  "stratum_format_ocr": 6,
-  "stratum_distractor_wrong": 4,
-  "stratum_distractor_mixed": 7
+  "stratum_voice": 45,
+  "stratum_format_table": 19,
+  "stratum_paraphrase": 129,
+  "stratum_safety_pushback": 18,
+  "s1_v11": 32,
+  "stratum_format_prose": 18,
+  "stratum_multiturn": 5,
+  "stratum_format_json": 19,
+  "stratum_format_ocr": 23,
+  "stratum_distractor_wrong": 16,
+  "stratum_distractor_mixed": 18
  },
  "by_interaction_type": {
-  "uncertainty": 24,
-  "diagnostic": 108,
-  "refusal": 25,
-  "correction": 23
+  "uncertainty": 116,
+  "diagnostic": 431,
+  "refusal": 109,
+  "correction": 104
  },
- "safety_sensitive": 81,
- "unique_lineages": 89,
+ "safety_sensitive": 332,
+ "unique_lineages": 364,
  "general_plus_bridge_fraction": 0.55,
  "caps": {
   "general_fraction_min": 0.5,
@@ -58,12 +58,21 @@
   ]
  },
  "dropped": {
-  "family_cap:printsense": 824,
-  "manufacturer_cap:rockwell automation": 232,
-  "manufacturer_cap:automationdirect": 104,
-  "post_trim": 6
+  "family_cap:printsense": 664,
+  "manufacturer_cap:rockwell automation": 168,
+  "manufacturer_cap:automationdirect": 40,
+  "post_trim": 33
  },
- "general_offtrain_records": 30,
+ "general_offtrain_records": 154,
+ "general_variants": {
+  "files": 9,
+  "accepted": 443,
+  "rejected": 5,
+  "near_dup_dropped": 2,
+  "rejected_reasons": {
+   "unsupported_numbers": 5
+  }
+ },
  "gates": {
   "general_fraction_ok": true,
   "eval_families_excluded": true
