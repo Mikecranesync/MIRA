@@ -44,6 +44,25 @@ def test_bot_image_ships_recall_packages(dockerfile: Path):
     )
 
 
+def test_pipeline_image_ships_context_contract():
+    """mira-pipeline is the VPS chat path — it runs the SAME Supervisor.
+
+    WS1 (ADR-0033) makes ``shared.technician_context`` a live consumer of
+    ``materialized_evidence.context_contract`` on every diagnosis turn. That
+    import is lazy and fail-open, so a missing COPY does not crash the
+    container — it silently disables the contract, and the failure shows up
+    only as a `decision_traces.context_manifest` column that is always NULL. Assert
+    the COPY instead of discovering that in prod.
+    """
+    dockerfile = _ROOT / "mira-pipeline" / "Dockerfile"
+    text = dockerfile.read_text("utf-8")
+    assert "COPY materialized_evidence/" in text, (
+        f"{dockerfile} must COPY materialized_evidence/ — without it "
+        "shared.technician_context's import fails and the WS1 context contract "
+        "silently disables on the production chat path"
+    )
+
+
 def test_recall_packages_import_clean():
     # If the images ship these (above), the in-container import must succeed. Proving
     # the packages are import-clean here is the other half of the packaging guarantee.

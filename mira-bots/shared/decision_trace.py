@@ -46,7 +46,8 @@ _INSERT_SQL = """
 INSERT INTO decision_traces (
     tenant_id, session_id, platform, uns_path, user_question,
     tag_evidence, manual_evidence, kg_evidence, recommendation,
-    citations_present, technician_confirmed, outcome, model_used, latency_ms
+    citations_present, technician_confirmed, outcome, model_used, latency_ms,
+    context_manifest, context_manifest_sha256
 ) VALUES (
     -- tenant_id is TEXT (migration 070): bot surfaces produce slug tenants
     -- ('staging', 'default', chat_tenant slugs), not UUIDs. A CAST here threw
@@ -66,7 +67,13 @@ INSERT INTO decision_traces (
     :technician_confirmed,
     :outcome,
     :model_used,
-    :latency_ms
+    :latency_ms,
+    -- WS1 / PRD G6 (migration 071): the serialized TechnicianContext the prompt
+    -- block was rendered from, plus a sha256 over its canonical JSON. NULL on
+    -- turns taken with MIRA_CONTEXT_CONTRACT off — which also makes the column
+    -- the adoption counter for the flag's promotion decision.
+    CAST(:context_manifest AS JSONB),
+    :context_manifest_sha256
 )
 """
 
@@ -129,6 +136,7 @@ def build_trace_row(
     outcome: Optional[str] = None,
     model_used: Optional[str] = None,
     latency_ms: Optional[int] = None,
+    context_manifest: Optional[dict] = None,
 ) -> dict[str, Any]:
     """Assemble the decision_traces row from engine-turn inputs (pure).
 
@@ -140,6 +148,14 @@ def build_trace_row(
 
     ctx = uns_context or {}
     uns_path = ctx.get("uns_path") or ctx.get("path") or None
+
+    # WS1/G6 — the caller passes {"manifest": ..., "sha256": ...} exactly as the
+    # engine built it for the prompt. Nothing is re-derived here: re-deriving is
+    # how the audit row and the prompt drift apart, which is the divergence G6
+    # exists to close. A malformed/absent carrier stores NULL, never a partial.
+    cm = context_manifest if isinstance(context_manifest, dict) else {}
+    cm_payload = cm.get("manifest")
+    cm_sha = cm.get("sha256")
 
     return {
         "tenant_id": tenant_id,
@@ -156,6 +172,8 @@ def build_trace_row(
         "outcome": outcome,
         "model_used": model_used,
         "latency_ms": latency_ms,
+        "context_manifest": json.dumps(cm_payload, sort_keys=True) if cm_payload else None,
+        "context_manifest_sha256": cm_sha if cm_payload else None,
         # Carried for callers/tests; not a DB column.
         "_uns_source": ctx.get("source"),
         "_uns_confidence": ctx.get("confidence"),

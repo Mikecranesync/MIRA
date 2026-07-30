@@ -1568,6 +1568,7 @@ class Supervisor:
         next_state: str | None = None,
         dispatch_kind: str = "",
         citation_evidence: dict | None = None,
+        context_manifest: dict | None = None,
         *,
         route: str | None = None,
         model: str | None = None,
@@ -1594,6 +1595,12 @@ class Supervisor:
             "next_state": next_state,
             "dispatch_kind": dispatch_kind,
             "_citation_evidence": citation_evidence,
+            # WS1 — {"manifest": <TechnicianContext.to_dict()>, "sha256": ...}
+            # for the turn's prompt block, carried out to _schedule_decision_trace
+            # so the audit row stores the SAME object the prompt was built from
+            # (PRD G6) instead of re-deriving evidence at trace time. None on
+            # flag-off / non-contract turns.
+            "_context_manifest": context_manifest,
             # Print-turn observability provenance (privacy-safe: route/model
             # names + reason codes only, never page content) — read by
             # process()'s _log_interaction so "check the bot results" shows the
@@ -1896,6 +1903,9 @@ class Supervisor:
                 outcome=outcome,
                 model_used=model_used,
                 latency_ms=latency_ms,
+                # WS1/G6 — the context object the prompt block was rendered
+                # from, carried on the result rather than re-derived here.
+                context_manifest=result.get("_context_manifest"),
             )
             # Hold a reference so the task isn't GC'd before it runs.
             task = asyncio.create_task(coro)
@@ -3529,6 +3539,7 @@ class Supervisor:
             trace_id,
             state["state"],
             citation_evidence=self._evidence_from_parsed(parsed),
+            context_manifest=parsed.get("_context_manifest"),
         )
 
     # ------------------------------------------------------------------
@@ -4112,6 +4123,75 @@ class Supervisor:
             logger.debug("KG_CONTEXT miss asset=%r: %s", asset, exc)
             return ""
 
+    # ------------------------------------------------------------------
+    # WS1 — context contract adoption (ADR-0033 / PRD G1 + G6)
+    # ------------------------------------------------------------------
+    async def _build_prior_decisions_context(
+        self, state: dict, tenant_id: str | None, question: str = ""
+    ) -> str:
+        """Assemble this turn's ``TechnicianContext`` and render its prompt block.
+
+        This is the WS1 adoption seam: the first production consumer of
+        ``materialized_evidence.context_contract``. It recalls prior grounded
+        decisions for the tenant (optionally narrowed to the confirmed UNS
+        subtree), builds ONE validated context object, renders the
+        prior-decision projection for the prompt, and stashes the manifest on
+        ``state`` so ``_schedule_decision_trace`` records *the same object the
+        prompt was built from* (G6) instead of re-deriving evidence later.
+
+        Flag-gated (``MIRA_CONTEXT_CONTRACT``, default off) and best-effort:
+        returns "" on flag-off, missing package, missing tenant, invalid
+        context, or any error. Never raises — a context-assembly failure must
+        not change whether the technician gets an answer.
+
+        Stashed under a leading-underscore key, matching the ``_rag_*`` per-turn
+        carriers: ``_llm_with_retry`` POPs it onto ``parsed`` so it never
+        reaches ``_save_state`` and never persists across turns.
+        """
+        state.pop("_context_manifest", None)
+        try:
+            from .technician_context import (
+                build_turn_context,
+                contract_enabled,
+                manifest_of,
+                prompt_block,
+            )
+
+            if not contract_enabled() or not tenant_id:
+                return ""
+
+            uns_context = (state.get("context") or {}).get("uns_context") or {}
+            uns_path = uns_context.get("uns_path") or None
+
+            from .prior_decisions import fetch_prior_decisions
+
+            rows, recall_error = await fetch_prior_decisions(tenant_id, uns_path=uns_path)
+
+            ctx, violations = build_turn_context(
+                tenant_id=tenant_id,
+                question=question,
+                uns_context=uns_context,
+                prior_decisions=rows,
+                recall_error=recall_error,
+            )
+            if ctx is None:
+                logger.debug("CONTEXT_CONTRACT skipped: %s", violations)
+                return ""
+
+            payload, sha = manifest_of(ctx)
+            state["_context_manifest"] = {"manifest": payload, "sha256": sha}
+            logger.info(
+                "CONTEXT_CONTRACT built tenant=%s priors=%d unknowns=%d sha=%s",
+                tenant_id,
+                len(rows),
+                len(ctx.unknowns),
+                sha[:12],
+            )
+            return prompt_block(ctx)
+        except Exception as exc:  # noqa: BLE001 — enrichment must never block diagnosis
+            logger.debug("CONTEXT_CONTRACT miss: %s", exc)
+            return ""
+
     async def _fetch_kg_maintenance_context(self, tenant_id: str, uns_path: str) -> dict | None:
         """POST the maintenance_context op to mira-hub's internal KG API.
 
@@ -4465,12 +4545,25 @@ class Supervisor:
         ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
         interlock_context = await self._build_interlock_context(state, tenant_id)
         wo_evidence_context = await self._build_wo_evidence_context(state, tenant_id)
+        # WS1 (ADR-0033) — the context contract's prior-decision projection.
+        # Sixth block in the same pre-formatted, self-labeled, fail-open shape
+        # as the five above; flag-gated off by default. Unlike them it also
+        # stashes the manifest the audit row will record, so prompt and trace
+        # carry one object rather than two derivations (PRD G6).
+        prior_decisions_context = await self._build_prior_decisions_context(
+            state, tenant_id, question=message
+        )
+        # Lift the carrier off ``state`` ONCE, here — not after the retry loop,
+        # which the grounded early-return skips, leaving it to be persisted by
+        # _save_state and re-attributed to the next turn.
+        context_manifest = state.pop("_context_manifest", None)
         extra_context = (
             kg_context
             + live_context
             + ctx_signals_context
             + interlock_context
             + wo_evidence_context
+            + prior_decisions_context
         )
 
         for attempt in range(max_attempts):
@@ -4498,6 +4591,10 @@ class Supervisor:
             parsed["_sources"] = state.pop("_rag_sources", None) or []
             parsed["_last_chunks"] = state.pop("_rag_last_chunks", None) or []
             parsed["_no_kb"] = state.pop("_rag_no_kb", False)
+            # WS1 — the context manifest the prompt block was rendered from,
+            # lifted off ``state`` before the loop so a self-correction retry
+            # still carries it. None on flag-off / non-contract turns.
+            parsed["_context_manifest"] = context_manifest
 
             # Check grounding against THIS turn's sources snapshot, never the
             # shared self.rag._last_sources (#1704).
@@ -4577,6 +4674,7 @@ class Supervisor:
             None,
             state["state"],
             citation_evidence=self._evidence_from_parsed(parsed),
+            context_manifest=parsed.get("_context_manifest"),
         )
 
     # ------------------------------------------------------------------

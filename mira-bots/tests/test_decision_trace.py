@@ -282,3 +282,56 @@ def test_insert_sql_still_casts_session_id_to_uuid():
 
     normalized = " ".join(decision_trace._INSERT_SQL.split()).lower()
     assert "cast(:session_id as uuid)" in normalized
+
+
+# ---------------------------------------------------------------------------
+# WS1 / PRD G6 — the audit row records the SAME context object the prompt used
+# ---------------------------------------------------------------------------
+def test_build_row_stores_the_context_manifest_verbatim():
+    """The row must carry what the caller passed, not a re-derivation.
+
+    Re-deriving evidence at trace time is exactly how the audit row and the
+    prompt silently disagree — the divergence G6 exists to close.
+    """
+    import json
+
+    manifest = {"contract_version": "1.0", "evidence": [{"citation_id": "R1"}]}
+    row = build_trace_row(
+        tenant_id="staging",
+        user_question="q",
+        recommendation="a",
+        context_manifest={"manifest": manifest, "sha256": "a" * 64},
+    )
+    assert json.loads(row["context_manifest"]) == manifest
+    assert row["context_manifest_sha256"] == "a" * 64
+
+
+def test_build_row_context_manifest_defaults_to_null():
+    """Flag-off turns write NULL — which also makes the column the adoption
+    counter for the flag's promotion decision."""
+    row = build_trace_row(tenant_id="staging", user_question="q", recommendation="a")
+    assert row["context_manifest"] is None
+    assert row["context_manifest_sha256"] is None
+
+
+def test_build_row_rejects_a_malformed_carrier_rather_than_storing_a_partial():
+    row = build_trace_row(
+        tenant_id="staging",
+        user_question="q",
+        recommendation="a",
+        context_manifest={"sha256": "b" * 64},  # no manifest payload
+    )
+    assert row["context_manifest"] is None
+    assert row["context_manifest_sha256"] is None, (
+        "a sha with no payload is a partial — storing it would claim a manifest "
+        "that isn't there"
+    )
+
+
+def test_insert_sql_writes_the_context_manifest_columns():
+    from shared import decision_trace
+
+    normalized = " ".join(decision_trace._INSERT_SQL.split()).lower()
+    assert "context_manifest" in normalized
+    assert "cast(:context_manifest as jsonb)" in normalized
+    assert ":context_manifest_sha256" in normalized
