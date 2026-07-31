@@ -27,17 +27,32 @@ from pathlib import Path
 # Paths (SPEC defaults; env-overridable for testing only)
 # --------------------------------------------------------------------------
 WORK_DIR = Path(os.environ.get("MIRA_REVIEW_V2_DIR", r"C:\Users\hharp\Documents\mira-review-v2"))
+
+# The dataset + manifest defaults resolve RELATIVE TO THIS FILE's checkout, not
+# to an absolute path on one machine. The previous defaults —
+#   C:\wt-wire\docs\zta\technician-dataset-v0\candidate_{dataset.jsonl,manifest.json}
+# — were wrong three ways at once: they named a **stale worktree** (`wt-wire`)
+# that no longer exists, they were **Windows-only** (so nobody could run the
+# console anywhere else to check it), and they pointed at **v0** while the
+# sitting that is actually pending is on the **unified** compile. A repo-relative
+# default is right on every machine that has a checkout, including the PLC laptop.
+#
+# WORK_DIR and DOWNLOADS_DIR above/below are deliberately UNCHANGED: those are
+# runtime state on the laptop (`data/events.jsonl` is where the existing
+# decisions live). Repointing them would orphan real review work.
+#
+# The runtime is a manual copy OUTSIDE the checkout (see README), so on the
+# laptop these defaults will not resolve — that is why they are env-overridable
+# and why _require_inputs() below fails with an actionable message instead of a
+# bare traceback.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_UNIFIED_DIR = _REPO_ROOT / "docs" / "zta" / "technician-unified"
+
 DATASET_PATH = Path(
-    os.environ.get(
-        "MIRA_REVIEW_V2_DATASET",
-        r"C:\wt-wire\docs\zta\technician-dataset-v0\candidate_dataset.jsonl",
-    )
+    os.environ.get("MIRA_REVIEW_V2_DATASET", str(_UNIFIED_DIR / "compiled_candidates.jsonl"))
 )
 MANIFEST_PATH = Path(
-    os.environ.get(
-        "MIRA_REVIEW_V2_MANIFEST",
-        r"C:\wt-wire\docs\zta\technician-dataset-v0\candidate_manifest.json",
-    )
+    os.environ.get("MIRA_REVIEW_V2_MANIFEST", str(_UNIFIED_DIR / "compiled_manifest.json"))
 )
 DOWNLOADS_DIR = Path(os.environ.get("MIRA_REVIEW_V2_DOWNLOADS", r"C:\Users\hharp\Downloads"))
 # Optional review-by-exception recommendations (absent => bulk approval OFF,
@@ -823,7 +838,49 @@ def make_server(state: AppState, host: str = "0.0.0.0", port: int | None = None)
     return srv
 
 
+def _preflight(dataset_path: Path, manifest_path: Path) -> None:
+    """Fail with an ACTIONABLE message, not a traceback, on bad inputs.
+
+    Three ways this used to go wrong on the laptop, each producing a bare
+    exception that told the operator nothing:
+      * dataset/manifest missing  -> FileNotFoundError on a path they can't see
+      * manifest without `entries` -> KeyError('entries') deep in AppState
+      * a stale/wrong dataset      -> boots fine, reviews the WRONG records
+    The runtime is a manual copy OUTSIDE the checkout (README), so the
+    repo-relative defaults will not resolve there — say so, and name the env
+    vars, rather than making the operator read the source.
+    """
+    problems: list[str] = []
+    if not dataset_path.exists():
+        problems.append(f"dataset not found: {dataset_path}  (set MIRA_REVIEW_V2_DATASET)")
+    if not manifest_path.exists():
+        problems.append(f"manifest not found: {manifest_path}  (set MIRA_REVIEW_V2_MANIFEST)")
+    if not problems and manifest_path.exists():
+        try:
+            m = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            problems.append(f"manifest is not valid JSON: {manifest_path} ({exc})")
+        else:
+            if not isinstance(m.get("entries"), list) or not m["entries"]:
+                problems.append(
+                    f"manifest has no 'entries': {manifest_path}\n"
+                    "    The console binds every decision to a per-record content_hash, so a\n"
+                    "    summary-only manifest cannot be reviewed. Regenerate it with\n"
+                    "    `python -m factorylm_ai.dataset.unified_compile` (which now writes the\n"
+                    "    whole manifest, entries included)."
+                )
+            elif not all("record_id" in e and "content_hash" in e for e in m["entries"]):
+                problems.append(
+                    f"manifest entries are missing record_id/content_hash: {manifest_path}"
+                )
+    if problems:
+        raise SystemExit(
+            "Review Console v2 cannot start:\n  - " + "\n  - ".join(problems)
+        )
+
+
 def main() -> None:
+    _preflight(DATASET_PATH, MANIFEST_PATH)
     state = AppState()
     srv = make_server(state)
     print(
