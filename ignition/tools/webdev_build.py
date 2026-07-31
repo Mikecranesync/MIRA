@@ -28,6 +28,29 @@ confirmed on a live 8.3.4 gateway (see docs/integrations/ignition-tag-collector.
    (``ignition/script-python/<name>/code.py``), from which a handler imports
    them as flat top-level names. That route is proven; sibling files are not.
 
+Gateway evidence (Ignition 8.3.4, WebDev 6.3.4, 2026-07-31)
+-----------------------------------------------------------
+Three resources, one gateway restart, ``GET`` each. This is why the emitted
+shape is what it is — it is measured, not chosen::
+
+    shape                                        result
+    def on line 1, 4-space body                  HTTP 200  {"shape":"a"}      <- what this module emits
+    comment header, then def at col 0            HTTP 200  len=0              <- the silent failure
+    def on line 1 + module-level helper AFTER    HTTP 200  {"shape":"c",...}
+
+So ``INDENT`` below is confirmed: four spaces works, and the tab used by an
+earlier probe is not required. The middle row is the whole reason this module
+exists — it is not an error the operator can see.
+
+The third row shows the gateway ALSO accepts trailing module-level helpers, so
+nesting them inside the handler is stricter than strictly necessary. It is kept
+deliberately: one module-level statement is the only shape with no ordering or
+dedent subtleties left to get wrong, and it is the shape row 1 proves.
+
+Scope of that proof, stated plainly: the probe validates the *shape class* these
+handlers are emitted in. It does not exercise the nine converted handlers
+end-to-end — that needs a real deploy plus live calls against each endpoint.
+
 So deployment is a CONVERSION, not a copy. This module is that conversion, kept
 in Python (not PowerShell) precisely so it is unit-testable offline —
 `tests/regime7_ignition/test_webdev_deploy_contract.py` exercises every function

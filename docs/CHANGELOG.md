@@ -16,6 +16,16 @@
 
 **Unchanged on purpose:** the canonical adapter, its fail-closed allowlist logic, typed values, quality bands, the one-read path, and no PLC/OPC writes. This PR is the deployment layer under it.
 
+**Live gateway confirmation (Ignition 8.3.4, 2026-07-31).** Three resources, one restart, `GET` each — the emitted shape is measured, not chosen:
+
+| resource body | result |
+|---|---|
+| `def` on line 1, **4-space** body — *what the converter emits* | **HTTP 200** `{"shape":"a"}` |
+| comment header, then `def` at col 0 — *the repo's raw source shape* | **HTTP 200, len=0** |
+| `def` on line 1 + a module-level helper **after** it | **HTTP 200** `{"shape":"c",...}` |
+
+Row 1 confirms the 4-space indent (an earlier probe used a tab; it is not required). Row 2 reproduces the silent failure deterministically — no error, no log line, just nothing. Row 3 shows trailing module-level helpers are also accepted, so nesting them is stricter than necessary; it is kept deliberately, because one module-level statement is the only shape with no ordering or dedent subtleties left, and it is the shape row 1 proves. **Scope of that proof:** it validates the shape class, not the nine converted handlers end-to-end — that needs a real deploy plus live calls per endpoint, which is explicitly not claimed here.
+
 **Evidence, and its limits.** 231 offline tests pass (`tests/ignition/` + `tests/regime7_ignition/`), 33 of them new in `test_webdev_deploy_contract.py`: generated JSON validated for every endpoint, all 8 resource directories / 9 handlers three-file and def-first, helpers in the script library and never beside a handler, the deployed allowlist path resolving, and an invalid override yielding no snapshot. **Offline tests cannot prove the gateway works** - a CPython test always has `__file__`, which is exactly why the original defect survived. The live confirmation is a separate administrator-run probe against the 8.3.4 bench gateway, recorded in the handoff. One guard here was caught reading its own explanatory comment rather than code and now checks code only, with a mutation test - the same defect class #3018 recorded.
 
 ### v3.235.5 (2026-07-31) - feat(ignition): one canonical Gateway live-snapshot adapter — both PLC transports now render the same typed reading
