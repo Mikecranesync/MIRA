@@ -91,3 +91,31 @@ A hub-only PR may bump **both** the overall `/VERSION` (required) and the hub `p
 ## Rollout note
 
 The "Version Gate" check must be added to `main` branch protection's **required** checks once it has reported green on at least one PR (GitHub won't let you require a check it has never seen). Until then it runs and reports but does not block.
+
+## Merging PRs back-to-back: re-run smoke after the deploy settles
+
+Merging to `main` triggers `deploy-vps.yml`. While that deploy is in flight the
+production containers restart, so **any other open PR's `E2E smoke` job that runs
+during that window will fail against a restarting service** — most visibly as a
+`502` from `app.factorylm.com/quickstart`, which is a real response from a real
+outage-of-seconds, not a flaky assertion and not a defect in the PR being tested.
+
+Observed 2026-07-31: #3034 merged at `01:05:32Z`, its deploy ran at `01:07:00Z`,
+and #3033's smoke ran at `01:07:43Z` and failed on exactly that 502. The endpoint
+returned `200` on re-check minutes later, and smoke on `main` for the same commit
+had passed.
+
+**Checklist item — when merging two or more PRs in one sitting:**
+
+1. Merge the first PR and let `deploy-vps.yml` reach a terminal state.
+2. Confirm the deployed surface is actually back: `curl -sL -o /dev/null -w '%{http_code}'
+   https://app.factorylm.com/quickstart` should be `200` (follow redirects — the bare
+   path answers `308`).
+3. **Then** re-run the next PR's `E2E smoke` job so it grades a settled deployment,
+   and merge on that fresh result — not on a pre-deploy green, and not by waving
+   through a red one.
+
+A smoke failure inside a deploy window is expected and should be re-run; a smoke
+failure *outside* one is a signal and should be read. Distinguishing the two is
+the point of step 2 — never re-run a smoke failure without first checking whether
+the endpoint is genuinely healthy, or a real outage becomes invisible.
