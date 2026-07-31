@@ -123,6 +123,34 @@ does not replace it.** MIRA and Claude must not scan millions of records to lear
 | Materialized model-output eval | `conversation_logger` / `conversation_eval` / `print_autoeval` | — |
 | Ingest contract | `mira-relay/ingest_contract.py` (one-pipeline law) | second ingest normalizer |
 
+## Bravo VLM/OCR → context → runtime → trace (the visual evidence seam)
+
+Bravo's local vision lane is a *producer*, not a runtime. Its output crosses into the one technician
+policy along a single typed seam — the same discipline every other producer follows:
+
+```
+VisionWorker (VLM/OCR, ELECTRICAL_PRINT / NAMEPLATE / EQUIPMENT_PHOTO)
+   │  persists to the VisualSession ledger (ADR-0027, migration 063:
+   │  evidence_item · region_of_interest · observation)
+   ▼
+evidence_from_visual_session(observations, evidence=…, regions=…)   ← pure adapter, dict-in
+   │  materialized_evidence/context_contract.py
+   ▼
+EvidenceItem(kind=PRINT_OBSERVATION, trust=candidate|verified, producer=extractor,
+             evidence_hash=original_hash, page/bbox only when explicit, lineage=None)
+   ▼
+TechnicianContext.evidence   →   sole technician runtime (mira-pipeline / Supervisor)
+   ▼
+decision trace (the cited answer records which PRINT_OBSERVATION items it used)
+```
+
+Guarantees at the crossing (enforced by `tests/test_visual_session_adapter.py`): trust is
+model-`candidate` until a human `review_state` raises it; rejected/superseded observations are
+dropped; source hash, extractor, timestamp, page and bbox survive only when explicitly present and are
+never invented; and vision prose, OCR text, and schematic inference stay distinguishable by producer.
+This adapter is the **only** path from Bravo evidence into context — no second schema, no second
+ledger, no Bravo chat personality (NORTH_STAR.md § "Bravo runtime boundary").
+
 ## Vendor neutrality (ADR A6)
 
 Public evidence contracts are vendor-neutral. DataChain may be evaluated/used **behind** a MIRA-owned

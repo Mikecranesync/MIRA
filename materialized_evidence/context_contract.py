@@ -136,6 +136,13 @@ class EvidenceItem:
     page: int | None = None
     section: str | None = None
     bbox: list[float] | None = None
+    # A NON-GROUNDING producer signal that must reach the policy (e.g. the visual
+    # lane's CONFLICTING / NEEDS_CONTEXT / FIELD_VERIFICATION_REQUIRED). Set ONLY
+    # for states that mean "do not treat this as a settled fact — reconcile or ask
+    # for the next-best evidence" (ADR-0033). None for ordinary grounded evidence,
+    # which renders unchanged. to_prompt_block surfaces it so the signal is never
+    # erased into a plain candidate line.
+    evidence_state: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -268,6 +275,12 @@ def to_prompt_block(ctx: TechnicianContext) -> str:
         if ctx.live.dropped_tag_count:
             lines.append(f"[note: {ctx.live.dropped_tag_count} additional live tags not shown]")
     for item in sorted(ctx.evidence, key=lambda e: (e.kind.value, e.citation_id)):
+        # A non-grounding producer signal (e.g. CONFLICTING) renders right after
+        # trust so the policy sees "not a settled fact" before the claim text —
+        # never erased. Vocabulary-agnostic: only producers that set it (the
+        # visual lane, for the non-grounding trio) surface a marker; grounded
+        # items leave it None and render byte-identically.
+        state = f", {item.evidence_state}" if item.evidence_state else ""
         conf = f", confidence {item.confidence}" if item.confidence is not None else ""
         where = ""
         if item.page is not None:
@@ -275,7 +288,7 @@ def to_prompt_block(ctx: TechnicianContext) -> str:
         if item.section:
             where += f", section {item.section}"
         lines.append(
-            f"Evidence [{item.citation_id}] ({item.kind.value}, {item.trust}{conf}{where}): "
+            f"Evidence [{item.citation_id}] ({item.kind.value}, {item.trust}{state}{conf}{where}): "
             + _payload_line(item)
         )
     for c in ctx.contradictions:
@@ -756,6 +769,185 @@ def evidence_from_technician_corrections(events: list[dict[str, Any]]) -> list[E
                 producer_name="technician_corrections",
                 evidence_hash=hashlib.sha256(anchor.encode("utf-8")).hexdigest(),
                 observed_at=str(when),
+            )
+        )
+    return items
+
+
+# --------------------------------------------------------------------------
+# Bravo runtime boundary — the local VLM/OCR lane is an EVIDENCE PRODUCER, not
+# a second assistant. Its VisualSession ledger (ADR-0027 / migration 063:
+# evidence_item, region_of_interest, observation) adapts IN here to typed
+# candidate PRINT_OBSERVATION items. Same discipline as the adapters above:
+# pure, dict-in, no cross-package import (the bot containers must not import
+# this root package). The visual EvidenceState / review_state string constants
+# are mirrored, not imported — like the FORBIDDEN_ACTION_SUBSTRINGS mirror of
+# agent_registry. Trust is fail-closed: model output is ``candidate`` forever;
+# only the human ``review_state`` raises it. Nothing here is derived from a
+# filename, list order, or prose.
+# --------------------------------------------------------------------------
+# Observation.evidence_state values (mira-bots/shared/visual/evidence_state.py)
+# that mean "not active" — the store's _ACTIVE_FILTER drops exactly these.
+_VISUAL_INACTIVE_STATES = frozenset({"REJECTED", "SUPERSEDED"})
+# Observation.review_state values (the HUMAN gate) that raise trust to verified.
+# "unreviewed" (raw model output) is deliberately absent — see the never-auto-
+# verify law and the Bravo boundary in NORTH_STAR.md.
+_VISUAL_HUMAN_VERIFIED_REVIEW = frozenset({"confirmed", "corrected"})
+# Observation.evidence_state values (mira-bots/shared/visual/evidence_state.py)
+# that are NON-GROUNDING: they mean "the answer is blocked / disputed / needs
+# field verification" — the policy must reconcile or ask for the next-best
+# evidence (ADR-0033), NOT read them as settled facts. These are surfaced on the
+# EvidenceItem (evidence_state) so to_prompt_block never erases the signal into a
+# plain candidate line. CONFLICTING = EvidenceState.requires_next_evidence() ∪
+# NEEDS_CONTEXT; FIELD_VERIFICATION_REQUIRED = the "approvable with field
+# verification" open-item tier. Grounded states (VISIBLE/DOCUMENTED/
+# MACHINE_VERIFIED/LIKELY) carry no signal and render unchanged.
+_VISUAL_NONGROUNDING_STATES = frozenset(
+    {"CONFLICTING", "NEEDS_CONTEXT", "FIELD_VERIFICATION_REQUIRED"}
+)
+
+
+def _visual_bbox(region: dict[str, Any] | None) -> list[float] | None:
+    """Recover [x0, y0, x1, y1] from a region row ONLY when it explicitly holds
+    a rectangle. A stored rect is ``geometry = {"type": "bbox", x, y, w, h}``
+    (region_schema.to_storage_geometry, normalized 0..1) → ``[x, y, x+w, y+h]``.
+    An explicit verbatim ``bbox`` list of four numbers is carried as-is. Point /
+    polygon / ellipse geometries carry NO bbox — we never synthesize a
+    rectangle. Returns None when nothing rectangular is explicitly present."""
+    if not region:
+        return None
+    geom = region.get("geometry") or {}
+    # Verbatim 4-list, on the region or its geometry (mirrors the printsense
+    # graph adapter's bbox handling exactly).
+    for raw in (region.get("bbox"), geom.get("bbox") if isinstance(geom, dict) else None):
+        if (
+            isinstance(raw, (list, tuple))
+            and len(raw) == 4
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in raw)
+        ):
+            return [float(v) for v in raw]
+    # Stored rect {type: bbox, x, y, w, h} → corner form, rounded to the region
+    # schema's precision so x+w / y+h carry no float noise.
+    if isinstance(geom, dict) and geom.get("type") == "bbox":
+        xs = [geom.get("x"), geom.get("y"), geom.get("w"), geom.get("h")]
+        if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in xs):
+            x, y, w, h = (float(v) for v in xs)
+            return [round(x, 6), round(y, 6), round(x + w, 6), round(y + h, 6)]
+    return None
+
+
+def evidence_from_visual_session(
+    observations: list[dict[str, Any]],
+    *,
+    evidence: list[dict[str, Any]] | None = None,
+    regions: list[dict[str, Any]] | None = None,
+) -> list[EvidenceItem]:
+    """Serialized VisualSession ledger rows → PRINT_OBSERVATION items.
+
+    ``observations`` is the citable unit (the ``observation`` table — one
+    atomic visual claim each). ``evidence`` and ``regions`` are the joined
+    ``evidence_item`` / ``region_of_interest`` rows they reference, supplying
+    the source hash / page and the bounding box respectively. All three are
+    plain dicts with the migration-063 column names (as
+    ``mira-bots/shared/visual/models.py`` ``from_row`` reads them).
+
+    Trust / provenance guarantees (Bravo is an evidence lane, never an oracle):
+    - ``trust`` is ``candidate`` unless the row's HUMAN ``review_state`` is
+      ``confirmed``/``corrected`` — a model's own ``evidence_state`` (even
+      MACHINE_VERIFIED) or ``confidence`` can NEVER promote it. Model output
+      cannot self-certify as human-verified truth.
+    - Rejected / superseded observations are DROPPED (``evidence_state`` in
+      {REJECTED, SUPERSEDED}, ``review_state == rejected``, or ``superseded_by``
+      set) — mirrors the store's ``_ACTIVE_FILTER``.
+    - Rows with no citable text are DROPPED (fail-closed).
+    - ``producer_name`` = the row's ``extractor`` (vision_worker / ocr /
+      schematic_intelligence / …) so vision prose, OCR text, and schematic
+      inference stay distinguishable. ``producer_version`` (the VLM/OCR model)
+      is carried ONLY from an explicit ``model_version`` key — never inferred.
+    - ``evidence_hash`` is the source image's ``original_hash`` when present;
+      ``page`` comes from the evidence ``page_ref`` only when it is an explicit
+      integer; ``bbox`` only when the region explicitly holds a rectangle.
+      Nothing (page, bbox, hash, model version, asset) is derived from a
+      filename, list order, or prose. Missing → absent, never invented.
+    - ``document_lineage_key`` is None: a session observation is tenant-transient
+      runtime evidence, not a corpus document. Human review, not this adapter,
+      promotes anything to durable truth.
+    """
+    evidence_by_id = {str(e["evidence_id"]): e for e in (evidence or []) if e.get("evidence_id")}
+    regions_by_id = {str(r["region_id"]): r for r in (regions or []) if r.get("region_id")}
+
+    items: list[EvidenceItem] = []
+    for obs in observations:
+        state = str(obs.get("evidence_state") or "").upper()
+        review = str(obs.get("review_state") or "unreviewed").lower()
+        if state in _VISUAL_INACTIVE_STATES or review == "rejected" or obs.get("superseded_by"):
+            continue
+        # A durable audit anchor is mandatory. Without BOTH ids the source_locator
+        # is the un-citable "visual_session:#observation:" that validate_context()
+        # would still accept — drop the row, exactly as the prior-decision /
+        # correction adapters drop id-less rows.
+        session_id = str(obs.get("session_id") or "")
+        obs_id = str(obs.get("observation_id") or "")
+        if not session_id or not obs_id:
+            continue
+        text = str(obs.get("normalized_value") or obs.get("raw_value") or "").strip()
+        if not text:
+            continue
+
+        tenant_id = str(obs.get("tenant_id") or "")
+        obs_ev_id = str(obs.get("evidence_id") or "")
+
+        # Provenance may only ride from ledger rows that PROVABLY belong to this
+        # observation. Migration 063 / the store do not enforce these FKs, so a
+        # malformed row could otherwise emit image A's hash/page with image B's
+        # bounding box. Carry the evidence (hash/page) only when it shares this
+        # observation's tenant AND session; carry the region (bbox) only when the
+        # evidence link is valid AND the region shares this tenant and points at
+        # the SAME evidence. Any mismatch drops that provenance — never the claim.
+        ev = evidence_by_id.get(obs_ev_id) if obs_ev_id else None
+        if ev is not None and (
+            str(ev.get("tenant_id") or "") != tenant_id
+            or str(ev.get("session_id") or "") != session_id
+        ):
+            ev = None
+        region = regions_by_id.get(str(obs.get("region_id"))) if obs.get("region_id") else None
+        if region is not None and (
+            ev is None
+            or str(region.get("tenant_id") or "") != tenant_id
+            or str(region.get("evidence_id") or "") != obs_ev_id
+        ):
+            region = None
+
+        # producer_version: explicit model_version only (observation metadata,
+        # then the evidence capture_meta). "model" alone is ambiguous (an
+        # equipment model number is not a VLM version) and is NOT accepted.
+        obs_meta = obs.get("metadata") or {}
+        cap_meta = (ev or {}).get("capture_meta") or {}
+        model_version = obs_meta.get("model_version") or cap_meta.get("model_version") or ""
+
+        items.append(
+            EvidenceItem(
+                kind=EvidenceKind.PRINT_OBSERVATION,
+                citation_id=f"V{len(items) + 1}",
+                payload={"summary": text, "obs_kind": str(obs.get("obs_kind") or "entity")},
+                source_locator=f"visual_session:{session_id}#observation:{obs_id}",
+                confidence=obs.get("confidence"),
+                trust=("verified" if review in _VISUAL_HUMAN_VERIFIED_REVIEW else "candidate"),
+                producer_name=str(obs.get("extractor") or "visual_session"),
+                producer_version=str(model_version),
+                evidence_hash=(ev.get("original_hash") if ev else None),
+                observed_at=(str(obs["created_at"]) if obs.get("created_at") else None),
+                page=_as_int(ev.get("page_ref")) if ev else None,
+                bbox=_visual_bbox(region),
+                # Surface a NON-GROUNDING state so the policy reconciles / asks for
+                # the next-best evidence instead of reading a disputed or
+                # unverified claim as a settled fact (ADR-0033). Grounded states
+                # carry no signal and render unchanged. Mapping these into
+                # TechnicianContext.contradictions / .unknowns is the context
+                # assembler's job (the future runtime slice) — this adapter
+                # returns list[EvidenceItem] and cannot populate context-level
+                # fields without inventing the other side of a contradiction.
+                evidence_state=(state if state in _VISUAL_NONGROUNDING_STATES else None),
             )
         )
     return items

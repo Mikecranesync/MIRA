@@ -1,3 +1,27 @@
+# Hot Cache — 2026-07-30 — Bravo VisualSession → context evidence seam (draft PR #3016, rebased on main + review fixes)
+
+**One technician brain, many evidence producers (ADR-0033):** the Bravo local VLM/OCR lane is a typed
+**evidence producer** into the common context contract — never a second assistant. Pure adapter
+`evidence_from_visual_session()` in `materialized_evidence/context_contract.py` turns serialized
+VisualSession ledger rows (migration 063: observation + evidence_item + region_of_interest) into
+`EvidenceKind.PRINT_OBSERVATION` candidate items. Trust is fail-closed (model output stays `candidate`;
+only human `review_state` promotes; rejected/superseded dropped); page/bbox/hash/model survive only when
+explicitly present, never invented.
+
+- **PR #3016 (DRAFT, do not merge)** — rebased onto `main` (was stacked on #3011, now merged). Targets `main`.
+- **Reviewer P1/P2 fixes applied:** (P1a) non-grounding states `CONFLICTING`/`NEEDS_CONTEXT`/
+  `FIELD_VERIFICATION_REQUIRED` are preserved on the item and rendered, no longer erased into plain
+  candidate evidence; (P1b) provenance is gated on tenant+session+evidence FK linkage so hash/page from
+  image A can't ride with a bbox from image B; (P2) observations missing `session_id`/`observation_id`
+  are dropped (no un-anchored citation). Mapping the trio into `contradictions`/`unknowns` is the
+  context-assembler's job (future runtime slice) — the adapter returns `list[EvidenceItem]`.
+- **Not wired** into engine/Telegram/Hub/providers — seam only; central runtime migration is a later
+  slice. No new service/schema/ledger/chatbot/fine-tune/bus. Read-only OT preserved.
+- **Worktree (intact while PR active):** `/Users/bravonode/MIRA-bravo-vision-evidence-spine`, branch
+  `codex/bravo-vision-evidence-spine`.
+
+---
+
 # Hot Cache — 2026-07-30 (later) — Unification Program PRD + general-family scale-up (v3.234.0)
 
 Two things landed after the photo-memory ship below.
