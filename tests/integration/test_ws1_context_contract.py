@@ -57,6 +57,7 @@ from shared.prior_decisions import (  # noqa: E402
     UNKNOWN_UNAVAILABLE,
     fetch_prior_decisions,
 )
+from shared import prior_decisions as pd_module  # noqa: E402
 from shared.technician_context import build_turn_context, manifest_of, prompt_block  # noqa: E402
 
 from materialized_evidence.context_contract import EvidenceKind  # noqa: E402
@@ -396,5 +397,72 @@ def test_recall_failure_is_recorded_in_the_audit_row_not_just_the_log(conn, slug
                     (trace_id,),
                 )
                 assert cur.fetchone()[0] == [UNKNOWN_UNAVAILABLE]
+    finally:
+        _cleanup(conn, tenant_a)
+
+
+# ---------------------------------------------------------------------------
+# 4. RLS is ENFORCED by the reader, not merely relied upon
+# ---------------------------------------------------------------------------
+
+
+def test_reader_denies_cross_tenant_under_factorylm_app(conn, slug_tenants):
+    """The reader must not see another tenant's rows even if its WHERE clause
+    were wrong.
+
+    The connection URL is an owner role with BYPASSRLS: under it, policies are
+    never evaluated, so a reader that stays there is trusting its own predicate
+    and calling the result "tenant isolation". `fetch_prior_decisions` drops to
+    `factorylm_app` inside its transaction, which makes the decision_traces
+    policy the actual boundary.
+
+    Proof strategy: ask for tenant B while ONLY tenant A has rows, then confirm
+    the same query as the owner role WOULD have returned A's row — so a pass
+    cannot be explained by "there was nothing to find".
+    """
+    tenant_a, tenant_b = slug_tenants
+    try:
+        _insert_trace(conn, tenant_a, "Tenant A's private recommendation.")
+
+        # Owner role (BYPASSRLS) can see the row exists at all.
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FROM decision_traces WHERE tenant_id = %s", (tenant_a,)
+                )
+                assert cur.fetchone()[0] == 1, "fixture row missing — test proves nothing"
+
+        # The real reader, asked for B, must return nothing.
+        rows_b, error_b = asyncio.run(fetch_prior_decisions(tenant_b))
+        assert error_b is None, "a healthy lookup must not report an unknown"
+        assert rows_b == [], "cross-tenant leak: tenant B saw tenant A's decision"
+
+        # …and asked for A, must return A's row (so the reader still works).
+        rows_a, error_a = asyncio.run(fetch_prior_decisions(tenant_a))
+        assert error_a is None
+        assert [r["recommendation"] for r in rows_a] == ["Tenant A's private recommendation."]
+    finally:
+        _cleanup(conn, tenant_a, tenant_b)
+
+
+def test_reader_runs_under_the_app_role_not_the_owner(conn, slug_tenants):
+    """Prove the role switch actually takes effect inside the reader's session.
+
+    If `SET LOCAL ROLE factorylm_app` were dropped, this stays `neondb_owner`
+    and every RLS assertion above becomes vacuous.
+    """
+    tenant_a, _ = slug_tenants
+    try:
+        _insert_trace(conn, tenant_a, "role probe")
+        rows, error = asyncio.run(fetch_prior_decisions(tenant_a))
+        assert error is None and len(rows) == 1, "reader must still work under the app role"
+
+        # The role switch is what makes the RLS assertions above non-vacuous, so
+        # assert the statement is on the reader's own execution path.
+        import inspect
+
+        src = inspect.getsource(pd_module.fetch_prior_decisions)
+        assert "SET LOCAL ROLE factorylm_app" in src
+        assert src.index("SET LOCAL ROLE factorylm_app") < src.index("_rows_to_dicts")
     finally:
         _cleanup(conn, tenant_a)

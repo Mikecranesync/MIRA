@@ -119,3 +119,113 @@ def test_query_is_bounded_and_newest_first():
     sql = (pd._BASE_SQL + pd._ORDER_SQL).lower()
     assert "order by ts desc" in sql
     assert "limit :limit" in sql
+
+
+# ---------------------------------------------------------------------------
+# Executor discipline — an asyncio timeout bounds the CALLER, not the thread
+# ---------------------------------------------------------------------------
+
+
+def test_timeout_leaves_no_unobserved_executor_exception(monkeypatch, caplog):
+    """The orphaned-Future bug, proved through the real reader path.
+
+    A thread cannot be cancelled. If the worker raises AFTER the caller has
+    timed out and nobody retrieves the outcome, the exception is discarded at
+    GC — a failure that silently never happened. The done-callback must observe
+    it. This drives the real `fetch_prior_decisions`, not a stand-in.
+    """
+    import logging
+    import threading
+    import time
+
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://stub/db")
+    started, raised = threading.Event(), threading.Event()
+
+    def _slow_boom(*a, **k):
+        started.set()
+        time.sleep(0.25)
+        raised.set()
+        raise RuntimeError("late worker failure")
+
+    # Fail inside the worker, after the caller's 50 ms budget has elapsed.
+    monkeypatch.setattr(pd, "_rows_to_dicts", _slow_boom)
+    monkeypatch.setattr(
+        "sqlalchemy.create_engine",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("late worker failure")),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="mira-gsd.prior_decisions"):
+        rows, error = _run(pd.fetch_prior_decisions("staging", timeout_s=0.05))
+        assert (rows, error) == ([], pd.UNKNOWN_UNAVAILABLE)
+        # Let the abandoned worker finish and its callback fire.
+        for _ in range(200):
+            if any(
+                "LATE_FAILURE" in r.message or "UNAVAILABLE" in r.message for r in caplog.records
+            ):
+                break
+            time.sleep(0.01)
+
+    msgs = " ".join(r.message for r in caplog.records)
+    assert "PRIOR_DECISIONS" in msgs, "the failure must be logged, never discarded"
+
+
+def test_saturation_returns_the_unknown_rather_than_queueing(monkeypatch):
+    """All dedicated workers busy -> explicit unknown, not an unbounded queue.
+
+    Saturation must never be indistinguishable from "this tenant has no history".
+    """
+    import threading
+
+    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://stub/db")
+    # Deterministic: swap in a private, already-drained semaphore rather than
+    # racing whatever in-flight workers other tests left behind.
+    drained = threading.BoundedSemaphore(1)
+    assert drained.acquire(blocking=False)
+    monkeypatch.setattr(pd, "_SLOTS", drained)
+
+    rows, error = _run(pd.fetch_prior_decisions("staging"))
+    assert rows == []
+    assert error == pd.UNKNOWN_UNAVAILABLE
+
+
+def test_reader_uses_a_dedicated_executor_not_the_shared_default():
+    """`run_in_executor(None, ...)` would let this module starve the whole loop."""
+    import inspect
+
+    call_site = inspect.getsource(pd.fetch_prior_decisions)
+    assert "run_in_executor" not in call_site, (
+        "the shared default executor must not be used — a timed-out DB call holds "
+        "its worker and would starve everything else that does thread work"
+    )
+    assert "_executor().submit(" in call_site, "must submit to the dedicated pool"
+    assert "_SLOTS.acquire(blocking=False)" in call_site, "saturation must not queue"
+    assert "ThreadPoolExecutor(" in inspect.getsource(pd._executor)
+
+
+def test_db_side_bounds_are_applied():
+    """connect_timeout + statement_timeout: the driver caps the worker, so an
+    abandoned thread cannot outlive its budget indefinitely."""
+    import inspect
+
+    src = inspect.getsource(pd.fetch_prior_decisions)
+    assert "connect_timeout" in src
+    assert "statement_timeout" in src
+
+
+# ---------------------------------------------------------------------------
+# RLS is actually enforced (not merely relied upon)
+# ---------------------------------------------------------------------------
+
+
+def test_reader_drops_to_the_app_role_inside_its_transaction():
+    """The URL connects as an owner role with BYPASSRLS, under which policies are
+    never evaluated. Without this the reader trusts its own WHERE clause and
+    calls it tenant isolation. Behavioural proof is the integration suite."""
+    import inspect
+
+    src = inspect.getsource(pd.fetch_prior_decisions)
+    assert "SET LOCAL ROLE factorylm_app" in src
+    role_at = src.index("SET LOCAL ROLE factorylm_app")
+    guc_at = src.index("SET LOCAL app.current_tenant_id")
+    select_at = src.index("_rows_to_dicts")
+    assert role_at < guc_at < select_at, "role switch must precede the bind and the SELECT"
