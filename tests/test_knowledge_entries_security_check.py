@@ -11,7 +11,7 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools" / "qa" / "security"))
 
-from check_knowledge_entries_filters import _classify_read
+from check_knowledge_entries_filters import _classify_read, _snippet_matches, check_reads
 
 
 def test_hybrid_pattern_is_private_false_or_tenant():
@@ -183,6 +183,84 @@ def test_library_tenant_only_known_gap():
     assert classification == "TENANT-ONLY", f"Expected TENANT-ONLY, got {classification}: {reason}"
 
 
+# ── allowlist key integrity ───────────────────────────────────────────────────
+#
+# The allowlist key is `file:line`, which is NOT stable under edits. Inserting or
+# deleting lines above a read slides it onto a NEIGHBOUR's approved line; when the
+# classifications match, nothing else in the checker notices and the read runs
+# under a review written for a different query. `query_snippet` was already being
+# written into the allowlist and never read back — comparing it is what turns it
+# from decoration into the content key the line number cannot be.
+
+
+def _read(line_num, sql, classification="TENANT-ONLY"):
+    return {
+        "file": "svc.py",
+        "line_num": line_num,
+        "query": sql,
+        "classification": classification,
+        "reason": "test",
+    }
+
+
+def _entry(sql, classification="TENANT-ONLY"):
+    return {
+        "approved_classification": classification,
+        "reason": "reviewed",
+        "query_snippet": sql,
+    }
+
+
+SQL_A = 'cur.execute("SELECT title FROM knowledge_entries WHERE tenant_id = %s")'
+SQL_B = 'cur.execute("SELECT source_url FROM knowledge_entries WHERE tenant_id = %s")'
+
+
+def test_matching_snippet_is_clean():
+    errors, code = check_reads([_read(4, SQL_A)], {"approved": {"svc.py:4": _entry(SQL_A)}})
+    assert code == 0, errors
+    assert errors == [], errors
+
+
+def test_a_shifted_read_cannot_inherit_a_neighbours_approval():
+    """The defect: read B slides onto read A's approved line. Same classification,
+    so the pre-existing checks stay silent — this must now be loud."""
+    errors, code = check_reads([_read(4, SQL_B)], {"approved": {"svc.py:4": _entry(SQL_A)}})
+    assert code == 1, "a misattributed approval must fail the build"
+    assert any("DIFFERENT query" in e for e in errors), errors
+
+
+def test_yaml_block_indentation_is_not_a_difference():
+    """The snippet round-trips through a YAML `|` block, so it carries the
+    template's indentation. That must not read as a changed query."""
+    assert _snippet_matches("      " + SQL_A + "\n", SQL_A)
+
+
+def test_trailing_context_does_not_match_a_neighbour():
+    """`_extract_query_context` captures the read line PLUS trailing context, so a
+    read's context routinely contains the NEXT read's line. A containment
+    comparison would silently accept the neighbour; anchoring on the first line
+    does not."""
+    context_of_a = SQL_A + "\ndef b(cur, t):\n    " + SQL_B
+    assert _snippet_matches(SQL_A, context_of_a)
+    assert not _snippet_matches(SQL_B, context_of_a)
+
+
+def test_an_entry_without_a_snippet_is_still_accepted():
+    """A ratchet, not a flag day: entries predating this check cannot be verified,
+    and must not fail the ~135 live entries already in the allowlist."""
+    entry = {"approved_classification": "TENANT-ONLY", "reason": "reviewed"}
+    errors, code = check_reads([_read(4, SQL_A)], {"approved": {"svc.py:4": entry}})
+    assert code == 0, errors
+
+
+def test_classification_mismatch_still_wins():
+    """The stronger, pre-existing signal must not be masked by the new one."""
+    errors, _ = check_reads(
+        [_read(4, SQL_B, "UNFILTERED")], {"approved": {"svc.py:4": _entry(SQL_A)}}
+    )
+    assert any("Classification mismatch" in e for e in errors), errors
+
+
 if __name__ == "__main__":
     tests = [
         test_hybrid_pattern_is_private_false_or_tenant,
@@ -200,6 +278,12 @@ if __name__ == "__main__":
         test_multiline_hybrid_with_additional_filters,
         test_asset_chat_rag_hybrid,
         test_library_tenant_only_known_gap,
+        test_matching_snippet_is_clean,
+        test_a_shifted_read_cannot_inherit_a_neighbours_approval,
+        test_yaml_block_indentation_is_not_a_difference,
+        test_trailing_context_does_not_match_a_neighbour,
+        test_an_entry_without_a_snippet_is_still_accepted,
+        test_classification_mismatch_still_wins,
     ]
 
     passed = 0

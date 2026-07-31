@@ -220,6 +220,50 @@ def load_allowlist(allowlist_path: Path) -> dict:
         return {}
 
 
+def _norm_snippet(text) -> str:
+    """The read's OWN line, whitespace-normalized.
+
+    Two reasons this takes only the first line rather than the whole snippet:
+
+    1. YAML block-scalar indentation is not a difference — normalizing whitespace
+       removes it.
+    2. `_extract_query_context` captures the read line plus TRAILING context, and
+       that tail keeps growing until a statement terminator. So a read's context
+       routinely CONTAINS the next read's line, and a whole-snippet containment
+       comparison silently matches a neighbour. The first line is the one the
+       `file:line` key actually points at, and the one that identifies the read.
+    """
+    for line in str(text or "").splitlines():
+        if line.strip():
+            return " ".join(line.split())
+    return ""
+
+
+def _snippet_matches(approved, found: str) -> bool:
+    """Is the approval attached to the query actually sitting at that line?
+
+    The allowlist key is `file:line`, which is not stable under edits: inserting or
+    deleting lines above a read slides it onto a NEIGHBOUR's approved line. When
+    both carry the same classification, nothing else in this checker notices — the
+    read then runs under a review written for a different query, and a human fixing
+    the accompanying loud complaints sees green and never re-reads it.
+
+    `query_snippet` was already being WRITTEN into the allowlist by
+    `generate_allowlist_template` and never read back. Comparing it is what turns
+    it from decoration into the content key the line number cannot be.
+
+    An entry with NO snippet (hand-added, or written before this check existed)
+    cannot be verified, so it is accepted — this must not fail the 148 existing
+    entries. It is a ratchet: every entry the template generates carries one.
+    """
+    if approved is None:
+        return True
+    a, f = _norm_snippet(approved), _norm_snippet(found)
+    if not a:
+        return True
+    return a == f
+
+
 def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]:
     """
     Check reads against the law and allowlist.
@@ -251,6 +295,17 @@ def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]
                         f"   Expected: {entry.get('approved_classification')}\n"
                         f"   Found: {classification}\n"
                         f"   Note: The read pattern may have changed"
+                    )
+                elif not _snippet_matches(entry.get("query_snippet"), read["query"]):
+                    errors.append(
+                        f"⚠️  {key} - Approval is attached to a DIFFERENT query\n"
+                        f"   Approved:  {_norm_snippet(entry.get('query_snippet'))[:120]}\n"
+                        f"   Found:     {_norm_snippet(read['query'])[:120]}\n"
+                        f"   Note: keys are file:line, so inserting or deleting lines above a\n"
+                        f"         read slides it onto a NEIGHBOUR's approved line. The\n"
+                        f"         classification still matches, so without this check the read\n"
+                        f"         runs under a review written for someone else's query.\n"
+                        f"   Action: re-key the entry and RE-READ the query before approving it"
                     )
                 elif "TODO" in str(entry.get("reason", "")):
                     # enumerated debt, not approval — non-fatal but counted
