@@ -47,21 +47,31 @@ logger = system.util.getLogger("FactoryLM.Mira.TagStream")
 # Collector core import (pure logic — see api/tags/collector.py)
 # ---------------------------------------------------------------------------
 
+# FLAT FIRST — that is the route that is actually proven on 8.3.4.
+#
+# `ignition/tools/webdev_build.py` deploys these to `ignition/script-python/<name>/`,
+# i.e. as FLAT top-level script-library modules, and a live gateway probe
+# confirmed a resource can import them by bare name:
+#     {"from_signing_import": "OK: <function build_headers at 0x8e>",
+#      "import_allowlist":    "OK: allowlist"}
+# The `factorylm` PACKAGE form (script-python/factorylm/<name>/) has never been
+# verified on this gateway, so it is the FALLBACK, not the preference — trying
+# it first meant the working route was only ever reached via an ImportError.
 try:
-    from factorylm import gateway_live_snapshot   # recommended: project script library
+    import gateway_live_snapshot                  # deployed: flat script library
 except ImportError:
     try:
-        import gateway_live_snapshot              # flat fallback (script path)
+        from factorylm import gateway_live_snapshot   # legacy package layout
     except ImportError:
         gateway_live_snapshot = None
         # logged in _read_readings; the stream refuses to fall back to a second
         # read path, because a second read path is the defect being removed.
 
 try:
-    from factorylm import collector            # recommended: project script library
+    import collector                              # deployed: flat script library
 except ImportError:
     try:
-        import collector                       # flat fallback (modules on script path)
+        from factorylm import collector           # legacy package layout
     except ImportError:
         collector = None
         logger.error(

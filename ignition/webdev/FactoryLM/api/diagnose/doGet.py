@@ -20,9 +20,23 @@ import sys as _sys
 
 
 def _add_sibling_paths():
-    """Make diagnose_core / tag_topic_map (here) and allowlist (../tags) importable,
-    matching the chat handler's sys.path idiom for WebDev resources."""
-    here = _os.path.dirname(_os.path.abspath(__file__))
+    """Make the repo's source layout importable when running OUTSIDE a Gateway.
+
+    This is a DEV/TEST convenience only. Inside an Ignition WebDev resource
+    `__file__` is undefined (the body is compiled from a string via
+    ScriptManager.compileFunction, never loaded from a file), and the resource's
+    own directory is never on sys.path — so there is nothing here for this
+    function to do. It was previously called unguarded at the top of doGet,
+    which raised NameError and returned HTTP 500 on every diagnose call.
+
+    On a Gateway the modules below resolve as FLAT project script-library names,
+    deployed by ignition/tools/webdev_build.py. This function must therefore
+    never be load-bearing: it tries, and on a Gateway it silently does nothing.
+    """
+    try:
+        here = _os.path.dirname(_os.path.abspath(__file__))
+    except NameError:
+        return  # WebDev resource: flat script-library imports, no path setup
     tags_dir = _os.path.join(here, "..", "tags")
     for d in (here, tags_dir):
         if d not in _sys.path:

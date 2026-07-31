@@ -214,12 +214,27 @@ class TestResolveAllowlistPath:
         result = resolve_allowlist_path()
         assert result == allowlist_file
 
-    def test_env_var_nonexistent_falls_through(self, monkeypatch):
+    def test_env_var_nonexistent_fails_closed(self, monkeypatch):
+        """DELIBERATE BEHAVIOUR CHANGE.
+
+        This test previously asserted that an unreadable MIRA_ALLOWLIST_PATH
+        *falls through* to the default search path. That is the dangerous
+        reading: an operator who points MIRA at a curated allowlist and typos
+        the path silently gets a DIFFERENT allowlist — the install default, or
+        the in-repo dev copy — and never learns the file they authored was
+        ignored. Tags keep flowing, governed by a list nobody chose.
+
+        An explicit override that does not resolve now raises AllowlistError,
+        which every caller maps to an empty allowlist (drop every tag).
+        """
         monkeypatch.setenv("MIRA_ALLOWLIST_PATH", "/does/not/exist.json")
-        # Should fall through to other candidates (returns None or a real path)
+        with pytest.raises(AllowlistError):
+            resolve_allowlist_path()
+
+    def test_unset_env_var_still_falls_through_to_defaults(self, monkeypatch):
+        """The new strictness must not break the ordinary path."""
+        monkeypatch.delenv("MIRA_ALLOWLIST_PATH", raising=False)
         result = resolve_allowlist_path()
-        # We can't assert a specific path here since it depends on the environment;
-        # just assert it doesn't crash and returns None or a string.
         assert result is None or isinstance(result, str)
 
     def test_repo_relative_path_found(self):

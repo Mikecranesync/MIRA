@@ -25,7 +25,12 @@ import sys
 import time
 
 # allowlist.py is a same-directory sibling.
-from allowlist import load_allowlist, resolve_allowlist_path, tag_in_allowlist
+from allowlist import (
+    AllowlistError,
+    load_allowlist,
+    resolve_allowlist_path,
+    tag_in_allowlist,
+)
 
 # signing.py lives in api/chat/ — add it to the path so we reuse the canonical
 # HMAC signer rather than duplicating it. Same relative-path pattern allowlist.py
@@ -106,8 +111,20 @@ def filter_allowlisted(readings, allowlist):
 
 def load_allowlist_set():
     """Resolve + load the approved_tags allowlist. Fail-closed: returns an
-    empty set (drops all tags) when no allowlist file is found."""
-    path = resolve_allowlist_path()
+    empty set (drops all tags) when no allowlist file is found.
+
+    A configured-but-unresolvable MIRA_ALLOWLIST_PATH also yields the empty set
+    rather than a different default allowlist. Both this and the chat adapter
+    are read by callers that treat "empty" as "drop everything", so the
+    misconfiguration degrades evidence instead of quietly substituting a list
+    the operator did not choose. The caller reports it: the stream timer logs
+    "no allowlisted tags", and collect_live_snapshot returns
+    allowlist_loaded=False, which doPost.py logs at ERROR.
+    """
+    try:
+        path = resolve_allowlist_path()
+    except AllowlistError:
+        return set()
     if not path:
         return set()
     return load_allowlist(path)

@@ -14,16 +14,33 @@ class AllowlistError(Exception):
 _ALLOWLIST_CACHE = None
 _ALLOWLIST_PATH = None
 
-# Default search paths, in priority order. The MIRA_ALLOWLIST_PATH env var
-# wins when set; otherwise we walk well-known Ignition install locations,
-# then fall back to the in-repo copy for dev/test.
+# THE authoritative runtime location of the allowlist, relative to the Ignition
+# DATA directory. Deployment writes here; this loader reads here. One value,
+# imported by both, so they cannot drift.
+#
+# Deliberately PROJECT-INDEPENDENT. The old list also searched
+# `data/projects/factorylm/…`, which encodes a project named `factorylm` that
+# does not exist anywhere: `deploy_ignition.ps1` installs the project as
+# **ConveyorMIRA**, and the collector project on the bench gateway is
+# **FactoryLMCollector**. A scripted deploy therefore wrote tags where the
+# loader never looked, so every tag was dropped — correctly fail-closed, but for
+# the wrong reason and with no way to tell the two apart. Keying off the data
+# dir instead of a project name removes that class of mismatch entirely.
+#
+# `ignition/tools/webdev_build.py` imports RUNTIME_ALLOWLIST_RELPATH rather than
+# repeating the string, and a test asserts the deploy target and this loader
+# agree.
+RUNTIME_ALLOWLIST_RELPATH = "factorylm/approved_tags.json"
+
+# Well-known Ignition data directories, in priority order.
+IGNITION_DATA_DIRS = [
+    "C:/Program Files/Inductive Automation/Ignition/data",
+    "/usr/local/bin/ignition/data",
+    "/var/lib/ignition/data",
+]
+
 _DEFAULT_PATHS = [
-    "C:/Program Files/Inductive Automation/Ignition/data/factorylm/approved_tags.json",
-    "C:/Program Files/Inductive Automation/Ignition/data/projects/factorylm/approved_tags.json",
-    "/usr/local/bin/ignition/data/factorylm/approved_tags.json",
-    "/usr/local/bin/ignition/data/projects/factorylm/approved_tags.json",
-    "/var/lib/ignition/data/factorylm/approved_tags.json",
-    "/var/lib/ignition/data/projects/factorylm/approved_tags.json",
+    "%s/%s" % (d, RUNTIME_ALLOWLIST_RELPATH) for d in IGNITION_DATA_DIRS
 ]
 
 # In-repo fallback for dev/test. Ignition's Jython script library does not
@@ -45,10 +62,26 @@ def resolve_allowlist_path():
     Return the first allowlist path that exists, or None if none found.
 
     Order: MIRA_ALLOWLIST_PATH env > _DEFAULT_PATHS (Ignition install > repo dev).
+
+    An EXPLICITLY CONFIGURED override that does not resolve raises
+    AllowlistError — it does NOT fall through to the defaults. Falling through
+    is the dangerous behaviour: an operator who points MIRA at a curated
+    allowlist and typos the path would silently get a *different* allowlist (the
+    install default, or the in-repo dev copy) and never learn that the file they
+    authored was ignored. Tags would flow, just governed by the wrong list.
+    Refusing is the only safe reading of "I told you which file to use."
+
+    Callers map AllowlistError to an empty allowlist (fail-closed, no snapshot).
     """
     override = os.environ.get("MIRA_ALLOWLIST_PATH", "")
-    if override and os.path.isfile(override):
-        return override
+    if override:
+        if os.path.isfile(override):
+            return override
+        raise AllowlistError(
+            "MIRA_ALLOWLIST_PATH is set to %r but that file does not exist or is "
+            "not readable. Refusing to fall back to a default allowlist — fix the "
+            "path or unset the variable." % override
+        )
     for candidate in _DEFAULT_PATHS:
         if os.path.isfile(candidate):
             return candidate
@@ -126,7 +159,15 @@ def _get_cached_allowlist():
     global _ALLOWLIST_CACHE, _ALLOWLIST_PATH
     if _ALLOWLIST_CACHE is not None:
         return _ALLOWLIST_CACHE
-    path = resolve_allowlist_path()
+    try:
+        path = resolve_allowlist_path()
+    except AllowlistError:
+        # A configured-but-unresolvable MIRA_ALLOWLIST_PATH. Fail-closed here
+        # too: rejecting every tag is the same answer as "no allowlist", and it
+        # is emphatically NOT "use some other allowlist instead".
+        _ALLOWLIST_CACHE = set()
+        _ALLOWLIST_PATH = None
+        return _ALLOWLIST_CACHE
     if path is None:
         # Fail-closed: empty allowlist rejects every tag.
         _ALLOWLIST_CACHE = set()
