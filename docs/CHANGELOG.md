@@ -1,4 +1,4 @@
-### v3.235.0 (2026-07-30) - feat(ingest): materialize batch document evidence
+### v3.236.0 (2026-07-30) - feat(ingest): materialize batch document evidence
 
 The first working consumer of the Materialized Evidence contract (ADR-0029). `materialized_evidence/` was contract-only; the **batch OEM-manual lane** (`mira-crawler/tasks/full_ingest_pipeline.py`) now compiles two typed **`candidate`** receipts per document via the new `materialized_evidence/document_compiler.py` — `PageIdentityEvidence` (byte identity of the actual downloaded bytes) and `OCREvidence` (what the extractor genuinely did), the second descending from the first so a re-extraction invalidates only the extraction layer.
 
