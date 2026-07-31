@@ -616,6 +616,55 @@ class TestJournalReplayRefusals:
         # …and once the disk is fixed, the very same entry replays
         assert replay_evidence_journal(str(tmp_path / "ev.json")).replayed == 1
 
+    @pytest.mark.parametrize(
+        "template",
+        ["cannot open '{url}'", 'failed: "{url}"', "url={url}, retrying", "see ({url})."],
+    )
+    def test_a_transient_failure_reason_is_redacted_too(self, tmp_path, template):
+        """`last_replay_error` is a NEW durable surface, and it holds an exception
+        message — the shape that already leaked once in this PR (a URL quoted inside
+        the prose escaped the per-token scrubber). The journal is exactly as durable
+        as the registry, so the same floor applies to a retry reason."""
+        url = "https://oem.example.test/dl/gs10.pdf?token=SECRETVALUE"
+        report = _report()
+        report.pdf_url = url
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("read-only filesystem"),
+        ):
+            _run(tmp_path, report=report)
+
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError(template.format(url=url)),
+        ):
+            result = replay_evidence_journal(str(tmp_path / "ev.json"))
+
+        assert result.pending == 1
+        raw = evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8")
+        assert "SECRETVALUE" not in raw
+        assert "token=" not in raw
+        assert "https://oem.example.test/dl/gs10.pdf" in raw  # provenance survives
+        assert all("SECRETVALUE" not in n for n in result.notes)
+
+    def test_a_blocked_reason_is_redacted_too(self, tmp_path):
+        """Same floor on the other durable outcome."""
+        url = "https://oem.example.test/dl/gs10.pdf?token=SECRETVALUE"
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("read-only filesystem"),
+        ):
+            _run(tmp_path)
+        with patch(
+            "tasks.full_ingest_pipeline._replay_one",
+            side_effect=ValueError(f"bad payload from '{url}'"),
+        ):
+            assert replay_evidence_journal(str(tmp_path / "ev.json")).blocked == 1
+
+        raw = evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8")
+        assert "SECRETVALUE" not in raw and "token=" not in raw
+        assert json.loads(raw.strip())["status"] == "blocked"
+
 
 class TestReplayCli:
     """The operator command, executed — flag → dispatch → exit code."""

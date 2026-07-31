@@ -1178,7 +1178,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry point. Returns the process exit code (never calls ``sys.exit``)."""
+    """CLI entry point. Returns the process exit code rather than exiting.
+
+    One exception, and it is argparse's: a usage error (a missing required
+    argument) raises ``SystemExit(2)`` from ``_parse_args`` before this function
+    can return anything — the standard CLI contract, asserted by a test.
+    """
     args = _parse_args(argv)
 
     if args.replay_evidence_journal:
