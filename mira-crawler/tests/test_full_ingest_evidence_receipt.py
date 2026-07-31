@@ -20,6 +20,8 @@ import pytest
 from tasks.full_ingest_pipeline import (
     PipelineReport,
     evidence_repair_path,
+    main,
+    replay_evidence_journal,
     step_document_evidence,
 )
 
@@ -308,34 +310,6 @@ class TestRepairJournal:
             {"kind": "knowledge_entries", "locator": f"sha256:{doc_sha}", "record_count": 7}
         ]
 
-    def test_the_repair_item_actually_replays_into_a_receipt(self, tmp_path):
-        """The claim executed, not asserted: the journal is sufficient on its own."""
-        from materialized_evidence import Environment
-        from materialized_evidence.backends.file_registry import FileRegistry
-        from materialized_evidence.document_compiler import (
-            DocumentExtraction,
-            DocumentSource,
-            MaterializationRef,
-            compile_document_evidence,
-            write_receipt,
-        )
-
-        self._fail(tmp_path, report=_report(chunks=7))
-        item = json.loads(
-            evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8").strip()
-        )
-
-        receipt = compile_document_evidence(
-            source=DocumentSource(**item["replay"]["source"]),
-            extraction=DocumentExtraction(**item["replay"]["extraction"]),
-            tenant_id=item["tenant_id"],
-            environment=Environment(item["environment"]),
-            materializations=[MaterializationRef(**m) for m in item["replay"]["materializations"]],
-        )
-        snapshot = tmp_path / "repaired.json"
-        assert len(write_receipt(receipt, FileRegistry(snapshot))) == 2
-        assert len(json.loads(snapshot.read_text("utf-8"))["manifests"]) == 2
-
     def test_a_success_writes_no_repair_item(self, tmp_path):
         _run(tmp_path)
         assert not evidence_repair_path(str(tmp_path / "ev.json")).exists()
@@ -409,3 +383,292 @@ class TestQuotedUrlInExceptionMessage:
         assert "token=" not in raw
         assert "https://oem.example.test/dl/gs10.pdf" in raw
         assert "SECRETVALUE" not in report.evidence_status
+
+
+class TestJournalReplay:
+    """The journal only RECORDS a gap. `replay_evidence_journal` is what closes it.
+
+    A journal with no production consumer is a to-do list nobody reads: the
+    receipt is still missing, and now there is a file that says so forever. These
+    tests drive the real public path (and the real CLI), not a reconstruction
+    written inside the test — a test that hand-rolls the replay proves only that
+    the test can do it.
+    """
+
+    def _fail_then(self, tmp_path, **kw):
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("read-only filesystem"),
+        ):
+            _run(tmp_path, **kw)
+        return tmp_path / "ev.json"
+
+    def _entries(self, snapshot: Path) -> list[dict]:
+        raw = evidence_repair_path(str(snapshot)).read_text("utf-8")
+        return [json.loads(line) for line in raw.splitlines() if line.strip()]
+
+    def test_replay_turns_a_pending_entry_into_the_two_receipts(self, tmp_path):
+        snapshot = self._fail_then(tmp_path, report=_report(chunks=7))
+        assert not snapshot.exists()  # the receipt really was lost
+
+        report = replay_evidence_journal(str(snapshot))
+
+        assert (report.replayed, report.blocked, report.pending) == (1, 0, 0)
+        assert len(report.dataset_versions) == 2
+        assert len(json.loads(snapshot.read_text("utf-8"))["manifests"]) == 2
+
+        # the entry carries its own durable outcome — the journal is not a
+        # write-only log of things that went wrong
+        (entry,) = self._entries(snapshot)
+        assert entry["status"] == "replayed"
+        assert entry["dataset_version_ids"] == report.dataset_versions
+        assert entry["replayed_at"]
+
+    def test_replay_never_rereads_the_document(self, tmp_path):
+        """No download, no OCR, no extraction — and the PDF is *deleted* first.
+
+        Asserting the network/extraction functions were not called is fakeable by
+        a stray `pdf_path.read_bytes()`; an absent file is not. Both are checked.
+        """
+        snapshot = self._fail_then(tmp_path)
+        _pdf(tmp_path).unlink()
+
+        with patch("tasks.full_ingest_pipeline._download") as dl, patch(
+            "tasks.full_ingest_pipeline.step_extract"
+        ) as ex, patch("tasks.full_ingest_pipeline._ocr_extract") as ocr, patch(
+            "tasks.full_ingest_pipeline.step_kb_ingest"
+        ) as kb:
+            report = replay_evidence_journal(str(snapshot))
+
+        assert report.replayed == 1
+        assert not dl.called and not ex.called and not ocr.called and not kb.called
+
+    def test_a_second_replay_adds_no_version_and_no_duplicate_receipt(self, tmp_path):
+        snapshot = self._fail_then(tmp_path)
+        first = replay_evidence_journal(str(snapshot))
+        before = snapshot.read_text("utf-8")
+
+        second = replay_evidence_journal(str(snapshot))
+
+        assert (second.replayed, second.already_replayed) == (0, 1)
+        assert second.blocked == 0
+        assert snapshot.read_text("utf-8") == before  # byte-identical registry
+        assert len(json.loads(before)["manifests"]) == 2
+        assert len(self._entries(snapshot)) == 1  # no duplicate journal entry
+        assert first.dataset_versions and second.dataset_versions == []
+
+    def test_replaying_the_compiled_receipt_twice_is_the_same_version(self, tmp_path):
+        """Idempotence at the registry level, not just the journal's status flag:
+        forcing the entry back to pending must still not mint a new version."""
+        snapshot = self._fail_then(tmp_path)
+        first = replay_evidence_journal(str(snapshot))
+
+        journal = evidence_repair_path(str(snapshot))
+        entry = self._entries(snapshot)[0]
+        entry["status"] = "evidence_pending"
+        journal.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+
+        again = replay_evidence_journal(str(snapshot))
+        assert again.replayed == 1
+        assert again.dataset_versions == first.dataset_versions
+        assert len(json.loads(snapshot.read_text("utf-8"))["manifests"]) == 2
+
+    def test_two_pending_entries_both_replay(self, tmp_path):
+        snapshot = self._fail_then(tmp_path)
+        self._fail_then(tmp_path, report=_report(chunks=3))  # a second, different run
+
+        report = replay_evidence_journal(str(snapshot))
+        assert report.replayed == 2
+        assert all(e["status"] == "replayed" for e in self._entries(snapshot))
+
+    def test_the_registry_the_entry_names_is_the_one_written(self, tmp_path):
+        """The entry's own `registry_path` wins — a document journaled against one
+        snapshot must not be repaired into a different one."""
+        snapshot = self._fail_then(tmp_path)
+        report = replay_evidence_journal(str(tmp_path / "somewhere-else.json"),
+                                         journal_path=str(evidence_repair_path(str(snapshot))))
+        assert report.replayed == 1
+        assert snapshot.exists()
+        assert not (tmp_path / "somewhere-else.json").exists()
+
+    def test_no_journal_is_not_an_error(self, tmp_path):
+        report = replay_evidence_journal(str(tmp_path / "ev.json"))
+        assert (report.total, report.replayed, report.blocked) == (0, 0, 0)
+        assert not report.needs_attention
+
+    def test_redaction_survives_replay(self, tmp_path):
+        url = "https://oem.example.test/dl/gs10.pdf?token=SECRETVALUE"
+        report = _report()
+        report.pdf_url = url
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError(f"cannot open '{url}'"),
+        ):
+            _run(tmp_path, report=report)
+
+        snapshot = tmp_path / "ev.json"
+        assert replay_evidence_journal(str(snapshot)).replayed == 1
+        for durable in (snapshot, evidence_repair_path(str(snapshot))):
+            raw = durable.read_text("utf-8")
+            assert "SECRETVALUE" not in raw
+            assert "token=" not in raw
+
+
+class TestJournalReplayRefusals:
+    """Nothing is silently discarded — not a bad line, not an unreplayable entry."""
+
+    def _journal(self, tmp_path, *lines: str) -> Path:
+        journal = evidence_repair_path(str(tmp_path / "ev.json"))
+        journal.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+        return journal
+
+    def test_a_malformed_line_is_preserved_byte_identical(self, tmp_path):
+        bad = '{"status": "evidence_pending", TRUNCATED'
+        journal = self._journal(tmp_path, bad)
+
+        report = replay_evidence_journal(str(tmp_path / "ev.json"))
+
+        assert (report.malformed, report.total) == (1, 1)
+        assert report.needs_attention  # a line we cannot read is a line a human must
+        assert journal.read_text("utf-8").splitlines() == [bad]
+
+    def test_a_malformed_line_does_not_stop_the_good_ones(self, tmp_path):
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("read-only filesystem"),
+        ):
+            _run(tmp_path)
+        good = evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8").strip()
+        self._journal(tmp_path, "}not json{", good)
+
+        report = replay_evidence_journal(str(tmp_path / "ev.json"))
+        assert (report.replayed, report.malformed) == (1, 1)
+        assert "}not json{" in evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8")
+
+    def test_an_entry_with_no_replay_payload_is_blocked_not_dropped(self, tmp_path):
+        """`replay: null` means the inputs were never captured — no retry can help."""
+        self._journal(tmp_path, json.dumps({
+            "schema": "evidence_repair_item/1.0", "status": "evidence_pending",
+            "tenant_id": TENANT, "environment": "dev",
+            "registry_path": str(tmp_path / "ev.json"), "replay": None,
+        }))
+
+        report = replay_evidence_journal(str(tmp_path / "ev.json"))
+
+        assert (report.blocked, report.replayed) == (1, 0)
+        entry = json.loads(
+            evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8").strip()
+        )
+        assert entry["status"] == "blocked"
+        assert "no replay payload" in entry["blocked_reason"]
+
+    def test_a_corrupt_replay_payload_is_blocked_with_a_reason(self, tmp_path):
+        self._journal(tmp_path, json.dumps({
+            "schema": "evidence_repair_item/1.0", "status": "evidence_pending",
+            "tenant_id": TENANT, "environment": "dev",
+            "registry_path": str(tmp_path / "ev.json"),
+            "replay": {"source": {"source_uri": "x", "content_sha256": "not-a-sha",
+                                  "byte_count": 1, "local_path": "x"},
+                       "extraction": {"method": "pdfplumber", "char_count": 1,
+                                      "text_sha256": None, "extractor_version": None,
+                                      "ocr_requested": False, "size_limit_bytes": None},
+                       "materializations": []},
+        }))
+
+        report = replay_evidence_journal(str(tmp_path / "ev.json"))
+
+        assert report.blocked == 1
+        entry = json.loads(
+            evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8").strip()
+        )
+        assert entry["status"] == "blocked"
+        assert "sha256" in entry["blocked_reason"]
+
+    def test_an_unknown_schema_is_blocked(self, tmp_path):
+        self._journal(tmp_path, json.dumps({
+            "schema": "evidence_repair_item/9.9", "status": "evidence_pending",
+        }))
+        report = replay_evidence_journal(str(tmp_path / "ev.json"))
+        assert report.blocked == 1
+
+    def test_a_transient_failure_stays_pending_for_the_next_run(self, tmp_path):
+        """A full disk is not a corrupt entry: it must be retried, not buried."""
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("read-only filesystem"),
+        ):
+            _run(tmp_path)
+
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("No space left on device"),
+        ):
+            report = replay_evidence_journal(str(tmp_path / "ev.json"))
+
+        assert (report.pending, report.blocked, report.replayed) == (1, 0, 0)
+        assert not report.needs_attention  # retryable — do not fail the operator's run
+        entry = json.loads(
+            evidence_repair_path(str(tmp_path / "ev.json")).read_text("utf-8").strip()
+        )
+        assert entry["status"] == "evidence_pending"
+        assert "No space left" in entry["last_replay_error"]
+
+        # …and once the disk is fixed, the very same entry replays
+        assert replay_evidence_journal(str(tmp_path / "ev.json")).replayed == 1
+
+
+class TestReplayCli:
+    """The operator command, executed — flag → dispatch → exit code."""
+
+    def test_the_flag_replays_and_exits_zero(self, tmp_path, capsys):
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("read-only filesystem"),
+        ):
+            _run(tmp_path)
+        snapshot = tmp_path / "ev.json"
+
+        code = main(["--replay-evidence-journal", str(snapshot)])
+
+        assert code == 0
+        assert "1 replayed" in capsys.readouterr().out
+        assert len(json.loads(snapshot.read_text("utf-8"))["manifests"]) == 2
+
+    def test_a_blocked_entry_exits_non_zero(self, tmp_path):
+        evidence_repair_path(str(tmp_path / "ev.json")).write_text(
+            json.dumps({"schema": "evidence_repair_item/1.0", "status": "evidence_pending",
+                        "tenant_id": TENANT, "environment": "dev", "replay": None}) + "\n",
+            encoding="utf-8",
+        )
+        assert main(["--replay-evidence-journal", str(tmp_path / "ev.json")]) == 1
+
+    def test_replay_mode_needs_none_of_the_ingest_arguments(self, tmp_path):
+        assert main(["--replay-evidence-journal", str(tmp_path / "missing.json")]) == 0
+
+    def test_ingest_mode_still_requires_them(self):
+        """`--pdf-url` went `required=False` to make room for the second mode; the
+        cron passes it by name, and a missing one must still be an error."""
+        with pytest.raises(SystemExit) as exc:
+            main(["--manufacturer", "Allen-Bradley", "--model", "1606-XLS"])
+        assert exc.value.code == 2
+
+
+class TestJournalLockIsNotTheRegistryLock:
+    """The nesting that made `print_recall`'s wrapper a deadlock.
+
+    `replay_evidence_journal` holds the journal's lock and then calls
+    `write_receipt` → `FileRegistry.register`, which takes the registry's. `flock`
+    is per-open-file-description, so one shared path would make the process block
+    on itself forever. Verified out-of-process too: forcing both onto
+    `<snapshot>.lock` hangs, while the shipped pair completes.
+    """
+
+    def test_the_two_lock_paths_are_distinct(self, tmp_path):
+        from materialized_evidence.backends.file_registry import FileRegistry
+
+        from tasks.full_ingest_pipeline import _journal_lock_path
+
+        snapshot = tmp_path / "ev.json"
+        journal_lock = _journal_lock_path(evidence_repair_path(str(snapshot)))
+        assert journal_lock != FileRegistry(snapshot)._lock_path
+        assert journal_lock.name == "ev.json.repair.jsonl.lock"

@@ -98,6 +98,37 @@ def _unlock_fd(fd: int) -> None:
             fcntl.flock(fd, fcntl.LOCK_UN)
 
 
+@contextmanager
+def exclusive_file_lock(lock_path: str | Path) -> Generator[None, None, None]:
+    """Hold an exclusive interprocess lock on ``lock_path`` for the block.
+
+    The ONE implementation of this guard (``_transaction`` below is its first
+    caller; the repair-journal rewrite in ``full_ingest_pipeline`` is its second).
+    ``print_recall`` previously kept a second copy wrapped *around* this class,
+    which had to be deleted the moment the guard moved inside — ``flock`` is
+    per-open-file-description, so one process taking the same lock twice blocks on
+    itself forever. Exporting the primitive is what makes a second caller possible
+    without a second copy.
+
+    ⚠️ Two callers that nest MUST use two DIFFERENT lock paths, for that same
+    reason. The journal rewrite locks ``<snapshot>.repair.jsonl.lock`` precisely
+    because it then calls ``register()``, which locks ``<snapshot>.lock``.
+    """
+    path = Path(lock_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        if os.fstat(fd).st_size == 0:
+            os.write(fd, b"\0")  # msvcrt byte-range locking needs a byte present
+        _lock_fd(fd)
+        try:
+            yield
+        finally:
+            _unlock_fd(fd)
+    finally:
+        os.close(fd)
+
+
 class FileRegistry(InMemoryRegistry):
     """An ``InMemoryRegistry`` that persists to / hydrates from a JSON snapshot,
     with interprocess-safe writes."""
@@ -142,19 +173,9 @@ class FileRegistry(InMemoryRegistry):
         writes; without re-reading, a process still writes back its construction-time
         view and erases everything committed in between.
         """
-        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(str(self._lock_path), os.O_RDWR | os.O_CREAT, 0o644)
-        try:
-            if os.fstat(fd).st_size == 0:
-                os.write(fd, b"\0")  # msvcrt byte-range locking needs a byte present
-            _lock_fd(fd)
-            try:
-                self._load()  # merge in everything committed since we last looked
-                yield
-            finally:
-                _unlock_fd(fd)
-        finally:
-            os.close(fd)
+        with exclusive_file_lock(self._lock_path):
+            self._load()  # merge in everything committed since we last looked
+            yield
 
     def _persist(self) -> None:
         data = {

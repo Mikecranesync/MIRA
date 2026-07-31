@@ -17,7 +17,9 @@ Steps
                     ingest, it is journaled as an `evidence_pending` repair item to
                     `<snapshot>.repair.jsonl` carrying enough to replay the receipt
                     without re-downloading. Fetch URLs are redacted before they reach
-                    either durable surface.
+                    either durable surface. Replaying that journal is an explicit
+                    operator command (`--replay-evidence-journal`), so a recorded gap
+                    has a way to actually close.
 
 CLI
 ---
@@ -39,6 +41,7 @@ import logging
 import os
 import sys
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -532,6 +535,35 @@ def evidence_repair_path(registry_path: str) -> Path:
     return Path(registry_path + ".repair.jsonl")
 
 
+def _journal_lock_path(journal: Path) -> Path:
+    """The journal's OWN lock — deliberately not the registry's.
+
+    Both the append and the rewrite take this one, and the rewrite then calls
+    ``write_receipt`` → ``FileRegistry.register``, which takes
+    ``<snapshot>.lock``. ``flock`` is per-open-file-description, so sharing one
+    path between the two would make the process block on itself forever — the
+    exact deadlock that deleted ``print_recall``'s wrapper.
+    """
+    return Path(str(journal) + ".lock")
+
+
+@contextmanager
+def _journal_locked(journal: Path):
+    """Serialize journal writers; degrade to unlocked if the primitive is absent.
+
+    The evidence contract is an optional dependency of this pipeline (every
+    import of it is guarded), so a missing package must not turn journalling —
+    the thing that records a gap — into the gap.
+    """
+    try:
+        from materialized_evidence.backends.file_registry import exclusive_file_lock
+    except ImportError:
+        yield
+        return
+    with exclusive_file_lock(_journal_lock_path(journal)):
+        yield
+
+
 def _scrub_uris(text: str) -> str:
     """Redact any network URI inside a free-text string (an exception message).
 
@@ -606,9 +638,14 @@ def _record_evidence_repair_item(
         }
         journal.parent.mkdir(parents=True, exist_ok=True)
         # One JSON object per line, opened O_APPEND: a single short line lands
-        # whole even with two pipeline processes writing concurrently.
-        with open(journal, "a", encoding="utf-8") as f:
-            f.write(json.dumps(item, sort_keys=True, ensure_ascii=False) + "\n")
+        # whole even with two pipeline processes writing concurrently. The lock
+        # covers the OTHER writer — `replay_evidence_journal` rewrites this file
+        # whole, and an O_APPEND write racing that rewrite lands in the replaced
+        # inode and is lost. Losing the record of a lost receipt is precisely the
+        # failure this journal exists to end.
+        with _journal_locked(journal):
+            with open(journal, "a", encoding="utf-8") as f:
+                f.write(json.dumps(item, sort_keys=True, ensure_ascii=False) + "\n")
         return str(journal)
     except Exception as exc:  # noqa: BLE001 — recording a failure must never fail loudly
         logger.warning("Could not record evidence repair item: %s", exc)
@@ -632,6 +669,220 @@ def _utc_now() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+# ---------------------------------------------------------------------------
+# Repair-journal replay — the operator path that turns a recorded gap into a receipt
+# ---------------------------------------------------------------------------
+#
+# Journalling a failure only records the gap; it does not close it. This is the
+# consumer: it reconstructs the compiler's inputs FROM THE JOURNAL and nothing
+# else — no download, no OCR, no embedding, no re-extraction — so replaying is
+# cheap, offline, and safe to run on a document whose PDF has since been deleted.
+#
+# Run it after fixing whatever broke the write (a full disk, a read-only mount):
+#     python3 mira-crawler/tasks/full_ingest_pipeline.py \
+#         --replay-evidence-journal /var/lib/mira/evidence.json
+#
+# Every entry gets a durable outcome written back into the journal. Nothing is
+# discarded — not a malformed line, not an entry that can never be replayed.
+
+_REPLAY_SCHEMA = "evidence_repair_item/1.0"
+_STATUS_PENDING = "evidence_pending"
+_STATUS_REPLAYED = "replayed"
+_STATUS_BLOCKED = "blocked"
+
+# A contract violation in the stored payload can never succeed on a retry, so it
+# is BLOCKED (a human must look). Anything else — a full disk, a read-only mount,
+# a permission — is transient: the entry stays `evidence_pending` and the next
+# run picks it up again.
+_PERMANENT_ERRORS = ("DocumentCompilerError", "RegistryError", "TypeError", "ValueError", "KeyError")
+
+
+@dataclass
+class ReplayReport:
+    """What one replay pass did. Printed by the CLI; returned to callers."""
+
+    journal: str = ""
+    total: int = 0
+    replayed: int = 0
+    already_replayed: int = 0
+    blocked: int = 0
+    pending: int = 0
+    malformed: int = 0
+    dataset_versions: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+    @property
+    def needs_attention(self) -> bool:
+        """Blocked/malformed entries need a human. Pending ones just need a retry."""
+        return bool(self.blocked or self.malformed)
+
+    def summary(self) -> str:
+        return (
+            f"evidence journal {self.journal or '(none)'}: {self.total} entr(ies) — "
+            f"{self.replayed} replayed, {self.already_replayed} already replayed, "
+            f"{self.pending} still pending, {self.blocked} blocked, "
+            f"{self.malformed} malformed"
+        )
+
+
+def _replay_one(item: dict, default_registry: str) -> tuple[dict, str]:
+    """Replay one pending entry. Returns ``(updated_item, outcome)``.
+
+    Reconstructs ``DocumentSource`` / ``DocumentExtraction`` / ``MaterializationRef``
+    from the stored payload alone — the document itself is never touched, which is
+    what makes replay free and what makes it work after the PDF is gone.
+
+    Idempotent by construction: identical inputs compile to the same
+    ``dataset_version_id`` and ``manifest_hash``, and ``register`` is a no-op on an
+    identical hash (ADR A3). A second replay therefore adds no manifest version —
+    and the ``replayed`` status this writes back means it is not even attempted.
+    """
+    from materialized_evidence import Environment
+    from materialized_evidence.backends.file_registry import FileRegistry
+    from materialized_evidence.document_compiler import (
+        DocumentExtraction,
+        DocumentSource,
+        MaterializationRef,
+        compile_document_evidence,
+        write_receipt,
+    )
+
+    replay = item.get("replay")
+    if not isinstance(replay, dict):
+        # `replay` is None when the failure happened before the inputs were
+        # assembled. The gap is real and stays recorded — but no amount of retrying
+        # reconstructs a receipt from inputs that were never captured.
+        return _blocked(item, "no replay payload recorded — the receipt cannot be "
+                              "reconstructed without re-reading the document")
+
+    registry_path = item.get("registry_path") or default_registry
+    if not registry_path:
+        return _blocked(item, "no registry_path on the entry and none supplied")
+
+    receipt = compile_document_evidence(
+        source=DocumentSource(**replay["source"]),
+        extraction=DocumentExtraction(**replay["extraction"]),
+        tenant_id=item["tenant_id"],
+        environment=Environment(item["environment"]),
+        # No verified pages, for the same reason the original run had none: this
+        # extraction layer supplies no page identity. Replay reproduces the
+        # original receipt; it never enriches it.
+        verified_pages=None,
+        materializations=[MaterializationRef(**m) for m in replay.get("materializations") or []],
+    )
+    versions = write_receipt(receipt, FileRegistry(registry_path))
+    updated = dict(item)
+    updated.update(
+        status=_STATUS_REPLAYED,
+        replayed_at=_utc_now(),
+        dataset_version_ids=versions,
+        registry_path=registry_path,
+    )
+    updated.pop("last_replay_error", None)
+    return updated, _STATUS_REPLAYED
+
+
+def _blocked(item: dict, reason: str) -> tuple[dict, str]:
+    updated = dict(item)
+    updated.update(status=_STATUS_BLOCKED, blocked_at=_utc_now(), blocked_reason=_scrub_uris(reason))
+    return updated, _STATUS_BLOCKED
+
+
+def replay_evidence_journal(registry_path: str, *, journal_path: str | None = None) -> ReplayReport:
+    """Replay every ``evidence_pending`` entry in a repair journal. No network, no
+    extraction, no document read.
+
+    The whole pass runs under the journal's own lock and rewrites the file
+    atomically (tmp + fsync + replace), so a crash mid-rewrite cannot destroy the
+    only record of the gap, and a pipeline appending concurrently is not lost.
+
+    Unparseable lines are preserved BYTE-IDENTICAL rather than reformatted or
+    dropped — a line this code cannot read is exactly the line a human must see.
+    """
+    journal = Path(journal_path) if journal_path else evidence_repair_path(registry_path)
+    report = ReplayReport(journal=str(journal))
+    if not journal.exists():
+        report.notes.append("no repair journal — nothing to replay")
+        return report
+
+    with _journal_locked(journal):
+        out_lines: list[str] = []
+        for raw in journal.read_text("utf-8").splitlines():
+            if not raw.strip():
+                continue
+            report.total += 1
+            try:
+                item = json.loads(raw)
+                if not isinstance(item, dict):
+                    raise ValueError("journal entry is not a JSON object")
+            except Exception as exc:  # noqa: BLE001 — a bad line is kept, never dropped
+                report.malformed += 1
+                report.notes.append(f"malformed entry preserved verbatim: {exc}")
+                out_lines.append(raw)  # byte-identical
+                continue
+
+            status = item.get("status")
+            if status == _STATUS_REPLAYED:
+                report.already_replayed += 1
+                out_lines.append(_dump(item))
+                continue
+            if status != _STATUS_PENDING:
+                report.blocked += 1
+                report.notes.append(f"entry with unrecognised status {status!r} left untouched")
+                out_lines.append(_dump(item))
+                continue
+            if item.get("schema") != _REPLAY_SCHEMA:
+                updated, _ = _blocked(item, f"unsupported schema {item.get('schema')!r}")
+                report.blocked += 1
+                out_lines.append(_dump(updated))
+                continue
+
+            try:
+                updated, outcome = _replay_one(item, registry_path)
+            except Exception as exc:  # noqa: BLE001 — one bad entry must not abort the pass
+                reason = _scrub_uris(f"{type(exc).__name__}: {exc}")
+                if type(exc).__name__ in _PERMANENT_ERRORS:
+                    updated, outcome = _blocked(item, reason)
+                else:
+                    # Transient: stay pending so the next run retries, but record
+                    # WHY, so a gap that never clears is visible rather than quiet.
+                    updated = dict(item)
+                    updated.update(last_replay_error=reason, last_replay_at=_utc_now())
+                    outcome = _STATUS_PENDING
+                report.notes.append(f"{outcome}: {reason}")
+
+            if outcome == _STATUS_REPLAYED:
+                report.replayed += 1
+                report.dataset_versions.extend(updated.get("dataset_version_ids") or [])
+            elif outcome == _STATUS_BLOCKED:
+                report.blocked += 1
+            else:
+                report.pending += 1
+            out_lines.append(_dump(updated))
+
+        _atomic_write_lines(journal, out_lines)
+    return report
+
+
+def _dump(item: dict) -> str:
+    return json.dumps(item, sort_keys=True, ensure_ascii=False)
+
+
+def _atomic_write_lines(path: Path, lines: list[str]) -> None:
+    """tmp + fsync + replace — the same idiom ``FileRegistry._persist`` uses.
+
+    An in-place rewrite that dies halfway destroys the only durable record of
+    every gap the journal holds.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    payload = ("\n".join(lines) + "\n" if lines else "").encode("utf-8")
+    with open(tmp, "wb") as f:
+        f.write(payload)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 def step_document_evidence(
@@ -880,11 +1131,14 @@ def run(
 # ---------------------------------------------------------------------------
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="MIRA full KB ingest pipeline")
-    p.add_argument("--pdf-url", required=True, help="Direct PDF download URL")
-    p.add_argument("--manufacturer", required=True, help="Manufacturer name (e.g. Allen-Bradley)")
-    p.add_argument("--model", required=True, help="Model number (e.g. 1606-XLS)")
+    # Not `required=True`: `--replay-evidence-journal` is a second mode that takes
+    # none of these. The ingest args are validated after parsing (see `main`), so
+    # the cron's existing argv shape is unchanged and a missing one still errors.
+    p.add_argument("--pdf-url", help="Direct PDF download URL")
+    p.add_argument("--manufacturer", help="Manufacturer name (e.g. Allen-Bradley)")
+    p.add_argument("--model", help="Model number (e.g. 1606-XLS)")
     p.add_argument("--type", dest="manual_type", default="equipment_manual",
                    help="Manual type (default: equipment_manual)")
     p.add_argument("--baseline", default=None,
@@ -903,12 +1157,42 @@ def _parse_args() -> argparse.Namespace:
                         "snapshot: writes take an exclusive lock on <snapshot>.lock "
                         "and re-read before mutating. A receipt failure never fails "
                         "the ingest; it is journaled to <snapshot>.repair.jsonl.")
-    return p.parse_args()
+    p.add_argument("--replay-evidence-journal", metavar="SNAPSHOT", default=None,
+                   help="Operator repair mode: replay <SNAPSHOT>.repair.jsonl into "
+                        "<SNAPSHOT> and exit. Reconstructs each pending receipt from "
+                        "the journal alone — no download, no OCR, no embedding, no "
+                        "re-extraction — so it is safe to run after the PDF is gone. "
+                        "Idempotent: an entry already replayed is skipped. Exits "
+                        "non-zero only when entries are BLOCKED (a human must look); "
+                        "an entry left pending is retryable and exits zero.")
+    args = p.parse_args(argv)
+    if not args.replay_evidence_journal:
+        missing = [
+            f"--{name.replace('_', '-')}"
+            for name in ("pdf_url", "manufacturer", "model")
+            if not getattr(args, name)
+        ]
+        if missing:
+            p.error(f"the following arguments are required: {', '.join(missing)}")
+    return args
 
 
-if __name__ == "__main__":
-    args = _parse_args()
-    report = run(
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point. Returns the process exit code (never calls ``sys.exit``)."""
+    args = _parse_args(argv)
+
+    if args.replay_evidence_journal:
+        report = replay_evidence_journal(args.replay_evidence_journal)
+        print(report.summary())
+        for note in report.notes:
+            print(f"  • {note}")
+        for dvid in report.dataset_versions:
+            print(f"  ✓ {dvid}")
+        # Blocked/malformed entries need a human; a still-pending one only needs
+        # the next run, and must not make a scheduler treat the pass as failed.
+        return 1 if report.needs_attention else 0
+
+    result = run(
         pdf_url=args.pdf_url,
         manufacturer=args.manufacturer,
         model=args.model,
@@ -918,4 +1202,8 @@ if __name__ == "__main__":
         ocr=args.ocr,
         evidence_registry=args.evidence_registry,
     )
-    sys.exit(1 if report.errors else 0)
+    return 1 if result.errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
