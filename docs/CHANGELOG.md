@@ -30,6 +30,38 @@ No migration, no new dependency, no queue, no second cache, no paid model call, 
 
 Collected-test counts, measured rather than estimated (before → after): `test_document_compiler` 32→60, `test_file_registry` 6→10, `test_full_ingest_evidence_receipt` 14→27, `test_kb_growth_cron` 60→67, `test_print_recall_multiprocess` 2→3 — **+53**. Plus `mira-bots` print/recall 416/416 (already collected); ruff clean. **Every new guard was confirmed RED against the pre-fix code**: all 8 redaction tests, both concurrency tests (lock-without-reload keeps 1 of 6 manifests; fully unlocked crashes on a shared `.tmp` path), all 4 quoted-URL-in-prose cases, and all 3 configured-but-skipped stamp cases. **Next consumers, named and explicitly not wired:** Hub v2 document ingestion, verified page-level extraction, node attachments, Telegram, PrintSense, any chat answer path.
 
+### v3.235.2 (2026-07-31) - fix(dataset): unblock the review sitting — write the whole manifest, point the console at the unified compile
+
+The ONE review-by-exception sitting on manifest `410e779e…` could not be scheduled, for two independent reasons. Both are fixed here; neither changes a single record or the frozen digest.
+
+- **`unified_compile.main()` computed the full manifest and then threw most of it away.** It cherry-picked four summary keys, dropping `entries` — the per-record `record_id` + `content_hash` rows that bind a review decision to the exact bytes it was made against. The console requires them (`AppState.__init__` does `manifest["entries"]`), so it **KeyError'd on boot**. `candidate_manifest_for()` already produced them; only the write discarded them. Now the manifest is written whole, with all four original keys preserved verbatim so existing readers are unaffected.
+- **The console's dataset/manifest defaults pointed at `C:\wt-wire\…\technician-dataset-v0\…`** — wrong three ways at once: a **stale worktree** that no longer exists, **Windows-only** (so nobody could run the console elsewhere to notice), and **v0** when the pending sitting is on the **unified** compile. Defaults now resolve relative to the checkout, still env-overridable. `WORK_DIR`/`DOWNLOADS_DIR` are deliberately **unchanged** — those are live runtime state on the laptop (`data/events.jsonl` holds real decisions) and repointing them would orphan review work.
+- **`_preflight()`** turns the three ways this fails into one actionable message naming the env var, instead of a `FileNotFoundError` on a path the operator cannot see or a bare `KeyError('entries')` from deep inside `AppState`.
+
+**Proof.** The frozen digest is **unmoved** — regenerating writes `manifest_sha256 = 410e779e0d81f8b57461c59094fd8d05dcd2572147918eeda4f5d3beb557121c`, asserted explicitly, and `compiled_candidates.jsonl` / `mixture_report.json` / `eval_slices_general.jsonl` are byte-identical (only the manifest file changed). The console's hermetic self-test is **65 checks, 0 failed**. And the real end-to-end check: booting `AppState` against the actual unified artifacts binds **760 content hashes** and builds a **760-card** review queue — the thing that was impossible before.
+
+**Known wart, stated rather than silently "fixed":** the digest is computed by `technician_v0._candidate_manifest` over *its* `DATASET_VERSION` (`…-technician-v0`), while the written `dataset_version` field is the unified one. Aligning them would change `410e779e…` and invalidate the frozen manifest mid-program, so it is left alone and documented in the code.
+
+### v3.235.1 (2026-07-31) - fix(tests): make the UUID-family RLS tests deterministic against the Neon pooler
+
+`tests/integration/test_rls_tag_trace_tables.py` is **intermittently red** on the staging pooler, and it has nothing to do with whatever PR happens to trigger it. Five tests (`tag_events`, `flaky_input_signals`, `approved_tags`, `live_signal_cache`, and the `WITH CHECK` case) die on the INSERT with `22P02 invalid input syntax for type uuid: ""` — green at 13:49, red at 23:45, no relevant change in between.
+
+**Root cause, measured — not inferred.** `_bind_tenant` bound only `app.current_tenant_id` and relied on `app.tenant_id` being *unset*. That holds on a pristine backend; `NEON_DATABASE_URL` is a **pooler** endpoint, where a custom GUC that has ever been set reads back as the **empty string** rather than NULL for whoever gets that backend next. The UUID-family policies do `current_setting('app.tenant_id', true)::UUID` — `NULL::uuid` is fine, `''::uuid` is `22P02`, and the INSERT dies before RLS has anything to say.
+
+Verified read-only against staging: **no** role- or database-level default exists for either GUC (`pg_db_role_setting` has nothing), and a fresh connection read `''` while twelve later ones read NULL — exactly the shape of the observed flakiness.
+
+**Deterministic repro + proof** (staging, on a backend deliberately put into the `''` state):
+
+| binder | result |
+|---|---|
+| old (`app.current_tenant_id` only) | `InvalidTextRepresentation: invalid input syntax for type uuid: ""` — the exact CI failure |
+| new (both, uuid tenant) | `INSERT OK` |
+
+**The fix:** bind **both** spellings, exactly like the Hub's `withTenantContext` does in production — and bind `app.tenant_id` **only when the tenant is a real UUID**, so the slug-tenant tests from #3028 (which exercise the TEXT-form `decision_traces` policy, no cast) are untouched. Putting a slug in the setting the UUID-family policies cast would merely trade `''::uuid` for `'staging-x'::uuid`.
+
+**Scope, stated honestly:** this makes the **tests** deterministic. It does **not** harden the policies — a production session that sets only `app.current_tenant_id` and lands on a poisoned backend hits the same cast. The durable fix is `NULLIF(current_setting(…), '')::UUID` in the policies themselves, which is a migration across several tables and is deliberately **not** bundled here.
+
+
 ### v3.235.0 (2026-07-30) - feat(spine): Bravo VisualSession → TechnicianContext evidence adapter (+ review P1/P2 fixes)
 
 Adds `evidence_from_visual_session()` to `materialized_evidence/context_contract.py` — the pure, additive seam that turns serialized VisualSession ledger rows (migration 063: observation + evidence_item + region_of_interest) into typed `EvidenceKind.PRINT_OBSERVATION` **candidate** evidence. Bravo's local VLM/OCR lane is an evidence **producer**, never a second assistant (ADR-0033 / ADR-0027 / ADR-0028). Trust is fail-closed: model output stays `candidate`; only a human `review_state ∈ {confirmed, corrected}` promotes to `verified`; `evidence_state` (incl. MACHINE_VERIFIED) and model `confidence` never do; rejected/superseded rows drop. Page/bbox/hash/model-version survive only when explicitly present — never derived from a filename, list order, or prose. Not wired into any runtime — seam only; the central-runtime migration is a later, separately-reviewed slice.
@@ -41,6 +73,7 @@ Three review findings fixed before re-review:
 - **P2 — malformed rows can no longer become citable without an audit anchor.** An observation missing `session_id` or `observation_id` produced the un-citable locator `visual_session:#observation:` that `validate_context()` still accepted. Such rows are now dropped early, exactly as the prior-decision / correction adapters drop id-less rows.
 
 +20 focused tests (`tests/test_visual_session_adapter.py`): 130 passed across the visual suite + `tests/test_context_contract.py` + `materialized_evidence/tests/` + the `test_evidence_catalog_sync` drift-guard; ruff check + format clean. Contract version stays `1.0` (the new `evidence_state` field is optional, default None). The 9 review-fix tests were confirmed RED against the pre-fix adapter before the fixes landed.
+
 
 ### v3.234.4 (2026-07-30) - docs(architecture): unify the Bravo evidence lane — hub, catalog, runbooks, drift-guard
 

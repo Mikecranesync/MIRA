@@ -91,10 +91,45 @@ def _bind_tenant(cur, tenant_id: str, *, as_app_role: bool = False) -> None:
 
     as_app_role=True exercises the RLS path — neondb_owner has BYPASSRLS and
     would silently pass even if the policy is missing or wrong.
+
+    Binds **both** spellings, exactly like the Hub's `withTenantContext` does in
+    production. This used to bind only `app.current_tenant_id` and rely on the
+    other being unset — an assumption that holds only on a pristine backend, and
+    `NEON_DATABASE_URL` is a **pooler** endpoint. A custom GUC that has been set
+    on a pooled backend reads back as the EMPTY STRING (not NULL) for whoever
+    gets that backend next, and the UUID-family policies on `tag_events` /
+    `approved_tags` / `flaky_input_signals` / `live_signal_cache` do
+    `current_setting('app.tenant_id', true)::UUID` — so `''::uuid` raises
+    `22P02 invalid input syntax for type uuid: ""` and the INSERT dies before
+    RLS has anything to say.
+
+    Measured read-only against the staging pooler 2026-07-30: one fresh
+    connection read `''`, twelve later ones read NULL. That is exactly the shape
+    of the observed flakiness — this file was green at 13:49 and red at 23:45
+    with no relevant change in between. Binding what production binds removes
+    the dependence on which backend the pooler hands out.
+
+    This makes the TESTS deterministic. It does not harden the policies: a
+    production session that sets only `app.current_tenant_id` and lands on a
+    poisoned backend still hits the same cast. The durable fix is
+    `NULLIF(current_setting(…), '')::UUID` in the policies themselves — a
+    separate migration, deliberately not bundled here.
+
+    `app.tenant_id` is bound ONLY when the tenant is a real UUID. The
+    slug-tenant tests below (#3028) exercise the TEXT-form `decision_traces`
+    policy, which does no cast — but putting a slug into the setting that the
+    UUID-family policies DO cast would just trade `''::uuid` for
+    `'staging-x'::uuid`, the same 22P02 one value later. Uuid-only keeps those
+    tests exactly as they were.
     """
     if as_app_role:
         cur.execute("SET LOCAL ROLE factorylm_app")
     cur.execute("SELECT set_config('app.current_tenant_id', %s, true)", (tenant_id,))
+    try:
+        uuid.UUID(tenant_id)
+    except (ValueError, AttributeError, TypeError):
+        return
+    cur.execute("SELECT set_config('app.tenant_id', %s, true)", (tenant_id,))
 
 
 def _owner_delete(conn, table: str, where_sql: str, *args) -> None:
