@@ -19,15 +19,21 @@ Design constraints — deliberately NOT a copy of the writer's posture:
   small LIMIT, no retry.
 - **Tenant-bound EXACTLY the way the writer binds** — `SET LOCAL` on
   `app.current_tenant_id` and **nothing else**. Migration 070's policy reads
-  both spellings, so this one is sufficient, and setting `app.tenant_id` as well
-  is actively harmful: `NEON_DATABASE_URL` is a **PgBouncer pooler** endpoint,
-  and a GUC set on a pooled backend outlives the transaction as the empty
-  string. `app.tenant_id` is the setting the **UUID-family** policies cast
-  (`current_setting('app.tenant_id', true)::UUID`), so a leaked `''` turns every
-  later query on `tag_events` / `approved_tags` / `flaky_input_signals` /
-  `live_signal_cache` into `22P02 invalid input syntax for type uuid: ""` — for
-  an unrelated session that never touched this module. Staging caught exactly
-  that: five pre-existing RLS tests went red the moment this reader set it.
+  both spellings, so this one is sufficient; setting `app.tenant_id` as well
+  buys nothing and adds to a real ambient hazard. `NEON_DATABASE_URL` is a
+  **pooler** endpoint, and a custom GUC that has been set on a pooled backend
+  reads back as the EMPTY STRING (not NULL) for whoever gets that backend next.
+  `app.tenant_id` is the setting the **UUID-family** policies cast
+  (`current_setting('app.tenant_id', true)::UUID`), and `''::uuid` is
+  `22P02 invalid input syntax for type uuid: ""`.
+
+  Measured on the staging pooler 2026-07-30, on connections unrelated to this
+  module: one fresh connection read `''`, twelve later ones read NULL. So the
+  hazard is real, intermittent, backend-dependent, and **pre-existing** — this
+  module is not its cause and removing this line does not cure it (the durable
+  fix is `NULLIF(current_setting(...), '')::UUID` in the policies). Binding the
+  minimum is hygiene, not a fix.
+
   `decision_traces.tenant_id` is **TEXT** since 070, so no `::uuid` cast belongs
   anywhere near it either (#3003 killed every staging trace that way).
 - **Lazy imports.** sqlalchemy is imported inside the worker thread so bot
@@ -145,8 +151,8 @@ async def fetch_prior_decisions(
             # about — the binding would silently not apply.
             #
             # ONE setting, matching decision_trace.py. Do NOT also set
-            # `app.tenant_id`: see the module docstring — through the pooler it
-            # leaks as '' and breaks the UUID-family policies that cast it.
+            # `app.tenant_id`: it is redundant (070's policy reads both) and it
+            # feeds the ambient pooler hazard described in the module docstring.
             conn.execute(sql_text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
             result = conn.execute(sql_text(sql), params)
             return _rows_to_dicts(result.fetchall())

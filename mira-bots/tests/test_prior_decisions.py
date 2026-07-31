@@ -78,22 +78,24 @@ def test_timeout_is_sized_for_a_cold_connect():
 
 
 def test_reader_binds_only_app_current_tenant_id():
-    """Do not set `app.tenant_id`.
+    """Bind the minimum: `app.current_tenant_id` only.
 
-    `NEON_DATABASE_URL` is a PgBouncer pooler endpoint, and a GUC set on a
-    pooled backend outlives the transaction as the EMPTY STRING. `app.tenant_id`
-    is the setting the UUID-family policies cast
-    (`current_setting('app.tenant_id', true)::UUID`), so a leaked `''` turns a
-    later query on `tag_events` / `approved_tags` / `flaky_input_signals` /
-    `live_signal_cache` into `22P02 invalid input syntax for type uuid: ""` — in
-    a session that never touched this module.
+    Migration 070's `decision_traces` policy reads BOTH spellings, so this one
+    is sufficient and `app.tenant_id` is pure redundancy.
 
-    Staging proved it: setting both spellings turned five pre-existing RLS tests
-    red. Migration 070's policy reads both, so `app.current_tenant_id` alone is
-    sufficient and `app.tenant_id` buys nothing. This asserts on the source
-    because the damage is only observable through a *shared* pooled backend —
-    the live proof is the `test_rls_tag_trace_tables.py` suite staying green in
-    the same job.
+    The reason to care which GUCs this module sets is an ambient hazard on the
+    pooler, NOT a defect this module caused. A custom GUC that has been set on a
+    pooled backend reads back as the EMPTY STRING rather than NULL for the next
+    client of that backend, and `app.tenant_id` is what the UUID-family policies
+    cast — `''::uuid` is `22P02`. Measured on staging 2026-07-30 from
+    connections unrelated to this code: one fresh connection read `''`, twelve
+    later ones read NULL.
+
+    So this is a hygiene invariant (write less ambient state), deliberately NOT
+    claimed as the cure — the durable fix is `NULLIF(current_setting(…), '')`
+    in the policies themselves, which is a separate migration. Asserted at the
+    source because a *shared* pooled backend is the only place the difference
+    shows up, and it shows up intermittently.
     """
     import inspect
 
