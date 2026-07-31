@@ -1,3 +1,23 @@
+### v3.235.1 (2026-07-31) - fix(tests): make the UUID-family RLS tests deterministic against the Neon pooler
+
+`tests/integration/test_rls_tag_trace_tables.py` is **intermittently red** on the staging pooler, and it has nothing to do with whatever PR happens to trigger it. Five tests (`tag_events`, `flaky_input_signals`, `approved_tags`, `live_signal_cache`, and the `WITH CHECK` case) die on the INSERT with `22P02 invalid input syntax for type uuid: ""` — green at 13:49, red at 23:45, no relevant change in between.
+
+**Root cause, measured — not inferred.** `_bind_tenant` bound only `app.current_tenant_id` and relied on `app.tenant_id` being *unset*. That holds on a pristine backend; `NEON_DATABASE_URL` is a **pooler** endpoint, where a custom GUC that has ever been set reads back as the **empty string** rather than NULL for whoever gets that backend next. The UUID-family policies do `current_setting('app.tenant_id', true)::UUID` — `NULL::uuid` is fine, `''::uuid` is `22P02`, and the INSERT dies before RLS has anything to say.
+
+Verified read-only against staging: **no** role- or database-level default exists for either GUC (`pg_db_role_setting` has nothing), and a fresh connection read `''` while twelve later ones read NULL — exactly the shape of the observed flakiness.
+
+**Deterministic repro + proof** (staging, on a backend deliberately put into the `''` state):
+
+| binder | result |
+|---|---|
+| old (`app.current_tenant_id` only) | `InvalidTextRepresentation: invalid input syntax for type uuid: ""` — the exact CI failure |
+| new (both, uuid tenant) | `INSERT OK` |
+
+**The fix:** bind **both** spellings, exactly like the Hub's `withTenantContext` does in production — and bind `app.tenant_id` **only when the tenant is a real UUID**, so the slug-tenant tests from #3028 (which exercise the TEXT-form `decision_traces` policy, no cast) are untouched. Putting a slug in the setting the UUID-family policies cast would merely trade `''::uuid` for `'staging-x'::uuid`.
+
+**Scope, stated honestly:** this makes the **tests** deterministic. It does **not** harden the policies — a production session that sets only `app.current_tenant_id` and lands on a poisoned backend hits the same cast. The durable fix is `NULLIF(current_setting(…), '')::UUID` in the policies themselves, which is a migration across several tables and is deliberately **not** bundled here.
+
+
 ### v3.235.0 (2026-07-30) - feat(spine): Bravo VisualSession → TechnicianContext evidence adapter (+ review P1/P2 fixes)
 
 Adds `evidence_from_visual_session()` to `materialized_evidence/context_contract.py` — the pure, additive seam that turns serialized VisualSession ledger rows (migration 063: observation + evidence_item + region_of_interest) into typed `EvidenceKind.PRINT_OBSERVATION` **candidate** evidence. Bravo's local VLM/OCR lane is an evidence **producer**, never a second assistant (ADR-0033 / ADR-0027 / ADR-0028). Trust is fail-closed: model output stays `candidate`; only a human `review_state ∈ {confirmed, corrected}` promotes to `verified`; `evidence_state` (incl. MACHINE_VERIFIED) and model `confidence` never do; rejected/superseded rows drop. Page/bbox/hash/model-version survive only when explicitly present — never derived from a filename, list order, or prose. Not wired into any runtime — seam only; the central-runtime migration is a later, separately-reviewed slice.
