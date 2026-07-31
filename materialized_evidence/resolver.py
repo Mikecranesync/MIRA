@@ -110,15 +110,27 @@ def _evaluate(query: RecallQuery, registry: MaterializationRegistry, m: Evidence
                 "fail", m, RecomputeDecision.RECOMPUTED_SCHEMA_CHANGED,
                 f"schema {m.schema_name}/{m.schema_version} != required {want_name}/{want_ver}",
             )
-    if (
-        isinstance(query.required_completeness, (int, float))
-        and isinstance(m.completeness, (int, float))
-        and float(m.completeness) < float(query.required_completeness)
-    ):
-        return _Verdict(
-            "fail", m, RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
-            f"completeness {m.completeness} < required {query.required_completeness}",
-        )
+    # A NUMERIC requirement demands a numeric answer. Requiring both sides to be
+    # numeric *before comparing* silently let an UNKNOWN completeness through as
+    # exact reuse — the exact case `document_compiler` relies on: it leaves
+    # `completeness` None on a document-scoped Page Identity dataset so a
+    # page-level query cannot mistake it for full page coverage. Unknown, and any
+    # descriptive value ("partial"), is insufficient, not sufficient.
+    # A non-numeric *requirement* stays ungated here: it is a vocabulary this
+    # layer does not define, so it is not this gate's to interpret.
+    if isinstance(query.required_completeness, (int, float)):
+        have = m.completeness
+        if not isinstance(have, (int, float)):
+            return _Verdict(
+                "fail", m, RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
+                f"completeness {have!r} is not a numeric measure, so it cannot meet "
+                f"required {query.required_completeness}",
+            )
+        if float(have) < float(query.required_completeness):
+            return _Verdict(
+                "fail", m, RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
+                f"completeness {have} < required {query.required_completeness}",
+            )
 
     # Gate 4 — producer version
     if query.allowed_producer_versions and m.producer_version not in query.allowed_producer_versions:

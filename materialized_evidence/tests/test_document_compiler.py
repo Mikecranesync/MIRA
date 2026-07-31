@@ -491,7 +491,8 @@ class TestInputValidation:
     def test_valid_pages_still_compile(self):
         """The negative control: validation must not reject legitimate page identity."""
         receipt = _compile(verified_pages=[self._page(1), self._page(2), self._page(7)])
-        assert receipt.page_identity_manifest.page_or_segment_scope == "pages:1-7"
+        # NOT "pages:1-7" — pages 3-6 were never verified (see TestNonContiguousPages).
+        assert receipt.page_identity_manifest.page_or_segment_scope == "pages:1-2,7"
         assert len(receipt.page_identity_records) == 3
         assert len({r.record_id for r in receipt.page_identity_records}) == 3
 
@@ -645,3 +646,149 @@ class TestRegistryRoundTrip:
         forged = dataclasses.replace(forged, manifest_hash="deadbeef")
         with pytest.raises(RegistryError, match="immutable version conflict"):
             registry.register(forged)
+
+
+# ── non-contiguous verified pages ────────────────────────────────────────────
+
+
+class TestNonContiguousPages:
+    """Pages 1 and 3 are NOT "pages 1-3".
+
+    A bare min-max scope on a gapped page set asserts coverage of pages the
+    extractor never verified — the same fabrication the no-pages branch refuses
+    to commit, arriving through a different door. Scope enumerates the real runs
+    and `known_gaps` names what is absent.
+    """
+
+    def _page(self, n: int) -> VerifiedPage:
+        return VerifiedPage(
+            page_number=n, char_count=10 * n, text_sha256=sha256_bytes(f"p{n}".encode())
+        )
+
+    def test_a_gapped_page_set_never_claims_the_whole_span(self):
+        receipt = _compile(verified_pages=[self._page(1), self._page(3)])
+        m = receipt.page_identity_manifest
+
+        assert m.page_or_segment_scope == "pages:1,3"
+        assert m.page_or_segment_scope != "pages:1-3"
+        assert any("NON-CONTIGUOUS" in g for g in m.known_gaps)
+        assert any("2" in g for g in m.known_gaps)  # the absent page is named
+        # only the verified pages exist as records — page 2 is not invented
+        assert {r.payload["page_number"] for r in receipt.page_identity_records} == {1, 3}
+
+    def test_a_contiguous_page_set_still_reads_as_a_range(self):
+        """The negative control: the common case must not become noisy."""
+        receipt = _compile(verified_pages=[self._page(n) for n in (1, 2, 3)])
+        assert receipt.page_identity_manifest.page_or_segment_scope == "pages:1-3"
+        assert receipt.page_identity_manifest.known_gaps == []
+
+    def test_runs_are_collapsed_and_bounded(self):
+        """`known_gaps` and the scope both feed `manifest_hash`, so neither may
+        grow with the size of the gap: pages {1, 5000} must not emit 4998 entries."""
+        receipt = _compile(verified_pages=[self._page(1), self._page(5000)])
+        m = receipt.page_identity_manifest
+        assert m.page_or_segment_scope == "pages:1,5000"
+        assert len(m.known_gaps) == 1
+        assert len(m.known_gaps[0]) < 400
+        assert "2-4999" in m.known_gaps[0]  # the run, not 4998 numbers
+
+    def test_many_scattered_pages_elide_rather_than_grow_without_bound(self):
+        odd = [self._page(n) for n in range(1, 60, 2)]  # 30 one-page runs
+        m = _compile(verified_pages=odd).page_identity_manifest
+        assert "more" in m.page_or_segment_scope  # elided, and says so
+        assert len(m.page_or_segment_scope) < 120
+        assert len(m.known_gaps[0]) < 400
+        assert len(_compile(verified_pages=odd).page_identity_records) == 30
+
+    def test_page_completeness_is_still_unknown_not_asserted(self):
+        """The compiler is never told the document's page COUNT, so it cannot know
+        whether even a contiguous run is full coverage. Unknown stays unknown."""
+        for pages in ([self._page(1), self._page(2)], [self._page(1), self._page(3)]):
+            assert _compile(verified_pages=pages).page_identity_manifest.completeness is None
+
+
+# ── the contract: a page-incomplete receipt cannot satisfy a page-complete query ──
+
+
+class TestPageCompleteRecallContract:
+    """End-to-end, through the real registry and the real resolver.
+
+    The compiler leaves `completeness` None so a page-level query cannot mistake
+    a document-scoped receipt for full page coverage. That intent is only real if
+    the resolver honors it — before the gate-3 fix it did not, and a document with
+    no page identity at all resolved as REUSED_EXACT for a `required_completeness
+    = 1.0` query.
+    """
+
+    def _promoted(self, receipt, registry):
+        """Register the page-identity manifest as trusted+approved.
+
+        Promotion happens HERE, in the fixture, not in the compiler: the compiler
+        must never self-promote (rule 9 / ADR-0017). It is required only because
+        gate 5 would otherwise reject the candidate first, and then this test
+        would pass without ever reaching the completeness gate. Re-hashed after
+        the replace, or gate 6 rejects it as corrupt for the same reason.
+        """
+        from materialized_evidence import with_hashes
+
+        promoted = dataclasses.replace(
+            receipt.page_identity_manifest,
+            trust_status=TrustStatus.TRUSTED,
+            approval_status=ApprovalStatus.APPROVED,
+            approval_refs=["ai_suggestions:1"],
+        )
+        promoted = with_hashes(promoted, list(receipt.page_identity_records))
+        registry.register(promoted)
+        return promoted
+
+    def _query(self, sha, **over):
+        base = dict(
+            tenant_id=TENANT,
+            dataset_type=DatasetType.PAGE_IDENTITY,
+            source_hashes=[sha],
+            allowed_trust_states=[TrustStatus.TRUSTED],
+        )
+        base.update(over)
+        return RecallQuery(**base)
+
+    def test_a_receipt_with_no_verified_pages_cannot_satisfy_a_page_complete_query(
+        self, tmp_path
+    ):
+        body = b"%PDF-1.7 no page identity available"
+        sha = sha256_bytes(body)
+        registry = FileRegistry(tmp_path / "evidence.json")
+        self._promoted(_compile(source=_source(body), verified_pages=None), registry)
+
+        result = resolve_recall(self._query(sha, required_completeness=1.0), registry)
+        assert result.recompute_decision is RecomputeDecision.RECOMPUTED_MISSING_OUTPUT
+        assert result.outcome is RecallOutcome.NONE
+
+        # The counterfactual that proves gate 3 — not gate 5 or gate 6 — rejected
+        # it: the SAME manifest is fully reusable when no completeness is required.
+        unconstrained = resolve_recall(self._query(sha), registry)
+        assert unconstrained.recompute_decision is RecomputeDecision.REUSED_EXACT, (
+            unconstrained.reason
+        )
+
+    def test_a_gapped_page_receipt_cannot_satisfy_a_page_complete_query_either(
+        self, tmp_path
+    ):
+        """Pages 1 and 3 verified: the scope says so, and the recall gate agrees."""
+        body = b"%PDF-1.7 pages one and three"
+        sha = sha256_bytes(body)
+        pages = [
+            VerifiedPage(page_number=n, char_count=10, text_sha256=sha256_bytes(f"p{n}".encode()))
+            for n in (1, 3)
+        ]
+        registry = FileRegistry(tmp_path / "evidence.json")
+        promoted = self._promoted(
+            _compile(source=_source(body), verified_pages=pages), registry
+        )
+        assert promoted.page_or_segment_scope == "pages:1,3"
+
+        result = resolve_recall(self._query(sha, required_completeness=1.0), registry)
+        assert result.recompute_decision is RecomputeDecision.RECOMPUTED_MISSING_OUTPUT
+        assert (
+            resolve_recall(self._query(sha), registry).recompute_decision
+            is RecomputeDecision.REUSED_EXACT
+        )

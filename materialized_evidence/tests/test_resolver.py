@@ -123,6 +123,45 @@ def test_gate3_incomplete():
     assert "completeness" in res.reason
 
 
+def test_gate3_unknown_completeness_cannot_satisfy_a_numeric_requirement():
+    """`completeness=None` means UNKNOWN, and unknown is not "good enough".
+
+    `document_compiler` deliberately leaves `completeness` None on a
+    document-scoped Page Identity dataset — precisely so a page-level recall
+    query cannot mistake it for full page coverage. The gate has to honor that:
+    comparing only when BOTH sides are numeric let the unknown side through as
+    exact reuse, which is the opposite of what the producer intended.
+    """
+    r = _reg(_m("v1", completeness=None))
+
+    res = resolve_recall(_q(required_completeness=1.0), r)
+    assert res.recompute_decision == RecomputeDecision.RECOMPUTED_MISSING_OUTPUT
+    assert res.outcome == RecallOutcome.NONE
+    assert "completeness" in res.reason
+
+    # The counterfactual that proves the gate — and not some later gate — is what
+    # rejected it: the SAME manifest is fully reusable when nothing is required.
+    assert (
+        resolve_recall(_q(), r).recompute_decision == RecomputeDecision.REUSED_EXACT
+    )
+
+
+def test_gate3_non_numeric_completeness_cannot_satisfy_a_numeric_requirement():
+    """A descriptive completeness ("partial") is not comparable to 1.0."""
+    r = _reg(_m("v1", completeness="partial"))
+    res = resolve_recall(_q(required_completeness=1.0), r)
+    assert res.recompute_decision == RecomputeDecision.RECOMPUTED_MISSING_OUTPUT
+    assert resolve_recall(_q(), r).recompute_decision == RecomputeDecision.REUSED_EXACT
+
+
+def test_gate3_numeric_completeness_at_or_above_the_threshold_still_reuses():
+    """The fix must not turn every completeness comparison into a recompute."""
+    for have in (0.9, 1.0):
+        r = _reg(_m("v1", completeness=have))
+        res = resolve_recall(_q(required_completeness=0.9), r)
+        assert res.recompute_decision == RecomputeDecision.REUSED_EXACT, have
+
+
 # ── Gate 4 — producer version ────────────────────────────────────────────────
 
 def test_gate4_producer_version_changed():

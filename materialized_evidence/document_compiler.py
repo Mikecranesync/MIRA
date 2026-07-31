@@ -47,7 +47,11 @@ What this module deliberately does NOT do
 - **No page fabrication.** A markdown-heading count is not page provenance. With
   no verified pages the Page Identity dataset is **document-scoped**, declares
   the gap, and leaves ``completeness`` ``None`` — so a future page-level recall
-  query cannot mistake it for full page coverage.
+  query cannot mistake it for full page coverage. (The resolver enforces the
+  other half: a numeric ``required_completeness`` is not satisfied by an unknown
+  one.) Verified pages that are **non-contiguous** are scoped by their actual
+  runs (``pages:1-2,7``, never ``pages:1-7``) and declare the absent pages as a
+  gap — a min-max range would assert coverage the extractor never verified.
 - **No lineage promotion.** The source SHA is byte identity only. It is not a
   ``document_lineage_key``, not training lineage, not a rights approval, and not
   permission to reuse customer material.
@@ -310,6 +314,50 @@ def _source_locator(source_sha: str, page_number: int | None = None) -> str:
     return base if page_number is None else f"{base}#page={page_number}"
 
 
+# ── verified-page coverage (scope + gaps must never overstate coverage) ──────
+#
+# `page_or_segment_scope` and `known_gaps` both feed `manifest_hash`, so both must
+# be BOUNDED: pages {1, 5000} must not emit a 4998-entry missing list, or one
+# pathological input inflates every manifest that describes it. Runs are
+# collapsed (`1-2,7`) and the rendering is capped, with the elided count stated
+# rather than silently dropped.
+
+_RUN_LIMIT = 8
+
+
+def _runs(numbers: list[int]) -> list[tuple[int, int]]:
+    """Collapse a sorted, de-duplicated page list into inclusive runs."""
+    runs: list[tuple[int, int]] = []
+    for n in numbers:
+        if runs and n == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], n)
+        else:
+            runs.append((n, n))
+    return runs
+
+
+def _missing_runs(numbers: list[int]) -> list[tuple[int, int]]:
+    """The runs of page numbers absent from ``numbers`` within its own span."""
+    present = _runs(numbers)
+    return [(a[1] + 1, b[0] - 1) for a, b in zip(present, present[1:])]
+
+
+def _format_runs(runs: list[tuple[int, int]], limit: int = _RUN_LIMIT) -> str:
+    shown = ",".join(str(a) if a == b else f"{a}-{b}" for a, b in runs[:limit])
+    if len(runs) > limit:
+        shown += f",+{len(runs) - limit} more"
+    return shown
+
+
+def _page_scope(numbers: list[int]) -> str:
+    """``pages:1-7`` when contiguous; the actual runs (``pages:1-2,7``) when not.
+
+    A min-max range over a non-contiguous set reads as full coverage of the span,
+    which is a claim the extractor did not make.
+    """
+    return f"pages:{_format_runs(_runs(numbers))}"
+
+
 _SHA256_LEN = 64
 
 
@@ -497,8 +545,21 @@ def compile_document_evidence(
 
     # ── dataset 1: page identity ────────────────────────────────────────────
     if pages:
-        scope = f"pages:{min(p.page_number for p in pages)}-{max(p.page_number for p in pages)}"
+        numbers = sorted(p.page_number for p in pages)
+        scope = _page_scope(numbers)
         gaps: list[str] = []
+        missing = _missing_runs(numbers)
+        if missing:
+            # Pages 1 and 3 are NOT "pages 1-3". A bare min-max range on a
+            # non-contiguous set claims coverage of pages the extractor never
+            # verified — the same fabrication the no-pages branch below refuses to
+            # commit, arriving by a different door. Say which pages are absent.
+            gaps.append(
+                f"verified page identity is NON-CONTIGUOUS: pages "
+                f"{_format_runs(_runs(numbers))} are recorded; pages "
+                f"{_format_runs(missing)} within that span are NOT. This dataset "
+                f"covers only the pages listed, never the whole span."
+            )
         page_records = [
             EvidenceRecord(
                 record_id=f"{sha[:16]}:page:{p.page_number:05d}",
