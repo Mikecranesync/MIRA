@@ -696,7 +696,43 @@ _STATUS_BLOCKED = "blocked"
 # is BLOCKED (a human must look). Anything else — a full disk, a read-only mount,
 # a permission — is transient: the entry stays `evidence_pending` and the next
 # run picks it up again.
-_PERMANENT_ERRORS = ("DocumentCompilerError", "RegistryError", "TypeError", "ValueError", "KeyError")
+#
+# Classified by TYPE, never by `type(exc).__name__`. The name check was the bug:
+# `json.JSONDecodeError` IS a `ValueError`, but its NAME is "JSONDecodeError",
+# which no name list contains. So a CORRUPT registry snapshot — the single most
+# likely permanent failure here — was classified transient, the item stayed
+# `evidence_pending` forever, `needs_attention` stayed False, and the CLI exited
+# 0 while the evidence gap never closed. Any subclass has the same hole, so
+# isinstance is the only classification that cannot silently regress.
+_PERMANENT_BUILTIN_ERRORS: tuple[type[BaseException], ...] = (TypeError, ValueError, KeyError)
+
+
+def _permanent_error_types() -> tuple[type[BaseException], ...]:
+    """Builtin permanent errors + the evidence-layer ones, imported lazily.
+
+    Lazy because this module must import in environments that do not ship
+    `materialized_evidence` (the crawler's own test env does not always). A
+    missing import degrades to the builtin tuple rather than crashing the replay.
+    """
+    extra: list[type[BaseException]] = []
+    try:
+        from materialized_evidence import RegistryError
+
+        extra.append(RegistryError)
+    except Exception:  # noqa: BLE001 — optional dependency; builtins still classify
+        pass
+    try:
+        from materialized_evidence.document_compiler import DocumentCompilerError
+
+        extra.append(DocumentCompilerError)
+    except Exception:  # noqa: BLE001
+        pass
+    return _PERMANENT_BUILTIN_ERRORS + tuple(extra)
+
+
+def _is_permanent_replay_error(exc: BaseException) -> bool:
+    """True when a retry can never succeed, so the item must become `blocked`."""
+    return isinstance(exc, _permanent_error_types())
 
 
 @dataclass
@@ -808,42 +844,59 @@ def replay_evidence_journal(registry_path: str, *, journal_path: str | None = No
         return report
 
     with _journal_locked(journal):
-        out_lines: list[str] = []
-        for raw in journal.read_text("utf-8").splitlines():
-            if not raw.strip():
+        out_records: list[bytes] = []
+        # BYTES, not text. `read_text("utf-8")` decodes the WHOLE file, so a single
+        # invalid byte anywhere raised out of this function and NOTHING replayed —
+        # including the valid pending entries after it. And `splitlines()` splits on
+        # Unicode boundaries `\n` is not (\v, \f, \x1c, \u2028) and DISCARDS the
+        # terminator, so a CRLF record came back without its `\r` and was rewritten
+        # without it — "preserved byte-identical" was not true.
+        #
+        # So: split on b"\n" only, and decode each candidate record on its own with
+        # errors="strict". A record that will not decode, or will not parse, is
+        # written back as the ORIGINAL BYTES and never passes through str.
+        for record in journal.read_bytes().split(b"\n"):
+            if not record.strip():
                 continue
             report.total += 1
             try:
-                item = json.loads(raw)
+                item = json.loads(record.decode("utf-8"))
                 if not isinstance(item, dict):
                     raise ValueError("journal entry is not a JSON object")
-            except Exception as exc:  # noqa: BLE001 — a bad line is kept, never dropped
+            except Exception as exc:  # noqa: BLE001 — a bad record is kept, never dropped
                 report.malformed += 1
                 report.notes.append(f"malformed entry preserved verbatim: {exc}")
-                out_lines.append(raw)  # byte-identical
+                out_records.append(record)  # byte-identical, including \r and invalid UTF-8
                 continue
 
             status = item.get("status")
             if status == _STATUS_REPLAYED:
                 report.already_replayed += 1
-                out_lines.append(_dump(item))
+                out_records.append(_dump_bytes(item))
                 continue
             if status != _STATUS_PENDING:
+                # Make it DURABLE. Leaving the entry untouched meant the journal
+                # never recorded why it was counted as blocked, and every later
+                # run re-derived the same verdict from scratch — a finding that
+                # existed only in a report nobody kept.
+                updated, _ = _blocked(item, f"unrecognised status {status!r}")
                 report.blocked += 1
-                report.notes.append(f"entry with unrecognised status {status!r} left untouched")
-                out_lines.append(_dump(item))
+                report.notes.append(f"entry with unrecognised status {status!r} marked blocked")
+                out_records.append(_dump_bytes(updated))
                 continue
             if item.get("schema") != _REPLAY_SCHEMA:
                 updated, _ = _blocked(item, f"unsupported schema {item.get('schema')!r}")
                 report.blocked += 1
-                out_lines.append(_dump(updated))
+                out_records.append(_dump_bytes(updated))
                 continue
 
             try:
                 updated, outcome = _replay_one(item, registry_path)
             except Exception as exc:  # noqa: BLE001 — one bad entry must not abort the pass
+                # Redaction of the recorded reason is preserved: the message can
+                # carry a presigned URL or a `?token=` from whatever failed.
                 reason = _scrub_uris(f"{type(exc).__name__}: {exc}")
-                if type(exc).__name__ in _PERMANENT_ERRORS:
+                if _is_permanent_replay_error(exc):
                     updated, outcome = _blocked(item, reason)
                 else:
                     # Transient: stay pending so the next run retries, but record
@@ -860,9 +913,9 @@ def replay_evidence_journal(registry_path: str, *, journal_path: str | None = No
                 report.blocked += 1
             else:
                 report.pending += 1
-            out_lines.append(_dump(updated))
+            out_records.append(_dump_bytes(updated))
 
-        _atomic_write_lines(journal, out_lines)
+        _atomic_write_records(journal, out_records)
     return report
 
 
@@ -870,19 +923,27 @@ def _dump(item: dict) -> str:
     return json.dumps(item, sort_keys=True, ensure_ascii=False)
 
 
-def _atomic_write_lines(path: Path, lines: list[str]) -> None:
-    """tmp + fsync + replace — the same idiom ``FileRegistry._persist`` uses.
+def _dump_bytes(item: dict) -> bytes:
+    """Serialize a parsed entry back to the bytes the journal stores."""
+    return _dump(item).encode("utf-8")
 
-    An in-place rewrite that dies halfway destroys the only durable record of
-    every gap the journal holds.
+
+def _atomic_write_records(path: Path, records: list[bytes]) -> None:
+    """Atomic rewrite over RAW RECORDS.
+
+    Bytes, not str, so a preserved malformed record (invalid UTF-8, an embedded
+    `\r`) round-trips exactly as it arrived. Re-encoding it through `str` is what
+    silently rewrote those records before.
     """
     tmp = path.with_suffix(path.suffix + ".tmp")
-    payload = ("\n".join(lines) + "\n" if lines else "").encode("utf-8")
+    payload = b"\n".join(records) + b"\n" if records else b""
     with open(tmp, "wb") as f:
         f.write(payload)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, path)
+
+
 
 
 def step_document_evidence(

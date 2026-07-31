@@ -5,9 +5,13 @@ round-trip, hashes are stable + content-addressed, identical output deduplicates
 stamping hashes is idempotent, and the validator has teeth (inference lineage +
 no self-promotion). Pure/offline — no network, no I/O.
 """
+
 from __future__ import annotations
 
 import dataclasses
+import math
+
+import pytest
 
 from materialized_evidence import (
     ApprovalStatus,
@@ -15,9 +19,11 @@ from materialized_evidence import (
     Environment,
     EvidenceManifest,
     EvidenceRecord,
+    InMemoryRegistry,
     RecallOutcome,
     RecallResult,
     RecomputeDecision,
+    RegistryError,
     TrustStatus,
     content_hash,
     manifest_hash,
@@ -116,8 +122,11 @@ def test_validator_requires_missing_fields():
 
 
 def test_recall_result_is_explicit():
-    r = RecallResult(outcome=RecallOutcome.NONE, reason="no compatible OCR for source hash",
-                     recompute_decision=RecomputeDecision.RECOMPUTED_MISSING_OUTPUT)
+    r = RecallResult(
+        outcome=RecallOutcome.NONE,
+        reason="no compatible OCR for source hash",
+        recompute_decision=RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
+    )
     d = r.to_dict()
     assert d["outcome"] == "none" and d["recompute_decision"] == "recomputed_missing_output"
 
@@ -125,3 +134,33 @@ def test_recall_result_is_explicit():
 def test_approved_requires_approval_ref():
     m = _manifest(approval_status=ApprovalStatus.APPROVED)
     assert any("approval_refs" in p for p in validate_manifest(m))
+
+
+# ── completeness must be a finite measure to be REGISTERABLE ─────────────────
+
+
+@pytest.mark.parametrize("bad", [math.nan, math.inf, -math.inf, True, False])
+def test_non_finite_or_bool_completeness_is_rejected_at_registration(bad):
+    """Stop it at the door, not only at recall.
+
+    A bool compares as 1.0, and `nan < threshold` is False so NaN falls through
+    a `<` check as though it met the requirement. Either one, once persisted,
+    silently satisfies a numeric `required_completeness` forever. The registry
+    refuses to store one rather than leaving every future reader to defend
+    against evidence that should never have existed.
+    """
+    m = _manifest()
+    m = dataclasses.replace(m, completeness=bad)
+    problems = validate_manifest(m)
+    assert any("completeness" in p for p in problems), problems
+
+    with pytest.raises(RegistryError):
+        InMemoryRegistry().register(with_hashes(m, []))
+
+
+@pytest.mark.parametrize("ok", [0, 0.5, 1.0, "partial", None])
+def test_valid_completeness_values_still_register(ok):
+    """The gate must not turn every legitimate completeness into a rejection."""
+    m = dataclasses.replace(_manifest(), completeness=ok)
+    assert not [p for p in validate_manifest(m) if "completeness" in p]
+    InMemoryRegistry().register(with_hashes(m, []))

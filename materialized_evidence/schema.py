@@ -14,6 +14,7 @@ carry no vendor-specific types (ADR A6).
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
@@ -280,6 +281,22 @@ _REQUIRED_MANIFEST_FIELDS = (
 _URI_BEARING_MANIFEST_FIELDS = ("source_objects", "storage_ref", "index_refs")
 
 
+def is_finite_measure(value: Any) -> bool:
+    """True only for a real, finite numeric measure.
+
+    `bool` is excluded deliberately: it is a subclass of `int`, so a bare
+    `isinstance(v, (int, float))` accepts `True` and then compares it as `1.0` —
+    a flag would silently satisfy `required_completeness=1.0`. `NaN` is excluded
+    because every comparison against it is False, so `nan < threshold` reads as
+    "meets the requirement"; `inf` because it exceeds every threshold. All three
+    are "not a measure", and both the registration gate and the recall resolver
+    read this ONE predicate so they cannot drift apart.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value)
+
+
 def validate_manifest(m: EvidenceManifest) -> list[str]:
     """Return a list of contract violations (empty == valid). Cheap, offline,
     no I/O — the kind of gate a stage can run before writing."""
@@ -293,6 +310,18 @@ def validate_manifest(m: EvidenceManifest) -> list[str]:
         problems.append("environment must be an Environment")
     if m.contradiction_count < 0 or m.unresolved_count < 0:
         problems.append("counts must be non-negative")
+    # completeness is either a descriptive string, unknown (None), or a FINITE
+    # number. A bool / NaN / +-inf is none of those, and each one silently
+    # satisfies a numeric `required_completeness` at recall time — so the
+    # registry must refuse to persist one rather than leave the resolver to
+    # defend against evidence that should never have existed.
+    if m.completeness is not None and not isinstance(m.completeness, str):
+        if not is_finite_measure(m.completeness):
+            problems.append(
+                f"completeness {m.completeness!r} must be a finite number, a descriptive "
+                f"string, or None (bool/NaN/inf would silently satisfy a numeric "
+                f"required_completeness at recall time)"
+            )
     # a model-produced dataset must carry model lineage (rule 6)
     if m.model_provider and not (m.model_id and m.prompt_contract_version):
         problems.append(

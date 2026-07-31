@@ -36,6 +36,7 @@ from .schema import (
     RecallResult,
     RecomputeDecision,
     StaleState,
+    is_finite_measure,
 )
 
 # highest-priority (most actionable) failure first — used to pick THE decision when
@@ -91,11 +92,17 @@ def _source_coverage(q_sources: list[str], c_sources: list[str]) -> tuple[str, l
     return "none", missing
 
 
-def _evaluate(query: RecallQuery, registry: MaterializationRegistry, m: EvidenceManifest) -> _Verdict:
+def _evaluate(
+    query: RecallQuery, registry: MaterializationRegistry, m: EvidenceManifest
+) -> _Verdict:
     # Gate 1 — tenancy already enforced by registry.find (same-tenant only);
     # here we complete Gate 1 with the environment check.
     if m.environment != query.environment:
-        return _Verdict("env_mismatch", m, reason=f"environment {m.environment.value} != {query.environment.value}")
+        return _Verdict(
+            "env_mismatch",
+            m,
+            reason=f"environment {m.environment.value} != {query.environment.value}",
+        )
 
     # Gate 2 — source identity
     cov, missing = _source_coverage(query.source_hashes, m.source_hashes)
@@ -107,35 +114,68 @@ def _evaluate(query: RecallQuery, registry: MaterializationRegistry, m: Evidence
         want_name, want_ver = query.required_schema
         if (m.schema_name, m.schema_version) != (want_name, want_ver):
             return _Verdict(
-                "fail", m, RecomputeDecision.RECOMPUTED_SCHEMA_CHANGED,
+                "fail",
+                m,
+                RecomputeDecision.RECOMPUTED_SCHEMA_CHANGED,
                 f"schema {m.schema_name}/{m.schema_version} != required {want_name}/{want_ver}",
             )
-    # A NUMERIC requirement demands a numeric answer. Requiring both sides to be
-    # numeric *before comparing* silently let an UNKNOWN completeness through as
-    # exact reuse — the exact case `document_compiler` relies on: it leaves
+    # A NUMERIC requirement demands a FINITE numeric answer. Requiring both sides
+    # to be numeric *before comparing* silently let an UNKNOWN completeness through
+    # as exact reuse — the exact case `document_compiler` relies on: it leaves
     # `completeness` None on a document-scoped Page Identity dataset so a
     # page-level query cannot mistake it for full page coverage. Unknown, and any
     # descriptive value ("partial"), is insufficient, not sufficient.
+    #
+    # `is_finite_measure` is why this is not a plain isinstance check:
+    #   * `bool` is a subclass of `int`, so `True` would pass `isinstance(..., int)`
+    #     and compare as 1.0 — a flag silently satisfying `required_completeness=1.0`.
+    #   * every comparison against `NaN` is False, so `nan < 1.0` is False and NaN
+    #     would fall through the `<` check as if it MET the requirement.
+    #   * `inf` compares as larger than any threshold, so an infinite completeness
+    #     would satisfy every requirement.
+    # All three are "not a measure", and this gate fails closed on each.
+    #
     # A non-numeric *requirement* stays ungated here: it is a vocabulary this
-    # layer does not define, so it is not this gate's to interpret.
-    if isinstance(query.required_completeness, (int, float)):
-        have = m.completeness
-        if not isinstance(have, (int, float)):
+    # layer does not define, so it is not this gate's to interpret. A numeric-
+    # LOOKING but non-finite requirement (or a bool) is NOT that case — it is a
+    # requirement this gate cannot honour, so it also fails closed rather than
+    # falling through to ungated reuse.
+    req = query.required_completeness
+    if isinstance(req, (int, float)):
+        if not is_finite_measure(req):
             return _Verdict(
-                "fail", m, RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
-                f"completeness {have!r} is not a numeric measure, so it cannot meet "
-                f"required {query.required_completeness}",
+                "fail",
+                m,
+                RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
+                f"required_completeness {req!r} is not a finite numeric requirement, "
+                f"so no dataset can be shown to satisfy it",
             )
-        if float(have) < float(query.required_completeness):
+        have = m.completeness
+        if not is_finite_measure(have):
             return _Verdict(
-                "fail", m, RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
-                f"completeness {have} < required {query.required_completeness}",
+                "fail",
+                m,
+                RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
+                f"completeness {have!r} is not a finite numeric measure, so it cannot "
+                f"meet required {req}",
+            )
+        if float(have) < float(req):
+            return _Verdict(
+                "fail",
+                m,
+                RecomputeDecision.RECOMPUTED_MISSING_OUTPUT,
+                f"completeness {have} < required {req}",
             )
 
     # Gate 4 — producer version
-    if query.allowed_producer_versions and m.producer_version not in query.allowed_producer_versions:
+    if (
+        query.allowed_producer_versions
+        and m.producer_version not in query.allowed_producer_versions
+    ):
         return _Verdict(
-            "fail", m, RecomputeDecision.RECOMPUTED_ALGORITHM_CHANGED,
+            "fail",
+            m,
+            RecomputeDecision.RECOMPUTED_ALGORITHM_CHANGED,
             f"producer_version {m.producer_version!r} not in allowed {query.allowed_producer_versions}",
         )
     # Gate 4 (cont.) — prompt-contract version: a DISTINCT provenance event from a
@@ -149,7 +189,9 @@ def _evaluate(query: RecallQuery, registry: MaterializationRegistry, m: Evidence
         and m.prompt_contract_version not in query.allowed_prompt_versions
     ):
         return _Verdict(
-            "fail", m, RecomputeDecision.RECOMPUTED_PROMPT_CHANGED,
+            "fail",
+            m,
+            RecomputeDecision.RECOMPUTED_PROMPT_CHANGED,
             f"prompt_contract_version {m.prompt_contract_version!r} not in allowed {query.allowed_prompt_versions}",
         )
 
@@ -158,23 +200,31 @@ def _evaluate(query: RecallQuery, registry: MaterializationRegistry, m: Evidence
         return _Verdict("fail", m, RecomputeDecision.BLOCKED_APPROVAL, "approval revoked")
     if query.allowed_trust_states and m.trust_status not in query.allowed_trust_states:
         return _Verdict(
-            "fail", m, RecomputeDecision.BLOCKED_APPROVAL,
+            "fail",
+            m,
+            RecomputeDecision.BLOCKED_APPROVAL,
             f"trust_status {m.trust_status.value} not in required {[t.value for t in query.allowed_trust_states]}",
         )
     eff_stale = registry.effective_stale_state(m.dataset_version_id, tenant_id=query.tenant_id)
     if eff_stale != StaleState.VALID:
         return _Verdict(
-            "fail", m, RecomputeDecision.BLOCKED_DEPENDENCY,
+            "fail",
+            m,
+            RecomputeDecision.BLOCKED_DEPENDENCY,
             f"evidence is {eff_stale.value} (rebuild upstream before reuse)",
         )
 
     # Gate 6 — integrity (no I/O: manifest-hash + content-hash + parent availability)
     if not m.content_hash or manifest_hash(m) != m.manifest_hash:
-        return _Verdict("fail", m, RecomputeDecision.RECOMPUTED_CORRUPT, "manifest/content hash mismatch")
+        return _Verdict(
+            "fail", m, RecomputeDecision.RECOMPUTED_CORRUPT, "manifest/content hash mismatch"
+        )
     for parent in m.parent_dataset_versions:
         if registry.get(parent, tenant_id=query.tenant_id) is None:
             return _Verdict(
-                "fail", m, RecomputeDecision.BLOCKED_DEPENDENCY,
+                "fail",
+                m,
+                RecomputeDecision.BLOCKED_DEPENDENCY,
                 f"parent dataset version {parent!r} is unavailable",
             )
 
@@ -238,7 +288,9 @@ def resolve_recall(query: RecallQuery, registry: MaterializationRegistry) -> Rec
     if fails:
         chosen = min(
             fails,
-            key=lambda v: _FAILURE_PRIORITY.index(v.decision) if v.decision in _FAILURE_PRIORITY else 999,
+            key=lambda v: (
+                _FAILURE_PRIORITY.index(v.decision) if v.decision in _FAILURE_PRIORITY else 999
+            ),
         )
         assert chosen.decision is not None
         return RecallResult(

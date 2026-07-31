@@ -721,3 +721,117 @@ class TestJournalLockIsNotTheRegistryLock:
         journal_lock = _journal_lock_path(evidence_repair_path(str(snapshot)))
         assert journal_lock != FileRegistry(snapshot)._lock_path
         assert journal_lock.name == "ev.json.repair.jsonl.lock"
+
+
+class TestReplayRobustness:
+    """The three ways the replay pass silently lost or mis-graded a journal.
+
+    Each is a case where the OLD code reported success (exit 0, nothing needing
+    attention) while the evidence gap stayed open — the worst failure shape for a
+    repair tool, because the operator has no signal to act on.
+    """
+
+    def _pending(self, tmp_path, registry: Path) -> dict:
+        """One genuine `evidence_pending` item, via the real failure path.
+
+        Fails `write_receipt` specifically (the same seam the suite's `_fail`
+        uses) rather than patching `Path.write_text` — the latter would also
+        break the journal write this helper depends on.
+        """
+        with patch(
+            "materialized_evidence.document_compiler.write_receipt",
+            side_effect=OSError("read-only filesystem"),
+        ):
+            step_document_evidence(
+                _pdf(tmp_path), DOC_TEXT, "https://example.test/gs10.pdf",
+                False, _report(), registry_path=str(registry), tenant_id=TENANT,
+            )
+        journal = evidence_repair_path(str(registry))
+        return json.loads(journal.read_text("utf-8").strip())
+
+    def test_a_corrupt_snapshot_blocks_the_item_and_exits_nonzero(self, tmp_path):
+        """`json.JSONDecodeError` IS a `ValueError`, but its NAME is not in any
+        name list — so a corrupt registry snapshot used to be graded TRANSIENT.
+        The item stayed pending, `needs_attention` was False, and the CLI exited
+        0 forever while the evidence was never written."""
+        registry = tmp_path / "ev.json"
+        self._pending(tmp_path, registry)
+
+        registry.write_text("{ this is not json", encoding="utf-8")  # corrupt snapshot
+
+        report = replay_evidence_journal(str(registry))
+
+        assert report.blocked == 1, report.summary()
+        assert report.pending == 0, "a corrupt snapshot can never succeed on retry"
+        assert report.needs_attention is True
+
+        item = json.loads(evidence_repair_path(str(registry)).read_text("utf-8").strip())
+        assert item["status"] == "blocked", "the block must be DURABLE in the journal"
+        assert item.get("blocked_reason"), "a blocked item must record why"
+
+    def test_the_blocked_reason_is_still_redacted(self, tmp_path):
+        """Reclassifying must not lose the redaction — the message can carry a
+        presigned URL or a `?token=` from whatever failed."""
+        registry = tmp_path / "ev.json"
+        self._pending(tmp_path, registry)
+        secret = "https://cdn.example.test/x.pdf?token=SUPERSECRET"
+        with patch(
+            "tasks.full_ingest_pipeline._replay_one", side_effect=ValueError(f"boom {secret}")
+        ):
+            replay_evidence_journal(str(registry))
+        raw = evidence_repair_path(str(registry)).read_text("utf-8")
+        assert "SUPERSECRET" not in raw, "the recorded reason leaked a credential"
+        assert json.loads(raw.strip())["status"] == "blocked"
+
+    def test_crlf_malformed_record_is_preserved_byte_for_byte(self, tmp_path):
+        """`splitlines()` DISCARDS the terminator, so a CRLF record came back
+        without its `\\r` and was rewritten without it."""
+        registry = tmp_path / "ev.json"
+        journal = evidence_repair_path(str(registry))
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        malformed = b'{"status": "evidence_pending", TRUNCATED\r'
+        journal.write_bytes(malformed + b"\n")
+
+        report = replay_evidence_journal(str(registry))
+
+        assert report.malformed == 1
+        assert report.needs_attention is True
+        assert journal.read_bytes() == malformed + b"\n", "the \\r was not preserved"
+
+    def test_invalid_utf8_is_preserved_and_a_later_valid_entry_still_replays(self, tmp_path):
+        """Whole-file `read_text("utf-8")` raised on the FIRST bad byte, so nothing
+        replayed — including every valid pending entry after it."""
+        registry = tmp_path / "ev.json"
+        pending = self._pending(tmp_path, registry)
+        journal = evidence_repair_path(str(registry))
+
+        bad = b'{"status": "evidence_pending", "note": "\xff\xfe not utf-8"}'
+        journal.write_bytes(bad + b"\n" + json.dumps(pending).encode("utf-8") + b"\n")
+
+        report = replay_evidence_journal(str(registry))
+
+        assert report.malformed == 1, "the undecodable record must be counted, not fatal"
+        assert report.total == 2, "the valid entry after it must still be seen"
+        assert report.replayed == 1, "a valid pending entry after bad bytes must replay"
+
+        out = journal.read_bytes()
+        assert bad in out, "the invalid-UTF-8 record was not preserved verbatim"
+
+    def test_an_unrecognised_status_becomes_a_durable_blocked_entry(self, tmp_path):
+        """It used to be counted blocked in the report but written back UNCHANGED —
+        a finding that existed only in a report nobody kept."""
+        registry = tmp_path / "ev.json"
+        journal = evidence_repair_path(str(registry))
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        journal.write_text(
+            json.dumps({"schema": "evidence_repair_item/1.0", "status": "wat"}) + "\n",
+            encoding="utf-8",
+        )
+
+        report = replay_evidence_journal(str(registry))
+
+        assert report.blocked == 1
+        assert report.needs_attention is True
+        item = json.loads(journal.read_text("utf-8").strip())
+        assert item["status"] == "blocked", "the verdict must be written back"
+        assert "wat" in item["blocked_reason"]

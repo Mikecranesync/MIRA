@@ -3,9 +3,13 @@
 Hermetic, no I/O. Each test sets up a registry state and asserts the resolver's
 outcome + exact RecomputeDecision reason code + missing requirements.
 """
+
 from __future__ import annotations
 
 import dataclasses
+import math
+
+import pytest
 
 from materialized_evidence import (
     ApprovalStatus,
@@ -22,9 +26,21 @@ from materialized_evidence import (
 )
 
 
-def _m(dsv, *, tenant="t1", env=Environment.DEV, sources=None, schema=("s", "1.0"),
-       producer_version="1", trust=TrustStatus.TRUSTED, approval=ApprovalStatus.APPROVED,
-       approval_refs=None, parents=None, completeness=None, **over) -> EvidenceManifest:
+def _m(
+    dsv,
+    *,
+    tenant="t1",
+    env=Environment.DEV,
+    sources=None,
+    schema=("s", "1.0"),
+    producer_version="1",
+    trust=TrustStatus.TRUSTED,
+    approval=ApprovalStatus.APPROVED,
+    approval_refs=None,
+    parents=None,
+    completeness=None,
+    **over,
+) -> EvidenceManifest:
     base = EvidenceManifest(
         dataset_id="ds.ocr",
         dataset_version_id=dsv,
@@ -38,7 +54,8 @@ def _m(dsv, *, tenant="t1", env=Environment.DEV, sources=None, schema=("s", "1.0
         source_hashes=sources or ["shA"],
         trust_status=trust,
         approval_status=approval,
-        approval_refs=approval_refs or (["ai_suggestions:1"] if trust == TrustStatus.TRUSTED else []),
+        approval_refs=approval_refs
+        or (["ai_suggestions:1"] if trust == TrustStatus.TRUSTED else []),
         parent_dataset_versions=parents or [],
         completeness=completeness,
         **over,
@@ -54,13 +71,18 @@ def _reg(*ms) -> InMemoryRegistry:
 
 
 def _q(**over) -> RecallQuery:
-    base = dict(tenant_id="t1", dataset_type=DatasetType.OCR, source_hashes=["shA"],
-                environment=Environment.DEV)
+    base = dict(
+        tenant_id="t1",
+        dataset_type=DatasetType.OCR,
+        source_hashes=["shA"],
+        environment=Environment.DEV,
+    )
     base.update(over)
     return RecallQuery(**base)
 
 
 # ── the happy path ───────────────────────────────────────────────────────────
+
 
 def test_exact_reuse():
     r = _reg(_m("v1", sources=["shA"]))
@@ -80,6 +102,7 @@ def test_partial_reuse_reports_missing():
 
 # ── Gate 1 — tenancy + environment ───────────────────────────────────────────
 
+
 def test_gate1_cross_tenant_rejected():
     r = _reg(_m("v1", tenant="t2"))  # evidence belongs to t2
     res = resolve_recall(_q(tenant_id="t1"), r)
@@ -97,6 +120,7 @@ def test_gate1_environment_mismatch():
 
 # ── Gate 2 — source identity ─────────────────────────────────────────────────
 
+
 def test_gate2_source_changed():
     r = _reg(_m("v1", sources=["shOLD"]))
     res = resolve_recall(_q(source_hashes=["shNEW"]), r)
@@ -109,6 +133,7 @@ def test_gate2_never_materialized():
 
 
 # ── Gate 3 — output contract ─────────────────────────────────────────────────
+
 
 def test_gate3_schema_changed():
     r = _reg(_m("v1", schema=("s", "1.0")))
@@ -141,9 +166,7 @@ def test_gate3_unknown_completeness_cannot_satisfy_a_numeric_requirement():
 
     # The counterfactual that proves the gate — and not some later gate — is what
     # rejected it: the SAME manifest is fully reusable when nothing is required.
-    assert (
-        resolve_recall(_q(), r).recompute_decision == RecomputeDecision.REUSED_EXACT
-    )
+    assert resolve_recall(_q(), r).recompute_decision == RecomputeDecision.REUSED_EXACT
 
 
 def test_gate3_non_numeric_completeness_cannot_satisfy_a_numeric_requirement():
@@ -164,6 +187,7 @@ def test_gate3_numeric_completeness_at_or_above_the_threshold_still_reuses():
 
 # ── Gate 4 — producer version ────────────────────────────────────────────────
 
+
 def test_gate4_producer_version_changed():
     r = _reg(_m("v1", producer_version="1"))
     res = resolve_recall(_q(allowed_producer_versions=["2"]), r)
@@ -171,6 +195,7 @@ def test_gate4_producer_version_changed():
 
 
 # ── Gate 5 — trust and approval ──────────────────────────────────────────────
+
 
 def test_gate5_approval_revoked_blocks():
     r = _reg(_m("v1", approval=ApprovalStatus.REVOKED, trust=TrustStatus.BETA, approval_refs=["x"]))
@@ -196,6 +221,7 @@ def test_gate5_stale_blocks_on_dependency():
 
 # ── Gate 6 — integrity ───────────────────────────────────────────────────────
 
+
 def test_gate6_corrupt_manifest_hash():
     m = _m("v1")
     r = InMemoryRegistry()
@@ -214,15 +240,19 @@ def test_gate6_missing_parent_blocks():
 
 # ── conflict ─────────────────────────────────────────────────────────────────
 
+
 def test_conflicting_results_block():
     # two exact-compatible datasets for the same source but DIFFERENT content
-    a = with_hashes(dataclasses.replace(_m("v1"), content_hash=""),
-                    [])  # v1 content hash from empty records
+    a = with_hashes(
+        dataclasses.replace(_m("v1"), content_hash=""), []
+    )  # v1 content hash from empty records
     b = _m("v2")
     # force different content by giving b a different record set via with_hashes
     from materialized_evidence import EvidenceRecord
-    b = with_hashes(dataclasses.replace(b, content_hash=""),
-                    [EvidenceRecord("r", "ds", "loc", {"x": 1})])
+
+    b = with_hashes(
+        dataclasses.replace(b, content_hash=""), [EvidenceRecord("r", "ds", "loc", {"x": 1})]
+    )
     r = _reg(a, b)
     res = resolve_recall(_q(), r)
     assert res.outcome == RecallOutcome.CONFLICTING
@@ -232,9 +262,76 @@ def test_conflicting_results_block():
 
 # ── ordering: the first failing gate wins ────────────────────────────────────
 
+
 def test_gate_order_source_before_schema():
     # candidate is BOTH wrong-source and wrong-schema; source (Gate 2) is evaluated
     # first, so the type-level source_none path yields SOURCE_CHANGED, not SCHEMA.
     r = _reg(_m("v1", sources=["shOLD"], schema=("s", "1.0")))
     res = resolve_recall(_q(source_hashes=["shNEW"], required_schema=("s", "2.0")), r)
     assert res.recompute_decision == RecomputeDecision.RECOMPUTED_SOURCE_CHANGED
+
+
+# ── Gate 3 — non-finite / bool completeness must never enable reuse ───────────
+#
+# Three distinct silent-reuse holes, each from a different property of Python
+# numerics rather than from the gate's own logic:
+#   * `bool` is a subclass of `int`, so `True` passes an isinstance check and
+#     compares as 1.0;
+#   * every comparison against `NaN` is False, so `nan < 1.0` is False and NaN
+#     falls THROUGH the `<` check as though it met the requirement;
+#   * `inf` exceeds every threshold.
+# All three must fail closed, on both sides of the comparison.
+
+
+def _inject(reg: InMemoryRegistry, m: EvidenceManifest) -> InMemoryRegistry:
+    """Place a manifest in the registry BYPASSING validation.
+
+    `register` now rejects a non-finite completeness outright (see
+    test_schema.py), so the only way to prove the RESOLVER also fails closed is
+    to simulate a row persisted before that validation existed. That is
+    defence-in-depth, not redundancy: the registry is a protocol with other
+    backends, and the resolver must not assume every one of them validated.
+    """
+    reg._manifests[m.dataset_version_id] = m
+    return reg
+
+
+@pytest.mark.parametrize("bad", [math.nan, math.inf, -math.inf, True, False])
+def test_gate3_non_finite_or_bool_completeness_cannot_satisfy_a_numeric_requirement(bad):
+    """A TRUSTED + APPROVED manifest — one that clears every other gate — still
+    must not be reused when its completeness is not a finite measure."""
+    m = _m("v1", completeness=bad, trust=TrustStatus.TRUSTED, approval=ApprovalStatus.APPROVED)
+    r = _inject(InMemoryRegistry(), m)
+
+    res = resolve_recall(_q(required_completeness=1.0), r)
+
+    assert res.outcome != RecallOutcome.EXACT, f"{bad!r} completeness enabled reuse"
+    assert res.recompute_decision == RecomputeDecision.RECOMPUTED_MISSING_OUTPUT
+    assert "completeness" in res.reason
+
+    # The counterfactual: the same manifest IS reusable when nothing is
+    # required — so it was this gate, not trust/approval/source, that rejected it.
+    assert resolve_recall(_q(), r).recompute_decision == RecomputeDecision.REUSED_EXACT
+
+
+@pytest.mark.parametrize("bad_req", [math.nan, math.inf, -math.inf, True, False])
+def test_gate3_non_finite_or_bool_requirement_cannot_silently_enable_reuse(bad_req):
+    """A requirement that is not a finite number is one this gate cannot honour.
+
+    Falling through to "non-numeric requirements are ungated" would be the worst
+    outcome: `required_completeness=nan` would reuse ANYTHING, including a
+    dataset with no completeness at all. Fail closed instead.
+    """
+    r = _reg(_m("v1", completeness=0.5))
+    res = resolve_recall(_q(required_completeness=bad_req), r)
+
+    assert res.outcome != RecallOutcome.EXACT, f"requirement {bad_req!r} enabled reuse"
+    assert res.recompute_decision == RecomputeDecision.RECOMPUTED_MISSING_OUTPUT
+
+
+def test_gate3_nan_requirement_does_not_reuse_a_dataset_with_unknown_completeness():
+    """The sharpest form: NaN on BOTH sides must not resolve to reuse."""
+    m = _m("v1", completeness=None)
+    r = _inject(InMemoryRegistry(), m)
+    res = resolve_recall(_q(required_completeness=math.nan), r)
+    assert res.outcome != RecallOutcome.EXACT
