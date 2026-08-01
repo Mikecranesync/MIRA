@@ -299,6 +299,19 @@ jobs:
         # this file is named explicitly (like bot_regression.py above).
         run: pytest tests/test_harvest_golden_cases.py -v
 
+      - name: Materialized Evidence contract + document-receipt lane
+        # `materialized_evidence/` and the batch-document receipt lane it feeds
+        # (mira-crawler step 6) were covered by ~90 tests that NO workflow ran —
+        # so "green CI" on those PRs said nothing about them. That is exactly how
+        # the secret-bearing-URL and lost-receipt defects reached review with a
+        # green tick. Hermetic: the contract package is stdlib-only, and the
+        # pipeline/cron tests need only httpx (installed above) — no network, no
+        # Neon, no Tika, no Ollama. Root tests/ is not collected wholesale here,
+        # so these are named explicitly like the steps above.
+        run: |
+          pytest materialized_evidence/tests/ -q
+          (cd mira-crawler && pytest tests/test_full_ingest_evidence_receipt.py tests/test_kb_growth_cron.py -q)
+
       - name: Manufacturer alias consistency + normalizer (#1596/#2263)
         # Locks the cross-service drift guard: the manufacturer alias map is
         # vendored in 3 places (crawler .py, mira-core .py, hub JSON) and must

@@ -479,9 +479,44 @@ def _process_entry(entry: dict, queue: list[dict]) -> dict:
                 )
                 _log(f"FAILED (retry in {delay}s, attempt {entry['attempts']}): {name}")
 
+    _stamp_evidence_status(entry, tail)
     _log(f"Pipeline output (tail):\n{tail}")
     save_queue(queue)
     return entry
+
+
+def _stamp_evidence_status(entry: dict, tail: str) -> None:
+    """Record the pipeline's Materialized Evidence outcome on the queue entry.
+
+    Receipt writing is fail-open by design: a failure stays out of the pipeline's
+    exit code so a document that ingested fine is not re-downloaded. The cost was
+    invisibility — this cron marked the entry ``done`` whether the run produced two
+    receipts or none, so an evidence gap left no trace anywhere the operator looks.
+
+    The pipeline records the replayable repair item itself (``<registry>.repair.jsonl``);
+    this stamp is the operator-facing pointer to it. ``done`` still means "the KB
+    ingest succeeded" — evidence is deliberately not part of that verdict.
+    """
+    try:
+        for line in tail.splitlines():
+            s = line.strip()
+            if not s.startswith("Evidence:"):
+                continue
+            status = s.split(":", 1)[1].strip()
+            # ONLY "no registry configured" is benign noise — the lane is off, so a
+            # missing receipt is expected and stamping it would clutter every entry.
+            # Every OTHER `skipped (…)` means the registry WAS configured and the
+            # receipt still did not happen: an unset MIRA_TENANT_ID, an unimportable
+            # `materialized_evidence`, an unknown MIRA_EVIDENCE_ENV. Those are
+            # misconfigurations that produce a document with no evidence — the exact
+            # invisibility this stamp exists to end — so they are recorded, not popped.
+            if status.startswith("skipped (no registry"):
+                entry.pop("evidence_status", None)
+            else:
+                entry["evidence_status"] = status[:300]
+            return
+    except Exception:  # noqa: BLE001 — a status stamp must never break the cron
+        pass
 
 
 # ─── batch loop ──────────────────────────────────────────────────────────────

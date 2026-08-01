@@ -66,3 +66,26 @@ def test_two_processes_different_keys_run_concurrently(tmp_path):
     assert len(rows) == 2
     (a0, a1), (b0, b1) = rows
     assert max(a0, b0) < min(a1, b1)  # the two paid intervals OVERLAP -> not globally serialized
+
+
+def test_print_recall_does_not_wrap_the_registry_in_a_second_snapshot_lock():
+    """The cross-process guard lives in `FileRegistry`, not in a wrapper here.
+
+    `print_recall` used to subclass `FileRegistry` to re-hydrate under an OS lock on
+    `<snapshot>.lock`, because the base class did not. The base class now does — on the
+    same path. Keeping both would deadlock the print path outright: `flock` is
+    per-open-file-description, so a process taking that lock twice waits on itself
+    forever. One implementation, in the class that owns the snapshot.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from materialized_evidence.backends import FileRegistry
+
+    from shared import print_recall
+
+    assert print_recall._xproc_registry_cls() is FileRegistry, (
+        "print_recall must use FileRegistry directly — a subclass that re-takes the "
+        "snapshot lock deadlocks against the lock FileRegistry now holds itself"
+    )
+    assert not hasattr(print_recall, "_snapshot_lock"), (
+        "the outer snapshot lock was removed on purpose; re-adding it deadlocks"
+    )

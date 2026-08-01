@@ -20,6 +20,13 @@ from .hashing import (
     with_hashes,
 )
 from .invalidation import InvalidationResult, invalidate
+from .redaction import (
+    NETWORK_SCHEMES,
+    redact_uri,
+    redact_uris,
+    scrub_text_uris,
+    uri_leaks_credentials,
+)
 from .registry import (
     InMemoryRegistry,
     MaterializationRegistry,
@@ -72,4 +79,9 @@ __all__ = [
     "resolve_recall",
     "invalidate",
     "InvalidationResult",
+    "NETWORK_SCHEMES",
+    "redact_uri",
+    "redact_uris",
+    "scrub_text_uris",
+    "uri_leaks_credentials",
 ]
