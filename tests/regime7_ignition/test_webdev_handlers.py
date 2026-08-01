@@ -119,6 +119,90 @@ class TestTagsHandler:
         assert "tags" in result["json"]
 
 
+class TestConnectActivationPersistence:
+    """Activation must not report success unless config actually persisted
+    (2026-08-01 adversarial review, finding 3).
+
+    `_write_config()` used to no-op with a warning when no factorylm.properties
+    existed, while `doPost()` returned "activated" anyway — a clean gateway
+    accepted the code, persisted nothing, and showed no error anywhere.
+    """
+
+    def _activation_ok(self, mock_ignition_system):
+        """Point the mocked HTTP client at a successful activation response."""
+        import json as _json
+
+        response = mock_ignition_system.net.httpClient.return_value.post.return_value
+        response.statusCode = 200
+        response.text = _json.dumps(
+            {"tenant_id": "tenant-abc", "relay_url": "https://relay.factorylm.com/ingest"}
+        )
+
+    def test_clean_gateway_creates_the_properties_file(
+        self, webdev_scripts_dir, mock_ignition_system
+    ):
+        """No properties file (conftest default: File.exists() is False) but an
+        Ignition data dir exists (the getParentFile chain is truthy by default)
+        -> the file is CREATED and activation succeeds."""
+        self._activation_ok(mock_ignition_system)
+        import java.io
+
+        handler = load_handler(
+            webdev_scripts_dir / "api" / "connect" / "doPost.py", "doPost"
+        )
+        result = handler({"postData": {"code": "ABC123"}}, {})
+
+        assert result["json"].get("status") == "activated", result
+        # the create path actually wrote (Properties().store over a stream)
+        assert java.io.FileOutputStream.called
+
+    def test_no_writable_location_fails_activation_loudly(
+        self, webdev_scripts_dir, mock_ignition_system
+    ):
+        """No properties file AND no Ignition data dir -> activation must NOT
+        report "activated"; it returns an explicit 500 carrying the tenant id
+        so the operator can configure manually."""
+        self._activation_ok(mock_ignition_system)
+        import java.io
+
+        file_mock = java.io.File.return_value
+        file_mock.exists.return_value = False
+        # the grandparent (the Ignition data dir) does not exist either
+        file_mock.getParentFile.return_value.getParentFile.return_value.exists.return_value = False
+
+        handler = load_handler(
+            webdev_scripts_dir / "api" / "connect" / "doPost.py", "doPost"
+        )
+        result = handler({"postData": {"code": "ABC123"}}, {})
+
+        assert result.get("status") == 500, result
+        assert "persist" in result["json"]["error"]
+        assert result["json"]["tenant_id"] == "tenant-abc"
+        assert result["json"].get("status") != "activated"
+
+    def test_existing_file_is_updated_in_place(
+        self, webdev_scripts_dir, mock_ignition_system
+    ):
+        self._activation_ok(mock_ignition_system)
+        import java.io
+        import java.util
+
+        java.io.File.return_value.exists.return_value = True
+        handler = load_handler(
+            webdev_scripts_dir / "api" / "connect" / "doPost.py", "doPost"
+        )
+        result = handler({"postData": {"code": "ABC123"}}, {})
+
+        assert result["json"].get("status") == "activated", result
+        props = java.util.Properties.return_value
+        written = {c.args[0]: c.args[1] for c in props.setProperty.call_args_list}
+        # both tenant spellings + the relay URL, and never the manual override
+        assert written.get("MIRA_TENANT_ID") == "tenant-abc"
+        assert written.get("TENANT_ID") == "tenant-abc"
+        assert written.get("RELAY_URL") == "https://relay.factorylm.com/ingest"
+        assert "INGEST_URL" not in written
+
+
 class TestConnectGetHandler:
     def test_connect_status_not_connected(self, webdev_scripts_dir):
         handler = load_handler(

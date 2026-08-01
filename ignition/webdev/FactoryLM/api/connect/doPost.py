@@ -59,9 +59,40 @@ def doPost(request, session):
         # chat unconfigured. Both readers now accept either name; writing both
         # keeps a gateway activated by an OLD build working with a NEW script and
         # vice versa, which is the only reason this is a pair and not a rename.
-        _write_config("MIRA_TENANT_ID", tenant_id)
-        _write_config("TENANT_ID", tenant_id)
-        _write_config("RELAY_URL", relay_url)
+        #
+        # RELAY_URL is what the stream reads when no manual INGEST_URL override
+        # is set (tag-stream.py reads INGEST_URL first, then RELAY_URL).
+        # Deliberately NOT writing INGEST_URL: that key is the operator's manual
+        # override, and activation must not clobber it.
+        persisted = True
+        persisted = _write_config("MIRA_TENANT_ID", tenant_id) and persisted
+        persisted = _write_config("TENANT_ID", tenant_id) and persisted
+        persisted = _write_config("RELAY_URL", relay_url) and persisted
+
+        if not persisted:
+            # Reporting "activated" here would be a lie the operator cannot
+            # see: the server accepted the code, but this gateway persisted
+            # nothing, so the stream and chat would stay unconfigured with no
+            # visible error anywhere.
+            logger.error(
+                "Activation for tenant %s was ACCEPTED by the server but "
+                "factorylm.properties could not be created or written on this "
+                "gateway — configuration was NOT persisted" % tenant_id
+            )
+            return {
+                "json": {
+                    "error": (
+                        "Activation was accepted but this gateway could not "
+                        "persist its configuration (no writable "
+                        "factorylm.properties location). Configure tenant %s "
+                        "manually — see docs/integrations/"
+                        "ignition-tag-collector.md." % tenant_id
+                    ),
+                    "tenant_id": tenant_id,
+                    "relay_url": relay_url,
+                },
+                "status": 500,
+            }
 
         # NOTE: activation does not provision the HMAC key — it is a per-tenant
         # secret installed out of band (see docs/integrations/ignition-tag-collector.md).
@@ -110,10 +141,23 @@ def _get_config(key, default_value=""):
 
 
 def _write_config(key, value):
+    """Persist key=value to factorylm.properties. Returns True ONLY when the
+    value actually reached disk.
+
+    This used to silently no-op when no properties file existed: it logged a
+    warning and fell off the end, and doPost() reported "activated" anyway —
+    a clean gateway (fresh install, properties file never deployed) accepted
+    the activation code, persisted nothing, and gave the operator no visible
+    error. Now: an existing file is updated in place; with no file anywhere,
+    one is CREATED under the first Ignition data dir present on this install;
+    if neither works, return False so the caller fails the activation loudly.
+    """
     import java.io.FileInputStream as FileInputStream
     import java.io.FileOutputStream as FileOutputStream
     import java.util.Properties as Properties
     import java.io.File as File
+
+    logger = system.util.getLogger("FactoryLM.Mira.Connect")
 
     paths = [
         "C:/Program Files/Inductive Automation/Ignition/data/factorylm/factorylm.properties",
@@ -121,23 +165,55 @@ def _write_config(key, value):
         "/var/lib/ignition/data/factorylm/factorylm.properties",
     ]
 
+    # 1) Update an existing file in place.
     for p in paths:
-        f = File(p)
-        if f.exists():
-            props = Properties()
-            fis = FileInputStream(f)
-            try:
-                props.load(fis)
-            finally:
-                fis.close()
+        try:
+            f = File(p)
+            if f.exists():
+                props = Properties()
+                fis = FileInputStream(f)
+                try:
+                    props.load(fis)
+                finally:
+                    fis.close()
 
+                props.setProperty(key, value)
+                fos = FileOutputStream(f)
+                try:
+                    props.store(fos, "Updated by MIRA Connect activation")
+                finally:
+                    fos.close()
+                return True
+        except Exception as e:
+            logger.warn("Could not update %s in %s: %s" % (key, p, str(e)))
+            # fall through and try the next candidate
+
+    # 2) No file anywhere — create one under the first Ignition data dir that
+    #    exists (paths are <data>/factorylm/factorylm.properties, so the
+    #    grandparent is the data dir).
+    for p in paths:
+        try:
+            f = File(p)
+            factorylm_dir = f.getParentFile()
+            data_dir = factorylm_dir.getParentFile() if factorylm_dir is not None else None
+            if data_dir is None or not data_dir.exists():
+                continue
+            if not factorylm_dir.exists():
+                factorylm_dir.mkdirs()
+            props = Properties()
             props.setProperty(key, value)
             fos = FileOutputStream(f)
             try:
-                props.store(fos, "Updated by MIRA Connect activation")
+                props.store(fos, "Created by MIRA Connect activation")
             finally:
                 fos.close()
-            return
+            logger.info("Created %s to persist %s" % (p, key))
+            return True
+        except Exception as e:
+            logger.warn("Could not create %s for %s: %s" % (p, key, str(e)))
 
-    logger = system.util.getLogger("FactoryLM.Mira.Connect")
-    logger.warn("No properties file found to write %s" % key)
+    logger.error(
+        "Could not persist %s — no factorylm.properties exists and no Ignition "
+        "data directory was writable" % key
+    )
+    return False

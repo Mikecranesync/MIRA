@@ -22,7 +22,8 @@
 #   .claude/rules/fieldbus-readonly.md.
 #
 # CONFIG (factorylm.properties, via getMiraConfig):
-#   INGEST_URL                 — MIRA tag-ingest endpoint
+#   INGEST_URL                 — MIRA tag-ingest endpoint (manual override;
+#                                falls back to RELAY_URL written by activation)
 #                                (default https://api.factorylm.com/api/v1/tags/ingest)
 #   TENANT_ID                  — tenant UUID from activation
 #   MIRA_HMAC_KEY              — per-tenant HMAC signing key (matches the relay)
@@ -181,7 +182,15 @@ def run():
     if collector is None:
         return  # error already logged at import
 
-    ingest_url = getMiraConfig("INGEST_URL", collector.DEFAULT_INGEST_URL)
+    # INGEST_URL is the documented manual override; RELAY_URL is what the
+    # activation handler (api/connect/doPost.py) persists. The stream used to
+    # read ONLY INGEST_URL, so a freshly activated gateway ignored the relay
+    # URL it had just been assigned and streamed to the hardcoded default
+    # instead — the same two-names-for-one-thing defect as the tenant/HMAC
+    # pairs below, on the URL. Manual override wins; activation value second.
+    ingest_url = (getMiraConfig("INGEST_URL", "")
+                  or getMiraConfig("RELAY_URL", "")
+                  or collector.DEFAULT_INGEST_URL)
     # Canonical property names first, legacy second — the same shim as
     # api/chat/doPost.py. Both transports must accept BOTH spellings, or a
     # gateway configured for one of them silently loses the other. Before this,

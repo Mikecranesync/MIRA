@@ -109,6 +109,12 @@ if ((Test-Path $ProjectDst) -and $Force) {
     $Backup = "$ProjectDst.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     Copy-Item -Path $ProjectDst -Destination $Backup -Recurse -Force
     Write-Host "      Backed up existing project to: $Backup" -ForegroundColor Yellow
+    # Copy-Item dir -> EXISTING dir does NOT replace it: it nests the source as
+    # a child ($ProjectDst\project) and leaves every stale file in place
+    # (reproduced 2026-08-01). The destination must be gone before the copy.
+    # Safe to remove here and only here: the backup above just succeeded.
+    Write-Host "      Removing existing project dir (backed up above): $ProjectDst" -ForegroundColor Yellow
+    Remove-Item -LiteralPath $ProjectDst -Recurse -Force
 }
 
 Copy-Item -Path $ProjectSrc -Destination $ProjectDst -Recurse -Force

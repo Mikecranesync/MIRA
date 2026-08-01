@@ -109,6 +109,27 @@ SCRIPT_LIBRARY_MODULES = (
 # source lines is a Jython-2.7 tabnanny error waiting to happen).
 INDENT = "    "
 
+# PEP 263 source-encoding declaration, stamped into every deployed artifact.
+#
+# Every one of the nine handler sources and all four helper modules contain
+# non-ASCII UTF-8 (em-dashes and arrows in comments, some in string literals).
+# Jython 2.7 follows Python 2 source rules: if the platform ever hands the
+# script bytes rather than a decoded string, non-ASCII with no coding
+# declaration is a SyntaxError. Whether Ignition 8.3 decodes resource data to a
+# string before compiling is an implementation detail we have NOT proven either
+# way — the one module confirmed running on the bench gateway
+# (ConvSimpleLive/mira_diagnose/code.py) happens to be pure ASCII, so there is
+# no live evidence that undeclared UTF-8 parses. The cookie is correct under
+# both readings (ignored when compiling an already-decoded string, load-bearing
+# when compiling bytes), costs nothing, and removes the ambiguity.
+#
+# Placement is constrained by PEP 263 (line 1 or 2) AND by the def-first rule
+# (line 1 of a handler body MUST be the `def`): script-library modules get it on
+# line 1; handler bodies get it as the first line INSIDE the def, which is
+# line 2 of the emitted file — still a valid PEP 263 position (the spec allows
+# leading whitespace before the comment).
+CODING_COOKIE = "# -*- coding: utf-8 -*-"
+
 
 class ConversionError(Exception):
     """A source file cannot be converted into a valid WebDev resource."""
@@ -197,6 +218,9 @@ def convert_handler(source: str, method: str) -> str:
 
     preamble = before + after
     out = ["def %s(request, session):" % method]
+    # First body line = file line 2: the only spot that satisfies both the
+    # def-first rule and PEP 263's line-1-or-2 requirement. See CODING_COOKIE.
+    out.append(INDENT + CODING_COOKIE)
     out.extend(_indent_block(preamble))
     if preamble and body:
         out.append("")
@@ -205,6 +229,18 @@ def convert_handler(source: str, method: str) -> str:
     converted = "\n".join(out).rstrip() + "\n"
     _validate_converted(converted, method)
     return converted
+
+
+def _with_coding_cookie(source: str) -> str:
+    """Prepend the PEP 263 cookie to a script-library module (line 1).
+
+    Idempotent: a source that already declares an encoding in its first two
+    lines is returned unchanged, so a future cookied source is not double-stamped.
+    """
+    head = source.splitlines()[:2]
+    if any("coding" in ln and ln.lstrip().startswith("#") for ln in head):
+        return source
+    return CODING_COOKIE + "\n" + source
 
 
 def _indent_block(lines: list[str]) -> list[str]:
@@ -355,7 +391,10 @@ def plan_deployment(webdev_src: Path, script_src: Path | None = None) -> Deploym
         )
     for name in SCRIPT_LIBRARY_MODULES:
         plan.modules.append(
-            ScriptModule(name=name, source=found[name].read_text(encoding="utf-8"))
+            ScriptModule(
+                name=name,
+                source=_with_coding_cookie(found[name].read_text(encoding="utf-8")),
+            )
         )
 
     return plan

@@ -227,6 +227,97 @@ class TestHandlerConversion:
 
 
 # --------------------------------------------------------------------------
+# Source-encoding safety — the PEP 263 cookie (2026-08-01 adversarial review #5)
+# --------------------------------------------------------------------------
+
+PEP263_RE = __import__("re").compile(r"^[ \t\f]*#.*?coding[:=][ \t]*([-_.a-zA-Z0-9]+)")
+
+
+class TestEncodingSafety:
+    """All 13 sources contain non-ASCII UTF-8, and the only module proven
+    running on the bench gateway is pure ASCII — so there is no live evidence
+    undeclared UTF-8 parses under Jython 2.7 (Python 2 source rules: bytes with
+    no coding declaration -> SyntaxError). Every deployed artifact therefore
+    carries a PEP 263 cookie in a spec-valid position."""
+
+    def test_every_deployed_py_declares_utf8_within_pep263_position(self, deployed):
+        checked = 0
+        for f in sorted(deployed.rglob("*.py")):
+            raw = f.read_bytes()
+            raw.decode("utf-8")  # must be valid UTF-8 regardless
+            first_two = raw.decode("utf-8").splitlines()[:2]
+            assert any(PEP263_RE.match(ln) for ln in first_two), (
+                "%s has no PEP 263 coding declaration in its first two lines" % f
+            )
+            checked += 1
+        assert checked == EXPECTED_HANDLERS + len(wb.SCRIPT_LIBRARY_MODULES)
+
+    def test_handler_cookie_does_not_break_def_first(self, deployed):
+        """The cookie must be INSIDE the def (file line 2), never line 1 —
+        line 1 belongs to the def or the silent-empty-body failure returns."""
+        for d in _resource_dirs(deployed):
+            for f in d.glob("*.py"):
+                lines = f.read_text(encoding="utf-8").splitlines()
+                assert lines[0].startswith("def ")
+                assert PEP263_RE.match(lines[1]), f
+
+    def test_cookie_prepend_is_idempotent(self):
+        once = wb._with_coding_cookie("x = 1\n")
+        assert wb._with_coding_cookie(once) == once
+
+
+# --------------------------------------------------------------------------
+# Activation-to-stream config contract (2026-08-01 adversarial review #2)
+# --------------------------------------------------------------------------
+
+def _code_only(source: str) -> str:
+    """Comment-stripped view, so assertions read code, not prose about code."""
+    import io
+    import tokenize
+
+    out = []
+    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        if tok.type not in (tokenize.COMMENT,):
+            out.append(tok.string)
+    return " ".join(out)
+
+
+class TestActivationStreamConfigContract:
+    """api/connect/doPost.py persists RELAY_URL on activation. The stream used
+    to read ONLY INGEST_URL, so a freshly activated gateway ignored the relay
+    URL it had just been assigned and streamed to the hardcoded default."""
+
+    STREAM = REPO_ROOT / "ignition" / "gateway-scripts" / "tag-stream.py"
+    CONNECT = WEBDEV_SRC / "FactoryLM" / "api" / "connect" / "doPost.py"
+
+    def test_stream_reads_the_key_activation_writes(self):
+        code = _code_only(self.STREAM.read_text(encoding="utf-8"))
+        assert 'getMiraConfig ( "RELAY_URL"' in code
+        assert 'getMiraConfig ( "INGEST_URL"' in code
+
+    def test_manual_override_wins_over_activation_value(self):
+        """INGEST_URL (operator's manual override) must be consulted before
+        RELAY_URL (activation-written)."""
+        code = _code_only(self.STREAM.read_text(encoding="utf-8"))
+        assert code.index('getMiraConfig ( "INGEST_URL"') < code.index(
+            'getMiraConfig ( "RELAY_URL"'
+        )
+
+    def test_activation_writes_relay_url_not_the_manual_override(self):
+        code = _code_only(self.CONNECT.read_text(encoding="utf-8"))
+        assert '_write_config ( "RELAY_URL"' in code
+        assert '_write_config ( "INGEST_URL"' not in code, (
+            "activation must not clobber the operator's manual INGEST_URL"
+        )
+
+    def test_guards_are_not_vacuous(self):
+        """Mutation check: the comment-stripped view must still catch a
+        reintroduced INGEST_URL-only read."""
+        old = 'ingest_url = getMiraConfig("INGEST_URL", collector.DEFAULT_INGEST_URL)\n'
+        assert 'getMiraConfig ( "RELAY_URL"' not in _code_only(old)
+
+
+# --------------------------------------------------------------------------
 # Helpers go to the script library, never beside a handler
 # --------------------------------------------------------------------------
 
@@ -400,6 +491,22 @@ class TestDeployScriptIsRunnable:
         )
         assert "/system/webdev/$ProjectName/FactoryLM/" in code
         assert "/system/webdev/FactoryLM/" not in code
+
+    def test_force_overwrite_removes_stale_destination_before_copy(self):
+        """Copy-Item dir -> EXISTING dir does not replace it: it NESTS the
+        source as a child ($ProjectDst\\project) and keeps every stale file
+        (reproduced live, 2026-08-01 adversarial review, finding 4). After the
+        backup, the destination must be removed so the copy recreates it clean.
+        """
+        ps1 = DEPLOY_PS1.read_text(encoding="ascii")
+        code = "\n".join(
+            ln for ln in ps1.splitlines() if not ln.lstrip().startswith("#")
+        )
+        assert "Remove-Item -LiteralPath $ProjectDst -Recurse -Force" in code
+        i_backup = code.index(".bak-")
+        i_rm = code.index("Remove-Item -LiteralPath $ProjectDst")
+        i_copy = code.index("Copy-Item -Path $ProjectSrc -Destination $ProjectDst")
+        assert i_backup < i_rm < i_copy, "must be backup -> remove -> copy"
 
     def test_url_guard_is_not_vacuous(self):
         """Mutation check: the guard above must fail on a reintroduced bad URL."""
