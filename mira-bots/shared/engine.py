@@ -4153,6 +4153,7 @@ class Supervisor:
         reaches ``_save_state`` and never persists across turns.
         """
         state.pop("_context_manifest", None)
+        state.pop("_turn_ctx", None)
         try:
             from .technician_context import (
                 build_turn_context,
@@ -4181,6 +4182,12 @@ class Supervisor:
             if ctx is None:
                 logger.debug("CONTEXT_CONTRACT skipped: %s", violations)
                 return ""
+
+            # Stash the validated turn context so the retry loop can re-manifest
+            # it AFTER retrieval to include the manual-chunk family (G6). Done
+            # here — before the empty-block early return — so a turn with chunks
+            # but no priors still carries a context to augment.
+            state["_turn_ctx"] = ctx
 
             block = prompt_block(ctx)
             if not block:
@@ -4565,6 +4572,10 @@ class Supervisor:
         # which the grounded early-return skips, leaving it to be persisted by
         # _save_state and re-attributed to the next turn.
         context_manifest = state.pop("_context_manifest", None)
+        # Same carrier discipline for the validated turn context: lifted ONCE
+        # here so a grounded early-return in the retry loop still re-manifests it
+        # with the retrieval family (below). None on flag-off / non-contract turns.
+        turn_ctx = state.pop("_turn_ctx", None)
         extra_context = (
             kg_context
             + live_context
@@ -4599,10 +4610,26 @@ class Supervisor:
             parsed["_sources"] = state.pop("_rag_sources", None) or []
             parsed["_last_chunks"] = state.pop("_rag_last_chunks", None) or []
             parsed["_no_kb"] = state.pop("_rag_no_kb", False)
-            # WS1 — the context manifest the prompt block was rendered from,
-            # lifted off ``state`` before the loop so a self-correction retry
-            # still carries it. None on flag-off / non-contract turns.
+            # WS1/G6 — the context manifest the decision trace records. Start
+            # from the prior-decision manifest (built before the RAG call), then
+            # re-manifest to INCLUDE this turn's retrieval (MANUAL_CHUNK) family
+            # now that the chunks exist (``parsed["_last_chunks"]``). One
+            # validated context, one manifest — not two derivations. Prompt bytes
+            # are untouched: prompt_block still rendered PRIOR_DECISION only, and
+            # the chunks reach the prompt via the RAG worker's reference block.
+            # Set every attempt so the last (final chunks) wins; fail-open to the
+            # prior-only manifest so audit enrichment never blocks a reply.
             parsed["_context_manifest"] = context_manifest
+            if turn_ctx is not None:
+                try:
+                    from .technician_context import augment_with_retrieval, manifest_of
+
+                    combined, _viol = augment_with_retrieval(turn_ctx, parsed["_last_chunks"])
+                    if combined is not None:
+                        _payload, _sha = manifest_of(combined)
+                        parsed["_context_manifest"] = {"manifest": _payload, "sha256": _sha}
+                except Exception as exc:  # noqa: BLE001 — audit enrichment never blocks a reply
+                    logger.debug("RETRIEVAL_AUGMENT miss: %s", exc)
 
             # Check grounding against THIS turn's sources snapshot, never the
             # shared self.rag._last_sources (#1704).
