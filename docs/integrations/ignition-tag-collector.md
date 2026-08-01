@@ -59,26 +59,48 @@ runs of non-alphanumerics → `_`).
    ```
    <project>/ignition/script-python/factorylm/
      ├── __init__.py
-     ├── collector.py     (from api/tags/collector.py)
-     ├── signing.py       (from api/chat/signing.py)
-     └── allowlist.py     (from api/tags/allowlist.py)
+     ├── collector.py              (from api/tags/collector.py)
+     ├── gateway_live_snapshot.py  (from api/tags/gateway_live_snapshot.py)
+     ├── signing.py                (from api/chat/signing.py)
+     └── allowlist.py              (from api/tags/allowlist.py)
    ```
    The timer falls back to a flat `import collector` if the modules are on the
    gateway script path instead.
+
+   ⚠️ **`gateway_live_snapshot.py` became a hard requirement of the timer on
+   2026-07-30.** The stream no longer has its own browse/read loop — it delegates
+   to that module, which is what makes "both transports render the same reading"
+   true rather than coincidental. If it is missing, the timer logs an error and
+   streams nothing; it will **not** fall back to a second read path, because a
+   second read path is precisely the defect being removed. Deploy it alongside
+   `collector.py` when upgrading an existing gateway.
 
 2. **Place the allowlist** at one of the paths `allowlist.resolve_allowlist_path()`
    searches (e.g. `<ignition-data>/projects/factorylm/approved_tags.json`), or
    set `MIRA_ALLOWLIST_PATH`.
 
-3. **Write `factorylm.properties`** (the timer reads it via `getMiraConfig`):
+3. **Write `factorylm.properties`** (both transports read it via `getMiraConfig`):
    ```properties
    INGEST_URL=https://api.factorylm.com/api/v1/tags/ingest
-   TENANT_ID=<tenant-uuid>
-   MIRA_HMAC_KEY=<per-tenant-hmac-key>          # matches relay MIRA_IGNITION_HMAC_KEY
+   MIRA_TENANT_ID=<tenant-uuid>
+   MIRA_IGNITION_HMAC_KEY=<per-tenant-hmac-key>  # same key the relay verifies with
+   MIRA_CLOUD_URL=https://api.factorylm.com/api/v1/ignition/chat
    STREAM_TAG_FOLDER=[default]Mira_Monitored
-   STREAM_SOURCE_CONNECTION_ID=<gateway-id>     # optional, stamped on every row
+   STREAM_SOURCE_CONNECTION_ID=<gateway-id>      # optional, stamped on every row
    STREAM_MAX_RETRIES=3
    ```
+
+   ⚠️ **These two credentials serve BOTH transports — configure them once, and
+   check both.** Until 2026-07-30 the stream read `TENANT_ID` / `MIRA_HMAC_KEY`
+   while the chat handler read `MIRA_TENANT_ID` / `MIRA_IGNITION_HMAC_KEY`, and
+   this guide documented only the stream's pair. A gateway set up from these
+   instructions streamed tags perfectly and returned **HTTP 503 on every chat
+   turn** — the failure was invisible because the half you were testing worked.
+
+   Both readers now accept either spelling (`MIRA_`-prefixed first, legacy
+   second), so existing gateways keep working untouched. Use the canonical names
+   above for anything new. The **HMAC key is not provisioned by activation** —
+   it is installed out of band; chat fails closed without it, by design.
    Standard search paths:
    `C:/Program Files/Inductive Automation/Ignition/data/factorylm/factorylm.properties`
    (Windows) or `/usr/local/bin/ignition/data/factorylm/factorylm.properties` /
@@ -90,7 +112,8 @@ runs of non-alphanumerics → `_`).
 
 5. **Verify.** Watch the gateway logger `FactoryLM.Mira.TagStream`:
    - `Streamed N/M allowlisted tags (attempts=1)` → working.
-   - `MIRA tag-stream not configured` → `TENANT_ID` / `MIRA_HMAC_KEY` missing.
+   - `MIRA tag-stream not configured` → tenant id / HMAC key missing under
+     *either* spelling.
    - `Tag ingest failed status=401` → HMAC key mismatch with the relay.
    - `No allowlisted tags to stream` → allowlist empty or no tags matched.
 
@@ -131,3 +154,66 @@ runs of non-alphanumerics → `_`).
 Headers: `X-MIRA-Tenant`, `X-MIRA-Nonce`, `X-MIRA-Timestamp`, `X-MIRA-Signature`
 (HMAC-SHA256 over `tenant\nnonce\ntimestamp\nsha256(body)`). Response:
 `{status, accepted, events_written, state_upserts, cache_skipped, rejected[], simulated}`.
+
+---
+
+## The canonical live-snapshot adapter (2026-07-30)
+
+`api/tags/gateway_live_snapshot.py` is **the single Gateway live tag-snapshot adapter**. Both
+Gateway transports render from it, so the same physical read cannot produce two shapes.
+
+```
+              system.tag.browseTags / readBlocking     (injected, read-only)
+                              │
+        gateway_live_snapshot.read_tag_readings()
+                              │
+                 collector.build_reading()             ONE typed reading:
+                              │                        {tag_path, value, value_type,
+                collector.filter_allowlisted()          quality, ts}  — fail-closed
+                              │
+              ┌───────────────┴───────────────┐
+   STREAM →   collector.build_payload()        gateway_live_snapshot.snapshot_from_readings()  ← CHAT
+              list of readings                 dict keyed by tag_path
+              POST /api/v1/tags/ingest         POST /api/v1/ignition/chat
+              (mira-relay)                     (mira-pipeline/ignition_chat.py)
+```
+
+### What this fixed
+
+`api/chat/doPost.py` used to read tags itself and build
+`{path: {value: str(v), quality: str(q), timestamp: str(ts)}}`:
+
+| | old chat path | stream path | now (both) |
+|---|---|---|---|
+| `value` | `str(...)` — always a string | real type | **real type** |
+| `quality` | raw Ignition string (`Good_Unspecified`) | banded | **banded** `good\|bad\|stale\|uncertain` |
+| allowlist | `is_allowed_tag()` inside `except ImportError: pass` → **fail-open** | fail-closed | **fail-closed** |
+| timestamp | `str(qv.timestamp)` | `ts` | **`ts`** |
+
+The fail-open allowlist was the sharpest edge: if that import failed, a
+**non-allowlisted tag could reach the cloud**. The adapter returns an *empty*
+snapshot when no allowlist resolves — a degraded answer instead of a broken
+contract — and `doPost.py` logs that at **error** level so it can't be mistaken
+for "this asset has no tags."
+
+### Deploying it
+
+`gateway_live_snapshot.py` sits beside `collector.py`, `allowlist.py` and `signing.py` in
+`api/tags/` and imports `collector` as a flat sibling — the same script-library
+layout the collector already documents above. Copy all four into the project
+script library together.
+
+### Rules it must keep
+
+- **Read-only.** No Ignition runtime import; tags are reachable only through
+  injected callables. Asserted by `tests/ignition/test_gateway_live_snapshot.py`
+  (`test_adapter_contains_no_write_or_fieldbus_path`,
+  `test_adapter_imports_no_ignition_runtime`) — and those guards were
+  mutation-tested, including a dotted `system.opc.write` that an earlier
+  single-token version of the guard silently missed.
+- **One read.** `test_chat_handler_no_longer_reads_tags_inline` fails if an inline
+  browse/read reappears in `doPost.py`.
+- **Both transports agree.** `test_chat_and_stream_paths_agree_on_every_reading`
+  asserts `value` / `value_type` / `quality` field-by-field across the two
+  renderings.
+- **Jython 2.7 + Python 3.** No f-strings, no annotations (checked by AST).

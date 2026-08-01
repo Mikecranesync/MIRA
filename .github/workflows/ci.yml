@@ -324,6 +324,34 @@ jobs:
           pytest tests/test_manufacturer_alias_consistency.py -v
           (cd mira-crawler && pytest tests/test_manufacturer_normalize.py -v)
 
+      - name: Ignition Gateway contracts (tags, allowlist, signing, live snapshot)
+        # CORRECTED 2026-07-30. The first version of this comment claimed
+        # tests/ignition/ "was run by NO workflow" — that was FALSE, and the
+        # false version is the more instructive bug. `test-eval-offline` already
+        # swept the tree via `pytest tests/ -v -n auto -m "not network and not
+        # slow"` (no --ignore covers tests/ignition/); confirmed in this PR's own
+        # run log, 184 matching lines.
+        #
+        # What it was not is ENFORCING. test-eval-offline is deliberately outside
+        # the `ci-gate` needs list (see that job's comment — "heavy quality gates
+        # ... promote once reliable"), so the suite ran on every code PR and
+        # could not block a merge. Running it HERE, inside the gated test-unit
+        # job, is what turns it into enforcement.
+        #
+        # The generalised lesson, one level up from the pre-commit hook defect
+        # (v3.231.1): a check that runs but cannot fail the merge is not a guard,
+        # and "27 checks passed" does not distinguish the two.
+        #
+        # Named explicitly because root tests/ is not collected wholesale here,
+        # and run as its OWN invocation: tests/conftest.py and
+        # mira-bots/tests/conftest.py both resolve to the module `tests.conftest`,
+        # so collecting both trees in one pytest process raises
+        # ImportPathMismatchError. That pre-existing collision is why every root
+        # tests/ entry above is a separate step too.
+        #
+        # Hermetic: all Ignition I/O is injected. No Gateway, PLC, network, or DB.
+        run: pytest tests/ignition/ -v
+
       - name: Relational distiller (flywheel Phase 4b)
         # Pure core of tools/relational_distill.py — matched drive-pack fault
         # turns → grounded HAS_FAILURE_MODE edge proposals (human-gated, never

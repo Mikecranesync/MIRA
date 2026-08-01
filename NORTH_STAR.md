@@ -43,6 +43,31 @@ messy factory" is the empty chair. Infrastructure first, AI second — *never* l
 > citations, same score, same read-only guarantee). Context is the product; the surfaces are how the
 > proof reaches people. Both are real.
 
+> **One evidence shape per producer — "same answer" starts before the answer.** "Every adapter renders
+> the same approved-context answer" is only true if every adapter is handed the *same evidence*. It is
+> not enough for two transports to be individually correct: if they describe the same physical reading
+> differently, the context layer has already forked, and no downstream discipline can re-join it.
+>
+> Worked example, closed 2026-07-30: the PLC laptop's Ignition Gateway emitted **two incompatible
+> shapes for the same tag read**. The stream path (`gateway-scripts/tag-stream.py` → `mira-relay`)
+> produced typed readings — values in their real Python type, quality **banded** to
+> `good|bad|stale|uncertain`, allowlist **fail-closed**. The chat path (`api/chat/doPost.py` →
+> `mira-pipeline/ignition_chat.py`) read the same tags separately and **stringified every value**,
+> forwarded the **raw unbanded** Ignition quality, and applied its allowlist inside
+> `except ImportError: pass` — **fail-open**. Same gateway, same instant, two truths: `value` was
+> sometimes `48.5` and sometimes `"48.5"`; `quality` sometimes `good`, sometimes `Good_Unspecified`.
+>
+> The rule this establishes: **a producer has exactly one adapter, and transports are renderings over
+> it.** `ignition/webdev/FactoryLM/api/tags/gateway_live_snapshot.py` is now the single Gateway live-snapshot
+> adapter; both paths derive from `collector.build_reading()`, and a test asserts field-by-field that
+> the chat rendering and the stream rendering agree. A third Ignition transport adds a *rendering*,
+> never a second read. Read-only toward OT is enforced mechanically rather than by review: the adapter
+> imports no Ignition runtime and reaches a tag only through injected reader callables.
+>
+> Cross-refs: `.claude/rules/one-pipeline-ingest.md` (the same law for ingest transports),
+> `.claude/rules/direct-connection-uns-certified.md` (the surfaces this applies to),
+> `.claude/rules/fieldbus-readonly.md` (why this adapter can never write).
+
 ---
 
 ## Why this wedge wins — the competitive map (validated 2026-06)

@@ -49,8 +49,24 @@ def doPost(request, session):
     logger = system.util.getLogger("FactoryLM.Mira.Chat")
 
     # --- Config: read HMAC key, tenant id, and cloud URL ---
-    hmac_key = getMiraConfig("MIRA_IGNITION_HMAC_KEY", "")
-    tenant_id = getMiraConfig("MIRA_TENANT_ID", "")
+    #
+    # ONE CREDENTIAL, ONE CONTRACT — plus a compatibility shim.
+    # The two transports read DIFFERENT property names for the same two secrets:
+    # this handler wanted MIRA_TENANT_ID / MIRA_IGNITION_HMAC_KEY, while
+    # gateway-scripts/tag-stream.py wanted TENANT_ID / MIRA_HMAC_KEY. The
+    # install guide and the activation handler (api/connect/doPost.py) only ever
+    # wrote the stream's pair, so a freshly activated gateway streamed tags
+    # correctly and returned HTTP 503 on EVERY chat turn. That is the same
+    # defect shape this module exists to remove — two names for one thing —
+    # one layer down, in the deployment contract instead of the tag payload.
+    #
+    # Canonical is the MIRA_-prefixed pair: it matches the cloud side's env vars
+    # (docker-compose.saas.yml) and the relay's verifier. The legacy names are
+    # still accepted so gateways already in the field keep working on upgrade.
+    hmac_key = (getMiraConfig("MIRA_IGNITION_HMAC_KEY", "")
+                or getMiraConfig("MIRA_HMAC_KEY", ""))
+    tenant_id = (getMiraConfig("MIRA_TENANT_ID", "")
+                 or getMiraConfig("TENANT_ID", ""))
     cloud_url = getMiraConfig(
         "MIRA_CLOUD_URL",
         "https://api.factorylm.com/api/v1/ignition/chat"
@@ -58,7 +74,11 @@ def doPost(request, session):
 
     # Fail-fast: no unsigned requests permitted
     if not hmac_key:
-        logger.error("MIRA_IGNITION_HMAC_KEY is not configured — refusing unsigned request")
+        logger.error(
+            "No HMAC key configured (looked for MIRA_IGNITION_HMAC_KEY, then the "
+            "legacy MIRA_HMAC_KEY) in factorylm.properties — refusing to send an "
+            "unsigned request. See docs/integrations/ignition-tag-collector.md."
+        )
         return {
             "json": {"error": "MIRA HMAC key not configured"},
             "status": 503
@@ -83,63 +103,95 @@ def doPost(request, session):
         "Chat request — asset: %s, query: %.80s" % (asset_id or "(none)", query)
     )
 
-    # --- Read live tag snapshot for this asset ---
-    snapshot = {}
-
-    if asset_id:
-        tag_folder = "[default]Mira_Monitored/%s" % asset_id
-        try:
-            tag_results = system.tag.browseTags(parentPath=tag_folder)
-            tag_paths = [str(t.fullPath) for t in tag_results]
-
-            if tag_paths:
-                tag_values = system.tag.readBlocking(tag_paths)
-                for i, path in enumerate(tag_paths):
-                    qv = tag_values[i]
-                    snapshot[path] = {
-                        "value": str(qv.value),
-                        "quality": str(qv.quality),
-                        "timestamp": str(qv.timestamp)
-                    }
-                logger.debug(
-                    "Tag snapshot for %s: %d tags read" % (asset_id, len(snapshot))
-                )
-            else:
-                logger.debug("No tags found under %s" % tag_folder)
-
-        except Exception as e:
-            logger.warn(
-                "Tag read failed for asset %s: %s" % (asset_id, str(e))
-            )
-
-    # --- Apply allowlist filter to snapshot (D1 task owns allowlist.py) ---
-    # Import defensively: if task D1 has created the allowlist module, use it;
-    # otherwise pass the snapshot through unchanged.
-    filtered_snapshot = snapshot
+    # --- Read live tag snapshot via THE canonical adapter ---
+    #
+    # api/tags/gateway_live_snapshot.py is the single Gateway live-snapshot adapter, and
+    # it renders the SAME typed readings that gateway-scripts/tag-stream.py
+    # streams to mira-relay (both go through collector.build_reading). Do not
+    # read tags inline here again.
+    #
+    # This replaced a local read that stringified every value (`str(qv.value)`),
+    # forwarded the raw Ignition quality string unbanded, and applied the
+    # allowlist inside `except ImportError: pass` — i.e. FAIL-OPEN, shipping an
+    # unfiltered snapshot whenever that import failed. The adapter is fail-closed:
+    # no resolvable allowlist means an EMPTY snapshot, never an unfiltered one.
+    filtered_snapshot = {}
     try:
         import os.path as _osp
         import sys as _sys
 
-        _api_dir = _osp.dirname(_osp.abspath(__file__))
-        _tags_dir = _osp.join(_osp.dirname(_api_dir), "tags")
-        if _tags_dir not in _sys.path:
-            _sys.path.insert(0, _tags_dir)
+        # `__file__` is UNDEFINED in an Ignition script resource — collector.py
+        # documents the same trap and guards it the same way. No CPython test can
+        # catch it, because `__file__` always exists under pytest (regime7 runs
+        # this handler under CPython too), so the guard is asserted on the AST by
+        # tests/ignition/test_gateway_live_snapshot.py.
+        #
+        # The consequence depends on where the dereference sits, and BOTH are real
+        # in this file: here, inside the try, an unguarded NameError is swallowed
+        # by `except Exception` below → warn + EMPTY snapshot, indistinguishable
+        # from "this asset has no tags". At the signing path dance further down it
+        # sits OUTSIDE any try → uncaught NameError → HTTP 500 on every turn. Do
+        # not read this block as covering the class; each site needs its own guard.
+        #
+        # The sys.path dance is only needed for the repo source layout; on a
+        # Gateway the module is a flat sibling on the script path.
+        try:
+            _api_dir = _osp.dirname(_osp.abspath(__file__))
+            _tags_dir = _osp.join(_osp.dirname(_api_dir), "tags")
+            if _tags_dir not in _sys.path:
+                _sys.path.insert(0, _tags_dir)
+        except NameError:
+            pass  # script resource: flat sibling, no path setup required
 
-        from allowlist import is_allowed_tag
-        filtered_snapshot = {
-            path: val for path, val in snapshot.items()
-            if is_allowed_tag(path)
-        }
-        if len(filtered_snapshot) < len(snapshot):
-            logger.warn(
-                "Allowlist filtered %d tag(s) from snapshot for asset %s"
-                % (len(snapshot) - len(filtered_snapshot), asset_id)
+        from gateway_live_snapshot import collect_live_snapshot
+
+        def _browse(folder):
+            return system.tag.browseTags(parentPath=folder)
+
+        def _read(paths):
+            return system.tag.readBlocking(paths)
+
+        filtered_snapshot, snap_stats = collect_live_snapshot(
+            _browse, _read, asset_id
+        )
+        if not snap_stats["allowlist_loaded"] and snap_stats["read"]:
+            # Loud: the tags were readable but no allowlist resolved, so the
+            # snapshot was dropped on purpose. Silence here would look like
+            # "this asset has no tags".
+            logger.error(
+                "No approved_tags allowlist resolved — dropped all %d tag(s) for "
+                "asset %s (fail-closed). Check approved_tags.json deployment."
+                % (snap_stats["read"], asset_id)
             )
-    except ImportError:
-        # Task D1 allowlist not yet present — pass through
-        pass
+        elif snap_stats["dropped"]:
+            logger.warn(
+                "Allowlist filtered %d of %d tag(s) for asset %s"
+                % (snap_stats["dropped"], snap_stats["read"], asset_id)
+            )
+        else:
+            logger.debug(
+                "Tag snapshot for %s: %d allowlisted tag(s)"
+                % (asset_id or "(none)", snap_stats["allowed"])
+            )
+    except ImportError as e:
+        # The adapter itself is not deployed/importable. That is a DEPLOYMENT
+        # fault, not a transient tag-read failure: EVERY turn silently loses its
+        # live evidence until it is fixed, so it is logged at ERROR, not warn.
+        # Deploy gateway_live_snapshot.py + collector.py + allowlist.py together
+        # — see docs/integrations/ignition-tag-collector.md.
+        logger.error(
+            "Canonical live-snapshot adapter not importable (%s) — no live tags "
+            "will reach ANY chat turn on this Gateway" % str(e)
+        )
+        filtered_snapshot = {}
     except Exception as e:
-        logger.warn("Allowlist filter error (passing through): %s" % str(e))
+        # Snapshot is best-effort evidence: the turn stays answerable from
+        # documentation, without live tags, rather than failing the request.
+        # Fail-closed — filtered_snapshot stays empty.
+        logger.warn(
+            "Live snapshot unavailable for asset %s: %s" % (asset_id, str(e))
+        )
+        filtered_snapshot = {}
 
     # --- Build and sign the outgoing request ---
     import urllib2
@@ -147,10 +199,18 @@ def doPost(request, session):
     import os.path as osp
     import sys
 
-    # Ensure the signing helper (sibling module) is importable from Jython
-    _chat_dir = osp.dirname(osp.abspath(__file__))
-    if _chat_dir not in sys.path:
-        sys.path.insert(0, _chat_dir)
+    # Ensure the signing helper (sibling module) is importable from Jython.
+    # Same `__file__` trap as the adapter import above, and this one is WORSE:
+    # it sits outside any try, so on an Ignition script resource the NameError is
+    # uncaught and the endpoint returns HTTP 500 on EVERY turn — not a degraded
+    # answer, no answer. Guarded identically; on a Gateway signing.py is a flat
+    # sibling on the script path, so the import below resolves without the dance.
+    try:
+        _chat_dir = osp.dirname(osp.abspath(__file__))
+        if _chat_dir not in sys.path:
+            sys.path.insert(0, _chat_dir)
+    except NameError:
+        pass  # script resource: flat sibling, no path setup required
 
     from signing import build_headers
 
