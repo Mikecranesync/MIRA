@@ -177,6 +177,53 @@ def build_turn_context(
     return ctx, []
 
 
+def augment_with_retrieval(ctx: Any, chunks: list[dict[str, Any]]) -> tuple[Any | None, list[str]]:
+    """Add the RETRIEVAL (MANUAL_CHUNK) family to an existing turn context (G6).
+
+    ``ctx`` is the prior-decision context ``build_turn_context`` produced at the
+    engine seam BEFORE the RAG call (retrieval chunks don't exist yet there).
+    ``chunks`` are this turn's retrieved rows, available AFTER the RAG call. The
+    two families are merged into ONE re-validated context so a single manifest —
+    not two derivations — reaches the decision trace (PRD G6). Returns
+    ``(combined_ctx | None, violations)``; None means "keep the prior-only
+    manifest" (contract unavailable / bad chunk row / validation failed), never
+    "fail the turn".
+
+    This is AUDIT enrichment only: the manual chunks still reach the *prompt*
+    through the RAG worker's ``[Source: label]`` reference block, and
+    ``prompt_block`` still renders PRIOR_DECISION only — so no chunk is labelled
+    under two trust levels. A citation-preserving retrieval *render* is the next
+    slice.
+    """
+    if ctx is None:
+        return None, ["no_base_context"]
+    if not _imports_ok():
+        return None, ["contract_unavailable"]
+    from dataclasses import replace  # noqa: PLC0415
+
+    from materialized_evidence.context_contract import (  # noqa: PLC0415
+        evidence_from_recall_chunks,
+        validate_context,
+    )
+
+    try:
+        chunk_evidence = evidence_from_recall_chunks(chunks or [])
+    except Exception as exc:  # noqa: BLE001 — never fail the turn on a malformed chunk row
+        logger.debug("evidence_from_recall_chunks skipped: %s", exc)
+        return None, ["retrieval_adapter_error"]
+
+    if not chunk_evidence:
+        # Nothing new to add — the prior-only manifest already covers this turn.
+        return None, []
+
+    combined = replace(ctx, evidence=list(ctx.evidence) + chunk_evidence)
+    violations = validate_context(combined)
+    if violations:
+        logger.warning("RETRIEVAL_AUGMENT_INVALID violations=%s", violations)
+        return None, violations
+    return combined, []
+
+
 def prompt_block(ctx: Any) -> str:
     """Render the PRIOR_DECISION projection of ``ctx`` for prompt injection.
 

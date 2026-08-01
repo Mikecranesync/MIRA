@@ -1,3 +1,17 @@
+### v3.238.0 (2026-08-01) - feat(spine): WS1/G6 — merge the RETRIEVAL evidence family into the audited turn context
+
+Follows #3032, which wired the **prior-decision** family end-to-end and explicitly left "unifying retrieval's rendering onto the contract" as the next slice. This folds the **manual-chunk (retrieval)** family into the **same** validated turn context, so a single manifest carrying both families reaches the decision trace (G6). Same flag/module (`MIRA_CONTEXT_CONTRACT`, `technician_context.py`), no second assembly path.
+
+- **`technician_context.augment_with_retrieval(ctx, chunks)`** — merges `evidence_from_recall_chunks(chunks)` into the prior-decision context `build_turn_context` produced (`dataclasses.replace`), re-validates, returns `(combined | None, violations)`. Fail-open (`None` → keep the prior-only manifest).
+- **`engine._build_prior_decisions_context`** — stashes the validated `ctx` on `state["_turn_ctx"]` (before the empty-block early return), so a turn with chunks but no priors still carries a context to augment.
+- **`engine._call_with_correction`** — lifts `_turn_ctx` once before the retry loop; after `parsed["_last_chunks"]` is set, re-manifests the combined context and sets `parsed["_context_manifest"]` — the carrier `write_trace` actually reads. Last attempt wins; fail-open to the prior-only manifest.
+- **Fixes a P1 from review:** the earlier draft stashed a worker-side `state["_retrieval_context_manifest"]` that nothing ever lifted onto `parsed`, so the retrieval manifest silently never reached the trace. Merging into the one engine-level context closes that. Regression: `test_technician_context_retrieval.py` asserts a chunk turn yields **both** `prior_decision` **and** `manual_chunk` evidence in `parsed["_context_manifest"]`.
+- **Prompt bytes unchanged.** The merge runs *after* `rag.process`, so nothing chunk-derived enters the prompt via the contract; `prompt_block` still renders the prior-decision projection only, and chunks reach the model through the RAG worker's `[Source: label]` reference block (test asserts the chunk text is absent from the prompt context). A citation-preserving retrieval *render* is the explicit next slice.
+- **Discoverability (not done by #3032):** export the contract from `materialized_evidence` (`from materialized_evidence import TechnicianContext` now works), add `materialized_evidence/README.md` (plain-language explainer matched to the landed reality), and name the contract + one-flag/one-context + no-double-render rule in `.claude/rules/materialized-evidence.md`.
+- No `EvidenceManifest` field change, no recall-key change, no prompt-byte change (proved by test), no DB/schema change.
+
+Design: `docs/plans/2026-08-01-technician-context-runtime-adoption.md`. Flag default off; `MIRA_CONTEXT_CONTRACT` on is eval-gated + ADR-0033 is proposed/awaiting sign-off. Tests: `mira-bots/tests/test_technician_context_retrieval.py` (5). Regressions green (`test_technician_context`, `test_unit2_citations`, `test_reranking`, `test_context_contract`, GS11 grounding).
+
 ### v3.237.1 (2026-08-01) - feat(ignition): one canonical Gateway live-snapshot adapter + the deployment contract that lets it actually run
 
 One PR, three layers, consolidated here after rebases onto v3.235.x-v3.237.0 fragmented the entries.
