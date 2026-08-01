@@ -177,6 +177,7 @@ def test_asset_id_marks_direct_connection(client):
     engine.process.assert_awaited_once()
     assert engine.process.await_args.kwargs.get("uns_source") == "direct_connection"
     assert engine.process.await_args.kwargs.get("platform") == "ignition"
+    assert engine.process.await_args.kwargs.get("tenant_id") == "t-1"
 
 
 def test_asset_context_marks_direct_connection(client):

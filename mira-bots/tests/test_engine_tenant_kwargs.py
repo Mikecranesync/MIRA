@@ -31,10 +31,10 @@ async def test_process_accepts_tenant_kwargs(tmp_db):
             tenant_id="per_call_t",
             mira_user_id="per_call_u",
         )
-        # The call surface for process_full may stay positional (chat_id, message, photo_b64).
-        # The plan only requires that no TypeError is raised when passing tenant_id/mira_user_id
-        # kwargs to process(). The kwargs become available to process_full via attrs on self.
-        mock_pf.assert_called_once()
+        # The request-authenticated tenant is authoritative. It must survive the
+        # process() -> process_full() boundary rather than falling back to the
+        # chat-id cache or the Supervisor default tenant.
+        assert mock_pf.await_args.kwargs["tenant_id"] == "per_call_t"
 
 
 @pytest.mark.asyncio

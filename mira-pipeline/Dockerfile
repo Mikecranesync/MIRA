@@ -12,6 +12,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy GSD engine shared code from mira-bots/ (build context is repo root)
 COPY mira-bots/shared/ ./shared/
 COPY mira-bots/prompts/ ./prompts/
+# materialized_evidence: the ONE context contract (ADR-0033 WS1). shared/
+# technician_context.py imports it lazily, so without this COPY the import fails
+# and the contract silently disables — the turn still answers, but the prompt
+# block and the decision_traces context manifest are never produced. The bot
+# images (telegram/slack) already ship it; mira-pipeline is the VPS chat path
+# (Supervisor lives here too), so it needs it for the same reason.
+# Guarded by mira-bots/tests/test_docker_recall_packaging.py.
+COPY materialized_evidence/ ./materialized_evidence/
 # Copy all pipeline source modules (main + memory/feedback_sync/eval_api/qr_bridge/
 # ignition_chat/ignition_audit + any future module). Per-file COPY caused two prod
 # deploy failures when the Ignition cutover added modules the Dockerfile didn't list

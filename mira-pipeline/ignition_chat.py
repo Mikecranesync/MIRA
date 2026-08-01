@@ -763,6 +763,7 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
                 message=message,
                 photo_b64=None,
                 platform="ignition",
+                tenant_id=tenant_id,
                 uns_source=uns_source,
                 tag_evidence=tag_evidence or None,
             )

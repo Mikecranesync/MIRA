@@ -117,6 +117,8 @@ class TestMakeResult:
             "next_state": "Q1",
             "dispatch_kind": "",
             "_citation_evidence": None,
+            # WS1 context manifest (default None — flag off / non-contract turn).
+            "_context_manifest": None,
             # Print-turn observability provenance (default None off print turns).
             "route": None,
             "model": None,

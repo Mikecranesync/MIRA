@@ -16,6 +16,8 @@ Covered (PLAN.md P9):
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sys
 from unittest.mock import AsyncMock, patch
@@ -282,3 +284,82 @@ def test_insert_sql_still_casts_session_id_to_uuid():
 
     normalized = " ".join(decision_trace._INSERT_SQL.split()).lower()
     assert "cast(:session_id as uuid)" in normalized
+
+
+# ---------------------------------------------------------------------------
+# WS1 / PRD G6 — the audit row records the SAME context object the prompt used
+# ---------------------------------------------------------------------------
+def test_build_row_preserves_a_non_sensitive_context_manifest():
+    """The audit row keeps the evidence object and hashes its stored bytes.
+
+    Re-deriving evidence at trace time is exactly how the audit row and the
+    prompt silently disagree — the divergence G6 exists to close. The writer
+    may only create a privacy-safe audit projection at the persistence edge.
+    """
+    manifest = {"contract_version": "1.0", "evidence": [{"citation_id": "R1"}]}
+    sha = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
+    row = build_trace_row(
+        tenant_id="staging",
+        user_question="q",
+        recommendation="a",
+        context_manifest={"manifest": manifest, "sha256": sha},
+    )
+    assert json.loads(row["context_manifest"]) == manifest
+    assert row["context_manifest_sha256"] == sha
+
+
+def test_build_row_redacts_manifest_question_and_hashes_stored_projection():
+    """A raw question cannot leak through the nested audit manifest (P1)."""
+    raw_question = "PLC at 10.44.0.17 has MAC AA:BB:CC:DD:EE:FF and SN 123456789."
+    manifest = {
+        "contract_version": "1.0",
+        "question": raw_question,
+        "evidence": [{"citation_id": "R1"}],
+    }
+
+    row = build_trace_row(
+        tenant_id="staging",
+        user_question="q",
+        recommendation="a",
+        context_manifest={"manifest": manifest, "sha256": "not-the-stored-hash"},
+    )
+
+    stored = json.loads(row["context_manifest"])
+    assert raw_question not in row["context_manifest"]
+    assert stored["question"] == "PLC at [IP] has MAC [MAC] and [SN]."
+    expected_sha = hashlib.sha256(
+        json.dumps(stored, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+    ).hexdigest()
+    assert row["context_manifest_sha256"] == expected_sha
+
+
+def test_build_row_context_manifest_defaults_to_null():
+    """Flag-off turns write NULL — which also makes the column the adoption
+    counter for the flag's promotion decision."""
+    row = build_trace_row(tenant_id="staging", user_question="q", recommendation="a")
+    assert row["context_manifest"] is None
+    assert row["context_manifest_sha256"] is None
+
+
+def test_build_row_rejects_a_malformed_carrier_rather_than_storing_a_partial():
+    row = build_trace_row(
+        tenant_id="staging",
+        user_question="q",
+        recommendation="a",
+        context_manifest={"sha256": "b" * 64},  # no manifest payload
+    )
+    assert row["context_manifest"] is None
+    assert row["context_manifest_sha256"] is None, (
+        "a sha with no payload is a partial — storing it would claim a manifest that isn't there"
+    )
+
+
+def test_insert_sql_writes_the_context_manifest_columns():
+    from shared import decision_trace
+
+    normalized = " ".join(decision_trace._INSERT_SQL.split()).lower()
+    assert "context_manifest" in normalized
+    assert "cast(:context_manifest as jsonb)" in normalized
+    assert ":context_manifest_sha256" in normalized

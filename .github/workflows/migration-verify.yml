@@ -77,7 +77,13 @@ jobs:
           # psycopg2-binary is the only runtime dep of the verify script
           # and the integration tests. pytest comes along for the tests;
           # pyyaml because tests/conftest.py imports yaml at collection.
-          pip install 'psycopg2-binary>=2.9' pytest pyyaml
+          # sqlalchemy because shared/prior_decisions.py — the WS1 reader under
+          # test — connects through it, exactly like the decision_trace writer
+          # it mirrors. Without it the reader's lazy import fails, the reader
+          # fails OPEN, and the tests would grade an unexercised code path.
+          # pytest-asyncio so the shared asyncio_mode="auto" ini option is
+          # recognized here (see #2553).
+          pip install 'psycopg2-binary>=2.9' pytest pytest-asyncio pyyaml 'sqlalchemy>=2.0'
 
       - name: Resolve migration plan
         id: plan
@@ -176,10 +182,15 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           # test_phase0_schema.py  — round-trip + RLS for migrations 025-031
           # test_rls_tag_trace_tables.py — RLS for migrations 032-036 (#1664)
+          # test_ws1_context_contract.py — WS1 contract read + manifest round-trip
+          #   for migration 071 (ADR-0033 G1/G6). NOTE: this list is explicit —
+          #   a new file under tests/integration/ does NOT run until it is added
+          #   here, so green CI would otherwise mean zero coverage.
           # test_write_paths.py is excluded: it needs httpx + a live BASE_URL
           python -m pytest \
             tests/integration/test_phase0_schema.py \
             tests/integration/test_rls_tag_trace_tables.py \
+            tests/integration/test_ws1_context_contract.py \
             -v 2>&1 | tee tests.out
           echo '```' >> "$GITHUB_STEP_SUMMARY" || true
 
