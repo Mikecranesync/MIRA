@@ -1,3 +1,56 @@
+# Hot Cache — 2026-07-30 — Document Evidence Compiler v1 (first Materialized Evidence receipt)
+
+`materialized_evidence/` stopped being contract-only. The **batch OEM-manual lane**
+(`mira-crawler/tasks/full_ingest_pipeline.py`) is the first working consumer: step 6 compiles two
+typed **`candidate`** receipts per document — `PageIdentityEvidence` (byte identity) and
+`OCREvidence` (what the extractor actually did) — via the new
+`materialized_evidence/document_compiler.py`. Tests: 29 compiler + 14 pipeline, both baselines green.
+
+**No migration.** No new dep, queue, cache, backend, paid call, or secret. Optional and fail-open:
+`--evidence-registry` / `MIRA_EVIDENCE_REGISTRY` unset ⇒ ingest behaves exactly as before, and a
+receipt failure lands in `PipelineReport.evidence_status` — deliberately **not** `report.errors`,
+because `errors` drives the CLI exit code and a non-zero exit would make a cron re-download and
+re-extract a document that ingested fine.
+
+Three honesty invariants worth remembering, all test-locked:
+- **A text-layer parse is never labelled OCR.** `DatasetType.OCR` is a *stage* name; the real method
+  is verbatim in the payload plus `extraction_mode` / `is_ocr`, `schema_name` is
+  `document_text_extraction`, and the mode mapping is total (unknown method → `unknown`, never
+  `text_layer`).
+- **No fabricated page coordinates.** `PipelineReport.extract_pages` is a heading-count estimate, so
+  page identity is **document-scoped** with `completeness=None` — a numeric `1.0` would let a future
+  page-level recall query pass resolver gate 3 against evidence with no pages.
+- **Determinism is load-bearing.** `manifest_hash` covers every field but the two hash fields, so a
+  `created_at`/`wall_time_ms` value would re-hash the same version each run, trip ADR-A3
+  immutability, get swallowed by the fail-open path, and silently kill recall forever. Those stay
+  `None` (enforced); record ids are derived, not `uuid4`.
+
+**Next boundary — named, not silently included:** **Hub v2 document ingestion** and **verified
+page-level extraction** are the next consumers, and neither is wired here. Also not wired: node
+attachments, Telegram, PrintSense, any chat answer path. And this slice makes **no** automatic
+recompute-or-skip decision — it never calls `resolve_recall`; it writes the durable identity a later
+recall decision can be built on.
+
+**Review round (2026-07-30, 4 blockers fixed — read this part if you touch the registry):**
+
+- **A download URL is a credential.** Presigned signatures, portal `?token=`, `user:pass@`. New
+  `materialized_evidence/redaction.py` strips userinfo/query/fragment from network-scheme URIs;
+  the compiler redacts at the producer boundary AND `validate_manifest` rejects an unredacted one on
+  every `register`, so the floor covers *any* producer. The KB reference is the document SHA, not
+  `source_url=…`. Watch for the **composite** shape — `urlsplit` reads
+  `knowledge_entries:https://…?token=…` as scheme `knowledge_entries` and calls it clean, so the
+  detector scans for embedded `scheme://` too.
+- **`FileRegistry` writes are now a locked read-modify-write** — and the **reload inside the lock is
+  the load-bearing half** (a lock alone still writes back a construction-time view; without it 1 of 6
+  concurrent manifests survives). ⚠️ **The registry owns `<snapshot>.lock` — never wrap it.**
+  `print_recall.py`'s `_XProcFileRegistry` did exactly that and is now **deleted**: nesting the two
+  deadlocks forever (`flock` is per-open-file-description). Two tests pin it.
+- **A receipt failure is journaled, not swallowed** — `<snapshot>.repair.jsonl`, an
+  `evidence_pending` item carrying the compiler's inputs verbatim so replay needs no re-download;
+  the cron stamps `evidence_status` on the queue entry. Ingest stays fail-open. The journal is
+  redacted on the same rule as the manifest.
+- **Page input is validated** — duplicate/non-positive page numbers collide record ids; a malformed
+  page hash would assert provenance the receipt cannot support.
 # Hot Cache — 2026-07-30 — Bravo VisualSession → context evidence seam (draft PR #3016, rebased on main + review fixes)
 
 **One technician brain, many evidence producers (ADR-0033):** the Bravo local VLM/OCR lane is a typed

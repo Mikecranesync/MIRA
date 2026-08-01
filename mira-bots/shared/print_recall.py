@@ -205,12 +205,11 @@ def _os_exclusive_lock(lock_path: Path):
         os.close(fd)
 
 
-@contextlib.contextmanager
-def _snapshot_lock(snapshot_path: Path):
-    """The short registry-snapshot lock (INNER lock — held only for the ms-scale
-    re-hydrate + persist, never across a paid call)."""
-    with _os_exclusive_lock(Path(str(snapshot_path) + ".lock")):
-        yield
+# The registry-snapshot lock (the INNER lock — ms-scale re-hydrate + persist, never
+# held across a paid call) now lives inside `FileRegistry` itself, on the same
+# `<snapshot>.lock` path. It is NOT re-taken here: `flock` is per-open-file-
+# description, so locking it twice in one process would block on itself forever.
+# The per-key single-flight lock below is a DIFFERENT file and is still ours.
 
 
 def _key_lock_path(key: str) -> Path:
@@ -219,27 +218,21 @@ def _key_lock_path(key: str) -> Path:
     return _recall_dir() / "locks" / f"{key}.lock"
 
 
-_xproc_cls = None
-
-
 def _xproc_registry_cls():
-    """A FileRegistry subclass whose ``register`` re-hydrates from disk under the OS
-    file lock before persisting, so a concurrent writer's committed entries are never
-    clobbered by the whole-snapshot rewrite. Cached (defined once)."""
-    global _xproc_cls
-    if _xproc_cls is None:
-        from materialized_evidence.backends import FileRegistry  # noqa: PLC0415
+    """The cross-process-safe registry class.
 
-        class _XProcFileRegistry(FileRegistry):
-            def register(self, manifest):
-                with _snapshot_lock(self._snapshot_path):
-                    self._manifests.clear()
-                    self._overlays.clear()
-                    self._load()  # capture entries other processes committed since construction
-                    super().register(manifest)  # InMemoryRegistry.register + atomic fsync persist
+    This used to be a local ``FileRegistry`` subclass that re-hydrated from disk under
+    the OS file lock before persisting, because the base class did not do it. The base
+    class now does — ``FileRegistry.register`` and ``.mark_stale`` both run as a locked
+    read-modify-write on ``<snapshot>.lock``, the same lock path this wrapper used.
 
-        _xproc_cls = _XProcFileRegistry
-    return _xproc_cls
+    Keeping the wrapper would now be worse than redundant: ``flock`` is per-open-file-
+    description, so taking the same lock twice in one process **blocks on itself
+    forever**. One implementation, in the class that owns the snapshot.
+    """
+    from materialized_evidence.backends import FileRegistry  # noqa: PLC0415
+
+    return FileRegistry
 
 
 def _quarantine(path: Path) -> None:

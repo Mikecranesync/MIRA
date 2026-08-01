@@ -82,6 +82,117 @@ lineage, and the reuse decision.
 `VideoDetectionEvidence`, `TelemetryFeatureEvidence`, `ContradictionEvidence`, `HumanReviewEvidence`,
 `PackBuildEvidence`.
 
+## First vertical flow — the batch-document evidence receipt (shipped)
+
+The first working consumer of this contract is the **batch OEM-manual lane**
+(`mira-crawler/tasks/full_ingest_pipeline.py`), compiled by
+`materialized_evidence/document_compiler.py`:
+
+```
+raw document (downloaded PDF)
+  → byte identity            sha256 of the ACTUAL bytes  → PageIdentityEvidence (candidate)
+  → local text / Tika extraction (already performed)     → OCREvidence         (candidate)
+  → reference to the existing knowledge_entries / raw-source materialization
+  → manifest receipt in a MaterializationRegistry (FileRegistry snapshot)
+  → [future] recall / runtime consumer
+```
+
+**Two datasets, one document.** `PageIdentityEvidence` records the document's byte identity;
+`OCREvidence` records what the extractor did and descends from it via `parent_dataset_versions`, so a
+re-extraction invalidates only the extraction layer, not the document's identity.
+
+**`OCREvidence` is a *stage* name, not a claim about how the text was obtained.** The vocabulary above
+names one extracted-text stage and this flow uses it rather than forking the contract — so the honest
+distinction is carried explicitly instead: `schema_name` is `document_text_extraction` (never
+`..._ocr`), and every record payload carries `extraction_method` verbatim (`pdfplumber`, `pypdf`,
+`tika_ocr`, …), a derived `extraction_mode` (`text_layer` | `ocr` | `none` | `unknown`), and an
+explicit `is_ocr` boolean. A non-OCR dataset also states it in `known_gaps`. **A text-layer parse is
+never labelled OCR.** The mode mapping is total: an unrecognised method is `unknown`, never
+`text_layer`.
+
+**Page identity is not fabricated.** `PipelineReport.extract_pages` counts markdown headings — an
+*estimate*, not page provenance. This extraction layer supplies no page identity, so the dataset is
+**document-scoped**, declares the gap in `known_gaps`, and leaves `completeness` `None` (a numeric
+`1.0` would let a future page-level recall query pass resolver gate 3 against evidence that has no
+pages at all). The compiler accepts verified pages when a caller genuinely has them; the batch lane
+passes none.
+
+**What this slice deliberately does not do.** It makes **no automatic recompute-or-skip decision** —
+it never calls `resolve_recall`, so it cannot skip an extraction, convert a failed extraction into a
+success, or retry a quarantined document. Writing a receipt is purely additive. Trust stays
+`candidate` and approval `pending`; the compiler raises rather than emit anything else.
+
+**Determinism is load-bearing, and subtle — two distinct traps.** `manifest_hash` covers every
+manifest field except the two hash fields, and the registry rejects a re-register of one
+`dataset_version_id` with a different `manifest_hash` (ADR A3). So *anything* that varies between runs
+but is absent from the version key produces a permanent `immutable version conflict` — swallowed by
+the lane's fail-open path, invisible in a fresh-registry test, and recall is silently dead forever.
+
+1. **Clock/cost fields.** `created_at`, `wall_time_ms`, `compute_time_ms`, and the cost fields are
+   left `None` (enforced by `_DETERMINISM_MUST_BE_UNSET`) and reported in `PipelineReport` instead.
+2. **Provenance fields.** `source_objects` (the fetch URL, redacted to origin+path — a CDN change,
+   mirror, or http→https still varies it; a query token no longer does, since it is stripped before
+   persisting) and `storage_ref` (the local path, per-host via `MANUALS_ROOT`) legitimately vary for
+   identical bytes. The fix is not to freeze them but to make the version key **content-derived**:
+   `dataset_version_id` is a hash over every manifest field except itself and the two hash fields,
+   plus the records' `content_hash` (`_with_version_id`). Any content difference is therefore a new
+   *version*, never a conflict. Callers cannot preset it.
+
+Byte identity remains the **recall** key: `dataset_id` is byte-derived and `source_hashes` is what
+`registry.find` / `resolve_recall` match on. Two fetch URLs for identical bytes yield two versions of
+one dataset with an **identical** `content_hash`, so the resolver selects one instead of reporting a
+conflict — which is why record `source_locator`s are content-addressed (`sha256:<hash>[#page=N]`) and
+materialization pointers live only on the manifest's `index_refs`, never in a record payload. Record
+ids are derived from `(source_sha, stage)`, never random.
+
+*(Found by running a real PDF end-to-end on 2026-07-30, not by inspection: re-ingesting one document
+from a different port wedged the registry. The unit test that used a constant URL passed.)*
+
+**No secrets in a durable receipt.** A download URL is routinely a *credential* — a presigned
+S3/GCS signature, an OEM portal `?token=`, `user:pass@` on a mirror — and a manifest outlives the
+process that wrote it. Provenance is scheme+host+path; the query string is how the fetch was
+*authorized*, not where the document came from, and byte identity is what identifies it anyway. So
+every URI reaching a durable field is redacted (`materialized_evidence/redaction.py`) at the producer
+boundary, and `validate_manifest` rejects an unredacted network URI on every `register` — the floor
+applies to any producer, not just this one. The detector deliberately catches a URI *embedded* in a
+composite locator, because that was the real leak shape: `urlsplit` reads
+`knowledge_entries:https://host/m.pdf?token=…#records=7` as scheme `knowledge_entries`, so a
+whole-value parse reports it clean while a live token sits in the middle. Composite locators are
+therefore built from the content hash (`knowledge_entries:sha256:<hash>#records=N`), never a URL.
+
+**Persistence.** `FileRegistry` persists **manifests and status overlays only** — never
+`EvidenceRecord` payloads. It is a receipt store, not a second content store. The lane is enabled
+per-run by `--evidence-registry` / `MIRA_EVIDENCE_REGISTRY`; unset means unchanged behavior.
+
+**Concurrent writers.** The snapshot is rewritten whole, so every write is a load-modify-replace of
+one shared file. Atomic replace prevents a *torn* file and does nothing about a *lost* one: two
+ingest processes could each hydrate, each add a manifest, and each write everything back — both
+reporting success while the last writer erased the other's receipts. Writes therefore run under an
+exclusive `flock` on a sidecar `.lock` **and re-hydrate from disk inside the lock before mutating**.
+The reload is the load-bearing half; locking alone still writes back a construction-time view. It
+also makes the ADR-A3 immutability check evaluate against what is really on disk. Reads are not
+locked (a staleness bound, not a correctness bug — a recall miss recomputes); `refresh()` opts in.
+Neon remains the concurrent-safe *shared* backend; this makes the file backend safe for the
+concurrent processes that exist today, the KB-growth cron's pipeline subprocesses.
+
+**A receipt gap is recorded, not swallowed.** Receipt writing is fail-open: a failure stays out of
+the pipeline's exit code, because a non-zero exit would make the cron re-download and re-extract a
+document that ingested perfectly. That left no trace at all — a document with no receipt looked
+exactly like one with two. A failure now appends an `evidence_pending` repair item to
+`<snapshot>.repair.jsonl` carrying the compiler's inputs verbatim (byte identity, byte count, the
+real extraction method and its hashes, the materializations produced), so replay needs neither the
+network nor a re-extraction; the cron stamps `evidence_status` on the queue entry as the
+operator-facing pointer. The journal is redacted on the same rule as the manifest — it is exactly as
+durable, so it must not become a second copy of the leak.
+
+**Caller input is validated at the boundary.** Duplicate or non-positive page numbers collide record
+ids (`{sha}:page:{n:05d}`), and a malformed page hash would let a Page Identity dataset assert
+provenance it cannot support. Both are rejected as contract violations. A *failed extraction* is not
+— that is legitimate evidence, recorded with `stage_status` `failed`/`cancelled`.
+
+**Next consumers, explicitly not included here:** Hub v2 document ingestion, node attachments,
+Telegram, PrintSense, any chat answer path, and **verified page-level extraction**.
+
 ## Content-addressed identity (§9)
 
 Every expensive source and stage output is content-addressed: package/file/page/image/video/clip/
