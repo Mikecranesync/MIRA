@@ -45,10 +45,11 @@ The primary user is a maintenance technician collecting permitted photographs
 on a phone during an inspection, then reviewing the results in FactoryLM Hub
 on desktop or phone.
 
-The first validation scenario is the Garage Conveyor. The technician creates
-one VisualSession, uploads a facility-map reference plus a sequenced set of
-conveyor-area photos, and reviews any mapping candidates after the worker has
-run.
+The first validation scenario is the Garage Conveyor. The technician opens the
+supported public application at `https://app.factorylm.com/hub`, starts a
+Field Capture session on a phone, uploads a facility-map reference plus a
+sequenced set of conveyor-area photos, and reviews any mapping candidates after
+the worker has run.
 
 ## 5. Scope
 
@@ -59,6 +60,10 @@ run.
 - Preserve server-extracted capture metadata from an original photo when it is
   present, including capture time, latitude, longitude, and accuracy. Missing
   data remains missing; the system never estimates it from a filename or prose.
+- Add a thin, supported **Field Capture** entry in the public
+  `app.factorylm.com/hub` experience. It creates or resumes one VisualSession,
+  uploads original raster photos, and clearly identifies the session as
+  candidate-only evidence. It is not a native Android app or a route viewer.
 - Run an idempotent background mapper over new and previously unprocessed
   VisualSession evidence.
 - Create candidate relation observations linking an evidence item to an
@@ -188,7 +193,8 @@ truth.
 ## 11. Success measures
 
 - Every candidate has a source image and an explainable target match.
-- The initial field trial can be captured with the current phone-to-Hub path.
+- The initial field trial can be captured from the supported public Field
+  Capture entry on a phone after deployment.
 - A reviewer can reach a correct accept/reject/correct outcome without database
   access.
 - No duplicate candidate appears after retry or backfill.

@@ -21,6 +21,25 @@ chatbot, or a second background queue.
 
 ## Architecture
 
+### Public Field Capture entry
+
+`mira-hub` is an internal service name, not the name or URL a technician uses.
+The public entry point is `https://app.factorylm.com/hub`. The current mobile
+experience does not expose the internal `/visual` workspace as a supported tab,
+so the mapper cannot rely on a technician finding that route.
+
+The first implementation adds one mobile-accessible **Field Capture** entry to
+the public Hub. It is a thin client over the existing VisualSession APIs:
+
+1. create or resume a session;
+2. upload an original PNG, JPEG, or WebP image;
+3. show that the item is captured evidence awaiting review; and
+4. link to the existing review queue when candidates are available.
+
+It does not show a route, Google map, point cloud, 3D walkthrough, or control
+surface. It is deliberately the smallest public door required to test the
+background mapper on a phone.
+
 ### Capture metadata
 
 The Hub upload route parses capture metadata from the original image on the
