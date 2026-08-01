@@ -146,6 +146,7 @@ FROM decision_traces
 WHERE tenant_id = :tenant_id
   AND recommendation IS NOT NULL
   AND recommendation <> ''
+  AND citations_present IS TRUE
 """
 
 _UNS_PREDICATE = "  AND uns_path = CAST(:uns_path AS LTREE)\n"

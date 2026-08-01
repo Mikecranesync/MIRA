@@ -16,9 +16,10 @@ Design constraints (mirror conversation_logger.py — the established precedent)
 - **Event loop never blocked.** The INSERT is offloaded to a worker thread via
   run_in_executor; a 2s timeout caps it. The reply has already been returned to
   the caller by the time this runs (the engine schedules it after the turn).
-- **PII-sanitised.** user_question + recommendation go through
-  InferenceRouter.sanitize_text (IP/MAC/SN scrub) — same contract as 031_audit
-  and conversation_logger.
+- **PII-sanitised.** user_question + recommendation, plus the context manifest's
+  question field, go through InferenceRouter.sanitize_text (IP/MAC/SN scrub) —
+  same contract as 031_audit and conversation_logger. The manifest hash is
+  calculated from the exact privacy-safe projection that is stored.
 - **Lazy imports.** sqlalchemy imported inside the worker so bot containers
   without it still boot.
 
@@ -28,6 +29,8 @@ logic is unit-tested without a live NeonDB.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import re
@@ -68,10 +71,11 @@ INSERT INTO decision_traces (
     :outcome,
     :model_used,
     :latency_ms,
-    -- WS1 / PRD G6 (migration 071): the serialized TechnicianContext the prompt
-    -- block was rendered from, plus a sha256 over its canonical JSON. NULL on
-    -- turns taken with MIRA_CONTEXT_CONTRACT off — which also makes the column
-    -- the adoption counter for the flag's promotion decision.
+    -- WS1 / PRD G6 (migration 071): the privacy-safe TechnicianContext audit
+    -- projection preserving the prompt's evidence, plus a sha256 over the exact
+    -- canonical JSON stored here. NULL on turns taken with MIRA_CONTEXT_CONTRACT
+    -- off — which also makes the column the adoption counter for the flag's
+    -- promotion decision.
     CAST(:context_manifest AS JSONB),
     :context_manifest_sha256
 )
@@ -121,6 +125,28 @@ def _manual_evidence_from_sources(sources: Optional[list]) -> list[dict[str, Any
     return out
 
 
+def _audit_manifest(context_manifest: Optional[dict]) -> tuple[dict[str, Any] | None, str | None]:
+    """Return the safe manifest projection and hash that will reach storage.
+
+    The engine carries one context object from prompt assembly to tracing so
+    evidence is never re-derived at the audit boundary. Its question is not
+    part of the prior-decision prompt projection, but it may contain operator
+    PII; sanitize that one persistence-only field and hash the exact result.
+    """
+    carrier = context_manifest if isinstance(context_manifest, dict) else {}
+    payload = carrier.get("manifest")
+    if not isinstance(payload, dict):
+        return None, None
+
+    audit_payload = dict(payload)
+    question = audit_payload.get("question")
+    if isinstance(question, str):
+        audit_payload["question"] = _sanitize(question)
+
+    canonical = json.dumps(audit_payload, sort_keys=True, ensure_ascii=False, default=str)
+    return audit_payload, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def build_trace_row(
     *,
     tenant_id: str,
@@ -144,18 +170,13 @@ def build_trace_row(
     confidence from it. Evidence lists are stored as-is (tag/kg) or shaped
     (manual). citations_present is derived from the recommendation text.
     """
-    import json
-
     ctx = uns_context or {}
     uns_path = ctx.get("uns_path") or ctx.get("path") or None
 
-    # WS1/G6 — the caller passes {"manifest": ..., "sha256": ...} exactly as the
-    # engine built it for the prompt. Nothing is re-derived here: re-deriving is
-    # how the audit row and the prompt drift apart, which is the divergence G6
-    # exists to close. A malformed/absent carrier stores NULL, never a partial.
-    cm = context_manifest if isinstance(context_manifest, dict) else {}
-    cm_payload = cm.get("manifest")
-    cm_sha = cm.get("sha256")
+    # WS1/G6 — preserve the engine's evidence object instead of re-deriving it.
+    # The sole transformation is the PII-safe question projection required at
+    # the persistence boundary; its hash is calculated from those exact bytes.
+    cm_payload, cm_sha = _audit_manifest(context_manifest)
 
     return {
         "tenant_id": tenant_id,

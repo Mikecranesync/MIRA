@@ -72,6 +72,10 @@ async def _failed_fetch(tenant_id, *, uns_path=None, limit=3, timeout_s=1.5):
     return [], "prior_decisions_unavailable"
 
 
+async def _empty_fetch(tenant_id, *, uns_path=None, limit=3, timeout_s=1.5):
+    return [], None
+
+
 # ---------------------------------------------------------------------------
 # The flag gates adoption — default off changes nothing
 # ---------------------------------------------------------------------------
@@ -121,6 +125,18 @@ async def test_flag_on_builds_block_and_stashes_manifest(sup, monkeypatch):
     assert len(carrier["sha256"]) == 64
     assert carrier["manifest"]["tenant_id"] == TENANT
     assert carrier["manifest"]["evidence"][0]["trust"] == "candidate"
+
+
+@pytest.mark.asyncio
+async def test_empty_prior_history_does_not_stash_an_orphan_manifest(sup, monkeypatch):
+    """A manifest is an audit of prompt context, not a flag-on heartbeat (P2)."""
+    monkeypatch.setenv("MIRA_CONTEXT_CONTRACT", "1")
+    state = _state()
+    with patch("shared.prior_decisions.fetch_prior_decisions", new=_empty_fetch):
+        block = await sup._build_prior_decisions_context(state, TENANT, "why stopped?")
+
+    assert block == ""
+    assert "_context_manifest" not in state
 
 
 @pytest.mark.asyncio

@@ -26,10 +26,11 @@ What it does, and deliberately does not do:
   Unifying retrieval's prompt rendering onto the contract is the next slice —
   see the PR body; do not read this module as claiming it already happened.
 - **Emits the manifest the audit row records** (`context_manifest` +
-  `context_manifest_sha256`, migration 071) so the trace stores *the same
-  object the prompt was built from* rather than re-deriving evidence at trace
-  time. Re-derivation is exactly how the two silently diverge, which is what
-  G6 exists to prevent.
+  `context_manifest_sha256`, migration 071) so the trace preserves the same
+  evidence object the prompt was built from rather than re-deriving evidence at
+  trace time. The trace writer sanitizes the non-rendered question field at its
+  persistence boundary and hashes that safe audit projection; it never alters
+  or re-derives the evidence that G6 protects.
 
 `materialized_evidence` is imported lazily and defensively — the same posture
 `print_recall.py` established, because not every image that ships

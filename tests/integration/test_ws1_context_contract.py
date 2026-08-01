@@ -114,6 +114,10 @@ def _insert_trace(conn, tenant_id: str, recommendation: str, **extra) -> str:
         "tenant_id": tenant_id,
         "user_question": "why did the conveyor stop?",
         "recommendation": recommendation,
+        # A non-empty recommendation is useful context only when the source
+        # writer proved grounding. Individual tests override this to exercise
+        # the fail-closed reader predicate.
+        "citations_present": True,
         "outcome": "resolved",
         **extra,
     }
@@ -204,6 +208,33 @@ def test_reader_drops_rows_with_no_decision_content(conn, slug_tenants):
         rows, error = asyncio.run(fetch_prior_decisions(tenant_a))
         assert error is None
         assert rows == []
+    finally:
+        _cleanup(conn, tenant_a)
+
+
+def test_reader_drops_nonempty_decisions_without_citations(conn, slug_tenants):
+    """An answer without a source is never prior evidence for a later turn."""
+    tenant_a, _ = slug_tenants
+    try:
+        _insert_trace(
+            conn,
+            tenant_a,
+            "Uncited guess that must not reach a future prompt.",
+            citations_present=False,
+        )
+        _insert_trace(
+            conn,
+            tenant_a,
+            "Grounded answer that may reach a future prompt.",
+            citations_present=True,
+        )
+
+        rows, error = asyncio.run(fetch_prior_decisions(tenant_a))
+
+        assert error is None
+        assert [r["recommendation"] for r in rows] == [
+            "Grounded answer that may reach a future prompt."
+        ]
     finally:
         _cleanup(conn, tenant_a)
 

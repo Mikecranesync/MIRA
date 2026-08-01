@@ -1745,6 +1745,7 @@ class Supervisor:
                     chat_id,
                     message,
                     photo_b64,
+                    tenant_id=tenant_id,
                     uns_source=uns_source,
                     retrieval_query=retrieval_query,
                 ),
@@ -2318,6 +2319,7 @@ class Supervisor:
         message: str,
         photo_b64: str = None,
         *,
+        tenant_id: str | None = None,
         uns_source: str | None = None,
         retrieval_query: str | None = None,
     ) -> dict:
@@ -2335,8 +2337,10 @@ class Supervisor:
         # guards assume str (guardrails.py). Normalize once at the entry point.
         message = message or ""
 
-        # Resolve tenant per call — chat_tenant LRU cache makes this cheap
-        resolved_tenant = resolve_tenant(chat_id) or self.rag.tenant_id
+        # An authenticated adapter's tenant is authoritative. The chat-id LRU
+        # remains the compatibility fallback for legacy surfaces that cannot
+        # supply one, followed by the Supervisor's configured default.
+        resolved_tenant = tenant_id or resolve_tenant(chat_id) or self.rag.tenant_id
 
         # Telemetry trace
         t = tl_trace("supervisor.process", user_id=chat_id)
@@ -4178,6 +4182,10 @@ class Supervisor:
                 logger.debug("CONTEXT_CONTRACT skipped: %s", violations)
                 return ""
 
+            block = prompt_block(ctx)
+            if not block:
+                return ""
+
             payload, sha = manifest_of(ctx)
             state["_context_manifest"] = {"manifest": payload, "sha256": sha}
             logger.info(
@@ -4187,7 +4195,7 @@ class Supervisor:
                 len(ctx.unknowns),
                 sha[:12],
             )
-            return prompt_block(ctx)
+            return block
         except Exception as exc:  # noqa: BLE001 — enrichment must never block diagnosis
             logger.debug("CONTEXT_CONTRACT miss: %s", exc)
             return ""

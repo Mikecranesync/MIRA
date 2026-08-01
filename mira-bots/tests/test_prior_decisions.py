@@ -121,6 +121,11 @@ def test_query_is_bounded_and_newest_first():
     assert "limit :limit" in sql
 
 
+def test_query_admits_only_cited_decisions():
+    """An uncited answer is not grounded context for a later technician turn."""
+    assert "citations_present is true" in pd._BASE_SQL.lower()
+
+
 # ---------------------------------------------------------------------------
 # Executor discipline — an asyncio timeout bounds the CALLER, not the thread
 # ---------------------------------------------------------------------------
