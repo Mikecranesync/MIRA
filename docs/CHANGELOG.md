@@ -1,3 +1,14 @@
+### v3.240.0 (2026-08-02) - feat(spine): FactoryLM machine-snapshot → TechnicianContext.live adapter (PRD #3048, PR 1)
+
+First slice of the read-only machine-evidence handoff (PRD #3048): the **live-state** evidence family enters the context contract, after prior-decision (#3032) and retrieval (#3041). Pure Python — no ingress, no infra, no plant writes (PRs 2–4 handle FactoryLM source, ingress, serving-path).
+
+- **`materialized_evidence.context_contract.overlay_from_factorylm_snapshot(snapshot)`** → `(LiveStateOverlay | None, violations)`. Validates the `factorylm.machine-snapshot.v1` envelope (required: `schema_version`, `snapshot_id`, `captured_at`, `tenant_id`, `tags`), maps it to the MachineContextPacket dict `live_overlay_from_machine_packet` already consumes, and **delegates** — no duplicated `LiveTag`, freshness, summary, or render logic. Quality `{good,bad,stale,uncertain}` → `Freshness`, always downgrading toward less confidence (unknown quality never becomes `good`/`live`); a `simulator` source marks tags `simulated`, never real. Read-only by construction (asserted: no `pymodbus`/`pycomm3`/`socket`/`httpx`/write).
+- **`mira-bots/shared/technician_context.augment_with_live(ctx, snapshot)`** — folds the overlay into `TechnicianContext.live` on the SAME context (the `augment_with_*` shape from #3041), re-validates, so one manifest carries it. Accepts an envelope dict or a pre-built `LiveStateOverlay`. Fail-open: invalid/absent snapshot → no live overlay, diagnosis still answers.
+- **Shared cross-repo fixture** `contracts/machine_snapshot/` (valid + 4 invalid + spec) — the compatibility boundary both repos test against.
+- Exported `overlay_from_factorylm_snapshot` + `FACTORYLM_SNAPSHOT_SCHEMA` from `materialized_evidence`.
+
+Flag-gated wiring into the serving path (`build_turn_context`, dedupe vs the legacy live block) is PR 4 — this PR changes no engine behavior. Tests: `materialized_evidence/tests/test_factorylm_snapshot_adapter.py` (9), `mira-bots/tests/test_technician_context_live.py` (6). Regressions green (context_contract, technician_context, ws1_engine_wiring, retrieval).
+
 ### v3.239.1 (2026-08-02) - fix(ignition): PEP 263 cookie is a guaranteed SyntaxError on the gateway - remove it, keep the proof
 
 The v3.237.1 encoding fix guessed wrong, and the first live deploy caught it. Every handler failed to compile with `PySyntaxError: SyntaxError: encoding declaration in Unicode string (<<MiraDeployTest/FactoryLM/api/status:doGet>>, line 0)` at `ScriptManager.compileFunction`, and the dispatcher answered **HTTP 501** on every method.
