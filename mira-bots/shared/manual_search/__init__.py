@@ -7,9 +7,14 @@ ported from ``mira-scan-monday/backend/manual_search.py`` +
 search + HEAD-validated PDF check + canonical-queue bridge, instead of a
 second implementation being built from scratch.
 
-This package has NO runtime callers yet — wiring it into
+Phase 2 (same plan) wired this package into
 ``mira-bots/shared/visual/equipment.py::default_manual_retriever()`` as
-ladder rungs 4-6 is a separate, later PR (Phase 2 of the plan above).
+ladder rungs 4-6, behind ``MIRA_MANUAL_SENSE_WEB_ENABLED`` (default off): a
+local-KB miss with a known manufacturer+model discovers + queues a validated
+OEM manual for the existing ingestion cron. It still returns no citation
+that turn — nothing has been extracted from the document yet. Phase 3
+(connecting a bot adapter's pack-miss path to this) is separate and not
+done here.
 
 Public surface:
 

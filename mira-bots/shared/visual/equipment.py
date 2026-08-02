@@ -480,8 +480,73 @@ async def _maybe_await(value: Any) -> Any:
     return value
 
 
+def _manual_sense_web_enabled() -> bool:
+    """Rungs 4–6 (OEM web discovery) default OFF in production — see
+    ``docs/plans/2026-07-31-visual-intake-asset-identity-manualsense-audit.md``
+    §6 Phase 2. Matches this module's ``MIRA_X_ENABLED=1`` convention."""
+    return os.getenv("MIRA_MANUAL_SENSE_WEB_ENABLED", "0") == "1"
+
+
+async def _discover_and_queue_oem_manual(manufacturer: str, model: str) -> None:
+    """ManualSense rungs 4–6: search the open OEM web for a manual the local
+    corpus (rung 2) doesn't have yet, and queue a HEAD-validated hit into the
+    EXISTING ingestion queues (``manual_cache`` + ``manual_queue.json``) for
+    the next crawler run. No new ingestion pipeline (``.claude/rules/
+    one-pipeline-ingest.md`` — this reuses the crawler's queue, it doesn't
+    fork one).
+
+    Deliberately returns no citation. ``default_manual_retriever``'s return
+    value feeds straight into DOCUMENTED observations
+    (``answer_equipment``, L801-811) — inventing an ``excerpt`` for a
+    document nothing has extracted text from yet would be fabrication
+    (``.claude/rules/materialized-evidence.md`` rule 9: model output stays
+    ``candidate`` until something verifies it; a URL is not extracted text).
+    Once the queued document is actually ingested, the NEXT turn's rung 2
+    (local KB) cites it normally — no new citation shape needed here.
+
+    Best-effort and fail-open like the rest of this function: never raises,
+    never blocks the local-KB result on network/DB availability.
+    """
+    try:
+        from ..manual_search import record_manual_discovery, search_manual  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        logger.info("manual_sense web rung: manual_search unavailable: %s", exc)
+        return
+
+    try:
+        candidate = await search_manual(manufacturer, model)
+    except Exception as exc:  # noqa: BLE001
+        logger.info(
+            "manual_sense web rung: search failed for %s %s: %s", manufacturer, model, exc
+        )
+        return
+
+    # Only a HEAD/magic-byte validated PDF is worth queuing — an unvalidated
+    # top scorer (rung 6's "candidate, never promoted" discipline) is not
+    # queued for automatic download.
+    if not candidate or not candidate.get("validated") or not candidate.get("url"):
+        return
+
+    try:
+        await record_manual_discovery(
+            manufacturer,
+            model,
+            manual_url=candidate["url"],
+            manual_title=candidate.get("title"),
+            manual_type=candidate.get("doc_type"),
+        )
+        logger.info(
+            "manual_sense web rung: discovered + queued %s %s manual: %s",
+            manufacturer,
+            model,
+            str(candidate["url"])[:120],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.info("manual_sense web rung: queueing discovery failed: %s", exc)
+
+
 async def default_manual_retriever(
-    question: str, tenant_id: str, manufacturer: str | None
+    question: str, tenant_id: str, manufacturer: str | None, model: str | None = None
 ) -> list[ManualCitation]:
     """Tenant-scoped manual retrieval via the SAME stack the chat/RAG path uses.
 
@@ -498,7 +563,27 @@ async def default_manual_retriever(
 
     Graceful-empty on ANY failure (no embed sidecar, no DB, any exception) —
     never raises.
+
+    ``model`` (optional, additive — existing callers passing 3 positional
+    args are unaffected) unlocks rungs 4–6: when the local corpus (below)
+    has nothing AND ``MIRA_MANUAL_SENSE_WEB_ENABLED=1`` AND both
+    ``manufacturer`` and ``model`` are known, this discovers + queues an
+    official OEM manual on the open web for the crawler to ingest. See
+    ``_discover_and_queue_oem_manual`` for why that never returns a
+    citation on THIS turn.
     """
+    citations = await _local_manual_citations(question, tenant_id, manufacturer)
+    if not citations and _manual_sense_web_enabled() and manufacturer and model:
+        await _discover_and_queue_oem_manual(manufacturer, model)
+    return citations
+
+
+async def _local_manual_citations(
+    question: str, tenant_id: str, manufacturer: str | None
+) -> list[ManualCitation]:
+    """Rungs 1–2 of the ladder: local MIRA-corpus retrieval only. Split out
+    of ``default_manual_retriever`` so the web rungs (4–6) wrap it without
+    duplicating this early-exit chain at every return point."""
     if not question or not tenant_id:
         return []
     if not os.environ.get("NEON_DATABASE_URL"):

@@ -3,9 +3,9 @@
 Pins the contract for the module ported from
 ``mira-scan-monday/backend/manual_search.py`` + ``crawler_bridge.py`` per
 ``docs/plans/2026-07-31-visual-intake-asset-identity-manualsense-audit.md``.
-This package has no runtime callers yet — these tests exercise it in
-isolation so the port is provably behavior-preserving before Phase 2 wires
-it into ``equipment.default_manual_retriever()``.
+These tests exercise it in isolation so the port is provably
+behavior-preserving. Phase 2 (``test_default_manual_retriever_web.py``)
+wires it into ``equipment.default_manual_retriever()``.
 
 Invariants under test (the ones the audit's acceptance-test section names):
   - Denylisted / SEO-spam hosts never score positive (never promoted).
