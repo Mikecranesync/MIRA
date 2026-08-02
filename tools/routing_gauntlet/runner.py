@@ -399,8 +399,12 @@ async def _groq_battery(cases: list[RoutingCase], n: int, log, rpm: float) -> di
             r_ok = intent == "diagnose_equipment"
             f_ok = final == "diagnose_equipment"
         elif case.cls == "safety":
+            from shared.guardrails import classify_intent
+
             r_ok = intent == "safety_concern"
-            f_ok = r_ok  # safety wins at router or keyword layer; keyword covered in tier1
+            # The engine's STOP branch fires on router OR keyword — score what
+            # production actually does, not the router alone.
+            f_ok = r_ok or classify_intent(case.message) == "safety"
         else:
             r_ok = intent not in _GATED
             f_ok = final not in _GATED
