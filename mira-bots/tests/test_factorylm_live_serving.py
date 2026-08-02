@@ -398,12 +398,43 @@ def test_readback_falls_back_to_equipment_lookup_when_no_uns_path():
     assert captured["prefix"] == "enterprise.home_garage.conveyor_lab.conveyor_1"
 
 
+def test_readback_uses_gate_confirmed_namespace_path():
+    """A chat-gate confirmation that resolved via the tenant namespace already
+    carries the physical subtree — the overlay must use it, not re-resolve
+    (2026-08-02 round-3 probe: the re-resolution missed on the display label)."""
+    captured = {}
+
+    def _fake_fetch(tenant_id, ltree_prefix):
+        captured["prefix"] = ltree_prefix
+        return _rows()
+
+    with (
+        unittest.mock.patch("shared.factorylm_live.fetch_live_signal_cache", _fake_fetch),
+        unittest.mock.patch("shared.factorylm_live.uns_prefix_for_asset") as lookup,
+    ):
+        out = _call_overlay(
+            {
+                "asset_identified": "Conv_Simple Bench Conveyor / CV-101",
+                "context": {
+                    "confirmed_namespace": {
+                        "asset_tag": "CV-101",
+                        "uns_path": "enterprise.home_garage.conveyor_lab.conveyor_1",
+                    }
+                },
+            },
+            TENANT,
+            flag=True,
+        )
+
+    assert out is not None
+    lookup.assert_not_called()
+    assert captured["prefix"] == "enterprise.home_garage.conveyor_lab.conveyor_1"
+
+
 def test_readback_returns_none_when_equipment_lookup_misses():
     with (
         unittest.mock.patch("shared.factorylm_live.fetch_live_signal_cache") as fetch,
-        unittest.mock.patch(
-            "shared.factorylm_live.uns_prefix_for_asset", return_value=None
-        ),
+        unittest.mock.patch("shared.factorylm_live.uns_prefix_for_asset", return_value=None),
     ):
         out = _call_overlay({"asset_identified": "Mystery Machine"}, TENANT, flag=True)
     assert out is None
@@ -481,7 +512,9 @@ def test_uns_prefix_for_asset_ambiguous_description_returns_none():
 def test_uns_prefix_for_asset_unique_description_matches():
     from shared.factorylm_live import uns_prefix_for_asset
 
-    _conn, fake = _lookup_db({"tag": [], "description": [("enterprise.home_garage.conveyor_lab.conveyor_1",)]})
+    _conn, fake = _lookup_db(
+        {"tag": [], "description": [("enterprise.home_garage.conveyor_lab.conveyor_1",)]}
+    )
     with (
         unittest.mock.patch.dict(os.environ, {"NEON_DATABASE_URL": "postgres://test"}),
         unittest.mock.patch.dict(sys.modules, {"psycopg2": fake}),

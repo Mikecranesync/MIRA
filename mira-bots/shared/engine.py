@@ -4495,6 +4495,15 @@ class Supervisor:
         uns_path = uns_context.get("uns_path") if isinstance(uns_context, dict) else None
         if not isinstance(uns_path, str) or not uns_path.strip():
             uns_path = None
+        if uns_path is None and isinstance(context, dict):
+            # The UNS gate's tenant-scoped match already carries the physical
+            # subtree when it resolved via cmms_equipment — use it instead of
+            # a second DB round-trip (2026-08-02 round-3 probe).
+            confirmed = context.get("confirmed_namespace")
+            if isinstance(confirmed, dict):
+                p = confirmed.get("uns_path")
+                if isinstance(p, str) and p.strip():
+                    uns_path = p.strip()
         try:
             from .technician_context import contract_enabled
 
@@ -7130,6 +7139,11 @@ class Supervisor:
             demo_ns = pending.get("demo_namespace")
             if demo_ns:
                 ctx["confirmed_namespace"] = demo_ns
+                # The overlay's cmms_equipment fallback resolves by exact
+                # equipment_number — feed it the matched tag, not the joined
+                # display label (which matches nothing). 2026-08-02 round-3.
+                if demo_ns.get("asset_tag"):
+                    ctx["asset_tag"] = demo_ns["asset_tag"]
             ctx.pop("pending_uns_confirm", None)
             # Side state cleared — normal IDLE→Q1/DIAGNOSIS flow resumes on
             # the next turn now that asset_identified is set.
