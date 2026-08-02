@@ -337,3 +337,52 @@ class TestVerifyHmacUnit:
         auth.verify_hmac(headers, body, TEST_KEY, _now=now)
         with pytest.raises(ValueError, match="replay_detected"):
             auth.verify_hmac(headers, body, TEST_KEY, _now=now)
+
+
+class TestSignHmacHeaders:
+    """`sign_hmac_headers` is the client half of the contract `verify_hmac`
+    enforces. Both call `auth._signed_string`, so these tests pin the shared
+    definition directly rather than only through a publisher (PRD #3048, PR 3)."""
+
+    def test_signed_headers_verify(self):
+        body = b'{"source_system":"plc_bridge","tags":[]}'
+        headers = auth.sign_hmac_headers(TEST_TENANT, body, TEST_KEY)
+        assert auth.verify_hmac(headers, body, TEST_KEY) == TEST_TENANT
+
+    def test_signature_matches_the_independently_computed_value(self):
+        """Recomputed from the documented signed string, not from _signed_string
+        — so a change to the shared helper cannot silently redefine the contract
+        and keep both sides agreeing on something new."""
+        body = b"payload"
+        headers = auth.sign_hmac_headers(
+            TEST_TENANT, body, TEST_KEY, _nonce="fixed-nonce", _now=1_700_000_000
+        )
+        expected = _make_signature(TEST_TENANT, "fixed-nonce", 1_700_000_000, body)
+        assert headers["X-MIRA-Signature"] == expected
+        assert headers["X-MIRA-Nonce"] == "fixed-nonce"
+        assert headers["X-MIRA-Timestamp"] == "1700000000"
+        assert headers["X-MIRA-Tenant"] == TEST_TENANT
+
+    def test_a_tampered_body_fails_verification(self):
+        body = b"payload"
+        headers = auth.sign_hmac_headers(TEST_TENANT, body, TEST_KEY)
+        with pytest.raises(ValueError, match="signature_mismatch"):
+            auth.verify_hmac(headers, body + b"!", TEST_KEY)
+
+    def test_a_different_key_fails_verification(self):
+        body = b"payload"
+        headers = auth.sign_hmac_headers(TEST_TENANT, body, "some-other-key")
+        with pytest.raises(ValueError, match="signature_mismatch"):
+            auth.verify_hmac(headers, body, TEST_KEY)
+
+    def test_nonces_are_unique_so_signing_twice_is_not_a_replay(self):
+        body = b"payload"
+        first = auth.sign_hmac_headers(TEST_TENANT, body, TEST_KEY)
+        second = auth.sign_hmac_headers(TEST_TENANT, body, TEST_KEY)
+        assert first["X-MIRA-Nonce"] != second["X-MIRA-Nonce"]
+        assert auth.verify_hmac(first, body, TEST_KEY) == TEST_TENANT
+        assert auth.verify_hmac(second, body, TEST_KEY) == TEST_TENANT
+
+    def test_the_key_never_appears_in_the_headers(self):
+        headers = auth.sign_hmac_headers(TEST_TENANT, b"payload", TEST_KEY)
+        assert TEST_KEY not in json.dumps(headers)
