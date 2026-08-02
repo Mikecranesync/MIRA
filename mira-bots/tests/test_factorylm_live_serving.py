@@ -361,3 +361,141 @@ def test_cache_readback_queries_only_v1_factorylm_rows_and_keeps_event_time():
     assert "tag_events" in connection.cursor_obj.query
     assert "event_timestamp" in connection.cursor_obj.query
     assert connection.cursor_obj.params[2:4] == ("plc_bridge", "factorylm.machine-snapshot.v1")
+
+
+# ── asset-resolution fallback (2026-08-02 live-probe finding) ────────────────
+#
+# The vendor/model resolver returns uns_path=None for equipment names like
+# "CV-101", so a turn whose uns_context carries no path could NEVER reach the
+# overlay — on the chat path AND the QR path. The fallback resolves the same
+# physical identity source the allowlist seed and QR deep-link use
+# (cmms_equipment.uns_path), tenant-scoped, fail-open.
+
+
+def test_readback_falls_back_to_equipment_lookup_when_no_uns_path():
+    captured = {}
+
+    def _fake_fetch(tenant_id, ltree_prefix):
+        captured["prefix"] = ltree_prefix
+        return _rows()
+
+    def _fake_lookup(tenant_id, *candidates):
+        captured["lookup"] = (tenant_id, candidates)
+        return "enterprise.home_garage.conveyor_lab.conveyor_1"
+
+    with (
+        unittest.mock.patch("shared.factorylm_live.fetch_live_signal_cache", _fake_fetch),
+        unittest.mock.patch("shared.factorylm_live.uns_prefix_for_asset", _fake_lookup),
+    ):
+        out = _call_overlay(
+            {"asset_identified": "CV-101", "context": {"asset_tag": "CV-101"}},
+            TENANT,
+            flag=True,
+        )
+
+    assert out is not None
+    assert captured["lookup"] == (TENANT, ("CV-101", "CV-101"))
+    assert captured["prefix"] == "enterprise.home_garage.conveyor_lab.conveyor_1"
+
+
+def test_readback_returns_none_when_equipment_lookup_misses():
+    with (
+        unittest.mock.patch("shared.factorylm_live.fetch_live_signal_cache") as fetch,
+        unittest.mock.patch(
+            "shared.factorylm_live.uns_prefix_for_asset", return_value=None
+        ),
+    ):
+        out = _call_overlay({"asset_identified": "Mystery Machine"}, TENANT, flag=True)
+    assert out is None
+    fetch.assert_not_called()
+
+
+def _lookup_db(rows_by_query):
+    """Fake psycopg2 whose cursor answers exact-tag then description queries."""
+
+    class _Cursor:
+        def __init__(self):
+            self.queries = []
+            self._last = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, query, params):
+            self.queries.append((query, params))
+            key = "tag" if "equipment_number" in query else "description"
+            self._last = rows_by_query.get(key, [])
+
+        def fetchone(self):
+            return self._last[0] if self._last else None
+
+        def fetchall(self):
+            return list(self._last)
+
+    class _Connection:
+        def __init__(self):
+            self.cursor_obj = _Cursor()
+
+        def cursor(self):
+            return self.cursor_obj
+
+        def close(self):
+            pass
+
+    conn = _Connection()
+    return conn, types.SimpleNamespace(connect=lambda _url: conn)
+
+
+def test_uns_prefix_for_asset_matches_equipment_number_first():
+    from shared.factorylm_live import uns_prefix_for_asset
+
+    conn, fake = _lookup_db({"tag": [("enterprise.home_garage.conveyor_lab.conveyor_1",)]})
+    with (
+        unittest.mock.patch.dict(os.environ, {"NEON_DATABASE_URL": "postgres://test"}),
+        unittest.mock.patch.dict(sys.modules, {"psycopg2": fake}),
+    ):
+        path = uns_prefix_for_asset(TENANT, "cv-101")
+    assert path == "enterprise.home_garage.conveyor_lab.conveyor_1"
+    query, params = conn.cursor_obj.queries[0]
+    assert "upper(equipment_number) = upper(%s)" in query
+    assert params == (TENANT, "cv-101")
+
+
+def test_uns_prefix_for_asset_ambiguous_description_returns_none():
+    """Two assets matching a display label must never silently pick one."""
+    from shared.factorylm_live import uns_prefix_for_asset
+
+    _conn, fake = _lookup_db(
+        {"tag": [], "description": [("enterprise.a.b.c",), ("enterprise.a.b.d",)]}
+    )
+    with (
+        unittest.mock.patch.dict(os.environ, {"NEON_DATABASE_URL": "postgres://test"}),
+        unittest.mock.patch.dict(sys.modules, {"psycopg2": fake}),
+    ):
+        assert uns_prefix_for_asset(TENANT, "Conveyor") is None
+
+
+def test_uns_prefix_for_asset_unique_description_matches():
+    from shared.factorylm_live import uns_prefix_for_asset
+
+    _conn, fake = _lookup_db({"tag": [], "description": [("enterprise.home_garage.conveyor_lab.conveyor_1",)]})
+    with (
+        unittest.mock.patch.dict(os.environ, {"NEON_DATABASE_URL": "postgres://test"}),
+        unittest.mock.patch.dict(sys.modules, {"psycopg2": fake}),
+    ):
+        assert (
+            uns_prefix_for_asset(TENANT, "Bench Conveyor")
+            == "enterprise.home_garage.conveyor_lab.conveyor_1"
+        )
+
+
+def test_uns_prefix_for_asset_never_raises_without_db():
+    from shared.factorylm_live import uns_prefix_for_asset
+
+    with unittest.mock.patch.dict(os.environ, {"NEON_DATABASE_URL": ""}):
+        assert uns_prefix_for_asset(TENANT, "CV-101") is None
+    assert uns_prefix_for_asset("", "CV-101") is None
+    assert uns_prefix_for_asset(TENANT) is None

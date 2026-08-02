@@ -47,6 +47,7 @@ class AssetContext:
     manufacturer: Optional[str]
     model: Optional[str]
     location: Optional[str]
+    uns_path: Optional[str] = None
 
 
 def _resolve_tenant_for_telegram_user(cur, telegram_user_id: str) -> Optional[str]:
@@ -91,7 +92,8 @@ def _lookup_asset_by_tag(tag: str, telegram_user_id: str) -> Optional[AssetConte
                     return None
                 cur.execute(
                     """SELECT equipment_number, manufacturer, model_number,
-                              equipment_type, description, location
+                              equipment_type, description, location,
+                              uns_path::text
                          FROM cmms_equipment
                         WHERE equipment_number = %s AND tenant_id = %s
                         ORDER BY qr_generated_at ASC NULLS LAST, created_at ASC
@@ -108,7 +110,15 @@ def _lookup_asset_by_tag(tag: str, telegram_user_id: str) -> Optional[AssetConte
     if not row:
         return None
 
-    equipment_number, manufacturer, model_number, equipment_type, description, location = row
+    (
+        equipment_number,
+        manufacturer,
+        model_number,
+        equipment_type,
+        description,
+        location,
+        uns_path,
+    ) = row
     parts = [p for p in (manufacturer, model_number, equipment_type) if p]
     name = description or " ".join(parts) or equipment_number
     return AssetContext(
@@ -117,6 +127,7 @@ def _lookup_asset_by_tag(tag: str, telegram_user_id: str) -> Optional[AssetConte
         manufacturer=manufacturer,
         model=model_number,
         location=location,
+        uns_path=uns_path,
     )
 
 
@@ -179,6 +190,17 @@ async def _handle_asset_deep_link(
         state.setdefault("context", {})
         state["context"]["asset_tag"] = asset.tag
         state["context"]["asset_source"] = "qr_scan"
+        # A QR scan is a direct connection: the code IS the UNS identity
+        # (.claude/rules/direct-connection-uns-certified.md). Seed the certified
+        # uns_context so downstream consumers — the FactoryLM live overlay's
+        # uns_path gate in particular — see the physical asset subtree without
+        # re-resolving a display label.
+        if asset.uns_path:
+            state["context"]["uns_context"] = {
+                "uns_path": asset.uns_path,
+                "source": "direct_connection",
+                "confidence": "certified",
+            }
         diagnostic_engine._save_state(chat_id, state)
     except Exception as exc:
         # Seeding is a best-effort optimisation; the greeting still works

@@ -4374,7 +4374,7 @@ class Supervisor:
         uns_context = context.get("uns_context") if isinstance(context, dict) else None
         uns_path = uns_context.get("uns_path") if isinstance(uns_context, dict) else None
         if not isinstance(uns_path, str) or not uns_path.strip():
-            return None
+            uns_path = None
         try:
             from .technician_context import contract_enabled
 
@@ -4385,12 +4385,31 @@ class Supervisor:
             if not contract_enabled():
                 return None
 
-            from .factorylm_live import fetch_live_signal_cache, overlay_from_cache_rows
+            from .factorylm_live import (
+                fetch_live_signal_cache,
+                overlay_from_cache_rows,
+                uns_prefix_for_asset,
+            )
 
             # ``state["context"]["uns_context"]`` is the confirmed identity the
             # turn context and manifest already carry. Do not re-resolve a display
             # label here: that can produce a knowledge-taxonomy path (or none)
             # instead of the physical asset subtree the relay allowlist bound.
+            # When the turn carries NO uns_path at all (the vendor/model resolver
+            # returns None for equipment names like "CV-101" — 2026-08-02 live
+            # probe), fall back to the tenant's own cmms_equipment row: the same
+            # physical-subtree identity source the allowlist seed and the QR
+            # deep-link use. Tag first (exact), display label second.
+            if uns_path is None:
+                asset_tag = (
+                    str(context.get("asset_tag") or "") if isinstance(context, dict) else ""
+                )
+                uns_path = await asyncio.wait_for(
+                    asyncio.to_thread(uns_prefix_for_asset, tenant_id, asset_tag, asset),
+                    timeout=_FACTORYLM_LIVE_TIMEOUT_S,
+                )
+                if not uns_path:
+                    return None
             ltree_prefix = uns_path.strip().replace("/", ".")
             rows = await asyncio.wait_for(
                 asyncio.to_thread(fetch_live_signal_cache, tenant_id, ltree_prefix),
