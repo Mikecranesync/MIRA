@@ -54,20 +54,35 @@ moment #3061 lands. Do not remove the skips; they are the dependency declaration
 Preconditions: #3061 merged and deployed to staging; Mike supervising; one deploy-affecting
 change at a time (no concurrent smoke).
 
-1. **Seed staging allowlist** (gated dispatch, Mike):
-   `gh workflow run apply-approved-tags.yml` with the staging tenant UUID and
-   `tools/seeds/approved_tags_factorylm_conv_simple.sql`. Verify via `db-inspect.yml`
-   (read-only): 7 rows, `source_system='plc_bridge'`, normalized paths match
-   `normalize_tag_path` output.
-2. **Enable flags on the staging bot** (Doppler `factorylm/stg`): `MIRA_CONTEXT_CONTRACT=1`
-   (if not already), `MIRA_FACTORYLM_LIVE=1`. Redeploy staging bot via `deploy-staging` with
-   `services=mira-bot-telegram`.
+**Two environment facts this probe design honors** (verified 2026-08-02):
+
+- **Staging runs NO relay.** `docker-compose.staging-vps.yml` excludes mira-relay by design;
+  the relay exists only in `docker-compose.saas.yml` (prod, tailnet-only + HMAC). So the probe
+  runs the relay **locally on the PLC laptop**, pointed at the **staging Neon branch**
+  (`doppler run -p factorylm -c stg -- uvicorn relay_server:app` from `mira-relay/`). Staging
+  is the safe-to-break env; the prod relay is not touched.
+- **The staging bot's tenant is the slug `"staging"` (`MIRA_TENANT_ID`), but every table in
+  this path is UUID-keyed** (`approved_tags.tenant_id UUID NOT NULL`; `fetch_live_signal_cache`
+  casts `:tid::uuid`). A slug tenant cannot be seeded and reads zero cache rows by
+  construction. The probe therefore needs the staging bot redeployed with
+  `MIRA_TENANT_ID=<staging UUID tenant>` (e.g. the quickstart tenant already present in
+  Doppler stg) for the probe window — **Mike's call**, because staging KB scoping keyed to the
+  slug may be affected. Revert after the probe if anything else on staging misbehaves.
+
+1. **Seed staging allowlist** (gated dispatch): `apply-approved-tags.yml` with
+   `target=staging`, `seed=approved_tags_factorylm_conv_simple`, `tenant_id=<staging UUID>`,
+   `mode=dry-run` first, then `apply`. Verify via `db-inspect.yml` (read-only): 7 rows,
+   `source_system='plc_bridge'`, normalized paths match `normalize_tag_path` output.
+2. **Enable flags on the staging bot** (Doppler `factorylm/stg`): `MIRA_CONTEXT_CONTRACT=1`,
+   `MIRA_FACTORYLM_LIVE=1`, and the UUID tenant per above. Redeploy staging bot via
+   `deploy-staging` with `services=mira-bot-telegram`.
 3. **Publish one real bench snapshot** from the PLC laptop (this machine — the only node with
    the Micro820 + GS10 bench). In the factorylm repo:
    `ModbusTagSource.tick()` → `build_machine_snapshot_envelope(...)` →
-   `FactoryLMSnapshotPublisher(relay_url=<staging relay>, tenant_id=<stg tenant>, hmac_key=<Doppler stg>)`.
-   Expect the relay response `accepted=7, rejected=[]`. `accepted=0` means the seed is missing
-   (step 1 failed) — stop and fix, do not proceed.
+   `FactoryLMSnapshotPublisher(relay_url=http://127.0.0.1:<port>, tenant_id=<staging UUID>, hmac_key=<Doppler stg INBOUND_HMAC_SECRET>)`
+   against the locally-run relay from the precondition note. Expect
+   `accepted=7, rejected=[]`. `accepted=0` means the seed is missing (step 1 failed) — stop
+   and fix, do not proceed.
 
    Note the two unsourced tags (`height_sensor_mm`, `sort_divert_active`) arrive
    `quality=uncertain` by design — the bench map has no such I/O and the producer refuses to
