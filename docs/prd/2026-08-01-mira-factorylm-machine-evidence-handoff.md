@@ -1,6 +1,7 @@
 # PRD — MIRA × FactoryLM Phase 1: Read-Only Machine Evidence Handoff
 
 **Status:** Ready to build
+**Amended 2026-08-02** — verified against the real ingest contract on `origin/main` before any code was written. Every symbol and file this PRD names exists as described. Four corrections are inlined below and marked *Amended 2026-08-02*: (1) `source_system` must be `plc_bridge`, since `factorylm-plc-modbus` is rejected by `VALID_SOURCE_SYSTEMS`; (2) the envelope→canonical-batch field mapping is now specified, because `machine_state` / `active_conditions` had nowhere to go yet are required to build a `LiveStateOverlay`; (3) seeding `approved_tags` is a **prerequisite** of PR 3 — the allowlist is fail-closed, so without it a valid snapshot yields `accepted=0` and an empty overlay; (4) PR 4 reads state back at turn time, because the relay persists rather than carrying a request-scoped snapshot. The preflight's "stop if no ingress exists" contingency **does not fire** — the ingress exists and is mandatory.
 **Objective:** Make FactoryLM's canonical PLC snapshot available to MIRA's existing audited technician context as read-only live evidence, without creating a second runtime schema, a second relay, or any plant-control capability.
 
 ## Product outcome
@@ -117,7 +118,7 @@ Create one shared JSON fixture and specification. The fixture is the compatibili
 {
   "schema_version": "factorylm.machine-snapshot.v1",
   "snapshot_id": "uuid-or-stable-source-id",
-  "source_system": "factorylm-plc-modbus",
+  "source_system": "plc_bridge",
   "captured_at": "2026-08-01T12:00:00Z",
   "tenant_id": "required-mira-tenant-id",
   "asset": {
@@ -135,11 +136,23 @@ Create one shared JSON fixture and specification. The fixture is the compatibili
     }
   ],
   "provenance": {
+    "producer": "factorylm-plc-modbus",
     "gateway_id": "edge-gateway-id",
     "source_snapshot_ref": "source-specific-opaque-reference"
   }
 }
 ```
+
+> **Amended 2026-08-02 — verified against the real ingest contract.** `source_system` was
+> originally `"factorylm-plc-modbus"`. `tag_ingest.ingest_batch` validates against
+> `VALID_SOURCE_SYSTEMS = {"ignition", "plc_bridge", "relay", "simulator"}`
+> (`mira-relay/tag_ingest.py:59`) and raises `invalid_source_system` on anything else, so that
+> value would have been rejected at the door. `plc_bridge` is semantically exact, and widening
+> the vocabulary at the single enforcement point to accommodate one producer is the wrong
+> trade. The FactoryLM identity moves to `provenance.producer`, where it belongs.
+> `simulated` provenance is derived from `source_system` alone (`simulated = source_system ==
+> "simulator"`), so a `plc_bridge` snapshot is correctly treated as real telemetry and can
+> never be clobbered by a simulated cache row.
 
 ### Contract rules
 
@@ -151,6 +164,50 @@ Create one shared JSON fixture and specification. The fixture is the compatibili
 - Preserve source timestamp and provenance. Do not invent freshness.
 - Invalid input produces no live overlay for that turn; diagnosis must still answer normally.
 - The payload contains observation data only. No command, write, actuator, or control field is permitted.
+
+### Envelope → canonical batch mapping (amended 2026-08-02)
+
+The envelope above is the **producer's** shape. It is NOT the shape the ingress accepts. The
+canonical batch is `{source_system, tags[], tenant_id?, source_connection_id?}`
+(`build_ingest_batch`) whose entries are `{tag_path, value, value_type, quality, ts?,
+equipment_entity_id?, metadata?}` (`build_tag_entry`). Everything else in the envelope has
+**no home** in that shape — and two of those fields (`machine_state`, `active_conditions`)
+are *required* to construct a `LiveStateOverlay`. Losing them silently would produce an
+overlay that renders as "unknown state" forever while every tag looked healthy.
+
+**Decision:** snapshot-scoped fields ride in per-tag `metadata` under a single
+`factorylm_snapshot` key, carried verbatim by `TagEventRow.metadata` and read back on the
+serving path. `value_type` is derived by the producer (`bool`/`int`/`float`/`string`/`enum`);
+an unrecognized type is rejected at `ingest_batch`, not coerced.
+
+| Envelope field | Where it goes |
+|---|---|
+| `tags[].tag_path` / `value` / `quality` | `build_tag_entry` positional + kwargs |
+| `tags[].observed_at` | `ts` |
+| `machine_state`, `active_conditions`, `snapshot_id`, `captured_at`, `schema_version`, `provenance`, `asset.proposed_uns_path` | `metadata.factorylm_snapshot` |
+| `tenant_id` | **never in the body** on the HMAC path — the `X-MIRA-Tenant` header is authoritative |
+| `asset.source_record_id` | `equipment_entity_id` **only if** it is a real MIRA entity id; otherwise `metadata` |
+
+`quality` has two vocabularies and they are not the same: the ingest contract validates
+`{good, bad, stale, uncertain}` and **downgrades an unknown value to `uncertain`** rather than
+rejecting it; `LiveTag.freshness` is the `Freshness` enum `{live, stale, simulated, unknown}`.
+Map explicitly at the adapter. Never let an unknown quality become `good` — the downgrade
+direction must always be toward less confidence.
+
+### The allowlist is fail-closed — seeding is a prerequisite, not a detail (amended 2026-08-02)
+
+`ingest_batch` normalizes each `tag_path` with `normalize_tag_path` and **rejects any tag not
+present in `approved_tags` for that tenant + source_system** (`reason="not_allowlisted"`).
+There is no permissive mode. Until the seven canonical tags are seeded, a perfectly valid
+snapshot is accepted with `accepted=0` and every tag in `rejected` — the handoff would look
+wired end-to-end and deliver nothing.
+
+Normalization collapses `/`, `.`, and `:` to `_`, so `conv_simple.vfd_speed_hz` must be seeded
+as `conv_simple_vfd_speed_hz`. Precedent to copy rather than reinvent:
+`tools/seeds/approved_tags_conveyor.sql`, `tools/seeds/gen_approved_tags_simulator.py`,
+migration `035_approved_tags.sql`. The seed also carries the `uns_path` that
+`ingest_batch` resolves onto each row — which is where real UNS identity comes from, **not**
+from the envelope's `proposed_uns_path`.
 
 ## Work packages and PR boundaries
 
@@ -166,6 +223,16 @@ Implement:
 - Add a shared fixture under a neutral contract/fixture location that FactoryLM can consume unchanged.
 - Add a companion invalid fixture for missing tenant, missing timestamp, invalid schema version, and malformed tags.
 - Extend `build_turn_context(...)` with an optional, explicitly supplied live packet/overlay input. It must populate the existing `TechnicianContext.live` field only after validation.
+
+> **Amended 2026-08-02 — prefer the `augment_with_*` shape.** #3041 landed the retrieval family
+> as a **separate** `augment_with_retrieval(ctx, chunks)` in `mira-bots/shared/technician_context.py`
+> rather than as another `build_turn_context` parameter, because retrieval evidence does not exist
+> yet at the engine seam where the context is first assembled. Live state has the same property
+> (the snapshot is read back at answer time, not at assembly time), so an `augment_with_live(ctx,
+> packet)` that re-validates and returns `(combined_ctx | None, violations)` matches the
+> established precedent, keeps `build_turn_context`'s signature from growing per evidence family,
+> and re-manifests once. Take that shape unless there is a concrete reason not to. Either way the
+> rule is unchanged: ONE context, ONE manifest, no second assembly site.
 
 Acceptance tests:
 
@@ -199,9 +266,20 @@ Acceptance tests:
 
 **Goal:** Deliver the envelope through an existing, authorized MIRA transport.
 
-First locate the established relay, equipment-status, or MQTT ingress. If there is no suitable existing path, stop and produce a short decision report with the discovered candidates and exact blocker.
+> **Amended 2026-08-02 — the ingress was located; this contingency does not fire.** The
+> established path is `POST /api/v1/tags/ingest` → `mira-relay/relay_server.py::tags_ingest`
+> (HMAC via `_authenticate_http`; the HMAC tenant is authoritative and a body `tenant_id` is
+> honored only on the non-HMAC dev/bench path) → `mira-relay/tag_ingest.py::ingest_batch`.
+> It is not merely available, it is **mandatory**: `.claude/rules/one-pipeline-ingest.md`
+> forbids any transport from defining its own normalizer, allowlist, persistence, batch shape,
+> or enforcement path, and `tests/test_architecture.py` Contract 5 fails the build on a
+> violation. So "add a small FactoryLM endpoint" is not a fallback option — the work is to
+> decode the envelope and call `build_tag_entry` → `build_ingest_batch` → `ingest_batch`,
+> exactly as `simlab/publishers.py::RelayIngestPublisher` already does.
 
 If a suitable ingress exists:
+
+- **Seed `approved_tags` first** (see § "The allowlist is fail-closed"). This is a prerequisite of PR 3, not a follow-up: without it the integration returns `accepted=0` and every acceptance test below passes vacuously against an empty overlay. Assert `accepted == len(tags)` and `rejected == []` explicitly, so a missing seed fails loudly instead of looking like success.
 
 - Add the smallest authenticated, tenant-scoped route/topic mapping required for this envelope.
 - Use existing Doppler-managed credentials and existing authorization patterns.
@@ -221,6 +299,16 @@ Acceptance tests:
 ### PR 4 — MIRA live-context serving path
 
 **Goal:** Make received FactoryLM evidence visible in the technician's single context path.
+
+> **Amended 2026-08-02 — the snapshot is READ BACK at turn time, not carried inline.**
+> `ingest_batch` is a **persistence** path: it appends to `tag_events` and upserts
+> `live_signal_cache`. It does not hand a request-scoped object to the engine, and the ingest
+> POST and the technician's turn are unrelated requests, usually seconds to minutes apart. So
+> PR 4 reads current state for the turn's asset at answer time and builds the overlay from
+> that — it must **not** try to thread the accepted snapshot through from the ingress.
+> Consequences to honor: freshness comes from the stored `event_timestamp` (never `now()`),
+> a cache row older than the staleness bound maps to `Freshness.STALE` rather than being
+> dropped silently, and a `simulated` row must never be presented as real telemetry.
 
 Implement:
 
