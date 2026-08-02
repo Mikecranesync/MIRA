@@ -1,3 +1,12 @@
+### v3.239.1 (2026-08-02) - fix(ignition): PEP 263 cookie is a guaranteed SyntaxError on the gateway - remove it, keep the proof
+
+The v3.237.1 encoding fix guessed wrong, and the first live deploy caught it. Every handler failed to compile with `PySyntaxError: SyntaxError: encoding declaration in Unicode string (<<MiraDeployTest/FactoryLM/api/status:doGet>>, line 0)` at `ScriptManager.compileFunction`, and the dispatcher answered **HTTP 501** on every method.
+
+That error is itself the live proof the adversarial review's finding 5 asked for, in the direction opposite to the guess: Ignition **decodes resource bytes to a unicode string before compiling**, so undeclared non-ASCII UTF-8 is safe - and Python 2 *forbids* an encoding declaration inside already-decoded unicode source. The cookie was never "harmless either way"; it is a guaranteed SyntaxError on the only branch that exists.
+
+`webdev_build.py` now emits valid UTF-8 with **no** declaration and strips a PEP 263 cookie from the first two lines of any source (`_reject_cookie`). `TestEncodingSafety` asserts the exact opposite of what it asserted in v3.237.1 - every deployed artifact decodes as UTF-8 and carries **no** cookie in a PEP 263 position - with the live error quoted in the docstring so the next person knows why. 243 offline tests pass.
+
+Also recorded from the same deploy run: `deploy_ignition.ps1` executed end-to-end on the gateway and produced the full converted tree (8 resources, 4 script-library modules) - the converter itself is field-proven; only the cookie was wrong. The scratch project's live probe verdict lands with the redeploy.
 ### v3.239.0 (2026-08-01) - feat(manual-search): port the existing OEM manual searcher into a shared, reusable module
 
 Phase 0+1 of `docs/plans/2026-07-31-visual-intake-asset-identity-manualsense-audit.md` — "port, don't rebuild." The audit found that a working, OEM-domain-restricted, HEAD-validated internet manual searcher **already existed** (`mira-scan-monday/backend/manual_search.py`, built 2026-05-05 for an unrelated monday.com marketplace integration) but was never reachable from the main Telegram bot, which just says "I don't recognize that drive" when a photographed nameplate doesn't match one of the 3 shipped Drive Packs.

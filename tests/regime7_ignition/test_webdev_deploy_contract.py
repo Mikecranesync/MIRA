@@ -234,36 +234,52 @@ PEP263_RE = __import__("re").compile(r"^[ \t\f]*#.*?coding[:=][ \t]*([-_.a-zA-Z0
 
 
 class TestEncodingSafety:
-    """All 13 sources contain non-ASCII UTF-8, and the only module proven
-    running on the bench gateway is pure ASCII — so there is no live evidence
-    undeclared UTF-8 parses under Jython 2.7 (Python 2 source rules: bytes with
-    no coding declaration -> SyntaxError). Every deployed artifact therefore
-    carries a PEP 263 cookie in a spec-valid position."""
+    """PEP 263 cookies are FORBIDDEN in deployed artifacts — proven live, the
+    hard way. A cookied deployment on Ignition 8.3.4 (2026-08-01) failed to
+    compile EVERY handler:
 
-    def test_every_deployed_py_declares_utf8_within_pep263_position(self, deployed):
+        PySyntaxError: SyntaxError: encoding declaration in Unicode string
+        (<<MiraDeployTest/FactoryLM/api/status:doGet>>, line 0)
+        at ScriptManager.compileFunction(ScriptManager.java:906)
+
+    and the dispatcher answered HTTP 501 on every method. The error is the
+    load-bearing fact: the platform decodes resource bytes to unicode before
+    compiling, and Python 2 forbids an encoding declaration inside unicode
+    source. So: emit valid UTF-8, NO declaration. (An earlier version of this
+    class asserted the exact opposite — the cookie's presence — on the theory
+    it was 'harmless either way'. It is not: it is a guaranteed SyntaxError on
+    the only branch that exists.)"""
+
+    def test_every_deployed_py_is_valid_utf8_with_no_coding_cookie(self, deployed):
         checked = 0
         for f in sorted(deployed.rglob("*.py")):
             raw = f.read_bytes()
-            raw.decode("utf-8")  # must be valid UTF-8 regardless
-            first_two = raw.decode("utf-8").splitlines()[:2]
-            assert any(PEP263_RE.match(ln) for ln in first_two), (
-                "%s has no PEP 263 coding declaration in its first two lines" % f
-            )
+            text = raw.decode("utf-8")  # must be valid UTF-8 (platform decodes it)
+            for ln in text.splitlines()[:2]:
+                assert not PEP263_RE.match(ln), (
+                    "%s carries a PEP 263 cookie — on the gateway this is "
+                    "SyntaxError: encoding declaration in Unicode string, and "
+                    "every method of the resource answers HTTP 501" % f
+                )
             checked += 1
         assert checked == EXPECTED_HANDLERS + len(wb.SCRIPT_LIBRARY_MODULES)
 
-    def test_handler_cookie_does_not_break_def_first(self, deployed):
-        """The cookie must be INSIDE the def (file line 2), never line 1 —
-        line 1 belongs to the def or the silent-empty-body failure returns."""
+    def test_handlers_are_def_first_with_real_body_on_line_2(self, deployed):
         for d in _resource_dirs(deployed):
             for f in d.glob("*.py"):
                 lines = f.read_text(encoding="utf-8").splitlines()
                 assert lines[0].startswith("def ")
-                assert PEP263_RE.match(lines[1]), f
+                assert not PEP263_RE.match(lines[1]), f
 
-    def test_cookie_prepend_is_idempotent(self):
-        once = wb._with_coding_cookie("x = 1\n")
-        assert wb._with_coding_cookie(once) == once
+    def test_reject_cookie_strips_pep263_positions_only(self):
+        src = "# -*- coding: utf-8 -*-\nx = 1\n# coding: utf-8 later is inert\n"
+        out = wb._reject_cookie(src)
+        assert out.startswith("x = 1")
+        assert "later is inert" in out  # only lines 1-2 are PEP 263 positions
+
+    def test_reject_cookie_is_a_noop_on_clean_source(self):
+        src = "x = 1\ny = 2\n"
+        assert wb._reject_cookie(src) == src
 
 
 # --------------------------------------------------------------------------
