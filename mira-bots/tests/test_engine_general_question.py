@@ -524,8 +524,12 @@ def test_truly_general_question_still_answers(supervisor):
     assert "won't guess" not in result["reply"]
 
 
-def test_asset_state_regexes_match_the_probe_phrasings():
-    from shared.engine import _ASSET_NOUN_RE, _ASSET_STATE_RE
+def test_asset_state_probability_routes_the_probe_corpus():
+    """Probabilistic arbitration: every probe phrasing must clear the 0.5
+    threshold even against a maximally-confident disagreeing router (the exact
+    failure condition: general_question @ 1.00), and educational questions
+    must stay well below it."""
+    from shared.engine import _ASSET_STATE_THRESHOLD, asset_state_probability
 
     asset_state = [
         "What is the current state of my garage conveyor?",
@@ -535,11 +539,34 @@ def test_asset_state_regexes_match_the_probe_phrasings():
         "is the pump down?",
     ]
     for msg in asset_state:
-        assert _ASSET_STATE_RE.search(msg), msg
-        assert _ASSET_NOUN_RE.search(msg), msg
+        p, parts = asset_state_probability(msg, "general_question", 1.0)
+        assert p >= _ASSET_STATE_THRESHOLD, (msg, p, parts)
 
-    general = ["what's a VFD?", "explain LOTO", "how do I configure the IP?"]
+    general = [
+        "what's a VFD?",
+        "explain LOTO",
+        "how do I configure the IP?",
+        "what does PID stand for?",
+    ]
     for msg in general:
-        assert not (
-            _ASSET_STATE_RE.search(msg) and _ASSET_NOUN_RE.search(msg)
-        ), msg
+        p, parts = asset_state_probability(msg, "general_question", 1.0)
+        assert p < _ASSET_STATE_THRESHOLD, (msg, p, parts)
+
+
+def test_asset_state_probability_properties():
+    from shared.engine import asset_state_probability
+
+    msg = "What is the current state of my garage conveyor?"
+    # Deterministic: same inputs, same score — probabilistic routing, not
+    # random routing.
+    assert asset_state_probability(msg, "general_question", 1.0) == (
+        asset_state_probability(msg, "general_question", 1.0)
+    )
+    # The router's vote moves the score in the right direction.
+    p_disagree, _ = asset_state_probability(msg, "general_question", 1.0)
+    p_neutral, _ = asset_state_probability(msg, "clarify_intent", 1.0)
+    p_agree, _ = asset_state_probability(msg, "diagnose_equipment", 0.9)
+    assert p_disagree < p_neutral < p_agree
+    # A bare asset mention with no state phrasing never forces the gate.
+    p_mention, _ = asset_state_probability("the conveyor", "general_question", 1.0)
+    assert p_mention < 0.5

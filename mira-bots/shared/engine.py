@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -579,6 +580,60 @@ _ASSET_NOUN_RE = re.compile(
     r"|\b[a-z]{2,4}[-_]\d{2,4}\b",
     re.IGNORECASE,
 )
+_TAG_TOKEN_RE = re.compile(r"\b[a-z]{2,4}[-_]\d{2,4}\b", re.IGNORECASE)
+_EDUCATIONAL_RE = re.compile(
+    r"\b(?:what(?:'s|\s+is)\s+an?\b|explain\b|define\b"
+    r"|what\s+does\s+\w+\s+stand\s+for|difference\s+between"
+    r"|how\s+do(?:es)?\s+(?:a|an|i|you)\b)",
+    re.IGNORECASE,
+)
+
+# Decision threshold for the probabilistic asset-state arbitration. Tunable
+# per-deploy without code change; 0.5 keeps the probe corpus routing correctly.
+_ASSET_STATE_THRESHOLD = float(os.getenv("MIRA_ASSET_STATE_THRESHOLD", "0.5"))
+
+
+def asset_state_probability(
+    message: str, router_intent: str = "", router_confidence: float = 0.0
+) -> tuple[float, dict[str, float]]:
+    """P(this turn asks about a specific machine's live state), in [0, 1].
+
+    Probabilistic ROUTING, deterministic MATH: weak signals combine as
+    log-odds through a sigmoid — no single regex is load-bearing, and the LLM
+    router's own vote participates weighted by its confidence (down-weighted:
+    it mislabeled the 2026-08-02 probe turn at 1.00 confidence, so its
+    disagreement is evidence, not a veto). Same inputs always produce the same
+    score — reproducible and unit-testable, never sampled. Returns
+    ``(p, parts)``; ``parts`` maps each fired signal to its logit contribution
+    and is logged so threshold tuning is evidence-based.
+
+    Calibration anchors (router=general_question @ 1.00, the probe failure):
+    "current state of my garage conveyor" → ~0.80; "status of CV-101" → ~0.93;
+    "what's a VFD?" → ~0.03; a bare "the conveyor" mention → ~0.27 (below the
+    0.5 default threshold — a mention alone never forces the gate).
+    """
+    logit = -2.0
+    parts: dict[str, float] = {"prior": -2.0}
+    if _ASSET_STATE_RE.search(message):
+        logit += 2.4
+        parts["state_phrase"] = 2.4
+    if _ASSET_NOUN_RE.search(message):
+        logit += 1.6
+        parts["asset_noun"] = 1.6
+    if _TAG_TOKEN_RE.search(message):
+        logit += 1.2
+        parts["tag_token"] = 1.2
+    if _EDUCATIONAL_RE.search(message):
+        logit -= 2.6
+        parts["educational"] = -2.6
+    conf = min(max(router_confidence, 0.0), 1.0)
+    if router_intent in ("diagnose_equipment", "check_equipment_history", "switch_asset"):
+        parts["router_agrees"] = round(1.2 * conf, 3)
+        logit += parts["router_agrees"]
+    elif router_intent in ("general_question", "answer_question", "greeting_or_chitchat"):
+        parts["router_disagrees"] = round(-0.6 * conf, 3)
+        logit += parts["router_disagrees"]
+    return 1.0 / (1.0 + math.exp(-logit)), parts
 
 # Q1 length trim (2026-06-06 follow-up to PR #1754 / #1755). The gate-bypass
 # at _apply_quality_gate trusts the LLM output for any reply > 80 chars that
@@ -2628,15 +2683,17 @@ class Supervisor:
                     asset_identified=state.get("asset_identified", ""),
                 )
                 _router_intent = _routing["intent"]
+                _router_conf = float(_routing.get("confidence", 0) or 0)
                 logger.info(
                     "ROUTER intent=%s confidence=%.2f reason=%r chat_id=%s",
                     _router_intent,
-                    _routing.get("confidence", 0),
+                    _router_conf,
                     _routing.get("reasoning", ""),
                     chat_id,
                 )
             except Exception as _re:
                 logger.warning("ROUTER_FAILURE error=%s — using keyword classifier", _re)
+                _router_conf = 0.0
                 _router_intent = {
                     "safety": "safety_concern",
                     "documentation": "find_documentation",
@@ -2647,24 +2704,34 @@ class Supervisor:
                     "off_topic": "general_question",
                 }.get(_keyword_intent, "continue_current")
 
-            # Asset-state override — deterministic, mirrors the tag-query
-            # fast-path precedent (2026-06-06). A state/status question naming
-            # a plant asset is asset-specific per the UNS-gate rule; the LLM
-            # router labels it general_question, which dispatches BEFORE the
-            # gate and answers with an ungrounded LLM call (2026-08-02 probe:
-            # fabricated fault for a healthy machine). Force the gated path.
-            # Safety still wins below — this only rewrites non-safety labels.
-            _asset_state_hit = bool(
-                _ASSET_STATE_RE.search(message) and _ASSET_NOUN_RE.search(message)
+            # Asset-state arbitration — PROBABILISTIC routing over weak signals
+            # (state phrasing, asset nouns, tag tokens, educational phrasing,
+            # and the router's own vote weighted by its confidence), combined
+            # as log-odds in asset_state_probability. A state/status question
+            # about a plant asset is asset-specific per the UNS-gate rule; the
+            # router labeled the probe turn general_question at 1.00 confidence
+            # and an ungrounded LLM call then fabricated a fault (2026-08-02).
+            # Score ≥ threshold forces the gated path. The math is
+            # deterministic — same inputs, same score — so the behavior stays
+            # testable. Safety still wins below.
+            _asset_state_p, _asset_state_parts = asset_state_probability(
+                message,
+                router_intent=_router_intent,
+                router_confidence=_router_conf,
             )
+            _asset_state_hit = _asset_state_p >= _ASSET_STATE_THRESHOLD
             if _asset_state_hit and _router_intent in (
                 "general_question",
                 "answer_question",
                 "clarify_intent",
             ):
                 logger.info(
-                    "ASSET_STATE_FAST_PATH override %s -> diagnose_equipment chat_id=%s",
+                    "ASSET_STATE_FAST_PATH override %s -> diagnose_equipment "
+                    "p=%.3f threshold=%.2f parts=%s chat_id=%s",
                     _router_intent,
+                    _asset_state_p,
+                    _ASSET_STATE_THRESHOLD,
+                    _asset_state_parts,
                     chat_id,
                 )
                 _router_intent = "diagnose_equipment"
