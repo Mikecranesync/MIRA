@@ -162,11 +162,15 @@ def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
 
     ordered = sorted(rows, key=lambda r: str(r.get("tag_path") or ""))
     snapshot_parts = [_snapshot_evidence(row.get("properties")) for row in ordered]
-    if not snapshot_parts or any(part is None for part in snapshot_parts):
+    if not snapshot_parts:
         return None
-    first_identity, machine_state, active_conditions = snapshot_parts[0]
-    if any(part[0] != first_identity for part in snapshot_parts[1:]):
+    first = snapshot_parts[0]
+    if first is None:
         return None
+    first_identity, machine_state, active_conditions = first
+    for part in snapshot_parts[1:]:
+        if part is None or part[0] != first_identity:
+            return None
     if any(not _timestamp_text(row.get("event_timestamp")) for row in ordered):
         return None
 
