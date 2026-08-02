@@ -174,7 +174,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Agent eval / tracing / observability audit + decision:** `docs/observability/mira-agent-eval-audit.md` — KEEP RAGAS/DeepEval/5-regime evals; EXTEND with `mira-bots/shared/agent_trace.py` (cloud-free per-turn trace + JSONL + optional OTel/Phoenix via `MIRA_OTEL_ENDPOINT`, off by default). Phoenix optional; no LangGraph (ADR-0011).
 - **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
 - **Release notes:** `docs/CHANGELOG.md`
-- **Versioning & rollback (every merge bumps `/VERSION`, auto-tags `vX.Y.Z` + a rollback checkpoint):** `docs/versioning.md` — enforced by `version-gate.yml` (required) + `version-tag.yml`
+- **Versioning & rollback (the version is DERIVED from the git tag — no `/VERSION` file since #3064; every merge auto-tags `vX.Y.Z` + a rollback checkpoint):** `docs/versioning.md` — `version-tag.yml`
 - **Product offering (signal difference engine + contextual supervisor):** `docs/product/mira_difference_engine_offering.md` (positioning), `docs/product/mira_signal_difference_engine_prd.md` (PRD), `docs/plans/2026-06-30-mira-difference-engine-backlog.md` (backlog). Sharpens the `NORTH_STAR.md` wedge — "MIRA finds what changed, groups differences into machine events, explains what they mean." ~70% already built (`mira-relay` ingest + `tag_diff_logger` grouping + Supervisor); gaps = learned baselines + continuous historian. Read-only, no overclaim.
 - **Kiosk / AskMira deploy + prod verify runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md` — read BEFORE shipping any `mira-bots/ask_api/`, kiosk-scoped engine fast-path, or AskMira `view.json` change. Documents the **`services=mira-ask`** dispatch + 9/10 Mode A hard-pass + Mode B browser verify.
 - **All env vars:** `docs/env-vars.md`
@@ -246,7 +246,7 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 
 ## Release / PR Workflow
 
-Any PR that touches shippable code must bump `/VERSION` (semver: feat→minor, fix→patch, breaking→major) and add a `docs/CHANGELOG.md` note. **CI-enforced** — `.github/workflows/version-gate.yml` (`Version Bump Check`) is a required status check on `main` and fails a code-touching PR that leaves `/VERSION` unchanged. Docs/wiki/markdown-only PRs are exempt (no bump required). See `docs/versioning.md` for semver conventions and the auto-tag-on-merge behavior.
+No PR bumps a version file and no PR hand-writes a changelog line. `/VERSION` and `.github/workflows/version-gate.yml` were **deleted 2026-08-02 (#3064)** — they were the shared line that put every open PR into conflict with every merge. `.github/workflows/version-tag.yml` derives the next semver from the latest `v*` tag plus the merge commit's **Conventional Commit type** (`feat`→minor, `fix`→patch, `feat!`/`BREAKING CHANGE`→major) and creates the tag, the paired `rollback/<date>-vX.Y.Z` checkpoint, and a GitHub Release. Release notes are generated from merged PRs (`.github/release.yml`); `docs/CHANGELOG.md` is frozen as an archive. So: write a well-formed Conventional Commit title, label the PR, and that's the whole authoring duty. See `docs/versioning.md`.
 
 ## Git Workflow
 

@@ -25,10 +25,16 @@ MIN_TURNS = 2
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _AUTO_FIXTURES_DIR = _REPO_ROOT / "tests" / "eval" / "fixtures" / "auto"
+# `/VERSION` was retired 2026-08-02 (#3064) — the version is derived from the git
+# tag and reaches a container as MIRA_APP_VERSION. The file read stays as a
+# fallback for older images that still ship one.
 _MIRA_VERSION = (
-    (_REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    if (_REPO_ROOT / "VERSION").exists()
-    else "unknown"
+    os.getenv("MIRA_APP_VERSION", "").strip()
+    or (
+        (_REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        if (_REPO_ROOT / "VERSION").exists()
+        else "unknown"
+    )
 )
 
 

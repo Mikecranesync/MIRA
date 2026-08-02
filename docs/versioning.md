@@ -27,20 +27,31 @@ The fix is GitHub's own documented model, which has no shared line:
 
 **You do nothing per PR.** No version bump, no changelog line. Label your PR (see `.github/release.yml`) and the notes categorise themselves.
 
-## Transition status (as of 2026-07-29)
+## Transition status — **COMPLETE (2026-08-02)**
 
-`/VERSION` still exists and is still honoured as a **floor** — the derived version can never go backwards relative to it — so tag-derivation is safe to run while PRs are still bumping the file.
+Both operator steps are done. **`/VERSION` no longer exists.** There is one counter: the git tags.
 
-**One known consequence of the floor, so it isn't a surprise:** while `/VERSION` is hand-bumped *ahead* of the tags, the floor dominates and distinct bump levels collapse to the same number — a `fix` and a `feat` both land on the floor. The number is never wrong (it can't go backwards and can't collide), but the semver *signal* is muted during the changeover. It resolves on the first merge where the tags catch up to the file. Pinned by `test_floor_temporarily_flattens_the_bump_signal`; the end state is pinned by `test_steady_state_after_version_file_retires`.
+1. ~~**Remove `Version Bump Check` from `main`'s required status checks**~~ — **DONE.** Verified 2026-08-02 against the live API: ruleset `main-branch-protection` (id `17097034`) requires only `staging-gate`, and classic branch protection requires `staging-gate`, `Hub E2E (command-center + onboarding)`, `mira-web pack tests`, `CI Gate`. `Version Bump Check` appeared in neither, so nothing was blocking on it.
+2. ~~**Delete `/VERSION` + `.github/workflows/version-gate.yml`**~~ — **DONE (#3064).** The floor is gone; `next_version.py` derives purely from the latest tag (`test_steady_state_after_version_file_retires` pins that path). `docs/CHANGELOG.md` is **frozen as an archive** — stop hand-editing it; the [Releases page](https://github.com/Mikecranesync/MIRA/releases) is the changelog.
 
-Two operator steps finish the job:
+**Authoring impact: none.** No version bump, no changelog line. Write a Conventional Commit subject (already mandated by `CLAUDE.md`) and label the PR per `.github/release.yml`.
 
-1. ~~**Remove `Version Bump Check` from `main`'s required status checks**~~ — **DONE.** Verified 2026-08-02 against the live API: ruleset `main-branch-protection` (id `17097034`) requires only `staging-gate`, and classic branch protection requires `staging-gate`, `Hub E2E (command-center + onboarding)`, `mira-web pack tests`, `CI Gate`. `Version Bump Check` appears in neither. **A PR that does not bump `/VERSION` cannot be blocked by it.**
-2. Delete `/VERSION`, `.github/workflows/version-gate.yml`, and stop hand-editing `docs/CHANGELOG.md` (the Releases page becomes the changelog). Keep the historical `docs/CHANGELOG.md` content as an archive. **Unblocked — see the sequencing note below.**
+### Where the version reaches a running container
 
-### ⚠️ The transition did NOT play out as the paragraph above predicts
+`/VERSION` used to be `COPY`d into four images. It is now a build arg on the same path the hub already used:
 
-That paragraph assumes `/VERSION` runs **ahead** of the tags, so the floor binds and the two converge on "the first merge where the tags catch up to the file." **The opposite happened: the tags ran ahead of the file.** The floor therefore never binds, both counters advance ~1 per merge independently, and the gap is **stable, not closing**. It will not self-resolve.
+```
+version-tag.yml (tag)  →  deploy-vps.yml exports MIRA_APP_VERSION (git describe)
+                       →  docker-compose.saas.yml build args
+                       →  Dockerfile ARG/ENV MIRA_APP_VERSION
+                       →  /health, /api/version, startup logs
+```
+
+Every reader falls back to `"unknown"` when the arg is unset (a local `docker build`, a `next dev`) — an absent version is never a build or boot failure. Readers: `mira-pipeline/main.py::_app_version`, `mira-bots/telegram/bot.py`, `mira-hub/src/app/api/{health,version}/route.ts`, `printsense/benchmarks/capability_bench.py::_version`, `mira-bots/shared/analysis/session_analyzer.py`, `tools/internet_print_test/runner.py`. Pinned by `tests/test_slack_deploy_contract.py`.
+
+### ⚠️ Historical skew, 2026-07-29 → 2026-08-02 — read this before rolling back
+
+While both counters existed they advanced **independently**. The original transition note predicted `/VERSION` would run *ahead* of the tags, so the floor would bind and the two would converge. **The opposite happened: the tags ran ahead of the file.** The floor never bound, and the gap was stable rather than closing — which is why it had to be resolved by deleting the file rather than waiting.
 
 Measured on `main`, 2026-08-02 — the tag vs the `/VERSION` at the commit it points to:
 
@@ -62,34 +73,12 @@ Measured on `main`, 2026-08-02 — the tag vs the `/VERSION` at the commit it po
 
 **Verify by correspondence, not existence.** `git tag --list v3.240.0` returning a hit does **not** mean `v3.240.0` points at the merge that set `/VERSION` to `3.240.0` — during the skewed range it points at the one *before* it. Use `git rev-list -n1 <tag>` and read `VERSION` at that commit.
 
-### Sequencing note for step 2
+### Why it could not simply be waited out
 
-Step 2 is unblocked but is deliberately **not** a drive-by change: several PRs are open at any time that modify `/VERSION`, and deleting the file turns each of them into a conflict. Drain or land the open queue first, then delete `/VERSION` + `version-gate.yml` in one PR that touches nothing else. Once that lands, the skew question disappears with the file — there is one counter again.
-
-## Legacy rule (applies only until step 1 above is done)
-
-1. **Every code PR bumps `/VERSION`.** Pick the increment by change type:
-   - **MAJOR** — a breaking change (API/schema/contract removal or incompatibility).
-   - **MINOR** — a new feature, new endpoint, schema migration, provider addition, UI overhaul.
-   - **PATCH** — a bug fix / hotfix on the released line.
-2. **Docs/config-only PRs don't need a bump.** Changes limited to `docs/`, `wiki/`, any `CHANGELOG`, `*.md`/`*.mdx`/`*.txt`, `LICENSE`, `docs/promo-screenshots/`, or `VERSION` itself pass the gate without a bump.
-3. **The bump is required.** `.github/workflows/version-gate.yml` ("Version Gate" → "Version Bump Check") fails any code PR whose `/VERSION` did not increase vs the merge-base. It is wired as a **required** status check, so a forgotten bump blocks merge.
-4. **The tag is automatic.** On merge to `main`, `.github/workflows/version-tag.yml` reads `/VERSION` and — if `v<VERSION>` doesn't already exist — creates:
-   - `v<VERSION>` (annotated git tag at the merge commit),
-   - `rollback/<date>-v<VERSION>` (paired rollback checkpoint at the same commit),
-   - a GitHub Release for `v<VERSION>`.
-   Because the gate guarantees a fresh number on every code merge, every code merge gets a unique tag + rollback point.
-
-## How to bump (author checklist)
-
-```bash
-# in your PR branch, before pushing for review:
-echo "3.17.0" > VERSION          # next number per the rule above
-# add a one-line note to docs/CHANGELOG.md (overall) and/or mira-hub/CHANGELOG.md (hub)
-git commit -am "chore: bump VERSION → 3.17.0"
-```
-
-That's it — the tag + rollback checkpoint + release happen on merge. No manual `git tag`.
+The original plan was "drain the open-PR queue, then delete the file." That is circular: the
+shared line is *what puts the PRs into conflict*, and a conflicting PR receives no CI at all, so
+the queue cannot drain while the file exists. Deleting it costs each open PR one `git rm VERSION`
+during its next rebase — once — instead of a fresh conflict on every merge, forever.
 
 ## Rolling back
 
@@ -109,11 +98,6 @@ Pre-merge "before" checkpoints (created by hand before a risky merge) follow `ro
 
 | Counter | Scope | Status |
 |---|---|---|
-| **`/VERSION` + `v<MAJOR>.<MINOR>.<PATCH>` tags** | **Overall monorepo** | **Authoritative** (this doc). Revived from the dormant `v3.15.0` line at `3.16.0`. |
-| `mira-hub/package.json` + `mira-hub/vX.Y.Z` tags | `mira-hub` component only | Still valid — `mira-hub/AGENTS.md` keeps the per-component release line for hub-scoped releases. The overall counter advances regardless. |
-
-A hub-only PR may bump **both** the overall `/VERSION` (required) and the hub `package.json` (per `mira-hub/AGENTS.md`). A non-hub PR bumps only `/VERSION`.
-
-## Rollout note
-
-The "Version Gate" check must be added to `main` branch protection's **required** checks once it has reported green on at least one PR (GitHub won't let you require a check it has never seen). Until then it runs and reports but does not block.
+| **`v<MAJOR>.<MINOR>.<PATCH>` git tags** | **Overall monorepo** | **Authoritative** (this doc). Derived on merge; no file. |
+| `mira-hub/package.json` + `mira-hub/vX.Y.Z` tags | `mira-hub` component only | Still valid — `mira-hub/AGENTS.md` keeps the per-component release line. The overall counter advances regardless. |
+| `machine-print-pack/VERSION` | pack **format** version | Unrelated to the release counter; not affected by #3064. |

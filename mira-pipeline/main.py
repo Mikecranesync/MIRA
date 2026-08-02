@@ -246,6 +246,25 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
 
 # ── App ──────────────────────────────────────────────────────────────────────
 
+
+def _app_version() -> str:
+    """Deploy identity for /health and the startup log.
+
+    `/VERSION` was retired 2026-08-02 (#3064) — the version is derived from the
+    git tag and baked in as MIRA_APP_VERSION at image-build time (Dockerfile ARG
+    ← docker-compose build arg ← deploy-vps.yml). The legacy `/app/VERSION` read
+    is kept as a fallback so an older image still reports its own version rather
+    than "unknown"; both absent ⇒ "unknown", never an exception.
+    """
+    env = os.getenv("MIRA_APP_VERSION", "").strip()
+    if env:
+        return env
+    try:
+        return Path("/app/VERSION").read_text().strip() or "unknown"
+    except OSError:
+        return "unknown"
+
+
 engine: Supervisor | None = None
 memory: ConversationMemory | None = None
 
@@ -273,8 +292,7 @@ async def lifespan(app: FastAPI):
     # Start PM midnight scheduler — fires daily at UTC midnight, creates WOs for due PMs
     from shared.pm_scheduler import run_midnight_scheduler
     asyncio.create_task(run_midnight_scheduler())
-    _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
-    logger.info("MIRA Pipeline started — version=%s db=%s", _ver, DB_PATH)
+    logger.info("MIRA Pipeline started — version=%s db=%s", _app_version(), DB_PATH)
     yield
     engine = None
     memory = None
@@ -370,8 +388,7 @@ async def _rate_limit(request: Request, call_next):
 
 @app.get("/health")
 async def health():
-    _ver = Path("/app/VERSION").read_text().strip() if Path("/app/VERSION").exists() else "unknown"
-    return {"status": "ok", "engine": engine is not None, "version": _ver}
+    return {"status": "ok", "engine": engine is not None, "version": _app_version()}
 
 
 # ── OpenAI-compatible: GET /v1/models ────────────────────────────────────────

@@ -25,7 +25,12 @@ COPY factorylm_ai/ ./factorylm_ai/
 COPY config/providers/ ./config/providers/
 COPY mira-bots/prompts/ ./prompts/
 COPY mira-bots/slack/bot.py mira-bots/slack/chat_adapter.py mira-bots/slack/pdf_handler.py mira-bots/slack/doctor.py ./
-COPY VERSION .
+# Deploy identity. `/VERSION` was retired 2026-08-02 (#3064) — the version is
+# derived from the git tag by version-tag.yml, so there is no file to COPY.
+# deploy-vps.yml exports MIRA_APP_VERSION and docker-compose passes it as a
+# build arg; unset ⇒ "unknown", never a build failure.
+ARG MIRA_APP_VERSION=unknown
+ENV MIRA_APP_VERSION=$MIRA_APP_VERSION
 
 ENV PYTHONUNBUFFERED=1
 CMD ["python", "bot.py"]

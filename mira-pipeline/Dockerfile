@@ -26,7 +26,13 @@ COPY materialized_evidence/ ./materialized_evidence/
 # (ModuleNotFoundError: ignition_chat, then ignition_audit). Tests live in
 # mira-pipeline/tests/ (a subdir, not matched by *.py), so this stays source-only.
 COPY mira-pipeline/*.py .
-COPY VERSION .
+
+# Deploy identity. `/VERSION` was retired 2026-08-02 (#3064) — the version is
+# derived from the git tag by version-tag.yml, so there is no file to COPY.
+# deploy-vps.yml exports MIRA_APP_VERSION and docker-compose passes it as a
+# build arg; unset ⇒ "unknown", never a build failure.
+ARG MIRA_APP_VERSION=unknown
+ENV MIRA_APP_VERSION=$MIRA_APP_VERSION
 
 # mira-connectors: connector framework + confirmation gate (Phase 2 tag-mapper).
 # Has no mandatory deps; [postgres] pulls SQLAlchemy which is already installed.

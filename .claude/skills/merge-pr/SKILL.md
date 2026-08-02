@@ -1,14 +1,14 @@
 ---
 name: merge-pr
-description: Use when an open PR needs to go from "ready" to "merged" — rebase it onto main, bump VERSION + CHANGELOG, push, watch CI to green, then merge and confirm the release tag. Triggers on "merge this PR", "rebase and merge", "get this to green and merge", "land this PR".
+description: Use when an open PR needs to go from "ready" to "merged" — rebase it onto main, push, watch CI to green, then merge and confirm the release tag. Triggers on "merge this PR", "rebase and merge", "get this to green and merge", "land this PR".
 ---
 
 # merge-pr
 
-The rebase→version→push→green→merge→tag loop for an **already-open** PR. It
+The rebase→push→green→merge→tag loop for an **already-open** PR. It
 does not create the PR (`ship-pr` does that) and does not deploy (`ship` does
 that) — it is the narrow middle: take a PR that exists and land it cleanly on
-`main` with a version bump and a confirmed release tag.
+`main` with a confirmed release tag.
 
 ## Route first (don't reimplement a sibling)
 
@@ -43,26 +43,27 @@ git rebase origin/main
   ask the user**. See "Never do this" below — there is no safe automatic
   workaround for a wedged rebase.
 
-## 2. Bump VERSION + CHANGELOG
+## 2. No version bump — check the commit subject instead
 
-Per `docs/versioning.md`: every code PR bumps `/VERSION` (skip only for
-docs/config-only PRs — the version-gate CI check enforces this).
+**`/VERSION` was deleted 2026-08-02 (#3064) and `docs/CHANGELOG.md` is frozen as
+an archive.** Do not bump a file; do not hand-write a changelog line. Both were
+the shared-line that conflicted every other open PR (`docs/versioning.md`).
 
-```bash
-cat VERSION                              # current, e.g. 3.70.0
-# pick the increment: MAJOR (breaking) / MINOR (feature, migration, endpoint) / PATCH (bugfix)
-echo "3.71.0" > VERSION
-```
-
-Add a one-line entry at the top of `docs/CHANGELOG.md` (and
-`mira-hub/CHANGELOG.md` too if this is a hub-scoped change — see
-`mira-hub/AGENTS.md`) matching the existing entry format: version, date, PR
-title, then 2-5 bullets of what/why/scope/tests. Commit both together:
+The version is derived from the git tag by `version-tag.yml`, which takes the
+bump level from the **merge commit's Conventional Commit type** — so the only
+thing to check here is that the PR title is well-formed:
 
 ```bash
-git add VERSION docs/CHANGELOG.md
-git commit -m "chore: bump VERSION → 3.71.0"
+gh pr view <num> --json title --jq .title   # feat(x): … → MINOR, fix(x): … → PATCH
 ```
+
+`feat!`/`BREAKING CHANGE` → MAJOR. An unrecognised subject is treated as a
+PATCH, never a skip — a merge without a tag would lose a restore point.
+
+Release notes come from the merged PRs, categorised by label per
+`.github/release.yml`. For a hub-scoped change, `mira-hub/package.json` +
+`mira-hub/CHANGELOG.md` still follow `mira-hub/AGENTS.md` — that per-component
+line is unaffected.
 
 ## 3. Push
 
@@ -103,18 +104,21 @@ Squash, conventional commit title, delete the branch after.
 
 ## 6. Confirm the release tag — don't hand-create a duplicate
 
-`version-tag.yml` auto-tags on merge to `main`: reads `/VERSION` and creates
-`v<VERSION>`, a paired `rollback/<date>-v<VERSION>` checkpoint, and a GitHub
-Release — automatically, from the bump in step 2. Verify it fired instead of
-creating your own tag:
+`version-tag.yml` auto-tags on merge to `main`: derives the next semver from the
+latest `v*` tag + the merge commit's Conventional Commit type, then creates
+`v<X.Y.Z>`, a paired `rollback/<date>-v<X.Y.Z>` checkpoint, and a GitHub
+Release. Verify it fired instead of creating your own tag:
 
 ```bash
 gh run list --workflow version-tag.yml --branch main --limit 1
-git fetch --tags && git tag --list "v3.71.0"
+git fetch --tags && git tag --list 'v*' --sort=-v:refname | head -1
 ```
 
 - **Tag exists** → done. Report the tag + rollback checkpoint name as evidence.
-- **Tag missing** (workflow didn't run, or VERSION wasn't actually bumped) →
+  Verify by **correspondence, not existence**: `git rev-list -n1 <tag>` must be
+  your merge commit. Tags from 2026-07-29 → 08-02 are skewed one minor ahead of
+  the merge they appear to name (`docs/versioning.md`).
+- **Tag missing** (the workflow didn't run) →
   don't paper over it with a manual `git tag` before understanding why; check
   the workflow run's logs first. Only hand-create the tag if you've confirmed
   the automation is genuinely broken, and say so explicitly.
@@ -139,15 +143,15 @@ route around it.**
 
 ## Done-when
 
-PR is merged into `main`, `/VERSION` + `CHANGELOG.md` reflect the bump, all
-required CI checks were green (or explicitly user-confirmed pre-existing), and
-the `v<VERSION>` release tag + rollback checkpoint are confirmed to exist.
+PR is merged into `main`, all required CI checks were green (or explicitly
+user-confirmed pre-existing), and the `v<X.Y.Z>` release tag + rollback
+checkpoint are confirmed to exist **at the merge commit**.
 
 ## Cross-references
 
 - `.claude/skills/ship-pr/SKILL.md` — gets a PR to green; hands off here
 - `.claude/skills/ship/SKILL.md` — merge→deploy→verify-live, for after this
-- `docs/versioning.md` — VERSION bump rule, version-gate.yml, version-tag.yml
+- `docs/versioning.md` — tag-derived versioning (no VERSION file), version-tag.yml
 - `.claude/rules/session-discipline.md` — regression recheck, scoped commits
 - `tools/hooks/git-state-guard.sh` — the P0 preflight guard reused in §0
 - root `CLAUDE.md` § "CI & Merge Policy" — pre-existing-vs-new-red confirmation rule

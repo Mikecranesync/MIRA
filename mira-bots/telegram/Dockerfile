@@ -32,7 +32,12 @@ COPY mira-bots/prompts/ ./prompts/
 # without this COPY the crons fail "No such file" every run (fixed 2026-07-09).
 COPY mira-bots/agents/ ./agents/
 COPY mira-bots/telegram/bot.py mira-bots/telegram/chat_adapter.py mira-bots/telegram/renderers.py mira-bots/telegram/voice_transcription.py mira-bots/telegram/admin_commands.py mira-bots/telegram/start_command.py mira-bots/telegram/printsense_commercial.py mira-bots/telegram/printsense_testkit.py ./
-COPY VERSION .
+# Deploy identity. `/VERSION` was retired 2026-08-02 (#3064) — the version is
+# derived from the git tag by version-tag.yml, so there is no file to COPY.
+# deploy-vps.yml exports MIRA_APP_VERSION and docker-compose passes it as a
+# build arg; unset ⇒ "unknown", never a build failure.
+ARG MIRA_APP_VERSION=unknown
+ENV MIRA_APP_VERSION=$MIRA_APP_VERSION
 
 ENV PYTHONUNBUFFERED=1
 CMD ["python", "bot.py"]

@@ -4,7 +4,8 @@
 # Build (records the git SHA as both an OCI label and IMAGE_REVISION):
 #   SHA=$(git rev-parse HEAD)
 #   docker build -f tools/print_of_day/Dockerfile \
-#     --build-arg GIT_SHA=$SHA --build-arg VERSION=$(cat VERSION) \
+#     --build-arg GIT_SHA=$SHA \
+#     --build-arg VERSION=$(git describe --tags --abbrev=0 --match 'v*' | sed 's/^v//') \
 #     --label org.opencontainers.image.revision=$SHA \
 #     -t mira-print-of-day:$SHA .
 #
@@ -46,7 +47,6 @@ COPY tools/canary_fixtures/ ./tools/canary_fixtures/
 COPY mira-bots/shared/__init__.py ./shared/__init__.py
 COPY mira-bots/shared/inference/__init__.py ./shared/inference/__init__.py
 COPY mira-bots/shared/inference/router.py ./shared/inference/router.py
-COPY VERSION .
 # No .git in the image: a built container has no live git. Its identity is the
 # baked IMAGE_REVISION (below), which the provenance gate treats as the
 # authoritative, immutable SHA — the reproducible production path.
@@ -62,6 +62,7 @@ LABEL org.opencontainers.image.revision=$GIT_SHA \
       org.opencontainers.image.title="mira-print-of-day"
 ENV IMAGE_REVISION=$GIT_SHA \
     IMAGE_VERSION=$VERSION \
+    MIRA_APP_VERSION=$VERSION \
     OCR_REQUIRE_TESSERACT=1 \
     PRINT_VISION_PROVIDER=together \
     PRINT_VISION_MODEL=MiniMaxAI/MiniMax-M3 \
