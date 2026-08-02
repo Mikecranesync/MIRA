@@ -21,6 +21,7 @@ from __future__ import annotations
 from .context_contract import (
     ALLOWED_ACTION_VOCAB,
     CONTEXT_CONTRACT_VERSION,
+    FACTORYLM_SNAPSHOT_SCHEMA,
     FORBIDDEN_ACTION_SUBSTRINGS,
     AssetIdentity,
     Contradiction,
@@ -42,6 +43,7 @@ from .context_contract import (
     evidence_from_visual_session,
     evidence_from_work_orders,
     live_overlay_from_machine_packet,
+    overlay_from_factorylm_snapshot,
     to_prompt_block,
     validate_context,
 )
@@ -145,4 +147,6 @@ __all__ = [
     "evidence_from_technician_corrections",
     "evidence_from_visual_session",
     "live_overlay_from_machine_packet",
+    "overlay_from_factorylm_snapshot",
+    "FACTORYLM_SNAPSHOT_SCHEMA",
 ]

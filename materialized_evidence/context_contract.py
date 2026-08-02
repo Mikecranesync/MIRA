@@ -505,6 +505,94 @@ def live_overlay_from_machine_packet(packet: dict[str, Any]) -> LiveStateOverlay
     )
 
 
+FACTORYLM_SNAPSHOT_SCHEMA = "factorylm.machine-snapshot.v1"
+
+# ingest quality vocab {good,bad,stale,uncertain} -> Freshness {live,stale,simulated,unknown}.
+# The downgrade direction is always toward LESS confidence: an unknown/unmapped
+# quality can never become ``live`` (PRD § quality mapping).
+_SNAPSHOT_QUALITY_TO_FRESHNESS = {
+    "good": "live",
+    "stale": "stale",
+    "bad": "unknown",
+    "uncertain": "unknown",
+}
+_SNAPSHOT_QUALITY_VOCAB = frozenset(_SNAPSHOT_QUALITY_TO_FRESHNESS)
+
+
+def overlay_from_factorylm_snapshot(
+    snapshot: Any,
+) -> tuple[LiveStateOverlay | None, list[str]]:
+    """``factorylm.machine-snapshot.v1`` envelope → ``LiveStateOverlay``.
+
+    A thin, pure VALIDATOR + MAPPER that reshapes the FactoryLM producer envelope
+    into the MachineContextPacket dict ``live_overlay_from_machine_packet`` already
+    consumes, then delegates to it — it does NOT re-implement ``LiveTag``, the
+    freshness enum, the summary count, or any rendering (ADR-0033: one producer,
+    one overlay type). See ``contracts/machine_snapshot/`` for the shared fixture.
+
+    Returns ``(overlay, [])`` on success, or ``(None, violations)`` when the
+    envelope is invalid — the caller renders no live evidence that turn and the
+    diagnosis still answers normally (never raises). Read-only by construction:
+    no network, no fieldbus, no writes; a command/actuator field is ignored, not
+    executed.
+    """
+    if not isinstance(snapshot, dict):
+        return None, ["snapshot_not_an_object"]
+
+    violations: list[str] = []
+    if snapshot.get("schema_version") != FACTORYLM_SNAPSHOT_SCHEMA:
+        violations.append(f"schema_version:{snapshot.get('schema_version')!r}")
+    if not snapshot.get("snapshot_id"):
+        violations.append("snapshot_id:missing")
+    if not snapshot.get("captured_at"):
+        violations.append("captured_at:missing")
+    if not snapshot.get("tenant_id"):
+        violations.append("tenant_id:missing")
+
+    raw_tags = snapshot.get("tags")
+    if not isinstance(raw_tags, list):
+        violations.append("tags:not_a_list")
+        raw_tags = []
+    for t in raw_tags:
+        # Structural malformation (non-dict, or no canonical tag_path) is a
+        # validation failure — never a silently remapped tag.
+        if not isinstance(t, dict) or not str(t.get("tag_path") or "").strip():
+            violations.append("malformed_tag")
+            break
+
+    if violations:
+        return None, violations
+
+    simulated = str(snapshot.get("source_system") or "").lower() == "simulator"
+    live_tags: list[dict[str, Any]] = []
+    summary: dict[str, int] = {}
+    for t in raw_tags:
+        quality = str(t.get("quality") or "unknown").lower()
+        if quality not in _SNAPSHOT_QUALITY_VOCAB:
+            quality = "uncertain"  # unknown quality downgrades toward less confidence, never good
+        freshness = _SNAPSHOT_QUALITY_TO_FRESHNESS[quality]
+        if simulated and freshness == "live":
+            freshness = "simulated"  # a simulated row is never presented as real telemetry
+        summary[freshness] = summary.get(freshness, 0) + 1
+        live_tags.append(
+            {
+                "tag_path": str(t.get("tag_path")),
+                "value": t.get("value"),
+                "quality": quality,
+                "freshness": freshness,
+                "observed_at": t.get("observed_at"),
+            }
+        )
+
+    packet = {
+        "machine_state": str(snapshot.get("machine_state") or "unknown").lower(),
+        "active_conditions": snapshot.get("active_conditions") or [],
+        "live_tags": live_tags,
+        "freshness": summary,
+    }
+    return live_overlay_from_machine_packet(packet), []
+
+
 def asset_from_uns_context(uns_context: dict[str, Any]) -> AssetIdentity:
     """engine ``state["context"]["uns_context"]`` (untyped legacy) → identity."""
     return AssetIdentity(

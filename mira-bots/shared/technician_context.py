@@ -224,6 +224,46 @@ def augment_with_retrieval(ctx: Any, chunks: list[dict[str, Any]]) -> tuple[Any 
     return combined, []
 
 
+def augment_with_live(ctx: Any, snapshot: Any) -> tuple[Any | None, list[str]]:
+    """Add the LIVE-STATE family to an existing turn context (ADR-0033, PRD #3048).
+
+    ``ctx`` is the turn context ``build_turn_context`` produced. ``snapshot`` is a
+    ``factorylm.machine-snapshot.v1`` envelope (a dict) OR an already-built
+    ``LiveStateOverlay``; either becomes ``TechnicianContext.live`` on the SAME
+    context, re-validated, so ONE manifest carries it (same shape as
+    ``augment_with_retrieval``; no second assembly site). Returns
+    ``(combined_ctx | None, violations)``; None means "no live overlay this turn"
+    (contract unavailable / invalid snapshot / validation failed), never "fail the
+    turn". Read-only: a snapshot is observation data; no command is ever executed.
+    """
+    if ctx is None:
+        return None, ["no_base_context"]
+    if not _imports_ok():
+        return None, ["contract_unavailable"]
+    from dataclasses import replace  # noqa: PLC0415
+
+    from materialized_evidence.context_contract import (  # noqa: PLC0415
+        LiveStateOverlay,
+        overlay_from_factorylm_snapshot,
+        validate_context,
+    )
+
+    if isinstance(snapshot, LiveStateOverlay):
+        overlay: Any = snapshot
+    else:
+        overlay, violations = overlay_from_factorylm_snapshot(snapshot)
+        if overlay is None:
+            logger.debug("LIVE_OVERLAY skipped: %s", violations)
+            return None, violations
+
+    combined = replace(ctx, live=overlay)
+    violations = validate_context(combined)
+    if violations:
+        logger.warning("LIVE_AUGMENT_INVALID violations=%s", violations)
+        return None, violations
+    return combined, []
+
+
 def prompt_block(ctx: Any) -> str:
     """Render the PRIOR_DECISION projection of ``ctx`` for prompt injection.
 
