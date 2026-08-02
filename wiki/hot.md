@@ -1,3 +1,49 @@
+# Hot Cache — 2026-08-02 — MIRA × FactoryLM read-only machine-evidence handoff (PRD #3048) — PRs 1–4 MERGED
+
+The **"one technician brain"** live-state spine is complete through the serving path. FactoryLM's
+canonical PLC snapshot now reaches MIRA's audited `TechnicianContext.live` as **read-only** evidence,
+end to end, all merged to `main`:
+
+- **PR 1** (#3052) — MIRA adapter: `overlay_from_factorylm_snapshot` + `augment_with_live` + shared
+  `contracts/machine_snapshot/` fixtures.
+- **PR 2** (factorylm #198) — FactoryLM canonical `factorylm.machine-snapshot.v1` producer.
+- **PR 3** (#3059, v3.241.0) — relay ingress: decode → `build_ingest_batch` → `ingest_batch`
+  (one-pipeline law; `source_system=plc_bridge`), + seed `tools/seeds/approved_tags_factorylm_conv_simple.sql`.
+  (Follow-ups #3063/#3065: the publisher validates the ingest RESULT, not the HTTP status.)
+- **PR 4** (#3061, v3.242.0, squash `52260ff2a`) — **MIRA serving path**. `mira-bots/shared/factorylm_live.py`.
+- Plus #3060 (contract-boundary: `tags:empty` violation + fixture checksum guard) and #3046 (the
+  "do not call production-proven until resolved" blocker) — both merged.
+
+**PR 4 design invariants — don't regress (this is the load-bearing part):**
+- **Read back at turn time, never threaded inline.** `ingest_batch` *persists* to `live_signal_cache`;
+  the serving path reads current state back for the confirmed asset (`fetch_live_signal_cache`,
+  `uns_path <@ ltree`, tenant-scoped) — the ingest POST and the tech's turn are unrelated requests.
+- **Never `now()`.** `observed_at` = absolute stored `last_seen_at`; freshness = the relay's stored
+  band. Same rows → byte-identical overlay → stable manifest hash.
+- **Prompt/manifest lockstep.** The overlay reaches the manifest ONLY by folding into `turn_ctx`
+  (`augment_with_live`); the `[LIVE MACHINE STATE (FactoryLM)]` block renders ONLY when the fold
+  succeeded. Gated under `contract_enabled()` too.
+- **Dedup.** When the FactoryLM overlay is present it SUPERSEDES the legacy `[LIVE EQUIPMENT STATUS]`
+  block (`_build_live_data_context`, a genuinely separate mira-fault-detective HTTP path).
+- Flags: `MIRA_FACTORYLM_LIVE` (default off) AND `MIRA_CONTEXT_CONTRACT`. `simulated`→SIMULATED,
+  `stale`→STALE (never dropped). Engine class `Supervisor`; seam is `_call_with_correction`.
+- Note: main's merged `factorylm_live.py` (302 lines) is a **superset** of the Bravo-authored branch —
+  a second session added `_snapshot_evidence` + `_timestamp_text` refinements before the squash-merge.
+
+**What's left — NOT a Bravo task:**
+- **PR 5** (#3062 OPEN, branch `feat/pr5-integration-proof`) — integration-proof harness
+  (`tests/integration/test_machine_evidence_proof.py`, all 7 PRD proof points) + staging live-probe
+  runbook. Built on the **PLC-laptop bench node**; was CONFLICTING (branched pre-PR4), and its 3
+  served-path tests `importorskip("shared.factorylm_live")` and activate now PR 4 is on main.
+- **The supervised staging live-probe = the user tests**, PLC-laptop-owned: seed `approved_tags` to
+  staging → `MIRA_FACTORYLM_LIVE=1`+`MIRA_CONTEXT_CONTRACT=1` → bench HMAC publish → persistence check
+  → cited bot answer + control cases. The seed has reached **no environment** yet. Do NOT call Phase 1
+  "production proven" until that probe runs.
+
+Full memory: `project_factorylm_evidence_handoff.md`.
+
+---
+
 # Hot Cache — 2026-07-30 — Document Evidence Compiler v1 (first Materialized Evidence receipt)
 
 `materialized_evidence/` stopped being contract-only. The **batch OEM-manual lane**
