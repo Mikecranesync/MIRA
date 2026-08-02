@@ -1,3 +1,7 @@
+### v3.240.1 (2026-08-02) - fix(contracts): machine-snapshot fixtures carry all seven conv_simple.* canonical tags
+
+Fixture-sync half of factorylm #199 (found in the PR 2 adversarial review): the shared `contracts/machine_snapshot/` fixtures omitted `conv_simple.sort_divert_active`, so the "vendored verbatim, both repos test the same bytes" invariant was proving a six-tag corpus against a seven-tag producer. The valid fixture and the three single-defect invalid fixtures now carry the full seven-tag `conv_simple.*` set, byte-identical to factorylm PR #198's copy (`snapshot_v1_invalid_malformed_tags.json` intentionally stays a single-defect malformed fixture). Consumer-side count updated: the valid fixture now yields six `live` + one `stale` tag in `freshness_summary`. Tests: `materialized_evidence/tests/test_factorylm_snapshot_adapter.py` + `mira-bots/tests/test_technician_context_live.py` (15 passed).
+
 ### v3.240.0 (2026-08-02) - feat(spine): FactoryLM machine-snapshot → TechnicianContext.live adapter (PRD #3048, PR 1)
 
 First slice of the read-only machine-evidence handoff (PRD #3048): the **live-state** evidence family enters the context contract, after prior-decision (#3032) and retrieval (#3041). Pure Python — no ingress, no infra, no plant writes (PRs 2–4 handle FactoryLM source, ingress, serving-path).
