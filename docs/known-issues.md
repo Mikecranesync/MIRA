@@ -10,6 +10,8 @@ Updated: 2026-06-21
 
 ## Known Broken / Incomplete
 
+- **Nameplate photo → unknown drive has no internet manual-search fallback** — `_try_nameplate_drive_pack_reply` (`mira-bots/telegram/bot.py:1281-1389`) matches a photographed nameplate against only the 3 shipped Drive Packs (GS10, PowerFlex 525, PowerFlex 40). On a miss it returns `False` and falls through to the generic engine FSM instead of trying to find the official OEM manual — the technician gets a generic troubleshooting reply for a drive MIRA could not identify. The local-KB-only manual-retrieval hook (`equipment.default_manual_retriever()`, `mira-bots/shared/visual/equipment.py:483-549`) is real and wired to `answer_equipment()`, but is never reached from the Telegram fast-path. Separately, a working OEM-domain-restricted, HEAD-validated internet manual searcher already exists at `mira-scan-monday/backend/manual_search.py` (built 2026-05-05 for an unrelated monday.com integration) and was never connected to the main bot. No ADR or PR records a decision to leave this unwired — it is drift, not a scope decision. See `docs/plans/2026-07-31-visual-intake-asset-identity-manualsense-audit.md` for the full audit and phased plan; first fix in flight is porting `manual_search.py` into a shared module.
+
 - **Ignition Perspective "No Connection to Gateway" always in DOM** — Ignition's
   Perspective client renders this WebSocket-init overlay in the DOM on every page
   load, hiding it via CSS when the WS connects. Accessibility snapshots and

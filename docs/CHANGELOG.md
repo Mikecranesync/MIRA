@@ -1,3 +1,14 @@
+### v3.239.0 (2026-08-01) - feat(manual-search): port the existing OEM manual searcher into a shared, reusable module
+
+Phase 0+1 of `docs/plans/2026-07-31-visual-intake-asset-identity-manualsense-audit.md` — "port, don't rebuild." The audit found that a working, OEM-domain-restricted, HEAD-validated internet manual searcher **already existed** (`mira-scan-monday/backend/manual_search.py`, built 2026-05-05 for an unrelated monday.com marketplace integration) but was never reachable from the main Telegram bot, which just says "I don't recognize that drive" when a photographed nameplate doesn't match one of the 3 shipped Drive Packs.
+
+- New `mira-bots/shared/manual_search/` package: `search.py` (the OEM-domain allowlist, SEO-spam denylist, multi-pass Serper search, HEAD/magic-byte PDF validation, scoring — ported with logic unchanged) and `crawler_bridge.py` (hands a validated candidate to the **existing** `manual_cache` NeonDB table + `mira-crawler/cron/manual_queue.json` operator queue — no new ingestion pipeline).
+- Adapted from psycopg3-async (a dependency mira-bots does not pin) to the `psycopg2` + `asyncio.to_thread` pattern already used in this package (`wo_evidence.py`, `ctx_enrichment.py`), so this introduces no new runtime dependency.
+- Renamed the public search entry point `search()` → `search_manual()` to avoid a Python name collision between the `search` submodule and a same-named function re-exported from the package `__init__.py` (caught by the port's own test suite, not by chance).
+- 22 new hermetic tests (`mira-bots/tests/test_manual_search.py`) pin the invariants ManualSense depends on: denylisted hosts never score positive, OEM-domain hits outrank generic "trusted domain" hits for the *same* manufacturer (the cross-OEM-contamination guard), and a URL is only ever returned `validated=True` after HEAD/magic-byte confirmation — never silently promoted.
+- **No behavior change to `mira-scan-monday`** (left in place, untouched) and **zero new runtime callers** — this module is not yet wired into `equipment.default_manual_retriever()` or the Telegram fast-path. That wiring is Phase 2 of the audit's plan, a separate PR.
+- Also: `docs/known-issues.md` gained an entry documenting the manual-search gap this PR starts closing (Phase 0 of the same plan).
+
 ### v3.238.0 (2026-08-01) - feat(spine): WS1/G6 — merge the RETRIEVAL evidence family into the audited turn context
 
 Follows #3032, which wired the **prior-decision** family end-to-end and explicitly left "unifying retrieval's rendering onto the contract" as the next slice. This folds the **manual-chunk (retrieval)** family into the **same** validated turn context, so a single manifest carrying both families reaches the decision trace (G6). Same flag/module (`MIRA_CONTEXT_CONTRACT`, `technician_context.py`), no second assembly path.
