@@ -265,7 +265,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mode",
         type=str,
         default="dry-run",
-        choices=["dry-run", "bot-only", "sidecar-only", "both", "telethon"],
+        choices=["dry-run", "bot-only", "sidecar-only", "both", "telethon", "pipeline"],
         help="Execution mode (default: dry-run)",
     )
     parser.add_argument(
@@ -431,7 +431,7 @@ async def _main(args: argparse.Namespace) -> int:
                 )
                 logger.info("LLM judge scored %d conversations", len(llm_judgments))
             else:
-                logger.warning("LLM judge requested but ANTHROPIC_API_KEY not set — skipping")
+                logger.warning("LLM judge requested but GROQ_API_KEY not set — skipping")
         except ImportError:
             logger.warning("llm_judge not available — skipping LLM evaluation")
         except Exception as exc:

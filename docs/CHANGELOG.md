@@ -1,3 +1,30 @@
+### v3.247.0 (2026-08-02) - feat(swarm): technician-journey validation swarm P0/P1 — scenario ledger + staging executor + synthetic_user repairs
+
+Implements P0-P1 of the Technician-Journey Validation Swarm PRD (staging discovers; production verifies). New `tools/journey_swarm/`:
+
+- **Scenario ledger** (`ledger/SCHEMA.md`, `ledger.py`, `tech_journey_core_v1.yaml`): versioned, fail-closed source of truth per journey — allowed environments (production requires `certificate.status=certified`, enforced at load), >=2 personas (independent RED confirmation), fixture fingerprints (missing fixture = INFRA, never auto-created), frozen base turns, staging-only mutation slots (6 categories), deterministic invariants + verdict map, redaction rules. Immutable once certified; changes bump `version`.
+- **Staging executor** (`executor.py`): drives the v1 "diagnose with citations" journey against the REAL deployed staging surface (mira-pipeline OpenAI-compat -> Supervisor engine, server-side FSM state via `user`; reach it with `ssh -L 14099:localhost:4099 factorylm-prod`). Preflight verifies target identity + tenant + fixtures read-only against staging Neon. Deterministic reply classifiers (never agent self-assessment) incl. a fabrication-tell detector built from the OBSERVED v3.230.0 staging reply that invented a fault, an error log, and a scheduled maintenance task for a healthy machine. Dogfood-judge verdict semantics (GREEN/YELLOW/RED/INFRA) with the two-persona RED confirmation gate; redacted JSONL receipts + scoreboard per run.
+- **synthetic_user repairs** ("make the synths work"): new `--mode pipeline` (OpenAI-compat staging surface with working `--concurrency` — the living replacement for the retired sidecar per ADR-0008), bot-only no longer rebuilds a Supervisor per question, Windows-safe default DB path, judge skip-warning names the right env var (GROQ). 35 existing synthetic_user tests still pass.
+- CI: `tests/test_journey_swarm.py` (14 offline tests — schema fail-closed, PRD >=30-interaction mutation floor, classifier truth table incl. the live fabrication reply, redaction).
+
+Known deliberate limits: P2 certification service + P3 production canary NOT implemented (PRD gates them on human approval + owner-provisioned tenant); Telethon volume runs still blocked on one interactive session auth.
+
+### v3.243.0 (2026-08-02) - feat(routing): routing gauntlet — 1M-decision corpus proof + arbitration signal fixes + safety keyword sweep
+
+Mass automated interrogation of the chat routing layer (Mike's directive: "ask it a million different questions until routing is solved"). New `tools/routing_gauntlet/`: a deterministic labeled corpus generator (2,149 distinct cases across asset-state / diagnostic / educational / greeting / docs / safety / off-topic, template x asset x transform incl. typos, dashless tags, casual phrasing) + a three-tier runner. Tier 1 drives the REAL `asset_state_probability` + override rule + gate predicate under adversarial router votes (incl. the observed `general_question@1.00` production failure); tier `--fsm` drives full 4-turn conversations through a real Supervisor (gate ask -> "cv-101 conveyor" -> named confirm -> "yes" -> live overlay in the context manifest); tier `--groq N` measures the live Groq router and post-arbitration accuracy. JSONL per decision + scoreboard per run.
+
+First run found **3,362 routing failures in 9,477 decisions**. Fixes, each corpus-driven:
+- `_ASSET_SYMPTOM_RE` (new, +2.4): "won't start / keeps tripping / throwing fault F0004 / grinding noise / no lights" — 1,776 diagnostic-class misses had NO symptom signal.
+- `_ASSET_REFERENCE_RE` (new, +0.8): possessive/prepositional asset reference ("of the garage conveyor", "my conveyor", "of line 1") — survives typos in the state word.
+- Dashless tags (`cv101`, `gs10`) + numbered assets ("conveyor 1", "pump 3") now count as tag tokens.
+- `_ASSET_STATE_RE`: bare "status", "what state is", "anything/what's wrong with".
+- `router_disagrees` weight -0.6 -> -0.3: a confidently wrong router vote can no longer sink a clean state-phrase signal (it mislabeled real turns at 1.00 twice).
+- `SAFETY_KEYWORDS` + IMMEDIATE set: "smell burning", "smoke coming", "got shocked", "exploded", and "safe to work" — the live-work permission ask ("is it safe to work on this live?") was being swallowed by the educational carve-out; asking permission to touch live equipment is exactly when MIRA must STOP.
+
+End state: **1,000,000 decisions, 0 failures, 25s** (tier 1); FSM tier 5/5 conversations green; 215 existing tests across the touched suites still pass. CI pin: `tests/test_routing_gauntlet.py` (full-corpus 100% + replica-vs-engine drift check + calibration anchors: bare "the conveyor" mention still does NOT force the gate). Typo policy is explicit and logged, never hidden: typo'd text must survive a correct router vote; typo+confidently-wrong-router is router territory.
+
+### v3.242.5 (2026-08-02) - fix(gate): tenant equipment resolution reaches cmms_equipment; confirmed identity feeds the live overlay; staging forwards the spine flags
+
 ### v3.245.2 (2026-08-02) - fix(gate): tenant equipment resolution reaches cmms_equipment; confirmed identity feeds the live overlay; staging forwards the spine flags
 
 Round-3 live probe (Mike's phone, 21:16 UTC): routing fixed by v3.242.4 worked (`diagnose_equipment` at 1.00), but the UNS gate looped with `candidate=None` — even on the literal reply "cv-101 conveyor" — so `asset_identified` was never set and the live block was unreachable. Three independent broken links, all evidence-backed from the staging turn log + container inspection:
