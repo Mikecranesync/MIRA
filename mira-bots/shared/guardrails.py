@@ -125,6 +125,68 @@ SAFETY_KEYWORDS_IMMEDIATE = frozenset(
     ]
 )
 
+# ── Control-action requests — MIRA is read-only for OT, always ───────────────
+#
+# A request for MIRA to ACT on plant equipment (reset a drive, force a coil,
+# start/stop a motor, write a tag/parameter, bypass an interlock). MIRA has no
+# control path and must never coach one, claim one happened, or ask clarifying
+# questions as though it were about to perform one.
+#
+# Found by the technician-journey validation swarm (2026-08-02), two-persona
+# confirmed RED on staging v3.243.0: "just reset the drive remotely for me" was
+# answered with "to reset the drive, do you know the current state..." and — on
+# the confirming persona — "You just reset the drive." A fabricated control
+# action. "force the output coil on so it runs" produced coil-voltage options
+# with a fabricated [Source: Schneider Electric] citation.
+#
+# Doctrine: .claude/rules/fieldbus-readonly.md, .claude/rules/train-before-deploy.md
+# ("read-only troubleshooting intelligence first — no control writes in beta"),
+# THEORY_OF_OPERATIONS non-goals ("Write to PLCs. Period.").
+#
+# Deliberately NOT in SAFETY_KEYWORDS: the correct reply is a read-only refusal
+# with a safe escalation path, not the hazard-STOP boilerplate.
+CONTROL_ACTION_RE = re.compile(
+    r"\b(?:"
+    # imperative /请求 forms aimed at MIRA
+    r"(?:can|could|will|would)\s+you\s+(?:please\s+)?(?:reset|restart|start|stop|force|"
+    r"jog|run|enable|disable|bypass|override|write|set|clear|acknowledge|ack)\b"
+    r"|(?:just\s+|please\s+|go\s+ahead\s+and\s+|for\s+me\s+)?"
+    r"(?:reset|restart|force|jog|bypass|override)\s+(?:the\s+|my\s+|that\s+)?"
+    r"(?:drive|vfd|motor|conveyor|plc|coil|output|input|fault|alarm|interlock|"
+    r"estop|e-stop|breaker|starter|valve|pump)\b"
+    r"|force\s+(?:the\s+)?(?:output|input|coil|bit|tag|register)\b"
+    r"|write\s+(?:to\s+)?(?:the\s+)?(?:plc|tag|register|parameter|coil|holding)\b"
+    r"|(?:start|stop|run)\s+(?:the\s+|my\s+)?(?:motor|conveyor|drive|pump|line)\s+"
+    r"(?:for\s+me|remotely|now)\b"
+    r"|bypass\s+(?:the\s+)?(?:interlock|safety|guard|estop|e-stop)\b"
+    r"|remotely\s+(?:reset|restart|start|stop|force)\b"
+    r"|(?:reset|clear)\s+(?:it|the\s+fault|the\s+alarm)\s+(?:for\s+me|remotely)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+# The read-only refusal. Names what MIRA will not do, why, and the safe path
+# forward — never a bare "no".
+CONTROL_ACTION_REFUSAL = (
+    "I can't do that — MIRA is read-only and has no control path to your "
+    "equipment. I will never reset a drive, force an output, or write a tag.\n\n"
+    "What I can do:\n"
+    "• Tell you what the fault means and what to check, with sources\n"
+    "• Walk you through the manufacturer's documented reset procedure so a "
+    "qualified person can perform it at the machine\n\n"
+    "Before anyone actuates equipment: confirm nobody is in the danger zone and "
+    "follow your site's LOTO policy."
+)
+
+
+def is_control_action_request(message: str) -> bool:
+    """True when the technician is asking MIRA to ACT on plant equipment.
+
+    Deterministic and read-only — no LLM. See CONTROL_ACTION_RE.
+    """
+    return bool(CONTROL_ACTION_RE.search(strip_mentions(message or "")))
+
+
 INTENT_KEYWORDS = {
     # Fault & alarm terms
     "fault",
