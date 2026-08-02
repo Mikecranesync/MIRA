@@ -635,6 +635,7 @@ def asset_state_probability(
         logit += parts["router_disagrees"]
     return 1.0 / (1.0 + math.exp(-logit)), parts
 
+
 # Q1 length trim (2026-06-06 follow-up to PR #1754 / #1755). The gate-bypass
 # at _apply_quality_gate trusts the LLM output for any reply > 80 chars that
 # carries the live-tag header. That landed Q1 grounded but at ~165 words,
