@@ -280,3 +280,200 @@ async def fetch_prior_decisions(
             exc,
         )
         return [], UNKNOWN_UNAVAILABLE
+
+
+# ── Live state cache read (PR 4 / PRD #3048) ───────────────────────────────────
+#
+# ``live_signal_cache`` carries the latest values ingested by the relay from
+# FactoryLM / Ignition / MQTT / simulators, organized by (tenant_id, plc_tag).
+# The live-state path reads current state at turn time and assembles a
+# ``FactoryLMSnapshot`` envelope to feed to ``augment_with_live``, which
+# builds the `LiveStateOverlay` and folds it into the turn context.
+#
+# Constraints (same as ``fetch_prior_decisions``):
+# - Fail-open but never silent: a failed lookup returns an explicit
+#   ``error_code`` so the engine can record an unknown, not confuse "unavailable"
+#   with "this asset has no live data".
+# - RLS enforced: drop to ``factorylm_app`` inside the transaction, bind via
+#   ``app.current_tenant_id`` (not ``app.tenant_id`` — see module docstring).
+# - Bounded: dedicated executor + slot semaphore + connect/statement timeouts.
+# - Scoped: narrow to the turn's confirmed asset (``uns_path`` from the UNS gate),
+#   never all tags in the tenant.
+
+UNKNOWN_LIVE_UNAVAILABLE = "live_signal_cache_unavailable"
+_STALE_BOUND_SECONDS = 300  # Read default if ``expected_freshness_seconds`` is NULL
+
+_LIVE_STATE_SQL = """
+SELECT plc_tag,
+       last_value_text,
+       last_value_numeric,
+       last_value_bool,
+       last_seen_at,
+       uns_path::text AS uns_path,
+       source_system,
+       latest_quality,
+       simulated,
+       properties
+FROM live_signal_cache
+WHERE tenant_id = :tenant_id
+  AND source_system = 'plc_bridge'
+  AND uns_path = CAST(:uns_path AS LTREE)
+ORDER BY plc_tag
+LIMIT 100
+"""
+
+
+def _live_tag_rows_to_dict(rows: Any, captured_at_override: str | None = None) -> dict[str, Any]:
+    """Convert ``live_signal_cache`` rows into a synthetic ``factorylm.machine-snapshot.v1``
+    envelope dict.
+
+    The rows are LTREE-indexed snapshots, not versioned envelopes. This function
+    reconstructs enough of the envelope to feed to ``overlay_from_factorylm_snapshot``:
+    - `machine_state`, `active_conditions`, `captured_at`, `snapshot_id` are recovered
+      from row metadata (PR 3 preserved them in ``properties->'factorylm_snapshot'``)
+    - `tags` are built from the row values with freshness derived from ``last_seen_at``.
+
+    If rows are empty or unmapped, returns an envelope with `tags: []` (the boundary
+    guard; ``augment_with_live`` rejects this as-is per #3060).
+    """
+    from datetime import datetime, timezone
+
+    if not rows:
+        return {
+            "schema_version": "factorylm.machine-snapshot.v1",
+            "snapshot_id": "live-read-empty",
+            "captured_at": captured_at_override or datetime.now(timezone.utc).isoformat(),
+            "tenant_id": "",
+            "machine_state": "unknown",
+            "active_conditions": [],
+            "tags": [],
+        }
+
+    # Extract snapshot-scoped fields from the first row's metadata (all rows in
+    # an LTREE subtree are from the same snapshot, per the ingest design).
+    first_row = rows[0]
+    meta = first_row.get("properties") or {}
+    snapshot_meta = meta.get("factorylm_snapshot") or {}
+
+    machine_state = snapshot_meta.get("machine_state") or "unknown"
+    active_conditions = snapshot_meta.get("active_conditions") or []
+    captured_at = snapshot_meta.get("captured_at") or captured_at_override or datetime.now(
+        timezone.utc
+    ).isoformat()
+    snapshot_id = snapshot_meta.get("snapshot_id") or "live-read"
+    provenance = snapshot_meta.get("provenance") or {}
+
+    # Quality downgrade map: unknown/unrecognized → uncertain, never toward good.
+    # Mirrors the ingest contract's normalization (quality must never become
+    # "better" than the producer sent).
+    _QUALITY_MAP = {
+        "good": "good",
+        "bad": "bad",
+        "stale": "stale",
+        "uncertain": "uncertain",
+    }
+
+    tags = []
+    for r in rows:
+        q = r.get("latest_quality") or "uncertain"
+        q = _QUALITY_MAP.get(q.lower(), "uncertain")  # Downgrade unknown to uncertain
+        tags.append(
+            {
+                "tag_path": r.get("plc_tag"),
+                "value": r.get("last_value_numeric")
+                or r.get("last_value_bool")
+                or r.get("last_value_text"),
+                "quality": q,
+                "observed_at": r.get("last_seen_at", captured_at),
+            }
+        )
+
+    return {
+        "schema_version": "factorylm.machine-snapshot.v1",
+        "snapshot_id": snapshot_id,
+        "captured_at": captured_at,
+        "tenant_id": "",  # Not carried on the read-back path; RLS enforces it
+        "machine_state": machine_state,
+        "active_conditions": active_conditions,
+        "tags": tags,
+        "provenance": provenance,
+    }
+
+
+async def fetch_live_signal_cache(
+    tenant_id: str | None,
+    *,
+    uns_path: str | None = None,
+    limit: int = 100,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Return ``(snapshot_envelope, error)`` — current live state for an asset.
+
+    Reads from the canonical ``live_signal_cache`` table for a specific tenant
+    and UNS asset path (never tenant-wide). Returns a synthetic
+    ``factorylm.machine-snapshot.v1`` envelope dict that
+    ``augment_with_live(ctx, envelope)`` consumes.
+
+    ``error`` is None when the read ran (an empty tag set then means "the asset
+    has no live data"), and ``UNKNOWN_LIVE_UNAVAILABLE`` when the read was
+    attempted and failed (DB down, driver missing, timeout, schema drift).
+
+    Storage being unconfigured (``NEON_DATABASE_URL`` unset) or a missing/None
+    tenant is deliberately NOT an error: nothing was attempted, so there is
+    nothing to report as unknown. Returns ``(None, None)`` in both cases.
+
+    ``uns_path`` is REQUIRED — a tenant-wide read is a misuse. If not provided,
+    returns ``(None, None)`` (no overlay this turn).
+    """
+    if not tenant_id or not uns_path:
+        return None, None
+    url = os.environ.get("NEON_DATABASE_URL")
+    if not url:
+        return None, None
+
+    connect_timeout = max(1, math.ceil(timeout_s))
+    statement_timeout_ms = max(250, int(timeout_s * 1000))
+
+    def _run() -> dict[str, Any]:
+        from sqlalchemy import create_engine
+        from sqlalchemy import text as sql_text
+        from sqlalchemy.pool import NullPool
+
+        engine = create_engine(
+            url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require", "connect_timeout": connect_timeout},
+            pool_pre_ping=True,
+        )
+        try:
+            with engine.begin() as conn:
+                conn.execute(sql_text(f"SET LOCAL statement_timeout = {statement_timeout_ms}"))
+                conn.execute(sql_text("SET LOCAL ROLE factorylm_app"))
+                conn.execute(sql_text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+                result = conn.execute(
+                    sql_text(_LIVE_STATE_SQL),
+                    {"tenant_id": tenant_id, "uns_path": uns_path},
+                )
+                rows = [dict(r._mapping) if hasattr(r, "_mapping") else dict(r) for r in result.fetchall()]
+                return _live_tag_rows_to_dict(rows)
+        finally:
+            engine.dispose()
+
+    if not _SLOTS.acquire(blocking=False):
+        logger.warning("LIVE_SIGNAL_UNAVAILABLE tenant=%s error=Saturated", tenant_id)
+        return None, UNKNOWN_LIVE_UNAVAILABLE
+
+    fut: Future = _executor().submit(_run)
+    fut.add_done_callback(lambda f: (_SLOTS.release(), _observe(f)))
+
+    try:
+        snapshot = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(fut)), timeout=timeout_s)
+        return snapshot, None
+    except Exception as exc:  # noqa: BLE001 — live enrichment must never block diagnosis
+        logger.warning(
+            "LIVE_SIGNAL_UNAVAILABLE tenant=%s error=%s: %s",
+            tenant_id,
+            type(exc).__name__,
+            exc,
+        )
+        return None, UNKNOWN_LIVE_UNAVAILABLE
