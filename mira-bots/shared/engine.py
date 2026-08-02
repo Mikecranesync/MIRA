@@ -4352,7 +4352,9 @@ class Supervisor:
     # ------------------------------------------------------------------
     # FactoryLM live machine-state overlay (PRD #3048, PR 4; additive, flag-gated)
     # ------------------------------------------------------------------
-    async def _build_factorylm_live_overlay(self, state: dict, tenant_id: str | None) -> object | None:
+    async def _build_factorylm_live_overlay(
+        self, state: dict, tenant_id: str | None
+    ) -> object | None:
         """Read current FactoryLM live state for the turn's asset back at answer time.
 
         Reads ``live_signal_cache`` (the state carrier ``ingest_batch`` persists to

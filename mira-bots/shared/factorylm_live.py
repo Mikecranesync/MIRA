@@ -97,8 +97,10 @@ def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
         simulated = bool(r.get("simulated"))
         fresh_value = _freshness_for(r.get("freshness_status"), simulated=simulated)
         observed = r.get("last_seen_at")
-        observed_at = observed.isoformat() if hasattr(observed, "isoformat") else (
-            str(observed) if observed is not None else None
+        observed_at = (
+            observed.isoformat()
+            if hasattr(observed, "isoformat")
+            else (str(observed) if observed is not None else None)
         )
         tags.append(
             LiveTag(

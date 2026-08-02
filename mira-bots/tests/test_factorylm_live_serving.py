@@ -196,8 +196,10 @@ def _call_overlay(state, tenant, *, flag):
     the contract's turn_ctx, so the read is gated under both).
     """
     contract = "1" if flag else ""
-    with unittest.mock.patch.object(engine, "_FACTORYLM_LIVE_ENABLED", flag), \
-         unittest.mock.patch.dict(os.environ, {"MIRA_CONTEXT_CONTRACT": contract}):
+    with (
+        unittest.mock.patch.object(engine, "_FACTORYLM_LIVE_ENABLED", flag),
+        unittest.mock.patch.dict(os.environ, {"MIRA_CONTEXT_CONTRACT": contract}),
+    ):
         method = engine.Supervisor._build_factorylm_live_overlay
         return asyncio.run(method(unittest.mock.MagicMock(), state, tenant))
 
@@ -226,8 +228,10 @@ def test_readback_scopes_to_the_turns_asset_subtree():
         return _rows()
 
     fake_uns = unittest.mock.MagicMock(uns_path="enterprise.site1.line1.conv_simple")
-    with unittest.mock.patch("shared.factorylm_live.fetch_live_signal_cache", _fake_fetch), \
-         unittest.mock.patch.object(engine, "resolve_uns_path", return_value=fake_uns):
+    with (
+        unittest.mock.patch("shared.factorylm_live.fetch_live_signal_cache", _fake_fetch),
+        unittest.mock.patch.object(engine, "resolve_uns_path", return_value=fake_uns),
+    ):
         out = _call_overlay({"asset_identified": "CV-101"}, TENANT, flag=True)
 
     assert out is not None
