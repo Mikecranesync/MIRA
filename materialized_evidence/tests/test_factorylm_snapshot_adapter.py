@@ -43,8 +43,10 @@ def test_good_quality_maps_to_live_and_stale_stays_stale():
     by_path = {t.tag_path: t for t in overlay.tags}
     assert by_path["conv_simple.motor_run"].freshness is Freshness.LIVE
     assert by_path["conv_simple.height_sensor_mm"].freshness is Freshness.STALE  # was quality=stale
-    # freshness summary counts both bands
-    assert overlay.freshness_summary.get("live", 0) == 5
+    # freshness summary counts both bands (six live incl. sort_divert_active,
+    # one stale — the fixture carries all seven conv_simple.* canonical tags
+    # per factorylm #199)
+    assert overlay.freshness_summary.get("live", 0) == 6
     assert overlay.freshness_summary.get("stale", 0) == 1
 
 
