@@ -14,8 +14,13 @@ Consequences honored here (PRD PR-4, amended 2026-08-02):
   observation timestamp comes from the matching append-only
   ``tag_events.event_timestamp`` row; ``live_signal_cache.last_seen_at`` is
   deliberately a server-receipt timestamp and must not be presented as when a
-  PLC observation occurred. The freshness band remains the relay-computed
-  ``freshness_status`` from the cache.
+  PLC observation occurred. The freshness band starts from the relay-computed
+  ``freshness_status`` in the cache — no ``now()`` at read time.
+- **A degraded ``latest_quality`` downgrades the band.** ``freshness_status``
+  answers "is the collector reporting?"; ``latest_quality`` is the producer's
+  verdict on the value. The writer stamps the former ``'live'`` for any
+  non-simulated row, so without re-applying the latter a reading the producer
+  marked ``stale`` rendered as ``LIVE``. See ``_freshness_for``.
 - **A stale row maps to ``STALE``, never dropped silently.**
 - **A ``simulated`` row is never presented as real telemetry** — it maps to
   ``SIMULATED`` regardless of its freshness band (same rule as PR-1's
@@ -55,16 +60,47 @@ def _display_value(text: Any, numeric: Any, boolean: Any) -> Any:
     return text
 
 
-def _freshness_for(status: str | None, *, simulated: bool) -> str:
-    """Map (stored freshness_status, simulated) → a ``Freshness`` value string.
+#: Per-tag qualities that must never be rendered as a live reading. This is the
+#: producer's verdict on the VALUE; ``freshness_status`` is a separate fact about
+#: the COLLECTOR. See ``_freshness_for``.
+_DEGRADED_QUALITIES = frozenset({"stale", "bad", "uncertain"})
 
-    ``simulated`` always wins toward *less* real: a simulated row is SIMULATED
-    even when its band says "live", so it can never be presented as real
-    telemetry. Otherwise the relay's stored band is honored; an unknown band is
-    UNKNOWN, never upgraded. No ``now()`` — the band was computed at ingest.
+
+def _freshness_for(status: str | None, *, simulated: bool, quality: str | None = None) -> str:
+    """Map (freshness_status, simulated, latest_quality) → a ``Freshness`` value.
+
+    Three inputs, because they are three independent facts, and the most
+    pessimistic one has to win:
+
+    * ``simulated`` — provenance. Always wins toward *less* real: a simulated row
+      is SIMULATED even when its band says "live", so it can never be presented
+      as real telemetry.
+    * ``status`` (``freshness_status``) — **collector liveness**: "is the
+      collector still reporting?" Stamped at ingest, so no ``now()`` is needed.
+    * ``quality`` (``latest_quality``) — the **producer's verdict on the value**:
+      "is this reading trustworthy?"
+
+    ``quality`` was previously ignored, and that lost the producer's caveat on
+    the deployed path. The ingest writer stamps
+    ``freshness_status = 'simulated' if simulated else 'live'`` — correctly, since
+    that column means collector liveness and a tag whose *value* is stale is
+    still arriving on time. But nothing downstream re-applied the per-tag
+    quality, so a reading the producer explicitly marked ``stale`` rendered as
+    ``LIVE`` and the summary counted it as live. Both facts are true and both
+    belong in the band the technician sees, so the READER combines them rather
+    than the writer conflating two different meanings into one column.
+
+    Direction is downgrade-only, matching PR 1's ``overlay_from_factorylm_snapshot``
+    (which maps quality→freshness for the direct path): an unknown band is
+    UNKNOWN and is never upgraded.
     """
     if simulated:
         return "simulated"
+    if (quality or "").strip().lower() in _DEGRADED_QUALITIES:
+        # The producer flagged the VALUE. Downgrade however healthy the collector
+        # looks — showing a reading the producer already doubted as "live" is the
+        # overclaim this exists to prevent.
+        return "stale"
     s = (status or "").strip().lower()
     if s in ("live", "fresh", "good"):
         return "live"
@@ -181,7 +217,11 @@ def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
     summary: dict[str, int] = {}
     for r in kept:
         simulated = bool(r.get("simulated"))
-        fresh_value = _freshness_for(r.get("freshness_status"), simulated=simulated)
+        fresh_value = _freshness_for(
+            r.get("freshness_status"),
+            simulated=simulated,
+            quality=r.get("latest_quality"),
+        )
         observed_at = _timestamp_text(r.get("event_timestamp"))
         tags.append(
             LiveTag(

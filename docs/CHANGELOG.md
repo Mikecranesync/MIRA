@@ -1,3 +1,17 @@
+### v3.242.3 (2026-08-02) - fix(spine): a reading the producer marked stale reached the technician as live
+
+Found by crossing the seam between PR 3 (#3059) and PR 4 (#3061) of PRD #3048 with a degraded tag — something neither side's suite did, because each was self-consistent on its own.
+
+`contracts/machine_snapshot/snapshot_v1_valid.json` marks `conv_simple.height_sensor_mm` as `quality: "stale"`. Through the **deployed** path (ingest → `live_signal_cache` → read-back) the overlay returned it as `Freshness.LIVE` with `freshness_summary = {live: 7}` — zero stale. A technician was shown, as current, a reading the producer had already flagged.
+
+**Cause — two correct decisions that nobody joined.** `tag_ingest.persist_batch` stamps `freshness_status = 'simulated' if simulated else 'live'`, which is right: that column means *collector liveness*, and a tag whose value is stale is still arriving on time. `factorylm_live._freshness_for` then read **only** that column, never `latest_quality` — which correctly held `"stale"` on the very same row. Neither module was wrong in isolation, which is exactly why both test suites stayed green.
+
+**Fix.** `_freshness_for` now takes `latest_quality` and downgrades on `{stale, bad, uncertain}`, downgrade-only — matching what PR 1's `overlay_from_factorylm_snapshot` already did for the direct path. The band is still computed from stored values; no `now()` at read time, and the collector-liveness semantics of `freshness_status` are unchanged.
+
+**Why the fix is in the reader, not the writer:** collector liveness and value quality are two different facts and both belong in the band the technician sees. Combining them at read time keeps `freshness_status` meaning one thing.
+
+Regression cover, both mutation-verified (reverting the fix turns each red): `test_stale_quality_never_becomes_live_ON_THE_DEPLOYED_PATH` crosses ingest → cache → read-back with the degraded tag and asserts `{live: 6, stale: 1}` with all 7 tags still present (downgraded, never dropped); `test_both_overlay_paths_agree_on_freshness` pins the direct and deployed overlays to the same answer, so one snapshot can no longer yield two verdicts depending on plumbing the technician cannot see. Suites: proof 24 → 26, `test_factorylm_live_serving` 18, spine/context 242, relay 232 — no regressions.
+
 ### v3.242.2 (2026-08-02) - fix(relay): the FactoryLM publisher validates the ingest RESULT, not the HTTP status
 
 Closes #3063. PR 3 (#3059) landed the transport; it reported success on a 2xx and never read the response body.
