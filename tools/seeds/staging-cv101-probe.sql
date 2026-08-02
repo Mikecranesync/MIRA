@@ -16,13 +16,22 @@
 -- STAGING-ONLY by intent: prod already carries CV-101 under the garage tenant
 -- (tools/seeds/garage-cv101-kg-bridge.sql). Do not apply to prod.
 
-\set tenant_id_default '''78917b56-f85f-43bb-9a08-1bb98a6cd6c3'''
+-- NOTE: default is UNQUOTED — :'tenant_id' adds the one layer of quoting.
+-- (The first apply stored a tenant_id with literal quotes because the default
+-- carried its own quotes; the repair UPDATE below fixes any such row.)
+\set tenant_id_default 78917b56-f85f-43bb-9a08-1bb98a6cd6c3
 \if :{?tenant_id}
 \else
 \set tenant_id :tenant_id_default
 \endif
 
 BEGIN;
+
+-- Repair a row stored with literal quotes around tenant_id (bad first apply).
+UPDATE cmms_equipment
+   SET tenant_id = replace(tenant_id, chr(39), '')
+ WHERE equipment_number = 'CV-101'
+   AND tenant_id LIKE chr(39) || '%' || chr(39);
 
 INSERT INTO cmms_equipment
   (tenant_id, equipment_number, manufacturer, model_number, equipment_type,
