@@ -27,11 +27,15 @@
 
 BEGIN;
 
--- Repair a row stored with literal quotes around tenant_id (bad first apply).
+-- equipment_number carries a GLOBAL unique constraint
+-- (cmms_equipment_equipment_number_key), so key every statement on it: repair
+-- or claim the one CV-101 row (fixes the quoted-tenant row from the bad first
+-- apply), else insert it. Idempotent either way.
 UPDATE cmms_equipment
-   SET tenant_id = replace(tenant_id, chr(39), '')
- WHERE equipment_number = 'CV-101'
-   AND tenant_id LIKE chr(39) || '%' || chr(39);
+   SET tenant_id = :'tenant_id',
+       uns_path = 'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree,
+       description = 'Conv_Simple Bench Conveyor (staging probe seed 2026-08-02, PRD #3048 PR 5)'
+ WHERE equipment_number = 'CV-101';
 
 INSERT INTO cmms_equipment
   (tenant_id, equipment_number, manufacturer, model_number, equipment_type,
@@ -45,16 +49,7 @@ SELECT
   'Conv_Simple Bench Conveyor (staging probe seed 2026-08-02, PRD #3048 PR 5)',
   'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree
 WHERE NOT EXISTS (
-  SELECT 1 FROM cmms_equipment
-   WHERE tenant_id = :'tenant_id' AND equipment_number = 'CV-101'
+  SELECT 1 FROM cmms_equipment WHERE equipment_number = 'CV-101'
 );
-
--- Backfill uns_path if the row pre-exists without one (same idempotent shape
--- as garage-cv101-kg-bridge.sql).
-UPDATE cmms_equipment
-   SET uns_path = 'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree
- WHERE tenant_id = :'tenant_id'
-   AND equipment_number = 'CV-101'
-   AND uns_path IS NULL;
 
 COMMIT;
