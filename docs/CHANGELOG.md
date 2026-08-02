@@ -1,4 +1,4 @@
-### v3.241.2 (2026-08-02) - fix(relay): the FactoryLM publisher validates the ingest RESULT, not the HTTP status
+### v3.242.2 (2026-08-02) - fix(relay): the FactoryLM publisher validates the ingest RESULT, not the HTTP status
 
 Closes #3063. PR 3 (#3059) landed the transport; it reported success on a 2xx and never read the response body.
 
@@ -11,6 +11,10 @@ The publisher now holds the relay to the batch it sent — `accepted == len(tags
 One test-side repair worth naming: the new tests shadowed the pre-existing `_FakeResponse`, so `_FakeResponse(200)` silently became `payload=200` and broke the HMAC round-trip test. Renamed, and the original stub now carries a real `accepted`/`rejected` body — because a stub that returns a bare 200 no longer models a delivered push.
 
 `mira-relay` **226 passed on main → 232 here (+6), zero regressions**; `tests/test_architecture.py` 13 passed (Contract 5 green — no pipeline fork). Fail-open behaviour is unchanged: publishing still never raises into a diagnosis path.
+
+### v3.242.1 (2026-08-02) - test(spine): PRD #3048 PR 5 — controlled integration proof harness + runbook
+
+The verification slice of the machine-evidence handoff. `tests/integration/test_machine_evidence_proof.py` chains the REAL merged modules in one process — shared fixture → `snapshot_to_ingest_batch` (PR 3) → fail-closed `ingest_batch` seeded from the real `approved_tags_factorylm_conv_simple.sql` → PR 1 adapter → `augment_with_live` → one `manifest_of` — covering all seven PRD proof points: canonical snapshot, ingress accept (`accepted==7 AND rejected==[]`, plus the unseeded-allowlist loud-failure pin), overlay build, prompt/manifest agreement (deterministic hash, changes only when context changes), served read-back, fail-safe controls (malformed/wrong-tenant/wrong-source/HMAC/stale), and no-write sweeps. With PR 4 (#3061) now on main the three served-path cases run un-skipped: 23/23. Runbook `docs/runbooks/factorylm-machine-evidence-integration-proof.md` carries the proof matrix, the dependency table, the supervised staging live-probe procedure (seed → flags → bench HMAC publish → persistence check → cited answer → control cases), and the deltas the proof must not paper over (identity-strict served-path reader, dual freshness vocabularies). Nothing here is "production proven" — the live probe is gated on Mike supervising.
 
 ### v3.242.0 (2026-08-02) - feat(spine): FactoryLM live machine-state serving path (PRD #3048, PR 4)
 
