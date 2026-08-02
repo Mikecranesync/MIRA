@@ -553,6 +553,14 @@ def overlay_from_factorylm_snapshot(
     if not isinstance(raw_tags, list):
         violations.append("tags:not_a_list")
         raw_tags = []
+    elif not raw_tags:
+        # Parity with the FactoryLM producer's ``validate_envelope``, which
+        # already rejects this ("tags must be a non-empty list"). Accepting it
+        # here built an overlay with ZERO tags that still asserted
+        # ``machine_state`` — a live block claiming e.g. "running" with no
+        # evidence behind it. The producer being stricter than the consumer is
+        # backwards: the consumer is the side facing untrusted input.
+        violations.append("tags:empty")
     for t in raw_tags:
         # Structural malformation (non-dict, or no canonical tag_path) is a
         # validation failure — never a silently remapped tag.
