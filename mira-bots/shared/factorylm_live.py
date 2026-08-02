@@ -10,10 +10,12 @@ from it — it never threads the accepted snapshot through from the ingress.
 
 Consequences honored here (PRD PR-4, amended 2026-08-02):
 
-- **Freshness comes from the stored row, never ``now()``.** ``observed_at`` is the
-  absolute ``last_seen_at`` timestamp verbatim, and the freshness band is the
-  ``freshness_status`` the relay computed at ingest — so two reads of the same
-  cache rows produce a byte-identical overlay (and a stable manifest hash).
+- **Freshness comes from the stored cache row, never ``now()``.** The source
+  observation timestamp comes from the matching append-only
+  ``tag_events.event_timestamp`` row; ``live_signal_cache.last_seen_at`` is
+  deliberately a server-receipt timestamp and must not be presented as when a
+  PLC observation occurred. The freshness band remains the relay-computed
+  ``freshness_status`` from the cache.
 - **A stale row maps to ``STALE``, never dropped silently.**
 - **A ``simulated`` row is never presented as real telemetry** — it maps to
   ``SIMULATED`` regardless of its freshness band (same rule as PR-1's
@@ -26,6 +28,7 @@ the ``ctx_enrichment.fetch_ctx_approved_signals`` engine-enrichment shape
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any
@@ -35,6 +38,12 @@ logger = logging.getLogger("mira-gsd")
 # Bound the read like the other enrichment SELECTs — one asset's live tags, not a
 # whole plant. The overlay records the truncation via ``dropped_tag_count``.
 _TAG_LIMIT = 64
+
+# These wire values are shared with ``mira-relay/factorylm_snapshot.py``. The
+# relay package is deployed as a separate service and is not importable here, so
+# the serving reader keeps the transport contract explicit at its DB boundary.
+_FACTORYLM_SNAPSHOT_SCHEMA = "factorylm.machine-snapshot.v1"
+_FACTORYLM_SOURCE_SYSTEM = "plc_bridge"
 
 
 def _display_value(text: Any, numeric: Any, boolean: Any) -> Any:
@@ -64,6 +73,69 @@ def _freshness_for(status: str | None, *, simulated: bool) -> str:
     return "unknown"
 
 
+def _snapshot_evidence(
+    properties: Any,
+) -> tuple[tuple[str, str, str, str, tuple[str, ...]], str, list[str]] | None:
+    """Validate the persisted snapshot metadata and return its identity + state.
+
+    Every cache row produced from one FactoryLM snapshot carries the same
+    ``metadata.factorylm_snapshot`` object. Requiring that identity before
+    building an overlay prevents a state claim from one snapshot being combined
+    with tags from another (or from generic PLC cache rows).
+    """
+    if isinstance(properties, (str, bytes, bytearray)):
+        try:
+            properties = json.loads(properties)
+        except (TypeError, json.JSONDecodeError):
+            return None
+    if not isinstance(properties, dict):
+        return None
+    snapshot = properties.get("factorylm_snapshot")
+    if not isinstance(snapshot, dict):
+        return None
+
+    schema = snapshot.get("schema_version")
+    snapshot_id = snapshot.get("snapshot_id")
+    captured_at = snapshot.get("captured_at")
+    machine_state = snapshot.get("machine_state")
+    active_conditions = snapshot.get("active_conditions")
+    if (
+        schema != _FACTORYLM_SNAPSHOT_SCHEMA
+        or not isinstance(snapshot_id, str)
+        or not snapshot_id.strip()
+        or not isinstance(captured_at, str)
+        or not captured_at.strip()
+        or not isinstance(machine_state, str)
+        or not machine_state.strip()
+        or not isinstance(active_conditions, list)
+        or any(not isinstance(condition, str) for condition in active_conditions)
+    ):
+        return None
+
+    normalized_conditions = [condition.strip() for condition in active_conditions]
+    if any(not condition for condition in normalized_conditions):
+        return None
+    normalized_state = machine_state.strip().lower()
+    identity = (
+        schema,
+        snapshot_id.strip(),
+        captured_at.strip(),
+        normalized_state,
+        tuple(normalized_conditions),
+    )
+    return identity, normalized_state, normalized_conditions
+
+
+def _timestamp_text(value: Any) -> str | None:
+    """Keep an already-stored source timestamp verbatim enough for the contract."""
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    text = str(value).strip()
+    return text or None
+
+
 def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
     """Build a ``LiveStateOverlay`` from ``live_signal_cache`` rows. Pure + deterministic.
 
@@ -71,9 +143,10 @@ def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
     ``None`` when there are no rows (no asset-specific live evidence this turn) or
     the contract package is unavailable. Tags are sorted by ``tag_path`` so the
     overlay — and therefore the manifest hash — is identical for the same rows
-    regardless of read order. ``machine_state`` stays ``"unknown"`` and
-    ``active_conditions`` empty: the per-tag cache does not carry a snapshot-level
-    machine state, and inventing one would be ungrounded.
+    regardless of read order. A row must retain v1 FactoryLM snapshot metadata
+    and a matching source ``event_timestamp``; otherwise the reader fails open
+    by returning ``None`` rather than relabeling generic cache data as FactoryLM
+    evidence. All rows must agree on the same persisted snapshot identity.
     """
     if not rows:
         return None
@@ -88,6 +161,15 @@ def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
         return None
 
     ordered = sorted(rows, key=lambda r: str(r.get("tag_path") or ""))
+    snapshot_parts = [_snapshot_evidence(row.get("properties")) for row in ordered]
+    if not snapshot_parts or any(part is None for part in snapshot_parts):
+        return None
+    first_identity, machine_state, active_conditions = snapshot_parts[0]
+    if any(part[0] != first_identity for part in snapshot_parts[1:]):
+        return None
+    if any(not _timestamp_text(row.get("event_timestamp")) for row in ordered):
+        return None
+
     kept = ordered[:_TAG_LIMIT]
     dropped = max(0, len(ordered) - len(kept))
 
@@ -96,12 +178,7 @@ def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
     for r in kept:
         simulated = bool(r.get("simulated"))
         fresh_value = _freshness_for(r.get("freshness_status"), simulated=simulated)
-        observed = r.get("last_seen_at")
-        observed_at = (
-            observed.isoformat()
-            if hasattr(observed, "isoformat")
-            else (str(observed) if observed is not None else None)
-        )
+        observed_at = _timestamp_text(r.get("event_timestamp"))
         tags.append(
             LiveTag(
                 tag_path=str(r.get("tag_path") or ""),
@@ -116,11 +193,11 @@ def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
         summary[fresh_value] = summary.get(fresh_value, 0) + 1
 
     return LiveStateOverlay(
-        machine_state="unknown",
+        machine_state=machine_state,
         freshness_summary=summary,
         tags=tags,
         dropped_tag_count=dropped,
-        active_conditions=[],
+        active_conditions=active_conditions,
     )
 
 
@@ -146,21 +223,44 @@ def fetch_live_signal_cache(tenant_id: str, ltree_prefix: str) -> list[dict[str,
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT plc_tag,
-                           last_value_text,
-                           last_value_numeric,
-                           last_value_bool,
-                           last_seen_at,
-                           latest_quality,
-                           freshness_status,
-                           simulated
-                      FROM live_signal_cache
-                     WHERE tenant_id = %s::uuid
-                       AND uns_path <@ %s::ltree
+                    SELECT c.plc_tag,
+                           c.last_value_text,
+                           c.last_value_numeric,
+                           c.last_value_bool,
+                           c.last_seen_at,
+                           c.latest_quality,
+                           c.freshness_status,
+                           c.simulated,
+                           c.properties,
+                           source_event.event_timestamp
+                      FROM live_signal_cache AS c
+                 LEFT JOIN LATERAL (
+                           SELECT e.event_timestamp
+                             FROM tag_events AS e
+                            WHERE e.tenant_id = c.tenant_id
+                              AND e.tag_path = c.plc_tag
+                              AND e.uns_path = c.uns_path
+                              AND e.source_system = c.source_system
+                              AND (e.metadata -> 'factorylm_snapshot' ->> 'snapshot_id')
+                                  = (c.properties -> 'factorylm_snapshot' ->> 'snapshot_id')
+                            ORDER BY e.ingested_at DESC, e.event_timestamp DESC
+                            LIMIT 1
+                 ) AS source_event ON TRUE
+                     WHERE c.tenant_id = %s::uuid
+                       AND c.uns_path <@ %s::ltree
+                       AND c.source_system = %s
+                       AND c.properties ? 'factorylm_snapshot'
+                       AND c.properties -> 'factorylm_snapshot' ->> 'schema_version' = %s
                      ORDER BY plc_tag
                      LIMIT %s
                     """,
-                    (tenant_id, ltree_prefix, _TAG_LIMIT),
+                    (
+                        tenant_id,
+                        ltree_prefix,
+                        _FACTORYLM_SOURCE_SYSTEM,
+                        _FACTORYLM_SNAPSHOT_SCHEMA,
+                        _TAG_LIMIT,
+                    ),
                 )
                 rows = cur.fetchall()
         finally:
@@ -175,6 +275,8 @@ def fetch_live_signal_cache(tenant_id: str, ltree_prefix: str) -> list[dict[str,
                 "latest_quality": latest_quality,
                 "freshness_status": freshness_status,
                 "simulated": simulated,
+                "properties": properties,
+                "event_timestamp": event_timestamp,
             }
             for (
                 plc_tag,
@@ -185,6 +287,8 @@ def fetch_live_signal_cache(tenant_id: str, ltree_prefix: str) -> list[dict[str,
                 latest_quality,
                 freshness_status,
                 simulated,
+                properties,
+                event_timestamp,
             ) in rows
         ]
     except Exception as exc:  # noqa: BLE001 — enrichment must never block diagnosis

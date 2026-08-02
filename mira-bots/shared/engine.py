@@ -4370,6 +4370,11 @@ class Supervisor:
         asset = (state.get("asset_identified") or "").strip()
         if not asset:
             return None
+        context = state.get("context") or {}
+        uns_context = context.get("uns_context") if isinstance(context, dict) else None
+        uns_path = uns_context.get("uns_path") if isinstance(uns_context, dict) else None
+        if not isinstance(uns_path, str) or not uns_path.strip():
+            return None
         try:
             from .technician_context import contract_enabled
 
@@ -4382,10 +4387,11 @@ class Supervisor:
 
             from .factorylm_live import fetch_live_signal_cache, overlay_from_cache_rows
 
-            uns_path = resolve_uns_path(asset).uns_path
-            if not uns_path:
-                return None
-            ltree_prefix = uns_path.replace("/", ".")
+            # ``state["context"]["uns_context"]`` is the confirmed identity the
+            # turn context and manifest already carry. Do not re-resolve a display
+            # label here: that can produce a knowledge-taxonomy path (or none)
+            # instead of the physical asset subtree the relay allowlist bound.
+            ltree_prefix = uns_path.strip().replace("/", ".")
             rows = await asyncio.wait_for(
                 asyncio.to_thread(fetch_live_signal_cache, tenant_id, ltree_prefix),
                 timeout=_FACTORYLM_LIVE_TIMEOUT_S,

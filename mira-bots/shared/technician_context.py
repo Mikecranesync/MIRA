@@ -346,7 +346,7 @@ def live_prompt_block(overlay: Any) -> str:
         live_lines = [
             ln
             for ln in rendered.splitlines()
-            if ln.startswith(("[machine_state", "[live_tag", "[note:"))
+            if ln.startswith(("[machine_state", "[active_condition", "[live_tag", "[note:"))
         ]
     except Exception as exc:  # noqa: BLE001 — rendering must never fail a turn
         logger.warning("LIVE_CONTEXT_RENDER_FAILED: %s", exc)

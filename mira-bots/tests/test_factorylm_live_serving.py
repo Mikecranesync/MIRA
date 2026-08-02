@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime
 import os
 import sys
+import types
 import unittest.mock
 
 os.environ.setdefault("OPENWEBUI_BASE_URL", "http://localhost:8080")
@@ -38,6 +39,7 @@ for _mod in ("PIL", "PIL.Image", "slack_sdk", "slack_sdk.web.async_client", "sla
 
 from shared.factorylm_live import (  # noqa: E402
     _freshness_for,
+    fetch_live_signal_cache,
     overlay_from_cache_rows,
 )
 from shared.technician_context import (  # noqa: E402
@@ -51,6 +53,20 @@ TENANT = "staging"
 
 # A fixed observation time — the whole point is that nothing here reads now().
 _T0 = datetime.datetime(2026, 8, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+_SOURCE_T0 = datetime.datetime(2026, 8, 1, 11, 59, 30, tzinfo=datetime.timezone.utc)
+
+
+def _snapshot_metadata(**overrides):
+    """The snapshot-scoped metadata PR 3 persists on every cache row."""
+    meta = {
+        "schema_version": "factorylm.machine-snapshot.v1",
+        "snapshot_id": "b0f4e2a1-3c5d-4e6f-8a90-1b2c3d4e5f60",
+        "captured_at": _T0.isoformat(),
+        "machine_state": "faulted",
+        "active_conditions": ["fault_code_active"],
+    }
+    meta.update(overrides)
+    return meta
 
 
 def _rows(**overrides):
@@ -65,6 +81,8 @@ def _rows(**overrides):
             "latest_quality": "good",
             "freshness_status": "live",
             "simulated": False,
+            "properties": {"factorylm_snapshot": _snapshot_metadata()},
+            "event_timestamp": _SOURCE_T0,
         },
         {
             "tag_path": "conv_simple.run_state",
@@ -75,6 +93,8 @@ def _rows(**overrides):
             "latest_quality": "good",
             "freshness_status": "live",
             "simulated": False,
+            "properties": {"factorylm_snapshot": _snapshot_metadata()},
+            "event_timestamp": _SOURCE_T0,
         },
     ]
     for r in base:
@@ -102,19 +122,22 @@ def test_unknown_band_never_upgraded():
 # --- the pure overlay builder ---------------------------------------------------
 
 
-def test_overlay_maps_tags_quality_freshness_and_absolute_timestamp():
+def test_overlay_preserves_snapshot_state_and_source_timestamp():
     overlay = overlay_from_cache_rows(_rows())
     assert overlay is not None
-    assert overlay.machine_state == "unknown"  # cache has no snapshot-level state
-    assert overlay.active_conditions == []
+    # PR 3 persisted these under properties.factorylm_snapshot. Losing them would
+    # make a real fault look like an unknown state even with healthy cache tags.
+    assert overlay.machine_state == "faulted"
+    assert overlay.active_conditions == ["fault_code_active"]
     tags = {t.tag_path: t for t in overlay.tags}
     assert set(tags) == {"conv_simple.vfd_speed_hz", "conv_simple.run_state"}
     spd = tags["conv_simple.vfd_speed_hz"]
     assert spd.value == 42.5
     assert spd.quality == "good"
     assert spd.freshness.value == "live"
-    # observed_at is the STORED timestamp verbatim (absolute), not a read-time delta
-    assert spd.observed_at == _T0.isoformat()
+    # observed_at is the source event time from tag_events, not cache receipt time.
+    assert spd.observed_at == _SOURCE_T0.isoformat()
+    assert spd.observed_at != _T0.isoformat()
     assert overlay.freshness_summary == {"live": 2}
 
 
@@ -134,6 +157,30 @@ def test_overlay_is_deterministic_regardless_of_row_order():
     backward = overlay_from_cache_rows(reversed_rows)
     # byte-identical serialization → identical manifest contribution
     assert forward.to_dict() == backward.to_dict()
+
+
+def test_overlay_rejects_mixed_snapshot_cache_rows():
+    """A state claim cannot be combined with tags from a different snapshot."""
+    rows = _rows()
+    rows[1]["properties"]["factorylm_snapshot"] = _snapshot_metadata(snapshot_id="other-snapshot")
+
+    assert overlay_from_cache_rows(rows) is None
+
+
+def test_overlay_rejects_cache_rows_without_factorylm_snapshot_metadata():
+    """A generic PLC row must never be relabeled as FactoryLM evidence."""
+    rows = _rows()
+    rows[0]["properties"] = {}
+
+    assert overlay_from_cache_rows(rows) is None
+
+
+def test_overlay_rejects_rows_without_a_source_event_timestamp():
+    """Cache receipt time is not a safe substitute for a source observation time."""
+    rows = _rows()
+    rows[0]["event_timestamp"] = None
+
+    assert overlay_from_cache_rows(rows) is None
 
 
 # --- lockstep: prompt AND manifest carry the SAME overlay -----------------------
@@ -165,7 +212,10 @@ def test_fold_puts_the_same_overlay_in_prompt_and_manifest():
 def test_live_block_is_not_the_legacy_equipment_status_block():
     block = live_prompt_block(overlay_from_cache_rows(_rows()))
     assert "LIVE MACHINE STATE" in block
+    assert "[machine_state: faulted" in block
+    assert "[active_condition: fault_code_active]" in block
     assert "[live_tag conv_simple.run_state" in block
+    assert _SOURCE_T0.isoformat() in block
     # the dedup contract: this is NOT the legacy fault-detective block
     assert "LIVE EQUIPMENT STATUS" not in block
 
@@ -219,7 +269,7 @@ def test_readback_returns_none_without_a_confirmed_asset():
     assert out2 is None
 
 
-def test_readback_scopes_to_the_turns_asset_subtree():
+def test_readback_scopes_to_the_turns_established_asset_subtree():
     captured = {}
 
     def _fake_fetch(tenant_id, ltree_prefix):
@@ -227,15 +277,87 @@ def test_readback_scopes_to_the_turns_asset_subtree():
         captured["prefix"] = ltree_prefix
         return _rows()
 
-    fake_uns = unittest.mock.MagicMock(uns_path="enterprise.site1.line1.conv_simple")
     with (
         unittest.mock.patch("shared.factorylm_live.fetch_live_signal_cache", _fake_fetch),
-        unittest.mock.patch.object(engine, "resolve_uns_path", return_value=fake_uns),
+        unittest.mock.patch.object(engine, "resolve_uns_path") as resolve,
     ):
-        out = _call_overlay({"asset_identified": "CV-101"}, TENANT, flag=True)
+        out = _call_overlay(
+            {
+                "asset_identified": "CV-101",
+                "context": {"uns_context": {"uns_path": "enterprise.site1.line1.conv_simple"}},
+            },
+            TENANT,
+            flag=True,
+        )
 
     assert out is not None
     assert len(out.tags) == 2
-    # scoped to the resolved asset subtree, and to the caller's tenant
+    # Use the same persisted turn identity that TechnicianContext carries. A
+    # display-name re-resolution can only produce a KB taxonomy path (or none),
+    # not the confirmed physical asset that the relay allowlist bound.
+    resolve.assert_not_called()
+    # scoped to the established asset subtree, and to the caller's tenant
     assert captured["prefix"] == "enterprise.site1.line1.conv_simple"
     assert captured["tenant"] == TENANT
+
+
+def test_cache_readback_queries_only_v1_factorylm_rows_and_keeps_event_time():
+    """The database boundary must not relabel arbitrary PLC cache rows as FactoryLM."""
+
+    class _Cursor:
+        def __init__(self):
+            self.query = ""
+            self.params = ()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, query, params):
+            self.query = query
+            self.params = params
+
+        def fetchall(self):
+            return [
+                (
+                    "conv_simple.motor_run",
+                    None,
+                    None,
+                    True,
+                    _T0,
+                    "good",
+                    "live",
+                    False,
+                    {"factorylm_snapshot": _snapshot_metadata()},
+                    _SOURCE_T0,
+                )
+            ]
+
+    class _Connection:
+        def __init__(self):
+            self.cursor_obj = _Cursor()
+            self.closed = False
+
+        def cursor(self):
+            return self.cursor_obj
+
+        def close(self):
+            self.closed = True
+
+    connection = _Connection()
+    fake_psycopg2 = types.SimpleNamespace(connect=lambda _url: connection)
+    with (
+        unittest.mock.patch.dict(os.environ, {"NEON_DATABASE_URL": "postgres://test"}),
+        unittest.mock.patch.dict(sys.modules, {"psycopg2": fake_psycopg2}),
+    ):
+        rows = fetch_live_signal_cache(TENANT, "enterprise.site1.line1.conv_simple")
+
+    assert connection.closed is True
+    assert rows[0]["event_timestamp"] == _SOURCE_T0
+    assert rows[0]["properties"]["factorylm_snapshot"]["machine_state"] == "faulted"
+    assert "properties ? 'factorylm_snapshot'" in connection.cursor_obj.query
+    assert "tag_events" in connection.cursor_obj.query
+    assert "event_timestamp" in connection.cursor_obj.query
+    assert connection.cursor_obj.params[2:4] == ("plc_bridge", "factorylm.machine-snapshot.v1")
