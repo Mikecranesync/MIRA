@@ -35,10 +35,36 @@ The fix is GitHub's own documented model, which has no shared line:
 
 Two operator steps finish the job:
 
-1. **Remove `Version Bump Check` from `main`'s required status checks** (`main-branch-protection` ruleset). This is an admin action; an agent cannot do it. Until it happens, PRs must still bump `/VERSION` and the conflicts continue.
-2. Optionally delete `/VERSION`, `.github/workflows/version-gate.yml`, and stop hand-editing `docs/CHANGELOG.md` (the Releases page becomes the changelog). Keep the historical `docs/CHANGELOG.md` content as an archive.
+1. ~~**Remove `Version Bump Check` from `main`'s required status checks**~~ — **DONE.** Verified 2026-08-02 against the live API: ruleset `main-branch-protection` (id `17097034`) requires only `staging-gate`, and classic branch protection requires `staging-gate`, `Hub E2E (command-center + onboarding)`, `mira-web pack tests`, `CI Gate`. `Version Bump Check` appears in neither. **A PR that does not bump `/VERSION` cannot be blocked by it.**
+2. Delete `/VERSION`, `.github/workflows/version-gate.yml`, and stop hand-editing `docs/CHANGELOG.md` (the Releases page becomes the changelog). Keep the historical `docs/CHANGELOG.md` content as an archive. **Unblocked — see the sequencing note below.**
 
-Do step 1 first and let a few merges flow before step 2.
+### ⚠️ The transition did NOT play out as the paragraph above predicts
+
+That paragraph assumes `/VERSION` runs **ahead** of the tags, so the floor binds and the two converge on "the first merge where the tags catch up to the file." **The opposite happened: the tags ran ahead of the file.** The floor therefore never binds, both counters advance ~1 per merge independently, and the gap is **stable, not closing**. It will not self-resolve.
+
+Measured on `main`, 2026-08-02 — the tag vs the `/VERSION` at the commit it points to:
+
+| tag | `/VERSION` at that commit | |
+|---|---|---|
+| `v3.235.0` … `v3.237.0` | 3.235.0 … 3.237.0 | ✅ match |
+| **`v3.238.0`** | **3.237.1** | ⚠️ skew starts here (`689c09e8`) |
+| `v3.239.0` | 3.238.0 | skew |
+| `v3.240.0` / `.1` / `.2` | 3.239.0 / 3.239.1 / 3.239.1 | skew |
+| `v3.241.0` / `.1` | 3.240.0 / 3.240.1 | skew |
+| `v3.242.0` / `.1` | 3.241.0 / 3.241.1 | skew |
+| `v3.243.0` / `.1` / `.2` | 3.242.0 / 3.242.1 / 3.242.2 | skew |
+
+(An earlier isolated case, `v3.234.10` → 3.234.4, predates the changeover.)
+
+**Why this matters for incident response.** `rollback/<date>-v<X.Y.Z>` carries the **tag's** number, not the file's. An operator who reads `/VERSION` = `3.242.2` and rolls back to `rollback/2026-08-02-v3.242.2` lands on `ab7190d9` — **two merges earlier than intended**. The checkpoints exist precisely for the moment nobody is re-deriving this mapping by hand, so read the table above, not the file.
+
+**Do not retroactively move the existing tags.** They are referenced in `docs/CHANGELOG.md` entries, in merged PR bodies, and in rollback runbooks. The mapping is recorded here instead.
+
+**Verify by correspondence, not existence.** `git tag --list v3.240.0` returning a hit does **not** mean `v3.240.0` points at the merge that set `/VERSION` to `3.240.0` — during the skewed range it points at the one *before* it. Use `git rev-list -n1 <tag>` and read `VERSION` at that commit.
+
+### Sequencing note for step 2
+
+Step 2 is unblocked but is deliberately **not** a drive-by change: several PRs are open at any time that modify `/VERSION`, and deleting the file turns each of them into a conflict. Drain or land the open queue first, then delete `/VERSION` + `version-gate.yml` in one PR that touches nothing else. Once that lands, the skew question disappears with the file — there is one counter again.
 
 ## Legacy rule (applies only until step 1 above is done)
 
