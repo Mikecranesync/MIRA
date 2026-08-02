@@ -87,7 +87,7 @@ def _one_turn(tenant_id: str, asset: str) -> tuple[bool, str]:
     payload, sha = manifest_of(combined)
     if not payload.get("live") or len(payload["live"]["tags"]) != 7:
         return False, "manifest_missing_live"
-    block = live_prompt_block(combined)
+    block = live_prompt_block(combined.live)
     if not block or "conv_simple.motor_run" not in block:
         return False, "live_block_not_rendered"
     payload2, sha2 = manifest_of(combined)
