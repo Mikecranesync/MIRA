@@ -268,9 +268,13 @@ def to_prompt_block(ctx: TechnicianContext) -> str:
     if ctx.live is not None:
         fs = ", ".join(f"{k}={v}" for k, v in sorted(ctx.live.freshness_summary.items()))
         lines.append(f"[machine_state: {ctx.live.machine_state}; freshness: {fs or 'unknown'}]")
+        for condition in ctx.live.active_conditions:
+            lines.append(f"[active_condition: {condition}]")
         for t in sorted(ctx.live.tags, key=lambda t: t.tag_path):
+            observed_at = f", observed_at {t.observed_at}" if t.observed_at else ""
             lines.append(
-                f"[live_tag {t.tag_path} = {t.value} (quality {t.quality}, {t.freshness.value})]"
+                f"[live_tag {t.tag_path} = {t.value} "
+                f"(quality {t.quality}, {t.freshness.value}{observed_at})]"
             )
         if ctx.live.dropped_tag_count:
             lines.append(f"[note: {ctx.live.dropped_tag_count} additional live tags not shown]")
