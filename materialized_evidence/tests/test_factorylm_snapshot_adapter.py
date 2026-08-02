@@ -112,3 +112,39 @@ def test_adapter_reuses_the_shared_overlay_type_no_writes():
     for forbidden in ("pymodbus", "pycomm3", "requests", "httpx", "socket", "write_register"):
         assert forbidden not in src
     assert "live_overlay_from_machine_packet(packet)" in src  # delegates, not re-implements
+
+
+# ── Empty-tags parity with the FactoryLM producer (review 2026-08-02) ─────────
+
+
+def test_empty_tag_list_is_rejected_not_an_evidence_free_overlay():
+    """An overlay with zero tags would still assert ``machine_state``.
+
+    The FactoryLM producer's ``validate_envelope`` already rejects this
+    ("tags must be a non-empty list"). The consumer accepted it, so a snapshot
+    carrying no evidence at all could still render a live block telling a
+    technician the machine is "running" with nothing behind it — a fabricated
+    plant claim, which is exactly what the grounding rules forbid. The consumer
+    is the side facing untrusted input, so it must be at least as strict as the
+    producer.
+    """
+    snap = _fixture("snapshot_v1_valid.json")
+    snap["tags"] = []
+    overlay, violations = overlay_from_factorylm_snapshot(snap)
+    assert overlay is None
+    assert "tags:empty" in violations
+
+
+def test_missing_tags_key_is_still_not_a_list():
+    snap = _fixture("snapshot_v1_valid.json")
+    del snap["tags"]
+    overlay, violations = overlay_from_factorylm_snapshot(snap)
+    assert overlay is None
+    assert "tags:not_a_list" in violations
+
+
+def test_a_populated_snapshot_is_unaffected_by_the_empty_guard():
+    """Counterfactual: the guard must not reject the real fixture."""
+    overlay, violations = overlay_from_factorylm_snapshot(_fixture("snapshot_v1_valid.json"))
+    assert violations == []
+    assert overlay is not None and len(overlay.tags) == 7
