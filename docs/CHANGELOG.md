@@ -1,3 +1,13 @@
+### v3.242.0 (2026-08-02) - feat(spine): FactoryLM live machine-state serving path (PRD #3048, PR 4)
+
+Wires the read-only FactoryLM live overlay into the ONE technician context path. The snapshot is **read back at turn time** from the persisted state carrier (`live_signal_cache`) for the CONFIRMED asset — never threaded inline from the ingress, since `ingest_batch` persists rather than handing the engine a request-scoped object. Additive and **OFF by default** (`MIRA_FACTORYLM_LIVE`); no behavior change until enabled. Consumes the state PR 3 (v3.241.0) persists.
+
+- **`mira-bots/shared/factorylm_live.py`** — `fetch_live_signal_cache(tenant_id, ltree_prefix)` reads the current cache rows scoped to the asset's UNS subtree (`uns_path <@ ltree`, tenant-scoped) mirroring the `ctx_enrichment` engine-enrichment shape; `overlay_from_cache_rows(rows)` builds a `LiveStateOverlay` — **pure and deterministic**. Freshness/timestamps come from the stored row, never `now()` (`observed_at` is the absolute `last_seen_at`), so two reads of the same rows produce a byte-identical overlay and a stable manifest hash. A `simulated` row maps to `SIMULATED` (never presented as real telemetry); a stale row maps to `STALE` (not dropped).
+- **`Supervisor._build_factorylm_live_overlay`** (engine) reads back the overlay; the serving seam folds it into `turn_ctx` via `augment_with_live` so ONE manifest carries it, and renders the `[LIVE MACHINE STATE (FactoryLM)]` block **only when the fold succeeded** — the prompt can never show live evidence the manifest lacks. When present it **supersedes** the legacy `[LIVE EQUIPMENT STATUS]` block, so the two live paths never contradict.
+- **`technician_context.live_prompt_block(overlay)`** — renders only the live overlay (reusing `to_prompt_block`'s live lines), the prompt counterpart to the manifest-only fold.
+
+Flag-gated and fail-open: any intake/contract error returns an ordinary answer without live evidence. Read-only — a cache row is observation data; no command is executed. Tests: `mira-bots/tests/test_factorylm_live_serving.py` (14: freshness mapping, deterministic builder, prompt/manifest lockstep, dedup, flag-gating, asset-subtree scoping). Regressions green (context_contract 27, technician_context/live/retrieval 54, ws1_engine_wiring 13, materialized_evidence 185, architecture 13, legacy live wiring 15).
+
 ### v3.241.1 (2026-08-02) - fix(contracts): the machine-snapshot boundary is enforced, not just agreed
 
 Two gaps found reviewing the PR 1–3 work of PRD #3048. Both are small; both are the kind that stay invisible until they produce a wrong answer.

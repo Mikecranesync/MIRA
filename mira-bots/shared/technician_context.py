@@ -295,3 +295,58 @@ def prompt_block(ctx: Any) -> str:
         logger.warning("CONTEXT_CONTRACT_RENDER_FAILED: %s", exc)
         return ""
     return _PROMPT_PREAMBLE + body + _PROMPT_EPILOGUE
+
+
+_LIVE_PREAMBLE = (
+    "\n\n--- LIVE MACHINE STATE (FactoryLM, read-only observation) ---\n"
+    "Current PLC/tag readings for this asset, with freshness and quality. "
+    "Simulated or stale readings are labelled — weigh them accordingly and cite "
+    "the timestamp when you rely on one.\n"
+)
+_LIVE_EPILOGUE = "\n--- END LIVE MACHINE STATE ---\n"
+
+
+def live_prompt_block(overlay: Any) -> str:
+    """Render ONLY the live-state overlay for prompt injection (PRD #3048, PR 4).
+
+    ``prompt_block`` deliberately strips ``live`` from its PRIOR_DECISION
+    projection, so the live overlay reaches the audit manifest (via
+    ``augment_with_live``) but never the prompt. This is the counterpart that
+    puts it in the prompt too — a self-labeled block, in the SAME
+    ``[machine_state ...]`` / ``[live_tag ...]`` shape ``to_prompt_block``
+    renders, so prompt and manifest describe one overlay. Returns "" when there
+    is nothing live to say, so an empty overlay costs zero prompt bytes.
+
+    ``overlay`` is a ``LiveStateOverlay``. Deterministic: tags render sorted by
+    ``tag_path`` (``to_prompt_block``'s ordering), so identical overlays render
+    byte-identically. Never raises.
+    """
+    if overlay is None or not getattr(overlay, "tags", None):
+        return ""
+    if not _imports_ok():
+        return ""
+    try:
+        from materialized_evidence.context_contract import (  # noqa: PLC0415
+            CONTEXT_CONTRACT_VERSION,
+            TaskMode,
+            TechnicianContext,
+            to_prompt_block,
+        )
+
+        # Reuse to_prompt_block's live rendering by projecting an otherwise-empty
+        # context that carries only the overlay — no duplicated render logic.
+        projection = TechnicianContext(
+            contract_version=CONTEXT_CONTRACT_VERSION,
+            task_mode=TaskMode.GENERAL_TROUBLESHOOTING,
+            tenant_id="",
+            environment=os.getenv("MIRA_ENV", "dev"),
+            live=overlay,
+        )
+        rendered = to_prompt_block(projection)
+        live_lines = [ln for ln in rendered.splitlines() if ln.startswith(("[machine_state", "[live_tag", "[note:"))]
+    except Exception as exc:  # noqa: BLE001 — rendering must never fail a turn
+        logger.warning("LIVE_CONTEXT_RENDER_FAILED: %s", exc)
+        return ""
+    if not live_lines:
+        return ""
+    return _LIVE_PREAMBLE + "\n".join(live_lines) + _LIVE_EPILOGUE

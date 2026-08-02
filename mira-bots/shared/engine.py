@@ -488,6 +488,15 @@ _CTX_SIGNALS_TIMEOUT_S = float(os.getenv("MIRA_CTX_SIGNALS_TIMEOUT_S", "3.0"))
 _INTERLOCK_CONTEXT_ENABLED = os.getenv("MIRA_INTERLOCK_CONTEXT_ENABLED", "0") == "1"
 _INTERLOCK_CONTEXT_TIMEOUT_S = float(os.getenv("MIRA_INTERLOCK_CONTEXT_TIMEOUT_S", "3.0"))
 
+# FactoryLM live machine-state overlay (PRD #3048, PR 4; additive, OFF by default).
+# When on AND the context contract is enabled, reads current live_signal_cache
+# state for the CONFIRMED asset back at turn time, folds it into
+# TechnicianContext.live (so one manifest carries it), and renders a [LIVE MACHINE
+# STATE (FactoryLM)] block — suppressing the legacy [LIVE EQUIPMENT STATUS] block
+# so the two live paths never contradict. Read-only; fail-open on any miss.
+_FACTORYLM_LIVE_ENABLED = os.getenv("MIRA_FACTORYLM_LIVE", "0") == "1"
+_FACTORYLM_LIVE_TIMEOUT_S = float(os.getenv("MIRA_FACTORYLM_LIVE_TIMEOUT_S", "3.0"))
+
 # Work-order-history evidence (additive, OFF by default). When on, the diagnosis
 # path recalls recent CMMS work orders for the CONFIRMED asset from the Hub
 # NeonDB (work_orders JOIN cmms_equipment — the store hub_neon.py writes to) and
@@ -4341,6 +4350,50 @@ class Supervisor:
         return "\n--- LIVE EQUIPMENT STATUS ---\n" + "\n".join(lines) + "\n---\n"
 
     # ------------------------------------------------------------------
+    # FactoryLM live machine-state overlay (PRD #3048, PR 4; additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_factorylm_live_overlay(self, state: dict, tenant_id: str | None) -> object | None:
+        """Read current FactoryLM live state for the turn's asset back at answer time.
+
+        Reads ``live_signal_cache`` (the state carrier ``ingest_batch`` persists to
+        — never a request-scoped snapshot threaded from the ingress) for the
+        CONFIRMED asset's UNS subtree and builds a ``LiveStateOverlay``. Returns
+        ``None`` on any miss (flag off, no tenant, no confirmed asset, no rows, DB
+        unreachable, contract unavailable) so the caller renders no live overlay
+        that turn. Never raises — a live read must not change whether the
+        technician gets an answer. Read-only.
+        """
+        if not _FACTORYLM_LIVE_ENABLED or not tenant_id:
+            return None
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return None
+        try:
+            from .technician_context import contract_enabled
+
+            # The overlay only reaches the prompt AND the audit manifest by folding
+            # into the contract's ``turn_ctx``; with the contract off there is no
+            # ctx to fold into, so reading back would be a wasted DB round-trip and
+            # would risk a prompt/manifest mismatch. Gate the whole path under it.
+            if not contract_enabled():
+                return None
+
+            from .factorylm_live import fetch_live_signal_cache, overlay_from_cache_rows
+
+            uns_path = resolve_uns_path(asset).uns_path
+            if not uns_path:
+                return None
+            ltree_prefix = uns_path.replace("/", ".")
+            rows = await asyncio.wait_for(
+                asyncio.to_thread(fetch_live_signal_cache, tenant_id, ltree_prefix),
+                timeout=_FACTORYLM_LIVE_TIMEOUT_S,
+            )
+            return overlay_from_cache_rows(rows)
+        except Exception as exc:  # noqa: BLE001 — enrichment must never block diagnosis
+            logger.debug("FACTORYLM_LIVE miss asset=%r: %s", asset, exc)
+            return None
+
+    # ------------------------------------------------------------------
     # Contextualization-signals enrichment (additive, flag-gated)
     # ------------------------------------------------------------------
     async def _build_ctx_signals_context(self, state: dict, tenant_id: str | None) -> str:
@@ -4576,6 +4629,32 @@ class Supervisor:
         # here so a grounded early-return in the retry loop still re-manifests it
         # with the retrieval family (below). None on flag-off / non-contract turns.
         turn_ctx = state.pop("_turn_ctx", None)
+        # WS1/PR-4 (ADR-0033, PRD #3048) — FactoryLM live machine state, read back
+        # from the state carrier at turn time (never threaded inline from the
+        # ingress). Fold it into ``turn_ctx`` so ONE manifest carries it, and
+        # render the [LIVE MACHINE STATE] block ONLY when the fold succeeded — so
+        # the prompt can never show live evidence the manifest lacks. When present
+        # it SUPERSEDES the legacy [LIVE EQUIPMENT STATUS] block, so the two live
+        # paths never contradict. Fail-open: any miss leaves the turn unchanged.
+        factorylm_live_block = ""
+        factorylm_overlay = await self._build_factorylm_live_overlay(state, tenant_id)
+        if factorylm_overlay is not None and turn_ctx is not None:
+            try:
+                from .technician_context import augment_with_live, live_prompt_block, manifest_of
+
+                combined, _viol = augment_with_live(turn_ctx, factorylm_overlay)
+                if combined is not None:
+                    turn_ctx = combined
+                    _payload, _sha = manifest_of(turn_ctx)
+                    context_manifest = {"manifest": _payload, "sha256": _sha}
+                    factorylm_live_block = live_prompt_block(factorylm_overlay)
+            except Exception as exc:  # noqa: BLE001 — enrichment must never block a reply
+                logger.debug("FACTORYLM_LIVE fold miss: %s", exc)
+        if factorylm_live_block:
+            # Dedup: the FactoryLM overlay is the live source this turn — drop the
+            # legacy fault-detective block so the answer carries no duplicate or
+            # contradictory live-status content.
+            live_context = ""
         extra_context = (
             kg_context
             + live_context
@@ -4583,6 +4662,7 @@ class Supervisor:
             + interlock_context
             + wo_evidence_context
             + prior_decisions_context
+            + factorylm_live_block
         )
 
         for attempt in range(max_attempts):
