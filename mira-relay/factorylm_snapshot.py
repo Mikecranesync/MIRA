@@ -119,6 +119,13 @@ def snapshot_to_ingest_batch(
     raw_tags = snapshot.get("tags")
     if not isinstance(raw_tags, list):
         raise SnapshotContractError("tags:not_a_list")
+    if not raw_tags:
+        # An envelope with no tags is not a publishable batch: ingest_batch
+        # would accept it as a well-formed zero-tag push and report success.
+        # Matches the FactoryLM producer's validate_envelope ("tags must be a
+        # non-empty list") and MIRA's own overlay adapter, which refuses
+        # `tags: []` rather than build an evidence-free overlay (#3063).
+        raise SnapshotContractError("tags:empty")
 
     asset = snapshot.get("asset") or {}
     snapshot_meta = {
@@ -232,10 +239,56 @@ class FactoryLMSnapshotPublisher:
                 timeout=10,
             )
             resp.raise_for_status()
+
+            # A 2xx is NOT evidence the tags landed. `ingest_batch` is
+            # fail-closed on `approved_tags` with no permissive mode, so an
+            # un-seeded allowlist answers **HTTP 200** with `accepted=0` and
+            # every tag in `rejected` — no error anywhere. A publisher that
+            # stopped at `raise_for_status()` reported success while storing
+            # nothing, and the seed shipped in #3059 has been applied to no
+            # environment, so that is the live default rather than a corner
+            # case. Read the result and hold it to the batch we sent (#3063).
+            sent = len(payload["tags"])
+            try:
+                result = resp.json()
+            except Exception as exc:  # noqa: BLE001 — unreadable body != success
+                logger.warning(
+                    "FactoryLMSnapshotPublisher: relay returned %s but the body "
+                    "could not be parsed (%s) — treating as NOT delivered",
+                    getattr(resp, "status_code", "2xx"),
+                    exc,
+                )
+                return False
+
+            accepted = result.get("accepted")
+            rejected = result.get("rejected") or []
+            if accepted != sent or rejected:
+                reasons = sorted(
+                    {
+                        str(r.get("reason", "unknown"))
+                        for r in rejected
+                        if isinstance(r, dict)
+                    }
+                )
+                logger.warning(
+                    "FactoryLMSnapshotPublisher: relay accepted %s of %d tags "
+                    "(%d rejected: %s) for snapshot %s — NOT delivered. "
+                    "`not_allowlisted` means approved_tags is unseeded for this "
+                    "tenant + source_system; see "
+                    "tools/seeds/approved_tags_factorylm_conv_simple.sql",
+                    accepted,
+                    sent,
+                    len(rejected),
+                    ", ".join(reasons) or "no reason given",
+                    snapshot.get("snapshot_id") if isinstance(snapshot, dict) else "?",
+                )
+                return False
+
             logger.debug(
-                "FactoryLMSnapshotPublisher: posted snapshot %s (%d tags)",
+                "FactoryLMSnapshotPublisher: posted snapshot %s (%d/%d tags accepted)",
                 snapshot.get("snapshot_id") if isinstance(snapshot, dict) else "?",
-                len(payload["tags"]),
+                accepted,
+                sent,
             )
             return True
         except SnapshotContractError as exc:

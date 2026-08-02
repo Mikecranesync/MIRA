@@ -1,3 +1,17 @@
+### v3.241.2 (2026-08-02) - fix(relay): the FactoryLM publisher validates the ingest RESULT, not the HTTP status
+
+Closes #3063. PR 3 (#3059) landed the transport; it reported success on a 2xx and never read the response body.
+
+**A 2xx is not evidence the tags landed.** `ingest_batch` is fail-closed on `approved_tags` with no permissive mode, so an un-seeded allowlist answers **HTTP 200** with `accepted=0` and every tag in `rejected` — no exception, no error status, nothing stored. `publish()` called `raise_for_status()` and returned `True`. And the seed shipped in #3059 has been applied to **no environment**, so that is the live default rather than a corner case: every real publish today would report success while storing nothing.
+
+The publisher now holds the relay to the batch it sent — `accepted == len(tags)` **and** `rejected == []` — and on any shortfall logs the accepted-vs-sent counts plus the distinct reject reasons, naming the seed file when the reason is `not_allowlisted`, so an operator gets a pointer rather than a bare `False`. An unparseable 200 body is likewise not success. PR 5's harness already asserted this shape in-process against a test-seeded allowlist (#3062); this puts the same assertion in the code an operator actually runs.
+
+**`tags: []` is refused at decode.** `ingest_batch` would take a zero-tag batch as a well-formed push and report success. Now a `SnapshotContractError`, matching the FactoryLM producer's `validate_envelope` ("tags must be a non-empty list") and MIRA's own overlay adapter, which refuses `tags: []` rather than build an evidence-free overlay (v3.241.1).
+
+One test-side repair worth naming: the new tests shadowed the pre-existing `_FakeResponse`, so `_FakeResponse(200)` silently became `payload=200` and broke the HMAC round-trip test. Renamed, and the original stub now carries a real `accepted`/`rejected` body — because a stub that returns a bare 200 no longer models a delivered push.
+
+`mira-relay` **226 passed on main → 232 here (+6), zero regressions**; `tests/test_architecture.py` 13 passed (Contract 5 green — no pipeline fork). Fail-open behaviour is unchanged: publishing still never raises into a diagnosis path.
+
 ### v3.242.0 (2026-08-02) - feat(spine): FactoryLM live machine-state serving path (PRD #3048, PR 4)
 
 Wires the read-only FactoryLM live overlay into the ONE technician context path. The snapshot is **read back at turn time** from the persisted state carrier (`live_signal_cache`) for the CONFIRMED asset — never threaded inline from the ingress, since `ingest_batch` persists rather than handing the engine a request-scoped object. Additive and **OFF by default** (`MIRA_FACTORYLM_LIVE`); no behavior change until enabled. Consumes the state PR 3 (v3.241.0) persists.

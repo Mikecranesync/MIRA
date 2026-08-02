@@ -309,12 +309,25 @@ def test_duplicate_snapshot_is_deterministic():
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int = 200) -> None:
+    """A relay response stub.
+
+    Carries an `accepted`/`rejected` body because the publisher now VALIDATES
+    the ingest result rather than trusting the status code (#3063) — a bare 200
+    is no longer evidence the tags landed. `accepted` defaults to the full
+    canonical batch so the happy-path tests describe a correctly seeded relay.
+    """
+
+    def __init__(self, status_code: int = 200, accepted: int = 7, rejected=None) -> None:
         self.status_code = status_code
+        self._accepted = accepted
+        self._rejected = rejected or []
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self) -> dict:
+        return {"accepted": self._accepted, "rejected": self._rejected}
 
 
 class _FakeHttpx:
@@ -464,3 +477,102 @@ def test_module_defines_no_canonical_primitive():
     ):
         assert primitive not in src, f"one-pipeline law: {primitive!r} belongs to the contract"
     assert "from ingest_contract import" in src
+
+
+# ── #3063: the publisher must validate the RESULT, not the HTTP status ───────
+
+
+class _StubIngestResponse:
+    def __init__(self, payload, status=200):
+        self._payload = payload
+        self.status_code = status
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._payload
+
+
+def _publisher(monkeypatch, response_payload):
+    """A publisher whose POST returns `response_payload` with HTTP 200."""
+    import httpx
+
+    posted = {}
+
+    def _fake_post(url, **kwargs):
+        posted["url"] = url
+        return _StubIngestResponse(response_payload)
+
+    monkeypatch.setattr(httpx, "post", _fake_post)
+    return FactoryLMSnapshotPublisher("http://relay.test", "staging", api_key="k"), posted
+
+
+def test_unseeded_allowlist_returns_false_despite_http_200(monkeypatch):
+    """THE failure this issue exists for.
+
+    An un-seeded `approved_tags` makes the relay answer **HTTP 200** with
+    `accepted=0` and every tag in `rejected`. Checking only `raise_for_status()`
+    reported success while storing nothing — the feed looked wired and was
+    inert. The seed shipped in #3059 has been applied to no environment, so
+    this is the live default, not a corner case.
+    """
+    snap = _load("snapshot_v1_valid")
+    rejected = [{"tag_path": t["tag_path"], "reason": "not_allowlisted"} for t in snap["tags"]]
+    pub, _ = _publisher(monkeypatch, {"accepted": 0, "rejected": rejected})
+    assert pub.publish(snap) is False
+
+
+def test_partial_acceptance_returns_false(monkeypatch):
+    snap = _load("snapshot_v1_valid")
+    pub, _ = _publisher(
+        monkeypatch,
+        {"accepted": 6, "rejected": [{"tag_path": "conv_simple.comm_ok", "reason": "bad_value_type"}]},
+    )
+    assert pub.publish(snap) is False
+
+
+def test_reject_reasons_are_logged_so_an_operator_can_act(monkeypatch, caplog):
+    snap = _load("snapshot_v1_valid")
+    rejected = [{"tag_path": t["tag_path"], "reason": "not_allowlisted"} for t in snap["tags"]]
+    pub, _ = _publisher(monkeypatch, {"accepted": 0, "rejected": rejected})
+    with caplog.at_level("WARNING"):
+        pub.publish(snap)
+    text = caplog.text
+    assert "not_allowlisted" in text, "the reason must reach the operator, not just a False"
+    assert "0" in text and "7" in text, "accepted-vs-sent counts must be visible"
+
+
+def test_full_acceptance_returns_true(monkeypatch):
+    """Counterfactual — a correctly seeded relay must still succeed."""
+    snap = _load("snapshot_v1_valid")
+    pub, _ = _publisher(monkeypatch, {"accepted": len(snap["tags"]), "rejected": []})
+    assert pub.publish(snap) is True
+
+
+def test_unparseable_response_body_is_not_treated_as_success(monkeypatch):
+    """A 200 whose body we cannot read is not evidence the tags landed."""
+    import httpx
+
+    class _BadJson(_StubIngestResponse):
+        def json(self):
+            raise ValueError("not json")
+
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: _BadJson({}))
+    pub = FactoryLMSnapshotPublisher("http://relay.test", "staging", api_key="k")
+    assert pub.publish(_load("snapshot_v1_valid")) is False
+
+
+def test_empty_tag_list_is_refused_at_decode():
+    """An envelope with no tags is not a publishable batch (#3063).
+
+    Matches the FactoryLM producer's `validate_envelope` ("tags must be a
+    non-empty list") and MIRA's own overlay adapter, which rejects `tags: []`
+    rather than building an evidence-free overlay.
+    """
+    snap = _load("snapshot_v1_valid")
+    snap["tags"] = []
+    with pytest.raises(SnapshotContractError) as exc:
+        snapshot_to_ingest_batch(snap, tenant_id="staging")
+    assert "empty" in str(exc.value)
