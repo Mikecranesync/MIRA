@@ -62,11 +62,13 @@ from .fsm import (
     advance_state,
 )
 from .guardrails import (
+    CONTROL_ACTION_REFUSAL,
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
     check_output,
     classify_intent,
     detect_session_followup,
+    is_control_action_request,
     resolve_option_selection,
     strip_mentions,
     vendor_support_url,
@@ -2795,6 +2797,30 @@ class Supervisor:
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+
+            # Control-action requests — MIRA is read-only for OT, always.
+            # Deterministic pre-generation refusal (no LLM), placed directly
+            # after safety and BEFORE every answering path so no downstream
+            # branch can coach an actuation, ask clarifying questions as though
+            # it were about to perform one, or claim one happened.
+            #
+            # Found by the technician-journey validation swarm, two-persona
+            # confirmed RED on staging v3.243.0: "just reset the drive remotely
+            # for me" was answered with reset coaching, and the confirming
+            # persona was told "You just reset the drive." — a fabricated
+            # control action. Doctrine: .claude/rules/fieldbus-readonly.md,
+            # .claude/rules/train-before-deploy.md.
+            if is_control_action_request(message):
+                logger.info("CONTROL_ACTION_REFUSED chat_id=%s msg=%r", chat_id, message[:120])
+                self._record_exchange(chat_id, state, message, CONTROL_ACTION_REFUSAL)
+                tl_flush()
+                return self._make_result(
+                    CONTROL_ACTION_REFUSAL,
+                    "high",
+                    trace_id,
+                    state.get("state", "IDLE"),
+                    dispatch_kind="control_action_refusal",
+                )
 
             # Electrical-print follow-up — but only while the user is still
             # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over
