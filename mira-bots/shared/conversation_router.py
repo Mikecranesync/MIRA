@@ -40,13 +40,13 @@ Return ONLY a JSON object with these fields:
 }
 
 Intent labels:
-- diagnose_equipment: user is describing a fault, symptom, error code, or asking for troubleshooting
+- diagnose_equipment: user is describing a fault, symptom, error code, asking for troubleshooting, OR asking about the state/status of a specific machine ("what is the current state of the conveyor?", "is the pump running?", "why is the line stopped?") — a state question about a named asset is diagnosis, even with no fault mentioned
 - find_documentation: user wants a manual, datasheet, wiring diagram, installation guide, setup steps, commissioning procedure
 - store_documentation: user wants MIRA to FILE the current turn's photo, schematic, or extraction under a named plant or equipment ("add this to documentation for plant A", "save this to chiller-7", "document this for line 3", "store this for boiler-2")
 - log_work_order: user wants to create, log, or file a work order or maintenance record
 - check_equipment_history: user is asking what happened before with this asset, past work orders, previous fixes
 - switch_asset: user is changing topic to a different machine or equipment ("now help me with the pump")
-- general_question: general industrial knowledge not tied to a specific fault or asset ("what's a VFD?", "explain LOTO")
+- general_question: general industrial knowledge not tied to a specific fault or asset ("what's a VFD?", "explain LOTO") — NEVER when the user names a specific machine or asks about its current state, even without a fault
 - schedule_maintenance: user wants to schedule preventive maintenance, a follow-up check, or a PM task
 - safety_concern: ANY mention of live work, energized equipment, skipping lockout, or dangerous situations — ALWAYS route here regardless of what else they said
 - continue_current: user's message is clearly a direct answer to the last question MIRA asked (e.g., option selection "2", providing a measurement, answering yes/no)
@@ -59,7 +59,8 @@ CRITICAL RULES:
 3. If the diagnostic FSM is active (history shows MIRA asking diagnostic questions), prefer continue_current unless the user CLEARLY changed topic
 4. Don't over-route to clarify_intent — make a decision, even if confidence is moderate
 5. find_documentation covers: manual requests, datasheet lookups, wiring diagrams — the user explicitly wants to FETCH a document ("send me the manual", "do you have the datasheet", "show me the wiring diagram")
-6. answer_question covers: procedural how-to questions the LLM can answer from knowledge — "how do I connect via Ethernet?", "what are the steps to configure the IP?", "give me quick steps to set parameter X" — user wants STEP-BY-STEP INSTRUCTIONS, not a document download"""
+6. answer_question covers: procedural how-to questions the LLM can answer from knowledge — "how do I connect via Ethernet?", "what are the steps to configure the IP?", "give me quick steps to set parameter X" — user wants STEP-BY-STEP INSTRUCTIONS, not a document download
+7. Any question referencing a specific asset, component, PLC tag, or live signal — including its state or status — is asset-specific: route to diagnose_equipment (or check_equipment_history for past events), NEVER general_question. MIRA must confirm the machine location before answering these."""
 
 
 async def route_intent(

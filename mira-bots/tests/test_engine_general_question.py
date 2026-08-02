@@ -463,3 +463,83 @@ def test_message_is_specific_question_basics():
     assert yes("rs485 wiring help") is False
     # Four real words → specific.
     assert yes("rs485 wiring help please") is True
+
+
+# ── asset-state fabrication guard (2026-08-02 live-probe finding) ────────────
+#
+# "What is the current state of my garage conveyor?" fell to branch 5 (bare
+# LLM, no grounding) and FABRICATED a fault + error log for a healthy machine.
+# Branch 4b now refuses plant-state questions deterministically, before any
+# generation.
+
+
+def test_asset_state_question_refuses_without_generating(supervisor):
+    state = _state()
+
+    with patch.object(supervisor, "_record_exchange"), patch.object(
+        supervisor, "_save_state"
+    ):
+        result = asyncio.run(
+            supervisor._handle_general_question(
+                "telegram:1",
+                "What is the current state of my garage conveyor?",
+                state,
+                "trace-1",
+                tenant_id="t1",
+            )
+        )
+
+    reply = result["reply"]
+    assert "won't guess" in reply
+    assert "live data" in reply
+    # No LLM call of any kind — the refusal is pre-generation, so fabrication
+    # is structurally impossible on this branch.
+    supervisor.router.complete.assert_not_called()
+    supervisor.rag.process.assert_not_called()
+    # Marked ungrounded for compliance telemetry, and fingerprinted.
+    assert result.get("_citation_evidence", {}).get("no_kb") is True
+
+
+def test_truly_general_question_still_answers(supervisor):
+    """The refusal must not swallow genuine general questions."""
+    state = _state()
+
+    with patch(
+        "shared.engine.resolve_uns_path",
+        return_value=MagicMock(manufacturer="", model=""),
+    ), patch.object(supervisor, "_record_exchange"), patch.object(
+        supervisor, "_save_state"
+    ):
+        result = asyncio.run(
+            supervisor._handle_general_question(
+                "telegram:1",
+                "what does PID stand for?",
+                state,
+                "trace-1",
+                tenant_id="t1",
+            )
+        )
+
+    supervisor.router.complete.assert_called_once()
+    assert "won't guess" not in result["reply"]
+
+
+def test_asset_state_regexes_match_the_probe_phrasings():
+    from shared.engine import _ASSET_NOUN_RE, _ASSET_STATE_RE
+
+    asset_state = [
+        "What is the current state of my garage conveyor?",
+        "Is the motor running right now?",
+        "why is the conveyor stopped",
+        "status of CV-101",
+        "is the pump down?",
+    ]
+    for msg in asset_state:
+        assert _ASSET_STATE_RE.search(msg), msg
+        assert _ASSET_NOUN_RE.search(msg), msg
+
+    general = ["what's a VFD?", "explain LOTO", "how do I configure the IP?"]
+    for msg in general:
+        assert not (
+            _ASSET_STATE_RE.search(msg) and _ASSET_NOUN_RE.search(msg)
+        ), msg

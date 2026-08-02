@@ -554,6 +554,32 @@ _TAG_QUESTION_RE = re.compile(
 )
 _LIVE_STATUS_HEADER = "[LIVE CONVEYOR STATUS]"
 
+# Asset-state fast-path (2026-08-02, PRD #3048 PR 5 live probe). "What is the
+# current state of my garage conveyor?" was routed general_question with 1.00
+# confidence and answered by a context-free LLM call that FABRICATED a fault.
+# Deterministic pre-routing: a state/status question that names a plant asset
+# is asset-specific troubleshooting (.claude/rules/uns-confirmation-gate.md —
+# "Why is this conveyor stopped?" is the rule's canonical example) and must
+# reach the UNS gate, never the ungrounded general path.
+_ASSET_STATE_RE = re.compile(
+    r"\b(?:"
+    r"current\s+state|state\s+of|status\s+of|current\s+status"
+    r"|how\s+is\b.{0,40}\b(?:doing|running)"
+    r"|is\s+(?:it|the|my)\b.{0,40}\b(?:running|stopped|down|up|off|on|ok|okay"
+    r"|faulted|jammed|healthy|online|offline)"
+    r"|why\s+(?:is|did)\b.{0,40}\b(?:stopp?e?d?|down|not\s+running|off|fault)"
+    r"|running\s+right\s+now"
+    r")\b",
+    re.IGNORECASE,
+)
+_ASSET_NOUN_RE = re.compile(
+    r"\b(?:conveyor|pump|mixer|compressor|boiler|chiller|motor|drive|vfd|plc"
+    r"|robot|press|oven|gearbox|palletizer|filler|capper|labeler|fan|blower"
+    r"|machine|line|cell|station|equipment|asset)\b"
+    r"|\b[a-z]{2,4}[-_]\d{2,4}\b",
+    re.IGNORECASE,
+)
+
 # Q1 length trim (2026-06-06 follow-up to PR #1754 / #1755). The gate-bypass
 # at _apply_quality_gate trusts the LLM output for any reply > 80 chars that
 # carries the live-tag header. That landed Q1 grounded but at ~165 words,
@@ -2621,6 +2647,28 @@ class Supervisor:
                     "off_topic": "general_question",
                 }.get(_keyword_intent, "continue_current")
 
+            # Asset-state override — deterministic, mirrors the tag-query
+            # fast-path precedent (2026-06-06). A state/status question naming
+            # a plant asset is asset-specific per the UNS-gate rule; the LLM
+            # router labels it general_question, which dispatches BEFORE the
+            # gate and answers with an ungrounded LLM call (2026-08-02 probe:
+            # fabricated fault for a healthy machine). Force the gated path.
+            # Safety still wins below — this only rewrites non-safety labels.
+            _asset_state_hit = bool(
+                _ASSET_STATE_RE.search(message) and _ASSET_NOUN_RE.search(message)
+            )
+            if _asset_state_hit and _router_intent in (
+                "general_question",
+                "answer_question",
+                "clarify_intent",
+            ):
+                logger.info(
+                    "ASSET_STATE_FAST_PATH override %s -> diagnose_equipment chat_id=%s",
+                    _router_intent,
+                    chat_id,
+                )
+                _router_intent = "diagnose_equipment"
+
             # Safety ALWAYS wins — router or keyword classifier, either triggers it.
             intent = _keyword_intent  # keep for downstream legacy gates
             if _router_intent == "safety_concern" or _keyword_intent == "safety":
@@ -2825,7 +2873,11 @@ class Supervisor:
             # Require confidence > 0: truly vague messages (no vendor/model/fault
             # detected) should not trigger the gate — the bot asks Q1 clarifiers
             # instead. Gate fires when we have at least a partial context to confirm.
-            if uns_ctx.confidence > 0 and self._should_fire_uns_gate(
+            # The asset-state fast-path is an independent deterministic signal:
+            # resolver confidence is manufacturer/model/fault-only, so a
+            # vendorless asset mention ("my garage conveyor") scores 0.0 — yet
+            # the question IS asset-specific and must confirm location.
+            if (uns_ctx.confidence > 0 or _asset_state_hit) and self._should_fire_uns_gate(
                 _router_intent, state, message, sc
             ):
                 return await self._handle_uns_confirmation_request(
@@ -5215,7 +5267,11 @@ class Supervisor:
     _INDUSTRIAL_HINTS_RE = re.compile(
         r"\b(vfd|plc|hmi|scada|motor|fault|alarm|trip|modbus|profinet|"
         r"ethernet/?ip|cip|rs[\- ]?485|rs[\- ]?232|contactor|relay|servo|"
-        r"encoder|nameplate|drive|f\d{2,4}|e\d{2,4}|oc\b|ol\b)\b",
+        r"encoder|nameplate|drive|f\d{2,4}|e\d{2,4}|oc\b|ol\b|"
+        # plant-equipment nouns (2026-08-02 probe: "garage conveyor" matched
+        # nothing here and fell to the ungrounded branch 5)
+        r"conveyor|pump|compressor|gearbox|mixer|boiler|chiller|robot|press|"
+        r"oven|palletizer|filler|capper|labeler)\b",
         re.IGNORECASE,
     )
 
@@ -5396,6 +5452,41 @@ class Supervisor:
                 model_override=model,
             )
 
+        # 3b) Live plant-state question with no live data on this turn — refuse
+        # deterministically BEFORE any generation (fast-path rule: citation or
+        # refusal, never a generic LLM fallback). The 2026-08-02 probe caught
+        # branch 5 fabricating a fault + "error log" for a healthy machine: an
+        # LLM with no evidence channel must never describe a machine's current
+        # condition ("Never pretend to know plant context without evidence").
+        if _ASSET_STATE_RE.search(message):
+            reply = self._format_simple_response(
+                "I don't have live data for that machine on this turn, so I "
+                "can't tell you its current state — and I won't guess. Tell me "
+                "which machine you're at (asset tag or name) and I'll pull its "
+                "live state, or scan its QR code to connect me to it directly."
+                "\n\n[Source: no live machine data was available for this turn]",
+                suggestions=[
+                    "Diagnose a specific machine",
+                    "Check live tags",
+                    "Log a work order",
+                ],
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(
+                reply,
+                "high",
+                trace_id,
+                state.get("state", "IDLE"),
+                dispatch_kind="asset_state_refusal",
+                citation_evidence={
+                    "kb_status": {"status": "none"},
+                    "chunks": [],
+                    "sources": [],
+                    "no_kb": True,
+                },
+            )
+
         # 4) Industrial-flavored question with no resolvable vendor → ask.
         looks_industrial = bool(self._INDUSTRIAL_HINTS_RE.search(message))
         if looks_industrial and not asset:
@@ -5440,7 +5531,11 @@ class Supervisor:
             "You are MIRA, an industrial maintenance assistant."
             f"{asset_ctx}{disclosure} "
             "Answer the technician's question concisely and accurately, using "
-            "the conversation history for context. Keep it under 120 words."
+            "the conversation history for context. Keep it under 120 words. "
+            "You have NO live connection to any plant equipment on this path: "
+            "never describe a specific machine's current condition, state, "
+            "faults, error logs, or diagnostics you have not been shown — if "
+            "asked, say plainly that you don't have live data for it."
         )
         try:
             raw = await self._call_llm_direct(message, system=system, history=history)
@@ -5458,8 +5553,19 @@ class Supervisor:
         )
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
+        # Observability (probe follow-up): mark this reply as ungrounded in the
+        # compliance telemetry instead of invisible — no behavior change.
         return self._make_result(
-            reply, self._infer_confidence(raw), trace_id, state.get("state", "IDLE")
+            reply,
+            self._infer_confidence(raw),
+            trace_id,
+            state.get("state", "IDLE"),
+            citation_evidence={
+                "kb_status": {"status": "none"},
+                "chunks": [],
+                "sources": [],
+                "no_kb": True,
+            },
         )
 
     async def _handle_multi_vendor_question(
