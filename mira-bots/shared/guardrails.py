@@ -69,6 +69,17 @@ SAFETY_KEYWORDS = [
     "cut power",
     "disconnect power",
     "disconnect the power",
+    # Active-incident phrasings found missing by the routing gauntlet
+    # (2026-08-02, tier-1 keyword sweep): burning smell, electric-shock
+    # incident, smoke sighted, equipment explosion, live-work permission ask.
+    "smell burning",
+    "burning smell",
+    "smells like burning",
+    "smoke coming",
+    "got shocked",
+    "getting shocked",
+    "exploded",
+    "safe to work",
 ]
 
 # Phrases that describe an *active*, observable hazard — never educational.
@@ -100,6 +111,17 @@ SAFETY_KEYWORDS_IMMEDIATE = frozenset(
         # Active electrical arc/spark observations — never educational
         "arcing",
         "is arcing",
+        # Active incidents (routing gauntlet 2026-08-02) — never educational
+        "smell burning",
+        "burning smell",
+        "smoke coming",
+        "got shocked",
+        "just exploded",
+        # Live-work permission ask ("is it safe to work on this live?") —
+        # the "is it" opener matches _EDUCATIONAL_QUESTION_RE, but asking
+        # permission to touch live equipment is exactly when MIRA must STOP,
+        # not educate.
+        "safe to work",
     ]
 )
 

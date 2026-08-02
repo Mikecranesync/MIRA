@@ -564,7 +564,9 @@ _LIVE_STATUS_HEADER = "[LIVE CONVEYOR STATUS]"
 # reach the UNS gate, never the ungrounded general path.
 _ASSET_STATE_RE = re.compile(
     r"\b(?:"
-    r"current\s+state|state\s+of|status\s+of|current\s+status"
+    r"current\s+state|state\s+of|status\s+of|current\s+status|\bstatus\b"
+    r"|what\s+state\s+is"
+    r"|(?:anything|something|what(?:'s|\s+is)?)\s+wrong\s+with"
     r"|how\s+is\b.{0,40}\b(?:doing|running)"
     r"|is\s+(?:it|the|my)\b.{0,40}\b(?:running|stopped|down|up|off|on|ok|okay"
     r"|faulted|jammed|healthy|online|offline)"
@@ -573,14 +575,48 @@ _ASSET_STATE_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+# Symptom phrasing is asset-specific troubleshooting even without a state
+# word — "the conveyor won't start" / "throwing fault F0004" (routing-gauntlet
+# tier-1 finding, 2026-08-02: 1,776 diagnostic-class misses with no symptom
+# signal).
+_ASSET_SYMPTOM_RE = re.compile(
+    r"\b(?:"
+    r"won'?t\s+start|will\s+not\s+start|keeps?\s+(?:tripping|faulting)"
+    r"|tripp?ed(?:\s+(?:out|again))?|faulted(?:\s+out)?|faulting"
+    r"|throw(?:ing)?\s+(?:a\s+)?fault|fault\s+(?:code\s+)?[a-z]{0,4}\s?\d+"
+    r"|getting\s+(?:fault\s+)?[a-z]{1,4}\s?\d+"
+    r"|grinding|squealing|rattling|stopped\s+mid|is\s+dead|no\s+lights"
+    r"|blowing\s+fuses"
+    r")\b",
+    re.IGNORECASE,
+)
+# [-_]? — technicians type dashless tags ("cv101", "gs10") as often as
+# canonical ones (gauntlet tier-1 finding).
 _ASSET_NOUN_RE = re.compile(
     r"\b(?:conveyor|pump|mixer|compressor|boiler|chiller|motor|drive|vfd|plc"
     r"|robot|press|oven|gearbox|palletizer|filler|capper|labeler|fan|blower"
     r"|machine|line|cell|station|equipment|asset)\b"
-    r"|\b[a-z]{2,4}[-_]\d{2,4}\b",
+    r"|\b[a-z]{2,4}[-_]?\d{2,4}\b",
     re.IGNORECASE,
 )
-_TAG_TOKEN_RE = re.compile(r"\b[a-z]{2,4}[-_]\d{2,4}\b", re.IGNORECASE)
+_TAG_TOKEN_RE = re.compile(
+    r"\b[a-z]{2,4}[-_]?\d{2,4}\b"
+    # numbered asset ("conveyor 1", "pump 3", "line 2") — an asset identifier,
+    # same as demo_namespace's name pattern ("Conveyor 001")
+    r"|\b(?:conveyor|pump|mixer|line|unit|cell|station|press|robot|oven|filler)"
+    r"\s+\d{1,3}\b",
+    re.IGNORECASE,
+)
+# Possessive / prepositional asset reference — "of the garage conveyor",
+# "my conveyor" — a weak ownership signal that survives typos in the state
+# word or the noun itself.
+_ASSET_REFERENCE_RE = re.compile(
+    r"\b(?:of|on|with|for|at)\s+(?:the|my|our)\s+\w+"
+    r"|\b(?:my|our)\s+\w+"
+    # article-less numbered asset: "of line 1", "on pump 3", "of cv101"
+    r"|\b(?:of|on|with|for|at)\s+[a-z]+[-_ ]?\d{1,4}\b",
+    re.IGNORECASE,
+)
 _EDUCATIONAL_RE = re.compile(
     r"\b(?:what(?:'s|\s+is)\s+an?\b|explain\b|define\b"
     r"|what\s+does\s+\w+\s+stand\s+for|difference\s+between"
@@ -617,12 +653,18 @@ def asset_state_probability(
     if _ASSET_STATE_RE.search(message):
         logit += 2.4
         parts["state_phrase"] = 2.4
+    if _ASSET_SYMPTOM_RE.search(message):
+        logit += 2.4
+        parts["symptom_phrase"] = 2.4
     if _ASSET_NOUN_RE.search(message):
         logit += 1.6
         parts["asset_noun"] = 1.6
     if _TAG_TOKEN_RE.search(message):
         logit += 1.2
         parts["tag_token"] = 1.2
+    if _ASSET_REFERENCE_RE.search(message):
+        logit += 0.8
+        parts["asset_reference"] = 0.8
     if _EDUCATIONAL_RE.search(message):
         logit -= 2.6
         parts["educational"] = -2.6
@@ -631,7 +673,11 @@ def asset_state_probability(
         parts["router_agrees"] = round(1.2 * conf, 3)
         logit += parts["router_agrees"]
     elif router_intent in ("general_question", "answer_question", "greeting_or_chitchat"):
-        parts["router_disagrees"] = round(-0.6 * conf, 3)
+        # -0.3 (was -0.6): the router mislabeled real asset-state turns at
+        # 1.00 confidence twice (2026-08-02 staging probe + gauntlet tier 1) —
+        # a confident disagreement must not be able to sink a clean
+        # state-phrase signal on its own.
+        parts["router_disagrees"] = round(-0.3 * conf, 3)
         logit += parts["router_disagrees"]
     return 1.0 / (1.0 + math.exp(-logit)), parts
 
