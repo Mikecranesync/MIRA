@@ -516,9 +516,7 @@ async def _discover_and_queue_oem_manual(manufacturer: str, model: str) -> None:
     try:
         candidate = await search_manual(manufacturer, model)
     except Exception as exc:  # noqa: BLE001
-        logger.info(
-            "manual_sense web rung: search failed for %s %s: %s", manufacturer, model, exc
-        )
+        logger.info("manual_sense web rung: search failed for %s %s: %s", manufacturer, model, exc)
         return
 
     # Only a HEAD/magic-byte validated PDF is worth queuing — an unvalidated

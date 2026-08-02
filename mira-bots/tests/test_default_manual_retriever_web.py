@@ -118,7 +118,9 @@ async def test_flag_on_miss_and_validated_hit_queues_discovery(monkeypatch):
     monkeypatch.setenv("MIRA_MANUAL_SENSE_WEB_ENABLED", "1")
     _patch_local_citations(monkeypatch, [])
     search_fake = AsyncMock(return_value=VALIDATED_CANDIDATE)
-    record_fake = AsyncMock(return_value={"manual_cache_written": True, "manual_queue_json_appended": True})
+    record_fake = AsyncMock(
+        return_value={"manual_cache_written": True, "manual_queue_json_appended": True}
+    )
     monkeypatch.setattr(manual_search_pkg, "search_manual", search_fake)
     monkeypatch.setattr(manual_search_pkg, "record_manual_discovery", record_fake)
 
