@@ -63,9 +63,54 @@ def _check_and_record_nonce(tenant: str, nonce: str, now: float) -> bool:
     return True
 
 
+def _signed_string(tenant: str, nonce: str, timestamp: str, body_bytes: bytes) -> str:
+    """THE signed string — the single definition both sides of the contract use.
+
+    ``verify_hmac`` (server) and ``sign_hmac_headers`` (client) call this, so the
+    signer and the verifier can never drift: a change here breaks both at once
+    rather than silently producing signatures the relay rejects.
+    """
+    return f"{tenant}\n{nonce}\n{timestamp}\n{hashlib.sha256(body_bytes).hexdigest()}"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+def sign_hmac_headers(
+    tenant_id: str,
+    body_bytes: bytes,
+    key: str,
+    *,
+    _nonce: Optional[str] = None,
+    _now: Optional[float] = None,
+) -> dict[str, str]:
+    """Build the four ``X-MIRA-*`` headers for ``body_bytes`` (client side).
+
+    The inverse of :func:`verify_hmac`, sharing :func:`_signed_string` so the two
+    cannot drift. Sign the **exact bytes** you send — post via ``content=`` so the
+    HTTP client cannot re-encode the body and invalidate the body hash.
+
+    ``_nonce`` / ``_now`` are test seams only; production callers omit both.
+    Never logs or returns the key.
+    """
+    import uuid
+
+    nonce = _nonce or uuid.uuid4().hex
+    timestamp = str(int(_now if _now is not None else time.time()))
+    signature = hmac.new(
+        key.encode(),
+        _signed_string(tenant_id, nonce, timestamp, body_bytes).encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return {
+        "X-MIRA-Tenant": tenant_id,
+        "X-MIRA-Nonce": nonce,
+        "X-MIRA-Timestamp": timestamp,
+        "X-MIRA-Signature": signature,
+    }
+
 
 def verify_hmac(
     headers: dict[str, str],
@@ -115,11 +160,9 @@ def verify_hmac(
         raise ValueError("bad_timestamp")
 
     # Signature check
-    body_hash = hashlib.sha256(body_bytes).hexdigest()
-    signed_string = f"{tenant}\n{nonce}\n{timestamp_str}\n{body_hash}"
     expected = hmac.new(
         key.encode(),
-        signed_string.encode(),
+        _signed_string(tenant, nonce, timestamp_str, body_bytes).encode(),
         hashlib.sha256,
     ).hexdigest()
 
