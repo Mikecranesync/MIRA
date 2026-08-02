@@ -16,10 +16,10 @@
 -- STAGING-ONLY by intent: prod already carries CV-101 under the garage tenant
 -- (tools/seeds/garage-cv101-kg-bridge.sql). Do not apply to prod.
 
--- NOTE: default is UNQUOTED — :'tenant_id' adds the one layer of quoting.
--- (The first apply stored a tenant_id with literal quotes because the default
--- carried its own quotes; the repair UPDATE below fixes any such row.)
-\set tenant_id_default 78917b56-f85f-43bb-9a08-1bb98a6cd6c3
+-- NOTE: apply-seeds.yml passes tenant_id PRE-QUOTED (the bridge-seed
+-- convention) — so reference it BARE (:tenant_id), never :tenant_id,
+-- or the stored value gains literal quotes.
+\set tenant_id_default '''78917b56-f85f-43bb-9a08-1bb98a6cd6c3'''
 \if :{?tenant_id}
 \else
 \set tenant_id :tenant_id_default
@@ -32,7 +32,7 @@ BEGIN;
 -- or claim the one CV-101 row (fixes the quoted-tenant row from the bad first
 -- apply), else insert it. Idempotent either way.
 UPDATE cmms_equipment
-   SET tenant_id = :'tenant_id',
+   SET tenant_id = :tenant_id,
        uns_path = 'enterprise.home_garage.conveyor_lab.conveyor_1'::ltree,
        description = 'Conv_Simple Bench Conveyor (staging probe seed 2026-08-02, PRD #3048 PR 5)'
  WHERE equipment_number = 'CV-101';
@@ -41,7 +41,7 @@ INSERT INTO cmms_equipment
   (tenant_id, equipment_number, manufacturer, model_number, equipment_type,
    description, uns_path)
 SELECT
-  :'tenant_id',
+  :tenant_id,
   'CV-101',
   'Automation Direct',
   'GS10 + Micro820',
