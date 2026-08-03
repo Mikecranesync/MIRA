@@ -136,10 +136,28 @@ def _sanitize_label_field(value: str) -> str:
 # them. Used to decide whether a retrieved chunk belongs to the same maker the
 # technician is actually working on.
 _VENDOR_FAMILIES: dict[str, tuple[str, ...]] = {
-    "automationdirect": ("automationdirect", "durapulse", "gs10", "gs20", "gs30", "click",
-                         "productivity", "stride"),
-    "rockwell": ("rockwell", "allen-bradley", "allen bradley", "powerflex", "micrologix",
-                 "compactlogix", "controllogix", "guardmaster", "kinetix", "micro820"),
+    "automationdirect": (
+        "automationdirect",
+        "durapulse",
+        "gs10",
+        "gs20",
+        "gs30",
+        "click",
+        "productivity",
+        "stride",
+    ),
+    "rockwell": (
+        "rockwell",
+        "allen-bradley",
+        "allen bradley",
+        "powerflex",
+        "micrologix",
+        "compactlogix",
+        "controllogix",
+        "guardmaster",
+        "kinetix",
+        "micro820",
+    ),
     "siemens": ("siemens", "sinamics", "simatic", "micromaster", "sirius"),
     "abb": ("abb", "acs580", "acs880", "acs355"),
     "yaskawa": ("yaskawa", "v1000", "a1000", "ga800"),
@@ -187,7 +205,7 @@ def _filter_chunks_to_established_vendor(
             # Nothing established yet — fall back to what the technician has
             # said across the conversation, so a vendor named in turn 1 still
             # governs turn 6.
-            for entry in (ctx.get("history") or []):
+            for entry in ctx.get("history") or []:
                 if entry.get("role") == "user":
                     established |= vendor_families_in(entry.get("content") or "")
         if not established:
@@ -209,7 +227,8 @@ def _filter_chunks_to_established_vendor(
             if len(generic) != len(chunks):
                 logger.info(
                     "VENDOR_FILTER no-vendor-established kept=%d/%d (generic only)",
-                    len(generic), len(chunks),
+                    len(generic),
+                    len(chunks),
                 )
             # Still never strip everything — an empty reference block turns a
             # partial answer into a KB-gap admission.
@@ -229,7 +248,10 @@ def _filter_chunks_to_established_vendor(
         if dropped:
             logger.info(
                 "VENDOR_FILTER established=%s dropped=%s kept=%d/%d",
-                sorted(established), sorted(set(dropped)), len(kept), len(chunks),
+                sorted(established),
+                sorted(set(dropped)),
+                len(kept),
+                len(chunks),
             )
         # Never strip every chunk — an empty reference block would turn a
         # partially-relevant answer into a KB-gap admission.

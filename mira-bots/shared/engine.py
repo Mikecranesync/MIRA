@@ -918,6 +918,7 @@ def _has_usable_citation(reply: str) -> bool:
     # Strip the meaningless ones; if any citation survives, it is usable.
     return bool(_H4_SOURCE_RE.search(_H4_EMPTY_SOURCE_BODY_RE.sub("", reply)))
 
+
 # Phrases that constitute an explicit KB-gap admission — ordered from most
 # specific to least. The "I don't have a" check is anchored to avoid matching
 # conversational phrases like "I don't have a clue what you mean".
