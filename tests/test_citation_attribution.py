@@ -306,6 +306,43 @@ def test_real_vendor_mentions_still_resolve(text, expected):
     assert expected in vendors_in_text(text)
 
 
+# Source labels are usually filenames, so `_` and digit adjacency decide
+# whether a real citation's vendor is recognised at all. A `\b` boundary counts
+# both as word characters and silently stopped resolving them — a missed strip
+# rather than a false one, which is the quiet direction and the easy one to
+# ship without noticing.
+@pytest.mark.parametrize(
+    "label,expected",
+    [
+        ("GS10_user_manual.pdf", "AutomationDirect"),
+        ("siemens_sinamics_g120.pdf", "Siemens"),
+        ("automationdirect_gs10_manual", "AutomationDirect"),
+        ("PowerFlex525", "Rockwell Automation"),
+        ("SINAMICS-G120", "Siemens"),
+        ("PF525 fault", "Rockwell Automation"),
+    ],
+)
+def test_filename_style_labels_still_resolve(label, expected):
+    from shared.uns_resolver import canonical_vendor
+
+    assert canonical_vendor(label) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["a lab test", "deltas rising", "the sewer line", "check the label", "gs100 drive"],
+)
+def test_alias_inside_a_longer_word_is_not_a_vendor(text):
+    """The other edge: a following digit must not extend a digit-ending alias.
+
+    `gs100` is not a `gs10`, and `gs10` is not a `gs1` — so a following digit
+    is allowed only when the alias itself ends in a letter (`powerflex525`).
+    """
+    from shared.uns_resolver import canonical_vendor
+
+    assert canonical_vendor(text) is None
+
+
 def test_generic_cable_source_survives_but_siemens_is_still_stripped():
     """The two behaviors that must hold at once, in one reply."""
     reply = f"Check the wiring. {GENERIC} {SIEMENS}"

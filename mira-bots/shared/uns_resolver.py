@@ -421,6 +421,30 @@ def _pick_fault_code(
     return pairs[0][0], pairs[0][1], all_raw
 
 
+def _alias_pattern(alias: str) -> str:
+    r"""Boundary rule for one vendor alias. The single definition of "named".
+
+    `\b` is wrong at both ends here, in opposite directions:
+
+    * **Too loose is not the problem — too strict is.** `\b` counts `_` and
+      digits as word characters, so `\bgs10\b` misses `GS10_user_manual.pdf`
+      and `\bpowerflex\b` misses `PowerFlex525`. Source labels are usually
+      filenames, so that silently stops recognising the vendor of a real
+      citation.
+    * **A bare substring is worse.** `"ab"` (Allen-Bradley) fires inside
+      "cable" and `"abb"` inside "grabbed", which invents a vendor from
+      ordinary English.
+
+    So: the character before must not be alphanumeric, and the character after
+    must not be a letter. A following DIGIT is allowed only when the alias
+    itself ends in a letter — `powerflex525` is a PowerFlex, but `gs100` is not
+    a `gs10` and `gs10` is not a `gs1`.
+    """
+    esc = re.escape(alias)
+    tail = r"(?![a-z0-9])" if alias[-1].isdigit() else r"(?![a-z])"
+    return rf"(?<![a-z0-9]){esc}{tail}"
+
+
 def _match_vendor(message_lower: str) -> tuple[str | None, str | None, str | None]:
     """Return (canonical_mfr, alias_key_lower, family_token).
 
@@ -438,7 +462,7 @@ def _match_vendor(message_lower: str) -> tuple[str | None, str | None, str | Non
                 family = FAMILY_FROM_ALIAS.get(alias)
                 return mfr, alias, family
         else:
-            if re.search(rf"\b{re.escape(alias)}\b", message_lower):
+            if re.search(_alias_pattern(alias), message_lower):
                 mfr = VENDOR_ALIASES[alias]
                 family = FAMILY_FROM_ALIAS.get(alias)
                 return mfr, alias, family
@@ -466,7 +490,7 @@ def _match_all_vendors(
         if any(c in alias for c in " -"):
             m = re.search(re.escape(alias), message_lower)
         else:
-            m = re.search(rf"\b{re.escape(alias)}\b", message_lower)
+            m = re.search(_alias_pattern(alias), message_lower)
         if m is None:
             continue
         pos = m.start()
