@@ -139,9 +139,19 @@ MUST_NOT_FIRE = [
         "No — I can't reset anything. MIRA is read-only and has no control path to your "
         "equipment. Nothing has been changed on the drive by me.",
     ),
-    # Observed live (probe ct-04). A grounded intent restatement whose CITATION
-    # happens to contain a vendor name is correct behavior — an earlier version
-    # of `invented_topic` swallowed the [Source: …] tag and flagged it.
+    # Observed live (probe ct-04). This reply IS a product defect under the
+    # adaptive-dialogue policy (PRD §2.2): a how-to intent, holding a real
+    # Rockwell citation, answered with a quiz instead of the procedure.
+    #
+    # It stays in MUST_NOT_FIRE because these detectors are not the layer that
+    # catches it. `invented_topic` asks "did MIRA make up a subject?" — and the
+    # answer is no: the vendor came from the technician's own words. Whether
+    # asking was the right move at all is rubric dimension 6b's job, not a
+    # regex's. Conflating the two would make the detector fire on legitimate
+    # conversational diagnosis, which the same policy protects.
+    #
+    # The guard still earns its place: an earlier `invented_topic` swallowed the
+    # [Source: …] tag and flagged this as invented. Do not let that regress.
     (
         "how do I reset a PowerFlex 525?",
         "You want to reset a PowerFlex 525.\nWhat is the current state of the digital "
