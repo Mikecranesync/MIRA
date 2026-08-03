@@ -213,6 +213,12 @@ def test_vendor_family_resolution_is_bidirectional():
         "what does fault CE10 mean on a GS10?",
         "CE10 means Communication error 10 [Source: AutomationDirect].",
     )
+    # A fragment of the full name still resolves — only the leading token of an
+    # attribution is taken, so "Allen" must reach allen-bradley (observed on gd-01).
+    assert "unrelated_vendor" not in scan(
+        "PowerFlex 525 showing F004, what do I check first?",
+        "F004 is undervoltage [Source: Allen-Bradley PowerFlex 525 manual].",
+    )
     # ...but a vendor with no connection to the turn still fires.
     assert "unrelated_vendor" in scan(
         "the conveyor stopped",

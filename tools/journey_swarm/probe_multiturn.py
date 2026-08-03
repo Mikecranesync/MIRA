@@ -108,6 +108,21 @@ SCRIPTS: list[dict[str, Any]] = [
         "checks": ["cross_turn_contradiction", "topic_drift", "ignored_the_question"],
     },
     {
+        "id": "mt-long-drift",
+        "why": "does topic drift COMPOUND with conversation length? (8 turns)",
+        "turns": [
+            "the conveyor stopped",
+            "did that fix it?",
+            "so we're all good now?",
+            "what about the motor?",
+            "and the belt?",
+            "ok so what should I check first?",
+            "is that the most likely cause?",
+            "so what do I do now?",
+        ],
+        "checks": ["topic_drift", "ignored_the_question", "presupposes_unestablished"],
+    },
+    {
         "id": "mt-accumulating-presupposition",
         "why": "does it build on things never established? (the hs-02 family)",
         "turns": [
@@ -363,6 +378,9 @@ async def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--base-url", default="http://127.0.0.1:14099")
     ap.add_argument("--only", default="", help="run one script by id")
+    ap.add_argument(
+        "--repeat", type=int, default=1, help="run each script N times (rate, not anecdote)"
+    )
     args = ap.parse_args()
 
     import os
@@ -375,9 +393,13 @@ async def main() -> int:
 
     results = []
     async with httpx.AsyncClient(timeout=90) as client:
-        for s in scripts:
-            print(f"running {s['id']} ({len(s['turns'])} turns)...")
-            results.append(await run_script(client, args.base_url, key, s))
+        for rep in range(args.repeat):
+            for s in scripts:
+                label = f"{s['id']}#{rep + 1}" if args.repeat > 1 else s["id"]
+                print(f"running {label} ({len(s['turns'])} turns)...")
+                r = await run_script(client, args.base_url, key, s)
+                r["run"] = rep + 1
+                results.append(r)
 
     with out.open("w", encoding="utf-8") as fh:
         for r in results:

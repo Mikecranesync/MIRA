@@ -197,12 +197,19 @@ _VENDOR_MODELS: dict[str, tuple[str, ...]] = {
 
 
 def _families_in(text: str) -> set[str]:
-    """Vendor families any token in `text` belongs to (vendor name OR model)."""
-    t = (text or "").lower()
+    """Vendor families any token in `text` belongs to (vendor name OR model).
+
+    Matching is substring-symmetric: an attribution is often a *fragment* of the
+    full name because only the leading token is taken — "Allen" from
+    "Allen-Bradley". So a family also matches when the text is contained in it.
+    """
+    t = (text or "").lower().strip()
     fams: set[str] = set()
     for family, models in _VENDOR_MODELS.items():
         if family in t or any(m in t for m in models):
             fams.add(family)
+        elif len(t) >= 4 and t in family:
+            fams.add(family)  # "allen" -> allen-bradley
     return fams
 
 
