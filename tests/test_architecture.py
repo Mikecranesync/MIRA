@@ -661,3 +661,217 @@ def test_verified_promotion_checker_catches_violations():
     }
     for label, sql in good_cases.items():
         assert scan_verified_promotion("good.sql", sql) == [], f"false positive: {label}"
+
+
+# ---------------------------------------------------------------------------
+# Contract 10: no test bare-imports a top-level module name that two different
+# tools/ directories both provide
+# ---------------------------------------------------------------------------
+# Python caches modules by top-level NAME in sys.modules, not by path. When two
+# directories that tests push onto sys.path each contain a `runner.py`, the
+# FIRST import of the bare name `runner` wins for the whole process and every
+# later `import runner` silently gets the other file.
+#
+# That is not hypothetical — it broke `main`. #3074 added
+# tools/routing_gauntlet/runner.py alongside the pre-existing
+# tools/internet_print_test/runner.py. tests/test_routing_gauntlet.py imported
+# its runner at COLLECTION time; tests/printsense/test_grader_gate.py imported
+# at RUN time (inside a helper), and pytest finishes all collection before
+# running anything — so the gauntlet always won and the printsense tests got a
+# module with no TESTS_ROOT:
+#
+#   AttributeError: <module 'runner' from '.../tools/routing_gauntlet/runner.py'>
+#                   has no attribute 'TESTS_ROOT'
+#
+# Bisected: 2666656b green -> 412a3464 (#3074) red, and every `main` run after.
+# It was invisible to every BLOCKING check because `test-unit` runs
+# `pytest tests/printsense/ -v` in ISOLATION, where the collision cannot happen;
+# only the `test-eval-offline` sweep collects both files in one process, and
+# that job is deliberately not in ci-gate. Isolation is exactly what hid it,
+# so adding those suites to test-unit would NOT have caught this — a
+# cross-file contract is the only thing that can. Contract 10 lives in
+# architecture-check, which IS gated.
+#
+# Remedy when this fires: load the module by explicit path under a unique name
+# (importlib.util.spec_from_file_location) instead of bare-importing the
+# ambiguous one. Both call sites do this now. Keep the sys.path.insert — the
+# tool's own modules still bare-import their siblings through it.
+#
+# SCOPE — deliberately narrowed to the tools/ family, and this was measured,
+# not assumed. tests/** contains ~60 distinct sys.path.insert expressions, many
+# built from local variables (relay_dir, bots_path, p, lead) that no static
+# checker can resolve, covering mira-bots, mira-bots/shared, mira-mcp,
+# mira-sidecar, mira-pipeline, mira-crawler, the repo root, ignition/ and plc/.
+# A contract over all of that would be both unresolvable and noisy. Over the
+# tools/-family dirs tests actually insert, exactly ONE name out of 85 is
+# ambiguous — `runner`, i.e. the bug. So the narrow scope costs no real
+# coverage and needs no allowlist. If a future collision lands outside tools/,
+# widen this deliberately rather than by accident.
+
+_AMBIGUITY_ROOTS = ("tools", "scripts")
+
+# A pathlib chain rooted at a tools/-family segment: "tools" / "routing_gauntlet".
+_PATH_CHAIN_RE = re.compile(r'"(?:tools|scripts)"(?:\s*/\s*"[^"/]+")*')
+# The same directory written as one literal: "tools/qa/security". Requires the
+# slash — a bare "tools" is a one-segment CHAIN and is matched above, so making
+# the slash optional here would emit a spurious `tools` alongside every
+# `"tools" / "sub"` chain.
+_PATH_LITERAL_RE = re.compile(r'"(?:tools|scripts)/[^"]*"')
+_QUOTED_RE = re.compile(r'"([^"]+)"')
+
+
+def referenced_tool_dirs(test_sources: list[tuple[str, str]]) -> set[str]:
+    """Repo-relative tools/-family dirs that any test names as a path.
+
+    Scans the WHOLE file, not just `sys.path.insert(...)` calls. Binding the
+    scan to the insert call was refuted immediately: the fix for this very bug
+    hoists the directory into a variable --
+
+        _GAUNTLET_DIR = REPO / "tools" / "routing_gauntlet"
+        sys.path.insert(0, str(_GAUNTLET_DIR))
+
+    -- so the insert carries no literal and the dir vanished from discovery,
+    silently un-guarding the exact collision this contract exists for. Matching
+    the path literal wherever it appears is the fix.
+
+    Over-matching is the correct bias, same as Contract 8's `_job_runs_tests`:
+    a merely-mentioned dir only adds its module names to the provider map, and
+    a violation still requires a test to actually bare-import a colliding name.
+    A false negative silently un-guards a real collision.
+
+    Pure: takes [(path, text), ...] so the self-test can drive it with fixtures.
+    """
+    found: set[str] = set()
+    for _path, text in test_sources:
+        for chain in _PATH_CHAIN_RE.findall(text):
+            found.add("/".join(_QUOTED_RE.findall(chain)))
+        for literal in _PATH_LITERAL_RE.findall(text):
+            found.add(literal.strip('"').strip("/"))
+    return {d for d in found if d.split("/")[0] in _AMBIGUITY_ROOTS}
+
+
+def ambiguous_module_names(dir_to_modules: dict[str, set[str]]) -> dict[str, set[str]]:
+    """{top-level module name -> providing dirs} for names provided by >1 dir."""
+    providers: dict[str, set[str]] = {}
+    for directory, names in dir_to_modules.items():
+        for name in names:
+            providers.setdefault(name, set()).add(directory)
+    return {n: d for n, d in providers.items() if len(d) > 1}
+
+
+def scan_bare_ambiguous_imports(
+    path: str, text: str, ambiguous: set[str]
+) -> list[str]:
+    """Violations where `path` bare-imports one of the `ambiguous` names."""
+    if not ambiguous:
+        return []
+    offenders = []
+    for match in _IMPORT_RE.finditer(text):
+        imported = match.group(1)
+        # Only a bare top-level name collides; `tools.x.runner` resolves by path.
+        if "." in imported:
+            continue
+        if imported in ambiguous:
+            line = text[: match.start()].count("\n") + 1
+            offenders.append(f"{path}:{line}: bare `{imported}` import")
+    return offenders
+
+
+def _test_sources() -> list[tuple[str, str]]:
+    tests_dir = _ROOT / "tests"
+    out = []
+    for py_file in sorted(tests_dir.rglob("*.py")):
+        if "__pycache__" in str(py_file):
+            continue
+        out.append((str(py_file.relative_to(_ROOT)), py_file.read_text(errors="replace")))
+    return out
+
+
+def test_no_test_bare_imports_an_ambiguous_tool_module():
+    """Contract 10: a name two tools/ dirs both provide must not be bare-imported."""
+    sources = _test_sources()
+
+    # Vacuity guard — a broken regex must fail loudly, not pass over nothing.
+    assert len(sources) > 100, f"only found {len(sources)} test files; discovery is broken"
+    tool_dirs = referenced_tool_dirs(sources)
+    assert "tools/internet_print_test" in tool_dirs and "tools/routing_gauntlet" in tool_dirs, (
+        "tools/ path discovery failed to find the two known dirs; "
+        f"found: {sorted(tool_dirs)}"
+    )
+
+    dir_to_modules = {
+        d: {p.stem for p in (_ROOT / d).glob("*.py")}
+        for d in sorted(tool_dirs)
+        if (_ROOT / d).is_dir()
+    }
+    assert sum(len(v) for v in dir_to_modules.values()) > 20, "module discovery is broken"
+
+    ambiguous = ambiguous_module_names(dir_to_modules)
+    offenders = []
+    for path, text in sources:
+        offenders.extend(scan_bare_ambiguous_imports(path, text, set(ambiguous)))
+
+    assert not offenders, (
+        "A test bare-imports a module name that two tools/ directories both provide.\n"
+        "Python caches by NAME, so whichever file is imported first wins sys.modules\n"
+        "for the whole process and the other test silently gets the wrong module.\n"
+        "Fix: load it by explicit path under a unique name --\n"
+        "    spec = importlib.util.spec_from_file_location('my_unique_name', DIR / 'runner.py')\n"
+        "    mod = importlib.util.module_from_spec(spec); sys.modules['my_unique_name'] = mod\n"
+        "    spec.loader.exec_module(mod)\n"
+        "Keep the sys.path.insert -- the tool's own modules bare-import their siblings.\n\n"
+        "Ambiguous names: "
+        + "; ".join(f"{n} -> {sorted(d)}" for n, d in sorted(ambiguous.items()))
+        + "\n\nOffenders:\n" + "\n".join(offenders)
+    )
+
+
+def test_ambiguous_tool_import_checker_catches_violations():
+    """The Contract 10 guard must FAIL on the known bad shapes and pass on the good ones."""
+    # Discovery finds a tools/ dir from the shapes actually used in this repo.
+    assert referenced_tool_dirs([("t.py", 'sys.path.insert(0, str(REPO / "tools" / "routing_gauntlet"))')]) == {
+        "tools/routing_gauntlet"
+    }
+    assert referenced_tool_dirs([("t.py", 'sys.path.insert(0, str(P / "tools" / "qa" / "security"))')]) == {
+        "tools/qa/security"
+    }
+    # Non-tools dirs are out of scope; fully variable-built paths are skipped.
+    assert referenced_tool_dirs([("t.py", 'sys.path.insert(0, "mira-bots")')]) == set()
+    assert referenced_tool_dirs([("t.py", "sys.path.insert(0, str(SCRIPTS))")]) == set()
+
+    # The real collision: two dirs, one shared name.
+    ambiguous = ambiguous_module_names(
+        {
+            "tools/internet_print_test": {"runner", "submit", "mailer", "safety"},
+            "tools/routing_gauntlet": {"runner", "corpus"},
+        }
+    )
+    assert set(ambiguous) == {"runner"}, ambiguous
+
+    bad_cases = {
+        "module-level bare import (test_routing_gauntlet's old shape)":
+            "from runner import ADVERSARIAL_VOTES, apply_arbitration\n",
+        "indented lazy bare import (test_grader_gate's old shape)":
+            "def helper():\n    import runner\n",
+        "aliased bare import":
+            "import runner as r\n",
+    }
+    for label, src in bad_cases.items():
+        assert scan_bare_ambiguous_imports("bad.py", src, set(ambiguous)), (
+            f"checker missed a violation: {label}"
+        )
+
+    good_cases = {
+        "unambiguous sibling stays bare (runner.run_one reaches the same object)":
+            "import submit as submitmod\n",
+        "dotted package path resolves without the bare name":
+            "from tools.routing_gauntlet.runner import run_tier1\n",
+        "explicit path load under a unique name":
+            "spec = importlib.util.spec_from_file_location('print_test_runner', D / 'runner.py')\n",
+        "a name that merely CONTAINS an ambiguous one":
+            "import runner_utils\n",
+    }
+    for label, src in good_cases.items():
+        assert scan_bare_ambiguous_imports("good.py", src, set(ambiguous)) == [], (
+            f"false positive: {label}"
+        )
