@@ -18,6 +18,12 @@ RUN npm ci
 WORKDIR /app
 COPY mira-crawler/ /app/mira_crawler/
 COPY mira-hub/ /app/mira-hub/
+# Technician-journey validation swarm (PRD §8.2 — the executor runs on THIS
+# worker and its dedicated `synthetic` queue). Only the swarm package is
+# copied: the executor needs stdlib + httpx + PyYAML + a lazy psycopg2, all
+# already in requirements-celery.txt, and imports nothing from mira-bots.
+# `tasks/journey_swarm.py` resolves this path as <repo-root>/tools/journey_swarm.
+COPY tools/journey_swarm/ /app/tools/journey_swarm/
 
 ENV PYTHONPATH="/app:/app/mira_crawler" \
     PATH="/opt/venv/bin:/app/mira-hub/node_modules/.bin:${PATH}" \
