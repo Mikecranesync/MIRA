@@ -73,9 +73,11 @@ jobs:
           psql --version
 
       - name: Validate tenant_id is a UUID
+        env:
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           set -euo pipefail
-          TID='${{ inputs.tenant_id }}'
+          TID="$TENANT_INPUT"
           if ! [[ "$TID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
             echo "::error::tenant_id is not a UUID: $TID"
             exit 1
@@ -84,16 +86,17 @@ jobs:
       - name: Authenticate Doppler + resolve DATABASE_URL
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          TARGET_INPUT: ${{ inputs.target }}
         run: |
           set -euo pipefail
           if [ -z "${DOPPLER_TOKEN:-}" ]; then
             echo "::error::DOPPLER_TOKEN secret not set."
             exit 1
           fi
-          case "${{ inputs.target }}" in
+          case "$TARGET_INPUT" in
             staging) DOPPLER_CFG=stg ;;
             prod)    DOPPLER_CFG=prd ;;
-            *) echo "::error::Unknown target ${{ inputs.target }}"; exit 1 ;;
+            *) echo "::error::Unknown target $TARGET_INPUT"; exit 1 ;;
           esac
           DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
           if [ -z "$DATABASE_URL" ]; then
@@ -107,21 +110,26 @@ jobs:
           echo "DB_HOST=$HOST" >> "$GITHUB_ENV"
 
       - name: Resolve seed file
+        env:
+          # Pass dispatch inputs through the environment, NOT ${{ }} inline —
+          # inline interpolation lets a crafted value inject shell commands
+          # (#2989). Quote them below and validate before use.
+          SEED_INPUT: ${{ inputs.seed }}
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           set -euo pipefail
-          SEED_FILE="tools/seeds/${{ inputs.seed }}.sql"
-          if [ ! -f "$SEED_FILE" ]; then
-            echo "::error::Seed file not found: $SEED_FILE"
-            exit 1
-          fi
+          SEED_FILE="$(python3 tools/qa/security/seed_workflow_guard.py resolve \
+            --seed-dir tools/seeds --name "$SEED_INPUT")"
           RESOLVED="/tmp/resolved_seed.sql"
-          sed "s/__TENANT_ID__/${{ inputs.tenant_id }}/g" "$SEED_FILE" > "$RESOLVED"
+          sed "s/__TENANT_ID__/${TENANT_INPUT}/g" "$SEED_FILE" > "$RESOLVED"
           echo "Seed:     $SEED_FILE"
           echo "Resolved: $RESOLVED ($(wc -l < "$RESOLVED") lines)"
           echo "SEED_FILE=$SEED_FILE" >> "$GITHUB_ENV"
           echo "RESOLVED=$RESOLVED" >> "$GITHUB_ENV"
 
       - name: Pre-flight — schema + existing tag_entities rows (READ-ONLY)
+        env:
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           set -euo pipefail
           cat > /tmp/preflight.sql <<SQL
@@ -136,7 +144,7 @@ jobs:
           SELECT source_address, uns_path::text AS uns_path, data_type, source_kind,
                  units, scaling::text AS scaling, approval_state
             FROM tag_entities
-           WHERE tenant_id = '${{ inputs.tenant_id }}'::uuid
+           WHERE tenant_id = '${TENANT_INPUT}'::uuid
              AND source_address LIKE '%MIRA_IOCheck/VFD/%'
            ORDER BY source_address;
           SQL
@@ -144,7 +152,7 @@ jobs:
           {
             echo "## Pre-flight (READ-ONLY)"
             echo ""
-            echo "DB host: \`${DB_HOST}\`   Tenant: \`${{ inputs.tenant_id }}\`"
+            echo "DB host: \`${DB_HOST}\`   Tenant: \`${TENANT_INPUT}\`"
             echo ""
             echo '```'
             cat /tmp/preflight.out
@@ -191,6 +199,8 @@ jobs:
 
       - name: Post-apply proof — the seeded row now carries scaling + verified
         if: inputs.mode == 'apply'
+        env:
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           set -euo pipefail
           cat > /tmp/postcheck.sql <<SQL
@@ -198,7 +208,7 @@ jobs:
           SELECT source_address, uns_path::text AS uns_path, units,
                  scaling::text AS scaling, approval_state, updated_at
             FROM tag_entities
-           WHERE tenant_id = '${{ inputs.tenant_id }}'::uuid
+           WHERE tenant_id = '${TENANT_INPUT}'::uuid
              AND source_address = '[default]MIRA_IOCheck/VFD/vfd_dc_bus';
           SQL
           psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -f /tmp/postcheck.sql 2>&1 | tee /tmp/postcheck.out
