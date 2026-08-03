@@ -138,6 +138,9 @@ jobs:
     #
     # The version is derived from the git tag (version-tag.yml) and the changelog
     # is the GitHub Releases page (.github/release.yml). See docs/versioning.md.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -197,10 +200,14 @@ jobs:
 
           if [ "$fail" -ne 0 ]; then
             echo ""
+            echo "Escape hatch (maintainers): if the edit is genuinely intended —"
+            echo "a correction to the historical archive, or the PR that freezes"
+            echo "it — apply the 'shared-line-ok' label, then re-run this job"
+            echo "(gh run rerun --failed). Labels are read live, so no re-push."
+            echo ""
             echo "Fix: drop the change to the file(s) above. Nothing replaces them —"
             echo "a well-formed Conventional Commit title plus a PR label is the whole"
-            echo "authoring duty now. If the edit is genuinely warranted (a fix to the"
-            echo "historical archive), ask a maintainer for the 'shared-line-ok' label."
+            echo "authoring duty now."
             exit 1
           fi
 
