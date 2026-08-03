@@ -436,6 +436,61 @@ class TestStep6FailSafeControls:
         by_path = {t.tag_path: t for t in overlay.tags}
         assert by_path["conv_simple.height_sensor_mm"].freshness is Freshness.STALE
 
+    def test_stale_quality_never_becomes_live_ON_THE_DEPLOYED_PATH(self):
+        """The same guarantee as above, but through ingest → cache → read-back.
+
+        REGRESSION. The assertion above runs on PR 1's DIRECT adapter, which maps
+        quality→freshness itself. The deployed path does not go through it: the
+        snapshot is persisted and re-read, and `_freshness_for` originally
+        consulted only `freshness_status` — which `persist_batch` stamps 'live'
+        for every non-simulated row, because that column means COLLECTOR
+        liveness. So `conv_simple.height_sensor_mm`, which the producer marks
+        `quality="stale"`, came back LIVE with a summary of {live: 7}: the
+        technician saw a reading the producer had already doubted as current.
+
+        Both suites passed throughout — each side was self-consistent, and no
+        test crossed the seam with a degraded tag. That is the whole reason this
+        one exists.
+        """
+        snap = _fixture("snapshot_v1_valid.json")
+        store = _seeded_store()
+        result = ingest_batch(snapshot_to_ingest_batch(snap, tenant_id=TENANT), TENANT, store)
+        assert result.accepted == 7 and result.rejected == []
+
+        fl = pytest.importorskip("shared.factorylm_live")
+        overlay = fl.overlay_from_cache_rows(_cache_rows_from_store(store))
+        assert overlay is not None
+
+        by_path = {t.tag_path: t for t in overlay.tags}
+        assert by_path["conv_simple.height_sensor_mm"].freshness is Freshness.STALE
+        # …and it is DOWNGRADED, not dropped: all 7 tags still reach the overlay.
+        assert len(overlay.tags) == 7
+        # The summary a technician-facing block renders must agree with the
+        # producer — and with the direct-adapter path, which yields the same.
+        assert overlay.freshness_summary.get("live", 0) == 6
+        assert overlay.freshness_summary.get("stale", 0) == 1
+
+    def test_both_overlay_paths_agree_on_freshness(self):
+        """One snapshot must not produce two different answers.
+
+        `overlay_from_factorylm_snapshot` (direct) and `overlay_from_cache_rows`
+        (deployed) are separate implementations reached by separate callers. If
+        they disagree, one of them is lying to a technician — and which one you
+        get depends on plumbing they cannot see.
+        """
+        snap = _fixture("snapshot_v1_valid.json")
+        store = _seeded_store()
+        ingest_batch(snapshot_to_ingest_batch(snap, tenant_id=TENANT), TENANT, store)
+
+        fl = pytest.importorskip("shared.factorylm_live")
+        deployed = fl.overlay_from_cache_rows(_cache_rows_from_store(store))
+        direct, _ = overlay_from_factorylm_snapshot(snap)
+
+        assert deployed.freshness_summary == direct.freshness_summary
+        assert {t.tag_path: t.freshness for t in deployed.tags} == {
+            t.tag_path: t.freshness for t in direct.tags
+        }
+
     def test_stale_cache_row_served_as_stale_not_dropped(self):
         fl = pytest.importorskip(
             "shared.factorylm_live",
