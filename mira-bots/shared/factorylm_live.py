@@ -245,6 +245,70 @@ def overlay_from_cache_rows(rows: list[dict[str, Any]]) -> Any | None:
     )
 
 
+def uns_prefix_for_asset(tenant_id: str, *candidates: str) -> str | None:
+    """Tenant-scoped physical UNS path for a confirmed asset, from ``cmms_equipment``.
+
+    The 2026-08-02 live probe found the overlay unreachable from real turns:
+    ``uns_context.uns_path`` is populated by the vendor/model resolver, which
+    returns None for equipment names like ``CV-101`` — so the engine's uns_path
+    gate always failed. This lookup resolves the SAME identity source the relay
+    allowlist seed and the QR deep-link use (``cmms_equipment.uns_path``): the
+    physical asset subtree, never the knowledge taxonomy.
+
+    Each candidate is tried in order: first an exact (case-insensitive)
+    ``equipment_number`` match, then a description match accepted ONLY when it
+    is unambiguous (exactly one row) — a display label like "Conveyor" must
+    never silently pick one of several matching assets. Returns None on any
+    miss or error; never raises. Read-only.
+    """
+    db_url = os.getenv("NEON_DATABASE_URL", "")
+    names = [c.strip() for c in candidates if c and c.strip()]
+    if not db_url or not tenant_id or not names:
+        return None
+    try:
+        import psycopg2  # noqa: PLC0415 — lazy so the module imports without a DB driver
+    except ImportError:
+        return None
+    try:
+        conn = psycopg2.connect(db_url)
+        try:
+            with conn.cursor() as cur:
+                for name in names:
+                    # cmms_equipment.tenant_id is TEXT (uuid-strings + legacy
+                    # slugs) — compare as text, no ::uuid cast.
+                    cur.execute(
+                        """SELECT uns_path::text
+                             FROM cmms_equipment
+                            WHERE tenant_id = %s
+                              AND upper(equipment_number) = upper(%s)
+                              AND uns_path IS NOT NULL
+                            LIMIT 1""",
+                        (tenant_id, name),
+                    )
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        return str(row[0])
+                for name in names:
+                    cur.execute(
+                        """SELECT uns_path::text
+                             FROM cmms_equipment
+                            WHERE tenant_id = %s
+                              AND description ILIKE %s
+                              AND uns_path IS NOT NULL
+                            LIMIT 2""",
+                        (tenant_id, f"%{name}%"),
+                    )
+                    rows = cur.fetchall()
+                    if len(rows) == 1 and rows[0][0]:
+                        return str(rows[0][0])
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001 — a live lookup must never fail a turn
+        logger.debug("FACTORYLM_LIVE asset lookup failed: %s", exc)
+        return None
+    return None
+
+
 def fetch_live_signal_cache(tenant_id: str, ltree_prefix: str) -> list[dict[str, Any]]:
     """Read current ``live_signal_cache`` rows for one asset subtree. Never raises.
 

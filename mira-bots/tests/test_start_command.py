@@ -111,6 +111,7 @@ async def test_start_with_asset_deeplink_greets_with_context(monkeypatch, engine
         manufacturer="Ingersoll Rand",
         model="R55n",
         location="Bldg A, Bay 3",
+        uns_path="enterprise.plant1.utilities.compressor_1",
     )
     monkeypatch.setattr(mod, "_lookup_asset_by_tag", lambda tag, telegram_user_id: fake_asset)
 
@@ -133,6 +134,15 @@ async def test_start_with_asset_deeplink_greets_with_context(monkeypatch, engine
     saved = diag_engine._save_state.call_args[0][1]
     assert saved["asset_identified"]
     assert saved["context"]["asset_tag"] == "EQ-AB12CD34"
+    # A QR scan is a direct connection — the code IS the UNS identity
+    # (.claude/rules/direct-connection-uns-certified.md), so the certified
+    # uns_context must be seeded for downstream consumers (the FactoryLM
+    # live overlay's uns_path gate in particular).
+    assert saved["context"]["uns_context"] == {
+        "uns_path": "enterprise.plant1.utilities.compressor_1",
+        "source": "direct_connection",
+        "confidence": "certified",
+    }
 
 
 @pytest.mark.asyncio
