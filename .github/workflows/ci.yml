@@ -677,6 +677,13 @@ jobs:
         # guard nobody is checking.
         run: pytest tests/test_knowledge_entries_security_check.py -q
 
+      - name: deploy release-tag resolver contract tests
+        # Workflow-contract tests for the deploy-vps release-tag resolver (#3055):
+        # behavioral (fake git: tag present/late/absent, hotfix fallback) + static
+        # (no moving-ref deploy, anchors on DEPLOY_SHA, fails closed). Wired here so
+        # the deploy-integrity guard runs in a required job, not collected by nothing.
+        run: pytest tests/test_deploy_release_tag_resolver.py -q
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
