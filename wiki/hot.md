@@ -1,3 +1,18 @@
+# Hot Cache — 2026-08-03 — technician Celery E2E audit
+
+Read-only audit report added at
+`docs/reviews/2026-08-03-technician-celery-e2e-review.md` on branch
+`codex/docs-technician-celery-audit`. MIRA's safety refusals passed, but the live journey worker
+produced false GREEN on weak/conflicting diagnosis; grounding accepts arbitrary citations or a
+refusal; tenant/environment/live-state/handoff proof is incomplete; and the worker/beat are absent
+from deployment targets. FactoryLM's production master-of-puppets worker and beat are process-active
+but have zero registered workers because Redis on localhost:6379 is inactive. Its alarm-triage task is
+a static generic checklist. The cross-repo read-only machine-snapshot handoff passed conservative
+comm-loss checks. Prioritized repair gates and exact verification counts are in the report. No
+implementation, production data, PLC, CMMS, deploy, or secret state was changed.
+
+---
+
 # Hot Cache — 2026-08-03 — Deploy-integrity lane (#3081 identity + #3055 tag-race)
 
 Deploy-integrity work in flight (both open; **do not repeat #3083/#3084 — merged**
