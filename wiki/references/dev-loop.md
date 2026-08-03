@@ -67,6 +67,37 @@ The existing Claude-Code `PreToolUse` gitleaks hook in `.claude/settings.json` s
 
 A future PR may consolidate after adoption is confirmed.
 
+### ⚠️ Do not "simplify" the `perl -e 'alarm 45; exec @ARGV' pyright` wrapper
+
+The `PostToolUse(Edit|Write)` hook in `.claude/settings.json` runs pyright as:
+
+```sh
+perl -e 'alarm 45; exec @ARGV' pyright "$CLAUDE_FILE_PATH" 2>/dev/null | tail -1
+```
+
+That wrapper looks redundant. It is load-bearing, and JSON can't hold a comment
+saying so — hence this note.
+
+**What it prevents.** A bare `pyright` in that hook leaks orphans. When the hook
+shell is killed (harness timeout, session interrupt), pyright is a *separate
+process*: it survives, reparents to PID 1, and its self-rescheduling node event
+loop never exits. Measured on CHARLIE 2026-08-03: **7 orphans, ~4.7 GB RSS,
+~450% CPU, load 12.75, swap 16.6 GB of 17.4 GB used** — the oldest had been
+spinning for **4 days**. Every Edit/Write across every live session can leak one.
+
+**Why not the obvious alternatives.**
+- Adding a `"timeout"` field to the hook does **not** fix it — that kills the
+  shell, not the grandchild. Same leak.
+- `timeout`/`gtimeout` do not exist on macOS base (no coreutils here).
+- `perl` is macOS base, and per POSIX a pending `alarm()` **survives `exec`** —
+  and survives orphaning. Verified: kill the parent, child reparents to PID 1,
+  child still self-terminates at the alarm (exit 142 / SIGALRM).
+
+**If orphans reappear:** `ps -Ao pid,ppid,pcpu,rss,etime,command | grep pyright`.
+Orphans are `node .../pyright` with `PPID=1`; the live language servers are
+`node .../pyright-langserver --stdio` with a real `claude` parent at ~0% CPU.
+Different commands — kill by explicit PID and the live ones are never at risk.
+
 ## Spec + plan
 
 - Spec: `docs/superpowers/specs/2026-04-19-velocity-3-precommit-smoke-design.md`
