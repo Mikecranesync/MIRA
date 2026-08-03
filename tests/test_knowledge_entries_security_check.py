@@ -11,7 +11,14 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools" / "qa" / "security"))
 
-from check_knowledge_entries_filters import _classify_read, _snippet_matches, check_reads
+from check_knowledge_entries_filters import (
+    _classify_read,
+    backfill_query_sha256,
+    check_reads,
+    context_sha256,
+    find_knowledge_entries_reads,
+    generate_allowlist_template,
+)
 
 
 def test_hybrid_pattern_is_private_false_or_tenant():
@@ -183,19 +190,24 @@ def test_library_tenant_only_known_gap():
     assert classification == "TENANT-ONLY", f"Expected TENANT-ONLY, got {classification}: {reason}"
 
 
-# ── allowlist key integrity ───────────────────────────────────────────────────
+# ── allowlist key integrity (#3053) ───────────────────────────────────────────
 #
 # The allowlist key is `file:line`, which is NOT stable under edits. Inserting or
 # deleting lines above a read slides it onto a NEIGHBOUR's approved line; when the
 # classifications match, nothing else in the checker notices and the read runs
-# under a review written for a different query. `query_snippet` was already being
-# written into the allowlist and never read back — comparing it is what turns it
-# from decoration into the content key the line number cannot be.
+# under a review written for a different query.
+#
+# The security discriminator is `query_sha256` — a hash of the read's FULL
+# normalized context, salted with its source path. `query_snippet` is retained in
+# the allowlist as human-readable EVIDENCE ONLY and is never compared. This closes
+# the collision the earlier first-line/short-prefix comparison left open: many real
+# entries begin `FROM knowledge_entries`, and a neighbour that shared only that
+# first line was silently accepted.
 
 
-def _read(line_num, sql, classification="TENANT-ONLY"):
+def _read(line_num, sql, classification="TENANT-ONLY", file="svc.py"):
     return {
-        "file": "svc.py",
+        "file": file,
         "line_num": line_num,
         "query": sql,
         "classification": classification,
@@ -203,19 +215,32 @@ def _read(line_num, sql, classification="TENANT-ONLY"):
     }
 
 
-def _entry(sql, classification="TENANT-ONLY"):
+def _entry(sql, classification="TENANT-ONLY", file="svc.py"):
+    """An approved entry carrying the real discriminator (query_sha256) the way the
+    template/backfill produce it; query_snippet is evidence only."""
     return {
         "approved_classification": classification,
         "reason": "reviewed",
         "query_snippet": sql,
+        "query_sha256": context_sha256(file, sql),
     }
 
 
 SQL_A = 'cur.execute("SELECT title FROM knowledge_entries WHERE tenant_id = %s")'
 SQL_B = 'cur.execute("SELECT source_url FROM knowledge_entries WHERE tenant_id = %s")'
 
+# The #3053 reproducer: two reads that share their FIRST line but differ in the
+# WHERE below — exactly the shape the first-line matcher could not tell apart.
+SHARED_FIRST_LINE_A = (
+    "FROM knowledge_entries\n        WHERE tenant_id = $1\n          AND asset_id = $2"
+)
+SHARED_FIRST_LINE_B = (
+    "FROM knowledge_entries\n        WHERE is_private = false\n          AND manufacturer ILIKE $1"
+)
+SHARED_FIRST_LINE_UNFILTERED = "FROM knowledge_entries\n        WHERE manufacturer ILIKE $1\n          AND model_number ILIKE $2"
 
-def test_matching_snippet_is_clean():
+
+def test_matching_query_is_clean():
     errors, code = check_reads([_read(4, SQL_A)], {"approved": {"svc.py:4": _entry(SQL_A)}})
     assert code == 0, errors
     assert errors == [], errors
@@ -223,34 +248,152 @@ def test_matching_snippet_is_clean():
 
 def test_a_shifted_read_cannot_inherit_a_neighbours_approval():
     """The defect: read B slides onto read A's approved line. Same classification,
-    so the pre-existing checks stay silent — this must now be loud."""
+    so the pre-existing checks stay silent — the hash discriminator must be loud."""
     errors, code = check_reads([_read(4, SQL_B)], {"approved": {"svc.py:4": _entry(SQL_A)}})
     assert code == 1, "a misattributed approval must fail the build"
     assert any("DIFFERENT query" in e for e in errors), errors
 
 
+def test_shared_first_line_different_where_fails_closed():
+    """#3053: two reads sharing `FROM knowledge_entries` as their first line but
+    differing on the WHERE below, SAME classification. The first-line/short-prefix
+    matcher approved the neighbour; the full-context hash must fail closed."""
+    errors, code = check_reads(
+        [_read(9, SHARED_FIRST_LINE_B)],
+        {"approved": {"svc.py:9": _entry(SHARED_FIRST_LINE_A)}},
+    )
+    assert code == 1, "a neighbour sharing only the first line must NOT inherit the approval"
+    assert any("DIFFERENT query" in e for e in errors), errors
+
+
+def test_one_line_from_knowledge_entries_prefix_does_not_match_longer_query():
+    """A 1-line approved context (`FROM knowledge_entries`) must NOT cover a longer
+    read that merely starts with it — the exact short-prefix hole in #3084 rev 1."""
+    one_line = "FROM knowledge_entries"
+    errors, code = check_reads(
+        [_read(4, SHARED_FIRST_LINE_A)],
+        {"approved": {"svc.py:4": _entry(one_line)}},
+    )
+    assert code == 1, errors
+    assert any("DIFFERENT query" in e for e in errors), errors
+
+
 def test_yaml_block_indentation_is_not_a_difference():
-    """The snippet round-trips through a YAML `|` block, so it carries the
-    template's indentation. That must not read as a changed query."""
-    assert _snippet_matches("      " + SQL_A + "\n", SQL_A)
+    """The snippet round-trips through a YAML `|` block, so the read's context can
+    carry different indentation. Whitespace-normalized hashing must ignore that."""
+    reindented = SQL_A.replace("WHERE", "\n        WHERE")
+    assert context_sha256("svc.py", SQL_A) == context_sha256("svc.py", "      " + SQL_A)
+    errors, code = check_reads(
+        [_read(4, reindented)], {"approved": {"svc.py:4": _entry(reindented)}}
+    )
+    assert code == 0, errors
 
 
-def test_trailing_context_does_not_match_a_neighbour():
-    """`_extract_query_context` captures the read line PLUS trailing context, so a
-    read's context routinely contains the NEXT read's line. A containment
-    comparison would silently accept the neighbour; anchoring on the first line
-    does not."""
-    context_of_a = SQL_A + "\ndef b(cur, t):\n    " + SQL_B
-    assert _snippet_matches(SQL_A, context_of_a)
-    assert not _snippet_matches(SQL_B, context_of_a)
+def test_source_identity_prevents_cross_file_collision():
+    """Two identical short contexts in DIFFERENT files must not share a hash, so an
+    approval for one file can never transfer to another."""
+    assert context_sha256("a.py", SQL_A) != context_sha256("b.py", SQL_A)
 
 
-def test_an_entry_without_a_snippet_is_still_accepted():
-    """A ratchet, not a flag day: entries predating this check cannot be verified,
-    and must not fail the ~135 live entries already in the allowlist."""
+def test_scanner_uses_platform_independent_source_identity(tmp_path):
+    source = tmp_path / "nested" / "query.py"
+    source.parent.mkdir()
+    source.write_text(
+        'SQL = "SELECT title FROM knowledge_entries WHERE tenant_id = %s"\n',
+        encoding="utf-8",
+    )
+
+    reads = find_knowledge_entries_reads(tmp_path)
+
+    assert [read["file"] for read in reads] == ["nested/query.py"]
+
+
+def test_an_entry_without_a_hash_fails_closed():
+    """Every live entry is migrated, so a hand-added hash-less approval is invalid."""
     entry = {"approved_classification": "TENANT-ONLY", "reason": "reviewed"}
     errors, code = check_reads([_read(4, SQL_A)], {"approved": {"svc.py:4": entry}})
+    assert code == 1, errors
+    assert any("missing query_sha256" in error for error in errors), errors
+
+
+def test_backfill_is_idempotent_for_generator_output(tmp_path):
+    """The generator writes reason before the hash; backfill must not add a duplicate."""
+    read = _read(4, SQL_A)
+    allowlist_path = tmp_path / "allowlist.yml"
+    generated = generate_allowlist_template([read])
+    allowlist_path.write_text(generated, encoding="utf-8")
+
+    assert backfill_query_sha256(allowlist_path, [read]) == 0
+    assert allowlist_path.read_text(encoding="utf-8") == generated
+    assert generated.count("query_sha256:") == 1
+
+
+def test_backfill_adds_only_the_missing_hash_and_preserves_metadata(tmp_path):
+    allowlist_path = tmp_path / "allowlist.yml"
+    original = """approved:
+  "svc.py:4":
+    approved_classification: TENANT-ONLY
+    # Keep this review comment.
+    reason: "reviewed because tenant ownership is the purpose"
+    query_snippet: |
+      SELECT title FROM knowledge_entries
+      WHERE tenant_id = %s
+"""
+    allowlist_path.write_text(original, encoding="utf-8")
+    read = _read(4, SQL_A)
+
+    assert backfill_query_sha256(allowlist_path, [read]) == 1
+    migrated = allowlist_path.read_text(encoding="utf-8")
+    assert "# Keep this review comment." in migrated
+    assert 'reason: "reviewed because tenant ownership is the purpose"' in migrated
+    assert migrated.count("query_sha256:") == 1
+
+    assert backfill_query_sha256(allowlist_path, [read]) == 0
+    assert allowlist_path.read_text(encoding="utf-8") == migrated
+
+
+def test_backfill_hash_detection_is_field_order_independent(tmp_path):
+    allowlist_path = tmp_path / "allowlist.yml"
+    original = f'''approved:
+  "svc.py:4":
+    query_sha256: "{context_sha256("svc.py", SQL_A)}"
+    approved_classification: TENANT-ONLY
+    reason: "reviewed"
+    query_snippet: |
+      {SQL_A}
+'''
+    allowlist_path.write_text(original, encoding="utf-8")
+
+    assert backfill_query_sha256(allowlist_path, [_read(4, SQL_A)]) == 0
+    assert allowlist_path.read_text(encoding="utf-8") == original
+    assert original.count("query_sha256:") == 1
+
+
+def test_shared_first_line_and_classification_change_fails_closed():
+    classification_a, _ = _classify_read(SHARED_FIRST_LINE_A)
+    classification_b, _ = _classify_read(SHARED_FIRST_LINE_UNFILTERED)
+    assert classification_a == "TENANT-ONLY"
+    assert classification_b == "UNFILTERED"
+
+    errors, code = check_reads(
+        [_read(9, SHARED_FIRST_LINE_UNFILTERED, classification=classification_b)],
+        {"approved": {"svc.py:9": _entry(SHARED_FIRST_LINE_A)}},
+    )
+    assert code == 1, errors
+    assert any("Classification mismatch" in error for error in errors), errors
+
+
+def test_query_snippet_is_evidence_only_not_the_discriminator():
+    """If query_snippet were the gate, a matching snippet + WRONG hash would pass.
+    The hash must win: matching evidence cannot rescue a mismatched discriminator."""
+    entry = _entry(SQL_A)
+    entry["query_snippet"] = SQL_B  # evidence deliberately disagrees with the hash
+    # read is SQL_A → hash matches → clean, regardless of the (wrong) snippet text
+    errors, code = check_reads([_read(4, SQL_A)], {"approved": {"svc.py:4": entry}})
     assert code == 0, errors
+    # read is SQL_B → snippet "matches" but hash does not → must fail
+    errors, code = check_reads([_read(4, SQL_B)], {"approved": {"svc.py:4": entry}})
+    assert code == 1, errors
 
 
 def test_classification_mismatch_still_wins():
@@ -278,11 +421,15 @@ if __name__ == "__main__":
         test_multiline_hybrid_with_additional_filters,
         test_asset_chat_rag_hybrid,
         test_library_tenant_only_known_gap,
-        test_matching_snippet_is_clean,
+        test_matching_query_is_clean,
         test_a_shifted_read_cannot_inherit_a_neighbours_approval,
+        test_shared_first_line_different_where_fails_closed,
+        test_one_line_from_knowledge_entries_prefix_does_not_match_longer_query,
         test_yaml_block_indentation_is_not_a_difference,
-        test_trailing_context_does_not_match_a_neighbour,
-        test_an_entry_without_a_snippet_is_still_accepted,
+        test_source_identity_prevents_cross_file_collision,
+        test_an_entry_without_a_hash_fails_closed,
+        test_shared_first_line_and_classification_change_fails_closed,
+        test_query_snippet_is_evidence_only_not_the_discriminator,
         test_classification_mismatch_still_wins,
     ]
 
