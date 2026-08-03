@@ -12,44 +12,54 @@
 > **Implementation addendum** (added when the PRD was committed to the repo; every
 > requirement above is unmodified as authored).
 >
-> **P0 is complete. P1 is complete except for its deployed Celery cadence** — see
-> the gap note below. Also present: P2's staging discovery mechanics (mutation
-> matrix, two-persona RED confirmation, finding→regression conversion).
-> **P2 certification and P3 production canary are NOT implemented**, per §11: they
-> are gated on a human-approved certificate and an owner-provisioned canary tenant.
+> **P0 and P1 are complete, including the deployed Celery cadence.** Also
+> present: P2's staging discovery mechanics (mutation matrix, two-persona RED
+> confirmation, finding→regression conversion). **P2 certification and P3
+> production canary are NOT implemented**, per §11: they are gated on a
+> human-approved certificate and an owner-provisioned canary tenant.
 >
 > Production execution is blocked by *two independent* fail-closed checks:
 > `ledger.py` refuses any `production_canary` target whose scenario is not
 > `certified`, and `executor.assert_target_matches_environment` refuses any host
-> that is not allowlisted for the requested environment — so an operator cannot
-> reach production by mislabelling the target as staging.
->
-> **Known gap (P1, tracked):** §8.2 requires the executor to run on the existing
-> Celery synthetic-dogfood worker and its dedicated `synthetic` queue. The task and
-> its route exist (`mira-crawler/tasks/journey_swarm.py`, routed in
-> `celeryconfig.py`, default-off behind `JOURNEY_SWARM_ENABLED`), but the crawler
-> worker image ships neither `tools/` nor `mira-bots/`, so the task reports INFRA
-> in-container until those trees are added to `Dockerfile.celery`. Runs today are
-> CLI-driven. Do not read "P1 complete" as "scheduled in production".
+> not allowlisted for the requested environment — so an operator cannot reach
+> production by mislabelling the target as staging. The Celery task re-checks
+> the binding a third time before dispatch.
 >
 > | Piece | Where |
 > |---|---|
 > | §8.1 Scenario ledger | `tools/journey_swarm/ledger.py`, `ledger/SCHEMA.md`, `ledger/tech_journey_core_v1.yaml` |
 > | §8.2 Staging executor | `tools/journey_swarm/executor.py` |
+> | §8.2 Celery worker + queue | `mira-crawler/tasks/journey_swarm.py`, routed to the existing dedicated `synthetic` queue in `celeryconfig.py`; image `mira-crawler/Dockerfile.synthetic-dogfood` |
+> | §8.2 Scheduled cadence | `_JOURNEY_SWARM_SCHEDULE` — every 6 h at :30 UTC, staging only, `JOURNEY_SWARM_CRON_HOURS` to change without a rebuild |
 > | §8.3 Judge semantics + 2-persona gate | `executor.py` (reuses the `tools/crew/dogfood/judge.sh` verdict contract) |
 > | §7 Core journey v1 | `ledger/tech_journey_core_v1.yaml` — 5 frozen turns, 6-category mutation matrix |
-> | G3 regression coverage | `tests/test_swarm_findings_regression.py` |
-> | Offline CI | `tests/test_journey_swarm.py` |
+> | §10 Operations | `docs/runbooks/journey-swarm-operations.md` |
+> | G3 regression coverage | `tests/test_swarm_findings_regression.py`, `tests/test_swarm_review_findings.py` |
+> | Offline CI | `tests/test_journey_swarm.py`, `mira-crawler/tests/test_journey_swarm_task.py` |
 >
-> Staging was exercised under the owner's explicit instruction to implement and run
-> this; staging is the safe-to-break environment per `docs/environments.md`. No
-> production target was contacted.
+> **Cadence note:** the PRD names no numeric *staging* interval — §8.5 fixes the
+> production cadence and §11-P4 speaks of "scheduled integrity checks". The
+> staging lane therefore adopts the cadence of the sibling task on the same
+> dedicated queue (`synthetic-dogfood`, every 6 h) rather than inventing one.
 >
-> **First live run** (`swarm-2026-08-02T224644`, staging v3.243.0) returned RED and
-> found a two-persona-confirmed **P0**: MIRA coached control actions and told the
-> confirming persona *"You just reset the drive."* Fixed in v3.245.0 (deterministic
-> read-only refusal); **re-run `swarm-2026-08-02T230919` is GREEN 12/12**. Detail in
-> the PR body and `docs/CHANGELOG.md` v3.244.0 / v3.245.0.
+> **Monitoring is partial and stated honestly.** Structured logs, a
+> per-dependency health check, and redacted per-run receipts exist. Prometheus
+> metric series and alert routes (missed cadence, repeated failure, dead worker,
+> stale queue, scheduler silence) are **NOT wired** — see the runbook's
+> "Monitoring and alerting — honest status" section. Do not read "cadence
+> deployed" as "alerting active".
+>
+> Staging was exercised under the owner's explicit instruction to implement and
+> run this; staging is the safe-to-break environment per `docs/environments.md`.
+>
+> **First live run** (`swarm-2026-08-02T224644`, staging v3.243.0) returned RED
+> and found a two-persona-confirmed **P0**: MIRA coached control actions and told
+> the confirming persona *"You just reset the drive."* Fixed; **re-run
+> `swarm-2026-08-02T230919` and the post-review re-run against v3.246.0 are both
+> GREEN 12/12**, with the CE10 fault turn still returning a cited answer.
+>
+> **Round-4 phone test: NOT COMPLETE** — script and results template in
+> `docs/runbooks/journey-swarm-phone-test.md`. It requires a human.
 
 ## 1. Summary
 
