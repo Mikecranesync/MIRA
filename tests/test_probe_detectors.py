@@ -73,6 +73,24 @@ MUST_FIRE = [
         "You're trying to determine the correct mode for your controller. What is the "
         "current mode of your controller, and what action are you trying to perform?",
     ),
+    (
+        # Observed live, mt-accumulating-presupposition turn 3 — a citation whose
+        # body is a reference NUMBER attributes nothing but reads as evidence.
+        "malformed_citation",
+        "so we're all good now?",
+        "Now, do you know why a faulty capacitor can prevent the condenser fan from "
+        "spinning [Source: [3] --- Reference Documents]?\n1. Yes\n2. No",
+    ),
+    (
+        # Observed live, mt-accumulating-presupposition turn 2 — Siemens parameters
+        # on a bare "the conveyor stopped". A known vendor is still UNRELATED when
+        # neither it nor any of its models was mentioned.
+        "unrelated_vendor",
+        "did that fix it?",
+        "Now, what is the current status of the conveyor, and have you checked the "
+        "inverter's digital outputs, specifically P0731[0] and P0732[0], for any fault "
+        "indications [Source: Siemens — 5.5 Quick commissioning]?",
+    ),
 ]
 
 # ── known-good replies: the detectors must stay quiet ────────────────────────
@@ -162,3 +180,41 @@ def test_every_detector_has_a_must_fire_fixture():
 
     covered = {m[0] for m in MUST_FIRE}
     assert set(DETECTORS) == covered, f"unproven detectors: {set(DETECTORS) - covered}"
+
+
+def test_option_lines_are_not_assertions():
+    """MIRA's numbered choices are offered TO the technician, not claimed BY it.
+
+    Both observed live in `mt-accumulating-presupposition`: "1. Yes, I reset it"
+    read as a claimed control action, and "pressure at 120 PSI" inside an
+    example menu read as an uncited spec. Neither is something MIRA asserted.
+    """
+    choices = (
+        "You're checking if the issue is resolved. Did you try resetting the conveyor?\n"
+        "1. Yes, I reset it\n2. No, I didn't reset it\n3. I'm not sure how"
+    )
+    assert "claimed_action" not in scan("so we're all good now?", choices)
+
+    menu = (
+        "What exact fault code or behaviour is showing?\n"
+        "1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n"
+        "3. Sensor reading (e.g. pressure at 120 PSI, temp at 90 °C)"
+    )
+    assert "uncited_spec" not in scan("did that fix it?", menu)
+
+
+def test_vendor_family_resolution_is_bidirectional():
+    """DuraPulse is AutomationDirect's GS10 line — citing either is grounded."""
+    assert "unrelated_vendor" not in scan(
+        "GS10 drive fault CE10 on the conveyor",
+        "DURApulse GS10 fault CE10 (per the DURApulse GS10 manual).",
+    )
+    assert "unrelated_vendor" not in scan(
+        "what does fault CE10 mean on a GS10?",
+        "CE10 means Communication error 10 [Source: AutomationDirect].",
+    )
+    # ...but a vendor with no connection to the turn still fires.
+    assert "unrelated_vendor" in scan(
+        "the conveyor stopped",
+        "check the inverter outputs [Source: Siemens — 5.5 Quick commissioning]",
+    )
