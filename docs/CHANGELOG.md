@@ -1,3 +1,15 @@
+### v3.245.2 (2026-08-02) - fix(gate): tenant equipment resolution reaches cmms_equipment; confirmed identity feeds the live overlay; staging forwards the spine flags
+
+Round-3 live probe (Mike's phone, 21:16 UTC): routing fixed by v3.242.4 worked (`diagnose_equipment` at 1.00), but the UNS gate looped with `candidate=None` — even on the literal reply "cv-101 conveyor" — so `asset_identified` was never set and the live block was unreachable. Three independent broken links, all evidence-backed from the staging turn log + container inspection:
+
+- **Gate resolver:** `demo_namespace.resolve_demo_namespace` queried only `kg_entities` / `installed_component_instances`; staging CV-101 exists ONLY in `cmms_equipment` (the physical-asset registry the relay allowlist seed, the QR deep-link, and the overlay's own fallback key on). New tier 2b: tenant-scoped exact `equipment_number` match (TEXT tenant compare, `uns_path IS NOT NULL`), tried after `kg_entities` so the verified namespace still wins.
+- **Confirmation → overlay link:** after "yes", state carried only the joined display label — the overlay's `uns_prefix_for_asset` fallback (exact `equipment_number`) could never resolve it. The YES handler now stores the matched `asset_tag` on context, and `_build_factorylm_live_overlay` uses the gate-confirmed `confirmed_namespace.uns_path` directly before any re-resolution round-trip.
+- **Env plumbing:** `docker-compose.staging-vps.yml` never forwarded `MIRA_CONTEXT_CONTRACT` / `MIRA_FACTORYLM_LIVE` (verified absent via `docker inspect` on the running container) — the flags were set in Doppler stg but the overlay was hard-off in the container. Added passthrough (default off, inert) + `MIRA_ASSET_STATE_THRESHOLD` with a float-safe `:-0.5` default (an empty string would crash `float()` at import).
+
+3 new regression tests (cmms fallback tier + kg-precedence, YES-handler identity plumbing, overlay uses confirmed path); 79 pass across the touched suites (demo-namespace 13, factorylm-live-serving 25, uns-confirmation-gate 18, machine-evidence proof 24 — the 2 test_session_memory failures pre-exist on the base commit). Stacked on #3069.
+
+### v3.242.4 (2026-08-02) - fix(engine): asset-state questions reach the UNS gate; the general path can no longer fabricate plant state
+
 ### v3.245.1 (2026-08-02) - fix(engine): asset-state questions reach the UNS gate; the general path can no longer fabricate plant state
 
 Second finding from the PRD #3048 PR 5 live probe (agent-investigated, two independent traces). "What is the current state of my garage conveyor?" was routed `general_question` (1.00 confidence), which (a) dispatches BEFORE the UNS gate, and (b) answered via a bare ~80-token LLM call with zero grounding — which FABRICATED a fault, an error log, and "diagnostics" for a healthy machine, then had the H4 KB-gap footnote appended under it. Three stacked blockers and zero grounding controls on that path.

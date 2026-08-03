@@ -58,7 +58,9 @@ async def test_request_with_candidate_includes_candidate_in_prompt(tmp_path):
     state = _fresh_state("u1")
     uns_ctx = SimpleNamespace(manufacturer="Allen-Bradley", model="PowerFlex 525", confidence=0.55)
 
-    result = await sv._handle_uns_confirmation_request("u1", "why is it stopped", state, uns_ctx, "trace-1")
+    result = await sv._handle_uns_confirmation_request(
+        "u1", "why is it stopped", state, uns_ctx, "trace-1"
+    )
 
     assert "Allen-Bradley" in result["reply"]
     assert "PowerFlex 525" in result["reply"]
@@ -176,6 +178,45 @@ async def test_response_yes_without_candidate_falls_through(tmp_path):
     assert saved["asset_identified"] is None
 
 
+@pytest.mark.asyncio
+async def test_response_yes_with_demo_namespace_feeds_the_overlay(tmp_path):
+    """A tenant-namespace confirmation must hand the overlay a usable identity.
+
+    2026-08-02 round-3 probe: after "yes" the state carried only the joined
+    display label, so the live overlay's cmms_equipment fallback (exact
+    equipment_number) could never resolve — the confirmed asset_tag and the
+    match's uns_path must both land on context.
+    """
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("u7")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
+    demo_ns = {
+        "asset_id": "42",
+        "asset_name": "Conv_Simple Bench Conveyor",
+        "asset_tag": "CV-101",
+        "uns_path": "enterprise.home_garage.conveyor_lab.conveyor_1",
+        "confidence": 0.9,
+    }
+    state["context"]["pending_uns_confirm"] = {
+        "candidate": "Conv_Simple Bench Conveyor / CV-101",
+        "demo_namespace": demo_ns,
+    }
+    sv._save_state("u7", state)
+
+    result = await sv._handle_uns_confirmation_response("u7", "yes", state, "trace-7")
+
+    assert result is not None
+    assert result["dispatch_kind"] == "uns_confirm_yes"
+
+    saved = sv._load_state("u7")
+    ctx = saved.get("context") or {}
+    assert saved["asset_identified"] == "Conv_Simple Bench Conveyor / CV-101"
+    assert ctx.get("asset_tag") == "CV-101"
+    assert (ctx.get("confirmed_namespace") or {}).get("uns_path") == (
+        "enterprise.home_garage.conveyor_lab.conveyor_1"
+    )
+
+
 # ── Gate firing conditions (_should_fire_uns_gate) ─────────────────────────
 
 
@@ -183,7 +224,9 @@ def test_gate_fires_on_diagnose_idle_no_asset(tmp_path):
     """Primary case: diagnostic question in IDLE with no confirmed equipment."""
     sv = _make_sv(str(tmp_path / "test.db"))
     state = _fresh_state("u")
-    assert sv._should_fire_uns_gate("diagnose_equipment", state, "why is conveyor stopped", {}) is True
+    assert (
+        sv._should_fire_uns_gate("diagnose_equipment", state, "why is conveyor stopped", {}) is True
+    )
 
 
 def test_gate_fires_on_schedule_maintenance(tmp_path):
@@ -218,7 +261,8 @@ def test_gate_does_not_fire_mid_fsm(tmp_path):
     for fsm_state in ("Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"):
         state["state"] = fsm_state
         assert (
-            sv._should_fire_uns_gate("diagnose_equipment", state, "clarifying question", {}) is False
+            sv._should_fire_uns_gate("diagnose_equipment", state, "clarifying question", {})
+            is False
         ), f"gate must not fire in {fsm_state}"
 
 

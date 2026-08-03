@@ -197,6 +197,31 @@ def resolve_demo_namespace(
                 if ar:
                     asset_row = dict(ar._mapping)
 
+            # 2b. Asset by cmms_equipment.equipment_number — the physical-asset
+            # registry the relay allowlist seed, the QR deep-link, and the
+            # FactoryLM live overlay key on. The 2026-08-02 round-3 probe
+            # found staging CV-101 exists ONLY here (no kg_entities row), so
+            # the gate looped with candidate=None on the literal tag.
+            # tenant_id is TEXT in this family — compare as text, no cast.
+            if asset_row is None and tags:
+                ar = conn.execute(
+                    text(
+                        """
+                        SELECT id::text AS id, description AS name,
+                               equipment_number AS asset_tag,
+                               uns_path::text AS uns_path
+                          FROM cmms_equipment
+                         WHERE tenant_id = :tid
+                           AND UPPER(equipment_number) = ANY(:tags)
+                           AND uns_path IS NOT NULL
+                         LIMIT 1
+                        """
+                    ),
+                    {"tid": tenant_id, "tags": tags},
+                ).fetchone()
+                if ar:
+                    asset_row = dict(ar._mapping)
+
             # 3. Asset by name ILIKE (when nothing matched on tag).
             if asset_row is None and names:
                 for candidate in names:

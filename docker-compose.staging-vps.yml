@@ -416,6 +416,13 @@ services:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-staging}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
+      # FactoryLM machine-evidence spine (PRD #3048). Default OFF — inert until
+      # both are set to 1 in Doppler factorylm/stg. The 2026-08-02 round-3
+      # probe found the flags set in Doppler but never forwarded here, so the
+      # live overlay was hard-off in the container.
+      - MIRA_CONTEXT_CONTRACT=${MIRA_CONTEXT_CONTRACT:-}
+      - MIRA_FACTORYLM_LIVE=${MIRA_FACTORYLM_LIVE:-}
+      - MIRA_ASSET_STATE_THRESHOLD=${MIRA_ASSET_STATE_THRESHOLD:-0.5}
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=disabled://staging
       - INFERENCE_BACKEND=cloud
