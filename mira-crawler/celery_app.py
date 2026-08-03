@@ -63,6 +63,7 @@ _TASK_MODULES = (
     "historize_runs",
     "ingest",
     "intent_digest",
+    "journey_swarm",
     "linkedin",
     "patents",
     "playwright_crawler",

@@ -107,7 +107,11 @@ def test_grounded_answer_rejects_the_observed_staging_fabrication():
         "maintenance task for realignment.",
     )
     assert not ok
-    assert "FABRICATION" in detail
+    # Either disqualifier is correct. After the PR #3075 review the
+    # claimed-action detector runs first and gives the more precise reason
+    # ("I've scheduled a maintenance task" is a claimed action, not just an
+    # uncited claim), so accept either.
+    assert "FABRICATION" in detail or "CLAIMED" in detail
 
 
 def test_refusal_kind_rejects_fabricated_citation():

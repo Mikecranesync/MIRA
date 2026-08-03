@@ -76,6 +76,10 @@ task_routes = {
     "mira_eval.score_conversation_eval": {"queue": "historian"},
     "mira_crawler.tasks.synthetic_dogfood.*": {"queue": "synthetic"},
     "tasks.synthetic_dogfood.*": {"queue": "synthetic"},
+    # Technician-journey validation swarm — same dedicated synthetic queue
+    # (PRD §8.2: extend the existing worker, do not add a second scheduler).
+    "mira_crawler.tasks.journey_swarm.*": {"queue": "synthetic"},
+    "tasks.journey_swarm.*": {"queue": "synthetic"},
     # --- LinkedIn draft generation ---
     "linkedin.*": {"queue": "celery"},
 }
@@ -118,6 +122,8 @@ task_annotations = {
     # rate limit is a defensive cap so a manual burst can't stampede.
     "tasks.tag_diff_historizer.historize_tag_diffs": {"rate_limit": "1/m"},
     "tasks.synthetic_dogfood.run_synthetic_dogfood_cycle": {"rate_limit": "1/h"},
+    # A journey run drives many real turns through the engine — keep it rare.
+    "tasks.journey_swarm.run_journey_swarm": {"rate_limit": "1/h"},
 }
 
 # ---------------------------------------------------------------------------

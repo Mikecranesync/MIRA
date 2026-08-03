@@ -145,22 +145,52 @@ SAFETY_KEYWORDS_IMMEDIATE = frozenset(
 #
 # Deliberately NOT in SAFETY_KEYWORDS: the correct reply is a read-only refusal
 # with a safe escalation path, not the hazard-STOP boilerplate.
+# Rebuilt 2026-08-02 after the PR #3075 adversarial review: the first pattern
+# required request-framing ("for me", "remotely") and so returned False for
+# ordinary imperatives — "start the conveyor", "stop the line", "open the
+# valve", "set output Q0.0 to 1", "acknowledge the alarm" all evaded it. The
+# discriminator is NOT the verb; it is whether the turn is an IMPERATIVE or a
+# request aimed at MIRA, versus a question ASKING ABOUT a procedure (which is
+# exactly the job MIRA must keep doing).
+_CONTROL_VERB = (
+    r"reset|restart|start|stop|run|jog|force|enable|disable|bypass|override"
+    r"|write|set|clear|acknowledge|ack|open|close|energi[sz]e|toggle|actuate"
+    r"|engage|activate|deactivate|turn\s+(?:on|off)|switch\s+(?:on|off)|trip"
+)
+_CONTROL_TARGET = (
+    r"drive|vfd|motor|conveyor|plc|coil|output|input|tag|register|parameter"
+    r"|param|fault|alarm|interlock|e-?stop|breaker|starter|valve|pump|line"
+    r"|machine|cell|station|bit|relay|contactor|solenoid|fan|blower|heater"
+    r"|speed|frequency|setpoint|set-?point"
+    r"|[%]?[QIM]\d+(?:\.\d+)?"  # PLC addresses: Q0.0, %Q0.0, I1.2, M5
+)
+
+# Guidance questions — MIRA must ANSWER these, never refuse them. Checked
+# first so "how do I reset a PowerFlex 525?" keeps working.
+_CONTROL_GUIDANCE_RE = re.compile(
+    r"^\s*(?:hey[, ]+|hi[, ]+|ok[, ]+)?"
+    r"(?:how|what|where|when|why|which|who|is|are|does|do\s+i|did|should\s+i"
+    r"|can\s+i|could\s+i|may\s+i|would\s+it)\b",
+    re.IGNORECASE,
+)
+
 CONTROL_ACTION_RE = re.compile(
-    r"\b(?:"
-    # imperative /请求 forms aimed at MIRA
-    r"(?:can|could|will|would)\s+you\s+(?:please\s+)?(?:reset|restart|start|stop|force|"
-    r"jog|run|enable|disable|bypass|override|write|set|clear|acknowledge|ack)\b"
-    r"|(?:just\s+|please\s+|go\s+ahead\s+and\s+|for\s+me\s+)?"
-    r"(?:reset|restart|force|jog|bypass|override)\s+(?:the\s+|my\s+|that\s+)?"
-    r"(?:drive|vfd|motor|conveyor|plc|coil|output|input|fault|alarm|interlock|"
-    r"estop|e-stop|breaker|starter|valve|pump)\b"
-    r"|force\s+(?:the\s+)?(?:output|input|coil|bit|tag|register)\b"
-    r"|write\s+(?:to\s+)?(?:the\s+)?(?:plc|tag|register|parameter|coil|holding)\b"
-    r"|(?:start|stop|run)\s+(?:the\s+|my\s+)?(?:motor|conveyor|drive|pump|line)\s+"
-    r"(?:for\s+me|remotely|now)\b"
-    r"|bypass\s+(?:the\s+)?(?:interlock|safety|guard|estop|e-stop)\b"
-    r"|remotely\s+(?:reset|restart|start|stop|force)\b"
-    r"|(?:reset|clear)\s+(?:it|the\s+fault|the\s+alarm)\s+(?:for\s+me|remotely)\b"
+    r"(?:"
+    # 1. Explicit request aimed at MIRA: "can you reset...", "please start..."
+    r"(?:(?:can|could|will|would)\s+you|please|go\s+ahead\s+and|just|"
+    r"i\s+need\s+you\s+to|i\s+want\s+you\s+to)\s+"
+    rf"(?:please\s+)?(?:{_CONTROL_VERB})\b"
+    # 2. Imperative verb + control target: "start the conveyor", "open the
+    #    valve", "set output Q0.0 to 1". The negative lookbehind stops nouns
+    #    ("after a reset it faults") from reading as imperatives.
+    rf"|(?<!\ba )(?<!\bthe )(?<!\bany )(?<!\banother )\b(?:{_CONTROL_VERB})\s+"
+    r"(?:to\s+|into\s+|out\s+)?"  # "write TO the plc register"
+    rf"(?:the\s+|my\s+|that\s+|this\s+|a\s+|an\s+)?(?:{_CONTROL_TARGET})\b"
+    # 3. Actuation phrased with the target first: "force output Q0.0 on"
+    rf"|\b(?:{_CONTROL_VERB})\s+(?:it|them)\s+(?:for\s+me|remotely|now|on|off)\b"
+    # 4. Remote actuation, any target
+    rf"|\bremotely\s+(?:{_CONTROL_VERB})\b"
+    rf"|\b(?:{_CONTROL_VERB})\b[^.?!]{{0,30}}\bremotely\b"
     r")",
     re.IGNORECASE,
 )
@@ -182,9 +212,24 @@ CONTROL_ACTION_REFUSAL = (
 def is_control_action_request(message: str) -> bool:
     """True when the technician is asking MIRA to ACT on plant equipment.
 
-    Deterministic and read-only — no LLM. See CONTROL_ACTION_RE.
+    Deterministic and read-only — no LLM, so the engine can short-circuit
+    BEFORE the router call. A guidance question ("how do I reset a PowerFlex
+    525?") is never a control request: MIRA's job is to answer those.
     """
-    return bool(CONTROL_ACTION_RE.search(strip_mentions(message or "")))
+    msg = strip_mentions(message or "").strip()
+    if not msg:
+        return False
+    # A direct request to MIRA wins even inside question framing
+    # ("can you reset the drive?" is a request, "can I reset it?" is not).
+    direct_request = re.search(
+        r"\b(?:can|could|will|would)\s+you\b|\bi\s+need\s+you\s+to\b"
+        r"|\bi\s+want\s+you\s+to\b|\bfor\s+me\b",
+        msg,
+        re.IGNORECASE,
+    )
+    if _CONTROL_GUIDANCE_RE.match(msg) and not direct_request:
+        return False
+    return bool(CONTROL_ACTION_RE.search(msg))
 
 
 INTENT_KEYWORDS = {
