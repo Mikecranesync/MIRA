@@ -1,3 +1,23 @@
+> # ⛔ FROZEN ARCHIVE — do not add entries
+>
+> This file stopped being the changelog on **2026-08-02** (#3064). It is kept
+> intact as the historical record through `v3.245.2`; **nothing below this line
+> has changed.**
+>
+> **The changelog is now the [Releases page](https://github.com/Mikecranesync/MIRA/releases)**,
+> generated from merged PRs and categorised by label per `.github/release.yml`.
+> There is nothing to hand-write.
+>
+> Why it was frozen: prepending here meant every PR edited the same line of the
+> same file, so every merge put every other open PR into conflict — and a
+> conflicting PR receives **no CI at all**, silently stopping being verified
+> while still looking open and healthy. Measured across the open queue on
+> 2026-08-02, `VERSION` + this file were the *only* conflict in 5 of 9
+> conflicting PRs.
+>
+> Enforced by the `Shared-Line Guard` job in `.github/workflows/ci.yml` — a PR
+> that edits this file fails the required `CI Gate`. See `docs/versioning.md`.
+
 ### v3.245.2 (2026-08-02) - fix(gate): tenant equipment resolution reaches cmms_equipment; confirmed identity feeds the live overlay; staging forwards the spine flags
 
 Round-3 live probe (Mike's phone, 21:16 UTC): routing fixed by v3.242.4 worked (`diagnose_equipment` at 1.00), but the UNS gate looped with `candidate=None` — even on the literal reply "cv-101 conveyor" — so `asset_identified` was never set and the live block was unreachable. Three independent broken links, all evidence-backed from the staging turn log + container inspection:
