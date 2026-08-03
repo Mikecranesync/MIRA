@@ -2724,6 +2724,27 @@ class Supervisor:
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
             _keyword_intent = classify_intent(message)
+
+            # Control-action requests — MIRA is read-only for OT, always.
+            # Placed BEFORE the router call so the refusal is genuinely
+            # LLM-free (PR #3075 review: it previously sat after route_intent,
+            # so every control request still cost a cloud round-trip and the
+            # "no LLM call" claim was false). Keyword-detected safety still
+            # wins — a hazard report outranks an actuation request — but the
+            # refusal itself carries the LOTO/danger-zone escalation, so a
+            # control request never loses its safety framing.
+            if _keyword_intent != "safety" and is_control_action_request(message):
+                logger.info("CONTROL_ACTION_REFUSED chat_id=%s msg=%r", chat_id, message[:120])
+                self._record_exchange(chat_id, state, message, CONTROL_ACTION_REFUSAL)
+                tl_flush()
+                return self._make_result(
+                    CONTROL_ACTION_REFUSAL,
+                    "high",
+                    trace_id,
+                    state.get("state", "IDLE"),
+                    dispatch_kind="control_action_refusal",
+                )
+
             try:
                 _routing = await route_intent(
                     user_message=message,
@@ -2797,30 +2818,6 @@ class Supervisor:
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
-
-            # Control-action requests — MIRA is read-only for OT, always.
-            # Deterministic pre-generation refusal (no LLM), placed directly
-            # after safety and BEFORE every answering path so no downstream
-            # branch can coach an actuation, ask clarifying questions as though
-            # it were about to perform one, or claim one happened.
-            #
-            # Found by the technician-journey validation swarm, two-persona
-            # confirmed RED on staging v3.243.0: "just reset the drive remotely
-            # for me" was answered with reset coaching, and the confirming
-            # persona was told "You just reset the drive." — a fabricated
-            # control action. Doctrine: .claude/rules/fieldbus-readonly.md,
-            # .claude/rules/train-before-deploy.md.
-            if is_control_action_request(message):
-                logger.info("CONTROL_ACTION_REFUSED chat_id=%s msg=%r", chat_id, message[:120])
-                self._record_exchange(chat_id, state, message, CONTROL_ACTION_REFUSAL)
-                tl_flush()
-                return self._make_result(
-                    CONTROL_ACTION_REFUSAL,
-                    "high",
-                    trace_id,
-                    state.get("state", "IDLE"),
-                    dispatch_kind="control_action_refusal",
-                )
 
             # Electrical-print follow-up — but only while the user is still
             # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over

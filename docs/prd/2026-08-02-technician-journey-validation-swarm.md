@@ -12,12 +12,25 @@
 > **Implementation addendum** (added when the PRD was committed to the repo; every
 > requirement above is unmodified as authored).
 >
-> **P0 + P1 are implemented — PR #3075**, plus P2's staging discovery mechanics
-> (mutation matrix, two-persona RED confirmation, finding→regression conversion).
+> **P0 is complete. P1 is complete except for its deployed Celery cadence** — see
+> the gap note below. Also present: P2's staging discovery mechanics (mutation
+> matrix, two-persona RED confirmation, finding→regression conversion).
 > **P2 certification and P3 production canary are NOT implemented**, per §11: they
 > are gated on a human-approved certificate and an owner-provisioned canary tenant.
-> Production execution is *structurally* blocked — `tools/journey_swarm/ledger.py`
-> refuses any `production_canary` target whose scenario is not `certified`.
+>
+> Production execution is blocked by *two independent* fail-closed checks:
+> `ledger.py` refuses any `production_canary` target whose scenario is not
+> `certified`, and `executor.assert_target_matches_environment` refuses any host
+> that is not allowlisted for the requested environment — so an operator cannot
+> reach production by mislabelling the target as staging.
+>
+> **Known gap (P1, tracked):** §8.2 requires the executor to run on the existing
+> Celery synthetic-dogfood worker and its dedicated `synthetic` queue. The task and
+> its route exist (`mira-crawler/tasks/journey_swarm.py`, routed in
+> `celeryconfig.py`, default-off behind `JOURNEY_SWARM_ENABLED`), but the crawler
+> worker image ships neither `tools/` nor `mira-bots/`, so the task reports INFRA
+> in-container until those trees are added to `Dockerfile.celery`. Runs today are
+> CLI-driven. Do not read "P1 complete" as "scheduled in production".
 >
 > | Piece | Where |
 > |---|---|

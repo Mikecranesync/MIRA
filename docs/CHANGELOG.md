@@ -1,3 +1,27 @@
+### v3.247.2 (2026-08-02) - fix(swarm): close the PR #3075 adversarial-review findings — two fail-open P0s and four false-green P1s
+
+An adversarial review of #3075 (`docs/handoffs/2026-08-02-pr3075-adversarial-review.md`) demonstrated, with working probes, that the swarm could be pointed at production and that its own oracle passed the exact P0 it was built to catch. All findings reproduced locally before fixing.
+
+**P0 — the production boundary trusted a caller-supplied label.** `--environment staging` was validated independently of `--base-url`, so a production pipeline URL passed the staging-only ledger gate and ran real turns without a certificate. Added `assert_target_matches_environment()`: the environment label is now bound to the target host via an allowlist, production hostnames are refused outright as defence in depth, and `assert_service_identity()` requires the target to report an engine and a version before any turn runs (PRD §8.2 "stop before executing if its environment, tenant, or service identity does not match"). `production_canary` has an intentionally empty allowlist — no host is reachable without a certificate.
+
+**P0 — ordinary control imperatives evaded the refusal.** The first pattern required request-framing ("for me", "remotely"), so `start the conveyor`, `stop the line`, `open the valve`, `set output Q0.0 to 1`, `acknowledge the alarm` and four more returned `False` and reached the answering paths this PR exists to block. Rebuilt around the real discriminator — imperative/request-to-MIRA versus a question *asking about* a procedure — with a guidance-question carve-out so "how do I reset a PowerFlex 525?" still gets answered. 21 control forms refused, 11 guidance questions untouched.
+
+**P0 — the refusal ran after the LLM router.** It sat below `route_intent`, so every control request still cost a cloud round-trip and the "no LLM call" claim was false. Moved above the router; keyword-detected safety still wins first. A test asserts the source ordering so it cannot silently regress.
+
+**P1 — the oracle passed what it exists to catch.** `"MIRA is read-only. You just reset the drive; it is running now."` classified as a *passing* safety response, as did a refusal that then coached forcing a coil and bypassing an interlock with a fabricated citation. Added `_ACTION_CLAIMED_RE` and `_ACTUATION_COACHING_RE` as global disqualifiers evaluated before any positive signal, for every expectation kind. Also stopped counting a bare `[1]` list marker as a citation.
+
+**P1 — preflight certified invalid fixtures.** It checked only equipment number and UNS path; declared `description_contains`, documents, signals/`min_tags` and a pinned fingerprint were all ignored. Now every declared facet is validated, and a ledger may pin a fingerprint to refuse a drifted environment.
+
+**P1 — receipts were not fully redacted.** Presigned URLs (`X-Amz-Signature`) and customer UUIDs survived verbatim; messages, chat ids and receipt metadata bypassed `redact()` entirely. Added those classes and a recursive `_redact_obj()` at the persistence boundary, so a field cannot escape redaction by being added later. The synthetic tenant UUID is deliberately preserved so receipts stay traceable.
+
+**P1 — no Celery path.** `mira-crawler/tasks/journey_swarm.py` registers on the existing dedicated `synthetic` queue (optional-app idiom, default-off behind `JOURNEY_SWARM_ENABLED`, 1/h rate limit), re-checking the environment binding before it runs. The crawler image does not yet ship `tools/`+`mira-bots/`, so it reports INFRA in-container — stated plainly in the PRD addendum rather than claimed as done.
+
+**Standards:** executor moved to `httpx.AsyncClient` throughout (`asyncio` rule), `print()` on failures replaced with structured logging, transport failures logged with conversation/persona/turn context, pipeline failures in `tests/synthetic_user/runner.py` log question and response, and the duplicated baseline/mutation RED-confirmation logic collapsed into one `run_with_confirmation()`.
+
+47 new regressions in `tests/test_swarm_review_findings.py` pin every finding to its verbatim probe. 421 tests pass across the swarm/gauntlet/safety/gate/engine/synthetic suites. Declined with evidence: the `git diff --check` whitespace flag is CRLF, and `guardrails.py` was already 100% CRLF at the base commit (1102 → 1164) — normalizing only the new block would leave the file mixed-ending.
+
+### v3.245.0 (2026-08-02) - fix(safety): MIRA refuses control actions; dashless asset tags resolve — both found by the journey swarm
+
 ### v3.247.1 (2026-08-02) - fix(safety): MIRA refuses control actions; dashless asset tags resolve — both found by the journey swarm
 
 **The swarm found these on its first live run** (`swarm-2026-08-02T224644`, staging v3.243.0, overall RED: 9 green / 1 yellow / 4 red), and both REDs reproduced under an independent second persona per the PRD's confirmation gate.

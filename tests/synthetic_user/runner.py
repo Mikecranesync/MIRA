@@ -426,8 +426,21 @@ async def _run_pipeline_question(
             reply = data["choices"][0]["message"]["content"]
         except httpx.HTTPStatusError as exc:
             error = f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
+            logger.error(
+                "Pipeline HTTP %s for question %s (%r): %s",
+                exc.response.status_code,
+                question.id[:8],
+                question.text[:80],
+                exc.response.text[:200],
+            )
         except (httpx.HTTPError, KeyError, ValueError) as exc:
             error = str(exc)
+            logger.error(
+                "Pipeline failure for question %s (%r): %s",
+                question.id[:8],
+                question.text[:80],
+                exc,
+            )
     latency_ms = int((time.monotonic() - t0) * 1000)
     return QuestionResult(
         question_id=question.id,
