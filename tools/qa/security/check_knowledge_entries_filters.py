@@ -8,7 +8,8 @@ Enforces `.claude/rules/knowledge-entries-tenant-scoping.md` (the law):
 - TENANT-ONLY surfaces must be allowlisted (they hide OEM corpus)
 - UNFILTERED reads must be allowlisted (cross-tenant leak risk)
 
-Run: python tools/qa/security/check_knowledge_entries_filters.py [--fix]
+Run: python tools/qa/security/check_knowledge_entries_filters.py
+     [--generate | --backfill-hashes]
 """
 
 import hashlib
@@ -39,9 +40,10 @@ def find_knowledge_entries_reads(repo_root: Path) -> list[ReadSite]:
     # Search TypeScript and Python files
     for pattern in ["**/*.ts", "**/*.py"]:
         for file_path in repo_root.glob(pattern):
+            relative_path = file_path.relative_to(repo_root).as_posix()
             # Skip node_modules, .next, test files we don't care about
             if any(
-                part in str(file_path)
+                part in relative_path
                 for part in [
                     "node_modules",
                     ".next",
@@ -75,7 +77,7 @@ def find_knowledge_entries_reads(repo_root: Path) -> list[ReadSite]:
 
                     reads.append(
                         {
-                            "file": str(file_path.relative_to(repo_root)),
+                            "file": relative_path,
                             "line_num": i + 1,
                             "query": query_context.strip(),
                             "classification": classification,
@@ -221,19 +223,9 @@ def load_allowlist(allowlist_path: Path) -> dict:
         return {}
 
 
-def _norm_lines(text) -> list[str]:
-    """Non-empty lines, each whitespace-normalized, in order.
-
-    YAML block-scalar indentation is not a difference — collapsing each line's
-    internal whitespace and dropping blank lines removes it.
-    """
-    return [" ".join(line.split()) for line in str(text or "").splitlines() if line.strip()]
-
-
-def _norm_snippet(text) -> str:
-    """The full query, whitespace-normalized and joined — human-readable EVIDENCE
-    only. Never the security discriminator; see `context_sha256`."""
-    return " ".join(_norm_lines(text))
+def _normalize_query_context(text) -> str:
+    """Normalize the full query context for hashing and readable evidence."""
+    return " ".join(" ".join(line.split()) for line in str(text or "").splitlines() if line.strip())
 
 
 def context_sha256(file: str, query) -> str:
@@ -251,22 +243,19 @@ def context_sha256(file: str, query) -> str:
     cannot collide either. `query_snippet` stays in the allowlist purely as
     human-readable evidence and is NEVER compared.
     """
-    canonical = f"{file}\n{_norm_snippet(query)}"
+    canonical = f"{file}\n{_normalize_query_context(query)}"
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _approval_matches(entry: dict, read) -> bool:
     """Does the approval at this file:line key actually cover the query now there?
 
-    The discriminator is `query_sha256` (the full-context hash). An entry with NO
-    hash (hand-added, or predating this field) cannot be verified, so it is
-    accepted — a ratchet, not a flag day; the ~135 live entries are backfilled by
-    `--backfill-hashes` and the template writes one for every new entry.
+    The discriminator is `query_sha256` (the full-context hash). Missing and
+    mismatched hashes both fail closed; the live entries were backfilled by the
+    migration in #3053 and the template writes one for every new entry.
     """
     approved_hash = entry.get("query_sha256")
-    if not approved_hash:
-        return True
-    return approved_hash == context_sha256(read["file"], read["query"])
+    return bool(approved_hash) and approved_hash == context_sha256(read["file"], read["query"])
 
 
 def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]:
@@ -301,11 +290,19 @@ def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]
                         f"   Found: {classification}\n"
                         f"   Note: The read pattern may have changed"
                     )
+                elif not entry.get("query_sha256"):
+                    errors.append(
+                        f"⚠️  {key} - Approval is missing query_sha256\n"
+                        "   Note: an approval without the full-context discriminator "
+                        "cannot be verified\n"
+                        "   Action: run --backfill-hashes, then RE-READ the query "
+                        "before approving it"
+                    )
                 elif not _approval_matches(entry, read):
                     errors.append(
                         f"⚠️  {key} - Approval is attached to a DIFFERENT query\n"
-                        f"   Approved:  {_norm_snippet(entry.get('query_snippet'))[:120]}\n"
-                        f"   Found:     {_norm_snippet(read['query'])[:120]}\n"
+                        f"   Approved:  {_normalize_query_context(entry.get('query_snippet'))[:120]}\n"
+                        f"   Found:     {_normalize_query_context(read['query'])[:120]}\n"
                         f"   Approved hash: {str(entry.get('query_sha256'))[:12]}…  "
                         f"Found hash: {context_sha256(read['file'], read['query'])[:12]}…\n"
                         f"   Note: keys are file:line, so inserting or deleting lines above a\n"
@@ -381,6 +378,7 @@ def backfill_query_sha256(allowlist_path: Path, reads: list) -> int:
     out: list[str] = []
     in_approved = False
     current_key = None
+    current_entry_start = None
     added = 0
     key_re = re.compile(r'^  "(.+)":\s*$')
     for idx, line in enumerate(lines):
@@ -389,14 +387,21 @@ def backfill_query_sha256(allowlist_path: Path, reads: list) -> int:
         m = key_re.match(line)
         if m:
             current_key = m.group(1)
+            current_entry_start = idx
         out.append(line)
         if (
             in_approved
             and current_key
+            and current_entry_start is not None
             and line.startswith("    approved_classification:")
         ):
-            nxt = lines[idx + 1] if idx + 1 < len(lines) else ""
-            if nxt.lstrip().startswith("query_sha256:"):
+            block_end = idx + 1
+            while block_end < len(lines) and not key_re.match(lines[block_end]):
+                block_end += 1
+            if any(
+                candidate.startswith("    query_sha256:")
+                for candidate in lines[current_entry_start + 1 : block_end]
+            ):
                 continue  # idempotent: already backfilled
             read = read_by_key.get(current_key)
             if read is not None:

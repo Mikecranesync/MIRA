@@ -11,7 +11,14 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools" / "qa" / "security"))
 
-from check_knowledge_entries_filters import _classify_read, check_reads, context_sha256
+from check_knowledge_entries_filters import (
+    _classify_read,
+    backfill_query_sha256,
+    check_reads,
+    context_sha256,
+    find_knowledge_entries_reads,
+    generate_allowlist_template,
+)
 
 
 def test_hybrid_pattern_is_private_false_or_tenant():
@@ -224,10 +231,13 @@ SQL_B = 'cur.execute("SELECT source_url FROM knowledge_entries WHERE tenant_id =
 
 # The #3053 reproducer: two reads that share their FIRST line but differ in the
 # WHERE below — exactly the shape the first-line matcher could not tell apart.
-SHARED_FIRST_LINE_A = "FROM knowledge_entries\n        WHERE tenant_id = $1\n          AND asset_id = $2"
+SHARED_FIRST_LINE_A = (
+    "FROM knowledge_entries\n        WHERE tenant_id = $1\n          AND asset_id = $2"
+)
 SHARED_FIRST_LINE_B = (
     "FROM knowledge_entries\n        WHERE is_private = false\n          AND manufacturer ILIKE $1"
 )
+SHARED_FIRST_LINE_UNFILTERED = "FROM knowledge_entries\n        WHERE manufacturer ILIKE $1\n          AND model_number ILIKE $2"
 
 
 def test_matching_query_is_clean():
@@ -273,7 +283,9 @@ def test_yaml_block_indentation_is_not_a_difference():
     carry different indentation. Whitespace-normalized hashing must ignore that."""
     reindented = SQL_A.replace("WHERE", "\n        WHERE")
     assert context_sha256("svc.py", SQL_A) == context_sha256("svc.py", "      " + SQL_A)
-    errors, code = check_reads([_read(4, reindented)], {"approved": {"svc.py:4": _entry(reindented)}})
+    errors, code = check_reads(
+        [_read(4, reindented)], {"approved": {"svc.py:4": _entry(reindented)}}
+    )
     assert code == 0, errors
 
 
@@ -283,13 +295,92 @@ def test_source_identity_prevents_cross_file_collision():
     assert context_sha256("a.py", SQL_A) != context_sha256("b.py", SQL_A)
 
 
-def test_an_entry_without_a_hash_is_still_accepted():
-    """A ratchet, not a flag day: an entry with no query_sha256 (hand-added, or
-    predating the field) cannot be verified and must not fail the ~135 live entries
-    — all of which are backfilled by --backfill-hashes."""
+def test_scanner_uses_platform_independent_source_identity(tmp_path):
+    source = tmp_path / "nested" / "query.py"
+    source.parent.mkdir()
+    source.write_text(
+        'SQL = "SELECT title FROM knowledge_entries WHERE tenant_id = %s"\n',
+        encoding="utf-8",
+    )
+
+    reads = find_knowledge_entries_reads(tmp_path)
+
+    assert [read["file"] for read in reads] == ["nested/query.py"]
+
+
+def test_an_entry_without_a_hash_fails_closed():
+    """Every live entry is migrated, so a hand-added hash-less approval is invalid."""
     entry = {"approved_classification": "TENANT-ONLY", "reason": "reviewed"}
     errors, code = check_reads([_read(4, SQL_A)], {"approved": {"svc.py:4": entry}})
-    assert code == 0, errors
+    assert code == 1, errors
+    assert any("missing query_sha256" in error for error in errors), errors
+
+
+def test_backfill_is_idempotent_for_generator_output(tmp_path):
+    """The generator writes reason before the hash; backfill must not add a duplicate."""
+    read = _read(4, SQL_A)
+    allowlist_path = tmp_path / "allowlist.yml"
+    generated = generate_allowlist_template([read])
+    allowlist_path.write_text(generated, encoding="utf-8")
+
+    assert backfill_query_sha256(allowlist_path, [read]) == 0
+    assert allowlist_path.read_text(encoding="utf-8") == generated
+    assert generated.count("query_sha256:") == 1
+
+
+def test_backfill_adds_only_the_missing_hash_and_preserves_metadata(tmp_path):
+    allowlist_path = tmp_path / "allowlist.yml"
+    original = """approved:
+  "svc.py:4":
+    approved_classification: TENANT-ONLY
+    # Keep this review comment.
+    reason: "reviewed because tenant ownership is the purpose"
+    query_snippet: |
+      SELECT title FROM knowledge_entries
+      WHERE tenant_id = %s
+"""
+    allowlist_path.write_text(original, encoding="utf-8")
+    read = _read(4, SQL_A)
+
+    assert backfill_query_sha256(allowlist_path, [read]) == 1
+    migrated = allowlist_path.read_text(encoding="utf-8")
+    assert "# Keep this review comment." in migrated
+    assert 'reason: "reviewed because tenant ownership is the purpose"' in migrated
+    assert migrated.count("query_sha256:") == 1
+
+    assert backfill_query_sha256(allowlist_path, [read]) == 0
+    assert allowlist_path.read_text(encoding="utf-8") == migrated
+
+
+def test_backfill_hash_detection_is_field_order_independent(tmp_path):
+    allowlist_path = tmp_path / "allowlist.yml"
+    original = f'''approved:
+  "svc.py:4":
+    query_sha256: "{context_sha256("svc.py", SQL_A)}"
+    approved_classification: TENANT-ONLY
+    reason: "reviewed"
+    query_snippet: |
+      {SQL_A}
+'''
+    allowlist_path.write_text(original, encoding="utf-8")
+
+    assert backfill_query_sha256(allowlist_path, [_read(4, SQL_A)]) == 0
+    assert allowlist_path.read_text(encoding="utf-8") == original
+    assert original.count("query_sha256:") == 1
+
+
+def test_shared_first_line_and_classification_change_fails_closed():
+    classification_a, _ = _classify_read(SHARED_FIRST_LINE_A)
+    classification_b, _ = _classify_read(SHARED_FIRST_LINE_UNFILTERED)
+    assert classification_a == "TENANT-ONLY"
+    assert classification_b == "UNFILTERED"
+
+    errors, code = check_reads(
+        [_read(9, SHARED_FIRST_LINE_UNFILTERED, classification=classification_b)],
+        {"approved": {"svc.py:9": _entry(SHARED_FIRST_LINE_A)}},
+    )
+    assert code == 1, errors
+    assert any("Classification mismatch" in error for error in errors), errors
 
 
 def test_query_snippet_is_evidence_only_not_the_discriminator():
@@ -336,7 +427,8 @@ if __name__ == "__main__":
         test_one_line_from_knowledge_entries_prefix_does_not_match_longer_query,
         test_yaml_block_indentation_is_not_a_difference,
         test_source_identity_prevents_cross_file_collision,
-        test_an_entry_without_a_hash_is_still_accepted,
+        test_an_entry_without_a_hash_fails_closed,
+        test_shared_first_line_and_classification_change_fails_closed,
         test_query_snippet_is_evidence_only_not_the_discriminator,
         test_classification_mismatch_still_wins,
     ]
