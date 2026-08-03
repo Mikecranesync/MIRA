@@ -72,7 +72,13 @@ def test_slack_docker_image_ships_printsense_like_telegram():
     assert "COPY mira-bots/shared/ ./shared/" in dockerfile
     assert "COPY printsense/ ./printsense/" in dockerfile
     assert "COPY mira-bots/prompts/ ./prompts/" in dockerfile
-    assert "COPY VERSION ." in dockerfile
+    # `/VERSION` was retired 2026-08-02 (#3064): the file no longer exists, so a
+    # `COPY VERSION .` would fail the build. Deploy identity now arrives as a
+    # build arg. Asserting the ARG is present keeps the contract — a Dockerfile
+    # that drops it silently reports "unknown" on every deploy.
+    assert "COPY VERSION ." not in dockerfile
+    assert "ARG MIRA_APP_VERSION" in dockerfile
+    assert "ENV MIRA_APP_VERSION=$MIRA_APP_VERSION" in dockerfile
     assert "pytesseract>=0.3.13" in requirements
     assert "pydantic>=2.0" in requirements
     assert "anthropic>=" in requirements

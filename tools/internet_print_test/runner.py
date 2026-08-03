@@ -61,11 +61,13 @@ def _repo_version() -> dict:
         except Exception:  # noqa: BLE001
             return ""
 
-    ver = ""
-    try:
-        ver = (_REPO / "VERSION").read_text(encoding="utf-8").strip()
-    except Exception:  # noqa: BLE001
-        pass
+    # `/VERSION` was retired 2026-08-02 (#3064) — derived from the git tag now.
+    ver = os.getenv("MIRA_APP_VERSION", "").strip()
+    if not ver:
+        try:
+            ver = _git("describe", "--tags", "--abbrev=0", "--match", "v*").lstrip("v")
+        except Exception:  # noqa: BLE001
+            ver = ""
     return {"commit": _git("rev-parse", "HEAD"), "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
             "app_version": ver}
 

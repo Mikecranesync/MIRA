@@ -2784,8 +2784,13 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(_conflict_error_handler)
+    # Deploy identity: `/VERSION` was retired 2026-08-02 (#3064) — the version is
+    # derived from the git tag and baked in as MIRA_APP_VERSION at image-build
+    # time. The legacy file read stays as a fallback for older images.
     _ver_path = os.path.join(os.path.dirname(__file__), "VERSION")
-    _ver = open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
+    _ver = os.getenv("MIRA_APP_VERSION", "").strip() or (
+        open(_ver_path).read().strip() if os.path.exists(_ver_path) else "unknown"
+    )
     logger.info(
         "MIRA Telegram bot starting (polling) version=%s admins=%d", _ver, _authorizer.admin_count()
     )

@@ -122,6 +122,97 @@ jobs:
           shellcheck -S warning -f gcc tests/hooks/test_precommit_hook.sh
           shellcheck -S warning -f gcc .githooks/pre-commit
 
+  shared-line-guard:
+    name: Shared-Line Guard
+    runs-on: ubuntu-latest
+    # Why this exists (#3064): `/VERSION` and `docs/CHANGELOG.md` were a
+    # SHARED LINE — every PR edited the same line of the same file, so every merge
+    # to main put every other open PR into conflict. And a conflicting PR receives
+    # NO CI AT ALL (GitHub cannot build the merge ref), so it silently stops being
+    # verified while still looking open and healthy.
+    #
+    # Measured 2026-08-02 across the open queue: of 9 conflicting PRs, 7 conflicted
+    # on VERSION+CHANGELOG, and for 5 of them that was the ONLY conflict. Deleting
+    # `/VERSION` fixes half. Prose saying "CHANGELOG is frozen" does not fix the
+    # other half — habit re-adds it. This job is the half that is mechanical.
+    #
+    # The version is derived from the git tag (version-tag.yml) and the changelog
+    # is the GitHub Releases page (.github/release.yml). See docs/versioning.md.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: No PR may re-introduce a shared release line
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Escape hatch, deliberately human-gated: a maintainer applies the
+          # `shared-line-ok` label. It exists because the PR that FREEZES the
+          # changelog must itself edit the changelog, and because a genuine
+          # correction to the historical archive should be possible — not to
+          # make routine bumps easy again. Applying it is a visible, reviewable
+          # act on the PR, not a flag buried in a commit.
+          #
+          # Labels are read LIVE from the API, not from the event payload:
+          # `pull_request` does not fire on `labeled` (types default to
+          # opened/synchronize/reopened), so a payload read would go stale the
+          # moment the label is applied and would force a pointless empty commit
+          # to clear the gate. Reading live means `gh run rerun --failed` is
+          # enough — apply the label, re-run the job, done.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE_SHA:-}" ]; then
+            echo "Not a pull_request event — nothing to compare."
+            exit 0
+          fi
+
+          LABELS="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json labels --jq '[.labels[].name] | join(",")')"
+
+          if echo ",${LABELS}," | grep -q ',shared-line-ok,'; then
+            echo "✓ 'shared-line-ok' label present — a maintainer has accepted this edit."
+            exit 0
+          fi
+
+          # --diff-filter=AMR: only ADDED / MODIFIED / RENAMED-INTO. A PR that
+          # DELETES one of these files is doing the right thing (that is this very
+          # PR) and must pass. Three-dot: diff from the merge-base, so main's own
+          # commits are never attributed to this PR when base.sha lags a rebase —
+          # exactly the false positive that would starve a PR of CI again.
+          CHANGED="$(git diff --name-only --diff-filter=AMR "$BASE_SHA...$HEAD_SHA")"
+          fail=0
+
+          if echo "$CHANGED" | grep -qx 'VERSION'; then
+            echo "::error file=VERSION::/VERSION was retired (#3064). The version is derived from the git tag by version-tag.yml — do not re-create or edit this file. See docs/versioning.md."
+            fail=1
+          fi
+
+          if echo "$CHANGED" | grep -qx 'docs/CHANGELOG.md'; then
+            echo "::error file=docs/CHANGELOG.md::docs/CHANGELOG.md is FROZEN as a historical archive (#3064). Release notes are generated from merged PRs — label the PR per .github/release.yml instead. Editing this file re-creates the shared-line conflict that silently starves every other open PR of CI. See docs/versioning.md."
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo ""
+            echo "Escape hatch (maintainers): if the edit is genuinely intended —"
+            echo "a correction to the historical archive, or the PR that freezes"
+            echo "it — apply the 'shared-line-ok' label, then re-run this job"
+            echo "(gh run rerun --failed). Labels are read live, so no re-push."
+            echo ""
+            echo "Fix: drop the change to the file(s) above. Nothing replaces them —"
+            echo "a well-formed Conventional Commit title plus a PR label is the whole"
+            echo "authoring duty now."
+            exit 1
+          fi
+
+          echo "✓ no shared release line touched"
+
   migration-order-check:
     name: Migration Order Check
     runs-on: ubuntu-latest
@@ -908,6 +999,7 @@ jobs:
       - actionlint
       - precommit-hook-tests
       - migration-order-check
+      - shared-line-guard
       - lint-and-type-check
       - test-unit
       - mira-hub-unit
@@ -924,6 +1016,7 @@ jobs:
           ACTIONLINT_RESULT: ${{ needs.actionlint.result }}
           PRECOMMIT_HOOK_RESULT: ${{ needs.precommit-hook-tests.result }}
           MIGRATION_RESULT: ${{ needs.migration-order-check.result }}
+          SHARED_LINE_RESULT: ${{ needs.shared-line-guard.result }}
           LINT_RESULT: ${{ needs.lint-and-type-check.result }}
           TEST_UNIT_RESULT: ${{ needs.test-unit.result }}
           HUB_UNIT_RESULT: ${{ needs.mira-hub-unit.result }}
@@ -956,6 +1049,7 @@ jobs:
           require_success actionlint            "$ACTIONLINT_RESULT"
           require_success precommit-hook-tests  "$PRECOMMIT_HOOK_RESULT"
           require_success migration-order-check "$MIGRATION_RESULT"
+          require_success shared-line-guard     "$SHARED_LINE_RESULT"
           require_success lint-and-type-check   "$LINT_RESULT"
           require_success mira-hub-unit         "$HUB_UNIT_RESULT"
           require_success mira-web-pack-tests   "$WEB_PACK_RESULT"

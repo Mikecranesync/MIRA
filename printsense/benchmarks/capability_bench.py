@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -355,6 +356,12 @@ def grade_case_lanes(case: dict, extraction: dict | None = None) -> dict:
 
 
 def _version() -> str:
+    # `/VERSION` was retired 2026-08-02 (#3064) — the version is derived from the
+    # git tag and reaches a container as MIRA_APP_VERSION. The file reads stay as
+    # a fallback for older images that still ship one.
+    env = os.getenv("MIRA_APP_VERSION", "").strip()
+    if env:
+        return env
     for cand in (_ROOT / "VERSION", Path("/app/VERSION")):
         try:
             return cand.read_text(encoding="utf-8").strip()
