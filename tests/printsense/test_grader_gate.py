@@ -10,6 +10,7 @@ truth-set is enforced against regression.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -19,9 +20,42 @@ from printsense import grader_gate
 
 _ROOT = Path(__file__).resolve().parents[2]
 # The PR4 runner lives under tools/ — put it on sys.path (as tools/internet_print_test/test_runner.py does).
+# This insert STAYS even though _load() below imports by explicit path: runner.py
+# bare-imports its own siblings (`import mailer`, `import safety`, `from submit import ...`),
+# and those resolve through sys.path.
 _RUNNER_DIR = _ROOT / "tools" / "internet_print_test"
 if str(_RUNNER_DIR) not in sys.path:
     sys.path.insert(0, str(_RUNNER_DIR))
+
+
+def _load_runner():
+    """Load `tools/internet_print_test/runner.py` under a UNIQUE top-level name.
+
+    `tools/internet_print_test/runner.py` and `tools/routing_gauntlet/runner.py`
+    both want the bare name `runner`, and only the first import of it wins
+    `sys.modules` for the whole process. Since #3074 the gauntlet's test imports
+    its runner at COLLECTION time while this file imported at RUN time, so this
+    file always lost and got a module with no `TESTS_ROOT` — which is what broke
+    the Eval Offline job on main.
+
+    Loading by explicit path under a distinct name means neither test owns the
+    ambiguous bare name. Enforced by Contract 10 in tests/test_architecture.py.
+
+    Only `runner` is ambiguous. `submit` / `mailer` / `safety` keep their bare
+    names on purpose: `runner.run_one` itself does `from submit import
+    submit_image_sync` at call time, so the test's handle MUST be the same
+    `sys.modules['submit']` object the runner will reach, or the monkeypatch
+    silently misses and the test hits the real submit path.
+    """
+    cached = sys.modules.get("print_test_runner")
+    if cached is not None:
+        return cached
+    spec = importlib.util.spec_from_file_location("print_test_runner", _RUNNER_DIR / "runner.py")
+    assert spec and spec.loader, f"cannot load runner.py from {_RUNNER_DIR}"
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["print_test_runner"] = module
+    spec.loader.exec_module(module)
+    return module
 
 _ATV340_GRAPH = _ROOT / "printsense" / "fixtures" / "atv340" / "graph.json"
 _ATV340_RUBRIC = _ROOT / "printsense" / "benchmarks" / "atv340_vfd" / "rubric.json"
@@ -46,8 +80,9 @@ def _verdict(tmp_path, graph: dict, rubric: dict | None = None) -> dict:
 
 def _run_runner(tmp_path, monkeypatch, graph: dict, test_id: str, *, judge=None, no_judge=False):
     """Drive the REAL runner with submit + judge mocked (hermetic). Returns (row, td)."""
-    import runner  # lazy: only the 3 runner tests need it (+ httpx via safety/mailer)
-    import submit as submitmod
+    # lazy: only the 3 runner tests need these (+ httpx via safety/mailer)
+    runner = _load_runner()
+    import submit as submitmod  # bare on purpose — see _load_runner's docstring
 
     fixture = tmp_path / "x.png"
     fixture.write_bytes(_PNG_1x1)
@@ -57,7 +92,9 @@ def _run_runner(tmp_path, monkeypatch, graph: dict, test_id: str, *, judge=None,
     monkeypatch.setattr(submitmod, "submit_image_sync", lambda image_bytes, caption, **kw: {
         "handled": True, "classification": "ELECTRICAL_PRINT", "final_text": "R", "map_text": "m",
         "graph": graph, "interpreter_used": True, "model": "x", "latency_s": 0.1})
-    monkeypatch.setattr("runner.run_judge",
+    # Object form, not the string form: `monkeypatch.setattr("runner.run_judge", …)`
+    # resolves through sys.modules['runner'], the ambiguous name this file no longer owns.
+    monkeypatch.setattr(runner, "run_judge",
                         judge or (lambda *a, **k: {"overall_score_provisional": 60, "hard_failure": False, "provisional": True}))
     args = runner.argparse.Namespace(page=0, dpi=200, caption="Explain this print.", no_judge=no_judge,
                                      send_email=False, recipient=None, regrade=False)
@@ -146,7 +183,7 @@ def test_9_malformed_graphs_fail_safely(tmp_path):
 
 # ── 10. Report AND email preserve identical verdicts + blockers ───────────────
 def test_10_report_and_email_preserve_verdict_and_blockers(tmp_path, monkeypatch):
-    import runner
+    runner = _load_runner()
 
     bad = {"package": {"sheet": "1/2"}, "devices": [{"tag": "M"}, {"tag": "M"}],
            "off_page_references": [{"tag": "2/2"}]}
