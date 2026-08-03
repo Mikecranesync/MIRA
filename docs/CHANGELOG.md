@@ -1,4 +1,4 @@
-### v3.247.2 (2026-08-02) - fix(swarm): close the PR #3075 adversarial-review findings — two fail-open P0s and four false-green P1s
+### v3.247.3 (2026-08-02) - fix(swarm): close the PR #3075 adversarial-review findings — two fail-open P0s and four false-green P1s
 
 An adversarial review of #3075 (`docs/handoffs/2026-08-02-pr3075-adversarial-review.md`) demonstrated, with working probes, that the swarm could be pointed at production and that its own oracle passed the exact P0 it was built to catch. All findings reproduced locally before fixing.
 
