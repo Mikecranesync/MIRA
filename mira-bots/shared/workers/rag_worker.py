@@ -1073,14 +1073,25 @@ class RAGWorker:
         # Build retrieved chunks as untrusted reference data. The block is
         # prepended to the final user turn below, not embedded in system role.
         _meta = neon_chunks_meta if neon_chunks_meta is not None else self._last_neon_chunks
-        ref_lines: list[str] = []
+
+        # Pair each chunk with its metadata BEFORE filtering — `chunks` may be
+        # plain strings whose vendor lives in the parallel `_meta` list, so the
+        # two must move together or a citation would end up attached to the
+        # wrong text. This is the PRIMARY retrieval path (`_build_prompt` is a
+        # fallback), so the vendor-consistency filter has to be applied here or
+        # off-vendor citations still reach the technician.
+        _pairs: list[tuple[dict, str]] = []
         for i, chunk in enumerate(chunks, 1):
             if isinstance(chunk, dict):
-                nc = chunk
-                text = chunk.get("content", "")
+                _pairs.append((chunk, chunk.get("content", "")))
             else:
-                nc = _meta[i - 1] if i - 1 < len(_meta) else {}
-                text = chunk
+                _pairs.append((_meta[i - 1] if i - 1 < len(_meta) else {}, chunk))
+        _kept = _filter_chunks_to_established_vendor([m for m, _ in _pairs], message, state)
+        _kept_ids = {id(m) for m in _kept}
+        _pairs = [(m, t) for m, t in _pairs if id(m) in _kept_ids] or _pairs
+
+        ref_lines: list[str] = []
+        for i, (nc, text) in enumerate(_pairs, 1):
             text = _neutralize_chunk_text(text)
             label = format_source_label(nc)
             if label:
