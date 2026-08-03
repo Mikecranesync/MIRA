@@ -191,7 +191,29 @@ def _filter_chunks_to_established_vendor(
                 if entry.get("role") == "user":
                     established |= vendor_families_in(entry.get("content") or "")
         if not established:
-            return chunks
+            # NOTHING established — and this is the case that actually fails.
+            # A vague follow-up ("did that fix it?") retrieves whatever is
+            # nearest in embedding space across an 83k-chunk multi-vendor
+            # corpus, and every one of those chunks is REAL (verified against
+            # the corpus 2026-08-03), so it gets cited as authoritative for a
+            # machine nobody has identified. Vendor-specific material cannot be
+            # relevant to unknown equipment, so keep only the generic chunks.
+            generic = [
+                c
+                for c in chunks
+                if not (
+                    vendor_families_in(format_source_label(c) or "")
+                    | vendor_families_in(f"{c.get('manufacturer') or ''} {c.get('model') or ''}")
+                )
+            ]
+            if len(generic) != len(chunks):
+                logger.info(
+                    "VENDOR_FILTER no-vendor-established kept=%d/%d (generic only)",
+                    len(generic), len(chunks),
+                )
+            # Still never strip everything — an empty reference block turns a
+            # partial answer into a KB-gap admission.
+            return generic or chunks
 
         kept: list[dict] = []
         dropped: list[str] = []

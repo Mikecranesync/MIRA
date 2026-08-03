@@ -67,8 +67,26 @@ def test_generic_chunks_survive():
     assert len(kept) == 2
 
 
-def test_nothing_is_filtered_before_a_family_is_established():
-    """A first turn with no vendor must keep full retrieval breadth."""
+def test_unestablished_vendor_keeps_only_generic_chunks():
+    """The case that actually fails live.
+
+    A vague turn retrieves whatever is nearest across an 83k-chunk multi-vendor
+    corpus. Those chunks are REAL (verified against the corpus), so they get
+    cited as authoritative for a machine nobody has identified. Vendor-specific
+    material cannot be relevant to unknown equipment.
+    """
+    chunks = [
+        _chunk("Siemens", "SINAMICS"),
+        _chunk("Demag", "BGV"),
+        _chunk("", "", "general belt tensioning guidance"),
+    ]
+    kept = _filter_chunks_to_established_vendor(chunks, "did that fix it?", {})
+    assert len(kept) == 1
+    assert kept[0]["content"] == "general belt tensioning guidance"
+
+
+def test_unestablished_with_no_generic_chunks_keeps_everything():
+    """Never strip the whole reference block — a partial answer beats none."""
     chunks = [_chunk("Siemens", "SINAMICS"), _chunk("Demag", "BGV")]
     kept = _filter_chunks_to_established_vendor(chunks, "the conveyor stopped", {})
     assert kept == chunks
