@@ -130,137 +130,6 @@ def _sanitize_label_field(value: str) -> str:
     return s[:120]
 
 
-# ── vendor consistency ───────────────────────────────────────────────────────
-#
-# Vendor families, keyed by family name with the product lines that identify
-# them. Used to decide whether a retrieved chunk belongs to the same maker the
-# technician is actually working on.
-_VENDOR_FAMILIES: dict[str, tuple[str, ...]] = {
-    "automationdirect": (
-        "automationdirect",
-        "durapulse",
-        "gs10",
-        "gs20",
-        "gs30",
-        "click",
-        "productivity",
-        "stride",
-    ),
-    "rockwell": (
-        "rockwell",
-        "allen-bradley",
-        "allen bradley",
-        "powerflex",
-        "micrologix",
-        "compactlogix",
-        "controllogix",
-        "guardmaster",
-        "kinetix",
-        "micro820",
-    ),
-    "siemens": ("siemens", "sinamics", "simatic", "micromaster", "sirius"),
-    "abb": ("abb", "acs580", "acs880", "acs355"),
-    "yaskawa": ("yaskawa", "v1000", "a1000", "ga800"),
-    "schneider": ("schneider", "altivar", "modicon", "telemecanique"),
-    "mitsubishi": ("mitsubishi", "melservo", "fr-d", "fr-e"),
-    "danfoss": ("danfoss", "vlt"),
-    "demag": ("demag",),
-    "interroll": ("interroll",),
-}
-
-
-def vendor_families_in(text: str) -> set[str]:
-    """Vendor families named anywhere in `text` (by maker or by product line)."""
-    t = (text or "").lower()
-    return {fam for fam, toks in _VENDOR_FAMILIES.items() if any(tok in t for tok in toks)}
-
-
-def _filter_chunks_to_established_vendor(
-    chunks: list[dict] | None, query: str, state: dict | None
-) -> list[dict]:
-    """Drop retrieved chunks belonging to a vendor the turn never established.
-
-    A chunk with no resolvable vendor is kept — generic material is not the
-    problem. Filtering only happens when the conversation HAS established a
-    family (from the message, the confirmed asset, or the history), so a
-    first turn with no vendor yet is unaffected and retrieval breadth for
-    genuinely unknown equipment is preserved.
-
-    Fail-open: any error returns the chunks untouched. A relevance filter must
-    never be the reason a technician gets no answer.
-    """
-    if not chunks:
-        return chunks or []
-    try:
-        established: set[str] = vendor_families_in(query)
-        ctx = (state or {}).get("context") or {}
-        uns = ctx.get("uns_context") or {}
-        for extra in (
-            uns.get("manufacturer") or "",
-            uns.get("model") or "",
-            (state or {}).get("asset_identified") or "",
-        ):
-            established |= vendor_families_in(str(extra))
-        if not established:
-            # Nothing established yet — fall back to what the technician has
-            # said across the conversation, so a vendor named in turn 1 still
-            # governs turn 6.
-            for entry in ctx.get("history") or []:
-                if entry.get("role") == "user":
-                    established |= vendor_families_in(entry.get("content") or "")
-        if not established:
-            # NOTHING established — and this is the case that actually fails.
-            # A vague follow-up ("did that fix it?") retrieves whatever is
-            # nearest in embedding space across an 83k-chunk multi-vendor
-            # corpus, and every one of those chunks is REAL (verified against
-            # the corpus 2026-08-03), so it gets cited as authoritative for a
-            # machine nobody has identified. Vendor-specific material cannot be
-            # relevant to unknown equipment, so keep only the generic chunks.
-            generic = [
-                c
-                for c in chunks
-                if not (
-                    vendor_families_in(format_source_label(c) or "")
-                    | vendor_families_in(f"{c.get('manufacturer') or ''} {c.get('model') or ''}")
-                )
-            ]
-            if len(generic) != len(chunks):
-                logger.info(
-                    "VENDOR_FILTER no-vendor-established kept=%d/%d (generic only)",
-                    len(generic),
-                    len(chunks),
-                )
-            # Still never strip everything — an empty reference block turns a
-            # partial answer into a KB-gap admission.
-            return generic or chunks
-
-        kept: list[dict] = []
-        dropped: list[str] = []
-        for chunk in chunks:
-            label = format_source_label(chunk) or ""
-            fams = vendor_families_in(label) | vendor_families_in(
-                f"{chunk.get('manufacturer') or ''} {chunk.get('model') or ''}"
-            )
-            if not fams or (fams & established):
-                kept.append(chunk)
-            else:
-                dropped.append(sorted(fams)[0])
-        if dropped:
-            logger.info(
-                "VENDOR_FILTER established=%s dropped=%s kept=%d/%d",
-                sorted(established),
-                sorted(set(dropped)),
-                len(kept),
-                len(chunks),
-            )
-        # Never strip every chunk — an empty reference block would turn a
-        # partially-relevant answer into a KB-gap admission.
-        return kept or chunks
-    except Exception as exc:  # noqa: BLE001 — relevance filtering is best-effort
-        logger.debug("VENDOR_FILTER skipped: %s", exc)
-        return chunks
-
-
 def format_source_label(chunk: dict | None) -> str:
     """Build the "Manufacturer Model — Section" label for a citation tag.
 
@@ -1130,10 +999,6 @@ class RAGWorker:
                 _pairs.append((chunk, chunk.get("content", "")))
             else:
                 _pairs.append((_meta[i - 1] if i - 1 < len(_meta) else {}, chunk))
-        _kept = _filter_chunks_to_established_vendor([m for m, _ in _pairs], message, state)
-        _kept_ids = {id(m) for m in _kept}
-        _pairs = [(m, t) for m, t in _pairs if id(m) in _kept_ids] or _pairs
-
         ref_lines: list[str] = []
         for i, (nc, text) in enumerate(_pairs, 1):
             text = _neutralize_chunk_text(text)
@@ -1288,7 +1153,6 @@ class RAGWorker:
         # Measured live: one 8-turn conversation opening "the conveyor stopped"
         # cited Siemens, Rockwell, a textbook section, Demag and Interroll — a
         # different manufacturer nearly every turn, each reply looking grounded.
-        neon_chunks = _filter_chunks_to_established_vendor(neon_chunks, message, state)
 
         # Build NeonDB chunks as untrusted reference data. The block is prepended
         # to the final user turn below, not embedded in system role.

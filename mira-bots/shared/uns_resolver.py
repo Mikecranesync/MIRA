@@ -500,18 +500,25 @@ def canonical_vendor(name: str | None) -> str | None:
     Single source of truth for "are these two manufacturer strings the same
     vendor?" — shared by the citation-relevance gate
     (``citation_compliance``) and the retrieval cross-vendor filter
-    (``rag_worker``) so they never disagree. Substring match, longest alias
-    first, so ``"rockwell automation"`` wins over ``"rockwell"``.
+    (``rag_worker``) so they never disagree.
+
+    Matching is **boundary-aware**, via the same ``_match_vendor`` this module
+    already uses for message resolution. It previously did a bare ``alias in
+    low`` substring test, which is wrong in a way that reaches the technician:
+    the ``"ab"`` alias fires inside the word "cable", so *"Cable installation
+    procedure"* resolved to Rockwell Automation. Once a citation gate started
+    stripping on that answer, a legitimate generic cable source was removed
+    from a reply as an "unsupported Rockwell citation".
+
+    Longest alias still wins, so ``"rockwell automation"`` beats ``"rockwell"``.
     """
     if not name:
         return None
     low = name.strip().lower()
     if low in VENDOR_ALIASES:
         return VENDOR_ALIASES[low]
-    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
-        if alias in low:
-            return VENDOR_ALIASES[alias]
-    return None
+    mfr, _alias, _family = _match_vendor(low)
+    return mfr
 
 
 def vendors_in_text(text: str | None) -> set[str]:
@@ -525,11 +532,17 @@ def vendors_in_text(text: str | None) -> set[str]:
     Lives here rather than in the caller so "same vendor" stays defined in one
     place (`.claude/rules/uns-compliance.md` §1–2). Fail-open: an empty set
     means "nothing established", never "mismatch".
+
+    Delegates to ``_match_all_vendors`` — the module's existing boundary-aware
+    matcher — rather than testing ``alias in text``. A bare substring test
+    matches "ab" inside "cable" and "abb" inside "grabbed", so
+    *"the cable came loose"* would establish Rockwell and *"I grabbed the
+    cable"* would establish ABB. Establishing a vendor nobody named is the
+    exact failure this function exists to prevent.
     """
     if not text:
         return set()
-    low = text.lower()
-    return {canon for alias, canon in VENDOR_ALIASES.items() if alias in low}
+    return {canonical for canonical, _alias, _family, _pos in _match_all_vendors(text.lower())}
 
 
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:

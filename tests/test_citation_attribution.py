@@ -30,6 +30,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "mira-bots"))
 
@@ -185,6 +187,134 @@ def test_established_text_gathers_turn_asset_uns_and_history():
     assert "CV-101" in text
     assert "AutomationDirect" in text
     assert "CE10" in text
+
+
+# ── P0: a reply must not license its own citation ────────────────────────────
+#
+# Both Supervisor paths append the freshly generated reply to history BEFORE
+# calling the citation check (engine.py 3712-3713 and 5027-5028). An earlier
+# version of established_context_text read every history entry, so the reply's
+# own "[Source: Siemens …]" put "Siemens" into the established set and the gate
+# passed itself. These tests recreate that exact ordering.
+
+
+def _history_after_engine_appends(user_turns: list[str], assistant_reply: str) -> dict:
+    """State as the engine actually presents it at the citation check.
+
+    The user turn and the generated reply are BOTH already in history — that
+    ordering is the bug, so the fixture reproduces it rather than idealising it.
+    """
+    history: list[dict] = []
+    for t in user_turns:
+        history.append({"role": "user", "content": t})
+        history.append({"role": "assistant", "content": "..."})
+    history.append({"role": "assistant", "content": assistant_reply})
+    return {"context": {"history": history}}
+
+
+def test_reply_cannot_license_its_own_vendor_citation():
+    """The P0 case, end to end through the real composer."""
+    reply = f"Check the commissioning parameters. {SIEMENS}"
+    state = _history_after_engine_appends(["the conveyor stopped", "did that fix it?"], reply)
+    established = established_context_text("did that fix it?", state)
+
+    assert "Siemens" not in established, "the reply leaked into its own evidence"
+
+    rel = evaluate_citation_relevance(reply, None, established_text=established)
+    assert rel["relevant"] is False
+    assert rel["reason"] == "unestablished"
+    assert rel["conflicting_tags"] == [SIEMENS]
+
+    sanitized = strip_conflicting_citations(reply, rel["conflicting_tags"], None, rel["reason"])
+    assert SIEMENS not in sanitized
+    assert "which machine" in sanitized
+
+
+def test_a_prior_assistant_turn_cannot_establish_a_vendor_either():
+    """A vendor MIRA invented in turn 3 must not authorise citing it in turn 6."""
+    state = {
+        "context": {
+            "history": [
+                {"role": "user", "content": "the conveyor stopped"},
+                {"role": "assistant", "content": "This looks like a Siemens SINAMICS issue."},
+            ]
+        }
+    }
+    established = established_context_text("what next?", state)
+    assert "Siemens" not in established
+    rel = evaluate_citation_relevance(f"Check it. {SIEMENS}", None, established_text=established)
+    assert rel["relevant"] is False
+
+
+def test_untyped_history_entries_do_not_establish_a_vendor():
+    """A bare string has no role, so it cannot be proven to be the technician."""
+    state = {"context": {"history": ["I think this is a Siemens drive"]}}
+    established = established_context_text("what next?", state)
+    assert "Siemens" not in established
+
+
+def test_a_real_user_turn_still_licenses_its_citation():
+    """The legitimate case must survive the P0 fix — GS10 named by the user."""
+    reply = f"Verify P09.03. {GS10}"
+    state = _history_after_engine_appends(["my GS10 is faulted", "what next?"], reply)
+    established = established_context_text("what next?", state)
+    assert "GS10" in established
+    rel = evaluate_citation_relevance(reply, None, established_text=established)
+    assert rel["relevant"] is True
+
+
+# ── P1: alias matching must respect word boundaries ──────────────────────────
+#
+# The alias table contains "ab" (Allen-Bradley) and "abb". A substring test
+# fires on "c-ab-le" and "gr-abb-ed", so ordinary English established a vendor
+# nobody named — and, worse, made a legitimate generic cable source look like
+# an unsupported Rockwell citation and stripped it.
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "the cable came loose",
+        "I grabbed the cable",
+        "click the reset button",
+        "check the label on the gearbox",
+    ],
+)
+def test_ordinary_english_establishes_no_vendor(text):
+    assert vendors_in_text(text) == set(), f"{text!r} matched a vendor inside a word"
+
+
+def test_generic_cable_documentation_is_not_a_vendor():
+    from shared.uns_resolver import canonical_vendor
+
+    assert canonical_vendor("Cable installation procedure") is None
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("the AB drive is faulted", "Rockwell Automation"),
+        ("PowerFlex 525 tripped", "Rockwell Automation"),
+        ("my GS10 is faulted", "AutomationDirect"),
+        ("Siemens SINAMICS G120", "Siemens"),
+        ("Demag hoist brake", "Demag"),
+        ("Interroll roller", "Interroll"),
+    ],
+)
+def test_real_vendor_mentions_still_resolve(text, expected):
+    """Boundary-awareness must not cost the aliases that matter."""
+    assert expected in vendors_in_text(text)
+
+
+def test_generic_cable_source_survives_but_siemens_is_still_stripped():
+    """The two behaviors that must hold at once, in one reply."""
+    reply = f"Check the wiring. {GENERIC} {SIEMENS}"
+    established = established_context_text("the cable came loose", None)
+    rel = evaluate_citation_relevance(reply, None, established_text=established)
+    assert rel["conflicting_tags"] == [SIEMENS], "generic source must survive"
+    sanitized = strip_conflicting_citations(reply, rel["conflicting_tags"], None, rel["reason"])
+    assert GENERIC in sanitized
+    assert SIEMENS not in sanitized
 
 
 def test_established_text_survives_malformed_state():

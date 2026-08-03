@@ -82,14 +82,33 @@ def _vendors_in_text(text: str) -> set[str]:
 
 
 def established_context_text(message: str, state: dict | None) -> str:
-    """Everything the conversation has actually established, as one string.
+    """What the TECHNICIAN and trusted state have established, as one string.
 
     Feeds the unsupported-attribution check: a vendor named here is fair game
     to cite, a vendor absent from it is being attributed to a machine nobody
-    identified. Deliberately generous — this turn, the confirmed asset, the
-    resolved UNS manufacturer/model, and the prior turns — because a false
-    strip is worse than a missed one, and a vendor established in turn 1 must
-    still license a citation in turn 6 (the drift case that motivated this).
+    identified.
+
+    **Only three sources count, and the exclusion is the point:**
+
+    * the current user message,
+    * prior **user** turns,
+    * trusted resolved state — the confirmed asset and the UNS context.
+
+    An assistant turn is NEVER a source. Both Supervisor paths append the
+    freshly generated reply to history *before* calling the citation check
+    (``engine.py`` 3712-3713 and 5027-5028), so a reply containing
+    ``[Source: Siemens …]`` would otherwise find "Siemens" in its own text and
+    license its own citation. The gate would then pass every time it mattered
+    most — a self-referential loop that looks like evidence.
+
+    Prior assistant turns are excluded for the same reason one step back: a
+    vendor MIRA hallucinated in turn 3 must not authorise citing that vendor in
+    turn 6. Only the technician and resolved state can establish equipment.
+
+    History entries that are bare strings carry no role, so they cannot be
+    proven to be the technician's words and are excluded. That is deliberately
+    strict: the cost is a missed strip, the alternative is a reply laundering
+    its own vendor through an untyped history entry.
 
     Never raises: a malformed state yields whatever could be read.
     """
@@ -106,10 +125,8 @@ def established_context_text(message: str, state: dict | None) -> str:
         history = ctx.get("history")
         if isinstance(history, list):
             for turn in history:
-                if isinstance(turn, dict):
+                if isinstance(turn, dict) and turn.get("role") == "user":
                     parts.append(str(turn.get("content") or ""))
-                elif isinstance(turn, str):
-                    parts.append(turn)
     return " ".join(p for p in parts if p)
 
 
