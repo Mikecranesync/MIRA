@@ -171,6 +171,15 @@ jobs:
             IFS=',' read -ra NAMES <<< "$REQUESTED"
             for n in "${NAMES[@]}"; do
               n_trimmed="$(echo "$n" | xargs)"
+              # Security (#2989): seed names are basenames only. Reject path
+              # separators and traversal so a dispatch input can't escape
+              # tools/seeds/ (e.g. ../../tests/seeds/<x>) and apply an arbitrary
+              # .sql against staging/prod.
+              case "$n_trimmed" in
+                *[!A-Za-z0-9._-]* | *..*)
+                  echo "::error::Invalid seed name '$n_trimmed' — basenames only ([A-Za-z0-9._-], no '/' or '..')."
+                  exit 1 ;;
+              esac
               if [ "$n_trimmed" = "simlab-docs" ]; then
                 RUN_SIMLAB=true
                 continue

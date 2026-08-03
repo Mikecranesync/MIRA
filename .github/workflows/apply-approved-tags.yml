@@ -106,9 +106,23 @@ jobs:
 
       - name: Resolve seed file
         id: resolve
+        env:
+          # Pass dispatch inputs through the environment, NOT ${{ }} inline —
+          # inline interpolation lets a crafted value inject shell commands
+          # (#2989). Quote them below and validate before use.
+          SEED_INPUT: ${{ inputs.seed }}
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           set -euo pipefail
-          SEED_FILE="tools/seeds/${{ inputs.seed }}.sql"
+          # Security (#2989): seed is a basename under tools/seeds/. Reject path
+          # separators and traversal so the input can't escape the directory and
+          # apply an arbitrary .sql against staging/prod.
+          case "$SEED_INPUT" in
+            "" | *[!A-Za-z0-9._-]* | *..*)
+              echo "::error::Invalid seed name '$SEED_INPUT' — basenames only ([A-Za-z0-9._-], no '/' or '..')."
+              exit 1 ;;
+          esac
+          SEED_FILE="tools/seeds/${SEED_INPUT}.sql"
           if [ ! -f "$SEED_FILE" ]; then
             echo "::error::Seed file not found: $SEED_FILE"
             exit 1
@@ -118,7 +132,7 @@ jobs:
           # and the workflow log can mask the resolved DSN without revealing
           # tenant identifiers in the file diff.
           RESOLVED="/tmp/resolved_seed.sql"
-          sed "s/__TENANT_ID__/${{ inputs.tenant_id }}/g" "$SEED_FILE" > "$RESOLVED"
+          sed "s/__TENANT_ID__/${TENANT_INPUT}/g" "$SEED_FILE" > "$RESOLVED"
           echo "Seed:   $SEED_FILE"
           echo "Resolved: $RESOLVED ($(wc -l < "$RESOLVED") lines)"
           echo "SEED_FILE=$SEED_FILE" >> "$GITHUB_ENV"
