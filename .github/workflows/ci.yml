@@ -667,6 +667,16 @@ jobs:
         # the explicit allowlist with documented reasons (deferred fixes, test code).
         run: python3 tools/qa/security/check_knowledge_entries_filters.py
 
+      - name: knowledge_entries checker unit tests
+        # The step above runs the CHECKER; this runs the checker's own tests.
+        # Without it the checker's test file is collected by nothing — `ci.yml`
+        # enumerates test paths individually, and neither root `tests/` nor
+        # `mira-crawler/tests/` is collected wholesale. That gap is exactly how
+        # a durable secret leak and a lost-update race reached review with a
+        # full green board on #3023. A guard whose own tests never run is a
+        # guard nobody is checking.
+        run: pytest tests/test_knowledge_entries_security_check.py -q
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
