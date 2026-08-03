@@ -220,23 +220,21 @@ def load_allowlist(allowlist_path: Path) -> dict:
         return {}
 
 
-def _norm_snippet(text) -> str:
-    """The read's OWN line, whitespace-normalized.
+def _norm_lines(text) -> list[str]:
+    """The snippet's non-empty lines, each whitespace-normalized, in order.
 
-    Two reasons this takes only the first line rather than the whole snippet:
-
-    1. YAML block-scalar indentation is not a difference — normalizing whitespace
-       removes it.
-    2. `_extract_query_context` captures the read line plus TRAILING context, and
-       that tail keeps growing until a statement terminator. So a read's context
-       routinely CONTAINS the next read's line, and a whole-snippet containment
-       comparison silently matches a neighbour. The first line is the one the
-       `file:line` key actually points at, and the one that identifies the read.
+    YAML block-scalar indentation is not a difference — collapsing each line's
+    internal whitespace and dropping blank lines removes it. Order is preserved
+    so a MULTI-LINE snippet stays discriminating: two reads that share a first
+    line (`FROM knowledge_entries`) but differ on their WHERE/JOIN below produce
+    different line lists (#3053).
     """
-    for line in str(text or "").splitlines():
-        if line.strip():
-            return " ".join(line.split())
-    return ""
+    return [" ".join(line.split()) for line in str(text or "").splitlines() if line.strip()]
+
+
+def _norm_snippet(text) -> str:
+    """The snippet's non-empty lines, whitespace-normalized and joined (display)."""
+    return " ".join(_norm_lines(text))
 
 
 def _snippet_matches(approved, found: str) -> bool:
@@ -253,15 +251,23 @@ def _snippet_matches(approved, found: str) -> bool:
     it from decoration into the content key the line number cannot be.
 
     An entry with NO snippet (hand-added, or written before this check existed)
-    cannot be verified, so it is accepted — this must not fail the 148 existing
+    cannot be verified, so it is accepted — this must not fail the existing
     entries. It is a ratchet: every entry the template generates carries one.
+
+    The comparison is exact over ALL of the approved snippet's lines, against the
+    found query's SAME NUMBER of leading lines. Comparing only the first line
+    (the old behaviour) let a neighbour sharing `FROM knowledge_entries` be
+    accepted for a different query (#3053); comparing the whole found context via
+    containment would re-open the trailing-bleed false-match. Exact line-list
+    equality avoids both, and the adaptive length keeps the shorter snippets the
+    generator historically stored (`[:3]`) matching without a data migration.
     """
     if approved is None:
         return True
-    a, f = _norm_snippet(approved), _norm_snippet(found)
+    a = _norm_lines(approved)
     if not a:
         return True
-    return a == f
+    return a == _norm_lines(found)[: len(a)]
 
 
 def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]:
@@ -351,7 +357,13 @@ def generate_allowlist_template(reads: list[ReadSite]) -> str:
             template += f"    approved_classification: {read['classification']}\n"
             template += '    reason: "TODO: justify this read pattern"\n'
             template += "    query_snippet: |\n"
-            for line in read["query"].split("\n")[:3]:
+            # Store the FULL extracted context, not the first 3 lines — the
+            # snippet is the content key that the file:line cannot be, and the
+            # discriminating WHERE/JOIN can sit past line 3 (#3053). _snippet_matches
+            # compares exact line-lists, adaptive to each stored snippet's length,
+            # so longer snippets simply discriminate more; older 1-3 line entries
+            # keep matching without a migration.
+            for line in read["query"].split("\n"):
                 template += f"      {line}\n"
 
     return template
