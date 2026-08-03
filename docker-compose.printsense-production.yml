@@ -18,9 +18,18 @@ x-printsense-production-env: &printsense-production-env
 
 services:
   mira-bot-telegram:
+    # Match the base service limits in docker-compose.saas.yml (this overlay is
+    # applied after it). Compose v2 merges service keys across -f files, but the
+    # mem-lint linter checks each file standalone, so the limits must be
+    # restated here. Not deploy.resources.limits.memory — that is Swarm syntax
+    # compose v2 silently ignores (the May 2026 mira-docling OOM lesson).
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       <<: *printsense-production-env
 
   mira-bot-slack:
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       <<: *printsense-production-env
