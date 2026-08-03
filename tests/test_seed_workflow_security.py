@@ -59,10 +59,10 @@ def test_resolver_rejects_symlink_escape(tmp_path: Path):
 @pytest.mark.parametrize(
     ("statement", "expected"),
     (
-        ("DROP TABLE knowledge_entries;", "DROP TABLE"),
-        ("DROP/**/TABLE knowledge_entries;", "DROP TABLE"),
-        ("TRUNCATE knowledge_entries;", "TRUNCATE"),
-        ("DELETE FROM knowledge_entries;", "DELETE FROM"),
+        ("DROP TABLE dangerous_seed_target;", "DROP TABLE"),
+        ("DROP/**/TABLE dangerous_seed_target;", "DROP TABLE"),
+        ("TRUNCATE dangerous_seed_target;", "TRUNCATE"),
+        ("DELETE FROM dangerous_seed_target;", "DELETE FROM"),
     ),
 )
 def test_destructive_sql_is_rejected_but_comments_are_ignored(
