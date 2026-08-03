@@ -711,12 +711,24 @@ def test_verified_promotion_checker_catches_violations():
 _AMBIGUITY_ROOTS = ("tools", "scripts")
 
 # A pathlib chain rooted at a tools/-family segment: "tools" / "routing_gauntlet".
-_PATH_CHAIN_RE = re.compile(r'"(?:tools|scripts)"(?:\s*/\s*"[^"/]+")*')
-# The same directory written as one literal: "tools/qa/security". Requires the
-# slash — a bare "tools" is a one-segment CHAIN and is matched above, so making
-# the slash optional here would emit a spurious `tools` alongside every
-# `"tools" / "sub"` chain.
-_PATH_LITERAL_RE = re.compile(r'"(?:tools|scripts)/[^"]*"')
+# Segments are [A-Za-z0-9_-] (same class as the literal form below) so a chain
+# that ends in a FILE — `REPO / "tools" / "hooks" / "rm_guard.py"` — degrades to
+# its containing directory (tools/hooks) instead of contributing a bogus
+# "tools/hooks/rm_guard.py" entry. A permissive [^"/]+ here was the actual leak:
+# it let ~15 file paths through even after the literal form was tightened.
+_PATH_CHAIN_RE = re.compile(r'"(?:tools|scripts)"(?:\s*/\s*"[A-Za-z0-9_-]+")*')
+# The same directory written as one literal: "tools/qa/security".
+#   - Requires the slash: a bare "tools" is a one-segment CHAIN matched above, so
+#     an optional slash would emit a spurious `tools` beside every chain.
+#   - Segments are [A-Za-z0-9_-] only, so this matches DIRECTORIES and not the
+#     many file paths and prose fragments that also start with "tools/" in this
+#     tree ("tools/seeds/*.sql", "tools/hooks/rm_guard.py", "tools/…​ not found").
+#     Those all carry a dot or a space. Without this, ~30 non-directories entered
+#     the provider map; they were filtered later by is_dir(), but a *directory*
+#     reached only through a file path (tools/lead-hunter via
+#     "tools/lead-hunter/hunt.py") did not, and could manufacture a false
+#     ambiguity against a dir no test ever puts on sys.path.
+_PATH_LITERAL_RE = re.compile(r'"(?:tools|scripts)(?:/[A-Za-z0-9_-]+)+"')
 _QUOTED_RE = re.compile(r'"([^"]+)"')
 
 
@@ -751,10 +763,17 @@ def referenced_tool_dirs(test_sources: list[tuple[str, str]]) -> set[str]:
 
 
 def ambiguous_module_names(dir_to_modules: dict[str, set[str]]) -> dict[str, set[str]]:
-    """{top-level module name -> providing dirs} for names provided by >1 dir."""
+    """{top-level module name -> providing dirs} for names provided by >1 dir.
+
+    Dunders are excluded: `__init__` / `__main__` exist in most of these dirs but
+    are never reachable as a bare top-level import, so counting them would put a
+    permanent false entry in the failure message with no violation behind it.
+    """
     providers: dict[str, set[str]] = {}
     for directory, names in dir_to_modules.items():
         for name in names:
+            if name.startswith("__"):
+                continue
             providers.setdefault(name, set()).add(directory)
     return {n: d for n, d in providers.items() if len(d) > 1}
 
@@ -835,9 +854,24 @@ def test_ambiguous_tool_import_checker_catches_violations():
     assert referenced_tool_dirs([("t.py", 'sys.path.insert(0, str(P / "tools" / "qa" / "security"))')]) == {
         "tools/qa/security"
     }
+    # The dir written as one literal (not a pathlib chain).
+    assert referenced_tool_dirs([("t.py", 'P = "tools/qa/security"')]) == {"tools/qa/security"}
+    # A dir hoisted into a variable is still found — binding discovery to the
+    # sys.path.insert call missed exactly this and un-guarded the real bug.
+    assert referenced_tool_dirs(
+        [("t.py", '_D = REPO / "tools" / "routing_gauntlet"\nsys.path.insert(0, str(_D))')]
+    ) == {"tools/routing_gauntlet"}
     # Non-tools dirs are out of scope; fully variable-built paths are skipped.
     assert referenced_tool_dirs([("t.py", 'sys.path.insert(0, "mira-bots")')]) == set()
     assert referenced_tool_dirs([("t.py", "sys.path.insert(0, str(SCRIPTS))")]) == set()
+    # File paths and prose that merely start with "tools/" are NOT directories.
+    assert referenced_tool_dirs([("t.py", 'X = "tools/hooks/rm_guard.py"')]) == set()
+    assert referenced_tool_dirs([("t.py", 'M = "tools/seeds/a.sql is stale — "')]) == set()
+    assert referenced_tool_dirs([("t.py", 'M = "tools/ path discovery failed"')]) == set()
+    # A CHAIN ending in a file degrades to its containing directory.
+    assert referenced_tool_dirs([("t.py", 'P = REPO / "tools" / "hooks" / "rm_guard.py"')]) == {
+        "tools/hooks"
+    }
 
     # The real collision: two dirs, one shared name.
     ambiguous = ambiguous_module_names(
@@ -847,6 +881,10 @@ def test_ambiguous_tool_import_checker_catches_violations():
         }
     )
     assert set(ambiguous) == {"runner"}, ambiguous
+    # Dunders are shared by most tool dirs but are never bare-importable.
+    assert ambiguous_module_names(
+        {"tools/a": {"__init__", "__main__"}, "tools/b": {"__init__", "__main__"}}
+    ) == {}
 
     bad_cases = {
         "module-level bare import (test_routing_gauntlet's old shape)":
