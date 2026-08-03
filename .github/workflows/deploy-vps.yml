@@ -279,12 +279,13 @@ jobs:
           # so /api/version + /api/health report which code is live. Exported here
           # so docker-compose build.args pick them up; default "unknown" otherwise.
           export MIRA_GIT_SHA="${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
-          # `/VERSION` was retired 2026-08-02 (#3064) — the version is DERIVED
-          # from the latest v* tag (version-tag.yml creates it on push to main).
-          # Fetch first: a shallow/stale checkout has no tags, and a missing tag
-          # must degrade to "unknown", never fail the deploy.
-          git fetch --tags --quiet 2>/dev/null || true
-          export MIRA_APP_VERSION="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//' | tr -d '[:space:]')"
+          # `/VERSION` was retired 2026-08-02 (#3064) — the version is DERIVED from
+          # the release tag. Reuse RELEASE_TAG (computed above, and the ref actually
+          # checked out) rather than re-deriving with `git describe`: in the no-tag
+          # fallback branch the checkout is origin/main, and `git describe` would
+          # name the PREVIOUS tag — reporting a version that is not the running
+          # code. Empty ⇒ "unknown", which is the honest answer there.
+          export MIRA_APP_VERSION="${RELEASE_TAG#v}"
           export MIRA_APP_VERSION="${MIRA_APP_VERSION:-unknown}"
           export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "Deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
