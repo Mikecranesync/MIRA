@@ -200,9 +200,16 @@ jobs:
       - name: Deploy
         env:
           SERVICES: ${{ github.event.inputs.services }}
+          # The IMMUTABLE commit that passed the staging gate + smoke (workflow_run
+          # head_sha; github.sha on a manual dispatch). The deploy anchors on THIS,
+          # never on a moving origin/main (#3055).
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Only an operator hotfix dispatch (skip_staging_gate=true) may deploy the
+          # pinned SHA when no release tag exists yet; the normal path fails closed.
+          ALLOW_MOVING_FALLBACK: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_staging_gate == 'true') && '1' || '0' }}
         run: |
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 "SERVICES='$SERVICES' bash -s" << 'ENDSSH'
+            root@165.245.138.91 "SERVICES='$SERVICES' DEPLOY_SHA='$DEPLOY_SHA' ALLOW_MOVING_FALLBACK='$ALLOW_MOVING_FALLBACK' bash -s" << 'ENDSSH'
 
           set -euo pipefail
           cd /opt/mira
@@ -215,18 +222,30 @@ jobs:
           touch /opt/mira/.deploy-in-progress
           trap 'rm -f /opt/mira/.deploy-in-progress' EXIT
 
-          echo "=== Pull latest code (pin to release tag, not main HEAD) ==="
-          # Rollback target is only real if prod references a tag, not a moving main HEAD
-          # (docs/versioning.md). version-tag.yml lays vX.Y.Z on every merge commit, so we
-          # deploy that tag — prod's `git describe` then shows a clean release ref.
+          echo "=== Pull code — pin to the release tag AT the gated SHA (#3055) ==="
+          # Deploy ONE immutable commit — the SHA that passed the staging gate +
+          # smoke — pinned to its release tag, NEVER a moving origin/main. A rollback
+          # target is only real if prod references a tag (docs/versioning.md).
+          # version-tag.yml lays vX.Y.Z on that merge commit asynchronously, so we
+          # bounded-poll for the tag AT $DEPLOY_SHA via the resolver, run from the
+          # object fetched at that SHA (so it is the EXACT deployed version):
+          #   prints the tag on success; prints empty ONLY on an authorised hotfix
+          #   fallback (we then checkout the pinned SHA); exit 1 = FAIL CLOSED.
           git fetch origin main --tags --force
-          RELEASE_TAG="$(git tag --points-at origin/main --list 'v[0-9]*' | sort -V | tail -1)"
+          if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::Deploy SHA ${DEPLOY_SHA} not present after fetch — refusing to deploy an unknown ref."
+            exit 1
+          fi
+          git show "${DEPLOY_SHA}:.github/scripts/resolve_release_tag.sh" > /tmp/resolve_release_tag.sh \
+            || { echo "::error::resolve_release_tag.sh missing at ${DEPLOY_SHA} — cannot verify release identity; failing closed."; exit 1; }
+          RELEASE_TAG="$(DEPLOY_SHA="$DEPLOY_SHA" ALLOW_MOVING_FALLBACK="${ALLOW_MOVING_FALLBACK:-0}" \
+            bash /tmp/resolve_release_tag.sh)"
           if [ -n "$RELEASE_TAG" ]; then
-            echo "Deploying release tag $RELEASE_TAG (= origin/main HEAD)"
+            echo "Deploying release tag $RELEASE_TAG (immutably == $DEPLOY_SHA)"
             git -c advice.detachedHead=false checkout --force "$RELEASE_TAG"
           else
-            echo "::warning::No vX.Y.Z tag at origin/main HEAD (version-tag.yml may be lagging) — falling back to origin/main"
-            git reset --hard origin/main
+            echo "::warning::HOTFIX fallback: no release tag at $DEPLOY_SHA — deploying the pinned SHA (still immutable; version will report 'unknown')"
+            git -c advice.detachedHead=false checkout --force "$DEPLOY_SHA"
           fi
 
           echo "=== Host permission setup (chown saas data dirs to UID 1001) ==="
