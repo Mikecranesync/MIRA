@@ -1,3 +1,14 @@
+### v3.243.0 (2026-08-02) - feat(manual-search): wire the ported OEM manual search into `default_manual_retriever()` as rungs 4-6
+
+Phase 2 of `docs/plans/2026-07-31-visual-intake-asset-identity-manualsense-audit.md`, following #3042's Phase 0+1 port. `equipment.py::default_manual_retriever()` (rungs 1-2: local KB corpus) now grows two OEM-web rungs (4-6), gated off by default.
+
+- `default_manual_retriever(question, tenant_id, manufacturer, model=None)` — `model` is new and optional; the 3-positional-arg call site in `answer_equipment` is unaffected (web rungs never fire without a `model`).
+- On a local-KB miss, with `MIRA_MANUAL_SENSE_WEB_ENABLED=1` and both manufacturer + model known: calls `manual_search.search_manual()`; a HEAD/magic-byte **validated** hit is queued into the existing `manual_cache` + `manual_queue.json` ingestion queues via `record_manual_discovery()` (no new ingestion pipeline — `.claude/rules/one-pipeline-ingest.md`). An **unvalidated** candidate (rung 6's "candidate, never promoted" discipline) is never auto-queued.
+- Deliberately returns **no citation** on the turn a manual is discovered — `default_manual_retriever`'s return value feeds straight into DOCUMENTED observations in `answer_equipment`, and nothing has been extracted from the just-discovered document yet; inventing an `excerpt` would be fabrication (`.claude/rules/materialized-evidence.md` rule 9). Once the crawler ingests the queued document, the *next* turn's rung 2 (local KB) cites it normally through the existing path — no new citation shape needed.
+- Local-KB rungs (1-2) are extracted into `_local_manual_citations()` unchanged, so the web rungs wrap them without duplicating the existing early-exit chain (no NEON_DATABASE_URL / embed-sidecar-down / recall-failure behavior changed).
+- 9 new hermetic tests (`mira-bots/tests/test_default_manual_retriever_web.py`, no network/DB): flag-off never calls web search; a local-KB hit short-circuits the web rung (recall-first); no `model` known (the `answer_equipment` call shape) never calls web search; a validated hit is queued with the right args; an unvalidated hit is never queued; `search_manual`/`record_manual_discovery` raising degrades gracefully, never propagates.
+- Bot-adapter wiring (connecting a Drive-Pack-miss reply to this) is Phase 3 of the same plan — a separate PR, not done here.
+
 ### v3.242.3 (2026-08-02) - fix(spine): a reading the producer marked stale reached the technician as live
 
 Found by crossing the seam between PR 3 (#3059) and PR 4 (#3061) of PRD #3048 with a degraded tag — something neither side's suite did, because each was self-consistent on its own.
@@ -11,6 +22,7 @@ Found by crossing the seam between PR 3 (#3059) and PR 4 (#3061) of PRD #3048 wi
 **Why the fix is in the reader, not the writer:** collector liveness and value quality are two different facts and both belong in the band the technician sees. Combining them at read time keeps `freshness_status` meaning one thing.
 
 Regression cover, both mutation-verified (reverting the fix turns each red): `test_stale_quality_never_becomes_live_ON_THE_DEPLOYED_PATH` crosses ingest → cache → read-back with the degraded tag and asserts `{live: 6, stale: 1}` with all 7 tags still present (downgraded, never dropped); `test_both_overlay_paths_agree_on_freshness` pins the direct and deployed overlays to the same answer, so one snapshot can no longer yield two verdicts depending on plumbing the technician cannot see. Suites: proof 24 → 26, `test_factorylm_live_serving` 18, spine/context 242, relay 232 — no regressions.
+
 
 ### v3.242.2 (2026-08-02) - fix(relay): the FactoryLM publisher validates the ingest RESULT, not the HTTP status
 
@@ -86,6 +98,7 @@ That error is itself the live proof the adversarial review's finding 5 asked for
 `webdev_build.py` now emits valid UTF-8 with **no** declaration and strips a PEP 263 cookie from the first two lines of any source (`_reject_cookie`). `TestEncodingSafety` asserts the exact opposite of what it asserted in v3.237.1 - every deployed artifact decodes as UTF-8 and carries **no** cookie in a PEP 263 position - with the live error quoted in the docstring so the next person knows why. 243 offline tests pass.
 
 Also recorded from the same deploy run: `deploy_ignition.ps1` executed end-to-end on the gateway and produced the full converted tree (8 resources, 4 script-library modules) - the converter itself is field-proven; only the cookie was wrong. The scratch project's live probe verdict lands with the redeploy.
+
 ### v3.239.0 (2026-08-01) - feat(manual-search): port the existing OEM manual searcher into a shared, reusable module
 
 Phase 0+1 of `docs/plans/2026-07-31-visual-intake-asset-identity-manualsense-audit.md` — "port, don't rebuild." The audit found that a working, OEM-domain-restricted, HEAD-validated internet manual searcher **already existed** (`mira-scan-monday/backend/manual_search.py`, built 2026-05-05 for an unrelated monday.com marketplace integration) but was never reachable from the main Telegram bot, which just says "I don't recognize that drive" when a photographed nameplate doesn't match one of the 3 shipped Drive Packs.
@@ -94,7 +107,7 @@ Phase 0+1 of `docs/plans/2026-07-31-visual-intake-asset-identity-manualsense-aud
 - Adapted from psycopg3-async (a dependency mira-bots does not pin) to the `psycopg2` + `asyncio.to_thread` pattern already used in this package (`wo_evidence.py`, `ctx_enrichment.py`), so this introduces no new runtime dependency.
 - Renamed the public search entry point `search()` → `search_manual()` to avoid a Python name collision between the `search` submodule and a same-named function re-exported from the package `__init__.py` (caught by the port's own test suite, not by chance).
 - 22 new hermetic tests (`mira-bots/tests/test_manual_search.py`) pin the invariants ManualSense depends on: denylisted hosts never score positive, OEM-domain hits outrank generic "trusted domain" hits for the *same* manufacturer (the cross-OEM-contamination guard), and a URL is only ever returned `validated=True` after HEAD/magic-byte confirmation — never silently promoted.
-- **No behavior change to `mira-scan-monday`** (left in place, untouched) and **zero new runtime callers** — this module is not yet wired into `equipment.default_manual_retriever()` or the Telegram fast-path. That wiring is Phase 2 of the audit's plan, a separate PR.
+- **No behavior change to `mira-scan-monday`** (left in place, untouched) and **zero new runtime callers at merge time** — wired into `equipment.default_manual_retriever()` in v3.240.0 (Phase 2); the Telegram fast-path wiring is Phase 3, still separate.
 - Also: `docs/known-issues.md` gained an entry documenting the manual-search gap this PR starts closing (Phase 0 of the same plan).
 
 ### v3.238.0 (2026-08-01) - feat(spine): WS1/G6 — merge the RETRIEVAL evidence family into the audited turn context
