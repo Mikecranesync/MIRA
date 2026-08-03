@@ -110,6 +110,14 @@ VENDOR_ALIASES: dict[str, str] = {
     "delta": "Delta Electronics",
     "lenze": "Lenze",
     "pilz": "Pilz",
+    # Materials-handling OEMs present in the corpus. Added 2026-08-03 because
+    # both were cited live for machines the technician never identified, and
+    # neither resolved — so the citation-attribution gate could not see them.
+    # An unrecognized vendor bypasses that gate entirely (see
+    # `tests/test_citation_attribution.py`), which makes this table a
+    # correctness surface, not just a convenience.
+    "demag": "Demag",
+    "interroll": "Interroll",
 }
 
 # Alias → product-family token when the alias names a family rather than a
@@ -504,6 +512,24 @@ def canonical_vendor(name: str | None) -> str | None:
         if alias in low:
             return VENDOR_ALIASES[alias]
     return None
+
+
+def vendors_in_text(text: str | None) -> set[str]:
+    """Every canonical manufacturer named anywhere in a block of free text.
+
+    ``canonical_vendor`` answers "which vendor is this label?" and returns the
+    single best match. This answers "which vendors has the technician actually
+    named?" across a whole turn or conversation — a different question, and the
+    one that decides whether a citation may be attributed at all.
+
+    Lives here rather than in the caller so "same vendor" stays defined in one
+    place (`.claude/rules/uns-compliance.md` §1–2). Fail-open: an empty set
+    means "nothing established", never "mismatch".
+    """
+    if not text:
+        return set()
+    low = text.lower()
+    return {canon for alias, canon in VENDOR_ALIASES.items() if alias in low}
 
 
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
