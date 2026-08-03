@@ -17,6 +17,14 @@ the engine's job (safety precedence, the location gate, grounding policy). Keep
 it that way: a formatter that makes policy decisions becomes a second engine,
 and `.claude/CLAUDE.md` forbids exactly that.
 
+**Dialogue mode is adaptive, and this file is not one style.** Per the Answer
+Integrity PRD §2.2, a single-shot surface (Ignition Ask MIRA, QR, kiosk) gets a
+direct cited answer with no trailing question — the technician cannot reply, so
+`grounded_answer` refuses a `guiding_question` when `ctx.single_shot`. A
+conversational surface running a live diagnosis on thin evidence may pass one:
+say what is known, then ask. The answer always precedes the question, because a
+supported answer is never withheld to make room for one.
+
 Two design choices worth knowing before editing:
 
 * **`text` is derived from the blocks, never written by hand.** A renderer that
@@ -113,6 +121,12 @@ class TurnContext:
     band: Band = "low"
     uns_path: str = ""
     source: str = ""  # e.g. "direct_connection", "chat_resolver"
+
+    # True for Ignition Ask MIRA, QR deep-links, kiosks — surfaces where the
+    # technician gets one shot and cannot answer a follow-up. A guiding question
+    # there is not coaching, it is a dead end, so `grounded_answer` refuses one.
+    # Established by merged PR #1685; policy in the Answer Integrity PRD §2.2.
+    single_shot: bool = False
 
     def summary(self) -> str:
         """Site -> asset -> component -> fault, in that order (PRD §7.1)."""
@@ -255,17 +269,33 @@ def grounded_answer(
     next_check: str,
     citations: list[Citation],
     thread_id: str = "",
+    guiding_question: str = "",
 ) -> NormalizedChatResponse:
     """A cited answer on confirmed or certified context.
 
     Covers both `confirmed grounded` and `direct certified` — they differ only
     in how context was established, which `ctx.state` already carries. Refusing
     to fork them here is deliberate: two builders would drift.
+
+    `guiding_question` is the conversational half of the adaptive-dialogue
+    policy (Answer Integrity PRD §2.2). On Telegram/Slack/web chat, a live
+    diagnosis with incomplete evidence should say what is known and then ask
+    ONE targeted question — that back-and-forth is the product, not noise.
+
+    The answer still comes first. A supported answer is never withheld to make
+    room for a question, which is the failure this whole policy corrects. And a
+    single-shot surface refuses the question outright: the technician there
+    cannot reply, so a follow-up is a dead end rather than coaching.
     """
     if ctx.state == "needs_confirmation":
         raise ValueError("a grounded answer requires confirmed or certified context")
     if not citations:
         raise ValueError("a grounded answer requires at least one citation; use evidence_gap()")
+    if guiding_question and ctx.single_shot:
+        raise ValueError(
+            "a single-shot surface cannot carry a guiding question — the technician "
+            "has no way to answer it (PR #1685)"
+        )
 
     blocks = [
         *_context_blocks(ctx),
@@ -273,6 +303,8 @@ def grounded_answer(
         _kv([("Next safe check", next_check)]),
         *[_cite(c) for c in citations[:3]],
     ]
+    if guiding_question:
+        blocks.append(_kv([("To narrow it down", guiding_question)]))
     actions = [
         Action("View evidence", "evidence.open"),
         Action("Resolved", "outcome.resolved"),

@@ -49,6 +49,31 @@ A question is appropriate only when it is necessary to:
 - honor a safety STOP; or
 - collect an explicit outcome or handoff choice.
 
+**This is a rule about defaults, not a ban on conversation.** Dialogue mode is
+adaptive on surface, intent, context and evidence — the decision of record is
+§2.2 of `docs/prd/2026-08-03-mira-answer-integrity-and-validation-engine.md`,
+and the two PRDs agree:
+
+| Surface | Mode |
+|---|---|
+| Ignition Ask MIRA, QR deep-link, kiosk — **single-shot** | Direct, complete, cited answer. **No trailing question**; the technician cannot reply. (Merged PR #1685.) |
+| Hub asset / node pages, certified direct connections | Direct cited answer **plus one next safe check**. Never re-confirm an already-certified asset. |
+| Telegram, Slack, conversational web chat | Natural multi-turn conversation. One targeted guiding question when it advances a *live* diagnosis; a direct answer when the answer is already supported. |
+
+Intent modulates this within a conversational surface: "what does F004 mean?"
+and "give me the reset procedure" get direct cited answers; "why does this
+conveyor keep stopping?" with thin evidence gets what is known plus **one**
+grounded question; "teach me how to diagnose this circuit" gets deliberate
+Socratic coaching. Safety STOP overrides every mode, and never disguises steps
+as questions.
+
+The failure this guards against runs both ways. Quizzing a technician who asked
+a direct question wastes the one thing they cannot spare; but stripping the
+guiding question out of live conversational diagnosis would throw away the
+interaction that makes MIRA feel like a senior technician rather than a search
+box. **Never withhold a supported answer to satisfy a style rule — and never
+delete a question that is genuinely narrowing the problem.**
+
 ### 2.2 In scope
 
 - One semantic response contract across Slack, generic web chat, the Hub asset

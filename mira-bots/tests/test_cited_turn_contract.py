@@ -212,6 +212,68 @@ def test_certified_context_is_labelled_as_certified():
     assert "Certified connection" in resp.text
 
 
+# ── adaptive dialogue mode (Answer Integrity PRD §2.2) ───────────────────────
+#
+# The policy fails in two directions, so both are pinned. Quizzing a technician
+# who asked a direct question wastes the one thing they cannot spare; deleting
+# the guiding question from live conversational diagnosis throws away the
+# interaction that makes MIRA useful. Neither test means much on its own.
+
+KIOSK = TurnContext(
+    site="riverside", asset="CV-101", state="certified", band="high",
+    source="direct_connection", single_shot=True,
+)
+
+
+def test_single_shot_surface_refuses_a_guiding_question():
+    """Ignition Ask MIRA / QR / kiosk: the technician cannot answer a follow-up."""
+    with pytest.raises(ValueError, match="single-shot"):
+        grounded_answer(
+            KIOSK, "CE10 is a comms timeout.", "Verify P09.03.", [MANUAL],
+            guiding_question="What does the display show?",
+        )
+
+
+def test_single_shot_answer_ends_without_a_question():
+    resp = grounded_answer(KIOSK, "CE10 is a comms timeout.", "Verify P09.03.", [MANUAL])
+    assert "?" not in resp.text, f"trailing question on a single-shot surface: {resp.text}"
+
+
+def test_conversational_surface_may_ask_one_guiding_question():
+    """The other half of the policy — this must stay possible."""
+    resp = grounded_answer(
+        CONFIRMED,
+        "The trip repeats under load, which points at the motor circuit.",
+        "Feel the motor housing after the next trip.",
+        [MANUAL],
+        guiding_question="Does it trip at the same point in the cycle every time?",
+    )
+    assert "same point in the cycle" in resp.text
+
+
+def test_the_answer_precedes_the_question():
+    """A supported answer is never withheld to make room for a question."""
+    resp = grounded_answer(
+        CONFIRMED, "ANSWERTEXT", "check the shield", [MANUAL], guiding_question="QUESTIONTEXT"
+    )
+    assert resp.text.index("ANSWERTEXT") < resp.text.index("QUESTIONTEXT")
+
+
+def test_a_guiding_question_never_replaces_the_citation():
+    resp = grounded_answer(CONFIRMED, "a", "b", [MANUAL], guiding_question="what shows?")
+    assert any(b.kind == "citation" for b in resp.blocks)
+
+
+def test_safety_stop_asks_nothing_at_all():
+    """STOP overrides every dialogue mode, including the conversational one.
+
+    A question inside a STOP is how troubleshooting steps get smuggled past the
+    guardrail ("have you checked whether the bus is discharged?").
+    """
+    resp = safety_stop("arc flash", "NFPA 70E")
+    assert "?" not in resp.text, f"STOP asked a question: {resp.text}"
+
+
 def test_grounded_answer_shows_at_most_three_citations():
     """PRD §5.4 — no more than three primary evidence chips."""
     resp = grounded_answer(CONFIRMED, "a", "b", [MANUAL, LIVE, STALE, WORK_ORDER])
