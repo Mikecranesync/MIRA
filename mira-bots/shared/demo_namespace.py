@@ -82,12 +82,26 @@ class DemoNamespaceMatch:
 def _extract_candidates(message: str) -> tuple[list[str], list[str]]:
     """Return (tag_candidates, name_candidates) from the message.
 
-    Tag candidates are normalized to uppercase. Name candidates are kept
-    in their original case for ILIKE matching against `kg_entities.name`.
+    Tag candidates are normalized to uppercase AND expanded across the
+    dashed/undashed convention: technicians type "cv101" as often as
+    "CV-101", but the DB compare is exact, so an unexpanded "CV101" never
+    matches a stored "CV-101". Found by the technician-journey validation
+    swarm (2026-08-02): "cv101 conveyor" left the UNS gate looping with
+    candidate=None. Name candidates keep their original case for ILIKE.
     """
-    tags = sorted({m.group(1).upper() for m in _TAG_RE.finditer(message)})
+    raw = {m.group(1).upper() for m in _TAG_RE.finditer(message)}
+    tags_set: set[str] = set()
+    for tag in raw:
+        tags_set.add(tag)
+        if "-" in tag:
+            tags_set.add(tag.replace("-", ""))
+        else:
+            # Insert a dash at the letter/digit boundary: CV101 -> CV-101
+            m = re.match(r"^([A-Z]{2,5})(\d{2,4})$", tag)
+            if m:
+                tags_set.add(f"{m.group(1)}-{m.group(2)}")
     names = sorted({m.group(0) for m in _NAME_RE.finditer(message)})
-    return tags, names
+    return sorted(tags_set), names
 
 
 def resolve_demo_namespace(

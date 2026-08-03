@@ -194,16 +194,17 @@ def _get_supervisor(config: RunConfig):
     mira-bots is NOT on sys.path in normal test runs — we insert it here only
     when actually needed (bot-only or both mode).
     """
-    _REPO = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
+    _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     bots_path = os.path.join(_REPO, "mira-bots")
     if bots_path not in sys.path:
         sys.path.insert(0, bots_path)
 
     from shared.engine import Supervisor  # type: ignore[import]
 
-    db = config.db_path or os.getenv("MIRA_DB_PATH", "/tmp/synth-test.db")
+    import tempfile
+
+    default_db = os.path.join(tempfile.gettempdir(), "synth-test.db")
+    db = config.db_path or os.getenv("MIRA_DB_PATH", default_db)
     url = config.openwebui_url or os.getenv("OPENWEBUI_BASE_URL", "")
     api_key = config.openwebui_api_key or os.getenv("OPENWEBUI_API_KEY", "")
     coll = config.collection_id or os.getenv("KNOWLEDGE_COLLECTION_ID", "")
@@ -384,13 +385,98 @@ async def _run_sidecar_path(
     sem = asyncio.Semaphore(config.concurrency)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        tasks = [
-            _run_sidecar_question(q, client, config.sidecar_url, sem)
-            for q in questions
-        ]
+        tasks = [_run_sidecar_question(q, client, config.sidecar_url, sem) for q in questions]
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
     return list(results)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline path (parallel) — the deployed staging mira-pipeline engine surface.
+# OpenAI-compatible: POST /v1/chat/completions with `user` as the chat_id, so
+# server-side FSM state is real. Auth via PIPELINE_API_KEY bearer. This is the
+# living replacement for the retired sidecar surface (ADR-0008).
+# ---------------------------------------------------------------------------
+
+
+async def _run_pipeline_question(
+    question: SyntheticQuestion,
+    client: httpx.AsyncClient,
+    pipeline_url: str,
+    api_key: str,
+    run_id: str,
+    sem: asyncio.Semaphore,
+) -> QuestionResult:
+    t0 = time.monotonic()
+    reply = ""
+    error = None
+    async with sem:
+        try:
+            resp = await client.post(
+                f"{pipeline_url}/v1/chat/completions",
+                json={
+                    "model": "mira-diagnostic",
+                    "user": f"synth-{run_id}-{question.id[:8]}",
+                    "messages": [{"role": "user", "content": question.text}],
+                },
+                headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            reply = data["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as exc:
+            error = f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
+            logger.error(
+                "Pipeline HTTP %s for question %s (%r): %s",
+                exc.response.status_code,
+                question.id[:8],
+                question.text[:80],
+                exc.response.text[:200],
+            )
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            error = str(exc)
+            logger.error(
+                "Pipeline failure for question %s (%r): %s",
+                question.id[:8],
+                question.text[:80],
+                exc,
+            )
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    return QuestionResult(
+        question_id=question.id,
+        question_text=question.text,
+        persona_id=question.persona_id,
+        topic_category=question.topic_category,
+        adversarial_category=question.adversarial_category,
+        equipment_type=question.equipment_type,
+        vendor=question.vendor,
+        expected_intent=question.expected_intent,
+        expected_weakness=question.expected_weakness,
+        ground_truth=question.ground_truth,
+        path="bot",  # engine surface — evaluator's bot-path checks apply
+        reply=reply,
+        confidence="none",
+        next_state=None,  # FSM state not exposed over the OpenAI-compat API
+        sources=None,
+        latency_ms=latency_ms,
+        error=error,
+    )
+
+
+async def _run_pipeline_path(
+    questions: list[SyntheticQuestion], config: RunConfig
+) -> list[QuestionResult]:
+    pipeline_url = os.getenv(
+        "PIPELINE_URL", os.getenv("SWARM_PIPELINE_URL", "http://127.0.0.1:14099")
+    ).rstrip("/")
+    api_key = os.getenv("PIPELINE_API_KEY", "")
+    sem = asyncio.Semaphore(config.concurrency)
+    async with httpx.AsyncClient(timeout=90) as client:
+        tasks = [
+            _run_pipeline_question(q, client, pipeline_url, api_key, config.run_id, sem)
+            for q in questions
+        ]
+        return list(await asyncio.gather(*tasks))
 
 
 # ---------------------------------------------------------------------------
@@ -481,9 +567,11 @@ async def run_synthetic_user(config: RunConfig) -> list[QuestionResult]:
     )
 
     questions = _build_question_batch(config)
-    logger.info("Generated %d questions (%d adversarial)", len(questions), sum(
-        1 for q in questions if q.adversarial_category is not None
-    ))
+    logger.info(
+        "Generated %d questions (%d adversarial)",
+        len(questions),
+        sum(1 for q in questions if q.adversarial_category is not None),
+    )
 
     results: list[QuestionResult] = []
 
@@ -493,9 +581,9 @@ async def run_synthetic_user(config: RunConfig) -> list[QuestionResult]:
 
     # ── Bot-only ─────────────────────────────────────────────────────────────
     if config.mode == "bot-only":
+        supervisor = _get_supervisor(config)
         for question in questions:
             try:
-                supervisor = _get_supervisor(config)
                 result = await _run_bot_question(question, supervisor, config.run_id)
                 results.append(result)
             except Exception as exc:
@@ -522,6 +610,10 @@ async def run_synthetic_user(config: RunConfig) -> list[QuestionResult]:
                     )
                 )
         return results
+
+    # ── Pipeline (OpenAI-compat HTTP -> deployed Supervisor engine) ─────────
+    if config.mode == "pipeline":
+        return await _run_pipeline_path(questions, config)
 
     # ── Sidecar-only ─────────────────────────────────────────────────────────
     if config.mode == "sidecar-only":

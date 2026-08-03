@@ -62,11 +62,13 @@ from .fsm import (
     advance_state,
 )
 from .guardrails import (
+    CONTROL_ACTION_REFUSAL,
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
     check_output,
     classify_intent,
     detect_session_followup,
+    is_control_action_request,
     resolve_option_selection,
     strip_mentions,
     vendor_support_url,
@@ -2722,6 +2724,27 @@ class Supervisor:
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
             _keyword_intent = classify_intent(message)
+
+            # Control-action requests — MIRA is read-only for OT, always.
+            # Placed BEFORE the router call so the refusal is genuinely
+            # LLM-free (PR #3075 review: it previously sat after route_intent,
+            # so every control request still cost a cloud round-trip and the
+            # "no LLM call" claim was false). Keyword-detected safety still
+            # wins — a hazard report outranks an actuation request — but the
+            # refusal itself carries the LOTO/danger-zone escalation, so a
+            # control request never loses its safety framing.
+            if _keyword_intent != "safety" and is_control_action_request(message):
+                logger.info("CONTROL_ACTION_REFUSED chat_id=%s msg=%r", chat_id, message[:120])
+                self._record_exchange(chat_id, state, message, CONTROL_ACTION_REFUSAL)
+                tl_flush()
+                return self._make_result(
+                    CONTROL_ACTION_REFUSAL,
+                    "high",
+                    trace_id,
+                    state.get("state", "IDLE"),
+                    dispatch_kind="control_action_refusal",
+                )
+
             try:
                 _routing = await route_intent(
                     user_message=message,
