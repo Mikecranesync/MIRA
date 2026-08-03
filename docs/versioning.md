@@ -34,6 +34,25 @@ Both operator steps are done. **`/VERSION` no longer exists.** There is one coun
 1. ~~**Remove `Version Bump Check` from `main`'s required status checks**~~ — **DONE.** Verified 2026-08-02 against the live API: ruleset `main-branch-protection` (id `17097034`) requires only `staging-gate`, and classic branch protection requires `staging-gate`, `Hub E2E (command-center + onboarding)`, `mira-web pack tests`, `CI Gate`. `Version Bump Check` appeared in neither, so nothing was blocking on it.
 2. ~~**Delete `/VERSION` + `.github/workflows/version-gate.yml`**~~ — **DONE (#3064).** The floor is gone; `next_version.py` derives purely from the latest tag (`test_steady_state_after_version_file_retires` pins that path). `docs/CHANGELOG.md` is **frozen as an archive** — stop hand-editing it; the [Releases page](https://github.com/Mikecranesync/MIRA/releases) is the changelog.
 
+### What actually stops the conflicts — the guard, not the prose
+
+Deleting `/VERSION` fixes half the problem. The other half is `docs/CHANGELOG.md`, which was
+prepended to by every PR and therefore conflicts in exactly the same way. Measured across the
+open queue on 2026-08-02: of 9 conflicting PRs, **7 conflicted on `VERSION` + `docs/CHANGELOG.md`,
+and for 5 of them that was the *only* conflict** — remove those two files and they merge clean.
+
+A doc saying "the changelog is frozen" does not stop a habit. So it is mechanical:
+**`Shared-Line Guard`** in `.github/workflows/ci.yml` fails any PR that adds or modifies
+`/VERSION` or `docs/CHANGELOG.md`, and it is wired into the required `CI Gate`.
+
+- **Deleting** either file passes (`--diff-filter=AMR`) — that is the right direction.
+- The diff is three-dot from the merge-base, so `main`'s own commits are never attributed to
+  your PR when `base.sha` lags a rebase.
+- Escape hatch: a maintainer applies the **`shared-line-ok`** label. Labels are read live from
+  the API, so applying the label + `gh run rerun --failed` clears it — no empty commit needed.
+  It exists for a genuine correction to the historical archive (and for the PR that froze it),
+  not to make routine bumps easy again.
+
 **Authoring impact: none.** No version bump, no changelog line. Write a Conventional Commit subject (already mandated by `CLAUDE.md`) and label the PR per `.github/release.yml`.
 
 ### Where the version reaches a running container

@@ -125,7 +125,7 @@ jobs:
   shared-line-guard:
     name: Shared-Line Guard
     runs-on: ubuntu-latest
-    # Why this exists (#3064 / #3074): `/VERSION` and `docs/CHANGELOG.md` were a
+    # Why this exists (#3064): `/VERSION` and `docs/CHANGELOG.md` were a
     # SHARED LINE — every PR edited the same line of the same file, so every merge
     # to main put every other open PR into conflict. And a conflicting PR receives
     # NO CI AT ALL (GitHub cannot build the merge ref), so it silently stops being
@@ -153,13 +153,24 @@ jobs:
           # correction to the historical archive should be possible — not to
           # make routine bumps easy again. Applying it is a visible, reviewable
           # act on the PR, not a flag buried in a commit.
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          #
+          # Labels are read LIVE from the API, not from the event payload:
+          # `pull_request` does not fire on `labeled` (types default to
+          # opened/synchronize/reopened), so a payload read would go stale the
+          # moment the label is applied and would force a pointless empty commit
+          # to clear the gate. Reading live means `gh run rerun --failed` is
+          # enough — apply the label, re-run the job, done.
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ -z "${BASE_SHA:-}" ]; then
             echo "Not a pull_request event — nothing to compare."
             exit 0
           fi
+
+          LABELS="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json labels --jq '[.labels[].name] | join(",")')"
 
           if echo ",${LABELS}," | grep -q ',shared-line-ok,'; then
             echo "✓ 'shared-line-ok' label present — a maintainer has accepted this edit."
@@ -188,7 +199,8 @@ jobs:
             echo ""
             echo "Fix: drop the change to the file(s) above. Nothing replaces them —"
             echo "a well-formed Conventional Commit title plus a PR label is the whole"
-            echo "authoring duty now."
+            echo "authoring duty now. If the edit is genuinely warranted (a fix to the"
+            echo "historical archive), ask a maintainer for the 'shared-line-ok' label."
             exit 1
           fi
 
