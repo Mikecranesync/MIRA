@@ -102,6 +102,19 @@ jobs:
             docker rm -f "stg-${svc}" 2>/dev/null || true
           done
 
+          # Deploy identity — `/VERSION` was retired 2026-08-02 (#3064); the
+          # version is derived from the latest v* tag and baked into the image
+          # as MIRA_APP_VERSION (compose build arg -> Dockerfile ARG). Prod does
+          # this in deploy-vps.yml; staging was never wired, so every staging
+          # image reported "unknown" and the journey-swarm receipt recorded an
+          # unusable target revision (PRD §8.2 "the target revision is known").
+          # Fetch first: a shallow checkout has no tags, and a missing tag must
+          # degrade to "unknown", never fail the deploy.
+          git fetch --tags --quiet 2>/dev/null || true
+          export MIRA_APP_VERSION="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//' | tr -d '[:space:]')"
+          export MIRA_APP_VERSION="${MIRA_APP_VERSION:-unknown}"
+          echo "Staging deploy identity: version=${MIRA_APP_VERSION}"
+
           echo "=== Build staging images ==="
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config stg -- \
             docker compose -f docker-compose.staging-vps.yml build $TARGETS
