@@ -1,5 +1,27 @@
 """Deterministic defect detectors for MIRA replies.
 
+OPEN DEFECT — read before attempting a fix (2026-08-03):
+`unrelated_vendor` is the dominant class by volume (24-34 instances per 15
+randomized conversations) and is NOT yet fixed. Verified facts:
+
+  * The cited chunks are REAL, not invented — checked against the corpus:
+    "Quick commissioning" 28 chunks, "BGV D06" 2 (Demag), "Interroll" 43,
+    "SIMPLE MACHINES" 6. This is retrieval relevance, not hallucination.
+  * It fires when NO vendor is established. A vague follow-up
+    ("did that fix it?") retrieves whatever is nearest across an 83k-chunk
+    multi-vendor corpus and cites it for a machine nobody has identified.
+  * `rag_worker._filter_chunks_to_established_vendor` (added here) is tested
+    and correct for the ESTABLISHED-vendor case, but staging logs zero
+    VENDOR_FILTER lines, so it is NOT on the live citation path. Three deploys
+    confirmed this; do not assume it works.
+  * The right seam is almost certainly `shared/citation_compliance.py:114`
+    (`strip wrong-vendor [Source:] tags`), which already exists and has the
+    SAME limitation — it needs a resolved manufacturer, so vague turns bypass
+    it. Fixing that function is the next move, not more rag_worker changes.
+  * Separate data-quality bug: the "Quick commissioning" chunks carry
+    manufacturer=ABB but rendered as "[Source: Siemens - 5.5 Quick
+    commissioning]" — chunk metadata and citation label disagree.
+
 The LLM judge has measured blind spots — it scored a reply that says
 "I have the GS10 manual indexed" and, two lines later, "I don't have specific
 documentation indexed for this" at **4.4/5**. These detectors catch the classes
