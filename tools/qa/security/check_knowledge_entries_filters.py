@@ -11,6 +11,7 @@ Enforces `.claude/rules/knowledge-entries-tenant-scoping.md` (the law):
 Run: python tools/qa/security/check_knowledge_entries_filters.py [--fix]
 """
 
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -220,48 +221,52 @@ def load_allowlist(allowlist_path: Path) -> dict:
         return {}
 
 
+def _norm_lines(text) -> list[str]:
+    """Non-empty lines, each whitespace-normalized, in order.
+
+    YAML block-scalar indentation is not a difference — collapsing each line's
+    internal whitespace and dropping blank lines removes it.
+    """
+    return [" ".join(line.split()) for line in str(text or "").splitlines() if line.strip()]
+
+
 def _norm_snippet(text) -> str:
-    """The read's OWN line, whitespace-normalized.
+    """The full query, whitespace-normalized and joined — human-readable EVIDENCE
+    only. Never the security discriminator; see `context_sha256`."""
+    return " ".join(_norm_lines(text))
 
-    Two reasons this takes only the first line rather than the whole snippet:
 
-    1. YAML block-scalar indentation is not a difference — normalizing whitespace
-       removes it.
-    2. `_extract_query_context` captures the read line plus TRAILING context, and
-       that tail keeps growing until a statement terminator. So a read's context
-       routinely CONTAINS the next read's line, and a whole-snippet containment
-       comparison silently matches a neighbour. The first line is the one the
-       `file:line` key actually points at, and the one that identifies the read.
+def context_sha256(file: str, query) -> str:
+    """The security discriminator: a stable hash of the read's FULL normalized
+    context, salted with the read's source path.
+
+    Why a hash of the whole context — not `query_snippet`, not its first line:
+    the allowlist key is `file:line`, which slides onto a NEIGHBOUR when lines are
+    inserted or deleted above a read. A first-line (or short-prefix) comparison
+    cannot tell two reads apart when they share a first line — and many real
+    entries begin `FROM knowledge_entries`, so a neighbour's approval was silently
+    accepted for a different query (#3053). Hashing the ENTIRE normalized context
+    distinguishes reads by their WHERE/JOIN wherever it sits; folding the source
+    `file` into the input means two identical short contexts in different files
+    cannot collide either. `query_snippet` stays in the allowlist purely as
+    human-readable evidence and is NEVER compared.
     """
-    for line in str(text or "").splitlines():
-        if line.strip():
-            return " ".join(line.split())
-    return ""
+    canonical = f"{file}\n{_norm_snippet(query)}"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _snippet_matches(approved, found: str) -> bool:
-    """Is the approval attached to the query actually sitting at that line?
+def _approval_matches(entry: dict, read) -> bool:
+    """Does the approval at this file:line key actually cover the query now there?
 
-    The allowlist key is `file:line`, which is not stable under edits: inserting or
-    deleting lines above a read slides it onto a NEIGHBOUR's approved line. When
-    both carry the same classification, nothing else in this checker notices — the
-    read then runs under a review written for a different query, and a human fixing
-    the accompanying loud complaints sees green and never re-reads it.
-
-    `query_snippet` was already being WRITTEN into the allowlist by
-    `generate_allowlist_template` and never read back. Comparing it is what turns
-    it from decoration into the content key the line number cannot be.
-
-    An entry with NO snippet (hand-added, or written before this check existed)
-    cannot be verified, so it is accepted — this must not fail the 148 existing
-    entries. It is a ratchet: every entry the template generates carries one.
+    The discriminator is `query_sha256` (the full-context hash). An entry with NO
+    hash (hand-added, or predating this field) cannot be verified, so it is
+    accepted — a ratchet, not a flag day; the ~135 live entries are backfilled by
+    `--backfill-hashes` and the template writes one for every new entry.
     """
-    if approved is None:
+    approved_hash = entry.get("query_sha256")
+    if not approved_hash:
         return True
-    a, f = _norm_snippet(approved), _norm_snippet(found)
-    if not a:
-        return True
-    return a == f
+    return approved_hash == context_sha256(read["file"], read["query"])
 
 
 def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]:
@@ -296,15 +301,17 @@ def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]
                         f"   Found: {classification}\n"
                         f"   Note: The read pattern may have changed"
                     )
-                elif not _snippet_matches(entry.get("query_snippet"), read["query"]):
+                elif not _approval_matches(entry, read):
                     errors.append(
                         f"⚠️  {key} - Approval is attached to a DIFFERENT query\n"
                         f"   Approved:  {_norm_snippet(entry.get('query_snippet'))[:120]}\n"
                         f"   Found:     {_norm_snippet(read['query'])[:120]}\n"
+                        f"   Approved hash: {str(entry.get('query_sha256'))[:12]}…  "
+                        f"Found hash: {context_sha256(read['file'], read['query'])[:12]}…\n"
                         f"   Note: keys are file:line, so inserting or deleting lines above a\n"
                         f"         read slides it onto a NEIGHBOUR's approved line. The\n"
-                        f"         classification still matches, so without this check the read\n"
-                        f"         runs under a review written for someone else's query.\n"
+                        f"         classification still matches, but the full-context hash no\n"
+                        f"         longer does — so the misattributed approval is caught.\n"
                         f"   Action: re-key the entry and RE-READ the query before approving it"
                     )
                 elif "TODO" in str(entry.get("reason", "")):
@@ -350,11 +357,53 @@ def generate_allowlist_template(reads: list[ReadSite]) -> str:
             template += f'  "{key}":\n'
             template += f"    approved_classification: {read['classification']}\n"
             template += '    reason: "TODO: justify this read pattern"\n'
+            # query_sha256 is the security discriminator (full-context hash, source
+            # salted). query_snippet below is human-readable evidence ONLY.
+            template += f'    query_sha256: "{context_sha256(read["file"], read["query"])}"\n'
             template += "    query_snippet: |\n"
-            for line in read["query"].split("\n")[:3]:
+            for line in read["query"].split("\n"):
                 template += f"      {line}\n"
 
     return template
+
+
+def backfill_query_sha256(allowlist_path: Path, reads: list) -> int:
+    """Insert `query_sha256` for every `approved:` entry whose file:line maps to a
+    live read, computing the hash the checker will compute. Preserves all comments,
+    ordering, and other review metadata (reason, classification, snippet). Idempotent
+    — skips an entry that already carries a hash. Returns the number added.
+
+    This is the migration that makes the new discriminator real for the entries the
+    old first-line matcher approved (analogous to `apply-migrations mode=seed-ledger`).
+    """
+    read_by_key = {f"{r['file']}:{r['line_num']}": r for r in reads}
+    lines = allowlist_path.read_text(encoding="utf-8").splitlines()
+    out: list[str] = []
+    in_approved = False
+    current_key = None
+    added = 0
+    key_re = re.compile(r'^  "(.+)":\s*$')
+    for idx, line in enumerate(lines):
+        if line == "approved:":
+            in_approved = True
+        m = key_re.match(line)
+        if m:
+            current_key = m.group(1)
+        out.append(line)
+        if (
+            in_approved
+            and current_key
+            and line.startswith("    approved_classification:")
+        ):
+            nxt = lines[idx + 1] if idx + 1 < len(lines) else ""
+            if nxt.lstrip().startswith("query_sha256:"):
+                continue  # idempotent: already backfilled
+            read = read_by_key.get(current_key)
+            if read is not None:
+                out.append(f'    query_sha256: "{context_sha256(read["file"], read["query"])}"')
+                added += 1
+    allowlist_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return added
 
 
 def main():
@@ -367,6 +416,10 @@ def main():
     print(f"Scanning {repo_root} for knowledge_entries reads...", file=sys.stderr)
     reads = find_knowledge_entries_reads(repo_root)
     print(f"Found {len(reads)} knowledge_entries read sites", file=sys.stderr)
+
+    if "--backfill-hashes" in sys.argv:
+        added = backfill_query_sha256(allowlist_path, reads)
+        print(f"Backfilled query_sha256 for {added} approved entries.", file=sys.stderr)
 
     # Classify and check
     allowlist = load_allowlist(allowlist_path)
