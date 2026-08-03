@@ -144,6 +144,35 @@ _SYNTHETIC_DOGFOOD_SCHEDULE = {
     },
 }
 
+# Technician-journey validation swarm (PRD §8.2/§11-P4).
+#
+# CADENCE: the PRD does not name a numeric staging interval — §8.5 fixes the
+# *production* cadence ("once per eligible release after deployment
+# verification, plus an owner-approved scheduled integrity replay") and §11-P4
+# says "bind certificate replay to eligible releases and scheduled integrity
+# checks". For the staging discovery lane we therefore adopt the cadence of the
+# sibling task on this same dedicated queue — synthetic-dogfood's every-6-hours
+# — rather than inventing one. Overridable per-environment via
+# JOURNEY_SWARM_CRON_HOURS without a code change.
+#
+# Hours are UTC (see `timezone`/`enable_utc` above), so the interval does not
+# shift under DST.
+#
+# The entry is ALWAYS registered but the task itself is fail-closed: it exits
+# immediately unless JOURNEY_SWARM_ENABLED=1 and the tenant is on the explicit
+# JOURNEY_SWARM_TENANTS allowlist. That keeps local/dev beat runs inert while
+# leaving one place to turn it on.
+_JOURNEY_SWARM_SCHEDULE = {
+    "journey-swarm-staging-cycle": {
+        "task": "tasks.journey_swarm.run_journey_swarm",
+        "schedule": crontab(
+            minute=30,  # offset from the dogfood cycle so they never collide
+            hour=os.getenv("JOURNEY_SWARM_CRON_HOURS", "*/6"),
+        ),
+        "options": {"queue": "synthetic", "expires": 3300},
+    },
+}
+
 # Historian recording profile (prod mira-historian-beat). Schedules the tag-diff
 # historizer (#2343) + run-diff (#2341, self-gated by MIRA_RUN_DIFF_ENABLED) plus
 # the conversation-eval auto-scorer (03:00 UTC daily) — the historian worker is
@@ -171,7 +200,7 @@ _HISTORIAN_SCHEDULE = {
 }
 
 if os.getenv("CELERY_BEAT_PROFILE") == "synthetic-dogfood":
-    beat_schedule = _SYNTHETIC_DOGFOOD_SCHEDULE
+    beat_schedule = {**_SYNTHETIC_DOGFOOD_SCHEDULE, **_JOURNEY_SWARM_SCHEDULE}
 elif os.getenv("CELERY_BEAT_PROFILE") == "historian":
     beat_schedule = _HISTORIAN_SCHEDULE
 else:
@@ -207,6 +236,7 @@ else:
             "schedule": crontab(hour=3, minute=0),
         },
         **_SYNTHETIC_DOGFOOD_SCHEDULE,
+        **_JOURNEY_SWARM_SCHEDULE,
     }
 
 # LinkedIn draft (linkedin.draft_post) still scheduled via Trigger.dev: Mon/Wed/Fri 12:00 UTC

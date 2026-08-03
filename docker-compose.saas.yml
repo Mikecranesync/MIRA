@@ -871,6 +871,21 @@ services:
       - SYNTHETIC_PLANTMGR_PASSWORD=${SYNTHETIC_PLANTMGR_PASSWORD:-}
       - SYNTHETIC_CFO_EMAIL=${SYNTHETIC_CFO_EMAIL:-}
       - SYNTHETIC_CFO_PASSWORD=${SYNTHETIC_CFO_PASSWORD:-}
+      # ── Technician-journey validation swarm (PRD §8.2) ──────────────────
+      # Fail-closed: inert unless ENABLED=1 AND the tenant is on the explicit
+      # allowlist. TENANTS empty means NO tenant is eligible (never "all").
+      # Secrets/tenant ids come from Doppler — never baked into the image.
+      - JOURNEY_SWARM_ENABLED=${JOURNEY_SWARM_ENABLED:-0}
+      - JOURNEY_SWARM_TENANTS=${JOURNEY_SWARM_TENANTS:-}
+      - SWARM_PIPELINE_URL=${SWARM_PIPELINE_URL:-}
+      - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - MIRA_CONTEXT_CONTRACT=${MIRA_CONTEXT_CONTRACT:-}
+      - MIRA_FACTORYLM_LIVE=${MIRA_FACTORYLM_LIVE:-}
+      - JOURNEY_SWARM_SOFT_LIMIT_S=${JOURNEY_SWARM_SOFT_LIMIT_S:-1500}
+      - JOURNEY_SWARM_HARD_LIMIT_S=${JOURNEY_SWARM_HARD_LIMIT_S:-1800}
+      - JOURNEY_SWARM_MAX_RETRIES=${JOURNEY_SWARM_MAX_RETRIES:-3}
     networks:
       - mira-net
     volumes:
@@ -892,6 +907,8 @@ services:
       - CELERY_BROKER_URL=redis://mira-redis:6379/0
       - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
       - CELERY_BEAT_PROFILE=synthetic-dogfood
+      # Cadence knob — change the schedule without rebuilding the image.
+      - JOURNEY_SWARM_CRON_HOURS=${JOURNEY_SWARM_CRON_HOURS:-*/6}
     networks:
       - mira-net
     volumes:
