@@ -4401,9 +4401,7 @@ class Supervisor:
             # physical-subtree identity source the allowlist seed and the QR
             # deep-link use. Tag first (exact), display label second.
             if uns_path is None:
-                asset_tag = (
-                    str(context.get("asset_tag") or "") if isinstance(context, dict) else ""
-                )
+                asset_tag = str(context.get("asset_tag") or "") if isinstance(context, dict) else ""
                 uns_path = await asyncio.wait_for(
                     asyncio.to_thread(uns_prefix_for_asset, tenant_id, asset_tag, asset),
                     timeout=_FACTORYLM_LIVE_TIMEOUT_S,
