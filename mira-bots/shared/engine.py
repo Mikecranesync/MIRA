@@ -5867,6 +5867,7 @@ class Supervisor:
                 resolved_tenant,
                 vendor_override=mfr,
                 model_override=model,
+                from_general=True,
             )
 
         # 3b) Live plant-state question with no live data on this turn — refuse
@@ -6779,12 +6780,18 @@ class Supervisor:
         vendor_override: str = "",
         model_override: str = "",
         low_confidence: bool = False,
+        from_general: bool = False,
     ) -> dict:
         """Phase 2 KB pre-check + async crawl trigger.
 
         Consolidated from the old in-line documentation intent block so both the
         direct (specific request) path and the gathering subroutine share one code path.
         Never raises.
+
+        ``from_general`` marks a call that ALREADY came from
+        ``_handle_general_question`` (its step 3, "vendor identified but no KB
+        coverage"). It exists purely as a re-entry guard for the answer handoff
+        below, so the two functions can never bounce a turn back and forth.
         """
         state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
@@ -6849,6 +6856,39 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, state["state"])
+
+            # A specific question with KB coverage deserves the ANSWER, not an
+            # announcement that the answer exists somewhere.
+            #
+            # `_message_is_specific_question` already means "a real question that
+            # deserves a real answer, not the generic menu" — but the only thing
+            # that used it was the menu suppression below, so a technician who
+            # asked something specific got the possession claim ALONE:
+            #
+            #   "I have the AutomationDirect GS10 manual indexed."
+            #
+            # and nothing else. Measured on the synthetic run (2026-08-04): asked
+            # four times, escalating, for the GS10 default overload trip class,
+            # MIRA returned that same sentence every turn — `direct_spec` scored
+            # 0/4 and `live_diagnosis_vfd` 1/8 the same way. It is the ct-04
+            # withheld-answer class from the Answer Integrity PRD: the evidence
+            # was in hand and the answer was withheld anyway.
+            #
+            # `_handle_general_question` step 2 already does the right thing —
+            # vendor identified + KB coverage → RAG worker, so the reply carries
+            # citations. Its step 3 is the mirror of this handoff (no coverage →
+            # come here), and the two conditions are mutually exclusive, so the
+            # `from_general` guard is belt-and-braces rather than load-bearing.
+            if self._message_is_specific_question(message) and not from_general:
+                logger.info(
+                    "DOC_LOOKUP_ANSWER_HANDOFF chat_id=%s manufacturer=%r — specific "
+                    "question with KB coverage; answering instead of announcing",
+                    chat_id,
+                    mfr,
+                )
+                return await self._handle_general_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."

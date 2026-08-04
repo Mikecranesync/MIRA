@@ -305,6 +305,17 @@ async def main_async(args) -> int:
     )
     pipeline = LocalPipeline()
     results: list[TurnResult] = []
+
+    def _checkpoint() -> None:
+        """Persist after every scenario. A 15-minute run must not be lost to a
+        crash in the last two lines — which is exactly what happened on the first
+        attempt (an emoji in a MIRA reply killed the stdout write on cp1252, and
+        the report was printed BEFORE it was saved)."""
+        if args.json_out:
+            Path(args.json_out).write_text(
+                json.dumps([r.__dict__ for r in results], indent=2), encoding="utf-8"
+            )
+
     for rep in range(1, args.reps + 1):
         for sc in chosen:
             print(f"\n=== rep {rep}/{args.reps} — {sc.id} ===", flush=True)
@@ -312,22 +323,30 @@ async def main_async(args) -> int:
                 results.extend(await run_one(pipeline, sc, rep, args.verbose))
             except Exception as exc:  # noqa: BLE001 — one bad scenario must not kill the run
                 print(f"!! scenario {sc.id} rep {rep} failed: {exc}", flush=True)
+            _checkpoint()
 
     report = digest(results, args.reps)
-    print("\n" + report)
+    # Durable BEFORE visible.
     if args.out:
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(report, encoding="utf-8")
-        print(f"[synth_qc_loop] wrote {out}")
-    if args.json_out:
-        Path(args.json_out).write_text(
-            json.dumps([r.__dict__ for r in results], indent=2), encoding="utf-8"
-        )
+    _checkpoint()
+    print("\n" + report)
+    if args.out:
+        print(f"[synth_qc_loop] wrote {args.out}")
     return 0
 
 
 def main() -> int:
+    # MIRA replies contain em dashes and occasionally emoji; Windows stdout
+    # defaults to cp1252 and raises on both. Never let a console encoding kill a
+    # run that has already spent its LLM calls.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):  # not a reconfigurable stream
+            pass
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--reps", type=int, default=3, help="repetitions per scenario")
     ap.add_argument("--scenarios", default="", help="comma-separated scenario ids")
