@@ -53,7 +53,9 @@ def engine(monkeypatch, tmp_path):
     eng.db_path = str(tmp_path / "t.db")
     monkeypatch.setattr(eng, "_clear_diagnostic_carryover", lambda c, s, **k: s)
     monkeypatch.setattr(eng, "_record_exchange", lambda *a, **k: None)
-    monkeypatch.setattr(eng, "_make_result", lambda reply, conf, tid, st=None, **k: {"reply": reply})
+    monkeypatch.setattr(
+        eng, "_make_result", lambda reply, conf, tid, st=None, **k: {"reply": reply}
+    )
     return eng
 
 
