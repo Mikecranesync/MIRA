@@ -91,6 +91,16 @@ and takes the read law above instead.
 - ❌ Resolving `cmms_equipment` (or any pure-tenant table) **by id without
   `tenant_id = $caller`** — IDOR (#1833).
 
+## Allowlist discriminator maintenance
+
+Every `TENANT-ONLY` or `UNFILTERED` approval must carry `query_sha256`, computed
+from the source path plus the full whitespace-normalized context returned by
+`_extract_query_context`. Missing or mismatched hashes fail closed;
+`query_snippet` is review evidence only. `--backfill-hashes` fills missing hashes
+but intentionally never replaces an existing approval. If context extraction,
+normalization, or source-path rules change, review the affected queries and ship
+an explicit hash migration with that change—never silently refresh approvals.
+
 ## Rollout status (this is a program, not one route)
 
 - ✅ `/api/documents` — hybrid read filter + `cmms_equipment` tenant scope (#1833).

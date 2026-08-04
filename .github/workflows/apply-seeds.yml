@@ -72,16 +72,31 @@ jobs:
           sudo apt-get install -y --no-install-recommends postgresql-client-16
           psql --version
 
+      - name: Validate tenant_id
+        env:
+          TENANT_INPUT: ${{ inputs.tenant_id }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TENANT_INPUT" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]]; then
+            echo "::error::tenant_id must be a 1-128 character slug containing only letters, digits, dot, underscore, colon, or hyphen."
+            exit 1
+          fi
+
       - name: Authenticate Doppler + resolve DATABASE_URL
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          TARGET_INPUT: ${{ inputs.target }}
         run: |
           set -euo pipefail
           if [ -z "${DOPPLER_TOKEN:-}" ]; then
             echo "::error::DOPPLER_TOKEN secret not set."
             exit 1
           fi
-          DOPPLER_CFG=$([ "${{ inputs.target }}" = "prod" ] && echo "prd" || echo "stg")
+          case "$TARGET_INPUT" in
+            staging) DOPPLER_CFG=stg ;;
+            prod)    DOPPLER_CFG=prd ;;
+            *) echo "::error::Unknown target $TARGET_INPUT"; exit 1 ;;
+          esac
           echo "Doppler config: factorylm/${DOPPLER_CFG}"
           DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
           if [ -z "$DATABASE_URL" ]; then
@@ -95,6 +110,8 @@ jobs:
           echo "DB_HOST=$HOST" >> "$GITHUB_ENV"
 
       - name: Pre-flight diagnostic — verify tenant_id column type + existing rows
+        env:
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           set -euo pipefail
           # This step's output is the proof that resolves the
@@ -122,7 +139,7 @@ jobs:
 
           set +e
           psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
-               -v "tid=${{ inputs.tenant_id }}" \
+               -v "tid=${TENANT_INPUT}" \
                -f /tmp/preflight.sql 2>&1 | tee /tmp/preflight.out
           PSQL_EXIT=${PIPESTATUS[0]}
           set -e
@@ -131,7 +148,7 @@ jobs:
             echo ""
             echo "DB host: \`${DB_HOST}\`"
             echo ""
-            echo "Tenant id under test: \`${{ inputs.tenant_id }}\`"
+            echo "Tenant id under test: \`${TENANT_INPUT}\`"
             echo ""
             echo '```'
             cat /tmp/preflight.out
@@ -144,6 +161,8 @@ jobs:
 
       - name: Resolve seed file list
         id: resolve
+        env:
+          SEEDS_INPUT: ${{ inputs.seeds }}
         run: |
           set -euo pipefail
           SEED_DIR="tools/seeds"
@@ -151,19 +170,19 @@ jobs:
             echo "::error::$SEED_DIR not found in checkout"
             exit 1
           fi
-          REQUESTED="${{ inputs.seeds }}"
+          REQUESTED="$SEEDS_INPUT"
           FILES=()
           # simlab-docs is a Python seed, not a .sql file — it's resolved into
           # its own apply step, never the psql plan. Track it separately.
           RUN_SIMLAB=false
           if [ "$REQUESTED" = "all" ]; then
-            for f in "$SEED_DIR/gs10-vfd-knowledge.sql" \
-                     "$SEED_DIR/gs11-field-guide-knowledge.sql" \
-                     "$SEED_DIR/demo-conveyor-001.sql"; do
-              if [ -f "$f" ]; then
-                FILES+=("$f")
+            for seed_name in gs10-vfd-knowledge gs11-field-guide-knowledge demo-conveyor-001; do
+              candidate="$SEED_DIR/${seed_name}.sql"
+              if [ -e "$candidate" ]; then
+                FILES+=("$(python3 tools/qa/security/seed_workflow_guard.py resolve \
+                  --seed-dir "$SEED_DIR" --name "$seed_name")")
               else
-                echo "::warning::expected seed missing: $f"
+                echo "::warning::expected seed missing: $candidate"
               fi
             done
             RUN_SIMLAB=true
@@ -175,12 +194,8 @@ jobs:
                 RUN_SIMLAB=true
                 continue
               fi
-              candidate="$SEED_DIR/${n_trimmed}.sql"
-              if [ ! -f "$candidate" ]; then
-                echo "::error::No seed file matched: $candidate"
-                exit 1
-              fi
-              FILES+=("$candidate")
+              FILES+=("$(python3 tools/qa/security/seed_workflow_guard.py resolve \
+                --seed-dir "$SEED_DIR" --name "$n_trimmed")")
             done
           fi
           echo "run_simlab=$RUN_SIMLAB" >> "$GITHUB_OUTPUT"
@@ -200,13 +215,16 @@ jobs:
           echo "Run SimLab Python seed: $RUN_SIMLAB"
 
       - name: Summarise plan
+        env:
+          MODE_INPUT: ${{ inputs.mode }}
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           {
             echo "## Seed plan"
             echo ""
-            echo "Mode: \`${{ inputs.mode }}\`"
+            echo "Mode: \`${MODE_INPUT}\`"
             echo ""
-            echo "Tenant: \`${{ inputs.tenant_id }}\`"
+            echo "Tenant: \`${TENANT_INPUT}\`"
             echo ""
             echo "Files (in apply order):"
             echo ""
@@ -237,6 +255,8 @@ jobs:
 
       - name: Apply seeds (ON_ERROR_STOP=1, single transaction per file)
         if: inputs.mode == 'apply'
+        env:
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           set -euo pipefail
           echo "### Apply results" >> "$GITHUB_STEP_SUMMARY"
@@ -249,7 +269,7 @@ jobs:
             # Each seed declares \set tenant_id_default '''…''' internally and
             # then \set tenant_id :tenant_id_default. We override with our own
             # quoted tenant_id BEFORE the file is processed so it wins.
-            TENANT_QUOTED="'${{ inputs.tenant_id }}'"
+            TENANT_QUOTED="'${TENANT_INPUT}'"
             if psql "$DATABASE_URL" \
                  --single-transaction \
                  --set ON_ERROR_STOP=1 \
@@ -273,6 +293,8 @@ jobs:
 
       - name: Post-apply row counts (proof)
         if: inputs.mode == 'apply'
+        env:
+          TENANT_INPUT: ${{ inputs.tenant_id }}
         run: |
           set -euo pipefail
           cat > /tmp/postcheck.sql <<'SQL'
@@ -304,7 +326,7 @@ jobs:
 
           set +e
           psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
-               -v "tid=${{ inputs.tenant_id }}" \
+               -v "tid=${TENANT_INPUT}" \
                -f /tmp/postcheck.sql 2>&1 | tee /tmp/postcheck.out
           PSQL_EXIT=${PIPESTATUS[0]}
           set -e
@@ -388,6 +410,8 @@ jobs:
       # #1816 (simlab/docs/) is on the checked-out ref.
       - name: Apply SimLab doc seed (Python)
         if: steps.resolve.outputs.run_simlab == 'true'
+        env:
+          MODE_INPUT: ${{ inputs.mode }}
         run: |
           set -euo pipefail
           SEED_PY="tools/seeds/seed-simlab-docs.py"
@@ -398,7 +422,7 @@ jobs:
           fi
           python3 -m pip install --quiet 'psycopg[binary]==3.*'
           export NEON_DATABASE_URL="$DATABASE_URL"
-          if [ "${{ inputs.mode }}" = "apply" ]; then
+          if [ "$MODE_INPUT" = "apply" ]; then
             echo "::group::SimLab seed --commit"
             python3 "$SEED_PY" --commit
             echo "::endgroup::"

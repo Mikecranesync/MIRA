@@ -91,6 +91,7 @@ approved:
   # Test fixture: demonstrating TENANT-ONLY bug class #1761
   "mira-web/src/seed/knowledge-seed.ts:473":
     approved_classification: UNFILTERED
+    query_sha256: "900337d700eb1a4026b665c442c8dee942e57eeab7e1513ce89d3cb22450399c"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -98,18 +99,21 @@ approved:
                 AND model_number ILIKE ${modelNumber}
   "mira-hub/tests/e2e/folder-brain-proof.spec.ts:163":
     approved_classification: UNFILTERED
+    query_sha256: "061b25edfebdb11dd35aa8d988592b5732f39b97851c4ab5e414c16911b60e91"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       await client.query(`DELETE FROM knowledge_entries WHERE metadata->>'mark' = $1`, [MARK]);
           await client.query(`DELETE FROM kg_entities WHERE properties->>'mark' = $1`, [MARK]);
   "mira-hub/tests/e2e/folder-upload-citation-proof.spec.ts:128":
     approved_classification: UNFILTERED
+    query_sha256: "bce37b34078026f1d9beae7f14a3d87093af6493e9cd0e56a8e2cfd984dea582"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       await client.query(`DELETE FROM knowledge_entries WHERE metadata->>'node_id' = $1`, [ids.press]);
           await client.query(`DELETE FROM hub_uploads WHERE kg_entity_id = $1`, [ids.press]);
   "mira-hub/tests/e2e/ingest-v2-e2e-5run.spec.ts:134":
     approved_classification: UNFILTERED
+    query_sha256: "5ee885fd5feb7b83359dcd7328f2699cb9d95d00a6b3fb3ea4999231491898b4"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       `select count(*)::int n from knowledge_entries where metadata->>'node_id'=$1 and ingest_route='v2'`,
@@ -117,18 +121,21 @@ approved:
           );
   "mira-hub/tests/e2e/ingest-v2-e2e-5run.spec.ts:149":
     approved_classification: UNFILTERED
+    query_sha256: "fb95e2cc31731e80420f844d15ad7e6dee354fb287757cba5b838cecdd618ca9"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       `delete from knowledge_entries where metadata->>'node_id' in
                (select id::text from kg_entities where properties->>'mark'=$1)`, [mark]);
   "mira-hub/tests/e2e/ingest-v2-e2e-5run.spec.ts:291":
     approved_classification: UNFILTERED
+    query_sha256: "c23552a16588301f187c621e263191468ef3bcb2cd65d5d0652584d0aeb99f62"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       `delete from knowledge_entries where metadata->>'node_id' in
                (select id::text from kg_entities where (properties->>'mark') like $1)`, [`${MARK_PREFIX}%`]);
   "mira-hub/scripts/verify-node-subtree-retrieval.ts:63":
     approved_classification: TENANT-ONLY
+    query_sha256: "4f900fc9727f6ab90320215b2199948d7fb3d4ec6633cf3abd6ee1cedb7e22cd"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -136,12 +143,14 @@ approved:
               AND (metadata->>'node_id') = ANY($3::text[])
   "mira-hub/scripts/verify-node-subtree-retrieval.ts:180":
     approved_classification: UNFILTERED
+    query_sha256: "827104250203229b3a70080f48629ab90d559fc2c77f4addb0f49334e3c1a44a"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       await client.query(`DELETE FROM knowledge_entries WHERE metadata->>'mark' = $1`, [MARK]);
           await client.query(`DELETE FROM kg_entities WHERE properties->>'mark' = $1`, [MARK]);
   "mira-hub/scripts/health-score-worker.ts:66":
     approved_classification: TENANT-ONLY
+    query_sha256: "7db6aca99dc20b5da6c95f2999334fb60da98a295209d1dab524ff2dda934f79"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       (SELECT COUNT(*) FROM knowledge_entries WHERE tenant_id = $1::uuid AND verified = true)::text AS docs,
@@ -149,6 +158,7 @@ approved:
                 (SELECT COUNT(*) FROM relationship_proposals WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'proposed')::text AS proposals_pending,
   "mira-hub/scripts/health-score-worker.ts:67":
     approved_classification: TENANT-ONLY
+    query_sha256: "6cf81961aa1679f4ae8b165d47bd1d2bbf2892679275efd99d3c74e9fbf161fe"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       (SELECT COUNT(*) FROM knowledge_entries WHERE tenant_id = $1::uuid AND COALESCE(verified, false) = false)::text AS docs_pending,
@@ -156,18 +166,21 @@ approved:
                 (SELECT COUNT(*) FROM relationship_proposals WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'verified')::text AS proposals_verified,
   "mira-hub/scripts/bench-ingest-v2.ts:70":
     approved_classification: UNFILTERED
+    query_sha256: "3434b9a8478e15a274be619cec834fa72ff431cf13d78d985e106ab22b67e661"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       await pool.query(`delete from knowledge_entries where metadata->>'filename' like 'BENCH\\_%'`);
         await pool.query(`delete from hub_uploads where filename like 'BENCH\\_%'`);
   "mira-hub/scripts/bench-ingest-v2.ts:73":
     approved_classification: UNFILTERED
+    query_sha256: "29489f71b42f1654fe9f434475bdac7744422831e93d2b3d63a7156139f0b76a"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       `select count(*)::int n from knowledge_entries where metadata->>'filename' like 'BENCH\\_%'`,
         );
   "mira-hub/scripts/bench-ingest-v2.ts:103":
     approved_classification: UNFILTERED
+    query_sha256: "b6319a41beffc5d4624d5e10d19c6d992a658e85880fa1dba9ea0aed60dca315"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       from knowledge_entries where doc_id=$1`, [res.uploadId])).rows[0];
@@ -175,6 +188,7 @@ approved:
               file: short, kb: Math.round(buf.length / 1024), pages: v.pages,
   "mira-hub/scripts/verify-upload-retrieval-citation.ts:87":
     approved_classification: TENANT-ONLY
+    query_sha256: "83e6f2267cbeaef4d39c4eaeea62cecfa6fa0bdea8a7f7510a98a8202511bddd"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       `SELECT count(*)::int AS n FROM knowledge_entries
@@ -182,12 +196,14 @@ approved:
             [tenantId, nodeId],
   "mira-hub/scripts/verify-upload-retrieval-citation.ts:107":
     approved_classification: UNFILTERED
+    query_sha256: "3f29bca2e9c7501a1bf225df2f8cfc66d025c81729c43023221d36683dda5c67"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       try { await owner.query(`DELETE FROM knowledge_entries WHERE (metadata->>'node_id') = $1`, [nodeId]); } catch (e) { console.error("cleanup ke:", e); }
           try { await owner.query(`DELETE FROM hub_uploads WHERE kg_entity_id = $1`, [nodeId]); } catch (e) { console.error("cleanup uploads:", e); }
   "mira-hub/src/app/api/decision-trace/[id]/route.ts:5":
     approved_classification: UNFILTERED
+    query_sha256: "15f6db3f293144eb1f2052159689abb993147a2a054fdc416c6fd33d0a0ce229"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       // it does NOT join knowledge_entries, so the hybrid raw-pool rule does not apply
@@ -195,6 +211,7 @@ approved:
       // another tenant returns 404 by construction (the tenant predicate excludes it).
   "mira-hub/src/app/api/library/tree/route.ts:73":
     approved_classification: TENANT-ONLY
+    query_sha256: "8af969fcb2816632825ed28d85dddbeb1ce8f7014b30771bea5ebaa2651633ba"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -202,6 +219,7 @@ approved:
                 GROUP BY manufacturer, model_number, source_url, source_type, metadata->>'title'
   "mira-hub/src/app/api/library/tree/route.ts:80":
     approved_classification: TENANT-ONLY
+    query_sha256: "4ce17e3ee9459855042059acf9c0f45da0f2cc8e551acf854c2c255c0fe99d3e"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -209,6 +227,7 @@ approved:
                 GROUP BY manufacturer, model_number, source_url, source_type, metadata->>'title'
   "mira-hub/src/app/api/library/chunks/route.ts:80":
     approved_classification: TENANT-ONLY
+    query_sha256: "2bf7fc6d64fbfa89f12342bfa01e8e2ee071a703c5e3792c6200be186b5ad9e3"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -216,6 +235,7 @@ approved:
                 GROUP BY metadata->>'title'
   "mira-hub/src/app/api/library/chunks/route.ts:98":
     approved_classification: TENANT-ONLY
+    query_sha256: "76026f2a4b2f9c7f5e03ff571f4a7a39ab563d01b3355d6768e8fc4b7dc775d6"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -223,6 +243,7 @@ approved:
                 ORDER BY source_page NULLS LAST, (metadata->>'chunk_index')::int NULLS LAST
   "mira-hub/src/app/api/library/chunks/route.ts:115":
     approved_classification: TENANT-ONLY
+    query_sha256: "8b86b5ad3fc57e5c703360b4314ee800483ee1aadff81466807f07fa58c7d9fb"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM kg_relationships r
@@ -230,6 +251,7 @@ approved:
                 JOIN knowledge_entries ke ON ke.id = r.source_chunk_id
   "mira-hub/src/app/api/library/documents/route.ts:68":
     approved_classification: TENANT-ONLY
+    query_sha256: "30d49f336ebcac1f42218ec7d6fad0c2c2ad721b53f67e27f22d9bb238a953c0"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -237,6 +259,7 @@ approved:
                     AND ${mfrPredicate}
   "mira-hub/src/app/api/usage/route.ts:61":
     approved_classification: TENANT-ONLY
+    query_sha256: "23f7ee756ada0e662ac75d18ca5a97f2934579acfa206960ca1252283a001cee"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM work_orders
@@ -244,6 +267,7 @@ approved:
                 AND created_at > date_trunc('month', NOW())
   "mira-hub/src/app/api/quickstart/manufacturers/route.ts:40":
     approved_classification: UNFILTERED
+    query_sha256: "60207d570ca64aaa4d6f076021963ce5470b7f6e32aa32e7a74b103e2c42fee8"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -254,6 +278,7 @@ approved:
   # classifies those reads PUBLIC-ONLY / compliant with no entry needed.)
   "mira-hub/src/app/api/knowledge/growth/route.ts:28":
     approved_classification: UNFILTERED
+    query_sha256: "07e691a2b5fd81267f5098290982d7c6dfa2bb61ff0558b820e0b972a24b25e2"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -261,6 +286,7 @@ approved:
                GROUP BY 1
   "mira-hub/src/app/api/knowledge/growth/route.ts:35":
     approved_classification: UNFILTERED
+    query_sha256: "7a54a4bffdbde1b86536265b4e210d02db0a3a8e00a3ddb64d31873f337b3673"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -268,6 +294,7 @@ approved:
             ),
   "mira-hub/src/app/api/knowledge/stats/route.ts:14":
     approved_classification: UNFILTERED
+    query_sha256: "aae001acae8974063684af4ab67a697768ef851371a445be7e23183c4250932f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       // depth) and top-10 manufacturers. All counts come from knowledge_entries
@@ -275,6 +302,7 @@ approved:
       // crawler hydrates the queue from there; see kb_growth_cron.py).
   "mira-hub/src/app/api/knowledge/stats/route.ts:41":
     approved_classification: UNFILTERED
+    query_sha256: "477550e251bad3385d8ade61441168a1485e00988ab5e3530897dc199d1311c9"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries`,
@@ -282,6 +310,7 @@ approved:
             pool.query(
   "mira-hub/src/app/api/knowledge/stats/route.ts:48":
     approved_classification: UNFILTERED
+    query_sha256: "3f21eee2e93cee220a55eaf6dc91930a4efb9b30613728c885e86068067fafe6"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries`,
@@ -289,6 +318,7 @@ approved:
             pool.query(
   "mira-hub/src/app/api/knowledge/stats/route.ts:52":
     approved_classification: UNFILTERED
+    query_sha256: "1801091567cb189f162b209f3ce74d5353e31ffbe420c7145831b76257c0f837"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -296,6 +326,7 @@ approved:
             ),
   "mira-hub/src/app/api/knowledge/stats/route.ts:57":
     approved_classification: UNFILTERED
+    query_sha256: "7bc037b8d02de73134522ad8c3a35b320238b9a8c4c2bba741ed27855b02a14a"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -303,6 +334,7 @@ approved:
             ),
   "mira-hub/src/app/api/knowledge/stats/route.ts:75":
     approved_classification: UNFILTERED
+    query_sha256: "e18fbdef561fb77f0ccb8302666019561f83019d590d995615d727773a03d32e"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -310,6 +342,7 @@ approved:
                ORDER BY chunk_count DESC
   "mira-hub/src/app/api/readiness/route.ts:56":
     approved_classification: TENANT-ONLY
+    query_sha256: "de3112a8b3bc4d1bee180499f7dcd68517426e3ef3310bb7d3cca5e35be71f3f"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -317,6 +350,7 @@ approved:
                   )::text AS docs,
   "mira-hub/src/app/api/readiness/route.ts:60":
     approved_classification: TENANT-ONLY
+    query_sha256: "6f48d5da15153e4043e62a641b15fce19f71d277be1af7ee8cd3ba85b31a3de7"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -324,6 +358,7 @@ approved:
                   )::text AS docs_pending,
   "mira-hub/src/app/api/readiness/recalculate/route.ts:51":
     approved_classification: TENANT-ONLY
+    query_sha256: "e03d985bc67b2a48204ab3043eb001bf44067567e3bd011ca28657318c47fad0"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -331,6 +366,7 @@ approved:
                   )::text AS docs,
   "mira-hub/src/app/api/readiness/recalculate/route.ts:55":
     approved_classification: TENANT-ONLY
+    query_sha256: "7d1e70de0e8cde10d9162378460198c02749e13d469972428dca12d94b55d011"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -338,6 +374,7 @@ approved:
                   )::text AS docs_pending,
   "mira-hub/src/app/api/documents/route.ts:84":
     approved_classification: UNFILTERED
+    query_sha256: "f2c5edcd78d2216d991b14a974a7e2615d4b17a9b08d4089420cb18ba26dc8e5"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -345,6 +382,7 @@ approved:
              GROUP BY source_url
   "mira-hub/src/app/api/documents/__tests__/route.test.ts:75":
     approved_classification: UNFILTERED
+    query_sha256: "989afad587b66ddb8a9c3abb0a6c10377c84eb967a010f67e96a0d635d290f1e"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       const { sql, params } = callFor(/FROM knowledge_entries/);
@@ -352,24 +390,28 @@ approved:
           expect(sql).toMatch(/\(is_private = false OR tenant_id = \$1\)/);
   "mira-hub/src/app/api/documents/__tests__/route.test.ts:81":
     approved_classification: UNFILTERED
+    query_sha256: "64499a4e6f79c695f1e624452c2b9d7393549b444156a1d51518b3e2844d6af8"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       expect(sql).not.toMatch(/FROM knowledge_entries\s+GROUP BY/);
         });
   "mira-hub/src/app/api/documents/__tests__/route.test.ts:87":
     approved_classification: UNFILTERED
+    query_sha256: "2dbbbc8d6b9bac3e0d35d403cef8ba42c0b0217fe77339f4e5e9f8ba4a29f0a1"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       const { sql, params } = callFor(/FROM knowledge_entries/);
           expect(sql).toMatch(/\(is_private = false OR tenant_id = \$1\)/);
   "mira-hub/src/app/api/documents/__tests__/route.test.ts:102":
     approved_classification: UNFILTERED
+    query_sha256: "028c25faf1b0fef0bfed85f88bcbd5ba7a3ced5dcb62e0291a73c3cbfbce89c5"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       const kb = callFor(/FROM knowledge_entries/);
           expect(kb.sql).toMatch(/\(is_private = false OR tenant_id = \$1\)/);
   "mira-hub/src/app/api/export/route.ts:50":
     approved_classification: UNFILTERED
+    query_sha256: "e9e0527a614e8e24bf9963aec100a0653cb08b24cea378d86f9c1b450f3057bb"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -377,6 +419,7 @@ approved:
                 )
   "mira-hub/src/app/api/assets/[id]/documents/route.ts:50":
     approved_classification: TENANT-ONLY
+    query_sha256: "f7a5972c46a691c2b65f9bd661471a780396dfabd456fc9f220cc56bee50740d"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -384,6 +427,7 @@ approved:
                  AND LOWER(manufacturer) = LOWER($2)
   "mira-hub/src/app/api/assets/[id]/agent-status/route.ts:49":
     approved_classification: UNFILTERED
+    query_sha256: "b168c34eb2ca4f1d9a946a570844930f91bc5bacae61ec700a96ce6ac9426c1c"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
@@ -391,6 +435,7 @@ approved:
               )
   "mira-hub/src/lib/manual-rag.ts:439":
     approved_classification: TENANT-ONLY
+    query_sha256: "5a4f3e56b6cfab04522f590a13871709393fe26e31cd2cac44f18851d99d89a3"
     reason: "retrieveNodeChunks (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above)."
     query_snippet: |
       FROM knowledge_entries
@@ -398,6 +443,7 @@ approved:
                 AND ingest_route = 'v2'
   "mira-hub/src/lib/node-knowledge-ingest.ts:178":
     approved_classification: TENANT-ONLY
+    query_sha256: "c965f42f4c6ba78d95e3e5ccd62a6ac2a8117e5a199aecfc9948106875aa083f"
     reason: "embedPendingNodeChunks embed-on-write pass — reads back ONLY the rows it
       just wrote for THIS upload (scoped by tenant_id + source_url = node-doc/<uploadId>/…
       + source_type='node_attachment' + embedding IS NULL) to fill their embeddings. Not a
@@ -409,6 +455,7 @@ approved:
                     AND source_type = 'node_attachment' AND embedding IS NULL
   "mira-hub/src/lib/node-document-proposals.ts:127":
     approved_classification: TENANT-ONLY
+    query_sha256: "2b804da172f666377ddc314cf7c65597bf670e570c4bd547e6f76fbda3de4909"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       updated_at = now()
@@ -416,6 +463,7 @@ approved:
           [
   "mira-hub/src/lib/knowledge-graph/cmms-sync.ts:235":
     approved_classification: TENANT-ONLY
+    query_sha256: "284a9f7149fc751b0a1ed577325264eb749b5c921d6990e35cf198dc3416bbae"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -423,12 +471,14 @@ approved:
               AND manufacturer IS NOT NULL
   "mira-hub/src/lib/knowledge-graph/__tests__/cmms-sync-propose.test.ts:42":
     approved_classification: UNFILTERED
+    query_sha256: "d499c0dc917bb9652d8bf3b7bbd881c16c03ea7a5cdac9b6feba7eb3948f0d67"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       if (sql.includes("FROM knowledge_entries")) return { rows: [], rowCount: 0 };
             return { rows: [], rowCount: 0 };
   "mira-hub/src/lib/agents/asset-intelligence.ts:138":
     approved_classification: TENANT-ONLY
+    query_sha256: "5eae93fe0497b1156cbc6bf1c968c41ac6271fda1d8a92c4faa8c0dbc66193dd"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -436,6 +486,7 @@ approved:
                    AND embedding IS NOT NULL
   "mira-hub/src/lib/agents/asset-intelligence.ts:157":
     approved_classification: TENANT-ONLY
+    query_sha256: "c75cd4cc1ca8d7296bcb78cf3a78bdc4dc60a3431a1b3b8a8a4bb783988d3d38"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -443,6 +494,7 @@ approved:
                AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)
   "tools/vendor_coverage_ingest.py:159":
     approved_classification: TENANT-ONLY
+    query_sha256: "556af3c70732659f596c49c9ed9b0ed078d8f9e5107a1af0ac4f8a099fcaa0e7"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -450,6 +502,7 @@ approved:
                         AND manufacturer ILIKE :pat
   "tools/vendor_coverage_ingest.py:175":
     approved_classification: TENANT-ONLY
+    query_sha256: "f3943db031dbea0771cd0e09edf47d5dc0ec861d4d78495e6ff16e30103d0dd9"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       SELECT 1 FROM knowledge_entries
@@ -457,6 +510,7 @@ approved:
                       LIMIT 1
   "tools/backfill_knowledge_embeddings.py:96":
     approved_classification: UNFILTERED
+    query_sha256: "c54900537c5a58de1a017e040b11466edb6ac72e7809cd39bc185de32260bbb1"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -464,6 +518,7 @@ approved:
                   text(f"SELECT count(*) FROM knowledge_entries WHERE {where}"), params
   "tools/backfill_knowledge_embeddings.py:100":
     approved_classification: UNFILTERED
+    query_sha256: "c54900537c5a58de1a017e040b11466edb6ac72e7809cd39bc185de32260bbb1"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -471,6 +526,7 @@ approved:
                   text(f"SELECT count(*) FROM knowledge_entries WHERE {where}"), params
   "tools/backfill_knowledge_embeddings.py:118":
     approved_classification: UNFILTERED
+    query_sha256: "37e2f1dab87a1171aae676db5a45aa6310f7a37bdd32c14ba68b1388abe7ce72"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -478,6 +534,7 @@ approved:
                   text(f"SELECT id, content FROM knowledge_entries WHERE {where}{limit_sql}"), params
   "tools/reconcile_manufacturers.py:23":
     approved_classification: UNFILTERED
+    query_sha256: "96065ef01077ac7d6950b4aeb67540efa45e00855cc6607968b66e6c55b36060"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       ``SELECT DISTINCT manufacturer FROM knowledge_entries``.
@@ -485,6 +542,7 @@ approved:
                                NOT silently read ``NEON_DATABASE_URL``) that matches a
   "tools/reconcile_manufacturers.py:205":
     approved_classification: UNFILTERED
+    query_sha256: "421fc093c44ccc912b430d03fa8e2c7cbb936d24ae560e3b6202e103f72e943a"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -492,6 +550,7 @@ approved:
           return [r[0] for r in rows if r[0]]
   "tools/vendor_coverage_pass2.py:117":
     approved_classification: TENANT-ONLY
+    query_sha256: "25b9da0ae52ffac43d757bbe6d50c1836150b5d8bdd8b989fc27987eaa551df2"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with _engine().connect() as conn:
@@ -499,6 +558,7 @@ approved:
                   text("SELECT COUNT(*) FROM knowledge_entries WHERE tenant_id=:tid AND manufacturer ILIKE :pat AND LENGTH(content) > 500"),
   "tools/vendor_coverage_pass2.py:126":
     approved_classification: TENANT-ONLY
+    query_sha256: "e83bf9da9963679e9eae9b2c4db80b4ec89695dbef597d2e2ed76ed1e54d3ac8"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with _engine().connect() as conn:
@@ -506,6 +566,7 @@ approved:
                   text("SELECT 1 FROM knowledge_entries WHERE tenant_id=:tid AND LEFT(content,200)=:p LIMIT 1"),
   "tools/uns_backfill.py:77":
     approved_classification: TENANT-ONLY
+    query_sha256: "7c4237e2bb1abf81dc9e2231e88ea63d706e35f9026d36bdee55ebc10099dedd"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       SELECT count(*) FROM knowledge_entries
@@ -513,6 +574,7 @@ approved:
                  AND (manufacturer IS NULL OR manufacturer = ''
   "tools/kb_backfill_metadata.py:36":
     approved_classification: TENANT-ONLY
+    query_sha256: "42468fe38f7e7069ae59a9b75dc784783b06faaa0f40f67d06852f0c03121b2b"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -520,6 +582,7 @@ approved:
           orphans = conn.execute(text(
   "tools/kb_backfill_metadata.py:76":
     approved_classification: TENANT-ONLY
+    query_sha256: "42468fe38f7e7069ae59a9b75dc784783b06faaa0f40f67d06852f0c03121b2b"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -527,6 +590,7 @@ approved:
           orphans = conn.execute(text(
   "tools/build_component_template.py:94":
     approved_classification: UNFILTERED
+    query_sha256: "6aec4537047bfb85090ea7403cbaf35323a4524e0243a40f88374737ac11af71"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -534,6 +598,7 @@ approved:
                     AND model_number ILIKE :model_pat
   "tools/kb_label_unlabeled.py:79":
     approved_classification: TENANT-ONLY
+    query_sha256: "b18dd0f838ad06199a04f397d29410ef1eac81c018e5c3d56a0bc4bee52a9d8f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -541,6 +606,7 @@ approved:
                   "SELECT count(*) FROM knowledge_entries "
   "tools/kb_label_unlabeled.py:86":
     approved_classification: TENANT-ONLY
+    query_sha256: "b18dd0f838ad06199a04f397d29410ef1eac81c018e5c3d56a0bc4bee52a9d8f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -548,6 +614,7 @@ approved:
                   "SELECT count(*) FROM knowledge_entries "
   "tools/kb_label_unlabeled.py:112":
     approved_classification: TENANT-ONLY
+    query_sha256: "b18dd0f838ad06199a04f397d29410ef1eac81c018e5c3d56a0bc4bee52a9d8f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -555,6 +622,7 @@ approved:
                   "SELECT count(*) FROM knowledge_entries "
   "tools/kb_audit.py:17":
     approved_classification: TENANT-ONLY
+    query_sha256: "68aabf405a2b1b04ad8896663ad1f942bd247b420df6922575429697c90f2ecf"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with e.connect() as c:
@@ -562,6 +630,7 @@ approved:
           print("=== KB SUMMARY ===\n")
   "tools/kb_audit.py:29":
     approved_classification: TENANT-ONLY
+    query_sha256: "68aabf405a2b1b04ad8896663ad1f942bd247b420df6922575429697c90f2ecf"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with e.connect() as c:
@@ -569,6 +638,7 @@ approved:
           print("=== KB SUMMARY ===\n")
   "tools/kb_audit.py:44":
     approved_classification: TENANT-ONLY
+    query_sha256: "68aabf405a2b1b04ad8896663ad1f942bd247b420df6922575429697c90f2ecf"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with e.connect() as c:
@@ -576,6 +646,7 @@ approved:
           print("=== KB SUMMARY ===\n")
   "tools/kb_audit.py:57":
     approved_classification: TENANT-ONLY
+    query_sha256: "68aabf405a2b1b04ad8896663ad1f942bd247b420df6922575429697c90f2ecf"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with e.connect() as c:
@@ -583,6 +654,7 @@ approved:
           print("=== KB SUMMARY ===\n")
   "tools/kb_audit.py:80":
     approved_classification: TENANT-ONLY
+    query_sha256: "56198c8048517c6f08000db7d5b921041648c2c7dc5e65141df6961333ac330c"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       "FROM knowledge_entries WHERE tenant_id = :tid AND embedding IS NOT NULL "
@@ -590,6 +662,7 @@ approved:
           ), {"emb": str(emb), "tid": tid}).fetchall()
   "tools/proof/run_proof.py:97":
     approved_classification: TENANT-ONLY
+    query_sha256: "60a3b6cbbc942c26d72c805eb47222d34e8095aa4c25c51f20e8852536e4b7a3"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       from shared import telemetry
@@ -597,6 +670,7 @@ approved:
           except Exception:
   "tools/proof/run_proof.py:100":
     approved_classification: TENANT-ONLY
+    query_sha256: "60a3b6cbbc942c26d72c805eb47222d34e8095aa4c25c51f20e8852536e4b7a3"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       from shared import telemetry
@@ -604,6 +678,7 @@ approved:
           except Exception:
   "tools/migrations/backfill_equipment_entities.py:100":
     approved_classification: TENANT-ONLY
+    query_sha256: "661e0c2c1ef32c57a0591cac96c72f8b4bccc98803685c77bc96d6c8297cf588"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -611,6 +686,7 @@ approved:
                  AND model_number IS NOT NULL
   "tools/migrations/backfill_equipment_entities.py:128":
     approved_classification: TENANT-ONLY
+    query_sha256: "2f318886b205bed38d9e5489e18c008850c39732cb652720faacb4ffac46e8cf"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -618,6 +694,7 @@ approved:
                          AND TRIM(manufacturer) = :mfr
   "tools/migrations/backfill_equipment_entities.py:158":
     approved_classification: TENANT-ONLY
+    query_sha256: "6973023a21a1eb24acd6f943cecb2f00b1611e156a0934d3c0d0c7a7e1f52574"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -625,6 +702,7 @@ approved:
                                  AND TRIM(manufacturer) = :mfr
   "tools/migrations/backfill_equipment_entities.py:177":
     approved_classification: TENANT-ONLY
+    query_sha256: "eeb158e68e7f2e70369ade226418f56fc20109ce32d3e82454e53505ad65d333"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       SELECT id FROM knowledge_entries
@@ -632,6 +710,7 @@ approved:
                                      AND TRIM(manufacturer) = :mfr
   "tools/owui_tools/lookup_part.py:67":
     approved_classification: UNFILTERED
+    query_sha256: "2183f9b931ec6917fa42c12df5498dea2ce6db115d8bd1222b620b79cd3e6c66"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -639,6 +718,7 @@ approved:
                         AND embedding IS NOT NULL
   "tools/seeds/seed-simlab-docs.py:271":
     approved_classification: TENANT-ONLY
+    query_sha256: "29219711a187760dc546a35894c38932c885b1f7931c805a7293baaaca9a07e2"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       INSERT INTO tenants (id, name, contact_email, subscription_tier, subscription_status)
@@ -646,6 +726,7 @@ approved:
       ON CONFLICT (id) DO NOTHING
   "tools/seeds/seed-simlab-docs.py:337":
     approved_classification: TENANT-ONLY
+    query_sha256: "55b4067f1822c12546588891cd24976dee5a896e3e65c1afd48f4d734b58561e"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       inserted,
@@ -653,6 +734,7 @@ approved:
                   )
   "tools/seeds/seed-simlab-docs.py:361":
     approved_classification: TENANT-ONLY
+    query_sha256: "72ac5b0998756bb581b6b845a4b0c59fc5e6ca7de52ae5d74c80345c74dacc96"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with psycopg.connect(get_database_url(), autocommit=True) as conn, conn.cursor() as cur:
@@ -660,6 +742,7 @@ approved:
               log.info("knowledge_entries simulator rows for tenant %s: %d", SIMLAB_TENANT_ID, total)
   "tools/seeds/seed-simlab-docs.py:377":
     approved_classification: TENANT-ONLY
+    query_sha256: "72ac5b0998756bb581b6b845a4b0c59fc5e6ca7de52ae5d74c80345c74dacc96"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with psycopg.connect(get_database_url(), autocommit=True) as conn, conn.cursor() as cur:
@@ -667,6 +750,7 @@ approved:
               log.info("knowledge_entries simulator rows for tenant %s: %d", SIMLAB_TENANT_ID, total)
   "tools/seeds/oem-manuals/ingest_local_pdf.py:147":
     approved_classification: TENANT-ONLY
+    query_sha256: "43a53814952eb3d1fdd3254d16b7b41a29e1e957b39c91163b2608cd00ad1006"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with eng.connect() as c:
@@ -674,6 +758,7 @@ approved:
                   text(
   "tools/seeds/oem-manuals/verify_seed.py:46":
     approved_classification: TENANT-ONLY
+    query_sha256: "38ed2a03640684abc122a7c16b64b634451f8806111bf1e4efe853fac7116e81"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -681,6 +766,7 @@ approved:
                         AND metadata->>'chunk_key' = ANY(:keys)
   "tools/seeds/oem-manuals/apply_oem_seed.py:87":
     approved_classification: TENANT-ONLY
+    query_sha256: "60ae67fd5008fbff6ff5345d71bbd9ee6fd0c67be1e811baae6208b749e4bd2f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -688,6 +774,7 @@ approved:
                         AND embedding IS NULL
   "tools/seeds/oem-manuals/apply_oem_seed.py:145":
     approved_classification: TENANT-ONLY
+    query_sha256: "08465b343a363376d96bec4d9f43c9c7d3bd0e4e859ec953cb14c3f8e3db246f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with eng.connect() as c:
@@ -695,6 +782,7 @@ approved:
                   text(
   "mira-crawler/fleet_status.py:247":
     approved_classification: UNFILTERED
+    query_sha256: "0caba77296f04e940e047d93cd0bf3b399928591c5791f4d4d0c0ee3e8c00db2"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       psql "$NEON_DATABASE_URL" -c "SELECT MAX(created_at), COUNT(*) FROM knowledge_entries;"
@@ -702,6 +790,7 @@ approved:
       # --- Trigger.dev Cloud task-run history is NOT in the repo ---
   "mira-crawler/tasks/freshness.py:130":
     approved_classification: TENANT-ONLY
+    query_sha256: "26293fd4b846c25c627c544fbcd4cb7117d3311e6b82933e6d52be7d47c09a01"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -709,6 +798,7 @@ approved:
                 {exclude_clause}
   "mira-crawler/tasks/blog.py:193":
     approved_classification: TENANT-ONLY
+    query_sha256: "84babe4ebe9e32a0308706809718db8f93098089f6e2c69c428f0c725347df53"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -716,6 +806,7 @@ approved:
                       ORDER BY embedding <=> cast(:emb AS vector)
   "mira-crawler/tasks/blog.py:212":
     approved_classification: TENANT-ONLY
+    query_sha256: "983cb529f3b6130ff3800d82ef4b8ffde0a9c700214e70387d3d0a2345adc6eb"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -723,6 +814,7 @@ approved:
                               LIMIT 5
   "mira-crawler/tasks/blog.py:299":
     approved_classification: TENANT-ONLY
+    query_sha256: "e175c552d9b9b9c87bca360f8c0857904838ca9652cd85e2d85bc7e766ad94b2"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -730,6 +822,7 @@ approved:
                         AND (
   "mira-crawler/tasks/report.py:49":
     approved_classification: TENANT-ONLY
+    query_sha256: "742074b1a13ff092ec27141bce89480653ae7fc6d5030f587e266ca2cf6c452b"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -737,6 +830,7 @@ approved:
                         AND created_at > NOW() - INTERVAL ':hours hours'
   "mira-crawler/ingest/store.py:50":
     approved_classification: TENANT-ONLY
+    query_sha256: "755bbe16d50c8cce1f9cee02b83c326ee34f21db3e97ba0b597d7842875b8abd"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -744,6 +838,7 @@ approved:
                             AND source_url = :url
   "mira-crawler/ingest/quality.py:180":
     approved_classification: TENANT-ONLY
+    query_sha256: "0d593176b672b0aaf207cd850ccfa9d2b4e36b34d36e62e399464625f0304290"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -751,6 +846,7 @@ approved:
                   ORDER BY embedding <=> cast(:vec AS vector)
   "mira-crawler/cron/kb_growth_cron.py:253":
     approved_classification: TENANT-ONLY
+    query_sha256: "9f077fd9eeec2af34987eeba11df735ac0198bebbf7c62e05b9f1e74825b9d06"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with conn.cursor() as cur:
@@ -758,6 +854,7 @@ approved:
                           "SELECT 1 FROM knowledge_entries "
   "mira-crawler/cron/kb_growth_cron.py:782":
     approved_classification: TENANT-ONLY
+    query_sha256: "b262e7c775a936913190dcd84fe279785b508dc37cf93c2303145e8f2479fba5"
     reason: "Ingest-queue dedup/backfill: lists the URLs THIS tenant has already ingested so the cron does not re-download them. Counting the tenant's own rows is the point — including the shared OEM corpus would make the crawler skip documents this tenant never ingested (legit TENANT-ONLY per the rule's pure-tenant carve-out, same class as quota.py:128). Re-keyed 747->782 by v3.235.0, which added _stamp_evidence_status above it; the query is unchanged."
     query_snippet: |
       SELECT DISTINCT source_url FROM knowledge_entries
@@ -765,6 +862,7 @@ approved:
                          )
   "mira-bots/shared/quota.py:128":
     approved_classification: TENANT-ONLY
+    query_sha256: "520723a2b3d031e1637fe38a5def79cedff76a26c612f1fae378d1260ec836f7"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -772,6 +870,7 @@ approved:
                                 AND created_at >= CURRENT_DATE
   "mira-bots/shared/uns_resolver.py:701":
     approved_classification: UNFILTERED
+    query_sha256: "03dce3fc74196a2a362a9329aba8219c0939e7e84a59fd600069ed9d97adedb2"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       """Add kg_entities matches, knowledge_entries count, and site_path when
@@ -779,6 +878,7 @@ approved:
           """
   "mira-bots/shared/uns_resolver.py:736":
     approved_classification: UNFILTERED
+    query_sha256: "93e2d5836a3ee9474dbeb8dc7924a8847102b886ac481a9fdf8d9a40168583be"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       from .neon_recall import get_pool  # type: ignore[attr-defined]
@@ -786,6 +886,7 @@ approved:
               return ctx
   "mira-bots/shared/pm_extractor.py:3":
     approved_classification: UNFILTERED
+    query_sha256: "250604c7a97b7ea7a207ad5d23b2a11540dbc67e11b3dd42b82a20a7405c9a36"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       Takes parsed manual chunks from knowledge_entries and extracts structured
@@ -796,6 +897,7 @@ approved:
   # read HYBRID / compliant with no entry needed.)
   "mira-bots/shared/pm_extractor.py:317":
     approved_classification: UNFILTERED
+    query_sha256: "d52499fca6aa4dbbf13ed13a5518debaf02598c5e1d9097b69299b3496bc3146"
     reason: "Docstring prose mentioning knowledge_entries, not a query — extract_pm_schedules receives already-fetched chunks; the only real read (get_chunks_for_model) carries the hybrid is_private predicate."
     query_snippet: |
       """Extract PM schedules from knowledge_entries chunks using the LLM cascade.
@@ -803,6 +905,7 @@ approved:
           Splits chunks into batches, extracts from each, deduplicates by task name.
   "mira-bots/shared/agents/kb_builder.py:52":
     approved_classification: TENANT-ONLY
+    query_sha256: "42b26b1fa22628d156aa587a159a7da1d5a458639426841d14a4583618069b5f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -810,6 +913,7 @@ approved:
                                 AND manufacturer IS NOT NULL
   "mira-bots/benchmarks/corpus/youtube_harvester.py:154":
     approved_classification: UNFILTERED
+    query_sha256: "4c61dff19c4cd6626175591aa5030bc781415ba472d144906ec93b609dc7b85f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -817,6 +921,7 @@ approved:
                          OR (model_number    IS NOT NULL AND model_number    != '')
   "tests/test_embedding_coverage_canary.py:49":
     approved_classification: UNFILTERED
+    query_sha256: "2bca2520e486ca9f0e80c8a22b46d05c189e2c0b4f5b47fe050999b24e5a3788"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -824,6 +929,7 @@ approved:
                   text(
   "tests/mira_bench.py:218":
     approved_classification: TENANT-ONLY
+    query_sha256: "f222ad049e1602178d270775b195f4ef2db15d5dc940cb29761af54bcb009bff"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       "FROM knowledge_entries "
@@ -831,6 +937,7 @@ approved:
                   f"  AND (({meta_or}) OR ({content_or})) "
   "tests/beta/test_simlab_beta_gate.py:223":
     approved_classification: TENANT-ONLY
+    query_sha256: "128503960e25b2ddd4670476e558d67be34a9412e07b5b65d8e6baa2265791c3"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with psycopg.connect(db_url, autocommit=True) as conn, conn.cursor() as cur:
@@ -838,6 +945,7 @@ approved:
                           "DELETE FROM knowledge_entries WHERE tenant_id = %s", (test_tenant,)
   "tests/golden/garage_conveyor_golden_path.py:12":
     approved_classification: UNFILTERED
+    query_sha256: "c51a72369d2b9f603cc046fcec2ed2c576ffd7d88b15d4436a4dda1a72a11535"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       approval_state model, knowledge_entries.verified, and recall_knowledge's new gate.
@@ -845,6 +953,7 @@ approved:
       Run (staging, self-cleaning):
   "tests/golden/garage_conveyor_golden_path.py:67":
     approved_classification: TENANT-ONLY
+    query_sha256: "d16be11053c0f8f9c9d1471e2408f50d65802604538bd00c0693452897d72745"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       cur.execute("DELETE FROM knowledge_entries WHERE source_url LIKE %s", (MARK + "%",))
@@ -852,6 +961,7 @@ approved:
           # knowledge_entries: 3 approved (verified=true) + 1 unapproved (verified=false)
   "tests/golden/garage_conveyor_golden_path.py:112":
     approved_classification: UNFILTERED
+    query_sha256: "7507d328f788ef974091f1439ea2a78b2a37eb8dd066085094736d4097529f1a"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       from shared import neon_recall
@@ -859,6 +969,7 @@ approved:
           hits = neon_recall.recall_knowledge(None, GARAGE_TENANT, limit=10, query_text=query)
   "mira-core/mira-ingest/main.py:513":
     approved_classification: UNFILTERED
+    query_sha256: "620ae3ae84ff2beae64048aea507e7d5030dc432cbf25e5e895677b3ad5c12e0"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with _neon_engine().connect() as _conn:
@@ -866,6 +977,7 @@ approved:
                           _text(
   "mira-core/mira-ingest/db/neon.py:98":
     approved_classification: UNFILTERED
+    query_sha256: "83418ecc4b052003929999d609348fadd7374da17ddcf0735992cb1948a186b6"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -873,6 +985,7 @@ approved:
               ORDER BY embedding <=> cast(:emb AS vector)
   "mira-core/mira-ingest/db/neon.py:124":
     approved_classification: TENANT-ONLY
+    query_sha256: "6a5e85aa591eb09c47cf675b8d9045e632f6884135c00d15a3cb6f5e299f09cc"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -880,6 +993,7 @@ approved:
                         AND image_embedding IS NOT NULL
   "mira-core/mira-ingest/db/neon.py:212":
     approved_classification: TENANT-ONLY
+    query_sha256: "390011b973b33d8c9c990774995a0816d08006d1477a95b42b5b651b945999ae"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -887,6 +1001,7 @@ approved:
                         AND created_at >= CURRENT_DATE
   "mira-core/mira-ingest/db/neon.py:233":
     approved_classification: TENANT-ONLY
+    query_sha256: "066fce39ad37d2836f42a7b3f66ff95d59ee5803608ae4ffea5c80d86eadb8a0"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with _engine().connect() as conn:
@@ -894,6 +1009,7 @@ approved:
                   ke_count = conn.execute(text("SELECT COUNT(*) FROM knowledge_entries")).scalar()
   "mira-core/mira-ingest/db/neon.py:343":
     approved_classification: TENANT-ONLY
+    query_sha256: "90f1f33ad9746b62a615c88a1287d92384dc58cbb949e3c52693c516f593fc3a"
     reason: "knowledge_entry_exists dedup guard — checks whether THIS tenant already ingested this (source_url, chunk_index); cross-tenant visibility would wrongly skip ingest (legit TENANT-ONLY per the pure-tenant carve-out)"
     query_snippet: |
       with _engine().connect() as conn:
@@ -901,6 +1017,7 @@ approved:
                   text(
   "mira-core/mira-ingest/db/neon.py:525":
     approved_classification: TENANT-ONLY
+    query_sha256: "345d185faaca8d9ba5ff5ae52f97d666c20001e0957ce77fa90421f761e90e02"
     reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
@@ -908,6 +1025,7 @@ approved:
                         AND source_type = 'manual'
   "mira-core/mira-ingest/db/neon.py:755":
     approved_classification: TENANT-ONLY
+    query_sha256: "7883e0a3fbeae138e3e02f967f16bdc6b5cd0265bbc08affd3e1b735f70f1c21"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       INSERT INTO ai_suggestions
@@ -915,6 +1033,7 @@ approved:
                            source_kind, extracted_data, confidence,
   "mira-core/scripts/extract_fault_codes.py:2":
     approved_classification: TENANT-ONLY
+    query_sha256: "1912f590e32597a07d440ebff6452c2b00cb325ed9cb06107bf4a0692f457bee"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       """Extract structured fault codes from knowledge_entries chunks into fault_codes table.
@@ -922,6 +1041,7 @@ approved:
       Reads chunks containing fault code patterns, sends to Claude for structured
   "mira-core/scripts/extract_fault_codes.py:64":
     approved_classification: TENANT-ONLY
+    query_sha256: "822b95e90570ceee8dfd761e5cbd0332cdce90b6dc3f62b77ee04051d21dde0c"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       "FROM knowledge_entries "
@@ -929,6 +1049,7 @@ approved:
               "AND (content ~* :pat1 OR content ILIKE :pat2) "
   "mira-core/scripts/remediate_knowledge_base.py:111":
     approved_classification: TENANT-ONLY
+    query_sha256: "25fe2796117d898b74b0ef0d7f6f34527417f83d73be608bd60028ab84be43b5"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       "SELECT COUNT(*) FROM knowledge_entries WHERE tenant_id = :tid",
@@ -936,6 +1057,7 @@ approved:
           )
   "mira-core/scripts/remediate_knowledge_base.py:141":
     approved_classification: TENANT-ONLY
+    query_sha256: "08f873940536e01ca6cfaae4978734a6abcc9fc4a16311edf71c70bca3871986"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       "DELETE FROM knowledge_entries WHERE tenant_id = :tid",
@@ -943,6 +1065,7 @@ approved:
           )
   "mira-core/scripts/remediate_knowledge_base.py:178":
     approved_classification: TENANT-ONLY
+    query_sha256: "5ff53cd45a586113200c8a760dbeed88b9421122d7c6b2d3400339154921145f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
@@ -950,6 +1073,7 @@ approved:
               log.info("VACUUM ANALYZE complete")
   "mira-core/scripts/remediate_knowledge_base.py:188":
     approved_classification: TENANT-ONLY
+    query_sha256: "5ff53cd45a586113200c8a760dbeed88b9421122d7c6b2d3400339154921145f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
@@ -957,6 +1081,7 @@ approved:
               log.info("VACUUM ANALYZE complete")
   "mira-core/scripts/remediate_knowledge_base.py:197":
     approved_classification: TENANT-ONLY
+    query_sha256: "5ff53cd45a586113200c8a760dbeed88b9421122d7c6b2d3400339154921145f"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
@@ -964,6 +1089,7 @@ approved:
               log.info("VACUUM ANALYZE complete")
   "mira-core/scripts/remediate_knowledge_base.py:215":
     approved_classification: TENANT-ONLY
+    query_sha256: "cd341cba9ca1da9d9c374d4307672bd07fcb8fe2ce2696f92d5c0c83fcd95a83"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       "FROM knowledge_entries WHERE tenant_id = :tid "
@@ -971,6 +1097,7 @@ approved:
               {"tid": tenant_id},
   "mira-core/scripts/fix_v1000_ingest.py:74":
     approved_classification: TENANT-ONLY
+    query_sha256: "38426d6874e655c80bc012c0d7964bc927883107fb9625a3f382dc6b55242490"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -978,6 +1105,7 @@ approved:
               conn.commit()
   "mira-core/scripts/fix_v1000_ingest.py:121":
     approved_classification: UNFILTERED
+    query_sha256: "a7f62c2f806c2f64d69a9535e9e5630021663f4fdd4f5a397ddbd3a722bf8c08"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       updated = _sql_write(
@@ -985,6 +1113,7 @@ approved:
               "UPDATE manual_cache SET pdf_stored = false WHERE manual_url LIKE :pattern",
   "mira-core/scripts/backfill_vision_embeddings.py:82":
     approved_classification: TENANT-ONLY
+    query_sha256: "dcd03ead9d4f042a7679a5fa9534d8c35b32bed07b13995c41d25e0a3d5986b0"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with _engine().connect() as conn:
@@ -992,6 +1121,7 @@ approved:
                   count = (
   "mira-core/scripts/repair_kb.py:283":
     approved_classification: TENANT-ONLY
+    query_sha256: "23406f2041005bf06755001727fe7a9a0b08ebe8bc45be68a120858377f9b2ad"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       with engine.connect() as conn:
@@ -999,6 +1129,7 @@ approved:
               before = conn.execute(
   "mira-core/scripts/repair_kb.py:303":
     approved_classification: TENANT-ONLY
+    query_sha256: "c499d60622860e06e3f46687e996029d90ae739a770c3fd35eaba4077775caa7"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       updated = result.rowcount
@@ -1006,6 +1137,7 @@ approved:
       
   "mira-scan-monday/backend/vendor_rag.py:81":
     approved_classification: UNFILTERED
+    query_sha256: "6048da8434fe2ec5a2774b4ee9fccaf471377362c0f275f0be65a919cb7b2b1d"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -1013,6 +1145,7 @@ approved:
                  AND content_tsv @@ plainto_tsquery('english', %s)
   "mira-sidecar/rag/neon_store.py:38":
     approved_classification: UNFILTERED
+    query_sha256: "6458222ed48815d642bd61170c1df677697b574385aee5cb897b0cf3429e8d0c"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       from __future__ import annotations
@@ -1020,6 +1153,7 @@ approved:
       import asyncio
   "mira-sidecar/rag/neon_store.py:64":
     approved_classification: UNFILTERED
+    query_sha256: "f61b75b32d063e7e554bcfdb3c65c9dbfaad276f7df7157217c24ac5de9179a4"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -1027,6 +1161,7 @@ approved:
                       ORDER BY distance
   "tests/test_architecture.py:600":
     approved_classification: TENANT-ONLY
+    query_sha256: "e52a17aa9ec6a2bf113db74427d67f6499d9de60b981073b47ff17614f921193"
     reason: "Not a live read path — this is an inert Python triple-quoted string
       constant (_REAL_PULLED_BACKFILL_STMT) inside the Contract 7 guard
       (test_verified_promotion_checker_catches_violations, see

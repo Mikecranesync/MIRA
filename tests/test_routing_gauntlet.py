@@ -15,15 +15,48 @@ Offline, deterministic, no LLM, no DB. Runs in seconds.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "tools" / "routing_gauntlet"))
+_GAUNTLET_DIR = REPO / "tools" / "routing_gauntlet"
+# The sys.path insert STAYS even though the imports below are path-based: the
+# gauntlet's own modules bare-import each other (runner.py does
+# `from corpus import RoutingCase, generate`), and those resolve through sys.path.
+sys.path.insert(0, str(_GAUNTLET_DIR))
 sys.path.insert(0, str(REPO / "mira-bots"))
 
-from corpus import generate  # noqa: E402
-from runner import ADVERSARIAL_VOTES, apply_arbitration, run_tier1  # noqa: E402
+
+def _load(name: str, filename: str):
+    """Load a gauntlet module under a UNIQUE top-level name.
+
+    `tools/routing_gauntlet/runner.py` and `tools/internet_print_test/runner.py`
+    both want the bare name `runner`. Whichever is imported first wins
+    `sys.modules['runner']` for the whole process — and this file's module-level
+    import ran at COLLECTION time, so it always won, handing
+    tests/printsense/test_grader_gate.py the wrong module at RUN time
+    (`AttributeError: ... has no attribute 'TESTS_ROOT'`). That broke the
+    Eval Offline job on main for every commit after #3074.
+
+    Loading by explicit path under a distinct name means neither test owns the
+    ambiguous bare name. Enforced by Contract 10 in tests/test_architecture.py.
+    """
+    spec = importlib.util.spec_from_file_location(name, _GAUNTLET_DIR / filename)
+    assert spec and spec.loader, f"cannot load {filename} from {_GAUNTLET_DIR}"
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_corpus = _load("routing_gauntlet_corpus", "corpus.py")
+_runner = _load("routing_gauntlet_runner", "runner.py")
+
+generate = _corpus.generate
+ADVERSARIAL_VOTES = _runner.ADVERSARIAL_VOTES
+apply_arbitration = _runner.apply_arbitration
+run_tier1 = _runner.run_tier1
 
 
 def test_corpus_is_deterministic_and_nontrivial():

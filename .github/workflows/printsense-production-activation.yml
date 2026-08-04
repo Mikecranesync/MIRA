@@ -111,6 +111,26 @@ jobs:
           git reset --hard origin/main
           test -f docker-compose.printsense-production.yml
 
+          # Deploy identity must be exported HERE too, not only in deploy-vps.yml.
+          # This workflow runs AFTER a deploy and rebuilds the two bot images, so
+          # whatever it bakes in is what actually runs. Before #3064 the bots read
+          # a COPY'd /VERSION file and this path inherited the right answer for
+          # free; now the version arrives as a BUILD ARG, so a rebuild without
+          # these exports resolves `${MIRA_APP_VERSION:-unknown}` to "unknown" and
+          # silently overwrites the identity the deploy just baked. Observed live
+          # on 2026-08-03: mira-pipeline reported 3.248.0 while mira-bot-telegram
+          # reported "unknown" — same commit, same minute, different build path.
+          #
+          # Derived from the tag at origin/main HEAD (this step resets to
+          # origin/main, so that IS the deployed code). No tag ⇒ "unknown", which
+          # is the honest answer rather than a plausible wrong one.
+          PS_RELEASE_TAG="$(git tag --points-at origin/main --list 'v[0-9]*' | sort -V | tail -1)"
+          export MIRA_APP_VERSION="${PS_RELEASE_TAG#v}"
+          export MIRA_APP_VERSION="${MIRA_APP_VERSION:-unknown}"
+          export MIRA_GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+          export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
+
           COMPOSE="docker compose -f docker-compose.saas.yml -f docker-compose.printsense-production.yml"
 
           echo "=== Validate production overlay ==="
@@ -139,6 +159,15 @@ jobs:
             HEALTH=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container")
             echo "$container health=$HEALTH"
             test "$HEALTH" = "healthy"
+
+            # The rebuild above must carry the SAME identity the deploy baked —
+            # not "unknown", and not a stale earlier version. Compared against the
+            # value exported for this build rather than merely asserting non-empty,
+            # so a future path that rebuilds without the exports fails HERE instead
+            # of shipping a container that lies about which code it is running.
+            GOT_VER=$(docker exec "$container" sh -c 'printf %s "$MIRA_APP_VERSION"')
+            echo "$container MIRA_APP_VERSION=$GOT_VER (expected $MIRA_APP_VERSION)"
+            test "$GOT_VER" = "$MIRA_APP_VERSION"
           done
 
           echo "=== Run network-free readiness in both containers ==="

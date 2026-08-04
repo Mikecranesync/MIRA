@@ -1,3 +1,22 @@
+# Hot Cache — 2026-08-03 — Deploy-integrity lane (#3081 identity + #3055 tag-race)
+
+Deploy-integrity work in flight (both open; **do not repeat #3083/#3084 — merged**
+`210ce9736`/`cde434b99`, #2989/#3053 closed):
+- **#3081** (`fix/deploy-identity-printsense`) — rebased onto current main, force-pushed,
+  fresh checks. Fixes the "telegram reports `unknown`" identity clobber: PrintSense
+  activation now exports + **asserts** the baked `MIRA_APP_VERSION`; `deploy-vps.yml` uses
+  `${RELEASE_TAG#v}` instead of a wrong `git describe` fallback.
+- **#3055** → **PR #3091** (`fix/deploy-race-tag-wait-3055`, **stacked on #3081**) — deploy now
+  anchors on the **immutable `DEPLOY_SHA`** (gated commit), bounded-polls for the `vX.Y.Z` tag
+  **at that SHA** via `.github/scripts/resolve_release_tag.sh` (run on the VPS from the object at
+  the deployed SHA), and **fails closed** — no more `git reset --hard origin/main`. Hotfix
+  dispatch (`skip_staging_gate=true`) is the only fallback and deploys the pinned SHA. Behavioral +
+  static contract tests wired into the required CI job (`tests/test_deploy_release_tag_resolver.py`).
+  **Next single action: owner-approved gated `deploy-vps` run** (not yet triggered).
+- **#3055 remains OPEN** until that gated deploy passes. Merge order: **#3081 → #3091**.
+
+---
+
 # Hot Cache — 2026-08-02 — MIRA × FactoryLM read-only machine-evidence handoff (PRD #3048) — PRs 1–4 MERGED
 
 The **"one technician brain"** live-state spine is complete through the serving path. FactoryLM's

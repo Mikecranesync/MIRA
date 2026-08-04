@@ -215,6 +215,10 @@ services:
     build:
       context: .
       dockerfile: mira-pipeline/Dockerfile
+      args:
+        # Deploy identity — `/VERSION` retired 2026-08-02 (#3064); the version
+        # is derived from the git tag and exported by deploy-staging.yml.
+        MIRA_APP_VERSION: ${MIRA_APP_VERSION:-unknown}
     container_name: stg-mira-pipeline
     ports:
       - "0.0.0.0:4099:9099"
@@ -402,6 +406,10 @@ services:
     build:
       context: .
       dockerfile: mira-bots/telegram/Dockerfile
+      args:
+        # Deploy identity — `/VERSION` retired 2026-08-02 (#3064); the version
+        # is derived from the git tag and exported by deploy-staging.yml.
+        MIRA_APP_VERSION: ${MIRA_APP_VERSION:-unknown}
     container_name: stg-mira-bot-telegram
     extra_hosts:
       - "host.docker.internal:host-gateway"
