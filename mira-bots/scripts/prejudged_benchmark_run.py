@@ -23,9 +23,13 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sqlite3
 import sys
 import time
+from types import SimpleNamespace
+
+import httpx
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,6 +68,77 @@ def _get_anthropic_client():
     import anthropic
 
     return anthropic.Anthropic()
+
+
+class _TogetherClient:
+    """Anthropic-SDK-shaped adapter over Together's OpenAI-compatible API.
+
+    Lets the judge + technician simulator run on Together
+    (BENCH_JUDGE_PROVIDER=together) without touching the call sites: exposes
+    `.messages.create(model=..., max_tokens=..., messages=[...])` returning an
+    object with `.content[0].text`. The `model` argument at the call sites is
+    an Anthropic id and is ignored in favor of BENCH_JUDGE_MODEL. Tracks call
+    count + token usage so a budget-declared run can report actual spend.
+    """
+
+    API_URL = "https://api.together.xyz/v1/chat/completions"
+
+    def __init__(self, api_key: str, model: str, timeout: float):
+        self._api_key = api_key
+        self.model = model
+        self._timeout = timeout
+        self.calls = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.messages = self  # mirrors anthropic_client.messages.create
+
+    def create(self, model: str, max_tokens: int, messages: list[dict]):
+        resp = httpx.post(
+            self.API_URL,
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            json={"model": self.model, "max_tokens": max_tokens, "messages": messages},
+            timeout=self._timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        text = data["choices"][0]["message"]["content"] or ""
+        # Reasoning models emit <think> blocks; strip so JSON parsing sees
+        # only the answer.
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        usage = data.get("usage") or {}
+        self.calls += 1
+        self.prompt_tokens += int(usage.get("prompt_tokens") or 0)
+        self.completion_tokens += int(usage.get("completion_tokens") or 0)
+        return SimpleNamespace(content=[SimpleNamespace(text=text)])
+
+    def usage_summary(self) -> dict:
+        return {
+            "provider": "together",
+            "model": self.model,
+            "calls": self.calls,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+        }
+
+
+def _get_llm_client():
+    """Judge + simulator client, selected by BENCH_JUDGE_PROVIDER.
+
+    Default stays anthropic (historical behavior). "together" routes both
+    roles through Together's OpenAI-compat endpoint (TOGETHERAI_API_KEY).
+    """
+    provider = (os.getenv("BENCH_JUDGE_PROVIDER") or "anthropic").strip().lower()
+    if provider == "together":
+        api_key = os.getenv("TOGETHERAI_API_KEY", "")
+        if not api_key:
+            raise RuntimeError("BENCH_JUDGE_PROVIDER=together requires TOGETHERAI_API_KEY")
+        model = os.getenv("BENCH_JUDGE_MODEL") or "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+        timeout = float(os.getenv("TOGETHERAI_TIMEOUT") or "90")
+        logger.info("Judge/simulator provider: together model=%s", model)
+        return _TogetherClient(api_key=api_key, model=model, timeout=timeout)
+    if provider != "anthropic":
+        raise RuntimeError(f"Unknown BENCH_JUDGE_PROVIDER: {provider!r}")
+    return _get_anthropic_client()
 
 
 def _build_supervisor() -> Supervisor:
@@ -403,7 +478,7 @@ async def run_benchmark(
     db_path = db_path or os.getenv("MIRA_DB_PATH", "/data/mira.db")
     ensure_tables(db_path)
 
-    anthropic_client = _get_anthropic_client()
+    anthropic_client = _get_llm_client()
 
     # Get cases
     if case_id:
@@ -462,13 +537,17 @@ async def run_benchmark(
         avg_score,
     )
 
-    return {
+    summary = {
         "run_id": run_id,
         "cases": len(cases),
         "errors": errors,
         "avg_score": round(avg_score, 2),
         "results": results,
     }
+    if isinstance(anthropic_client, _TogetherClient):
+        summary["judge_usage"] = anthropic_client.usage_summary()
+        logger.info("Judge/simulator usage: %s", summary["judge_usage"])
+    return summary
 
 
 def main():
