@@ -661,6 +661,13 @@ jobs:
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
 
+      - name: Check Hub Unit Tests path-filter contract
+        # tests/test_hub_unit_filter_contract.py was written for this job
+        # (its docstring: "pytest + pyyaml only — matches the Architecture
+        # Check CI job's deps") but the step was never added, so the contract
+        # guarding the hub filter's guardrails.py watch never executed in CI.
+        run: pytest tests/test_hub_unit_filter_contract.py -q
+
       - name: Check env-var drift (docker-compose.saas.yml vs docs/env-vars.md + .env.template)
         # Stdlib-only static check (docs/known-issues.md) -- no extra deps needed.
         # Exits 1 on any used-but-undocumented or documented-but-unused var not
