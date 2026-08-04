@@ -1069,9 +1069,7 @@ def _compact_pack_citation_tags(citations: list[dict]) -> list[str]:
             else:
                 runs.append((n, n))
         for lo, hi in runs:
-            tags.append(
-                f"[Source: {doc} p.{lo}]" if lo == hi else f"[Source: {doc} pp.{lo}-{hi}]"
-            )
+            tags.append(f"[Source: {doc} p.{lo}]" if lo == hi else f"[Source: {doc} pp.{lo}-{hi}]")
         for p_ in others:
             tags.append(f"[Source: {doc} p.{p_}]" if p_ else f"[Source: {doc}]")
     return tags
