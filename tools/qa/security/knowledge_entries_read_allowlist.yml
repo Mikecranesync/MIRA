@@ -868,7 +868,7 @@ approved:
       SELECT COUNT(*) FROM knowledge_entries
                               WHERE tenant_id = :tid
                                 AND created_at >= CURRENT_DATE
-  "mira-bots/shared/uns_resolver.py:701":
+  "mira-bots/shared/uns_resolver.py:764":
     approved_classification: UNFILTERED
     query_sha256: "03dce3fc74196a2a362a9329aba8219c0939e7e84a59fd600069ed9d97adedb2"
     reason: "TODO: justify this read pattern"
@@ -876,7 +876,7 @@ approved:
       """Add kg_entities matches, knowledge_entries count, and site_path when
           available. Falls back to ctx on any error or unavailable DB.
           """
-  "mira-bots/shared/uns_resolver.py:736":
+  "mira-bots/shared/uns_resolver.py:799":
     approved_classification: UNFILTERED
     query_sha256: "93e2d5836a3ee9474dbeb8dc7924a8847102b886ac481a9fdf8d9a40168583be"
     reason: "TODO: justify this read pattern"
