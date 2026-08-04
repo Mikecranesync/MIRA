@@ -20,6 +20,7 @@ from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
+from .citation_compliance import established_context_text as _established_context_text
 from .conversation_router import route_intent
 from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
@@ -881,6 +882,44 @@ _KNOWN_VENDORS: frozenset[str] = frozenset(
 
 _H4_SOURCE_RE = re.compile(r"\[Source:", re.IGNORECASE)
 
+# A `[Source: …]` whose body names no document is NOT grounding. Observed live
+# (2026-08-03 probe sweep): `[Source: [3] --- Reference Documents]` — a bare
+# reference NUMBER. Because the H4 check matched any `[Source:` at all, such a
+# tag SUPPRESSED the honest KB-gap admission, so a reply with a meaningless
+# citation looked better-grounded than one with none.
+_H4_EMPTY_SOURCE_BODY_RE = re.compile(
+    r"\[Source:\s*(?:\[?\d+\]?|reference documents?|unknown|n/?a|source|document|-+)\s*"
+    r"(?:-{2,}|—|–)?\s*(?:reference documents?)?\s*\]",
+    re.IGNORECASE,
+)
+
+# The reply asserts it HAS documentation. If it also produced no usable
+# citation, appending the stock "I don't have specific documentation" line puts
+# a flat contradiction in one message (observed live, probe `dc-02`:
+# "I have the AutomationDirect GS10 manual indexed." followed by
+# "I don't have specific documentation indexed for this.").
+_H4_POSSESSION_CLAIM_RE = re.compile(
+    r"\bI (?:have|do have)\b[^.\n]{0,70}\b(?:manual|documentation|datasheet|indexed)\b",
+    re.IGNORECASE,
+)
+
+# Used instead of the stock admission when a possession claim is present, so
+# the reply CORRECTS itself rather than contradicting itself.
+_H4_CORRECTING_ADMISSION = (
+    "\n\nCorrection: I can't produce a citation for that, so treat the reference"
+    " above as unverified — consult the asset nameplate or vendor manual."
+    " [KB-gap: I do not have that specific information in the knowledge base.]"
+)
+
+
+def _has_usable_citation(reply: str) -> bool:
+    """True when the reply carries a `[Source: …]` that actually names something."""
+    if not _H4_SOURCE_RE.search(reply):
+        return False
+    # Strip the meaningless ones; if any citation survives, it is usable.
+    return bool(_H4_SOURCE_RE.search(_H4_EMPTY_SOURCE_BODY_RE.sub("", reply)))
+
+
 # Phrases that constitute an explicit KB-gap admission — ordered from most
 # specific to least. The "I don't have a" check is anchored to avoid matching
 # conversational phrases like "I don't have a clue what you mean".
@@ -958,12 +997,18 @@ def enforce_citation_or_gap_admission(reply: str) -> str:
     # Normalize `--- Sources ---` blocks to inline `[Source: ...]` markers so
     # downstream scoring + view rendering see a single citation format.
     reply = _normalize_sources_block(reply)
-    if _H4_SOURCE_RE.search(reply):
+    # A citation only counts as grounding when it names an actual document.
+    if _has_usable_citation(reply):
         return reply
     lower = reply.lower()
     for phrase in _H4_GAP_PHRASES:
         if phrase.lower() in lower:
             return reply
+    # A reply that CLAIMS to have documentation but produced no usable citation
+    # gets a correcting admission — appending the stock line would contradict
+    # the sentence above it inside a single message.
+    if _H4_POSSESSION_CLAIM_RE.search(reply):
+        return reply + _H4_CORRECTING_ADMISSION
     return reply + _H4_STOCK_ADMISSION
 
 
@@ -3729,6 +3774,7 @@ class Supervisor:
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
             uns_context=(state.get("context") or {}).get("uns_context"),
+            established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
         )
         if _cc.get("sanitized_reply"):
@@ -5001,6 +5047,7 @@ class Supervisor:
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
             uns_context=ctx.get("uns_context"),
+            established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
         )
         if _cc.get("sanitized_reply"):

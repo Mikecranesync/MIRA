@@ -2331,6 +2331,9 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reset GSD conversation state."""
     chat_id = str(update.effective_chat.id)
     engine.reset(chat_id)
+    # D4b: the print workspace persisted past engine.reset (7-day TTL) and
+    # kept routing text turns into the print rung after a "fresh" session.
+    print_workspace.clear_workspace(chat_id)
     await update.message.reply_text("Conversation reset.")
 
 
@@ -2338,6 +2341,7 @@ async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Hard-reset conversation state — no preview of WO, no carryover from prior sessions."""
     chat_id = str(update.effective_chat.id)
     engine.reset(chat_id)
+    print_workspace.clear_workspace(chat_id)
     logger.info("NEW_SESSION chat_id=%s user=%s", chat_id, update.effective_user.first_name)
     await update.message.reply_text("🔄 Fresh start. What can I help with?")
 

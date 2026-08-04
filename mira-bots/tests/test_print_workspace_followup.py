@@ -378,3 +378,53 @@ async def test_store_failure_never_raises_into_the_turn(wired):
     claimed, update = await _run("what feeds K17?")
     assert claimed is False
     update.message.reply_text.assert_not_awaited()
+
+
+# --------------------------------------------------------------------------- #
+# D4 regression — prod incident 2026-08-04
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_hyphenated_vendor_question_falls_through_to_engine(wired):
+    """The EXACT prod hijack wording: a live workspace + 'What does fault F004
+    on an Allen-Bradley PowerFlex 525 mean?' answered with IEC-81346
+    designation output ('-Bradley' parsed as a tag) + stale drawing evidence.
+    A vendor compound is not a designation; the turn belongs to the engine."""
+    await _seed()
+    claimed, update = await _run("What does fault F004 on an Allen-Bradley PowerFlex 525 mean?")
+    assert claimed is False
+    update.message.reply_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_real_designation_followup_still_claims(wired):
+    """The other direction: a genuine ledger-tag question keeps working."""
+    await _seed()
+    claimed, update = await _run("what does -K17 mean?")
+    assert claimed is True
+    update.message.reply_text.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_new_command_clears_print_workspace(wired):
+    """/new promises 'no carryover from prior sessions' — the print workspace
+    must not survive it (it outlived engine.reset by up to 7 days in prod)."""
+    await _seed()
+    assert print_workspace.get_workspace("999") is not None
+
+    update = _update()
+    await bot.new_command(update, MagicMock())
+
+    assert print_workspace.get_workspace("999") is None
+
+
+@pytest.mark.asyncio
+async def test_reset_command_clears_print_workspace(wired):
+    await _seed()
+    assert print_workspace.get_workspace("999") is not None
+
+    update = _update()
+    await bot.reset_command(update, MagicMock())
+
+    assert print_workspace.get_workspace("999") is None

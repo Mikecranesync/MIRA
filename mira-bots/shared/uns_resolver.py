@@ -110,6 +110,14 @@ VENDOR_ALIASES: dict[str, str] = {
     "delta": "Delta Electronics",
     "lenze": "Lenze",
     "pilz": "Pilz",
+    # Materials-handling OEMs present in the corpus. Added 2026-08-03 because
+    # both were cited live for machines the technician never identified, and
+    # neither resolved — so the citation-attribution gate could not see them.
+    # An unrecognized vendor bypasses that gate entirely (see
+    # `tests/test_citation_attribution.py`), which makes this table a
+    # correctness surface, not just a convenience.
+    "demag": "Demag",
+    "interroll": "Interroll",
 }
 
 # Alias → product-family token when the alias names a family rather than a
@@ -413,6 +421,30 @@ def _pick_fault_code(
     return pairs[0][0], pairs[0][1], all_raw
 
 
+def _alias_pattern(alias: str) -> str:
+    r"""Boundary rule for one vendor alias. The single definition of "named".
+
+    `\b` is wrong at both ends here, in opposite directions:
+
+    * **Too loose is not the problem — too strict is.** `\b` counts `_` and
+      digits as word characters, so `\bgs10\b` misses `GS10_user_manual.pdf`
+      and `\bpowerflex\b` misses `PowerFlex525`. Source labels are usually
+      filenames, so that silently stops recognising the vendor of a real
+      citation.
+    * **A bare substring is worse.** `"ab"` (Allen-Bradley) fires inside
+      "cable" and `"abb"` inside "grabbed", which invents a vendor from
+      ordinary English.
+
+    So: the character before must not be alphanumeric, and the character after
+    must not be a letter. A following DIGIT is allowed only when the alias
+    itself ends in a letter — `powerflex525` is a PowerFlex, but `gs100` is not
+    a `gs10` and `gs10` is not a `gs1`.
+    """
+    esc = re.escape(alias)
+    tail = r"(?![a-z0-9])" if alias[-1].isdigit() else r"(?![a-z])"
+    return rf"(?<![a-z0-9]){esc}{tail}"
+
+
 def _match_vendor(message_lower: str) -> tuple[str | None, str | None, str | None]:
     """Return (canonical_mfr, alias_key_lower, family_token).
 
@@ -430,7 +462,7 @@ def _match_vendor(message_lower: str) -> tuple[str | None, str | None, str | Non
                 family = FAMILY_FROM_ALIAS.get(alias)
                 return mfr, alias, family
         else:
-            if re.search(rf"\b{re.escape(alias)}\b", message_lower):
+            if re.search(_alias_pattern(alias), message_lower):
                 mfr = VENDOR_ALIASES[alias]
                 family = FAMILY_FROM_ALIAS.get(alias)
                 return mfr, alias, family
@@ -458,7 +490,7 @@ def _match_all_vendors(
         if any(c in alias for c in " -"):
             m = re.search(re.escape(alias), message_lower)
         else:
-            m = re.search(rf"\b{re.escape(alias)}\b", message_lower)
+            m = re.search(_alias_pattern(alias), message_lower)
         if m is None:
             continue
         pos = m.start()
@@ -492,18 +524,49 @@ def canonical_vendor(name: str | None) -> str | None:
     Single source of truth for "are these two manufacturer strings the same
     vendor?" — shared by the citation-relevance gate
     (``citation_compliance``) and the retrieval cross-vendor filter
-    (``rag_worker``) so they never disagree. Substring match, longest alias
-    first, so ``"rockwell automation"`` wins over ``"rockwell"``.
+    (``rag_worker``) so they never disagree.
+
+    Matching is **boundary-aware**, via the same ``_match_vendor`` this module
+    already uses for message resolution. It previously did a bare ``alias in
+    low`` substring test, which is wrong in a way that reaches the technician:
+    the ``"ab"`` alias fires inside the word "cable", so *"Cable installation
+    procedure"* resolved to Rockwell Automation. Once a citation gate started
+    stripping on that answer, a legitimate generic cable source was removed
+    from a reply as an "unsupported Rockwell citation".
+
+    Longest alias still wins, so ``"rockwell automation"`` beats ``"rockwell"``.
     """
     if not name:
         return None
     low = name.strip().lower()
     if low in VENDOR_ALIASES:
         return VENDOR_ALIASES[low]
-    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
-        if alias in low:
-            return VENDOR_ALIASES[alias]
-    return None
+    mfr, _alias, _family = _match_vendor(low)
+    return mfr
+
+
+def vendors_in_text(text: str | None) -> set[str]:
+    """Every canonical manufacturer named anywhere in a block of free text.
+
+    ``canonical_vendor`` answers "which vendor is this label?" and returns the
+    single best match. This answers "which vendors has the technician actually
+    named?" across a whole turn or conversation — a different question, and the
+    one that decides whether a citation may be attributed at all.
+
+    Lives here rather than in the caller so "same vendor" stays defined in one
+    place (`.claude/rules/uns-compliance.md` §1–2). Fail-open: an empty set
+    means "nothing established", never "mismatch".
+
+    Delegates to ``_match_all_vendors`` — the module's existing boundary-aware
+    matcher — rather than testing ``alias in text``. A bare substring test
+    matches "ab" inside "cable" and "abb" inside "grabbed", so
+    *"the cable came loose"* would establish Rockwell and *"I grabbed the
+    cable"* would establish ABB. Establishing a vendor nobody named is the
+    exact failure this function exists to prevent.
+    """
+    if not text:
+        return set()
+    return {canonical for canonical, _alias, _family, _pos in _match_all_vendors(text.lower())}
 
 
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:

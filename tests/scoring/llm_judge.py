@@ -124,7 +124,7 @@ Score each dimension from 0.0 to 10.0:
 
 2. PATH EFFICIENCY (weight 0.20): How directly did MIRA reach the root cause? Fewer turns = better. 2-3 turns for easy cases, 3-4 for medium, 4-5 for hard is ideal. Max 8 turns is a timeout penalty.
 
-3. GSD COMPLIANCE (weight 0.25): Did MIRA follow the Socratic diagnostic method? Did it ask focused questions, narrow down possibilities, and guide rather than guess? Did it use the state machine properly (IDLE->Q1->Q2->Q3->DIAGNOSIS)?
+3. DIALOGUE MODE (weight 0.25): Was each turn's mode right for the surface, the intent, and the evidence? Guided questioning is correct for a live diagnosis with incomplete evidence - focused questions that narrow possibilities rather than guess, using the state machine properly (IDLE->Q1->Q2->Q3->DIAGNOSIS). But a DIRECT cited answer is correct, and scores full marks, when the technician asked a how-to, a specification, a fault-code meaning, or a procedure, or when the evidence already supports an answer. Withholding a supported answer behind a question is a DEFECT, not method. Score 0-2 if MIRA quizzed a technician who asked a direct question, or asked anything at all inside a safety STOP.
 
 4. ROOT CAUSE ALIGNMENT (weight 0.25): Does MIRA's final diagnosis match the ground truth root cause? Partial credit for being in the right area.
 
