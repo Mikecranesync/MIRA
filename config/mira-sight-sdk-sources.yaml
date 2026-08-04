@@ -1,0 +1,79 @@
+# MIRA Sight — SDK watch source registry (PRD §11.2).
+# Every URL the watcher may touch MUST appear here (URL allowlist is enforced in code).
+# Expand deliberately; a vendor announcement alone does not justify a source.
+sources:
+  - id: brilliant-sdk-github
+    vendor: brilliant_labs
+    priority: p0
+    type: github_repo
+    repo: brilliantlabsAR/brilliant_sdk
+    monitor: [releases, tags, head_commit]
+    integration_targets: [halo]
+    license_review: required_on_change
+
+  - id: brilliant-sdk-pypi
+    vendor: brilliant_labs
+    priority: p0
+    type: package
+    registry: pypi
+    package: brilliant-sdk
+    url: https://pypi.org/pypi/brilliant-sdk/json
+    integration_targets: [halo]
+    license_review: required_on_change
+
+  - id: brilliant-sdk-npm
+    vendor: brilliant_labs
+    priority: p1
+    type: package
+    registry: npm
+    package: brilliant-sdk
+    url: https://registry.npmjs.org/brilliant-sdk/latest
+    integration_targets: [halo]
+
+  - id: brilliant-sdk-pubdev
+    vendor: brilliant_labs
+    priority: p0
+    type: package
+    registry: pubdev
+    package: brilliant_sdk
+    url: https://pub.dev/api/packages/brilliant_sdk
+    integration_targets: [halo]
+
+  - id: brilliant-halo-docs
+    vendor: brilliant_labs
+    priority: p0
+    type: documentation
+    urls:
+      - https://docs.brilliant.xyz/halo/halo-sdk/
+      - https://docs.brilliant.xyz/halo/halo-sdk-lua/
+      - https://docs.brilliant.xyz/halo/hardware/
+    semantic_keywords:
+      [camera, video, stream, firmware, npu, model, emulator, imu, audio,
+       display, battery, privacy, certification]
+
+  - id: android-xr-docs
+    vendor: google
+    priority: p0
+    type: documentation
+    urls:
+      - https://developer.android.com/xr
+      - https://developer.android.com/develop/xr/jetpack-xr-sdk
+    semantic_keywords:
+      [glasses, projected, glimmer, camera, microphone, preview, stable,
+       deprecat, capability]
+
+  - id: realwear-docs
+    vendor: realwear
+    priority: p1
+    type: documentation
+    urls:
+      - https://developer.realwear.com/docs/basics/intro/
+    semantic_keywords: [sdk, wearhf, camera, thermal, intrinsically, api]
+
+  - id: vuzix-docs
+    vendor: vuzix
+    priority: p1
+    type: documentation
+    urls:
+      - https://support.vuzix.com/docs/developer-resources
+    semantic_keywords: [sdk, speech, connectivity, hud, camera, android]
