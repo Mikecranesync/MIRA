@@ -82,6 +82,20 @@ MUST_FIRE = [
         "spinning [Source: [3] --- Reference Documents]?\n1. Yes\n2. No",
     ),
     (
+        # Observed in the W2a eval (defect D3, results.md) — MIRA cited the
+        # technician's own uploaded photo. `photo_handler` saves the session
+        # photo as `{chat_id}.jpg`, so the label is a bare number plus `.jpg`.
+        "malformed_citation",
+        "what motor is this?",
+        "You think it's a WEG motor. [Source: 481923.jpg]",
+    ),
+    (
+        # Same defect, stated in words rather than a filename.
+        "malformed_citation",
+        "what does the nameplate say?",
+        "The nameplate shows a 15HP frame [Source: the uploaded photo].",
+    ),
+    (
         # Observed live, mt-accumulating-presupposition turn 2 — Siemens parameters
         # on a bare "the conveyor stopped". A known vendor is still UNRELATED when
         # neither it nor any of its models was mentioned.

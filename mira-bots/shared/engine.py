@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import print_recall, quality_gate
+from .answer_qc import run_output_qc
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
@@ -914,6 +915,36 @@ _H4_EMPTY_SOURCE_BODY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# The technician's own uploaded photo is not documentation. Observed in the W2a
+# eval (defect D3, `docs/evals/2026-08-03-dialogue-mode-w2a/results.md`): MIRA
+# cited an uploaded image FILENAME as its source — `photo_handler` saves the
+# session photo as `{chat_id}.jpg`, so the label is a bare number plus `.jpg`.
+# Citing it hands the technician's own input back to them as if it were
+# evidence, and — exactly like the bare reference number above — it SUPPRESSED
+# the honest KB-gap admission, making a worthless citation look better grounded
+# than none. `.pdf` is deliberately NOT here: a manual filename can be looked up.
+_H4_PHOTO_SOURCE_BODY_RE = re.compile(
+    r"\[Source:\s*[\w .\-()]+\.(?:jpe?g|png|gif|heic|heif|webp|bmp|tiff?|mp4|mov|avi)\s*\]",
+    re.IGNORECASE,
+)
+
+# The same defect stated in words rather than a filename ("[Source: the uploaded
+# photo]"). Anchored on the WHOLE label so a real section that happens to mention
+# an image survives — `[Source: Siemens G120 — Nameplate Photo]` is a citation.
+_H4_SELF_REF_SOURCE_BODY_RE = re.compile(
+    r"\[Source:\s*(?:(?:the|your|my|a|an|this|user|session|uploaded|attached)\s+)*"
+    r"(?:photo|photograph|image|picture|screenshot|pic)s?\s*\]",
+    re.IGNORECASE,
+)
+
+# Every "citation body that names no retrievable document" pattern, applied
+# together. A tag is grounding only if it survives all of them.
+_H4_JUNK_SOURCE_BODY_RES: tuple[re.Pattern[str], ...] = (
+    _H4_EMPTY_SOURCE_BODY_RE,
+    _H4_PHOTO_SOURCE_BODY_RE,
+    _H4_SELF_REF_SOURCE_BODY_RE,
+)
+
 # The reply asserts it HAS documentation. If it also produced no usable
 # citation, appending the stock "I don't have specific documentation" line puts
 # a flat contradiction in one message (observed live, probe `dc-02`:
@@ -938,7 +969,10 @@ def _has_usable_citation(reply: str) -> bool:
     if not _H4_SOURCE_RE.search(reply):
         return False
     # Strip the meaningless ones; if any citation survives, it is usable.
-    return bool(_H4_SOURCE_RE.search(_H4_EMPTY_SOURCE_BODY_RE.sub("", reply)))
+    remaining = reply
+    for junk_re in _H4_JUNK_SOURCE_BODY_RES:
+        remaining = junk_re.sub("", remaining)
+    return bool(_H4_SOURCE_RE.search(remaining))
 
 
 # Phrases that constitute an explicit KB-gap admission — ordered from most
@@ -2071,6 +2105,32 @@ class Supervisor:
         reply = enforce_citation_or_gap_admission(
             reply, dispatch_kind=result.get("dispatch_kind", "")
         )
+
+        # Final answer-integrity QC. This is the last point at which the reply is
+        # fully assembled, so it is the only place a check can see what the
+        # technician will actually read. Runs EVERY registered check and reports
+        # all of them — a check that did not run is a visible hole, not silence.
+        #
+        # Read-only: it never edits `reply`. Off by default (MIRA_ANSWER_QC=off);
+        # `observe` measures the live failure rate before anyone argues about
+        # enforcement. The checks themselves are not new — they existed in the
+        # swarm and ran only against fixtures, which is how D3 (a photo filename
+        # cited as a source) reached a technician while the battery stayed green.
+        #
+        # Findings are logged by NAME only, never with reply content (PII).
+        try:
+            qc = run_output_qc(message, reply)
+            if qc.ran:
+                _log = logger.warning if not qc.clean else logger.info
+                _log(
+                    "ANSWER_QC chat_id=%s mode=%s %s",
+                    chat_id,
+                    qc.mode,
+                    qc.summary(),
+                )
+        except Exception as _qc_exc:  # noqa: BLE001 — QC must never break a reply
+            logger.warning("ANSWER_QC_FAILED chat_id=%s error=%s", chat_id, _qc_exc)
+
         self._log_interaction(
             chat_id,
             message,
