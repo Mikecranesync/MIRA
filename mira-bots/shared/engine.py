@@ -17,6 +17,7 @@ import httpx
 
 from . import print_recall, quality_gate
 from .chat_tenant import resolve as resolve_tenant
+from .answer_qc import run_output_qc
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
@@ -2104,6 +2105,32 @@ class Supervisor:
         reply = enforce_citation_or_gap_admission(
             reply, dispatch_kind=result.get("dispatch_kind", "")
         )
+
+        # Final answer-integrity QC. This is the last point at which the reply is
+        # fully assembled, so it is the only place a check can see what the
+        # technician will actually read. Runs EVERY registered check and reports
+        # all of them — a check that did not run is a visible hole, not silence.
+        #
+        # Read-only: it never edits `reply`. Off by default (MIRA_ANSWER_QC=off);
+        # `observe` measures the live failure rate before anyone argues about
+        # enforcement. The checks themselves are not new — they existed in the
+        # swarm and ran only against fixtures, which is how D3 (a photo filename
+        # cited as a source) reached a technician while the battery stayed green.
+        #
+        # Findings are logged by NAME only, never with reply content (PII).
+        try:
+            qc = run_output_qc(message, reply)
+            if qc.ran:
+                _log = logger.warning if not qc.clean else logger.info
+                _log(
+                    "ANSWER_QC chat_id=%s mode=%s %s",
+                    chat_id,
+                    qc.mode,
+                    qc.summary(),
+                )
+        except Exception as _qc_exc:  # noqa: BLE001 — QC must never break a reply
+            logger.warning("ANSWER_QC_FAILED chat_id=%s error=%s", chat_id, _qc_exc)
+
         self._log_interaction(
             chat_id,
             message,
