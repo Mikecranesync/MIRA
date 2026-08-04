@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import print_recall, quality_gate
-from .answer_qc import run_output_qc
+from .answer_qc import qc_mode, run_output_qc
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
@@ -1013,7 +1013,19 @@ _H4_SOURCES_BLOCK_RE = re.compile(
 )
 
 
+# The label inside an inline tag — used to tell an already-normalized reply from
+# one that still needs its `--- Sources ---` block converted.
+_H4_INLINE_LABEL_RE = re.compile(r"\[Source:\s*(.+?)\s*\]", re.IGNORECASE)
+
+
 def _normalize_sources_block(reply: str) -> str:
+    """Turn a trailing ``--- Sources ---`` block into inline ``[Source: …]`` tags.
+
+    Idempotent: an entry that is ALREADY inline is not added again. It has to be,
+    because this now runs twice — once in `process_full` before the citation
+    vendor-relevance gate, and once here in the H4 enforcer. Without the guard the
+    second pass doubled every tag (measured 4 tags where 2 belonged).
+    """
     m = _H4_SOURCES_BLOCK_RE.search(reply)
     if not m:
         return reply
@@ -1022,7 +1034,11 @@ def _normalize_sources_block(reply: str) -> str:
     ]
     if not entries:
         return reply
-    inline = " ".join(f"[Source: {e}]" for e in entries)
+    already = {label.strip() for label in _H4_INLINE_LABEL_RE.findall(reply[: m.start()])}
+    missing = [e for e in entries if e not in already]
+    if not missing:
+        return reply
+    inline = " ".join(f"[Source: {e}]" for e in missing)
     # Insert inline markers BEFORE the original block so the block can stay for
     # readability; the inline tokens are what the scorer + H4 enforcer match.
     return reply[: m.start()] + inline + "\n\n" + reply[m.start() :]
@@ -2117,9 +2133,28 @@ class Supervisor:
         # swarm and ran only against fixtures, which is how D3 (a photo filename
         # cited as a source) reached a technician while the battery stayed green.
         #
+        # The checks are graded against what the TECHNICIAN established across the
+        # whole session, not this turn's message alone. The detectors came from a
+        # single-turn probe battery, where those are the same thing; in a real
+        # conversation they are not. A technician who names a PowerFlex 525 in
+        # turn 1 and asks "which is safer?" in turn 3 has still established
+        # Rockwell — grading turn 3 in isolation reports a correct citation as an
+        # unrelated vendor. Measured on the first synthetic run (2026-08-04).
+        #
+        # `_established_context_text` is the same seam the citation gate uses, and
+        # it excludes assistant turns on purpose, so a reply cannot launder its own
+        # vendor into the context that licenses it. The state read only happens
+        # when the gate is on.
+        #
         # Findings are logged by NAME only, never with reply content (PII).
         try:
-            qc = run_output_qc(message, reply)
+            qc_context = message
+            if qc_mode() != "off":
+                try:
+                    qc_context = _established_context_text(message, self._load_state(chat_id))
+                except Exception as _ctx_exc:  # noqa: BLE001 — fall back to the raw turn
+                    logger.debug("ANSWER_QC_CONTEXT_FALLBACK chat_id=%s %s", chat_id, _ctx_exc)
+            qc = run_output_qc(qc_context, reply)
             if qc.ran:
                 _log = logger.warning if not qc.clean else logger.info
                 _log(
@@ -3935,6 +3970,18 @@ class Supervisor:
         if _honest_prefix:
             formatted = _honest_prefix + formatted
 
+        # Normalize `--- Sources ---` into inline tags BEFORE the vendor gate.
+        # The cascade often returns citations as a trailing block instead of
+        # inline tags. The gate below matches inline tags only, so a block-form
+        # citation was invisible to it — and the H4 enforcer then converted that
+        # same block into inline citations LATER, in `process()`, after the gate
+        # had already passed. Net effect: every block-form reply reached the
+        # technician with its vendor attribution unchecked, which is why #3049
+        # survived three deploys and why staging logged zero VENDOR_FILTER lines.
+        # Measured on the synthetic run (2026-08-04): a bare "the drive faulted"
+        # was answered citing Yaskawa V1000 and ABB ACH580, both block-form.
+        formatted = _normalize_sources_block(formatted)
+
         # CRA-11 / Unit 2 — citation presence (observational) + P0-3 relevance.
         # Presence logs OK/MISS for the inline-cite rate metric. Relevance (the
         # "stop the lie" gate) strips a cited source that names a DIFFERENT
@@ -5212,6 +5259,11 @@ class Supervisor:
         formatted = self._format_reply(parsed, user_message=message)
         if honest_prefix:
             formatted = honest_prefix + formatted
+
+        # Normalize `--- Sources ---` into inline tags BEFORE the vendor gate —
+        # see the note at the other call site. A block-form citation was invisible
+        # to the gate and only became inline afterwards, in the H4 enforcer.
+        formatted = _normalize_sources_block(formatted)
 
         _cc = _check_citation_compliance(
             formatted,

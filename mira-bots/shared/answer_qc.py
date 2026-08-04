@@ -110,10 +110,34 @@ _LACKS_DOC = re.compile(
 )
 
 
+# A reply that explicitly RETRACTS its own claim is self-correcting, not
+# self-contradicting. #3121 added exactly this line to the H4 enforcer so a reply
+# would reconcile itself instead of asserting X and not-X the way `dc-02` did:
+#
+#   "Correction: I can't produce a citation for that, so treat the reference
+#    above as unverified — consult the asset nameplate or vendor manual."
+#
+# Without this carve-out the detector reports the FIX as the defect — measured on
+# the first synthetic run (2026-08-04), where it accounted for 10 of 20 failures.
+# `dc-02` itself carries no such retraction and still fires.
+_RECONCILES = re.compile(
+    r"\bcorrection\b[^.\n]{0,120}\bunverified\b|\btreat the reference above as unverified\b",
+    re.IGNORECASE,
+)
+
+
 def self_contradiction(reply: str) -> tuple[bool, str]:
-    """Claims to have documentation AND to lack it, in the same message."""
+    """Claims to have documentation AND to lack it, in the same message.
+
+    A reply that explicitly retracts the first claim is excluded — see
+    `_RECONCILES`. Note this says nothing about whether the reply is USEFUL: a
+    bare "I have the manual indexed" plus a correction is a non-answer, but that
+    is a different defect and belongs to a different check.
+    """
     has, lacks = _HAS_DOC.search(reply or ""), _LACKS_DOC.search(reply or "")
     if has and lacks:
+        if _RECONCILES.search(reply or ""):
+            return False, ""
         return True, f"has={has.group(0)[:60]!r} lacks={lacks.group(0)[:60]!r}"
     return False, ""
 
@@ -166,6 +190,40 @@ _STOPWORDS = {
     "cable",
     "reset",
     "bad",
+    # Generic document/technical words that lead a real corpus title and are not
+    # brands. Observed as false positives on the first synthetic run (2026-08-04):
+    # "[Source: Serial Comms, p. 1]" was reported as a vendor named `serial`, and
+    # "[Source: Img 0930 — motor]" as one named `img`. The leading token of a
+    # citation is only USUALLY the vendor; corpus titles break that assumption.
+    # A curated list is used rather than "must be a known vendor", because the
+    # original co-01 defect was an attribution to Demag — a brand deliberately
+    # absent from `_VENDOR_MODELS`. Requiring membership would blind the very
+    # case this detector exists for.
+    "serial",
+    "comms",
+    "communication",
+    "communications",
+    "img",
+    "image",
+    "photo",
+    "scan",
+    "drives",
+    "note",
+    "notes",
+    "quick",
+    "reference",
+    "appendix",
+    "figure",
+    "overview",
+    "general",
+    "installation",
+    "wiring",
+    "parameter",
+    "parameters",
+    "troubleshooting",
+    "maintenance",
+    "safety",
+    "specifications",
 }
 
 
