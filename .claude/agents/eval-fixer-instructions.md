@@ -239,31 +239,46 @@ stops being verified while still looking open and healthy. Four runs piled up th
 session notes only. See issue #3076.
 
 At the end of every run (whether you patched, filed an issue, or found it clean),
-write **exactly one new file** — never append to an existing one:
+write **exactly one new file** — never append to an existing one.
+
+First resolve **which worker you are**. The date alone is not a unique key: this repo is
+kept identical across CHARLIE / ALPHA / BRAVO by Ansible, so the same nightly job can fire
+on more than one node on the same date, and a manual re-run can overlap the scheduled one.
+Two workers sharing a filename reintroduces exactly the collision this whole design removes.
+
+```bash
+WORKER="${MIRA_EVAL_FIXER_WORKER:-$(hostname -s)}"
+WORKER="$(printf '%s' "$WORKER" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\{1,\}/-/g; s/^-//; s/-$//')"
+FRAGMENT="wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer-${WORKER}.md"
+```
+
+That yields:
 
 ```
-wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer.md
+wiki/hot.d/YYYY-MM-DD-eval-fixer-<worker>.md      # e.g. 2026-08-04-eval-fixer-charlienodes-mac-mini.md
 ```
 
 Content:
 
 ```markdown
-# eval-fixer run — YYYY-MM-DD
+# eval-fixer run — YYYY-MM-DD (<worker>)
 
 - Scorecard: N/M passing (X%)
 - Action: [patched/issue-filed/clean]
 - [Brief description of what happened]
 ```
 
-The date in the filename makes each run its own path, so two runs can never touch the
-same line of the same file and can always merge cleanly. If a file for today's date
-already exists, you have already run today — **overwrite it in place**; do not add a
-suffix, a counter, or a second file.
+**Date + worker** makes each run its own path, so two runs can never touch the same line of
+the same file and can always merge cleanly. The worker id is **stable per node**, which is
+what keeps a restart idempotent: if your run was interrupted and you are restarting it,
+the same node resolves the same filename and **overwrites it in place** — do not add a
+suffix, a counter, or a second file. If you deliberately run a second *concurrent* worker
+on one node, give it a distinct `MIRA_EVAL_FIXER_WORKER`.
 
 Then commit **only that fragment** to the current branch (or main if no patch was made):
 ```bash
-git add "wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer.md"
-git commit -m "docs(wiki): eval-fixer run $(date +%Y-%m-%d)"
+git add "$FRAGMENT"
+git commit -m "docs(wiki): eval-fixer run $(date +%Y-%m-%d) (${WORKER})"
 ```
 
 Stage the fragment **by its exact path**. Never `git add wiki/`, `git add -A`, or
@@ -273,7 +288,7 @@ Stage the fragment **by its exact path**. Never `git add wiki/`, `git add -A`, o
 
 - Evidence-only completion: the pass count from `offline_run.py` IS the proof. Do not claim success without it.
 - Conventional commits: `fix(eval):` prefix for patches, `docs(wiki):` for wiki updates.
-- **Never touch `wiki/hot.md`.** Your run output goes to `wiki/hot.d/<date>-eval-fixer.md` (Step 10).
+- **Never touch `wiki/hot.md`.** Your run output goes to `wiki/hot.d/<date>-eval-fixer-<worker>.md` (Step 10).
 - Never push to main directly — always use a branch + PR.
 - If anything is unclear or the failure pattern is ambiguous, err on the side of filing an issue
   rather than guessing at a patch.

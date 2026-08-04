@@ -10,11 +10,18 @@ that way (#2994, #3036, #3050, #3087); two of them read MERGEABLE against main w
 Two layers here:
 
 1. `test_instructions_*` — the instruction file (the actual writer) tells the agent to
-   write `wiki/hot.d/<date>-eval-fixer.md` and never to touch `wiki/hot.md`.
+   write `wiki/hot.d/<date>-eval-fixer-<worker>.md` and never to touch `wiki/hot.md`.
 2. `test_two_dated_runs_merge_cleanly` / `test_shared_tail_appends_conflict` — a real
    `git merge-tree` against throwaway repos, proving the fragment shape merges where the
    shared-tail shape does not. The second test is the control: without it, a green run
    could mean "merge-tree never conflicts here" rather than "the fix works".
+
+The `<worker>` segment was added after a synthetic concurrency harness measured the
+date-only name failing the same-date case (41 passed / 2 failed): two workers running on
+the same date wrote the identical path and their branches conflicted. That is a real
+exposure here — the repo is kept identical across CHARLIE/ALPHA/BRAVO by Ansible, so the
+same nightly job can fire on more than one node. `test_same_date_workers_do_not_collide`
+covers the fix and `test_same_date_date_only_names_do_collide` is its control.
 """
 
 from __future__ import annotations
@@ -28,7 +35,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTRUCTIONS = REPO_ROOT / ".claude" / "agents" / "eval-fixer-instructions.md"
 HOT_D = REPO_ROOT / "wiki" / "hot.d"
 
-FRAGMENT_PATTERN = "wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer.md"
+# Date + worker. The date ALONE is not a unique key — the repo is kept identical across
+# CHARLIE/ALPHA/BRAVO by Ansible, so the same nightly job can fire on two nodes on the same
+# date and a manual re-run can overlap the scheduled one. Measured: on the date-only name,
+# two same-date workers wrote the identical path and their branches conflicted.
+FRAGMENT_PATTERN = "wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer-${WORKER}.md"
+WORKER_ENV = "MIRA_EVAL_FIXER_WORKER"
 
 
 # --------------------------------------------------------------------------
@@ -85,9 +97,21 @@ def test_instructions_never_stage_or_commit_hot_md(instructions: str) -> None:
 
 
 def test_instructions_stage_the_fragment_explicitly(instructions: str) -> None:
-    assert f'git add "{FRAGMENT_PATTERN}"' in instructions, (
-        "the fragment must be staged by its exact quoted path, so a shared working tree "
-        "cannot pull another session's work into the eval-fixer commit"
+    assert 'git add "$FRAGMENT"' in instructions, (
+        "the fragment must be staged by its exact quoted path variable, so a shared working "
+        "tree cannot pull another session's work into the eval-fixer commit"
+    )
+
+
+def test_instructions_derive_a_worker_discriminator(instructions: str) -> None:
+    """The date alone collides when two nodes run on the same date (#3106 follow-up)."""
+    assert WORKER_ENV in instructions, (
+        f"the worker id must be overridable via {WORKER_ENV} so a second concurrent worker "
+        "on one node can be given a distinct path"
+    )
+    assert "hostname -s" in instructions, (
+        "the worker id must default to the node's short hostname — stable per node, which "
+        "is what keeps an interrupted-and-restarted run idempotent instead of making a 2nd file"
     )
 
 
@@ -176,7 +200,70 @@ def test_two_dated_runs_merge_cleanly(tmp_path: Path) -> None:
     repo, run_a, run_b = _two_run_repo(tmp_path, shared_tail=False)
     assert _merges_cleanly(repo, run_a, run_b), (
         "two eval-fixer runs on different dates must merge cleanly — each writes its own "
-        "wiki/hot.d/<date>-eval-fixer.md"
+        "wiki/hot.d/<date>-eval-fixer-<worker>.md"
+    )
+
+
+def _same_date_two_worker_repo(tmp_path: Path, *, with_worker: bool) -> tuple[Path, str, str]:
+    """Two workers, SAME date, on branches off a shared base.
+
+    with_worker=False reproduces the pre-fix date-only name.
+    """
+    repo = tmp_path / ("worker" if with_worker else "dateonly")
+    _init_repo(repo)
+    hot_d = repo / "wiki" / "hot.d"
+    hot_d.mkdir(parents=True)
+    (hot_d / ".keep").write_text("", encoding="utf-8")
+    (repo / "wiki" / "hot.md").write_text("# Hot Cache\n- human note\n", encoding="utf-8")
+    base = _commit_all(repo, "base")
+
+    date = "2026-08-04"
+    heads: list[str] = []
+    for i, worker in enumerate(("charlie", "alpha")):
+        _git(repo, "checkout", "-q", "-b", f"node-{worker}", base)
+        name = f"{date}-eval-fixer-{worker}.md" if with_worker else f"{date}-eval-fixer.md"
+        (hot_d / name).write_text(
+            f"# eval-fixer run — {date} ({worker})\n- Scorecard: 4{i}/57\n", encoding="utf-8"
+        )
+        _git(repo, "add", f"wiki/hot.d/{name}")
+        heads.append(_commit_all(repo, f"docs(wiki): eval-fixer run {date} ({worker})"))
+    return repo, heads[0], heads[1]
+
+
+def _committed_paths(repo: Path, ref: str) -> list[str]:
+    """Files added by `ref` — read from the COMMIT, not the working tree.
+
+    Each worker lives on its own branch, so only the last checkout's file is on disk;
+    asserting against the tree would measure checkout order, not path uniqueness.
+    """
+    return [f for f in _git(repo, "show", "--name-only", "--format=", ref).splitlines() if f]
+
+
+def test_same_date_workers_do_not_collide(tmp_path: Path) -> None:
+    """Two nodes running on the SAME date must write different files and merge cleanly."""
+    repo, a, b = _same_date_two_worker_repo(tmp_path, with_worker=True)
+    paths = _committed_paths(repo, a) + _committed_paths(repo, b)
+    assert len(set(paths)) == 2, f"expected two distinct same-date fragments, got {paths}"
+    assert _merges_cleanly(repo, a, b), (
+        "two workers running on the same date must merge conflict-free — the <worker> "
+        "segment is what makes the path unique when the date is not"
+    )
+
+
+def test_same_date_date_only_names_do_collide(tmp_path: Path) -> None:
+    """Control: the pre-fix date-only name really does collide.
+
+    Without this, `test_same_date_workers_do_not_collide` could pass for the wrong reason
+    (e.g. merge-tree never conflicting in this fixture) and would be vacuous.
+    """
+    repo, a, b = _same_date_two_worker_repo(tmp_path, with_worker=False)
+    paths = _committed_paths(repo, a) + _committed_paths(repo, b)
+    assert set(paths) == {"wiki/hot.d/2026-08-04-eval-fixer.md"}, (
+        f"the date-only name should produce ONE shared path, got {paths}"
+    )
+    assert not _merges_cleanly(repo, a, b), (
+        "expected the date-only name to conflict across two same-date workers; if this "
+        "passes, the probe is not measuring what it claims"
     )
 
 

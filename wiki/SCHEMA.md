@@ -154,8 +154,12 @@ Each entry starts with a consistent prefix for grep-ability:
 per run write **one dated file each** under `hot.d/` instead:
 
 ```
-wiki/hot.d/YYYY-MM-DD-<writer>.md      # e.g. 2026-08-03-eval-fixer.md
+wiki/hot.d/YYYY-MM-DD-<writer>-<worker>.md   # e.g. 2026-08-04-eval-fixer-charlie.md
 ```
+
+The `<worker>` segment (slugified short hostname) is required: the repo is kept identical
+across nodes by Ansible, so the same job can fire on more than one node on the same date —
+date alone is not a unique key.
 
 An automated writer must never modify, stage, or commit `hot.md`. Appending every run
 to one shared file put each night's PR into conflict with every other pending night,
