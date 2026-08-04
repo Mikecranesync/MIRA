@@ -6,7 +6,11 @@ It did **not** answer the question an operator actually has to answer before tou
 any of them: **which ones are still in use, and which ones hold the only copy of
 someone's work?**
 
-This census answers that with four independent signals. **Nothing was changed.**
+This census answers that with four independent signals.
+
+> **Status:** the census itself changed nothing. Acting on it came after, and is
+> recorded in § **Actions taken** at the end. Read that before re-deriving anything
+> from the tables below — 9 worktrees listed here no longer exist.
 
 ## Method
 
@@ -157,3 +161,54 @@ into an actionable order. Worth folding in — as detection only, keeping the
 never-auto-delete posture (RCA § Teardown, rule 9).
 
 Raw data: `wt_census.tsv` (regenerate with the method above).
+
+
+## Actions taken — 2026-08-03
+
+Preservation first, deletion last. Nothing was removed until the thing it might have
+destroyed was independently durable.
+
+**1. Untracked files copied out** → `~/MIRA-worktree-rescue-2026-08-03/` (231 files,
+25 MB, with a README manifest). Source worktrees were read only. This covers the only
+artifacts git itself cannot recover: files in no commit, plus 5 uncommitted diffs
+captured as reapplyable patches with their base SHAs.
+
+**2. All 13 "only copy" branches pushed to `origin`** — 43 commits that existed nowhere
+but this machine. Verified present at the exact local SHA. Two facts made this the right
+primitive instead of a rebase:
+
+- **No workflow fires on an arbitrary branch push.** All 8 push-triggered workflows
+  restrict to `main` / `staging` / `release/*` / `dev` / tags. Zero CI cost.
+- **Branch refs resolve from the shared checkout** — refs live in the shared `.git`, so
+  a push never touches the worktree directory and cannot disturb a live session in it.
+
+A rebase would have rewritten SHAs under a Codex session that was running at the time,
+mixed 13 unrelated efforts into one unreviewable diff, and forced conflict resolution in
+40–60-day-old code whose authors were not present. Preservation and integration are
+separate questions; push answers the first without prejudging the second.
+
+**3. Rescued docs landed** in PR #3103, with the promo videos in a separate commit so
+that judgment call can be dropped independently. Excluded the `.superpowers/sdd/` review
+diffs — that path is gitignored, so it is tooling output, not repo content.
+
+**4. Nine worktrees removed** — 3.36 GB, 46 → 37. Each re-verified at removal time
+(merged PR, zero changes *including untracked*, zero processes, unlocked) rather than
+trusted from the tables above.
+
+### Deliberately left alone
+
+| Worktree | Why |
+|---|---|
+| `~/.codex/worktrees/e5c2/MIRA` | 21 live processes, PR #3099 open |
+| `~/.codex/worktrees/8f85dcae…` | `locked`. Proven to hold nothing, but the lock is another tool's claim — its owner clears it |
+| `~/.codex/worktrees/afbd/MIRA` | Disposable on the evidence (#3048 merged, clean, 436 MB), but deferred while a Codex session is live — Codex owns that tree and may reuse the path |
+| The 3 worktrees holding gitignored/uncommitted-only work | Contents archived; removal is now safe but adds nothing until someone decides on the work |
+
+### One thing this census surfaced that it does not solve
+
+Scoped to worktree-attached branches, 13 held unique commits. Across the **whole repo**,
+**127** local branches have no remote counterpart and sit ahead of `origin/main`. That
+number is not 127 pieces of lost work — in a squash-merge repo a merged branch keeps its
+own commits forever and so looks "ahead" permanently. It does mean **"no remote + ahead
+of main" is not by itself evidence of unique work**, and the 114 non-worktree branches
+have never been triaged. Separate cleanup; do not bulk-push them.
