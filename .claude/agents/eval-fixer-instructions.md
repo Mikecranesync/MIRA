@@ -229,27 +229,51 @@ fi
 rm -f "$REPORT_FILE"
 ```
 
-## Step 10 — Update wiki
+## Step 10 — Write your run fragment
 
-At the end of every run (whether you patched or filed an issue), append to `wiki/hot.md`:
+**NEVER modify, stage, or commit `wiki/hot.md`.** That file is a shared line: every
+run appended to the same tail, so each night's PR collided with every other pending
+night, went CONFLICTING, and **a conflicting PR receives no CI at all** — it silently
+stops being verified while still looking open and healthy. Four runs piled up that way
+(#2994, #3036, #3050, #3087) before this was fixed. `wiki/hot.md` is for **human**
+session notes only. See issue #3076.
+
+At the end of every run (whether you patched, filed an issue, or found it clean),
+write **exactly one new file** — never append to an existing one:
+
+```
+wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer.md
+```
+
+Content:
 
 ```markdown
-## eval-fixer run — YYYY-MM-DD
+# eval-fixer run — YYYY-MM-DD
+
 - Scorecard: N/M passing (X%)
 - Action: [patched/issue-filed/clean]
 - [Brief description of what happened]
 ```
 
-Then commit wiki update to current branch (or main if no patch was made):
+The date in the filename makes each run its own path, so two runs can never touch the
+same line of the same file and can always merge cleanly. If a file for today's date
+already exists, you have already run today — **overwrite it in place**; do not add a
+suffix, a counter, or a second file.
+
+Then commit **only that fragment** to the current branch (or main if no patch was made):
 ```bash
-git add wiki/hot.md
+git add "wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer.md"
 git commit -m "docs(wiki): eval-fixer run $(date +%Y-%m-%d)"
 ```
+
+Stage the fragment **by its exact path**. Never `git add wiki/`, `git add -A`, or
+`git add .` — the working tree is shared and may carry another session's work.
 
 ## Reminders
 
 - Evidence-only completion: the pass count from `offline_run.py` IS the proof. Do not claim success without it.
 - Conventional commits: `fix(eval):` prefix for patches, `docs(wiki):` for wiki updates.
+- **Never touch `wiki/hot.md`.** Your run output goes to `wiki/hot.d/<date>-eval-fixer.md` (Step 10).
 - Never push to main directly — always use a branch + PR.
 - If anything is unclear or the failure pattern is ambiguous, err on the side of filing an issue
   rather than guessing at a patch.

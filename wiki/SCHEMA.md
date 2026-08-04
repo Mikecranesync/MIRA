@@ -10,7 +10,8 @@ wiki/
 ├── SCHEMA.md       # This file — operating instructions for the LLM
 ├── index.md        # Content catalog — every page, one-line summary, by category
 ├── log.md          # Append-only chronological record of operations
-├── hot.md          # Session continuity — cross-machine hot cache
+├── hot.md          # Session continuity — cross-machine hot cache (HUMAN session notes only)
+├── hot.d/          # Machine run notes — one file per automated run (see hot.d/README.md)
 ├── raw/            # Source material drop zone (immutable, LLM reads only)
 ├── nodes/          # Infrastructure pages — one per machine
 ├── services/       # Container/service pages — one per service
@@ -146,6 +147,23 @@ Each entry starts with a consistent prefix for grep-ability:
 ## Next (any machine)
 - Prioritized list of what should happen next
 ```
+
+## hot.d/ — machine run notes (NOT hot.md)
+
+`hot.md` above is for **human** session notes. Automated writers that produce a note
+per run write **one dated file each** under `hot.d/` instead:
+
+```
+wiki/hot.d/YYYY-MM-DD-<writer>.md      # e.g. 2026-08-03-eval-fixer.md
+```
+
+An automated writer must never modify, stage, or commit `hot.md`. Appending every run
+to one shared file put each night's PR into conflict with every other pending night,
+and a conflicting PR gets no CI at all — so the notes silently stopped being verified
+(#3076). A file per run cannot collide.
+
+Read them newest-first with `ls -r wiki/hot.d/`. Full convention and rules for writers:
+`wiki/hot.d/README.md`.
 
 ## Growth Path
 
