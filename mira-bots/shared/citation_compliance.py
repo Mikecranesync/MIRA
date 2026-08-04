@@ -4,22 +4,32 @@ This module is intentionally small and dependency-free so it can be imported
 by both the engine and offline tests without dragging in psycopg2, sqlalchemy,
 or the rest of the bot stack.
 
-Two checks live here:
+Three checks live here:
 
   1. **Presence** (CRA-11, observational): does a technical reply that had KB
      coverage include a ``[Source: ...]`` tag at all? Logged, never blocks.
-  2. **Relevance** (beta-readiness P0-3 — "stop the lie"): does the cited
-     vendor actually match the resolved ``uns_context`` manufacturer? A Siemens
-     breaker cited on a Danfoss VLT question is a confidently-wrong source —
-     presence alone reads it green. Relevance is **alias-aware** (Allen-Bradley
-     / PowerFlex / Rockwell all canonicalize to "Rockwell Automation") and
-     **fail-open**: if either side is an unrecognized vendor, we do NOT flag a
-     miss, so a correct-but-unusual citation is never suppressed.
+  2. **Relevance / conflict** (beta-readiness P0-3 — "stop the lie"): does the
+     cited vendor actually match the resolved ``uns_context`` manufacturer? A
+     Siemens breaker cited on a Danfoss VLT question is a confidently-wrong
+     source — presence alone reads it green.
+  3. **Relevance / unsupported attribution** (added 2026-08-03): when NO
+     manufacturer is resolved, does the reply cite one anyway? This is the
+     failure check 2 structurally could not see — it needs a resolved
+     manufacturer to compare against, so the vague turns that fail worst were
+     exactly the ones it skipped. Measured live at 24–34 instances per 15
+     conversations, rising with conversation length.
 
-When ``enforce=True`` and a reply's cited sources ALL conflict with the
-resolved manufacturer, the conflicting ``[Source: ...]`` tags are stripped and
-a short honesty note is appended — the engine uses this so a false attribution
-never reaches the technician.
+Both relevance checks are **alias-aware** (Allen-Bradley / PowerFlex / Rockwell
+all canonicalize to "Rockwell Automation") and **fail-open**: an unrecognized
+vendor is never treated as a mismatch, so a correct-but-unusual citation is not
+suppressed. That fail-open stance has a cost worth knowing — a vendor missing
+from ``uns_resolver.VENDOR_ALIASES`` bypasses check 3 entirely, which is how
+Demag and Interroll citations went unnoticed until the alias table was
+extended. The table is a correctness surface, not a convenience.
+
+When ``enforce=True``, the offending ``[Source: ...]`` tags are stripped and a
+short honesty note is appended — worded per reason, since "this cited a
+different manufacturer" is false when no manufacturer was ever established.
 """
 
 from __future__ import annotations
@@ -60,29 +70,105 @@ def _canonical_vendor(text: str) -> str | None:
     return canonical_vendor(text)
 
 
+def _vendors_in_text(text: str) -> set[str]:
+    """Canonical vendors named in free text. Lazy + fail-open, like above."""
+    if not text:
+        return set()
+    try:
+        from .uns_resolver import vendors_in_text
+    except Exception:  # pragma: no cover - only when resolver unimportable
+        return set()
+    return vendors_in_text(text)
+
+
+def established_context_text(message: str, state: dict | None) -> str:
+    """What the TECHNICIAN and trusted state have established, as one string.
+
+    Feeds the unsupported-attribution check: a vendor named here is fair game
+    to cite, a vendor absent from it is being attributed to a machine nobody
+    identified.
+
+    **Only three sources count, and the exclusion is the point:**
+
+    * the current user message,
+    * prior **user** turns,
+    * trusted resolved state — the confirmed asset and the UNS context.
+
+    An assistant turn is NEVER a source. Both Supervisor paths append the
+    freshly generated reply to history *before* calling the citation check
+    (``engine.py`` 3712-3713 and 5027-5028), so a reply containing
+    ``[Source: Siemens …]`` would otherwise find "Siemens" in its own text and
+    license its own citation. The gate would then pass every time it mattered
+    most — a self-referential loop that looks like evidence.
+
+    Prior assistant turns are excluded for the same reason one step back: a
+    vendor MIRA hallucinated in turn 3 must not authorise citing that vendor in
+    turn 6. Only the technician and resolved state can establish equipment.
+
+    History entries that are bare strings carry no role, so they cannot be
+    proven to be the technician's words and are excluded. That is deliberately
+    strict: the cost is a missed strip, the alternative is a reply laundering
+    its own vendor through an untyped history entry.
+
+    Never raises: a malformed state yields whatever could be read.
+    """
+    parts: list[str] = [message or ""]
+    if not isinstance(state, dict):
+        return parts[0]
+    parts.append(str(state.get("asset_identified") or ""))
+    ctx = state.get("context")
+    if isinstance(ctx, dict):
+        uns = ctx.get("uns_context")
+        if isinstance(uns, dict):
+            parts.append(str(uns.get("manufacturer") or ""))
+            parts.append(str(uns.get("model") or ""))
+        history = ctx.get("history")
+        if isinstance(history, list):
+            for turn in history:
+                if isinstance(turn, dict) and turn.get("role") == "user":
+                    parts.append(str(turn.get("content") or ""))
+    return " ".join(p for p in parts if p)
+
+
 def _tag_label(tag: str) -> str:
     """Extract the label text from a '[Source: <label>]' tag."""
     inner = tag[1:-1] if tag.startswith("[") and tag.endswith("]") else tag
     return re.sub(r"(?i)^\s*source:\s*", "", inner).strip()
 
 
-def evaluate_citation_relevance(reply: str, expected_manufacturer: str | None) -> dict:
+def evaluate_citation_relevance(
+    reply: str,
+    expected_manufacturer: str | None,
+    established_text: str = "",
+) -> dict:
     """Pure, alias-aware citation-relevance check (no I/O).
 
     Returns::
 
         {
-          "relevant":         bool,   # False only on an UNAMBIGUOUS conflict
+          "relevant":         bool,   # False on conflict OR unsupported attribution
+          "reason":           str,    # "conflict" | "unestablished" | ""
           "expected_vendor":  str | None,   # canonical, when recognized
           "cited_vendors":    list[str],    # canonical vendors named in tags
-          "conflicting_tags": list[str],    # tags whose vendor conflicts
+          "conflicting_tags": list[str],    # tags to strip
         }
 
-    Conservative / fail-open. A miss is flagged ONLY when ALL of:
-      * the expected manufacturer canonicalizes to a recognized vendor, AND
-      * the reply names ≥1 recognized cited vendor, AND
-      * none of those recognized cited vendors equals the expected one.
-    If a correct citation is present alongside a wrong one, it is NOT a miss.
+    Two independent failures are caught:
+
+    **Conflict** — a manufacturer is resolved and the reply cites a different
+    one. Flagged only when ALL of: the expected manufacturer canonicalizes to a
+    recognized vendor, the reply names ≥1 recognized cited vendor, and none of
+    them equals the expected one. A correct citation alongside a wrong one is
+    NOT a miss.
+
+    **Unsupported attribution** — NO manufacturer is resolved, yet the reply
+    cites one anyway. `established_text` is the conversation's own words (this
+    turn plus history plus any confirmed asset); a cited vendor absent from it
+    is being attributed to a machine nobody has identified.
+
+    Both are conservative and fail-open. `established_text` defaults to empty,
+    which disables the second check entirely — a caller that cannot supply the
+    conversation gets exactly the old behavior rather than a false strip.
     """
     expected = _canonical_vendor(expected_manufacturer or "")
     tags = CITATION_TAG_RE.findall(reply or "")
@@ -94,14 +180,41 @@ def evaluate_citation_relevance(reply: str, expected_manufacturer: str | None) -
 
     relevant = True
     conflicting: list[str] = []
+    reason = ""
+
     if expected and cited and expected not in cited:
+        # Case 1 — CONFLICT. A vendor is resolved and the reply cites a
+        # different one. This is the original P0-3 gate.
         relevant = False
+        reason = "conflict"
         conflicting = [
             t for t in tags if (_canonical_vendor(_tag_label(t)) not in (None, expected))
         ]
+    elif not expected and cited and established_text:
+        # Case 2 — UNSUPPORTED ATTRIBUTION. No vendor is resolved, so the
+        # reply is citing a manufacturer's manual for a machine nobody has
+        # identified. Measured live: a vague follow-up ("did that fix it?")
+        # retrieves whatever is nearest across an 83k-chunk multi-vendor
+        # corpus and cites it as authoritative — Siemens, then Demag, then
+        # Interroll, a different maker almost every turn. The chunks are
+        # real, which is why nothing upstream catches it; the *attribution*
+        # is what is unsupported.
+        #
+        # Case 1 could never see this: it needs a resolved manufacturer to
+        # compare against, so exactly the vague turns that fail worst were
+        # the ones it skipped.
+        established = _vendors_in_text(established_text)
+        unsupported = [
+            t for t in tags if (cv := _canonical_vendor(_tag_label(t))) and cv not in established
+        ]
+        if unsupported:
+            relevant = False
+            reason = "unestablished"
+            conflicting = unsupported
 
     return {
         "relevant": relevant,
+        "reason": reason,
         "expected_vendor": expected,
         "cited_vendors": cited,
         "conflicting_tags": conflicting,
@@ -109,14 +222,33 @@ def evaluate_citation_relevance(reply: str, expected_manufacturer: str | None) -
 
 
 def strip_conflicting_citations(
-    reply: str, conflicting_tags: list[str], expected_vendor: str | None
+    reply: str,
+    conflicting_tags: list[str],
+    expected_vendor: str | None,
+    reason: str = "conflict",
 ) -> str:
-    """Remove wrong-vendor ``[Source: ...]`` tags and append a brief honesty
-    note so a false attribution never reaches the technician."""
+    """Remove unsupportable ``[Source: ...]`` tags and append an honesty note.
+
+    The note differs by reason, because the old wording is actively wrong in
+    the unestablished case: telling a technician the citation "pointed to a
+    different manufacturer" implies MIRA knows which manufacturer is correct.
+    It does not — that is the whole problem — and the useful thing to say is
+    which machine it needs.
+    """
     out = reply or ""
     for tag in conflicting_tags:
         out = out.replace(tag, "")
     out = re.sub(r"[ \t]{2,}", " ", out).rstrip()
+
+    if reason == "unestablished":
+        out += (
+            "\n\n_(Note: I removed a citation because I haven't established which "
+            "machine you're working on, so I can't attribute a manufacturer's manual "
+            "to it. Tell me the make and model — or the asset tag — and I can cite "
+            "the right documentation.)_"
+        )
+        return out
+
     who = f"a verified {expected_vendor}" if expected_vendor else "a verified manufacturer"
     out += (
         f"\n\n_(Note: I removed a citation that pointed to a different manufacturer's "
@@ -148,6 +280,7 @@ def check_citation_compliance(
     fsm_state: str = "",
     chat_id: str = "",
     uns_context: dict | None = None,
+    established_text: str = "",
     enforce: bool = False,
 ) -> dict:
     """Inspect a final LLM reply for inline ``[Source: ...]`` citations.
@@ -183,7 +316,7 @@ def check_citation_compliance(
     expected_mfr = (
         (uns_context or {}).get("manufacturer") if isinstance(uns_context, dict) else None
     )
-    rel = evaluate_citation_relevance(reply or "", expected_mfr)
+    rel = evaluate_citation_relevance(reply or "", expected_mfr, established_text)
 
     result = {
         "required": required,
@@ -216,15 +349,21 @@ def check_citation_compliance(
 
     if not rel["relevant"]:
         logger.warning(
-            "CITATION_RELEVANCE_MISS chat_id=%s expected=%s cited=%s — "
-            "cited source(s) name a different manufacturer than the resolved asset",
+            "CITATION_RELEVANCE_MISS chat_id=%s reason=%s expected=%s cited=%s — %s",
             chat_id,
+            rel["reason"],
             rel["expected_vendor"],
             rel["cited_vendors"],
+            "cited source(s) name a different manufacturer than the resolved asset"
+            if rel["reason"] == "conflict"
+            else "cited a manufacturer for a machine the conversation never established",
         )
         if enforce:
             result["sanitized_reply"] = strip_conflicting_citations(
-                reply or "", rel["conflicting_tags"], rel["expected_vendor"]
+                reply or "",
+                rel["conflicting_tags"],
+                rel["expected_vendor"],
+                rel["reason"],
             )
 
     return result

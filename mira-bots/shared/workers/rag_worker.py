@@ -986,14 +986,21 @@ class RAGWorker:
         # Build retrieved chunks as untrusted reference data. The block is
         # prepended to the final user turn below, not embedded in system role.
         _meta = neon_chunks_meta if neon_chunks_meta is not None else self._last_neon_chunks
-        ref_lines: list[str] = []
+
+        # Pair each chunk with its metadata BEFORE filtering — `chunks` may be
+        # plain strings whose vendor lives in the parallel `_meta` list, so the
+        # two must move together or a citation would end up attached to the
+        # wrong text. This is the PRIMARY retrieval path (`_build_prompt` is a
+        # fallback), so the vendor-consistency filter has to be applied here or
+        # off-vendor citations still reach the technician.
+        _pairs: list[tuple[dict, str]] = []
         for i, chunk in enumerate(chunks, 1):
             if isinstance(chunk, dict):
-                nc = chunk
-                text = chunk.get("content", "")
+                _pairs.append((chunk, chunk.get("content", "")))
             else:
-                nc = _meta[i - 1] if i - 1 < len(_meta) else {}
-                text = chunk
+                _pairs.append((_meta[i - 1] if i - 1 < len(_meta) else {}, chunk))
+        ref_lines: list[str] = []
+        for i, (nc, text) in enumerate(_pairs, 1):
             text = _neutralize_chunk_text(text)
             label = format_source_label(nc)
             if label:
@@ -1137,6 +1144,15 @@ class RAGWorker:
                 + "6. Set confidence to LOW or MEDIUM. Be honest that this is general guidance.\n"
                 "--- END NO KB COVERAGE ---\n"
             )
+
+        # Vendor-consistency filter (2026-08-03). Retrieval returns whatever is
+        # nearest in embedding space, and the prompt instructs the model to copy
+        # the `[Source: …]` tag of any chunk it uses — so an off-vendor chunk
+        # becomes an authoritative-looking citation for someone else's machine.
+        #
+        # Measured live: one 8-turn conversation opening "the conveyor stopped"
+        # cited Siemens, Rockwell, a textbook section, Demag and Interroll — a
+        # different manufacturer nearly every turn, each reply looking grounded.
 
         # Build NeonDB chunks as untrusted reference data. The block is prepended
         # to the final user turn below, not embedded in system role.

@@ -3,6 +3,52 @@
 # Jython 2.7 — runs inside Ignition Gateway JVM.
 # Ref: https://www.docs.inductiveautomation.com/docs/8.1/ignition-modules/web-dev
 
+_DEFAULT_TAG_FOLDER = "[default]Mira_Monitored"
+
+
+def _is_not_found(err_msg):
+    """True when a tag-browse error means the folder simply does not exist.
+
+    Ignition raises `Bad_NotFound` when browseTags is pointed at an absent
+    folder (e.g. this gateway streams `[default]MIRA_IOCheck`, not the
+    hardcoded `Mira_Monitored`). That is a diagnosable configuration state,
+    not a server error — callers use this to avoid reporting a 500.
+    """
+    m = str(err_msg).lower()
+    return "not_found" in m or "notfound" in m
+
+
+def _read_stream_tag_folder():
+    """Resolve the monitored tag folder from factorylm.properties.
+
+    Mirrors api/connect/doGet.py so all handlers agree on the folder name.
+    Falls back to the historical default when the properties file is absent.
+    """
+    try:
+        import java.io.FileInputStream as FileInputStream
+        import java.util.Properties as Properties
+        import java.io.File as File
+    except Exception:
+        return _DEFAULT_TAG_FOLDER
+
+    paths = [
+        "C:/Program Files/Inductive Automation/Ignition/data/factorylm/factorylm.properties",
+        "/usr/local/bin/ignition/data/factorylm/factorylm.properties",
+        "/var/lib/ignition/data/factorylm/factorylm.properties",
+    ]
+    for p in paths:
+        f = File(p)
+        if f.exists():
+            props = Properties()
+            fis = FileInputStream(f)
+            try:
+                props.load(fis)
+                return props.getProperty("STREAM_TAG_FOLDER", _DEFAULT_TAG_FOLDER)
+            finally:
+                fis.close()
+    return _DEFAULT_TAG_FOLDER
+
+
 def doGet(request, session):
     logger = system.util.getLogger("FactoryLM.Mira.Status")
 
@@ -33,10 +79,12 @@ def doGet(request, session):
     # --- Enumerate monitored assets ---
     assets = []
     asset_tag_counts = {}
+    tag_folder = _read_stream_tag_folder()
+    tag_folder_error = ""
 
     try:
         folders = system.tag.browseTags(
-            parentPath="[default]Mira_Monitored",
+            parentPath=tag_folder,
             tagType="Folder"
         )
         for folder in folders:
@@ -46,7 +94,7 @@ def doGet(request, session):
             # Count tags inside each asset folder
             try:
                 child_tags = system.tag.browseTags(
-                    parentPath="[default]Mira_Monitored/%s" % asset_name
+                    parentPath="%s/%s" % (tag_folder, asset_name)
                 )
                 asset_tag_counts[asset_name] = len(list(child_tags))
             except Exception as inner:
@@ -54,7 +102,17 @@ def doGet(request, session):
                 asset_tag_counts[asset_name] = -1
 
     except Exception as e:
-        logger.warn("Tag browse failed for Mira_Monitored: %s" % str(e))
+        # An absent folder (Bad_NotFound) is a diagnosable config state, not a
+        # gateway failure — record it in the payload instead of silently
+        # returning an empty asset list. The gateway itself is still "ok".
+        tag_folder_error = str(e)
+        if _is_not_found(tag_folder_error):
+            logger.warn(
+                "Monitored tag folder %s not found — reporting empty asset list."
+                % tag_folder
+            )
+        else:
+            logger.warn("Tag browse failed for %s: %s" % (tag_folder, tag_folder_error))
 
     # --- Build response payload ---
     payload = {
@@ -64,11 +122,16 @@ def doGet(request, session):
         "sidecar_version": sidecar_version,
         "monitored_assets": assets,
         "asset_tag_counts": asset_tag_counts,
-        "asset_count": len(assets)
+        "asset_count": len(assets),
+        "tag_folder": tag_folder
     }
 
     if sidecar_error:
         payload["sidecar_error"] = sidecar_error
+
+    if tag_folder_error:
+        payload["tag_folder_error"] = tag_folder_error
+        payload["tag_folder_not_found"] = _is_not_found(tag_folder_error)
 
     logger.info(
         "Status check — gateway: ok, sidecar: %s, assets: %d, docs: %d"

@@ -78,4 +78,15 @@ export const SAFETY_PHRASES: string[] = [
   "cut power",
   "disconnect power",
   "disconnect the power",
+  // Active-incident phrasings found missing by the routing gauntlet
+  // (2026-08-02, tier-1 keyword sweep): burning smell, electric-shock
+  // incident, smoke sighted, equipment explosion, live-work permission ask.
+  "smell burning",
+  "burning smell",
+  "smells like burning",
+  "smoke coming",
+  "got shocked",
+  "getting shocked",
+  "exploded",
+  "safe to work",
 ];

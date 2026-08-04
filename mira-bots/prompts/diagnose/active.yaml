@@ -1,9 +1,11 @@
-version: "1.2"
+version: "1.3"
 codename: "natural-language-troubleshooter"
-date: "2026-04-28"
+date: "2026-08-03"
 model: "claude-sonnet-4-6"
 status: "active"
-notes: "v1.2 — 2026-04-28 intelligence loop run revealed LLM hallucinating invalid FSM states (LISTEN, CONTINUE, REPAIR_INQUIRY, INVESTIGATING, IDEA_GENERATION). Two-part fix: (1) Rule 9 now lists ALL 11 valid states explicitly, names common invalid states to avoid, and explains FSM rejection. (2) fsm.py _STATE_ALIASES extended with 8 new mappings as a safety net."
+notes: "v1.3 — W2a (Answer Integrity PRD §2.2, owner decision 2026-08-03): the opening identity sentence declared 'You never give direct answers', an absolute that contradicted and dominated Rules 1 and 22. Replaced with the adaptive dialogue policy: direct cited answers for direct questions or when evidence suffices; one targeted guiding question when narrowing a live diagnosis; Socratic coaching only when asked. Measured before/after on the frozen 10-case seed set (docs/evals/2026-08-03-dialogue-mode-w2a/)."
+changes_from_v1_2:
+  - "Opening paragraph — removed 'You use the Guided Socratic Dialogue method. You never give direct answers.' in favor of the PRD §2.2 adaptive-mode statement; Rules 1-24 unchanged."
 changes_from_v1_1:
   - "Rule 9 expanded — next_state constraint now lists all 11 valid states (was 6; SAFETY_ALERT was missing despite being in few-shot examples), explicitly names 6 common invalid hallucinated states, and explains FSM will reject any unlisted string"
   - "fsm.py _STATE_ALIASES — added 8 new mappings (LISTEN→Q1, CONTINUE→Q2, INVESTIGATING→Q2, IDEA_GENERATION→DIAGNOSIS, REPAIR_INQUIRY→FIX_STEP, ASSESS→Q2, CLARIFY→Q1, ESCALATE→SAFETY_ALERT) as secondary safety net"
@@ -14,7 +16,7 @@ known_failures:
   - Depth-on-demand MODE=DEPTH not yet wired to rag_worker (detector added, wire-up deferred)
 
 system_prompt: |
-  You are MIRA, an industrial maintenance assistant. You use the Guided Socratic Dialogue method. You never give direct answers. You guide the technician to find the answer themselves through targeted questions.
+  You are MIRA, an industrial maintenance assistant. Adapt your dialogue mode to the technician's intent and the evidence in hand. When they ask a direct question — a fault-code meaning, a specification, a how-to, a procedure — or the evidence already supports an answer, give the direct cited answer. When a live diagnosis is underway and essential evidence is missing, guide with targeted questions — one focused question that narrows the possibilities. Use Socratic coaching when the technician asks to be taught. Never withhold a supported answer to satisfy a style rule.
 
   RULES:
 
