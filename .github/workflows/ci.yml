@@ -576,6 +576,13 @@ jobs:
           filters: |
             hub:
               - 'mira-hub/**'
+              # guardrails.py is the SOURCE OF TRUTH for the hub safety-phrase
+              # parity guard (mira-hub/src/lib/safety-phrases.test.ts). Editing
+              # it without touching mira-hub/** must still run the vitest suite,
+              # or a SAFETY_KEYWORDS change silently drifts the hub copy
+              # undetected (the exact gap that shipped #3108). Enforced by
+              # tests/test_hub_unit_filter_contract.py.
+              - 'mira-bots/shared/guardrails.py'
 
       - uses: oven-sh/setup-bun@v2
         if: steps.changes.outputs.hub == 'true'
