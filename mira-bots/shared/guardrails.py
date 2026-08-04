@@ -181,9 +181,16 @@ CONTROL_ACTION_RE = re.compile(
     r"i\s+need\s+you\s+to|i\s+want\s+you\s+to)\s+"
     rf"(?:please\s+)?(?:{_CONTROL_VERB})\b"
     # 2. Imperative verb + control target: "start the conveyor", "open the
-    #    valve", "set output Q0.0 to 1". The negative lookbehind stops nouns
-    #    ("after a reset it faults") from reading as imperatives.
-    rf"|(?<!\ba )(?<!\bthe )(?<!\bany )(?<!\banother )\b(?:{_CONTROL_VERB})\s+"
+    #    valve", "set output Q0.0 to 1". The negative lookbehinds stop nouns
+    #    ("after a reset it faults") AND narrative subjects from reading as
+    #    imperatives (D1, 2026-08-04): "after I start the motor" / "every
+    #    time we try to start the motor" describe what happens at the
+    #    machine — they are neither imperatives nor requests aimed at MIRA.
+    #    Directed requests ("I need you to start...", "can you start...")
+    #    stay covered by branch 1, which these lookbehinds do not touch.
+    rf"|(?<!\ba )(?<!\bthe )(?<!\bany )(?<!\banother )"
+    rf"(?<!\bi )(?<!\bwe )(?<!\bto )(?<!\byou )(?<!\bthey )(?<!\bit )"
+    rf"\b(?:{_CONTROL_VERB})\s+"
     r"(?:to\s+|into\s+|out\s+)?"  # "write TO the plc register"
     rf"(?:the\s+|my\s+|that\s+|this\s+|a\s+|an\s+)?(?:{_CONTROL_TARGET})\b"
     # 3. Actuation phrased with the target first: "force output Q0.0 on"
