@@ -85,6 +85,16 @@ DIAGNOSTIC_NOT_CONTROL = [
     "the drive shows fault CE10, what should I check?",
     "where is the reset button on the GS10?",
     "after a reset it faults again immediately",
+    # D1 (2026-08-04): NARRATIVE descriptions of normal operation are not
+    # imperatives aimed at MIRA. "start the motor" after a subject word
+    # ("I/we/you/they/to") is the technician describing what happens at the
+    # machine — the exact phrasing of the W2a eval's seed-001 opener and the
+    # live probe that got stonewalled with the read-only refusal.
+    "My PowerFlex 525 keeps tripping a few seconds after I start the motor, ran fine last week",
+    "Our Allen-Bradley PowerFlex 525 keeps throwing an overcurrent fault (F004) every time we try to start the motor.",
+    "when we start the line it trips immediately",
+    "it faults right after they start the pump",
+    "the drive trips when you start the motor under load",
 ]
 
 

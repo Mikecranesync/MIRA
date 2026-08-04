@@ -1000,7 +1000,22 @@ _H4_SKIP_REPLIES: frozenset[str] = frozenset(
 )
 
 
-def enforce_citation_or_gap_admission(reply: str) -> str:
+# Policy / gate replies that assert no technical fact — H4 must never footer
+# them with a KB-gap admission (E2, prod 2026-08-04: the canned control refusal
+# shipped with "I don't have specific documentation indexed for this" appended).
+_H4_SKIP_DISPATCH_KINDS = frozenset(
+    {
+        "control_action_refusal",
+        "uns_confirm_request",
+        "uns_confirm_yes",
+        "uns_confirm_no",
+        "greeting",
+        "help",
+    }
+)
+
+
+def enforce_citation_or_gap_admission(reply: str, dispatch_kind: str = "") -> str:
     """H4 enforcer: ensure every reply carries a [Source:] or KB-gap admission.
 
     If the reply already contains a citation tag OR an explicit KB-gap phrase,
@@ -1011,6 +1026,8 @@ def enforce_citation_or_gap_admission(reply: str) -> str:
     - reply is very short (<= 20 chars, e.g. "OK")
     """
     if not reply or len(reply.strip()) <= 20:
+        return reply
+    if dispatch_kind in _H4_SKIP_DISPATCH_KINDS:
         return reply
     stripped = reply.strip()
     if stripped in _H4_SKIP_REPLIES:
@@ -1029,8 +1046,54 @@ def enforce_citation_or_gap_admission(reply: str) -> str:
     # gets a correcting admission — appending the stock line would contradict
     # the sentence above it inside a single message.
     if _H4_POSSESSION_CLAIM_RE.search(reply):
+        logger.info(
+            "H4_GAP_ADMISSION_APPENDED kind=correcting dispatch_kind=%s reply_len=%d",
+            dispatch_kind,
+            len(reply),
+        )
         return reply + _H4_CORRECTING_ADMISSION
+    logger.info(
+        "H4_GAP_ADMISSION_APPENDED kind=stock dispatch_kind=%s reply_len=%d",
+        dispatch_kind,
+        len(reply),
+    )
     return reply + _H4_STOCK_ADMISSION
+
+
+def _compact_pack_citation_tags(citations: list[dict]) -> list[str]:
+    """Render pack citations as [Source: …] tags, collapsing consecutive pages.
+
+    E3 (prod 2026-08-04): PF525 fault cards carry dozens of per-page citations
+    and the rung rendered three near-identical tags (p.161/162/163) — noise on
+    a phone. Same-document numeric pages are deduped, sorted, and split into
+    consecutive runs: one page -> "p.N", a run -> "pp.A-B". Non-numeric pages
+    keep their own tag; a pageless citation is the bare document tag. Document
+    order follows first appearance.
+    """
+    by_doc: dict[str, list[str]] = {}
+    for c in citations:
+        doc = (c.get("doc") or "").strip()
+        if not doc:
+            continue
+        pages = by_doc.setdefault(doc, [])
+        page = (c.get("page") or "").strip()
+        if page not in pages:
+            pages.append(page)
+    tags: list[str] = []
+    for doc, pages in by_doc.items():
+        numeric = sorted({int(p) for p in pages if p.isdigit()})
+        others = [p for p in pages if not p.isdigit()]
+        runs: list[tuple[int, int]] = []
+        for n in numeric:
+            if runs and n == runs[-1][1] + 1:
+                runs[-1] = (runs[-1][0], n)
+            else:
+                runs.append((n, n))
+        for lo, hi in runs:
+            tags.append(f"[Source: {doc} p.{lo}]" if lo == hi else f"[Source: {doc} pp.{lo}-{hi}]")
+        for p_ in others:
+            tags.append(f"[Source: {doc} p.{p_}]" if p_ else f"[Source: {doc}]")
+    return tags
 
 
 class Supervisor:
@@ -2005,7 +2068,9 @@ class Supervisor:
         # appended text doesn't confuse the gate's heuristics. Skips graceful-
         # fallback strings and trusted templated replies that already carry
         # structural tags (live-tag block, WO preview, etc.).
-        reply = enforce_citation_or_gap_admission(reply)
+        reply = enforce_citation_or_gap_admission(
+            reply, dispatch_kind=result.get("dispatch_kind", "")
+        )
         self._log_interaction(
             chat_id,
             message,
@@ -2957,18 +3022,17 @@ class Supervisor:
             if _dp_pack is not None:
                 _dp_answer = answer_question(_dp_pack.pack_id, _dp_question)
                 if _dp_answer.matched:
-                    _dp_seen: set[tuple[str, str]] = set()
-                    _dp_cite_parts: list[str] = []
-                    for _c in _dp_answer.citations:
-                        _doc = _c.get("doc", "")
-                        _page = _c.get("page", "")
-                        _key = (_doc, _page)
-                        if not _doc or _key in _dp_seen:
-                            continue
-                        _dp_seen.add(_key)
-                        _dp_cite_parts.append(
-                            f"[Source: {_doc} p.{_page}]" if _page else f"[Source: {_doc}]"
-                        )
+                    # Observability (2026-08-04): a deterministic path claiming
+                    # a turn must say so — the prod E1 diagnosis had ZERO log
+                    # lines between ROUTER and DISPATCH. No message bodies.
+                    logger.info(
+                        "DRIVE_PACK_CLAIMED pack_id=%s matched_kind=%s mnemonic=%s chat_id=%s",
+                        _dp_pack.pack_id,
+                        _dp_answer.matched_kind,
+                        _dp_answer.matched_token,
+                        chat_id,
+                    )
+                    _dp_cite_parts = _compact_pack_citation_tags(_dp_answer.citations)
                     reply = _dp_answer.answer
                     if _dp_cite_parts:
                         reply = f"{reply}\n\n{' '.join(_dp_cite_parts)}"
@@ -3129,7 +3193,7 @@ class Supervisor:
                 )
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "IDLE")
+                return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="help")
             if intent == "greeting":
                 reply = (
                     "Hey \u2014 I'm MIRA, your maintenance copilot. "
@@ -3138,7 +3202,7 @@ class Supervisor:
                 )
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "IDLE")
+                return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="greeting")
 
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         if not photo_b64 and intent == "documentation":

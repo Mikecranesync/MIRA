@@ -98,3 +98,48 @@ def test_answer_is_static_and_read_only_for_every_gs10_answer():
         assert r.live_telemetry is False
         assert r.read_only is True
         assert r.fallback_used is False
+
+
+# ── E1 regression (prod incident 2026-08-04): prose is not a fault mnemonic ──
+# answer_question branch 1 used the FIRST WORD of card.meaning as a match key.
+# PowerFlex 525 cards' meanings are bare fault names ("Motor Stalled"), so the
+# English word "Motor" matched any narrative mentioning a motor and emitted the
+# mangled deterministic template instead of falling through to the engine.
+
+
+class TestProseIsNotAMnemonic:
+    def test_narrative_symptom_does_not_match_powerflex_pack(self):
+        from shared.drive_packs.ask import answer_question
+
+        r = answer_question(
+            "powerflex_525",
+            "My PowerFlex 525 keeps tripping a few seconds after I start the motor, ran fine last week",
+        )
+        assert r.matched is False, r.answer
+
+    def test_motor_stalled_prose_does_not_match(self):
+        from shared.drive_packs.ask import answer_question
+
+        r = answer_question(
+            "powerflex_525", "I think the motor stalled under load, what should I check?"
+        )
+        assert r.matched is False, r.answer
+
+    def test_fault_name_words_are_rejected_as_match_keys(self):
+        from shared.drive_packs.ask import _is_code_shaped_mnemonic
+
+        for word in ("Motor", "UnderVoltage", "Power", "Heatsink", "Stalled"):
+            assert not _is_code_shaped_mnemonic(word), word
+
+    def test_real_codes_are_accepted_as_match_keys(self):
+        from shared.drive_packs.ask import _is_code_shaped_mnemonic
+
+        for code in ("F059", "CE10", "GFF", "oL", "Lvd", "EF", "CE1"):
+            assert _is_code_shaped_mnemonic(code), code
+
+    def test_gs10_ce10_question_still_matches(self):
+        from shared.drive_packs.ask import answer_question
+
+        r = answer_question("durapulse_gs10", "what does CE10 mean on my GS10?")
+        assert r.matched is True and r.matched_kind == "fault"
+        assert r.matched_token == "CE10"

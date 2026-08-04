@@ -190,6 +190,27 @@ def set_workspace(
         logger.warning("print_workspace: set_workspace failed (fail-open): %s", exc)
 
 
+def clear_workspace(chat_id: str) -> None:
+    """Drop the chat→session mapping (D4b — 2026-08-04 prod incident).
+
+    /new and /reset promise "no carryover from prior sessions", but the
+    workspace outlived engine.reset by up to PRINT_WORKSPACE_TTL_S and kept
+    routing text turns into the print rung. Fail-open like its siblings —
+    a clear that fails must never break the reset itself.
+    """
+    if not chat_id:
+        return
+    try:
+        db = _workspace_db()
+        try:
+            db.execute("DELETE FROM telegram_print_workspace WHERE chat_id = ?", (chat_id,))
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001 — mapping delete must never raise
+        logger.warning("print_workspace: clear_workspace failed (fail-open): %s", exc)
+
+
 # ── ingest adapters (model-free) ────────────────────────────────────────────
 
 
