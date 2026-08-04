@@ -58,10 +58,10 @@ binds first. Provider directive: Together, not Anthropic.
 
 ## Run log
 
-| Run | Prompt | Started | Result |
+| Run | Prompt | Executed | Result |
 |---|---|---|---|
-| 1 (baseline) | `e99ca7c4…` (W2a rule present) | — | — |
-| 2 (post-W2a) | — | — | — |
+| 1 (baseline) | `e99ca7c4…` (W2a rule present) | 2026-08-03, chunked per-case after two background-task kills; one interrupted attempt re-ran | composite mean 6.86 — see `results.md` |
+| 2 (post-W2a) | `be605393e46e68bc6503aad09f7d558045fa2a50ced2f97a6b0d384a3cbc0b75` (v1.3) | 2026-08-03, same chunked pattern; cases 9–10 re-ran after one kill | composite mean 5.92 — delta is noise-dominated; see `results.md` |
 
 Actual call counts, token usage, and dollar cost are reported from the adapter's
 usage counters after each run — never estimated.
