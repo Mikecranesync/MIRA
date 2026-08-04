@@ -12,8 +12,16 @@ concurrency:
 #
 # Triggers:
 #   push to main  — fires first; deploy-vps.yml waits for this to succeed
-#   PR to main    — blocks merge if smoke fails (branch protection rule)
+#   PR to main    — advisory signal only; this is NOT a required status check
 #   workflow_dispatch — manual trigger for ad-hoc checks
+#
+# CORRECTED 2026-08-04 (#3082): this block previously claimed the PR run "blocks
+# merge if smoke fails (branch protection rule)". It does not. main's required
+# checks are `staging-gate`, `Hub E2E (command-center + onboarding)`,
+# `mira-web pack tests`, and `CI Gate` — `E2E smoke` is not among them. The real
+# gate this gives is on PUSH to main, where deploy-vps.yml refuses to deploy
+# unless this run succeeded. The stale comment made PR-branch reds read as
+# merge-blocking when they never were.
 #
 # deploy-vps.yml listens for workflow_run: ["Smoke Test"] types: [completed]
 # and checks conclusion == 'success' before starting the deploy job.
