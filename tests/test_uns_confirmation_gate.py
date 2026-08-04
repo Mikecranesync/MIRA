@@ -384,3 +384,162 @@ def test_awaiting_uns_confirmation_is_valid_fsm_state():
     from shared.fsm import VALID_STATES
 
     assert "AWAITING_UNS_CONFIRMATION" in VALID_STATES
+
+
+# ── D2: symptom-first fallback (gate deadlock) ──────────────────────────────
+# A technician who cannot name the manufacturer/model must not receive the
+# identical gate demand forever (defect D2, docs/evals/2026-08-03-dialogue-
+# mode-w2a/results.md). After the technician signals unknown identity — or
+# after _UNS_GATE_MAX_ATTEMPTS unresolved gate firings — the gate stops
+# repeating and the turn proceeds into a clearly-labeled, lower-confidence
+# symptom-first diagnostic path. A real candidate re-opens the grounded route.
+
+
+@pytest.mark.asyncio
+async def test_request_increments_gate_attempts(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d1")
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.0)
+
+    await sv._handle_uns_confirmation_request("d1", "fault", state, uns_ctx, "t")
+    saved = sv._load_state("d1")
+    assert (saved["context"] or {}).get("uns_gate_attempts") == 1
+
+    await sv._handle_uns_confirmation_request("d1", "fault again", saved, uns_ctx, "t")
+    saved = sv._load_state("d1")
+    assert (saved["context"] or {}).get("uns_gate_attempts") == 2
+
+
+@pytest.mark.asyncio
+async def test_unknown_identity_fallthrough_sets_flag(tmp_path):
+    """'I don't have the manual handy' must register as unknown identity."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d2")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
+    state["context"]["pending_uns_confirm"] = {"candidate": None}
+    sv._save_state("d2", state)
+
+    result = await sv._handle_uns_confirmation_response(
+        "d2",
+        "It's a sensor on the packaging machine, but I don't have the manual handy",
+        state,
+        "t",
+    )
+
+    assert result is None  # still falls through to the normal flow
+    saved = sv._load_state("d2")
+    assert (saved["context"] or {}).get("uns_identity_unknown") is True
+
+
+@pytest.mark.asyncio
+async def test_specs_fallthrough_does_not_set_unknown_flag(tmp_path):
+    """The other direction: typing real specs must NOT flag unknown identity."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d3")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
+    state["context"]["pending_uns_confirm"] = {"candidate": None}
+    sv._save_state("d3", state)
+
+    result = await sv._handle_uns_confirmation_response(
+        "d3", "It's an Allen-Bradley PowerFlex 525", state, "t"
+    )
+
+    assert result is None
+    saved = sv._load_state("d3")
+    assert not (saved["context"] or {}).get("uns_identity_unknown")
+
+
+def test_gate_not_exhausted_fresh_state(tmp_path):
+    """Known-or-obtainable identity keeps the normal grounded route untouched."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d4")
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.0)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is False
+
+
+def test_gate_exhausted_after_max_attempts(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d5")
+    state["context"]["uns_gate_attempts"] = 2
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.0)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is True
+
+
+def test_gate_exhausted_on_unknown_identity_flag(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d6")
+    state["context"]["uns_gate_attempts"] = 1
+    state["context"]["uns_identity_unknown"] = True
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.0)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is True
+
+
+def test_gate_not_exhausted_when_candidate_present(tmp_path):
+    """Later discovery of a nameplate/model re-opens the grounded route —
+    a real candidate must always be allowed to fire the confirmation."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d7")
+    state["context"]["uns_gate_attempts"] = 5
+    state["context"]["uns_identity_unknown"] = True
+    uns_ctx = SimpleNamespace(manufacturer="Allen-Bradley", model="PowerFlex 525", confidence=0.6)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is False
+
+
+def test_fallback_notice_emitted_once_and_invents_nothing(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d8")
+
+    notice = sv._uns_gate_fallback_notice(state)
+    assert "lower confidence" in notice
+    assert "nameplate" in notice
+    # Never invent identity: the notice must not name any manufacturer.
+    assert "Allen-Bradley" not in notice and "PowerFlex" not in notice
+
+    # Second call: already announced — silent.
+    assert sv._uns_gate_fallback_notice(state) == ""
+
+
+@pytest.mark.asyncio
+async def test_yes_clears_fallback_state(tmp_path):
+    """Confirming an asset resets the fallback bookkeeping for the session."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d9")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
+    state["context"]["pending_uns_confirm"] = {"candidate": "Siemens, SINAMICS G120"}
+    state["context"]["uns_gate_attempts"] = 2
+    state["context"]["uns_identity_unknown"] = True
+    state["context"]["symptom_first_notice_sent"] = True
+    sv._save_state("d9", state)
+
+    result = await sv._handle_uns_confirmation_response("d9", "yes", state, "t")
+
+    assert result is not None
+    saved = sv._load_state("d9")
+    ctx = saved["context"] or {}
+    assert "uns_gate_attempts" not in ctx
+    assert "uns_identity_unknown" not in ctx
+    assert "symptom_first_notice_sent" not in ctx
+
+
+@pytest.mark.asyncio
+async def test_unknown_identity_progresses_not_loops(tmp_path):
+    """The D2 narrative: gate fires once, technician says they can't identify
+    the machine, and the NEXT turn is symptom-first — not the same demand."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d10")
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.1)
+
+    # Turn 1: gate fires (normal — identity is reasonably obtainable).
+    await sv._handle_uns_confirmation_request("d10", "sensor acting up", state, uns_ctx, "t")
+    saved = sv._load_state("d10")
+
+    # Turn 2: technician cannot identify the equipment.
+    result = await sv._handle_uns_confirmation_response(
+        "d10", "no idea, there's no nameplate on it", saved, "t"
+    )
+    assert result is None
+    saved = sv._load_state("d10")
+
+    # Turn 3: the gate must NOT re-fire — symptom-first takes over, labeled.
+    assert sv._uns_gate_exhausted(saved, uns_ctx) is True
+    assert sv._uns_gate_fallback_notice(saved) != ""
