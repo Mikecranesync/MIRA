@@ -119,7 +119,7 @@ def generate_report(run_id: int, db_path: str | None = None) -> dict:
     dim_labels = {
         "evidence_utilization": "Evidence Utilization",
         "path_efficiency": "Path Efficiency",
-        "gsd_compliance": "GSD Compliance",
+        "gsd_compliance": "Dialogue Mode",
         "root_cause_alignment": "Root Cause Alignment",
         "expert_comparison": "Expert Comparison",
     }
