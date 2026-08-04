@@ -274,6 +274,21 @@ between nested `tests` packages. Each intended test root passes when invoked sep
 
 These PRs should be reconciled with this audit rather than duplicated.
 
+## Repair execution
+
+The implementation plan of record is
+[`docs/superpowers/plans/2026-08-03-exploratory-synth-lab.md`](../superpowers/plans/2026-08-03-exploratory-synth-lab.md).
+It converts the findings below into claimable child-PR tasks with exact start gates, file ownership,
+test-first acceptance criteria, and separate MIRA/FactoryLM/operator boundaries.
+
+Agents must claim one plan ID at a time on PR #3099 and ship runtime changes in child PRs. The
+ordered gates are M1 exact origin, M2 exact tenant, M3 current FactoryLM evidence, M4 trustworthy
+GREEN semantics, M5 durable verdicts, M6 MIRA staging readiness, M7 human-review findings, M8
+authenticated actor/role/tenant isolation, F1 FactoryLM observation safety, F2 FactoryLM broker
+readiness, S1 supervised staging, S2 continuous staging through the existing heartbeat/Telegram
+path, and P1 the human phone test. Documentation PR #3099 does not itself deploy, enable, restart,
+inspect, or dispatch a worker.
+
 ## Repair order and acceptance gates
 
 1. **Restore worker readiness.** Configure/revive FactoryLM's intended Redis broker; deploy the MIRA
@@ -282,11 +297,15 @@ These PRs should be reconciled with this audit rather than duplicated.
    observation schema reject camelCase and prefixed action fields.
 3. **Make GREEN mean technician-useful.** Validate citation lineage/relevance, ordered next checks,
    current state, observed timestamp, freshness, quality, source system, and handoff preview.
-4. **Make verdicts operable.** Persist uniquely named receipts under `/mira-db`, alert on NOT_GREEN,
-   distinguish skipped from success, and provide a manual replay route not constrained to `1/h`.
-5. **Replace placeholder FactoryLM triage.** Use confirmed equipment identity, alarm-specific manual
-   evidence, live state, safety context, likely cause, and the next safe check.
-6. **Run the real phone test.** A technician must complete the runbook from Telegram on a phone before
+4. **Make verdicts operable.** Persist uniquely named receipts under `/mira-db`, distinguish skipped
+   from success, and feed NOT_GREEN/stale/missing status into the existing 15-minute heartbeat and
+   Telegram alert path with an explicit no-remediation self-healer route.
+5. **Prove the personas are users.** Use independent Hub browser contexts to prove the existing
+   technician/manager capability boundary, same-tenant chat access, and cross-tenant asset denial.
+6. **Keep FactoryLM in its evidence role.** Its placeholder alarm-triage task is not accepted as a
+   technician or feedback worker in this program; replacing that P2 product feature is a separate
+   post-harness task using confirmed identity, alarm-specific evidence, live state, and safety context.
+7. **Run the real phone test.** A technician must complete the runbook from Telegram on a phone before
    the journey can be called end-to-end proven.
 
 ## Limitations

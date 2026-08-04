@@ -11,6 +11,12 @@ a static generic checklist. The cross-repo read-only machine-snapshot handoff pa
 comm-loss checks. Prioritized repair gates and exact verification counts are in the report. No
 implementation, production data, PLC, CMMS, deploy, or secret state was changed.
 
+Execution plan: `docs/superpowers/plans/2026-08-03-exploratory-synth-lab.md`. It assigns claimable
+M1–M8 MIRA slices, F1–F2 FactoryLM slices, supervised/continuous staging gates S1–S2, and the final
+human phone gate P1. M8 uses existing Hub sessions/capabilities for actor, role, and tenant isolation;
+S2 routes durable status through the existing heartbeat/Telegram path with no worker remediation.
+PR #3099 remains documentation-only; runtime repairs ship as child PRs.
+
 ---
 
 # Hot Cache — 2026-08-03 — Deploy-integrity lane (#3081 identity + #3055 tag-race)
