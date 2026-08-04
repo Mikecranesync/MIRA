@@ -17,6 +17,51 @@ DEFAULT_FOLDER = "[default]Mira_Monitored"
 # Maximum tags to return in one response (avoid memory pressure)
 MAX_TAGS = 500
 
+
+def _is_not_found(err_msg):
+    """True when a tag-browse error means the folder simply does not exist.
+
+    Ignition raises `Bad_NotFound` when browseTags is pointed at an absent
+    folder (e.g. this gateway streams `[default]MIRA_IOCheck`, not the
+    hardcoded `Mira_Monitored`). That is a diagnosable configuration state,
+    not a server error — the handler returns a structured 200 with an
+    explicit flag instead of a bare 500.
+    """
+    m = str(err_msg).lower()
+    return "not_found" in m or "notfound" in m
+
+
+def _read_stream_tag_folder():
+    """Resolve the monitored tag folder from factorylm.properties.
+
+    Mirrors api/connect/doGet.py so all handlers agree on the folder name.
+    Falls back to DEFAULT_FOLDER when the properties file is absent.
+    """
+    try:
+        import java.io.FileInputStream as FileInputStream
+        import java.util.Properties as Properties
+        import java.io.File as File
+    except Exception:
+        return DEFAULT_FOLDER
+
+    paths = [
+        "C:/Program Files/Inductive Automation/Ignition/data/factorylm/factorylm.properties",
+        "/usr/local/bin/ignition/data/factorylm/factorylm.properties",
+        "/var/lib/ignition/data/factorylm/factorylm.properties",
+    ]
+    for p in paths:
+        f = File(p)
+        if f.exists():
+            props = Properties()
+            fis = FileInputStream(f)
+            try:
+                props.load(fis)
+                return props.getProperty("STREAM_TAG_FOLDER", DEFAULT_FOLDER)
+            finally:
+                fis.close()
+    return DEFAULT_FOLDER
+
+
 # Path to the allowlist file, relative to the Ignition data/projects directory.
 # Resolved at request time so restarts pick up edits without a gateway restart.
 _ALLOWLIST_FILENAME = "approved_tags.json"
@@ -115,12 +160,13 @@ def doGet(request, session):
     if params is None:
         params = {}
 
-    folder = params.get("folder", DEFAULT_FOLDER).strip()
+    default_folder = _read_stream_tag_folder()
+    folder = params.get("folder", default_folder).strip()
     recurse = params.get("recurse", "false").strip().lower() == "true"
     read_values = params.get("values", "false").strip().lower() == "true"
 
     if not folder:
-        folder = DEFAULT_FOLDER
+        folder = default_folder
 
     logger.debug(
         "Tags request — folder: %s, recurse: %s, read_values: %s, allowlist_size: %d"
@@ -165,14 +211,32 @@ def doGet(request, session):
         )
 
     except Exception as e:
-        logger.error(
-            "Tag browse failed for folder %s: %s" % (folder, str(e))
-        )
+        detail = str(e)
+        # An absent folder (Bad_NotFound) is a diagnosable config state — the
+        # gateway may stream a differently-named folder (e.g. MIRA_IOCheck).
+        # Return a structured 200 with an explicit flag instead of a bare 500,
+        # so a monitor can tell "folder missing" apart from a real browse error.
+        if _is_not_found(detail):
+            logger.warn(
+                "Tag folder %s not found — returning empty tag list." % folder
+            )
+            return {
+                "json": {
+                    "folder": folder,
+                    "tags": [],
+                    "count": 0,
+                    "tag_folder_not_found": True,
+                    "detail": detail,
+                    "allowlist_enforced": True,
+                    "allowlist_size": len(allowlist)
+                }
+            }
+        logger.error("Tag browse failed for folder %s: %s" % (folder, detail))
         return {
             "json": {
                 "error": "Tag browse failed",
                 "folder": folder,
-                "detail": str(e)
+                "detail": detail
             },
             "status": 500
         }

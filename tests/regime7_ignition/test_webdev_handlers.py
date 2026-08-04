@@ -52,6 +52,27 @@ class TestStatusHandler:
         assert data["gateway"] == "ok"
         assert data["rag_sidecar"] == "error"
 
+    def test_absent_tag_folder_is_diagnosable(self, mock_ignition_system, webdev_scripts_dir):
+        """#3047: browsing an absent monitored folder raises Bad_NotFound. The gateway
+        is still ok, but the empty asset list must be diagnosable (an explicit flag +
+        echoed folder) instead of silently swallowed."""
+        mock_ignition_system.tag.browseTags.side_effect = Exception(
+            "Error in browse results: Bad_NotFound"
+        )
+
+        handler = load_handler(webdev_scripts_dir / "api" / "status" / "doGet.py", "doGet")
+        result = handler({"params": {}}, {})
+
+        # Health check stays 200 — the gateway itself is healthy.
+        assert "status" not in result
+        data = result["json"]
+        assert data["gateway"] == "ok"
+        assert data["monitored_assets"] == []
+        assert data["asset_count"] == 0
+        assert "tag_folder" in data
+        assert data["tag_folder_not_found"] is True
+        assert "tag_folder_error" in data
+
 
 class TestChatHandler:
     def test_chat_proxies_to_sidecar(self, webdev_scripts_dir, mira_gateway_configured):
@@ -117,6 +138,41 @@ class TestTagsHandler:
 
         assert "json" in result
         assert "tags" in result["json"]
+
+    def test_absent_folder_returns_structured_not_found(
+        self, mock_ignition_system, webdev_scripts_dir
+    ):
+        """#3047: an absent folder (Bad_NotFound) must be a diagnosable 200 with an
+        explicit flag + empty list — not a bare HTTP 500."""
+        mock_ignition_system.tag.browseTags.side_effect = Exception(
+            "Error in browse results: Bad_NotFound"
+        )
+
+        handler = load_handler(webdev_scripts_dir / "api" / "tags" / "doGet.py", "doGet")
+        result = handler({"params": {"folder": "[default]Absent_Folder"}}, {})
+
+        # Not a 500 — diagnosable success with an explicit flag.
+        assert result.get("status") != 500
+        data = result["json"]
+        assert data["tag_folder_not_found"] is True
+        assert data["tags"] == []
+        assert data["count"] == 0
+        assert data["folder"] == "[default]Absent_Folder"
+
+    def test_generic_browse_error_still_500(
+        self, mock_ignition_system, webdev_scripts_dir
+    ):
+        """#3047: a real browse error (not folder-absent) must still surface as a 500 —
+        the not-found carve-out must not swallow genuine failures."""
+        mock_ignition_system.tag.browseTags.side_effect = Exception(
+            "Gateway communication timeout"
+        )
+
+        handler = load_handler(webdev_scripts_dir / "api" / "tags" / "doGet.py", "doGet")
+        result = handler({"params": {"folder": "[default]Mira_Monitored"}}, {})
+
+        assert result["status"] == 500
+        assert result["json"]["error"] == "Tag browse failed"
 
 
 class TestConnectActivationPersistence:
