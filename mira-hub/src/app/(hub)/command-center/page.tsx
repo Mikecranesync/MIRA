@@ -560,7 +560,13 @@ function FreshnessSummary({
 
 // ── Viewer ────────────────────────────────────────────────────────────────────
 
-function Viewer({ node }: { node: CCNode | null }) {
+// Stable id linking the disabled "Open Live View" button to its "display
+// unreachable" warning via aria-describedby (accessibility). Only one Viewer
+// renders at a time, so a constant id is unambiguous.
+const DISPLAY_UNREACHABLE_WARNING_ID = "cc-display-unreachable-warning";
+
+// Exported for unit coverage (viewer.test.tsx). Rendering-only; safe to import.
+export function Viewer({ node }: { node: CCNode | null }) {
   if (!node) {
     return (
       <Empty icon={MonitorPlay}
@@ -614,23 +620,37 @@ function Viewer({ node }: { node: CCNode | null }) {
             {node.displayLabel ?? node.name}
           </p>
           <p className="mt-1 max-w-md text-xs text-slate-500">
-            Live HMIs open in a new tab so they keep their own session and
-            WebSocket connection. Click below to view the screen.
+            {node.live
+              ? "Live HMIs open in a new tab so they keep their own session and WebSocket connection. Click below to view the screen."
+              : "Live HMIs open in a new tab so they keep their own session and WebSocket connection. Start the HMI service to enable the live view."}
           </p>
         </div>
-        <a
-          href={displayHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-        >
-          <ExternalLink className="h-4 w-4" />
-          Open Live View
-        </a>
-        {!node.live && (
-          <p className="text-xs text-amber-600">
-            Display is currently unreachable over HTTP — the new tab may not load.
-          </p>
+        {node.live ? (
+          <a
+            href={displayHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open Live View
+          </a>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled
+              aria-describedby={DISPLAY_UNREACHABLE_WARNING_ID}
+              title="Display is unreachable — start the HMI service to open the live view"
+              className="inline-flex cursor-not-allowed items-center gap-2 rounded-md bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-400 shadow-sm"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open Live View
+            </button>
+            <p id={DISPLAY_UNREACHABLE_WARNING_ID} className="text-xs text-amber-600">
+              Display is currently unreachable — start the HMI service to enable this button.
+            </p>
+          </>
         )}
       </div>
     </>
