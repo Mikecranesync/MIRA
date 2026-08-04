@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+from functools import lru_cache
 from pathlib import Path
 
 import httpx
@@ -495,8 +496,33 @@ def _direct_answer_mode() -> bool:
     return os.getenv("MIRA_DIRECT_ANSWER_MODE", "") not in ("", "0", "false", "False")
 
 
+@lru_cache(maxsize=1)
+def _yaml_system_prompt() -> str | None:
+    """The system_prompt from prompts/diagnose/active.yaml, or None.
+
+    Until 2026-08-04 active.yaml was read ONLY for version metadata while the
+    model received the hardcoded GSD_SYSTEM_PROMPT — so two prompt revisions
+    (v1.3/v1.4) silently never reached the model. The yaml is the
+    version-gated source of truth (Prompt Version Guard watches it); the
+    constant is the fail-open fallback if the file is missing or malformed.
+    """
+    try:
+        with open(_PROMPT_PATH, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        prompt = (data or {}).get("system_prompt")
+        if isinstance(prompt, str) and prompt.strip():
+            return prompt
+        logger.warning("active.yaml has no usable system_prompt — using built-in fallback")
+        return None
+    except Exception as e:  # noqa: BLE001 — prompt load must never break a turn
+        logger.warning("Failed to load system_prompt from %s: %s", _PROMPT_PATH, e)
+        return None
+
+
 def _active_system_prompt() -> str:
-    return DIRECT_ANSWER_SYSTEM_PROMPT if _direct_answer_mode() else GSD_SYSTEM_PROMPT
+    if _direct_answer_mode():
+        return DIRECT_ANSWER_SYSTEM_PROMPT
+    return _yaml_system_prompt() or GSD_SYSTEM_PROMPT
 
 
 class RAGWorker:
