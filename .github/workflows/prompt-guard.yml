@@ -19,6 +19,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The metadata step imports yaml; the hosted runner's Python has no
+      # PyYAML preinstalled. First exercised on the 2026-08-04 v1.3 prompt
+      # bump — the guard crashed (ModuleNotFoundError) before evaluating.
+      - name: Install PyYAML
+        run: pip install pyyaml
+
       - name: Read prompt metadata
         id: meta
         run: |
