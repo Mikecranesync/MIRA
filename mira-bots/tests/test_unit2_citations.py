@@ -55,7 +55,7 @@ for _mod in (
 
 from shared.workers.rag_worker import (  # noqa: E402
     CITATION_TAG_RE,
-    GSD_SYSTEM_PROMPT,
+    _active_system_prompt,
     RAGWorker,
     format_source_label,
 )
@@ -328,32 +328,37 @@ class TestBuildPromptNeonChunks:
 
 
 class TestSystemPromptInstruction:
+    """Pinned on _active_system_prompt() — the prompt the model actually
+    receives (since 2026-08-04 that is active.yaml's system_prompt; the
+    _active_system_prompt() constant is only the fail-open fallback). Pinning the
+    constant let the citation contract drift out of the live prompt unseen."""
+
     def test_rule_16_present(self):
-        assert "CITATION REQUIRED" in GSD_SYSTEM_PROMPT
+        assert "CITATION REQUIRED" in _active_system_prompt()
 
     def test_rule_16_specifies_format(self):
         # The instruction must reference the literal "[Source:" tag we anchor on
-        assert "[Source:" in GSD_SYSTEM_PROMPT
+        assert "[Source:" in _active_system_prompt()
 
     def test_rule_16_forbids_invented_tags(self):
-        text = GSD_SYSTEM_PROMPT.lower()
+        text = _active_system_prompt().lower()
         assert "never invent" in text or "do not invent" in text or "never fabricate" in text
 
     def test_rule_16_has_concrete_example(self):
         # CRA-11: concrete inline example drives LLM compliance better than
         # abstract "echo the tag" instruction alone.
-        assert "Example:" in GSD_SYSTEM_PROMPT or "example:" in GSD_SYSTEM_PROMPT
+        assert "Example:" in _active_system_prompt() or "example:" in _active_system_prompt()
         # The example should show a realistic citation tag inline with a fact
         assert (
-            "[Source:" in GSD_SYSTEM_PROMPT.split("Example:")[1]
-            if "Example:" in GSD_SYSTEM_PROMPT
+            "[Source:" in _active_system_prompt().split("Example:")[1]
+            if "Example:" in _active_system_prompt()
             else True
         )
 
     def test_rule_16_describes_blocked_format(self):
         # The instruction must describe the "--- [N] [Source: ...] ---" fenced
         # structure so the LLM knows how the reference documents are wrapped.
-        assert "---" in GSD_SYSTEM_PROMPT
+        assert "---" in _active_system_prompt()
 
 
 class TestBlockedChunkFormat:
