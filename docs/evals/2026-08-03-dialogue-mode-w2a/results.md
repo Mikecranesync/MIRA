@@ -71,6 +71,16 @@ D2 is the most damaging in real use: a technician without a model number gets
 stonewalled indefinitely. None of these were fixed in this branch (out of scope;
 each needs its own both-directions tests).
 
+**Disposition (added 2026-08-04 — the scores above are unchanged).** All three
+were subsequently fixed, each on its own branch with both-directions tests, as
+this section required:
+
+| # | Fixed by | Guard |
+|---|---|---|
+| D1 | #3120 | `CONTROL_ACTION_RE` no longer fires on narrative "…try to start the motor" |
+| D2 | #3110 | symptom-first fallback after `MIRA_UNS_GATE_MAX_ATTEMPTS`, identity still re-asked opportunistically |
+| D3 | this branch | FSM content guard (`fsm.reply_supports_diagnosis`) + photo-filename citations rejected by `_has_usable_citation` and the swarm's `malformed_citation` detector |
+
 ## Actual spend (counted, not estimated)
 
 | Item | Calls | Tokens (prompt + completion) | Cost @ $0.88/Mtok |

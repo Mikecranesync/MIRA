@@ -263,12 +263,29 @@ _MALFORMED_SOURCE = re.compile(
     re.IGNORECASE,
 )
 
+# Same class, found in the W2a eval (defect D3): the citation body is the
+# technician's OWN uploaded photo — either its filename (`photo_handler` stores
+# the session photo as `{chat_id}.jpg`) or the words for it. Handing someone
+# their own input back as evidence is attribution theatre. `.pdf` is excluded on
+# purpose: a manual filename is something you can go look up.
+_PHOTO_SOURCE = re.compile(
+    r"\[Source:\s*(?:"
+    r"[\w .\-()]+\.(?:jpe?g|png|gif|heic|heif|webp|bmp|tiff?|mp4|mov|avi)"
+    r"|(?:(?:the|your|my|a|an|this|user|session|uploaded|attached)\s+)*"
+    r"(?:photo|photograph|image|picture|screenshot|pic)s?"
+    r")\s*\]",
+    re.IGNORECASE,
+)
+
 
 def malformed_citation(reply: str) -> tuple[bool, str]:
     """A `[Source: …]` tag whose body identifies no actual document."""
     m = _MALFORMED_SOURCE.search(reply or "")
     if m:
         return True, f"citation names no source: {m.group(0)[:70]!r}"
+    m = _PHOTO_SOURCE.search(reply or "")
+    if m:
+        return True, f"citation is the technician's own photo: {m.group(0)[:70]!r}"
     return False, ""
 
 
