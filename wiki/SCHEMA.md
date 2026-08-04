@@ -43,7 +43,20 @@ wiki/
    - What's blocked
    - What should happen next (on any machine)
 2. Append a log entry to `wiki/log.md`
-3. Remind the user to `git add wiki/ && git commit -m "wiki: update session state" && git push`
+3. **Stage the wiki files you actually edited, by exact path** — inspect first, then stage:
+
+   ```bash
+   git status -s wiki/                     # look before you stage
+   git add wiki/hot.md wiki/log.md         # name the paths YOU changed
+   git commit -m "wiki: update session state"
+   git push
+   ```
+
+   **Never `git add wiki/`, `git add -A`, or `git add .` here.** This is a shared working
+   tree — other sessions carry in-flight WIP, and `wiki/hot.d/` now holds machine-written
+   run fragments from the nightly eval-fixer. A broad `git add wiki/` sweeps someone
+   else's fragment, or another session's half-finished note, into your human session
+   commit. Same discipline as `.claude/rules/session-discipline.md` § "Scoped commits".
 
 ## Operations
 
