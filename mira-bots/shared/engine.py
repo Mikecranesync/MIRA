@@ -454,6 +454,27 @@ _UNS_GATE_ENABLED = os.getenv("MIRA_UNS_GATE_ENABLED", "1") == "1"
 # chitchat must NOT be gated.
 _GATED_INTENTS = frozenset({"diagnose_equipment", "schedule_maintenance"})
 
+# D2 symptom-first fallback (defect: gate deadlock, docs/evals/2026-08-03-
+# dialogue-mode-w2a/results.md). After this many unresolved gate firings in a
+# session — or as soon as the technician says they can't identify the machine —
+# the gate stops repeating the identical demand and the turn proceeds into a
+# clearly-labeled, lower-confidence symptom-first diagnostic path. A real
+# candidate (manufacturer resolved, or an asset-state hit) always re-opens the
+# grounded confirmation route.
+_UNS_GATE_MAX_ATTEMPTS = int(os.getenv("MIRA_UNS_GATE_MAX_ATTEMPTS", "2"))
+
+# Signals that the technician does not know / cannot access the equipment
+# identity. Conservative: "I'd have to check the nameplate" deliberately does
+# NOT match (identity is obtainable — let them check); the attempts cap above
+# catches drawn-out cases the phrases miss.
+_UNS_IDENTITY_UNKNOWN_RE = re.compile(
+    r"(?:don'?t|do\s+not|can'?t|cannot|couldn'?t)\s+(?:know|find|read|have|access|tell)"
+    r"|\bno\s+(?:idea|nameplate|name\s*plate|model\s+number|manual|label)\b"
+    r"|\bnot\s+sure\s+(?:what|which|who)\b"
+    r"|\bunlabel?led\b|\bworn\s+off\b|\billegible\b",
+    re.IGNORECASE,
+)
+
 # KG maintenance-context enrichment (additive, OFF by default). When on AND
 # INTERNAL_KG_API_KEY is configured, the diagnosis path fetches knowledge-graph
 # context (equipment hierarchy, components, recent faults + work orders) for the
@@ -1187,6 +1208,15 @@ class Supervisor:
         # diagnosis re-uses the stale draft and shows wrong asset/fault to the user.
         ctx.pop("cmms_pending", None)
         ctx.pop("cmms_wo_draft", None)
+
+        # D2: the symptom-first fallback bookkeeping belongs to the PREVIOUS
+        # asset's gate cycle. Carrying uns_identity_unknown across an asset
+        # switch would suppress the gate for the NEW machine without ever
+        # asking (UNS-025: never carry context across asset changes).
+        ctx.pop("uns_gate_attempts", None)
+        ctx.pop("uns_identity_unknown", None)
+        ctx.pop("symptom_first_notice_sent", None)
+        ctx.pop("uns_gate_last_candidate", None)
 
         state["fault_category"] = None
         state["final_state"] = None
@@ -3126,14 +3156,32 @@ class Supervisor:
             if (uns_ctx.confidence > 0 or _asset_state_hit) and self._should_fire_uns_gate(
                 _router_intent, state, message, sc
             ):
-                return await self._handle_uns_confirmation_request(
-                    chat_id,
-                    message,
-                    state,
-                    uns_ctx,
-                    trace_id,
-                    tenant_id=resolved_tenant,
-                )
+                # D2 symptom-first fallback: when the session has already shown
+                # it cannot produce an identity (technician said so, or the
+                # gate fired _UNS_GATE_MAX_ATTEMPTS times unresolved), stop
+                # repeating the demand — label the degraded mode once and let
+                # the turn continue into the normal diagnostic flow. An
+                # asset-state hit or resolved manufacturer is a real candidate
+                # and still confirms (the upgrade path back to grounded).
+                if self._uns_gate_exhausted(state, uns_ctx) and not _asset_state_hit:
+                    notice = self._uns_gate_fallback_notice(state)
+                    if notice:
+                        _honest_prefix += notice
+                    logger.info(
+                        "UNS_GATE_SYMPTOM_FIRST chat_id=%s attempts=%s unknown=%s",
+                        chat_id,
+                        (state.get("context") or {}).get("uns_gate_attempts"),
+                        (state.get("context") or {}).get("uns_identity_unknown"),
+                    )
+                else:
+                    return await self._handle_uns_confirmation_request(
+                        chat_id,
+                        message,
+                        state,
+                        uns_ctx,
+                        trace_id,
+                        tenant_id=resolved_tenant,
+                    )
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         if not photo_b64 and state["state"] == "IDLE" and state["exchange_count"] == 0:
@@ -7181,6 +7229,48 @@ class Supervisor:
             return False
         return True
 
+    def _uns_gate_exhausted(self, state: dict, uns_ctx) -> bool:
+        """D2: True when re-firing the gate would just repeat the same demand.
+
+        NEW identity information always returns False — later discovery of a
+        nameplate/model must re-open the grounded confirmation route no matter
+        how many attempts came before. But the resolver carries a prior
+        manufacturer forward with decaying confidence (uns_resolver merge), so
+        a candidate that was already offered and never confirmed is NOT new
+        information — re-offering it forever is the same deadlock.
+        """
+        ctx = state.get("context") or {}
+        exhausted = bool(ctx.get("uns_identity_unknown")) or (
+            int(ctx.get("uns_gate_attempts") or 0) >= _UNS_GATE_MAX_ATTEMPTS
+        )
+        if not exhausted:
+            return False
+        mfr = getattr(uns_ctx, "manufacturer", None)
+        if not mfr:
+            return True
+        model = getattr(uns_ctx, "model", None)
+        candidate = f"{mfr}, {model}" if model else mfr
+        return candidate == (ctx.get("uns_gate_last_candidate") or "")
+
+    def _uns_gate_fallback_notice(self, state: dict) -> str:
+        """One-time label for the symptom-first path; '' once announced.
+
+        Mutates state['context'] (persisted by the caller's normal save path)
+        so the notice is never repeated within a session. Names no equipment —
+        the fallback must not invent an identity.
+        """
+        ctx = state.get("context") or {}
+        if ctx.get("symptom_first_notice_sent"):
+            return ""
+        ctx["symptom_first_notice_sent"] = True
+        state["context"] = ctx
+        return (
+            "No exact model identified — I'll work from the symptoms with "
+            "general guidance (lower confidence). If you find a nameplate or "
+            "model number later, tell me and I'll pull the exact "
+            "documentation.\n\n"
+        )
+
     async def _handle_uns_confirmation_request(
         self,
         chat_id: str,
@@ -7267,6 +7357,14 @@ class Supervisor:
             )
             ctx["pending_uns_confirm"] = {"candidate": None}
 
+        # D2: count gate firings so an unresolved session stops repeating the
+        # same demand (see _uns_gate_exhausted). Reset on confirmation. The
+        # offered candidate is recorded so a manufacturer the resolver merely
+        # carries forward (already offered, never confirmed) cannot count as
+        # "new information" and re-open the loop.
+        ctx["uns_gate_attempts"] = int(ctx.get("uns_gate_attempts") or 0) + 1
+        ctx["uns_gate_last_candidate"] = candidate
+
         # Promote to AWAITING_UNS_CONFIRMATION so downstream code paths
         # (citation-compliance enforcement, telemetry, dialogue-state tracker)
         # can key off a single FSM state instead of inspecting context. The
@@ -7325,6 +7423,12 @@ class Supervisor:
                 if demo_ns.get("asset_tag"):
                     ctx["asset_tag"] = demo_ns["asset_tag"]
             ctx.pop("pending_uns_confirm", None)
+            # D2: asset confirmed — reset the symptom-first fallback bookkeeping
+            # so a future asset switch starts a fresh gate cycle.
+            ctx.pop("uns_gate_attempts", None)
+            ctx.pop("uns_identity_unknown", None)
+            ctx.pop("symptom_first_notice_sent", None)
+            ctx.pop("uns_gate_last_candidate", None)
             # Side state cleared — normal IDLE→Q1/DIAGNOSIS flow resumes on
             # the next turn now that asset_identified is set.
             if state.get("state") == "AWAITING_UNS_CONFIRMATION":
@@ -7374,6 +7478,11 @@ class Supervisor:
         # pending and let the normal flow run UNS resolver on the message.
         # Returning to IDLE lets the gate re-fire with new context on the
         # next turn if the user still hasn't given us enough.
+        # D2: if the reply says the identity is unknown/inaccessible, remember
+        # it — _uns_gate_exhausted switches to symptom-first instead of
+        # re-issuing the identical demand.
+        if _UNS_IDENTITY_UNKNOWN_RE.search(message or ""):
+            ctx["uns_identity_unknown"] = True
         ctx.pop("pending_uns_confirm", None)
         if state.get("state") == "AWAITING_UNS_CONFIRMATION":
             state["state"] = "IDLE"
