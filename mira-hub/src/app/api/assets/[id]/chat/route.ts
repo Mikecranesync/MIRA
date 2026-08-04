@@ -19,7 +19,7 @@ import {
   approvedContextReady,
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
-import { SAFETY_PHRASES } from "@/lib/safety-phrases";
+import { matchSafetyStop, SAFETY_STOP } from "@/lib/safety-classifier";
 import {
   buildMachineContextPacket,
   renderMachineEvidenceSection,
@@ -32,25 +32,6 @@ import {
 } from "@/lib/kb-gap";
 
 export const dynamic = "force-dynamic";
-
-function hasSafetyKeyword(text: string): string | null {
-  const lower = text.toLowerCase();
-  for (const phrase of SAFETY_PHRASES) {
-    if (lower.includes(phrase)) return phrase;
-  }
-  return null;
-}
-
-const SAFETY_STOP = `⛔ SAFETY STOP
-
-This question involves a safety-critical topic. Do not proceed without:
-
-1. Following your site's lockout/tagout (LOTO) procedure
-2. Confirming all energy sources are isolated and verified zero-energy
-3. Consulting a qualified person or supervisor before continuing
-
-MIRA will not provide guidance that bypasses safety controls.
-Contact your safety officer or supervisor immediately.`;
 
 // ── LLM Cascade (Groq → Cerebras → Gemini) ────────────────────────────────
 interface ChatMessage {
@@ -284,7 +265,7 @@ export async function POST(
   }
 
   // Safety gate — hard stop before touching LLM
-  const trigger = hasSafetyKeyword(lastUser.content);
+  const trigger = matchSafetyStop(lastUser.content);
   if (trigger) {
     const enc = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
