@@ -1146,6 +1146,15 @@ class Supervisor:
         ctx.pop("cmms_pending", None)
         ctx.pop("cmms_wo_draft", None)
 
+        # D2: the symptom-first fallback bookkeeping belongs to the PREVIOUS
+        # asset's gate cycle. Carrying uns_identity_unknown across an asset
+        # switch would suppress the gate for the NEW machine without ever
+        # asking (UNS-025: never carry context across asset changes).
+        ctx.pop("uns_gate_attempts", None)
+        ctx.pop("uns_identity_unknown", None)
+        ctx.pop("symptom_first_notice_sent", None)
+        ctx.pop("uns_gate_last_candidate", None)
+
         state["fault_category"] = None
         state["final_state"] = None
         state["state"] = target_state or self._background_state_for(state)
@@ -7159,16 +7168,25 @@ class Supervisor:
     def _uns_gate_exhausted(self, state: dict, uns_ctx) -> bool:
         """D2: True when re-firing the gate would just repeat the same demand.
 
-        A real candidate (resolver found a manufacturer) always returns False —
-        later discovery of a nameplate/model must re-open the grounded
-        confirmation route no matter how many attempts came before.
+        NEW identity information always returns False — later discovery of a
+        nameplate/model must re-open the grounded confirmation route no matter
+        how many attempts came before. But the resolver carries a prior
+        manufacturer forward with decaying confidence (uns_resolver merge), so
+        a candidate that was already offered and never confirmed is NOT new
+        information — re-offering it forever is the same deadlock.
         """
-        if getattr(uns_ctx, "manufacturer", None):
-            return False
         ctx = state.get("context") or {}
-        if ctx.get("uns_identity_unknown"):
+        exhausted = bool(ctx.get("uns_identity_unknown")) or (
+            int(ctx.get("uns_gate_attempts") or 0) >= _UNS_GATE_MAX_ATTEMPTS
+        )
+        if not exhausted:
+            return False
+        mfr = getattr(uns_ctx, "manufacturer", None)
+        if not mfr:
             return True
-        return int(ctx.get("uns_gate_attempts") or 0) >= _UNS_GATE_MAX_ATTEMPTS
+        model = getattr(uns_ctx, "model", None)
+        candidate = f"{mfr}, {model}" if model else mfr
+        return candidate == (ctx.get("uns_gate_last_candidate") or "")
 
     def _uns_gate_fallback_notice(self, state: dict) -> str:
         """One-time label for the symptom-first path; '' once announced.
@@ -7276,8 +7294,12 @@ class Supervisor:
             ctx["pending_uns_confirm"] = {"candidate": None}
 
         # D2: count gate firings so an unresolved session stops repeating the
-        # same demand (see _uns_gate_exhausted). Reset on confirmation.
+        # same demand (see _uns_gate_exhausted). Reset on confirmation. The
+        # offered candidate is recorded so a manufacturer the resolver merely
+        # carries forward (already offered, never confirmed) cannot count as
+        # "new information" and re-open the loop.
         ctx["uns_gate_attempts"] = int(ctx.get("uns_gate_attempts") or 0) + 1
+        ctx["uns_gate_last_candidate"] = candidate
 
         # Promote to AWAITING_UNS_CONFIRMATION so downstream code paths
         # (citation-compliance enforcement, telemetry, dialogue-state tracker)
@@ -7342,6 +7364,7 @@ class Supervisor:
             ctx.pop("uns_gate_attempts", None)
             ctx.pop("uns_identity_unknown", None)
             ctx.pop("symptom_first_notice_sent", None)
+            ctx.pop("uns_gate_last_candidate", None)
             # Side state cleared — normal IDLE→Q1/DIAGNOSIS flow resumes on
             # the next turn now that asset_identified is set.
             if state.get("state") == "AWAITING_UNS_CONFIRMATION":

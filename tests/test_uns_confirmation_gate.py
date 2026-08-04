@@ -519,6 +519,7 @@ async def test_yes_clears_fallback_state(tmp_path):
     assert "uns_gate_attempts" not in ctx
     assert "uns_identity_unknown" not in ctx
     assert "symptom_first_notice_sent" not in ctx
+    assert "uns_gate_last_candidate" not in ctx
 
 
 @pytest.mark.asyncio
@@ -543,3 +544,61 @@ async def test_unknown_identity_progresses_not_loops(tmp_path):
     # Turn 3: the gate must NOT re-fire — symptom-first takes over, labeled.
     assert sv._uns_gate_exhausted(saved, uns_ctx) is True
     assert sv._uns_gate_fallback_notice(saved) != ""
+
+
+def test_gate_exhausted_when_carried_candidate_was_already_offered(tmp_path):
+    """Regression (owner review 2026-08-04): the resolver carries an earlier
+    manufacturer forward with decaying confidence. If that candidate was
+    already offered and never confirmed, re-offering it forever is the same
+    deadlock — only NEW identity information re-opens the grounded route."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d11")
+    state["context"]["uns_identity_unknown"] = True
+    state["context"]["uns_gate_last_candidate"] = "Allen-Bradley, PowerFlex 525"
+    uns_ctx = SimpleNamespace(manufacturer="Allen-Bradley", model="PowerFlex 525", confidence=0.35)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is True
+
+
+def test_gate_reopens_for_genuinely_new_candidate(tmp_path):
+    """The other direction: a DIFFERENT manufacturer than the one already
+    offered is new information and must re-fire the confirmation."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d12")
+    state["context"]["uns_identity_unknown"] = True
+    state["context"]["uns_gate_last_candidate"] = "Allen-Bradley, PowerFlex 525"
+    uns_ctx = SimpleNamespace(manufacturer="Siemens", model="SINAMICS G120", confidence=0.6)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is False
+
+
+@pytest.mark.asyncio
+async def test_request_records_last_offered_candidate(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d13")
+    uns_ctx = SimpleNamespace(manufacturer="Allen-Bradley", model="PowerFlex 525", confidence=0.55)
+
+    await sv._handle_uns_confirmation_request("d13", "it's stopped", state, uns_ctx, "t")
+    saved = sv._load_state("d13")
+    assert (saved["context"] or {}).get("uns_gate_last_candidate") == "Allen-Bradley, PowerFlex 525"
+
+
+def test_asset_switch_carryover_clear_resets_fallback_state(tmp_path):
+    """UNS-025: an asset switch must not carry the previous machine's
+    exhaustion flags — a stale uns_identity_unknown would suppress the gate
+    for the NEW asset without ever asking."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d14")
+    state["context"]["uns_gate_attempts"] = 2
+    state["context"]["uns_identity_unknown"] = True
+    state["context"]["symptom_first_notice_sent"] = True
+    state["context"]["uns_gate_last_candidate"] = "Rockwell Automation"
+
+    out = sv._clear_diagnostic_carryover("d14", state)
+
+    ctx = out.get("context") or {}
+    for key in (
+        "uns_gate_attempts",
+        "uns_identity_unknown",
+        "symptom_first_notice_sent",
+        "uns_gate_last_candidate",
+    ):
+        assert key not in ctx, key

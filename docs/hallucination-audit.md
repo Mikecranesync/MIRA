@@ -1,8 +1,25 @@
 # Hallucination audit — D2 UNS-gate symptom-first fallback
 
-**Date:** 2026-08-04 · **Branch:** `fix/uns-gate-symptom-fallback` @ `880af8d55`
+**Date:** 2026-08-04 (updated after owner review rework) · **Branch:**
+`fix/uns-gate-symptom-fallback` (rebased onto post-#3105 main)
 **Scope:** the D2 diff only (`mira-bots/shared/engine.py` gate region +
-`tests/test_uns_confirmation_gate.py`). Not a whole-repo sweep.
+`tests/test_uns_confirmation_gate.py` + `tests/test_uns_gate_symptom_first_e2e.py`).
+Not a whole-repo sweep. Line numbers below are per-symbol anchors
+(`_should_fire_uns_gate`, `_uns_gate_exhausted`, `_uns_gate_fallback_notice`) —
+resolve with grep, they shift across rebases.
+
+**Rework additions (owner review):** (1) stale-carried-candidate regression —
+a manufacturer the resolver merely carries forward (already offered, never
+confirmed) no longer counts as "new information"; (2) `_clear_diagnostic_carryover`
+now clears the fallback bookkeeping on asset switch (UNS-025 — a stale
+`uns_identity_unknown` would otherwise suppress the gate for the NEW machine);
+(3) a full `Supervisor.process()` E2E test proves the notice reaches the reply,
+state persists, the RAG path continues, citation compliance (enforce ON)
+accepts the response, and a new sub-0.7 candidate re-fires the confirmation.
+Note recorded during E2E work: resolver confidence ≥ 0.7 auto-adopts the asset
+*before* the gate (pre-existing `process()` behavior, spec-referenced) — that is
+the upgrade path for strong identity; the gate-refire path covers weaker
+candidates.
 
 ## Summary
 
