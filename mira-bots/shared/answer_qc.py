@@ -250,6 +250,17 @@ def unrelated_vendor(question: str, reply: str) -> tuple[bool, str]:
         first = re.split(r"[\s—–,-]+", attr.strip())[0].strip().lower()
         if not first or first in _STOPWORDS:
             continue
+        # A leading token carrying a digit or a URL escape is a document
+        # artifact, not a brand. Measured on the synthetic run (2026-08-04),
+        # where the corpus produced `cm5003%20vibration%20guide1`, `ch4parameters`,
+        # `22comm` and `2100` — all reported as vendors, none of them a vendor.
+        # (`22comm` really is a Rockwell part number, which is exactly the point:
+        # it names a document, not the party being attributed.) These are junk
+        # citations and `malformed_citation` is the check that owns them.
+        # Purely alphabetic unknowns still fire, so the `co-01` Demag case —
+        # deliberately absent from `_VENDOR_MODELS` — is untouched.
+        if any(c.isdigit() for c in first) or "%" in first:
+            continue
         if _vendor_is_grounded(first, q):
             continue
         hits.append(first)
@@ -355,6 +366,14 @@ _PHOTO_SOURCE = re.compile(
 )
 
 
+# A citation body that is a raw file or URL artifact rather than a document
+# title. Observed live in the corpus (2026-08-04):
+# "[Source: cm5003%20vibration%20guide1 — SKF]" — a URL-encoded filename. A
+# technician cannot go look that up, which is the whole test for a citation.
+# Tracked upstream as corpus quality (#2968); caught here so it is visible.
+_FILE_ARTIFACT_SOURCE = re.compile(r"\[Source:[^\]]*%[0-9A-Fa-f]{2}[^\]]*\]")
+
+
 def malformed_citation(reply: str) -> tuple[bool, str]:
     """A `[Source: …]` tag whose body identifies no actual document."""
     m = _MALFORMED_SOURCE.search(reply or "")
@@ -363,6 +382,9 @@ def malformed_citation(reply: str) -> tuple[bool, str]:
     m = _PHOTO_SOURCE.search(reply or "")
     if m:
         return True, f"citation is the technician's own photo: {m.group(0)[:70]!r}"
+    m = _FILE_ARTIFACT_SOURCE.search(reply or "")
+    if m:
+        return True, f"citation is a raw file/URL artifact: {m.group(0)[:70]!r}"
     return False, ""
 
 
@@ -525,7 +547,60 @@ def invented_topic(question: str, reply: str) -> tuple[bool, str]:
     return False, ""
 
 
+# ── 9. non-answer: the answer exists and was announced instead of given ──────
+#
+# The blind spot that made the first synthetic runs misleading. Scenario
+# `direct_spec` went 0/4 to 4/4 across two runs with a BYTE-IDENTICAL reply —
+# the improvement was entirely a carve-out in `self_contradiction`, because no
+# check covered "this reply contains no answer". A gate that cannot see its own
+# worst finding cannot certify a pass rate.
+#
+# The class, measured verbatim, four turns running while the technician escalated:
+#
+#     "I have the AutomationDirect GS10 manual indexed."
+#
+# Deliberately narrow: it fires only when an announcement of possession is ALL
+# the reply says. A guiding question is a legitimate next move in a live
+# diagnosis and rescues the turn; so does any actual content.
+
+_ANNOUNCEMENT = re.compile(
+    r"\bI (?:have|already have|do have)\b[^.\n]{0,60}"
+    r"\b(?:manual|manuals|documentation|datasheet|indexed)\b[^.\n]*\.?",
+    re.IGNORECASE,
+)
+
+# Text that is present for honesty/UX but carries no answer, so it must not
+# count as substance when deciding whether the reply said anything.
+_NON_SUBSTANCE = (
+    re.compile(r"\[KB-gap:[^\]]*\]", re.IGNORECASE),
+    re.compile(r"\bcorrection\b[^.\n]*\.", re.IGNORECASE),
+    re.compile(r"_\(Note:[^)]*\)_", re.IGNORECASE),
+    re.compile(r"Ask about the manual[^.\n]*\.?", re.IGNORECASE),
+    re.compile(r"consult the (?:asset nameplate|vendor manual)[^.\n]*\.?", re.IGNORECASE),
+    re.compile(r"\[Source:[^\]]*\]", re.IGNORECASE),
+    re.compile(r"---\s*Sources\s*---[\s\S]*$", re.IGNORECASE),
+)
+
+_MIN_SUBSTANCE_WORDS = 6
+
+
+def non_answer(reply: str) -> tuple[bool, str]:
+    """Announces that documentation exists without answering from it."""
+    if not _ANNOUNCEMENT.search(reply or ""):
+        return False, ""
+    residue = _ANNOUNCEMENT.sub("", reply or "")
+    for pattern in _NON_SUBSTANCE:
+        residue = pattern.sub("", residue)
+    residue = residue.strip()
+    if "?" in residue:  # a guiding question advances the diagnosis
+        return False, ""
+    if len(re.findall(r"\b\w+\b", residue)) >= _MIN_SUBSTANCE_WORDS:
+        return False, ""
+    return True, "announces documentation without answering from it"
+
+
 DETECTORS = {
+    "non_answer": lambda q, r: non_answer(r),
     "self_contradiction": lambda q, r: self_contradiction(r),
     "unrelated_vendor": unrelated_vendor,
     "claimed_action": lambda q, r: claimed_action(r),

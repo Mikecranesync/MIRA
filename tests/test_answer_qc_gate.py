@@ -272,3 +272,69 @@ def test_a_correct_vendor_block_survives_normalization():
     established = "my AutomationDirect GS10 shows CE10"
     block = "CE10 is a comms fault.\n\n--- Sources ---\n[1] AutomationDirect GS10 - Fault Codes\n"
     assert evaluate_citation_relevance(norm(block), "AutomationDirect", established)["relevant"]
+
+
+# ── non_answer: the blind spot that made two runs misleading ────────────────
+
+THE_NON_ANSWER = (
+    "I have the AutomationDirect GS10 manual indexed.\n\n"
+    "Correction: I can't produce a citation for that, so treat the reference above as "
+    "unverified — consult the asset nameplate or vendor manual. "
+    "[KB-gap: I do not have that specific information in the knowledge base.]"
+)
+
+
+def test_the_withheld_answer_is_caught():
+    """`direct_spec` went 0/4 -> 4/4 across two runs on a BYTE-IDENTICAL reply,
+    because no check covered "this reply contains no answer"."""
+    report = run_output_qc(
+        "what is the default motor overload trip class on the GS10?",
+        THE_NON_ANSWER,
+        mode="observe",
+    )
+    assert "non_answer" in report.findings
+
+
+def test_a_bare_possession_claim_is_caught():
+    assert (
+        "non_answer"
+        in run_output_qc(
+            "q", "I have AutomationDirect documentation indexed.", mode="observe"
+        ).findings
+    )
+
+
+def test_an_announcement_followed_by_the_answer_is_clean():
+    """Both directions — announcing AND answering is fine."""
+    reply = (
+        "I have the AutomationDirect GS10 manual indexed. The default motor overload "
+        "trip class is 10, set by parameter P06.00 "
+        "[Source: AutomationDirect GS10 — Protection Parameters]."
+    )
+    assert "non_answer" not in run_output_qc("GS10 trip class?", reply, mode="observe").findings
+
+
+def test_an_announcement_followed_by_a_guiding_question_is_clean():
+    """A question advances a live diagnosis — it is not a withheld answer."""
+    reply = "I have the GS10 manual indexed. What fault code is on the display right now?"
+    assert "non_answer" not in run_output_qc("drive is faulted", reply, mode="observe").findings
+
+
+def test_an_ordinary_answer_never_trips_non_answer():
+    assert "non_answer" not in run_output_qc("GS10 CE10?", CLEAN_REPLY, mode="observe").findings
+
+
+# ── citation labels that are document artifacts, not vendors ────────────────
+
+
+def test_a_url_encoded_filename_is_a_malformed_citation_not_a_vendor():
+    reply = "Check the bearing [Source: cm5003%20vibration%20guide1 — SKF]"
+    findings = run_output_qc("motor is vibrating", reply, mode="observe").findings
+    assert "malformed_citation" in findings
+    assert "unrelated_vendor" not in findings
+
+
+def test_a_part_number_label_is_not_reported_as_a_vendor():
+    """`22comm` is a real Rockwell part — it names a document, not the party."""
+    reply = "See the adapter guide [Source: 22COMM — User Manual 015]"
+    assert "unrelated_vendor" not in run_output_qc("drive comms", reply, mode="observe").findings

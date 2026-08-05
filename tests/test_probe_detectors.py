@@ -82,6 +82,18 @@ MUST_FIRE = [
         "spinning [Source: [3] --- Reference Documents]?\n1. Yes\n2. No",
     ),
     (
+        # Observed on the synthetic QC run (2026-08-04). Asked four times,
+        # escalating, for the GS10 default overload trip class, MIRA announced
+        # that it held the manual and never answered from it — the ct-04
+        # withheld-answer class. `direct_spec` scored 0/4 on this reply.
+        "non_answer",
+        "what is the default motor overload trip class on the GS10?",
+        "I have the AutomationDirect GS10 manual indexed.\n\n"
+        "Correction: I can't produce a citation for that, so treat the reference above "
+        "as unverified — consult the asset nameplate or vendor manual. "
+        "[KB-gap: I do not have that specific information in the knowledge base.]",
+    ),
+    (
         # Observed in the W2a eval (defect D3, results.md) — MIRA cited the
         # technician's own uploaded photo. `photo_handler` saves the session
         # photo as `{chat_id}.jpg`, so the label is a bare number plus `.jpg`.
