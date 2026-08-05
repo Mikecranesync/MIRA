@@ -9,7 +9,15 @@
     "ground_truth": {
       "root_cause": "One phase of the input power is missing or significantly low voltage, causing the VFD to draw excessive current on the remaining phases during startup.",
       "fix": "Check all three phases of input power at the VFD terminals with a multimeter. Verify voltage is balanced within 3%. Inspect the input fusing or breaker — one fuse may have blown or a breaker pole may have tripped. Replace the blown fuse or reset the breaker.",
-      "keywords": ["phase loss", "input power", "fuse", "voltage imbalance", "F004", "overcurrent", "breaker"]
+      "keywords": [
+        "phase loss",
+        "input power",
+        "fuse",
+        "voltage imbalance",
+        "F004",
+        "overcurrent",
+        "breaker"
+      ]
     }
   },
   {
@@ -22,7 +30,15 @@
     "ground_truth": {
       "root_cause": "Drive-end bearing failure due to lubrication degradation from continuous duty cycle. The elevated vibration velocity (0.3 to 0.8 in/s) and localized heat at the drive end confirm bearing deterioration.",
       "fix": "Shut down the motor immediately to prevent catastrophic bearing failure and shaft damage. Replace both drive-end and non-drive-end bearings. Check the shaft for scoring or damage. Re-grease with manufacturer-specified lubricant and establish a preventive re-lubrication schedule (typically every 2000-4000 hours for continuous duty).",
-      "keywords": ["bearing", "vibration", "lubrication", "drive end", "grinding", "overheating", "continuous duty"]
+      "keywords": [
+        "bearing",
+        "vibration",
+        "lubrication",
+        "drive end",
+        "grinding",
+        "overheating",
+        "continuous duty"
+      ]
     }
   },
   {
@@ -35,7 +51,16 @@
     "ground_truth": {
       "root_cause": "The new VFD is generating electromagnetic interference (EMI) that corrupts the EtherNet/IP communication. The Ethernet cable running near the VFD power cables picks up induced noise, causing packet loss and communication timeouts.",
       "fix": "Route the Ethernet cable away from the VFD power cables, maintaining at least 12 inches of separation. Use shielded Ethernet cable (STP) with properly grounded shields. Add an EMI filter on the VFD output. Verify the VFD has a proper ground connection. If the cable path cannot be changed, use fiber optic Ethernet for the run near the VFD.",
-      "keywords": ["EMI", "interference", "VFD", "shielded cable", "EtherNet/IP", "packet loss", "separation", "fiber"]
+      "keywords": [
+        "EMI",
+        "interference",
+        "VFD",
+        "shielded cable",
+        "EtherNet/IP",
+        "packet loss",
+        "separation",
+        "fiber"
+      ]
     }
   },
   {
@@ -48,7 +73,15 @@
     "ground_truth": {
       "root_cause": "The minimum pressure check valve (between the compressor and the receiver tank) is stuck partially closed, causing pressure to build up on the compressor side beyond the normal operating range.",
       "fix": "Inspect and clean the minimum pressure check valve. Remove, disassemble, and check the valve seat and spring for debris, carbon buildup, or a broken spring. Replace the valve if the seat is damaged. Also check the intake valve — if it's not unloading properly, the compressor will keep building pressure past the setpoint.",
-      "keywords": ["minimum pressure valve", "check valve", "stuck", "discharge pressure", "unload", "intake valve", "carbon buildup"]
+      "keywords": [
+        "minimum pressure valve",
+        "check valve",
+        "stuck",
+        "discharge pressure",
+        "unload",
+        "intake valve",
+        "carbon buildup"
+      ]
     }
   },
   {
@@ -61,7 +94,16 @@
     "ground_truth": {
       "root_cause": "The conveyor frame is not level or square, and/or the idler rollers are not perpendicular to the belt travel direction. Material buildup on the rollers or pulleys on one side can also cause the belt to track off-center.",
       "fix": "Check the conveyor frame for level using a precision level — adjust the leg supports to make it level and square. Inspect all idler rollers and clean any material buildup. Verify all rollers are perpendicular to the belt direction using a string line or laser. Adjust the self-aligning (training) idlers if equipped. On the return side, adjust rollers in the direction you want the belt to move — the belt moves toward the side of the roller it contacts first.",
-      "keywords": ["tracking", "alignment", "level", "idler", "perpendicular", "material buildup", "training idler", "frame"]
+      "keywords": [
+        "tracking",
+        "alignment",
+        "level",
+        "idler",
+        "perpendicular",
+        "material buildup",
+        "training idler",
+        "frame"
+      ]
     }
   },
   {
@@ -74,7 +116,16 @@
     "ground_truth": {
       "root_cause": "The motor rewind was done with incorrect wire gauge or turn count, reducing the motor's efficiency and causing it to draw higher current under load. This is a common problem with poor-quality rewinds. The 4-month delay is typical as insulation degradation from the higher operating temperature is progressive.",
       "fix": "Measure the running current on all three phases and compare to the nameplate FLA. If current is significantly above FLA (more than 10%), the rewind is suspect. Have the motor tested on a motor analyzer to compare winding resistance and inductance across phases. If imbalanced, the motor needs to be rewound correctly or replaced. Check the voltage at the motor terminals under load — low voltage will also cause overcurrent.",
-      "keywords": ["rewind", "overcurrent", "FLA", "current draw", "winding resistance", "wire gauge", "turn count", "insulation"]
+      "keywords": [
+        "rewind",
+        "overcurrent",
+        "FLA",
+        "current draw",
+        "winding resistance",
+        "wire gauge",
+        "turn count",
+        "insulation"
+      ]
     }
   },
   {
@@ -87,7 +138,15 @@
     "ground_truth": {
       "root_cause": "The cylinder piston seals are worn, allowing internal bypass (oil leaking past the piston from the pressure side to the low-pressure side). This reduces the effective flow reaching the extending side of the piston, slowing the cylinder. Since other cylinders are fine, the HPU pump is not the issue.",
       "fix": "Isolate the cylinder and perform a bypass test: fully extend the cylinder, block the rod mechanically, apply pressure, and disconnect the return line to check for flow — excessive flow from the return port with the cylinder stalled confirms piston seal bypass. Reseal the cylinder with new piston seals. Inspect the cylinder bore for scoring that could have caused the seal failure.",
-      "keywords": ["piston seal", "bypass", "internal leakage", "cylinder bore", "seal failure", "slow", "reseal"]
+      "keywords": [
+        "piston seal",
+        "bypass",
+        "internal leakage",
+        "cylinder bore",
+        "seal failure",
+        "slow",
+        "reseal"
+      ]
     }
   },
   {
@@ -100,7 +159,16 @@
     "ground_truth": {
       "root_cause": "The sensor wiring connection is loose or corroded, causing an intermittent signal. Since replacing the sensor didn't fix it, the issue is in the cable or connector. Vibration from the packaging machine loosens the connection over time.",
       "fix": "Inspect the sensor connector and cable for loose pins, corrosion, or chafing. Check the cable routing — the cable may be getting pinched or flexed at a tight bend radius during machine operation. Re-terminate the wiring connections and apply dielectric grease to the connector pins. If using a quick-disconnect connector, replace the cable assembly. Secure the cable with proper strain relief to prevent vibration-induced failures.",
-      "keywords": ["wiring", "connector", "loose", "corrosion", "cable", "vibration", "intermittent", "strain relief"]
+      "keywords": [
+        "wiring",
+        "connector",
+        "loose",
+        "corrosion",
+        "cable",
+        "vibration",
+        "intermittent",
+        "strain relief"
+      ]
     }
   },
   {
@@ -113,7 +181,16 @@
     "ground_truth": {
       "root_cause": "The bypass contactor coil has failed (open circuit) or the control relay/output driving the bypass contactor has failed. The soft starter completes its ramp but cannot energize the bypass contactor to shunt the SCRs, so current continues flowing through the thyristors generating heat.",
       "fix": "Measure the bypass contactor coil resistance — an open reading confirms a burned coil, replace the contactor. If the coil reads normal, check for control voltage at the contactor coil terminals when the soft starter is in 'Run' state. If no voltage, the soft starter's bypass relay output has failed — check the internal bypass relay or the wiring between the soft starter bypass output and the contactor coil. Replace the bypass relay or the soft starter control board as needed.",
-      "keywords": ["bypass contactor", "coil", "SCR", "thyristor", "overheat", "control relay", "bypass relay", "coil resistance"]
+      "keywords": [
+        "bypass contactor",
+        "coil",
+        "SCR",
+        "thyristor",
+        "overheat",
+        "control relay",
+        "bypass relay",
+        "coil resistance"
+      ]
     }
   },
   {
@@ -126,7 +203,92 @@
     "ground_truth": {
       "root_cause": "Refrigerant leak, most likely at a brazed joint, Schrader valve, or flare fitting. The gradual loss over 3 months with no visible oil spots suggests a small leak. R-410A leaks can be hard to see since the oil carried with it evaporates quickly in small quantities.",
       "fix": "Perform an electronic leak detection sweep of all brazed joints, flare connections, and Schrader valve cores. Pay special attention to the condenser coil u-bends and the suction line connections. Once the leak is found, recover the charge, repair the leak (braze or replace fitting), pressure test with dry nitrogen to 500 PSI, evacuate the system to 500 microns, and recharge to manufacturer specifications. Document the charge amount.",
-      "keywords": ["refrigerant leak", "R-410A", "brazed joint", "Schrader valve", "leak detection", "suction pressure", "recharge", "nitrogen test"]
+      "keywords": [
+        "refrigerant leak",
+        "R-410A",
+        "brazed joint",
+        "Schrader valve",
+        "leak detection",
+        "suction pressure",
+        "recharge",
+        "nitrogen test"
+      ]
+    }
+  },
+  {
+    "id": "seed-011",
+    "title": "Direct question: fault code meaning (ct-04 class)",
+    "equipment_type": "VFD",
+    "fault_category": "power",
+    "difficulty": "easy",
+    "evidence_packet": "What does fault F004 on an Allen-Bradley PowerFlex 525 mean?",
+    "ground_truth": {
+      "root_cause": "F004 is UnderVoltage - the DC bus voltage dropped below the minimum threshold, typically from low incoming line voltage, a supply sag during start, or line imbalance.",
+      "fix": "State the fault meaning directly with the fault-table citation, name the likely causes (low incoming line, imbalance), and give one concrete check: measure the incoming line voltage at L1-L2-L3. A direct question deserves a direct cited answer, not a quiz.",
+      "keywords": [
+        "undervoltage",
+        "DC bus",
+        "fault code table",
+        "input line voltage",
+        "L1"
+      ]
+    }
+  },
+  {
+    "id": "seed-012",
+    "title": "Direct question: documented reset procedure",
+    "equipment_type": "VFD",
+    "fault_category": "power",
+    "difficulty": "easy",
+    "evidence_packet": "How do I reset a PowerFlex 525 after an F004 undervoltage fault?",
+    "ground_truth": {
+      "root_cause": "The technician asked for the manufacturer's documented reset procedure - not a diagnosis. The documented options are the keypad Stop/Reset key, a power cycle, or a digital-input reset, after the undervoltage condition is corrected.",
+      "fix": "Give the documented procedure directly with its citation, note the supply must be verified healthy first, and that a qualified person performs it at the machine. Never claim to perform the reset.",
+      "keywords": [
+        "reset",
+        "stop key",
+        "power cycle",
+        "verify supply",
+        "qualified person"
+      ]
+    }
+  },
+  {
+    "id": "seed-013",
+    "title": "Direct question: GS10 fault mnemonic meaning",
+    "equipment_type": "VFD",
+    "fault_category": "communication",
+    "difficulty": "easy",
+    "evidence_packet": "What does CE10 mean on my DURApulse GS10 drive?",
+    "ground_truth": {
+      "root_cause": "CE10 is a Modbus communication timeout - the drive stopped receiving polls from its master within the configured timeout window.",
+      "fix": "State the meaning directly with the manual citation, name the usual causes (master offline, wiring/termination, address or baud mismatch), and one check: verify the RS-485 wiring and the master's polling.",
+      "keywords": [
+        "modbus",
+        "communication timeout",
+        "CE10",
+        "RS-485",
+        "master"
+      ]
+    }
+  },
+  {
+    "id": "seed-014",
+    "title": "Direct question: specification lookup",
+    "equipment_type": "VFD",
+    "fault_category": "power",
+    "difficulty": "medium",
+    "evidence_packet": "What should the DC bus voltage read on a PowerFlex 525 with 480V three-phase input?",
+    "ground_truth": {
+      "root_cause": "Nominal DC bus is the rectified line: roughly 480 x 1.414, about 678 VDC at nominal input, varying with line voltage.",
+      "fix": "Answer the specification directly with a citation (or an honest KB-gap admission if the spec is not indexed) - approximately 678 VDC nominal - and note it tracks line voltage. Do not quiz the technician about what the documents say.",
+      "keywords": [
+        "DC bus",
+        "678",
+        "rectified",
+        "480V",
+        "nominal"
+      ]
     }
   }
 ]
