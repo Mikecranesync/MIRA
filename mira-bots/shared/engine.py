@@ -5845,6 +5845,9 @@ class Supervisor:
                             "Diagnose this asset",
                         ],
                     )
+                    # Gate BEFORE recording, so history stores what the technician
+                    # actually saw rather than the pre-strip text.
+                    reply = self._gate_reply_citations(reply, message, state, chat_id)
                     self._record_exchange(chat_id, state, message, reply)
                     tl_flush()
                     return self._make_result(
@@ -5969,6 +5972,7 @@ class Supervisor:
                 "Log a work order",
             ],
         )
+        reply = self._gate_reply_citations(reply, message, state, chat_id)
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
         # Observability (probe follow-up): mark this reply as ungrounded in the
@@ -7228,6 +7232,35 @@ class Supervisor:
     def _ensure_table(self):
         """Create conversation_state table if it doesn't exist."""
         ensure_table(self.db_path)
+
+    def _gate_reply_citations(self, formatted: str, message: str, state: dict, chat_id: str) -> str:
+        """Normalize block-form citations, then run the vendor-relevance gate.
+
+        `process_full`'s two branches do this inline; `_handle_general_question`
+        did not, and it is the RAG path — the one that actually emits citations.
+        Measured on the synthetic QC loop (2026-08-04): the strip fires correctly
+        wherever it runs, yet `unrelated_vendor` stayed flat, because these
+        replies never reached it. Routing specific questions here (the ct-04 fix)
+        sent MORE traffic down the ungated path, so this closes it.
+
+        A no-op when the reply carries no citation, so it is safe on every return.
+        Never raises — a gate that breaks a reply is worse than one that misses.
+        """
+        try:
+            formatted = _normalize_sources_block(formatted)
+            _cc = _check_citation_compliance(
+                formatted,
+                {},
+                fsm_state=state.get("state", ""),
+                chat_id=chat_id,
+                uns_context=(state.get("context") or {}).get("uns_context"),
+                established_text=_established_context_text(message, state),
+                enforce=_citation_enforce_enabled(),
+            )
+            return _cc.get("sanitized_reply") or formatted
+        except Exception as exc:  # noqa: BLE001 — never break a reply over QC
+            logger.warning("CITATION_GATE_FAILED chat_id=%s error=%s", chat_id, exc)
+            return formatted
 
     def _load_state(self, chat_id: str) -> dict:
         """Load conversation state from SQLite."""

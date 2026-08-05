@@ -100,3 +100,45 @@ def test_no_established_text_still_disables_the_check():
     conversation gets the old behaviour, not a false strip."""
     reply = "Have you checked the brake gap [Source: Demag — BGV D06]?"
     assert evaluate_citation_relevance(reply, None, "")["relevant"]
+
+
+# ── the RAG path must run the gate too ──────────────────────────────────────
+
+
+def test_the_general_question_path_gates_its_citations():
+    """`_handle_general_question` is the path that EMITS citations, and it had
+    four return points and zero citation checks. The strip fires correctly
+    wherever it runs; `unrelated_vendor` stayed flat across two synthetic runs
+    because these replies never reached it — and routing specific questions here
+    (the ct-04 fix) sent more traffic down the ungated path.
+    """
+    import shared.engine as eng_mod
+
+    eng = eng_mod.Supervisor.__new__(eng_mod.Supervisor)
+    reply = "Check the brake gap [Source: Demag — BGV D06]"
+    state = {"state": "IDLE", "context": {}}
+
+    out = eng._gate_reply_citations(reply, "the conveyor stopped again", state, "c1")
+
+    assert "[Source: Demag" not in out
+    assert "removed a citation" in out
+
+
+def test_the_gate_helper_is_a_no_op_without_citations():
+    """Both directions — safe to call on every return point."""
+    import shared.engine as eng_mod
+
+    eng = eng_mod.Supervisor.__new__(eng_mod.Supervisor)
+    reply = "What fault code is on the display?"
+    assert eng._gate_reply_citations(reply, "it stopped", {"state": "IDLE"}, "c1") == reply
+
+
+def test_the_gate_helper_keeps_an_established_citation():
+    import shared.engine as eng_mod
+
+    eng = eng_mod.Supervisor.__new__(eng_mod.Supervisor)
+    reply = "CE10 is a comms fault [Source: AutomationDirect GS10 — Fault Codes]"
+    out = eng._gate_reply_citations(
+        reply, "my AutomationDirect GS10 shows CE10", {"state": "IDLE"}, "c1"
+    )
+    assert "[Source: AutomationDirect GS10 — Fault Codes]" in out
