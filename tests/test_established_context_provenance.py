@@ -110,3 +110,38 @@ def test_a_real_prose_attribution_still_fires():
 
     reply = "Check the PE conductor as mentioned in the Demag documentation"
     assert "unrelated_vendor" in run_output_qc("it stopped", reply, mode="observe").findings
+
+
+# ── the conflict branch must not bless an invented expectation ──────────────
+
+
+def test_an_unconfirmed_resolved_vendor_is_not_a_trusted_expectation():
+    """The mirror bug: an unconfirmed resolver hit does not merely fail to strip
+    a wrong citation, it BLESSES it — a Yaskawa citation "matches" a Yaskawa
+    expectation MIRA inferred from the very chunk it is citing."""
+    from shared.citation_compliance import trusted_uns_context
+
+    state = _state(mfr="Yaskawa", model="V1000", history="my GS10 keeps tripping CE10")
+    assert trusted_uns_context(state)["manufacturer"] == ""
+
+
+def test_a_confirmed_asset_keeps_the_expectation():
+    from shared.citation_compliance import trusted_uns_context
+
+    state = _state(mfr="AutomationDirect", asset="GS10 drive, conveyor 1")
+    assert trusted_uns_context(state)["manufacturer"] == "AutomationDirect"
+
+
+def test_a_direct_connection_keeps_the_expectation():
+    from shared.citation_compliance import trusted_uns_context
+
+    state = _state(mfr="AutomationDirect", source="direct_connection")
+    assert trusted_uns_context(state)["manufacturer"] == "AutomationDirect"
+
+
+def test_blanking_the_expectation_makes_the_gate_stricter_not_weaker():
+    """Both directions — the turn falls to the unsupported-attribution branch,
+    which compares against the technician's own words."""
+    reply = "Press MENU on the keypad [Source: Yaskawa V1000 — Step Display]"
+    established = "my GS10 keeps tripping CE10"
+    assert evaluate_citation_relevance(reply, "", established)["reason"] == "unestablished"

@@ -208,6 +208,38 @@ def _attributed_party(tag: str) -> str | None:
     return first
 
 
+def trusted_uns_context(state: dict | None) -> dict | None:
+    """The session's `uns_context`, with an UNCONFIRMED manufacturer removed.
+
+    The mirror of the rule in `established_context_text`. The conflict check
+    compares cited vendors against `uns_context["manufacturer"]` as the *expected*
+    one — so an unconfirmed resolver hit does not merely fail to strip a wrong
+    citation, it actively BLESSES it: MIRA retrieves a Yaskawa chunk, the
+    resolver writes Yaskawa into state, and the gate then reads a Yaskawa
+    citation as matching the expected vendor.
+
+    Measured on a GS10 conversation: "[Source: Yaskawa V1000 — Step Display]" and
+    "[Source: Rockwell Automation 1769-L33ER]" survived in replies that carried a
+    strip note, because they matched an expectation MIRA had invented.
+
+    Blanking the manufacturer does not weaken the gate — it moves the turn to the
+    unsupported-attribution branch, which compares against the technician's own
+    words instead. That is strictly stricter.
+    """
+    if not isinstance(state, dict):
+        return None
+    ctx = state.get("context")
+    uns = ctx.get("uns_context") if isinstance(ctx, dict) else None
+    if not isinstance(uns, dict):
+        return None
+    if state.get("asset_identified") or uns.get("source") == "direct_connection":
+        return uns
+    trimmed = dict(uns)
+    trimmed["manufacturer"] = ""
+    trimmed["model"] = ""
+    return trimmed
+
+
 def established_context_text(message: str, state: dict | None) -> str:
     """What the TECHNICIAN and trusted state have established, as one string.
 

@@ -23,6 +23,7 @@ from .citation_compliance import check_citation_compliance as _check_citation_co
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .citation_compliance import established_context_text as _established_context_text
+from .citation_compliance import trusted_uns_context as _trusted_uns_context
 from .conversation_router import route_intent
 from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
@@ -3993,7 +3994,7 @@ class Supervisor:
             parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
-            uns_context=(state.get("context") or {}).get("uns_context"),
+            uns_context=_trusted_uns_context(state),
             established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
         )
@@ -5271,7 +5272,7 @@ class Supervisor:
             parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
-            uns_context=ctx.get("uns_context"),
+            uns_context=_trusted_uns_context(state),
             established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
         )
@@ -7254,7 +7255,7 @@ class Supervisor:
                 {},
                 fsm_state=state.get("state", ""),
                 chat_id=chat_id,
-                uns_context=(state.get("context") or {}).get("uns_context"),
+                uns_context=_trusted_uns_context(state),
                 established_text=_established_context_text(message, state),
                 enforce=_citation_enforce_enabled(),
             )
