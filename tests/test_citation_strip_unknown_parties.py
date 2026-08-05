@@ -142,3 +142,59 @@ def test_the_gate_helper_keeps_an_established_citation():
         reply, "my AutomationDirect GS10 shows CE10", {"state": "IDLE"}, "c1"
     )
     assert "[Source: AutomationDirect GS10 — Fault Codes]" in out
+
+
+# ── a stripped citation must not come back ──────────────────────────────────
+
+
+def test_a_stripped_citation_is_removed_from_the_sources_block_too():
+    """Measured live (2026-08-04): a GS10 question kept
+    "[Source: Rockwell Automation PowerFlex 525 — Parameter Groups]" while
+    carrying the "I removed a citation…" note in the SAME reply.
+
+    The citation was rendered twice — inline and in a trailing `--- Sources ---`
+    block. The strip removed the inline tag; the block survived; and the H4
+    enforcer's `_normalize_sources_block` then turned that surviving line back
+    into an inline tag, silently undoing the strip.
+    """
+    from shared.citation_compliance import strip_conflicting_citations
+    from shared.engine import _normalize_sources_block as norm
+
+    reply = (
+        "Parameter list is on page 154 "
+        "[Source: Rockwell Automation PowerFlex 525 — Parameter Groups].\n\n"
+        "--- Sources ---\n[1] Rockwell Automation PowerFlex 525 — Parameter Groups\n"
+    )
+    established = "my AutomationDirect GS10 — what page is the parameter list on?"
+    ev = evaluate_citation_relevance(reply, "AutomationDirect", established)
+    stripped = strip_conflicting_citations(
+        reply, ev["conflicting_tags"], "AutomationDirect", ev["reason"]
+    )
+
+    assert "[Source: Rockwell" not in stripped
+    assert "Rockwell Automation PowerFlex 525" not in stripped.split("Note:")[0]
+    # The whole point: re-normalizing must not resurrect it.
+    assert "[Source: Rockwell" not in norm(stripped)
+
+
+def test_a_surviving_citation_keeps_its_block_line():
+    """Both directions — pruning removes ONLY what was stripped.
+
+    Uses the unestablished path with two parties: the technician named Demag, so
+    that citation is correct and stays (tag and block line); nobody mentioned
+    Interroll, so it goes from both renderings.
+    """
+    from shared.citation_compliance import strip_conflicting_citations
+
+    reply = (
+        "Check the brake gap [Source: Demag — BGV D06] and the roller "
+        "[Source: Interroll — Drum Motor].\n\n--- Sources ---\n"
+        "[1] Demag — BGV D06\n[2] Interroll — Drum Motor\n"
+    )
+    established = "the Demag hoist keeps faulting"
+    ev = evaluate_citation_relevance(reply, None, established)
+    stripped = strip_conflicting_citations(reply, ev["conflicting_tags"], None, ev["reason"])
+
+    body = stripped.split("_(Note:")[0]
+    assert "Demag — BGV D06" in body
+    assert "Interroll" not in body

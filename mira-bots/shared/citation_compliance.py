@@ -359,6 +359,36 @@ def evaluate_citation_relevance(
     }
 
 
+# A trailing `--- Sources ---` block. Defined here, in the module that owns what
+# is citable, and imported by the engine's H4 normalizer so the strip and the
+# normalizer read the SAME block — they were previously fighting over it.
+SOURCES_BLOCK_RE = re.compile(
+    r"---\s*Sources\s*---\s*\n((?:\s*\[\d+\]\s+[^\n]+\n?)+)",
+    re.IGNORECASE,
+)
+
+
+def _prune_sources_block(text: str, removed_labels: list[str]) -> str:
+    """Drop `--- Sources ---` lines naming a citation that was just stripped.
+
+    Removes the whole block when nothing is left in it, so a bare header never
+    trails the reply.
+    """
+    m = SOURCES_BLOCK_RE.search(text or "")
+    if not m or not removed_labels:
+        return text
+    kept = []
+    for line in m.group(1).strip().splitlines():
+        label = line.split("]", 1)[1].strip() if "]" in line else line.strip()
+        if any(label and (label in rem or rem in label) for rem in removed_labels if rem):
+            continue
+        kept.append(line)
+    if not kept:
+        return (text[: m.start()] + text[m.end() :]).rstrip()
+    body = "\n".join(kept) + "\n"
+    return text[: m.start()] + f"--- Sources ---\n{body}" + text[m.end() :]
+
+
 def strip_conflicting_citations(
     reply: str,
     conflicting_tags: list[str],
@@ -376,6 +406,14 @@ def strip_conflicting_citations(
     out = reply or ""
     for tag in conflicting_tags:
         out = out.replace(tag, "")
+    # The same citation is often rendered TWICE — inline, and again in a trailing
+    # `--- Sources ---` block. Removing only the inline tag leaves the block
+    # listing the source we just refused to stand behind, and the H4 enforcer's
+    # `_normalize_sources_block` then turns that surviving line back INTO an
+    # inline tag, silently undoing the strip. Measured live (2026-08-04): a GS10
+    # question kept "[Source: Rockwell Automation PowerFlex 525 — Parameter
+    # Groups]" while carrying the "I removed a citation…" note in the same reply.
+    out = _prune_sources_block(out, [_tag_label(t).strip() for t in conflicting_tags])
     out = re.sub(r"[ \t]{2,}", " ", out).rstrip()
 
     if reason == "unestablished":

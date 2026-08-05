@@ -18,6 +18,7 @@ import httpx
 from . import print_recall, quality_gate
 from .answer_qc import qc_mode, run_output_qc
 from .chat_tenant import resolve as resolve_tenant
+from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
@@ -1007,10 +1008,10 @@ _H4_STOCK_ADMISSION = (
 # Normalize to the inline format so downstream scoring + AskMira view rendering
 # treat them identically. The original block is preserved AFTER the inline
 # markers for human readability.
-_H4_SOURCES_BLOCK_RE = re.compile(
-    r"---\s*Sources\s*---\s*\n((?:\s*\[\d+\]\s+[^\n]+\n?)+)",
-    re.IGNORECASE,
-)
+# One definition, shared with the strip in `citation_compliance`. They used to
+# read the block through separate regexes and could disagree about its contents —
+# which is how a stripped citation survived in the block and got re-materialized.
+_H4_SOURCES_BLOCK_RE = _SOURCES_BLOCK_RE
 
 
 # The label inside an inline tag — used to tell an already-normalized reply from
