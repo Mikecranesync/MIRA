@@ -16,12 +16,14 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import print_recall, quality_gate
-from .answer_qc import run_output_qc
+from .answer_qc import qc_mode, run_output_qc
 from .chat_tenant import resolve as resolve_tenant
+from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .citation_compliance import established_context_text as _established_context_text
+from .citation_compliance import trusted_uns_context as _trusted_uns_context
 from .conversation_router import route_intent
 from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
@@ -1007,13 +1009,25 @@ _H4_STOCK_ADMISSION = (
 # Normalize to the inline format so downstream scoring + AskMira view rendering
 # treat them identically. The original block is preserved AFTER the inline
 # markers for human readability.
-_H4_SOURCES_BLOCK_RE = re.compile(
-    r"---\s*Sources\s*---\s*\n((?:\s*\[\d+\]\s+[^\n]+\n?)+)",
-    re.IGNORECASE,
-)
+# One definition, shared with the strip in `citation_compliance`. They used to
+# read the block through separate regexes and could disagree about its contents —
+# which is how a stripped citation survived in the block and got re-materialized.
+_H4_SOURCES_BLOCK_RE = _SOURCES_BLOCK_RE
+
+
+# The label inside an inline tag — used to tell an already-normalized reply from
+# one that still needs its `--- Sources ---` block converted.
+_H4_INLINE_LABEL_RE = re.compile(r"\[Source:\s*(.+?)\s*\]", re.IGNORECASE)
 
 
 def _normalize_sources_block(reply: str) -> str:
+    """Turn a trailing ``--- Sources ---`` block into inline ``[Source: …]`` tags.
+
+    Idempotent: an entry that is ALREADY inline is not added again. It has to be,
+    because this now runs twice — once in `process_full` before the citation
+    vendor-relevance gate, and once here in the H4 enforcer. Without the guard the
+    second pass doubled every tag (measured 4 tags where 2 belonged).
+    """
     m = _H4_SOURCES_BLOCK_RE.search(reply)
     if not m:
         return reply
@@ -1022,7 +1036,11 @@ def _normalize_sources_block(reply: str) -> str:
     ]
     if not entries:
         return reply
-    inline = " ".join(f"[Source: {e}]" for e in entries)
+    already = {label.strip() for label in _H4_INLINE_LABEL_RE.findall(reply[: m.start()])}
+    missing = [e for e in entries if e not in already]
+    if not missing:
+        return reply
+    inline = " ".join(f"[Source: {e}]" for e in missing)
     # Insert inline markers BEFORE the original block so the block can stay for
     # readability; the inline tokens are what the scorer + H4 enforcer match.
     return reply[: m.start()] + inline + "\n\n" + reply[m.start() :]
@@ -2117,9 +2135,28 @@ class Supervisor:
         # swarm and ran only against fixtures, which is how D3 (a photo filename
         # cited as a source) reached a technician while the battery stayed green.
         #
+        # The checks are graded against what the TECHNICIAN established across the
+        # whole session, not this turn's message alone. The detectors came from a
+        # single-turn probe battery, where those are the same thing; in a real
+        # conversation they are not. A technician who names a PowerFlex 525 in
+        # turn 1 and asks "which is safer?" in turn 3 has still established
+        # Rockwell — grading turn 3 in isolation reports a correct citation as an
+        # unrelated vendor. Measured on the first synthetic run (2026-08-04).
+        #
+        # `_established_context_text` is the same seam the citation gate uses, and
+        # it excludes assistant turns on purpose, so a reply cannot launder its own
+        # vendor into the context that licenses it. The state read only happens
+        # when the gate is on.
+        #
         # Findings are logged by NAME only, never with reply content (PII).
         try:
-            qc = run_output_qc(message, reply)
+            qc_context = message
+            if qc_mode() != "off":
+                try:
+                    qc_context = _established_context_text(message, self._load_state(chat_id))
+                except Exception as _ctx_exc:  # noqa: BLE001 — fall back to the raw turn
+                    logger.debug("ANSWER_QC_CONTEXT_FALLBACK chat_id=%s %s", chat_id, _ctx_exc)
+            qc = run_output_qc(qc_context, reply)
             if qc.ran:
                 _log = logger.warning if not qc.clean else logger.info
                 _log(
@@ -3935,6 +3972,18 @@ class Supervisor:
         if _honest_prefix:
             formatted = _honest_prefix + formatted
 
+        # Normalize `--- Sources ---` into inline tags BEFORE the vendor gate.
+        # The cascade often returns citations as a trailing block instead of
+        # inline tags. The gate below matches inline tags only, so a block-form
+        # citation was invisible to it — and the H4 enforcer then converted that
+        # same block into inline citations LATER, in `process()`, after the gate
+        # had already passed. Net effect: every block-form reply reached the
+        # technician with its vendor attribution unchecked, which is why #3049
+        # survived three deploys and why staging logged zero VENDOR_FILTER lines.
+        # Measured on the synthetic run (2026-08-04): a bare "the drive faulted"
+        # was answered citing Yaskawa V1000 and ABB ACH580, both block-form.
+        formatted = _normalize_sources_block(formatted)
+
         # CRA-11 / Unit 2 — citation presence (observational) + P0-3 relevance.
         # Presence logs OK/MISS for the inline-cite rate metric. Relevance (the
         # "stop the lie" gate) strips a cited source that names a DIFFERENT
@@ -3945,7 +3994,7 @@ class Supervisor:
             parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
-            uns_context=(state.get("context") or {}).get("uns_context"),
+            uns_context=_trusted_uns_context(state),
             established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
         )
@@ -5213,12 +5262,17 @@ class Supervisor:
         if honest_prefix:
             formatted = honest_prefix + formatted
 
+        # Normalize `--- Sources ---` into inline tags BEFORE the vendor gate —
+        # see the note at the other call site. A block-form citation was invisible
+        # to the gate and only became inline afterwards, in the H4 enforcer.
+        formatted = _normalize_sources_block(formatted)
+
         _cc = _check_citation_compliance(
             formatted,
             parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
-            uns_context=ctx.get("uns_context"),
+            uns_context=_trusted_uns_context(state),
             established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
         )
@@ -5793,6 +5847,9 @@ class Supervisor:
                             "Diagnose this asset",
                         ],
                     )
+                    # Gate BEFORE recording, so history stores what the technician
+                    # actually saw rather than the pre-strip text.
+                    reply = self._gate_reply_citations(reply, message, state, chat_id)
                     self._record_exchange(chat_id, state, message, reply)
                     tl_flush()
                     return self._make_result(
@@ -5815,6 +5872,7 @@ class Supervisor:
                 resolved_tenant,
                 vendor_override=mfr,
                 model_override=model,
+                from_general=True,
             )
 
         # 3b) Live plant-state question with no live data on this turn — refuse
@@ -5916,6 +5974,7 @@ class Supervisor:
                 "Log a work order",
             ],
         )
+        reply = self._gate_reply_citations(reply, message, state, chat_id)
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
         # Observability (probe follow-up): mark this reply as ungrounded in the
@@ -6727,12 +6786,18 @@ class Supervisor:
         vendor_override: str = "",
         model_override: str = "",
         low_confidence: bool = False,
+        from_general: bool = False,
     ) -> dict:
         """Phase 2 KB pre-check + async crawl trigger.
 
         Consolidated from the old in-line documentation intent block so both the
         direct (specific request) path and the gathering subroutine share one code path.
         Never raises.
+
+        ``from_general`` marks a call that ALREADY came from
+        ``_handle_general_question`` (its step 3, "vendor identified but no KB
+        coverage"). It exists purely as a re-entry guard for the answer handoff
+        below, so the two functions can never bounce a turn back and forth.
         """
         state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
@@ -6797,6 +6862,39 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, state["state"])
+
+            # A specific question with KB coverage deserves the ANSWER, not an
+            # announcement that the answer exists somewhere.
+            #
+            # `_message_is_specific_question` already means "a real question that
+            # deserves a real answer, not the generic menu" — but the only thing
+            # that used it was the menu suppression below, so a technician who
+            # asked something specific got the possession claim ALONE:
+            #
+            #   "I have the AutomationDirect GS10 manual indexed."
+            #
+            # and nothing else. Measured on the synthetic run (2026-08-04): asked
+            # four times, escalating, for the GS10 default overload trip class,
+            # MIRA returned that same sentence every turn — `direct_spec` scored
+            # 0/4 and `live_diagnosis_vfd` 1/8 the same way. It is the ct-04
+            # withheld-answer class from the Answer Integrity PRD: the evidence
+            # was in hand and the answer was withheld anyway.
+            #
+            # `_handle_general_question` step 2 already does the right thing —
+            # vendor identified + KB coverage → RAG worker, so the reply carries
+            # citations. Its step 3 is the mirror of this handoff (no coverage →
+            # come here), and the two conditions are mutually exclusive, so the
+            # `from_general` guard is belt-and-braces rather than load-bearing.
+            if self._message_is_specific_question(message) and not from_general:
+                logger.info(
+                    "DOC_LOOKUP_ANSWER_HANDOFF chat_id=%s manufacturer=%r — specific "
+                    "question with KB coverage; answering instead of announcing",
+                    chat_id,
+                    mfr,
+                )
+                return await self._handle_general_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."
@@ -7136,6 +7234,35 @@ class Supervisor:
     def _ensure_table(self):
         """Create conversation_state table if it doesn't exist."""
         ensure_table(self.db_path)
+
+    def _gate_reply_citations(self, formatted: str, message: str, state: dict, chat_id: str) -> str:
+        """Normalize block-form citations, then run the vendor-relevance gate.
+
+        `process_full`'s two branches do this inline; `_handle_general_question`
+        did not, and it is the RAG path — the one that actually emits citations.
+        Measured on the synthetic QC loop (2026-08-04): the strip fires correctly
+        wherever it runs, yet `unrelated_vendor` stayed flat, because these
+        replies never reached it. Routing specific questions here (the ct-04 fix)
+        sent MORE traffic down the ungated path, so this closes it.
+
+        A no-op when the reply carries no citation, so it is safe on every return.
+        Never raises — a gate that breaks a reply is worse than one that misses.
+        """
+        try:
+            formatted = _normalize_sources_block(formatted)
+            _cc = _check_citation_compliance(
+                formatted,
+                {},
+                fsm_state=state.get("state", ""),
+                chat_id=chat_id,
+                uns_context=_trusted_uns_context(state),
+                established_text=_established_context_text(message, state),
+                enforce=_citation_enforce_enabled(),
+            )
+            return _cc.get("sanitized_reply") or formatted
+        except Exception as exc:  # noqa: BLE001 — never break a reply over QC
+            logger.warning("CITATION_GATE_FAILED chat_id=%s error=%s", chat_id, exc)
+            return formatted
 
     def _load_state(self, chat_id: str) -> dict:
         """Load conversation state from SQLite."""

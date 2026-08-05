@@ -57,6 +57,8 @@ import os
 import re
 from dataclasses import dataclass
 
+from .citation_compliance import ATTRIBUTION_STOPWORDS, attributed_parties
+
 # Vendors/brands MIRA legitimately knows. A reply naming a vendor the technician
 # never mentioned, that is not one of these, is importing unrelated corpus.
 _KNOWN_VENDORS = (
@@ -110,63 +112,39 @@ _LACKS_DOC = re.compile(
 )
 
 
+# A reply that explicitly RETRACTS its own claim is self-correcting, not
+# self-contradicting. #3121 added exactly this line to the H4 enforcer so a reply
+# would reconcile itself instead of asserting X and not-X the way `dc-02` did:
+#
+#   "Correction: I can't produce a citation for that, so treat the reference
+#    above as unverified — consult the asset nameplate or vendor manual."
+#
+# Without this carve-out the detector reports the FIX as the defect — measured on
+# the first synthetic run (2026-08-04), where it accounted for 10 of 20 failures.
+# `dc-02` itself carries no such retraction and still fires.
+_RECONCILES = re.compile(
+    r"\bcorrection\b[^.\n]{0,120}\bunverified\b|\btreat the reference above as unverified\b",
+    re.IGNORECASE,
+)
+
+
 def self_contradiction(reply: str) -> tuple[bool, str]:
-    """Claims to have documentation AND to lack it, in the same message."""
+    """Claims to have documentation AND to lack it, in the same message.
+
+    A reply that explicitly retracts the first claim is excluded — see
+    `_RECONCILES`. Note this says nothing about whether the reply is USEFUL: a
+    bare "I have the manual indexed" plus a correction is a non-answer, but that
+    is a different defect and belongs to a different check.
+    """
     has, lacks = _HAS_DOC.search(reply or ""), _LACKS_DOC.search(reply or "")
     if has and lacks:
+        if _RECONCILES.search(reply or ""):
+            return False, ""
         return True, f"has={has.group(0)[:60]!r} lacks={lacks.group(0)[:60]!r}"
     return False, ""
 
 
 # ── 2. unrelated vendor: the co-01 class ─────────────────────────────────────
-
-
-_STOPWORDS = {
-    "source",
-    "fault",
-    "code",
-    "table",
-    "manual",
-    "documentation",
-    "chapter",
-    "page",
-    "section",
-    "user",
-    "guide",
-    "drive",
-    "motor",
-    "conveyor",
-    "check",
-    "what",
-    "this",
-    "that",
-    "with",
-    "from",
-    "your",
-    "the",
-    "and",
-    "for",
-    "modbus",
-    "com",
-    "transmission",
-    "host",
-    "controller",
-    "connection",
-    "current",
-    "state",
-    "display",
-    "startup",
-    "yes",
-    "cause",
-    "causing",
-    "excessive",
-    "load",
-    "short",
-    "circuit",
-    "cable",
-    "reset",
-    "bad",
-}
 
 
 def unrelated_vendor(question: str, reply: str) -> tuple[bool, str]:
@@ -181,20 +159,22 @@ def unrelated_vendor(question: str, reply: str) -> tuple[bool, str]:
     ("Fault Code Table") read as vendors, which the mutation tests caught.
     """
     q = (question or "").lower()
-    attributions: list[str] = []
-    for m in re.finditer(r"\[Source:\s*([^\]]+)\]", reply or ""):
-        attributions.append(m.group(1).strip())
-    for m in re.finditer(r"([A-Z][a-zA-Z-]{3,})\s+(?:documentation|manual)", reply or ""):
-        attributions.append(m.group(1))
+    # `[Source: …]` tags go through the shared extractor in `citation_compliance`
+    # — the module that owns what is citable — so the detector and the strip can
+    # never disagree about who a reply attributed to. It already drops generic
+    # document titles and file/URL artifacts (`22comm`, `cm5003%20vibration…`).
+    candidates: list[str] = list(attributed_parties(reply or ""))
+    # Prose attributions ("the Demag documentation") carry no tag to extract.
+    # The suggestion chips MIRA appends ("*Find documentation* | *Log a work
+    # order*") are UI affordances, not attributions — matching them reported a
+    # vendor called `find`. Strip them before looking for prose attributions.
+    prose = re.sub(r"\*[^*\n]+\*", "", reply or "")
+    for m in re.finditer(r"([A-Z][a-zA-Z-]{3,})\s+(?:documentation|manual)", prose):
+        token = m.group(1).strip().lower()
+        if token and token not in ATTRIBUTION_STOPWORDS:
+            candidates.append(token)
 
-    hits = []
-    for attr in attributions:
-        first = re.split(r"[\s—–,-]+", attr.strip())[0].strip().lower()
-        if not first or first in _STOPWORDS:
-            continue
-        if _vendor_is_grounded(first, q):
-            continue
-        hits.append(first)
+    hits = [c for c in candidates if not _vendor_is_grounded(c, q)]
     if hits:
         return True, f"attribution to a party absent from the turn: {sorted(set(hits))[:3]}"
     return False, ""
@@ -297,6 +277,14 @@ _PHOTO_SOURCE = re.compile(
 )
 
 
+# A citation body that is a raw file or URL artifact rather than a document
+# title. Observed live in the corpus (2026-08-04):
+# "[Source: cm5003%20vibration%20guide1 — SKF]" — a URL-encoded filename. A
+# technician cannot go look that up, which is the whole test for a citation.
+# Tracked upstream as corpus quality (#2968); caught here so it is visible.
+_FILE_ARTIFACT_SOURCE = re.compile(r"\[Source:[^\]]*%[0-9A-Fa-f]{2}[^\]]*\]")
+
+
 def malformed_citation(reply: str) -> tuple[bool, str]:
     """A `[Source: …]` tag whose body identifies no actual document."""
     m = _MALFORMED_SOURCE.search(reply or "")
@@ -305,6 +293,9 @@ def malformed_citation(reply: str) -> tuple[bool, str]:
     m = _PHOTO_SOURCE.search(reply or "")
     if m:
         return True, f"citation is the technician's own photo: {m.group(0)[:70]!r}"
+    m = _FILE_ARTIFACT_SOURCE.search(reply or "")
+    if m:
+        return True, f"citation is a raw file/URL artifact: {m.group(0)[:70]!r}"
     return False, ""
 
 
@@ -467,7 +458,60 @@ def invented_topic(question: str, reply: str) -> tuple[bool, str]:
     return False, ""
 
 
+# ── 9. non-answer: the answer exists and was announced instead of given ──────
+#
+# The blind spot that made the first synthetic runs misleading. Scenario
+# `direct_spec` went 0/4 to 4/4 across two runs with a BYTE-IDENTICAL reply —
+# the improvement was entirely a carve-out in `self_contradiction`, because no
+# check covered "this reply contains no answer". A gate that cannot see its own
+# worst finding cannot certify a pass rate.
+#
+# The class, measured verbatim, four turns running while the technician escalated:
+#
+#     "I have the AutomationDirect GS10 manual indexed."
+#
+# Deliberately narrow: it fires only when an announcement of possession is ALL
+# the reply says. A guiding question is a legitimate next move in a live
+# diagnosis and rescues the turn; so does any actual content.
+
+_ANNOUNCEMENT = re.compile(
+    r"\bI (?:have|already have|do have)\b[^.\n]{0,60}"
+    r"\b(?:manual|manuals|documentation|datasheet|indexed)\b[^.\n]*\.?",
+    re.IGNORECASE,
+)
+
+# Text that is present for honesty/UX but carries no answer, so it must not
+# count as substance when deciding whether the reply said anything.
+_NON_SUBSTANCE = (
+    re.compile(r"\[KB-gap:[^\]]*\]", re.IGNORECASE),
+    re.compile(r"\bcorrection\b[^.\n]*\.", re.IGNORECASE),
+    re.compile(r"_\(Note:[^)]*\)_", re.IGNORECASE),
+    re.compile(r"Ask about the manual[^.\n]*\.?", re.IGNORECASE),
+    re.compile(r"consult the (?:asset nameplate|vendor manual)[^.\n]*\.?", re.IGNORECASE),
+    re.compile(r"\[Source:[^\]]*\]", re.IGNORECASE),
+    re.compile(r"---\s*Sources\s*---[\s\S]*$", re.IGNORECASE),
+)
+
+_MIN_SUBSTANCE_WORDS = 6
+
+
+def non_answer(reply: str) -> tuple[bool, str]:
+    """Announces that documentation exists without answering from it."""
+    if not _ANNOUNCEMENT.search(reply or ""):
+        return False, ""
+    residue = _ANNOUNCEMENT.sub("", reply or "")
+    for pattern in _NON_SUBSTANCE:
+        residue = pattern.sub("", residue)
+    residue = residue.strip()
+    if "?" in residue:  # a guiding question advances the diagnosis
+        return False, ""
+    if len(re.findall(r"\b\w+\b", residue)) >= _MIN_SUBSTANCE_WORDS:
+        return False, ""
+    return True, "announces documentation without answering from it"
+
+
 DETECTORS = {
+    "non_answer": lambda q, r: non_answer(r),
     "self_contradiction": lambda q, r: self_contradiction(r),
     "unrelated_vendor": unrelated_vendor,
     "claimed_action": lambda q, r: claimed_action(r),
