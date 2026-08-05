@@ -182,3 +182,36 @@ def test_unseen_sheet_not_in_calibration_or_prompts():
         text = path.read_text(encoding="utf-8", errors="replace")
         for token in novel_tokens:
             assert token not in text, f"{token} leaked into {path.name}"
+
+
+# ── D4 regression: hyphenated vendor names are not designations ─────────────
+# Prod incident 2026-08-04: "What does fault F004 on an Allen-Bradley
+# PowerFlex 525 mean?" was claimed by the designation spine because _QTAG_RE
+# matched the substring "-Bradley" inside "Allen-Bradley" (no left boundary)
+# and answered with IEC-81346 class-letter nonsense.
+
+
+def test_hyphenated_english_compound_is_not_a_designation():
+    q = "What does fault F004 on an Allen-Bradley PowerFlex 525 mean?"
+    assert dq._question_tags(q) == []
+    assert dq.try_deterministic_answer(q, VD) is None
+
+
+def test_more_hyphenated_compounds_do_not_match():
+    for q in (
+        "what does the drive-end bearing noise mean?",
+        "does three-phase power mean anything here?",
+        "what does e-stop mean on this print?",
+    ):
+        assert dq._question_tags(q) == [], q
+
+
+def test_real_designation_question_still_claims():
+    """The other direction: genuine tags keep working after the boundary fix."""
+    r = dq.try_deterministic_answer("what does -27/K44 mean?", VD)
+    assert r is not None
+    assert "device designation" in r["answer"]
+
+
+def test_tag_after_punctuation_still_matches():
+    assert dq._question_tags("what is (-27/S18) for?") == ["-27/S18"]

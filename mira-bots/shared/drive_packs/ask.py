@@ -76,6 +76,7 @@ class DrivePackAnswer:
     answer: str
     citations: list[dict[str, str]] = field(default_factory=list)
     answer_source: str = "drive_pack"  # "drive_pack" | "none"
+    matched_token: str | None = None  # mnemonic / parameter id that matched (observability)
     fallback_used: bool = False  # NEVER a generic/LLM fallback
     live_telemetry: bool = False  # static pack only — no live drive values
     read_only: bool = True  # no drive writes possible
@@ -103,6 +104,27 @@ def _fault_mnemonic(card: DiagnosticCard) -> str:
     """The leading fault mnemonic of a card's meaning ("CE10 modbus timeout" ->
     "CE10")."""
     return card.meaning.split()[0] if card.meaning else ""
+
+
+def _is_code_shaped_mnemonic(token: str) -> bool:
+    """True when ``token`` can serve as a fault-code MATCH KEY.
+
+    E1 regression (prod, 2026-08-04): PowerFlex 525 cards' meanings are bare
+    fault NAMES ("Motor Stalled"), so `_fault_mnemonic` returned the English
+    word "Motor" and a whole-word search matched an ordinary symptom
+    narrative — the pack hijacked the turn and emitted the deterministic
+    template. A match key must look like a display code, never an English
+    word: digit-bearing mnemonics (CE10, F059 — the same shape
+    `extract_pack_fault_codes` trusts) or the short alpha codes real drives
+    use (GFF, oL, Lvd, EF — <=3 chars). "Motor" (5 alpha chars) is prose and
+    is rejected; the turn falls through to the engine's routing/RAG path,
+    which handles symptom narratives properly.
+    """
+    if not token:
+        return False
+    if _CODE_LIKE_MNEMONIC_RE.fullmatch(token):
+        return True
+    return token.isalpha() and len(token) <= 3
 
 
 def _params_for_fault(pack: DrivePack, mnemonic: str) -> list[ParameterCard]:
@@ -190,7 +212,9 @@ def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
     family = pack.family.series
     q_upper = question.upper()
 
-    def _result(kind: str, answer: str, citations: list[dict[str, str]]) -> DrivePackAnswer:
+    def _result(
+        kind: str, answer: str, citations: list[dict[str, str]], token: str | None = None
+    ) -> DrivePackAnswer:
         return DrivePackAnswer(
             pack_id=pack.pack_id,
             resolved=True,
@@ -201,14 +225,20 @@ def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
             answer=answer,
             citations=citations,
             answer_source="drive_pack",
+            matched_token=token,
         )
 
     # 1) an explicit fault mnemonic in the question (CE10, GFF, Lvd, oL, EF...)
+    #    E1 guard (2026-08-04): only code-shaped mnemonics are match keys — a
+    #    card whose meaning starts with an English word ("Motor Stalled") must
+    #    never claim a narrative that happens to contain that word.
     for card in cards:
         mnemonic = _fault_mnemonic(card)
-        if mnemonic and re.search(rf"\b{re.escape(mnemonic.upper())}\b", q_upper):
+        if not _is_code_shaped_mnemonic(mnemonic):
+            continue
+        if re.search(rf"\b{re.escape(mnemonic.upper())}\b", q_upper):
             answer, citations = _fault_answer(pack, mnemonic, card)
-            return _result("fault", answer, citations)
+            return _result("fault", answer, citations, token=mnemonic)
 
     # 2) an explicit parameter id in the question (P09.03)
     params_by_id = {p.parameter_id.upper(): p for p in pack.parameters}
@@ -216,7 +246,7 @@ def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
         param = params_by_id.get(token.upper())
         if param:
             answer, citations = _param_answer(pack, param)
-            return _result("parameter", answer, citations)
+            return _result("parameter", answer, citations, token=param.parameter_id)
 
     # 3) intent: "communication timeout" -> the comm-timeout parameter, if the
     #    pack has one (matched by the parameter's own name/purpose, not a guess)
@@ -225,7 +255,7 @@ def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
             haystack = f"{param.name} {param.purpose}"
             if _TIMEOUT_RE.search(haystack):
                 answer, citations = _param_answer(pack, param)
-                return _result("parameter", answer, citations)
+                return _result("parameter", answer, citations, token=param.parameter_id)
 
     # no fault/parameter matched — honest, pack-scoped, never a generic guess
     mnemonics = sorted({_fault_mnemonic(c) for c in cards if _fault_mnemonic(c)})

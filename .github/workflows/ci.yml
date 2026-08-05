@@ -576,6 +576,13 @@ jobs:
           filters: |
             hub:
               - 'mira-hub/**'
+              # guardrails.py is the SOURCE OF TRUTH for the hub safety-phrase
+              # parity guard (mira-hub/src/lib/safety-phrases.test.ts). Editing
+              # it without touching mira-hub/** must still run the vitest suite,
+              # or a SAFETY_KEYWORDS change silently drifts the hub copy
+              # undetected (the exact gap that shipped #3108). Enforced by
+              # tests/test_hub_unit_filter_contract.py.
+              - 'mira-bots/shared/guardrails.py'
 
       - uses: oven-sh/setup-bun@v2
         if: steps.changes.outputs.hub == 'true'
@@ -653,6 +660,13 @@ jobs:
 
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
+
+      - name: Check Hub Unit Tests path-filter contract
+        # tests/test_hub_unit_filter_contract.py was written for this job
+        # (its docstring: "pytest + pyyaml only — matches the Architecture
+        # Check CI job's deps") but the step was never added, so the contract
+        # guarding the hub filter's guardrails.py watch never executed in CI.
+        run: pytest tests/test_hub_unit_filter_contract.py -q
 
       - name: Check env-var drift (docker-compose.saas.yml vs docs/env-vars.md + .env.template)
         # Stdlib-only static check (docs/known-issues.md) -- no extra deps needed.
