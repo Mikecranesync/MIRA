@@ -19,6 +19,7 @@ SCRIPT = REPO / "tools" / "predeploy_log_capture.sh"
 SAMPLE_LOG = """2026-08-04T12:27:36Z [INFO] HTTP Request: POST https://api.telegram.org/bot12345:AAAbbbCCC-ddd/getUpdates "HTTP/1.1 200 OK"
 2026-08-04T12:27:36Z [INFO] Received from Mike: "My PowerFlex 525 keeps tripping
 2026-08-04T12:27:36Z [INFO] DISPATCH_ADMIN_BYPASS platform=telegram ext=8445149012 tenant=e88bd0e8-8a84-4e30-9803-c0dc6efb07fe
+2026-08-04T12:27:37Z [INFO] DISPATCH platform=telegram user=8445149012 mira_user=admin:8445149012 chat=8445149012 text_len=344
 2026-08-04T12:27:37Z [INFO] ROUTER intent=diagnose_equipment confidence=0.95 chat_id=telegram:8445149012
 """
 
@@ -77,6 +78,8 @@ def test_existing_container_produces_redacted_bundle_with_checksum(tmp_path):
 
     # redaction — tokens, ids, message bodies, uuids
     assert "AAAbbbCCC" not in text and "bot<redacted>" in text
+    # 2026-08-04: the first live artifact leaked the id via mira_user=admin:<id>
+    # — this asserts across ALL fields, so any new numeric-id field fails here.
     assert "8445149012" not in text
     assert "My PowerFlex 525" not in text and "[USER]: [REDACTED]" in text
     assert "e88bd0e8" not in text and "[UUID]" in text
@@ -88,7 +91,7 @@ def test_existing_container_produces_redacted_bundle_with_checksum(tmp_path):
     assert "json-file" in meta
     sha = hashlib.sha256(red.read_bytes()).hexdigest()
     assert f"redacted_sha256={sha}" in meta
-    assert "redacted_lines=4" in meta
+    assert "redacted_lines=5" in meta
 
 
 def test_missing_container_warns_and_exits_zero(tmp_path):
