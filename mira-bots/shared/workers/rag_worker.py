@@ -83,7 +83,26 @@ def _confident_query_vendor(state: dict) -> str | None:
     """
     uns = (state.get("context") or {}).get("uns_context") or {}
     vendor = uns.get("manufacturer")
-    if vendor and (uns.get("confidence") or 0.0) >= 0.7:
+    if not vendor:
+        return None
+    if (uns.get("confidence") or 0.0) >= 0.7:
+        return vendor
+    # A COMPLETE context still drives the filter even after its score decays.
+    # `_merge_with_prior` carries manufacturer and model forward intact but scores
+    # the result `max(fresh, prior * 0.9)` — so one turn where the technician does
+    # not repeat the model gives 0.7 * 0.9 = 0.63 and the filter switched OFF for
+    # the rest of the conversation, while the context still knew AutomationDirect
+    # AND GS10. The confidence was decaying although the evidence it scores had
+    # not changed.
+    #
+    # Measured (synthetic QC loop, 2026-08-05): short scenarios 100%, the two long
+    # multi-turn ones 62.5% / 60.9%, every failure a cross-vendor citation.
+    #
+    # 0.7 is exactly "manufacturer + model" in `uns_resolver._confidence`, so
+    # requiring both fields here asserts the same thing the threshold meant. The
+    # #2211 guard is untouched: a manufacturer-only hit ("delta pressure" ->
+    # Delta Electronics @0.5) has no model and is still refused.
+    if uns.get("model"):
         return vendor
     return None
 
