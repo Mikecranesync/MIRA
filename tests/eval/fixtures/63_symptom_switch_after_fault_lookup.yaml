@@ -1,0 +1,15 @@
+id: symptom_switch_after_fault_lookup_25
+description: "Phone battery T5 (2026-08-05 live FAIL): after a CE10 lookup, a brand-new symptom ('conveyor keeps stopping randomly') was re-answered with CE10. A new symptom must get fresh triage — an evidence question — not the previous answer."
+expected_final_state: Q1
+max_turns: 4
+expected_keywords: [conveyor]
+forbidden_keywords: [CE10, Modbus, polling]
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [context-switch, guided-diagnosis, regression, phone-battery]
+turns:
+  - role: user
+    content: "What does CE10 mean on my DURApulse GS10 drive?"
+  - role: user
+    content: "My conveyor keeps stopping randomly"
