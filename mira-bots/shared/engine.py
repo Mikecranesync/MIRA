@@ -2769,6 +2769,15 @@ class Supervisor:
             if uns_ctx.model:
                 label = f"{label}, {uns_ctx.model}"
             state["asset_identified"] = label
+        elif uns_ctx.manufacturer and state.get("asset_identified"):
+            # CTX-001 (2026-08-05): the pin was write-once and suppressed the
+            # UNS gate forever, so an explicit new-equipment question kept
+            # every prompt anchor on the OLD machine and the engine re-answered
+            # the previous fault. A newly and clearly named DIFFERENT asset
+            # supersedes stale context — decided by the RESOLVER on a fresh
+            # parse (deterministic), never by the LLM router.
+            if self._maybe_repin_asset(chat_id, state, message, uns_source):
+                self._save_state(chat_id, state)
 
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
@@ -3005,6 +3014,35 @@ class Supervisor:
                     chat_id,
                 )
                 _router_intent = "diagnose_equipment"
+
+            # CTX-001b (2026-08-05): a NEW symptom after a COMPLETED thread
+            # starts a fresh diagnostic thread. Deterministic signals only:
+            # an asset-state hit (new problem statement) while IDLE with no
+            # pending question (the previous thread finished — nothing was
+            # asked of the technician). Without this, the prior answer in
+            # conversation history sometimes dominates the LLM and the old
+            # fault gets re-answered verbatim (fixture 63). The asset pin is
+            # KEPT — the symptom may well belong to the pinned machine; only
+            # the dead thread's assistant turns are excluded from this turn's
+            # prompt (rag_worker consumes and clears the flag).
+            # Trigger is deterministic-first: the keyword classifier (pure
+            # substring sets) OR the asset-state hit. The scorer alone was not
+            # enough — it weighs the ROUTER's confidence, which varies run to
+            # run and made this flag flip on identical inputs.
+            if (
+                (_asset_state_hit or _keyword_intent == "industrial")
+                and state.get("asset_identified")
+                and state.get("state", "IDLE") == "IDLE"
+                and not (
+                    ((state.get("context") or {}).get("session_context") or {}).get(
+                        "last_question"
+                    )
+                )
+            ):
+                _ctx_ft = state.get("context") or {}
+                _ctx_ft["fresh_thread_turn"] = True
+                state["context"] = _ctx_ft
+                logger.info("CTX_FRESH_THREAD chat_id=%s (new symptom, completed thread)", chat_id)
 
             # Safety ALWAYS wins — router or keyword classifier, either triggers it.
             intent = _keyword_intent  # keep for downstream legacy gates
@@ -7287,6 +7325,58 @@ class Supervisor:
             return False
         if state.get("state", "IDLE") != "IDLE":
             return False
+        return True
+
+    def _maybe_repin_asset(
+        self, chat_id: str, state: dict, message: str, uns_source: str | None
+    ) -> bool:
+        """CTX-001: re-pin ``asset_identified`` when THIS message clearly names
+        a different machine at adoption-grade confidence.
+
+        The switch signal is a FRESH ``resolve_uns_path(message)`` — no
+        prior-ctx carry, so a manufacturer the resolver merely decays forward
+        can never count as new information. The comparison is alias-aware
+        (Allen-Bradley ≡ Rockwell → not a switch). Symmetric with the silent
+        first-adopt at >= 0.7 directly above the call site. Direct-connection
+        surfaces never re-pin from chat text — the connection is the identity
+        (.claude/rules/direct-connection-uns-certified.md). On re-pin,
+        diagnostic carryover is cleared (UNS-025): the old fault, session
+        context, and gate bookkeeping belong to the previous machine.
+        """
+        pinned = state.get("asset_identified") or ""
+        if not pinned or not (message or "").strip():
+            return False
+        if uns_source:
+            return False
+        try:
+            from .uns_resolver import canonical_vendor  # noqa: PLC0415
+
+            fresh = resolve_uns_path(message)
+            if not fresh.manufacturer or (fresh.confidence or 0.0) < 0.7:
+                return False
+            fresh_vendor = canonical_vendor(fresh.manufacturer)
+            pinned_vendor = canonical_vendor(pinned.split(",")[0].strip())
+            if not fresh_vendor or fresh_vendor == pinned_vendor:
+                return False
+        except Exception as exc:  # noqa: BLE001 — a re-pin check must never break a turn
+            logger.warning("CTX_ASSET_REPIN_CHECK_FAILED chat_id=%s err=%s", chat_id, exc)
+            return False
+
+        label = fresh.manufacturer
+        if fresh.model:
+            label = f"{label}, {fresh.model}"
+        # Mutates `state` in place (and returns it) — the old fault, session
+        # context, WO draft, and D2 gate bookkeeping belong to the previous machine.
+        self._clear_diagnostic_carryover(chat_id, state, clear_photo=False)
+        state["asset_identified"] = label
+        # The old machine's answers must not anchor the new machine's first
+        # turn — a re-pin always starts a fresh thread (rag_worker consumes).
+        ctx_repin = state.get("context") or {}
+        ctx_repin["fresh_thread_turn"] = True
+        state["context"] = ctx_repin
+        logger.info(
+            "CTX_ASSET_REPIN chat_id=%s new=%r (previous pin superseded)", chat_id, label
+        )
         return True
 
     def _uns_gate_exhausted(self, state: dict, uns_ctx) -> bool:

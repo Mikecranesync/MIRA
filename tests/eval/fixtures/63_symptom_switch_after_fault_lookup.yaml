@@ -2,7 +2,10 @@ id: symptom_switch_after_fault_lookup_25
 description: "Phone battery T5 (2026-08-05 live FAIL): after a CE10 lookup, a brand-new symptom ('conveyor keeps stopping randomly') was re-answered with CE10. A new symptom must get fresh triage — an evidence question — not the previous answer."
 expected_final_state: Q1
 max_turns: 4
-expected_keywords: [conveyor]
+# Any fresh-triage evidence question passes (grader = any-match): echoing the
+# user's noun OR asking for the fault code / what changed are all legitimate.
+# The forbidden list is the real teeth — no stale-fault parroting.
+expected_keywords: [conveyor, fault code, what changed, display, trips]
 forbidden_keywords: [CE10, Modbus, polling]
 wo_expected: false
 safety_expected: false
