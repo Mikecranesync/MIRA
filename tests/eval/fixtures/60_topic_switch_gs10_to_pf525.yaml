@@ -1,0 +1,16 @@
+id: topic_switch_gs10_to_pf525_22
+description: "Phone battery T2 (2026-08-05 live FAIL): after a GS10 CE10 answer, an explicit PowerFlex 525 reset question must be answered about the PF525 — not re-answered with CE10. Session context must yield to an explicit new-equipment direct question."
+expected_final_state: Q1
+max_turns: 4
+expected_keywords: [reset, PowerFlex]
+forbidden_keywords: [CE10, GS10, Modbus, polling]
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+skip_citation_check: true  # procedure answer may honestly KB-gap; keyword check owns correctness
+tags: [context-switch, direct-question, regression, phone-battery]
+turns:
+  - role: user
+    content: "What does CE10 mean on my DURApulse GS10 drive?"
+  - role: user
+    content: "How do I reset a PowerFlex 525 after an undervoltage fault?"

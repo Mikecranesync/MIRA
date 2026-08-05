@@ -57,6 +57,7 @@ sed -E \
   -e 's#/bot[0-9]+:[A-Za-z0-9_-]+#/bot<redacted>#g' \
   -e 's/(chat_id=telegram:)[0-9]+/\1[REDACTED]/g' \
   -e 's/(ext=|user=|chat=)[0-9]+/\1[REDACTED]/g' \
+  -e 's/(mira_user=[A-Za-z]+:)[0-9]+/\1[REDACTED]/g' \
   -e 's/(Received from )[^:]*: .*/\1[USER]: [REDACTED]/' \
   -e 's/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[UUID]/g' \
   "$raw" > "$redacted"

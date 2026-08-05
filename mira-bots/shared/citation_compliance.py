@@ -312,6 +312,48 @@ def _tag_label(tag: str) -> str:
     return re.sub(r"(?i)^\s*source:\s*", "", inner).strip()
 
 
+# ── D3: citation ELIGIBILITY — what may be cited at all ─────────────────────
+#
+# W2a eval case 6: MIRA replied "You think it's a WEG motor.
+# [Source: Img 20231106 085404329 — motor]" — an uploaded photo's FILENAME
+# cited as documentation. Photo-ingested KB rows carry the image name in their
+# manufacturer field, so `format_source_label` faithfully renders it and
+# nothing upstream objects: the chunk is real, the label is real, only the
+# CLASS of source is wrong. Session artifacts are evidence ABOUT the machine,
+# never documentation FOR it. Owner ruling (2026-08-04): an eligibility rule
+# set, not merely a filename filter.
+
+_INELIGIBLE_IMAGE_RE = re.compile(
+    r"(?i)(?:^img(?:[_\s]|\d)|^image\b|\.(?:jpe?g|png|gif|bmp|heic|webp|tiff?)\b)"
+)
+_INELIGIBLE_SESSION_RE = re.compile(r"(?i)^(?:photo\b|screenshot\b|session\s+photo|camera\b)")
+_INELIGIBLE_TIMESTAMP_RE = re.compile(r"^[\d\s\-:._]{8,}$")
+
+
+def ineligible_source_reason(label: str) -> str | None:
+    """Why ``label`` may NOT be cited as documentation — None when eligible.
+
+    Reasons: "empty" (blank label), "image_artifact" (image filename shapes,
+    leading Img/image tokens, image file extensions anywhere in the label),
+    "session_artifact" (photo/screenshot/camera session labels),
+    "bare_timestamp" (digit-run labels with no words). Eligible labels are
+    everything else — manuals, fault tables, datasheets, pack documents.
+    Conservative on prose: only labels that START with an artifact token or
+    carry a file extension are caught, so a document section that merely
+    mentions imaging is untouched.
+    """
+    text = (label or "").strip()
+    if not text:
+        return "empty"
+    if _INELIGIBLE_IMAGE_RE.search(text):
+        return "image_artifact"
+    if _INELIGIBLE_SESSION_RE.search(text):
+        return "session_artifact"
+    if _INELIGIBLE_TIMESTAMP_RE.fullmatch(text):
+        return "bare_timestamp"
+    return None
+
+
 def evaluate_citation_relevance(
     reply: str,
     expected_manufacturer: str | None,
@@ -470,6 +512,14 @@ def strip_conflicting_citations(
     out = _prune_sources_block(out, [_tag_label(t).strip() for t in conflicting_tags])
     out = re.sub(r"[ \t]{2,}", " ", out).rstrip()
 
+    if reason == "ineligible":
+        out += (
+            "\n\n_(Note: I removed a citation that pointed to a photo or session "
+            "artifact — that is not documentation. Treat the statement above as "
+            "unverified until confirmed against the equipment's manual.)_"
+        )
+        return out
+
     if reason == "unestablished":
         out += (
             "\n\n_(Note: I removed a citation because I haven't established which "
@@ -596,6 +646,24 @@ def check_citation_compliance(
                 rel["reason"],
             )
 
+    # D3 — eligibility: strip tags whose label is a session artifact, never a
+    # document. Applied on top of any relevance strip; a reply left with no
+    # citation then receives the H4 admission downstream instead of shipping
+    # confidently-cited junk (eval case 6).
+    ineligible_tags = [t for t in tags if ineligible_source_reason(_tag_label(t)) is not None]
+    if ineligible_tags:
+        logger.warning(
+            "CITATION_ELIGIBILITY_MISS chat_id=%s tags=%d reasons=%s",
+            chat_id,
+            len(ineligible_tags),
+            sorted({ineligible_source_reason(_tag_label(t)) for t in ineligible_tags}),
+        )
+        if enforce:
+            base = result["sanitized_reply"] or (reply or "")
+            result["sanitized_reply"] = strip_conflicting_citations(
+                base, ineligible_tags, None, "ineligible"
+            )
+
     return result
 
 
@@ -644,7 +712,9 @@ def valid_source_labels(chunks: list[dict] | None) -> set[str]:
     labels: set[str] = set()
     for chunk in chunks or []:
         label = format_source_label(chunk)
-        if label:
+        # D3: session-artifact labels are excluded so the insertion-only
+        # salvage can never introduce a photo-filename citation.
+        if label and ineligible_source_reason(label) is None:
             labels.add(label)
     return labels
 

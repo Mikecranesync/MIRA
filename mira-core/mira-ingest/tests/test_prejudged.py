@@ -353,7 +353,9 @@ def test_seed_cases_file_valid():
         cases = json.load(f)
 
     assert isinstance(cases, list)
-    assert len(cases) == 10
+    # 14 = 10 diagnostic scenarios + 4 direct-question (ct-04 class) cases
+    # added 2026-08-05 so the judge corpus can see dialogue-mode behavior.
+    assert len(cases) == 14
 
     for i, case in enumerate(cases):
         assert "id" in case, f"Case {i} missing id"
