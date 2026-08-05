@@ -165,7 +165,11 @@ def unrelated_vendor(question: str, reply: str) -> tuple[bool, str]:
     # document titles and file/URL artifacts (`22comm`, `cm5003%20vibration…`).
     candidates: list[str] = list(attributed_parties(reply or ""))
     # Prose attributions ("the Demag documentation") carry no tag to extract.
-    for m in re.finditer(r"([A-Z][a-zA-Z-]{3,})\s+(?:documentation|manual)", reply or ""):
+    # The suggestion chips MIRA appends ("*Find documentation* | *Log a work
+    # order*") are UI affordances, not attributions — matching them reported a
+    # vendor called `find`. Strip them before looking for prose attributions.
+    prose = re.sub(r"\*[^*\n]+\*", "", reply or "")
+    for m in re.finditer(r"([A-Z][a-zA-Z-]{3,})\s+(?:documentation|manual)", prose):
         token = m.group(1).strip().lower()
         if token and token not in ATTRIBUTION_STOPWORDS:
             candidates.append(token)

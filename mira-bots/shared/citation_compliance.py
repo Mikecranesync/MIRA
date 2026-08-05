@@ -200,6 +200,11 @@ def _attributed_party(tag: str) -> str | None:
         return None
     if not first.replace(".", "").replace("'", "").isalpha():
         return None
+    # Two characters is a filename/locale prefix, not a brand — measured:
+    # "[Source: En Acs880 Drive Application Programming Manual]" reported a
+    # vendor called `en`. No OEM in this corpus has a two-letter name.
+    if len(first) < 3:
+        return None
     return first
 
 
@@ -237,13 +242,30 @@ def established_context_text(message: str, state: dict | None) -> str:
     parts: list[str] = [message or ""]
     if not isinstance(state, dict):
         return parts[0]
-    parts.append(str(state.get("asset_identified") or ""))
+    asset = str(state.get("asset_identified") or "")
+    parts.append(asset)
     ctx = state.get("context")
     if isinstance(ctx, dict):
         uns = ctx.get("uns_context")
         if isinstance(uns, dict):
-            parts.append(str(uns.get("manufacturer") or ""))
-            parts.append(str(uns.get("model") or ""))
+            # A resolved vendor counts as established ONLY when something outside
+            # MIRA's own inference put it there: a technician-confirmed asset
+            # (`asset_identified` is written after the UNS gate is answered) or a
+            # certified direct connection. A bare resolver hit is NOT evidence —
+            # on a vague turn the vendor comes from whatever retrieval surfaced,
+            # so counting it here lets a reply authorise its own citation. That
+            # is the same self-licensing loop excluded for assistant turns below,
+            # one level up, and it was the residual `unrelated_vendor` class on
+            # the synthetic QC loop: "it stopped again" answered with
+            # "[Source: Rockwell Automation PowerFlex 40P]", kept because the
+            # resolver had written Rockwell into state from its own retrieval.
+            #
+            # Aliases are not lost. `_vendors_in_text` canonicalizes the
+            # technician's OWN words, so someone who typed "PowerFlex 525" still
+            # establishes Rockwell without this contribution.
+            if asset or uns.get("source") == "direct_connection":
+                parts.append(str(uns.get("manufacturer") or ""))
+                parts.append(str(uns.get("model") or ""))
         history = ctx.get("history")
         if isinstance(history, list):
             for turn in history:
