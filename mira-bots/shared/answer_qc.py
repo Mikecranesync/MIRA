@@ -57,6 +57,8 @@ import os
 import re
 from dataclasses import dataclass
 
+from .citation_compliance import ATTRIBUTION_STOPWORDS, attributed_parties
+
 # Vendors/brands MIRA legitimately knows. A reply naming a vendor the technician
 # never mentioned, that is not one of these, is importing unrelated corpus.
 _KNOWN_VENDORS = (
@@ -145,88 +147,6 @@ def self_contradiction(reply: str) -> tuple[bool, str]:
 # ── 2. unrelated vendor: the co-01 class ─────────────────────────────────────
 
 
-_STOPWORDS = {
-    "source",
-    "fault",
-    "code",
-    "table",
-    "manual",
-    "documentation",
-    "chapter",
-    "page",
-    "section",
-    "user",
-    "guide",
-    "drive",
-    "motor",
-    "conveyor",
-    "check",
-    "what",
-    "this",
-    "that",
-    "with",
-    "from",
-    "your",
-    "the",
-    "and",
-    "for",
-    "modbus",
-    "com",
-    "transmission",
-    "host",
-    "controller",
-    "connection",
-    "current",
-    "state",
-    "display",
-    "startup",
-    "yes",
-    "cause",
-    "causing",
-    "excessive",
-    "load",
-    "short",
-    "circuit",
-    "cable",
-    "reset",
-    "bad",
-    # Generic document/technical words that lead a real corpus title and are not
-    # brands. Observed as false positives on the first synthetic run (2026-08-04):
-    # "[Source: Serial Comms, p. 1]" was reported as a vendor named `serial`, and
-    # "[Source: Img 0930 — motor]" as one named `img`. The leading token of a
-    # citation is only USUALLY the vendor; corpus titles break that assumption.
-    # A curated list is used rather than "must be a known vendor", because the
-    # original co-01 defect was an attribution to Demag — a brand deliberately
-    # absent from `_VENDOR_MODELS`. Requiring membership would blind the very
-    # case this detector exists for.
-    "serial",
-    "comms",
-    "communication",
-    "communications",
-    "img",
-    "image",
-    "photo",
-    "scan",
-    "drives",
-    "note",
-    "notes",
-    "quick",
-    "reference",
-    "appendix",
-    "figure",
-    "overview",
-    "general",
-    "installation",
-    "wiring",
-    "parameter",
-    "parameters",
-    "troubleshooting",
-    "maintenance",
-    "safety",
-    "specifications",
-}
-
-
 def unrelated_vendor(question: str, reply: str) -> tuple[bool, str]:
     """Names a vendor/brand the technician never mentioned.
 
@@ -239,31 +159,18 @@ def unrelated_vendor(question: str, reply: str) -> tuple[bool, str]:
     ("Fault Code Table") read as vendors, which the mutation tests caught.
     """
     q = (question or "").lower()
-    attributions: list[str] = []
-    for m in re.finditer(r"\[Source:\s*([^\]]+)\]", reply or ""):
-        attributions.append(m.group(1).strip())
-    for m in re.finditer(r"([A-Z][a-zA-Z-]{3,})\s+(?:documentation|manual)", reply or ""):
-        attributions.append(m.group(1))
+    # `[Source: …]` tags go through the shared extractor in `citation_compliance`
+    # — the module that owns what is citable — so the detector and the strip can
+    # never disagree about who a reply attributed to. It already drops generic
+    # document titles and file/URL artifacts (`22comm`, `cm5003%20vibration…`).
+    candidates: list[str] = list(attributed_parties(reply or ""))
+    # Prose attributions ("the Demag documentation") carry no tag to extract.
+    for m in re.finditer(r"([A-Z][a-zA-Z-]{3,})\s+(?:documentation|manual)", reply or ""):
+        token = m.group(1).strip().lower()
+        if token and token not in ATTRIBUTION_STOPWORDS:
+            candidates.append(token)
 
-    hits = []
-    for attr in attributions:
-        first = re.split(r"[\s—–,-]+", attr.strip())[0].strip().lower()
-        if not first or first in _STOPWORDS:
-            continue
-        # A leading token carrying a digit or a URL escape is a document
-        # artifact, not a brand. Measured on the synthetic run (2026-08-04),
-        # where the corpus produced `cm5003%20vibration%20guide1`, `ch4parameters`,
-        # `22comm` and `2100` — all reported as vendors, none of them a vendor.
-        # (`22comm` really is a Rockwell part number, which is exactly the point:
-        # it names a document, not the party being attributed.) These are junk
-        # citations and `malformed_citation` is the check that owns them.
-        # Purely alphabetic unknowns still fire, so the `co-01` Demag case —
-        # deliberately absent from `_VENDOR_MODELS` — is untouched.
-        if any(c.isdigit() for c in first) or "%" in first:
-            continue
-        if _vendor_is_grounded(first, q):
-            continue
-        hits.append(first)
+    hits = [c for c in candidates if not _vendor_is_grounded(c, q)]
     if hits:
         return True, f"attribution to a party absent from the turn: {sorted(set(hits))[:3]}"
     return False, ""

@@ -81,6 +81,128 @@ def _vendors_in_text(text: str) -> set[str]:
     return vendors_in_text(text)
 
 
+# Generic document/title words that lead a real corpus citation and name no
+# party. Kept here rather than in the detector because this module is the single
+# place that judges what is citable (`.claude/CLAUDE.md` § "Do not do" — no second
+# citation logic); `answer_qc.unrelated_vendor` imports this list instead of
+# keeping its own copy.
+ATTRIBUTION_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "source",
+        "fault",
+        "code",
+        "table",
+        "manual",
+        "manuals",
+        "documentation",
+        "chapter",
+        "page",
+        "section",
+        "user",
+        "guide",
+        "drive",
+        "drives",
+        "motor",
+        "conveyor",
+        "check",
+        "what",
+        "this",
+        "that",
+        "with",
+        "from",
+        "your",
+        "the",
+        "and",
+        "for",
+        "modbus",
+        "com",
+        "transmission",
+        "host",
+        "controller",
+        "connection",
+        "current",
+        "state",
+        "display",
+        "startup",
+        "yes",
+        "cause",
+        "causing",
+        "excessive",
+        "load",
+        "short",
+        "circuit",
+        "cable",
+        "reset",
+        "bad",
+        "serial",
+        "comms",
+        "communication",
+        "communications",
+        "img",
+        "image",
+        "photo",
+        "scan",
+        "note",
+        "notes",
+        "quick",
+        "reference",
+        "appendix",
+        "figure",
+        "overview",
+        "general",
+        "installation",
+        "wiring",
+        "parameter",
+        "parameters",
+        "troubleshooting",
+        "maintenance",
+        "safety",
+        "specifications",
+        "getting",
+        "unknown",
+        "document",
+        "documents",
+    }
+)
+
+
+def attributed_parties(reply: str) -> list[str]:
+    """The parties a reply attributes its content to, in order, lowercased.
+
+    The leading token of each ``[Source: …]`` label. That token is the party in a
+    well-formed citation ("AutomationDirect GS10 — Fault Codes"); everything else
+    in the label names the document.
+
+    Excluded, because they name a document rather than a party:
+
+    * a generic title word (``ATTRIBUTION_STOPWORDS``);
+    * a token carrying a digit or a URL escape — ``22comm``, ``2100``,
+      ``ch4parameters``, ``cm5003%20vibration%20guide1``, all measured live. That
+      `22comm` is a real Rockwell part number is exactly the point: it identifies
+      a document, not the party being attributed to.
+
+    Unrecognized ALPHABETIC names are deliberately kept — Demag, Interroll, SKF
+    are real attributions the vendor tables do not know, and they are the class
+    this exists to expose.
+    """
+    return [p for p in (_attributed_party(t) for t in CITATION_TAG_RE.findall(reply or "")) if p]
+
+
+def _attributed_party(tag: str) -> str | None:
+    """The party a single ``[Source: …]`` tag attributes to, or None."""
+    body = _tag_label(tag).strip()
+    if not body:
+        return None
+    first = re.split(r"[\s—–,;:/|-]+", body)[0].strip().lower()
+    if not first or first in ATTRIBUTION_STOPWORDS:
+        return None
+    if any(c.isdigit() for c in first) or "%" in first:
+        return None
+    if not first.replace(".", "").replace("'", "").isalpha():
+        return None
+    return first
+
+
 def established_context_text(message: str, state: dict | None) -> str:
     """What the TECHNICIAN and trusted state have established, as one string.
 
@@ -190,7 +312,7 @@ def evaluate_citation_relevance(
         conflicting = [
             t for t in tags if (_canonical_vendor(_tag_label(t)) not in (None, expected))
         ]
-    elif not expected and cited and established_text:
+    elif not expected and (cited or attributed_parties(reply or "")) and established_text:
         # Case 2 — UNSUPPORTED ATTRIBUTION. No vendor is resolved, so the
         # reply is citing a manufacturer's manual for a machine nobody has
         # identified. Measured live: a vague follow-up ("did that fix it?")
@@ -203,10 +325,26 @@ def evaluate_citation_relevance(
         # Case 1 could never see this: it needs a resolved manufacturer to
         # compare against, so exactly the vague turns that fail worst were
         # the ones it skipped.
+        # Recognized vendors compare canonically (Allen-Bradley ≡ Rockwell).
+        # UNRECOGNIZED parties — Demag, Interroll, SKF, Westward, none of them in
+        # the vendor tables — compare by name against the technician's own words.
+        # Restricting this to canonical vendors was the remaining hole: those
+        # attributions were cited on turns where nobody named them and were never
+        # stripped, and they are 13 of 19 failing turns on the synthetic QC loop.
+        # `_attributed_party` already excludes document titles and file/URL
+        # artifacts, so what reaches here is a name being attributed to.
         established = _vendors_in_text(established_text)
-        unsupported = [
-            t for t in tags if (cv := _canonical_vendor(_tag_label(t))) and cv not in established
-        ]
+        established_words = set(re.findall(r"[a-z][a-z.'-]{2,}", (established_text or "").lower()))
+        unsupported = []
+        for t in tags:
+            cv = _canonical_vendor(_tag_label(t))
+            if cv:
+                if cv not in established:
+                    unsupported.append(t)
+                continue
+            party = _attributed_party(t)
+            if party and party not in established_words:
+                unsupported.append(t)
         if unsupported:
             relevant = False
             reason = "unestablished"
