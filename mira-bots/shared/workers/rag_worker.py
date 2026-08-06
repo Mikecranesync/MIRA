@@ -1064,6 +1064,12 @@ class RAGWorker:
         messages = [{"role": "system", "content": system_content}]
 
         history = state.get("context", {}).get("history", [])
+        # CTX-001b: a fresh-thread turn (new symptom after a completed thread)
+        # excludes prior ASSISTANT turns — the dead thread's answer otherwise
+        # dominates the LLM and the old fault gets re-answered verbatim
+        # (fixture 63). User turns are kept; the flag is one-turn (consumed).
+        if state.get("context", {}).pop("fresh_thread_turn", None):
+            history = [e for e in history if e.get("role") == "user"]
         for entry in _trim_history_by_tokens(history):
             messages.append({"role": entry["role"], "content": entry["content"]})
 
@@ -1229,6 +1235,9 @@ class RAGWorker:
         _SELF_REF_SIGNALS = ["you said", "your response", "earlier", "before", "what you told me"]
         if not photo_b64 or _photo_continues:
             history = state.get("context", {}).get("history", [])
+            # CTX-001b: fresh-thread turn — see the text-path builder above.
+            if state.get("context", {}).pop("fresh_thread_turn", None):
+                history = [e for e in history if e.get("role") == "user"]
             trimmed = _trim_history_by_tokens(history)
             for entry in trimmed:
                 messages.append({"role": entry["role"], "content": entry["content"]})

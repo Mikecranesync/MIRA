@@ -334,11 +334,13 @@ def test_from_dict_none():
 
 def test_from_dict_tolerates_extra_keys():
     """Forward-compat: extra keys are ignored, not crash."""
-    obj = UNSContext.from_dict({
-        "manufacturer": "Yaskawa",
-        "unknown_future_field": "ignored",
-        "model": "A1000",
-    })
+    obj = UNSContext.from_dict(
+        {
+            "manufacturer": "Yaskawa",
+            "unknown_future_field": "ignored",
+            "model": "A1000",
+        }
+    )
     assert obj is not None
     assert obj.manufacturer == "Yaskawa"
     assert obj.model == "A1000"
@@ -392,9 +394,7 @@ def test_every_alias_resolves(alias, canonical):
 def test_family_aliases_set_product_family():
     for alias, family in FAMILY_FROM_ALIAS.items():
         ctx = resolve_uns_path(f"my {alias} drive")
-        assert ctx.product_family == family, (
-            f"alias {alias!r} should set family to {family!r}"
-        )
+        assert ctx.product_family == family, f"alias {alias!r} should set family to {family!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -479,3 +479,27 @@ def test_vendor_aliases_exposed():
     assert len(VENDOR_ALIASES) >= 25
     assert "powerflex" in VENDOR_ALIASES
     assert VENDOR_ALIASES["powerflex"] == "Rockwell Automation"
+
+
+# ── CTX-001 aggravator: GS-family CE comm codes are fault codes, not models ──
+# Investigation 2026-08-05: "What does CE10 mean on my DURApulse GS10 drive?"
+# resolved to model="CE10", fault_code=None — FAULT_PATTERNS had no CE pattern,
+# so the comm code survived into the model-candidate list (uns-compliance rule
+# 4 violation). The nonsense pin label "AutomationDirect, CE10" then anchored
+# retrieval to products=['CE10'] on every later turn of the session.
+
+
+def test_ce_comm_code_is_fault_code_not_model():
+    from shared.uns_resolver import resolve_uns_path
+
+    ctx = resolve_uns_path("What does CE10 mean on my DURApulse GS10 drive?")
+    assert ctx.fault_code and ctx.fault_code.upper() == "CE10"
+    assert (ctx.model or "").upper() != "CE10"
+
+
+def test_ce_code_extracted_before_model_candidates():
+    from shared.uns_resolver import resolve_uns_path
+
+    ctx = resolve_uns_path("GS10 showing CE1, comms dropping")
+    assert ctx.fault_code and ctx.fault_code.upper() == "CE1"
+    assert (ctx.model or "").upper() != "CE1"
