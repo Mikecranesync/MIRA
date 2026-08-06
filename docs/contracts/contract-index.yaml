@@ -10,14 +10,15 @@ contracts:
   # ── Context and topic switching ──────────────────────────────────────────
   - id: CTX-001
     rule: A newly and clearly named asset or topic supersedes stale active-asset context.
-    status: red
-    enforcement: [fixture 60_topic_switch_gs10_to_pf525, fixture 63_symptom_switch_after_fault_lookup]
+    status: implemented
+    enforcement: [fixture 60_topic_switch_gs10_to_pf525, fixture 63_symptom_switch_after_fault_lookup, mira-bots/tests/test_ctx_fresh_thread_pivot.py]
     notes: >-
-      Fix PR 3131 merged+deployed. 2026-08-06 re-verification vs deployed main
-      (5 rounds, staging KB): fixture 60 9/10, fixture 08 5/5, fixture 63 3/5.
-      Residual = clarify-path sampling echoing dead-thread history (the #3131
-      follow-up: deterministic repeated-answer guard + fault-code example scrub).
-      Stays red until that guard ships; do not loosen fixture 63.
+      PR 3131 (re-pin + IDLE fresh-thread) + this PR (CTX-001c): Q-state pivot
+      with a deterministic answer-shape discriminator (CTX-002-safe), FULL
+      history severance on fresh-thread turns (a retained user turn was
+      measured re-anchoring the dead fault), fault-carry cleared on pivot,
+      flag hygiene across pack turns and nemotron retries. Branch battery
+      2026-08-06: fixture 63 = 9/9, fixture 60 = 3/3, fixture 08 = 3/3.
   - id: CTX-002
     rule: A short answer to a pending diagnostic question retains context.
     status: implemented

@@ -3,8 +3,9 @@ open (Q-state, pending question) starts a fresh thread; answers to the pending
 question do not (CTX-002 preservation).
 
 Also pins the severance half (Leg 2): when ``fresh_thread_turn`` is set, both
-rag_worker prompt builders drop assistant history AND carry the NEW PROBLEM
-STATEMENT directive; and the flag survives the nemotron retry (Leg 3b) but
+rag_worker prompt builders drop ALL dead-thread history (assistant AND user —
+a retained user turn was measured re-anchoring the old fault) and carry the
+FRESH THREAD closure note; the flag survives the nemotron retry (Leg 3b) but
 never leaks across turns (Leg 3a).
 """
 
@@ -197,8 +198,13 @@ def test_fresh_thread_severs_history_and_adds_directive(builder):
         messages = w._build_prompt(state, "My conveyor keeps stopping randomly")
     roles = [m["role"] for m in messages]
     assert "assistant" not in roles, "assistant history must be dropped on a fresh-thread turn"
+    # FULL severance: dead-thread user turns are the measured anchor — the only
+    # user message left is the current one, appended separately by the builder.
+    user_msgs = [m for m in messages if m["role"] == "user"]
+    assert len(user_msgs) == 1, "dead-thread user turns must be dropped too"
+    assert "CE10" not in str(user_msgs[0].get("content", ""))
     joined = " ".join(m["content"] for m in messages if m["role"] == "system")
-    assert "NEW PROBLEM STATEMENT" in joined, "severance directive missing"
+    assert "FRESH THREAD" in joined, "severance directive missing"
     assert state["context"].get("fresh_thread_turn") is None  # consumed
 
 
@@ -214,7 +220,7 @@ def test_no_flag_keeps_history_and_no_directive(builder):
     roles = [m["role"] for m in messages]
     assert "assistant" in roles
     joined = " ".join(m["content"] for m in messages if m["role"] == "system")
-    assert "NEW PROBLEM STATEMENT" not in joined
+    assert "FRESH THREAD" not in joined
 
 
 # ── Leg 3: flag hygiene ──────────────────────────────────────────────────────
