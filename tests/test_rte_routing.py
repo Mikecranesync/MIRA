@@ -97,10 +97,18 @@ class TestDocRequestsPreserved:
             # Negated ABILITY is still a retrieval request — the technician
             # wants the document, they just can't locate it themselves.
             "I can't find the manual, can you send it",
+            # Schedule-class documents are documents (AskMira Q5 regression):
+            # the corroboration gate must not orphan them on the router.
+            "Show me the lubrication schedule for this conveyor.",
+            "where is the maintenance schedule for the GS10",
         ],
     )
     def test_positive_requests_still_documentation(self, msg):
         assert classify_intent(msg) == "documentation"
+
+    def test_scheduling_an_action_is_not_a_document(self):
+        """'schedule' as a VERB (do maintenance later) is not a doc request."""
+        assert classify_intent("I want to schedule maintenance for tomorrow") != "documentation"
 
 
 # ── RTE-001: uncorroborated router doc label must not enter MLG ──────────────

@@ -714,7 +714,10 @@ _DOC_RETRIEVAL_REQUEST_RE = re.compile(
     r"(?:manual|datasheet|documentation|docs|"
     r"pinout|pin\s*out|wiring\s+diagram|"
     r"instruction(?:s|\s+manual)?|user\s+guide|spec\s+sheet|"
-    r"catalog)\b",
+    r"catalog|"
+    # Schedule-class documents (AskMira Q5). Qualified compounds only — a bare
+    # "schedule" would turn "I want to schedule maintenance" into a doc request.
+    r"(?:lubrication|lube|maintenance|pm)\s+schedule)\b",
     re.IGNORECASE,
 )
 
