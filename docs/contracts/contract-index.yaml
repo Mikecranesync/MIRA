@@ -53,9 +53,13 @@ contracts:
   # ── Conversation ─────────────────────────────────────────────────────────
   - id: CON-001
     rule: Greetings, thanks, and help use the lightweight conversational lane — no diagnostic footers, citations, or evidence blocks.
-    status: red
+    status: implemented
     enforcement: [fixture 61_greeting_mid_session_no_citations, fixture 62_help_mid_session_no_kbgap]
-    notes: Mid-session greeting/help bypass the canned branches; citation rewrite inserted random sources into a greeting (2026-08-05 live).
+    notes: >-
+      PR 3135 (merged 2026-08-06): greeting dispatch_kind H4-skipped, keyword
+      greeting/help de-gated from exchange_count==0 to any IDLE turn.
+      Post-merge verification on main: fixtures 61/62 = 10/10 across 5 rounds
+      (staging KB, live cascade).
   - id: CON-002
     rule: A direct question (fault-code meaning, spec, how-to) gets a direct cited answer — never a quiz; follow-ups gather machine evidence, never comprehension checks.
     status: implemented
