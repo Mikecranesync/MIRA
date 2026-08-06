@@ -719,6 +719,22 @@ _DOC_RETRIEVAL_REQUEST_RE = re.compile(
 )
 
 
+# RTE-002: negated POSSESSION of a document is not a retrieval request —
+# "I don't have the manual" states a lack while answering a different question
+# (typically the UNS gate's identity demand); it must not force doc retrieval.
+# Scope is deliberately possession-only: negated ABILITY ("I can't find the
+# manual") IS still a retrieval request — the technician wants the document,
+# they just can't locate it themselves.
+_NEGATED_DOC_POSSESSION_RE = re.compile(
+    r"\b(?:don'?t|do\s+not|doesn'?t|does\s+not|didn'?t|did\s+not|never|"
+    r"haven'?t|have\s+not|hasn'?t|has\s+not|no\s+longer)\s+"
+    r"(?:even\s+)?(?:have|got)\b"
+    r"[^.?!\n]{0,40}?"
+    r"\b(?:manual|datasheet|documentation|docs)\b",
+    re.IGNORECASE,
+)
+
+
 # Procedural how-to questions — user wants step-by-step instructions from the LLM,
 # not a document to download. Checked before _DOCUMENTATION_PHRASES so "how to install"
 # routes to answer_question rather than triggering a doc crawl.
@@ -979,10 +995,13 @@ def classify_intent(message: str) -> str:
 
     # Documentation retrieval — checked BEFORE industrial so "manual" in
     # INTENT_KEYWORDS doesn't swallow explicit document requests.
-    if any(phrase in msg for phrase in _DOCUMENTATION_PHRASES):
-        return "documentation"
-    if _DOC_RETRIEVAL_REQUEST_RE.search(msg):
-        return "documentation"
+    # RTE-002: negated possession ("I don't have the manual") is not a request —
+    # skip both recognizers and fall through to the industrial classification.
+    if not _NEGATED_DOC_POSSESSION_RE.search(msg):
+        if any(phrase in msg for phrase in _DOCUMENTATION_PHRASES):
+            return "documentation"
+        if _DOC_RETRIEVAL_REQUEST_RE.search(msg):
+            return "documentation"
 
     # Industrial signals — check BEFORE greeting to avoid false positives on
     # messages like "hi my vfd is down" (17 chars, contains "hi" greeting word
