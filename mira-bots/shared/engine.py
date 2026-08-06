@@ -3363,7 +3363,14 @@ class Supervisor:
                 )
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
-        if not photo_b64 and state["state"] == "IDLE" and state["exchange_count"] == 0:
+        # CON-001: the conversational lanes are keyword-deterministic and work
+        # at ANY point in an IDLE session \u2014 the old exchange_count==0 gate sent
+        # a mid-session "What can you do?" down the LLM path, which footered
+        # (and once cited) a capability answer (fixtures 61/62, live
+        # 2026-08-05). Safe to relax: the greeting keyword requires <20 chars
+        # + a greeting word and help requires an explicit capability phrase,
+        # so a real technical question can never land here mid-session.
+        if not photo_b64 and state["state"] == "IDLE":
             if intent == "help":
                 reply = (
                     "I help maintenance technicians diagnose equipment issues. "
@@ -3374,14 +3381,9 @@ class Supervisor:
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="help")
             if intent == "greeting":
-                reply = (
-                    "Hey \u2014 I'm MIRA, your maintenance copilot. "
-                    "Send me a photo of equipment, a fault code, or describe what's "
-                    "going on and I'll help you diagnose it."
-                )
-                self._record_exchange(chat_id, state, message, reply)
-                tl_flush()
-                return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="greeting")
+                # Context-aware canned greeting (mentions a tracked asset when
+                # one is pinned) \u2014 same lane; dispatch_kind="greeting" inside.
+                return self._greeting_response(state, chat_id, trace_id)
 
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         # RTE-002: an announced symptom-first turn is never stolen by the doc flow —
@@ -5757,7 +5759,9 @@ class Supervisor:
             )
         self._record_exchange(chat_id, state, "", reply)
         tl_flush()
-        return self._make_result(reply, "none", trace_id, fsm)
+        # CON-001: a canned conversational reply — dispatch_kind keeps the H4
+        # KB-gap footer off (fixture 61, live 2026-08-05).
+        return self._make_result(reply, "none", trace_id, fsm, dispatch_kind="greeting")
 
     # Keywords that suggest the question needs equipment-specific RAG lookup
     _SPEC_KEYWORDS = frozenset(
