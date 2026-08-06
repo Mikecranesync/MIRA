@@ -690,3 +690,30 @@ async def test_unpinned_state_is_not_repin_business(tmp_path):
     sv = _make_sv(str(tmp_path / "t.db"))
     state = _fresh_state("r6")
     assert sv._maybe_repin_asset("r6", state, "PowerFlex 525 tripping", None) is False
+
+
+# ── CON-001: greeting/help lane — no footers, no citations, any session point ─
+
+
+@pytest.mark.asyncio
+async def test_greeting_response_carries_greeting_dispatch_kind(tmp_path):
+    """_greeting_response is a canned conversational reply — it must carry
+    dispatch_kind='greeting' so the H4 enforcer never appends the KB-gap
+    footer (fixture 61, live 2026-08-05)."""
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("g1")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    result = sv._greeting_response(state, "g1", "t")
+    assert result["dispatch_kind"] == "greeting"
+
+
+@pytest.mark.asyncio
+async def test_greeting_reply_survives_h4_unfootered(tmp_path):
+    from shared.engine import enforce_citation_or_gap_admission
+
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("g2")
+    result = sv._greeting_response(state, "g2", "t")
+    out = enforce_citation_or_gap_admission(result["reply"], dispatch_kind=result["dispatch_kind"])
+    assert out == result["reply"]
+    assert "KB-gap" not in out
