@@ -602,3 +602,91 @@ def test_asset_switch_carryover_clear_resets_fallback_state(tmp_path):
         "uns_gate_last_candidate",
     ):
         assert key not in ctx, key
+
+
+# ── CTX-001: a newly named DIFFERENT asset supersedes the pin ───────────────
+# Investigation 2026-08-05: asset_identified was write-once (adopt-once at
+# >=0.7) and suppressed the gate forever; an explicit new-equipment question
+# ("How do I reset a PowerFlex 525...") kept the old pin and every prompt
+# anchor with it — the engine re-answered the previous machine's fault.
+# The re-pin signal is the RESOLVER (deterministic), never the LLM router:
+# a FRESH resolve (no prior-ctx carry) naming a different canonical vendor at
+# adoption-grade confidence supersedes the pin and clears diagnostic carryover.
+
+
+@pytest.mark.asyncio
+async def test_new_vendor_at_adoption_grade_repins(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r1")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    state["context"]["session_context"] = {"fault": "CE10"}
+    sv._save_state("r1", state)
+
+    repinned = sv._maybe_repin_asset(
+        "r1", state, "How do I reset a PowerFlex 525 after an undervoltage fault?", None
+    )
+
+    assert repinned is True
+    assert "PowerFlex" in state["asset_identified"] or "Rockwell" in state["asset_identified"]
+    assert "GS10" not in state["asset_identified"]
+
+
+@pytest.mark.asyncio
+async def test_same_vendor_alias_mention_does_not_repin(tmp_path):
+    """Allen-Bradley and Rockwell are the same canonical vendor — no switch."""
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r2")
+    state["asset_identified"] = "Rockwell Automation, PowerFlex 525"
+    sv._save_state("r2", state)
+
+    assert (
+        sv._maybe_repin_asset("r2", state, "the Allen-Bradley drive is faulting again", None)
+        is False
+    )
+    assert state["asset_identified"] == "Rockwell Automation, PowerFlex 525"
+
+
+@pytest.mark.asyncio
+async def test_short_answers_never_repin(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r3")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    sv._save_state("r3", state)
+
+    for msg in ("2", "no", "480V", "yes that's the one"):
+        assert sv._maybe_repin_asset("r3", state, msg, None) is False, msg
+    assert state["asset_identified"] == "AutomationDirect, GS10"
+
+
+@pytest.mark.asyncio
+async def test_direct_connection_turns_never_repin_from_text(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r4")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    sv._save_state("r4", state)
+
+    assert (
+        sv._maybe_repin_asset("r4", state, "How do I reset a PowerFlex 525 drive?", "ignition_chat")
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_repin_clears_diagnostic_carryover(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r5")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    state["fault_category"] = "communication"
+    state["context"]["uns_gate_attempts"] = 2
+    sv._save_state("r5", state)
+
+    assert sv._maybe_repin_asset("r5", state, "How do I reset a PowerFlex 525 drive?", None) is True
+    assert state["fault_category"] is None
+    assert "uns_gate_attempts" not in (state.get("context") or {})
+
+
+@pytest.mark.asyncio
+async def test_unpinned_state_is_not_repin_business(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r6")
+    assert sv._maybe_repin_asset("r6", state, "PowerFlex 525 tripping", None) is False
