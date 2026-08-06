@@ -4,7 +4,7 @@
 # "red" = a merged fixture/test currently FAILS on main — it is the defect queue.
 
 version: 1
-last_verified: "2026-08-05"
+last_verified: "2026-08-06"
 
 contracts:
   # ── Context and topic switching ──────────────────────────────────────────
@@ -12,7 +12,12 @@ contracts:
     rule: A newly and clearly named asset or topic supersedes stale active-asset context.
     status: red
     enforcement: [fixture 60_topic_switch_gs10_to_pf525, fixture 63_symptom_switch_after_fault_lookup]
-    notes: 2026-08-05 live round — CE10 re-answered on an explicit PowerFlex question and on a new symptom.
+    notes: >-
+      Fix PR 3131 merged+deployed. 2026-08-06 re-verification vs deployed main
+      (5 rounds, staging KB): fixture 60 9/10, fixture 08 5/5, fixture 63 3/5.
+      Residual = clarify-path sampling echoing dead-thread history (the #3131
+      follow-up: deterministic repeated-answer guard + fault-code example scrub).
+      Stays red until that guard ships; do not loosen fixture 63.
   - id: CTX-002
     rule: A short answer to a pending diagnostic question retains context.
     status: implemented
@@ -36,14 +41,22 @@ contracts:
   # ── Routing ──────────────────────────────────────────────────────────────
   - id: RTE-001
     rule: Whole-message meaning outranks keyword matches.
-    status: red
-    enforcement: [fixture 67_educational_not_safety_stopped]
-    notes: '"What is an exploded view?" routes to MANUAL_LOOKUP_GATHERING instead of being answered.'
+    status: implemented
+    enforcement: [fixture 67_educational_not_safety_stopped, tests/test_rte_routing.py]
+    notes: >-
+      PR 3136. Router find_documentation labels require deterministic
+      corroboration from classify_intent (RTE-003 doctrine); uncorroborated
+      labels log ROUTER_DOC_UNCORROBORATED and demote to the general-question
+      path.
   - id: RTE-002
     rule: '"Manual" as a noun-in-passing ("I don''t have the manual") does not force document retrieval.'
-    status: red
-    enforcement: [fixture 66_unknown_identity_symptom_first]
-    notes: The doc-lookup flow claims the turn and kills the D2 symptom-first fallback.
+    status: implemented
+    enforcement: [fixture 66_unknown_identity_symptom_first, tests/test_rte_routing.py]
+    notes: >-
+      PR 3136. Negated possession skips the doc recognizers
+      (_NEGATED_DOC_POSSESSION_RE, possession-only — "can't find the manual"
+      still retrieves); the gate region fires for vendor-less exhausted
+      sessions so the D2 symptom-first fallback wins the turn.
   - id: RTE-003
     rule: Deterministic fast-paths claim a turn only on code-shaped recognition, never on English prose, and log the claim.
     status: implemented
