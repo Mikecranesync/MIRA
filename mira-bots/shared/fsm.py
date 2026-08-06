@@ -125,6 +125,56 @@ _FAULT_INFO_RE = re.compile(
 )
 
 
+_DIAGNOSIS_IDX = STATE_ORDER.index("DIAGNOSIS")
+
+_CITATION_TAG_RE = re.compile(r"\[Source:[^\]]*\]", re.IGNORECASE)
+
+# A reply that only mirrors the technician back ("You think it's a WEG motor.")
+# or acknowledges them ("Got it.") carries no diagnosis, whatever `next_state`
+# the model attached to it.
+_REFLECTION_OPENER_RE = re.compile(
+    r"^\s*(?:so[ ,]+)?(?:"
+    r"you(?:'re|\s+are)?\s+(?:think|thought|said|say|saying|mention|mentioned|believe|"
+    r"suspect|feel|indicated|noted)\w*"
+    r"|got it|understood|okay|ok|alright|all right|thanks|thank you|noted|sure|i see"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Words that mean the reply is doing diagnostic work — naming a cause, or
+# telling the technician what to do next. Any one of them is enough to treat a
+# short reply as substantive, so the guard stays conservative.
+_SUBSTANCE_RE = re.compile(
+    r"\b(?:measure|check|inspect|verify|test|compare|replace|reseal|tighten|isolate|"
+    r"disconnect|megger|because|caused?|causing|root cause|points? (?:at|to)|"
+    r"indicat\w+|suggests?|likely|consistent with|due to|fla|amps?|volts?|ohms?|"
+    r"psi|hz|rpm|torque|bypass|winding|insulation|seal|bearing|overload)\b",
+    re.IGNORECASE,
+)
+
+# Above this many words a reply is substantive by construction — the guard only
+# ever looks at short ones.
+_SUBSTANCE_WORD_FLOOR = 25
+
+
+def reply_supports_diagnosis(reply: str) -> bool:
+    """Does this reply carry enough to justify entering DIAGNOSIS?
+
+    Deliberately biased toward True: it returns False only for a SHORT reply
+    that opens as a reflection/acknowledgement AND names no cause, check, or
+    measurable. Anything else — including every genuine diagnosis — passes.
+    See `tests/test_d3_diagnosis_exit_integrity.py` for both directions.
+    """
+    text = _CITATION_TAG_RE.sub("", reply or "").strip()
+    if not text:
+        return False
+    if len(text.split()) >= _SUBSTANCE_WORD_FLOOR:
+        return True
+    if _SUBSTANCE_RE.search(text):
+        return True
+    return not _REFLECTION_OPENER_RE.match(text)
+
+
 def advance_state(state: dict, parsed: dict) -> dict:
     """Advance FSM state based on parsed LLM response.
 
@@ -170,6 +220,26 @@ def advance_state(state: dict, parsed: dict) -> dict:
                         current,
                     )
                     proposed = current
+                # Content guard (defect D3): a reply that carries no diagnosis
+                # may not ENTER DIAGNOSIS-or-later. The model can propose
+                # `DIAGNOSIS` (or an alias of it) alongside a bare reflection,
+                # and every downstream surface reads DIAGNOSIS as "diagnosed" —
+                # so the session ended looking answered when nothing had been
+                # answered. Clamp one step forward instead of jumping, which
+                # keeps the conversation moving without claiming a result.
+                # Sessions already at DIAGNOSIS or later are untouched.
+                elif curr_idx < _DIAGNOSIS_IDX <= prop_idx and not reply_supports_diagnosis(
+                    parsed.get("reply", "")
+                ):
+                    clamped = STATE_ORDER[curr_idx + 1]
+                    logger.info(
+                        "FSM_CONTENT_GUARD chat_id=%s %s→%s has no diagnosis — clamped to %s",
+                        state.get("chat_id", "?"),
+                        current,
+                        proposed,
+                        clamped,
+                    )
+                    proposed = clamped
             state["state"] = proposed
         else:
             logger.warning(

@@ -1,0 +1,17 @@
+id: greeting_mid_session_no_citations_23
+description: "Phone battery T3 (2026-08-05 live FAIL): a mid-session greeting got random Yaskawa citations inserted. Greetings are non-technical — no [Source:] tags, no KB-gap footer, ever."
+expected_final_state: IDLE
+max_turns: 4
+# Any conversational greeting shape passes (any-match); the forbidden list
+# (citations, KB-gap footer, random vendors) is the real teeth.
+expected_keywords: [MIRA, help, tracking, working on]
+forbidden_keywords: ["[Source:", "KB-gap", Yaskawa]
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [greeting, citation-hygiene, regression, phone-battery]
+turns:
+  - role: user
+    content: "What does CE10 mean on my DURApulse GS10 drive?"
+  - role: user
+    content: "Hello"

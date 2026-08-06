@@ -197,6 +197,32 @@ jobs:
           chmod 600 ~/.ssh/vps_deploy_key
           ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
 
+      # Pre-deploy log preservation (2026-08-04): the recreate below REMOVES
+      # the old containers, and with the json-file driver their logs die with
+      # them — the E1 production F004 trace was unrecoverable for exactly this
+      # reason. Capture + redact the bot's logs into a finite-retention CI
+      # artifact BEFORE the recreate (read-only; never restarts the container).
+      # Failure policy (deliberate): capture failure WARNS but never blocks —
+      # a deploy is the recovery path during an incident; observability must
+      # not gate availability. tools/predeploy_log_capture.sh owns redaction
+      # (tokens, Telegram ids, message bodies, UUIDs); the unredacted capture
+      # never leaves the runner temp dir.
+      - name: Preserve pre-deploy bot logs (redacted)
+        continue-on-error: true
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no root@165.245.138.91" \
+          OUT_DIR="$RUNNER_TEMP/predeploy-logs" \
+          bash tools/predeploy_log_capture.sh
+
+      - name: Upload pre-deploy log artifact (14-day retention)
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: predeploy-bot-logs-${{ github.run_id }}
+          path: ${{ runner.temp }}/predeploy-logs/
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Deploy
         env:
           SERVICES: ${{ github.event.inputs.services }}

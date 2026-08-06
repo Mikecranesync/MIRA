@@ -312,7 +312,17 @@ def test_multi_vendor_handler_never_invents_product_names(supervisor):
 
 def test_doc_lookup_chimera_filter_drops_model_when_pair_uncovered(supervisor):
     """The headline production fix: when (vendor, model) has zero pair
-    coverage, _do_documentation_lookup must not speak the model."""
+    coverage, _do_documentation_lookup must not speak the model.
+
+    The message is a BARE request rather than a specific question, because a
+    specific question is now handed to the answering path instead of receiving
+    the possession announcement (see
+    `tests/test_doc_lookup_answers_specific_questions.py`). The vendor-only
+    fallback string asserted below only exists on the announcement path, so this
+    test exercises that path deliberately. The chimera guard itself is unchanged
+    and still runs ahead of the handoff — the companion test below covers the
+    question path.
+    """
     state = _state()
 
     def fake_pair_coverage(vendor, model, tenant_id):
@@ -334,7 +344,7 @@ def test_doc_lookup_chimera_filter_drops_model_when_pair_uncovered(supervisor):
         result = asyncio.run(
             supervisor._do_documentation_lookup(
                 "telegram:1",
-                "connect Micro 820 to AutomationDirect GS11",
+                "manual?",
                 state,
                 "trace-1",
                 "tenant-1",
@@ -347,6 +357,38 @@ def test_doc_lookup_chimera_filter_drops_model_when_pair_uncovered(supervisor):
     assert "AutomationDirect 820" not in result["reply"]
     # Vendor-only fallback IS allowed.
     assert "AutomationDirect" in result["reply"]
+
+
+def test_doc_lookup_never_speaks_a_chimera_on_the_answer_handoff(supervisor):
+    """The question path must not regress the guard either.
+
+    A specific question is handed to `_handle_general_question`, which does its
+    own pair validation via `resolve_uns_path_multi`. What matters here is that
+    the fabricated product name never reaches the technician from THIS path.
+    """
+    state = _state()
+
+    with patch(
+        "shared.engine.kb_has_coverage", return_value=(True, "kb_4284_chunks")
+    ), patch("shared.engine.kb_has_pair_coverage", return_value=(False, 0)), patch(
+        "shared.engine.resolve_uns_path",
+        return_value=MagicMock(manufacturer="AutomationDirect", model="820"),
+    ), patch.object(supervisor, "_record_exchange"), patch.object(
+        supervisor, "_save_state"
+    ), patch("shared.engine.vendor_support_url", return_value=None):
+        result = asyncio.run(
+            supervisor._do_documentation_lookup(
+                "telegram:1",
+                "connect Micro 820 to AutomationDirect GS11",
+                state,
+                "trace-1",
+                "tenant-1",
+                vendor_override="AutomationDirect",
+                model_override="820",
+            )
+        )
+
+    assert "AutomationDirect 820" not in result["reply"]
 
 
 def test_doc_lookup_keeps_model_when_pair_covered(supervisor):

@@ -42,7 +42,11 @@ CAVEAT = (
 
 _PAIR_RE = re.compile(r"\b(\d{2})\s*[/\-. ]\s*(\d{2})\b")
 _A1A2_RE = re.compile(r"\b[Aa]\s*1\s*[/\-. ]\s*[Aa]\s*2\b")
-_QTAG_RE = re.compile(r"[-+][A-Za-z0-9/.:]{2,24}")
+# Left boundary is load-bearing: without it the leading "-" matches INSIDE
+# hyphenated English compounds — "Allen-Bradley" yields the "tag" "-Bradley",
+# which decodes to IEC-81346 class letter B and hijacks an ordinary vendor
+# question (prod incident 2026-08-04). A designation token starts a word.
+_QTAG_RE = re.compile(r"(?<![A-Za-z0-9])[-+][A-Za-z0-9/.:]{2,24}")
 _WIRE_RE = re.compile(r"^-W\d{3,6}$")
 
 _STATE_HINTS = ("energized", "energised", "live right now", "state right now")

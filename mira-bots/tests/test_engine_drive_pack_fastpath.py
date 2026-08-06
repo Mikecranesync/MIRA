@@ -237,3 +237,59 @@ async def test_kiosk_generic_question_falls_through_not_gff(supervisor):
 
     assert result.get("dispatch_kind") != "drive_pack"
     assert "fault GFF" not in result["reply"]
+
+
+# ── E3 regression (prod 2026-08-04): citation compaction for mobile ─────────
+# The PF525 pack's fault cards carry dozens of per-page citations; the rung
+# rendered "[Source: …p.161] [Source: …p.162] [Source: …p.163]". Consecutive
+# pages of the SAME document collapse to one range tag.
+
+
+class TestCitationCompaction:
+    def _compact(self, citations):
+        from shared.engine import _compact_pack_citation_tags
+
+        return _compact_pack_citation_tags(citations)
+
+    def test_three_consecutive_pages_render_as_one_range(self):
+        cites = [
+            {"doc": "PF525 Manual", "page": "161"},
+            {"doc": "PF525 Manual", "page": "162"},
+            {"doc": "PF525 Manual", "page": "163"},
+        ]
+        assert self._compact(cites) == ["[Source: PF525 Manual pp.161-163]"]
+
+    def test_duplicates_collapse_before_ranging(self):
+        cites = [
+            {"doc": "PF525 Manual", "page": "161"},
+            {"doc": "PF525 Manual", "page": "161"},
+            {"doc": "PF525 Manual", "page": "162"},
+        ]
+        assert self._compact(cites) == ["[Source: PF525 Manual pp.161-162]"]
+
+    def test_nonconsecutive_pages_stay_separate_ranges(self):
+        cites = [
+            {"doc": "PF525 Manual", "page": "12"},
+            {"doc": "PF525 Manual", "page": "40"},
+        ]
+        assert self._compact(cites) == [
+            "[Source: PF525 Manual p.12]",
+            "[Source: PF525 Manual p.40]",
+        ]
+
+    def test_different_documents_stay_separate(self):
+        cites = [
+            {"doc": "PF525 Manual", "page": "161"},
+            {"doc": "GS10 Manual", "page": "161"},
+        ]
+        assert self._compact(cites) == [
+            "[Source: PF525 Manual p.161]",
+            "[Source: GS10 Manual p.161]",
+        ]
+
+    def test_pageless_and_nonnumeric_pages_survive(self):
+        cites = [
+            {"doc": "PF525 Manual", "page": ""},
+            {"doc": "PF525 Manual", "page": "A-3"},
+        ]
+        assert self._compact(cites) == ["[Source: PF525 Manual]", "[Source: PF525 Manual p.A-3]"]

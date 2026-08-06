@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+from functools import lru_cache
 from pathlib import Path
 
 import httpx
@@ -495,8 +496,33 @@ def _direct_answer_mode() -> bool:
     return os.getenv("MIRA_DIRECT_ANSWER_MODE", "") not in ("", "0", "false", "False")
 
 
+@lru_cache(maxsize=1)
+def _yaml_system_prompt() -> str | None:
+    """The system_prompt from prompts/diagnose/active.yaml, or None.
+
+    Until 2026-08-04 active.yaml was read ONLY for version metadata while the
+    model received the hardcoded GSD_SYSTEM_PROMPT — so two prompt revisions
+    (v1.3/v1.4) silently never reached the model. The yaml is the
+    version-gated source of truth (Prompt Version Guard watches it); the
+    constant is the fail-open fallback if the file is missing or malformed.
+    """
+    try:
+        with open(_PROMPT_PATH, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        prompt = (data or {}).get("system_prompt")
+        if isinstance(prompt, str) and prompt.strip():
+            return prompt
+        logger.warning("active.yaml has no usable system_prompt — using built-in fallback")
+        return None
+    except Exception as e:  # noqa: BLE001 — prompt load must never break a turn
+        logger.warning("Failed to load system_prompt from %s: %s", _PROMPT_PATH, e)
+        return None
+
+
 def _active_system_prompt() -> str:
-    return DIRECT_ANSWER_SYSTEM_PROMPT if _direct_answer_mode() else GSD_SYSTEM_PROMPT
+    if _direct_answer_mode():
+        return DIRECT_ANSWER_SYSTEM_PROMPT
+    return _yaml_system_prompt() or GSD_SYSTEM_PROMPT
 
 
 class RAGWorker:
@@ -986,14 +1012,21 @@ class RAGWorker:
         # Build retrieved chunks as untrusted reference data. The block is
         # prepended to the final user turn below, not embedded in system role.
         _meta = neon_chunks_meta if neon_chunks_meta is not None else self._last_neon_chunks
-        ref_lines: list[str] = []
+
+        # Pair each chunk with its metadata BEFORE filtering — `chunks` may be
+        # plain strings whose vendor lives in the parallel `_meta` list, so the
+        # two must move together or a citation would end up attached to the
+        # wrong text. This is the PRIMARY retrieval path (`_build_prompt` is a
+        # fallback), so the vendor-consistency filter has to be applied here or
+        # off-vendor citations still reach the technician.
+        _pairs: list[tuple[dict, str]] = []
         for i, chunk in enumerate(chunks, 1):
             if isinstance(chunk, dict):
-                nc = chunk
-                text = chunk.get("content", "")
+                _pairs.append((chunk, chunk.get("content", "")))
             else:
-                nc = _meta[i - 1] if i - 1 < len(_meta) else {}
-                text = chunk
+                _pairs.append((_meta[i - 1] if i - 1 < len(_meta) else {}, chunk))
+        ref_lines: list[str] = []
+        for i, (nc, text) in enumerate(_pairs, 1):
             text = _neutralize_chunk_text(text)
             label = format_source_label(nc)
             if label:
@@ -1012,6 +1045,12 @@ class RAGWorker:
         messages = [{"role": "system", "content": system_content}]
 
         history = state.get("context", {}).get("history", [])
+        # CTX-001b: a fresh-thread turn (new symptom after a completed thread)
+        # excludes prior ASSISTANT turns — the dead thread's answer otherwise
+        # dominates the LLM and the old fault gets re-answered verbatim
+        # (fixture 63). User turns are kept; the flag is one-turn (consumed).
+        if state.get("context", {}).pop("fresh_thread_turn", None):
+            history = [e for e in history if e.get("role") == "user"]
         for entry in _trim_history_by_tokens(history):
             messages.append({"role": entry["role"], "content": entry["content"]})
 
@@ -1138,6 +1177,15 @@ class RAGWorker:
                 "--- END NO KB COVERAGE ---\n"
             )
 
+        # Vendor-consistency filter (2026-08-03). Retrieval returns whatever is
+        # nearest in embedding space, and the prompt instructs the model to copy
+        # the `[Source: …]` tag of any chunk it uses — so an off-vendor chunk
+        # becomes an authoritative-looking citation for someone else's machine.
+        #
+        # Measured live: one 8-turn conversation opening "the conveyor stopped"
+        # cited Siemens, Rockwell, a textbook section, Demag and Interroll — a
+        # different manufacturer nearly every turn, each reply looking grounded.
+
         # Build NeonDB chunks as untrusted reference data. The block is prepended
         # to the final user turn below, not embedded in system role.
         ref_block = ""
@@ -1168,6 +1216,9 @@ class RAGWorker:
         _SELF_REF_SIGNALS = ["you said", "your response", "earlier", "before", "what you told me"]
         if not photo_b64 or _photo_continues:
             history = state.get("context", {}).get("history", [])
+            # CTX-001b: fresh-thread turn — see the text-path builder above.
+            if state.get("context", {}).pop("fresh_thread_turn", None):
+                history = [e for e in history if e.get("role") == "user"]
             trimmed = _trim_history_by_tokens(history)
             for entry in trimmed:
                 messages.append({"role": entry["role"], "content": entry["content"]})

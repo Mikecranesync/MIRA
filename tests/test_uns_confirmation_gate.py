@@ -384,3 +384,336 @@ def test_awaiting_uns_confirmation_is_valid_fsm_state():
     from shared.fsm import VALID_STATES
 
     assert "AWAITING_UNS_CONFIRMATION" in VALID_STATES
+
+
+# ── D2: symptom-first fallback (gate deadlock) ──────────────────────────────
+# A technician who cannot name the manufacturer/model must not receive the
+# identical gate demand forever (defect D2, docs/evals/2026-08-03-dialogue-
+# mode-w2a/results.md). After the technician signals unknown identity — or
+# after _UNS_GATE_MAX_ATTEMPTS unresolved gate firings — the gate stops
+# repeating and the turn proceeds into a clearly-labeled, lower-confidence
+# symptom-first diagnostic path. A real candidate re-opens the grounded route.
+
+
+@pytest.mark.asyncio
+async def test_request_increments_gate_attempts(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d1")
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.0)
+
+    await sv._handle_uns_confirmation_request("d1", "fault", state, uns_ctx, "t")
+    saved = sv._load_state("d1")
+    assert (saved["context"] or {}).get("uns_gate_attempts") == 1
+
+    await sv._handle_uns_confirmation_request("d1", "fault again", saved, uns_ctx, "t")
+    saved = sv._load_state("d1")
+    assert (saved["context"] or {}).get("uns_gate_attempts") == 2
+
+
+@pytest.mark.asyncio
+async def test_unknown_identity_fallthrough_sets_flag(tmp_path):
+    """'I don't have the manual handy' must register as unknown identity."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d2")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
+    state["context"]["pending_uns_confirm"] = {"candidate": None}
+    sv._save_state("d2", state)
+
+    result = await sv._handle_uns_confirmation_response(
+        "d2",
+        "It's a sensor on the packaging machine, but I don't have the manual handy",
+        state,
+        "t",
+    )
+
+    assert result is None  # still falls through to the normal flow
+    saved = sv._load_state("d2")
+    assert (saved["context"] or {}).get("uns_identity_unknown") is True
+
+
+@pytest.mark.asyncio
+async def test_specs_fallthrough_does_not_set_unknown_flag(tmp_path):
+    """The other direction: typing real specs must NOT flag unknown identity."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d3")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
+    state["context"]["pending_uns_confirm"] = {"candidate": None}
+    sv._save_state("d3", state)
+
+    result = await sv._handle_uns_confirmation_response(
+        "d3", "It's an Allen-Bradley PowerFlex 525", state, "t"
+    )
+
+    assert result is None
+    saved = sv._load_state("d3")
+    assert not (saved["context"] or {}).get("uns_identity_unknown")
+
+
+def test_gate_not_exhausted_fresh_state(tmp_path):
+    """Known-or-obtainable identity keeps the normal grounded route untouched."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d4")
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.0)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is False
+
+
+def test_gate_exhausted_after_max_attempts(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d5")
+    state["context"]["uns_gate_attempts"] = 2
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.0)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is True
+
+
+def test_gate_exhausted_on_unknown_identity_flag(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d6")
+    state["context"]["uns_gate_attempts"] = 1
+    state["context"]["uns_identity_unknown"] = True
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.0)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is True
+
+
+def test_gate_not_exhausted_when_candidate_present(tmp_path):
+    """Later discovery of a nameplate/model re-opens the grounded route —
+    a real candidate must always be allowed to fire the confirmation."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d7")
+    state["context"]["uns_gate_attempts"] = 5
+    state["context"]["uns_identity_unknown"] = True
+    uns_ctx = SimpleNamespace(manufacturer="Allen-Bradley", model="PowerFlex 525", confidence=0.6)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is False
+
+
+def test_fallback_notice_emitted_once_and_invents_nothing(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d8")
+
+    notice = sv._uns_gate_fallback_notice(state)
+    assert "lower confidence" in notice
+    assert "nameplate" in notice
+    # Never invent identity: the notice must not name any manufacturer.
+    assert "Allen-Bradley" not in notice and "PowerFlex" not in notice
+
+    # Second call: already announced — silent.
+    assert sv._uns_gate_fallback_notice(state) == ""
+
+
+@pytest.mark.asyncio
+async def test_yes_clears_fallback_state(tmp_path):
+    """Confirming an asset resets the fallback bookkeeping for the session."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d9")
+    state["state"] = "AWAITING_UNS_CONFIRMATION"
+    state["context"]["pending_uns_confirm"] = {"candidate": "Siemens, SINAMICS G120"}
+    state["context"]["uns_gate_attempts"] = 2
+    state["context"]["uns_identity_unknown"] = True
+    state["context"]["symptom_first_notice_sent"] = True
+    sv._save_state("d9", state)
+
+    result = await sv._handle_uns_confirmation_response("d9", "yes", state, "t")
+
+    assert result is not None
+    saved = sv._load_state("d9")
+    ctx = saved["context"] or {}
+    assert "uns_gate_attempts" not in ctx
+    assert "uns_identity_unknown" not in ctx
+    assert "symptom_first_notice_sent" not in ctx
+    assert "uns_gate_last_candidate" not in ctx
+
+
+@pytest.mark.asyncio
+async def test_unknown_identity_progresses_not_loops(tmp_path):
+    """The D2 narrative: gate fires once, technician says they can't identify
+    the machine, and the NEXT turn is symptom-first — not the same demand."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d10")
+    uns_ctx = SimpleNamespace(manufacturer=None, model=None, confidence=0.1)
+
+    # Turn 1: gate fires (normal — identity is reasonably obtainable).
+    await sv._handle_uns_confirmation_request("d10", "sensor acting up", state, uns_ctx, "t")
+    saved = sv._load_state("d10")
+
+    # Turn 2: technician cannot identify the equipment.
+    result = await sv._handle_uns_confirmation_response(
+        "d10", "no idea, there's no nameplate on it", saved, "t"
+    )
+    assert result is None
+    saved = sv._load_state("d10")
+
+    # Turn 3: the gate must NOT re-fire — symptom-first takes over, labeled.
+    assert sv._uns_gate_exhausted(saved, uns_ctx) is True
+    assert sv._uns_gate_fallback_notice(saved) != ""
+
+
+def test_gate_exhausted_when_carried_candidate_was_already_offered(tmp_path):
+    """Regression (owner review 2026-08-04): the resolver carries an earlier
+    manufacturer forward with decaying confidence. If that candidate was
+    already offered and never confirmed, re-offering it forever is the same
+    deadlock — only NEW identity information re-opens the grounded route."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d11")
+    state["context"]["uns_identity_unknown"] = True
+    state["context"]["uns_gate_last_candidate"] = "Allen-Bradley, PowerFlex 525"
+    uns_ctx = SimpleNamespace(manufacturer="Allen-Bradley", model="PowerFlex 525", confidence=0.35)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is True
+
+
+def test_gate_reopens_for_genuinely_new_candidate(tmp_path):
+    """The other direction: a DIFFERENT manufacturer than the one already
+    offered is new information and must re-fire the confirmation."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d12")
+    state["context"]["uns_identity_unknown"] = True
+    state["context"]["uns_gate_last_candidate"] = "Allen-Bradley, PowerFlex 525"
+    uns_ctx = SimpleNamespace(manufacturer="Siemens", model="SINAMICS G120", confidence=0.6)
+    assert sv._uns_gate_exhausted(state, uns_ctx) is False
+
+
+@pytest.mark.asyncio
+async def test_request_records_last_offered_candidate(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d13")
+    uns_ctx = SimpleNamespace(manufacturer="Allen-Bradley", model="PowerFlex 525", confidence=0.55)
+
+    await sv._handle_uns_confirmation_request("d13", "it's stopped", state, uns_ctx, "t")
+    saved = sv._load_state("d13")
+    assert (saved["context"] or {}).get("uns_gate_last_candidate") == "Allen-Bradley, PowerFlex 525"
+
+
+def test_asset_switch_carryover_clear_resets_fallback_state(tmp_path):
+    """UNS-025: an asset switch must not carry the previous machine's
+    exhaustion flags — a stale uns_identity_unknown would suppress the gate
+    for the NEW asset without ever asking."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("d14")
+    state["context"]["uns_gate_attempts"] = 2
+    state["context"]["uns_identity_unknown"] = True
+    state["context"]["symptom_first_notice_sent"] = True
+    state["context"]["uns_gate_last_candidate"] = "Rockwell Automation"
+
+    out = sv._clear_diagnostic_carryover("d14", state)
+
+    ctx = out.get("context") or {}
+    for key in (
+        "uns_gate_attempts",
+        "uns_identity_unknown",
+        "symptom_first_notice_sent",
+        "uns_gate_last_candidate",
+    ):
+        assert key not in ctx, key
+
+
+# ── CTX-001: a newly named DIFFERENT asset supersedes the pin ───────────────
+# Investigation 2026-08-05: asset_identified was write-once (adopt-once at
+# >=0.7) and suppressed the gate forever; an explicit new-equipment question
+# ("How do I reset a PowerFlex 525...") kept the old pin and every prompt
+# anchor with it — the engine re-answered the previous machine's fault.
+# The re-pin signal is the RESOLVER (deterministic), never the LLM router:
+# a FRESH resolve (no prior-ctx carry) naming a different canonical vendor at
+# adoption-grade confidence supersedes the pin and clears diagnostic carryover.
+
+
+@pytest.mark.asyncio
+async def test_new_vendor_at_adoption_grade_repins(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r1")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    state["context"]["session_context"] = {"fault": "CE10"}
+    sv._save_state("r1", state)
+
+    repinned = sv._maybe_repin_asset(
+        "r1", state, "How do I reset a PowerFlex 525 after an undervoltage fault?", None
+    )
+
+    assert repinned is True
+    assert "PowerFlex" in state["asset_identified"] or "Rockwell" in state["asset_identified"]
+    assert "GS10" not in state["asset_identified"]
+
+
+@pytest.mark.asyncio
+async def test_same_vendor_alias_mention_does_not_repin(tmp_path):
+    """Allen-Bradley and Rockwell are the same canonical vendor — no switch."""
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r2")
+    state["asset_identified"] = "Rockwell Automation, PowerFlex 525"
+    sv._save_state("r2", state)
+
+    assert (
+        sv._maybe_repin_asset("r2", state, "the Allen-Bradley drive is faulting again", None)
+        is False
+    )
+    assert state["asset_identified"] == "Rockwell Automation, PowerFlex 525"
+
+
+@pytest.mark.asyncio
+async def test_short_answers_never_repin(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r3")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    sv._save_state("r3", state)
+
+    for msg in ("2", "no", "480V", "yes that's the one"):
+        assert sv._maybe_repin_asset("r3", state, msg, None) is False, msg
+    assert state["asset_identified"] == "AutomationDirect, GS10"
+
+
+@pytest.mark.asyncio
+async def test_direct_connection_turns_never_repin_from_text(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r4")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    sv._save_state("r4", state)
+
+    assert (
+        sv._maybe_repin_asset("r4", state, "How do I reset a PowerFlex 525 drive?", "ignition_chat")
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_repin_clears_diagnostic_carryover(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r5")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    state["fault_category"] = "communication"
+    state["context"]["uns_gate_attempts"] = 2
+    sv._save_state("r5", state)
+
+    assert sv._maybe_repin_asset("r5", state, "How do I reset a PowerFlex 525 drive?", None) is True
+    assert state["fault_category"] is None
+    assert "uns_gate_attempts" not in (state.get("context") or {})
+
+
+@pytest.mark.asyncio
+async def test_unpinned_state_is_not_repin_business(tmp_path):
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("r6")
+    assert sv._maybe_repin_asset("r6", state, "PowerFlex 525 tripping", None) is False
+
+
+# ── CON-001: greeting/help lane — no footers, no citations, any session point ─
+
+
+@pytest.mark.asyncio
+async def test_greeting_response_carries_greeting_dispatch_kind(tmp_path):
+    """_greeting_response is a canned conversational reply — it must carry
+    dispatch_kind='greeting' so the H4 enforcer never appends the KB-gap
+    footer (fixture 61, live 2026-08-05)."""
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("g1")
+    state["asset_identified"] = "AutomationDirect, GS10"
+    result = sv._greeting_response(state, "g1", "t")
+    assert result["dispatch_kind"] == "greeting"
+
+
+@pytest.mark.asyncio
+async def test_greeting_reply_survives_h4_unfootered(tmp_path):
+    from shared.engine import enforce_citation_or_gap_admission
+
+    sv = _make_sv(str(tmp_path / "t.db"))
+    state = _fresh_state("g2")
+    result = sv._greeting_response(state, "g2", "t")
+    out = enforce_citation_or_gap_admission(result["reply"], dispatch_kind=result["dispatch_kind"])
+    assert out == result["reply"]
+    assert "KB-gap" not in out
