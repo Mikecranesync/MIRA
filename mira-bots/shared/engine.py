@@ -2846,12 +2846,20 @@ class Supervisor:
         # prompt fired by the UNS Confirmation Gate. Returns a result on explicit
         # yes/no, or None to fall through (e.g., user typed equipment specs — let
         # the normal flow re-run the UNS resolver on the message).
+        # RTE-002: a fallthrough is remembered for THIS turn — an exhausted,
+        # vendor-less session (resolver confidence 0.0 all session) must still
+        # reach the D2 symptom-first branch, whose entry otherwise requires
+        # confidence > 0 or an asset-state hit on the current message.
+        _uns_confirm_fell_through = False
+        _symptom_first_fired = False
+        _doc_router_uncorroborated = False
         if (state.get("context") or {}).get("pending_uns_confirm") and not photo_b64:
             _uns_resp = await self._handle_uns_confirmation_response(
                 chat_id, message, state, trace_id
             )
             if _uns_resp is not None:
                 return _uns_resp
+            _uns_confirm_fell_through = True
 
         if message.strip() and state.get("final_state") == "RESOLVED":
             state["final_state"] = None
@@ -3272,9 +3280,22 @@ class Supervisor:
                     honest_prefix=_honest_prefix,
                 )
 
-            # find_documentation: let the existing specificity-gate block handle it below
+            # find_documentation: honor the router's label only with code-shaped
+            # corroboration (RTE-001/RTE-003) — the deterministic recognizers in
+            # classify_intent must also see a doc-request shape. An uncorroborated
+            # label is an LLM word-association ("What is an exploded view?" is
+            # documentation-artifact vocabulary, not a fetch request) and must
+            # never enter the manual-lookup state machine.
             if _router_intent == "find_documentation":
-                intent = "documentation"
+                if _keyword_intent == "documentation":
+                    intent = "documentation"
+                else:
+                    _doc_router_uncorroborated = True
+                    logger.info(
+                        "ROUTER_DOC_UNCORROBORATED chat_id=%s keyword_intent=%s",
+                        chat_id,
+                        _keyword_intent,
+                    )
 
             # UNS Confirmation Gate — no diagnosis without confirmed equipment.
             # Telegram + Slack both go through here. Conditions extracted into
@@ -3286,8 +3307,19 @@ class Supervisor:
             # resolver confidence is manufacturer/model/fault-only, so a
             # vendorless asset mention ("my garage conveyor") scores 0.0 — yet
             # the question IS asset-specific and must confirm location.
-            if (uns_ctx.confidence > 0 or _asset_state_hit) and self._should_fire_uns_gate(
-                _router_intent, state, message, sc
+            # RTE-002: a session that just fell through the pending-confirmation
+            # handler in an exhausted state must reach the symptom-first branch
+            # even when NO vendor was ever named (confidence 0.0, no asset-state
+            # hit on the current message) — otherwise the doc block below can
+            # steal the turn and re-demand the identity D2 exists to stop asking.
+            _uns_gate_exhausted_fallback = (
+                _uns_confirm_fell_through
+                and not state.get("asset_identified")
+                and self._uns_gate_exhausted(state, uns_ctx)
+            )
+            if _uns_gate_exhausted_fallback or (
+                (uns_ctx.confidence > 0 or _asset_state_hit)
+                and self._should_fire_uns_gate(_router_intent, state, message, sc)
             ):
                 # D2 symptom-first fallback: when the session has already shown
                 # it cannot produce an identity (technician said so, or the
@@ -3300,6 +3332,7 @@ class Supervisor:
                     notice = self._uns_gate_fallback_notice(state)
                     if notice:
                         _honest_prefix += notice
+                    _symptom_first_fired = True
                     logger.info(
                         "UNS_GATE_SYMPTOM_FIRST chat_id=%s attempts=%s unknown=%s",
                         chat_id,
@@ -3315,6 +3348,19 @@ class Supervisor:
                         trace_id,
                         tenant_id=resolved_tenant,
                     )
+
+            # RTE-001: an uncorroborated router doc label is not a fetch request —
+            # answer the question directly (educational path, ends IDLE). Scoped:
+            # a symptom-first turn continues into RAG with its notice, and an
+            # active diagnostic session falls through to the diagnostic flow.
+            if (
+                _doc_router_uncorroborated
+                and not _symptom_first_fired
+                and not _in_active_diagnostic
+            ):
+                return await self._handle_general_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
         # CON-001: the conversational lanes are keyword-deterministic and work
@@ -3340,7 +3386,9 @@ class Supervisor:
                 return self._greeting_response(state, chat_id, trace_id)
 
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
-        if not photo_b64 and intent == "documentation":
+        # RTE-002: an announced symptom-first turn is never stolen by the doc flow —
+        # the notice promised general guidance, not a brand/manufacturer re-demand.
+        if not photo_b64 and intent == "documentation" and not _symptom_first_fired:
             combined = f"{message} {state.get('asset_identified', '')}".strip()
             mfr = ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
 
