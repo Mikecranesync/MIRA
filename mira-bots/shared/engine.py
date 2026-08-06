@@ -3034,9 +3034,7 @@ class Supervisor:
                 and state.get("asset_identified")
                 and state.get("state", "IDLE") == "IDLE"
                 and not (
-                    ((state.get("context") or {}).get("session_context") or {}).get(
-                        "last_question"
-                    )
+                    ((state.get("context") or {}).get("session_context") or {}).get("last_question")
                 )
             ):
                 _ctx_ft = state.get("context") or {}
@@ -7374,9 +7372,7 @@ class Supervisor:
         ctx_repin = state.get("context") or {}
         ctx_repin["fresh_thread_turn"] = True
         state["context"] = ctx_repin
-        logger.info(
-            "CTX_ASSET_REPIN chat_id=%s new=%r (previous pin superseded)", chat_id, label
-        )
+        logger.info("CTX_ASSET_REPIN chat_id=%s new=%r (previous pin superseded)", chat_id, label)
         return True
 
     def _uns_gate_exhausted(self, state: dict, uns_ctx) -> bool:
