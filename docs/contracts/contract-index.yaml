@@ -27,6 +27,16 @@ contracts:
     rule: A correction supersedes the prior value without erasing its audit trail.
     status: proposed
     enforcement: []
+  - id: CTX-004
+    rule: A reply is never a near-duplicate of a recent assistant turn when the technician's question changed; re-asking the same question may legitimately repeat.
+    status: implemented
+    enforcement: [mira-bots/tests/test_repeated_answer_guard.py, REPEATED_ANSWER_DETECTED log, REPEATED_ANSWER_UNRESOLVED log]
+    notes: >-
+      The #3131 follow-up, shipped with CTX-001c: deterministic post-generation
+      guard at the _call_with_correction seam (difflib on normalized text,
+      source tags stripped). On detection: one severed retry with
+      fresh_thread_turn armed; fail-safe on a repeat (reply returned, logged).
+      Never fires on photo turns or short canned lines.
 
   # ── Identity ─────────────────────────────────────────────────────────────
   - id: IDN-001

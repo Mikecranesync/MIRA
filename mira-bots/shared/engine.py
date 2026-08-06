@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import logging
 import math
@@ -823,6 +824,61 @@ _CORRECTION_MARKER_RE = re.compile(
     r"\b(?:actually|sorry|correction|i\s+meant|my\s+mistake|not\s+(?:a|the)|rather)\b",
     re.IGNORECASE,
 )
+
+# CTX-004 repeated-answer guard thresholds. Reply similarity is measured on
+# normalized text (source tags and the sources block stripped) so a citation
+# page-number tweak cannot disguise a duplicate; a re-asked question at or
+# above the question threshold makes repeating the answer LEGITIMATE.
+_REPEAT_REPLY_SIM = 0.9
+_REPEAT_QUESTION_SIM = 0.8
+_REPEAT_SCAN_LIMIT = 3
+_REPEAT_MIN_LEN = 40
+
+
+def _normalize_reply_text(text: str) -> str:
+    text = re.sub(r"\[Source:[^\]]*\]", " ", text or "")
+    text = re.sub(r"---\s*Sources\s*---.*", " ", text, flags=re.DOTALL | re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _find_repeated_answer(reply: str, message: str, history: list) -> bool:
+    """CTX-004: True when ``reply`` near-duplicates a recent assistant turn
+    whose preceding user question DIFFERS from the current message.
+
+    Deterministic (difflib ratio on normalized text), scans the last
+    ``_REPEAT_SCAN_LIMIT`` assistant turns. Short canned lines and a re-ask
+    of the same question never fire.
+    """
+    norm_reply = _normalize_reply_text(reply)
+    if len(norm_reply) < _REPEAT_MIN_LEN:
+        return False
+    norm_msg = re.sub(r"\s+", " ", (message or "").strip().lower())
+    seen = 0
+    for i in range(len(history) - 1, -1, -1):
+        entry = history[i]
+        if entry.get("role") != "assistant":
+            continue
+        seen += 1
+        if seen > _REPEAT_SCAN_LIMIT:
+            break
+        prior = _normalize_reply_text(entry.get("content", ""))
+        if not prior:
+            continue
+        if difflib.SequenceMatcher(None, norm_reply, prior).ratio() < _REPEAT_REPLY_SIM:
+            continue
+        prev_user = ""
+        for j in range(i - 1, -1, -1):
+            if history[j].get("role") == "user":
+                prev_user = re.sub(r"\s+", " ", (history[j].get("content") or "").strip().lower())
+                break
+        if (
+            prev_user
+            and difflib.SequenceMatcher(None, norm_msg, prev_user).ratio() >= _REPEAT_QUESTION_SIM
+        ):
+            return False  # same question re-asked — repeating the answer is fine
+        return True
+    return False
+
 
 # ---------------------------------------------------------------------------
 # Manual-lookup gathering subroutine constants
@@ -5327,7 +5383,12 @@ class Supervisor:
         # UNFILTERED dead-thread history. Snapshot once and re-arm per attempt.
         _fresh_thread_snapshot = bool((state.get("context") or {}).get("fresh_thread_turn"))
 
-        for attempt in range(max_attempts):
+        # CTX-004: the repeated-answer guard may grant exactly ONE extra
+        # severed attempt beyond max_attempts, so the loop is a while (a
+        # range() computed up front could not extend).
+        _repeat_retry_used = False
+        attempt = 0
+        while attempt < max_attempts:
             if attempt and _fresh_thread_snapshot:
                 state.setdefault("context", {})["fresh_thread_turn"] = True
             try:
@@ -5375,18 +5436,44 @@ class Supervisor:
                 except Exception as exc:  # noqa: BLE001 — audit enrichment never blocks a reply
                     logger.debug("RETRIEVAL_AUGMENT miss: %s", exc)
 
+            # CTX-004 repeated-answer guard: a reply that near-duplicates a
+            # recent assistant turn when the question CHANGED gets one severed
+            # retry (fresh_thread_turn armed → the rebuilt prompt drops the
+            # dead thread). Runs BEFORE the grounded early-return — a grounded
+            # duplicate is still a duplicate. Fail-safe: if the retry repeats
+            # too, the reply is returned and logged, never withheld.
+            if not photo_b64 and _find_repeated_answer(
+                parsed.get("reply", ""),
+                message,
+                (state.get("context") or {}).get("history") or [],
+            ):
+                if not _repeat_retry_used:
+                    _repeat_retry_used = True
+                    logger.info(
+                        "REPEATED_ANSWER_DETECTED attempt=%d reply_len=%d",
+                        attempt,
+                        len(parsed.get("reply", "")),
+                    )
+                    state.setdefault("context", {})["fresh_thread_turn"] = True
+                    max_attempts = attempt + 2  # exactly one extra severed attempt
+                    attempt += 1
+                    continue
+                # The severed retry repeated too — fail safe: return it, loudly.
+                logger.info("REPEATED_ANSWER_UNRESOLVED reply_len=%d", len(parsed.get("reply", "")))
+
             # Check grounding against THIS turn's sources snapshot, never the
             # shared self.rag._last_sources (#1704).
             if self._is_grounded(parsed, parsed["_sources"]):
                 return raw, parsed
 
             # Not grounded on first attempt — rewrite and retry
-            if attempt == 0 and max_attempts > 1:
+            if attempt == 0 and max_attempts > 1 and self.nemotron.enabled:
                 logger.info("SELF_CORRECT attempt=1 — rewriting query")
                 query = await self.nemotron.rewrite_query(
                     query=query,
                     context=state.get("asset_identified", ""),
                 )
+            attempt += 1
 
         return raw, parsed
 
