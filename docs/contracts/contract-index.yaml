@@ -89,6 +89,26 @@ contracts:
     status: implemented
     enforcement: [prompt active.yaml v1.4 rules 1/5/22, mira-bots/tests/test_rag_worker_prompt_source.py, seed-011..014 judge cases]
     notes: W2b, PR 3118. The prompt file is the LIVE prompt (decoy fixed) — pinned.
+  - id: CON-003
+    rule: A thanks/greeting/help turn never consumes a pending question or confirmation, never re-runs the self-introduction, and is acknowledged in context (with a gentle reminder of what MIRA is waiting on).
+    status: implemented
+    enforcement: [mira-bots/tests/test_conversational_lanes_uat.py, UNS_CONFIRM_HELD_CONVERSATIONAL log]
+    notes: >-
+      UAT telegramtest1 (2026-08-06 live): "thanks" mid-gate got the full
+      self-intro and silently dropped the pending equipment confirmation;
+      "what can you do?" was stolen by the router's general_question dispatch
+      and footered. Fixed with the lane-priority exclusion (RTE-001 doctrine),
+      the pending-hold branch, and the thanks-aware greeting lane. Bare
+      ambiguous tokens ("yes") still fall through for resolver re-run.
+  - id: DOC-001
+    rule: 'MIRA never denies having documentation it has: a possession question about the docs ("do you have the manual?") is answered by the deterministic KB/pack possession claim, never by sampled generation.'
+    status: implemented
+    enforcement: [mira-bots/tests/test_conversational_lanes_uat.py TestN4 possession tests, DOC_LOOKUP_ANSWER_HANDOFF log]
+    notes: >-
+      UAT telegramtest1: "do you have the gs10 manual?" was RAG-answered "No,
+      I don't have the manual" immediately after kb_has_coverage returned
+      True. The ct-04 answer handoff now excludes doc-shaped questions
+      (classify_intent == documentation), which take the possession claim.
 
   # ── Safety ───────────────────────────────────────────────────────────────
   - id: SAF-001
