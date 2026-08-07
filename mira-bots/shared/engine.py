@@ -595,7 +595,7 @@ _ASSET_STATE_RE = re.compile(
     r"\b(?:"
     r"current\s+state|state\s+of|status\s+of|current\s+status|\bstatus\b"
     r"|what\s+state\s+is"
-    r"|(?:anything|something|what(?:'s|\s+is)?)\s+wrong\s+with"
+    r"|(?:anything|something|what)(?:'s|\s+is)?\s+wrong\s+with"
     r"|how\s+is\b.{0,40}\b(?:doing|running)"
     r"|is\s+(?:it|the|my)\b.{0,40}\b(?:running|stopped|down|up|off|on|ok|okay"
     r"|faulted|jammed|healthy|online|offline)"
@@ -622,9 +622,11 @@ _ASSET_SYMPTOM_RE = re.compile(
 # [-_]? — technicians type dashless tags ("cv101", "gs10") as often as
 # canonical ones (gauntlet tier-1 finding).
 _ASSET_NOUN_RE = re.compile(
+    # ``s?`` covers plurals — live Telethon regression 2026-08-07: "one of our
+    # DRIVES keeps faulting" carried no noun evidence and the pivot never fired.
     r"\b(?:conveyor|pump|mixer|compressor|boiler|chiller|motor|drive|vfd|plc"
     r"|robot|press|oven|gearbox|palletizer|filler|capper|labeler|fan|blower"
-    r"|machine|line|cell|station|equipment|asset)\b"
+    r"|machine|line|cell|station|equipment|asset)s?\b"
     r"|\b[a-z]{2,4}[-_]?\d{2,4}\b",
     re.IGNORECASE,
 )
