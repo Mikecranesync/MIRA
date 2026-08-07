@@ -236,10 +236,19 @@ def _prepend_equipment_context(message: str, state: dict) -> str:
 
         >>> state = {"state": "IDLE", "context": {"uns_context": {"manufacturer": "Rockwell", "model": "PowerFlex 525", "confidence": 0.9}}}
         >>> _prepend_equipment_context("Follow-up", state)
-        'Follow-up'  # IDLE session, no prepend
+        'Follow-up'  # IDLE with no pinned asset, no prepend
     """
-    # Only prepend if in an active diagnostic state
-    if state.get("state") not in ACTIVE_DIAGNOSTIC_STATES:
+    # Prepend in active diagnostic states — and ALSO on IDLE continuation turns
+    # with a pinned asset (live campaign catch c1r1, 2026-08-07: a drive-pack
+    # answer leaves the session IDLE, so "is that fault serious?" hit retrieval
+    # as a bare pronoun sentence, recalled nothing, and MIRA asked for the code
+    # it had just explained). A fresh-thread turn (severance armed) is a NEW
+    # subject and must NOT drag the dead thread's context into retrieval.
+    _ctx_pre = state.get("context") or {}
+    _idle_continuation = bool(state.get("asset_identified")) and not _ctx_pre.get(
+        "fresh_thread_turn"
+    )
+    if state.get("state") not in ACTIVE_DIAGNOSTIC_STATES and not _idle_continuation:
         return message
 
     # Extract uns_context
