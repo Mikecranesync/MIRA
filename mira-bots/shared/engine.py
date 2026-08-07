@@ -3144,23 +3144,43 @@ class Supervisor:
                 )
                 _router_intent = "diagnose_equipment"
 
-            # CTX-001b (2026-08-05): a NEW symptom after a COMPLETED thread
-            # starts a fresh diagnostic thread. Deterministic signals only:
-            # an asset-state hit (new problem statement) while IDLE with no
-            # pending question (the previous thread finished — nothing was
-            # asked of the technician). Without this, the prior answer in
-            # conversation history sometimes dominates the LLM and the old
-            # fault gets re-answered verbatim (fixture 63). The asset pin is
-            # KEPT — the symptom may well belong to the pinned machine; only
-            # the dead thread's assistant turns are excluded from this turn's
-            # prompt (rag_worker consumes and clears the flag).
-            # Trigger is deterministic-first: the keyword classifier (pure
-            # substring sets) OR the asset-state hit. The scorer alone was not
-            # enough — it weighs the ROUTER's confidence, which varies run to
-            # run and made this flag flip on identical inputs.
-            if (
-                (_asset_state_hit or _keyword_intent == "industrial")
+            # Shared fresh-thread discriminator (CTX-001b/c): severance is only
+            # ever justified when THIS message NAMES a new subject (asset noun /
+            # tag token at deterministic p >= threshold, fault-code-stripped)
+            # and is not answer/correction/dont-know-shaped. Live campaign
+            # catch (c1 t2_continuation_is_kept, 2026-08-07): the pronoun
+            # continuation "is that fault serious?" after a pack-claimed turn
+            # (IDLE, no last_question) was severed and lost its referent —
+            # the IDLE trigger had no subject-naming requirement. Vendor
+            # switches stay covered independently by _maybe_repin_asset,
+            # which sets fresh_thread_turn itself.
+            _pivot_shape_ok = (
+                _keyword_intent == "industrial"
                 and state.get("asset_identified")
+                and len(message.strip()) >= 15
+                and not _FRESH_PIVOT_ANSWER_RE.match(message)
+                and not _CORRECTION_MARKER_RE.search(message[:120])
+                and not _DONT_KNOW_RE.search(message)
+            )
+            _names_new_subject = False
+            _p_det, _p_parts = 0.0, {}
+            if _pivot_shape_ok:
+                _pivot_msg = message
+                for _fc in (uns_ctx.fault_code, getattr(uns_ctx, "fault_code_raw", None)):
+                    if _fc:
+                        _pivot_msg = re.sub(
+                            rf"\b{re.escape(str(_fc))}\b", " ", _pivot_msg, flags=re.IGNORECASE
+                        )
+                _p_det, _p_parts = asset_state_probability(_pivot_msg)
+                _names_new_subject = _p_det >= _ASSET_STATE_THRESHOLD and (
+                    "asset_noun" in _p_parts or "tag_token" in _p_parts
+                )
+
+            # CTX-001b (2026-08-05): a NEW symptom after a COMPLETED thread
+            # (IDLE, no pending question — e.g. after a drive-pack answer)
+            # starts a fresh diagnostic thread.
+            if (
+                _names_new_subject
                 and state.get("state", "IDLE") == "IDLE"
                 and not (
                     ((state.get("context") or {}).get("session_context") or {}).get("last_question")
@@ -3169,7 +3189,12 @@ class Supervisor:
                 _ctx_ft = state.get("context") or {}
                 _ctx_ft["fresh_thread_turn"] = True
                 state["context"] = _ctx_ft
-                logger.info("CTX_FRESH_THREAD chat_id=%s (new symptom, completed thread)", chat_id)
+                logger.info(
+                    "CTX_FRESH_THREAD chat_id=%s p=%.3f parts=%s (new subject, completed thread)",
+                    chat_id,
+                    _p_det,
+                    sorted(_p_parts),
+                )
 
             # CTX-001c (2026-08-06) — the PIVOT variant: a NEW symptom while a
             # diagnostic thread is OPEN (Q-state, pending question). The IDLE
@@ -3191,45 +3216,30 @@ class Supervisor:
             # _prepend_equipment_context cannot re-anchor retrieval on it. The
             # asset pin is KEPT (the symptom may belong to the pinned machine).
             elif (
-                state.get("state") in ACTIVE_DIAGNOSTIC_STATES
+                _names_new_subject
+                and state.get("state") in ACTIVE_DIAGNOSTIC_STATES
                 and ((state.get("context") or {}).get("session_context") or {}).get("last_question")
-                and state.get("asset_identified")
-                and _keyword_intent == "industrial"
-                and len(message.strip()) >= 15
-                and not _FRESH_PIVOT_ANSWER_RE.match(message)
-                and not _CORRECTION_MARKER_RE.search(message[:120])
-                and not _DONT_KNOW_RE.search(message)
             ):
-                _pivot_msg = message
-                for _fc in (uns_ctx.fault_code, getattr(uns_ctx, "fault_code_raw", None)):
-                    if _fc:
-                        _pivot_msg = re.sub(
-                            rf"\b{re.escape(str(_fc))}\b", " ", _pivot_msg, flags=re.IGNORECASE
-                        )
-                _p_det, _p_parts = asset_state_probability(_pivot_msg)
-                if _p_det >= _ASSET_STATE_THRESHOLD and (
-                    "asset_noun" in _p_parts or "tag_token" in _p_parts
-                ):
-                    _ctx_pv = state.get("context") or {}
-                    _ctx_pv["fresh_thread_turn"] = True
-                    _sc_pv = _ctx_pv.get("session_context") or {}
-                    _sc_pv.pop("last_question", None)
-                    _sc_pv.pop("last_options", None)
-                    _sc_pv.pop("active_alarm", None)
-                    _ctx_pv["session_context"] = _sc_pv
-                    _uns_pv = _ctx_pv.get("uns_context") or {}
-                    _uns_pv.pop("fault_code", None)
-                    _uns_pv.pop("fault_code_raw", None)
-                    _ctx_pv["uns_context"] = _uns_pv
-                    state["context"] = _ctx_pv
-                    state["fault_category"] = None
-                    logger.info(
-                        "CTX_FRESH_THREAD_PIVOT chat_id=%s from_state=%s p=%.3f parts=%s",
-                        chat_id,
-                        state.get("state"),
-                        _p_det,
-                        sorted(_p_parts),
-                    )
+                _ctx_pv = state.get("context") or {}
+                _ctx_pv["fresh_thread_turn"] = True
+                _sc_pv = _ctx_pv.get("session_context") or {}
+                _sc_pv.pop("last_question", None)
+                _sc_pv.pop("last_options", None)
+                _sc_pv.pop("active_alarm", None)
+                _ctx_pv["session_context"] = _sc_pv
+                _uns_pv = _ctx_pv.get("uns_context") or {}
+                _uns_pv.pop("fault_code", None)
+                _uns_pv.pop("fault_code_raw", None)
+                _ctx_pv["uns_context"] = _uns_pv
+                state["context"] = _ctx_pv
+                state["fault_category"] = None
+                logger.info(
+                    "CTX_FRESH_THREAD_PIVOT chat_id=%s from_state=%s p=%.3f parts=%s",
+                    chat_id,
+                    state.get("state"),
+                    _p_det,
+                    sorted(_p_parts),
+                )
 
             # Safety ALWAYS wins — router or keyword classifier, either triggers it.
             intent = _keyword_intent  # keep for downstream legacy gates

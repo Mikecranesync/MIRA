@@ -108,6 +108,48 @@ async def _run_turn(sv, message, chat="pivot-1", caplog=None):
 
 
 @pytest.mark.asyncio
+async def test_pronoun_continuation_after_pack_turn_keeps_context(sv, caplog):
+    """Live campaign catch (c1 t2_continuation_is_kept, 2026-08-07): after a
+    drive-pack-claimed turn (state stays IDLE, no last_question), the pronoun
+    continuation 'is that fault serious?' was severed by the IDLE fresh-thread
+    trigger and lost its referent. A turn that does not NAME a new subject
+    must never start a fresh thread."""
+    caplog.set_level("INFO", logger="mira-gsd")
+    chat = "pack-continuation"
+    state = {
+        "state": "IDLE",  # pack fast-path leaves IDLE and sets no last_question
+        "asset_identified": "AutomationDirect, GS10",
+        "exchange_count": 1,
+        "context": {
+            "history": [
+                {"role": "user", "content": "What does CE10 mean on a DURApulse GS10?"},
+                {"role": "assistant", "content": "CE10 is a Modbus timeout (P09.03)."},
+            ],
+            "session_context": {},
+            "uns_context": {
+                "manufacturer": "AutomationDirect",
+                "model": "GS10",
+                "fault_code": "CE10",
+            },
+        },
+    }
+    sv._save_state(chat, state)
+    seen = {}
+
+    async def spy_rag(message, st, *args, **kwargs):
+        ctx = st.get("context") or {}
+        seen["flag"] = bool(ctx.pop("fresh_thread_turn", False))
+        return RAG_REPLY
+
+    sv.rag.process = spy_rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "is that fault serious?")
+    assert not seen.get("flag"), (
+        "pronoun continuation must NOT be severed — no new subject was named"
+    )
+
+
+@pytest.mark.asyncio
 async def test_plural_asset_noun_pivots(sv, caplog):
     """Live Telethon regression 2026-08-07: 'one of our DRIVES keeps faulting'
     after an F004 thread was consumed as a continuation — the noun evidence
