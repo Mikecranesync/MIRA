@@ -841,6 +841,15 @@ _CORRECTION_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# An explicit ABANDON of the current thread overrides the correction guard —
+# "Actually forget that — my conveyor keeps stopping" is a pivot, not a
+# correction (live campaign catch c1r2, 2026-08-07).
+_ABANDON_RE = re.compile(
+    r"\b(?:forget\s+(?:that|it|about)|never\s?mind|scratch\s+that|"
+    r"ignore\s+that|drop\s+(?:that|it)|moving\s+on|different\s+(?:problem|issue|machine))\b",
+    re.IGNORECASE,
+)
+
 # CTX-004 repeated-answer guard thresholds. Reply similarity is measured on
 # normalized text (source tags and the sources block stripped) so a citation
 # page-number tweak cannot disguise a duplicate; a re-asked question at or
@@ -3168,7 +3177,7 @@ class Supervisor:
                 and state.get("asset_identified")
                 and len(message.strip()) >= 15
                 and not _FRESH_PIVOT_ANSWER_RE.match(message)
-                and not _CORRECTION_MARKER_RE.search(message[:120])
+                and (_ABANDON_RE.search(message) or not _CORRECTION_MARKER_RE.search(message[:120]))
                 and not _DONT_KNOW_RE.search(message)
             )
             _names_new_subject = False

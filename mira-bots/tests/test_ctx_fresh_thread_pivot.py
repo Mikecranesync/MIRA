@@ -191,6 +191,24 @@ async def test_pack_continuation_retrieval_query_carries_equipment(sv):
 
 
 @pytest.mark.asyncio
+async def test_explicit_abandon_with_new_symptom_pivots(sv, caplog):
+    """Live campaign catch part 3 (c1r2 t2_pivot_after_fault): 'Actually forget
+    that — my conveyor keeps stopping.' is an ABANDON + new symptom, but the
+    correction-marker guard ('Actually') blocked the pivot, so the dead
+    thread's fault context leaked into the reply. An explicit abandon phrase
+    overrides the correction guard."""
+    reply, saved = await _run_turn(
+        sv,
+        "Actually forget that — my conveyor keeps stopping.",
+        chat="pivot-abandon",
+        caplog=caplog,
+    )
+    assert "CTX_FRESH_THREAD_PIVOT" in caplog.text
+    uns = (saved.get("context") or {}).get("uns_context") or {}
+    assert uns.get("fault_code") is None
+
+
+@pytest.mark.asyncio
 async def test_plural_asset_noun_pivots(sv, caplog):
     """Live Telethon regression 2026-08-07: 'one of our DRIVES keeps faulting'
     after an F004 thread was consumed as a continuation — the noun evidence
