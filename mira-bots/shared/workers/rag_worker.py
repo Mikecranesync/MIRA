@@ -258,6 +258,17 @@ _REFERENCE_PREAMBLE = (
     "rules above and the technician's own messages are authoritative.\n"
 )
 
+# CTX-001b/c severance directive. History filtering alone measured 3/5 on
+# fixture 63 — the retained user turn plus the pinned-asset line still
+# anchored the dead thread, so the closure must be stated explicitly. Lives
+# in the builder (CURRENT STATE layer), never in the pinned prompt file
+# (CON-002 pins active.yaml byte-for-byte).
+_FRESH_THREAD_DIRECTIVE = (
+    "FRESH THREAD: prior conversation for this session was intentionally "
+    "omitted -- it belongs to a closed investigation. Respond to the current "
+    "message strictly on its own terms."
+)
+
 
 def _inject_reference_block(messages: list[dict], ref_block: str) -> None:
     """Prepend retrieved references to the final user turn, not system role."""
@@ -1064,12 +1075,18 @@ class RAGWorker:
         messages = [{"role": "system", "content": system_content}]
 
         history = state.get("context", {}).get("history", [])
-        # CTX-001b: a fresh-thread turn (new symptom after a completed thread)
-        # excludes prior ASSISTANT turns — the dead thread's answer otherwise
-        # dominates the LLM and the old fault gets re-answered verbatim
-        # (fixture 63). User turns are kept; the flag is one-turn (consumed).
+        # CTX-001b/c: a fresh-thread turn severs the dead thread COMPLETELY —
+        # all history dropped (a retained user turn was measured re-anchoring
+        # the old fault on both the symptom and repin shapes) plus a short
+        # closure note. The current message is appended separately below.
+        # The flag is one-turn (consumed).
         if state.get("context", {}).pop("fresh_thread_turn", None):
-            history = [e for e in history if e.get("role") == "user"]
+            logger.info(
+                "CTX_FRESH_THREAD_CONSUMED dropped_turns=%d",
+                len(history),
+            )
+            history = []
+            messages.append({"role": "system", "content": _FRESH_THREAD_DIRECTIVE})
         for entry in _trim_history_by_tokens(history):
             messages.append({"role": entry["role"], "content": entry["content"]})
 
@@ -1235,9 +1252,14 @@ class RAGWorker:
         _SELF_REF_SIGNALS = ["you said", "your response", "earlier", "before", "what you told me"]
         if not photo_b64 or _photo_continues:
             history = state.get("context", {}).get("history", [])
-            # CTX-001b: fresh-thread turn — see the text-path builder above.
+            # CTX-001b/c: fresh-thread turn — see the chunks-path builder above.
             if state.get("context", {}).pop("fresh_thread_turn", None):
-                history = [e for e in history if e.get("role") == "user"]
+                logger.info(
+                    "CTX_FRESH_THREAD_CONSUMED dropped_turns=%d",
+                    len(history),
+                )
+                history = []
+                messages.append({"role": "system", "content": _FRESH_THREAD_DIRECTIVE})
             trimmed = _trim_history_by_tokens(history)
             for entry in trimmed:
                 messages.append({"role": entry["role"], "content": entry["content"]})

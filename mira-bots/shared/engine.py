@@ -810,6 +810,20 @@ _DONT_KNOW_RE = re.compile(
 )
 _DONT_KNOW_MAX_LEN = int(os.getenv("MIRA_DONT_KNOW_MAX_LEN", "200"))
 
+# CTX-001c fresh-thread PIVOT guards (2026-08-06). A pivot must never consume
+# an ANSWER to the pending diagnostic question (CTX-002). Two shapes:
+# opener-anchored acknowledgements/answers, and correction markers ANYWHERE in
+# the leading window — "The drive is actually a GS20" is a correction even
+# though it doesn't open with one.
+_FRESH_PIVOT_ANSWER_RE = re.compile(
+    r"^\s*(?:yes|yeah|yep|no|nope|ok(?:ay)?|correct|right|same|it'?s)\b",
+    re.IGNORECASE,
+)
+_CORRECTION_MARKER_RE = re.compile(
+    r"\b(?:actually|sorry|correction|i\s+meant|my\s+mistake|not\s+(?:a|the)|rather)\b",
+    re.IGNORECASE,
+)
+
 # ---------------------------------------------------------------------------
 # Manual-lookup gathering subroutine constants
 # ---------------------------------------------------------------------------
@@ -2740,6 +2754,13 @@ class Supervisor:
 
         state = self._load_state(chat_id)
 
+        # CTX-001c flag hygiene: fresh_thread_turn is ONE-turn — it is set by
+        # this turn's trigger and consumed by this turn's prompt builder. A
+        # stale flag left by a turn whose dispatch never reached the builder
+        # (e.g. a drive-pack-claimed turn) must not leak into a later turn;
+        # the trigger below re-derives it per-turn.
+        (state.get("context") or {}).pop("fresh_thread_turn", None)
+
         # Per-turn clean lexical-recall query (#1766). Stashed on state so the
         # RAGWorker uses it for BM25/fault/product extraction without threading a
         # new arg through the two self.rag.process() call sites. Set every turn
@@ -3086,6 +3107,66 @@ class Supervisor:
                 _ctx_ft["fresh_thread_turn"] = True
                 state["context"] = _ctx_ft
                 logger.info("CTX_FRESH_THREAD chat_id=%s (new symptom, completed thread)", chat_id)
+
+            # CTX-001c (2026-08-06) — the PIVOT variant: a NEW symptom while a
+            # diagnostic thread is OPEN (Q-state, pending question). The IDLE
+            # trigger above is structurally unreachable mid-session (every RAG
+            # turn sets last_question), so without this branch a brand-new
+            # symptom is consumed as an answer to the dead thread and the old
+            # investigation continues (fixture 63's live T5 shape).
+            # Deterministic, router-free discriminator honoring CTX-002 (a
+            # short answer to the pending question retains context):
+            #   - the message NAMES its subject (asset noun / tag token) at
+            #     p >= threshold, computed AFTER stripping the carried fault
+            #     code — "the code on the display is CE10" is an ANSWER whose
+            #     only "noun" evidence is the fault token itself;
+            #   - answer/correction shapes never pivot (opener acknowledgements,
+            #     correction markers anywhere in the leading window, dont-know,
+            #     short replies; option echoes cleared last_question already).
+            # On pivot: sever the dead thread — one-shot history filter for the
+            # prompt builder, pending question dropped, fault carry cleared so
+            # _prepend_equipment_context cannot re-anchor retrieval on it. The
+            # asset pin is KEPT (the symptom may belong to the pinned machine).
+            elif (
+                state.get("state") in ACTIVE_DIAGNOSTIC_STATES
+                and ((state.get("context") or {}).get("session_context") or {}).get("last_question")
+                and state.get("asset_identified")
+                and _keyword_intent == "industrial"
+                and len(message.strip()) >= 15
+                and not _FRESH_PIVOT_ANSWER_RE.match(message)
+                and not _CORRECTION_MARKER_RE.search(message[:120])
+                and not _DONT_KNOW_RE.search(message)
+            ):
+                _pivot_msg = message
+                for _fc in (uns_ctx.fault_code, getattr(uns_ctx, "fault_code_raw", None)):
+                    if _fc:
+                        _pivot_msg = re.sub(
+                            rf"\b{re.escape(str(_fc))}\b", " ", _pivot_msg, flags=re.IGNORECASE
+                        )
+                _p_det, _p_parts = asset_state_probability(_pivot_msg)
+                if _p_det >= _ASSET_STATE_THRESHOLD and (
+                    "asset_noun" in _p_parts or "tag_token" in _p_parts
+                ):
+                    _ctx_pv = state.get("context") or {}
+                    _ctx_pv["fresh_thread_turn"] = True
+                    _sc_pv = _ctx_pv.get("session_context") or {}
+                    _sc_pv.pop("last_question", None)
+                    _sc_pv.pop("last_options", None)
+                    _sc_pv.pop("active_alarm", None)
+                    _ctx_pv["session_context"] = _sc_pv
+                    _uns_pv = _ctx_pv.get("uns_context") or {}
+                    _uns_pv.pop("fault_code", None)
+                    _uns_pv.pop("fault_code_raw", None)
+                    _ctx_pv["uns_context"] = _uns_pv
+                    state["context"] = _ctx_pv
+                    state["fault_category"] = None
+                    logger.info(
+                        "CTX_FRESH_THREAD_PIVOT chat_id=%s from_state=%s p=%.3f parts=%s",
+                        chat_id,
+                        state.get("state"),
+                        _p_det,
+                        sorted(_p_parts),
+                    )
 
             # Safety ALWAYS wins — router or keyword classifier, either triggers it.
             intent = _keyword_intent  # keep for downstream legacy gates
@@ -5241,7 +5322,14 @@ class Supervisor:
             + factorylm_live_block
         )
 
+        # CTX-001c Leg 3b: the prompt builder consumes fresh_thread_turn as a
+        # one-shot pop, so a nemotron retry (attempt 2) would otherwise see the
+        # UNFILTERED dead-thread history. Snapshot once and re-arm per attempt.
+        _fresh_thread_snapshot = bool((state.get("context") or {}).get("fresh_thread_turn"))
+
         for attempt in range(max_attempts):
+            if attempt and _fresh_thread_snapshot:
+                state.setdefault("context", {})["fresh_thread_turn"] = True
             try:
                 raw = await self.rag.process(
                     query,
