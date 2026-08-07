@@ -1,0 +1,9 @@
+id: t01_greeting
+contract: CON-001
+turns:
+- send: Hey MIRA
+  expect:
+  - MIRA
+  forbid:
+  - '[Source:'
+  - KB-gap

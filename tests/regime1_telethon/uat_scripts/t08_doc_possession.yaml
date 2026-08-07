@@ -1,0 +1,12 @@
+id: t08_doc_possession
+contract: DOC-001 (N4)
+turns:
+- send: What does CE10 mean on my DURApulse GS10 drive?
+  expect:
+  - CE10
+- send: do you have the gs10 manual?
+  expect:
+  - indexed
+  forbid:
+  - don't have the manual
+  - No, I don't have
