@@ -269,6 +269,26 @@ _FRESH_THREAD_DIRECTIVE = (
     "message strictly on its own terms."
 )
 
+# IDN-001 follow-through (UAT 2026-08-06): the D2 symptom-first notice promised
+# symptom-only guidance, then the sampled RAG reply asked "What's the drive's
+# make and model?" anyway. While the session is identity-unknown and no asset
+# is pinned, the prompt says so explicitly. Self-clearing: the directive stops
+# the moment an asset is identified (state.asset_identified set).
+_IDENTITY_UNKNOWN_DIRECTIVE = (
+    "IDENTITY UNAVAILABLE: the technician has already said they CANNOT "
+    "identify this machine (no nameplate, no manual). Do NOT ask for the "
+    "make, model, manufacturer, brand, or nameplate again. Ask ONE question "
+    "about observable symptoms instead -- what the machine does, when it "
+    "happens, or any code or light shown on the display."
+)
+
+
+def _identity_unknown(state: dict) -> bool:
+    return bool(
+        (state.get("context") or {}).get("uns_identity_unknown")
+        and not state.get("asset_identified")
+    )
+
 
 def _inject_reference_block(messages: list[dict], ref_block: str) -> None:
     """Prepend retrieved references to the final user turn, not system role."""
@@ -1087,6 +1107,8 @@ class RAGWorker:
             )
             history = []
             messages.append({"role": "system", "content": _FRESH_THREAD_DIRECTIVE})
+        if _identity_unknown(state):
+            messages.append({"role": "system", "content": _IDENTITY_UNKNOWN_DIRECTIVE})
         for entry in _trim_history_by_tokens(history):
             messages.append({"role": entry["role"], "content": entry["content"]})
 
@@ -1260,6 +1282,8 @@ class RAGWorker:
                 )
                 history = []
                 messages.append({"role": "system", "content": _FRESH_THREAD_DIRECTIVE})
+            if _identity_unknown(state):
+                messages.append({"role": "system", "content": _IDENTITY_UNKNOWN_DIRECTIVE})
             trimmed = _trim_history_by_tokens(history)
             for entry in trimmed:
                 messages.append({"role": entry["role"], "content": entry["content"]})

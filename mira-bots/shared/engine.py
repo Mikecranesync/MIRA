@@ -68,6 +68,7 @@ from .fsm import (
 )
 from .guardrails import (
     CONTROL_ACTION_REFUSAL,
+    GREETING_PATTERNS,
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
     check_output,
@@ -820,6 +821,10 @@ _FRESH_PIVOT_ANSWER_RE = re.compile(
     r"^\s*(?:yes|yeah|yep|no|nope|ok(?:ay)?|correct|right|same|it'?s)\b",
     re.IGNORECASE,
 )
+
+# CON-003 (UAT 2026-08-06): a thanks/sign-off is acknowledged briefly — never
+# answered with the full canned self-introduction.
+_THANKS_RE = re.compile(r"^\s*(?:thanks|thank\s+you|thx|ty|appreciate\s+it)\b", re.IGNORECASE)
 _CORRECTION_MARKER_RE = re.compile(
     r"\b(?:actually|sorry|correction|i\s+meant|my\s+mistake|not\s+(?:a|the)|rather)\b",
     re.IGNORECASE,
@@ -3378,7 +3383,11 @@ class Supervisor:
 
             if (
                 _router_intent == "general_question"
-                and _keyword_intent not in ("safety", "documentation")
+                # N1 (UAT 2026-08-06): help/greeting join safety/documentation —
+                # the deterministic keyword lanes outrank the router's label
+                # (RTE-001 doctrine). "what can you do?" was stolen here and
+                # got a KB-gap footer instead of the canned help lane.
+                and _keyword_intent not in ("safety", "documentation", "help", "greeting")
                 and not _router_industrial_override
             ):
                 return await self._handle_general_question(
@@ -3386,7 +3395,7 @@ class Supervisor:
                 )
 
             if _router_intent == "greeting_or_chitchat" and state["state"] == "IDLE":
-                return self._greeting_response(state, chat_id, trace_id)
+                return self._greeting_response(state, chat_id, trace_id, message=message)
 
             # Procedural how-to questions: answer from knowledge, skip doc crawl.
             # Keyword "instructional" also routes here via the fallback mapping above.
@@ -3520,7 +3529,7 @@ class Supervisor:
             if intent == "greeting":
                 # Context-aware canned greeting (mentions a tracked asset when
                 # one is pinned) \u2014 same lane; dispatch_kind="greeting" inside.
-                return self._greeting_response(state, chat_id, trace_id)
+                return self._greeting_response(state, chat_id, trace_id, message=message)
 
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
         # RTE-002: an announced symptom-first turn is never stolen by the doc flow —
@@ -5906,10 +5915,29 @@ class Supervisor:
         chip_text = "\n\n---\n" + " | ".join(f"*{s}*" for s in suggestions)
         return text + chip_text
 
-    def _greeting_response(self, state: dict, chat_id: str, trace_id: str) -> dict:
+    def _greeting_response(
+        self, state: dict, chat_id: str, trace_id: str, message: str = ""
+    ) -> dict:
         """Handle greetings without disrupting an active session."""
         fsm = state.get("state", "IDLE")
         asset = state.get("asset_identified", "")
+
+        # CON-003: a thanks is acknowledged, not re-introduced. Context-aware:
+        # keep the thread alive when an asset is pinned, otherwise sign off.
+        if _THANKS_RE.match(message or ""):
+            if asset:
+                reply = self._format_simple_response(
+                    f"Anytime! I'm still tracking {asset} if you need more.",
+                    suggestions=["Continue diagnosis", "Log a work order"],
+                )
+            else:
+                reply = self._format_simple_response(
+                    "Anytime — that's what I'm here for. Holler if anything else acts up.",
+                    suggestions=["Troubleshoot equipment", "Find a manual"],
+                )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, fsm, dispatch_kind="greeting")
 
         if fsm not in ("IDLE", "ASSET_IDENTIFIED") and asset:
             # Mid-diagnostic — don't reset, just acknowledge
@@ -7148,7 +7176,18 @@ class Supervisor:
             # citations. Its step 3 is the mirror of this handoff (no coverage →
             # come here), and the two conditions are mutually exclusive, so the
             # `from_general` guard is belt-and-braces rather than load-bearing.
-            if self._message_is_specific_question(message) and not from_general:
+            # N4 (UAT 2026-08-06): a POSSESSION question about the docs
+            # themselves ("do you have the gs10 manual?") is answered by the
+            # deterministic possession claim below — never handed to RAG. The
+            # handoff sent it to RAG, which retrieves poorly for meta-questions
+            # and fabricated "No, I don't have the manual" immediately AFTER
+            # kb_has_coverage returned True. classify_intent is the same
+            # recognizer that routed the turn here — code-shaped, not sampled.
+            if (
+                self._message_is_specific_question(message)
+                and not from_general
+                and classify_intent(message) != "documentation"
+            ):
                 logger.info(
                     "DOC_LOOKUP_ANSWER_HANDOFF chat_id=%s manufacturer=%r — specific "
                     "question with KB coverage; answering instead of announcing",
@@ -7972,6 +8011,46 @@ class Supervisor:
                 trace_id,
                 state.get("state", "IDLE"),
                 dispatch_kind="uns_confirm_no",
+            )
+
+        # CON-003 (UAT 2026-08-06): a thanks/greeting/help turn while the
+        # confirmation is pending is conversational, not an answer — the gate
+        # stays pending and the reply acknowledges + reminds. Previously
+        # "thanks" silently consumed the pending confirmation and re-ran the
+        # full self-intro; "what can you do?" then had no gate to return to.
+        # Real greeting WORDS only — classify_intent also labels any <4-char
+        # message "greeting" (e.g. a bare ambiguous "yes"), and those must
+        # keep falling through so the resolver can re-run on them.
+        _conv_intent = classify_intent(message or "")
+        _msg_words = set((message or "").lower().split())
+        if _conv_intent == "help" or (
+            _conv_intent == "greeting" and _msg_words & GREETING_PATTERNS
+        ):
+            if _conv_intent == "help":
+                ack = (
+                    "I help maintenance technicians diagnose equipment issues — "
+                    "fault codes, troubleshooting steps, manuals, and work orders. "
+                )
+            elif _THANKS_RE.match(message or ""):
+                ack = "Anytime! "
+            else:
+                ack = "Hey! Still with you. "
+            reply = self._format_simple_response(
+                ack + "Whenever you're ready, I still need the equipment's manufacturer "
+                "and model to dig in — a nameplate photo works too.",
+                suggestions=["Send a nameplate photo", "Type the model number"],
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            logger.info(
+                "UNS_CONFIRM_HELD_CONVERSATIONAL chat_id=%s intent=%s", chat_id, _conv_intent
+            )
+            return self._make_result(
+                reply,
+                "none",
+                trace_id,
+                state.get("state", "IDLE"),
+                dispatch_kind=_conv_intent,
             )
 
         # User likely typed equipment specs or otherwise off-script. Drop
