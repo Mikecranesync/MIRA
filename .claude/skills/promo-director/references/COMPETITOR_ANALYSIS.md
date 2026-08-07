@@ -1,8 +1,27 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-08-05
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-08-05
+
+### Most actionable change for MIRA playbook
+
+MaintainX — MIRA's closest comps-table neighbor (OEM-manual knowledge base framing, work-order grounding, industrial AI copilot positioning) — **exited the independent CMMS market**. Autodesk acquired it for $3.6B on May 28, 2026 to build an Autodesk Operations Solutions (AOS) suite: design → make → operate in one platform. The new threat is not "CMMS with AI" — it is Autodesk's design-operate flywheel. MIRA's counterplay: the maintenance technician on the floor does not use Autodesk; MIRA's Slack/Telegram/Ignition-native surface + cited factory-specific OEM manuals still has no equivalent in any Autodesk product.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — acquired by Autodesk in $3.6B all-cash deal (May 28, 2026). Largest acquisition in Autodesk history. Video: Bloomberg CEO interview May 29 (https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video). Strategic rationale: "converge design, make, and operate workflows." No longer an independent CMMS vendor.
+
+**B2B SaaS / dev-tools**
+- **Cursor** — iOS app launch (June 29, 2026): https://www.youtube.com/watch?v=ovxL42LkKNg — "build from anywhere"; cloud agents + remote control of desktop agent from phone; 3.9M social impressions same day. SpaceX acquired Cursor for $60B (June 16, 2026).
+- **Anthropic** — Code with Claude 2026 SF keynote (May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA — first major in-person developer conference; CPO Ami Vora opening hook on developer velocity; research highlight: Mythos model found a 27-year-old vulnerability in the OpenBSD source tree; conference-as-launch-vehicle format (same as Stripe).
+- **Notion** — Developer Platform 3.5 (May 13, 2026): livestreamed product event by co-founder Ivan Zhao. External Agents API launched with Claude Code, Cursor, Codex as day-one partner agents. Workers (deployed custom code on Notion's hosted runtime). Notion is now positioning as an "AI orchestration hub," not just a productivity tool. Agents iOS app (July 8, 2026). https://www.notion.com/releases/2026-05-13
+- **Replit** — "New in Replit: Everything We Shipped in June!" (July 2, 2026): https://www.youtube.com/watch?v=DKrGT38S3V0 — SEO Agent + Security Agent; vertical-specialized agents inside the platform.
 
 ---
 
@@ -87,6 +106,8 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+
+**Acquisition (May 28, 2026):** Autodesk agreed to acquire MaintainX for $3.6B all-cash. Strategic fit: Autodesk is building Autodesk Operations Solutions (AOS) to connect design, manufacturing, and operations in one platform. MaintainX is no longer an independent CMMS vendor — future video content will likely shift toward Autodesk's brand and enterprise positioning rather than the peer-engineer register MaintainX used. Watch for Autodesk AOS launch videos in H2 2026.
 
 ---
 
@@ -302,20 +323,43 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 — SF keynote (May 6, 2026)**
+- URL: https://www.youtube.com/watch?v=GMIWm5y90xA
+- Venue: Pier 48, San Francisco, CA
+- Opening hook: CPO Ami Vora on developer velocity → research highlight: Mythos model identified a 27-year-old vulnerability in the OpenBSD source tree [description-derived; transcript not verified]
+- Speakers: Ami Vora (CPO), Angela Jiang (Head of Product, Claude Platform), Cat Wu (Head of Product, Claude Code), Boris Cherny (Head of Claude Code)
+- Format: in-person developer conference; ~46 min (London equivalent length); breakout sessions; London (May 19) and Tokyo editions followed
+- VO register: exec/founder; peer-engineer for technical demos
+- CTA: Claude Code adoption (existing paid product)
+- Pattern note: Anthropic's first major in-person developer conference. Adopts the Stripe Sessions / Figma Config format — **conference-as-primary-launch-vehicle** for developer products. The vulnerability-discovery hook ("AI found what humans missed for 27 years") is the strongest "proof beats promise" opening hook seen across any vendor this cycle.
+
+**Other 2026 launches (no dedicated promo video):** Claude Opus 5 (Jul 24, 2026), Claude Science (healthcare, Jun 30, 2026), Claude for Teachers.
 
 ---
 
 ### Cursor
 
-**Product trajectory (all video-light)**
+**Product trajectory (all video-light through Q1; first genuine promo video Jun 2026)**
 - Channel: https://www.youtube.com/@cursor_ai
 - Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
 - Cursor 3.0 (Apr 2, 2026): Agents Window
 - Cursor 3.1 (Apr 13, 2026): Tiled Layout
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
-- No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**iOS launch (Jun 29, 2026)**
+- URL: https://www.youtube.com/watch?v=ovxL42LkKNg
+- Title: "Introducing Cursor for iOS"
+- Opening hook: "Build from anywhere" — launch always-on cloud agents or remote-control agents running on your computer from your phone
+- Footage style: screen capture (iOS app UI + desktop agent)
+- VO register: peer/founder
+- Key claims: cloud agents run without desktop open; voice input for ideas; slash commands on mobile; Live Activities for real-time agent progress; PR merges from phone
+- CTA: App Store download
+- Reach: 3.9M social impressions on launch day; Elon Musk quoted the post
+- Pattern note: **this is Cursor's first true product promo video** — the iOS constraint (no keyboard) forced them to articulate the value of agentic execution in plain English, producing their tightest hook yet
+
+**SpaceX acquisition (Jun 16, 2026):** SpaceX agreed to acquire Cursor for $60B. "AI code editor" → acquired by a space-systems manufacturer. Signals that agentic coding infrastructure is now industrial-grade critical path, not a dev-tools category.
 
 ---
 
@@ -339,6 +383,19 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**Developer Platform 3.5 (May 13, 2026)**
+- Announcement: https://www.notion.com/releases/2026-05-13
+- Livestreamed product event by co-founder Ivan Zhao
+- New positioning: "AI orchestration hub" — not just a workspace tool; Notion is now a platform for external agents
+- External Agents API: partner-agents including Claude Code, Cursor, and Codex launch as native workspace participants on day one
+- Workers: custom code deployed to Notion's hosted runtime (no external infrastructure)
+- Style shift: from "you assign tasks" (agent-value messaging) → "we're the OS for agents" (platform messaging) — two levels up the stack from the Sep 2025 Agents launch
+
+**Agents iOS (Jul 8, 2026)**
+- Announcement: https://www.notion.com/releases/2026-07-08
+- "Favorite agents fit in your pocket" — extends the agents-everywhere pattern (same week as Cursor iOS)
+- Pattern note: July 2026 marks convergence — Notion Agents iOS and Cursor iOS shipped within two weeks of each other, confirming "agent access from anywhere" is now a table-stakes feature claim
 
 ---
 
@@ -364,6 +421,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Product: create motion-style launch videos inside Replit via natural language prompts
 - Claim: "ship motion-style launch videos in minutes"
 - Pattern note: Replit is eating their own cooking — the product is the promotional vehicle
+
+**"New in Replit: Everything We Shipped in June!" (Jul 2, 2026)**
+- URL: https://www.youtube.com/watch?v=DKrGT38S3V0
+- Format: monthly product update video (changelog-as-content strategy)
+- Featured: SEO Agent and Security Agent — first vertical-specialized agents within the platform
+- Pattern note: Replit is launching **domain-specific agents** (SEO, Security) inside a general-purpose platform — the same horizontal-to-vertical move MIRA made from "AI assistant" to "maintenance diagnostic AI." Worth watching as proof that vertical specialization inside a platform is a winning product story, not a narrow-market compromise.
+
+**Funding:** Replit raised $400M at a $9B valuation (2026). Agent 4 launched Mar 11, 2026 (before prior cutoff).
 
 ---
 
@@ -395,6 +460,16 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025 — **now acquired by Autodesk (May 2026)**. The "CMMS with AI knowledge base" competitor is exiting the independent market; Autodesk AOS is the new competitive entity to track.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Cursor**: shifted from zero video marketing (changelog-only) to its first genuine product promo with the iOS launch (Jun 2026). SpaceX acquisition signals that agentic coding infrastructure has crossed into industrial-grade asset territory.
+- **Anthropic**: adopted conference-as-launch-vehicle format (Code with Claude 2026, May 2026) — first in-person developer event. The vulnerability-discovery hook is a new proof-based opening pattern not previously seen from them.
+
+### New pattern (2026 vintage): market consolidation as competitive event
+
+Two category-defining acquisitions in 30 days:
+- **Autodesk + MaintainX** ($3.6B, May 28) — design software giant buys the AI CMMS leader
+- **SpaceX + Cursor** ($60B, Jun 16) — aerospace manufacturer buys the AI code editor
+
+Implication for MIRA: the competitive set is no longer independent software startups. "Maintenance AI" is now a feature inside Autodesk's design-operate stack. The MIRA counterplay: Autodesk sells to plant managers and project engineers; MIRA serves the maintenance technician on the floor with phone-native, OEM-grounded, cited answers that Autodesk's design-first stack cannot replicate.
