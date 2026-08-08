@@ -503,3 +503,49 @@ def test_ce_code_extracted_before_model_candidates():
     ctx = resolve_uns_path("GS10 showing CE1, comms dropping")
     assert ctx.fault_code and ctx.fault_code.upper() == "CE1"
     assert (ctx.model or "").upper() != "CE1"
+
+
+# ---------------------------------------------------------------------------
+# Separator-tolerant model shorthand (live Telethon UAT catch, campaign c1/c1r4)
+# ---------------------------------------------------------------------------
+# Tier-1 language mutation sent "quickest way to reset a PF-525 after an
+# undervoltage fault??" and MIRA answered with a KB-gap admission (FAIL in both
+# c1 and the post-fix re-run c1r4 — deterministic). "PF525" resolves; the
+# hyphenated form a technician actually types did not, so the manufacturer came
+# back None, the cross-vendor retrieval filter had nothing to key on, and
+# retrieval whiffed. Same bug class as the 2026-06-16 "PF525 showing F004"
+# audit, re-entering through a separator.
+
+
+@pytest.mark.parametrize("text", ["PF-525", "pf-525", "PF_525"])
+def test_separator_shorthand_resolves_like_the_bare_form(text):
+    ctx = resolve_uns_path(f"quickest way to reset a {text} after an undervoltage fault??")
+    assert ctx.manufacturer == "Rockwell Automation"
+    assert (ctx.model or "").lower() == "powerflex 525"
+
+
+def test_separator_shorthand_automationdirect():
+    ctx = resolve_uns_path("GS-10 drive keeps tripping")
+    assert ctx.manufacturer == "AutomationDirect"
+
+
+def test_separator_shorthand_does_not_widen_the_digit_boundary():
+    """A separator must not defeat the 'gs10 is not gs100' rule."""
+    ctx = resolve_uns_path("the gs-100 panel meter reads high")
+    assert ctx.manufacturer is None
+
+
+def test_space_is_not_a_model_separator():
+    """A spaced 'pf 70' is plausibly a power-factor reading, not a PowerFlex 70.
+
+    Resolving it would pull an unrelated vendor's manual into the answer —
+    the citation failure class #3133 closed. Hyphen/underscore only.
+    """
+    ctx = resolve_uns_path("we corrected pf 70 on the incomer")
+    assert ctx.manufacturer is None
+
+
+def test_separator_shorthand_is_a_single_character():
+    """Two tokens far apart are not a model reference."""
+    ctx = resolve_uns_path("the pf reading and the 525 volt bus")
+    assert ctx.manufacturer is None

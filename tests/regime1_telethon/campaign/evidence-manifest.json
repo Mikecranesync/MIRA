@@ -1,0 +1,124 @@
+{
+  "frozen": {
+    "c1_t1_013_reset_procedure.json": {
+      "bytes": 939,
+      "sha256": "f66bf0af88e915bd01d3f4067c0a4433692d86306307896db8215adf7faf8788"
+    },
+    "c1_t1_s42_012_fault_code_pf525.json": {
+      "bytes": 720,
+      "sha256": "094c7c7f12eb5f7af4e2cc797166ac7da4152d6d79efab656233d8dbcd5c5331"
+    },
+    "c1_t1_s42_018_symptom_report.json": {
+      "bytes": 887,
+      "sha256": "38aa09c8bf8573e29d86debbc7881a2205f2ebbcd79cd12951e96f43b75af676"
+    },
+    "c1_t2_002_continuation_is_kept.json": {
+      "bytes": 2809,
+      "sha256": "b8e0cece6dcb1928d52652b723981743b17637b00dc434b1c1bf383c9a062ba2"
+    },
+    "c1_t2_007_continuation_is_kept.json": {
+      "bytes": 2809,
+      "sha256": "32b48f8b81a39f3f18aa2d88d14f128dbe90e7e4010724cd692cc77ecbc7a325"
+    },
+    "c1_t2_s42_000_pivot_after_fault.json": {
+      "bytes": 2370,
+      "sha256": "7dfd33878087b9a67d8276ba34fa0c0d7a2ced8379a44d20dda29b46df0b8e4f"
+    },
+    "c1_t2_s42_005_pivot_after_fault.json": {
+      "bytes": 2545,
+      "sha256": "c19848801b9a6e28a29c1150a1558ce65cf273b41830a6966adfbf3eb2823ab6"
+    },
+    "c1_t8_41_001_experienced.json": {
+      "bytes": 6057,
+      "sha256": "54fc891336055a8712a594293de03c619d795abe5b432e58536f42d627afb9ed"
+    },
+    "c1_t8_41_003_impatient.json": {
+      "bytes": 4573,
+      "sha256": "1357dd66a945af8c2bb12c5f54c9494ad5628ea40b347f0a6d36923d8506a23b"
+    },
+    "c1r1_t2_002_continuation_is_kept.json": {
+      "bytes": 2815,
+      "sha256": "d0fdfca67fefc2873b9f14e05ee126c20ea579326e71ea1c716c22d51495ebfb"
+    },
+    "c1r1_t2_007_continuation_is_kept.json": {
+      "bytes": 2815,
+      "sha256": "7c6ff7f17fce739782c0b7cd971267c7ba2f9497cdbdd63322e8e3a2117d48e9"
+    },
+    "c1r2_t2_000_pivot_after_fault.json": {
+      "bytes": 3373,
+      "sha256": "525a5d8ba0279fea0af2f6cea47ba89c05bd5f1be1e76fede3b1951bbfc380d5"
+    },
+    "c1r2_t2_005_pivot_after_fault.json": {
+      "bytes": 1894,
+      "sha256": "97f5ee8767f9218a0de823c320faafef67a10e70981a585eb44772b04f21c244"
+    },
+    "c1r3_t2_000_pivot_after_fault.json": {
+      "bytes": 3270,
+      "sha256": "314b80cb06c977a264112831b369a81dd38ab0ed7a62a2c78cab630e82755a58"
+    },
+    "c1r4_t1_s42_013_reset_procedure.json": {
+      "bytes": 916,
+      "sha256": "d00503ecc6c12210f8b7be347fa99943865e4e693afeb3d67fa76da209939659"
+    },
+    "c2_t1_012_fault_code_pf525.json": {
+      "bytes": 713,
+      "sha256": "8c5fda1d452b43f94ec98e214cb35c9e7690985cfdc8bb7c097a31c1813660ba"
+    },
+    "c2_t1_018_symptom_report.json": {
+      "bytes": 873,
+      "sha256": "9b4372d9a29e09677f6af184f5113856ba4d7a770c0046a956bd50c3d5a35fd3"
+    },
+    "c2_t2_000_pivot_after_fault.json": {
+      "bytes": 2510,
+      "sha256": "e918c771d205e63f8447aa6e0095862fd2c9b94d77befea5200f58930002ac6e"
+    },
+    "c2_t2_005_pivot_after_fault.json": {
+      "bytes": 2529,
+      "sha256": "57a50a3072acc0d65c324865ad91c01c509f7a4802fd195f08880c0d69fe1822"
+    },
+    "c3_t1_013_reset_procedure.json": {
+      "bytes": 702,
+      "sha256": "30a04c6f24774b3cf3da5a5557d2160e0d08bf33afcaf082feae8c436403d8eb"
+    },
+    "c3_t2_000_pivot_after_fault.json": {
+      "bytes": 2314,
+      "sha256": "941b5e65854bc356a8a066380e37d082078fbe2b5ba26cad20a16743f57b6d7e"
+    }
+  },
+  "ledgers": {
+    "c1.jsonl": {
+      "bytes": 185604,
+      "sha256": "b5e20e7f2ce78d20b547a504081478eb1e0b3af95d9f82f75fdd3da79a2baf04"
+    },
+    "c1r1.jsonl": {
+      "bytes": 24603,
+      "sha256": "d40d519eedc2bcc620274e3457aafa1353978dbed6041893ef6ed04691cf1c43"
+    },
+    "c1r2.jsonl": {
+      "bytes": 23941,
+      "sha256": "3b8cd9ff58c779891154bee56bfa971a27a2497cabcc4762298f46b8e846a6d1"
+    },
+    "c1r3.jsonl": {
+      "bytes": 23811,
+      "sha256": "6156baba6fdfc0f6097ce899d572f8778663faf012e238200e1c6d393cef4d0d"
+    },
+    "c1r4.jsonl": {
+      "bytes": 48568,
+      "sha256": "8dd5e728917150b508659f1d984a655b3bc12138295b96f8c3d7642637261ad7"
+    },
+    "c2.jsonl": {
+      "bytes": 71619,
+      "sha256": "33a8ae1e9d44eecd17827655e4603025015036273e41b213a98bdbd2646d8679"
+    },
+    "c3.jsonl": {
+      "bytes": 74973,
+      "sha256": "ae57213b40b6567d3a7d62f89eede66f79b71b7cca2983e7249985b289033c85"
+    },
+    "c4safety.jsonl": {
+      "bytes": 23762,
+      "sha256": "9bc76f589da8efd65449e7c362562739644c3bef95626ee31c5c5805286c960d"
+    }
+  },
+  "note": "Ledgers and frozen transcripts are gitignored. A report generated without the matching evidence bundle is NOT reproducible \u2014 verify against these checksums before trusting a regenerated report.",
+  "schema_version": 1
+}

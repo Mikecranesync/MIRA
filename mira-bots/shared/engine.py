@@ -1158,8 +1158,61 @@ _H4_SKIP_DISPATCH_KINDS = frozenset(
         "uns_confirm_no",
         "greeting",
         "help",
+        # A safety STOP. Live campaign c4safety (2026-08-08) showed the footer
+        # appended beneath "STOP — describe the hazard. De-energize the equipment
+        # first." — noise on the highest-stakes message MIRA sends.
+        "safety_alert",
     }
 )
+
+
+# Adapter chrome only — a markdown rule, or the italic button row the adapters
+# append. NOT bullets and NOT numbered lines: a technician-facing reply puts its
+# real claims in exactly those ("1. Incoming voltage measures 480V at L1-L2"),
+# and skipping them let an uncited claim escape the H4 gate entirely.
+_H4_NON_PROSE_LINE_RE = re.compile(r"^\s*(?:-{3,}\s*$|\*[^*]+\*(?:\s*\|\s*\*[^*]+\*)*\s*$)")
+
+# Canned templates that ask a question and offer parallel CHOICES rather than
+# asserting anything. These are exempt by DECLARATION, not by inferring intent
+# from their text: an option list ("3. Sensor reading (e.g. pressure at 120 PSI)")
+# is textually indistinguishable from a claim list, and guessing wrong in the
+# permissive direction suppresses an honest knowledge-gap admission.
+_H4_SKIP_PREFIXES = (
+    "Before I can give you a confident diagnosis, could you share one more detail",
+)
+
+
+def _asserts_nothing(reply: str) -> bool:
+    """True when every sentence in the reply is a question.
+
+    A turn that only ASKS makes no claim, so it has nothing to cite and nothing
+    to admit a gap about — footering it produces the contradiction the campaign
+    caught: MIRA asks the technician for the fault code and, in the same message,
+    tells them it has no documentation and to go read the nameplate.
+
+    Deliberately narrow, and stricter than it looks: bullets and numbered lines
+    are inspected like any other prose, so a reply that asks a question and then
+    lists uncited technical claims underneath still earns the admission. One
+    declarative sentence anywhere is enough. Suppressing an honest admission is a
+    worse failure than an ugly one, so anything ambiguous keeps the footer.
+    """
+    prose: list[str] = []
+    for line in (reply or "").splitlines():
+        if not line.strip() or _H4_NON_PROSE_LINE_RE.match(line):
+            continue
+        # Strip an enumerator/bullet marker but KEEP the content it introduces.
+        prose.append(re.sub(r"^\s*(?:\d+[.)]|[-*•])\s+", "", line).strip())
+    if not prose:
+        return False
+    # A LINE BREAK IS A SENTENCE BOUNDARY. Joining the lines first would let a
+    # colon-led claim absorb the question after it — "The drive is faulted:" +
+    # "what code?" reads as one interrogative and escapes the gate.
+    sentences: list[str] = []
+    for line in prose:
+        sentences.extend(s.strip() for s in re.split(r"(?<=[.!?])\s+", line) if s.strip())
+    if not sentences:
+        return False
+    return all(s.endswith("?") for s in sentences)
 
 
 def enforce_citation_or_gap_admission(reply: str, dispatch_kind: str = "") -> str:
@@ -1189,6 +1242,26 @@ def enforce_citation_or_gap_admission(reply: str, dispatch_kind: str = "") -> st
     for phrase in _H4_GAP_PHRASES:
         if phrase.lower() in lower:
             return reply
+    # CIT-005 — a question-only turn asserts nothing, so there is no claim to
+    # ground and no gap to admit. Live campaign c1/c1r4 (t1:reset_procedure,
+    # t1:symptom_report): the footer landed on a bare clarifying question, so
+    # MIRA asked for the fault code and told the technician to go read the
+    # nameplate in the same breath.
+    #
+    # Checked HERE, after the citation tests, on purpose: a reply that carries a
+    # [Source:] tag is claiming grounding even when it is phrased as a question
+    # ("why can a faulty capacitor stop the fan [Source: junk]?"), and a junk
+    # citation must still earn the admission rather than escape through this
+    # exemption.
+    if "[source:" not in reply.lower() and (
+        stripped.startswith(_H4_SKIP_PREFIXES) or _asserts_nothing(reply)
+    ):
+        logger.info(
+            "H4_GAP_ADMISSION_SKIPPED kind=non_asserting dispatch_kind=%s reply_len=%d",
+            dispatch_kind,
+            len(reply),
+        )
+        return reply
     # A reply that CLAIMS to have documentation but produced no usable citation
     # gets a correcting admission — appending the stock line would contradict
     # the sentence above it inside a single message.
@@ -3270,7 +3343,14 @@ class Supervisor:
                 tl_flush()
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
-                return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+                # dispatch_kind exempts the STOP from the H4 footer. A safety
+                # escalation asserts no technical claim, and appending "I don't
+                # have specific documentation indexed for this — consult the
+                # asset nameplate" dilutes the one message that must land
+                # cleanly. Same reasoning as the E2 control-refusal incident.
+                return self._make_result(
+                    reply, "high", trace_id, "SAFETY_ALERT", dispatch_kind="safety_alert"
+                )
 
             # Electrical-print follow-up — but only while the user is still
             # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over
