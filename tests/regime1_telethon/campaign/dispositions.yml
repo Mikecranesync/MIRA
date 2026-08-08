@@ -14,7 +14,11 @@ t1:fault_code_pf525:
   note: 'Neither PR is merged. Reproduced offline both directions; c1r4 passed this
     scenario once, which is one run and not proof. | c2: still FAILS on main, as expected
     — neither #3155 nor #3153 is merged. Evidence: MIRA asked for ''the manufacturer
-    and model (e.g. Allen-Bradley PowerFlex 525)'' after the technician wrote pf-525.'
+    and model (e.g. Allen-Bradley PowerFlex 525)'' after the technician wrote pf-525.
+    | c3 (branch qc/cold-start-baseline, 2026-08-08): PASSES live. c2 FAIL -> c3 PASS
+    on the same seed and scenario, the only change being the deployed build. Consistent
+    with the offline both-directions proof. Still applied=false: the branch is not
+    merged.'
   status: FIXED
   summary: hyphenated model shorthand ("pf-525") did not resolve, so MIRA asked for
     the manufacturer and model the technician had just given
@@ -29,14 +33,21 @@ t1:reset_procedure:
     with a bare clarifying question while holding a resolved PowerFlex 525 pack, so
     the scenario''s expect list ("reset", "PowerFlex") still fails.'
   issue: '3156'
-  last_seen: c1r4
+  last_seen: c3
   note: 'Footer half is deterministic: running enforce_citation_or_gap_admission from
     current source reproduces the frozen reply byte-for-byte. Shares its root cause
     with t1:symptom_report. Failed on two different builds and two different phrasings
     ("AB PowerFlex 525" spelled out, and "PF-525"), so the hyphen fix does not explain
     it. | c2 (main@c0d3722e3, 2026-08-08): the seed-42 variant PASSED while t1:symptom_report
     — same root cause — still failed. CIT-005 is not merged, so this is mutation variance,
-    not evidence the footer defect is gone.'
+    not evidence the footer defect is gone. | c3: the FOOTER HALF IS PROVEN FIXED
+    LIVE — the reply to the identical message is now ''What is the exact fault code
+    displayed after the undervoltage fault?'' with NO KB-gap footer (compare the c1/c1r4
+    transcripts). That is mechanism-level evidence, not a lucky pass. The scenario
+    still FAILS because its expect list wants ''reset''/''PowerFlex'' and MIRA asks
+    a clarifying question instead of answering the procedural question — exactly the
+    half recorded as untouched. Fixing that is a separate change (answer the procedure
+    from the resolved PF525 pack rather than gating it behind a fault code).'
   status: OPEN
   summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
     for the fault code AND tells the technician it has no documentation, while holding
@@ -52,10 +63,11 @@ t1:symptom_report:
     be over-strict independently of the fix.'
   issue: '3159'
   last_seen: c2
-  note: Merge with t1:reset_procedure when fixing; one contract (CIT-005 / H4-NONANSWER-001)
-    covers both. The scenario's expect list is also arguably over-strict — the clarifying
-    question itself is by design.
-  status: OPEN
+  note: 'Merge with t1:reset_procedure when fixing; one contract (CIT-005 / H4-NONANSWER-001)
+    covers both. The scenario''s expect list is also arguably over-strict — the clarifying
+    question itself is by design. | c3: PASSES live (c2 FAIL -> c3 PASS). CIT-005
+    confirmed on the real bot.'
+  status: FIXED
   summary: same footer-on-a-non-answer defect as t1:reset_procedure — a question-only
     turn receives the "no documentation indexed" admission
 t2:continuation_is_kept:
@@ -82,11 +94,12 @@ t2:pivot_after_fault:
   first_seen: c1
   fix: 'partially addressed by PR #3153 (IDLE severance fault carry) — held, not merged'
   issue: '3160'
-  last_seen: c2
+  last_seen: c3
   note: 'Root cause: the fresh-thread pivot fires only from ACTIVE_DIAGNOSTIC_STATES,
     and the low-groundedness self-critique clarifier parks the session in DIAGNOSIS_REVISION
     first. Suggested contract CTX-001d: a pivot fires from every state holding a pending
-    diagnostic question.'
+    diagnostic question. | c3: still fails, 1/2 variants this round (2/2 in c2). Unfixed
+    on this branch as expected — the partial fix lives in held PR #3153.'
   status: OPEN
   summary: '"Actually forget that — my conveyor keeps stopping" is not recognised
     as a pivot when the session sits in DIAGNOSIS_REVISION, so MIRA answers the previous
