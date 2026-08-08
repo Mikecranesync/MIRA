@@ -198,3 +198,84 @@ def test_a_conversational_acknowledgement_is_still_footered_for_now():
     assert out == reply + _H4_STOCK_ADMISSION
     # ...and giving that lane a dispatch_kind is all it takes to fix it properly.
     assert enforce_citation_or_gap_admission(reply, dispatch_kind="greeting") == reply
+
+
+# -- Phase 0 (flight-school spec): bullet/numbered claims MUST be inspected ---
+# The first CIT-005 implementation skipped enumerated lines as "non-prose", so a
+# reply that asked a question and then listed uncited technical claims underneath
+# escaped H4 entirely -- suppressing an honest admission, the exact failure the
+# narrow scoping was supposed to prevent.
+
+
+def test_numbered_technical_claims_still_earn_the_admission():
+    from shared.engine import _H4_STOCK_ADMISSION, enforce_citation_or_gap_admission
+
+    reply = (
+        "What have you already checked?\n\n"
+        "1. The drive is showing F004 undervoltage\n"
+        "2. Incoming voltage measures 480V at L1-L2\n"
+        "3. The DC bus caps were replaced last month"
+    )
+    out = enforce_citation_or_gap_admission(reply, dispatch_kind="")
+    assert out == reply + _H4_STOCK_ADMISSION
+
+
+def test_bulleted_technical_claims_still_earn_the_admission():
+    from shared.engine import _H4_STOCK_ADMISSION, enforce_citation_or_gap_admission
+
+    reply = "Can you confirm the model?\n\n- The fault latches on start\n- Bus voltage sits at 320V"
+    out = enforce_citation_or_gap_admission(reply, dispatch_kind="")
+    assert out == reply + _H4_STOCK_ADMISSION
+
+
+def test_a_declarative_lead_in_before_questions_is_not_exempt():
+    """A line break is a sentence boundary.
+
+    Joining lines first would let a colon-led claim absorb the question after it
+    ("The drive is faulted:" + "what code?" reads as one interrogative) and
+    escape the gate.
+    """
+    from shared.engine import enforce_citation_or_gap_admission
+
+    reply = (
+        "A couple of things to narrow this down:\n\n"
+        "1. What fault code is on the keypad?\n"
+        "2. Does it trip on start or under load?"
+    )
+    assert enforce_citation_or_gap_admission(reply, dispatch_kind="") != reply
+
+
+def test_enumerated_questions_alone_are_still_a_non_answer():
+    from shared.engine import enforce_citation_or_gap_admission
+
+    reply = "1. What fault code is on the keypad?\n2. Does it trip on start or under load?"
+    assert enforce_citation_or_gap_admission(reply, dispatch_kind="") == reply
+
+
+def test_the_canned_option_menu_clarifier_is_exempt_by_declaration():
+    """The real groundedness clarifier offers parallel CHOICES, not claims.
+
+    Its option lines ("3. Sensor reading (e.g. pressure at 120 PSI)") are
+    textually indistinguishable from a claim list, so it is exempted by matching
+    the known template prefix rather than by inferring intent from the text.
+    """
+    from shared.engine import enforce_citation_or_gap_admission
+
+    reply = (
+        "Before I can give you a confident diagnosis, could you share one more "
+        "detail \u2014 what exact fault code, alarm number, or behaviour is the "
+        "equipment showing right now?\n\n"
+        "1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n"
+        "2. Visible symptom (e.g. trips on start, runs slow, won't start)\n"
+        "3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n"
+        "4. Other \u2014 describe what you're seeing"
+    )
+    assert enforce_citation_or_gap_admission(reply, dispatch_kind="") == reply
+
+
+def test_a_colon_led_claim_cannot_absorb_the_following_question():
+    from shared.engine import _H4_STOCK_ADMISSION, enforce_citation_or_gap_admission
+
+    reply = "The drive is faulted on undervoltage:\nwhat code is on the keypad?"
+    out = enforce_citation_or_gap_admission(reply, dispatch_kind="")
+    assert out == reply + _H4_STOCK_ADMISSION

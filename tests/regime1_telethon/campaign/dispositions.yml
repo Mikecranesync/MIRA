@@ -19,6 +19,9 @@ t1:fault_code_pf525:
     on the same seed and scenario, the only change being the deployed build. Consistent
     with the offline both-directions proof. Still applied=false: the branch is not
     merged.'
+  seen_in:
+  - c1
+  - c2
   status: FIXED
   summary: hyphenated model shorthand ("pf-525") did not resolve, so MIRA asked for
     the manufacturer and model the technician had just given
@@ -47,7 +50,17 @@ t1:reset_procedure:
     still FAILS because its expect list wants ''reset''/''PowerFlex'' and MIRA asks
     a clarifying question instead of answering the procedural question — exactly the
     half recorded as untouched. Fixing that is a separate change (answer the procedure
-    from the resolved PF525 pack rather than gating it behind a fault code).'
+    from the resolved PF525 pack rather than gating it behind a fault code). | NOT
+    given a defect_id: this scenario reveals TWO defects — CIT-005 (footer, fixed)
+    and an unnamed second one (a procedural ''how do I reset'' is gated behind a fault
+    code while a resolved PF525 pack is in hand). The disposition schema holds a single
+    defect_id, so a multi-defect scenario cannot be labelled honestly yet; that is
+    what the Phase 2 defect registry is for. Leaving it blank beats asserting a root
+    cause that only explains half the failure.'
+  seen_in:
+  - c1
+  - c1r4
+  - c3
   status: OPEN
   summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
     for the fault code AND tells the technician it has no documentation, while holding
@@ -57,6 +70,7 @@ t1:symptom_report:
   convs:
   - t1_018_symptom_report
   - t1_s42_018_symptom_report
+  defect_id: CIT-005
   first_seen: c1
   fix: 'CIT-005 (PR #3155) — a question-only reply no longer receives the KB-gap footer.
     Covers this finding''s whole root cause; the scenario''s expect list may still
@@ -66,7 +80,11 @@ t1:symptom_report:
   note: 'Merge with t1:reset_procedure when fixing; one contract (CIT-005 / H4-NONANSWER-001)
     covers both. The scenario''s expect list is also arguably over-strict — the clarifying
     question itself is by design. | c3: PASSES live (c2 FAIL -> c3 PASS). CIT-005
-    confirmed on the real bot.'
+    confirmed on the real bot. | defect_id=CIT-005 (adjudicated 2026-08-08): the whole
+    of this finding is the footer-on-a-non-answer root cause.'
+  seen_in:
+  - c1
+  - c2
   status: FIXED
   summary: same footer-on-a-non-answer defect as t1:reset_procedure — a question-only
     turn receives the "no documentation indexed" admission
@@ -81,6 +99,9 @@ t2:continuation_is_kept:
   last_seen: c1r1
   note: Confirmed fixed on main by two independent triage agents; c1r4 tier 2 passed
     10/10.
+  seen_in:
+  - c1
+  - c1r1
   status: FIXED
   summary: a pronoun follow-up ("is that fault serious?") after a drive-pack-answered
     turn lost its referent and asked the technician for the code MIRA had just explained
@@ -100,6 +121,12 @@ t2:pivot_after_fault:
     first. Suggested contract CTX-001d: a pivot fires from every state holding a pending
     diagnostic question. | c3: still fails, 1/2 variants this round (2/2 in c2). Unfixed
     on this branch as expected — the partial fix lives in held PR #3153.'
+  seen_in:
+  - c1
+  - c1r2
+  - c1r3
+  - c2
+  - c3
   status: OPEN
   summary: '"Actually forget that — my conveyor keeps stopping" is not recognised
     as a pivot when the session sits in DIAGNOSIS_REVISION, so MIRA answers the previous
@@ -116,6 +143,8 @@ t8:experienced:
     the real defect is the recall turn itself. Suggested contract MEM-002. | c2 (main@c0d3722e3,
     2026-08-08): did NOT reproduce — passed. The router-intent early return that bypasses
     the UNS gate is unchanged, so treat this as not-triggered rather than resolved.'
+  seen_in:
+  - c1
   status: OPEN
   summary: history questions ("did it throw F004 yesterday", "when was this last updated")
     are answered by dumping the last 5 raw chat lines under "Last 5 interactions for
@@ -135,6 +164,8 @@ t8:impatient:
     is non-reproduction, not a fix: _REPEAT_MIN_LEN is still 40 and the offending
     line still normalises to 34 chars, verified on the same commit. The persona simply
     did not drive MIRA into the repeat this round.'
+  seen_in:
+  - c1
   status: OPEN
   summary: MIRA repeats the byte-identical line "Check the display for a fault code"
     on three separate turns, including as its answer to a direct challenge about that

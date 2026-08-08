@@ -119,7 +119,17 @@ def render(facts: list[dict], disp: dict[str, findings.Disposition]) -> str:
     L.append("# Telethon UAT — every campaign result to date")
     L.append("")
     L.append(
-        f"*Generated {date.today().isoformat()} by `campaign/summary.py`. Regenerate it; don't edit it.*"
+        f"*Generated {date.today().isoformat()} by `campaign/summary.py` — edit the "
+        "generator, not this file.*"
+    )
+    L.append("")
+    L.append(
+        "> **Reproducibility.** The ledgers and frozen transcripts this is built from are "
+        "gitignored and live with whoever drove the campaign. Regenerating this report "
+        "elsewhere requires that evidence bundle; check it first with "
+        "`py -3 -m tests.regime1_telethon.campaign.manifest --verify` against the committed "
+        "`campaign/evidence-manifest.json`. Without a matching bundle, a regenerated report "
+        "is a different document that happens to share a filename."
     )
     L.append("")
     L.append(
@@ -172,10 +182,12 @@ def render(facts: list[dict], disp: dict[str, findings.Disposition]) -> str:
         cells = []
         for c in campaigns:
             state = matrix[fp].get(c)
+            # No verdict for THIS scenario in THIS run means NOT_RUN — full stop.
+            # Inferring PASS from "some other scenario in the same tier ran" is
+            # how an unexecuted scenario turns green, which the program's
+            # acceptance criteria forbid outright.
             if state is None:
-                tier = finding_tier(fp).lstrip("t")
-                covered = {str(t) for t in tiers_by_campaign.get(c, set())}
-                cells.append(NOT_RUN if tier not in covered else "PASS")
+                cells.append(NOT_RUN)
             else:
                 cells.append("**FAIL**" if state == "FAIL" else "PASS")
         status = d.status if d else findings.OPEN

@@ -84,6 +84,15 @@ class Disposition:
     last_seen: str = ""
     note: str = ""
     convs: list[str] = field(default_factory=list)
+    # Every run in which this was observed. first_seen/last_seen alone lose the
+    # middle, and the middle is where the interesting shape lives — a defect
+    # that failed, passed for two rounds, then came back reads as "seen c1..c5"
+    # under an endpoints-only record.
+    seen_in: list[str] = field(default_factory=list)
+    # Human-approved ROOT CAUSE, distinct from the scenario that revealed it.
+    # One defect can surface in several scenarios and one scenario can surface
+    # several defects, so issue dedupe keys on this once a human has assigned it.
+    defect_id: str = ""
 
     def as_dict(self) -> dict:
         d = {
@@ -96,6 +105,8 @@ class Disposition:
             "last_seen": self.last_seen,
             "note": self.note,
             "convs": sorted(set(self.convs)),
+            "seen_in": list(dict.fromkeys(self.seen_in)),
+            "defect_id": self.defect_id,
         }
         return {k: v for k, v in d.items() if v not in ("", [], None)} or {"status": self.status}
 
@@ -125,6 +136,8 @@ def load(path: Path | None = None) -> dict[str, Disposition]:
             last_seen=body.get("last_seen", ""),
             note=body.get("note", ""),
             convs=list(body.get("convs", []) or []),
+            seen_in=list(body.get("seen_in", []) or []),
+            defect_id=body.get("defect_id", "") or "",
         )
     return out
 
@@ -185,6 +198,10 @@ def observe(
     if not d.summary and summary:
         d.summary = summary
     d.last_seen = campaign
+    if campaign not in d.seen_in:
+        d.seen_in.append(campaign)
+    if not d.first_seen:
+        d.first_seen = d.seen_in[0]
     if conv_id not in d.convs:
         d.convs.append(conv_id)
     return d
@@ -201,4 +218,7 @@ def regressed(d: Disposition, campaign: str) -> bool:
     """
     if d.status != FIXED or not d.applied:
         return False
-    return campaign not in (d.first_seen, d.last_seen)
+    # Any run already on record predates (or produced) the fix decision. Only a
+    # sighting in a run this finding has NEVER been seen in means it came back.
+    known = set(d.seen_in) | {d.first_seen, d.last_seen}
+    return campaign not in known

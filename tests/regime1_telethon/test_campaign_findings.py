@@ -316,3 +316,86 @@ class TestSummary:
         body = summary.render(facts, {})
         header = [ln for ln in body.splitlines() if ln.startswith("| finding |")][0]
         assert header.index("c1r4") < header.index("c2")
+
+
+class TestPhase0FlightSchool:
+    """Gaps named by docs/superpowers/specs/2026-08-08-telethon-flight-school-design.md."""
+
+    @staticmethod
+    def _facts(campaign, tiers, verdicts, date="2026-08-08"):
+        return dict(
+            campaign=campaign,
+            verdicts=verdicts,
+            tiers=tiers,
+            build="sha",
+            passed=sum(1 for v in verdicts if v["verdict"] == "PASS"),
+            total=len(verdicts),
+            date=date,
+        )
+
+    def test_a_scenario_not_executed_is_not_run_even_when_its_tier_ran(self):
+        """The spec's hardest rule: no unexecuted scenario may appear as PASS.
+
+        Tier coverage is not scenario coverage. c2 below runs tier 1, but never
+        runs `alpha` — inferring PASS from its sibling manufactures a green result.
+        """
+        from tests.regime1_telethon.campaign import summary
+
+        facts = [
+            self._facts("c1", [1], [
+                dict(conv="t1_000_alpha", tier=1, verdict="FAIL"),
+                dict(conv="t1_001_beta", tier=1, verdict="PASS"),
+            ], date="2026-08-01"),
+            self._facts("c2", [1], [dict(conv="t1_001_beta", tier=1, verdict="PASS")],
+                        date="2026-08-02"),
+        ]
+        body = summary.render(facts, {})
+        row = [ln for ln in body.splitlines() if ln.startswith("| `t1:alpha`")][0]
+        c2_cell = row.split("|")[3].strip()
+        assert c2_cell == summary.NOT_RUN, f"unexecuted scenario rendered as {c2_cell!r}"
+
+    def test_every_campaign_seen_is_preserved_not_just_the_endpoints(self):
+        """first_seen/last_seen lose the middle, and the middle is the shape."""
+        d: dict[str, findings.Disposition] = {}
+        for campaign in ("c1", "c1r2", "c2", "c3"):
+            findings.observe(d, "t1_000_alpha", 1, campaign)
+        row = d["t1:alpha"]
+        assert row.seen_in == ["c1", "c1r2", "c2", "c3"]
+        assert row.first_seen == "c1"
+        assert row.last_seen == "c3"
+
+    def test_a_run_already_on_record_is_not_a_regression(self):
+        d = findings.Disposition(
+            fingerprint="t1:x", status=findings.FIXED, applied=True,
+            first_seen="c1", last_seen="c3", seen_in=["c1", "c1r2", "c3"],
+        )
+        assert not findings.regressed(d, "c1r2"), "a mid-history run is already known"
+        assert findings.regressed(d, "c4"), "a run never seen before means it came back"
+
+    def test_issue_dedupe_keys_on_the_defect_not_the_scenario(self):
+        """One root cause revealed by two scenarios is ONE issue."""
+        from tests.regime1_telethon.campaign import issues
+
+        a = findings.Disposition(fingerprint="t1:reset_procedure", defect_id="CIT-005")
+        b = findings.Disposition(fingerprint="t1:symptom_report", defect_id="CIT-005")
+        assert issues.dedupe_key("t1:reset_procedure", a) == "CIT-005"
+        assert issues.dedupe_key("t1:symptom_report", b) == "CIT-005"
+        assert issues.marker("t1:reset_procedure", a) == issues.marker("t1:symptom_report", b)
+
+    def test_dedupe_falls_back_to_the_scenario_until_a_defect_is_adjudicated(self):
+        from tests.regime1_telethon.campaign import issues
+
+        d = findings.Disposition(fingerprint="t1:reset_procedure")
+        assert issues.dedupe_key("t1:reset_procedure", d) == "t1:reset_procedure"
+        assert issues.dedupe_key("t1:reset_procedure", None) == "t1:reset_procedure"
+
+    def test_defect_id_and_seen_in_survive_a_round_trip(self, tmp_path):
+        p = tmp_path / "d.yml"
+        findings.save({
+            "t1:x": findings.Disposition(
+                fingerprint="t1:x", defect_id="CIT-005", seen_in=["c1", "c2"]
+            )
+        }, p)
+        back = findings.load(p)["t1:x"]
+        assert back.defect_id == "CIT-005"
+        assert back.seen_in == ["c1", "c2"]

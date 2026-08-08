@@ -1,6 +1,8 @@
 # Telethon UAT — every campaign result to date
 
-*Generated 2026-08-08 by `campaign/summary.py`. Regenerate it; don't edit it.*
+*Generated 2026-08-08 by `campaign/summary.py` — edit the generator, not this file.*
+
+> **Reproducibility.** The ledgers and frozen transcripts this is built from are gitignored and live with whoever drove the campaign. Regenerating this report elsewhere requires that evidence bundle; check it first with `py -3 -m tests.regime1_telethon.campaign.manifest --verify` against the committed `campaign/evidence-manifest.json`. Without a matching bundle, a regenerated report is a different document that happens to share a filename.
 
 **7 runs · 199 conversations · 178 passed (89%) · 7 distinct defects found**
 
@@ -55,7 +57,7 @@ the KB-gap footer is stapled onto a bare clarifying question — MIRA asks for t
 - **Status:** OPEN · fix applied to main: **no**
 - **Fix:** PARTIAL — CIT-005 (this branch) stops the footer landing on a question-only turn. The other half is untouched: MIRA still answers a procedural "how do I reset" with a bare clarifying question while holding a resolved PowerFlex 525 pack, so the scenario's expect list ("reset", "PowerFlex") still fails.
 - **Issue:** #3156
-- **Notes:** Footer half is deterministic: running enforce_citation_or_gap_admission from current source reproduces the frozen reply byte-for-byte. Shares its root cause with t1:symptom_report. Failed on two different builds and two different phrasings ("AB PowerFlex 525" spelled out, and "PF-525"), so the hyphen fix does not explain it. | c2 (main@c0d3722e3, 2026-08-08): the seed-42 variant PASSED while t1:symptom_report — same root cause — still failed. CIT-005 is not merged, so this is mutation variance, not evidence the footer defect is gone. | c3: the FOOTER HALF IS PROVEN FIXED LIVE — the reply to the identical message is now 'What is the exact fault code displayed after the undervoltage fault?' with NO KB-gap footer (compare the c1/c1r4 transcripts). That is mechanism-level evidence, not a lucky pass. The scenario still FAILS because its expect list wants 'reset'/'PowerFlex' and MIRA asks a clarifying question instead of answering the procedural question — exactly the half recorded as untouched. Fixing that is a separate change (answer the procedure from the resolved PF525 pack rather than gating it behind a fault code).
+- **Notes:** Footer half is deterministic: running enforce_citation_or_gap_admission from current source reproduces the frozen reply byte-for-byte. Shares its root cause with t1:symptom_report. Failed on two different builds and two different phrasings ("AB PowerFlex 525" spelled out, and "PF-525"), so the hyphen fix does not explain it. | c2 (main@c0d3722e3, 2026-08-08): the seed-42 variant PASSED while t1:symptom_report — same root cause — still failed. CIT-005 is not merged, so this is mutation variance, not evidence the footer defect is gone. | c3: the FOOTER HALF IS PROVEN FIXED LIVE — the reply to the identical message is now 'What is the exact fault code displayed after the undervoltage fault?' with NO KB-gap footer (compare the c1/c1r4 transcripts). That is mechanism-level evidence, not a lucky pass. The scenario still FAILS because its expect list wants 'reset'/'PowerFlex' and MIRA asks a clarifying question instead of answering the procedural question — exactly the half recorded as untouched. Fixing that is a separate change (answer the procedure from the resolved PF525 pack rather than gating it behind a fault code). | NOT given a defect_id: this scenario reveals TWO defects — CIT-005 (footer, fixed) and an unnamed second one (a procedural 'how do I reset' is gated behind a fault code while a resolved PF525 pack is in hand). The disposition schema holds a single defect_id, so a multi-defect scenario cannot be labelled honestly yet; that is what the Phase 2 defect registry is for. Leaving it blank beats asserting a root cause that only explains half the failure.
 
 ### `t1:symptom_report`
 
@@ -66,7 +68,7 @@ same footer-on-a-non-answer defect as t1:reset_procedure — a question-only tur
 - **Status:** FIXED · fix applied to main: **no**
 - **Fix:** CIT-005 (PR #3155) — a question-only reply no longer receives the KB-gap footer. Covers this finding's whole root cause; the scenario's expect list may still be over-strict independently of the fix.
 - **Issue:** #3159
-- **Notes:** Merge with t1:reset_procedure when fixing; one contract (CIT-005 / H4-NONANSWER-001) covers both. The scenario's expect list is also arguably over-strict — the clarifying question itself is by design. | c3: PASSES live (c2 FAIL -> c3 PASS). CIT-005 confirmed on the real bot.
+- **Notes:** Merge with t1:reset_procedure when fixing; one contract (CIT-005 / H4-NONANSWER-001) covers both. The scenario's expect list is also arguably over-strict — the clarifying question itself is by design. | c3: PASSES live (c2 FAIL -> c3 PASS). CIT-005 confirmed on the real bot. | defect_id=CIT-005 (adjudicated 2026-08-08): the whole of this finding is the footer-on-a-non-answer root cause.
 
 ### `t2:continuation_is_kept`
 
