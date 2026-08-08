@@ -1,8 +1,30 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-08-01
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-08-01
+
+### Most actionable change for the MIRA playbook
+
+**"Agentic AI" has arrived in industrial hardware.** Rockwell Automation's July 23 partnership press release uses "agentic AI" as the primary noun — the same vocabulary Notion, Stripe, and Anthropic settled on in B2B SaaS. MIRA's window to own "agentic maintenance intelligence" before the term becomes commodity in the industrial segment is now. Every CMMS/industrial vendor still says "AI-powered." Lead with "agentic."
+
+### New findings
+
+**Automation / SCADA**
+- **Rockwell + Augury** — "Rockwell Automation and Augury Partner to Improve Industrial Performance with Agentic AI" (Jul 23, 2026): https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html — no standalone video; press release uses "agentic AI" 5× and "Reliability Agent" as product noun; Augury detects → Fiix MAX creates work order → technician executes loop. Stat hook: "43% of collected data being used effectively." Positioning: insights-to-action loop, not just insights. [press release, transcript not verified]
+
+**CMMS / EAM**
+- **MaintainX** — "State of Industrial Maintenance 2026" webinar + report (May 5, 2026): https://www.getmaintainx.com/newsroom/ai-goes-mainstream-on-the-factory-floor-maintainx-report-finds — framing shift from "AI is coming" to "AI has crossed the adoption threshold"; 58% of industrial teams already using AI; 75% report measurable ROI in under 6 months; n=2,234 leaders. No standalone YouTube video found; source: report + BusinessWire release.
+
+**B2B SaaS (pattern transfer)**
+- **Figma** — "Config 2026 Keynote with Dylan Field" (Jun 23, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — opening hook: "Code is not the opposite of design. Code is material for design."; counter-AI-fear framing: "AI has lowered the floor, but it has not raised the ceiling. Designers, creatives, builders: You will raise the ceiling."; launches Figma Motion (production-ready animation in Figma), Figma Agent (MCP-connected design agent with skills); footage: on-stage keynote, Moscone Center SF; VO: founder; CTA: none explicit
+- **Anthropic** — "Code with Claude 2026: Opening Keynote" (May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA — developer conference in SF + London + Tokyo; launches Managed Agents (hosted multi-agent orchestration with coordinator + parallel subagents), Dreaming (agents learn from past sessions), Outcomes (run agent loop until goal achieved); Boris Cherny quote: "The default is now 'I'm going to have Claude prompt itself.'"; Dario: 80× revenue growth vs 10× plan; VO: product/founder; footage: on-stage
+- **Stripe** — "Stripe Sessions 2026 | Keynote" (published May 19, 2026): https://www.youtube.com/watch?v=lIsHZfRl2zw — 288 product launches; thesis: "payments are evolving from transaction infrastructure for humans into programmable, continuous infrastructure for machines"; Link agent wallet for AI; stablecoin-backed cards in 30 countries; Agentic Commerce Suite with Meta + Google; full opening keynote (Apr 30): https://www.youtube.com/watch?v=Nadf3MdJS-8; developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0 [also updates the stub in the Stripe section below]
+- **Notion** — "Introducing Notion's Developer Platform" / Notion 3.5 (May 13, 2026): https://www.notion.com/releases/2026-05-13 — workspace repositioned as "agent hub"; External Agents API brings Claude Code, Cursor, Codex as native workspace participants; "agents show up in your agent list and take actions alongside your team"; Workers (hosted serverless runtime); no dedicated YouTube video confirmed; iOS Agents app: https://www.notion.com/releases/2026-07-08
 
 ---
 
@@ -88,6 +110,16 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**State of Industrial Maintenance 2026 (May 5, 2026)**
+- Source: https://www.getmaintainx.com/newsroom/ai-goes-mainstream-on-the-factory-floor-maintainx-report-finds
+- Key claim: "AI has crossed the adoption threshold on the factory floor"; 58% of teams already using AI; 75% see measurable ROI in under 6 months; n=2,234 leaders
+- Framing shift: no longer "AI is the future" — now "AI is mainstream." Opens MaintainX as the default platform choice, not the innovative choice.
+- No standalone YouTube video; distributed via webinar + BusinessWire + report download
+
+**May 2026 features:** Sub Work Orders (complex job decomposition), AI-powered Procedure Recommendations, expanded Automations. Deepens "CoPilot does the work" narrative introduced Feb 2025.
+
+**Augury partnership (Mar 24, 2026):** https://www.augury.com/media-center/press/augury-maintainx-partner/ — Augury anomaly → MaintainX work order auto-created with diagnostic context → repair outcome feeds back into Augury. Positions MaintainX as the execution layer for predictive data. No video.
+
 ---
 
 ### Fiix
@@ -145,6 +177,12 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Footage style: real factory floor + exec interviews
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+
+**Rockwell Automation partnership (Jul 23, 2026)**
+- Source: https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html
+- Product: Augury Reliability Agent feeds Fiix MAX (Rockwell's AI maintenance assistant) for closed-loop work order execution
+- Vocabulary: announcement uses "agentic AI" explicitly — marks Augury's shift from "predictive maintenance sensor company" to "industrial AI agent" positioning
+- No standalone video; press release + ARC Advisory Group coverage only
 
 ---
 
@@ -205,6 +243,12 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
 
+**Augury partnership (Jul 23, 2026)**
+- Source: https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html
+- "Agentic AI" is now Rockwell's chosen vocabulary for the insights-to-action loop
+- Stat used: "only 43% of collected industrial data is used effectively" (from Rockwell's 11th annual State of Smart Manufacturing report)
+- Pattern note: Rockwell is adopting B2B SaaS vocabulary (agent, agentic) to describe what was previously called "predictive analytics" or "asset management"
+
 ---
 
 ### Siemens
@@ -254,11 +298,18 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (Apr 29–30, 2026) — details now extracted**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 (published Apr 30)
+- Product keynote: https://www.youtube.com/watch?v=lIsHZfRl2zw (published May 19)
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0 (published Apr 29)
+- Previously captured stub: https://www.youtube.com/watch?v=e13-s0p1tfE (superseded by above)
+- Central thesis: "payments are evolving from transaction infrastructure for humans into programmable, continuous infrastructure for machines"
+- 288 product launches across stablecoins, AI agent wallet (Link agent wallet), Agentic Commerce Suite (with Meta + Google)
+- VO register: founder (Patrick + John Collison) + product executives; polished on-stage
+- CTA: none explicit; ecosystem/platform
+- Scale claim used: stablecoin cards accepted via Visa in 30 countries on day-one
 
-**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
+**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube. Sessions 2026 theme ("infrastructure for machines") marks Stripe's shift from developer-tools positioning to AI-economy infrastructure positioning.
 
 ---
 
@@ -304,6 +355,20 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Code with Claude 2026 — developer conference (May 6, 2026)**
+- SF keynote: https://www.youtube.com/watch?v=GMIWm5y90xA
+- London: https://www.youtube.com/watch?v=6amLO7I9xdg | Tokyo: https://www.youtube.com/watch?v=N4efO8viXXo
+- Launches: Claude Managed Agents (hosted multi-agent orchestration; coordinator spins up parallel subagents), Dreaming (agents learn from past sessions), Outcomes (run until goal achieved)
+- Quotable hook: "The default is now 'I'm going to have Claude prompt itself.'" — Boris Cherny, head of Claude Code
+- Scale claim: "80× revenue growth in Q1 2026 vs 10× plan" — Dario Amodei
+- VO register: product/engineering leaders; on-stage developer conference
+
+**Claude Science (Jun 30, 2026)**
+- Anthropic page: https://www.anthropic.com/news/claude-science-ai-workbench
+- Industry operating-layer strategy: integrates 60+ scientific databases + computation tools; not a new model — same Claude, vertical workflow wrapper
+- Pattern: Anthropic repeating the "Claude Code → [vertical]" playbook for pharma/research
+- No Anthropic-produced YouTube video; CNBC clip: https://www.cnbc.com/video/2026/06/30/anthropic-launches-claude-science.html [transcript not verified]
+
 ---
 
 ### Cursor
@@ -340,6 +405,19 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.5: Developer Platform / Agent Hub (May 13, 2026) — NEW**
+- Release: https://www.notion.com/releases/2026-05-13
+- Blog: https://www.notion.com/blog/introducing-developer-platform
+- Framing: Notion repositioned as an "agent hub" — a coordination layer where humans and AI agents work together
+- Key products: Notion Workers (hosted serverless runtime for custom code), Database Sync (sync any API into Notion DBs), External Agents API (Claude Code, Cursor, Codex, Decagon as native workspace participants)
+- Quote: "Agents show up in your agent list, chat directly in Notion, and take actions alongside your team"
+- No dedicated YouTube launch video confirmed; announced via blog + livestream
+- Pattern note: progression from "agents do your tasks" (3.0) → "agents are teammates" (3.5) — the next stage in the agentic narrative arc
+
+**Notion Agents iOS app (Jul 8, 2026)**
+- Release: https://www.notion.com/releases/2026-07-08
+- Mobile availability for agents; no standalone video confirmed
+
 ---
 
 ### Figma
@@ -354,6 +432,18 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (Jun 23, 2026) — NEW**
+- Opening keynote: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Closing keynote: https://www.youtube.com/watch?v=SQji6izodIE
+- Venue: Moscone Center SF, Jun 23–25, 2026
+- Opening hook: "Code is not the opposite of design. Code is material for design."
+- Counter-AI-takeover framing: "AI has lowered the floor, but it has not raised the ceiling. Designers, creatives, builders: You will raise the ceiling." — Dylan Field
+- Launches: Figma Motion (real timeline with keyframes, easing, spring physics; production-ready animation inside Figma Design), Figma Agent (MCP-connected design agent; builds reusable skills from text prompts; connects to Notion, GitHub, Excel), generative plugins (rolled out Jun 24)
+- Footage style: on-stage keynote; polished; CEO-led
+- VO register: founder
+- CTA: none explicit; awareness
+- Pattern note: Figma 2026 actively counter-programs against AI-replaces-designers fear — "humans raise the ceiling" is the differentiation. Transfers to MIRA: "MIRA doesn't replace your best tech. It gives your newest tech their best tech's knowledge."
 
 ---
 
@@ -385,6 +475,11 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Agentic" vocabulary in industrial context (2026-era) | Rockwell + Augury Jul 2026: "agentic AI" for insights-to-action loop | Lead with "agentic maintenance intelligence" — not "AI-powered CMMS" |
+| Counter-AI-fear: "humans raise the ceiling" | Figma Config 2026: "AI lowered the floor, you raise the ceiling" | "MIRA doesn't replace your best tech. It gives your newest tech their best tech's knowledge." |
+| Industry-wide adoption proof via report | MaintainX State of IM 2026: 58% adoption, 75% ROI <6 months | Publish a "State of Factory Floor AI" survey; use 3rd-party data as authority signal |
+| Infrastructure-for-agents framing | Stripe 2026: "programmable infrastructure for machines, not just humans" | "maintenance intelligence layer for the agentic factory" |
+| "Agents as teammates" (next-stage agentic arc) | Notion 3.5: agents "show up in your agent list, take actions alongside your team" | "MIRA works your shift — shows up in the queue with a diagnosis before you open the ticket" |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +490,9 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
-- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. May 2026: shifted from "AI is coming" to "AI has crossed the adoption threshold" — maturity framing.
+- **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel. ICC 2026 (Sep 22) is the next major video drop.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. Jul 2026: "agentic AI" vocabulary in Rockwell partnership — positioning shift from sensor company to industrial AI agent provider.
+- **Rockwell Automation**: adopted "agentic AI" vocabulary in Jul 2026 partnership announcement — the first major industrial automation OEM to use the term. Previously used "predictive analytics," "industrial intelligence," "digital transformation."
+- **Figma**: actively counter-programming AI-fear in 2026 — "you raise the ceiling" framing puts the human back as the expert. Unusual counter-narrative for a SaaS vendor in an AI market.
+- **Anthropic**: shifted from model-provider to vertical operating-layer strategy (Claude Code → Claude Science → next vertical). The conference format (Code w/ Claude 2026) mirrors Google I/O / Stripe Sessions as a primary launch vehicle.
