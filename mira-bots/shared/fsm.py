@@ -20,6 +20,23 @@ STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
 
 ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
 
+# CTX-001d — states the fresh-thread PIVOT must never fire from, because their
+# own handler owns the turn and the pending question belongs to that handler:
+#   ELECTRICAL_PRINT          — the print follow-up path decides when to exit
+#                               (engine.py PRINT_STATE_EXIT), and severing the
+#                               session context would strand the schematic.
+#   AWAITING_UNS_CONFIRMATION — the non-negotiable UNS location-confirmation
+#                               gate is mid-confirmation; dropping its pending
+#                               question strands the gate
+#                               (.claude/rules/uns-confirmation-gate.md).
+#   SAFETY_ALERT              — safety always wins and returns early; the pivot
+#                               must never mutate state ahead of it.
+# Every OTHER state holding a pending diagnostic question pivots — the defect
+# CTX-001d fixes was enumerating the states that MAY pivot (and missing
+# DIAGNOSIS_REVISION and IDLE-with-a-pending-question) instead of the few that
+# may not. See mira-bots/tests/test_ctx_fresh_thread_pivot.py.
+PIVOT_EXEMPT_STATES = frozenset({"ELECTRICAL_PRINT", "AWAITING_UNS_CONFIRMATION", "SAFETY_ALERT"})
+
 HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
 
 PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))

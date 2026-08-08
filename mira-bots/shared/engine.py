@@ -62,6 +62,7 @@ from .fsm import (
     ACTIVE_DIAGNOSTIC_STATES,
     HISTORY_LIMIT,
     PHOTO_MEMORY_TURNS,
+    PIVOT_EXEMPT_STATES,
     STATE_ORDER,
     VALID_STATES,
     advance_state,
@@ -3306,9 +3307,19 @@ class Supervisor:
             # prompt builder, pending question dropped, fault carry cleared so
             # _prepend_equipment_context cannot re-anchor retrieval on it. The
             # asset pin is KEPT (the symptom may belong to the pinned machine).
+            # CTX-001d (2026-08-08) — the pivot fires from EVERY state holding a
+            # pending diagnostic question, not just the Q-states. Gating on
+            # ACTIVE_DIAGNOSTIC_STATES left two reachable quadrants uncovered,
+            # both observed live (campaign t2:pivot_after_fault, issue #3160,
+            # STABLE_FAIL across every seed): the low-groundedness self-critique
+            # parks the session in DIAGNOSIS_REVISION, and a RAG turn can leave
+            # the FSM in IDLE while still setting last_question. In both the new
+            # symptom was consumed as an answer and the dead fault rode forward.
+            # Only PIVOT_EXEMPT_STATES — whose own handler owns the turn — are
+            # excluded now; see shared/fsm.py for why each one is on that list.
             elif (
                 _names_new_subject
-                and state.get("state") in ACTIVE_DIAGNOSTIC_STATES
+                and state.get("state") not in PIVOT_EXEMPT_STATES
                 and ((state.get("context") or {}).get("session_context") or {}).get("last_question")
             ):
                 _ctx_pv = state.get("context") or {}
