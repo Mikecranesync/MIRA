@@ -19,6 +19,11 @@ def render_gchat(response: NormalizedChatResponse) -> dict:
             sections.append({"header": block.data.get("text", ""), "widgets": []})
         elif block.kind == "paragraph":
             current_widgets.append({"textParagraph": {"text": block.data.get("text", "")}})
+        elif block.kind == "bullet_list":
+            items = block.data.get("items", [])
+            current_widgets.append(
+                {"textParagraph": {"text": "<br>".join(f"• {i}" for i in items)}}
+            )
         elif block.kind == "key_value":
             for k, v in block.data.get("pairs", []):
                 current_widgets.append({"decoratedText": {"topLabel": k, "text": v}})
