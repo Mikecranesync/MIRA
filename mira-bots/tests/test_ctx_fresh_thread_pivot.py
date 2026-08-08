@@ -209,6 +209,46 @@ async def test_explicit_abandon_with_new_symptom_pivots(sv, caplog):
 
 
 @pytest.mark.asyncio
+async def test_idle_severance_also_clears_fault_carry(sv, caplog):
+    """Live campaign catch #4 (c1 t2_s42_000, 2026-08-07): after a PACK-claimed
+    turn (IDLE, no last_question), 'Actually forget that -- my conveyor keeps
+    stopping.' took the IDLE severance branch, which set the fresh flag but
+    left the F004 fault carry in uns_context -- and the reply answered the
+    dead fault. Both severance branches must clear the dead thread's fault."""
+    caplog.set_level("INFO", logger="mira-gsd")
+    chat = "idle-sever-fault"
+    state = {
+        "state": "IDLE",
+        "asset_identified": "Rockwell Automation, 525",
+        "exchange_count": 2,
+        "fault_category": "voltage",
+        "context": {
+            "history": [
+                {"role": "user", "content": "What does F004 mean on a PowerFlex 525?"},
+                {"role": "assistant", "content": "F004 = UnderVoltage."},
+            ],
+            "session_context": {"active_alarm": "F004"},
+            "uns_context": {
+                "manufacturer": "Rockwell Automation",
+                "model": "525",
+                "fault_code": "F004",
+                "confidence": 0.81,
+            },
+        },
+    }
+    sv._save_state(chat, state)
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "Actually forget that — my conveyor keeps stopping.")
+    saved = sv._load_state(chat)
+    ctx = saved.get("context") or {}
+    assert "CTX_FRESH_THREAD" in caplog.text
+    assert (ctx.get("uns_context") or {}).get("fault_code") is None, (
+        "IDLE severance left the dead thread's fault carry in place"
+    )
+    assert (ctx.get("session_context") or {}).get("active_alarm") is None
+
+
+@pytest.mark.asyncio
 async def test_plural_asset_noun_pivots(sv, caplog):
     """Live Telethon regression 2026-08-07: 'one of our DRIVES keeps faulting'
     after an F004 thread was consumed as a continuation — the noun evidence

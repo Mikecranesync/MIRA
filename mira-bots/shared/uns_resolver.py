@@ -454,6 +454,10 @@ def _match_vendor(message_lower: str) -> tuple[str | None, str | None, str | Non
     # Order matters: longer/more-specific aliases first by sorting on length desc
     # within the iteration. Since dict order is preserved but we want longest
     # match wins for "rockwell automation" vs "rockwell", we sort once here.
+    # Separator-tolerant shadow copy: technicians hyphenate model shorthand
+    # freely ("pf-525", "gs-10") — live campaign catch c1_t1_s42_012
+    # (2026-08-07): "pf-525" resolved to nothing while "pf525" hit at 0.9.
+    compact = re.sub(r"(?<=[a-z0-9])[-_](?=[a-z0-9])", "", message_lower)
     for alias in sorted(VENDOR_ALIASES.keys(), key=len, reverse=True):
         # Build a boundary-aware pattern. Aliases with hyphens or spaces are
         # matched literally (no \b around hyphens because \b breaks there).
@@ -463,7 +467,9 @@ def _match_vendor(message_lower: str) -> tuple[str | None, str | None, str | Non
                 family = FAMILY_FROM_ALIAS.get(alias)
                 return mfr, alias, family
         else:
-            if re.search(_alias_pattern(alias), message_lower):
+            if re.search(_alias_pattern(alias), message_lower) or (
+                compact != message_lower and re.search(_alias_pattern(alias), compact)
+            ):
                 mfr = VENDOR_ALIASES[alias]
                 family = FAMILY_FROM_ALIAS.get(alias)
                 return mfr, alias, family
