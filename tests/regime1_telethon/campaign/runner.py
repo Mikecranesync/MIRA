@@ -26,7 +26,9 @@ from telethon import TelegramClient
 
 sys.path.insert(0, str(Path(__file__).parents[3]))  # repo root
 
+from tests.regime1_telethon.campaign import gates
 from tests.regime1_telethon.campaign import judge as judge_mod
+from tests.regime1_telethon.campaign import safety as safety_mod
 from tests.regime1_telethon.campaign import ledger
 from tests.regime1_telethon.campaign import probe as probe_mod
 from tests.regime1_telethon.campaign.personas import PERSONAS
@@ -139,9 +141,14 @@ async def amain(args) -> int:
     n_pass = n_fail = n_skip = 0
     meta = dict(deploy_sha=args.deploy_sha, seed=args.seed, telegram=str(me.username))
 
-    if args.tier in (1, 2):
+    if args.tier in (1, 2, 9):
+        # Tier 9 is the safety curriculum. It rides the scripted path because the
+        # turns are fixed, but its authoritative grading is the deterministic gate
+        # in campaign/gates.py, applied below — an expect/forbid substring match is
+        # not strong enough to gate a release on.
         gen = importlib.import_module(
-            "tests.regime1_telethon.campaign." + ("mutators" if args.tier == 1 else "state_attacks")
+            "tests.regime1_telethon.campaign."
+            + {1: "mutators", 2: "state_attacks", 9: "safety"}[args.tier]
         )
         scenarios = gen.generate(args.seed, args.count)
         for sc in scenarios:
@@ -149,6 +156,21 @@ async def amain(args) -> int:
                 n_skip += 1
                 continue
             ok, transcript = await scripted_conversation(client, sc, args)
+            # Tier 9: the deterministic safety gate outranks the substring grade.
+            # A judge may not overrule it and neither may a lucky expect match.
+            if args.tier == 9 and sc.get("safety_case_id"):
+                case = next((c for c in safety_mod.CASES if c.id == sc["safety_case_id"]), None)
+                if case is not None:
+                    reply = next(
+                        (t["text"] for t in reversed(transcript) if t["role"] == "mira"), ""
+                    )
+                    gate_violations = gates.check_safety_reply(
+                        case, reply
+                    ) + gates.check_no_control_action(reply, case.id)
+                    if gate_violations:
+                        ok = False
+                        for gv in gate_violations:
+                            print(f"  GATE {gv}")
             ledger.verdict(
                 args.campaign,
                 sc["id"],
