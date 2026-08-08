@@ -5,13 +5,16 @@
 t1:fault_code_pf525:
   applied: false
   convs:
+  - t1_012_fault_code_pf525
   - t1_s42_012_fault_code_pf525
   first_seen: c1
   fix: 'PR #3155 (_alias_pattern separator tolerance + expand_abbreviations collapse-and-retry);
     PR #3153 fixes the resolver half only'
-  last_seen: c1
-  note: Neither PR is merged. Reproduced offline both directions; c1r4 passed this
-    scenario once, which is one run and not proof.
+  last_seen: c2
+  note: 'Neither PR is merged. Reproduced offline both directions; c1r4 passed this
+    scenario once, which is one run and not proof. | c2: still FAILS on main, as expected
+    — neither #3155 nor #3153 is merged. Evidence: MIRA asked for ''the manufacturer
+    and model (e.g. Allen-Bradley PowerFlex 525)'' after the technician wrote pf-525.'
   status: FIXED
   summary: hyphenated model shorthand ("pf-525") did not resolve, so MIRA asked for
     the manufacturer and model the technician had just given
@@ -31,7 +34,9 @@ t1:reset_procedure:
     current source reproduces the frozen reply byte-for-byte. Shares its root cause
     with t1:symptom_report. Failed on two different builds and two different phrasings
     ("AB PowerFlex 525" spelled out, and "PF-525"), so the hyphen fix does not explain
-    it.'
+    it. | c2 (main@c0d3722e3, 2026-08-08): the seed-42 variant PASSED while t1:symptom_report
+    — same root cause — still failed. CIT-005 is not merged, so this is mutation variance,
+    not evidence the footer defect is gone.'
   status: OPEN
   summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
     for the fault code AND tells the technician it has no documentation, while holding
@@ -39,13 +44,14 @@ t1:reset_procedure:
 t1:symptom_report:
   applied: false
   convs:
+  - t1_018_symptom_report
   - t1_s42_018_symptom_report
   first_seen: c1
-  fix: 'CIT-005 (PR #3155) — a question-only reply no longer receives the KB-gap
-    footer. Covers this finding''s whole root cause; the scenario''s expect list may
-    still be over-strict independently of the fix.'
+  fix: 'CIT-005 (PR #3155) — a question-only reply no longer receives the KB-gap footer.
+    Covers this finding''s whole root cause; the scenario''s expect list may still
+    be over-strict independently of the fix.'
   issue: '3159'
-  last_seen: c1
+  last_seen: c2
   note: Merge with t1:reset_procedure when fixing; one contract (CIT-005 / H4-NONANSWER-001)
     covers both. The scenario's expect list is also arguably over-strict — the clarifying
     question itself is by design.
@@ -69,12 +75,14 @@ t2:continuation_is_kept:
 t2:pivot_after_fault:
   applied: false
   convs:
+  - t2_000_pivot_after_fault
+  - t2_005_pivot_after_fault
   - t2_s42_000_pivot_after_fault
   - t2_s42_005_pivot_after_fault
   first_seen: c1
   fix: 'partially addressed by PR #3153 (IDLE severance fault carry) — held, not merged'
   issue: '3160'
-  last_seen: c1r3
+  last_seen: c2
   note: 'Root cause: the fresh-thread pivot fires only from ACTIVE_DIAGNOSTIC_STATES,
     and the low-groundedness self-critique clarifier parks the session in DIAGNOSIS_REVISION
     first. Suggested contract CTX-001d: a pivot fires from every state holding a pending
@@ -90,9 +98,11 @@ t8:experienced:
   first_seen: c1
   issue: '3157'
   last_seen: c1
-  note: The router intent check_equipment_history returns before the UNS confirmation
-    gate. The judge's own flag (conflicting F004 meanings) is likely a false positive;
-    the real defect is the recall turn itself. Suggested contract MEM-002.
+  note: 'The router intent check_equipment_history returns before the UNS confirmation
+    gate. The judge''s own flag (conflicting F004 meanings) is likely a false positive;
+    the real defect is the recall turn itself. Suggested contract MEM-002. | c2 (main@c0d3722e3,
+    2026-08-08): did NOT reproduce — passed. The router-intent early return that bypasses
+    the UNS gate is unchanged, so treat this as not-triggered rather than resolved.'
   status: OPEN
   summary: history questions ("did it throw F004 yesterday", "when was this last updated")
     are answered by dumping the last 5 raw chat lines under "Last 5 interactions for
@@ -104,10 +114,14 @@ t8:impatient:
   first_seen: c1
   issue: '3158'
   last_seen: c1
-  note: The CTX-004 repeated-answer guard has _REPEAT_MIN_LEN = 40 and the reply normalises
-    to 34 characters, so the guard returns before comparing. The judge filed this
-    as GROUNDING, which is a false positive — the honest KB-gap admission was correct.
-    The repetition is the real defect. Suggested contract CTX-004b.
+  note: 'The CTX-004 repeated-answer guard has _REPEAT_MIN_LEN = 40 and the reply
+    normalises to 34 characters, so the guard returns before comparing. The judge
+    filed this as GROUNDING, which is a false positive — the honest KB-gap admission
+    was correct. The repetition is the real defect. Suggested contract CTX-004b. |
+    c2 (main@c0d3722e3, 2026-08-08): did NOT reproduce — all 4 personas passed. This
+    is non-reproduction, not a fix: _REPEAT_MIN_LEN is still 40 and the offending
+    line still normalises to 34 chars, verified on the same commit. The persona simply
+    did not drive MIRA into the repeat this round.'
   status: OPEN
   summary: MIRA repeats the byte-identical line "Check the display for a fault code"
     on three separate turns, including as its answer to a direct challenge about that
