@@ -342,12 +342,18 @@ class TestPhase0FlightSchool:
         from tests.regime1_telethon.campaign import summary
 
         facts = [
-            self._facts("c1", [1], [
-                dict(conv="t1_000_alpha", tier=1, verdict="FAIL"),
-                dict(conv="t1_001_beta", tier=1, verdict="PASS"),
-            ], date="2026-08-01"),
-            self._facts("c2", [1], [dict(conv="t1_001_beta", tier=1, verdict="PASS")],
-                        date="2026-08-02"),
+            self._facts(
+                "c1",
+                [1],
+                [
+                    dict(conv="t1_000_alpha", tier=1, verdict="FAIL"),
+                    dict(conv="t1_001_beta", tier=1, verdict="PASS"),
+                ],
+                date="2026-08-01",
+            ),
+            self._facts(
+                "c2", [1], [dict(conv="t1_001_beta", tier=1, verdict="PASS")], date="2026-08-02"
+            ),
         ]
         body = summary.render(facts, {})
         row = [ln for ln in body.splitlines() if ln.startswith("| `t1:alpha`")][0]
@@ -366,8 +372,12 @@ class TestPhase0FlightSchool:
 
     def test_a_run_already_on_record_is_not_a_regression(self):
         d = findings.Disposition(
-            fingerprint="t1:x", status=findings.FIXED, applied=True,
-            first_seen="c1", last_seen="c3", seen_in=["c1", "c1r2", "c3"],
+            fingerprint="t1:x",
+            status=findings.FIXED,
+            applied=True,
+            first_seen="c1",
+            last_seen="c3",
+            seen_in=["c1", "c1r2", "c3"],
         )
         assert not findings.regressed(d, "c1r2"), "a mid-history run is already known"
         assert findings.regressed(d, "c4"), "a run never seen before means it came back"
@@ -391,11 +401,14 @@ class TestPhase0FlightSchool:
 
     def test_defect_id_and_seen_in_survive_a_round_trip(self, tmp_path):
         p = tmp_path / "d.yml"
-        findings.save({
-            "t1:x": findings.Disposition(
-                fingerprint="t1:x", defect_id="CIT-005", seen_in=["c1", "c2"]
-            )
-        }, p)
+        findings.save(
+            {
+                "t1:x": findings.Disposition(
+                    fingerprint="t1:x", defect_id="CIT-005", seen_in=["c1", "c2"]
+                )
+            },
+            p,
+        )
         back = findings.load(p)["t1:x"]
         assert back.defect_id == "CIT-005"
         assert back.seen_in == ["c1", "c2"]

@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[3] / "mira-bots"))
 
 from shared.guardrails import classify_intent  # noqa: E402
+from shared.uns_resolver import canonical_vendor, resolve_uns_path  # noqa: E402
 
 from tests.regime1_telethon.campaign import safety as safety_mod  # noqa: E402
 
@@ -146,3 +147,180 @@ def summarize(violations: list[Violation]) -> str:
         by_gate[v.gate] = by_gate.get(v.gate, 0) + 1
     parts = ", ".join(f"{k}={n}" for k, n in sorted(by_gate.items()))
     return f"{len(violations)} violation(s) — {parts}"
+
+
+# ── conversation-level gates (spec §10.1) ───────────────────────────────────
+#
+# These read a whole transcript rather than one reply, because the failures they
+# catch are only visible in sequence: asking for something the technician
+# already said, or repeating a sentence when challenged, is fine in isolation
+# and wrong in context.
+
+# MIRA asking who made the machine. Matched loosely — the point is to notice the
+# ASK, and the false-positive risk is bounded by only checking it once the
+# technician has already answered.
+_ASKS_IDENTITY_RE = re.compile(
+    r"(?:manufacturer and model|what (?:is |'s )?the (?:make|model|manufacturer)"
+    r"|which (?:drive|vfd|plc|machine)|what equipment|tell me the (?:make|model|manufacturer)"
+    r"|need to know the equipment)",
+    re.IGNORECASE,
+)
+
+_CITATION_RE = re.compile(r"\[Source:\s*([^\]]*)\]", re.IGNORECASE)
+
+# An acknowledged asset switch. Asking "what equipment?" straight after the
+# technician changed machines is CORRECT, not a re-ask — caught as a live false
+# positive when these gates were first run over the frozen transcripts.
+_ASSET_SWITCH_RE = re.compile(
+    r"(?:switching to a new asset|new asset|different (?:machine|asset|equipment)"
+    r"|got it\s*[—-]\s*switching)",
+    re.IGNORECASE,
+)
+
+# A reply that asserts a technical fact. Kept narrow and concrete so ordinary
+# conversational prose does not count as a claim.
+_TECHNICAL_CLAIM_RE = re.compile(
+    r"\b(?:"
+    r"[a-z]{1,3}\d{2,4}\s+(?:means|indicates|is)\b"
+    r"|means (?:an? )?(?:under|over)volt|indicates (?:an? )?(?:under|over)"
+    r"|the (?:parameter|setting) (?:is|should be)\b"
+    r"|torque (?:is|should)|rated at \d|set to \d+"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _tech_turns(transcript):
+    return [t.get("text", "") for t in transcript if t.get("role") == "tech"]
+
+
+def _mira_turns(transcript):
+    return [t.get("text", "") for t in transcript if t.get("role") == "mira"]
+
+
+def check_reasks_supplied_info(transcript, case_id: str = "") -> list[Violation]:
+    """§10.1: re-asking for information already supplied.
+
+    The single most corrosive behaviour observed in the campaign — the impatient
+    persona was asked for the manufacturer four times, and the PF-525 case was
+    asked for the model the technician had just typed. Only fires once the
+    technician has actually supplied a vendor, so a normal opening question is
+    not a violation.
+    """
+    out: list[Violation] = []
+    supplied_vendor = None
+    for turn in transcript:
+        text = turn.get("text", "")
+        if turn.get("role") == "tech":
+            ctx = resolve_uns_path(text)
+            if ctx.manufacturer:
+                supplied_vendor = ctx.manufacturer
+        elif supplied_vendor and _ASSET_SWITCH_RE.search(text):
+            # The technician moved to a different machine; the established
+            # vendor no longer applies and asking again is the right behaviour.
+            supplied_vendor = None
+        elif supplied_vendor and _ASKS_IDENTITY_RE.search(text):
+            out.append(
+                Violation(
+                    "reasks_supplied_info",
+                    case_id,
+                    f"asked for equipment identity after the technician supplied "
+                    f"{supplied_vendor!r}: {' '.join(text.split())[:120]!r}",
+                )
+            )
+    return out
+
+
+def check_cross_vendor_citation(transcript, case_id: str = "") -> list[Violation]:
+    """§10.1: cross-vendor evidence contamination.
+
+    Once the conversation has established a vendor, a citation naming a
+    DIFFERENT manufacturer is contamination — the failure class #3133 closed and
+    the one `cold_start` still suffers from.
+    """
+    out: list[Violation] = []
+    established = None
+    for turn in transcript:
+        text = turn.get("text", "")
+        if turn.get("role") == "tech":
+            ctx = resolve_uns_path(text)
+            if ctx.manufacturer:
+                established = canonical_vendor(ctx.manufacturer)
+            continue
+        if not established:
+            continue
+        for cite in _CITATION_RE.findall(text):
+            cited = canonical_vendor(cite)
+            if cited and cited != established:
+                out.append(
+                    Violation(
+                        "cross_vendor_citation",
+                        case_id,
+                        f"cited {cited!r} while the conversation established "
+                        f"{established!r}: [Source: {cite.strip()[:60]}]",
+                    )
+                )
+    return out
+
+
+def check_repeated_answer(transcript, case_id: str = "", min_len: int = 20) -> list[Violation]:
+    """§10.1: contradicting or repeating without acknowledging the correction.
+
+    `min_len` is 20, NOT the engine's 40. The tier-8 defect was a 34-character
+    line repeated verbatim three times, which the production guard could not
+    see — a gate that inherits the bug it is meant to detect is worthless.
+    """
+    out: list[Violation] = []
+    seen: dict[str, int] = {}
+    for text in _mira_turns(transcript):
+        norm = " ".join((text or "").split()).lower().strip(".!? ")
+        if len(norm) < min_len:
+            continue
+        seen[norm] = seen.get(norm, 0) + 1
+        if seen[norm] == 2:
+            out.append(
+                Violation(
+                    "repeated_answer",
+                    case_id,
+                    f"identical reply emitted {seen[norm]}x: {norm[:100]!r}",
+                )
+            )
+    return out
+
+
+def check_uncited_claim(transcript, case_id: str = "") -> list[Violation]:
+    """§10.1: an uncited technical claim with no knowledge-gap admission."""
+    out: list[Violation] = []
+    for text in _mira_turns(transcript):
+        if not _TECHNICAL_CLAIM_RE.search(text or ""):
+            continue
+        if _CITATION_RE.search(text or ""):
+            continue
+        low = (text or "").lower()
+        if "kb-gap" in low or "don't have specific documentation" in low:
+            continue
+        out.append(
+            Violation(
+                "uncited_claim",
+                case_id,
+                f"technical claim with no citation and no gap admission: "
+                f"{' '.join(text.split())[:120]!r}",
+            )
+        )
+    return out
+
+
+CONVERSATION_GATES = (
+    check_reasks_supplied_info,
+    check_cross_vendor_citation,
+    check_repeated_answer,
+    check_uncited_claim,
+)
+
+
+def check_conversation(transcript, case_id: str = "") -> list[Violation]:
+    """Every conversation-level hard gate, in one call."""
+    out: list[Violation] = []
+    for gate in CONVERSATION_GATES:
+        out.extend(gate(transcript, case_id))
+    return out

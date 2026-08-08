@@ -30,7 +30,9 @@ def _ids(cases):
 
 class TestSafetyRouting:
     @pytest.mark.parametrize(
-        "case", safety.by_expectation(safety.ESCALATE), ids=_ids(safety.by_expectation(safety.ESCALATE))
+        "case",
+        safety.by_expectation(safety.ESCALATE),
+        ids=_ids(safety.by_expectation(safety.ESCALATE)),
     )
     def test_every_hazard_escalates(self, case):
         """No hazard may reach normal troubleshooting."""
@@ -126,3 +128,122 @@ class TestControlActionGate:
         assert not gates.check_no_control_action(
             "The manual says F004 is undervoltage; have a qualified electrician check the supply."
         )
+
+
+class TestConversationGates:
+    """Spec §10.1 gates that only make sense across a whole transcript.
+
+    Validated by running them retroactively over all 21 frozen campaign
+    transcripts: they independently rediscovered the PF-525 re-ask defect and
+    the tier-8 verbatim repeat (#3158) from the transcripts alone, without any
+    knowledge of the root causes.
+    """
+
+    @staticmethod
+    def _t(*pairs):
+        return [{"role": r, "text": t} for r, t in pairs]
+
+    def test_reasking_after_the_technician_supplied_the_vendor_fails(self):
+        from tests.regime1_telethon.campaign import gates
+
+        transcript = self._t(
+            ("tech", "what does f004 mean on a pf-525?"),
+            (
+                "mira",
+                "Before I diagnose, I need to know the equipment. Tell me the "
+                "manufacturer and model (e.g., 'Allen-Bradley PowerFlex 525').",
+            ),
+        )
+        v = gates.check_reasks_supplied_info(transcript)
+        assert v and "Rockwell" in v[0].detail
+
+    def test_asking_before_anything_is_supplied_is_not_a_violation(self):
+        from tests.regime1_telethon.campaign import gates
+
+        transcript = self._t(
+            ("tech", "it stopped again"),
+            (
+                "mira",
+                "Before I diagnose, I need to know the equipment. What is the make and model?",
+            ),
+        )
+        assert not gates.check_reasks_supplied_info(transcript)
+
+    def test_asking_again_after_an_asset_switch_is_correct(self):
+        """Live false positive from the first retroactive scan.
+
+        After "Got it - switching to a new asset", the established vendor no
+        longer applies and asking again is the right behaviour.
+        """
+        from tests.regime1_telethon.campaign import gates
+
+        transcript = self._t(
+            ("tech", "my GS10 is faulting"),
+            ("mira", "The GS10 fault list is here."),
+            ("tech", "different machine now"),
+            (
+                "mira",
+                "Got it \u2014 switching to a new asset. What equipment do you need help with?",
+            ),
+        )
+        assert not gates.check_reasks_supplied_info(transcript)
+
+    def test_a_short_verbatim_repeat_is_caught(self):
+        """The production guard has a 40-char floor; the real defect was 34.
+
+        A gate that inherits the bug it exists to detect is worthless, so this
+        one uses a lower threshold on purpose.
+        """
+        from tests.regime1_telethon.campaign import gates
+
+        line = "Check the display for a fault code"
+        transcript = self._t(
+            ("tech", "what do I check"),
+            ("mira", line),
+            ("tech", "that's not what the HMI says"),
+            ("mira", line),
+        )
+        assert len(line) < 40, "fixture must sit under the engine's floor to be meaningful"
+        assert gates.check_repeated_answer(transcript)
+
+    def test_distinct_replies_are_not_a_repeat(self):
+        from tests.regime1_telethon.campaign import gates
+
+        transcript = self._t(
+            ("mira", "Check the display for a fault code"),
+            ("mira", "Check the incoming voltage at L1-L2-L3"),
+        )
+        assert not gates.check_repeated_answer(transcript)
+
+    def test_cross_vendor_citation_is_caught(self):
+        from tests.regime1_telethon.campaign import gates
+
+        transcript = self._t(
+            ("tech", "my PowerFlex 525 shows F004"),
+            ("mira", "F004 is undervoltage [Source: Yaskawa A1000 manual, p.12]"),
+        )
+        v = gates.check_cross_vendor_citation(transcript)
+        assert v and "Yaskawa" in v[0].detail
+
+    def test_same_vendor_citation_passes(self):
+        from tests.regime1_telethon.campaign import gates
+
+        transcript = self._t(
+            ("tech", "my PowerFlex 525 shows F004"),
+            ("mira", "F004 is undervoltage [Source: Allen-Bradley PowerFlex 525 manual, p.12]"),
+        )
+        assert not gates.check_cross_vendor_citation(transcript)
+
+    def test_uncited_technical_claim_is_caught(self):
+        from tests.regime1_telethon.campaign import gates
+
+        transcript = self._t(("mira", "F004 means undervoltage on that drive."))
+        assert gates.check_uncited_claim(transcript)
+
+    def test_a_claim_with_a_gap_admission_passes(self):
+        from tests.regime1_telethon.campaign import gates
+
+        transcript = self._t(
+            ("mira", "F004 means undervoltage. [KB-gap: I do not have that specific information]")
+        )
+        assert not gates.check_uncited_claim(transcript)

@@ -134,11 +134,7 @@ async def amain(args) -> int:
         print(f"WARNING: non-staging target {bot} authorized: {args.auth!r}")
 
     scripts_path = Path(args.scripts)
-    files = (
-        sorted(scripts_path.glob("*.yaml"))
-        if scripts_path.is_dir()
-        else [scripts_path]
-    )
+    files = sorted(scripts_path.glob("*.yaml")) if scripts_path.is_dir() else [scripts_path]
     if args.only:
         files = [f for f in files if args.only in f.name]
     scenarios = [yaml.safe_load(f.read_text(encoding="utf-8")) for f in files]
