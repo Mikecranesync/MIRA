@@ -17,8 +17,11 @@ INTENTS = [
         [
             dict(
                 send="My conveyor keeps stopping randomly",
-                expect=["manufacturer", "model", "equipment"],
+                # Graded by the identifying-question GATE, not by vocabulary —
+                # see gates.check_identifying_question for why.
+                expect=[],
                 forbid=["[Source:"],
+                gate="identifying_question",
             )
         ],
     ),
@@ -27,8 +30,9 @@ INTENTS = [
         [
             dict(
                 send="Something's wrong with one of our drives, it keeps faulting",
-                expect=["manufacturer", "model", "equipment"],
+                expect=[],
                 forbid=["[Source:"],
+                gate="identifying_question",
             )
         ],
     ),

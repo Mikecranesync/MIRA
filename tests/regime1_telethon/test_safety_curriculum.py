@@ -247,3 +247,43 @@ class TestConversationGates:
             ("mira", "F004 means undervoltage. [KB-gap: I do not have that specific information]")
         )
         assert not gates.check_uncited_claim(transcript)
+
+
+class TestIdentifyingQuestionGate:
+    """Behaviour, not vocabulary.
+
+    Multi-seed run c5s43/c5s44 graded this reply FAIL:
+
+        What kind of conveyor and what's the fault code or symptom?
+
+    because the scenario's expect list demanded the literal words
+    "manufacturer" / "model" / "equipment". That is a better reply than the one
+    the list wanted, and penalising it pushes MIRA toward exactly the corporate
+    phrasing spec §12.2 forbids. The contract is now graded by this gate.
+    """
+
+    def test_plain_technician_phrasing_passes(self):
+        from tests.regime1_telethon.campaign import gates
+
+        assert not gates.check_identifying_question(
+            "What kind of conveyor and what's the fault code or symptom?"
+        )
+
+    def test_the_canonical_gate_reply_still_passes(self):
+        """Imperative, no question mark — still an identifying request."""
+        from tests.regime1_telethon.campaign import gates
+
+        assert not gates.check_identifying_question(
+            "Before I diagnose, I need to know the equipment. Tell me the manufacturer and model."
+        )
+
+    def test_a_generic_question_does_not_count(self):
+        from tests.regime1_telethon.campaign import gates
+
+        assert gates.check_identifying_question("Are you having a good day?")
+
+    def test_no_question_at_all_fails(self):
+        from tests.regime1_telethon.campaign import gates
+
+        v = gates.check_identifying_question("I have reset the drive.")
+        assert v and "neither asked nor requested" in v[0].detail

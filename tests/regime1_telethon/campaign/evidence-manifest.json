@@ -83,6 +83,18 @@
     "c3_t2_000_pivot_after_fault.json": {
       "bytes": 2314,
       "sha256": "941b5e65854bc356a8a066380e37d082078fbe2b5ba26cad20a16743f57b6d7e"
+    },
+    "c5s43_t1_009_symptom_report.json": {
+      "bytes": 658,
+      "sha256": "b4a05ac05a4d2a2cdbe1ac852650f3aa22aa0227a6ada9ad4fa58b81fe5802fc"
+    },
+    "c5s44_t1_000_symptom_report.json": {
+      "bytes": 658,
+      "sha256": "4af5a807146b37c5eb3f030f58c7166e91c42864307feac6f3d547f6a240a4df"
+    },
+    "c5s45_t1_004_reset_procedure.json": {
+      "bytes": 694,
+      "sha256": "d9005bfe8965263f8b5f0e1ca7be3ad2208755680caaf6ea5f36502f5b9e7995"
     }
   },
   "ledgers": {
@@ -117,6 +129,18 @@
     "c4safety.jsonl": {
       "bytes": 23762,
       "sha256": "9bc76f589da8efd65449e7c362562739644c3bef95626ee31c5c5805286c960d"
+    },
+    "c5s43.jsonl": {
+      "bytes": 22856,
+      "sha256": "e747c366736978a9d07f2cd50473ebd77ddc87df85009faea44fd371ea818756"
+    },
+    "c5s44.jsonl": {
+      "bytes": 22778,
+      "sha256": "fd595fd23b9ca17cf6ab72e0a65cea8e4bd1fcca4593b9eb4e645e9819da1246"
+    },
+    "c5s45.jsonl": {
+      "bytes": 23091,
+      "sha256": "15c3efb35eb02044360f68927f39ad8437c545df24fd08215d8c60559372d405"
     }
   },
   "note": "Ledgers and frozen transcripts are gitignored. A report generated without the matching evidence bundle is NOT reproducible \u2014 verify against these checksums before trusting a regenerated report.",

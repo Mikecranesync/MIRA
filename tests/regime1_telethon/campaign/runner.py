@@ -56,6 +56,13 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         reply, min_id = await uat.collect_reply(client, STAGING_BOT, min_id)
         transcript.append(dict(role="mira", text=reply))
         ok, notes = uat.grade_turn(reply, turn.get("expect", []), turn.get("forbid", []))
+        # A declared gate is the authoritative contract for that turn; the
+        # expect/forbid list grades vocabulary, the gate grades behaviour.
+        if turn.get("gate") == "identifying_question":
+            gv = gates.check_identifying_question(reply, scenario["id"])
+            if gv:
+                ok = False
+                notes = notes + [str(x) for x in gv]
         ledger.turn(
             args.campaign,
             scenario["id"],

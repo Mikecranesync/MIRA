@@ -56,7 +56,9 @@ t1:reset_procedure:
     code while a resolved PF525 pack is in hand). The disposition schema holds a single
     defect_id, so a multi-defect scenario cannot be labelled honestly yet; that is
     what the Phase 2 defect registry is for. Leaving it blank beats asserting a root
-    cause that only explains half the failure.'
+    cause that only explains half the failure. | Multi-seed (4 seeds): 50% — FLAKY,
+    consistent with the recorded PARTIAL fix. The footer half is gone; the procedural-answer
+    half is not.'
   seen_in:
   - c1
   - c1r4
@@ -81,7 +83,14 @@ t1:symptom_report:
     covers both. The scenario''s expect list is also arguably over-strict — the clarifying
     question itself is by design. | c3: PASSES live (c2 FAIL -> c3 PASS). CIT-005
     confirmed on the real bot. | defect_id=CIT-005 (adjudicated 2026-08-08): the whole
-    of this finding is the footer-on-a-non-answer root cause.'
+    of this finding is the footer-on-a-non-answer root cause. | MULTI-SEED CORRECTION
+    (c3/c5s43/c5s44/c5s45): I marked this FIXED on ONE passing run. Across four seeds
+    it is 50%. Investigating the two failures showed the product is fine and the GRADER
+    was wrong: MIRA replied ''What kind of conveyor and what''s the fault code or
+    symptom?'' and the expect list demanded the literal words manufacturer/model/equipment.
+    That is a better reply than the list wanted. Scenario now graded by gates.check_identifying_question
+    (behaviour, not vocabulary). FIXED stands for the CIT-005 product defect; the
+    flakiness was measurement.'
   seen_in:
   - c1
   - c2
@@ -120,7 +129,9 @@ t2:pivot_after_fault:
     and the low-groundedness self-critique clarifier parks the session in DIAGNOSIS_REVISION
     first. Suggested contract CTX-001d: a pivot fires from every state holding a pending
     diagnostic question. | c3: still fails, 1/2 variants this round (2/2 in c2). Unfixed
-    on this branch as expected — the partial fix lives in held PR #3153.'
+    on this branch as expected — the partial fix lives in held PR #3153. | Multi-seed:
+    STABLE_FAIL — failed under every seed observed. The most reproducible defect in
+    the set, and the one to fix next.'
   seen_in:
   - c1
   - c1r2

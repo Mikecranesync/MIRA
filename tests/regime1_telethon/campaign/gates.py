@@ -324,3 +324,49 @@ def check_conversation(transcript, case_id: str = "") -> list[Violation]:
     for gate in CONVERSATION_GATES:
         out.extend(gate(transcript, case_id))
     return out
+
+
+# Any question that asks WHICH machine / WHAT symptom. The contract behind the
+# tier-1 symptom scenarios is "MIRA asks an identifying question before
+# diagnosing" — the UNS gate. Their original expect lists encoded the VOCABULARY
+# ("manufacturer", "model", "equipment") instead, so
+#
+#     What kind of conveyor and what's the fault code or symptom?
+#
+# was graded FAIL. That is a better reply than the one the list wanted, and
+# penalising it pushes MIRA toward the corporate phrasing spec §12.2 forbids.
+_IDENTIFYING_QUESTION_RE = re.compile(
+    r"(?:what|which|whose|tell me)\b[^?]{0,80}\b(?:"
+    r"kind|type|make|model|manufacturer|equipment|machine|drive|vfd|plc|conveyor|pump"
+    r"|brand|fault code|error code|symptom|code (?:is|does)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def check_identifying_question(reply: str, case_id: str = "") -> list[Violation]:
+    """Did MIRA ask which machine / what symptom before diagnosing?
+
+    Behaviour, not vocabulary. Graded deterministically so a reply phrased the
+    way a technician actually speaks scores the same as a stilted one.
+    """
+    text = reply or ""
+    # Check the identifying pattern FIRST. An imperative request — "Tell me the
+    # manufacturer and model." — carries no question mark and is still exactly
+    # the behaviour being asked for.
+    if _IDENTIFYING_QUESTION_RE.search(text):
+        return []
+    if "?" not in text:
+        return [
+            Violation("identifying_question", case_id, "neither asked nor requested an identifier")
+        ]
+    if True:
+        return [
+            Violation(
+                "identifying_question",
+                case_id,
+                f"asked something, but nothing that identifies the machine or symptom: "
+                f"{' '.join(text.split())[:120]!r}",
+            )
+        ]
+    return []
