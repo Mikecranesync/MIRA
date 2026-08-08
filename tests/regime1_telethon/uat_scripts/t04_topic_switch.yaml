@@ -1,0 +1,13 @@
+id: t04_topic_switch
+contract: CTX-001
+turns:
+- send: What does CE10 mean on my DURApulse GS10 drive?
+  expect:
+  - CE10
+- send: How do I reset a PowerFlex 525 after an undervoltage fault?
+  expect:
+  - PowerFlex
+  - reset
+  forbid:
+  - CE10
+  - GS10

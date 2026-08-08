@@ -108,6 +108,22 @@ async def _run_turn(sv, message, chat="pivot-1", caplog=None):
 
 
 @pytest.mark.asyncio
+async def test_plural_asset_noun_pivots(sv, caplog):
+    """Live Telethon regression 2026-08-07: 'one of our DRIVES keeps faulting'
+    after an F004 thread was consumed as a continuation — the noun evidence
+    regex only matched singular forms."""
+    reply, saved = await _run_turn(
+        sv,
+        "Something's wrong with one of our drives, it keeps faulting",
+        chat="pivot-plural",
+        caplog=caplog,
+    )
+    assert "CTX_FRESH_THREAD_PIVOT" in caplog.text
+    uns = (saved.get("context") or {}).get("uns_context") or {}
+    assert uns.get("fault_code") is None
+
+
+@pytest.mark.asyncio
 async def test_new_symptom_from_q1_pivots(sv, caplog):
     reply, saved = await _run_turn(sv, "My conveyor keeps stopping randomly", caplog=caplog)
     sc = (saved.get("context") or {}).get("session_context") or {}

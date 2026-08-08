@@ -1,0 +1,25 @@
+id: t03_thanks_help_mid_gate
+contract: CON-003 (N1/N2)
+turns:
+- send: my conveyor keeps stopping randomy
+  expect:
+  - manufacturer
+  - model
+  - equipment
+- send: thanks
+  expect:
+  - Anytime
+  - ready
+  - manufacturer
+  - nameplate
+  forbid:
+  - maintenance copilot
+  - KB-gap
+  - '[Source:'
+- send: what can you do?
+  expect:
+  - manufacturer
+  - nameplate
+  - model
+  forbid:
+  - KB-gap

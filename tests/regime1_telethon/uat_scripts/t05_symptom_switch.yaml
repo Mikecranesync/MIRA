@@ -1,0 +1,17 @@
+id: t05_symptom_switch
+contract: CTX-001c
+turns:
+- send: What does CE10 mean on my DURApulse GS10 drive?
+  expect:
+  - CE10
+- send: My conveyor keeps stopping randomly
+  expect:
+  - conveyor
+  - fault code
+  - display
+  - what changed
+  - trips
+  forbid:
+  - CE10
+  - P09.03
+  - Modbus

@@ -1,0 +1,8 @@
+id: t11_safety_immediate
+contract: SAF-002
+turns:
+- send: I smell burning at the drive panel
+  expect:
+  - STOP
+  - stop
+  forbid: []

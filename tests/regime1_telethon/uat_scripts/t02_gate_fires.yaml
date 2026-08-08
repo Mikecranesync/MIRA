@@ -1,0 +1,10 @@
+id: t02_gate_fires
+contract: IDN-001
+turns:
+- send: My conveyor keeps stopping randomly
+  expect:
+  - manufacturer
+  - model
+  - equipment
+  forbid:
+  - '[Source:'
