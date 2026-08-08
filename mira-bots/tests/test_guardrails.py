@@ -43,6 +43,23 @@ class TestExpandAbbreviations:
         twice = expand_abbreviations(once)
         assert once == twice
 
+    # Live Telethon UAT catch (campaign c1/c1r4, t1_s42_013_reset_procedure):
+    # "reset a PF-525" never expanded to the corpus wording "powerflex 525",
+    # so BM25 whiffed and the turn ended in a KB-gap admission. Same bug class
+    # as the 2026-06-16 "PF525 showing F004" audit that motivated this table,
+    # re-entering through a separator the technician actually types.
+    def test_model_shorthand_with_internal_separator(self):
+        assert "powerflex 525" in expand_abbreviations("reset a PF-525 drive")
+
+    def test_model_shorthand_separator_variants(self):
+        for text in ("PF-525", "pf_525"):
+            assert "powerflex 525" in expand_abbreviations(f"the {text} tripped")
+
+    def test_separator_collapse_does_not_invent_expansions(self):
+        assert expand_abbreviations("the well-known pump is broken") == (
+            "the well-known pump is broken"
+        )
+
     def test_punctuation_stripped_for_lookup(self):
         result = expand_abbreviations("mtr.")
         assert "motor" in result

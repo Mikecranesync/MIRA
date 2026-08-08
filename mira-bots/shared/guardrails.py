@@ -520,6 +520,10 @@ MAINTENANCE_ABBREVIATIONS = {
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
 
+# Separator forms of the model shorthand above — see expand_abbreviations().
+_SHORTHAND_SEPARATOR_RE = re.compile(r"[_-]")
+_MODEL_SHORTHAND_SHAPE_RE = re.compile(r"[a-z]+\d[a-z0-9]*")
+
 # Vendor support URLs — used by both the documentation-intent routing in engine.py
 # and the no-KB-coverage honesty signal in rag_worker.py.
 VENDOR_SUPPORT_URLS: dict[str, str] = {
@@ -1207,6 +1211,18 @@ def expand_abbreviations(message: str) -> str:
         key = word.lower().strip(".,!?;:")
         if key in MAINTENANCE_ABBREVIATIONS:
             expanded.append(MAINTENANCE_ABBREVIATIONS[key])
+            continue
+        # Model shorthand typed with a separator ("PF-525", "pf_525"): collapse
+        # it and retry, so the query still reaches the corpus wording. Gated on
+        # a letters-then-digits shape, so ordinary hyphenated English can never
+        # pick up an expansion this way.
+        collapsed = _SHORTHAND_SEPARATOR_RE.sub("", key)
+        if (
+            collapsed != key
+            and _MODEL_SHORTHAND_SHAPE_RE.fullmatch(collapsed)
+            and collapsed in MAINTENANCE_ABBREVIATIONS
+        ):
+            expanded.append(MAINTENANCE_ABBREVIATIONS[collapsed])
         else:
             expanded.append(word)
     return " ".join(expanded)
