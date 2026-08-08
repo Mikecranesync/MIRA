@@ -154,7 +154,7 @@ def generate(seed: int, count: int) -> list[dict]:
             )
         out.append(
             dict(
-                id=f"t1_{i:03d}_{intent_id}",
+                id=f"t1_s{seed}_{i:03d}_{intent_id}",
                 contract=f"Tier1 language-mutation ({intent_id})",
                 seed=seed,
                 turns=conv_turns,
