@@ -32,9 +32,22 @@ MARKER = "campaign-finding"
 LABELS = ["needs-triage"]
 
 
-def marker(fp: str) -> str:
+def dedupe_key(fp: str, d: findings.Disposition | None = None) -> str:
+    """What identity the issue is deduplicated on.
+
+    A scenario is not a defect. Once a human has adjudicated a root cause and
+    written `defect_id`, that becomes the identity — several scenarios can reveal
+    one defect, and filing an issue per scenario turns one root cause into a pile
+    of duplicates. Until then the scenario fingerprint is the best available key.
+    """
+    if d is not None and d.defect_id:
+        return d.defect_id
+    return fp
+
+
+def marker(fp: str, d: findings.Disposition | None = None) -> str:
     """Hidden, stable dedupe key embedded in the issue body."""
-    return f"<!-- {MARKER}: {fp} -->"
+    return f"<!-- {MARKER}: {dedupe_key(fp, d)} -->"
 
 
 def existing_issues() -> dict[str, str]:
@@ -137,7 +150,7 @@ def build_body(fp: str, d: findings.Disposition, campaign: str, verdicts: list[d
         "`tests/regime1_telethon/campaign/dispositions.yml` — close this by setting that",
         "finding to `FIXED` (with the PR) or `FALSE_POSITIVE` (with the reason).",
         "",
-        marker(fp),
+        marker(fp, d),
     ]
     return "\n".join(lines)
 
@@ -180,8 +193,9 @@ def main() -> int:
             continue
         if d.issue:
             continue
-        if fp in already:
-            d.issue = already[fp]  # filed by an earlier run; adopt the number
+        key = dedupe_key(fp, d)
+        if key in already:
+            d.issue = already[key]  # already filed (possibly under a sibling scenario)
             continue
         if fp not in candidates:
             candidates.append(fp)
