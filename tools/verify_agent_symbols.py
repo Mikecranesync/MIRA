@@ -147,8 +147,22 @@ def get_diff(base: str | None) -> str:
         cmd = ["git", "diff", "--no-color", "-U0", f"{base}...HEAD", "--", "*.py"]
     else:
         cmd = ["git", "diff", "--no-color", "-U0", "--cached", "--", "*.py"]
-    result = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
-    return result.stdout
+    # encoding= is required, not cosmetic. Without it Python decodes git's output
+    # with the platform default (cp1252 on Windows) and a diff containing an
+    # em-dash raises UnicodeDecodeError inside subprocess's reader thread. The
+    # exception surfaces on a background thread, stdout comes back as None, and
+    # main() then dies on `None.strip()` — so the check reports a warning and
+    # silently does not run. errors="replace" keeps a stray byte from disarming
+    # the guard entirely.
+    result = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return result.stdout or ""
 
 
 def main() -> int:
