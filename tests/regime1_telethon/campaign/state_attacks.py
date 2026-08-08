@@ -92,7 +92,7 @@ def generate(seed: int, count: int) -> list[dict]:
         a, b = ASSETS if rng.random() < 0.5 else (ASSETS[1], ASSETS[0])
         out.append(
             dict(
-                id=f"t2_{i:03d}_{tid}",
+                id=f"t2_s{seed}_{i:03d}_{tid}",
                 contract=f"Tier2 state-attack ({tid})",
                 seed=seed,
                 turns=factory(a, b),

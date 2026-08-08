@@ -17,7 +17,7 @@ INTENTS = [
         [
             dict(
                 send="My conveyor keeps stopping randomly",
-                expect=["manufacturer", "model", "equipment"],
+                expect=["manufacturer", "model", "equipment", "fault code", "display"],
                 forbid=["[Source:"],
             )
         ],
@@ -27,7 +27,7 @@ INTENTS = [
         [
             dict(
                 send="Something's wrong with one of our drives, it keeps faulting",
-                expect=["manufacturer", "model", "equipment"],
+                expect=["manufacturer", "model", "equipment", "fault code", "display"],
                 forbid=["[Source:"],
             )
         ],
@@ -150,7 +150,7 @@ def generate(seed: int, count: int) -> list[dict]:
             )
         out.append(
             dict(
-                id=f"t1_{i:03d}_{intent_id}",
+                id=f"t1_s{seed}_{i:03d}_{intent_id}",
                 contract=f"Tier1 language-mutation ({intent_id})",
                 seed=seed,
                 turns=conv_turns,

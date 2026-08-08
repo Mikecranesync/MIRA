@@ -503,3 +503,29 @@ def test_ce_code_extracted_before_model_candidates():
     ctx = resolve_uns_path("GS10 showing CE1, comms dropping")
     assert ctx.fault_code and ctx.fault_code.upper() == "CE1"
     assert (ctx.model or "").upper() != "CE1"
+
+
+class TestHyphenatedAliases:
+    """Live campaign catch c1_t1_s42_012 (2026-08-07): 'pf-525' resolved to
+    nothing while 'pf525' resolves at 0.9 — technicians hyphenate model
+    shorthand freely. Separator-tolerant alias matching."""
+
+    def test_pf_hyphen_525_resolves(self):
+        from shared.uns_resolver import resolve_uns_path
+
+        ctx = resolve_uns_path("what does f004 mean on a pf-525?")
+        assert ctx.manufacturer == "Rockwell Automation"
+        assert ctx.confidence >= 0.7
+
+    def test_gs_hyphen_10_resolves(self):
+        from shared.uns_resolver import resolve_uns_path
+
+        ctx = resolve_uns_path("gs-10 showing ce10")
+        assert ctx.manufacturer == "AutomationDirect"
+
+    def test_plain_forms_unchanged(self):
+        from shared.uns_resolver import resolve_uns_path
+
+        ctx = resolve_uns_path("what does f004 mean on a pf525?")
+        assert ctx.manufacturer == "Rockwell Automation"
+        assert ctx.confidence >= 0.9 or ctx.model
