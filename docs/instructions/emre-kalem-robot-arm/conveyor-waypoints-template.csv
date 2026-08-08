@@ -1,0 +1,10 @@
+waypoint,purpose,base_deg,arm_a_deg,arm_b_deg,wrist_a_deg,wrist_b_deg,gripper_deg,duration_ms,verified_notes
+home,Known safe starting pose,90,90,90,90,90,70,1500,"Arm clear of conveyor and fixture"
+pre_pick,Approach above pickup point,,,,,,,,"Jog manually; keep clear of belt and guides"
+pick,Lower to part pickup height,,,,,,,,"Use empty gripper first"
+grip,Close gripper on part,,,,,,,,"Record gripper angle that holds without crushing"
+lift,Lift part clear of conveyor,,,,,,,,"Confirm no collision through entire lift"
+pre_drop,Move above drop location,,,,,,,,"Slow sweep from lift to drop before carrying part"
+drop,Lower to unload position,,,,,,,,"Part should not rub side rails"
+release,Open gripper,,,,,,,,"Confirm part releases cleanly"
+retreat,Clear fixture and return toward home,,,,,,,,"Must be collision-free if part slips"
