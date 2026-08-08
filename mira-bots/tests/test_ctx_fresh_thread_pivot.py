@@ -108,6 +108,107 @@ async def _run_turn(sv, message, chat="pivot-1", caplog=None):
 
 
 @pytest.mark.asyncio
+async def test_pronoun_continuation_after_pack_turn_keeps_context(sv, caplog):
+    """Live campaign catch (c1 t2_continuation_is_kept, 2026-08-07): after a
+    drive-pack-claimed turn (state stays IDLE, no last_question), the pronoun
+    continuation 'is that fault serious?' was severed by the IDLE fresh-thread
+    trigger and lost its referent. A turn that does not NAME a new subject
+    must never start a fresh thread."""
+    caplog.set_level("INFO", logger="mira-gsd")
+    chat = "pack-continuation"
+    state = {
+        "state": "IDLE",  # pack fast-path leaves IDLE and sets no last_question
+        "asset_identified": "AutomationDirect, GS10",
+        "exchange_count": 1,
+        "context": {
+            "history": [
+                {"role": "user", "content": "What does CE10 mean on a DURApulse GS10?"},
+                {"role": "assistant", "content": "CE10 is a Modbus timeout (P09.03)."},
+            ],
+            "session_context": {},
+            "uns_context": {
+                "manufacturer": "AutomationDirect",
+                "model": "GS10",
+                "fault_code": "CE10",
+            },
+        },
+    }
+    sv._save_state(chat, state)
+    seen = {}
+
+    async def spy_rag(message, st, *args, **kwargs):
+        ctx = st.get("context") or {}
+        seen["flag"] = bool(ctx.pop("fresh_thread_turn", False))
+        return RAG_REPLY
+
+    sv.rag.process = spy_rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "is that fault serious?")
+    assert not seen.get("flag"), (
+        "pronoun continuation must NOT be severed — no new subject was named"
+    )
+
+
+@pytest.mark.asyncio
+async def test_pack_continuation_retrieval_query_carries_equipment(sv):
+    """Live campaign catch, part 2 (c1r1, 2026-08-07): keeping history was not
+    enough — the RETRIEVAL query for 'is that fault serious?' after a
+    pack-claimed turn (IDLE) was the bare pronoun sentence, so recall came up
+    empty and the reply asked for the exact code it had just explained. An
+    IDLE continuation on a pinned asset must carry equipment context into the
+    retrieval query."""
+    chat = "pack-cont-query"
+    state = {
+        "state": "IDLE",
+        "asset_identified": "AutomationDirect, GS10",
+        "exchange_count": 1,
+        "context": {
+            "history": [
+                {"role": "user", "content": "What does CE10 mean on a DURApulse GS10?"},
+                {"role": "assistant", "content": "CE10 is a Modbus timeout (P09.03)."},
+            ],
+            "session_context": {},
+            "uns_context": {
+                "manufacturer": "AutomationDirect",
+                "model": "GS10",
+                "fault_code": "CE10",
+                "confidence": 0.81,
+            },
+        },
+    }
+    sv._save_state(chat, state)
+    seen = {}
+
+    async def spy_rag(message, st, *args, **kwargs):
+        seen["query"] = message
+        return RAG_REPLY
+
+    sv.rag.process = spy_rag
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "is that fault serious?")
+    q = seen.get("query", "")
+    assert "GS10" in q and "CE10" in q, f"retrieval query lost equipment context: {q!r}"
+
+
+@pytest.mark.asyncio
+async def test_explicit_abandon_with_new_symptom_pivots(sv, caplog):
+    """Live campaign catch part 3 (c1r2 t2_pivot_after_fault): 'Actually forget
+    that — my conveyor keeps stopping.' is an ABANDON + new symptom, but the
+    correction-marker guard ('Actually') blocked the pivot, so the dead
+    thread's fault context leaked into the reply. An explicit abandon phrase
+    overrides the correction guard."""
+    reply, saved = await _run_turn(
+        sv,
+        "Actually forget that — my conveyor keeps stopping.",
+        chat="pivot-abandon",
+        caplog=caplog,
+    )
+    assert "CTX_FRESH_THREAD_PIVOT" in caplog.text
+    uns = (saved.get("context") or {}).get("uns_context") or {}
+    assert uns.get("fault_code") is None
+
+
+@pytest.mark.asyncio
 async def test_plural_asset_noun_pivots(sv, caplog):
     """Live Telethon regression 2026-08-07: 'one of our DRIVES keeps faulting'
     after an F004 thread was consumed as a continuation — the noun evidence
