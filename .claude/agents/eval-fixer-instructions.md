@@ -239,31 +239,66 @@ stops being verified while still looking open and healthy. Four runs piled up th
 session notes only. See issue #3076.
 
 At the end of every run (whether you patched, filed an issue, or found it clean),
-write **exactly one new file** — never append to an existing one:
+write **exactly one new file** — never append to an existing one.
+
+**Do not hand-build the filename.** Ask the helper, which also claims a host lock:
+
+```bash
+FRAGMENT="$(python3 tools/eval_fixer_fragment.py --date "$(date +%Y-%m-%d)" --acquire)" || exit 1
+```
+
+That prints (and yields):
 
 ```
-wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer.md
+wiki/hot.d/YYYY-MM-DD-eval-fixer-<worker>.md      # e.g. 2026-08-04-eval-fixer-charlienodes-mac-mini.md
+```
+
+Two things the helper does that a shell snippet here could not:
+
+1. **Fails closed on an unusable worker id.** `<worker>` is the slugified short hostname,
+   overridable via `MIRA_EVAL_FIXER_WORKER`. An override that normalizes to nothing
+   (`'!!!'`) **exits 3** rather than silently producing `…-eval-fixer-.md`, which would
+   collide with every other empty-normalizing id.
+2. **Rejects a concurrent run on the same host (exit 2).** The date alone is not a unique
+   key — this repo is kept identical across CHARLIE / ALPHA / BRAVO by Ansible, so the
+   nightly job can fire on more than one node. But naming does not fix the *same*-host
+   case: a scheduled run and a manual re-run on one machine resolve the same hostname,
+   so the same worker, so the same path. `--acquire` takes an atomic host+date lock and
+   **rejects the second concurrent run** instead of letting it race into the same file.
+
+**If the helper exits non-zero, stop — do not write a fragment.** Exit 2 means another run
+already owns today on this host; that is the correct outcome, not an error to work around.
+To run a second worker on one host deliberately, give it a distinct
+`MIRA_EVAL_FIXER_WORKER` and re-run.
+
+Release the lock when you are done (a crashed run's lock is auto-reclaimed after 6h, so a
+retry is never blocked forever):
+
+```bash
+python3 tools/eval_fixer_fragment.py --date "$(date +%Y-%m-%d)" --release
 ```
 
 Content:
 
 ```markdown
-# eval-fixer run — YYYY-MM-DD
+# eval-fixer run — YYYY-MM-DD (<worker>)
 
 - Scorecard: N/M passing (X%)
 - Action: [patched/issue-filed/clean]
 - [Brief description of what happened]
 ```
 
-The date in the filename makes each run its own path, so two runs can never touch the
-same line of the same file and can always merge cleanly. If a file for today's date
-already exists, you have already run today — **overwrite it in place**; do not add a
-suffix, a counter, or a second file.
+**Date + worker** makes each run its own path, so two runs can never touch the same line of
+the same file and can always merge cleanly. The worker id is **stable per node**, which is
+what keeps a restart idempotent: if your run was interrupted and you are restarting it,
+the same node resolves the same filename and **overwrites it in place** — do not add a
+suffix, a counter, or a second file. (That is also why the lock reclaims after a crash
+rather than blocking: a retry is the *same* run, not a competing one.)
 
 Then commit **only that fragment** to the current branch (or main if no patch was made):
 ```bash
-git add "wiki/hot.d/$(date +%Y-%m-%d)-eval-fixer.md"
-git commit -m "docs(wiki): eval-fixer run $(date +%Y-%m-%d)"
+git add "$FRAGMENT"
+git commit -m "docs(wiki): eval-fixer run $(date +%Y-%m-%d) (${WORKER})"
 ```
 
 Stage the fragment **by its exact path**. Never `git add wiki/`, `git add -A`, or
@@ -273,7 +308,7 @@ Stage the fragment **by its exact path**. Never `git add wiki/`, `git add -A`, o
 
 - Evidence-only completion: the pass count from `offline_run.py` IS the proof. Do not claim success without it.
 - Conventional commits: `fix(eval):` prefix for patches, `docs(wiki):` for wiki updates.
-- **Never touch `wiki/hot.md`.** Your run output goes to `wiki/hot.d/<date>-eval-fixer.md` (Step 10).
+- **Never touch `wiki/hot.md`.** Your run output goes to `wiki/hot.d/<date>-eval-fixer-<worker>.md` (Step 10).
 - Never push to main directly — always use a branch + PR.
 - If anything is unclear or the failure pattern is ambiguous, err on the side of filing an issue
   rather than guessing at a patch.
