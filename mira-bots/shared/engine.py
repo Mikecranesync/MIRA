@@ -1162,6 +1162,39 @@ _H4_SKIP_DISPATCH_KINDS = frozenset(
 )
 
 
+# Lines that carry no assertion of their own: numbered option menus, bullets,
+# markdown rules, and the italic button row the adapters append.
+_H4_NON_PROSE_LINE_RE = re.compile(
+    r"^\s*(?:\d+[.)]\s|[-*•]\s|-{3,}\s*$|\*[^*]+\*(?:\s*\|\s*\*[^*]+\*)*\s*$)"
+)
+
+
+def _asserts_nothing(reply: str) -> bool:
+    """True when every prose sentence in the reply is a question.
+
+    A turn that only ASKS makes no claim, so it has nothing to cite and nothing
+    to admit a gap about — footering it produces the contradiction the campaign
+    caught: MIRA asks the technician for the fault code and, in the same message,
+    tells them it has no documentation and to go read the nameplate.
+
+    Deliberately narrow. One declarative sentence anywhere means the reply
+    asserts something and H4 still applies; suppressing an honest admission is a
+    worse failure than an ugly one, so anything ambiguous keeps the footer.
+    """
+    prose: list[str] = []
+    for line in (reply or "").splitlines():
+        if not line.strip() or _H4_NON_PROSE_LINE_RE.match(line):
+            continue
+        prose.append(line.strip())
+    if not prose:
+        return False
+    # Split on sentence ends, keeping the terminator so we can test it.
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", " ".join(prose)) if s.strip()]
+    if not sentences:
+        return False
+    return all(s.endswith("?") for s in sentences)
+
+
 def enforce_citation_or_gap_admission(reply: str, dispatch_kind: str = "") -> str:
     """H4 enforcer: ensure every reply carries a [Source:] or KB-gap admission.
 
@@ -1189,6 +1222,24 @@ def enforce_citation_or_gap_admission(reply: str, dispatch_kind: str = "") -> st
     for phrase in _H4_GAP_PHRASES:
         if phrase.lower() in lower:
             return reply
+    # CIT-005 — a question-only turn asserts nothing, so there is no claim to
+    # ground and no gap to admit. Live campaign c1/c1r4 (t1:reset_procedure,
+    # t1:symptom_report): the footer landed on a bare clarifying question, so
+    # MIRA asked for the fault code and told the technician to go read the
+    # nameplate in the same breath.
+    #
+    # Checked HERE, after the citation tests, on purpose: a reply that carries a
+    # [Source:] tag is claiming grounding even when it is phrased as a question
+    # ("why can a faulty capacitor stop the fan [Source: junk]?"), and a junk
+    # citation must still earn the admission rather than escape through this
+    # exemption.
+    if "[source:" not in reply.lower() and _asserts_nothing(reply):
+        logger.info(
+            "H4_GAP_ADMISSION_SKIPPED kind=non_asserting dispatch_kind=%s reply_len=%d",
+            dispatch_kind,
+            len(reply),
+        )
+        return reply
     # A reply that CLAIMS to have documentation but produced no usable citation
     # gets a correcting admission — appending the stock line would contradict
     # the sentence above it inside a single message.

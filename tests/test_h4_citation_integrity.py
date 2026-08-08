@@ -137,3 +137,64 @@ def test_admission_append_is_logged_without_message_content(caplog):
     assert lines, "append must emit an H4_GAP_ADMISSION log line"
     assert "dispatch_kind=continue_current" in lines[0]
     assert "SECRET-MARKER" not in " ".join(lines)  # never log message bodies
+
+
+# ── CIT-005: a reply that asserts nothing never gets the KB-gap footer ───────
+# Live Telethon campaign c1/c1r4 (t1:reset_procedure, t1:symptom_report). MIRA
+# asked the technician a clarifying question and, in the same message, told them
+# it had no documentation and to go read the nameplate themselves. Two failures,
+# one root cause. This is the same class as the E2 control-refusal incident that
+# created _H4_SKIP_DISPATCH_KINDS — but keyed on the REPLY rather than on the
+# dispatch kind, because the diagnostic path returns dispatch_kind="".
+
+
+def test_bare_clarifying_question_is_not_footered():
+    from shared.engine import enforce_citation_or_gap_admission
+
+    q = "What is the exact fault code displayed after the undervoltage fault?"
+    assert enforce_citation_or_gap_admission(q, dispatch_kind="") == q
+
+
+def test_clarifying_question_with_an_option_menu_is_not_footered():
+    from shared.engine import enforce_citation_or_gap_admission
+
+    reply = (
+        "Before I can give you a confident diagnosis, could you share one more "
+        "detail \u2014 what exact fault code, alarm number, or behaviour is the "
+        "equipment showing right now?\n\n"
+        "1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n"
+        "2. Visible symptom (e.g. trips on start, runs slow, won't start)\n"
+        "3. Sensor reading (e.g. pressure at 120 PSI, temp at 90C)\n"
+        "4. Other \u2014 describe what you're seeing"
+    )
+    assert enforce_citation_or_gap_admission(reply, dispatch_kind="") == reply
+
+
+def test_a_question_that_also_asserts_still_gets_the_admission():
+    """The exemption is for replies that assert NOTHING — not for any reply
+    that happens to contain a question mark. A technical claim still needs its
+    citation or its admission."""
+    from shared.engine import _H4_STOCK_ADMISSION, enforce_citation_or_gap_admission
+
+    reply = "F004 is an overcurrent trip on that drive. What is the code on the keypad?"
+    out = enforce_citation_or_gap_admission(reply, dispatch_kind="")
+    assert out == reply + _H4_STOCK_ADMISSION
+
+
+def test_a_conversational_acknowledgement_is_still_footered_for_now():
+    """Deliberate scope limit, not an oversight.
+
+    The tier-8 impatient transcript also footered "Got it - switching to a new
+    asset." That sentence asserts nothing about equipment, but it IS declarative,
+    and a rule loose enough to exempt it would start suppressing genuine KB-gap
+    admissions - the failure H4 exists to prevent. The right fix for that lane is
+    a dispatch_kind, exactly as #3142 did for the greeting lanes. Asserted here so
+    the limit stays visible instead of being silently assumed.
+    """
+    from shared.engine import _H4_STOCK_ADMISSION, enforce_citation_or_gap_admission
+
+    reply = "Got it — switching to a new asset. What equipment do you need help with?"
+    out = enforce_citation_or_gap_admission(reply, dispatch_kind="")
+    assert out == reply + _H4_STOCK_ADMISSION
+    # ...and giving that lane a dispatch_kind is all it takes to fix it properly.
+    assert enforce_citation_or_gap_admission(reply, dispatch_kind="greeting") == reply
