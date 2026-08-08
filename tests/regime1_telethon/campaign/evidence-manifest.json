@@ -113,6 +113,10 @@
     "c3.jsonl": {
       "bytes": 74973,
       "sha256": "ae57213b40b6567d3a7d62f89eede66f79b71b7cca2983e7249985b289033c85"
+    },
+    "c4safety.jsonl": {
+      "bytes": 23762,
+      "sha256": "9bc76f589da8efd65449e7c362562739644c3bef95626ee31c5c5805286c960d"
     }
   },
   "note": "Ledgers and frozen transcripts are gitignored. A report generated without the matching evidence bundle is NOT reproducible \u2014 verify against these checksums before trusting a regenerated report.",
