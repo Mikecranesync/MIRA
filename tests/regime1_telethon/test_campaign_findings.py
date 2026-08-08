@@ -204,3 +204,40 @@ class TestReportComparison:
         body = report.render("c9", now, disp)
         assert "Regressions" in body
         assert "PR #3155" in body
+
+
+class TestIssueBody:
+    """A fingerprint covers a scenario FAMILY, and the mutator emits several
+    language variants of it — some pass. The issue must cite only the failures."""
+
+    def test_passing_variants_are_not_cited_as_evidence(self):
+        from tests.regime1_telethon.campaign import findings, issues
+
+        verdicts = [
+            dict(kind="verdict", conv="t1_004_reset_procedure", tier=1, verdict="PASS"),
+            dict(kind="verdict", conv="t1_013_reset_procedure", tier=1, verdict="FAIL"),
+        ]
+        d = findings.Disposition(fingerprint="t1:reset_procedure", summary="s")
+        body = issues.build_body("t1:reset_procedure", d, "c1", verdicts)
+
+        assert "t1_013_reset_procedure" in body
+        assert "t1_004_reset_procedure" not in body, "a passing variant is not evidence"
+
+    def test_the_replay_path_points_at_a_failing_transcript(self):
+        from tests.regime1_telethon.campaign import findings, issues
+
+        verdicts = [
+            dict(kind="verdict", conv="t1_004_reset_procedure", tier=1, verdict="PASS"),
+            dict(kind="verdict", conv="t1_013_reset_procedure", tier=1, verdict="FAIL"),
+        ]
+        d = findings.Disposition(fingerprint="t1:reset_procedure")
+        body = issues.build_body("t1:reset_procedure", d, "c1", verdicts)
+        assert "frozen/c1_t1_013_reset_procedure.json" in body
+
+    def test_the_dedupe_marker_is_present_and_carries_the_fingerprint(self):
+        from tests.regime1_telethon.campaign import findings, issues
+
+        d = findings.Disposition(fingerprint="t8:impatient")
+        verdicts = [dict(kind="verdict", conv="t8_41_003_impatient", tier=8, verdict="SUSPECT")]
+        body = issues.build_body("t8:impatient", d, "c1", verdicts)
+        assert issues.marker("t8:impatient") in body
