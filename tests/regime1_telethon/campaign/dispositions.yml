@@ -25,6 +25,7 @@ t1:reset_procedure:
     turn. The other half is untouched: MIRA still answers a procedural "how do I reset"
     with a bare clarifying question while holding a resolved PowerFlex 525 pack, so
     the scenario''s expect list ("reset", "PowerFlex") still fails.'
+  issue: '3156'
   last_seen: c1r4
   note: 'Footer half is deterministic: running enforce_citation_or_gap_admission from
     current source reproduces the frozen reply byte-for-byte. Shares its root cause
@@ -40,6 +41,10 @@ t1:symptom_report:
   convs:
   - t1_s42_018_symptom_report
   first_seen: c1
+  fix: 'CIT-005 (PR #3155) — a question-only reply no longer receives the KB-gap
+    footer. Covers this finding''s whole root cause; the scenario''s expect list may
+    still be over-strict independently of the fix.'
+  issue: '3159'
   last_seen: c1
   note: Merge with t1:reset_procedure when fixing; one contract (CIT-005 / H4-NONANSWER-001)
     covers both. The scenario's expect list is also arguably over-strict — the clarifying
@@ -68,6 +73,7 @@ t2:pivot_after_fault:
   - t2_s42_005_pivot_after_fault
   first_seen: c1
   fix: 'partially addressed by PR #3153 (IDLE severance fault carry) — held, not merged'
+  issue: '3160'
   last_seen: c1r3
   note: 'Root cause: the fresh-thread pivot fires only from ACTIVE_DIAGNOSTIC_STATES,
     and the low-groundedness self-critique clarifier parks the session in DIAGNOSIS_REVISION
@@ -82,6 +88,7 @@ t8:experienced:
   convs:
   - t8_41_001_experienced
   first_seen: c1
+  issue: '3157'
   last_seen: c1
   note: The router intent check_equipment_history returns before the UNS confirmation
     gate. The judge's own flag (conflicting F004 meanings) is likely a false positive;
@@ -95,6 +102,7 @@ t8:impatient:
   convs:
   - t8_41_003_impatient
   first_seen: c1
+  issue: '3158'
   last_seen: c1
   note: The CTX-004 repeated-answer guard has _REPEAT_MIN_LEN = 40 and the reply normalises
     to 34 characters, so the guard returns before comparing. The judge filed this
