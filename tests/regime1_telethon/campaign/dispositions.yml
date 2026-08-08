@@ -122,7 +122,11 @@ t2:pivot_after_fault:
   - t2_s42_000_pivot_after_fault
   - t2_s42_005_pivot_after_fault
   first_seen: c1
-  fix: 'partially addressed by PR #3153 (IDLE severance fault carry) — held, not merged'
+  fix: 'CTX-001d (this branch) — the pivot now fires from every state holding a pending
+    question, except PIVOT_EXEMPT_STATES. Closes the TURN-3 defect only; the turn-2
+    defect below is untouched and is the dominant driver of this fingerprint''s
+    STABLE_FAIL. PR #3153 (IDLE severance fault carry, held) fixes a third, adjacent
+    seam.'
   issue: '3160'
   last_seen: c3
   note: 'Root cause: the fresh-thread pivot fires only from ACTIVE_DIAGNOSTIC_STATES,
@@ -131,7 +135,30 @@ t2:pivot_after_fault:
     diagnostic question. | c3: still fails, 1/2 variants this round (2/2 in c2). Unfixed
     on this branch as expected — the partial fix lives in held PR #3153. | Multi-seed:
     STABLE_FAIL — failed under every seed observed. The most reproducible defect in
-    the set, and the one to fix next.'
+    the set, and the one to fix next. | ROOT-CAUSE CORRECTION (2026-08-08, from the
+    per-turn grades in the frozen ledgers — the note above was written from the turn-3
+    reply alone and is incomplete). This fingerprint bundles AT LEAST THREE defects,
+    and the recorded root cause is NOT the one that drives the verdict. Across the 8
+    failing conversations in c1/c1r2/c1r3/c2/c3: SEVEN fail at TURN 2 and only FIVE at
+    turn 3. (A) TURN 2, 5 sightings — "How do I reset it?" is answered with the generic
+    low-groundedness clarifier ("Before I can give you a confident diagnosis...")
+    instead of the reset procedure, while a resolved PowerFlex 525 pack is in hand.
+    This is the SAME mechanism as the unfixed half of t1:reset_procedure (#3156), and
+    it is the dominant driver here. It is also what CAUSES the DIAGNOSIS_REVISION park
+    that defect (C) then trips over — (A) is upstream of (C). (B) TURN 2, 2 sightings —
+    MIRA answers "How do I reset it?" by restating what the fault CODE means (c1r2/c1r3
+    t2_000: "CE10 = Communication error 10..."), a repeated-answer shape. (C) TURN 3,
+    5 sightings — the dead fault rides forward into the new conveyor topic; this is the
+    defect the summary names and the ONLY one CTX-001d fixes. Natural experiment
+    confirming (A): in c3, t2_000 got the clarifier at turn 2 and FAILED while t2_005
+    got a real reset answer and PASSED — same seed, same script, same build. | IMPACT
+    OF CTX-001d, MEASURED NOT ASSUMED: of the 8 failing conversations, this fix alone
+    flips exactly ONE (c1r2 t2_005, the only one whose sole failing turn is 3). Expect
+    this fingerprint to STAY RED until (A) is fixed. Do not read a continued FAIL as
+    CTX-001d not working, and do not read a flip as this scenario being fixed — check
+    the per-turn grades. | This is the multi-defect-per-scenario problem the Phase 2
+    defect registry exists to solve; the schema still holds one defect_id, so no
+    defect_id is set here rather than assert a root cause that explains 5 of 12 turns.'
   seen_in:
   - c1
   - c1r2
