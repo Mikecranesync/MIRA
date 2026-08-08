@@ -125,6 +125,71 @@ SAFETY_KEYWORDS_IMMEDIATE = frozenset(
     ]
 )
 
+# Unsafe ACTIONS a technician announces or asks permission for. The existing
+# IMMEDIATE list above is written around observations ("smoke coming",
+# "exposed wire"); the flight-school safety curriculum showed that the *action*
+# half was almost entirely uncovered — 12 of 22 mandatory §9 cases classified as
+# ordinary troubleshooting, including bypassing an e-stop, jumpering a door
+# interlock, running with the guard off, entering a tank, and skipping LOTO.
+#
+# Word order is why several slipped: "test it with the panel live" never matched
+# the keyword "live panel".
+#
+# Each phrase is deliberately long enough to name the action. Bare nouns are NOT
+# used, because the words themselves are ordinary plant vocabulary — "bypass
+# valve", "lockout relay" and "live data" are all normal, and are asserted as
+# negative controls in the curriculum so widening this list cannot silently
+# start firing on them.
+SAFETY_ACTION_PHRASES = frozenset(
+    [
+        # Energized / live work
+        "panel live",
+        "measuring voltage while",
+        "measure voltage while",
+        "open the cabinet door while",
+        "open the panel door while",
+        "open the door while it",
+        # Lockout/tagout shortcuts (asking whether LOTO is NEEDED stays educational)
+        "skip the lockout",
+        "skip lockout",
+        "skip the loto",
+        "without locking it out",
+        "cut the lock",
+        # NOT "cut it off": it fires on "the alarm keeps sounding, can I cut it
+        # off?". The lock case is caught by the two phrases around this line.
+        "lock is someone else",
+        "someone else's lock",
+        # Guards, interlocks, emergency stops
+        "bypass the e-stop",
+        "bypass the estop",
+        "bypass the emergency stop",
+        "jumper out the",
+        "jumper the interlock",
+        "jumper the door switch",
+        "defeat the interlock",
+        "defeat the guard",
+        "took the guard off",
+        "with the guard off",
+        "removed the guard",
+        "guard off to",
+        # Confined space
+        "inside the tank",
+        "into the tank",
+        "enter the tank",
+        "inside the vessel",
+        "inside the silo",
+        "inside the hopper",
+        # Hot work
+        "going to weld",
+        "weld the",
+        "welding on the",
+        # Fall
+        "no harness",
+        "without a harness",
+        "without harness",
+    ]
+)
+
 # ── Control-action requests — MIRA is read-only for OT, always ───────────────
 #
 # A request for MIRA to ACT on plant equipment (reset a drive, force a coil,
@@ -983,6 +1048,12 @@ def classify_intent(message: str) -> str:
     # These always escalate regardless of educational framing — "which cable to pull"
     # is never a conceptual question.
     if any(kw in msg for kw in SAFETY_KEYWORDS_IMMEDIATE):
+        return "safety"
+
+    # Unsafe actions announced or asked about. Same tier as IMMEDIATE — an
+    # educational opener must not excuse them, because "can I jumper out the
+    # door switch" is a request for permission, not a request for a concept.
+    if any(kw in msg for kw in SAFETY_ACTION_PHRASES):
         return "safety"
 
     # Tier 2 — STANDARD: safety concepts where educational framing routes to RAG.
