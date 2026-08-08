@@ -131,11 +131,15 @@ class TestDispositions:
     def test_regression_means_a_later_run_not_the_original_one(self):
         """The run that first caught the defect is not a regression of it."""
         d = findings.Disposition(
-            fingerprint="t1:x", status=findings.FIXED, applied=True, first_seen="c1", last_seen="c1r1"
+            fingerprint="t1:x",
+            status=findings.FIXED,
+            applied=True,
+            first_seen="c1",
+            last_seen="c1r1",
         )
-        assert not findings.regressed(d, "c1")     # where it was found, pre-fix
-        assert not findings.regressed(d, "c1r1")   # already recorded
-        assert findings.regressed(d, "c2")         # new run, fix stopped holding
+        assert not findings.regressed(d, "c1")  # where it was found, pre-fix
+        assert not findings.regressed(d, "c1r1")  # already recorded
+        assert findings.regressed(d, "c2")  # new run, fix stopped holding
 
     def test_an_unfixed_finding_is_never_a_regression(self):
         d = findings.Disposition(fingerprint="t1:z", status=findings.OPEN, first_seen="c1")
@@ -241,3 +245,74 @@ class TestIssueBody:
         verdicts = [dict(kind="verdict", conv="t8_41_003_impatient", tier=8, verdict="SUSPECT")]
         body = issues.build_body("t8:impatient", d, "c1", verdicts)
         assert issues.marker("t8:impatient") in body
+
+
+class TestSummary:
+    """The consolidated document's two load-bearing behaviours."""
+
+    @staticmethod
+    def _facts(campaign, tiers, verdicts, date="2026-08-08"):
+        return dict(
+            campaign=campaign,
+            verdicts=verdicts,
+            tiers=tiers,
+            build="sha",
+            passed=sum(1 for v in verdicts if v["verdict"] == "PASS"),
+            total=len(verdicts),
+            date=date,
+        )
+
+    def test_a_tier_that_was_not_run_is_marked_not_run_not_passing(self):
+        from tests.regime1_telethon.campaign import summary
+
+        facts = [
+            self._facts(
+                "c1",
+                [1, 8],
+                [
+                    dict(conv="t1_000_x", tier=1, verdict="FAIL"),
+                    dict(conv="t8_41_003_impatient", tier=8, verdict="SUSPECT"),
+                ],
+            ),
+            # c1r4 ran tier 1 only — tier 8 must NOT read as a pass.
+            self._facts("c1r4", [1], [dict(conv="t1_000_x", tier=1, verdict="FAIL")]),
+        ]
+        body = summary.render(facts, {})
+        impatient_row = [ln for ln in body.splitlines() if ln.startswith("| `t8:impatient`")][0]
+        assert summary.NOT_RUN in impatient_row, "a skipped tier must render as not-run"
+
+    def test_always_green_scenarios_are_not_listed_as_findings(self):
+        from tests.regime1_telethon.campaign import summary
+
+        facts = [
+            self._facts(
+                "c1",
+                [1],
+                [
+                    dict(conv="t1_000_greeting", tier=1, verdict="PASS"),
+                    dict(conv="t1_001_broken", tier=1, verdict="FAIL"),
+                ],
+            )
+        ]
+        body = summary.render(facts, {})
+        findings_section = body.split("## Finding")[1].split("## The findings")[0]
+        assert "t1:broken" in findings_section
+        assert "t1:greeting" not in findings_section, "a never-failing scenario is coverage"
+        assert "t1:greeting" in body.split("## Coverage")[1]
+
+    def test_runs_are_ordered_by_time_not_by_name(self):
+        """c1r4 sorts before c2 alphabetically but ran after it would in name order —
+        a mis-ordered matrix reads as a regression that never happened."""
+        from tests.regime1_telethon.campaign import summary
+
+        facts = [
+            self._facts(
+                "c1r4", [1], [dict(conv="t1_000_x", tier=1, verdict="FAIL")], date="2026-08-01"
+            ),
+            self._facts(
+                "c2", [1], [dict(conv="t1_000_x", tier=1, verdict="PASS")], date="2026-08-02"
+            ),
+        ]
+        body = summary.render(facts, {})
+        header = [ln for ln in body.splitlines() if ln.startswith("| finding |")][0]
+        assert header.index("c1r4") < header.index("c2")
