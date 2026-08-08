@@ -1584,6 +1584,11 @@ def _validate_decision_set(
 
     for decision in decisions:
         _validate_decision_shape(decision)
+        if _contains_template_placeholder(decision.to_dict()):
+            raise ReviewDecisionError(
+                "DECISION_TEMPLATE_PLACEHOLDER",
+                f"{decision.record_id}: decision payload still contains a template placeholder",
+            )
         if _contains_secret(decision.to_dict()):
             raise ReviewDecisionError(
                 "DECISION_SECRET_PRESENT",
@@ -1646,10 +1651,13 @@ def _validate_decision_shape(decision: ReviewDecision) -> None:
         raise ReviewDecisionError(
             "DECISION_REVIEWER_MISSING", f"{decision.record_id}: reviewer_id is required"
         )
+    _raise_if_template_placeholder(decision.record_id, "reviewer_id", decision.reviewer_id)
     if not decision.rationale.strip():
         raise ReviewDecisionError(
             "DECISION_RATIONALE_MISSING", f"{decision.record_id}: rationale is required"
         )
+    _raise_if_template_placeholder(decision.record_id, "rationale", decision.rationale)
+    _raise_if_template_placeholder(decision.record_id, "decided_at", decision.decided_at)
     if not _is_iso_timestamp(decision.decided_at):
         raise ReviewDecisionError(
             "DECISION_TIMESTAMP_INVALID",
@@ -1830,6 +1838,29 @@ def _is_iso_timestamp(value: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _raise_if_template_placeholder(record_id: str, field: str, value: str) -> None:
+    if _is_template_placeholder(value):
+        raise ReviewDecisionError(
+            "DECISION_TEMPLATE_PLACEHOLDER",
+            f"{record_id}: {field} still contains a template placeholder",
+        )
+
+
+def _is_template_placeholder(value: str) -> bool:
+    stripped = value.strip()
+    return len(stripped) > 4 and stripped.startswith("__") and stripped.endswith("__")
+
+
+def _contains_template_placeholder(payload: Any) -> bool:
+    if isinstance(payload, dict):
+        return any(_contains_template_placeholder(value) for value in payload.values())
+    if isinstance(payload, list | tuple):
+        return any(_contains_template_placeholder(value) for value in payload)
+    if isinstance(payload, str):
+        return _is_template_placeholder(payload)
+    return False
 
 
 def _readiness_evidence(out_dir: Path) -> ReadinessEvidence:

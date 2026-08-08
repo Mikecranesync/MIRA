@@ -1,0 +1,12 @@
+{
+  "schema": "factorylm.technician-dataset.review-decision.v1",
+  "action": "approve",
+  "record_id": "techv0-cv101-001",
+  "candidate_content_hash": "e552e791f0330222ceffb9b0ab2d1bb06a553ebf422559c60a36a328bc630e9b",
+  "candidate_manifest_sha256": "2face5d13b65ed68dcaf1aea71db2fc7d7f1cea0b534fb1e95ca26f0004f674d",
+  "reviewer_id": "__REVIEWER_ID__",
+  "rationale": "__RATIONALE__",
+  "decided_at": "__DECIDED_AT_ISO__",
+  "correction_messages": null,
+  "rejection_reasons": []
+}
