@@ -1158,6 +1158,10 @@ _H4_SKIP_DISPATCH_KINDS = frozenset(
         "uns_confirm_no",
         "greeting",
         "help",
+        # A safety STOP. Live campaign c4safety (2026-08-08) showed the footer
+        # appended beneath "STOP — describe the hazard. De-energize the equipment
+        # first." — noise on the highest-stakes message MIRA sends.
+        "safety_alert",
     }
 )
 
@@ -3339,7 +3343,14 @@ class Supervisor:
                 tl_flush()
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
-                return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+                # dispatch_kind exempts the STOP from the H4 footer. A safety
+                # escalation asserts no technical claim, and appending "I don't
+                # have specific documentation indexed for this — consult the
+                # asset nameplate" dilutes the one message that must land
+                # cleanly. Same reasoning as the E2 control-refusal incident.
+                return self._make_result(
+                    reply, "high", trace_id, "SAFETY_ALERT", dispatch_kind="safety_alert"
+                )
 
             # Electrical-print follow-up — but only while the user is still
             # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over

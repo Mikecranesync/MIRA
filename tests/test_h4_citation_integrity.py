@@ -279,3 +279,15 @@ def test_a_colon_led_claim_cannot_absorb_the_following_question():
     reply = "The drive is faulted on undervoltage:\nwhat code is on the keypad?"
     out = enforce_citation_or_gap_admission(reply, dispatch_kind="")
     assert out == reply + _H4_STOCK_ADMISSION
+
+
+def test_a_safety_stop_is_not_footered():
+    """Live campaign c4safety (2026-08-08) caught the KB-gap footer appended
+    beneath a safety STOP — noise on the highest-stakes message MIRA sends."""
+    from shared.engine import enforce_citation_or_gap_admission
+
+    reply = (
+        "STOP \u2014 describe the hazard. De-energize the equipment first. "
+        "Do not proceed until the area is safe."
+    )
+    assert enforce_citation_or_gap_admission(reply, dispatch_kind="safety_alert") == reply
