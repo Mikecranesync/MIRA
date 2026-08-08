@@ -1,8 +1,30 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-08-07
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-08-07
+
+### Most actionable change for MIRA playbook
+
+Augury + MaintainX + Rockwell have converged on "closed-loop maintenance execution": predictive alert → auto work order → completion → AI re-learning. This is the alert-to-action loop MIRA was positioning toward. Two incumbent stacks now co-own that frame with announced products (Augury/MaintainX integration Mar 2026; Rockwell+Augury agentic AI partnership Jul 2026, GA September 2026). MIRA's sharpest counter is OEM-knowledge-native grounding (cited from the actual manual, not just anomaly detection) and sensor-agnostic deployment. "Closed-loop maintenance" as a phrase is now claimed — MIRA needs a different frame.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Apr 2026: Report Builder AI (natural-language custom reports) + Root Cause Analysis launched. Jul 2026: AI Work Requests. No dedicated launch video; changelog-blog-only go-to-market.
+
+**Predictive maintenance — new competitive convergence pattern**
+- **Augury + MaintainX closed-loop integration** (Mar 24, 2026): https://www.prnewswire.com/news-releases/augury-maintainx-partner-to-deliver-closed-loop-maintenance-execution-for-frontline-teams-302722467.html — Augury detects anomaly → MaintainX auto-creates work order with recommended actions + diagnostic context → completion feeds back into Augury AI accuracy. "From Alert to Action." No standalone video. [press release + blog only]
+- **Rockwell + Augury "Industrial AI Workforce" partnership** (Jul 23, 2026): https://www.rockwellautomation.com/en-us/company/news/press-releases/rockwell-automation-and-augury-partner-to-improve-industrial-performance-with-agentic-ai.html — Augury Reliability Agent continuously monitors + Rockwell Fiix MAX (AI maintenance assistant) translates insights into workflows + FactoryTalk Optix. "Agentic AI for industrial performance." GA September 2026. No standalone video.
+
+**B2B SaaS / dev-tools**
+- **Figma** — "Config 2026 Keynote" (Jun 24, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — Hook: "Code is not the opposite of design. Code is material for design." Code Layers (live executable code on the Figma canvas alongside design layers), Figma Motion (full timeline-based animation mode), Weave Tools, Shader Fills, upgraded Design Agent. Founder/CEO register. New pattern: eliminating the boundary between surfaces is the product, not a feature. Transfer to MIRA: "diagnostics is material for maintenance — not a separate AI tab."
+- **Anthropic** — "Code with Claude 2026: Opening Keynote" (May 6, 2026): https://www.youtube.com/watch?v=wjvESxKgqaQ (+ London https://www.youtube.com/watch?v=6amLO7I9xdg; + Tokyo https://www.youtube.com/watch?v=N4efO8viXXo) — Developer conference. Managed Agents (hosted runtime for long-running agent work), Proactive Workflows (Claude flags issues without being asked), Multi-Agent Orchestration, Routines (cron-scheduled agents). New pattern: "proactive" agent that acts without being explicitly asked. Transfer to MIRA: "MIRA flags the drift before the shift calls."
+- **Stripe** — Sessions 2026 details filled (event Apr 29–30, 2026; cache entry was empty): 288 new products; theme "economic infrastructure for AI"; Agentic Commerce Suite — agents as buyers and sellers, Meta native checkout inside Facebook ads, Google AI Mode + Gemini shopping via Universal Commerce Protocol (UCP). Opening keynote https://www.youtube.com/watch?v=Nadf3MdJS-8; Product keynote https://www.youtube.com/watch?v=lIsHZfRl2zw; Developer keynote https://www.youtube.com/watch?v=m2omCJcrkE0.
 
 ---
 
@@ -88,6 +110,22 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**April 2026 — Report Builder AI + Root Cause Analysis**
+- Report Builder AI: generate custom maintenance reports with natural-language prompts
+- Root Cause Analysis: structured failure analysis linked to work orders
+- No launch video; changelog-blog-only announcement
+- Integration with Augury and KCF Technologies confirmed (Apr 2026)
+
+**July 2026 — AI Work Requests + Build with MaintainX API**
+- AI Work Requests: technicians submit work via natural language, AI classifies and routes
+- Build with MaintainX: REST API documentation section for developer integrations
+- No launch video
+
+**Closed-loop integration with Augury (Mar 24, 2026)**
+- See Augury section. Augury anomaly → auto MaintainX work order → completion → Augury AI re-trains
+- This is the "From Alert to Action" pattern — full predictive-to-execution loop, no human hand-off required
+- MIRA competitive note: MaintainX is now the execution layer for Augury's predictions. MIRA needs to be the intelligence layer that feeds ANY execution system, or own both layers independently.
+
 ---
 
 ### Fiix
@@ -145,6 +183,19 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Footage style: real factory floor + exec interviews
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+
+**Closed-loop integration with MaintainX (Mar 24, 2026)**
+- URL: https://www.prnewswire.com/news-releases/augury-maintainx-partner-to-deliver-closed-loop-maintenance-execution-for-frontline-teams-302722467.html
+- "From Alert to Action": Augury machine anomaly → MaintainX work order (with recommended actions + diagnostic context) → completion → feeds back into Augury AI
+- Two-way learning; dozens of shared customers; no custom implementation required
+- No standalone video; blog: https://www.augury.com/blog/customers-partners/from-alert-to-action-5-things-to-know-about-the-augury-maintainx-integration/
+
+**Rockwell Automation partnership — "Industrial AI Workforce" (Jul 23, 2026)**
+- Augury Reliability Agent (continuous machine monitoring) + Rockwell Fiix MAX (AI maintenance assistant) + FactoryTalk Optix
+- Claim: "bridge the gap between identifying machine health risks and executing maintenance actions"
+- "Agentic AI for industrial performance" is now Rockwell's language
+- GA: September 2026. No standalone video.
+- MIRA competitive note: Augury is now embedded in both the leading CMMS (MaintainX) and the leading industrial automation stack (Rockwell/Fiix). MIRA's path to market must not depend on displacing these — lean into sensor-agnostic OEM-knowledge grounding as the differentiator.
 
 ---
 
@@ -205,6 +256,16 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
 
+**ROKLive 2026 (Jun 23–25, Adelaide Convention Centre)**
+- No keynote video surfaced; regional conference for APAC customers
+
+**Augury partnership — "agentic AI for industrial performance" (Jul 23, 2026)**
+- Augury Reliability Agent + Fiix MAX (AI maintenance assistant) + FactoryTalk Optix
+- Go-to-market: "turn insights into action to improve reliability, maintenance execution and industrial performance"
+- "Agentic AI" is now Rockwell's public language for the product category
+- GA September 2026. No standalone video.
+- Pattern shift: Rockwell moved from automation hardware + SCADA to explicitly claiming the maintenance intelligence category via partnership. Prior positioning was "automation + Fiix CMMS"; current positioning is "agentic AI for the full maintenance loop."
+
 ---
 
 ### Siemens
@@ -254,9 +315,18 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (Apr 29–30, 2026 — Moscone West, San Francisco)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8
+- Product keynote: https://www.youtube.com/watch?v=lIsHZfRl2zw
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0
+- Note: prior cache entry (URL e13-s0p1tfE) was a stub; these are the confirmed video URLs
+- Presenters: Patrick Collison (CEO), John Collison (President), Will Gaybrick (President Product + Business)
+- Theme: "Stripe is building the economic infrastructure for AI / agentic commerce"
+- Scale claim: 288 new products and features; described as "most ambitious single-day set of product launches in Stripe's history"
+- Key launches: Agentic Commerce Suite (agents as buyers and sellers — businesses upload product catalog, agents shop and check out), Meta native checkout inside Facebook ads (discovery + purchase in one flow), Google AI Mode + Gemini shopping via Universal Commerce Protocol (UCP), Link agent wallet (grant agents ability to pay)
+- VO register: founder/peer
+- CTA: ecosystem/platform, no hard close
+- Pattern note: Stripe pivoted from "tailwinds framing" (Sessions 2025) to "agents as economic actors" (Sessions 2026). 288 launches in one day is a new scale benchmark for B2B SaaS launch density.
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -303,6 +373,19 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 (May 6, 2026) — developer conference format**
+- SF Opening Keynote: https://www.youtube.com/watch?v=wjvESxKgqaQ
+- London: https://www.youtube.com/watch?v=6amLO7I9xdg | Tokyo: https://www.youtube.com/watch?v=N4efO8viXXo
+- Presenters: Ami Vora (CPO), Boris Cherny (Head of Claude Code), Angela Jiang, Cat Wu
+- Key announcements: Managed Agents (hosted runtime for long-running agent work; Anthropic runs the session loop), Proactive Workflows (Claude identifies conditions and initiates actions without being asked — e.g. flags failing tests and proposes fixes unprompted), Multi-Agent Orchestration (lead agent delegates to specialist sub-agents in parallel), Routines (cron-scheduled or webhook-triggered agent runs)
+- VO register: product/engineering, peer-to-peer
+- Pattern note: Anthropic's first developer conference. Proactive Workflows is the new pattern — an agent that does not wait to be asked. Transfer to MIRA: "MIRA flags the drift before the shift calls." Anthropic is now running the same conference-as-launch-vehicle playbook as Stripe and Figma.
+
+**Claude Opus 5 launch (Jul 24, 2026)**
+- No standalone Anthropic promo video; coverage via tech press only
+- Key claim: "much stronger at verifying its work and iterating carefully until it succeeds"; half the cost of prior flagship
+- Pattern: Anthropic uses model launches as brand moments without standalone promo videos
 
 ---
 
@@ -355,6 +438,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Config 2026 keynote (Jun 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Title: "Config 2026 Keynote with Dylan Field (CEO & Co-founder, Figma)"
+- Hook: "Code is not the opposite of design. Code is material for design." [confirmed from press coverage]
+- Footage style: on-stage keynote, Moscone Center, San Francisco
+- VO register: founder
+- Launches: Code Layers (live executable code directly on the Figma canvas alongside design layers; one-click convert design → live code, edits reflect instantly), Figma Motion (full native timeline-based animation mode — switch a frame into Motion mode, keyframe on the timeline, export to CSS/JSON/React/MP4/GIF/WebM/SVG), Shader Fills (AI-generated shader effects), Generative Plugins, Weave Tools, upgraded Design Agent
+- CTA: "available now on Professional plans and above"
+- Pattern note: Config 2025 was "add new products" (Sites, Make, Draw). Config 2026 is "eliminate the boundary between surfaces" — code and design are the same thing. Harder to copy framing because it's about product philosophy, not feature count. Transfer to MIRA: "diagnostics is material for maintenance, not a parallel tool."
+
 ---
 
 ### Replit
@@ -385,6 +478,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Eliminate the boundary" (merge surfaces, don't add a tool) | Figma 2026: "Code is material for design" — live code ON the canvas | "Diagnostics is material for maintenance — not a separate AI tab" |
+| "Proactive" agent (acts without being asked) | Anthropic Code with Claude: Proactive Workflows flag issues before you ask | "MIRA flags the drift before the shift calls" |
+| Partnership stack as launch vehicle (no video, press-release-native) | Augury + MaintainX + Rockwell: closed-loop announced via PR, no promo video | MIRA's counter: OWN the full loop solo, or pick the execution partner and integrate first |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +491,9 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. Apr 2026: added Report Builder AI + Root Cause Analysis. Now integrating with Augury for closed-loop execution.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. Mid-2026: pivoted to partnership-led go-to-market — now embedded in both MaintainX (workflow execution) and Rockwell/Fiix (industrial automation stack). No longer a standalone predictive-maintenance vendor; now the "sensing layer" for a full industrial AI stack.
+- **Rockwell Automation**: added "agentic AI for industrial performance" language (Jul 2026) via Augury partnership. Moved from hardware + SCADA + CMMS (Fiix) to explicitly claiming the maintenance intelligence category. This is a positioning shift, not just a feature add.
+- **Figma** (2026 vs 2025): pivot from "add products" (Sites, Make, Buzz, Draw) to "eliminate the boundary between surfaces" (Code Layers — code IS design). More radical and harder to copy because it's a product-philosophy claim, not a feature list.
+- **Anthropic**: launched its first developer conference format (Code with Claude, May 2026). Joined Stripe/Figma in using the conference-as-launch-vehicle playbook. "Proactive" agent framing (acts without being asked) is the new narrative differentiator vs "responds when prompted."
