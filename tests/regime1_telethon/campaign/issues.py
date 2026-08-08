@@ -80,7 +80,16 @@ def existing_issues() -> dict[str, str]:
 
 
 def build_body(fp: str, d: findings.Disposition, campaign: str, verdicts: list[dict]) -> str:
-    rows = [v for v in verdicts if findings.fingerprint(v["conv"], v.get("tier")) == fp]
+    # FAILING rows only. A fingerprint covers a scenario family, and the mutator
+    # emits several language variants of it — some of which pass. Citing a PASS
+    # as evidence of a defect (and linking its transcript as the replay) makes
+    # the issue read as noise and sends the reader to the wrong file.
+    rows = [
+        v
+        for v in verdicts
+        if findings.fingerprint(v["conv"], v.get("tier")) == fp
+        and v.get("verdict") != report_mod.PASSING
+    ]
     sha = next((v.get("deploy_sha") for v in rows if v.get("deploy_sha")), "not recorded")
     tier = rows[0].get("tier") if rows else "?"
 
