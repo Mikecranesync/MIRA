@@ -886,6 +886,50 @@ def _normalize_reply_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
+# CIT-006 (#3165) — a parameter-shaped token MIRA asserts must be supported.
+#
+# Live on staging MIRA answered "How do I reset it?" with
+#   "set P0594 = 1 [Source: Allen-Bradley PowerFlex 525, Parameter Reference]"
+# and P0594 exists nowhere in the corpus. Every guard passed: `_is_grounded`
+# scores a bag-of-words overlap, which generic prose ("reset / output /
+# powerflex / 525 / digital") clears, and citation_compliance validates the
+# ATTRIBUTED VENDOR, which was correct. So an invented SPECIFIC carrying a
+# correctly-attributed tag was invisible to both layers.
+#
+# `F` is deliberately excluded: F004/F111 are FAULT codes that legitimately
+# reach a reply from uns_context without appearing in any retrieved chunk.
+# 2-4 digits keeps ordinary tokens ("L1", "P1") out.
+#
+# Measured over all 13 frozen campaign ledgers (671 MIRA replies) there are
+# exactly THREE distinct parameter tokens — P09.03, P09.04 and P0594 — of which
+# only P0594 is absent from the corpus. Zero false positives on the real ones.
+# Offline detector + sweep: tests/regime1_telethon/campaign/{fabrication,offline_lab}.py
+_PARAM_CLAIM_RE = re.compile(r"\b([APbtCd]\d{2,4}(?:\.\d{1,2})?)\b")
+_SOURCE_TAG_RE = re.compile(r"\[Source:[^\]]*\]", re.IGNORECASE)
+
+
+def _find_unsupported_param_claims(
+    reply: str, message: str, history: list, sources: list | None
+) -> list[str]:
+    """Parameter tokens asserted by ``reply`` that nothing supports.
+
+    Supported means: present in this turn's retrieved sources, in the
+    technician's message, or anywhere in the conversation so far. A token
+    inside a ``[Source: …]`` label is attribution, not a claim.
+    """
+    body = _SOURCE_TAG_RE.sub(" ", reply or "")
+    claimed = set(_PARAM_CLAIM_RE.findall(body))
+    if not claimed:
+        return []
+    supported = " ".join(
+        [message or ""]
+        + [(h.get("content") or "") for h in (history or []) if isinstance(h, dict)]
+        + [str(s) for s in (sources or [])]
+    )
+    known = set(_PARAM_CLAIM_RE.findall(supported))
+    return sorted(claimed - known)
+
+
 def _find_repeated_answer(reply: str, message: str, history: list) -> bool:
     """CTX-004: True when ``reply`` near-duplicates a recent assistant turn
     whose preceding user question DIFFERS from the current message.
@@ -5574,6 +5618,7 @@ class Supervisor:
         # severed attempt beyond max_attempts, so the loop is a while (a
         # range() computed up front could not extend).
         _repeat_retry_used = False
+        _param_retry_used = False
         attempt = 0
         while attempt < max_attempts:
             if attempt and _fresh_thread_snapshot:
@@ -5647,6 +5692,35 @@ class Supervisor:
                     continue
                 # The severed retry repeated too — fail safe: return it, loudly.
                 logger.info("REPEATED_ANSWER_UNRESOLVED reply_len=%d", len(parsed.get("reply", "")))
+
+            # CIT-006 (#3165): an unsupported parameter claim gets exactly one
+            # corrective retry, then fails safe like the repeat guard above —
+            # the reply is returned and logged, never withheld. Bounding the
+            # cost of a false positive to one extra call is what makes this
+            # shippable: suppressing a CORRECT answer would be worse than the
+            # defect it prevents.
+            if not photo_b64:
+                _unsupported = _find_unsupported_param_claims(
+                    parsed.get("reply", ""),
+                    message,
+                    (state.get("context") or {}).get("history") or [],
+                    parsed.get("_sources"),
+                )
+                if _unsupported:
+                    if not _param_retry_used:
+                        _param_retry_used = True
+                        logger.info(
+                            "UNSUPPORTED_PARAM_CLAIM_DETECTED attempt=%d tokens=%s",
+                            attempt,
+                            _unsupported,
+                        )
+                        max_attempts = max(max_attempts, attempt + 2)
+                        attempt += 1
+                        continue
+                    logger.warning(
+                        "UNSUPPORTED_PARAM_CLAIM_UNRESOLVED tokens=%s — returning reply",
+                        _unsupported,
+                    )
 
             # Check grounding against THIS turn's sources snapshot, never the
             # shared self.rag._last_sources (#1704).
