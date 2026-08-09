@@ -39,7 +39,7 @@ t1:reset_procedure:
     with a bare clarifying question while holding a resolved PowerFlex 525 pack, so
     the scenario''s expect list ("reset", "PowerFlex") still fails.'
   issue: '3156'
-  last_seen: c12s45
+  last_seen: cap1
   note: 'Footer half is deterministic: running enforce_citation_or_gap_admission from
     current source reproduces the frozen reply byte-for-byte. Shares its root cause
     with t1:symptom_report. Failed on two different builds and two different phrasings
@@ -78,6 +78,7 @@ t1:reset_procedure:
   - c7
   - c12s42
   - c12s45
+  - cap1
   status: OPEN
   summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
     for the fault code AND tells the technician it has no documentation, while holding
@@ -290,6 +291,110 @@ t2:pivot_after_fault:
   summary: '"Actually forget that — my conveyor keeps stopping" is not recognised
     as a pivot when the session sits in DIAGNOSIS_REVISION, so MIRA answers the previous
     question one turn late and carries the dead fault forward'
+t4:cancel_lane_documented_gap:
+  applied: false
+  convs:
+  - t4_s42_010_cancel_lane_documented_gap
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'cancel lane documented gap' returned INCONCLUSIVE
+t4:numbered_option_selection:
+  applied: false
+  convs:
+  - t4_s42_004_numbered_option_selection
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'numbered option selection' returned INCONCLUSIVE
+t4:reset_command_wipes_pin:
+  applied: false
+  convs:
+  - t4_s42_000_reset_command_wipes_pin
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'reset command wipes pin' returned FAIL
+t4:reset_inline_lane_leading_space:
+  applied: false
+  convs:
+  - t4_s42_001_reset_inline_lane_leading_space
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'reset inline lane leading space' returned FAIL
+t4:thanks_holds_thread:
+  applied: false
+  convs:
+  - t4_s42_005_thanks_holds_thread
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'thanks holds thread' returned FAIL
+t5:auto_wo_offer_after_real_diagnosis:
+  applied: false
+  convs:
+  - t5_s42_007_auto_wo_offer_after_real_diagnosis
+  first_seen: cap1
+  last_seen: cap2
+  seen_in:
+  - cap1
+  - cap2
+  status: OPEN
+  summary: scripted scenario 'auto wo offer after real diagnosis' returned FAIL
+t5:wo_bypass_by_fresh_question:
+  applied: false
+  convs:
+  - t5_s42_004_wo_bypass_by_fresh_question
+  first_seen: cap1
+  last_seen: cap2
+  seen_in:
+  - cap1
+  - cap2
+  status: OPEN
+  summary: scripted scenario 'wo bypass by fresh question' returned FAIL
+t5:wo_field_edit_updates_draft:
+  applied: false
+  convs:
+  - t5_s42_001_wo_field_edit_updates_draft
+  first_seen: cap1
+  last_seen: cap2
+  seen_in:
+  - cap1
+  - cap2
+  status: OPEN
+  summary: scripted scenario 'wo field edit updates draft' returned FAIL
+t5:wo_unrecognised_input_reshows:
+  applied: false
+  convs:
+  - t5_s42_002_wo_unrecognised_input_reshows
+  first_seen: cap1
+  last_seen: cap2
+  seen_in:
+  - cap1
+  - cap2
+  status: OPEN
+  summary: scripted scenario 'wo unrecognised input reshows' returned FAIL
+t7:cross_vendor_citation_strip:
+  applied: false
+  convs:
+  - t7_s42_004_cross_vendor_citation_strip
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'cross vendor citation strip' returned FAIL
 t8:experienced:
   applied: false
   convs:
