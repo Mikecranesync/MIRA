@@ -1,6 +1,15 @@
-"""Offline defect lab — replay every frozen campaign ledger through every
-deterministic detector, with no live bot, no LLM and (after the first run) no
-network at all.
+"""Offline defect lab — RESCAN recorded campaign replies with deterministic
+detectors. No live bot, no LLM and (after the first run) no network at all.
+
+NAMING, precisely: this module does NOT replay anything. It reads assistant
+text that a past live run already produced and runs detectors over it. Nothing
+in MIRA is re-executed here (the one exception is inside the gates, which call
+the real `resolve_uns_path`/`canonical_vendor` on stored user text).
+
+Actual replay — historical technician turns driven through today's
+`Supervisor.process_full()` with real session state — lives in `replay.py`.
+An earlier version of this docstring said "replay", which was wrong and made
+the two modules sound interchangeable. They are not.
 
 Why this exists
 ---------------
@@ -15,9 +24,9 @@ detectable from the TRANSCRIPT plus the corpus:
     uncited claim         gates
     repeated answer       gates                   tier-8 verbatim repeat
 
-So the 671 replies already captured across 13 ledgers are a regression corpus.
-This lab turns every past run into a test that costs nothing to re-run, and
-prints ONE ranked verdict table to read instead of a transcript dump.
+So the replies already captured across every ledger are a regression corpus.
+This lab turns every past run into a check that costs nothing to re-run, and
+prints ONE ranked verdict table instead of a transcript dump.
 
 Usage
 -----
@@ -273,7 +282,7 @@ def main() -> int:
         lines = [
             "# Offline defect lab",
             "",
-            "Deterministic sweep of every frozen campaign ledger. No live bot, no LLM.",
+            "Deterministic rescan of recorded campaign replies. No live bot, no LLM.",
             "",
             f"- conversations: **{len(convs)}**",
             f"- replies scanned: "
