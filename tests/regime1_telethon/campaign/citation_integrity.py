@@ -95,8 +95,16 @@ SCENARIOS: list[dict] = [
         "contract": "No foreign-vendor citation survives on an established conversation (#3049)",
         "turns": [
             {
+                # SETUP TURN — deliberately ungraded. It carried
+                # expect=["PowerFlex"] and failed live (cap1) against a CORRECT
+                # reply: "Diagnosing... What is the exact undervoltage fault code
+                # on the display?". Demanding the vendor name back penalises the
+                # better answer — a technician who has just said "PowerFlex 525"
+                # wants the next question, not their own words repeated. The
+                # scenario's real contract is turn 2's citation_or_gap plus the
+                # cross_vendor_citation conversation gate, both of which need
+                # this turn only to establish the vendor.
                 "send": "my PowerFlex 525 keeps tripping on undervoltage",
-                "expect": ["PowerFlex"],
             },
             {
                 "send": "which drive brand handles undervoltage better in your experience?",

@@ -242,7 +242,14 @@ SCENARIOS: list[tuple[str, str, list[dict]]] = [
         "auto_wo_offer_after_real_diagnosis",
         "resolved_auto_wo_prompt",
         [
-            dict(send="my PowerFlex 525 is tripping on start", expect=["PowerFlex"]),
+            # SETUP TURN — deliberately ungraded. It carried expect=["PowerFlex"]
+            # and failed live (cap1) against a CORRECT reply: "Diagnosing...
+            # What's the exact fault code on the display when it trips on start?".
+            # Repeating the vendor name back is not the behaviour under test; the
+            # scenario's contract is turns 3 and 4. Turn 2 keeps expect=["F004"]
+            # because that IS a semantic anchor — the technician supplied the
+            # code, and any correct answer about that fault has to name it.
+            dict(send="my PowerFlex 525 is tripping on start"),
             dict(send="F004 comes up on the display", expect=["F004"]),
             dict(
                 send="the incoming voltage measures 458V on all three legs",

@@ -171,16 +171,30 @@ class TestGeneratorShape:
                 if turn.get("gate"):
                     gates.resolve_turn_gate(turn["gate"])
 
-    def test_no_turn_asserts_nothing(self):
-        """A turn with no gate, no expect, no expect_all and no forbid spends a
-        live Telegram round-trip to buy a guaranteed PASS."""
-        ungraded = [
-            (sc["id"], i)
+    def test_no_scenario_asserts_nothing(self):
+        """The invariant is SCENARIO-scoped, not turn-scoped.
+
+        Originally written per-turn, which reads well but is wrong: a SETUP turn
+        legitimately asserts nothing. `auto_wo_offer_after_real_diagnosis` turn 1
+        only has to establish the drive; its contract is turns 3 and 4. Forcing
+        an anchor onto that turn is what produced the live cap1 false positive —
+        expect=["PowerFlex"] failed a correct reply that asked for the fault code
+        instead of repeating the vendor name.
+
+        What must never exist is a scenario where NOTHING asserts anything: that
+        spends live Telegram round-trips to buy a guaranteed PASS.
+        """
+        vacuous = [
+            sc["id"]
             for sc in t5.generate(41, 0)
-            for i, turn in enumerate(sc["turns"], 1)
-            if not any(turn.get(k) for k in ("gate", "expect", "expect_all", "forbid"))
+            if not any(
+                turn.get(k)
+                for turn in sc["turns"]
+                for k in ("gate", "expect", "expect_all", "forbid")
+            )
+            and not (sc.get("conv_gates") or sc.get("precondition"))
         ]
-        assert not ungraded, f"turns that assert nothing: {ungraded}"
+        assert not vacuous, f"scenarios that assert nothing: {vacuous}"
 
     def test_no_technician_turn_trips_the_decline_vocabulary_by_accident(self):
         """`_CMMS_NO` substring-matches any word longer than three characters —

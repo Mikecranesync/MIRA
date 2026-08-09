@@ -346,9 +346,10 @@ t5:auto_wo_offer_after_real_diagnosis:
   convs:
   - t5_s42_007_auto_wo_offer_after_real_diagnosis
   first_seen: cap1
-  last_seen: cap1
+  last_seen: cap2
   seen_in:
   - cap1
+  - cap2
   status: OPEN
   summary: scripted scenario 'auto wo offer after real diagnosis' returned FAIL
 t5:wo_bypass_by_fresh_question:
@@ -356,9 +357,10 @@ t5:wo_bypass_by_fresh_question:
   convs:
   - t5_s42_004_wo_bypass_by_fresh_question
   first_seen: cap1
-  last_seen: cap1
+  last_seen: cap2
   seen_in:
   - cap1
+  - cap2
   status: OPEN
   summary: scripted scenario 'wo bypass by fresh question' returned FAIL
 t5:wo_field_edit_updates_draft:
@@ -366,9 +368,10 @@ t5:wo_field_edit_updates_draft:
   convs:
   - t5_s42_001_wo_field_edit_updates_draft
   first_seen: cap1
-  last_seen: cap1
+  last_seen: cap2
   seen_in:
   - cap1
+  - cap2
   status: OPEN
   summary: scripted scenario 'wo field edit updates draft' returned FAIL
 t5:wo_unrecognised_input_reshows:
@@ -376,9 +379,10 @@ t5:wo_unrecognised_input_reshows:
   convs:
   - t5_s42_002_wo_unrecognised_input_reshows
   first_seen: cap1
-  last_seen: cap1
+  last_seen: cap2
   seen_in:
   - cap1
+  - cap2
   status: OPEN
   summary: scripted scenario 'wo unrecognised input reshows' returned FAIL
 t7:cross_vendor_citation_strip:
