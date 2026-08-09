@@ -8153,8 +8153,32 @@ class Supervisor:
         # offered candidate is recorded so a manufacturer the resolver merely
         # carries forward (already offered, never confirmed) cannot count as
         # "new information" and re-open the loop.
+        _prev_candidate = ctx.get("uns_gate_last_candidate")
         ctx["uns_gate_attempts"] = int(ctx.get("uns_gate_attempts") or 0) + 1
         ctx["uns_gate_last_candidate"] = candidate
+
+        # CON-004 (#3158) — do not repeat the demand verbatim.
+        #
+        # Campaign c8 t8_41_002, live: the technician did not ANSWER the
+        # confirmation, they CHALLENGED it ("How do you know it's a Rockwell
+        # PF40 now, earlier we were talking about a PF525?") and MIRA replayed
+        # the identical prompt word for word. It reads as a machine looping,
+        # and no repeat guard can catch it — CTX-004/004b live in
+        # _call_with_correction and this lane never goes through it.
+        #
+        # A technician who questions the guess is owed its PROVENANCE, not the
+        # same demand again. Say where it came from, admit it is unverified,
+        # and make the choice explicit. The offline lab's contained_repeat
+        # detector is what surfaced this; keep it green.
+        if candidate and _prev_candidate == candidate:
+            prompt = (
+                f"I still don't have that confirmed. I read **{candidate}** from what "
+                "you told me earlier — I haven't verified it against the nameplate, "
+                "so I don't want to diagnose on it.\n\n"
+                f"1. Yes, it's {candidate}\n"
+                "2. Something else — tell me the manufacturer and model\n"
+                "3. Not sure — send a photo of the nameplate"
+            )
 
         # Promote to AWAITING_UNS_CONFIRMATION so downstream code paths
         # (citation-compliance enforcement, telemetry, dialogue-state tracker)
