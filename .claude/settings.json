@@ -71,7 +71,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'git commit|git push' && gitleaks protect --staged --config .gitleaks.toml 2>/dev/null || true"
+            "command": "IN=$(cat); cmd=$(printf '%s' \"$IN\" | jq -r '.tool_input.command // empty'); case \"$cmd\" in *\"git commit\"*|*\"git push\"*) GL=$(command -v gitleaks 2>/dev/null); [ -n \"$GL\" ] || { [ -x /opt/homebrew/bin/gitleaks ] && GL=/opt/homebrew/bin/gitleaks; }; if [ -n \"$GL\" ]; then \"$GL\" protect --staged --redact --no-banner --config=.gitleaks.toml >&2 || { echo \"BLOCKED: gitleaks found secrets in staged changes (above). False positive? .gitleaks.toml allowlist or a # gitleaks:allow comment.\" >&2; exit 2; }; else echo \"gitleaks NOT FOUND - staged secret scan did NOT run (brew install gitleaks)\" >&2; fi;; esac; exit 0",
+            "statusMessage": "Scanning staged changes for secrets..."
           },
           {
             "type": "command",
@@ -88,9 +89,9 @@
           {
             "type": "command",
             "if": "Bash(git commit*)",
-            "command": "STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' 2>/dev/null || true); if [ -n \"$STAGED_PY\" ] && command -v ruff >/dev/null 2>&1; then ruff format --check --force-exclude $STAGED_PY >/tmp/mira-commit-format.log 2>&1 || echo 'heads up: staged Python file(s) are not ruff-formatted -- run: ruff format <file> (see /tmp/mira-commit-format.log)'; fi; STAGED=$(git diff --cached --name-only 2>/dev/null || true); NON_EXEMPT=$(printf '%s\\n' \"$STAGED\" | grep -vE '^(docs/|wiki/|VERSION$|LICENSE$|CHANGELOG|.*\\.(md|mdx|txt)$)' || true); if [ -n \"$NON_EXEMPT\" ] && [ -z \"$(git diff --cached --name-only -- VERSION 2>/dev/null || true)\" ]; then echo 'heads up: VERSION not bumped -- CI (version-gate.yml) requires a bump for code changes unless every staged file is docs/config-only (docs/versioning.md)'; fi; exit 0",
+            "command": "STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM -- '*.py' 2>/dev/null || true); if [ -n \"$STAGED_PY\" ] && command -v ruff >/dev/null 2>&1; then ruff format --check --force-exclude $STAGED_PY >/tmp/mira-commit-format.log 2>&1 || echo 'heads up: staged Python file(s) are not ruff-formatted -- run: ruff format <file> (see /tmp/mira-commit-format.log)'; fi; exit 0",
             "timeout": 15,
-            "statusMessage": "Checking staged formatting + VERSION bump..."
+            "statusMessage": "Checking staged formatting..."
           }
         ]
       },

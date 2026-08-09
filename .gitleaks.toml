@@ -1,5 +1,14 @@
 title = "MIRA gitleaks config"
 
+# Inherit gitleaks' ~170 built-in rules, THEN add the MIRA-specific ones below.
+# Without this, a config that declares [[rules]] REPLACES the built-in set rather
+# than extending it — which is what this file did until 2026-08-09. Verified then:
+# a live-shaped AWS key pair staged for commit scanned clean ("no leaks found"),
+# because only the four rules below were active. AWS / GitHub / GCP / Stripe /
+# Slack / private-key detection were all off.
+[extend]
+  useDefault = true
+
 [allowlist]
   description = "Known safe patterns"
   paths = [

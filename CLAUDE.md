@@ -240,7 +240,7 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 
 **To trigger manually:** `gh workflow run code-review.yml`
 **To run self-fix:** `bash scripts/pr_self_fix.sh <PR_NUMBER>`
-**Hook active:** `git config core.hooksPath .githooks` (already set in this repo)
+**Hook active:** `git config core.hooksPath .githooks` — **per-clone local config, NOT tracked in the repo**, so it is never "already set" for a fresh clone or a reset `.git/config`. Found unset on CHARLIE 2026-08-09 (it pointed at `.git/hooks`, which has no `pre-commit`), meaning the shellcheck + gitleaks + debug-artifact + actionlint gate had not been running at all. Verify with `git config core.hooksPath` (must print `.githooks`), and check the tools it needs are installed — it fails **open** with a yellow "not found — skipping" line, so a missing `gitleaks` looks the same as a clean scan.
 **Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`, `actionlint`
 
 ---
