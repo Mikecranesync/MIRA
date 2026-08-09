@@ -223,7 +223,27 @@ t2:pivot_after_fault:
     in live_decode.fault_codes, so the name is available deterministically. Fixing it is
     a RETRIEVAL-layer change: it needs the retrieval-diagnostics discipline (measure
     recall on the production path, not a harness), bot-grounding-tests, and a staging
-    gate. Do not patch it blind.'
+    gate. Do not patch it blind. | RETRIEVAL DIAGNOSIS DONE (2026-08-09, raw
+    recall_knowledge on staging, no harness) — **THE HYPOTHESIS ABOVE IS FALSIFIED
+    AND THE REAL DEFECT IS WORSE.** Adding the fault NAME changes nothing: raw recall
+    for "...F004 UnderVoltage How do I reset it?" is essentially identical to the
+    code-only query, correct-answer ranks NONE in both. The t1_004 "control" was weak
+    evidence too — its only GOOD chunk sat at rank 6 and was a SIEMENS row, so that
+    reply was plausible, not sourced. What is actually happening: (1) retrieval
+    returns PF525 chunks whose "reset" sense is position/rotor/safety-hardware, and
+    the real fault-clear chunks (p160/p164/p726/p1108 — "Press Stop if P045 [Stop
+    Mode]... Cycle drive power", "[Fault Clear] ... 1 Reset Fault") never enter the
+    top 10, though they exist and 0 of 7592 PF525 rows have a NULL embedding; (2)
+    MIRA then FABRICATES — "set P0594 = 1 [Source: Allen-Bradley PowerFlex 525,
+    Parameter Reference]". P0594 does not exist in the corpus in ANY spelling, and
+    "Parameter Reference" is not a source_type for PF525. It passes every guard
+    because _is_grounded scores a bag-of-words overlap >= 5 (generic prose clears it)
+    and evaluate_citation_relevance validates ATTRIBUTION only (Allen-Bradley is the
+    expected vendor, so the tag is "relevant"). Filed as P0 issue #3165; full spec in
+    docs/superpowers/specs/2026-08-09-fabricated-parameter-grounding-hole.md. The fix
+    is NOT shipped on purpose: a grounding guard that false-positives suppresses
+    CORRECT answers, and validating it needs the per-turn retrieved-source snapshot,
+    which the campaign ledger does not currently record.'
   seen_in:
   - c1
   - c1r2
