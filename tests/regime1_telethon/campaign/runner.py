@@ -58,8 +58,14 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         ok, notes = uat.grade_turn(reply, turn.get("expect", []), turn.get("forbid", []))
         # A declared gate is the authoritative contract for that turn; the
         # expect/forbid list grades vocabulary, the gate grades behaviour.
-        if turn.get("gate") == "identifying_question":
-            gv = gates.check_identifying_question(reply, scenario["id"])
+        #
+        # Resolved through gates.TURN_GATES rather than compared against a
+        # literal. The literal form dispatched exactly ONE name, so a scenario
+        # declaring any other gate went silently ungraded and reported PASS —
+        # a check that cannot fail. An unknown name now raises, loudly, rather
+        # than letting a typo disarm its own grading.
+        if turn.get("gate"):
+            gv = gates.resolve_turn_gate(turn["gate"])(reply, scenario["id"])
             if gv:
                 ok = False
                 notes = notes + [str(x) for x in gv]
