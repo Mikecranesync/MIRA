@@ -860,6 +860,25 @@ _REPEAT_QUESTION_SIM = 0.8
 _REPEAT_SCAN_LIMIT = 3
 _REPEAT_MIN_LEN = 40
 
+# CTX-004b: a CONTAINED repeat — the prior answer reproduced VERBATIM inside a
+# longer reply. Whole-reply similarity cannot see this, and the failure is
+# perverse: appending more text pushes the ratio DOWN, so the more padding wrapped
+# around a verbatim repeat, the safer it is from a similarity-only guard. Caught
+# live in campaign c6 t2_000 on a run the scenario otherwise PASSED.
+#
+# Fenced by a length floor (_REPEAT_MIN_LEN) and this fraction, because restating
+# a short earlier line at the top of a genuinely new, longer answer is ordinary
+# technician writing, not repetition. Measured on the real transcripts:
+#
+#   c6 t2_000 verbatim-prefix repeat  frac 0.619   <- must fire
+#   the same repeat, heavily padded   frac 0.440   <- must fire
+#   short line quoted then elaborated frac 0.118   <- must NOT fire
+#
+# 0.35 sits between them with ~3x headroom over the legitimate case. The remedy
+# is one severed retry that fails safe (the reply is returned either way), so the
+# threshold deliberately favours catching a repeat over missing one.
+_REPEAT_CONTAINED_FRAC = 0.35
+
 
 def _normalize_reply_text(text: str) -> str:
     text = re.sub(r"\[Source:[^\]]*\]", " ", text or "")
@@ -890,7 +909,16 @@ def _find_repeated_answer(reply: str, message: str, history: list) -> bool:
         prior = _normalize_reply_text(entry.get("content", ""))
         if not prior:
             continue
-        if difflib.SequenceMatcher(None, norm_reply, prior).ratio() < _REPEAT_REPLY_SIM:
+        near_duplicate = (
+            difflib.SequenceMatcher(None, norm_reply, prior).ratio() >= _REPEAT_REPLY_SIM
+        )
+        # CTX-004b — the prior answer carried verbatim inside this one.
+        contained = (
+            len(prior) >= _REPEAT_MIN_LEN
+            and prior in norm_reply
+            and len(prior) / len(norm_reply) >= _REPEAT_CONTAINED_FRAC
+        )
+        if not (near_duplicate or contained):
             continue
         prev_user = ""
         for j in range(i - 1, -1, -1):
