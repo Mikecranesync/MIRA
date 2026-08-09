@@ -302,17 +302,33 @@ jobs:
           TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-web mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
           echo "Rebuild targets: $TARGETS"
 
-          echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
-          # `docker compose up --force-recreate` only removes containers it considers part
-          # of the project; if a previous deploy left a same-named container that compose
-          # has lost track of, we hit `Error: container name already in use` and the deploy
-          # bails out (exact failure mode of run 25264673954, 2026-05-02).
-          for svc in $TARGETS; do
-            # container_name in saas.yml is sometimes bare (mira-hub,
-            # mira-bot-telegram), sometimes -saas suffixed. Try both.
-            docker rm -f "${svc}-saas" 2>/dev/null || true
-            docker rm -f "${svc}" 2>/dev/null || true
-          done
+          # NOTE (2026-08-09): the stale-container cleanup that used to run HERE has
+          # moved below, into a fallback that only fires if `up` actually fails.
+          #
+          # It used to `docker rm -f` every target BEFORE `docker compose build`, so
+          # the live containers were destroyed and the site stayed dark for
+          # build-time + boot-time. With a warm layer cache that is ~15s; on a cold
+          # build it is minutes of hard downtime. Measured 2026-08-09: four merges to
+          # main inside 40 minutes produced four separate outage windows on BOTH
+          # app.factorylm.com (mira-hub, :3101) and factorylm.com (mira-web, :3200) —
+          # nginx logging `connect() failed (111: Connection refused)` each time.
+          #
+          # The old containers now keep serving through the entire build, and are
+          # replaced only at the `up` below, which is health-gated via --wait.
+          stale_cleanup() {
+            echo "=== Removing stale containers that block recreate ==="
+            # `docker compose up --force-recreate` only removes containers it considers part
+            # of the project; if a previous deploy left a same-named container that compose
+            # has lost track of, we hit `Error: container name already in use` and the deploy
+            # bails out (exact failure mode of run 25264673954, 2026-05-02). That failure is
+            # rare, so it is now a RECOVERY path rather than an unconditional teardown.
+            for svc in $TARGETS; do
+              # container_name in saas.yml is sometimes bare (mira-hub,
+              # mira-bot-telegram), sometimes -saas suffixed. Try both.
+              docker rm -f "${svc}-saas" 2>/dev/null || true
+              docker rm -f "${svc}" 2>/dev/null || true
+            done
+          }
 
           # OW sunset (2026-07-29, v3.226.7): the mira-core (Open WebUI) service was
           # removed from docker-compose.saas.yml; compose no longer manages it, so
@@ -335,9 +351,51 @@ jobs:
           export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "Deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
 
-          echo "=== Rebuild containers ==="
+          echo "=== Build images (old containers keep serving) ==="
+          # Build BEFORE any teardown. Nothing user-facing is interrupted here.
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS
-          doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate $TARGETS
+
+          echo "=== Swap to new containers (health-gated) ==="
+          # --wait blocks until every recreated service is healthy (8 of the 9 targets
+          # declare a healthcheck in docker-compose.saas.yml; mira-cmms-sync has none,
+          # for which --wait means "running"). This turns the swap into a gate: a
+          # container that boots broken now FAILS the deploy loudly instead of being
+          # declared deployed and discovered later by a user.
+          #
+          # Downtime is now bounded by container boot, not boot+build. This is NOT
+          # zero-downtime — nginx still proxies to a single fixed port per service
+          # (127.0.0.1:3101 hub, :3200 web), so there is a short refused-connection
+          # window while the new container binds. Closing that needs a blue/green
+          # upstream switch in nginx, which is blocked on cleaning up
+          # /etc/nginx/sites-enabled/ first: it is included as a bare wildcard
+          # (`include /etc/nginx/sites-enabled/*;`) and currently contains 8 stale
+          # `.bak` files that are LIVE config, with nginx logging
+          # `conflicting server name "app.factorylm.com" ... ignored`. Editing a
+          # server block there before that cleanup risks changing a block that loses
+          # to another one — a change that looks applied and isn't.
+          # Capability-detect rather than assume: `--wait` landed in compose v2.1.1 and
+          # `--wait-timeout` later still. Hard-coding a flag this host might not accept
+          # would turn every deploy into an instant failure, so probe once and degrade
+          # to a plain up + explicit health poll if it is missing.
+          WAIT_FLAGS=""
+          if docker compose up --help 2>&1 | grep -q -- '--wait-timeout'; then
+            WAIT_FLAGS="--wait --wait-timeout 300"
+          elif docker compose up --help 2>&1 | grep -q -- '--wait'; then
+            WAIT_FLAGS="--wait"
+          fi
+          echo "Swap flags: ${WAIT_FLAGS:-<none: compose too old, falling back to health poll below>}"
+
+          # shellcheck disable=SC2086  # WAIT_FLAGS and TARGETS are intentionally word-split
+          if ! doppler run --project factorylm --config prd -- \
+               docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
+               $WAIT_FLAGS $TARGETS; then
+            echo "WARNING: health-gated swap failed — retrying once after stale-container cleanup"
+            stale_cleanup
+            # shellcheck disable=SC2086
+            doppler run --project factorylm --config prd -- \
+              docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
+              $WAIT_FLAGS $TARGETS
+          fi
 
           echo "=== Health check ==="
           sleep 8
@@ -353,9 +411,18 @@ jobs:
           # Try empty-basePath path first (current Phase 2 deployment), fall back to /hub
           # path so the check survives a future re-cutover. Mirrors the Dockerfile
           # HEALTHCHECK fallback pattern. Closes #928.
-          HUB_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/api/health \
-            || curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/hub/api/health \
-            || echo "unreachable")
+          # Retry rather than single-shot: --wait above already gated on the container
+          # healthcheck, so a miss here is almost always "probed a fraction of a second
+          # too early", which used to print a scary WARNING on a perfectly good deploy.
+          HUB_STATUS="unreachable"
+          for attempt in 1 2 3 4 5; do
+            HUB_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/api/health \
+              || curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/hub/api/health \
+              || echo "unreachable")
+            [ "$HUB_STATUS" = "200" ] && break
+            echo "  attempt $attempt: mira-hub health=$HUB_STATUS — retrying in 3s"
+            sleep 3
+          done
           echo "mira-hub health: $HUB_STATUS"
           if [ "$HUB_STATUS" != "200" ]; then
             echo "WARNING: mira-hub health returned $HUB_STATUS — check container logs"
