@@ -95,6 +95,10 @@
     "c5s45_t1_004_reset_procedure.json": {
       "bytes": 694,
       "sha256": "d9005bfe8965263f8b5f0e1ca7be3ad2208755680caaf6ea5f36502f5b9e7995"
+    },
+    "c6_t1_013_reset_procedure.json": {
+      "bytes": 702,
+      "sha256": "8ff65ee3e595bf703c711c23fa1ffd9db3e3a4124c0632d3596126d3e334e5c2"
     }
   },
   "ledgers": {
@@ -141,6 +145,10 @@
     "c5s45.jsonl": {
       "bytes": 23091,
       "sha256": "15c3efb35eb02044360f68927f39ad8437c545df24fd08215d8c60559372d405"
+    },
+    "c6.jsonl": {
+      "bytes": 47970,
+      "sha256": "6fff6d941b1b0fc7a6f0bfc09c74448fea61f1929245202853bf39f9d83bb995"
     }
   },
   "note": "Ledgers and frozen transcripts are gitignored. A report generated without the matching evidence bundle is NOT reproducible \u2014 verify against these checksums before trusting a regenerated report.",

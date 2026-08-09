@@ -36,7 +36,7 @@ t1:reset_procedure:
     with a bare clarifying question while holding a resolved PowerFlex 525 pack, so
     the scenario''s expect list ("reset", "PowerFlex") still fails.'
   issue: '3156'
-  last_seen: c3
+  last_seen: c6
   note: 'Footer half is deterministic: running enforce_citation_or_gap_admission from
     current source reproduces the frozen reply byte-for-byte. Shares its root cause
     with t1:symptom_report. Failed on two different builds and two different phrasings
@@ -63,6 +63,7 @@ t1:reset_procedure:
   - c1
   - c1r4
   - c3
+  - c6
   status: OPEN
   summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
     for the fault code AND tells the technician it has no documentation, while holding
@@ -128,10 +129,10 @@ t2:pivot_after_fault:
     the session already holds (closes defect A, turn 2, the dominant driver; also
     removes the DIAGNOSIS_REVISION park C had to escape, so the two compound). Defect
     B (turn 2, "How do I reset it?" answered by restating what the fault CODE means,
-    2 sightings) is UNFIXED. PR #3153 (IDLE severance fault carry, held) fixes a
-    fourth, adjacent seam. PREDICTION pre-registered before any live re-run: 6 of the
-    8 frozen failing conversations should pass; the 2 that should still fail are
-    c1r2/c1r3 t2_000, both on defect B.'
+    2 sightings) is UNFIXED. PR #3153 (IDLE severance fault carry, held) fixes a fourth,
+    adjacent seam. PREDICTION pre-registered before any live re-run: 6 of the 8 frozen
+    failing conversations should pass; the 2 that should still fail are c1r2/c1r3
+    t2_000, both on defect B.'
   issue: '3160'
   last_seen: c3
   note: 'Root cause: the fresh-thread pivot fires only from ACTIVE_DIAGNOSTIC_STATES,
@@ -143,41 +144,60 @@ t2:pivot_after_fault:
     the set, and the one to fix next. | ROOT-CAUSE CORRECTION (2026-08-08, from the
     per-turn grades in the frozen ledgers — the note above was written from the turn-3
     reply alone and is incomplete). This fingerprint bundles AT LEAST THREE defects,
-    and the recorded root cause is NOT the one that drives the verdict. Across the 8
-    failing conversations in c1/c1r2/c1r3/c2/c3: SEVEN fail at TURN 2 and only FIVE at
-    turn 3. (A) TURN 2, 5 sightings — "How do I reset it?" is answered with the generic
-    low-groundedness clarifier ("Before I can give you a confident diagnosis...")
+    and the recorded root cause is NOT the one that drives the verdict. Across the
+    8 failing conversations in c1/c1r2/c1r3/c2/c3: SEVEN fail at TURN 2 and only FIVE
+    at turn 3. (A) TURN 2, 5 sightings — "How do I reset it?" is answered with the
+    generic low-groundedness clarifier ("Before I can give you a confident diagnosis...")
     instead of the reset procedure, while a resolved PowerFlex 525 pack is in hand.
-    This is the SAME mechanism as the unfixed half of t1:reset_procedure (#3156), and
-    it is the dominant driver here. It is also what CAUSES the DIAGNOSIS_REVISION park
-    that defect (C) then trips over — (A) is upstream of (C). (B) TURN 2, 2 sightings —
-    MIRA answers "How do I reset it?" by restating what the fault CODE means (c1r2/c1r3
-    t2_000: "CE10 = Communication error 10..."), a repeated-answer shape. (C) TURN 3,
-    5 sightings — the dead fault rides forward into the new conveyor topic; this is the
-    defect the summary names and the ONLY one CTX-001d fixes. Natural experiment
+    This is the SAME mechanism as the unfixed half of t1:reset_procedure (#3156),
+    and it is the dominant driver here. It is also what CAUSES the DIAGNOSIS_REVISION
+    park that defect (C) then trips over — (A) is upstream of (C). (B) TURN 2, 2 sightings
+    — MIRA answers "How do I reset it?" by restating what the fault CODE means (c1r2/c1r3
+    t2_000: "CE10 = Communication error 10..."), a repeated-answer shape. (C) TURN
+    3, 5 sightings — the dead fault rides forward into the new conveyor topic; this
+    is the defect the summary names and the ONLY one CTX-001d fixes. Natural experiment
     confirming (A): in c3, t2_000 got the clarifier at turn 2 and FAILED while t2_005
     got a real reset answer and PASSED — same seed, same script, same build. | IMPACT
     OF CTX-001d, MEASURED NOT ASSUMED: of the 8 failing conversations, this fix alone
     flips exactly ONE (c1r2 t2_005, the only one whose sole failing turn is 3). Expect
-    this fingerprint to STAY RED until (A) is fixed. Do not read a continued FAIL as
-    CTX-001d not working, and do not read a flip as this scenario being fixed — check
-    the per-turn grades. | This is the multi-defect-per-scenario problem the Phase 2
-    defect registry exists to solve; the schema still holds one defect_id, so no
-    defect_id is set here rather than assert a root cause that explains 5 of 12 turns.
-    | CTX-005 shipped (2026-08-08) for defect (A): the clarifier now checks whether a
-    fault code or active alarm is already pinned before asking for one, taking the
-    existing "proceed with available info" branch instead of parking in
+    this fingerprint to STAY RED until (A) is fixed. Do not read a continued FAIL
+    as CTX-001d not working, and do not read a flip as this scenario being fixed —
+    check the per-turn grades. | This is the multi-defect-per-scenario problem the
+    Phase 2 defect registry exists to solve; the schema still holds one defect_id,
+    so no defect_id is set here rather than assert a root cause that explains 5 of
+    12 turns. | CTX-005 shipped (2026-08-08) for defect (A): the clarifier now checks
+    whether a fault code or active alarm is already pinned before asking for one,
+    taking the existing "proceed with available info" branch instead of parking in
     DIAGNOSIS_REVISION. Reproduced offline byte-for-byte against the frozen c2/c3
-    transcripts before the fix; a known MODEL deliberately does NOT suppress the
-    clarifier (eval fixture 34 — the vague-symptom case it exists for — must keep
-    firing, and that control is proven by mutation). | DEFECT (B) REMAINS OPEN and has
-    no issue of its own: c1r2/c1r3 t2_000 answer "How do I reset it?" by restating
-    what the fault CODE means ("CE10 = Communication error 10, RS-485 Modbus
-    transmission time-out"), i.e. a repeated answer to the PREVIOUS question rather
-    than the one asked. Adjacent to CTX-004 (the repeated-answer guard) but distinct:
-    the two replies are not near-identical text, so a difflib similarity guard will
-    not catch it — the defect is answering the wrong QUESTION, not emitting the same
-    STRING. Fix that next if this fingerprint is still red after a live re-run.'
+    transcripts before the fix; a known MODEL deliberately does NOT suppress the clarifier
+    (eval fixture 34 — the vague-symptom case it exists for — must keep firing, and
+    that control is proven by mutation). | DEFECT (B) REMAINS OPEN and has no issue
+    of its own: c1r2/c1r3 t2_000 answer "How do I reset it?" by restating what the
+    fault CODE means ("CE10 = Communication error 10, RS-485 Modbus transmission time-out"),
+    i.e. a repeated answer to the PREVIOUS question rather than the one asked. Adjacent
+    to CTX-004 (the repeated-answer guard) but distinct: the two replies are not near-identical
+    text, so a difflib similarity guard will not catch it — the defect is answering
+    the wrong QUESTION, not emitting the same STRING. Fix that next if this fingerprint
+    is still red after a live re-run. | c6 LIVE RE-RUN (2026-08-09,
+    qc/cold-start-baseline@3bf213fbe, seed 42, tiers 1+2): **BOTH variants PASS** —
+    t2_000 and t2_005. This fingerprint had failed in c1, c1r2, c1r3, c2 AND c3, so
+    STABLE_FAIL is broken on the first run carrying CTX-001d + CTX-005. Like-for-like
+    on identical tiers/seed/scenarios: c2 (main) 26/30 -> c3 (branch pre-fix) 28/30 ->
+    c6 29/30. | MECHANISM CONFIRMED, NOT JUST THE FLIP: the groundedness clarifier is
+    ABSENT from turn 2 in both conversations (it was present in c2 and in c3 t2_000),
+    and no F004 survives into turn 3 in either. That is CTX-005 and CTX-001d
+    respectively, verified at the reply level. | ⚠️ BUT DEFECT (B) SURVIVES AND IS NOW
+    MASKED BY THE GRADER — the pass is not clean. In c6 t2_000, turn 2 is turn 1''s
+    ENTIRE reply repeated as a literal PREFIX (proven: normalized turn 1 is a prefix
+    of turn 2; 225 of 329 chars) with one new sentence appended. It scores PASS only
+    because expect=["reset"] matches the appended "resetting". Worse, it is invisible
+    to EVERY existing guard: the engine''s CTX-004 uses difflib >= 0.9 on the whole
+    normalized reply (this is 0.812), and campaign gates.check_repeated_answer keys a
+    dict on whole-reply equality — both detect a DUPLICATE reply, while this is a
+    CONTAINED repeat. A containment check (prior reply in current reply, above a length
+    floor) would catch it; neither layer has one. Both c6 turn-2 replies also misread
+    "How do I reset it?" as resetting a DIGITAL OUTPUT rather than the fault. So: the
+    scenario is green, the defect is not fixed. Do not set status FIXED on this run.'
   seen_in:
   - c1
   - c1r2
