@@ -28,6 +28,7 @@ t1:fault_code_pf525:
 t1:reset_procedure:
   applied: false
   convs:
+  - t1_004_reset_procedure
   - t1_013_reset_procedure
   - t1_s42_013_reset_procedure
   first_seen: c1
@@ -36,7 +37,7 @@ t1:reset_procedure:
     with a bare clarifying question while holding a resolved PowerFlex 525 pack, so
     the scenario''s expect list ("reset", "PowerFlex") still fails.'
   issue: '3156'
-  last_seen: c7
+  last_seen: c12s45
   note: 'Footer half is deterministic: running enforce_citation_or_gap_admission from
     current source reproduces the frozen reply byte-for-byte. Shares its root cause
     with t1:symptom_report. Failed on two different builds and two different phrasings
@@ -58,13 +59,23 @@ t1:reset_procedure:
     what the Phase 2 defect registry is for. Leaving it blank beats asserting a root
     cause that only explains half the failure. | Multi-seed (4 seeds): 50% — FLAKY,
     consistent with the recorded PARTIAL fix. The footer half is gone; the procedural-answer
-    half is not.'
+    half is not. | 5-SEED RUN ON THE MERGE CANDIDATE (2026-08-09, ba0a7cab2, seeds
+    42-46): FLAKY 60% (3/5), unchanged within noise from the 50% measured on the older
+    build — consistent with the procedural-answer half still being untouched. Both
+    failures are the same shape: "Diagnosing... What is the exact undervoltage fault
+    code on the display?" against expect=["reset","PowerFlex"]. **CONFIRMED SHARED
+    ROOT CAUSE WITH t2:pivot_after_fault**: all four of that fingerprint''s failures
+    in the same run fail at its turn 2 on the identical "how do I reset it" shape
+    (see docs/testing/campaign-reports/2026-08-09-5seed-analysis.md). The two findings
+    are one defect — the #3165 retrieval hole — and should be fixed as one.'
   seen_in:
   - c1
   - c1r4
   - c3
   - c6
   - c7
+  - c12s42
+  - c12s45
   status: OPEN
   summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
     for the fault code AND tells the technician it has no documentation, while holding
@@ -135,7 +146,7 @@ t2:pivot_after_fault:
     failing conversations should pass; the 2 that should still fail are c1r2/c1r3
     t2_000, both on defect B.'
   issue: '3160'
-  last_seen: c3
+  last_seen: c12s45
   note: 'Root cause: the fresh-thread pivot fires only from ACTIVE_DIAGNOSTIC_STATES,
     and the low-groundedness self-critique clarifier parks the session in DIAGNOSIS_REVISION
     first. Suggested contract CTX-001d: a pivot fires from every state holding a pending
@@ -201,55 +212,74 @@ t2:pivot_after_fault:
     on this run. | c7 (2026-08-09, qc/cold-start-baseline@b306a6b9b, same seed/tiers):
     **DEFECT (B) IS GONE — proven by direct measurement, not by the verdict.** Scanning
     every tier-2 reply pair for a contained-or-near-duplicate repeat: c6 = 1 violation
-    (t2_000 turn1->turn2, frac 0.619), c7 = 0 violations across the same 10
-    conversations. Only the build changed. That is CTX-004b. Turn 3 also now reads like
-    a technician wrote it — "Intermittent shutdown on a conveyor with a 525 drive — is
-    the trip consistent with a specific event or load condition?" — with no dead fault
-    carried. Tier 2 10/10, campaign 29/30. | ⚠️ ONE DEFECT REMAINS on this scenario,
-    previously HIDDEN BEHIND the repeat: turn 2 answers "How do I reset it?" with
-    instructions for resetting a DIGITAL OUTPUT ("navigate to the Digital Outputs
-    menu", "set P0594 = 1") when the technician means the F004 UnderVoltage fault.
-    Present in BOTH c6 and c7, so it is not a regression from CTX-004b — it is the
-    layer underneath. Localized, NOT root-caused: it is a RETRIEVAL referent problem,
-    not the pack (the PF525 pack has zero fault_entries, zero knowledge and zero
-    keypad_navigation, so it cannot answer a reset question and never claims the turn).
-    Working hypothesis, with a natural experiment already in the evidence:
-    _prepend_equipment_context carries the fault CODE but not the fault NAME, so the
-    enriched query is "... PowerFlex 525 F004 How do I reset it?" and the strongest
-    lexical match for "reset" in the corpus is digital-output content. The control is
-    c6/c7 t1_004 — "how to reset a powerflex525 after an UNDERVOLTAGE fault?" retrieves
-    the right answer ("cycle power or use the keypad to clear the fault"). The word the
-    corpus indexes is "undervoltage", and the pack already maps code 4 -> "UnderVoltage"
-    in live_decode.fault_codes, so the name is available deterministically. Fixing it is
-    a RETRIEVAL-layer change: it needs the retrieval-diagnostics discipline (measure
-    recall on the production path, not a harness), bot-grounding-tests, and a staging
-    gate. Do not patch it blind. | RETRIEVAL DIAGNOSIS DONE (2026-08-09, raw
-    recall_knowledge on staging, no harness) — **THE HYPOTHESIS ABOVE IS FALSIFIED
-    AND THE REAL DEFECT IS WORSE.** Adding the fault NAME changes nothing: raw recall
-    for "...F004 UnderVoltage How do I reset it?" is essentially identical to the
-    code-only query, correct-answer ranks NONE in both. The t1_004 "control" was weak
-    evidence too — its only GOOD chunk sat at rank 6 and was a SIEMENS row, so that
-    reply was plausible, not sourced. What is actually happening: (1) retrieval
-    returns PF525 chunks whose "reset" sense is position/rotor/safety-hardware, and
-    the real fault-clear chunks (p160/p164/p726/p1108 — "Press Stop if P045 [Stop
-    Mode]... Cycle drive power", "[Fault Clear] ... 1 Reset Fault") never enter the
-    top 10, though they exist and 0 of 7592 PF525 rows have a NULL embedding; (2)
-    MIRA then FABRICATES — "set P0594 = 1 [Source: Allen-Bradley PowerFlex 525,
-    Parameter Reference]". P0594 does not exist in the corpus in ANY spelling, and
-    "Parameter Reference" is not a source_type for PF525. It passes every guard
-    because _is_grounded scores a bag-of-words overlap >= 5 (generic prose clears it)
-    and evaluate_citation_relevance validates ATTRIBUTION only (Allen-Bradley is the
-    expected vendor, so the tag is "relevant"). Filed as P0 issue #3165; full spec in
-    docs/superpowers/specs/2026-08-09-fabricated-parameter-grounding-hole.md. The fix
-    is NOT shipped on purpose: a grounding guard that false-positives suppresses
+    (t2_000 turn1->turn2, frac 0.619), c7 = 0 violations across the same 10 conversations.
+    Only the build changed. That is CTX-004b. Turn 3 also now reads like a technician
+    wrote it — "Intermittent shutdown on a conveyor with a 525 drive — is the trip
+    consistent with a specific event or load condition?" — with no dead fault carried.
+    Tier 2 10/10, campaign 29/30. | ⚠️ ONE DEFECT REMAINS on this scenario, previously
+    HIDDEN BEHIND the repeat: turn 2 answers "How do I reset it?" with instructions
+    for resetting a DIGITAL OUTPUT ("navigate to the Digital Outputs menu", "set P0594
+    = 1") when the technician means the F004 UnderVoltage fault. Present in BOTH c6
+    and c7, so it is not a regression from CTX-004b — it is the layer underneath.
+    Localized, NOT root-caused: it is a RETRIEVAL referent problem, not the pack (the
+    PF525 pack has zero fault_entries, zero knowledge and zero keypad_navigation,
+    so it cannot answer a reset question and never claims the turn). Working hypothesis,
+    with a natural experiment already in the evidence: _prepend_equipment_context
+    carries the fault CODE but not the fault NAME, so the enriched query is "... PowerFlex
+    525 F004 How do I reset it?" and the strongest lexical match for "reset" in the
+    corpus is digital-output content. The control is c6/c7 t1_004 — "how to reset
+    a powerflex525 after an UNDERVOLTAGE fault?" retrieves the right answer ("cycle
+    power or use the keypad to clear the fault"). The word the corpus indexes is "undervoltage",
+    and the pack already maps code 4 -> "UnderVoltage" in live_decode.fault_codes,
+    so the name is available deterministically. Fixing it is a RETRIEVAL-layer change:
+    it needs the retrieval-diagnostics discipline (measure recall on the production
+    path, not a harness), bot-grounding-tests, and a staging gate. Do not patch it
+    blind. | RETRIEVAL DIAGNOSIS DONE (2026-08-09, raw recall_knowledge on staging,
+    no harness) — **THE HYPOTHESIS ABOVE IS FALSIFIED AND THE REAL DEFECT IS WORSE.**
+    Adding the fault NAME changes nothing: raw recall for "...F004 UnderVoltage How
+    do I reset it?" is essentially identical to the code-only query, correct-answer
+    ranks NONE in both. The t1_004 "control" was weak evidence too — its only GOOD
+    chunk sat at rank 6 and was a SIEMENS row, so that reply was plausible, not sourced.
+    What is actually happening: (1) retrieval returns PF525 chunks whose "reset" sense
+    is position/rotor/safety-hardware, and the real fault-clear chunks (p160/p164/p726/p1108
+    — "Press Stop if P045 [Stop Mode]... Cycle drive power", "[Fault Clear] ... 1
+    Reset Fault") never enter the top 10, though they exist and 0 of 7592 PF525 rows
+    have a NULL embedding; (2) MIRA then FABRICATES — "set P0594 = 1 [Source: Allen-Bradley
+    PowerFlex 525, Parameter Reference]". P0594 does not exist in the corpus in ANY
+    spelling, and "Parameter Reference" is not a source_type for PF525. It passes
+    every guard because _is_grounded scores a bag-of-words overlap >= 5 (generic prose
+    clears it) and evaluate_citation_relevance validates ATTRIBUTION only (Allen-Bradley
+    is the expected vendor, so the tag is "relevant"). Filed as P0 issue #3165; full
+    spec in docs/superpowers/specs/2026-08-09-fabricated-parameter-grounding-hole.md.
+    The fix is NOT shipped on purpose: a grounding guard that false-positives suppresses
     CORRECT answers, and validating it needs the per-turn retrieved-source snapshot,
-    which the campaign ledger does not currently record.'
+    which the campaign ledger does not currently record. | 5-SEED RUN ON THE MERGE
+    CANDIDATE (2026-08-09, ba0a7cab2, seeds 42-46, c12s42..c12s46): FLAKY 40%, not
+    STABLE_FAIL and not fixed. c6/c7 both ran seed 42 and both passed; seed 42 is
+    one of the two seeds where it passes, so those two runs were one sample. **BUT
+    THE FINGERPRINT IS NOW FAILING FOR A DIFFERENT REASON THAN ITS NAME.** Per-turn
+    grades across the four failures: ALL FOUR fail at TURN 2 ("How do I reset it?",
+    expect=["reset"]), where MIRA restates what CE10 MEANS instead of answering how
+    to reset it. Only ONE of the four also fails at turn 3, the actual pivot turn;
+    in the other three the pivot is clean (topic switches to the conveyor, no CE10
+    survives). So CTX-001d and CTX-005 DO work — 4/4 on the pivot mechanism — and
+    the residual failure is the SAME root cause as t1:reset_procedure (#3156) and
+    the #3165 retrieval hole: MIRA cannot answer "how do I reset it". This fingerprint
+    should be re-scoped or merged into #3156; it no longer measures a pivot defect.
+    Evidence: docs/testing/campaign-reports/2026-08-09-5seed-analysis.md. | SECONDARY,
+    unrelated to the grade: two turn-3 replies (c12s43 t2_000, c12s44 t2_005) carry
+    the KB-gap footer beneath a pure clarifying question — the residue of CIT-005''s
+    by-declaration exemption for the option-menu template. Same class as #3159, narrower.
+    Unfixed.'
   seen_in:
   - c1
   - c1r2
   - c1r3
   - c2
   - c3
+  - c12s43
+  - c12s44
+  - c12s45
   status: OPEN
   summary: '"Actually forget that — my conveyor keeps stopping" is not recognised
     as a pivot when the session sits in DIAGNOSIS_REVISION, so MIRA answers the previous

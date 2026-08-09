@@ -12,6 +12,30 @@
       "bytes": 4461,
       "sha256": "62600c9376ae828936fe1809b4f000e460a72bfd211c1daad21e668ad613baf1"
     },
+    "c12s42_t1_013_reset_procedure.json": {
+      "bytes": 691,
+      "sha256": "af93301cf2be06dced26b342c007d06e9fb83a0e6c69f6a8d62142352bf7a9e7"
+    },
+    "c12s43_t2_000_pivot_after_fault.json": {
+      "bytes": 3365,
+      "sha256": "e46a4ab186caf94fa065e2b1881ec96c97d74ca39cdf87be9d7bac0af587014e"
+    },
+    "c12s44_t2_000_pivot_after_fault.json": {
+      "bytes": 3695,
+      "sha256": "92e026535dc58c10832a22ad8555f8dfb4041272c7049974082acd28fb9d55a7"
+    },
+    "c12s44_t2_005_pivot_after_fault.json": {
+      "bytes": 3242,
+      "sha256": "6b18214bb6aa14507040cf9d0e2488c8b6fd38733f686af584e8b76898279dce"
+    },
+    "c12s45_t1_004_reset_procedure.json": {
+      "bytes": 694,
+      "sha256": "09f50a53624f97406c00d4d2bc98af4e98bc4588243281ab2e8b8a62a475aa1a"
+    },
+    "c12s45_t2_005_pivot_after_fault.json": {
+      "bytes": 2983,
+      "sha256": "b6ba665a1c7582930357abfbbc2bdea4c9940645a6075d0b08f8fbde364993cd"
+    },
     "c1_t1_013_reset_procedure.json": {
       "bytes": 939,
       "sha256": "f66bf0af88e915bd01d3f4067c0a4433692d86306307896db8215adf7faf8788"
@@ -137,6 +161,26 @@
     "c11.jsonl": {
       "bytes": 26658,
       "sha256": "96b99b68588f490f19dd0bae3d91034a614ba561db5e0c856e3d3362f5dd310b"
+    },
+    "c12s42.jsonl": {
+      "bytes": 48113,
+      "sha256": "aed617a14087b08600c43e9e8fbb6ff7a45ab0c1ef7e6e6a9ee03a18eb18c7ab"
+    },
+    "c12s43.jsonl": {
+      "bytes": 49303,
+      "sha256": "65c745fffbecd472262a653e1706a0ac6755a6774eb000ce0ff2766a3246ee1c"
+    },
+    "c12s44.jsonl": {
+      "bytes": 49688,
+      "sha256": "f768e45e989aed0a21c560e8248ea05ea9f56d7c52640c465e576d9f02c69ad5"
+    },
+    "c12s45.jsonl": {
+      "bytes": 51386,
+      "sha256": "5d7037da54cd4fe3e9ef5ae1aa3f1604a2a94f2e959f8fd3da4a0fd2d9441bbc"
+    },
+    "c12s46.jsonl": {
+      "bytes": 44626,
+      "sha256": "99588de178b7dceff1e2e48fe36c4454bb27cdd3d01b988a327160a557412947"
     },
     "c1r1.jsonl": {
       "bytes": 24603,
