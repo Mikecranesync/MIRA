@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruff check --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null; ruff format \"$CLAUDE_FILE_PATH\" 2>/dev/null; perl -e 'alarm 45; exec @ARGV' pyright \"$CLAUDE_FILE_PATH\" 2>/dev/null | tail -1; bash tools/review_hook.sh \"$CLAUDE_FILE_PATH\" 2>&1 || true; (GITDIR=$(git rev-parse --git-common-dir 2>/dev/null || echo '.git') && mkdir -p \"${GITDIR}/claude-sessions\" 2>/dev/null && echo \"$CLAUDE_FILE_PATH\" | sort -u >> \"${GITDIR}/claude-sessions/${CLAUDE_CODE_SESSION_ID:-unknown}-touched-files\" 2>/dev/null) || true"
+            "command": "IN=$(cat); f=$(printf '%s' \"$IN\" | jq -r '.tool_response.filePath // .tool_input.file_path // empty'); [ -n \"$f\" ] || exit 0; sid=$(printf '%s' \"$IN\" | jq -r '.session_id // \"unknown\"'); case \"$f\" in *.py) ruff check --fix \"$f\" >/dev/null 2>&1; ruff format \"$f\" >/dev/null 2>&1; perl -e 'alarm 45; exec @ARGV' pyright \"$f\" 2>/dev/null | tail -1;; esac; bash tools/review_hook.sh \"$f\" 2>&1 || true; (GITDIR=$(git rev-parse --git-common-dir 2>/dev/null || echo '.git') && mkdir -p \"${GITDIR}/claude-sessions\" 2>/dev/null && echo \"$f\" >> \"${GITDIR}/claude-sessions/${sid}-touched-files\" 2>/dev/null) || true"
           }
         ]
       }
