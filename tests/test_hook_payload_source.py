@@ -35,7 +35,9 @@ var, it must also read stdin.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -172,6 +174,66 @@ def test_posttooluse_edit_write_hook_actually_reads_stdin():
             assert _reads_stdin(cmd), f"{label} must read the payload from stdin"
             return
     pytest.fail("No PostToolUse Edit|Write hook found in .claude/settings.json")
+
+
+GUARDS = ["prod-guard.sh", "rm-guard.sh", "git-state-guard.sh"]
+
+
+@pytest.mark.parametrize("name", GUARDS)
+def test_guard_fails_open_loudly_not_silently(name):
+    """A guard with no payload must SAY so, not exit 0 in silence.
+
+    These three can only allow-by-default when they have no command to inspect —
+    denying every Bash call would wedge the session. That is fine; what is not fine
+    is that a future break in the stdin read produces the identical silent exit 0,
+    which is precisely how the 2026-08-09 dead-hook class hid. Empty payload must
+    therefore print a diagnostic to stderr.
+    """
+    script = REPO / "tools" / "hooks" / name
+    proc = subprocess.run(
+        ["bash", str(script)], input="", capture_output=True, text=True, cwd=str(REPO)
+    )
+    assert proc.returncode == 0, f"{name} must still allow when it cannot inspect"
+    assert "NOT inspected" in proc.stderr, (
+        f"{name} exits 0 silently on an empty payload. Print a diagnostic to stderr so a "
+        f"broken payload path is visible instead of looking like 'nothing to inspect'."
+    )
+
+
+# `ssh prod …` is the shortest form of the prod invocation (~/.ssh/config has
+# `Host prod factorylm-prod`) and bypassed prod-guard entirely until 2026-08-09,
+# because only the long `factorylm-prod` spelling was in PROD_HOST. CLAUDE.md hard
+# rule #2 ("NEVER restart, rebuild, or docker compose a VPS container directly")
+# rests on this guard, so the alias forms are pinned here.
+@pytest.mark.parametrize(
+    "command,should_deny",
+    [
+        ("ssh prod docker compose restart mira-hub", True),
+        ("ssh prod-public systemctl restart nginx", True),
+        ("ssh root@165.245.138.91 docker compose down", True),
+        ("ssh 100.68.120.99 docker restart mira-core", True),
+        # read-only prod inspection stays allowed — that is the whole design
+        ("ssh prod docker ps", False),
+        ("ssh prod tail -f /var/log/syslog", False),
+        # non-prod hosts and mere prose must not trip it
+        ("ssh bravo docker compose up", False),
+        ('git commit -m "notes about ssh prod deploys"', False),
+    ],
+)
+def test_prod_guard_covers_ssh_alias_forms(command, should_deny):
+    proc = subprocess.run(
+        ["bash", str(REPO / "tools" / "hooks" / "prod-guard.sh")],
+        input=json.dumps({"tool_input": {"command": command}}),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        env={**os.environ, "MIRA_ALLOW_PROD": "0"},
+    )
+    denied = '"permissionDecision":"deny"' in proc.stdout
+    assert denied is should_deny, (
+        f"prod-guard {'should deny' if should_deny else 'should allow'}: {command!r} "
+        f"(stdout={proc.stdout.strip()[:120]!r})"
+    )
 
 
 def test_gitleaks_config_extends_default_ruleset():

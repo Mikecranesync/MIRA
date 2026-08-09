@@ -669,7 +669,7 @@ jobs:
         # factorylm.com. Invisible when it regresses — the deploy still reports green.
         run: pytest tests/test_deploy_no_teardown_before_build.py -v
 
-      - name: Check hooks read their payload from stdin
+      - name: Check hook wiring (payload source, fail-loud, prod-guard coverage)
         # Guards the whole class found 2026-08-09: the harness does NOT set
         # $CLAUDE_TOOL_INPUT / $CLAUDE_FILE_PATH (the tool payload is JSON on
         # stdin), so every hook keyed on those vars was a silent no-op — ruff,
