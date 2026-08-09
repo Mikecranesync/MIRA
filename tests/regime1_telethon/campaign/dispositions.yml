@@ -122,11 +122,16 @@ t2:pivot_after_fault:
   - t2_s42_000_pivot_after_fault
   - t2_s42_005_pivot_after_fault
   first_seen: c1
-  fix: 'CTX-001d (this branch) — the pivot now fires from every state holding a pending
-    question, except PIVOT_EXEMPT_STATES. Closes the TURN-3 defect only; the turn-2
-    defect below is untouched and is the dominant driver of this fingerprint''s
-    STABLE_FAIL. PR #3153 (IDLE severance fault carry, held) fixes a third, adjacent
-    seam.'
+  fix: 'CTX-001d + CTX-005 (this branch). CTX-001d — the pivot now fires from every
+    state holding a pending question, except PIVOT_EXEMPT_STATES (closes defect C,
+    turn 3). CTX-005 — the groundedness clarifier no longer re-asks for a fault code
+    the session already holds (closes defect A, turn 2, the dominant driver; also
+    removes the DIAGNOSIS_REVISION park C had to escape, so the two compound). Defect
+    B (turn 2, "How do I reset it?" answered by restating what the fault CODE means,
+    2 sightings) is UNFIXED. PR #3153 (IDLE severance fault carry, held) fixes a
+    fourth, adjacent seam. PREDICTION pre-registered before any live re-run: 6 of the
+    8 frozen failing conversations should pass; the 2 that should still fail are
+    c1r2/c1r3 t2_000, both on defect B.'
   issue: '3160'
   last_seen: c3
   note: 'Root cause: the fresh-thread pivot fires only from ACTIVE_DIAGNOSTIC_STATES,
@@ -158,7 +163,21 @@ t2:pivot_after_fault:
     CTX-001d not working, and do not read a flip as this scenario being fixed — check
     the per-turn grades. | This is the multi-defect-per-scenario problem the Phase 2
     defect registry exists to solve; the schema still holds one defect_id, so no
-    defect_id is set here rather than assert a root cause that explains 5 of 12 turns.'
+    defect_id is set here rather than assert a root cause that explains 5 of 12 turns.
+    | CTX-005 shipped (2026-08-08) for defect (A): the clarifier now checks whether a
+    fault code or active alarm is already pinned before asking for one, taking the
+    existing "proceed with available info" branch instead of parking in
+    DIAGNOSIS_REVISION. Reproduced offline byte-for-byte against the frozen c2/c3
+    transcripts before the fix; a known MODEL deliberately does NOT suppress the
+    clarifier (eval fixture 34 — the vague-symptom case it exists for — must keep
+    firing, and that control is proven by mutation). | DEFECT (B) REMAINS OPEN and has
+    no issue of its own: c1r2/c1r3 t2_000 answer "How do I reset it?" by restating
+    what the fault CODE means ("CE10 = Communication error 10, RS-485 Modbus
+    transmission time-out"), i.e. a repeated answer to the PREVIOUS question rather
+    than the one asked. Adjacent to CTX-004 (the repeated-answer guard) but distinct:
+    the two replies are not near-identical text, so a difflib similarity guard will
+    not catch it — the defect is answering the wrong QUESTION, not emitting the same
+    STRING. Fix that next if this fingerprint is still red after a live re-run.'
   seen_in:
   - c1
   - c1r2
