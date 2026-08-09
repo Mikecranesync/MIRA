@@ -3,7 +3,7 @@
 # status: OPEN | FIXED | FALSE_POSITIVE | NEEDS_RERUN
 # applied: true only once the fix is merged to main.
 t1:fault_code_pf525:
-  applied: false
+  applied: true
   convs:
   - t1_012_fault_code_pf525
   - t1_s42_012_fault_code_pf525
@@ -18,7 +18,9 @@ t1:fault_code_pf525:
     | c3 (branch qc/cold-start-baseline, 2026-08-08): PASSES live. c2 FAIL -> c3 PASS
     on the same seed and scenario, the only change being the deployed build. Consistent
     with the offline both-directions proof. Still applied=false: the branch is not
-    merged.'
+    merged. | APPLIED 2026-08-09: PR #3155 merged to main as 92841117c and deployed
+    to prod (Deploy to VPS green, smoke + post-deploy E2E green). PR #3153 merged
+    as 4b4a03ff1.'
   seen_in:
   - c1
   - c2
@@ -81,7 +83,7 @@ t1:reset_procedure:
     for the fault code AND tells the technician it has no documentation, while holding
     a resolved PowerFlex 525 drive pack
 t1:symptom_report:
-  applied: false
+  applied: true
   convs:
   - t1_018_symptom_report
   - t1_s42_018_symptom_report
@@ -103,7 +105,11 @@ t1:symptom_report:
     symptom?'' and the expect list demanded the literal words manufacturer/model/equipment.
     That is a better reply than the list wanted. Scenario now graded by gates.check_identifying_question
     (behaviour, not vocabulary). FIXED stands for the CIT-005 product defect; the
-    flakiness was measurement.'
+    flakiness was measurement. | APPLIED 2026-08-09: PR #3155 merged to main as 92841117c
+    and deployed to prod (Deploy to VPS green, smoke + post-deploy E2E green). PR
+    #3153 merged as 4b4a03ff1. 5-seed run on the merge candidate (c12s42..c12s46,
+    seeds 42-46): STABLE_PASS 100% — up from FLAKY 50% on the older build. CIT-005
+    confirmed by measurement, not by a single passing round this time.'
   seen_in:
   - c1
   - c2
@@ -295,7 +301,12 @@ t8:experienced:
     gate. The judge''s own flag (conflicting F004 meanings) is likely a false positive;
     the real defect is the recall turn itself. Suggested contract MEM-002. | c2 (main@c0d3722e3,
     2026-08-08): did NOT reproduce — passed. The router-intent early return that bypasses
-    the UNS gate is unchanged, so treat this as not-triggered rather than resolved.'
+    the UNS gate is unchanged, so treat this as not-triggered rather than resolved.
+    | CON-004a/b/c are MERGED (#3155, 92841117c) and in prod. This finding stays OPEN:
+    the deterministic template loops are gone (offline lab: no c11 in any template
+    row), but LLM-generated near-duplicates remain (ratio 0.97-0.99), a softer defect
+    that no template detector catches. applied stays false because what merged does
+    not close the whole finding.'
   seen_in:
   - c1
   status: OPEN
@@ -316,7 +327,11 @@ t8:impatient:
     c2 (main@c0d3722e3, 2026-08-08): did NOT reproduce — all 4 personas passed. This
     is non-reproduction, not a fix: _REPEAT_MIN_LEN is still 40 and the offending
     line still normalises to 34 chars, verified on the same commit. The persona simply
-    did not drive MIRA into the repeat this round.'
+    did not drive MIRA into the repeat this round. | CON-004a/b/c are MERGED (#3155,
+    92841117c) and in prod. This finding stays OPEN: the deterministic template loops
+    are gone (offline lab: no c11 in any template row), but LLM-generated near-duplicates
+    remain (ratio 0.97-0.99), a softer defect that no template detector catches. applied
+    stays false because what merged does not close the whole finding.'
   seen_in:
   - c1
   status: OPEN
