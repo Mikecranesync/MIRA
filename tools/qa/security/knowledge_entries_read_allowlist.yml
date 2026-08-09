@@ -88,6 +88,22 @@ compliant:
 
 # Approved non-production reads (scripts, tests, tools)
 approved:
+  # Offline defect lab (#3165) - corpus-wide EXISTENCE COUNT for a parameter
+  # token, deliberately unfiltered. It is the aggregate shared-corpus class the
+  # hybrid law keeps universal (.claude/rules/knowledge-entries-tenant-scoping.md
+  # "Aggregate OEM-corpus surfaces ... stay universal - no tenant predicate"):
+  # the question is "does this token exist ANYWHERE", which has no tenant
+  # dimension. It returns count(*) ONLY - never content, never a row - so it
+  # cannot leak a per-tenant upload. Adding tenant_id here would reintroduce
+  # #1761 and make the detector blind to the fabrication it exists to catch.
+  # Local diagnostic tool, run by hand or by the advisory pre-commit step;
+  # not a user-facing surface and not reachable from any request path.
+  "tests/regime1_telethon/campaign/offline_lab.py:181":
+    approved_classification: UNFILTERED
+    query_sha256: "90c5e96472ad566f200b67b0d9f19d3b6e05fd258f9b893f723a52ee11151a60"
+    reason: "Corpus-wide token existence COUNT for the fabricated-parameter detector (#3165); count(*) only, no content returned, no tenant dimension by construction."
+    query_snippet: |
+      SELECT count(*) FROM knowledge_entries WHERE content ILIKE %s
   # Test fixture: demonstrating TENANT-ONLY bug class #1761
   "mira-web/src/seed/knowledge-seed.ts:473":
     approved_classification: UNFILTERED
@@ -868,7 +884,7 @@ approved:
       SELECT COUNT(*) FROM knowledge_entries
                               WHERE tenant_id = :tid
                                 AND created_at >= CURRENT_DATE
-  "mira-bots/shared/uns_resolver.py:765":
+  "mira-bots/shared/uns_resolver.py:776":
     approved_classification: UNFILTERED
     query_sha256: "03dce3fc74196a2a362a9329aba8219c0939e7e84a59fd600069ed9d97adedb2"
     reason: "TODO: justify this read pattern"
@@ -876,7 +892,7 @@ approved:
       """Add kg_entities matches, knowledge_entries count, and site_path when
           available. Falls back to ctx on any error or unavailable DB.
           """
-  "mira-bots/shared/uns_resolver.py:800":
+  "mira-bots/shared/uns_resolver.py:811":
     approved_classification: UNFILTERED
     query_sha256: "93e2d5836a3ee9474dbeb8dc7924a8847102b886ac481a9fdf8d9a40168583be"
     reason: "TODO: justify this read pattern"

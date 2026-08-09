@@ -25,6 +25,7 @@ Usage:
       python -m tests.regime1_telethon.batch_survey_driver \\
       --csv ~/takeout_staging/survey_results.csv --max-cost 50.0 --resume
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,21 +53,32 @@ logger = logging.getLogger("mira-survey-driver")
 EST_COST_PER_PHOTO = 0.006  # empirical: 3 turns × ~$0.002 (from survey test run)
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".heic", ".webp"}
 RESULTS_CSV = Path.home() / "takeout_staging" / "survey_training_results.csv"
-GOLDEN_YAML = (
-    Path(__file__).parent / "golden_cases" / "v1" / "case_survey_auto.yaml"
-)
+GOLDEN_YAML = Path(__file__).parent / "golden_cases" / "v1" / "case_survey_auto.yaml"
 SURVEY_PHOTOS_DIR = Path(__file__).parent / "photos" / "survey"
 
 RESULTS_FIELDNAMES = [
-    "filename", "equipment_type", "make", "condition", "has_fault_code",
-    "t1_response", "t1_passed", "t1_failure_bucket", "t1_score",
-    "t2_response", "t2_fault_cause_found", "t2_next_step_found",
-    "t3_response", "t3_fault_code_referenced",
-    "golden_case_written", "est_cost_usd", "latency_ms",
+    "filename",
+    "equipment_type",
+    "make",
+    "condition",
+    "has_fault_code",
+    "t1_response",
+    "t1_passed",
+    "t1_failure_bucket",
+    "t1_score",
+    "t2_response",
+    "t2_fault_cause_found",
+    "t2_next_step_found",
+    "t3_response",
+    "t3_fault_code_referenced",
+    "golden_case_written",
+    "est_cost_usd",
+    "latency_ms",
 ]
 
 
 # ── CSV helpers ───────────────────────────────────────────────────────────────
+
 
 def load_filtered_rows(csv_path: str, only_faults: bool) -> list[dict]:
     """Return survey rows eligible for batch driving."""
@@ -104,6 +116,7 @@ def _open_results_csv(results_csv: Path, resume: bool):
 
 
 # ── Scoring helpers ───────────────────────────────────────────────────────────
+
 
 def build_case_from_row(row: dict, timeout: int) -> dict:
     """Build a score_case()-compatible case dict from a survey CSV row."""
@@ -146,6 +159,7 @@ def _make_id(filename: str) -> str:
 
 # ── Golden case helpers ───────────────────────────────────────────────────────
 
+
 def make_golden_case(row: dict, t1_response: str, score_result: dict) -> dict:
     """Build a YAML-serializable golden case from a PASS conversation."""
     equipment_type = row.get("equipment_type", "").lower()
@@ -175,7 +189,9 @@ def make_golden_case(row: dict, t1_response: str, score_result: dict) -> dict:
         "must_contain": must_contain,
         "must_not_contain": ["I cannot", "I'm unable", "no image"],
         "fault_cause_keywords": fault_cause_matched[:5],
-        "next_step_keywords": score_result.get("extracted_facts", {}).get("next_step_found", [])[:5],
+        "next_step_keywords": score_result.get("extracted_facts", {}).get("next_step_found", [])[
+            :5
+        ],
         "max_words": 200,
         "speed_timeout": 60,
     }
@@ -207,6 +223,7 @@ def append_golden_cases(new_cases: list[dict], yaml_path: Path) -> None:
 
 
 # ── Telethon send helpers ─────────────────────────────────────────────────────
+
 
 async def collect_reply(
     client, bot_entity, image_path: str, caption: str, timeout: int
@@ -285,6 +302,7 @@ async def send_text_and_collect(
 
 # ── Multi-turn conversation ───────────────────────────────────────────────────
 
+
 async def run_conversation(
     client,
     bot_entity,
@@ -311,7 +329,9 @@ async def run_conversation(
     await asyncio.sleep(2)
 
     # Turn 1: photo
-    t1_response, elapsed = await collect_reply(client, bot_entity, str(photo_path), caption, timeout)
+    t1_response, elapsed = await collect_reply(
+        client, bot_entity, str(photo_path), caption, timeout
+    )
     latency_ms = int(elapsed * 1000)
 
     # Turn 2: synthetic technician context
@@ -343,6 +363,7 @@ async def run_conversation(
 
 
 # ── Main batch loop ───────────────────────────────────────────────────────────
+
 
 async def run_batch(
     csv_path: str,
@@ -383,7 +404,9 @@ async def run_batch(
         api_id = int(os.environ["TELEGRAM_TEST_API_ID"])
         api_hash = os.environ["TELEGRAM_TEST_API_HASH"]
         session_env = os.environ.get("TELEGRAM_TEST_SESSION_PATH", "/session/test_account.session")
-        session_path = session_env[: -len(".session")] if session_env.endswith(".session") else session_env
+        session_path = (
+            session_env[: -len(".session")] if session_env.endswith(".session") else session_env
+        )
         bot_username = os.environ.get("TELEGRAM_BOT_USERNAME", bot_username)
 
         client = TelegramClient(session_path, api_id, api_hash)
@@ -411,9 +434,7 @@ async def run_batch(
 
             logger.info("[%d/%d] %s", i + 1, len(rows), filename)
 
-            conv = await run_conversation(
-                client, bot_entity, row, photo_path, timeout, dry_run
-            )
+            conv = await run_conversation(client, bot_entity, row, photo_path, timeout, dry_run)
 
             # Score Turn 1
             case = build_case_from_row(row, timeout)
@@ -427,7 +448,9 @@ async def run_batch(
             t3_referenced = False
             if conv["t3_response"] and row.get("fault_codes"):
                 first_code = row["fault_codes"].split("|")[0].strip()
-                t3_referenced = bool(first_code and first_code.lower() in (conv["t3_response"] or "").lower())
+                t3_referenced = bool(
+                    first_code and first_code.lower() in (conv["t3_response"] or "").lower()
+                )
 
             passed = t1_result["passed"]
             total_cost += EST_COST_PER_PHOTO
@@ -452,25 +475,27 @@ async def run_batch(
                 else:
                     n_fail += 1
 
-            writer.writerow({
-                "filename": filename,
-                "equipment_type": row.get("equipment_type", ""),
-                "make": row.get("make", ""),
-                "condition": row.get("condition", ""),
-                "has_fault_code": row.get("has_fault_code", ""),
-                "t1_response": (conv["t1_response"] or "")[:500],
-                "t1_passed": passed,
-                "t1_failure_bucket": t1_result.get("failure_bucket") or "",
-                "t1_score": round(t1_result.get("confidence", 0.0), 4),
-                "t2_response": (conv["t2_response"] or "")[:300],
-                "t2_fault_cause_found": t2_fault_cause,
-                "t2_next_step_found": t2_next_step,
-                "t3_response": (conv["t3_response"] or "")[:300],
-                "t3_fault_code_referenced": t3_referenced,
-                "golden_case_written": golden_written,
-                "est_cost_usd": round(total_cost, 4),
-                "latency_ms": conv["latency_ms"],
-            })
+            writer.writerow(
+                {
+                    "filename": filename,
+                    "equipment_type": row.get("equipment_type", ""),
+                    "make": row.get("make", ""),
+                    "condition": row.get("condition", ""),
+                    "has_fault_code": row.get("has_fault_code", ""),
+                    "t1_response": (conv["t1_response"] or "")[:500],
+                    "t1_passed": passed,
+                    "t1_failure_bucket": t1_result.get("failure_bucket") or "",
+                    "t1_score": round(t1_result.get("confidence", 0.0), 4),
+                    "t2_response": (conv["t2_response"] or "")[:300],
+                    "t2_fault_cause_found": t2_fault_cause,
+                    "t2_next_step_found": t2_next_step,
+                    "t3_response": (conv["t3_response"] or "")[:300],
+                    "t3_fault_code_referenced": t3_referenced,
+                    "golden_case_written": golden_written,
+                    "est_cost_usd": round(total_cost, 4),
+                    "latency_ms": conv["latency_ms"],
+                }
+            )
             f_csv.flush()
 
             # Cost guard
@@ -492,9 +517,9 @@ async def run_batch(
     print("  Stateful Greeting Turing — Batch Run Summary")
     print("=" * 68)
     print(f"  Photos processed:       {total}")
-    print(f"  PASS:                   {n_pass}  ({100*n_pass/max(total,1):.1f}%)")
-    print(f"  PARTIAL:                {n_partial}  ({100*n_partial/max(total,1):.1f}%)")
-    print(f"  FAIL:                   {n_fail}  ({100*n_fail/max(total,1):.1f}%)")
+    print(f"  PASS:                   {n_pass}  ({100 * n_pass / max(total, 1):.1f}%)")
+    print(f"  PARTIAL:                {n_partial}  ({100 * n_partial / max(total, 1):.1f}%)")
+    print(f"  FAIL:                   {n_fail}  ({100 * n_fail / max(total, 1):.1f}%)")
     print(f"  Golden cases written:   {len(golden_cases)}")
     print(f"  Estimated cost:         ${total_cost:.3f} / ${max_cost:.2f}")
     print(f"  Results CSV:            {RESULTS_CSV}")
@@ -520,8 +545,12 @@ def main() -> None:
     )
     parser.add_argument("--timeout", type=int, default=60, help="Seconds per turn")
     parser.add_argument("--limit", type=int, default=None, help="Max photos to process")
-    parser.add_argument("--max-cost", type=float, default=50.0, help="Abort if estimated cost exceeds this")
-    parser.add_argument("--only-faults", action="store_true", help="Only process photos with fault codes")
+    parser.add_argument(
+        "--max-cost", type=float, default=50.0, help="Abort if estimated cost exceeds this"
+    )
+    parser.add_argument(
+        "--only-faults", action="store_true", help="Only process photos with fault codes"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Skip Telethon, use mock responses")
     parser.add_argument("--resume", action="store_true", help="Skip already-processed rows")
     args = parser.parse_args()

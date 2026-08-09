@@ -42,14 +42,14 @@ async def amain(args) -> int:
     if args.request:
         sent = await client.send_code_request(phone)
         STATE.write_text(json.dumps({"phone_code_hash": sent.phone_code_hash}))
-        print(f"Code requested for {phone}. It arrives in the test account's "
-              "Telegram app (or SMS). Re-run with --code <the code>.")
+        print(
+            f"Code requested for {phone}. It arrives in the test account's "
+            "Telegram app (or SMS). Re-run with --code <the code>."
+        )
     elif args.code:
         state = json.loads(STATE.read_text())
         try:
-            await client.sign_in(
-                phone, args.code, phone_code_hash=state["phone_code_hash"]
-            )
+            await client.sign_in(phone, args.code, phone_code_hash=state["phone_code_hash"])
         except SessionPasswordNeededError:
             if not args.password:
                 print("2FA password required — re-run with --code <code> --password <pw>")
@@ -57,8 +57,9 @@ async def amain(args) -> int:
                 return 2
             await client.sign_in(password=args.password)
         me = await client.get_me()
-        print(f"Signed in as {me.first_name} (@{me.username or me.phone}). "
-              f"Session saved: {SESSION}")
+        print(
+            f"Signed in as {me.first_name} (@{me.username or me.phone}). Session saved: {SESSION}"
+        )
         STATE.unlink(missing_ok=True)
     else:
         print("Use --request first, then --code <code>.")
