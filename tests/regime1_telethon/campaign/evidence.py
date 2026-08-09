@@ -73,6 +73,18 @@ class TurnEvidence:
     retrieved_ids: list[str] = field(default_factory=list)
     retrieved_meta: list[dict] = field(default_factory=list)
     citations: list[str] = field(default_factory=list)
+    # The query retrieval was actually asked, and whether a vector embedding
+    # backed it. `retrieval_embedded=False` means the Ollama sidecar was
+    # unreachable, so recall_knowledge ran lexical streams only — a WEAKER
+    # retrieval than production. A detector comparing runs must not mix the
+    # two; see retrieval_probe.py's docstring.
+    retrieval_query: str | None = None
+    retrieval_embedded: bool | None = None
+    # Per parameter-shaped token in the reply: was it present in what was
+    # retrieved for this turn? The #3165 measurement — sharper than
+    # fabrication.CorpusIndex, which can only ask whether a token exists
+    # anywhere in the corpus.
+    param_support: list[dict] = field(default_factory=list)
 
     # -- guards -----------------------------------------------------------
     engine_markers: list[str] = field(default_factory=list)
