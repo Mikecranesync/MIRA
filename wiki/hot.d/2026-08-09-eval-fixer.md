@@ -21,8 +21,11 @@
   #3116 (confirming data at 65 fixtures). No new issues filed — all three already exist.
 - Root-cause fix already exists and is inert: **#2258** — the `llm_replay` record/replay seam
   runs live only because `tests/eval/fixtures/llm_replay/cascade.json` is gitignored/absent.
-  Landing it dissolves #3116 and moots #2759's verification half. Human-run (live keys + PII
-  eyeball).
+  Human-run (live keys + PII eyeball). Caveat (corrected on #3116): this is the *larger half*,
+  not the whole. Variance has ≥2 independent sources — cascade nondeterminism (#2258 fixes;
+  drives the `cp_reached_state` flips) and the 30s `MIRA_PROCESS_TIMEOUT` (#3085; wall-clock,
+  so replay does NOT fix it, and it plausibly explains part of tonight's keyword cluster).
+  **#2258 + #3085 together** are what make single-run verification sound.
 - Owner actions: merge PR #3154 (green, MERGEABLE/CLEAN — fixes stale nightly grading #2952);
   then #2258 → #2759(a) → #3086 (needs a product owner for qualification pacing).
 - Also noted: scorecards record no commit SHA, so scores can't be attributed to code changes.
