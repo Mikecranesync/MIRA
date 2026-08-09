@@ -1,5 +1,17 @@
 {
   "frozen": {
+    "c10_t8_41_003_impatient.json": {
+      "bytes": 4311,
+      "sha256": "c0c436adaddec5cbd7a2fedfdca98be1e7d33bcc927cd019538fcd7d75e32617"
+    },
+    "c11_t8_41_000_novice.json": {
+      "bytes": 4458,
+      "sha256": "4790a00fa3acef9d5a749ba86178ce2f32d07c243e9a159286bd6976d7fe9014"
+    },
+    "c11_t8_41_003_impatient.json": {
+      "bytes": 4461,
+      "sha256": "62600c9376ae828936fe1809b4f000e460a72bfd211c1daad21e668ad613baf1"
+    },
     "c1_t1_013_reset_procedure.json": {
       "bytes": 939,
       "sha256": "f66bf0af88e915bd01d3f4067c0a4433692d86306307896db8215adf7faf8788"
@@ -103,12 +115,28 @@
     "c7_t1_013_reset_procedure.json": {
       "bytes": 702,
       "sha256": "fa36120619511edf05b6c45d969b5e06e5a8dd0b4eebd4a1327e629862214e8f"
+    },
+    "c8_t8_41_003_impatient.json": {
+      "bytes": 3566,
+      "sha256": "8d9b8093b4bb5934b9f0c732ac5dc054971933debf382c43151d85dfeee1aac4"
+    },
+    "c9_t8_41_003_impatient.json": {
+      "bytes": 4739,
+      "sha256": "b9acf8a012010f52abbe40cfe3912871cf935c3b703bee1bf90340018c435c54"
     }
   },
   "ledgers": {
     "c1.jsonl": {
       "bytes": 185604,
       "sha256": "b5e20e7f2ce78d20b547a504081478eb1e0b3af95d9f82f75fdd3da79a2baf04"
+    },
+    "c10.jsonl": {
+      "bytes": 25729,
+      "sha256": "56781617d8c69f9b738e3627dac96ee6163274de4373eee46aa535d94b7c2683"
+    },
+    "c11.jsonl": {
+      "bytes": 26658,
+      "sha256": "96b99b68588f490f19dd0bae3d91034a614ba561db5e0c856e3d3362f5dd310b"
     },
     "c1r1.jsonl": {
       "bytes": 24603,
@@ -157,6 +185,14 @@
     "c7.jsonl": {
       "bytes": 47733,
       "sha256": "abc4ef986b935d89449bb719c4dc4b1017bec69d00cf05069b9b76eda7801c17"
+    },
+    "c8.jsonl": {
+      "bytes": 25466,
+      "sha256": "139030011f03e053d4bfaf7ff733a9e67040e25306d3b0e582138e976cc7a097"
+    },
+    "c9.jsonl": {
+      "bytes": 28654,
+      "sha256": "f9588a88fb04f5601314300414e408cf4befd9b6838998ab1be78fc1805a845c"
     }
   },
   "note": "Ledgers and frozen transcripts are gitignored. A report generated without the matching evidence bundle is NOT reproducible \u2014 verify against these checksums before trusting a regenerated report.",
