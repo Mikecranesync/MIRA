@@ -43,7 +43,13 @@ from tests.regime1_telethon.campaign import gates  # noqa: E402
 
 # Every scripted generator the runner can dispatch. A new scripted tier MUST be
 # added here — that is the point of the test.
-SCRIPTED_GENERATORS = ["mutators", "state_attacks", "work_order_lifecycle"]
+SCRIPTED_GENERATORS = [
+    "mutators",
+    "state_attacks",
+    "session_control",
+    "work_order_lifecycle",
+    "citation_integrity",
+]
 
 
 def _module(name: str):
@@ -56,8 +62,10 @@ def _declared_gates(mod) -> set[str]:
 
     def walk(obj):
         if isinstance(obj, dict):
-            if obj.get("gate"):
-                found.add(obj["gate"])
+            # A turn may declare one gate or several; normalise through the same
+            # helper the runner dispatches with, so this test cannot disagree
+            # with production about what was declared.
+            found.update(gates.declared_turn_gates(obj))
             for v in obj.values():
                 walk(v)
         elif isinstance(obj, (list, tuple)):
@@ -87,8 +95,7 @@ class TestGeneratorsPreserveDeclaredGates:
         emitted = set()
         for sc in mod.generate(42, 20):
             for turn in sc["turns"]:
-                if turn.get("gate"):
-                    emitted.add(turn["gate"])
+                emitted.update(gates.declared_turn_gates(turn))
         missing = declared - emitted
         assert not missing, (
             f"{gen_name}.generate() DROPPED declared gate(s) {sorted(missing)} — "
@@ -101,23 +108,35 @@ class TestGeneratorsPreserveDeclaredGates:
         mod = _module(gen_name)
         for sc in mod.generate(42, 20):
             for turn in sc["turns"]:
-                if turn.get("gate"):
-                    gates.resolve_turn_gate(turn["gate"])
+                for gate_name in gates.declared_turn_gates(turn):
+                    gates.resolve_turn_gate(gate_name)
+            for conv_gate in sc.get("conv_gates", []):
+                gates.resolve_conversation_gate(conv_gate)
 
-    def test_no_turn_is_completely_ungraded(self, gen_name):
-        """expect=[] is legitimate ONLY when a gate carries the contract.
+    def test_no_scenario_is_completely_ungraded(self, gen_name):
+        """expect=[] is legitimate ONLY when something else carries the contract.
 
-        A turn with no gate, no expect and no forbid asserts nothing at all: it
-        spends a live Telegram round-trip to produce a guaranteed PASS.
+        The invariant is SCENARIO-scoped, not turn-scoped. A setup turn that
+        asserts nothing is fine when a later turn or a conversation-level gate
+        grades the exchange — several tier-4 scenarios exist precisely to build
+        the state that `conv_gates=['no_fabricated_state']` then judges over the
+        whole transcript.
+
+        What must never exist is a scenario where NOTHING asserts anything: that
+        spends live Telegram round-trips to buy a guaranteed PASS, which is the
+        unfailable-check class this file was written for.
         """
         mod = _module(gen_name)
-        ungraded = [
-            (sc["id"], i)
-            for sc in mod.generate(42, 20)
-            for i, turn in enumerate(sc["turns"], 1)
-            if not turn.get("gate") and not turn.get("expect") and not turn.get("forbid")
-        ]
-        assert not ungraded, f"{gen_name}: turns that assert nothing: {ungraded}"
+        vacuous = []
+        for sc in mod.generate(42, 20):
+            turn_asserts = any(
+                t.get("gate") or t.get("expect") or t.get("forbid") or t.get("expect_all")
+                for t in sc["turns"]
+            )
+            scenario_asserts = sc.get("conv_gates") or sc.get("precondition")
+            if not turn_asserts and not scenario_asserts:
+                vacuous.append(sc["id"])
+        assert not vacuous, f"{gen_name}: scenarios that assert nothing: {vacuous}"
 
 
 class TestTheSymptomReportRegression:

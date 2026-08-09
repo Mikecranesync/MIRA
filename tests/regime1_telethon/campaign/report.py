@@ -98,11 +98,17 @@ def render(
 
     lines.append("## By tier")
     lines.append("")
-    lines.append("| tier | pass | fail | suspect |")
-    lines.append("|---|---|---|---|")
+    # `inconclusive` is tier 4's third verdict: the capability under test never
+    # got exercised (an LLM clarifier offered no options; a lane that does not
+    # exist never acknowledged anything), so neither PASS nor FAIL is a claim
+    # we are entitled to make. It keeps its own column AND stays in the
+    # findings list below, because "we could not tell" needs a human.
+    lines.append("| tier | pass | fail | suspect | inconclusive |")
+    lines.append("|---|---|---|---|---|")
     for tier, c in per_tier.items():
         lines.append(
-            f"| {tier} | {c.get('PASS', 0)} | {c.get('FAIL', 0)} | {c.get('SUSPECT', 0)} |"
+            f"| {tier} | {c.get('PASS', 0)} | {c.get('FAIL', 0)} | {c.get('SUSPECT', 0)} "
+            f"| {c.get('INCONCLUSIVE', 0)} |"
         )
     lines.append("")
 

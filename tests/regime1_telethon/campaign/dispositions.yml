@@ -39,7 +39,7 @@ t1:reset_procedure:
     with a bare clarifying question while holding a resolved PowerFlex 525 pack, so
     the scenario''s expect list ("reset", "PowerFlex") still fails.'
   issue: '3156'
-  last_seen: c12s45
+  last_seen: cap1
   note: 'Footer half is deterministic: running enforce_citation_or_gap_admission from
     current source reproduces the frozen reply byte-for-byte. Shares its root cause
     with t1:symptom_report. Failed on two different builds and two different phrasings
@@ -78,6 +78,7 @@ t1:reset_procedure:
   - c7
   - c12s42
   - c12s45
+  - cap1
   status: OPEN
   summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
     for the fault code AND tells the technician it has no documentation, while holding
@@ -290,6 +291,46 @@ t2:pivot_after_fault:
   summary: '"Actually forget that — my conveyor keeps stopping" is not recognised
     as a pivot when the session sits in DIAGNOSIS_REVISION, so MIRA answers the previous
     question one turn late and carries the dead fault forward'
+t5:auto_wo_offer_after_real_diagnosis:
+  applied: false
+  convs:
+  - t5_s42_007_auto_wo_offer_after_real_diagnosis
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'auto wo offer after real diagnosis' returned FAIL
+t5:wo_bypass_by_fresh_question:
+  applied: false
+  convs:
+  - t5_s42_004_wo_bypass_by_fresh_question
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'wo bypass by fresh question' returned FAIL
+t5:wo_field_edit_updates_draft:
+  applied: false
+  convs:
+  - t5_s42_001_wo_field_edit_updates_draft
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'wo field edit updates draft' returned FAIL
+t5:wo_unrecognised_input_reshows:
+  applied: false
+  convs:
+  - t5_s42_002_wo_unrecognised_input_reshows
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'wo unrecognised input reshows' returned FAIL
 t8:experienced:
   applied: false
   convs:
