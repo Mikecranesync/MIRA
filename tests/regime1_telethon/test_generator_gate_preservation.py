@@ -43,7 +43,7 @@ from tests.regime1_telethon.campaign import gates  # noqa: E402
 
 # Every scripted generator the runner can dispatch. A new scripted tier MUST be
 # added here — that is the point of the test.
-SCRIPTED_GENERATORS = ["mutators", "state_attacks"]
+SCRIPTED_GENERATORS = ["mutators", "state_attacks", "work_order_lifecycle"]
 
 
 def _module(name: str):

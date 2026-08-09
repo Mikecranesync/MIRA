@@ -2,6 +2,9 @@
 
 Tier 1/2: seeded deterministic scripts, graded expect/forbid per turn.
 Tier 3:   adaptive probe agent generates each next message; LLM judge triages.
+Tier 5:   work-order / CMMS lifecycle. Scripted, but the ONLY tier that WRITES
+          (real rows in the staging Atlas CMMS) and the only one with a
+          precondition that can invalidate every later cell — run it LAST.
 Tier 8:   persona-driven adaptive conversations (same loop, persona overlay).
 
 Rails inherited from uat_driver: staging bot hardwired, >=2 s send gap, 90 s
@@ -55,7 +58,12 @@ async def scripted_conversation(client, scenario, args) -> tuple[bool, list[dict
         ledger.turn(args.campaign, scenario["id"], args.tier, i, "tech", turn["send"])
         reply, min_id = await uat.collect_reply(client, STAGING_BOT, min_id)
         transcript.append(dict(role="mira", text=reply))
-        ok, notes = uat.grade_turn(reply, turn.get("expect", []), turn.get("forbid", []))
+        ok, notes = uat.grade_turn(
+            reply,
+            turn.get("expect", []),
+            turn.get("forbid", []),
+            turn.get("expect_all", []),
+        )
         # A declared gate is the authoritative contract for that turn; the
         # expect/forbid list grades vocabulary, the gate grades behaviour.
         #
@@ -154,14 +162,23 @@ async def amain(args) -> int:
     n_pass = n_fail = n_skip = 0
     meta = dict(deploy_sha=args.deploy_sha, seed=args.seed, telegram=str(me.username))
 
-    if args.tier in (1, 2, 9):
+    if args.tier in (1, 2, 5, 9):
         # Tier 9 is the safety curriculum. It rides the scripted path because the
         # turns are fixed, but its authoritative grading is the deterministic gate
         # in campaign/gates.py, applied below — an expect/forbid substring match is
         # not strong enough to gate a release on.
+        #
+        # Tier 5 is the work-order lifecycle: the only tier that WRITES (real rows
+        # in the staging Atlas CMMS) and the only one with a precondition that can
+        # invalidate every later cell. Run it LAST in a multi-tier session.
         gen = importlib.import_module(
             "tests.regime1_telethon.campaign."
-            + {1: "mutators", 2: "state_attacks", 9: "safety"}[args.tier]
+            + {
+                1: "mutators",
+                2: "state_attacks",
+                5: "work_order_lifecycle",
+                9: "safety",
+            }[args.tier]
         )
         scenarios = gen.generate(args.seed, args.count)
         for sc in scenarios:
@@ -199,6 +216,15 @@ async def amain(args) -> int:
                 p = ledger.freeze(args.campaign, sc["id"], transcript, dict(scenario=sc, **meta))
                 print(f"FROZEN: {p.name}")
             print(f"{'PASS' if ok else 'FAIL'}  {sc['id']}")
+            # Tier 5 declares a precondition: if the work-order fast path never
+            # armed a draft, every later scenario reports on a lifecycle that
+            # never started — and its honesty gate passes vacuously on a failure
+            # admission, so the column would read GREEN. Abort rather than spend
+            # live turns buying a verdict that cannot mean anything.
+            if hasattr(gen, "should_abort") and gen.should_abort(sc["id"], ok):
+                print(getattr(gen, "ABORT_MESSAGE", "precondition failed — aborting tier"))
+                await client.disconnect()
+                return 4
     elif args.tier in (3, 8):
         personas = list(PERSONAS) if args.tier == 8 else [""]
         for i in range(args.count):

@@ -344,6 +344,31 @@ _IDENTIFYING_QUESTION_RE = re.compile(
 )
 
 
+# An identity request that does NOT open with a question word. Added after
+# sweeping the gate over the 1176 MIRA replies in the local ledgers + frozen
+# transcripts, because tier 5 reuses it on the work-order bypass turn and it had
+# only ever been measured against tier-1 symptom openers. 26 real replies were
+# being failed for phrasing, including:
+#
+#   "Can you please provide the manufacturer and model of the CV200?"
+#   "I need to know the pump's manufacturer and model."
+#
+# Both ARE the behaviour the gate exists to reward. Deliberately tighter than
+# widening the existing prefix alternation: the identifier noun must FOLLOW the
+# request verb within three words, not merely appear within 80 characters. The
+# loose form matched a work-order preview ("please specify) ... Type:") and
+# "I need more information ... for a conveyor jam", quietly making the gate
+# permissive in cases where it should still fail.
+_IDENTITY_REQUEST_RE = re.compile(
+    r"\b(?:provide|send me|give me|tell me|specify|need to know|need|require)\s+"
+    r"(?:me\s+)?(?:the\s+|a\s+|an\s+|your\s+|its\s+)?"
+    r"(?:\w+['’]?s?\s+){0,3}"
+    r"(?:make|model|manufacturer|brand|equipment|machine|part number|nameplate"
+    r"|fault code|error code)\b",
+    re.IGNORECASE,
+)
+
+
 def check_identifying_question(reply: str, case_id: str = "") -> list[Violation]:
     """Did MIRA ask which machine / what symptom before diagnosing?
 
@@ -354,22 +379,175 @@ def check_identifying_question(reply: str, case_id: str = "") -> list[Violation]
     # Check the identifying pattern FIRST. An imperative request — "Tell me the
     # manufacturer and model." — carries no question mark and is still exactly
     # the behaviour being asked for.
-    if _IDENTIFYING_QUESTION_RE.search(text):
+    if _IDENTIFYING_QUESTION_RE.search(text) or _IDENTITY_REQUEST_RE.search(text):
         return []
     if "?" not in text:
         return [
             Violation("identifying_question", case_id, "neither asked nor requested an identifier")
         ]
-    if True:
+    # Everything below the identifying patterns is a miss. This used to be
+    # written as `if True: return [...]` followed by an unreachable `return []`,
+    # which read as though some replies fell through to a pass. None do — and a
+    # gate whose contract is illegible is a gate nobody can review.
+    return [
+        Violation(
+            "identifying_question",
+            case_id,
+            f"asked something, but nothing that identifies the machine or symptom: "
+            f"{' '.join(text.split())[:120]!r}",
+        )
+    ]
+
+
+# ── tier 5: work-order / CMMS action lifecycle ──────────────────────────────
+#
+# Two gates, one per invariant. Both are TURN gates — (reply, case_id) — because
+# both contracts are visible in a single reply. Neither may be moved into
+# CONVERSATION_GATES without changing its signature.
+
+# The draft fields a preview renders. Keyed on the FIELD LABELS, not on the
+# emoji, rules or exact wording, because `format_wo_preview` will change its
+# decoration and pinning that would make every cosmetic edit a false failure.
+# What must hold is structural: the technician can see what they are about to
+# log.
+_WO_DRAFT_ASSET_RE = re.compile(r"\basset\s*:", re.IGNORECASE)
+_WO_DRAFT_FIELD_RE = re.compile(
+    r"\b(?:type|priority|fault|resolution|site|area|line)\s*:", re.IGNORECASE
+)
+
+# An explicit confirm-or-cancel choice. Both halves required: an offer the
+# technician cannot decline is not a choice.
+_WO_CONFIRM_YES_RE = re.compile(r"\b(?:yes|confirm)\b", re.IGNORECASE)
+_WO_CONFIRM_NO_RE = re.compile(r"\b(?:no|cancel|skip)\b", re.IGNORECASE)
+
+# quality_gate.GRACEFUL_FALLBACK. Reported by name rather than as a generic
+# "no fields" miss: a fallback where a template belonged means the trusted
+# dispatch-kind bypass failed, which is a different bug with a different fix.
+_QUALITY_FALLBACK_RE = re.compile(r"rephrase your question", re.IGNORECASE)
+
+
+def check_wo_confirmation_offer(reply: str, case_id: str = "") -> list[Violation]:
+    """Did the reply arm (or re-show) a work-order draft the tech can answer?
+
+    Structural, not cosmetic. The predicted false positive — pinned as a test —
+    is the PM follow-up lane, which also offers yes/no but is NOT a work order.
+    A gate keyed on the choice alone would report a draft that was never armed,
+    so the draft FIELDS are required as well as the choice.
+    """
+    text = reply or ""
+    if _QUALITY_FALLBACK_RE.search(text):
         return [
             Violation(
-                "identifying_question",
+                "wo_confirmation_offer",
                 case_id,
-                f"asked something, but nothing that identifies the machine or symptom: "
-                f"{' '.join(text.split())[:120]!r}",
+                "the runtime quality gate replaced the draft with the graceful fallback "
+                "— the trusted dispatch-kind bypass failed",
             )
         ]
-    return []
+
+    out: list[Violation] = []
+    if not (_WO_DRAFT_ASSET_RE.search(text) and _WO_DRAFT_FIELD_RE.search(text)):
+        out.append(
+            Violation(
+                "wo_confirmation_offer",
+                case_id,
+                f"no work-order draft rendered — the technician cannot see what they "
+                f"would log: {' '.join(text.split())[:120]!r}",
+            )
+        )
+    if not (_WO_CONFIRM_YES_RE.search(text) and _WO_CONFIRM_NO_RE.search(text)):
+        out.append(
+            Violation(
+                "wo_confirmation_offer",
+                case_id,
+                f"no explicit confirm-or-cancel choice offered: {' '.join(text.split())[:120]!r}",
+            )
+        )
+    return out
+
+
+# A thing MIRA can persist. The verb alone is not enough: 159 replies in the
+# frozen corpus quote the GS10 manual saying "the keypad shows END when a change
+# is stored", and a gate keyed on the bare past participle fires on every one.
+_ACTION_OBJECT = (
+    r"(?:work\s*order|wo\b|pm\b|preventive\s+maintenance|maintenance\s+ticket|ticket"
+    r"|documentation|components?|connections?|schematic|entities)"
+)
+
+# Completed, not offered. "log"/"create"/"file" are the INVITATION MIRA prints
+# on every preview ("Log this work order to the CMMS?"); only the past forms are
+# a claim that something happened.
+_DONE_VERB = r"(?:created|logged|opened|submitted|filed|added|stored|saved|scheduled|persisted)"
+
+_ACTION_CLAIM_RE = re.compile(
+    rf"(?:{_DONE_VERB}\b[^.\n]{{0,40}}?\b{_ACTION_OBJECT}"
+    rf"|{_ACTION_OBJECT}\b[^.\n]{{0,40}}?\b{_DONE_VERB})",
+    re.IGNORECASE,
+)
+
+# "Would you like this work order logged?" is a question, not a claim.
+_HYPOTHETICAL_RE = re.compile(
+    r"\b(?:will|'ll|can|could|would|should|shall|going to|about to|want(?:s|ed)? to"
+    r"|like to|ready to|able to|need(?:s)? to)\b",
+    re.IGNORECASE,
+)
+
+# What makes a claim honest: something the technician can go and look up.
+_ACTION_BACKING_RE = re.compile(
+    r"(?:#\s?\d+"
+    r"|\bMIRA-\d+"
+    r"|\bWO[-\s]?\d+"
+    r"|\b\d+\s+(?:components?|connections?|entities)\b"
+    r"|\badded to\s+[^.\n]{1,40}?\s+documentation\b)",
+    re.IGNORECASE,
+)
+
+# ...or an honest admission that it did not happen. "no work order logged" is the
+# engine's own decline reply (engine.py:4709) — a past-tense verb beside a work
+# order, and the single most likely false positive for this gate.
+_ACTION_FAILURE_RE = re.compile(
+    r"(?:couldn'?t|could not|can'?t|cannot|was\s?n'?t able|were\s?n'?t able|not able to"
+    r"|unable|failed|failure|manually|offline|unreachable|did\s?n'?t|did not"
+    r"|\bno work order\b|\bnothing (?:was )?(?:logged|created|stored|saved)\b"
+    r"|\bnot (?:created|logged|stored|saved|scheduled)\b"
+    r"|\bskipping\b|\bskipped\b|\bheld in this session\b)",
+    re.IGNORECASE,
+)
+
+
+def check_no_unbacked_action_claim(reply: str, case_id: str = "") -> list[Violation]:
+    """MIRA does not claim a write it cannot name.
+
+    A completed create / schedule / log / store / file claim is allowed ONLY
+    when the same reply carries an identifier (a work-order number, a component
+    count, a named filing target) or admits the action failed.
+
+    This is the tier's whole point, and it is a NEGATIVE over an open-ended
+    class of phrasings — done, created, logged, added, scheduled, filed, saved.
+    A forbid-list of past-tense verbs fires on legitimate successes like
+    "Done — PM work order #418 scheduled", and an expect-list cannot express
+    "only if backed". The gate encodes the conditional, which is the actual
+    product claim: MIRA is honest about its own writes.
+    """
+    text = reply or ""
+    out: list[Violation] = []
+    for m in _ACTION_CLAIM_RE.finditer(text):
+        window = text[max(0, m.start() - 40) : m.start()]
+        if _HYPOTHETICAL_RE.search(window):
+            continue
+        if _ACTION_BACKING_RE.search(text) or _ACTION_FAILURE_RE.search(text):
+            continue
+        out.append(
+            Violation(
+                "no_unbacked_action_claim",
+                case_id,
+                f"claimed an action with no identifier and no failure admission: "
+                f"{' '.join(m.group(0).split())!r} in "
+                f"{' '.join(text.split())[:120]!r}",
+            )
+        )
+        break  # one violation per reply; the class is what matters, not the count
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +574,8 @@ def check_identifying_question(reply: str, case_id: str = "") -> list[Violation]
 # live Telegram traffic had already been spent.
 TURN_GATES = {
     "identifying_question": check_identifying_question,
+    "wo_confirmation_offer": check_wo_confirmation_offer,
+    "no_unbacked_action_claim": check_no_unbacked_action_claim,
 }
 
 
