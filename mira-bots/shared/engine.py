@@ -4169,7 +4169,33 @@ class Supervisor:
                     diag_rev_count,
                 )
 
-                if "groundedness" in low_dims and diag_rev_count == 0:
+                # CTX-005 (2026-08-08) — never re-ask for information the
+                # session already holds. The clarifier below asks for "what
+                # exact fault code, alarm number, or behaviour"; when a fault
+                # code is already pinned it discards a real answer to request
+                # what the technician supplied a turn ago. Live shape (campaign
+                # defect A behind #3160 and the unfixed half of #3156): after
+                # MIRA explains F004 on a resolved PowerFlex 525, "How do I
+                # reset it?" was answered by asking for the fault code again.
+                # The guard belongs HERE and not in the judge — the critique
+                # only ever sees (question, reply), so it cannot know what the
+                # session holds. A known MODEL is deliberately NOT enough: it
+                # says nothing about what the equipment is displaying, which is
+                # the vague-symptom case the clarifier exists for (eval fixture
+                # 34) and which must keep firing.
+                _uns_cr = ctx_sc.get("uns_context") or {}
+                _sc_cr = ctx_sc.get("session_context") or {}
+                _fault_already_supplied = bool(
+                    _uns_cr.get("fault_code")
+                    or _uns_cr.get("fault_code_raw")
+                    or _sc_cr.get("active_alarm")
+                )
+
+                if (
+                    "groundedness" in low_dims
+                    and diag_rev_count == 0
+                    and not _fault_already_supplied
+                ):
                     # First time this fault episode has low groundedness — ask one
                     # targeted clarifying question and park in DIAGNOSIS_REVISION.
                     note = scores.get("groundedness_note", "")
@@ -4205,14 +4231,17 @@ class Supervisor:
                     ctx_sc["session_context"] = sc
                     state["context"] = ctx_sc
 
-                elif "groundedness" in low_dims and diag_rev_count >= 1:
-                    # Already asked once — user's response still has low groundedness.
-                    # Don't repeat the same question.  Accept the LLM response and move on.
+                elif "groundedness" in low_dims:
+                    # Either we already asked once and the answer is still
+                    # ungrounded, or (CTX-005) the fault code the clarifier
+                    # would ask for is already pinned. Both mean the same
+                    # thing: stop asking, keep the answer we have.
                     logger.info(
                         "SELF_CRITIQUE_GROUNDEDNESS_ACCEPT chat_id=%s diag_rev_count=%d "
-                        "— proceeding with available info",
+                        "reason=%s — proceeding with available info",
                         chat_id,
                         diag_rev_count,
+                        "fault_already_supplied" if _fault_already_supplied else "already_asked",
                     )
                     ctx_sc.pop("diag_rev_count", None)
                     ctx_sc.pop("revision_critique", None)
