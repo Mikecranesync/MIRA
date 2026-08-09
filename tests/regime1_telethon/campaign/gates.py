@@ -370,3 +370,42 @@ def check_identifying_question(reply: str, case_id: str = "") -> list[Violation]
             )
         ]
     return []
+
+
+# ---------------------------------------------------------------------------
+# Turn-gate registry
+# ---------------------------------------------------------------------------
+# A scenario turn may declare `gate="<name>"`, and the runner treats that gate
+# as authoritative for the turn — it outranks the expect/forbid substring grade,
+# because vocabulary matching penalises a BETTER reply (see
+# check_identifying_question).
+#
+# The runner used to dispatch by literal comparison against ONE name. Any other
+# gate a scenario declared was silently ignored: the scenario looked graded, the
+# report said PASS, and nothing ran. That is a check that cannot fail, which is
+# not a guard — the same failure class the campaign's own reporting bugs kept
+# landing in, always in the optimistic direction.
+#
+# Hence: a registry, and a LOUD KeyError on an unknown name. Returning None for
+# an unrecognised gate would let a typo in a scenario disarm its own grading and
+# read as green, which is strictly worse than crashing the run.
+#
+# Turn gates take (reply, case_id) and return list[Violation]. Conversation-level
+# gates take a whole transcript and live in CONVERSATION_GATES instead — they are
+# not interchangeable, and registering one here would fail mid-campaign after
+# live Telegram traffic had already been spent.
+TURN_GATES = {
+    "identifying_question": check_identifying_question,
+}
+
+
+def resolve_turn_gate(name: str):
+    """The gate function for `name`, or KeyError naming the unknown gate."""
+    try:
+        return TURN_GATES[name]
+    except KeyError:
+        raise KeyError(
+            f"unknown turn gate {name!r} — a scenario declared a gate that is not "
+            f"registered in gates.TURN_GATES, so the turn would go ungraded. "
+            f"Known gates: {sorted(TURN_GATES)}"
+        ) from None
