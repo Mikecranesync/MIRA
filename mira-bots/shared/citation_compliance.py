@@ -81,6 +81,165 @@ def _vendors_in_text(text: str) -> set[str]:
     return vendors_in_text(text)
 
 
+# Generic document/title words that lead a real corpus citation and name no
+# party. Kept here rather than in the detector because this module is the single
+# place that judges what is citable (`.claude/CLAUDE.md` § "Do not do" — no second
+# citation logic); `answer_qc.unrelated_vendor` imports this list instead of
+# keeping its own copy.
+ATTRIBUTION_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "source",
+        "fault",
+        "code",
+        "table",
+        "manual",
+        "manuals",
+        "documentation",
+        "chapter",
+        "page",
+        "section",
+        "user",
+        "guide",
+        "drive",
+        "drives",
+        "motor",
+        "conveyor",
+        "check",
+        "what",
+        "this",
+        "that",
+        "with",
+        "from",
+        "your",
+        "the",
+        "and",
+        "for",
+        "modbus",
+        "com",
+        "transmission",
+        "host",
+        "controller",
+        "connection",
+        "current",
+        "state",
+        "display",
+        "startup",
+        "yes",
+        "cause",
+        "causing",
+        "excessive",
+        "load",
+        "short",
+        "circuit",
+        "cable",
+        "reset",
+        "bad",
+        "serial",
+        "comms",
+        "communication",
+        "communications",
+        "img",
+        "image",
+        "photo",
+        "scan",
+        "note",
+        "notes",
+        "quick",
+        "reference",
+        "appendix",
+        "figure",
+        "overview",
+        "general",
+        "installation",
+        "wiring",
+        "parameter",
+        "parameters",
+        "troubleshooting",
+        "maintenance",
+        "safety",
+        "specifications",
+        "getting",
+        "unknown",
+        "document",
+        "documents",
+    }
+)
+
+
+def attributed_parties(reply: str) -> list[str]:
+    """The parties a reply attributes its content to, in order, lowercased.
+
+    The leading token of each ``[Source: …]`` label. That token is the party in a
+    well-formed citation ("AutomationDirect GS10 — Fault Codes"); everything else
+    in the label names the document.
+
+    Excluded, because they name a document rather than a party:
+
+    * a generic title word (``ATTRIBUTION_STOPWORDS``);
+    * a token carrying a digit or a URL escape — ``22comm``, ``2100``,
+      ``ch4parameters``, ``cm5003%20vibration%20guide1``, all measured live. That
+      `22comm` is a real Rockwell part number is exactly the point: it identifies
+      a document, not the party being attributed to.
+
+    Unrecognized ALPHABETIC names are deliberately kept — Demag, Interroll, SKF
+    are real attributions the vendor tables do not know, and they are the class
+    this exists to expose.
+    """
+    return [p for p in (_attributed_party(t) for t in CITATION_TAG_RE.findall(reply or "")) if p]
+
+
+def _attributed_party(tag: str) -> str | None:
+    """The party a single ``[Source: …]`` tag attributes to, or None."""
+    body = _tag_label(tag).strip()
+    if not body:
+        return None
+    first = re.split(r"[\s—–,;:/|-]+", body)[0].strip().lower()
+    if not first or first in ATTRIBUTION_STOPWORDS:
+        return None
+    if any(c.isdigit() for c in first) or "%" in first:
+        return None
+    if not first.replace(".", "").replace("'", "").isalpha():
+        return None
+    # Two characters is a filename/locale prefix, not a brand — measured:
+    # "[Source: En Acs880 Drive Application Programming Manual]" reported a
+    # vendor called `en`. No OEM in this corpus has a two-letter name.
+    if len(first) < 3:
+        return None
+    return first
+
+
+def trusted_uns_context(state: dict | None) -> dict | None:
+    """The session's `uns_context`, with an UNCONFIRMED manufacturer removed.
+
+    The mirror of the rule in `established_context_text`. The conflict check
+    compares cited vendors against `uns_context["manufacturer"]` as the *expected*
+    one — so an unconfirmed resolver hit does not merely fail to strip a wrong
+    citation, it actively BLESSES it: MIRA retrieves a Yaskawa chunk, the
+    resolver writes Yaskawa into state, and the gate then reads a Yaskawa
+    citation as matching the expected vendor.
+
+    Measured on a GS10 conversation: "[Source: Yaskawa V1000 — Step Display]" and
+    "[Source: Rockwell Automation 1769-L33ER]" survived in replies that carried a
+    strip note, because they matched an expectation MIRA had invented.
+
+    Blanking the manufacturer does not weaken the gate — it moves the turn to the
+    unsupported-attribution branch, which compares against the technician's own
+    words instead. That is strictly stricter.
+    """
+    if not isinstance(state, dict):
+        return None
+    ctx = state.get("context")
+    uns = ctx.get("uns_context") if isinstance(ctx, dict) else None
+    if not isinstance(uns, dict):
+        return None
+    if state.get("asset_identified") or uns.get("source") == "direct_connection":
+        return uns
+    trimmed = dict(uns)
+    trimmed["manufacturer"] = ""
+    trimmed["model"] = ""
+    return trimmed
+
+
 def established_context_text(message: str, state: dict | None) -> str:
     """What the TECHNICIAN and trusted state have established, as one string.
 
@@ -115,13 +274,30 @@ def established_context_text(message: str, state: dict | None) -> str:
     parts: list[str] = [message or ""]
     if not isinstance(state, dict):
         return parts[0]
-    parts.append(str(state.get("asset_identified") or ""))
+    asset = str(state.get("asset_identified") or "")
+    parts.append(asset)
     ctx = state.get("context")
     if isinstance(ctx, dict):
         uns = ctx.get("uns_context")
         if isinstance(uns, dict):
-            parts.append(str(uns.get("manufacturer") or ""))
-            parts.append(str(uns.get("model") or ""))
+            # A resolved vendor counts as established ONLY when something outside
+            # MIRA's own inference put it there: a technician-confirmed asset
+            # (`asset_identified` is written after the UNS gate is answered) or a
+            # certified direct connection. A bare resolver hit is NOT evidence —
+            # on a vague turn the vendor comes from whatever retrieval surfaced,
+            # so counting it here lets a reply authorise its own citation. That
+            # is the same self-licensing loop excluded for assistant turns below,
+            # one level up, and it was the residual `unrelated_vendor` class on
+            # the synthetic QC loop: "it stopped again" answered with
+            # "[Source: Rockwell Automation PowerFlex 40P]", kept because the
+            # resolver had written Rockwell into state from its own retrieval.
+            #
+            # Aliases are not lost. `_vendors_in_text` canonicalizes the
+            # technician's OWN words, so someone who typed "PowerFlex 525" still
+            # establishes Rockwell without this contribution.
+            if asset or uns.get("source") == "direct_connection":
+                parts.append(str(uns.get("manufacturer") or ""))
+                parts.append(str(uns.get("model") or ""))
         history = ctx.get("history")
         if isinstance(history, list):
             for turn in history:
@@ -134,6 +310,48 @@ def _tag_label(tag: str) -> str:
     """Extract the label text from a '[Source: <label>]' tag."""
     inner = tag[1:-1] if tag.startswith("[") and tag.endswith("]") else tag
     return re.sub(r"(?i)^\s*source:\s*", "", inner).strip()
+
+
+# ── D3: citation ELIGIBILITY — what may be cited at all ─────────────────────
+#
+# W2a eval case 6: MIRA replied "You think it's a WEG motor.
+# [Source: Img 20231106 085404329 — motor]" — an uploaded photo's FILENAME
+# cited as documentation. Photo-ingested KB rows carry the image name in their
+# manufacturer field, so `format_source_label` faithfully renders it and
+# nothing upstream objects: the chunk is real, the label is real, only the
+# CLASS of source is wrong. Session artifacts are evidence ABOUT the machine,
+# never documentation FOR it. Owner ruling (2026-08-04): an eligibility rule
+# set, not merely a filename filter.
+
+_INELIGIBLE_IMAGE_RE = re.compile(
+    r"(?i)(?:^img(?:[_\s]|\d)|^image\b|\.(?:jpe?g|png|gif|bmp|heic|webp|tiff?)\b)"
+)
+_INELIGIBLE_SESSION_RE = re.compile(r"(?i)^(?:photo\b|screenshot\b|session\s+photo|camera\b)")
+_INELIGIBLE_TIMESTAMP_RE = re.compile(r"^[\d\s\-:._]{8,}$")
+
+
+def ineligible_source_reason(label: str) -> str | None:
+    """Why ``label`` may NOT be cited as documentation — None when eligible.
+
+    Reasons: "empty" (blank label), "image_artifact" (image filename shapes,
+    leading Img/image tokens, image file extensions anywhere in the label),
+    "session_artifact" (photo/screenshot/camera session labels),
+    "bare_timestamp" (digit-run labels with no words). Eligible labels are
+    everything else — manuals, fault tables, datasheets, pack documents.
+    Conservative on prose: only labels that START with an artifact token or
+    carry a file extension are caught, so a document section that merely
+    mentions imaging is untouched.
+    """
+    text = (label or "").strip()
+    if not text:
+        return "empty"
+    if _INELIGIBLE_IMAGE_RE.search(text):
+        return "image_artifact"
+    if _INELIGIBLE_SESSION_RE.search(text):
+        return "session_artifact"
+    if _INELIGIBLE_TIMESTAMP_RE.fullmatch(text):
+        return "bare_timestamp"
+    return None
 
 
 def evaluate_citation_relevance(
@@ -190,7 +408,7 @@ def evaluate_citation_relevance(
         conflicting = [
             t for t in tags if (_canonical_vendor(_tag_label(t)) not in (None, expected))
         ]
-    elif not expected and cited and established_text:
+    elif not expected and (cited or attributed_parties(reply or "")) and established_text:
         # Case 2 — UNSUPPORTED ATTRIBUTION. No vendor is resolved, so the
         # reply is citing a manufacturer's manual for a machine nobody has
         # identified. Measured live: a vague follow-up ("did that fix it?")
@@ -203,10 +421,26 @@ def evaluate_citation_relevance(
         # Case 1 could never see this: it needs a resolved manufacturer to
         # compare against, so exactly the vague turns that fail worst were
         # the ones it skipped.
+        # Recognized vendors compare canonically (Allen-Bradley ≡ Rockwell).
+        # UNRECOGNIZED parties — Demag, Interroll, SKF, Westward, none of them in
+        # the vendor tables — compare by name against the technician's own words.
+        # Restricting this to canonical vendors was the remaining hole: those
+        # attributions were cited on turns where nobody named them and were never
+        # stripped, and they are 13 of 19 failing turns on the synthetic QC loop.
+        # `_attributed_party` already excludes document titles and file/URL
+        # artifacts, so what reaches here is a name being attributed to.
         established = _vendors_in_text(established_text)
-        unsupported = [
-            t for t in tags if (cv := _canonical_vendor(_tag_label(t))) and cv not in established
-        ]
+        established_words = set(re.findall(r"[a-z][a-z.'-]{2,}", (established_text or "").lower()))
+        unsupported = []
+        for t in tags:
+            cv = _canonical_vendor(_tag_label(t))
+            if cv:
+                if cv not in established:
+                    unsupported.append(t)
+                continue
+            party = _attributed_party(t)
+            if party and party not in established_words:
+                unsupported.append(t)
         if unsupported:
             relevant = False
             reason = "unestablished"
@@ -219,6 +453,36 @@ def evaluate_citation_relevance(
         "cited_vendors": cited,
         "conflicting_tags": conflicting,
     }
+
+
+# A trailing `--- Sources ---` block. Defined here, in the module that owns what
+# is citable, and imported by the engine's H4 normalizer so the strip and the
+# normalizer read the SAME block — they were previously fighting over it.
+SOURCES_BLOCK_RE = re.compile(
+    r"---\s*Sources\s*---\s*\n((?:\s*\[\d+\]\s+[^\n]+\n?)+)",
+    re.IGNORECASE,
+)
+
+
+def _prune_sources_block(text: str, removed_labels: list[str]) -> str:
+    """Drop `--- Sources ---` lines naming a citation that was just stripped.
+
+    Removes the whole block when nothing is left in it, so a bare header never
+    trails the reply.
+    """
+    m = SOURCES_BLOCK_RE.search(text or "")
+    if not m or not removed_labels:
+        return text
+    kept = []
+    for line in m.group(1).strip().splitlines():
+        label = line.split("]", 1)[1].strip() if "]" in line else line.strip()
+        if any(label and (label in rem or rem in label) for rem in removed_labels if rem):
+            continue
+        kept.append(line)
+    if not kept:
+        return (text[: m.start()] + text[m.end() :]).rstrip()
+    body = "\n".join(kept) + "\n"
+    return text[: m.start()] + f"--- Sources ---\n{body}" + text[m.end() :]
 
 
 def strip_conflicting_citations(
@@ -238,7 +502,23 @@ def strip_conflicting_citations(
     out = reply or ""
     for tag in conflicting_tags:
         out = out.replace(tag, "")
+    # The same citation is often rendered TWICE — inline, and again in a trailing
+    # `--- Sources ---` block. Removing only the inline tag leaves the block
+    # listing the source we just refused to stand behind, and the H4 enforcer's
+    # `_normalize_sources_block` then turns that surviving line back INTO an
+    # inline tag, silently undoing the strip. Measured live (2026-08-04): a GS10
+    # question kept "[Source: Rockwell Automation PowerFlex 525 — Parameter
+    # Groups]" while carrying the "I removed a citation…" note in the same reply.
+    out = _prune_sources_block(out, [_tag_label(t).strip() for t in conflicting_tags])
     out = re.sub(r"[ \t]{2,}", " ", out).rstrip()
+
+    if reason == "ineligible":
+        out += (
+            "\n\n_(Note: I removed a citation that pointed to a photo or session "
+            "artifact — that is not documentation. Treat the statement above as "
+            "unverified until confirmed against the equipment's manual.)_"
+        )
+        return out
 
     if reason == "unestablished":
         out += (
@@ -366,6 +646,24 @@ def check_citation_compliance(
                 rel["reason"],
             )
 
+    # D3 — eligibility: strip tags whose label is a session artifact, never a
+    # document. Applied on top of any relevance strip; a reply left with no
+    # citation then receives the H4 admission downstream instead of shipping
+    # confidently-cited junk (eval case 6).
+    ineligible_tags = [t for t in tags if ineligible_source_reason(_tag_label(t)) is not None]
+    if ineligible_tags:
+        logger.warning(
+            "CITATION_ELIGIBILITY_MISS chat_id=%s tags=%d reasons=%s",
+            chat_id,
+            len(ineligible_tags),
+            sorted({ineligible_source_reason(_tag_label(t)) for t in ineligible_tags}),
+        )
+        if enforce:
+            base = result["sanitized_reply"] or (reply or "")
+            result["sanitized_reply"] = strip_conflicting_citations(
+                base, ineligible_tags, None, "ineligible"
+            )
+
     return result
 
 
@@ -414,7 +712,9 @@ def valid_source_labels(chunks: list[dict] | None) -> set[str]:
     labels: set[str] = set()
     for chunk in chunks or []:
         label = format_source_label(chunk)
-        if label:
+        # D3: session-artifact labels are excluded so the insertion-only
+        # salvage can never introduce a photo-filename citation.
+        if label and ineligible_source_reason(label) is None:
             labels.add(label)
     return labels
 

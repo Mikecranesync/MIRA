@@ -1,0 +1,15 @@
+id: help_mid_session_no_kbgap_24
+description: "Phone battery T4 (2026-08-05 live FAIL): 'What can you do?' mid-session got the KB-gap footer. Capability answers are non-technical — no admission footer."
+expected_final_state: IDLE
+max_turns: 4
+expected_keywords: [diagnos]
+forbidden_keywords: [KB-gap, nameplate]
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [help, citation-hygiene, regression, phone-battery]
+turns:
+  - role: user
+    content: "What does CE10 mean on my DURApulse GS10 drive?"
+  - role: user
+    content: "What can you do?"

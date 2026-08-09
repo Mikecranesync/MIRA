@@ -1,0 +1,14 @@
+id: t06_identity_unknown_symptom_first
+contract: IDN-001/RTE-002 (N3)
+turns:
+- send: Something's wrong with one of our drives, it keeps faulting
+  expect:
+  - manufacturer
+  - model
+  - equipment
+- send: No idea, there's no nameplate and I don't have the manual
+  expect:
+  - lower confidence
+  forbid:
+  - brand or manufacturer
+  - make and model

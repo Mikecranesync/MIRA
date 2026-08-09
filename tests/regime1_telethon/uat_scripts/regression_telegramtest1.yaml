@@ -1,0 +1,35 @@
+id: regression_telegramtest1
+contract: N1-N4 + CTX-001 (8/6 transcript)
+turns:
+- send: hey MIRA
+  expect:
+  - MIRA
+  forbid:
+  - '[Source:'
+  - KB-gap
+- send: my conveyor keeps stopping randomy
+  expect:
+  - manufacturer
+  - model
+  - equipment
+- send: thanks
+  forbid:
+  - maintenance copilot
+  - KB-gap
+- send: what can you do?
+  forbid:
+  - KB-gap
+- send: What does CE10 mean on a GS10
+  expect:
+  - CE10
+- send: What does F004 mean on a PowerFlex 525?
+  expect:
+  - F004
+  - UnderVoltage
+  - undervoltage
+  forbid: []
+- send: Something's wrong with one of our drives, it keeps faulting
+  forbid:
+  - F004
+  - UnderVoltage
+  - input terminals

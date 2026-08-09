@@ -1,0 +1,15 @@
+id: unknown_identity_symptom_first_28
+description: "Phone battery T8-T9 (D2): technician cannot identify the machine — the gate must not repeat its demand; the labeled lower-confidence symptom-first path takes over."
+expected_final_state: Q1
+max_turns: 4
+expected_keywords: [lower confidence]
+forbidden_keywords: [manufacturer and model]
+wo_expected: false
+safety_expected: false
+skip_citation_check: true
+tags: [d2, uns-gate, symptom-first, phone-battery]
+turns:
+  - role: user
+    content: "Something's wrong with one of our drives, it keeps faulting"
+  - role: user
+    content: "No idea, there's no nameplate and I don't have the manual"

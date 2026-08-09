@@ -181,9 +181,16 @@ CONTROL_ACTION_RE = re.compile(
     r"i\s+need\s+you\s+to|i\s+want\s+you\s+to)\s+"
     rf"(?:please\s+)?(?:{_CONTROL_VERB})\b"
     # 2. Imperative verb + control target: "start the conveyor", "open the
-    #    valve", "set output Q0.0 to 1". The negative lookbehind stops nouns
-    #    ("after a reset it faults") from reading as imperatives.
-    rf"|(?<!\ba )(?<!\bthe )(?<!\bany )(?<!\banother )\b(?:{_CONTROL_VERB})\s+"
+    #    valve", "set output Q0.0 to 1". The negative lookbehinds stop nouns
+    #    ("after a reset it faults") AND narrative subjects from reading as
+    #    imperatives (D1, 2026-08-04): "after I start the motor" / "every
+    #    time we try to start the motor" describe what happens at the
+    #    machine — they are neither imperatives nor requests aimed at MIRA.
+    #    Directed requests ("I need you to start...", "can you start...")
+    #    stay covered by branch 1, which these lookbehinds do not touch.
+    rf"|(?<!\ba )(?<!\bthe )(?<!\bany )(?<!\banother )"
+    rf"(?<!\bi )(?<!\bwe )(?<!\bto )(?<!\byou )(?<!\bthey )(?<!\bit )"
+    rf"\b(?:{_CONTROL_VERB})\s+"
     r"(?:to\s+|into\s+|out\s+)?"  # "write TO the plc register"
     rf"(?:the\s+|my\s+|that\s+|this\s+|a\s+|an\s+)?(?:{_CONTROL_TARGET})\b"
     # 3. Actuation phrased with the target first: "force output Q0.0 on"
@@ -707,7 +714,26 @@ _DOC_RETRIEVAL_REQUEST_RE = re.compile(
     r"(?:manual|datasheet|documentation|docs|"
     r"pinout|pin\s*out|wiring\s+diagram|"
     r"instruction(?:s|\s+manual)?|user\s+guide|spec\s+sheet|"
-    r"catalog)\b",
+    r"catalog|"
+    # Schedule-class documents (AskMira Q5). Qualified compounds only — a bare
+    # "schedule" would turn "I want to schedule maintenance" into a doc request.
+    r"(?:lubrication|lube|maintenance|pm)\s+schedule)\b",
+    re.IGNORECASE,
+)
+
+
+# RTE-002: negated POSSESSION of a document is not a retrieval request —
+# "I don't have the manual" states a lack while answering a different question
+# (typically the UNS gate's identity demand); it must not force doc retrieval.
+# Scope is deliberately possession-only: negated ABILITY ("I can't find the
+# manual") IS still a retrieval request — the technician wants the document,
+# they just can't locate it themselves.
+_NEGATED_DOC_POSSESSION_RE = re.compile(
+    r"\b(?:don'?t|do\s+not|doesn'?t|does\s+not|didn'?t|did\s+not|never|"
+    r"haven'?t|have\s+not|hasn'?t|has\s+not|no\s+longer)\s+"
+    r"(?:even\s+)?(?:have|got)\b"
+    r"[^.?!\n]{0,40}?"
+    r"\b(?:manual|datasheet|documentation|docs)\b",
     re.IGNORECASE,
 )
 
@@ -972,10 +998,13 @@ def classify_intent(message: str) -> str:
 
     # Documentation retrieval — checked BEFORE industrial so "manual" in
     # INTENT_KEYWORDS doesn't swallow explicit document requests.
-    if any(phrase in msg for phrase in _DOCUMENTATION_PHRASES):
-        return "documentation"
-    if _DOC_RETRIEVAL_REQUEST_RE.search(msg):
-        return "documentation"
+    # RTE-002: negated possession ("I don't have the manual") is not a request —
+    # skip both recognizers and fall through to the industrial classification.
+    if not _NEGATED_DOC_POSSESSION_RE.search(msg):
+        if any(phrase in msg for phrase in _DOCUMENTATION_PHRASES):
+            return "documentation"
+        if _DOC_RETRIEVAL_REQUEST_RE.search(msg):
+            return "documentation"
 
     # Industrial signals — check BEFORE greeting to avoid false positives on
     # messages like "hi my vfd is down" (17 chars, contains "hi" greeting word

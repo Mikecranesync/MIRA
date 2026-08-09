@@ -89,3 +89,51 @@ def test_existing_gap_admission_is_not_doubled():
 
 def test_short_replies_are_left_alone():
     assert enforce_citation_or_gap_admission("OK") == "OK"
+
+
+# ── E2 regression (prod 2026-08-04): no KB-gap footer on policy templates ────
+# The H4 enforcer appended the stock admission to the canned control refusal
+# (prod trace: text_len=666 vs the ~430-char template). A policy reply asserts
+# no technical fact and must exit enforcement byte-identical.
+
+
+def test_control_refusal_exits_enforcement_byte_identical():
+    from shared.engine import enforce_citation_or_gap_admission
+    from shared.guardrails import CONTROL_ACTION_REFUSAL
+
+    out = enforce_citation_or_gap_admission(
+        CONTROL_ACTION_REFUSAL, dispatch_kind="control_action_refusal"
+    )
+    assert out == CONTROL_ACTION_REFUSAL
+
+
+def test_uns_gate_prompt_is_not_footered():
+    from shared.engine import enforce_citation_or_gap_admission
+
+    prompt = (
+        "Before I diagnose, I need to know the equipment. Tell me the "
+        "manufacturer and model (e.g., 'Allen-Bradley PowerFlex 525')."
+    )
+    assert enforce_citation_or_gap_admission(prompt, dispatch_kind="uns_confirm_request") == prompt
+
+
+def test_uncited_technical_reply_still_gets_the_admission():
+    from shared.engine import _H4_STOCK_ADMISSION, enforce_citation_or_gap_admission
+
+    reply = "Set the acceleration time parameter to 10 seconds and retry the start."
+    out = enforce_citation_or_gap_admission(reply, dispatch_kind="")
+    assert out == reply + _H4_STOCK_ADMISSION
+
+
+def test_admission_append_is_logged_without_message_content(caplog):
+    import logging
+
+    from shared.engine import enforce_citation_or_gap_admission
+
+    reply = "SECRET-MARKER torque spec is 4.5 Nm on the coupling bolts."
+    with caplog.at_level(logging.INFO, logger="mira-gsd"):
+        enforce_citation_or_gap_admission(reply, dispatch_kind="continue_current")
+    lines = [r.message for r in caplog.records if "H4_GAP_ADMISSION" in r.message]
+    assert lines, "append must emit an H4_GAP_ADMISSION log line"
+    assert "dispatch_kind=continue_current" in lines[0]
+    assert "SECRET-MARKER" not in " ".join(lines)  # never log message bodies

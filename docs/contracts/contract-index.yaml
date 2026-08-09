@@ -1,0 +1,164 @@
+# MIRA behavioral contract registry (handbook §6).
+# Every ID maps to enforcement: a battery fixture (tests/eval/fixtures/) and/or
+# a deterministic test. status: implemented | red | proposed.
+# "red" = a merged fixture/test currently FAILS on main — it is the defect queue.
+
+version: 1
+last_verified: "2026-08-06"
+
+contracts:
+  # ── Context and topic switching ──────────────────────────────────────────
+  - id: CTX-001
+    rule: A newly and clearly named asset or topic supersedes stale active-asset context.
+    status: implemented
+    enforcement: [fixture 60_topic_switch_gs10_to_pf525, fixture 63_symptom_switch_after_fault_lookup, mira-bots/tests/test_ctx_fresh_thread_pivot.py]
+    notes: >-
+      PR 3131 (re-pin + IDLE fresh-thread) + this PR (CTX-001c): Q-state pivot
+      with a deterministic answer-shape discriminator (CTX-002-safe), FULL
+      history severance on fresh-thread turns (a retained user turn was
+      measured re-anchoring the dead fault), fault-carry cleared on pivot,
+      flag hygiene across pack turns and nemotron retries. Branch battery
+      2026-08-06: fixture 63 = 9/9, fixture 60 = 3/3, fixture 08 = 3/3.
+  - id: CTX-002
+    rule: A short answer to a pending diagnostic question retains context.
+    status: implemented
+    enforcement: [tests/eval/fixtures/08_asset_change_mid_session.yaml, engine session history]
+  - id: CTX-003
+    rule: A correction supersedes the prior value without erasing its audit trail.
+    status: proposed
+    enforcement: []
+  - id: CTX-004
+    rule: A reply is never a near-duplicate of a recent assistant turn when the technician's question changed; re-asking the same question may legitimately repeat.
+    status: implemented
+    enforcement: [mira-bots/tests/test_repeated_answer_guard.py, REPEATED_ANSWER_DETECTED log, REPEATED_ANSWER_UNRESOLVED log]
+    notes: >-
+      The #3131 follow-up, shipped with CTX-001c: deterministic post-generation
+      guard at the _call_with_correction seam (difflib on normalized text,
+      source tags stripped). On detection: one severed retry with
+      fresh_thread_turn armed; fail-safe on a repeat (reply returned, logged).
+      Never fires on photo turns or short canned lines.
+
+  # ── Identity ─────────────────────────────────────────────────────────────
+  - id: IDN-001
+    rule: The UNS gate asks for identity when reasonably obtainable, stops repeating on exhaustion, and enters a labeled lower-confidence symptom-first path; new identity re-opens the grounded route.
+    status: implemented
+    enforcement: [tests/test_uns_confirmation_gate.py, tests/test_uns_gate_symptom_first_e2e.py, fixture 66 (red half — see RTE-002)]
+    notes: D2, PR 3110.
+  - id: IDN-002
+    rule: Asset identity persistence is deterministic state, never the language model's memory.
+    status: implemented
+    enforcement: ['engine state.asset_identified', _clear_diagnostic_carryover]
+
+  # ── Routing ──────────────────────────────────────────────────────────────
+  - id: RTE-001
+    rule: Whole-message meaning outranks keyword matches.
+    status: implemented
+    enforcement: [fixture 67_educational_not_safety_stopped, tests/test_rte_routing.py]
+    notes: >-
+      PR 3136. Router find_documentation labels require deterministic
+      corroboration from classify_intent (RTE-003 doctrine); uncorroborated
+      labels log ROUTER_DOC_UNCORROBORATED and demote to the general-question
+      path.
+  - id: RTE-002
+    rule: '"Manual" as a noun-in-passing ("I don''t have the manual") does not force document retrieval.'
+    status: implemented
+    enforcement: [fixture 66_unknown_identity_symptom_first, tests/test_rte_routing.py]
+    notes: >-
+      PR 3136. Negated possession skips the doc recognizers
+      (_NEGATED_DOC_POSSESSION_RE, possession-only — "can't find the manual"
+      still retrieves); the gate region fires for vendor-less exhausted
+      sessions so the D2 symptom-first fallback wins the turn.
+  - id: RTE-003
+    rule: Deterministic fast-paths claim a turn only on code-shaped recognition, never on English prose, and log the claim.
+    status: implemented
+    enforcement: [mira-bots/tests/test_drive_pack_ask.py TestProseIsNotAMnemonic, DRIVE_PACK_CLAIMED log]
+    notes: E1, PR 3121; D4 print-workspace analog in tests/printsense/test_deterministic_qa.py.
+
+  # ── Conversation ─────────────────────────────────────────────────────────
+  - id: CON-001
+    rule: Greetings, thanks, and help use the lightweight conversational lane — no diagnostic footers, citations, or evidence blocks.
+    status: implemented
+    enforcement: [fixture 61_greeting_mid_session_no_citations, fixture 62_help_mid_session_no_kbgap]
+    notes: >-
+      PR 3135 (merged 2026-08-06): greeting dispatch_kind H4-skipped, keyword
+      greeting/help de-gated from exchange_count==0 to any IDLE turn.
+      Post-merge verification on main: fixtures 61/62 = 10/10 across 5 rounds
+      (staging KB, live cascade).
+  - id: CON-002
+    rule: A direct question (fault-code meaning, spec, how-to) gets a direct cited answer — never a quiz; follow-ups gather machine evidence, never comprehension checks.
+    status: implemented
+    enforcement: [prompt active.yaml v1.4 rules 1/5/22, mira-bots/tests/test_rag_worker_prompt_source.py, seed-011..014 judge cases]
+    notes: W2b, PR 3118. The prompt file is the LIVE prompt (decoy fixed) — pinned.
+  - id: CON-003
+    rule: A thanks/greeting/help turn never consumes a pending question or confirmation, never re-runs the self-introduction, and is acknowledged in context (with a gentle reminder of what MIRA is waiting on).
+    status: implemented
+    enforcement: [mira-bots/tests/test_conversational_lanes_uat.py, UNS_CONFIRM_HELD_CONVERSATIONAL log]
+    notes: >-
+      UAT telegramtest1 (2026-08-06 live): "thanks" mid-gate got the full
+      self-intro and silently dropped the pending equipment confirmation;
+      "what can you do?" was stolen by the router's general_question dispatch
+      and footered. Fixed with the lane-priority exclusion (RTE-001 doctrine),
+      the pending-hold branch, and the thanks-aware greeting lane. Bare
+      ambiguous tokens ("yes") still fall through for resolver re-run.
+  - id: DOC-001
+    rule: 'MIRA never denies having documentation it has: a possession question about the docs ("do you have the manual?") is answered by the deterministic KB/pack possession claim, never by sampled generation.'
+    status: implemented
+    enforcement: [mira-bots/tests/test_conversational_lanes_uat.py TestN4 possession tests, DOC_LOOKUP_ANSWER_HANDOFF log]
+    notes: >-
+      UAT telegramtest1: "do you have the gs10 manual?" was RAG-answered "No,
+      I don't have the manual" immediately after kb_has_coverage returned
+      True. The ct-04 answer handoff now excludes doc-shaped questions
+      (classify_intent == documentation), which take the possession claim.
+
+  # ── Safety ───────────────────────────────────────────────────────────────
+  - id: SAF-001
+    rule: A control-action request is refused (read-only, no claimed actions); narrative descriptions of operation are never refused.
+    status: implemented
+    enforcement: [tests/test_swarm_findings_regression.py (both directions), fixture 64, fixture 65]
+    notes: Swarm P0 + D1, PR 3120.
+  - id: SAF-002
+    rule: Safety keywords are two-tier — IMMEDIATE always stops; educational framing routes tier-2 to normal handling. Hub and Python stay in byte parity.
+    status: implemented
+    enforcement: [mira-hub/src/lib/safety-classifier.test.ts (source parity + behavior), guardrails classify_intent]
+    notes: PR 3119.
+
+  # ── Citations ────────────────────────────────────────────────────────────
+  - id: CIT-001
+    rule: Session artifacts (image filenames, screenshots, bare timestamps) are never citable documentation; a reply left uncited receives the honest KB-gap admission.
+    status: implemented
+    enforcement: [tests/test_citation_eligibility_d3.py, CITATION_ELIGIBILITY_MISS log]
+    notes: D3, PR 3126.
+  - id: CIT-002
+    rule: Policy/gate templates (control refusal, UNS confirmations, greeting, help) never receive the KB-gap admission footer.
+    status: implemented
+    enforcement: [tests/test_h4_citation_integrity.py, _H4_SKIP_DISPATCH_KINDS]
+    notes: E2, PR 3121. The mid-session greeting/help LANE gap is CON-001 (red).
+  - id: CIT-003
+    rule: Same-document consecutive-page citations render as one range tag.
+    status: implemented
+    enforcement: [mira-bots/tests/test_engine_drive_pack_fastpath.py TestCitationCompaction]
+    notes: E3, PR 3121.
+  - id: CIT-004
+    rule: Cited vendors must match the resolved or established manufacturer (alias-aware); conflicts and unsupported attributions are stripped with an honesty note.
+    status: implemented
+    enforcement: [tests/test_citation_attribution.py, citation_compliance relevance checks]
+
+  # ── Memory ───────────────────────────────────────────────────────────────
+  - id: MEM-001
+    rule: Only approved or verified claims enter durable equipment memory; KG promotion proposed→verified is a human action.
+    status: implemented
+    enforcement: [.claude/CLAUDE.md KG rules, knowledge-graph-proposer skill]
+
+  # ── Observability / release ──────────────────────────────────────────────
+  - id: OBS-001
+    rule: Deterministic paths that claim a turn, and every enforcement append, emit a structured log line without message bodies or personal identifiers.
+    status: implemented
+    enforcement: [DRIVE_PACK_CLAIMED, H4_GAP_ADMISSION_APPENDED, CITATION_ELIGIBILITY_MISS, UNS_GATE_SYMPTOM_FIRST]
+  - id: OBS-002
+    rule: A deploy preserves the previous container's logs as a redacted, finite-retention CI artifact before force-recreate; capture failure warns but never blocks.
+    status: implemented
+    enforcement: [tools/predeploy_log_capture.sh, tests/test_predeploy_log_capture.py, deploy-vps.yml steps]
+  - id: REL-001
+    rule: A change is complete only with tests, required CI, explicit merge/deploy authorization status, and production verification when requested; a green workflow that skipped the relevant test is insufficient.
+    status: implemented
+    enforcement: [tests/test_hub_unit_filter_contract.py in Architecture Check, release-verifier agent]

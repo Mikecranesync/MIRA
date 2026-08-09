@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import logging
 import math
@@ -16,11 +17,14 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import print_recall, quality_gate
+from .answer_qc import qc_mode, run_output_qc
 from .chat_tenant import resolve as resolve_tenant
+from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .citation_compliance import established_context_text as _established_context_text
+from .citation_compliance import trusted_uns_context as _trusted_uns_context
 from .conversation_router import route_intent
 from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
@@ -64,6 +68,7 @@ from .fsm import (
 )
 from .guardrails import (
     CONTROL_ACTION_REFUSAL,
+    GREETING_PATTERNS,
     INTENT_KEYWORDS,
     SAFETY_KEYWORDS,
     check_output,
@@ -231,10 +236,19 @@ def _prepend_equipment_context(message: str, state: dict) -> str:
 
         >>> state = {"state": "IDLE", "context": {"uns_context": {"manufacturer": "Rockwell", "model": "PowerFlex 525", "confidence": 0.9}}}
         >>> _prepend_equipment_context("Follow-up", state)
-        'Follow-up'  # IDLE session, no prepend
+        'Follow-up'  # IDLE with no pinned asset, no prepend
     """
-    # Only prepend if in an active diagnostic state
-    if state.get("state") not in ACTIVE_DIAGNOSTIC_STATES:
+    # Prepend in active diagnostic states — and ALSO on IDLE continuation turns
+    # with a pinned asset (live campaign catch c1r1, 2026-08-07: a drive-pack
+    # answer leaves the session IDLE, so "is that fault serious?" hit retrieval
+    # as a bare pronoun sentence, recalled nothing, and MIRA asked for the code
+    # it had just explained). A fresh-thread turn (severance armed) is a NEW
+    # subject and must NOT drag the dead thread's context into retrieval.
+    _ctx_pre = state.get("context") or {}
+    _idle_continuation = bool(state.get("asset_identified")) and not _ctx_pre.get(
+        "fresh_thread_turn"
+    )
+    if state.get("state") not in ACTIVE_DIAGNOSTIC_STATES and not _idle_continuation:
         return message
 
     # Extract uns_context
@@ -454,6 +468,27 @@ _UNS_GATE_ENABLED = os.getenv("MIRA_UNS_GATE_ENABLED", "1") == "1"
 # chitchat must NOT be gated.
 _GATED_INTENTS = frozenset({"diagnose_equipment", "schedule_maintenance"})
 
+# D2 symptom-first fallback (defect: gate deadlock, docs/evals/2026-08-03-
+# dialogue-mode-w2a/results.md). After this many unresolved gate firings in a
+# session — or as soon as the technician says they can't identify the machine —
+# the gate stops repeating the identical demand and the turn proceeds into a
+# clearly-labeled, lower-confidence symptom-first diagnostic path. A real
+# candidate (manufacturer resolved, or an asset-state hit) always re-opens the
+# grounded confirmation route.
+_UNS_GATE_MAX_ATTEMPTS = int(os.getenv("MIRA_UNS_GATE_MAX_ATTEMPTS", "2"))
+
+# Signals that the technician does not know / cannot access the equipment
+# identity. Conservative: "I'd have to check the nameplate" deliberately does
+# NOT match (identity is obtainable — let them check); the attempts cap above
+# catches drawn-out cases the phrases miss.
+_UNS_IDENTITY_UNKNOWN_RE = re.compile(
+    r"(?:don'?t|do\s+not|can'?t|cannot|couldn'?t)\s+(?:know|find|read|have|access|tell)"
+    r"|\bno\s+(?:idea|nameplate|name\s*plate|model\s+number|manual|label)\b"
+    r"|\bnot\s+sure\s+(?:what|which|who)\b"
+    r"|\bunlabel?led\b|\bworn\s+off\b|\billegible\b",
+    re.IGNORECASE,
+)
+
 # KG maintenance-context enrichment (additive, OFF by default). When on AND
 # INTERNAL_KG_API_KEY is configured, the diagnosis path fetches knowledge-graph
 # context (equipment hierarchy, components, recent faults + work orders) for the
@@ -569,7 +604,7 @@ _ASSET_STATE_RE = re.compile(
     r"\b(?:"
     r"current\s+state|state\s+of|status\s+of|current\s+status|\bstatus\b"
     r"|what\s+state\s+is"
-    r"|(?:anything|something|what(?:'s|\s+is)?)\s+wrong\s+with"
+    r"|(?:anything|something|what)(?:'s|\s+is)?\s+wrong\s+with"
     r"|how\s+is\b.{0,40}\b(?:doing|running)"
     r"|is\s+(?:it|the|my)\b.{0,40}\b(?:running|stopped|down|up|off|on|ok|okay"
     r"|faulted|jammed|healthy|online|offline)"
@@ -596,9 +631,11 @@ _ASSET_SYMPTOM_RE = re.compile(
 # [-_]? — technicians type dashless tags ("cv101", "gs10") as often as
 # canonical ones (gauntlet tier-1 finding).
 _ASSET_NOUN_RE = re.compile(
+    # ``s?`` covers plurals — live Telethon regression 2026-08-07: "one of our
+    # DRIVES keeps faulting" carried no noun evidence and the pivot never fired.
     r"\b(?:conveyor|pump|mixer|compressor|boiler|chiller|motor|drive|vfd|plc"
     r"|robot|press|oven|gearbox|palletizer|filler|capper|labeler|fan|blower"
-    r"|machine|line|cell|station|equipment|asset)\b"
+    r"|machine|line|cell|station|equipment|asset)s?\b"
     r"|\b[a-z]{2,4}[-_]?\d{2,4}\b",
     re.IGNORECASE,
 )
@@ -786,6 +823,88 @@ _DONT_KNOW_RE = re.compile(
 )
 _DONT_KNOW_MAX_LEN = int(os.getenv("MIRA_DONT_KNOW_MAX_LEN", "200"))
 
+# CTX-001c fresh-thread PIVOT guards (2026-08-06). A pivot must never consume
+# an ANSWER to the pending diagnostic question (CTX-002). Two shapes:
+# opener-anchored acknowledgements/answers, and correction markers ANYWHERE in
+# the leading window — "The drive is actually a GS20" is a correction even
+# though it doesn't open with one.
+_FRESH_PIVOT_ANSWER_RE = re.compile(
+    r"^\s*(?:yes|yeah|yep|no|nope|ok(?:ay)?|correct|right|same|it'?s)\b",
+    re.IGNORECASE,
+)
+
+# CON-003 (UAT 2026-08-06): a thanks/sign-off is acknowledged briefly — never
+# answered with the full canned self-introduction.
+_THANKS_RE = re.compile(r"^\s*(?:thanks|thank\s+you|thx|ty|appreciate\s+it)\b", re.IGNORECASE)
+_CORRECTION_MARKER_RE = re.compile(
+    r"\b(?:actually|sorry|correction|i\s+meant|my\s+mistake|not\s+(?:a|the)|rather)\b",
+    re.IGNORECASE,
+)
+
+# An explicit ABANDON of the current thread overrides the correction guard —
+# "Actually forget that — my conveyor keeps stopping" is a pivot, not a
+# correction (live campaign catch c1r2, 2026-08-07).
+_ABANDON_RE = re.compile(
+    r"\b(?:forget\s+(?:that|it|about)|never\s?mind|scratch\s+that|"
+    r"ignore\s+that|drop\s+(?:that|it)|moving\s+on|different\s+(?:problem|issue|machine))\b",
+    re.IGNORECASE,
+)
+
+# CTX-004 repeated-answer guard thresholds. Reply similarity is measured on
+# normalized text (source tags and the sources block stripped) so a citation
+# page-number tweak cannot disguise a duplicate; a re-asked question at or
+# above the question threshold makes repeating the answer LEGITIMATE.
+_REPEAT_REPLY_SIM = 0.9
+_REPEAT_QUESTION_SIM = 0.8
+_REPEAT_SCAN_LIMIT = 3
+_REPEAT_MIN_LEN = 40
+
+
+def _normalize_reply_text(text: str) -> str:
+    text = re.sub(r"\[Source:[^\]]*\]", " ", text or "")
+    text = re.sub(r"---\s*Sources\s*---.*", " ", text, flags=re.DOTALL | re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _find_repeated_answer(reply: str, message: str, history: list) -> bool:
+    """CTX-004: True when ``reply`` near-duplicates a recent assistant turn
+    whose preceding user question DIFFERS from the current message.
+
+    Deterministic (difflib ratio on normalized text), scans the last
+    ``_REPEAT_SCAN_LIMIT`` assistant turns. Short canned lines and a re-ask
+    of the same question never fire.
+    """
+    norm_reply = _normalize_reply_text(reply)
+    if len(norm_reply) < _REPEAT_MIN_LEN:
+        return False
+    norm_msg = re.sub(r"\s+", " ", (message or "").strip().lower())
+    seen = 0
+    for i in range(len(history) - 1, -1, -1):
+        entry = history[i]
+        if entry.get("role") != "assistant":
+            continue
+        seen += 1
+        if seen > _REPEAT_SCAN_LIMIT:
+            break
+        prior = _normalize_reply_text(entry.get("content", ""))
+        if not prior:
+            continue
+        if difflib.SequenceMatcher(None, norm_reply, prior).ratio() < _REPEAT_REPLY_SIM:
+            continue
+        prev_user = ""
+        for j in range(i - 1, -1, -1):
+            if history[j].get("role") == "user":
+                prev_user = re.sub(r"\s+", " ", (history[j].get("content") or "").strip().lower())
+                break
+        if (
+            prev_user
+            and difflib.SequenceMatcher(None, norm_msg, prev_user).ratio() >= _REPEAT_QUESTION_SIM
+        ):
+            return False  # same question re-asked — repeating the answer is fine
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Manual-lookup gathering subroutine constants
 # ---------------------------------------------------------------------------
@@ -893,6 +1012,36 @@ _H4_EMPTY_SOURCE_BODY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# The technician's own uploaded photo is not documentation. Observed in the W2a
+# eval (defect D3, `docs/evals/2026-08-03-dialogue-mode-w2a/results.md`): MIRA
+# cited an uploaded image FILENAME as its source — `photo_handler` saves the
+# session photo as `{chat_id}.jpg`, so the label is a bare number plus `.jpg`.
+# Citing it hands the technician's own input back to them as if it were
+# evidence, and — exactly like the bare reference number above — it SUPPRESSED
+# the honest KB-gap admission, making a worthless citation look better grounded
+# than none. `.pdf` is deliberately NOT here: a manual filename can be looked up.
+_H4_PHOTO_SOURCE_BODY_RE = re.compile(
+    r"\[Source:\s*[\w .\-()]+\.(?:jpe?g|png|gif|heic|heif|webp|bmp|tiff?|mp4|mov|avi)\s*\]",
+    re.IGNORECASE,
+)
+
+# The same defect stated in words rather than a filename ("[Source: the uploaded
+# photo]"). Anchored on the WHOLE label so a real section that happens to mention
+# an image survives — `[Source: Siemens G120 — Nameplate Photo]` is a citation.
+_H4_SELF_REF_SOURCE_BODY_RE = re.compile(
+    r"\[Source:\s*(?:(?:the|your|my|a|an|this|user|session|uploaded|attached)\s+)*"
+    r"(?:photo|photograph|image|picture|screenshot|pic)s?\s*\]",
+    re.IGNORECASE,
+)
+
+# Every "citation body that names no retrievable document" pattern, applied
+# together. A tag is grounding only if it survives all of them.
+_H4_JUNK_SOURCE_BODY_RES: tuple[re.Pattern[str], ...] = (
+    _H4_EMPTY_SOURCE_BODY_RE,
+    _H4_PHOTO_SOURCE_BODY_RE,
+    _H4_SELF_REF_SOURCE_BODY_RE,
+)
+
 # The reply asserts it HAS documentation. If it also produced no usable
 # citation, appending the stock "I don't have specific documentation" line puts
 # a flat contradiction in one message (observed live, probe `dc-02`:
@@ -917,7 +1066,10 @@ def _has_usable_citation(reply: str) -> bool:
     if not _H4_SOURCE_RE.search(reply):
         return False
     # Strip the meaningless ones; if any citation survives, it is usable.
-    return bool(_H4_SOURCE_RE.search(_H4_EMPTY_SOURCE_BODY_RE.sub("", reply)))
+    remaining = reply
+    for junk_re in _H4_JUNK_SOURCE_BODY_RES:
+        remaining = junk_re.sub("", remaining)
+    return bool(_H4_SOURCE_RE.search(remaining))
 
 
 # Phrases that constitute an explicit KB-gap admission — ordered from most
@@ -952,13 +1104,25 @@ _H4_STOCK_ADMISSION = (
 # Normalize to the inline format so downstream scoring + AskMira view rendering
 # treat them identically. The original block is preserved AFTER the inline
 # markers for human readability.
-_H4_SOURCES_BLOCK_RE = re.compile(
-    r"---\s*Sources\s*---\s*\n((?:\s*\[\d+\]\s+[^\n]+\n?)+)",
-    re.IGNORECASE,
-)
+# One definition, shared with the strip in `citation_compliance`. They used to
+# read the block through separate regexes and could disagree about its contents —
+# which is how a stripped citation survived in the block and got re-materialized.
+_H4_SOURCES_BLOCK_RE = _SOURCES_BLOCK_RE
+
+
+# The label inside an inline tag — used to tell an already-normalized reply from
+# one that still needs its `--- Sources ---` block converted.
+_H4_INLINE_LABEL_RE = re.compile(r"\[Source:\s*(.+?)\s*\]", re.IGNORECASE)
 
 
 def _normalize_sources_block(reply: str) -> str:
+    """Turn a trailing ``--- Sources ---`` block into inline ``[Source: …]`` tags.
+
+    Idempotent: an entry that is ALREADY inline is not added again. It has to be,
+    because this now runs twice — once in `process_full` before the citation
+    vendor-relevance gate, and once here in the H4 enforcer. Without the guard the
+    second pass doubled every tag (measured 4 tags where 2 belonged).
+    """
     m = _H4_SOURCES_BLOCK_RE.search(reply)
     if not m:
         return reply
@@ -967,7 +1131,11 @@ def _normalize_sources_block(reply: str) -> str:
     ]
     if not entries:
         return reply
-    inline = " ".join(f"[Source: {e}]" for e in entries)
+    already = {label.strip() for label in _H4_INLINE_LABEL_RE.findall(reply[: m.start()])}
+    missing = [e for e in entries if e not in already]
+    if not missing:
+        return reply
+    inline = " ".join(f"[Source: {e}]" for e in missing)
     # Insert inline markers BEFORE the original block so the block can stay for
     # readability; the inline tokens are what the scorer + H4 enforcer match.
     return reply[: m.start()] + inline + "\n\n" + reply[m.start() :]
@@ -979,7 +1147,22 @@ _H4_SKIP_REPLIES: frozenset[str] = frozenset(
 )
 
 
-def enforce_citation_or_gap_admission(reply: str) -> str:
+# Policy / gate replies that assert no technical fact — H4 must never footer
+# them with a KB-gap admission (E2, prod 2026-08-04: the canned control refusal
+# shipped with "I don't have specific documentation indexed for this" appended).
+_H4_SKIP_DISPATCH_KINDS = frozenset(
+    {
+        "control_action_refusal",
+        "uns_confirm_request",
+        "uns_confirm_yes",
+        "uns_confirm_no",
+        "greeting",
+        "help",
+    }
+)
+
+
+def enforce_citation_or_gap_admission(reply: str, dispatch_kind: str = "") -> str:
     """H4 enforcer: ensure every reply carries a [Source:] or KB-gap admission.
 
     If the reply already contains a citation tag OR an explicit KB-gap phrase,
@@ -990,6 +1173,8 @@ def enforce_citation_or_gap_admission(reply: str) -> str:
     - reply is very short (<= 20 chars, e.g. "OK")
     """
     if not reply or len(reply.strip()) <= 20:
+        return reply
+    if dispatch_kind in _H4_SKIP_DISPATCH_KINDS:
         return reply
     stripped = reply.strip()
     if stripped in _H4_SKIP_REPLIES:
@@ -1008,8 +1193,54 @@ def enforce_citation_or_gap_admission(reply: str) -> str:
     # gets a correcting admission — appending the stock line would contradict
     # the sentence above it inside a single message.
     if _H4_POSSESSION_CLAIM_RE.search(reply):
+        logger.info(
+            "H4_GAP_ADMISSION_APPENDED kind=correcting dispatch_kind=%s reply_len=%d",
+            dispatch_kind,
+            len(reply),
+        )
         return reply + _H4_CORRECTING_ADMISSION
+    logger.info(
+        "H4_GAP_ADMISSION_APPENDED kind=stock dispatch_kind=%s reply_len=%d",
+        dispatch_kind,
+        len(reply),
+    )
     return reply + _H4_STOCK_ADMISSION
+
+
+def _compact_pack_citation_tags(citations: list[dict]) -> list[str]:
+    """Render pack citations as [Source: …] tags, collapsing consecutive pages.
+
+    E3 (prod 2026-08-04): PF525 fault cards carry dozens of per-page citations
+    and the rung rendered three near-identical tags (p.161/162/163) — noise on
+    a phone. Same-document numeric pages are deduped, sorted, and split into
+    consecutive runs: one page -> "p.N", a run -> "pp.A-B". Non-numeric pages
+    keep their own tag; a pageless citation is the bare document tag. Document
+    order follows first appearance.
+    """
+    by_doc: dict[str, list[str]] = {}
+    for c in citations:
+        doc = (c.get("doc") or "").strip()
+        if not doc:
+            continue
+        pages = by_doc.setdefault(doc, [])
+        page = (c.get("page") or "").strip()
+        if page not in pages:
+            pages.append(page)
+    tags: list[str] = []
+    for doc, pages in by_doc.items():
+        numeric = sorted({int(p) for p in pages if p.isdigit()})
+        others = [p for p in pages if not p.isdigit()]
+        runs: list[tuple[int, int]] = []
+        for n in numeric:
+            if runs and n == runs[-1][1] + 1:
+                runs[-1] = (runs[-1][0], n)
+            else:
+                runs.append((n, n))
+        for lo, hi in runs:
+            tags.append(f"[Source: {doc} p.{lo}]" if lo == hi else f"[Source: {doc} pp.{lo}-{hi}]")
+        for p_ in others:
+            tags.append(f"[Source: {doc} p.{p_}]" if p_ else f"[Source: {doc}]")
+    return tags
 
 
 class Supervisor:
@@ -1124,6 +1355,15 @@ class Supervisor:
         # diagnosis re-uses the stale draft and shows wrong asset/fault to the user.
         ctx.pop("cmms_pending", None)
         ctx.pop("cmms_wo_draft", None)
+
+        # D2: the symptom-first fallback bookkeeping belongs to the PREVIOUS
+        # asset's gate cycle. Carrying uns_identity_unknown across an asset
+        # switch would suppress the gate for the NEW machine without ever
+        # asking (UNS-025: never carry context across asset changes).
+        ctx.pop("uns_gate_attempts", None)
+        ctx.pop("uns_identity_unknown", None)
+        ctx.pop("symptom_first_notice_sent", None)
+        ctx.pop("uns_gate_last_candidate", None)
 
         state["fault_category"] = None
         state["final_state"] = None
@@ -1975,7 +2215,54 @@ class Supervisor:
         # appended text doesn't confuse the gate's heuristics. Skips graceful-
         # fallback strings and trusted templated replies that already carry
         # structural tags (live-tag block, WO preview, etc.).
-        reply = enforce_citation_or_gap_admission(reply)
+        reply = enforce_citation_or_gap_admission(
+            reply, dispatch_kind=result.get("dispatch_kind", "")
+        )
+
+        # Final answer-integrity QC. This is the last point at which the reply is
+        # fully assembled, so it is the only place a check can see what the
+        # technician will actually read. Runs EVERY registered check and reports
+        # all of them — a check that did not run is a visible hole, not silence.
+        #
+        # Read-only: it never edits `reply`. Off by default (MIRA_ANSWER_QC=off);
+        # `observe` measures the live failure rate before anyone argues about
+        # enforcement. The checks themselves are not new — they existed in the
+        # swarm and ran only against fixtures, which is how D3 (a photo filename
+        # cited as a source) reached a technician while the battery stayed green.
+        #
+        # The checks are graded against what the TECHNICIAN established across the
+        # whole session, not this turn's message alone. The detectors came from a
+        # single-turn probe battery, where those are the same thing; in a real
+        # conversation they are not. A technician who names a PowerFlex 525 in
+        # turn 1 and asks "which is safer?" in turn 3 has still established
+        # Rockwell — grading turn 3 in isolation reports a correct citation as an
+        # unrelated vendor. Measured on the first synthetic run (2026-08-04).
+        #
+        # `_established_context_text` is the same seam the citation gate uses, and
+        # it excludes assistant turns on purpose, so a reply cannot launder its own
+        # vendor into the context that licenses it. The state read only happens
+        # when the gate is on.
+        #
+        # Findings are logged by NAME only, never with reply content (PII).
+        try:
+            qc_context = message
+            if qc_mode() != "off":
+                try:
+                    qc_context = _established_context_text(message, self._load_state(chat_id))
+                except Exception as _ctx_exc:  # noqa: BLE001 — fall back to the raw turn
+                    logger.debug("ANSWER_QC_CONTEXT_FALLBACK chat_id=%s %s", chat_id, _ctx_exc)
+            qc = run_output_qc(qc_context, reply)
+            if qc.ran:
+                _log = logger.warning if not qc.clean else logger.info
+                _log(
+                    "ANSWER_QC chat_id=%s mode=%s %s",
+                    chat_id,
+                    qc.mode,
+                    qc.summary(),
+                )
+        except Exception as _qc_exc:  # noqa: BLE001 — QC must never break a reply
+            logger.warning("ANSWER_QC_FAILED chat_id=%s error=%s", chat_id, _qc_exc)
+
         self._log_interaction(
             chat_id,
             message,
@@ -2548,6 +2835,13 @@ class Supervisor:
 
         state = self._load_state(chat_id)
 
+        # CTX-001c flag hygiene: fresh_thread_turn is ONE-turn — it is set by
+        # this turn's trigger and consumed by this turn's prompt builder. A
+        # stale flag left by a turn whose dispatch never reached the builder
+        # (e.g. a drive-pack-claimed turn) must not leak into a later turn;
+        # the trigger below re-derives it per-turn.
+        (state.get("context") or {}).pop("fresh_thread_turn", None)
+
         # Per-turn clean lexical-recall query (#1766). Stashed on state so the
         # RAGWorker uses it for BM25/fault/product extraction without threading a
         # new arg through the two self.rag.process() call sites. Set every turn
@@ -2614,6 +2908,15 @@ class Supervisor:
             if uns_ctx.model:
                 label = f"{label}, {uns_ctx.model}"
             state["asset_identified"] = label
+        elif uns_ctx.manufacturer and state.get("asset_identified"):
+            # CTX-001 (2026-08-05): the pin was write-once and suppressed the
+            # UNS gate forever, so an explicit new-equipment question kept
+            # every prompt anchor on the OLD machine and the engine re-answered
+            # the previous fault. A newly and clearly named DIFFERENT asset
+            # supersedes stale context — decided by the RESOLVER on a fresh
+            # parse (deterministic), never by the LLM router.
+            if self._maybe_repin_asset(chat_id, state, message, uns_source):
+                self._save_state(chat_id, state)
 
         # CMMS pending: user is answering the work-order creation prompt — handle before
         # any option resolution, session-followup detection, or intent classification.
@@ -2645,12 +2948,20 @@ class Supervisor:
         # prompt fired by the UNS Confirmation Gate. Returns a result on explicit
         # yes/no, or None to fall through (e.g., user typed equipment specs — let
         # the normal flow re-run the UNS resolver on the message).
+        # RTE-002: a fallthrough is remembered for THIS turn — an exhausted,
+        # vendor-less session (resolver confidence 0.0 all session) must still
+        # reach the D2 symptom-first branch, whose entry otherwise requires
+        # confidence > 0 or an asset-state hit on the current message.
+        _uns_confirm_fell_through = False
+        _symptom_first_fired = False
+        _doc_router_uncorroborated = False
         if (state.get("context") or {}).get("pending_uns_confirm") and not photo_b64:
             _uns_resp = await self._handle_uns_confirmation_response(
                 chat_id, message, state, trace_id
             )
             if _uns_resp is not None:
                 return _uns_resp
+            _uns_confirm_fell_through = True
 
         if message.strip() and state.get("final_state") == "RESOLVED":
             state["final_state"] = None
@@ -2851,6 +3162,103 @@ class Supervisor:
                 )
                 _router_intent = "diagnose_equipment"
 
+            # Shared fresh-thread discriminator (CTX-001b/c): severance is only
+            # ever justified when THIS message NAMES a new subject (asset noun /
+            # tag token at deterministic p >= threshold, fault-code-stripped)
+            # and is not answer/correction/dont-know-shaped. Live campaign
+            # catch (c1 t2_continuation_is_kept, 2026-08-07): the pronoun
+            # continuation "is that fault serious?" after a pack-claimed turn
+            # (IDLE, no last_question) was severed and lost its referent —
+            # the IDLE trigger had no subject-naming requirement. Vendor
+            # switches stay covered independently by _maybe_repin_asset,
+            # which sets fresh_thread_turn itself.
+            _pivot_shape_ok = (
+                _keyword_intent == "industrial"
+                and state.get("asset_identified")
+                and len(message.strip()) >= 15
+                and not _FRESH_PIVOT_ANSWER_RE.match(message)
+                and (_ABANDON_RE.search(message) or not _CORRECTION_MARKER_RE.search(message[:120]))
+                and not _DONT_KNOW_RE.search(message)
+            )
+            _names_new_subject = False
+            _p_det, _p_parts = 0.0, {}
+            if _pivot_shape_ok:
+                _pivot_msg = message
+                for _fc in (uns_ctx.fault_code, getattr(uns_ctx, "fault_code_raw", None)):
+                    if _fc:
+                        _pivot_msg = re.sub(
+                            rf"\b{re.escape(str(_fc))}\b", " ", _pivot_msg, flags=re.IGNORECASE
+                        )
+                _p_det, _p_parts = asset_state_probability(_pivot_msg)
+                _names_new_subject = _p_det >= _ASSET_STATE_THRESHOLD and (
+                    "asset_noun" in _p_parts or "tag_token" in _p_parts
+                )
+
+            # CTX-001b (2026-08-05): a NEW symptom after a COMPLETED thread
+            # (IDLE, no pending question — e.g. after a drive-pack answer)
+            # starts a fresh diagnostic thread.
+            if (
+                _names_new_subject
+                and state.get("state", "IDLE") == "IDLE"
+                and not (
+                    ((state.get("context") or {}).get("session_context") or {}).get("last_question")
+                )
+            ):
+                _ctx_ft = state.get("context") or {}
+                _ctx_ft["fresh_thread_turn"] = True
+                state["context"] = _ctx_ft
+                logger.info(
+                    "CTX_FRESH_THREAD chat_id=%s p=%.3f parts=%s (new subject, completed thread)",
+                    chat_id,
+                    _p_det,
+                    sorted(_p_parts),
+                )
+
+            # CTX-001c (2026-08-06) — the PIVOT variant: a NEW symptom while a
+            # diagnostic thread is OPEN (Q-state, pending question). The IDLE
+            # trigger above is structurally unreachable mid-session (every RAG
+            # turn sets last_question), so without this branch a brand-new
+            # symptom is consumed as an answer to the dead thread and the old
+            # investigation continues (fixture 63's live T5 shape).
+            # Deterministic, router-free discriminator honoring CTX-002 (a
+            # short answer to the pending question retains context):
+            #   - the message NAMES its subject (asset noun / tag token) at
+            #     p >= threshold, computed AFTER stripping the carried fault
+            #     code — "the code on the display is CE10" is an ANSWER whose
+            #     only "noun" evidence is the fault token itself;
+            #   - answer/correction shapes never pivot (opener acknowledgements,
+            #     correction markers anywhere in the leading window, dont-know,
+            #     short replies; option echoes cleared last_question already).
+            # On pivot: sever the dead thread — one-shot history filter for the
+            # prompt builder, pending question dropped, fault carry cleared so
+            # _prepend_equipment_context cannot re-anchor retrieval on it. The
+            # asset pin is KEPT (the symptom may belong to the pinned machine).
+            elif (
+                _names_new_subject
+                and state.get("state") in ACTIVE_DIAGNOSTIC_STATES
+                and ((state.get("context") or {}).get("session_context") or {}).get("last_question")
+            ):
+                _ctx_pv = state.get("context") or {}
+                _ctx_pv["fresh_thread_turn"] = True
+                _sc_pv = _ctx_pv.get("session_context") or {}
+                _sc_pv.pop("last_question", None)
+                _sc_pv.pop("last_options", None)
+                _sc_pv.pop("active_alarm", None)
+                _ctx_pv["session_context"] = _sc_pv
+                _uns_pv = _ctx_pv.get("uns_context") or {}
+                _uns_pv.pop("fault_code", None)
+                _uns_pv.pop("fault_code_raw", None)
+                _ctx_pv["uns_context"] = _uns_pv
+                state["context"] = _ctx_pv
+                state["fault_category"] = None
+                logger.info(
+                    "CTX_FRESH_THREAD_PIVOT chat_id=%s from_state=%s p=%.3f parts=%s",
+                    chat_id,
+                    state.get("state"),
+                    _p_det,
+                    sorted(_p_parts),
+                )
+
             # Safety ALWAYS wins — router or keyword classifier, either triggers it.
             intent = _keyword_intent  # keep for downstream legacy gates
             if _router_intent == "safety_concern" or _keyword_intent == "safety":
@@ -2927,18 +3335,17 @@ class Supervisor:
             if _dp_pack is not None:
                 _dp_answer = answer_question(_dp_pack.pack_id, _dp_question)
                 if _dp_answer.matched:
-                    _dp_seen: set[tuple[str, str]] = set()
-                    _dp_cite_parts: list[str] = []
-                    for _c in _dp_answer.citations:
-                        _doc = _c.get("doc", "")
-                        _page = _c.get("page", "")
-                        _key = (_doc, _page)
-                        if not _doc or _key in _dp_seen:
-                            continue
-                        _dp_seen.add(_key)
-                        _dp_cite_parts.append(
-                            f"[Source: {_doc} p.{_page}]" if _page else f"[Source: {_doc}]"
-                        )
+                    # Observability (2026-08-04): a deterministic path claiming
+                    # a turn must say so — the prod E1 diagnosis had ZERO log
+                    # lines between ROUTER and DISPATCH. No message bodies.
+                    logger.info(
+                        "DRIVE_PACK_CLAIMED pack_id=%s matched_kind=%s mnemonic=%s chat_id=%s",
+                        _dp_pack.pack_id,
+                        _dp_answer.matched_kind,
+                        _dp_answer.matched_token,
+                        chat_id,
+                    )
+                    _dp_cite_parts = _compact_pack_citation_tags(_dp_answer.citations)
                     reply = _dp_answer.answer
                     if _dp_cite_parts:
                         reply = f"{reply}\n\n{' '.join(_dp_cite_parts)}"
@@ -3006,7 +3413,11 @@ class Supervisor:
 
             if (
                 _router_intent == "general_question"
-                and _keyword_intent not in ("safety", "documentation")
+                # N1 (UAT 2026-08-06): help/greeting join safety/documentation —
+                # the deterministic keyword lanes outrank the router's label
+                # (RTE-001 doctrine). "what can you do?" was stolen here and
+                # got a KB-gap footer instead of the canned help lane.
+                and _keyword_intent not in ("safety", "documentation", "help", "greeting")
                 and not _router_industrial_override
             ):
                 return await self._handle_general_question(
@@ -3014,7 +3425,7 @@ class Supervisor:
                 )
 
             if _router_intent == "greeting_or_chitchat" and state["state"] == "IDLE":
-                return self._greeting_response(state, chat_id, trace_id)
+                return self._greeting_response(state, chat_id, trace_id, message=message)
 
             # Procedural how-to questions: answer from knowledge, skip doc crawl.
             # Keyword "instructional" also routes here via the fallback mapping above.
@@ -3045,9 +3456,22 @@ class Supervisor:
                     honest_prefix=_honest_prefix,
                 )
 
-            # find_documentation: let the existing specificity-gate block handle it below
+            # find_documentation: honor the router's label only with code-shaped
+            # corroboration (RTE-001/RTE-003) — the deterministic recognizers in
+            # classify_intent must also see a doc-request shape. An uncorroborated
+            # label is an LLM word-association ("What is an exploded view?" is
+            # documentation-artifact vocabulary, not a fetch request) and must
+            # never enter the manual-lookup state machine.
             if _router_intent == "find_documentation":
-                intent = "documentation"
+                if _keyword_intent == "documentation":
+                    intent = "documentation"
+                else:
+                    _doc_router_uncorroborated = True
+                    logger.info(
+                        "ROUTER_DOC_UNCORROBORATED chat_id=%s keyword_intent=%s",
+                        chat_id,
+                        _keyword_intent,
+                    )
 
             # UNS Confirmation Gate — no diagnosis without confirmed equipment.
             # Telegram + Slack both go through here. Conditions extracted into
@@ -3059,20 +3483,70 @@ class Supervisor:
             # resolver confidence is manufacturer/model/fault-only, so a
             # vendorless asset mention ("my garage conveyor") scores 0.0 — yet
             # the question IS asset-specific and must confirm location.
-            if (uns_ctx.confidence > 0 or _asset_state_hit) and self._should_fire_uns_gate(
-                _router_intent, state, message, sc
+            # RTE-002: a session that just fell through the pending-confirmation
+            # handler in an exhausted state must reach the symptom-first branch
+            # even when NO vendor was ever named (confidence 0.0, no asset-state
+            # hit on the current message) — otherwise the doc block below can
+            # steal the turn and re-demand the identity D2 exists to stop asking.
+            _uns_gate_exhausted_fallback = (
+                _uns_confirm_fell_through
+                and not state.get("asset_identified")
+                and self._uns_gate_exhausted(state, uns_ctx)
+            )
+            if _uns_gate_exhausted_fallback or (
+                (uns_ctx.confidence > 0 or _asset_state_hit)
+                and self._should_fire_uns_gate(_router_intent, state, message, sc)
             ):
-                return await self._handle_uns_confirmation_request(
-                    chat_id,
-                    message,
-                    state,
-                    uns_ctx,
-                    trace_id,
-                    tenant_id=resolved_tenant,
+                # D2 symptom-first fallback: when the session has already shown
+                # it cannot produce an identity (technician said so, or the
+                # gate fired _UNS_GATE_MAX_ATTEMPTS times unresolved), stop
+                # repeating the demand — label the degraded mode once and let
+                # the turn continue into the normal diagnostic flow. An
+                # asset-state hit or resolved manufacturer is a real candidate
+                # and still confirms (the upgrade path back to grounded).
+                if self._uns_gate_exhausted(state, uns_ctx) and not _asset_state_hit:
+                    notice = self._uns_gate_fallback_notice(state)
+                    if notice:
+                        _honest_prefix += notice
+                    _symptom_first_fired = True
+                    logger.info(
+                        "UNS_GATE_SYMPTOM_FIRST chat_id=%s attempts=%s unknown=%s",
+                        chat_id,
+                        (state.get("context") or {}).get("uns_gate_attempts"),
+                        (state.get("context") or {}).get("uns_identity_unknown"),
+                    )
+                else:
+                    return await self._handle_uns_confirmation_request(
+                        chat_id,
+                        message,
+                        state,
+                        uns_ctx,
+                        trace_id,
+                        tenant_id=resolved_tenant,
+                    )
+
+            # RTE-001: an uncorroborated router doc label is not a fetch request —
+            # answer the question directly (educational path, ends IDLE). Scoped:
+            # a symptom-first turn continues into RAG with its notice, and an
+            # active diagnostic session falls through to the diagnostic flow.
+            if (
+                _doc_router_uncorroborated
+                and not _symptom_first_fired
+                and not _in_active_diagnostic
+            ):
+                return await self._handle_general_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
                 )
 
         # Intent gate: casual/help messages in IDLE state — no LLM/RAG needed
-        if not photo_b64 and state["state"] == "IDLE" and state["exchange_count"] == 0:
+        # CON-001: the conversational lanes are keyword-deterministic and work
+        # at ANY point in an IDLE session \u2014 the old exchange_count==0 gate sent
+        # a mid-session "What can you do?" down the LLM path, which footered
+        # (and once cited) a capability answer (fixtures 61/62, live
+        # 2026-08-05). Safe to relax: the greeting keyword requires <20 chars
+        # + a greeting word and help requires an explicit capability phrase,
+        # so a real technical question can never land here mid-session.
+        if not photo_b64 and state["state"] == "IDLE":
             if intent == "help":
                 reply = (
                     "I help maintenance technicians diagnose equipment issues. "
@@ -3081,19 +3555,16 @@ class Supervisor:
                 )
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "IDLE")
+                return self._make_result(reply, "none", trace_id, "IDLE", dispatch_kind="help")
             if intent == "greeting":
-                reply = (
-                    "Hey \u2014 I'm MIRA, your maintenance copilot. "
-                    "Send me a photo of equipment, a fault code, or describe what's "
-                    "going on and I'll help you diagnose it."
-                )
-                self._record_exchange(chat_id, state, message, reply)
-                tl_flush()
-                return self._make_result(reply, "none", trace_id, "IDLE")
+                # Context-aware canned greeting (mentions a tracked asset when
+                # one is pinned) \u2014 same lane; dispatch_kind="greeting" inside.
+                return self._greeting_response(state, chat_id, trace_id, message=message)
 
         # Documentation intent: specificity check → gathering subroutine or KB pre-check
-        if not photo_b64 and intent == "documentation":
+        # RTE-002: an announced symptom-first turn is never stolen by the doc flow —
+        # the notice promised general guidance, not a brand/manufacturer re-demand.
+        if not photo_b64 and intent == "documentation" and not _symptom_first_fired:
             combined = f"{message} {state.get('asset_identified', '')}".strip()
             mfr = ((state.get("context") or {}).get("uns_context") or {}).get("manufacturer") or ""
 
@@ -3763,6 +4234,18 @@ class Supervisor:
         if _honest_prefix:
             formatted = _honest_prefix + formatted
 
+        # Normalize `--- Sources ---` into inline tags BEFORE the vendor gate.
+        # The cascade often returns citations as a trailing block instead of
+        # inline tags. The gate below matches inline tags only, so a block-form
+        # citation was invisible to it — and the H4 enforcer then converted that
+        # same block into inline citations LATER, in `process()`, after the gate
+        # had already passed. Net effect: every block-form reply reached the
+        # technician with its vendor attribution unchecked, which is why #3049
+        # survived three deploys and why staging logged zero VENDOR_FILTER lines.
+        # Measured on the synthetic run (2026-08-04): a bare "the drive faulted"
+        # was answered citing Yaskawa V1000 and ABB ACH580, both block-form.
+        formatted = _normalize_sources_block(formatted)
+
         # CRA-11 / Unit 2 — citation presence (observational) + P0-3 relevance.
         # Presence logs OK/MISS for the inline-cite rate metric. Relevance (the
         # "stop the lie" gate) strips a cited source that names a DIFFERENT
@@ -3773,7 +4256,7 @@ class Supervisor:
             parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
-            uns_context=(state.get("context") or {}).get("uns_context"),
+            uns_context=_trusted_uns_context(state),
             established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
         )
@@ -4934,7 +5417,19 @@ class Supervisor:
             + factorylm_live_block
         )
 
-        for attempt in range(max_attempts):
+        # CTX-001c Leg 3b: the prompt builder consumes fresh_thread_turn as a
+        # one-shot pop, so a nemotron retry (attempt 2) would otherwise see the
+        # UNFILTERED dead-thread history. Snapshot once and re-arm per attempt.
+        _fresh_thread_snapshot = bool((state.get("context") or {}).get("fresh_thread_turn"))
+
+        # CTX-004: the repeated-answer guard may grant exactly ONE extra
+        # severed attempt beyond max_attempts, so the loop is a while (a
+        # range() computed up front could not extend).
+        _repeat_retry_used = False
+        attempt = 0
+        while attempt < max_attempts:
+            if attempt and _fresh_thread_snapshot:
+                state.setdefault("context", {})["fresh_thread_turn"] = True
             try:
                 raw = await self.rag.process(
                     query,
@@ -4980,18 +5475,44 @@ class Supervisor:
                 except Exception as exc:  # noqa: BLE001 — audit enrichment never blocks a reply
                     logger.debug("RETRIEVAL_AUGMENT miss: %s", exc)
 
+            # CTX-004 repeated-answer guard: a reply that near-duplicates a
+            # recent assistant turn when the question CHANGED gets one severed
+            # retry (fresh_thread_turn armed → the rebuilt prompt drops the
+            # dead thread). Runs BEFORE the grounded early-return — a grounded
+            # duplicate is still a duplicate. Fail-safe: if the retry repeats
+            # too, the reply is returned and logged, never withheld.
+            if not photo_b64 and _find_repeated_answer(
+                parsed.get("reply", ""),
+                message,
+                (state.get("context") or {}).get("history") or [],
+            ):
+                if not _repeat_retry_used:
+                    _repeat_retry_used = True
+                    logger.info(
+                        "REPEATED_ANSWER_DETECTED attempt=%d reply_len=%d",
+                        attempt,
+                        len(parsed.get("reply", "")),
+                    )
+                    state.setdefault("context", {})["fresh_thread_turn"] = True
+                    max_attempts = attempt + 2  # exactly one extra severed attempt
+                    attempt += 1
+                    continue
+                # The severed retry repeated too — fail safe: return it, loudly.
+                logger.info("REPEATED_ANSWER_UNRESOLVED reply_len=%d", len(parsed.get("reply", "")))
+
             # Check grounding against THIS turn's sources snapshot, never the
             # shared self.rag._last_sources (#1704).
             if self._is_grounded(parsed, parsed["_sources"]):
                 return raw, parsed
 
             # Not grounded on first attempt — rewrite and retry
-            if attempt == 0 and max_attempts > 1:
+            if attempt == 0 and max_attempts > 1 and self.nemotron.enabled:
                 logger.info("SELF_CORRECT attempt=1 — rewriting query")
                 query = await self.nemotron.rewrite_query(
                     query=query,
                     context=state.get("asset_identified", ""),
                 )
+            attempt += 1
 
         return raw, parsed
 
@@ -5041,12 +5562,17 @@ class Supervisor:
         if honest_prefix:
             formatted = honest_prefix + formatted
 
+        # Normalize `--- Sources ---` into inline tags BEFORE the vendor gate —
+        # see the note at the other call site. A block-form citation was invisible
+        # to the gate and only became inline afterwards, in the H4 enforcer.
+        formatted = _normalize_sources_block(formatted)
+
         _cc = _check_citation_compliance(
             formatted,
             parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
-            uns_context=ctx.get("uns_context"),
+            uns_context=_trusted_uns_context(state),
             established_text=_established_context_text(message, state),
             enforce=_citation_enforce_enabled(),
         )
@@ -5419,10 +5945,29 @@ class Supervisor:
         chip_text = "\n\n---\n" + " | ".join(f"*{s}*" for s in suggestions)
         return text + chip_text
 
-    def _greeting_response(self, state: dict, chat_id: str, trace_id: str) -> dict:
+    def _greeting_response(
+        self, state: dict, chat_id: str, trace_id: str, message: str = ""
+    ) -> dict:
         """Handle greetings without disrupting an active session."""
         fsm = state.get("state", "IDLE")
         asset = state.get("asset_identified", "")
+
+        # CON-003: a thanks is acknowledged, not re-introduced. Context-aware:
+        # keep the thread alive when an asset is pinned, otherwise sign off.
+        if _THANKS_RE.match(message or ""):
+            if asset:
+                reply = self._format_simple_response(
+                    f"Anytime! I'm still tracking {asset} if you need more.",
+                    suggestions=["Continue diagnosis", "Log a work order"],
+                )
+            else:
+                reply = self._format_simple_response(
+                    "Anytime — that's what I'm here for. Holler if anything else acts up.",
+                    suggestions=["Troubleshoot equipment", "Find a manual"],
+                )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(reply, "none", trace_id, fsm, dispatch_kind="greeting")
 
         if fsm not in ("IDLE", "ASSET_IDENTIFIED") and asset:
             # Mid-diagnostic — don't reset, just acknowledge
@@ -5447,7 +5992,9 @@ class Supervisor:
             )
         self._record_exchange(chat_id, state, "", reply)
         tl_flush()
-        return self._make_result(reply, "none", trace_id, fsm)
+        # CON-001: a canned conversational reply — dispatch_kind keeps the H4
+        # KB-gap footer off (fixture 61, live 2026-08-05).
+        return self._make_result(reply, "none", trace_id, fsm, dispatch_kind="greeting")
 
     # Keywords that suggest the question needs equipment-specific RAG lookup
     _SPEC_KEYWORDS = frozenset(
@@ -5621,6 +6168,9 @@ class Supervisor:
                             "Diagnose this asset",
                         ],
                     )
+                    # Gate BEFORE recording, so history stores what the technician
+                    # actually saw rather than the pre-strip text.
+                    reply = self._gate_reply_citations(reply, message, state, chat_id)
                     self._record_exchange(chat_id, state, message, reply)
                     tl_flush()
                     return self._make_result(
@@ -5643,6 +6193,7 @@ class Supervisor:
                 resolved_tenant,
                 vendor_override=mfr,
                 model_override=model,
+                from_general=True,
             )
 
         # 3b) Live plant-state question with no live data on this turn — refuse
@@ -5744,6 +6295,7 @@ class Supervisor:
                 "Log a work order",
             ],
         )
+        reply = self._gate_reply_citations(reply, message, state, chat_id)
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
         # Observability (probe follow-up): mark this reply as ungrounded in the
@@ -6555,12 +7107,18 @@ class Supervisor:
         vendor_override: str = "",
         model_override: str = "",
         low_confidence: bool = False,
+        from_general: bool = False,
     ) -> dict:
         """Phase 2 KB pre-check + async crawl trigger.
 
         Consolidated from the old in-line documentation intent block so both the
         direct (specific request) path and the gathering subroutine share one code path.
         Never raises.
+
+        ``from_general`` marks a call that ALREADY came from
+        ``_handle_general_question`` (its step 3, "vendor identified but no KB
+        coverage"). It exists purely as a re-entry guard for the answer handoff
+        below, so the two functions can never bounce a turn back and forth.
         """
         state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True)
         asset = state.get("asset_identified", "")
@@ -6625,6 +7183,50 @@ class Supervisor:
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
                 return self._make_result(reply, "none", trace_id, state["state"])
+
+            # A specific question with KB coverage deserves the ANSWER, not an
+            # announcement that the answer exists somewhere.
+            #
+            # `_message_is_specific_question` already means "a real question that
+            # deserves a real answer, not the generic menu" — but the only thing
+            # that used it was the menu suppression below, so a technician who
+            # asked something specific got the possession claim ALONE:
+            #
+            #   "I have the AutomationDirect GS10 manual indexed."
+            #
+            # and nothing else. Measured on the synthetic run (2026-08-04): asked
+            # four times, escalating, for the GS10 default overload trip class,
+            # MIRA returned that same sentence every turn — `direct_spec` scored
+            # 0/4 and `live_diagnosis_vfd` 1/8 the same way. It is the ct-04
+            # withheld-answer class from the Answer Integrity PRD: the evidence
+            # was in hand and the answer was withheld anyway.
+            #
+            # `_handle_general_question` step 2 already does the right thing —
+            # vendor identified + KB coverage → RAG worker, so the reply carries
+            # citations. Its step 3 is the mirror of this handoff (no coverage →
+            # come here), and the two conditions are mutually exclusive, so the
+            # `from_general` guard is belt-and-braces rather than load-bearing.
+            # N4 (UAT 2026-08-06): a POSSESSION question about the docs
+            # themselves ("do you have the gs10 manual?") is answered by the
+            # deterministic possession claim below — never handed to RAG. The
+            # handoff sent it to RAG, which retrieves poorly for meta-questions
+            # and fabricated "No, I don't have the manual" immediately AFTER
+            # kb_has_coverage returned True. classify_intent is the same
+            # recognizer that routed the turn here — code-shaped, not sampled.
+            if (
+                self._message_is_specific_question(message)
+                and not from_general
+                and classify_intent(message) != "documentation"
+            ):
+                logger.info(
+                    "DOC_LOOKUP_ANSWER_HANDOFF chat_id=%s manufacturer=%r — specific "
+                    "question with KB coverage; answering instead of announcing",
+                    chat_id,
+                    mfr,
+                )
+                return await self._handle_general_question(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."
@@ -6965,6 +7567,35 @@ class Supervisor:
         """Create conversation_state table if it doesn't exist."""
         ensure_table(self.db_path)
 
+    def _gate_reply_citations(self, formatted: str, message: str, state: dict, chat_id: str) -> str:
+        """Normalize block-form citations, then run the vendor-relevance gate.
+
+        `process_full`'s two branches do this inline; `_handle_general_question`
+        did not, and it is the RAG path — the one that actually emits citations.
+        Measured on the synthetic QC loop (2026-08-04): the strip fires correctly
+        wherever it runs, yet `unrelated_vendor` stayed flat, because these
+        replies never reached it. Routing specific questions here (the ct-04 fix)
+        sent MORE traffic down the ungated path, so this closes it.
+
+        A no-op when the reply carries no citation, so it is safe on every return.
+        Never raises — a gate that breaks a reply is worse than one that misses.
+        """
+        try:
+            formatted = _normalize_sources_block(formatted)
+            _cc = _check_citation_compliance(
+                formatted,
+                {},
+                fsm_state=state.get("state", ""),
+                chat_id=chat_id,
+                uns_context=_trusted_uns_context(state),
+                established_text=_established_context_text(message, state),
+                enforce=_citation_enforce_enabled(),
+            )
+            return _cc.get("sanitized_reply") or formatted
+        except Exception as exc:  # noqa: BLE001 — never break a reply over QC
+            logger.warning("CITATION_GATE_FAILED chat_id=%s error=%s", chat_id, exc)
+            return formatted
+
     def _load_state(self, chat_id: str) -> dict:
         """Load conversation state from SQLite."""
         return load_state(self.db_path, chat_id)
@@ -7117,6 +7748,98 @@ class Supervisor:
             return False
         return True
 
+    def _maybe_repin_asset(
+        self, chat_id: str, state: dict, message: str, uns_source: str | None
+    ) -> bool:
+        """CTX-001: re-pin ``asset_identified`` when THIS message clearly names
+        a different machine at adoption-grade confidence.
+
+        The switch signal is a FRESH ``resolve_uns_path(message)`` — no
+        prior-ctx carry, so a manufacturer the resolver merely decays forward
+        can never count as new information. The comparison is alias-aware
+        (Allen-Bradley ≡ Rockwell → not a switch). Symmetric with the silent
+        first-adopt at >= 0.7 directly above the call site. Direct-connection
+        surfaces never re-pin from chat text — the connection is the identity
+        (.claude/rules/direct-connection-uns-certified.md). On re-pin,
+        diagnostic carryover is cleared (UNS-025): the old fault, session
+        context, and gate bookkeeping belong to the previous machine.
+        """
+        pinned = state.get("asset_identified") or ""
+        if not pinned or not (message or "").strip():
+            return False
+        if uns_source:
+            return False
+        try:
+            from .uns_resolver import canonical_vendor  # noqa: PLC0415
+
+            fresh = resolve_uns_path(message)
+            if not fresh.manufacturer or (fresh.confidence or 0.0) < 0.7:
+                return False
+            fresh_vendor = canonical_vendor(fresh.manufacturer)
+            pinned_vendor = canonical_vendor(pinned.split(",")[0].strip())
+            if not fresh_vendor or fresh_vendor == pinned_vendor:
+                return False
+        except Exception as exc:  # noqa: BLE001 — a re-pin check must never break a turn
+            logger.warning("CTX_ASSET_REPIN_CHECK_FAILED chat_id=%s err=%s", chat_id, exc)
+            return False
+
+        label = fresh.manufacturer
+        if fresh.model:
+            label = f"{label}, {fresh.model}"
+        # Mutates `state` in place (and returns it) — the old fault, session
+        # context, WO draft, and D2 gate bookkeeping belong to the previous machine.
+        self._clear_diagnostic_carryover(chat_id, state, clear_photo=False)
+        state["asset_identified"] = label
+        # The old machine's answers must not anchor the new machine's first
+        # turn — a re-pin always starts a fresh thread (rag_worker consumes).
+        ctx_repin = state.get("context") or {}
+        ctx_repin["fresh_thread_turn"] = True
+        state["context"] = ctx_repin
+        logger.info("CTX_ASSET_REPIN chat_id=%s new=%r (previous pin superseded)", chat_id, label)
+        return True
+
+    def _uns_gate_exhausted(self, state: dict, uns_ctx) -> bool:
+        """D2: True when re-firing the gate would just repeat the same demand.
+
+        NEW identity information always returns False — later discovery of a
+        nameplate/model must re-open the grounded confirmation route no matter
+        how many attempts came before. But the resolver carries a prior
+        manufacturer forward with decaying confidence (uns_resolver merge), so
+        a candidate that was already offered and never confirmed is NOT new
+        information — re-offering it forever is the same deadlock.
+        """
+        ctx = state.get("context") or {}
+        exhausted = bool(ctx.get("uns_identity_unknown")) or (
+            int(ctx.get("uns_gate_attempts") or 0) >= _UNS_GATE_MAX_ATTEMPTS
+        )
+        if not exhausted:
+            return False
+        mfr = getattr(uns_ctx, "manufacturer", None)
+        if not mfr:
+            return True
+        model = getattr(uns_ctx, "model", None)
+        candidate = f"{mfr}, {model}" if model else mfr
+        return candidate == (ctx.get("uns_gate_last_candidate") or "")
+
+    def _uns_gate_fallback_notice(self, state: dict) -> str:
+        """One-time label for the symptom-first path; '' once announced.
+
+        Mutates state['context'] (persisted by the caller's normal save path)
+        so the notice is never repeated within a session. Names no equipment —
+        the fallback must not invent an identity.
+        """
+        ctx = state.get("context") or {}
+        if ctx.get("symptom_first_notice_sent"):
+            return ""
+        ctx["symptom_first_notice_sent"] = True
+        state["context"] = ctx
+        return (
+            "No exact model identified — I'll work from the symptoms with "
+            "general guidance (lower confidence). If you find a nameplate or "
+            "model number later, tell me and I'll pull the exact "
+            "documentation.\n\n"
+        )
+
     async def _handle_uns_confirmation_request(
         self,
         chat_id: str,
@@ -7203,6 +7926,14 @@ class Supervisor:
             )
             ctx["pending_uns_confirm"] = {"candidate": None}
 
+        # D2: count gate firings so an unresolved session stops repeating the
+        # same demand (see _uns_gate_exhausted). Reset on confirmation. The
+        # offered candidate is recorded so a manufacturer the resolver merely
+        # carries forward (already offered, never confirmed) cannot count as
+        # "new information" and re-open the loop.
+        ctx["uns_gate_attempts"] = int(ctx.get("uns_gate_attempts") or 0) + 1
+        ctx["uns_gate_last_candidate"] = candidate
+
         # Promote to AWAITING_UNS_CONFIRMATION so downstream code paths
         # (citation-compliance enforcement, telemetry, dialogue-state tracker)
         # can key off a single FSM state instead of inspecting context. The
@@ -7261,6 +7992,12 @@ class Supervisor:
                 if demo_ns.get("asset_tag"):
                     ctx["asset_tag"] = demo_ns["asset_tag"]
             ctx.pop("pending_uns_confirm", None)
+            # D2: asset confirmed — reset the symptom-first fallback bookkeeping
+            # so a future asset switch starts a fresh gate cycle.
+            ctx.pop("uns_gate_attempts", None)
+            ctx.pop("uns_identity_unknown", None)
+            ctx.pop("symptom_first_notice_sent", None)
+            ctx.pop("uns_gate_last_candidate", None)
             # Side state cleared — normal IDLE→Q1/DIAGNOSIS flow resumes on
             # the next turn now that asset_identified is set.
             if state.get("state") == "AWAITING_UNS_CONFIRMATION":
@@ -7306,10 +8043,55 @@ class Supervisor:
                 dispatch_kind="uns_confirm_no",
             )
 
+        # CON-003 (UAT 2026-08-06): a thanks/greeting/help turn while the
+        # confirmation is pending is conversational, not an answer — the gate
+        # stays pending and the reply acknowledges + reminds. Previously
+        # "thanks" silently consumed the pending confirmation and re-ran the
+        # full self-intro; "what can you do?" then had no gate to return to.
+        # Real greeting WORDS only — classify_intent also labels any <4-char
+        # message "greeting" (e.g. a bare ambiguous "yes"), and those must
+        # keep falling through so the resolver can re-run on them.
+        _conv_intent = classify_intent(message or "")
+        _msg_words = set((message or "").lower().split())
+        if _conv_intent == "help" or (
+            _conv_intent == "greeting" and _msg_words & GREETING_PATTERNS
+        ):
+            if _conv_intent == "help":
+                ack = (
+                    "I help maintenance technicians diagnose equipment issues — "
+                    "fault codes, troubleshooting steps, manuals, and work orders. "
+                )
+            elif _THANKS_RE.match(message or ""):
+                ack = "Anytime! "
+            else:
+                ack = "Hey! Still with you. "
+            reply = self._format_simple_response(
+                ack + "Whenever you're ready, I still need the equipment's manufacturer "
+                "and model to dig in — a nameplate photo works too.",
+                suggestions=["Send a nameplate photo", "Type the model number"],
+            )
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            logger.info(
+                "UNS_CONFIRM_HELD_CONVERSATIONAL chat_id=%s intent=%s", chat_id, _conv_intent
+            )
+            return self._make_result(
+                reply,
+                "none",
+                trace_id,
+                state.get("state", "IDLE"),
+                dispatch_kind=_conv_intent,
+            )
+
         # User likely typed equipment specs or otherwise off-script. Drop
         # pending and let the normal flow run UNS resolver on the message.
         # Returning to IDLE lets the gate re-fire with new context on the
         # next turn if the user still hasn't given us enough.
+        # D2: if the reply says the identity is unknown/inaccessible, remember
+        # it — _uns_gate_exhausted switches to symptom-first instead of
+        # re-issuing the identical demand.
+        if _UNS_IDENTITY_UNKNOWN_RE.search(message or ""):
+            ctx["uns_identity_unknown"] = True
         ctx.pop("pending_uns_confirm", None)
         if state.get("state") == "AWAITING_UNS_CONFIRMATION":
             state["state"] = "IDLE"

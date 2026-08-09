@@ -321,3 +321,11 @@ graphify-out/
 # (durations + step statuses), the same class as the eval run logs ignored above.
 tools/lead-hunter/.hourly_state.json
 marketing/prospects/hardening-alerts.jsonl
+
+# Telethon user sessions (never commit)
+*.session
+*.session-journal
+tests/regime1_telethon/.login_state.json
+tests/regime1_telethon/code_input.txt
+tests/regime1_telethon/campaign/ledger/
+tests/regime1_telethon/campaign/frozen/
