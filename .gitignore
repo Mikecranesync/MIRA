@@ -329,3 +329,4 @@ tests/regime1_telethon/.login_state.json
 tests/regime1_telethon/code_input.txt
 tests/regime1_telethon/campaign/ledger/
 tests/regime1_telethon/campaign/frozen/
+tests/regime1_telethon/campaign/retrieval/
