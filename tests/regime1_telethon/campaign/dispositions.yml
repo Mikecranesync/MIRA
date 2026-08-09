@@ -36,7 +36,7 @@ t1:reset_procedure:
     with a bare clarifying question while holding a resolved PowerFlex 525 pack, so
     the scenario''s expect list ("reset", "PowerFlex") still fails.'
   issue: '3156'
-  last_seen: c6
+  last_seen: c7
   note: 'Footer half is deterministic: running enforce_citation_or_gap_admission from
     current source reproduces the frozen reply byte-for-byte. Shares its root cause
     with t1:symptom_report. Failed on two different builds and two different phrasings
@@ -64,6 +64,7 @@ t1:reset_procedure:
   - c1r4
   - c3
   - c6
+  - c7
   status: OPEN
   summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
     for the fault code AND tells the technician it has no documentation, while holding
@@ -178,26 +179,51 @@ t2:pivot_after_fault:
     to CTX-004 (the repeated-answer guard) but distinct: the two replies are not near-identical
     text, so a difflib similarity guard will not catch it — the defect is answering
     the wrong QUESTION, not emitting the same STRING. Fix that next if this fingerprint
-    is still red after a live re-run. | c6 LIVE RE-RUN (2026-08-09,
-    qc/cold-start-baseline@3bf213fbe, seed 42, tiers 1+2): **BOTH variants PASS** —
-    t2_000 and t2_005. This fingerprint had failed in c1, c1r2, c1r3, c2 AND c3, so
-    STABLE_FAIL is broken on the first run carrying CTX-001d + CTX-005. Like-for-like
-    on identical tiers/seed/scenarios: c2 (main) 26/30 -> c3 (branch pre-fix) 28/30 ->
-    c6 29/30. | MECHANISM CONFIRMED, NOT JUST THE FLIP: the groundedness clarifier is
-    ABSENT from turn 2 in both conversations (it was present in c2 and in c3 t2_000),
-    and no F004 survives into turn 3 in either. That is CTX-005 and CTX-001d
-    respectively, verified at the reply level. | ⚠️ BUT DEFECT (B) SURVIVES AND IS NOW
-    MASKED BY THE GRADER — the pass is not clean. In c6 t2_000, turn 2 is turn 1''s
-    ENTIRE reply repeated as a literal PREFIX (proven: normalized turn 1 is a prefix
-    of turn 2; 225 of 329 chars) with one new sentence appended. It scores PASS only
-    because expect=["reset"] matches the appended "resetting". Worse, it is invisible
-    to EVERY existing guard: the engine''s CTX-004 uses difflib >= 0.9 on the whole
-    normalized reply (this is 0.812), and campaign gates.check_repeated_answer keys a
-    dict on whole-reply equality — both detect a DUPLICATE reply, while this is a
-    CONTAINED repeat. A containment check (prior reply in current reply, above a length
-    floor) would catch it; neither layer has one. Both c6 turn-2 replies also misread
-    "How do I reset it?" as resetting a DIGITAL OUTPUT rather than the fault. So: the
-    scenario is green, the defect is not fixed. Do not set status FIXED on this run.'
+    is still red after a live re-run. | c6 LIVE RE-RUN (2026-08-09, qc/cold-start-baseline@3bf213fbe,
+    seed 42, tiers 1+2): **BOTH variants PASS** — t2_000 and t2_005. This fingerprint
+    had failed in c1, c1r2, c1r3, c2 AND c3, so STABLE_FAIL is broken on the first
+    run carrying CTX-001d + CTX-005. Like-for-like on identical tiers/seed/scenarios:
+    c2 (main) 26/30 -> c3 (branch pre-fix) 28/30 -> c6 29/30. | MECHANISM CONFIRMED,
+    NOT JUST THE FLIP: the groundedness clarifier is ABSENT from turn 2 in both conversations
+    (it was present in c2 and in c3 t2_000), and no F004 survives into turn 3 in either.
+    That is CTX-005 and CTX-001d respectively, verified at the reply level. | ⚠️ BUT
+    DEFECT (B) SURVIVES AND IS NOW MASKED BY THE GRADER — the pass is not clean. In
+    c6 t2_000, turn 2 is turn 1''s ENTIRE reply repeated as a literal PREFIX (proven:
+    normalized turn 1 is a prefix of turn 2; 225 of 329 chars) with one new sentence
+    appended. It scores PASS only because expect=["reset"] matches the appended "resetting".
+    Worse, it is invisible to EVERY existing guard: the engine''s CTX-004 uses difflib
+    >= 0.9 on the whole normalized reply (this is 0.812), and campaign gates.check_repeated_answer
+    keys a dict on whole-reply equality — both detect a DUPLICATE reply, while this
+    is a CONTAINED repeat. A containment check (prior reply in current reply, above
+    a length floor) would catch it; neither layer has one. Both c6 turn-2 replies
+    also misread "How do I reset it?" as resetting a DIGITAL OUTPUT rather than the
+    fault. So: the scenario is green, the defect is not fixed. Do not set status FIXED
+    on this run. | c7 (2026-08-09, qc/cold-start-baseline@b306a6b9b, same seed/tiers):
+    **DEFECT (B) IS GONE — proven by direct measurement, not by the verdict.** Scanning
+    every tier-2 reply pair for a contained-or-near-duplicate repeat: c6 = 1 violation
+    (t2_000 turn1->turn2, frac 0.619), c7 = 0 violations across the same 10
+    conversations. Only the build changed. That is CTX-004b. Turn 3 also now reads like
+    a technician wrote it — "Intermittent shutdown on a conveyor with a 525 drive — is
+    the trip consistent with a specific event or load condition?" — with no dead fault
+    carried. Tier 2 10/10, campaign 29/30. | ⚠️ ONE DEFECT REMAINS on this scenario,
+    previously HIDDEN BEHIND the repeat: turn 2 answers "How do I reset it?" with
+    instructions for resetting a DIGITAL OUTPUT ("navigate to the Digital Outputs
+    menu", "set P0594 = 1") when the technician means the F004 UnderVoltage fault.
+    Present in BOTH c6 and c7, so it is not a regression from CTX-004b — it is the
+    layer underneath. Localized, NOT root-caused: it is a RETRIEVAL referent problem,
+    not the pack (the PF525 pack has zero fault_entries, zero knowledge and zero
+    keypad_navigation, so it cannot answer a reset question and never claims the turn).
+    Working hypothesis, with a natural experiment already in the evidence:
+    _prepend_equipment_context carries the fault CODE but not the fault NAME, so the
+    enriched query is "... PowerFlex 525 F004 How do I reset it?" and the strongest
+    lexical match for "reset" in the corpus is digital-output content. The control is
+    c6/c7 t1_004 — "how to reset a powerflex525 after an UNDERVOLTAGE fault?" retrieves
+    the right answer ("cycle power or use the keypad to clear the fault"). The word the
+    corpus indexes is "undervoltage", and the pack already maps code 4 -> "UnderVoltage"
+    in live_decode.fault_codes, so the name is available deterministically. Fixing it is
+    a RETRIEVAL-layer change: it needs the retrieval-diagnostics discipline (measure
+    recall on the production path, not a harness), bot-grounding-tests, and a staging
+    gate. Do not patch it blind.'
   seen_in:
   - c1
   - c1r2

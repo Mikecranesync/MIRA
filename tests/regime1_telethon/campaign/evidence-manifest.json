@@ -99,6 +99,10 @@
     "c6_t1_013_reset_procedure.json": {
       "bytes": 702,
       "sha256": "8ff65ee3e595bf703c711c23fa1ffd9db3e3a4124c0632d3596126d3e334e5c2"
+    },
+    "c7_t1_013_reset_procedure.json": {
+      "bytes": 702,
+      "sha256": "fa36120619511edf05b6c45d969b5e06e5a8dd0b4eebd4a1327e629862214e8f"
     }
   },
   "ledgers": {
@@ -149,6 +153,10 @@
     "c6.jsonl": {
       "bytes": 47970,
       "sha256": "6fff6d941b1b0fc7a6f0bfc09c74448fea61f1929245202853bf39f9d83bb995"
+    },
+    "c7.jsonl": {
+      "bytes": 47733,
+      "sha256": "abc4ef986b935d89449bb719c4dc4b1017bec69d00cf05069b9b76eda7801c17"
     }
   },
   "note": "Ledgers and frozen transcripts are gitignored. A report generated without the matching evidence bundle is NOT reproducible \u2014 verify against these checksums before trusting a regenerated report.",
