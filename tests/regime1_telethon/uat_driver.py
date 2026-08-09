@@ -30,7 +30,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from telethon import TelegramClient
+
+try:
+    from telethon import TelegramClient
+except ModuleNotFoundError:  # pragma: no cover - exercised only in CI
+    # `telethon` is a LIVE dependency: it is needed to talk to Telegram and to
+    # nothing else. But this module also owns `grade_turn`, a pure function that
+    # several offline test suites use to check grading semantics, and the Eval
+    # Offline CI environment does not install telethon.
+    #
+    # Importing at module scope made those suites fail at COLLECTION with
+    # ModuleNotFoundError, which reads as a broken test file rather than a
+    # missing optional dependency. Degrade instead: the grading helpers import
+    # anywhere, and anything that actually needs a client fails at the point of
+    # use with a clear name rather than at import.
+    TelegramClient = None
 
 STAGING_BOT = "@Mira_stagong_bot"
 REPLY_TIMEOUT_S = 90
