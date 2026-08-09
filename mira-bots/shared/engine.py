@@ -8170,6 +8170,7 @@ class Supervisor:
         # same demand again. Say where it came from, admit it is unverified,
         # and make the choice explicit. The offline lab's contained_repeat
         # detector is what surfaced this; keep it green.
+        _asks = int(ctx.get("uns_gate_attempts") or 0)
         if candidate and _prev_candidate == candidate:
             prompt = (
                 f"I still don't have that confirmed. I read **{candidate}** from what "
@@ -8178,6 +8179,20 @@ class Supervisor:
                 f"1. Yes, it's {candidate}\n"
                 "2. Something else — tell me the manufacturer and model\n"
                 "3. Not sure — send a photo of the nameplate"
+            )
+        elif not candidate and _asks > 1:
+            # The no-candidate branch loops hardest: with nothing resolved there
+            # is no candidate to vary on, so "tell me the manufacturer and
+            # model" came back turn after turn (c8/c9 t8_41_001 and
+            # t8_41_003 — the "experienced" and "impatient" personas of #3157
+            # and #3158). Asking the same way twice and expecting a different
+            # answer is the loop. Offer the OTHER routes to the same fact.
+            prompt = (
+                "I still can't tell which machine this is, and I won't guess at it.\n\n"
+                "Any one of these gets me there:\n"
+                "1. A photo of the nameplate\n"
+                "2. The manufacturer and model (e.g. 'Allen-Bradley PowerFlex 525')\n"
+                "3. The asset tag or where it sits on the line"
             )
 
         # Promote to AWAITING_UNS_CONFIRMATION so downstream code paths

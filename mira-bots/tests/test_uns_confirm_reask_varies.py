@@ -122,3 +122,37 @@ async def test_a_different_candidate_gets_the_normal_first_ask(sv):
     second = await _ask(sv, chat, state, _Uns("AutomationDirect", "GS10"))
     text = second.get("reply") if isinstance(second, dict) else str(second)
     assert FIRST_ASK in text, "a new candidate is a new question, not a re-ask"
+
+
+@pytest.mark.asyncio
+async def test_the_no_candidate_ask_also_stops_looping(sv):
+    """c8/c9 t8_41_001 and t8_41_003 (#3157/#3158): with nothing resolved there
+    is no candidate to vary on, so "tell me the manufacturer and model" came
+    back turn after turn. Asking the same way twice and expecting a different
+    answer IS the loop — offer the other routes to the same fact."""
+    chat = "no-candidate-loop"
+    state = {"state": "IDLE", "context": {}, "exchange_count": 1}
+    nothing = _Uns(None, None, 0.0)
+
+    first = await _ask(sv, chat, state, nothing)
+    first_text = first.get("reply") if isinstance(first, dict) else str(first)
+    state = sv._load_state(chat)
+    second = await _ask(sv, chat, state, nothing, "I told you, it's the one by the filler")
+    second_text = second.get("reply") if isinstance(second, dict) else str(second)
+
+    assert second_text != first_text, "the identity demand repeated verbatim"
+    lowered = second_text.lower()
+    assert "nameplate" in lowered and "asset tag" in lowered, (
+        "the re-ask must offer alternative routes, not repeat one demand"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_first_no_candidate_ask_is_unchanged(sv):
+    """Negative control: the escalation is for a REPEAT. A first ask stays the
+    plain, short demand."""
+    chat = "no-candidate-first"
+    state = {"state": "IDLE", "context": {}, "exchange_count": 1}
+    first = await _ask(sv, chat, state, _Uns(None, None, 0.0))
+    text = first.get("reply") if isinstance(first, dict) else str(first)
+    assert "Before I diagnose, I need to know the equipment" in text
