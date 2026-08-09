@@ -8157,6 +8157,21 @@ class Supervisor:
         ctx["uns_gate_attempts"] = int(ctx.get("uns_gate_attempts") or 0) + 1
         ctx["uns_gate_last_candidate"] = candidate
 
+        # CON-004c — a SESSION-scoped count of identity asks, deliberately NOT
+        # cleared by the asset-switch reset that wipes uns_gate_attempts.
+        #
+        # Campaign c10 (#3157/#3158): the no-candidate escalation never fired
+        # because a tier-8 persona that keeps questioning the asset triggers the
+        # asset-switch reset between gate firings, so uns_gate_attempts was back
+        # to 0 every time and MIRA could re-send the identical demand forever.
+        #
+        # That reset is CORRECT for suppression (UNS-025: never carry context
+        # across an asset change) — but this counter is about MIRA's own
+        # repetition, not about the asset. It only ever changes WORDING; it can
+        # never suppress the gate, so keeping it across a switch cannot weaken
+        # the UNS contract.
+        ctx["identity_ask_count"] = int(ctx.get("identity_ask_count") or 0) + 1
+
         # CON-004 (#3158) — do not repeat the demand verbatim.
         #
         # Campaign c8 t8_41_002, live: the technician did not ANSWER the
@@ -8170,7 +8185,7 @@ class Supervisor:
         # same demand again. Say where it came from, admit it is unverified,
         # and make the choice explicit. The offline lab's contained_repeat
         # detector is what surfaced this; keep it green.
-        _asks = int(ctx.get("uns_gate_attempts") or 0)
+        _asks = int(ctx.get("identity_ask_count") or 0)
         if candidate and _prev_candidate == candidate:
             prompt = (
                 f"I still don't have that confirmed. I read **{candidate}** from what "

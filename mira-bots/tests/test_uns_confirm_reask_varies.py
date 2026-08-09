@@ -156,3 +156,36 @@ async def test_the_first_no_candidate_ask_is_unchanged(sv):
     first = await _ask(sv, chat, state, _Uns(None, None, 0.0))
     text = first.get("reply") if isinstance(first, dict) else str(first)
     assert "Before I diagnose, I need to know the equipment" in text
+
+
+@pytest.mark.asyncio
+async def test_an_asset_switch_does_not_reset_the_anti_loop_counter(sv):
+    """CON-004c (#3157/#3158, campaign c10): a tier-8 persona that keeps
+    questioning the asset triggers the asset-switch reset, which wipes
+    uns_gate_attempts — so the escalation never fired and MIRA could re-send the
+    identical demand forever.
+
+    The reset is CORRECT for suppression (UNS-025). This counter only changes
+    WORDING, so surviving a switch cannot weaken the gate."""
+    chat = "switch-loop"
+    state = {"state": "IDLE", "context": {}, "exchange_count": 1}
+    nothing = _Uns(None, None, 0.0)
+
+    first = await _ask(sv, chat, state, nothing)
+    first_text = first.get("reply") if isinstance(first, dict) else str(first)
+
+    # Simulate exactly what the asset-switch reset does between firings.
+    state = sv._load_state(chat)
+    ctx = state.get("context") or {}
+    ctx.pop("uns_gate_attempts", None)
+    ctx.pop("uns_gate_last_candidate", None)
+    state["context"] = ctx
+    sv._save_state(chat, state)
+
+    second = await _ask(sv, chat, state, nothing, "I already told you which one")
+    second_text = second.get("reply") if isinstance(second, dict) else str(second)
+
+    assert second_text != first_text, (
+        "the asset-switch reset wiped the anti-loop counter and the demand repeated"
+    )
+    assert "nameplate" in second_text.lower()

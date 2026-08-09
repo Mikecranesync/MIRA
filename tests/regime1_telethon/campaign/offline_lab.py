@@ -101,6 +101,14 @@ def detect_contained_repeat(turns: list[dict]) -> list[dict]:
                     {
                         "detector": "contained_repeat" if contained else "near_duplicate",
                         "turn": idx,
+                        # The SIGNATURE is what makes this readable across runs.
+                        # Tier 8 is adaptive, so raw counts swing with the probe's
+                        # path and a single-run count comparison is noise. Which
+                        # TEMPLATE repeated is stable, and it is what names the
+                        # defect: "before i diagnose, confirm the equipment" is
+                        # the UNS gate, "before i can give you a confident
+                        # diagnosis" is the self-critique clarifier.
+                        "signature": prev[:60],
                         "detail": (
                             f"turn {prev_idx} reproduced in turn {idx} "
                             f"(ratio {ratio:.3f}, frac {len(prev) / len(cur):.3f})"
@@ -236,6 +244,21 @@ def main() -> int:
     for det, count in by_detector.most_common():
         note = NEGATIVE_CONTROLS.get(det, "")
         print(f"{det:24} {count:5}  {'[negative control] ' + note if note else ''}")
+    print()
+    # Which TEMPLATE repeated, and in which runs. Tier 8 is adaptive, so a raw
+    # count swings with the probe's path — the signature is the stable signal,
+    # and a fix shows up as a row disappearing rather than a number falling.
+    sigs = collections.defaultdict(set)
+    for f in real:
+        if f.get("signature"):
+            sigs[f["signature"]].add(f["campaign"])
+    if sigs:
+        print()
+        print("repeated TEMPLATE by run — a fix is a row that stops appearing")
+        print("-" * 78)
+        for sig, camps in sorted(sigs.items(), key=lambda kv: -len(kv[1])):
+            print(f"  {sig[:56]:56} {','.join(sorted(camps))}")
+
     print()
     if real:
         print(f"ACTIONABLE ({len(real)}):")
