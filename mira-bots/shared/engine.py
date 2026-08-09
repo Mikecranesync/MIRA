@@ -3350,9 +3350,21 @@ class Supervisor:
                     ((state.get("context") or {}).get("session_context") or {}).get("last_question")
                 )
             ):
+                # Same severance bookkeeping as the pivot branch (live catch
+                # c1 t2_s42, 2026-08-07: the IDLE branch set the flag but left
+                # the dead thread's F004 carry, and the reply answered it).
                 _ctx_ft = state.get("context") or {}
                 _ctx_ft["fresh_thread_turn"] = True
+                _sc_ft = _ctx_ft.get("session_context") or {}
+                _sc_ft.pop("last_options", None)
+                _sc_ft.pop("active_alarm", None)
+                _ctx_ft["session_context"] = _sc_ft
+                _uns_ft = _ctx_ft.get("uns_context") or {}
+                _uns_ft.pop("fault_code", None)
+                _uns_ft.pop("fault_code_raw", None)
+                _ctx_ft["uns_context"] = _uns_ft
                 state["context"] = _ctx_ft
+                state["fault_category"] = None
                 logger.info(
                     "CTX_FRESH_THREAD chat_id=%s p=%.3f parts=%s (new subject, completed thread)",
                     chat_id,
