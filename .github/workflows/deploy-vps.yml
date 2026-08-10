@@ -448,10 +448,20 @@ jobs:
           # Retry rather than single-shot: --wait above already gated on the container
           # healthcheck, so a miss here is almost always "probed a fraction of a second
           # too early", which used to print a scary WARNING on a perfectly good deploy.
+          #
+          # `-L` is load-bearing (2026-08-09). The hub is a Next.js app with trailing-slash
+          # redirects on, so /api/health answers 308 -> /api/health/. Without -L this check
+          # reported 308 on all five attempts and printed
+          #   WARNING: mira-hub health returned 308
+          # on a hub that was perfectly healthy — `curl -L` against the same URL returns
+          # 200. The fallback below could not rescue it either: `-f` only fails on >=400,
+          # so a 308 exits 0 and the `||` never fires, leaving the /hub path untried. The
+          # net effect was a health check that could not pass and a warning nobody could
+          # act on — the kind of alarm that trains people to ignore alarms.
           HUB_STATUS="unreachable"
           for attempt in 1 2 3 4 5; do
-            HUB_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/api/health \
-              || curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/hub/api/health \
+            HUB_STATUS=$(curl -sfL -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/api/health \
+              || curl -sfL -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/hub/api/health \
               || echo "unreachable")
             [ "$HUB_STATUS" = "200" ] && break
             echo "  attempt $attempt: mira-hub health=$HUB_STATUS — retrying in 3s"

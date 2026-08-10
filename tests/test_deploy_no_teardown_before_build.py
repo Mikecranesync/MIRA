@@ -172,3 +172,29 @@ def test_recovery_teardown_fires_only_on_a_compose_name_conflict():
         "A non-conflict swap failure does not exit non-zero. It must fail the deploy "
         "loudly: the old containers are already gone and a human needs to look."
     )
+
+
+def test_hub_health_probe_follows_redirects():
+    """The hub health probe must follow redirects, or it can never report healthy.
+
+    mira-hub is a Next.js app with trailing-slash redirects on: ``/api/health``
+    answers ``308 -> /api/health/``. Without ``-L`` the deploy probe recorded 308 on
+    every attempt and printed ``WARNING: mira-hub health returned 308`` against a hub
+    that was serving fine (observed on the 2026-08-09 deploy of b4999550; ``curl -L``
+    on the same URL returns 200).
+
+    The ``|| curl .../hub/api/health`` fallback could not save it either: ``-f`` only
+    makes curl fail on >= 400, so a 308 exits 0 and the ``||`` never fires. The result
+    was a check that could not pass and a warning nobody could act on — which is worse
+    than no check, because it teaches people to scroll past deploy warnings.
+    """
+    body = _deploy_body()
+    probes = [ln for ln in body if "3101" in ln and "curl" in ln]
+    assert probes, "no mira-hub health probe found in the deploy step"
+    for ln in probes:
+        flags = re.search(r"curl\s+(-[A-Za-z]+)", ln)
+        assert flags and "L" in flags.group(1), (
+            f"mira-hub health probe does not pass -L: {ln.strip()!r}. The hub 308s to "
+            f"the trailing-slash URL, so without -L this probe reports 308 forever and "
+            f"warns on a healthy hub."
+        )
