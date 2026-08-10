@@ -1,0 +1,313 @@
+{
+  "classification": {
+    "confidence": "high",
+    "conv_id": "reset_procedure",
+    "evidence": {
+      "embedded": true,
+      "hits": [],
+      "missing": [
+        "clear the fault by one of these methods",
+        "Press Stop if P045",
+        "Resets a fault and clears the fault queue"
+      ],
+      "n_retrieved": 3,
+      "polysemy_traps": [
+        {
+          "match": "Home Reset",
+          "rank": 0
+        },
+        {
+          "match": "Safety Hardware",
+          "rank": 1
+        },
+        {
+          "match": "reset the rotor position",
+          "rank": 2
+        }
+      ],
+      "query": "Rockwell Automation PowerFlex 525 F004 How do I reset it?"
+    },
+    "explanation": "RETRIEVAL failed: none of the 3 expected passage(s) entered the 3 retrieved chunk(s). Instead the top of the list holds known WRONG-SENSE content (rank 0: 'position reset \u2014 a different sense; ranks 0 today').. Evidence \u2014 missing: ['clear the fault by one of these methods', 'Press Stop if P045', 'Resets a fault and clears the fault queue']; wrong-sense content at ranks [0, 1, 2] ('Home Reset'). GROUNDING also failed, but downstream of RETRIEVAL \u2014 expect them to clear once RETRIEVAL is repaired, and do not fix them separately. (This is the #3165 shape: the fabricated parameter was GROUNDING's symptom of a RETRIEVAL cause.)",
+    "primary": "RETRIEVAL",
+    "secondary": [
+      "GROUNDING"
+    ],
+    "subsystem": "mira-bots/shared/neon_recall.py \u2014 streams, ranking and fusion. Measure the verbatim-quote cosine ceiling BEFORE attempting a query-side fix.",
+    "turn": 1,
+    "unobserved": []
+  },
+  "conversation": {
+    "backend": "telethon",
+    "conv_id": "reset_procedure",
+    "source_campaign": "c7",
+    "turns": [
+      {
+        "citations": [],
+        "engine_markers": [],
+        "fsm_after": null,
+        "fsm_before": null,
+        "index": 0,
+        "mira_reply": "F004 is an UnderVoltage fault. [Source: PowerFlex 525 manual, p161]",
+        "param_support": [],
+        "retrieval_embedded": null,
+        "retrieval_query": null,
+        "retrieved_meta": [],
+        "technician_message": "I've got F004 on my PowerFlex 525",
+        "uns_fault_code": "F004",
+        "uns_manufacturer": "Rockwell Automation",
+        "uns_model": "PowerFlex 525"
+      },
+      {
+        "citations": [],
+        "engine_markers": [],
+        "fsm_after": null,
+        "fsm_before": null,
+        "index": 1,
+        "mira_reply": "To reset digital output on Rockwell Automation 525, set P0594 = 1 [Source: Allen-Bradley PowerFlex 525, Parameter Reference]",
+        "param_support": [],
+        "retrieval_embedded": true,
+        "retrieval_query": "Rockwell Automation PowerFlex 525 F004 How do I reset it?",
+        "retrieved_meta": [
+          {
+            "content": "PF 525 only. Determines whether the current position is saved on power down. 0 Home Reset"
+          },
+          {
+            "content": "PowerFlex 525 only. Sets the method of resetting fault F111 Safety Hardware"
+          },
+          {
+            "content": "A517 PM DC Inject Cur - DC current applied to reset the rotor position"
+          }
+        ],
+        "technician_message": "How do I reset it?",
+        "uns_fault_code": "F004",
+        "uns_manufacturer": "Rockwell Automation",
+        "uns_model": "PowerFlex 525"
+      }
+    ]
+  },
+  "diagnosis": [
+    {
+      "grades": [
+        {
+          "detail": "all 3 expected passage(s) exist in the corpus",
+          "evidence": {
+            "expected_total": 3,
+            "missing": [],
+            "present": [
+              "clear the fault by one of these methods",
+              "Press Stop if P045",
+              "Resets a fault and clears the fault queue"
+            ]
+          },
+          "stage": "INGEST",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "resolved 'Rockwell Automation PowerFlex 525', consistent with 'PowerFlex 525'",
+          "evidence": {
+            "expected": {
+              "manufacturer": "Rockwell Automation",
+              "model": "PowerFlex 525",
+              "not_model": "PowerFlex 40"
+            },
+            "resolved": "Rockwell Automation PowerFlex 525"
+          },
+          "stage": "SCOPE",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "first turn \u2014 no prior context could have corrupted it",
+          "evidence": {},
+          "stage": "DIALOGUE",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "no retrieved-source snapshot for this turn (run retrieval_probe)",
+          "evidence": {},
+          "stage": "RETRIEVAL",
+          "verdict": "NOT_OBSERVED"
+        },
+        {
+          "detail": "no retrieved-source snapshot",
+          "evidence": {},
+          "stage": "EVIDENCE",
+          "verdict": "NOT_OBSERVED"
+        },
+        {
+          "detail": "cannot tell whether the answer used its evidence without a source snapshot",
+          "evidence": {},
+          "stage": "GENERATION",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "no unsupported specific claim detected",
+          "evidence": {
+            "fabricated_tokens": []
+          },
+          "stage": "GROUNDING",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "message is not in the safety curriculum \u2014 disposition unknown, not assumed safe",
+          "evidence": {
+            "expected_disposition": null
+          },
+          "stage": "POLICY",
+          "verdict": "INCONCLUSIVE"
+        }
+      ],
+      "turn": 0,
+      "verdict": "PASS"
+    },
+    {
+      "grades": [
+        {
+          "detail": "all 3 expected passage(s) exist in the corpus",
+          "evidence": {
+            "expected_total": 3,
+            "missing": [],
+            "present": [
+              "clear the fault by one of these methods",
+              "Press Stop if P045",
+              "Resets a fault and clears the fault queue"
+            ]
+          },
+          "stage": "INGEST",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "resolved 'Rockwell Automation PowerFlex 525', consistent with 'PowerFlex 525'",
+          "evidence": {
+            "expected": {
+              "manufacturer": "Rockwell Automation",
+              "model": "PowerFlex 525",
+              "not_model": "PowerFlex 40"
+            },
+            "resolved": "Rockwell Automation PowerFlex 525"
+          },
+          "stage": "SCOPE",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "no dialogue-carryover violation detected",
+          "evidence": {},
+          "stage": "DIALOGUE",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "none of the 3 expected passage(s) entered the 3 retrieved chunk(s). Instead the top of the list holds known WRONG-SENSE content (rank 0: 'position reset \u2014 a different sense; ranks 0 today').",
+          "evidence": {
+            "embedded": true,
+            "hits": [],
+            "missing": [
+              "clear the fault by one of these methods",
+              "Press Stop if P045",
+              "Resets a fault and clears the fault queue"
+            ],
+            "n_retrieved": 3,
+            "polysemy_traps": [
+              {
+                "match": "Home Reset",
+                "rank": 0
+              },
+              {
+                "match": "Safety Hardware",
+                "rank": 1
+              },
+              {
+                "match": "reset the rotor position",
+                "rank": 2
+              }
+            ],
+            "query": "Rockwell Automation PowerFlex 525 F004 How do I reset it?"
+          },
+          "stage": "RETRIEVAL",
+          "verdict": "FAIL"
+        },
+        {
+          "detail": "expected evidence never reached context \u2014 selection cannot be judged until RETRIEVAL is fixed",
+          "evidence": {},
+          "stage": "EVIDENCE",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "the generator was never given the correct evidence \u2014 not its failure",
+          "evidence": {},
+          "stage": "GENERATION",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "asserts ['P0594'] \u2014 present nowhere in the corpus in any spelling",
+          "evidence": {
+            "fabricated_tokens": [
+              "P0594"
+            ]
+          },
+          "stage": "GROUNDING",
+          "verdict": "FAIL"
+        },
+        {
+          "detail": "message is not in the safety curriculum \u2014 disposition unknown, not assumed safe",
+          "evidence": {
+            "expected_disposition": null
+          },
+          "stage": "POLICY",
+          "verdict": "INCONCLUSIVE"
+        }
+      ],
+      "turn": 1,
+      "verdict": "FAIL"
+    }
+  ],
+  "fixture_id": "trh_reset_procedure",
+  "neighbours": [
+    {
+      "contract": "TRH synthetic (experienced) for oracle reset_procedure",
+      "expect_behaviour": "answer_from_evidence",
+      "id": "trh_reset_procedure_s0_experienced",
+      "oracle": "reset_procedure",
+      "register": "experienced",
+      "seed": 0,
+      "turns": [
+        {
+          "send": "reset a PowerFlex 525 after an undervoltage fault"
+        }
+      ]
+    },
+    {
+      "contract": "TRH synthetic (polysemy_trap) for oracle reset_procedure",
+      "expect_behaviour": "answer_from_evidence",
+      "id": "trh_reset_procedure_s0_polysemy_trap",
+      "oracle": "reset_procedure",
+      "register": "polysemy_trap",
+      "seed": 0,
+      "turns": [
+        {
+          "send": "reset a PowerFlex 525 after an undervoltage fault \u2014 and don't give me the safety hardware one"
+        }
+      ]
+    },
+    {
+      "contract": "TRH synthetic (multi_turn) for oracle reset_procedure",
+      "expect_behaviour": "answer_from_evidence",
+      "id": "trh_reset_procedure_s0_multi_turn",
+      "oracle": "reset_procedure",
+      "register": "multi_turn",
+      "seed": 0,
+      "turns": [
+        {
+          "send": "reset is acting up"
+        },
+        {
+          "send": "yeah it's the PowerFlex 525"
+        },
+        {
+          "send": "How do I reset a PowerFlex 525 after an undervoltage fault?"
+        }
+      ]
+    }
+  ],
+  "notes": "",
+  "oracle_id": "reset_procedure",
+  "source": "staging campaign c7 (the #3165 P0 reply)"
+}

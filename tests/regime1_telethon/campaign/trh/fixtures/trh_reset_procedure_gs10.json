@@ -1,0 +1,183 @@
+{
+  "classification": {
+    "confidence": "high",
+    "conv_id": "reset_procedure_gs10",
+    "evidence": {
+      "expected_total": 1,
+      "missing": [
+        "clear the fault by one of these methods"
+      ],
+      "present": []
+    },
+    "explanation": "INGEST failed: NONE of the 1 expected passage(s) exist in the corpus \u2014 this is an ingestion/tagging gap; retrieval tuning cannot fix it. Evidence \u2014 missing: ['clear the fault by one of these methods']. The content is not in the corpus for this vendor, so no retrieval, ranking or prompt change can surface it. **Do not tune retrieval for this case** \u2014 source and ingest the document, and fix model tagging. Every downstream layer is expected to fail and is not evidence of anything else.",
+    "primary": "INGEST",
+    "secondary": [
+      "RETRIEVAL"
+    ],
+    "subsystem": "mira-crawler/ingest/ + the corpus itself \u2014 source and ingest the missing document, and fix model_number tagging. NOT a retrieval change.",
+    "turn": 0,
+    "unobserved": []
+  },
+  "conversation": {
+    "backend": "telethon",
+    "conv_id": "reset_procedure_gs10",
+    "source_campaign": "c1r3",
+    "turns": [
+      {
+        "citations": [],
+        "engine_markers": [],
+        "fsm_after": null,
+        "fsm_before": null,
+        "index": 0,
+        "mira_reply": "Set P09.03 to adjust the COM1 time-out, then cycle power. [Source: AutomationDirect GS10]",
+        "param_support": [],
+        "retrieval_embedded": true,
+        "retrieval_query": "AutomationDirect, GS10 How do I reset it?",
+        "retrieved_meta": [
+          {
+            "content": "GS10 Modbus register cheat sheet decimal hex"
+          },
+          {
+            "content": "AutomationDirect GS10 VFD Modbus RTU register map"
+          }
+        ],
+        "technician_message": "CE10 on my DURApulse GS10 \u2014 how do I reset it?",
+        "uns_fault_code": "CE10",
+        "uns_manufacturer": "AutomationDirect",
+        "uns_model": "GS10"
+      }
+    ]
+  },
+  "diagnosis": [
+    {
+      "grades": [
+        {
+          "detail": "NONE of the 1 expected passage(s) exist in the corpus \u2014 this is an ingestion/tagging gap; retrieval tuning cannot fix it",
+          "evidence": {
+            "expected_total": 1,
+            "missing": [
+              "clear the fault by one of these methods"
+            ],
+            "present": []
+          },
+          "stage": "INGEST",
+          "verdict": "FAIL"
+        },
+        {
+          "detail": "resolved 'AutomationDirect GS10', consistent with 'GS10'",
+          "evidence": {
+            "expected": {
+              "manufacturer": "AutomationDirect",
+              "model": "GS10"
+            },
+            "resolved": "AutomationDirect GS10"
+          },
+          "stage": "SCOPE",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "first turn \u2014 no prior context could have corrupted it",
+          "evidence": {},
+          "stage": "DIALOGUE",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "none of the 1 expected passage(s) entered the 2 retrieved chunk(s).",
+          "evidence": {
+            "embedded": true,
+            "hits": [],
+            "missing": [
+              "clear the fault by one of these methods"
+            ],
+            "n_retrieved": 2,
+            "polysemy_traps": [],
+            "query": "AutomationDirect, GS10 How do I reset it?"
+          },
+          "stage": "RETRIEVAL",
+          "verdict": "FAIL"
+        },
+        {
+          "detail": "expected evidence never reached context \u2014 selection cannot be judged until RETRIEVAL is fixed",
+          "evidence": {},
+          "stage": "EVIDENCE",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "the generator was never given the correct evidence \u2014 not its failure",
+          "evidence": {},
+          "stage": "GENERATION",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "detail": "no unsupported specific claim detected",
+          "evidence": {
+            "fabricated_tokens": []
+          },
+          "stage": "GROUNDING",
+          "verdict": "PASS"
+        },
+        {
+          "detail": "message is not in the safety curriculum \u2014 disposition unknown, not assumed safe",
+          "evidence": {
+            "expected_disposition": null
+          },
+          "stage": "POLICY",
+          "verdict": "INCONCLUSIVE"
+        }
+      ],
+      "turn": 0,
+      "verdict": "FAIL"
+    }
+  ],
+  "fixture_id": "trh_reset_procedure_gs10",
+  "neighbours": [
+    {
+      "contract": "TRH synthetic (experienced) for oracle reset_procedure_gs10",
+      "expect_behaviour": "answer_from_evidence",
+      "id": "trh_reset_procedure_gs10_s0_experienced",
+      "oracle": "reset_procedure_gs10",
+      "register": "experienced",
+      "seed": 0,
+      "turns": [
+        {
+          "send": "reset a GS10 after a CE10 fault"
+        }
+      ]
+    },
+    {
+      "contract": "TRH synthetic (multi_turn) for oracle reset_procedure_gs10",
+      "expect_behaviour": "answer_from_evidence",
+      "id": "trh_reset_procedure_gs10_s0_multi_turn",
+      "oracle": "reset_procedure_gs10",
+      "register": "multi_turn",
+      "seed": 0,
+      "turns": [
+        {
+          "send": "reset is acting up"
+        },
+        {
+          "send": "yeah it's the GS10"
+        },
+        {
+          "send": "How do I reset a GS10 after a CE10 fault?"
+        }
+      ]
+    },
+    {
+      "contract": "TRH synthetic (wrong_terminology) for oracle reset_procedure_gs10",
+      "expect_behaviour": "answer_from_evidence",
+      "id": "trh_reset_procedure_gs10_s0_wrong_terminology",
+      "oracle": "reset_procedure_gs10",
+      "register": "wrong_terminology",
+      "seed": 0,
+      "turns": [
+        {
+          "send": "How do I re-boot a GS10 after a CE10 error?"
+        }
+      ]
+    }
+  ],
+  "notes": "",
+  "oracle_id": "reset_procedure_gs10",
+  "source": "staging campaign c1r3 (the GS10 counter-case)"
+}
