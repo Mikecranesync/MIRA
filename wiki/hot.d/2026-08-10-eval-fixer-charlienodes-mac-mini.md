@@ -29,11 +29,15 @@ noise-justified patch/night. Both halves must ship together.
 
 FSM under-advancement / UNS gate **6** (#3086) · timeout phantoms **3** (#3085, ~11 nights
 ownerless) · cross-vendor bleed **2** (#3049) · KB-gap footer on a non-diagnostic lane **1**
-(untracked) · improvement-scored-as-loss **1** · fixture false positive **1**.
+(**#3145**) · improvement-scored-as-loss **1** · fixture false positive **1**.
 
-- **`control_refusal_clean_26` is the only genuine unattributed defect** — already spotted
-  08-07 as outside #3135's scope. Confirmed verbatim tonight: a session-reset reply with the
-  KB-gap footer bolted on, no diagnostic content. Worth its own issue.
+- **`control_refusal_clean_26` is the only genuine still-open engine defect — already filed as
+  #3145** (opened 08-07, outside #3135's scope, zero comments until tonight). Confirmed verbatim
+  tonight on parity-verified code: a session-reset reply with the KB-gap footer bolted on, no
+  diagnostic content. Recurrence evidence added to #3145.
+  ⚠️ **I nearly opened a duplicate.** Both my first tracker comment and my memory note called this
+  "unattributed / needs an issue" — a `gh issue list --search` before filing caught #3145. **Always
+  de-dup by fixture name before filing**; this repo has a 22-duplicate history.
 - **`pilz_manual_miss_11` + `distribution_block_forensic_36`** = one cause, one fix: byte-identical
   response, both expected exactly IDLE, both got Q1 (unknown-model path enters the FSM). Under #3086.
 - ⚠️ **Corrected mid-run: `gs3_ground_fault_14` is NOT a defect.** It is the known
