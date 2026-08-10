@@ -61,16 +61,32 @@ sections:
     suites:
       - id: REG-offline-text
         runner: "tests/eval/offline_run.py --suite text"
-        measures: "end-to-end diagnostic pipeline, 6 axes per fixture (FSM, RState, KeyKW, No5xx, TurnBudget, CitGrond)"
-        item_count_at_freeze: 67
-        historical_best: "50/57 (87%) on 2026-06-08T0229"
+        measures: >
+          end-to-end diagnostic pipeline. 7 deterministic checkpoints per fixture:
+          cp_reached_state, cp_pipeline_active, cp_keyword_match, cp_no_5xx,
+          cp_turn_budget, cp_citation_groundedness, cp_citation_vendor_relevance.
+        item_count_at_freeze: 65
+        historical_best: "50/57 (87%) on 2026-06-08T0229 — scored on SIX checkpoints"
         historical_source: "tests/eval/runs/2026-06-08T0229-offline-text.md"
         caveat: >
-          The denominator MOVED: 57 fixtures then, 67 now. Fixtures 60-67 were
-          added AFTER the high-water mark as new contract requirements
-          (CON-001/CIT/CTX), so a raw 50/57 → n/67 comparison understates the
-          current system. Always report BOTH the all-fixture score and the
-          score restricted to the original 57.
+          THE DENOMINATOR MOVED TWICE, both times immediately after the
+          high-water mark, and in the same direction (harder):
+
+          (1) AXES 6 -> 7. `cp_citation_vendor_relevance` was added in f81a7381a
+          on 2026-06-09 — ONE DAY after the 2026-06-08 run. Every fixture is now
+          scored out of 7, not 6. (grader.py's module docstring still says "Six
+          checkpoints"; it is stale.)
+
+          (2) FIXTURES 57 -> 65. Fixtures 60-67 were added later still, as new
+          contract requirements (CON-001/CIT/CTX).
+
+          So `50/57` and any current `n/65` are NOT the same measurement and must
+          never be charted as a trend. To compare honestly, restrict to the
+          original 57 fixture ids AND to the original 6 checkpoints. A partial
+          run on 2026-08-10 (killed by the 20-minute background-job limit at
+          fixture 24/65) scored 7/7 on all seven fixtures it completed
+          (pf523_heatsink_18 … yaskawa_j1000_thermal_24) under the HARDER
+          7-checkpoint rubric — evidence against regression, not for it.
       - id: REG-golden-hybrid
         runner: "tests/golden_hybrid.csv via tests/eval/grader.py"
         measures: "substring recall on fault-code / wiring lookups"
