@@ -218,6 +218,25 @@ def _run_guard(selector: str, timeout: int = 900) -> tuple[bool, str]:
     return proc.returncode != 0, " | ".join(tail)
 
 
+def _to_file_eol(blob: bytes, find: str, replace: str) -> tuple[bytes, bytes]:
+    """Translate a mutation's `\\n` line endings to whatever the file actually uses.
+
+    The other half of going byte-exact. Mutations are authored with `\\n`, but on
+    Windows the working tree is CRLF (core.autocrlf), so a multi-line find never
+    matched and every multi-line mutation reported STALE while every single-line
+    one passed — a perfectly consistent split that looked like code drift and was
+    really an encoding bug. Worth catching precisely because STALE is the status
+    that means "a protection may have silently disappeared": a false STALE trains
+    people to ignore the real ones.
+    """
+    crlf = blob.count(b"\r\n")
+    lf_only = blob.count(b"\n") - crlf
+    eol = b"\r\n" if crlf > lf_only else b"\n"
+    f = find.encode("utf-8").replace(b"\r\n", b"\n").replace(b"\n", eol)
+    r = replace.encode("utf-8").replace(b"\r\n", b"\n").replace(b"\n", eol)
+    return f, r
+
+
 def _restore(path: Path, original: bytes, m: Mutation) -> None:
     """Put the file back, byte for byte, and never leave a mutant on disk.
 
@@ -267,8 +286,7 @@ def run_one(m: Mutation, allow_dirty: bool = False) -> MutationResult:
     # "dirty". Byte-exact IO is also what makes the restore verification below an
     # actual guarantee rather than a text-normalised approximation.
     original = path.read_bytes()
-    find_b = m.find.encode("utf-8")
-    replace_b = m.replace.encode("utf-8")
+    find_b, replace_b = _to_file_eol(original, m.find, m.replace)
     if find_b not in original:
         # Loud on purpose: a mutation that no-ops would certify a protection
         # that may no longer exist.

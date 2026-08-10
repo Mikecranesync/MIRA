@@ -157,3 +157,47 @@ def test_the_real_registry_leaves_the_tree_clean():
         timeout=120,
     ).stdout
     assert after == before, f"the mutation run left the tree dirty:\n{after}"
+
+
+class TestLineEndingTranslation:
+    """Mutations are authored with \n; the working tree may be CRLF.
+
+    Before this, every MULTI-line mutation reported STALE on Windows and every
+    single-line one passed — a consistent split that read as code drift and was
+    really an encoding bug. A false STALE is expensive: STALE is the status that
+    means "a protection may have silently disappeared", so noise there trains
+    people to ignore the real ones.
+    """
+
+    def test_crlf_file_matches_an_lf_authored_mutation(self, scratch):
+        scratch.write_bytes(b"x = 1\r\nGUARDED\r\nreturn PASS\r\n")
+        mut._run_guard = lambda s, timeout=900: (True, "")  # type: ignore[assignment]
+        r = mut.run_one(_m(find="GUARDED\nreturn PASS", replace="return PASS"), allow_dirty=True)
+        assert r.status == mut.PROVEN, r.detail
+        assert scratch.read_bytes() == b"x = 1\r\nGUARDED\r\nreturn PASS\r\n"
+
+    def test_lf_file_still_matches(self, scratch):
+        scratch.write_bytes(b"x = 1\nGUARDED\nreturn PASS\n")
+        mut._run_guard = lambda s, timeout=900: (True, "")  # type: ignore[assignment]
+        r = mut.run_one(_m(find="GUARDED\nreturn PASS", replace="return PASS"), allow_dirty=True)
+        assert r.status == mut.PROVEN, r.detail
+
+    def test_every_registry_mutation_resolves_against_its_real_target(self):
+        """Guards the whole registry against this class of false STALE.
+
+        Only checks mutations whose target exists on THIS branch — an unmerged
+        target (`requires`) is legitimately absent.
+        """
+        unresolved = []
+        for m in mut.MUTATIONS:
+            if m.requires:
+                continue
+            path = mut.REPO / m.target
+            if not path.exists():
+                unresolved.append(f"{m.id}: target missing")
+                continue
+            blob = path.read_bytes()
+            find_b, _ = mut._to_file_eol(blob, m.find, m.replace)
+            if find_b not in blob:
+                unresolved.append(f"{m.id}: find-string not in {m.target}")
+        assert not unresolved, "mutations that cannot apply:\n" + "\n".join(unresolved)
