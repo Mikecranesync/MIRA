@@ -95,6 +95,7 @@ class NavResult:
 
     ok: bool
     reason: str = ""
+    citable: bool = False
     manufacturer: str = ""
     model: str = ""
     doc_key: str = ""
@@ -105,13 +106,18 @@ class NavResult:
     path: list[NavStep] = field(default_factory=list)
 
     def retrieval_path(self) -> str:
-        """`manual → chapter → section → page → passage`, as the brief specifies."""
+        """`manual → section → page → passage` — the page segment only when citable.
+
+        When the chosen ingest's page numbers are a chunk index (`citable` is
+        False), quoting "p123" would present an internal ordinal as a real page.
+        The path then reads `doc → section → passage` with no page segment.
+        """
         bits = [self.doc_key or "?"]
         if self.section:
             bits.append(self.section)
         if self.passages:
-            p = self.passages[0]
-            bits.append(f"p{p.get('source_page')}")
+            if self.citable:
+                bits.append(f"p{self.passages[0].get('source_page')}")
             bits.append("passage")
         return " → ".join(bits)
 
@@ -122,19 +128,28 @@ class NavResult:
         probe and `gates` all consume this dict, so the navigator's output is
         gradeable by the existing harness with no adapter. The navigation path
         rides along as extra keys, which older detectors ignore.
+
+        Citability is enforced HERE, on emission: when the chosen ingest is not
+        citable, `source_page` is suppressed to None on every emitted dict (the
+        raw value survives as `nav_ordinal` for internal use). Internal
+        retrieval — the parent-window SQL in `navigate()` — keeps using the raw
+        `source_page`; suppression applies only to emitted evidence.
         """
         out = []
         for rank, p in enumerate(self.passages + self.parent_context):
-            out.append(
-                {
-                    **p,
-                    "nav_rank": rank,
-                    "nav_path": self.retrieval_path(),
-                    "nav_doc_key": self.doc_key,
-                    "nav_section": self.section,
-                    "nav_role": "passage" if rank < len(self.passages) else "parent_context",
-                }
-            )
+            row = {
+                **p,
+                "nav_rank": rank,
+                "nav_path": self.retrieval_path(),
+                "nav_doc_key": self.doc_key,
+                "nav_section": self.section,
+                "nav_role": "passage" if rank < len(self.passages) else "parent_context",
+                "nav_ordinal": p.get("source_page"),
+                "nav_citable": self.citable,
+            }
+            if not self.citable:
+                row["source_page"] = None
+            out.append(row)
         return out
 
 
@@ -238,12 +253,14 @@ def navigate(
             res.path.append(NavStep("doc", doc.doc_key, "no ingest with usable page data"))
             return res
         res.doc_key, res.source_url = doc.doc_key, auth.source_url
+        res.citable = auth.citable
         res.path.append(
             NavStep(
                 "doc",
                 doc.doc_key,
-                f"{len(doc.ingests)} ingest(s) of this publication; chose the one with "
-                f"usable pages and the widest span (p{auth.page_min}..{auth.page_max})",
+                f"{len(doc.ingests)} ingest(s) of this publication; ranked by pagination "
+                f"plausibility, chose pagination={auth.pagination} "
+                f"(p{auth.page_min}..{auth.page_max}, citable={auth.citable})",
                 candidates=len(docs),
             )
         )
