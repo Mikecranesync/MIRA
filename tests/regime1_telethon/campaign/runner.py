@@ -304,9 +304,6 @@ async def amain(args) -> int:
 
     print(f"DONE tier={args.tier}: {n_pass} pass, {n_fail} fail/suspect, {n_skip} skipped (resume)")
     await client.disconnect()
-
-    if not args.no_diagnose:
-        _run_trh(args)
     return 0
 
 
@@ -370,7 +367,16 @@ def main() -> int:
     ap.add_argument(
         "--no-replay", action="store_true", help="TRH: skip the replay producer (faster, weaker)"
     )
-    return asyncio.run(amain(ap.parse_args()))
+    args = ap.parse_args()
+    rc = asyncio.run(amain(args))
+    # Diagnosis runs HERE, not inside amain(): `replay_ledger_conversation`
+    # wraps `asyncio.run`, which refuses to execute while a loop is active. Run
+    # from inside the coroutine it raised, orphaning the coroutine argument, and
+    # replay silently contributed nothing to any campaign (live c13: `replay
+    # markers on 0/N`). Keep this call outside the event loop.
+    if rc == 0 and not args.no_diagnose:
+        _run_trh(args)
+    return rc
 
 
 if __name__ == "__main__":

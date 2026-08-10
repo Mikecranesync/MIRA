@@ -221,9 +221,39 @@ def merge_retrieval(conv: ConversationEvidence, rep: AssemblyReport) -> None:
 def merge_replay(conv: ConversationEvidence, rep: AssemblyReport) -> None:
     """Best-effort. A replay that cannot run leaves every field unobserved."""
     try:
+        import asyncio
+        import concurrent.futures
+
         from .. import replay as replay_mod
 
-        replayed = replay_mod.replay_ledger_conversation(conv.source_campaign or "", conv.conv_id)
+        # `replay_ledger_conversation` wraps `asyncio.run`, which REFUSES to run
+        # while a loop is already active. The runner used to call diagnosis from
+        # inside `amain()`, so it raised and the coroutine built as its argument
+        # was orphaned. That surfaced only as `RuntimeWarning: coroutine
+        # 'replay_conversation' was never awaited`, while `replay markers on 0/N`
+        # read as an ordinary absence of telemetry — 462 tests passed around it
+        # because every one of them stubbed or skipped this producer.
+        #
+        # The call site is fixed (diagnosis runs from `main`, after the loop
+        # closes). The producer is hardened too, so a future async caller gets a
+        # worker thread with its own loop rather than a silent no-op.
+        try:
+            asyncio.get_running_loop()
+            in_loop = True
+        except RuntimeError:
+            in_loop = False
+
+        if in_loop:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                replayed = pool.submit(
+                    replay_mod.replay_ledger_conversation,
+                    conv.source_campaign or "",
+                    conv.conv_id,
+                ).result()
+        else:
+            replayed = replay_mod.replay_ledger_conversation(
+                conv.source_campaign or "", conv.conv_id
+            )
     except Exception as exc:  # noqa: BLE001 - optional producer
         rep.replay_error = f"{type(exc).__name__}: {exc}"[:120]
         rep.notes.append("replay unavailable — DIALOGUE/SCOPE fall back to ledger + probe evidence")
