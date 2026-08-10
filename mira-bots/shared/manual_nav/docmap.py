@@ -2,9 +2,14 @@
 
 `knowledge_entries` already HAS the hierarchy columns — `doc_id`, `section_path`,
 `page_start`, `page_end`, `source_ref`, `ingest_route`. They are populated on
-**0 of 83,540** public rows. The shape was designed and never filled, so this
-module derives the same hierarchy from what IS present (`source_url`,
-`source_page`, `content`) without writing to the corpus. Nothing here mutates
+**0 of 83,540 PUBLIC rows** (`is_private = false`). That measurement covers the
+legacy shared corpus ONLY; private v2 Hub uploads were never checked and may
+populate them (migration 045). An earlier draft of this docstring said the
+columns were "designed and never filled" — that generalised beyond what was
+measured, and is corrected here.
+
+So this module derives the hierarchy from what IS present on the legacy rows
+(`source_url`, `source_page`, `content`) without writing to the corpus. Nothing here mutates
 `knowledge_entries`; the index is a read-only overlay.
 
 ## What the probe found, and why it changes the design
@@ -48,6 +53,13 @@ from dataclasses import dataclass, field
 _NOISE = re.compile(r"\s*\(\d+\)\s*$")  # "foo (1).pdf" -> "foo.pdf"
 _SCHEME = re.compile(r"^[a-z]+://", re.IGNORECASE)
 
+#: chunks-per-distinct-page at or below this means `source_page` increments once
+#: per chunk, i.e. it is a chunk index rather than a page number. Measured
+#: clusters on staging: 1.00 (chunk index) vs 2.95-4.11 (real pages).
+CHUNK_INDEX_MAX = 1.2
+#: Below this many distinct pages the ratio is not informative; say `unknown`.
+_MIN_PAGES_TO_JUDGE = 20
+
 
 def doc_key(source_url: str | None, source_type: str | None = None) -> str:
     """Collapse the ingest variants of ONE document to a single key.
@@ -90,6 +102,41 @@ class Ingest:
         """All rows on one page number — page data is meaningless for citation."""
         return self.distinct_pages <= 1 and self.rows > 5
 
+    @property
+    def chunks_per_page(self) -> float:
+        return self.rows / max(self.distinct_pages, 1)
+
+    @property
+    def pagination(self) -> str:
+        """`real` | `chunk_index` | `collapsed` | `unknown`.
+
+        The discriminator that replaced "widest page span". A real page carries
+        SEVERAL chunks; a `source_page` that increments once per chunk is a chunk
+        index wearing a page number's clothes. Measured across four independent
+        Rockwell publications on staging:
+
+            chunks/page   1.00          gdrive + plain-filename ingests -> chunk index
+            chunks/page   2.95 .. 4.11  literature-URL ingests          -> real pages
+            chunks/page   419 .. 989    every row on page 1             -> collapsed
+
+        The gap between 1.00 and 2.95 is wide and the 1.00 cases are *exactly*
+        1.00, so `CHUNK_INDEX_MAX = 1.2` is nowhere near either cluster. Below
+        `_MIN_PAGES_TO_JUDGE` distinct pages there is not enough signal to tell,
+        and the honest answer is `unknown` rather than a coin-flip.
+        """
+        if self.collapsed:
+            return "collapsed"
+        if self.distinct_pages < 2:
+            return "unknown"
+        if self.distinct_pages < _MIN_PAGES_TO_JUDGE:
+            return "unknown"
+        return "chunk_index" if self.chunks_per_page < CHUNK_INDEX_MAX else "real"
+
+    @property
+    def citable(self) -> bool:
+        """Can a page number from this ingest be quoted to a technician?"""
+        return self.pagination == "real"
+
 
 @dataclass
 class ManualDoc:
@@ -107,17 +154,26 @@ class ManualDoc:
     def authoritative(self) -> Ingest | None:
         """The ingest a citation should name.
 
-        Ranked by: usable page data first (a collapsed ingest can never support
-        a page citation), then widest page span, then row count. Deterministic
-        tie-break on source_url so the choice is reproducible across runs — a
-        navigator that silently changed its mind about which manual is
+        **Ranked by PAGINATION PLAUSIBILITY, not page span.** The previous rule
+        ("widest span") reliably chose the WORST copy: on the ~300-page PowerFlex
+        525 manual it picked `p0..1909`, because a chunk index counts higher than
+        real page numbers by construction. Widest span is an anti-signal here.
+
+        Order: `real` > `unknown` > `chunk_index` > `collapsed`, then row count,
+        then source_url. The url tie-break keeps the choice reproducible across
+        runs — a navigator that silently changed its mind about which copy is
         authoritative would make every citation unfalsifiable.
+
+        Returns the best AVAILABLE ingest even when none is citable (520-qs001
+        has only chunk-index copies). Callers that intend to quote a page must
+        check `.citable`; returning None there would lose retrievable content
+        just because its page numbers are unusable.
         """
-        usable = [i for i in self.ingests if not i.collapsed]
-        pool = usable or self.ingests
+        rank = {"real": 0, "unknown": 1, "chunk_index": 2, "collapsed": 3}
+        pool = self.ingests
         if not pool:
             return None
-        return sorted(pool, key=lambda i: (-i.page_span, -i.rows, i.source_url))[0]
+        return sorted(pool, key=lambda i: (rank.get(i.pagination, 9), -i.rows, i.source_url))[0]
 
 
 # ---------------------------------------------------------------------------
