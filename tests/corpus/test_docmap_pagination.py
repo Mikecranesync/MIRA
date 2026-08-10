@@ -21,16 +21,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "mira-bot
 from shared.manual_nav.docmap import Ingest, ManualDoc  # noqa: E402
 
 
-def ing(url, rows, pmin, pmax, distinct, stype="manual"):
-    return Ingest(url, stype, rows, pmin, pmax, distinct)
+def make_ingest(url, rows, page_min, page_max, distinct, source_type="manual"):
+    return Ingest(url, source_type, rows, page_min, page_max, distinct)
 
 
 # Real ingests of 520-um001, numbers taken from staging.
-GDRIVE = ing("gdrive://520-um001_-en-e.pdf", 1910, 0, 1909, 1910)
-GDRIVE2 = ing("gdrive://520-um001_-en-e (1).pdf", 1910, 0, 1909, 1910)
-PLAIN = ing("520-um001_-en-e.pdf", 1087, 0, 1086, 1087)
-LIT = ing("https://literature.rockwellautomation.com/x/520-um001_-en-e.pdf", 1069, 1, 274, 260)
-COLLAPSED = ing("520-um001_-en-e (1).pdf", 989, 1, 1, 1, "equipment_manual")
+GDRIVE = make_ingest("gdrive://520-um001_-en-e.pdf", 1910, 0, 1909, 1910)
+GDRIVE2 = make_ingest("gdrive://520-um001_-en-e (1).pdf", 1910, 0, 1909, 1910)
+PLAIN = make_ingest("520-um001_-en-e.pdf", 1087, 0, 1086, 1087)
+LIT = make_ingest(
+    "https://literature.rockwellautomation.com/x/520-um001_-en-e.pdf", 1069, 1, 274, 260
+)
+COLLAPSED = make_ingest("520-um001_-en-e (1).pdf", 989, 1, 1, 1, "equipment_manual")
 
 
 class TestPaginationClassification:
@@ -51,7 +53,7 @@ class TestPaginationClassification:
 
     def test_small_ingest_is_unknown_not_guessed(self):
         """Too few pages to judge — say so rather than flip a coin."""
-        assert ing("tiny.pdf", 6, 1, 6, 6).pagination == "unknown"
+        assert make_ingest("tiny.pdf", 6, 1, 6, 6).pagination == "unknown"
 
     def test_boundary_exactly_at_chunk_index_max_is_chunk_index(self):
         """CHUNK_INDEX_MAX is inclusive: 24 rows / 20 pages == 1.2 exactly.
@@ -59,13 +61,13 @@ class TestPaginationClassification:
         The contract says "at or below this means chunk index"; a strict `<`
         classified the boundary as `real` and citable. Pin it from both sides.
         """
-        at_boundary = ing("boundary.pdf", 24, 1, 20, 20)
+        at_boundary = make_ingest("boundary.pdf", 24, 1, 20, 20)
         assert at_boundary.pagination == "chunk_index"
         assert not at_boundary.citable
 
     def test_just_above_boundary_is_real(self):
         """25 rows / 20 pages == 1.25 > 1.2 — real pages, citable."""
-        above = ing("boundary.pdf", 25, 1, 20, 20)
+        above = make_ingest("boundary.pdf", 25, 1, 20, 20)
         assert above.pagination == "real"
         assert above.citable
 
@@ -88,8 +90,8 @@ class TestAuthoritativeSelection:
 
     def test_returns_best_available_when_nothing_is_citable(self):
         """520-qs001 has only chunk-index copies; losing it entirely is worse."""
-        a = ing("gdrive://520-qs001_-en-e.pdf", 391, 0, 390, 391)
-        b = ing("520-qs001_-en-e.pdf", 191, 0, 190, 191)
+        a = make_ingest("gdrive://520-qs001_-en-e.pdf", 391, 0, 390, 391)
+        b = make_ingest("520-qs001_-en-e.pdf", 191, 0, 190, 191)
         chosen = ManualDoc(
             "520-qs001", "Rockwell Automation", "PowerFlex 525", [a, b]
         ).authoritative()
@@ -106,6 +108,20 @@ class TestAuthoritativeSelection:
             random.shuffle(shuffled)
             picks.add(self._doc(*shuffled).authoritative().source_url)
         assert len(picks) == 1, f"non-deterministic selection: {picks}"
+
+    def test_url_tie_break_is_deterministic(self):
+        """Identical pagination class AND identical row counts — only the URL
+        differs, so the lexicographically smaller source_url must always win."""
+        import random
+
+        tie_a = make_ingest("https://a.example.com/520-um001.pdf", 1069, 1, 274, 260)
+        tie_b = make_ingest("https://b.example.com/520-um001.pdf", 1069, 1, 274, 260)
+        assert tie_a.pagination == tie_b.pagination == "real"
+        for _ in range(10):
+            pool = [tie_a, tie_b]
+            random.shuffle(pool)
+            chosen = self._doc(*pool).authoritative()
+            assert chosen.source_url == tie_a.source_url, "url tie-break must be stable"
 
     def test_empty_document_returns_none(self):
         assert ManualDoc("x", "m", "d", []).authoritative() is None
