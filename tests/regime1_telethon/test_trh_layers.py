@@ -217,15 +217,58 @@ class TestC_Grounding:
         _, first = self._case()
         assert "P0594" in str(first.evidence.get("fabricated_tokens"))
 
+    def _both_broken_case(self):
+        """A reply that BOTH fabricates and ignores its evidence.
+
+        `_case()` above cannot arbitrate the ordering: its reply still contains
+        "Press Stop" / "cycle drive power", so GENERATION passes and GROUNDING is
+        the only failing layer — reversing CAUSAL_ORDER leaves the answer
+        unchanged. Mutation `grounding_generation_order_reversed` survived
+        against it, which is how the gap surfaced. Here BOTH layers fail, so the
+        ordering is the only thing that decides.
+        """
+        c = conv(
+            "reset_procedure",
+            [
+                TurnEvidence(
+                    index=1,
+                    technician_message="F004 on my PowerFlex 525 — how do I clear the fault?",
+                    mira_reply=(
+                        "Replace the control module and set P0594 = 1. "
+                        "[Source: Allen-Bradley PowerFlex 525]"
+                    ),
+                    uns_manufacturer="Rockwell Automation",
+                    uns_model="PowerFlex 525",
+                    retrieval_embedded=True,
+                    retrieved_meta=[
+                        chunk(
+                            "After corrective action has been taken, clear the fault by "
+                            "one of these methods"
+                        ),
+                        chunk("Clear fault. Press Stop if P045 is set between 0 and 3"),
+                        chunk("A551 Fault Clear. Resets a fault and clears the fault queue"),
+                    ],
+                )
+            ],
+        )
+        return classify_one(c, Corpus(tokens={"P0594": False}))
+
+    def test_both_grounding_and_generation_broken_is_arbitrated_by_order(self):
+        """Precondition for the ordering assertion below — both layers must fail."""
+        cd, _ = self._both_broken_case()
+        st = cd.diagnoses[0].by_stage()
+        assert st[Stage.GROUNDING].verdict == FAIL
+        assert st[Stage.GENERATION].verdict == FAIL
+
     def test_generation_is_downstream_of_grounding_not_the_reverse(self):
         """The 2026-08-10 ordering correction, pinned.
 
-        Reversed, this case classifies GENERATION and points at the prompt and
+        Reversed, this classifies GENERATION and points at the prompt and the
         provider cascade when the repair is the citation/support path.
         """
-        _, first = self._case()
+        _, first = self._both_broken_case()
         assert first.primary is Stage.GROUNDING
-        assert Stage.GROUNDING not in first.secondary
+        assert Stage.GENERATION in first.secondary
 
 
 # ---------------------------------------------------------------------------
