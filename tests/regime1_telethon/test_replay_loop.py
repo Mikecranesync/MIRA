@@ -16,11 +16,10 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from pathlib import Path
 
 import pytest
 
-from tests.conftest import REPO_ROOT, load_golden_file, load_photo_b64
+from tests.conftest import REPO_ROOT, load_golden_file
 from tests.scoring.contains_check import score_case
 from tests.scoring.composite import CaseResult, build_case_result
 
@@ -257,8 +256,6 @@ async def regime1_runner(
     results: list[CaseResult] = []
 
     for case in cases:
-        t0 = time.monotonic()
-
         if mode == "dry-run":
             reply = _get_dry_run_response(case)
             elapsed = 1.0
