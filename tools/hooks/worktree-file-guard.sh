@@ -2,16 +2,32 @@
 # tools/hooks/worktree-file-guard.sh
 # Warn (never block) if a Write|Edit lands in a different git checkout/worktree than
 # the current shell. Prevents subagent/session files being written to the wrong place.
-# Uses $CLAUDE_TOOL_INPUT (JSON) passed by the PreToolUse hook, matcher Write|Edit.
+# Reads the PreToolUse payload as JSON on stdin (matcher Write|Edit).
 
 set -uo pipefail
 
-# Extract file_path from JSON tool input. Mirrors the pattern in gitleaks-on-commit
-# hook (grep on raw string). For robustness, fallback to parsing if grep fails.
-FILE_PATH=$(echo "$CLAUDE_TOOL_INPUT" | grep -oP '"file_path":\s*"\K[^"]+' || true)
-if [ -z "$FILE_PATH" ]; then
-  # Fallback: try Python JSON parsing (repo already uses one-liners in stop-gate.sh)
-  FILE_PATH=$(python3 -c "import json,sys,os; d=json.loads(sys.stdin.read() or '{}'); print(d.get('file_path',''))" <<< "$CLAUDE_TOOL_INPUT" 2>/dev/null || true)
+# Payload source: stdin ONLY. $CLAUDE_TOOL_INPUT is NOT set by the harness — verified
+# 2026-08-09 by dumping the hook environment (CLAUDE_PROJECT_DIR / CLAUDE_CODE_SESSION_ID
+# / CLAUDE_PID are set; CLAUDE_TOOL_INPUT is empty and CLAUDE_FILE_PATH is absent).
+# This guard read only that env var, so it had never fired. Its old primary extraction
+# also used `grep -oP`, which BSD grep on macOS does not support — dead twice over.
+# Mirrors the stdin-first shape of rm-guard.sh / prod-guard.sh / git-state-guard.sh.
+#
+# Drain stdin even when we intend to exit: bailing out before reading SIGPIPEs the
+# caller that is still writing the payload (same reasoning as rm-guard.sh).
+FILE_PATH=""
+if [ ! -t 0 ]; then
+  payload=$(cat 2>/dev/null || true)
+  if [ -n "$payload" ]; then
+    FILE_PATH=$(printf '%s' "$payload" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d.get("tool_input", {}).get("file_path", "") or "")
+except Exception:
+    print("")
+' 2>/dev/null || true)
+  fi
 fi
 
 [ -z "$FILE_PATH" ] && exit 0  # No file_path, nothing to check

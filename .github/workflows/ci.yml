@@ -669,6 +669,22 @@ jobs:
         # factorylm.com. Invisible when it regresses — the deploy still reports green.
         run: pytest tests/test_deploy_no_teardown_before_build.py -v
 
+      - name: Check hook wiring (payload source, fail-loud, prod-guard coverage)
+        # Guards the whole class found 2026-08-09: the harness does NOT set
+        # $CLAUDE_TOOL_INPUT / $CLAUDE_FILE_PATH (the tool payload is JSON on
+        # stdin), so every hook keyed on those vars was a silent no-op — ruff,
+        # pyright, the gitleaks secret scan and worktree-file-guard had all
+        # never run. The failure mode is silence, which is why this is a test
+        # and not doctrine. Hermetic: reads settings.json + tools/hooks/*.sh.
+        run: pytest tests/test_hook_payload_source.py -v
+
+      - name: rm-guard unit tests
+        # tests/test_rm_guard.py has existed since the rm-guard hook shipped but
+        # was never added here, so the deterministic floor against a catastrophic
+        # `rm -rf` (root / $HOME / repo root / .git) had zero CI coverage — the
+        # same "written but never wired" gap called out in the step below.
+        run: pytest tests/test_rm_guard.py -v
+
       - name: Check Hub Unit Tests path-filter contract
         # tests/test_hub_unit_filter_contract.py was written for this job
         # (its docstring: "pytest + pyyaml only — matches the Architecture
