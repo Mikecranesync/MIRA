@@ -385,17 +385,51 @@ jobs:
           fi
           echo "Swap flags: ${WAIT_FLAGS:-<none: compose too old, falling back to health poll below>}"
 
+          # The recovery path is gated on the SPECIFIC failure it exists for — a compose
+          # name conflict — and nothing else.
+          #
+          # `--wait` exits non-zero on health timeout too, and by then compose has ALREADY
+          # recreated the containers. So treating any non-zero exit as "run stale_cleanup
+          # and retry" would `docker rm -f` all nine live containers and cold-recreate
+          # them, turning one slow-to-health service into a longer outage than the bug
+          # this PR fixes. Hub health is known-marginal on this host (hence the retry loop
+          # below), so that is not a hypothetical.
+          #
+          # Any other non-zero exit fails the deploy loudly. Red is the correct outcome
+          # there: a human needs to look, and the old containers are already gone.
+          #
+          # Captured to a file rather than piped to `tee`, so the exit status read below
+          # is the compose exit status. Under `set -o pipefail` a pipeline reports the
+          # leftmost failure, but `$?`/`PIPESTATUS` after an `if` block reflect the
+          # block's last command, not the condition's — an easy way to silently always
+          # read 0. Redirect + `|| rc=$?` has no such trap.
+          swap_out=$(mktemp)
+          swap_rc=0
           # shellcheck disable=SC2086  # WAIT_FLAGS and TARGETS are intentionally word-split
-          if ! doppler run --project factorylm --config prd -- \
-               docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
-               $WAIT_FLAGS $TARGETS; then
-            echo "WARNING: health-gated swap failed — retrying once after stale-container cleanup"
-            stale_cleanup
-            # shellcheck disable=SC2086
-            doppler run --project factorylm --config prd -- \
-              docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
-              $WAIT_FLAGS $TARGETS
+          doppler run --project factorylm --config prd -- \
+            docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
+            $WAIT_FLAGS $TARGETS > "$swap_out" 2>&1 || swap_rc=$?
+          cat "$swap_out"
+
+          if [ "$swap_rc" -ne 0 ]; then
+            if grep -qiE 'name .* already in use|Conflict\.|container name .* is already in use' "$swap_out"; then
+              echo "Swap hit a compose name conflict (rc=$swap_rc) — clearing stale containers and retrying once"
+              stale_cleanup
+              # shellcheck disable=SC2086
+              doppler run --project factorylm --config prd -- \
+                docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
+                $WAIT_FLAGS $TARGETS
+            else
+              echo "ERROR: health-gated swap failed (rc=$swap_rc) and it is NOT a name conflict."
+              echo "Not tearing down containers — that would deepen the outage, not fix it."
+              echo "Container state:"
+              # shellcheck disable=SC2086
+              docker compose -f docker-compose.saas.yml ps $TARGETS || true
+              rm -f "$swap_out"
+              exit "$swap_rc"
+            fi
           fi
+          rm -f "$swap_out"
 
           echo "=== Health check ==="
           sleep 8

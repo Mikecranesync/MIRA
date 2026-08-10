@@ -133,3 +133,42 @@ def test_swap_is_health_gated():
         "v2.1.1 (--wait-timeout later); assuming it would make every deploy on an "
         "older host fail instantly. Probe `docker compose up --help` and degrade."
     )
+
+
+def test_recovery_teardown_fires_only_on_a_compose_name_conflict():
+    """The `rm -f`-everything recovery path must be gated on the ONE failure it fixes.
+
+    This is the subtler half of the same bug. ``--wait`` exits non-zero on health
+    timeout as well as on the name conflict the recovery exists for — and by the time
+    it times out, compose has *already* recreated the containers. So a recovery gated
+    on "the swap returned non-zero" turns one slow-to-health service into a hard
+    ``docker rm -f`` of all nine live containers plus a cold recreate: a longer outage
+    than the pre-emptive teardown this file was written to prevent, arriving through
+    the recovery door instead of the front one.
+
+    Hub health is known-marginal on this host — the deploy carries a 5x3s retry loop
+    because a single-shot probe fired too early — so this is a live risk, not a
+    theoretical one.
+    """
+    body = _deploy_body()
+
+    calls = [i for i, ln in enumerate(body) if ln.strip() == "stale_cleanup"]
+    assert calls, "stale_cleanup is never invoked — the recovery path is dead"
+
+    # Every call site must sit under a conflict-matching guard, not a bare
+    # "did the swap fail" test.
+    for call in calls:
+        window = "\n".join(body[max(0, call - 6) : call])
+        assert "already in use" in window or "Conflict" in window, (
+            f"stale_cleanup at line {call} is not guarded by a compose name-conflict "
+            f"match. Gating the teardown on any non-zero swap exit means a health "
+            f"timeout tears down all nine live containers. Match the conflict text "
+            f"(`name ... already in use` / `Conflict.`) and fail loudly otherwise."
+        )
+
+    # And a non-conflict failure must actually stop the deploy, not fall through.
+    joined = "\n".join(body)
+    assert re.search(r'exit "?\$swap_rc', joined), (
+        "A non-conflict swap failure does not exit non-zero. It must fail the deploy "
+        "loudly: the old containers are already gone and a human needs to look."
+    )
