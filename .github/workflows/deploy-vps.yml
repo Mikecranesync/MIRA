@@ -398,18 +398,25 @@ jobs:
           # Any other non-zero exit fails the deploy loudly. Red is the correct outcome
           # there: a human needs to look, and the old containers are already gone.
           #
-          # Captured to a file rather than piped to `tee`, so the exit status read below
-          # is the compose exit status. Under `set -o pipefail` a pipeline reports the
-          # leftmost failure, but `$?`/`PIPESTATUS` after an `if` block reflect the
-          # block's last command, not the condition's — an easy way to silently always
-          # read 0. Redirect + `|| rc=$?` has no such trap.
+          # `| tee` so the swap STREAMS: each Recreate/Started/Healthy line is timestamped
+          # by the runner as it happens. A previous revision redirected to a file and
+          # `cat`-ed it afterwards, which stamped all nine containers' lifecycle lines with
+          # one identical timestamp (1.7 ms apart in run 31345016124) — destroying the
+          # per-line timing of precisely the phase whose duration this work is about, and
+          # producing ZERO output at all if the swap ever hangs until the job times out.
+          #
+          # `tee` is safe for the status read here because `set -o pipefail` is in effect
+          # (top of this script), so the pipeline reports compose's non-zero status. What
+          # is NOT safe — and was the reason for the earlier redirect — is reading `$?` or
+          # `PIPESTATUS` *after* an `if cmd | tee; then ...; fi` block: those reflect the
+          # block's last command, not the condition, and silently read 0. Capturing with
+          # `|| rc=$?` directly on the pipeline has no such trap.
           swap_out=$(mktemp)
           swap_rc=0
           # shellcheck disable=SC2086  # WAIT_FLAGS and TARGETS are intentionally word-split
           doppler run --project factorylm --config prd -- \
             docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate \
-            $WAIT_FLAGS $TARGETS > "$swap_out" 2>&1 || swap_rc=$?
-          cat "$swap_out"
+            $WAIT_FLAGS $TARGETS 2>&1 | tee "$swap_out" || swap_rc=$?
 
           if [ "$swap_rc" -ne 0 ]; then
             if grep -qiE 'name .* already in use|Conflict\.|container name .* is already in use' "$swap_out"; then

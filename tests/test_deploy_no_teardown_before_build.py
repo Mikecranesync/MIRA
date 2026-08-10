@@ -198,3 +198,39 @@ def test_hub_health_probe_follows_redirects():
             f"the trailing-slash URL, so without -L this probe reports 308 forever and "
             f"warns on a healthy hub."
         )
+
+
+def test_swap_output_streams_rather_than_being_replayed_at_the_end():
+    """The swap must stream, or the timing of the phase this file is about is lost.
+
+    A revision of the health-gated swap redirected compose's output to a file and
+    ``cat``-ed it afterwards, to keep the exit status readable. It worked, but it
+    stamped all nine containers' Recreate/Started/Healthy lines with a single
+    identical runner timestamp (1.7 ms apart across the whole swap, in run
+    31345016124) — deleting the per-line timing of exactly the phase whose duration
+    is the point of the fix. It is also silent on a hang: if the swap never returns,
+    the ``cat`` never runs and the job times out with no output for the phase.
+
+    ``| tee`` is safe here because ``set -o pipefail`` is in effect, so the pipeline
+    reports compose's status and ``|| rc=$?`` captures it. (The genuinely unsafe form
+    is reading ``$?``/``PIPESTATUS`` *after* an ``if cmd | tee; then ...; fi`` block,
+    which reflects the block rather than the condition and silently reads 0.)
+    """
+    body = _deploy_body()
+    swap = [ln for ln in body if "up -d --no-deps --force-recreate" in ln]
+    assert swap, "no swap invocation found"
+
+    joined = "\n".join(body)
+    assert "| tee " in joined, (
+        "The swap no longer streams. Redirecting to a file and replaying it collapses "
+        "every container lifecycle line onto one timestamp and yields no output at all "
+        "if the swap hangs."
+    )
+    assert not re.search(r'\$TARGETS\s*>\s*"\$swap_out"', joined), (
+        "The swap redirects to a file instead of teeing. That is the timing-collapse "
+        'regression: use `| tee "$swap_out" || swap_rc=$?` (safe under pipefail).'
+    )
+    # And the captured file must still be what the conflict gate reads.
+    assert "grep -qiE" in joined and '"$swap_out"' in joined, (
+        "The conflict gate no longer greps the captured swap output."
+    )
