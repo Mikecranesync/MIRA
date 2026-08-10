@@ -3,6 +3,7 @@
 This is the read-only Phase-1 entry point. It does NOT write to a PLC, translate between vendors, or
 validate safety -- it extracts a maintenance-readable model from an exported program.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,7 +12,14 @@ from . import analyze as _analyze
 from . import uns as _uns
 from .detect import Detection, detect
 from .ir import PLCProject
-from .parsers import csv_tags, ignition_json, plcopen_xml, rockwell_l5x, structured_text
+from .parsers import (
+    csv_tags,
+    ignition_json,
+    plcopen_xml,
+    rockwell_l5x,
+    siemens_awl,
+    structured_text,
+)
 
 # format key -> parser module (each exposes parse(text, source_file) -> PLCProject)
 _PARSERS = {
@@ -20,6 +28,7 @@ _PARSERS = {
     "structured_text": structured_text,
     "plcopen_xml": plcopen_xml,
     "ignition_json": ignition_json,
+    "siemens_awl": siemens_awl,
 }
 # recognized-but-not-yet-built parsers (routing is ready; extraction is a later phase)
 _PLANNED = {"siemens_tia_xml"}
@@ -29,8 +38,8 @@ _PLANNED = {"siemens_tia_xml"}
 class ParseResult:
     detection: Detection
     project: PLCProject
-    report: object              # analyze.AnalysisReport (None if not parsed)
-    handled: bool               # True if a parser ran
+    report: object  # analyze.AnalysisReport (None if not parsed)
+    handled: bool  # True if a parser ran
 
 
 def run(filename: str, text: str) -> ParseResult:
@@ -47,7 +56,9 @@ def run(filename: str, text: str) -> ParseResult:
             proj.warnings.append("format '%s' recognized but its parser is a later phase" % det.fmt)
         else:
             proj.warnings.append("unrecognized format (%s): %s" % (det.fmt, det.reason))
-        return ParseResult(detection=det, project=proj, report=_analyze.analyze(proj), handled=False)
+        return ParseResult(
+            detection=det, project=proj, report=_analyze.analyze(proj), handled=False
+        )
 
     proj = parser.parse(text, source_file=filename)
     report = _analyze.analyze(proj)
@@ -76,15 +87,27 @@ def render_markdown(result: ParseResult) -> str:
         lines.extend(_render_namespace_md(r))
         return "\n".join(lines)
 
-    lines.append("**Controller:** %s  ·  **Vendor:** %s" % (r.controller or "(unnamed)", r.vendor or "?"))
+    lines.append(
+        "**Controller:** %s  ·  **Vendor:** %s" % (r.controller or "(unnamed)", r.vendor or "?")
+    )
     lines.append("")
     c = r.counts
-    lines.append("**Counts:** %d tags · %d programs · %d routines · %d rungs · %d outputs · "
-                 "%d fault-candidates · %d asset-candidates · %d VFD-signal-candidates · "
-                 "%d need review"
-                 % (c.get("tags", 0), c.get("programs", 0), c.get("routines", 0), c.get("rungs", 0),
-                    c.get("outputs", 0), c.get("fault_candidates", 0), c.get("asset_candidates", 0),
-                    c.get("vfd_signal_candidates", 0), c.get("review_required", 0)))
+    lines.append(
+        "**Counts:** %d tags · %d programs · %d routines · %d rungs · %d outputs · "
+        "%d fault-candidates · %d asset-candidates · %d VFD-signal-candidates · "
+        "%d need review"
+        % (
+            c.get("tags", 0),
+            c.get("programs", 0),
+            c.get("routines", 0),
+            c.get("rungs", 0),
+            c.get("outputs", 0),
+            c.get("fault_candidates", 0),
+            c.get("asset_candidates", 0),
+            c.get("vfd_signal_candidates", 0),
+            c.get("review_required", 0),
+        )
+    )
 
     if r.review_required:
         lines.append("")
@@ -97,7 +120,10 @@ def render_markdown(result: ParseResult) -> str:
         lines.append("## Output dependency candidates")
         for f in r.output_dependencies[:40]:
             where = ", ".join(f.evidence[:4])
-            lines.append("- **%s** energized in %s — %s" % (f.name, where, f.detail or "(no conditions parsed)"))
+            lines.append(
+                "- **%s** energized in %s — %s"
+                % (f.name, where, f.detail or "(no conditions parsed)")
+            )
 
     if r.fault_candidates:
         lines.append("")
@@ -121,8 +147,10 @@ def render_markdown(result: ParseResult) -> str:
         lines.append("")
         lines.append("## Routines")
         for s in r.routine_summaries:
-            lines.append("- **%s / %s** (%s, %d rungs) — %s"
-                         % (s["program"], s["routine"], s["type"], s["rungs"], s["purpose_hint"] or ""))
+            lines.append(
+                "- **%s / %s** (%s, %d rungs) — %s"
+                % (s["program"], s["routine"], s["type"], s["rungs"], s["purpose_hint"] or "")
+            )
     return "\n".join(lines)
 
 
@@ -137,10 +165,18 @@ def _render_namespace_md(r) -> list[str]:
     lines.append("")
     lines.append("## Factory namespace — %s" % ent)
     lines.append("")
-    lines.append("**ISA-95 hierarchy:** %d sites · %d areas · %d lines · %d assets · %d signals "
-                 "(%d nodes)"
-                 % (c.get("sites", 0), c.get("areas", 0), c.get("lines", 0), c.get("assets", 0),
-                    c.get("signals", 0), c.get("namespace_nodes", 0)))
+    lines.append(
+        "**ISA-95 hierarchy:** %d sites · %d areas · %d lines · %d assets · %d signals "
+        "(%d nodes)"
+        % (
+            c.get("sites", 0),
+            c.get("areas", 0),
+            c.get("lines", 0),
+            c.get("assets", 0),
+            c.get("signals", 0),
+            c.get("namespace_nodes", 0),
+        )
+    )
 
     assets = [n for n in r.namespace if n["level"] == "asset"]
     if assets:
@@ -171,8 +207,13 @@ def _render_namespace_md(r) -> list[str]:
 
 def _finding(f) -> dict:
     """One analyze.Finding -> a plain JSON-safe dict (confidence is already a .value string)."""
-    return {"kind": f.kind, "name": f.name, "detail": f.detail,
-            "confidence": f.confidence, "evidence": list(f.evidence)}
+    return {
+        "kind": f.kind,
+        "name": f.name,
+        "detail": f.detail,
+        "confidence": f.confidence,
+        "evidence": list(f.evidence),
+    }
 
 
 def render_json(result: ParseResult) -> dict:
@@ -181,11 +222,19 @@ def render_json(result: ParseResult) -> dict:
     Built explicitly from known fields (NOT dataclasses.asdict, which would choke on the Confidence
     enum). Stdlib-only and json.dumps-safe; downstream tools / the Hub consume this shape."""
     det = result.detection
-    detection = {"fmt": det.fmt, "confidence": det.confidence, "reason": det.reason,
-                 "needs_export": det.needs_export}
+    detection = {
+        "fmt": det.fmt,
+        "confidence": det.confidence,
+        "reason": det.reason,
+        "needs_export": det.needs_export,
+    }
     if not result.handled:
-        return {"schema": "mira-plc-parser/report@1", "detection": detection, "handled": False,
-                "warnings": list(result.project.warnings)}
+        return {
+            "schema": "mira-plc-parser/report@1",
+            "detection": detection,
+            "handled": False,
+            "warnings": list(result.project.warnings),
+        }
     r = result.report
     report = {
         "schema": "mira-plc-parser/report@1",

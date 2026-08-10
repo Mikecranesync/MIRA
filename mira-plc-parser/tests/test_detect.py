@@ -1,9 +1,10 @@
 """Format detector tests -- content-first, extension fallback."""
+
 from mira_plc_parser.detect import detect
 
 
 def test_detects_l5x_by_content(conveyor_l5x):
-    d = detect("anything.txt", conveyor_l5x)   # renamed file still detected by content
+    d = detect("anything.txt", conveyor_l5x)  # renamed file still detected by content
     assert d.fmt == "rockwell_l5x"
     assert d.confidence == "high"
 
@@ -45,6 +46,24 @@ def test_acd_is_recognized_as_closed_project_not_great():
     assert d.confidence == "high"
     assert d.needs_export
     assert "L5X" in d.needs_export
+
+
+def test_rss_is_recognized_as_closed_project_with_report_guidance():
+    d = detect("Flying School.RSS", "\x00\x01 rslogix 500 binary bytes")
+    assert d.fmt == "rockwell_acd"
+    assert "tag/program" in d.needs_export
+
+
+def test_step7_project_is_recognized_as_closed_project_with_source_guidance():
+    d = detect("2400WK0352.S7P", "\x00 step 7 project bytes")
+    assert d.fmt == "step7_project"
+    assert "symbol table" in d.needs_export
+
+
+def test_dno_drive_config_is_recognized_as_closed_config_with_export_guidance():
+    d = detect("Vehicle_1_Drive.dno", "\x00 drive executive config bytes")
+    assert d.fmt == "drive_config_binary"
+    assert "drive parameter" in d.needs_export.lower()
 
 
 def test_siemens_tia_project_asks_for_openness_export():

@@ -70,6 +70,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger("mira-bot")
 
+
+def _redact_telegram_bot_token(value):
+    """Mask Telegram bot tokens embedded in request URLs before logging."""
+    if isinstance(value, str):
+        return re.sub(r"/bot[^/\s]+/", "/bot<redacted>/", value)
+    return value
+
+
+class _TelegramBotTokenRedactionFilter(logging.Filter):
+    """Logging filter that masks `/bot<id>:<token>/` URL path segments."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = _redact_telegram_bot_token(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(_redact_telegram_bot_token(arg) for arg in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {
+                key: _redact_telegram_bot_token(value) for key, value in record.args.items()
+            }
+        return True
+
+
+def _install_telegram_http_log_redaction() -> None:
+    for name in ("httpx", "httpcore"):
+        target = logging.getLogger(name)
+        if not any(isinstance(f, _TelegramBotTokenRedactionFilter) for f in target.filters):
+            target.addFilter(_TelegramBotTokenRedactionFilter())
+
+
+_install_telegram_http_log_redaction()
+
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OPENWEBUI_BASE_URL = os.environ.get("OPENWEBUI_BASE_URL", "http://mira-core:8080")
 OPENWEBUI_API_KEY = os.environ.get("OPENWEBUI_API_KEY", "")
@@ -1084,6 +1115,7 @@ async def _enqueue_multi_photo_burst(
     rejected = 0
     for raw_bytes, vision_bytes in batches:
         photo_b64 = base64.b64encode(vision_bytes).decode()
+        raw_photo_b64 = base64.b64encode(raw_bytes).decode()
         try:
             batch_id, _ = await photo_queue.add_photo_to_burst(
                 chat_id=chat_id,
@@ -1091,6 +1123,7 @@ async def _enqueue_multi_photo_burst(
                 photo_b64=photo_b64,
                 caption=caption,
                 ack_message_id=ack.message_id,
+                raw_photo_b64=raw_photo_b64,
             )
         except BurstFull:
             rejected += 1
@@ -1187,6 +1220,50 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _BURST_COLLECTOR[chat_id_int]["task"] = flush_task
 
 
+async def _try_multi_photo_printsense_reply(rec: PhotoBatchRecord) -> str | None:
+    """Return a PrintSense package reply for all-print albums, else ``None``.
+
+    The generic multi-photo worker is for equipment-photo synthesis. Electrical
+    print albums need to stay together as one PrintSense package so cross-page
+    references and shared title-block context survive.
+    """
+    if not rec.photos_b64 or not rec.raw_photos_b64:
+        return None
+
+    page_contexts: list[dict] = []
+    for idx, photo_b64 in enumerate(rec.photos_b64, start=1):
+        try:
+            vision_data = await engine.vision.process(photo_b64, rec.caption)
+        except Exception as exc:  # noqa: BLE001 — fallback to generic worker
+            logger.warning(
+                "PHOTO_QUEUE_PRINTSENSE_CLASSIFY_ERROR batch_id=%d page=%d error=%s",
+                rec.id,
+                idx,
+                exc,
+            )
+            return None
+        if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
+            return None
+        page_contexts.append(
+            {
+                "page": idx,
+                "drawing_type": (vision_data or {}).get("drawing_type"),
+                "ocr_items": (vision_data or {}).get("ocr_items") or [],
+            }
+        )
+
+    reply = await engine._interpret_print_anthropic_pages(
+        photo_b64s=rec.raw_photos_b64,
+        question=rec.caption,
+        package_context={
+            "source": "telegram_media_group",
+            "page_count": len(rec.raw_photos_b64),
+            "pages": page_contexts,
+        },
+    )
+    return reply or None
+
+
 async def _photo_batch_worker(application: Application) -> None:
     """Drain the durable photo-batch queue forever.
 
@@ -1237,13 +1314,16 @@ async def _photo_batch_worker(application: Application) -> None:
                 await _edit_ack(f"📸 Synthesizing answer for {n_total} photos…")
 
         try:
-            reply = await engine.process_multi_photo(
-                chat_id=rec.chat_id,
-                message=rec.caption,
-                photos_b64=rec.photos_b64,
-                platform=rec.platform,
-                on_progress=_on_progress,
-            )
+            await _edit_ack(f"📸 Checking {n} photos for electrical-print package…")
+            reply = await _try_multi_photo_printsense_reply(rec)
+            if not reply:
+                reply = await engine.process_multi_photo(
+                    chat_id=rec.chat_id,
+                    message=rec.caption,
+                    photos_b64=rec.photos_b64,
+                    platform=rec.platform,
+                    on_progress=_on_progress,
+                )
             if not reply:
                 reply = (
                     f"MIRA error: vision pipeline returned no response for "

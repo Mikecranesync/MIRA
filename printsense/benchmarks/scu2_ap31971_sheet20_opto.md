@@ -7,7 +7,7 @@ field photo* and is the before/after gate for the auto-rotate preprocessing.
 
 - Source (as sent, rotated): `4f3d69fc-1000007311.jpg`
 - Upright reference (90° CCW): `print_correct.jpg`
-- Cabinet: INTRASYS "Sensor Control Unit 2 V3.5", drawing **AP31971**, +SCU2, Hyper Launch, Orlando FL, dated 11.07.2022 (Bearb. Ascher / Kunde Mack), **sheet 20**, "Opto-Koppler, belegt".
+- Cabinet: INTRASYS "Sensor Control Unit 2 V3.5", drawing **AP31971**, +SCU2, Launch System, [site] FL, dated 11.07.2022 (Bearb. Ascher / Kunde [customer]), **sheet 20**, "Opto-Koppler, belegt".
 
 ## Ground truth (read from the upright image)
 

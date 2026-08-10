@@ -1,3 +1,33 @@
+# Hot Cache — 2026-08-03 — security PRs #3083/#3084 landed
+
+PR #3083 / issue #2989 merged as `210ce9736`: all three production-capable seed
+workflows now use a shared basename + realpath containment guard, dispatch inputs
+enter shell via `env`, and the required suite rejects destructive SQL in resolvable
+seed files. PR #3084 / issue #3053 merged as `cde434b99`: allowlist approvals are
+bound to a POSIX-path-salted SHA-256 of the full normalized query context; snippets
+are evidence only; missing/mismatched hashes fail closed; all 135 approvals are
+backfilled; backfill is metadata-preserving and field-order-independent; the scanner
+now has stable cross-platform source identity. Final PR CI fully green, including
+Unit Tests, Architecture, Eval Offline, Docker, security scans, and CI Gate. #3055
+remains deferred and untouched for coordinated work with open PR #3081. The
+post-merge main run also completed green: CI Gate, Version Tag, Smoke Test, VPS
+deploy, PrintSense activation, and post-deploy Namespace E2E all succeeded.
+
+---
+
+# Hot Cache — 2026-08-03 — PR #3088 answer-integrity review
+
+Read-only review of PR #3088 at head `75100107f` against base `044175040`.
+Core wrong-source/topic-drift finding is credible, but merge blockers remain: exploratory runners
+lack the existing fail-closed staging/identity gate and durable-output redaction; cross-turn detectors
+(including `topic_drift`) have no mutation fixtures; detector exceptions can fail open; a literal
+backspace breaks the no-`[Source:]` vendor-attribution regex; exact run receipts are not committed;
+and the PR body/PRD DoD retain stale direct-answer language that contradicts the owner-confirmed
+Socratic-everywhere decision. Targeted verification: `tests/test_probe_detectors.py` 22/22 green,
+changed Python files pass Ruff, all GitHub checks complete successfully; PR is behind current main.
+
+---
+
 # Hot Cache — 2026-06-25 — Hub one-board Command Center status view
 
 Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on

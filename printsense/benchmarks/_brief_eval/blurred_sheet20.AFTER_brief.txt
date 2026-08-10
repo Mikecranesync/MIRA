@@ -1,4 +1,4 @@
-📋 An INTRASYS (Orlando, FL, USA) control schematic whose center title-block text appears to read 'Sensor Control Unit 1', photographed as a curled paper print — most content is not legible.
+📋 An INTRASYS ([site], USA) control schematic whose center title-block text appears to read 'Sensor Control Unit 1', photographed as a curled paper print — most content is not legible.
 
 The drawing shows two boxed component groups (dashed-line assembly boundaries) fed by a pair of horizontal rail/supply lines across the top, with marked (red) connection points on the outer edge of each box. Beyond this general topology, the function cannot be stated because the internal designations, wire numbers, and terminal labels are not readable at this image quality. No control logic or signal function is legible enough to describe honestly.
 

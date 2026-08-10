@@ -11,6 +11,7 @@ Outputs (all read-only): tag dictionary, routine summaries, output dependency ca
 candidates, asset candidates, VFD-signal candidates, and a usage cross-reference. Nothing here
 asserts correctness of the customer's logic -- these are extraction + inference, clearly labelled.
 """
+
 from __future__ import annotations
 
 import re
@@ -38,10 +39,34 @@ def _kw(words):
 
 
 _FAULT_PAT = _kw(["fault", "trip", "alarm", "estop", "fail", "error", "overload", "jam"])
-_MODE_PAT = _kw(["auto", "manual", "jog", "hand", "maint", "maintenance", "bypass", "reset", "mode"])
-_SAFETY_PAT = _kw(["estop", "emergency", "guard", "safety", "lightcurtain", "interlock", "lockout", "loto"])
-_ASSET_PAT = _kw(["motor", "conv", "conveyor", "pump", "valve", "solenoid", "vfd", "drive", "fan",
-                  "heater", "horn", "light", "lamp", "cylinder", "gate", "damper", "mixer", "agitator"])
+_MODE_PAT = _kw(
+    ["auto", "manual", "jog", "hand", "maint", "maintenance", "bypass", "reset", "mode"]
+)
+_SAFETY_PAT = _kw(
+    ["estop", "emergency", "guard", "safety", "lightcurtain", "interlock", "lockout", "loto"]
+)
+_ASSET_PAT = _kw(
+    [
+        "motor",
+        "conv",
+        "conveyor",
+        "pump",
+        "valve",
+        "solenoid",
+        "vfd",
+        "drive",
+        "fan",
+        "heater",
+        "horn",
+        "light",
+        "lamp",
+        "cylinder",
+        "gate",
+        "damper",
+        "mixer",
+        "agitator",
+    ]
+)
 _INPUT_PAT = _kw(["pb", "push", "switch", "sensor", "prox", "photoeye", "limit", "input"])
 
 # VFD signal-role hints (mirrors the gateway suggest_for_role vocabulary so the parser and the
@@ -50,19 +75,20 @@ _VFD_ROLES = [
     ("frequency", _kw(["freq", "hz", "outputhz", "speedhz"])),
     ("current_a", _kw(["current", "amp", "amps", "iout"])),
     ("fault_code", _kw(["faultcode", "tripcode"])),
-    ("dc_bus_v", _kw(["dcbus", "busv", "vdc", "dclink"])),
+    ("dc_bus_v", _kw(["dcbus", "busv", "dc_bus", "dclink"])),
     ("freq_setpoint", _kw(["setpoint", "freqcmd", "cmdfreq", "freqref", "freqsp"])),
     ("comm_ok", _kw(["comm", "online", "heartbeat", "linkok"])),
 ]
+_VFD_DEVICE_PAT = _kw(["vfd"])
 
 
 @dataclass
 class Finding:
-    kind: str               # "tag" | "routine" | "output" | "fault" | "asset" | "vfd_signal"
+    kind: str  # "tag" | "routine" | "output" | "fault" | "asset" | "vfd_signal"
     name: str
     detail: str = ""
     confidence: str = Confidence.HIGH.value
-    evidence: list[str] = field(default_factory=list)   # IR locators backing the finding
+    evidence: list[str] = field(default_factory=list)  # IR locators backing the finding
 
 
 @dataclass
@@ -77,7 +103,7 @@ class AnalysisReport:
     asset_candidates: list[Finding] = field(default_factory=list)
     vfd_signal_candidates: list[Finding] = field(default_factory=list)
     review_required: list[Finding] = field(default_factory=list)
-    namespace: list[dict] = field(default_factory=list)   # ISA-95 hierarchy (Ignition tag tree etc.)
+    namespace: list[dict] = field(default_factory=list)  # ISA-95 hierarchy (Ignition tag tree etc.)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -88,8 +114,8 @@ def analyze(proj: PLCProject) -> AnalysisReport:
         rep.controller = c0.name
         rep.vendor = c0.vendor
 
-    usage = _build_usage_index(proj)        # tag name -> [locators]
-    _annotate_roles(proj)                   # fill Tag.roles (inferred)
+    usage = _build_usage_index(proj)  # tag name -> [locators]
+    _annotate_roles(proj)  # fill Tag.roles (inferred)
 
     rep.tag_dictionary = _tag_dictionary(proj, usage)
     rep.routine_summaries = _routine_summaries(proj)
@@ -113,9 +139,7 @@ def analyze(proj: PLCProject) -> AnalysisReport:
             len(aoi.local_tags) for c in proj.controllers for aoi in c.aoi_definitions
         ),
         "module_definitions": sum(len(c.module_definitions) for c in proj.controllers),
-        "fbd_sheets": sum(
-            len(r.rungs) for _, r in proj.all_routines() if r.type == "FBD"
-        ),
+        "fbd_sheets": sum(len(r.rungs) for _, r in proj.all_routines() if r.type == "FBD"),
         "outputs": len(rep.output_dependencies),
         "fault_candidates": len(rep.fault_candidates),
         "asset_candidates": len(rep.asset_candidates),
@@ -133,10 +157,17 @@ def analyze(proj: PLCProject) -> AnalysisReport:
 
 def _namespace_node_dict(n) -> dict:
     return {
-        "name": n.name, "level": n.level, "path": list(n.path),
-        "udt_type": n.udt_type, "data_type": n.data_type, "unit": n.unit,
-        "mes_path": n.mes_path, "tag_path": n.tag_path,
-        "manufacturer": n.manufacturer, "model": n.model, "serial": n.serial,
+        "name": n.name,
+        "level": n.level,
+        "path": list(n.path),
+        "udt_type": n.udt_type,
+        "data_type": n.data_type,
+        "unit": n.unit,
+        "mes_path": n.mes_path,
+        "tag_path": n.tag_path,
+        "manufacturer": n.manufacturer,
+        "model": n.model,
+        "serial": n.serial,
         "confidence": (n.provenance.confidence.value if n.provenance else Confidence.HIGH.value),
     }
 
@@ -159,12 +190,13 @@ def _namespace_counts(nodes) -> dict:
 
 # ---- cross-reference + role inference ----
 
+
 def _build_usage_index(proj: PLCProject) -> dict[str, list[str]]:
     idx: dict[str, list[str]] = {}
     for prog, routine, rung in proj.all_rungs():
         loc = "%s/%s/Rung[%d]" % (prog, routine, rung.number)
         for ref in rung.refs:
-            base = ref.split(".")[0].split("[")[0]   # the root tag of a dotted/array ref
+            base = ref.split(".")[0].split("[")[0]  # the root tag of a dotted/array ref
             idx.setdefault(base, []).append(loc)
     return idx
 
@@ -176,7 +208,9 @@ def _annotate_roles(proj: PLCProject) -> None:
             output_tags.add(o.split(".")[0].split("[")[0])
     for t in proj.all_tags():
         roles: list[str] = []
-        if t.name in output_tags or t.name in {o for _p, _r, rg in proj.all_rungs() for o in rg.outputs}:
+        if t.name in output_tags or t.name in {
+            o for _p, _r, rg in proj.all_rungs() for o in rg.outputs
+        }:
             roles.append("output")
         if _FAULT_PAT.search(t.name) or _FAULT_PAT.search(t.description or ""):
             roles.append("fault")
@@ -194,28 +228,31 @@ def _annotate_roles(proj: PLCProject) -> None:
 
 
 def _looks_like_input(t: Tag) -> bool:
-    if t.alias_for and ":I" in t.alias_for:    # Local:1:I... = input module
+    if t.alias_for and ":I" in t.alias_for:  # Local:1:I... = input module
         return True
     return bool(_INPUT_PAT.search(t.name))
 
 
 # ---- dictionaries / summaries ----
 
+
 def _tag_dictionary(proj: PLCProject, usage: dict[str, list[str]]) -> list[dict]:
     out = []
     for t in proj.all_tags():
         locs = usage.get(t.name, [])
-        out.append({
-            "name": t.name,
-            "data_type": t.data_type,
-            "scope": t.scope,
-            "description": t.description,
-            "address": t.address or t.alias_for,
-            "roles": t.roles,
-            "used_count": len(locs),
-            "used_in": locs[:12],
-            "confidence": Confidence.HIGH.value,
-        })
+        out.append(
+            {
+                "name": t.name,
+                "data_type": t.data_type,
+                "scope": t.scope,
+                "description": t.description,
+                "address": t.address or t.alias_for,
+                "roles": t.roles,
+                "used_count": len(locs),
+                "used_in": locs[:12],
+                "confidence": Confidence.HIGH.value,
+            }
+        )
     out.sort(key=lambda d: (-d["used_count"], d["name"]))
     return out
 
@@ -225,16 +262,20 @@ def _routine_summaries(proj: PLCProject) -> list[dict]:
     for prog, r in proj.all_routines():
         out_tags = sorted({o for rung in r.rungs for o in rung.outputs})
         comments = [rung.comment for rung in r.rungs if rung.comment]
-        out.append({
-            "program": prog,
-            "routine": r.name,
-            "type": r.type,
-            "rungs": len(r.rungs),
-            "outputs_controlled": out_tags,
-            "comment_digest": comments[:6],
-            "purpose_hint": _purpose_hint(r.name, comments),
-            "confidence": Confidence.HIGH.value if r.rungs or r.st_text else Confidence.MEDIUM.value,
-        })
+        out.append(
+            {
+                "program": prog,
+                "routine": r.name,
+                "type": r.type,
+                "rungs": len(r.rungs),
+                "outputs_controlled": out_tags,
+                "comment_digest": comments[:6],
+                "purpose_hint": _purpose_hint(r.name, comments),
+                "confidence": Confidence.HIGH.value
+                if r.rungs or r.st_text
+                else Confidence.MEDIUM.value,
+            }
+        )
     return out
 
 
@@ -252,6 +293,7 @@ def _purpose_hint(name: str, comments: list[str]) -> str:
 
 
 # ---- candidate extractions ----
+
 
 def _output_dependencies(proj: PLCProject) -> list[Finding]:
     """For each driven output, which rung(s) energize it and the condition tags involved."""
@@ -276,12 +318,15 @@ def _fault_candidates(proj: PLCProject) -> list[Finding]:
     for t in proj.all_tags():
         if "fault" in t.roles:
             conf = Confidence.REVIEW.value if "safety" in t.roles else Confidence.MEDIUM.value
-            out.append(Finding(
-                kind="fault", name=t.name,
-                detail=t.description or "name/desc matches fault/alarm pattern",
-                confidence=conf,
-                evidence=[t.provenance.locator] if t.provenance else [],
-            ))
+            out.append(
+                Finding(
+                    kind="fault",
+                    name=t.name,
+                    detail=t.description or "name/desc matches fault/alarm pattern",
+                    confidence=conf,
+                    evidence=[t.provenance.locator] if t.provenance else [],
+                )
+            )
     return out
 
 
@@ -295,8 +340,12 @@ def _asset_candidates(proj: PLCProject) -> list[Finding]:
         key = t.name.split(".")[0].split("_")[0] or m.group(0)
         f = groups.get(key)
         if f is None:
-            f = Finding(kind="asset", name=key, detail="candidate asset (keyword: %s)" % m.group(0).lower(),
-                        confidence=Confidence.MEDIUM.value)
+            f = Finding(
+                kind="asset",
+                name=key,
+                detail="candidate asset (keyword: %s)" % m.group(0).lower(),
+                confidence=Confidence.MEDIUM.value,
+            )
             groups[key] = f
         f.evidence.append(t.name)
     return sorted(groups.values(), key=lambda f: f.name)
@@ -307,14 +356,32 @@ def _vfd_signal_candidates(proj: PLCProject) -> list[Finding]:
     out = []
     for t in proj.all_tags():
         hay = t.name + " " + (t.description or "")
+        matched = False
         for role, pat in _VFD_ROLES:
             if pat.search(hay):
-                out.append(Finding(
-                    kind="vfd_signal", name=t.name,
-                    detail="candidate role: %s" % role, confidence=Confidence.MEDIUM.value,
-                    evidence=[t.provenance.locator] if t.provenance else [],
-                ))
+                out.append(
+                    Finding(
+                        kind="vfd_signal",
+                        name=t.name,
+                        detail="candidate role: %s" % role,
+                        confidence=Confidence.MEDIUM.value,
+                        evidence=[t.provenance.locator] if t.provenance else [],
+                    )
+                )
+                matched = True
                 break
+        if matched:
+            continue
+        if _VFD_DEVICE_PAT.search(t.name) or ("fault" in t.roles and _VFD_DEVICE_PAT.search(hay)):
+            out.append(
+                Finding(
+                    kind="vfd_signal",
+                    name=t.name,
+                    detail="candidate role: drive_state",
+                    confidence=Confidence.MEDIUM.value,
+                    evidence=[t.provenance.locator] if t.provenance else [],
+                )
+            )
     return out
 
 
@@ -323,13 +390,23 @@ def _review_required(proj: PLCProject) -> list[Finding]:
     out = []
     for t in proj.all_tags():
         if "safety" in t.roles:
-            out.append(Finding(kind="safety", name=t.name,
-                               detail=t.description or "safety/e-stop/guard/bypass pattern",
-                               confidence=Confidence.REVIEW.value,
-                               evidence=[t.provenance.locator] if t.provenance else []))
+            out.append(
+                Finding(
+                    kind="safety",
+                    name=t.name,
+                    detail=t.description or "safety/e-stop/guard/bypass pattern",
+                    confidence=Confidence.REVIEW.value,
+                    evidence=[t.provenance.locator] if t.provenance else [],
+                )
+            )
     for prog, r in proj.all_routines():
         if _SAFETY_PAT.search(r.name):
-            out.append(Finding(kind="safety", name="%s/%s" % (prog, r.name),
-                               detail="routine name matches safety pattern",
-                               confidence=Confidence.REVIEW.value))
+            out.append(
+                Finding(
+                    kind="safety",
+                    name="%s/%s" % (prog, r.name),
+                    detail="routine name matches safety pattern",
+                    confidence=Confidence.REVIEW.value,
+                )
+            )
     return out
