@@ -77,3 +77,8 @@ The nine-priority repair program (TRH fail-closed semantics, live retrieval
 snapshots, evidence-validation split, model-isolation matching, hierarchy
 re-test, battery hashing, mutation green->red->green gating, cleanup) is NOT
 started. Only the P0 harm was found and undone.
+
+> **2026-08-10, later:** the recovery script `tools/corpus/restore_dedup.py` referenced above
+> was retired after the rebuilt canonicalizer's quarantine round-trip was proven end-to-end on
+> staging (see `2026-08-10-quarantine-roundtrip-proof.md`). This document is retained as the
+> incident record.
