@@ -291,6 +291,37 @@ def technician_switched_asset(prior_turns, turn) -> bool:
     return bool(now - before) or bool(before - now)
 
 
+_FAULT_TOKEN_RE = re.compile(r"\b([A-Za-z]{1,3})-?0*(\d{1,4})\b")
+
+
+def _fault_canon(code: str) -> tuple[str, str] | None:
+    """(alpha-prefix, digits-without-leading-zeros) — the resolver-proof identity.
+
+    The resolver canonicalizes what the technician types: `F004` is pinned as
+    `F0004`, `CE-10` as `CE10`. A substring comparison between the pinned form
+    and the typed form therefore fails on REAL mentions — measured live on
+    campaign c14, where three passing conversations were confidently classified
+    DIALOGUE because "f0004" is not a substring of "What does F004 mean…".
+    Comparing (prefix, int-value-of-digits) is invariant to zero-padding and
+    dashes, which are exactly the two normalizations the resolver applies.
+    """
+    m = _FAULT_TOKEN_RE.fullmatch((code or "").strip())
+    if not m:
+        return None
+    return (m.group(1).lower(), m.group(2).lstrip("0") or "0")
+
+
+def _fault_mentioned(carried: str, text: str) -> bool:
+    """Did any code-shaped token in `text` normalize to the carried fault?"""
+    want = _fault_canon(carried)
+    if want is None:
+        return False
+    for m in _FAULT_TOKEN_RE.finditer(text or ""):
+        if (m.group(1).lower(), m.group(2).lstrip("0") or "0") == want:
+            return True
+    return False
+
+
 def grade_dialogue(turn, ctx: GradeContext) -> StageGrade:
     """Did prior conversation state corrupt this turn?
 
@@ -349,8 +380,10 @@ def grade_dialogue(turn, ctx: GradeContext) -> StageGrade:
     # dead-thread shape (CTX-001d). Only decidable when UNS telemetry exists.
     if turn.observed("uns_fault_code") and turn.technician_message:
         carried = (turn.uns_fault_code or "").lower()
-        prior_text = " ".join((t.technician_message or "") for t in ctx.prior_turns).lower()
-        if carried and carried not in prior_text and carried not in turn.technician_message.lower():
+        all_text = " ".join(
+            [*((t.technician_message or "") for t in ctx.prior_turns), turn.technician_message]
+        ).lower()
+        if carried and carried not in all_text and not _fault_mentioned(carried, all_text):
             return StageGrade(
                 Stage.DIALOGUE,
                 FAIL,
