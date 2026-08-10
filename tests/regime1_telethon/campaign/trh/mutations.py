@@ -218,6 +218,35 @@ def _run_guard(selector: str, timeout: int = 900) -> tuple[bool, str]:
     return proc.returncode != 0, " | ".join(tail)
 
 
+def _restore(path: Path, original: bytes, m: Mutation) -> None:
+    """Put the file back, byte for byte, and never leave a mutant on disk.
+
+    A restore that can itself raise is not a restore. An earlier version wrote
+    with `write_text` while holding `bytes`; it raised TypeError from inside
+    `finally`, and a mutated `oracles.py` — with the vendor scope deleted — was
+    left in the working tree. That is the single worst thing this module can do,
+    so the restore now has its own belt (byte-exact write), braces (verify), and
+    parachute (`git checkout --`).
+    """
+    try:
+        path.write_bytes(original)
+    except Exception:  # noqa: BLE001 - fall through to the git parachute
+        pass
+    if path.read_bytes() == original:
+        return
+    subprocess.run(
+        ["git", "checkout", "--", str(path)],
+        cwd=REPO,
+        capture_output=True,
+        timeout=60,
+    )
+    if path.read_bytes() != original:  # pragma: no cover - catastrophic
+        raise RuntimeError(
+            f"FAILED TO RESTORE {m.target} after mutation {m.id} — the working tree "
+            f"still holds the mutant. Run: git checkout -- {m.target}"
+        )
+
+
 def run_one(m: Mutation, allow_dirty: bool = False) -> MutationResult:
     """Apply one mutation, run its guard, restore. Never leaves a mutant behind."""
     path = REPO / m.target
@@ -257,12 +286,7 @@ def run_one(m: Mutation, allow_dirty: bool = False) -> MutationResult:
     except Exception as exc:  # noqa: BLE001
         return MutationResult(m, NOT_PROVEN, f"runner error: {exc}")
     finally:
-        path.write_text(original, encoding="utf-8")
-        restored = path.read_text(encoding="utf-8")
-        if restored != original:  # pragma: no cover - catastrophic
-            raise RuntimeError(
-                f"FAILED TO RESTORE {m.target} after mutation {m.id} — fix by hand NOW"
-            )
+        _restore(path, original, m)
 
     if failed:
         return MutationResult(m, PROVEN, f"guard failed as required: {tail}")
