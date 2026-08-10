@@ -172,3 +172,65 @@ def test_recovery_teardown_fires_only_on_a_compose_name_conflict():
         "A non-conflict swap failure does not exit non-zero. It must fail the deploy "
         "loudly: the old containers are already gone and a human needs to look."
     )
+
+
+def test_hub_health_probe_follows_redirects():
+    """The hub health probe must follow redirects, or it can never report healthy.
+
+    mira-hub is a Next.js app with trailing-slash redirects on: ``/api/health``
+    answers ``308 -> /api/health/``. Without ``-L`` the deploy probe recorded 308 on
+    every attempt and printed ``WARNING: mira-hub health returned 308`` against a hub
+    that was serving fine (observed on the 2026-08-09 deploy of b4999550; ``curl -L``
+    on the same URL returns 200).
+
+    The ``|| curl .../hub/api/health`` fallback could not save it either: ``-f`` only
+    makes curl fail on >= 400, so a 308 exits 0 and the ``||`` never fires. The result
+    was a check that could not pass and a warning nobody could act on — which is worse
+    than no check, because it teaches people to scroll past deploy warnings.
+    """
+    body = _deploy_body()
+    probes = [ln for ln in body if "3101" in ln and "curl" in ln]
+    assert probes, "no mira-hub health probe found in the deploy step"
+    for ln in probes:
+        flags = re.search(r"curl\s+(-[A-Za-z]+)", ln)
+        assert flags and "L" in flags.group(1), (
+            f"mira-hub health probe does not pass -L: {ln.strip()!r}. The hub 308s to "
+            f"the trailing-slash URL, so without -L this probe reports 308 forever and "
+            f"warns on a healthy hub."
+        )
+
+
+def test_swap_output_streams_rather_than_being_replayed_at_the_end():
+    """The swap must stream, or the timing of the phase this file is about is lost.
+
+    A revision of the health-gated swap redirected compose's output to a file and
+    ``cat``-ed it afterwards, to keep the exit status readable. It worked, but it
+    stamped all nine containers' Recreate/Started/Healthy lines with a single
+    identical runner timestamp (1.7 ms apart across the whole swap, in run
+    31345016124) — deleting the per-line timing of exactly the phase whose duration
+    is the point of the fix. It is also silent on a hang: if the swap never returns,
+    the ``cat`` never runs and the job times out with no output for the phase.
+
+    ``| tee`` is safe here because ``set -o pipefail`` is in effect, so the pipeline
+    reports compose's status and ``|| rc=$?`` captures it. (The genuinely unsafe form
+    is reading ``$?``/``PIPESTATUS`` *after* an ``if cmd | tee; then ...; fi`` block,
+    which reflects the block rather than the condition and silently reads 0.)
+    """
+    body = _deploy_body()
+    swap = [ln for ln in body if "up -d --no-deps --force-recreate" in ln]
+    assert swap, "no swap invocation found"
+
+    joined = "\n".join(body)
+    assert "| tee " in joined, (
+        "The swap no longer streams. Redirecting to a file and replaying it collapses "
+        "every container lifecycle line onto one timestamp and yields no output at all "
+        "if the swap hangs."
+    )
+    assert not re.search(r'\$TARGETS\s*>\s*"\$swap_out"', joined), (
+        "The swap redirects to a file instead of teeing. That is the timing-collapse "
+        'regression: use `| tee "$swap_out" || swap_rc=$?` (safe under pipefail).'
+    )
+    # And the captured file must still be what the conflict gate reads.
+    assert "grep -qiE" in joined and '"$swap_out"' in joined, (
+        "The conflict gate no longer greps the captured swap output."
+    )
