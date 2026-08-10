@@ -336,3 +336,61 @@ class TestViolationLocalization:
                 f"{cd.conv_id}: {len(fails)} DIALOGUE failures — a conversation-scoped "
                 "violation is being charged to every turn again"
             )
+
+
+class TestReplayProducerIsActuallyCalled:
+    """The replay producer must really run — stubs hid that it never did.
+
+    Live campaign c13 logged `RuntimeWarning: coroutine 'replay_conversation'
+    was never awaited` and reported `replay markers on 0/N` for every
+    conversation, while all 462 tests passed. Every existing test either stubs
+    `merge_replay` or skips it, so nothing exercised the real call.
+
+    Root cause was NOT a missing await: `replay_ledger_conversation` correctly
+    wraps `asyncio.run(...)`, but the runner invoked TRH from inside `amain()`,
+    where a loop is already running. `asyncio.run` then raises and the coroutine
+    built as its argument is orphaned — which is what the warning reports.
+
+    These tests call the REAL producer, one of them from inside a running loop,
+    because that is the condition that broke.
+    """
+
+    @live_only
+    def test_real_replay_contributes_markers(self):
+        conv, rep = A.assemble(LIVE_CAMPAIGN, "t2_000_pivot_after_fault", use_replay=True)
+        assert not rep.replay_error, f"replay producer failed: {rep.replay_error}"
+        assert rep.with_replay > 0, (
+            "replay ran but contributed nothing to any turn — the producer is silently inert again"
+        )
+
+    @live_only
+    def test_replay_works_from_inside_a_running_event_loop(self):
+        """The exact live condition: diagnosis invoked from async code."""
+        import asyncio
+
+        async def _inner():
+            return A.assemble(LIVE_CAMPAIGN, "t2_000_pivot_after_fault", use_replay=True)
+
+        conv, rep = asyncio.run(_inner())
+        assert "RuntimeError" not in (rep.replay_error or ""), (
+            f"asyncio.run() called from a running loop again: {rep.replay_error}"
+        )
+        assert rep.with_replay > 0, "replay inert when called from within a loop"
+
+    def test_runner_does_not_invoke_diagnosis_from_inside_the_async_body(self):
+        """Structural guard: `_run_trh` must be called from `main`, not `amain`.
+
+        Cheap and stub-free — reads the runner source. If diagnosis moves back
+        inside the coroutine, `asyncio.run` breaks again in a way unit tests
+        with stubbed producers cannot see.
+        """
+        import inspect
+
+        from tests.regime1_telethon.campaign import runner as runner_mod
+
+        amain_src = inspect.getsource(runner_mod.amain)
+        assert "_run_trh" not in amain_src, (
+            "_run_trh is called from inside amain(); a loop is already running "
+            "there, so replay_ledger_conversation's asyncio.run() will raise"
+        )
+        assert "_run_trh" in inspect.getsource(runner_mod.main)
