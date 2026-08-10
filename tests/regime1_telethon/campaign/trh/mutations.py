@@ -231,20 +231,28 @@ def run_one(m: Mutation, allow_dirty: bool = False) -> MutationResult:
             "(restoring would clobber them)",
         )
 
-    original = path.read_text(encoding="utf-8")
-    if m.find not in original:
+    # BYTES, not text. `read_text`/`write_text` round-trip through universal
+    # newlines, so on Windows a restore silently rewrote every LF as CRLF: the
+    # content compared equal, `git diff` was empty, but `git status` reported the
+    # file modified — which then made the NEXT mutation on that file SKIP as
+    # "dirty". Byte-exact IO is also what makes the restore verification below an
+    # actual guarantee rather than a text-normalised approximation.
+    original = path.read_bytes()
+    find_b = m.find.encode("utf-8")
+    replace_b = m.replace.encode("utf-8")
+    if find_b not in original:
         # Loud on purpose: a mutation that no-ops would certify a protection
         # that may no longer exist.
         return MutationResult(
             m, STALE, "find-string not present — the code moved; update the mutation"
         )
 
-    mutated = original.replace(m.find, m.replace, 1)
+    mutated = original.replace(find_b, replace_b, 1)
     if mutated == original:
         return MutationResult(m, STALE, "replacement produced no change")
 
     try:
-        path.write_text(mutated, encoding="utf-8")
+        path.write_bytes(mutated)
         failed, tail = _run_guard(m.guard_test)
     except Exception as exc:  # noqa: BLE001
         return MutationResult(m, NOT_PROVEN, f"runner error: {exc}")
