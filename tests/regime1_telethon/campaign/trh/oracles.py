@@ -355,8 +355,17 @@ def neon_phrase_corpus(cache: dict[str, bool] | None = None) -> PhraseCorpus:
         if not url:
             raise RuntimeError("NEON_DATABASE_URL not set")
         eng = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"})
-        clauses = ["is_private = false", "content ILIKE :p"]
         params: dict[str, str] = {"p": f"%{phrase}%"}
+        # The tenant predicate is written LITERALLY in the SQL string rather than
+        # joined from a list, so the Architecture Check can statically verify it
+        # (`tools/qa/security/check_knowledge_entries_filters.py`). A dynamically
+        # assembled WHERE reads as UNFILTERED and the only alternative is a
+        # line-keyed allowlist entry, which shifts on every edit to this file and
+        # has repeatedly failed CI as a phantom "UNFILTERED".
+        #
+        # Anonymous read: shared OEM corpus only (is_private = false). This is a
+        # read-only existence probe for oracle coverage — it never returns content
+        # and never touches per-tenant uploads.
         vendor_or = []
         if scope.get("manufacturer"):
             vendor_or.append("manufacturer ILIKE :mfr")
@@ -364,9 +373,14 @@ def neon_phrase_corpus(cache: dict[str, bool] | None = None) -> PhraseCorpus:
         if scope.get("model"):
             vendor_or.append("model_number ILIKE :mdl")
             params["mdl"] = f"%{scope['model']}%"
-        if vendor_or:
-            clauses.append("(" + " OR ".join(vendor_or) + ")")
-        sql = "SELECT 1 FROM knowledge_entries WHERE " + " AND ".join(clauses) + " LIMIT 1"
+        vendor_clause = f" AND ({' OR '.join(vendor_or)})" if vendor_or else ""
+        sql = (
+            "SELECT 1 FROM knowledge_entries "
+            "WHERE is_private = false "
+            "AND content ILIKE :p"
+            f"{vendor_clause} "
+            "LIMIT 1"
+        )
         with eng.connect() as conn:
             return bool(conn.execute(text(sql), params).first())
 
