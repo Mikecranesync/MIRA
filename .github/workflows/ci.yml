@@ -537,6 +537,13 @@ jobs:
         # context that never reported is pending (not passing), and an all-green
         # PR whose aggregate still says BLOCKED resolves to CLEAN-was-stale.
         # Hermetic — classify() is pure, fixtures only, no gh/network.
+        #
+        # NOT the file's only coverage: the `Eval Offline` job collects root
+        # tests/ broadly under `-n auto` and already runs these (verified in the
+        # log, not assumed). This step is a named, ~0.1s signal in a job that
+        # reports in seconds, so a classification regression is legible here
+        # instead of buried in a 4000-test run — the neighbouring steps' "root
+        # tests/ is not collected wholesale" rationale does NOT apply to it.
         run: pytest tests/test_pr_merge_blocker.py -v
 
       - name: Connector framework tests
