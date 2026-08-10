@@ -38,7 +38,7 @@ CACHE = HERE / "corpus-cache.json"
 PARAM_CACHE = HERE.parent / "param-corpus-cache.json"
 
 
-def _cached_corpus() -> oracles_mod.HarnessCorpus:
+def cached_corpus() -> oracles_mod.HarnessCorpus:
     """Offline corpus from the committed caches — no network, $0.
 
     Both halves are wired: phrase lookups for INGEST, and the offline lab's
@@ -56,7 +56,7 @@ def _cached_corpus() -> oracles_mod.HarnessCorpus:
 
 def cmd_oracles(args) -> int:
     reg = oracles_mod.load()
-    corpus = _cached_corpus()
+    corpus = cached_corpus()
     print(f"{len(reg)} oracle(s)\n")
     for oid, o in reg.items():
         present, missing = o.corpus_coverage(corpus)
@@ -92,10 +92,41 @@ def cmd_mutate(args) -> int:
 
 def cmd_diagnose(args) -> int:
     conv = pipeline.load_fixture(Path(args.fixture))
-    cap = pipeline.capture(conv, source=f"fixture {args.fixture}", corpus=_cached_corpus())
+    cap = pipeline.capture(conv, source=f"fixture {args.fixture}", corpus=cached_corpus())
     print(pipeline.defect_report(cap))
     if args.save:
         print(f"\n[saved] {cap.save()}")
+    return 0
+
+
+def cmd_diagnose_campaign(args) -> int:
+    """Stage-grade a REAL campaign from its ledger + producer artifacts."""
+    from tests.regime1_telethon.campaign.trh import diagnose as diag
+
+    cds = diag.diagnose_campaign(
+        args.campaign,
+        use_replay=not args.no_replay,
+        only=args.conv,
+        corpus=cached_corpus(),
+        persist_records=not args.dry_run,
+    )
+    if not cds:
+        print(f"no conversations in ledger for campaign {args.campaign!r}", file=sys.stderr)
+        return 1
+    counts = diag.classification_counts(cds)
+    print(f"# TRH diagnosis — {args.campaign}\n")
+    print(
+        f"conversations: {len(cds)}  ·  by class: {counts['by_class'] or 'none'}"
+        f"  ·  unclassifiable: {counts['unclassifiable']}\n"
+    )
+    for cd in cds:
+        if cd.assembly:
+            print(f"  coverage: {cd.assembly.coverage_note()}")
+    print()
+    for cd in cds:
+        if cd.first_broken() is not None or args.all:
+            print(diag.finding(cd))
+            print("\n---\n")
     return 0
 
 
@@ -104,7 +135,7 @@ def cmd_report(args) -> int:
     if not fixtures:
         print("no fixtures captured yet — run `diagnose --save` first", file=sys.stderr)
         return 1
-    corpus = _cached_corpus()
+    corpus = cached_corpus()
     all_d, all_c = [], []
     for f in fixtures:
         conv = pipeline.load_fixture(f)
@@ -151,6 +182,14 @@ def main() -> int:
     p.add_argument("--fixture", required=True)
     p.add_argument("--save", action="store_true")
     p.set_defaults(fn=cmd_diagnose)
+
+    p = sub.add_parser("diagnose-campaign", help="stage-grade a real campaign ledger")
+    p.add_argument("--campaign", required=True)
+    p.add_argument("--conv", default=None, help="substring filter")
+    p.add_argument("--no-replay", action="store_true")
+    p.add_argument("--dry-run", action="store_true", help="do not append diagnosis records")
+    p.add_argument("--all", action="store_true", help="print findings for passing convs too")
+    p.set_defaults(fn=cmd_diagnose_campaign)
 
     p = sub.add_parser("report", help="campaign report over captured fixtures")
     p.add_argument("--campaign", default="trh")

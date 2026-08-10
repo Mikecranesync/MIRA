@@ -60,19 +60,30 @@ class Stage(str, Enum):
     POLICY = "POLICY"
 
 
-#: Causal order used by the classifier. DIALOGUE precedes RETRIEVAL because a
-#: turn whose query was corrupted by prior context (a dead fault riding forward,
-#: a re-ask of information already supplied) produces a bad retrieval as a
-#: SYMPTOM — tuning retrieval there is exactly the trial-and-error this harness
-#: exists to stop.
+#: Causal order used by the classifier. Two orderings here are deliberate and
+#: were argued rather than assumed:
+#:
+#: * **DIALOGUE precedes RETRIEVAL.** A turn whose query was corrupted by prior
+#:   context (a dead fault riding forward, a re-ask of information already
+#:   supplied) produces a bad retrieval as a SYMPTOM — tuning retrieval there is
+#:   exactly the trial-and-error this harness exists to stop.
+#:
+#: * **GROUNDING precedes GENERATION.** Corrected 2026-08-10. The first draft had
+#:   these reversed, on the reading that "the generator ignored its evidence"
+#:   causes "the generator asserted something unsupported". That is backwards:
+#:   substituting an invention for the supplied evidence is *how* the answer
+#:   comes out wrong, so unsupported use of evidence is upstream of a wrong
+#:   response. Under the old order a fabricated parameter that also produced a
+#:   wrong answer classified GENERATION — pointing at the prompt and the provider
+#:   cascade when the actual repair is the citation/support path.
 CAUSAL_ORDER = (
     Stage.INGEST,
     Stage.SCOPE,
     Stage.DIALOGUE,
     Stage.RETRIEVAL,
     Stage.EVIDENCE,
-    Stage.GENERATION,
     Stage.GROUNDING,
+    Stage.GENERATION,
 )
 
 
@@ -167,6 +178,17 @@ def grade_ingest(turn, ctx: GradeContext) -> StageGrade:
             NOT_OBSERVED,
             "no corpus index available (offline run without --resolve)",
         )
+    if not ctx.oracle.expected_evidence:
+        # An oracle that declares no expected evidence (a POLICY-only oracle,
+        # say) has nothing for INGEST to check. Reporting PASS there would be a
+        # free green on a layer nobody examined — "ingest-ok" for a case where
+        # ingest was never a question.
+        return StageGrade(
+            Stage.INGEST,
+            INCONCLUSIVE,
+            "oracle declares no expected evidence — ingest coverage is not a "
+            "question for this case, so it is unexamined rather than passing",
+        )
 
     present, missing = ctx.oracle.corpus_coverage(ctx.corpus)
     ev = {
@@ -227,6 +249,48 @@ def grade_scope(turn, ctx: GradeContext) -> StageGrade:
     return StageGrade(Stage.SCOPE, PASS if ok else FAIL, why, ev)
 
 
+#: Vendor/model tokens that identify WHICH machine a technician turn is about.
+#: Only used to detect a technician-initiated asset switch — never to resolve
+#: scope (that is `uns_resolver`'s job, and a second resolver is forbidden).
+_ASSET_TOKEN_RE = re.compile(
+    r"\b(powerflex\s*\d{2,4}|pf\s*-?\s*\d{2,4}|gs\s*-?\d{1,2}|micro\s*8\d{2}"
+    r"|durapulse|yaskawa|siemens|abb|allen[- ]bradley|rockwell|automationdirect)\b",
+    re.IGNORECASE,
+)
+
+
+def _asset_tokens(text: str) -> set[str]:
+    return {re.sub(r"[\s-]", "", m.group(0).lower()) for m in _ASSET_TOKEN_RE.finditer(text or "")}
+
+
+def technician_switched_asset(prior_turns, turn) -> bool:
+    """Did the TECHNICIAN change machine on this turn?
+
+    Load-bearing for suppressing a measured false positive, not a convenience.
+    `gates.check_reasks_supplied_info` fires whenever MIRA asks to confirm
+    equipment after the technician supplied a vendor — but its `_ASSET_SWITCH_RE`
+    only recognises MIRA's *own* reply announcing a switch, never the technician
+    switching. So on `t2_*_asset_switch_direct` (GS10 → PF525 → "go back to the
+    gs10") MIRA re-confirms **correctly** and the gate calls it a defect.
+
+    That is why v1 deliberately left conversation gates unwired into live
+    verdicts: measured, it would flip 20 of 150 conversations — a fake 13%
+    regression. Wiring them in without this discriminator reproduces exactly
+    that, which is what the first live run of this integration did.
+    """
+    now = _asset_tokens(turn.technician_message)
+    if not now:
+        return False
+    before: set[str] = set()
+    for t in prior_turns:
+        before |= _asset_tokens(t.technician_message)
+    if not before:
+        return False
+    # A switch is a NEW asset token the technician had not used before, or a
+    # return to an earlier one after naming a different one in between.
+    return bool(now - before) or bool(before - now)
+
+
 def grade_dialogue(turn, ctx: GradeContext) -> StageGrade:
     """Did prior conversation state corrupt this turn?
 
@@ -234,6 +298,10 @@ def grade_dialogue(turn, ctx: GradeContext) -> StageGrade:
     the detectors that rediscovered the PF-525 re-ask and the tier-8 verbatim
     repeat from frozen transcripts alone, including two conversations the LLM
     judge had passed.
+
+    One of those gates carries a measured false-positive mode, so it is
+    corroborated rather than trusted outright; see
+    `technician_switched_asset`.
     """
     # No reply, nothing to judge. Without this guard an EMPTY evidence object
     # scored DIALOGUE=PASS ("first turn, no prior context"), which made a turn
@@ -252,12 +320,29 @@ def grade_dialogue(turn, ctx: GradeContext) -> StageGrade:
         for v in ctx.conversation_violations
         if v.gate in {"reasks_supplied_info", "repeated_answer", "cross_vendor_citation"}
     ]
+    suppressed: list[str] = []
+    if relevant and technician_switched_asset(ctx.prior_turns, turn):
+        # Re-confirming identity when the technician just changed machine is
+        # CORRECT behaviour. Suppress only that gate; a repeated answer or a
+        # cross-vendor citation is still a defect on a switch turn.
+        kept = [v for v in relevant if v.gate != "reasks_supplied_info"]
+        suppressed = [v.gate for v in relevant if v.gate == "reasks_supplied_info"]
+        relevant = kept
+
     if relevant:
         return StageGrade(
             Stage.DIALOGUE,
             FAIL,
             "; ".join(f"{v.gate}: {v.detail}" for v in relevant[:2]),
-            {"violations": [v.gate for v in relevant]},
+            {"violations": [v.gate for v in relevant], "suppressed_known_fp": suppressed},
+        )
+    if suppressed:
+        return StageGrade(
+            Stage.DIALOGUE,
+            PASS,
+            "identity re-confirmation after a technician-initiated asset switch — "
+            "correct behaviour; gates.check_reasks_supplied_info's known false positive",
+            {"suppressed_known_fp": suppressed},
         )
 
     # A fault code carried forward that the technician has abandoned is the

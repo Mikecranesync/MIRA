@@ -329,7 +329,11 @@ class TestVerdictHonesty:
     def test_grader_exception_degrades_one_stage_only(self):
         class Boom:
             scope = {"model": "x"}
-            expected_evidence = []
+            # NON-empty: an oracle declaring no expected evidence now
+            # short-circuits to INCONCLUSIVE before `corpus_coverage` is reached,
+            # so an empty list here would make this test pass without ever
+            # exercising the exception path it exists to cover.
+            expected_evidence = [oracles_mod.ExpectedEvidence(match="anything")]
             forbidden_evidence = []
             answer_tokens = []
 

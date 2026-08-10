@@ -84,12 +84,12 @@ SUBSYSTEM = {
 #: Layers whose failure is fully explained by an upstream failure. Used only for
 #: wording — the classifier already picks the upstream layer as primary.
 DOWNSTREAM_OF = {
-    Stage.INGEST: (Stage.RETRIEVAL, Stage.EVIDENCE, Stage.GENERATION, Stage.GROUNDING),
-    Stage.SCOPE: (Stage.RETRIEVAL, Stage.EVIDENCE, Stage.GENERATION, Stage.GROUNDING),
-    Stage.DIALOGUE: (Stage.RETRIEVAL, Stage.EVIDENCE, Stage.GENERATION, Stage.GROUNDING),
-    Stage.RETRIEVAL: (Stage.EVIDENCE, Stage.GENERATION, Stage.GROUNDING),
-    Stage.EVIDENCE: (Stage.GENERATION, Stage.GROUNDING),
-    Stage.GENERATION: (Stage.GROUNDING,),
+    Stage.INGEST: (Stage.RETRIEVAL, Stage.EVIDENCE, Stage.GROUNDING, Stage.GENERATION),
+    Stage.SCOPE: (Stage.RETRIEVAL, Stage.EVIDENCE, Stage.GROUNDING, Stage.GENERATION),
+    Stage.DIALOGUE: (Stage.RETRIEVAL, Stage.EVIDENCE, Stage.GROUNDING, Stage.GENERATION),
+    Stage.RETRIEVAL: (Stage.EVIDENCE, Stage.GROUNDING, Stage.GENERATION),
+    Stage.EVIDENCE: (Stage.GROUNDING, Stage.GENERATION),
+    Stage.GROUNDING: (Stage.GENERATION,),
 }
 
 

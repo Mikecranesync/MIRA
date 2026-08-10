@@ -304,7 +304,56 @@ async def amain(args) -> int:
 
     print(f"DONE tier={args.tier}: {n_pass} pass, {n_fail} fail/suspect, {n_skip} skipped (resume)")
     await client.disconnect()
+
+    if not args.no_diagnose:
+        _run_trh(args)
     return 0
+
+
+def _run_trh(args) -> None:
+    """Stage-grade the campaign that just ran (TRH v2).
+
+    Runs AFTER the client disconnects and is wrapped so it can never fail a
+    campaign: the live turns are the expensive artifact, and a diagnosis bug
+    must not cost them. A crash here prints and moves on — the ledger is already
+    written, so `trh diagnose-campaign` can be re-run against it at any time.
+
+    Diagnosis is deliberately POST-run rather than per-turn. The Telethon lane
+    is wire-only, and the two producers that see inside the engine
+    (`retrieval_probe`, `replay`) both read the ledger — so they cannot run
+    until the ledger exists. Grading inline would score every turn with
+    RETRIEVAL/DIALOGUE permanently NOT_OBSERVED and quietly halve the harness.
+    """
+    try:
+        from tests.regime1_telethon.campaign.trh import diagnose as trh_diagnose
+        from tests.regime1_telethon.campaign.trh import cli as trh_cli
+
+        cds = trh_diagnose.diagnose_campaign(
+            args.campaign, use_replay=not args.no_replay, corpus=trh_cli.cached_corpus()
+        )
+        counts = trh_diagnose.classification_counts(cds)
+        by_class = counts["by_class"]
+        print(
+            "TRH: "
+            + (
+                ", ".join(f"{k}={v}" for k, v in by_class.items())
+                if by_class
+                else "no classified failures"
+            )
+            + f" · unclassifiable={counts['unclassifiable']}"
+        )
+        for cd in cds:
+            first = cd.first_broken()
+            if first is not None:
+                print(
+                    f"  {first.label:11} {cd.conv_id} turn {first.turn_index} -> {first.subsystem[:70]}"
+                )
+        print(
+            "TRH: run `py -3 -m tests.regime1_telethon.campaign.trh.cli report "
+            f"--campaign {args.campaign} --write` for the full report"
+        )
+    except Exception as exc:  # noqa: BLE001 - never fail a campaign on diagnosis
+        print(f"TRH diagnosis skipped ({type(exc).__name__}: {exc})")
 
 
 def main() -> int:
@@ -315,6 +364,12 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=41)
     ap.add_argument("--deploy-sha", default="")
     ap.add_argument("--session", default="tests/regime1_telethon/uat_account.session")
+    ap.add_argument(
+        "--no-diagnose", action="store_true", help="skip the post-run TRH stage diagnosis"
+    )
+    ap.add_argument(
+        "--no-replay", action="store_true", help="TRH: skip the replay producer (faster, weaker)"
+    )
     return asyncio.run(amain(ap.parse_args()))
 
 

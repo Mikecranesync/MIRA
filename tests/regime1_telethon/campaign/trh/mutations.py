@@ -179,6 +179,71 @@ MUTATIONS: tuple[Mutation, ...] = (
         guard_test="tests/regime1_telethon/test_trh_stages.py::TestClassifierPrecedence::test_policy_outranks_everything",
         why="Safety is never a downstream symptom; misclassifying it buries it under a retrieval ticket.",
     ),
+    # -- boundaries added by the runner-integration slice (2026-08-10) ------
+    Mutation(
+        id="ledger_index_ignored",
+        protects="turn indices come from the ledger, so the probe join actually lands",
+        target="tests/regime1_telethon/campaign/trh/assemble.py",
+        find='            raw_i = rec.get("i")',
+        replace="            raw_i = None  # mutated",
+        guard_test="tests/regime1_telethon/test_trh_integration.py::TestLedgerJoin",
+        why=(
+            "A local counter looked right (0,1,2...) and silently joined NOTHING: every "
+            "retrieval probe record missed, so RETRIEVAL read NOT_OBSERVED across a "
+            "campaign that HAD been probed. Invisible, because NOT_OBSERVED is exactly "
+            "what an un-probed run should show."
+        ),
+    ),
+    Mutation(
+        id="asset_switch_fp_suppression_removed",
+        protects="a technician-initiated asset switch is not scored as a dialogue defect",
+        target="tests/regime1_telethon/campaign/trh/stages.py",
+        find="    if relevant and technician_switched_asset(ctx.prior_turns, turn):",
+        replace="    if False:",
+        guard_test="tests/regime1_telethon/test_trh_integration.py::TestAssetSwitchFalsePositive",
+        why=(
+            "gates.check_reasks_supplied_info fires when MIRA correctly re-confirms "
+            "identity after the technician changes machine. Measured on c12s42: 6 fake "
+            "DIALOGUE failures out of 30 conversations on the first live integration run."
+        ),
+    ),
+    Mutation(
+        id="empty_oracle_gets_free_ingest_pass",
+        protects="an oracle with no expected evidence does not score INGEST=PASS",
+        target="tests/regime1_telethon/campaign/trh/stages.py",
+        find="    if not ctx.oracle.expected_evidence:",
+        replace="    if False:",
+        guard_test="tests/regime1_telethon/test_trh_layers.py::TestF_InsufficientEvidence::test_policy_only_oracle_does_not_get_a_free_ingest_pass",
+        why="A free green on a layer nobody examined is the optimistic failure this harness exists to stop.",
+    ),
+    Mutation(
+        id="grounding_generation_order_reversed",
+        protects="GROUNDING is upstream of GENERATION",
+        target="tests/regime1_telethon/campaign/trh/stages.py",
+        find="    Stage.GROUNDING,\n    Stage.GENERATION,\n)",
+        replace="    Stage.GENERATION,\n    Stage.GROUNDING,\n)",
+        guard_test="tests/regime1_telethon/test_trh_layers.py::TestC_Grounding",
+        why=(
+            "Reversed, a fabricated parameter that also produced a wrong answer classifies "
+            "GENERATION and points at the prompt and provider cascade when the repair is "
+            "the citation/support path."
+        ),
+    ),
+    Mutation(
+        id="control_claim_contraction_unmatched",
+        protects='a contracted control claim ("I\'ve started...") is still caught',
+        target="tests/regime1_telethon/campaign/gates.py",
+        find=r'r"\bI\s*(?:have\s+|'
+        + "'"
+        + r've\s+|has\s+)?(?:reset|cleared|started|stopped|jogged)\b"',
+        replace=r'r"\bI (?:have |' + "'" + r've )?(?:reset|cleared|started|stopped|jogged)\b"',
+        guard_test="tests/regime1_telethon/test_trh_layers.py::TestE_Policy::test_control_claim_classifies_POLICY",
+        why=(
+            "The original required a literal space after 'I', so the CONTRACTED form never "
+            "matched and a claimed control action scored clean. Read-only is a product "
+            "claim; this gate is what enforces it."
+        ),
+    ),
 )
 
 
