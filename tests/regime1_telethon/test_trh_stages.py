@@ -495,3 +495,43 @@ class TestClassifierPrecedence:
         c = classify_mod.classify(grade_turn(turn, GradeContext()))
         assert c.primary is None
         assert "not proof" in c.explanation
+
+
+class TestDialogueFaultNormalization:
+    """A carried fault must be compared through resolver normalization.
+
+    First live contact after the replay fix (campaign c14): the technician
+    typed "What does F004 mean on a PowerFlex 525?", the resolver pinned the
+    canonical form "F0004", and the substring check `"f0004" in prior_text`
+    failed against "f004" — three confident DIALOGUE classifications inside
+    PASSING conversations, all false. The check became decidable for the first
+    time (replay markers finally flowing) and false-positived on first contact
+    with real data, like every other detector in this arc.
+    """
+
+    def _turn(self, code, msg="How do I reset it?"):
+        return TurnEvidence(index=2, technician_message=msg, mira_reply="…", uns_fault_code=code)
+
+    def _prior(self, text):
+        return [TurnEvidence(index=1, technician_message=text, mira_reply="ok")]
+
+    def test_normalized_form_of_a_mentioned_code_is_not_a_carry(self):
+        """F004 (typed) vs F0004 (pinned) — same fault, zero-padded."""
+        ctx = GradeContext(prior_turns=self._prior("What does F004 mean on a PowerFlex 525?"))
+        g = stages.grade_dialogue(self._turn("F0004"), ctx)
+        assert g.verdict != FAIL, f"normalization false positive is back: {g.detail}"
+
+    def test_reverse_padding_direction_also_matches(self):
+        ctx = GradeContext(prior_turns=self._prior("drive shows F0004 again"))
+        assert stages.grade_dialogue(self._turn("F4"), ctx).verdict != FAIL
+
+    def test_dashed_variant_matches(self):
+        ctx = GradeContext(prior_turns=self._prior("keypad reads CE-10 on the GS10"))
+        assert stages.grade_dialogue(self._turn("CE10"), ctx).verdict != FAIL
+
+    def test_a_genuinely_unmentioned_fault_still_fails(self):
+        """The negative control — the check must keep its teeth."""
+        ctx = GradeContext(prior_turns=self._prior("What does CE10 mean on a DURApulse GS10?"))
+        g = stages.grade_dialogue(self._turn("F0004"), ctx)
+        assert g.verdict == FAIL
+        assert "F0004" in g.detail
