@@ -531,6 +531,14 @@ jobs:
         # repo files), pyyaml already installed above.
         run: pytest tests/test_deploy_staging_targets.py -v
 
+      - name: PR merge-blocker resolver (#3109)
+        # Pins the classification that keeps a bare "BLOCKED" from being reported
+        # as a finding: QUEUED/IN_PROGRESS are pending (not failures), a REQUIRED
+        # context that never reported is pending (not passing), and an all-green
+        # PR whose aggregate still says BLOCKED resolves to CLEAN-was-stale.
+        # Hermetic — classify() is pure, fixtures only, no gh/network.
+        run: pytest tests/test_pr_merge_blocker.py -v
+
       - name: Connector framework tests
         # mira-connectors/ is its own package (pyproject pythonpath=["."]) — run from
         # inside it. Hermetic mock connectors (Maximo/Ignition/SAP/MaintainX/PI), no

@@ -99,12 +99,37 @@ builds, codebase maps, multi-phase plans:
 - Prefer many small verified commits over one large unverified one. Each commit
   is a checkpoint you can resume from.
 
+## 6. A self-contradictory status means re-query, not re-report
+
+Never report a PR as **blocked** without naming the specific blocker.
+`gh pr view --json mergeStateStatus` returns `BLOCKED` as a catch-all for
+genuinely different situations *and* lags the real state — so the bare string
+is a prompt to go look, not a finding.
+
+- **`pending=0 fail=[] state=BLOCKED` is self-contradictory.** If nothing is
+  pending and nothing failed, there is either a *named* blocker (draft, review,
+  conflict, `BEHIND`) or the aggregate is stale. On PR #3106 that contradiction
+  was visible across nine consecutive polls and reported to the user three times
+  as "still blocked"; the PR was mergeable throughout and merged first try.
+- **`mergeable=UNKNOWN` means "GitHub hasn't computed it", not "no conflict".**
+  A bulk `gh pr list` never computes it; a direct `gh pr view` triggers the
+  computation, so the *second* read is the real one. Never resolve an
+  uncomputed status to CLEAN.
+- **Run `tools/pr-merge-blocker.sh <n>`** instead of re-improvising the
+  resolution. It intersects the reported checks with the branch's *required*
+  contexts (a required context that never reported is **pending**, and is
+  invisible to any scan of reported checks alone), keeps `QUEUED`/`IN_PROGRESS`
+  out of the failed bucket, and prints `CLEAN (status was stale)` rather than a
+  bare `BLOCKED`. It exits non-zero only for a real blocker, and `UNKNOWN`
+  (exit 2) when it cannot tell — it never guesses CLEAN.
+
 ---
 
 ## When this applies
 
 - Every non-trivial task in this repo. Rules 1–3 are near-universal; rule 4
-  fires on any DB/migration/seed work; rule 5 fires on long/multi-phase work.
+  fires on any DB/migration/seed work; rule 5 fires on long/multi-phase work;
+  rule 6 fires whenever you poll or report a PR's mergeability.
 
 ## When this does NOT apply
 
