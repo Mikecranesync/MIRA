@@ -54,8 +54,19 @@ except Exception:
 ' 2>/dev/null || true)
   fi
 fi
+# Legacy fallback. $CLAUDE_TOOL_INPUT is EMPTY in every current harness build
+# (verified 2026-08-09 by dumping the hook environment), so this can no longer
+# fire; it is retained only for an older harness that did populate it.
 [ -z "$cmd" ] && cmd="${CLAUDE_TOOL_INPUT:-}"
-[ -z "$cmd" ] && exit 0  # Nothing to inspect; allow.
+# Fail open, but NEVER silently. This guard can only allow-by-default when it has
+# no command to inspect — blocking every Bash call would wedge the session. The
+# danger is that a future break in the stdin read above lands here and looks
+# identical to "nothing to inspect", which is exactly how the dead-hook class of
+# 2026-08-09 stayed invisible for months. So say so on stderr.
+if [ -z "$cmd" ]; then
+  echo "$(basename "$0"): no PreToolUse payload on stdin or in env - NOT inspected, allowing. If you see this on a real command, the payload plumbing is broken." >&2
+  exit 0
+fi
 
 # Is this a git *mutator*? Match `git ... <verb>` and `git stash drop`/`pop`.
 # Read-only verbs (status/log/diff/show/fetch/branch/rev-parse) are NOT matched.
