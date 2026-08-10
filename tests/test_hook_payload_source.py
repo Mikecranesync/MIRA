@@ -236,6 +236,72 @@ def test_prod_guard_covers_ssh_alias_forms(command, should_deny):
     )
 
 
+# The other half of the same guard: it must not fire on a command that merely
+# *mentions* a prod verb. Until 2026-08-09 the command-position anchor counted a
+# backtick and a `|` as shell separators, so two of the most ordinary things anyone
+# types in this repo were blocked — a commit message quoting a command name in
+# markdown, and a grep whose ERE pattern contains `\|`. Both were hit within ten
+# minutes of each other while writing the deploy fix.
+#
+# This is not merely annoying. A guard that cries wolf on commit messages trains
+# the operator to reach for MIRA_ALLOW_PROD=1 by reflex, which switches it off for
+# the command that actually deserved the block. So the false-positive side is
+# pinned exactly as hard as the false-negative side above.
+_D, _C = "docker", "compose"
+
+
+@pytest.mark.parametrize(
+    "command,should_deny",
+    [
+        # --- must NOT fire: the verb appears as prose or as regex text ---
+        (f'git commit -m "moved into a `{_D} {_C}` fallback"', False),
+        (f'git commit -m "a `{_D} rm -f` of all nine targets"', False),
+        (f'grep -n "git commit\\|{_D} {_C}" tools/hooks/prod-guard.sh', False),
+        (f'echo "the deploy then runs {_D} {_C} up"', False),
+        (f'git commit -m "prose naming {_D} {_C} with no punctuation"', False),
+        # --- must STILL fire: the verb is actually invoked ---
+        (f"{_D} {_C} -f docker-compose.saas.yml up -d", True),
+        (f"{_D} {_C} build mira-hub", True),
+        (f"cd /opt/mira && {_D} {_C} up -d", True),
+        ("nginx -s reload", True),
+        ("scp artifact.tar root@165.245.138.91:/opt/mira/", True),
+        # ...and a plain read is still fine
+        (f"{_D} ps -a", False),
+    ],
+)
+def test_prod_guard_does_not_fire_on_prose_or_regex_text(command, should_deny):
+    proc = subprocess.run(
+        ["bash", str(REPO / "tools" / "hooks" / "prod-guard.sh")],
+        input=json.dumps({"tool_input": {"command": command}}),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        env={**os.environ, "MIRA_ALLOW_PROD": "0"},
+    )
+    denied = '"permissionDecision":"deny"' in proc.stdout
+    assert denied is should_deny, (
+        f"prod-guard {'should deny' if should_deny else 'should allow'}: {command!r}. "
+        f"Allowing prose keeps the guard credible; denying real invocations keeps it useful."
+    )
+
+
+def test_prod_guard_anchor_excludes_backtick_and_pipe():
+    """Pin the anchor itself, so the fix is not silently undone by 'restoring' the
+    two characters that look like they belong in a list of shell separators."""
+    src = (REPO / "tools" / "hooks" / "prod-guard.sh").read_text()
+    m = re.search(r"^CMDSTART='(.+)'$", src, re.M)
+    assert m, "CMDSTART anchor not found in prod-guard.sh"
+    anchor = m.group(1)
+    assert "`" not in anchor, (
+        "Backtick is back in the command-position anchor. Markdown prose in commit "
+        "messages wraps command names in backticks, so this blocks ordinary commits."
+    )
+    assert "|" not in anchor.replace("(^|", "("), (
+        "`|` is back in the command-position anchor (outside the leading `^|` "
+        "alternation). Every ERE written with `\\|` then trips the guard."
+    )
+
+
 def test_gitleaks_config_extends_default_ruleset():
     """A gitleaks config declaring [[rules]] REPLACES the ~170 built-ins unless it
     opts in via [extend] useDefault. Until 2026-08-09 this repo's config declared 4
