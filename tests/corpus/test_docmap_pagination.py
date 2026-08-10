@@ -53,6 +53,22 @@ class TestPaginationClassification:
         """Too few pages to judge — say so rather than flip a coin."""
         assert ing("tiny.pdf", 6, 1, 6, 6).pagination == "unknown"
 
+    def test_boundary_exactly_at_chunk_index_max_is_chunk_index(self):
+        """CHUNK_INDEX_MAX is inclusive: 24 rows / 20 pages == 1.2 exactly.
+
+        The contract says "at or below this means chunk index"; a strict `<`
+        classified the boundary as `real` and citable. Pin it from both sides.
+        """
+        at_boundary = ing("boundary.pdf", 24, 1, 20, 20)
+        assert at_boundary.pagination == "chunk_index"
+        assert not at_boundary.citable
+
+    def test_just_above_boundary_is_real(self):
+        """25 rows / 20 pages == 1.25 > 1.2 — real pages, citable."""
+        above = ing("boundary.pdf", 25, 1, 20, 20)
+        assert above.pagination == "real"
+        assert above.citable
+
 
 class TestAuthoritativeSelection:
     def _doc(self, *ingests):

@@ -130,7 +130,7 @@ class Ingest:
             return "unknown"
         if self.distinct_pages < _MIN_PAGES_TO_JUDGE:
             return "unknown"
-        return "chunk_index" if self.chunks_per_page < CHUNK_INDEX_MAX else "real"
+        return "chunk_index" if self.chunks_per_page <= CHUNK_INDEX_MAX else "real"
 
     @property
     def citable(self) -> bool:
