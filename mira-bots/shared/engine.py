@@ -4611,7 +4611,9 @@ class Supervisor:
                 reply = "Updated.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "RESOLVED")
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
 
             # No yes/no and no recognised edit — fill missing fields in order.
             if not wo_draft.get("asset") and message.strip():
@@ -4622,7 +4624,9 @@ class Supervisor:
                 reply = "Got it — asset set.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "RESOLVED")
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
 
             if not wo_draft.get("fault_description") and message.strip():
                 ctx["cmms_wo_draft"] = {**wo_draft, "fault_description": message.strip()[:500]}
@@ -4632,7 +4636,9 @@ class Supervisor:
                 reply = "Got it — fault description noted.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "RESOLVED")
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
 
             # Unrecognised input — re-show the preview rather than silently
             # treating it as "no" (which would discard the WO draft).
@@ -4646,7 +4652,9 @@ class Supervisor:
             ) + format_wo_preview(wo)
             self._record_exchange(chat_id, state, message, reply)
             tl_flush()
-            return self._make_result(reply, "none", trace_id, "RESOLVED")
+            return self._make_result(
+                reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+            )
 
         # Consume the pending state now that we have a definitive yes/no.
         ctx.pop("cmms_wo_draft", None)
@@ -4673,7 +4681,9 @@ class Supervisor:
                 reply = "\n".join(lines)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "RESOLVED")
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
 
             try:
                 reply = await self._post_cmms_work_order(wo)
@@ -4710,7 +4720,7 @@ class Supervisor:
 
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
-        return self._make_result(reply, "none", trace_id, "RESOLVED")
+        return self._make_result(reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending")
 
     async def _handle_pm_suggestion_pending(
         self, chat_id: str, message: str, state: dict, trace_id: str
