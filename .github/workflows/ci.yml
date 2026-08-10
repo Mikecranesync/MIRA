@@ -661,6 +661,14 @@ jobs:
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
 
+      - name: Deploy must not tear down containers before building
+        # Pins the fix for the 2026-08-09 outage: deploy-vps.yml used to `docker rm -f`
+        # every target BEFORE `docker compose build`, so both public surfaces were dark
+        # for build+boot rather than boot. Four merges to main in 40 minutes that day
+        # produced four separate refused-connection windows on app.factorylm.com and
+        # factorylm.com. Invisible when it regresses — the deploy still reports green.
+        run: pytest tests/test_deploy_no_teardown_before_build.py -v
+
       - name: Check Hub Unit Tests path-filter contract
         # tests/test_hub_unit_filter_contract.py was written for this job
         # (its docstring: "pytest + pyyaml only — matches the Architecture
