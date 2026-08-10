@@ -275,6 +275,78 @@ def test_state_buckets_are_disjoint():
     assert not (pmb.FAILED_STATES & pmb.PASSING_STATES)
 
 
+# --- The fetch seam (no network — subprocess/_gh_json are stubbed) -----------
+
+
+class _Proc:
+    def __init__(self, stdout, returncode=0):
+        self.stdout = stdout
+        self.returncode = returncode
+
+
+def test_gh_json_trusts_stdout_not_the_exit_code(monkeypatch):
+    """`gh pr checks` overloads its exit code to report CHECK state (1=failed,
+    8=pending), not command failure. Gating on it would empty the check list for
+    exactly the PRs that have a failing check — turning FAILED into PENDING."""
+    monkeypatch.setattr(
+        pmb.subprocess, "run", lambda *a, **k: _Proc('[{"name":"x"}]', returncode=1)
+    )
+    assert pmb._gh_json(["pr", "checks", "1", "--json", "name"]) == [{"name": "x"}]
+
+
+def test_gh_json_returns_none_on_empty_or_unparseable_output(monkeypatch):
+    for stdout in ("", "   ", "not json at all"):
+        monkeypatch.setattr(pmb.subprocess, "run", lambda *a, **k: _Proc(stdout))
+        assert pmb._gh_json(["pr", "view", "1"]) is None
+
+
+def test_gh_json_returns_none_when_gh_is_missing(monkeypatch):
+    def _boom(*a, **k):
+        raise OSError("gh: not found")
+
+    monkeypatch.setattr(pmb.subprocess, "run", _boom)
+    assert pmb._gh_json(["pr", "view", "1"]) is None
+
+
+def test_fetch_pr_requeries_while_mergeability_is_uncomputed(monkeypatch):
+    """The 're-query directly' remedy: asking is what makes GitHub compute it."""
+    responses = [
+        {"mergeable": "UNKNOWN", "state": "OPEN"},
+        {"mergeable": "MERGEABLE", "state": "OPEN", "mergeStateStatus": "BEHIND"},
+    ]
+    calls = []
+
+    def _fake(args):
+        calls.append(args)
+        return responses[min(len(calls) - 1, len(responses) - 1)]
+
+    monkeypatch.setattr(pmb, "_gh_json", _fake)
+    monkeypatch.setattr(pmb.time, "sleep", lambda _s: None)
+    got = pmb.fetch_pr("1")
+    assert got["mergeable"] == "MERGEABLE"
+    assert len(calls) == 2  # stopped as soon as it resolved
+
+
+def test_fetch_pr_gives_up_after_the_attempt_budget(monkeypatch):
+    """Still UNKNOWN after retrying → return it, so classify() reports UNKNOWN."""
+    calls = []
+
+    def _fake(args):
+        calls.append(args)
+        return {"mergeable": "UNKNOWN", "state": "OPEN"}
+
+    monkeypatch.setattr(pmb, "_gh_json", _fake)
+    monkeypatch.setattr(pmb.time, "sleep", lambda _s: None)
+    got = pmb.fetch_pr("1", attempts=3)
+    assert len(calls) == 3
+    assert pmb.classify(got, PROTECTION, []).exit_code == pmb.EXIT_UNKNOWN
+
+
+def test_fetch_pr_returns_none_when_the_pr_cannot_be_read(monkeypatch):
+    monkeypatch.setattr(pmb, "_gh_json", lambda args: None)
+    assert pmb.fetch_pr("1") is None
+
+
 def test_latest_checks_handles_missing_timestamps():
     got = pmb.latest_checks(
         [

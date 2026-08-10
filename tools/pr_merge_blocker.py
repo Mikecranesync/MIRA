@@ -223,7 +223,17 @@ def _gh_json(args: list):
         proc = subprocess.run(["gh"] + args, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
-    if proc.returncode != 0 or not proc.stdout.strip():
+    # Deliberately NOT gated on returncode. `gh pr checks` overloads its exit
+    # code to report check STATE rather than command failure: 1 when a check
+    # failed, 8 when checks are pending. Measured 2026-08-09, the `--json` path
+    # suppresses that and returns 0 even on a PR with a FAILURE (#3149: --json
+    # → 0, plain → 1), so gating would be harmless *today* — but that is an
+    # undocumented property of one code path. If it ever changed, `checks` would
+    # come back empty for exactly the PRs that have a failing required check,
+    # every required context would resolve to "(never reported)", and the verdict
+    # would be PENDING instead of FAILED: this tool's own failure mode, sign
+    # flipped. Valid JSON on stdout is the real success signal.
+    if not proc.stdout.strip():
         return None
     try:
         return json.loads(proc.stdout)
