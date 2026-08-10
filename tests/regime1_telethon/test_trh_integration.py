@@ -286,3 +286,53 @@ class TestPersistenceShape:
             assert key in r, f"diagnosis record is missing {key!r}"
         assert r["kind"] == "diagnosis"
         assert len(r["stages"]) == 8
+
+
+class TestViolationLocalization:
+    """A conversation-scoped violation is ONE defect, not one per turn.
+
+    Measured on the real ledgers before this existed: a single violation in a
+    9-turn conversation produced 8 DIALOGUE failures, and the campaign-wide
+    count read 158 instead of 21. A report that inflates a layer 8x sends the
+    next session to rewrite the wrong subsystem.
+    """
+
+    def _turns(self, n):
+        return [
+            TurnEvidence(index=i, technician_message=f"q{i}", mira_reply=f"a{i}")
+            for i in range(1, n + 1)
+        ]
+
+    def test_one_violation_lands_on_exactly_one_turn(self):
+        v = [gates.Violation("reasks_supplied_info", "c", "asked for identity again")]
+        got = diag.localize_violations(v, self._turns(9))
+        assert sum(len(x) for x in got.values()) == 1
+        assert list(got) == [2], "unlocalizable violations go to the first eligible turn"
+
+    def test_a_violation_that_names_its_turn_is_charged_there(self):
+        v = [gates.Violation("repeated_answer", "c", "turn 5 repeats turn 1")]
+        got = diag.localize_violations(v, self._turns(9))
+        assert list(got) == [5]
+
+    def test_a_named_turn_outside_the_conversation_falls_back(self):
+        v = [gates.Violation("repeated_answer", "c", "turn 99 repeats turn 1")]
+        got = diag.localize_violations(v, self._turns(3))
+        assert list(got) == [2]
+
+    def test_single_turn_conversation_carries_nothing(self):
+        v = [gates.Violation("reasks_supplied_info", "c", "x")]
+        assert diag.localize_violations(v, self._turns(1)) == {}
+
+    @live_only
+    def test_no_conversation_reports_more_dialogue_failures_than_violations(self):
+        cds = diag.diagnose_campaign("c1", use_replay=False, persist_records=False, corpus=None)
+        for cd in cds:
+            fails = [
+                d.turn_index
+                for d in cd.diagnoses
+                if d.by_stage()[Stage.DIALOGUE].verdict == stages.FAIL
+            ]
+            assert len(fails) <= 2, (
+                f"{cd.conv_id}: {len(fails)} DIALOGUE failures — a conversation-scoped "
+                "violation is being charged to every turn again"
+            )

@@ -21,6 +21,7 @@ explicit reason, never a pass.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -64,6 +65,42 @@ def _conversation_violations(conv) -> list:
         return []
 
 
+_TURN_REF_RE = re.compile(r"\bturn\s+(\d+)", re.IGNORECASE)
+
+
+def localize_violations(violations: list, turns: list) -> dict[int, list]:
+    """Charge each conversation-scoped violation to exactly ONE turn.
+
+    `gates.check_conversation` judges a whole transcript, so handing the same
+    violation to every turn's grader charges one defect N times. Measured on the
+    real ledgers: a single violation in a 9-turn conversation produced 8 DIALOGUE
+    failures, inflating the campaign-wide count from ~23 to 158. A report that
+    says "158 dialogue defects" when there are 23 is worse than no count — it
+    makes DIALOGUE look like the dominant failure mode and would send the next
+    session to rewrite the FSM.
+
+    Localization, in order of preference:
+      1. the turn the violation NAMES ("turn 3 repeats turn 1") — exact;
+      2. otherwise the first turn that could carry it (the second turn), tagged
+         `conversation-scoped` so a reader knows the turn number is the earliest
+         possible one and not a measurement.
+    """
+    out: dict[int, list] = {}
+    if not violations or len(turns) < 2:
+        return out
+    indices = [t.index for t in turns]
+    first_eligible = indices[1]
+    for v in violations:
+        m = _TURN_REF_RE.search(v.detail or "")
+        target = first_eligible
+        if m:
+            named = int(m.group(1))
+            if named in indices and named != indices[0]:
+                target = named
+        out.setdefault(target, []).append(v)
+    return out
+
+
 def diagnose_conversation(
     conv,
     assembly: assemble_mod.AssemblyReport | None = None,
@@ -73,6 +110,7 @@ def diagnose_conversation(
     reg = registry if registry is not None else oracles_mod.load()
     oracle = oracles_mod.for_case(conv.conv_id, reg)
     violations = _conversation_violations(conv)
+    localized = localize_violations(violations, conv.turns)
 
     diagnoses = []
     for i, turn in enumerate(conv.turns):
@@ -80,7 +118,7 @@ def diagnose_conversation(
             oracle=oracle,
             corpus=corpus,
             prior_turns=conv.turns[:i],
-            conversation_violations=violations,
+            conversation_violations=localized.get(turn.index, []),
         )
         diagnoses.append(grade_turn(turn, ctx, conv_id=conv.conv_id))
 
