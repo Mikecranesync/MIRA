@@ -307,6 +307,33 @@ class PhraseCorpus:
         return dict(self._cache)
 
 
+class HarnessCorpus:
+    """Both lookups the graders need, behind one object.
+
+    INGEST asks `contains_phrase(phrase, scope)`; GROUNDING asks `exists(token)`
+    via `fabrication.CorpusIndex`. Passing a bare `PhraseCorpus` used to make the
+    GROUNDING grader raise AttributeError, which its fail-safe turned into
+    INCONCLUSIVE — so a real fabrication silently stopped being reported and the
+    report looked cleaner than the data. Exactly the optimistic-direction failure
+    this harness exists to catch, so the two lookups are bundled rather than left
+    to the caller to remember.
+
+    Both halves keep the fail-safe: unresolved is None ("unproven"), never False.
+    """
+
+    def __init__(self, phrases: PhraseCorpus, tokens=None):
+        self._phrases = phrases
+        self._tokens = tokens
+
+    def contains_phrase(self, phrase: str, scope: dict[str, str] | None = None) -> bool | None:
+        return self._phrases.contains_phrase(phrase, scope)
+
+    def exists(self, token: str) -> bool | None:
+        if self._tokens is None:
+            return None
+        return self._tokens.exists(token)
+
+
 def neon_phrase_corpus(cache: dict[str, bool] | None = None) -> PhraseCorpus:
     """A `PhraseCorpus` backed by staging Neon (read-only existence check).
 
