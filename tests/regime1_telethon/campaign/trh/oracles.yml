@@ -1,0 +1,108 @@
+# Expected-evidence oracles.
+#
+# Each entry says what the corpus SHOULD answer a question class with, so the
+# harness can separate "the manual is missing" (INGEST) from "the manual is
+# there and retrieval never finds it" (RETRIEVAL) — measured, not argued.
+#
+# `match` strings are DISTINCTIVE PHRASES, not chunk ids: ids are renumbered by
+# any re-chunk and would rot into fake regressions, while a phrase fails loudly
+# only when the content actually goes missing.
+#
+# Every entry below was verified against staging on 2026-08-09 (public corpus,
+# `is_private = false`). Row counts are recorded so a later drop is visible.
+
+oracles:
+  # ── the RET-001 reference case ───────────────────────────────────────────
+  # Evidence PRESENT + embedded, retrieval never surfaces it => RETRIEVAL.
+  - id: reset_procedure
+    question_intent: >
+      How do I clear/reset a PowerFlex 525 after a fault (e.g. F004 undervoltage)?
+    scope:
+      manufacturer: Rockwell Automation
+      model: PowerFlex 525
+      not_model: PowerFlex 40
+    expected_evidence:
+      - match: "clear the fault by one of these methods"
+        why: "the canonical PF525 fault-clear procedure"
+        locator: "PowerFlex 525 manual p160 (17 rows corpus-wide)"
+      - match: "Press Stop if P045"
+        why: "the first concrete clear step"
+        locator: "p164 (15 rows)"
+      - match: "Resets a fault and clears the fault queue"
+        why: "A551 [Fault Clear] — the parameter route"
+        locator: "p135/p160 (18 rows)"
+    forbidden_evidence:
+      - match: "Safety Hardware"
+        why: "F111 safety-hardware reset — a DIFFERENT sense of 'reset'; ranks 1 today"
+      - match: "Home Reset"
+        why: "position reset — a different sense; ranks 0 today"
+      - match: "Reset Defaults"
+        why: "factory-defaults reset — a different sense"
+      - match: "reset the rotor position"
+        why: "rotor position reset — a different sense; ranks 2 today"
+    answer_tokens:
+      - "cycle drive power"
+      - "press stop"
+      - "fault clear"
+      - "press esc"
+    seed_questions:
+      - "How do I reset a PowerFlex 525 after an undervoltage fault?"
+      - "How do I clear the fault on a PowerFlex 525?"
+    notes: >
+      #3165 / #3156. The correct passages are present, public and embedded, yet
+      sit at cosine rank ~119-2200 within the 7,547 PF525 rows while a query
+      that VERBATIM QUOTES the chunk only reaches rank 5 — so no query rewrite
+      can close the gap, and option B was falsified on that measurement. Fixed
+      by RET-001 (phrase-anchored fault-clear stream, PR #3176): with the stream
+      on, these passages return at ranks 0-2.
+
+  # ── the GS10 counter-case ────────────────────────────────────────────────
+  # Same symptom on the wire, opposite repair. This entry exists to make the
+  # harness PROVE the distinction rather than assert it.
+  - id: reset_procedure_gs10
+    question_intent: "How do I clear/reset an AutomationDirect GS10 after a CE10 fault?"
+    scope:
+      manufacturer: AutomationDirect
+      model: GS10
+    expected_evidence:
+      - match: "clear the fault by one of these methods"
+        why: >
+          Deliberately the SAME probe as the PF525 case. AutomationDirect has
+          4,295 public rows and ZERO fault-clear procedure phrases, so this
+          MUST come back missing and classify INGEST. If it ever starts
+          passing, a GS10 manual has been ingested — update this note.
+        locator: "expected in a GS10 troubleshooting chapter; absent as of 2026-08-09"
+    answer_tokens:
+      - "cycle power"
+      - "reset"
+    seed_questions:
+      - "How do I reset a GS10 after a CE10 fault?"
+    notes: >
+      #3177. Not a retrieval defect: 4,295 of 4,306 AutomationDirect rows carry
+      no model tag at all (two "models" are document titles like
+      `drives g vg 4 manual`), so every model-scoped stream is inert for this
+      vendor. Retrieval tuning here is wasted work until ingest is repaired.
+
+  # ── a known-good control ─────────────────────────────────────────────────
+  # Not every oracle should be a failing case. Without a passing control, a
+  # harness that reports "everything fails" is indistinguishable from a broken
+  # harness — the same reason safety.py pins NORMAL negative controls.
+  - id: fault_code_pf525
+    question_intent: "What does fault F004 mean on a PowerFlex 525?"
+    scope:
+      manufacturer: Rockwell Automation
+      model: PowerFlex 525
+    expected_evidence:
+      - match: "DC bus voltage fell below the min"
+        why: "the F004 UnderVoltage description"
+        locator: "PowerFlex 525 manual p161"
+    answer_tokens:
+      - "undervoltage"
+      - "under voltage"
+      - "dc bus"
+    seed_questions:
+      - "What does F004 mean on a PowerFlex 525?"
+    notes: >
+      Passes on main today (t1:fault_code_pf525 is STABLE_PASS across 5 seeds).
+      Its job is to keep the harness honest: a change that makes every oracle
+      red should turn this one red too, which is a harness bug, not a MIRA bug.

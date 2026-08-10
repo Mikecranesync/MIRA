@@ -1,0 +1,7 @@
+{
+ "automationdirect|gs10::clear the fault by one of these methods": false,
+ "rockwell automation|powerflex 525::clear the fault by one of these methods": true,
+ "rockwell automation|powerflex 525::dc bus voltage fell below the min": true,
+ "rockwell automation|powerflex 525::press stop if p045": true,
+ "rockwell automation|powerflex 525::resets a fault and clears the fault queue": true
+}
