@@ -28,9 +28,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     body.matchState === "candidate" || body.matchState === "verified"
       ? body.matchState
       : "user_confirmed";
+  // Mirror the equipment_notebook_sources.source_role CHECK — an unknown role
+  // must 400 here, not surface as a DB constraint 500.
+  const SOURCE_ROLES = ["manual", "quick_start", "drawing", "work_order", "note", "photo", "other"];
+  const sourceRole = typeof body.sourceRole === "string" ? body.sourceRole : null;
+  if (sourceRole !== null && !SOURCE_ROLES.includes(sourceRole)) {
+    return NextResponse.json({ error: "invalid_source_role" }, { status: 400 });
+  }
   const res = await attachSource(ctx.tenantId, id, docId, {
     matchState,
-    sourceRole: typeof body.sourceRole === "string" ? body.sourceRole : null,
+    sourceRole,
     addedBy: ctx.userId ?? null,
   });
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 404 });

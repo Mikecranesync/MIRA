@@ -18,6 +18,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { recordTurn, validateChatSources } from "@/lib/equipment-notebooks";
 import {
   appendManualContext,
+  buildManualUserContent,
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
@@ -185,9 +186,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const citations = await buildCitations(ctx.tenantId, chunks);
   const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks);
+  // appendManualContext only appends the grounding RULES — the excerpts
+  // themselves ride in the user message (injection-hardened data channel),
+  // same as the asset-chat and node-chat routes.
   const messages = [
     { role: "system", content: systemPrompt },
-    { role: "user", content: message },
+    { role: "user", content: buildManualUserContent(message, chunks) },
   ];
 
   const stream = new ReadableStream<Uint8Array>({
