@@ -100,8 +100,12 @@ export async function POST(req: Request) {
       const unsPath = buildNodeUnsPath(parentPath, slug);
 
       const insertRes = await c.query<{ id: string }>(
-        `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id)
-         VALUES ($1, $2, $3::ltree, $4::uuid)
+        // approval_state pinned explicitly: DEFAULT is 'verified' per
+        // docs/migrations/008 but 'proposed' per mira-hub migration 029, and
+        // NodeChat only answers on 'verified' nodes — a user-created node must
+        // be chattable regardless of which migration set won (ARPK Phase 1a).
+        `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id, approval_state)
+         VALUES ($1, $2, $3::ltree, $4::uuid, 'verified')
          RETURNING id`,
         [kind, name, unsPath, ctx.tenantId],
       );

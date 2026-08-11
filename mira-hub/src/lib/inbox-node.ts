@@ -42,8 +42,12 @@ export async function resolveOrCreateInboxNode(tenantId: string): Promise<InboxN
 
     try {
       const inserted = await c.query<{ id: string }>(
-        `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id)
-         VALUES ('area', 'Inbox', $2::ltree, $1::uuid)
+        // approval_state pinned explicitly: the column's DEFAULT is 'verified'
+        // per docs/migrations/008 but 'proposed' per mira-hub migration 029, and
+        // NodeChat only answers on 'verified' nodes — never depend on which
+        // migration set an environment applied first (ARPK Phase 1a).
+        `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id, approval_state)
+         VALUES ('area', 'Inbox', $2::ltree, $1::uuid, 'verified')
          RETURNING id::text AS id`,
         [tenantId, INBOX_UNS_PATH],
       );
