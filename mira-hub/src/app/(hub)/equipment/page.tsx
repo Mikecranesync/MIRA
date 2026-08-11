@@ -90,7 +90,7 @@ export default function EquipmentNotebooksPage() {
 
       <div className="mb-4 flex gap-2">
         <Link
-          href={`${API_BASE}/equipment/scan`}
+          href="/equipment/scan"
           className="flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium"
           style={{ background: "var(--brand-blue)", color: "white" }}
         >
@@ -144,7 +144,7 @@ export default function EquipmentNotebooksPage() {
           </p>
           <div className="mt-4 flex justify-center gap-2">
             <Link
-              href={`${API_BASE}/equipment/scan`}
+              href="/equipment/scan"
               className="rounded-lg px-4 py-2 text-sm font-medium"
               style={{ background: "var(--brand-blue)", color: "white" }}
             >
@@ -164,7 +164,7 @@ export default function EquipmentNotebooksPage() {
           {filtered.map((n) => (
             <li key={n.id}>
               <Link
-                href={`${API_BASE}/equipment/${n.id}`}
+                href={`/equipment/${n.id}`}
                 className="block rounded-lg p-3"
                 style={{ border: "1px solid var(--border)", background: "var(--surface-1)" }}
               >

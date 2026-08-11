@@ -96,7 +96,7 @@ export default function NotebookPage() {
   const openCitation = useCallback(
     (c: EvidenceCitation) => {
       const q = c.page != null ? `?page=${c.page}` : "";
-      router.push(`${API_BASE}/equipment/${id}/source/${c.docId}${q}`);
+      router.push(`/equipment/${id}/source/${c.docId}${q}`);
     },
     [id, router],
   );
@@ -105,7 +105,7 @@ export default function NotebookPage() {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center" style={{ color: "var(--foreground-muted)" }}>
         <p>This notebook doesn&apos;t exist or isn&apos;t yours.</p>
-        <Link href={`${API_BASE}/equipment`} className="mt-3 inline-block text-sm" style={{ color: "var(--brand-blue)" }}>
+        <Link href="/equipment" className="mt-3 inline-block text-sm" style={{ color: "var(--brand-blue)" }}>
           Back to notebooks
         </Link>
       </div>
@@ -118,7 +118,7 @@ export default function NotebookPage() {
       style={{ color: "var(--foreground)" }}
     >
       <header className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
-        <Link href={`${API_BASE}/equipment`} aria-label="Back" style={{ color: "var(--foreground-muted)" }}>
+        <Link href="/equipment" aria-label="Back" style={{ color: "var(--foreground-muted)" }}>
           <ArrowLeft size={18} />
         </Link>
         <div className="min-w-0 flex-1">
@@ -205,7 +205,7 @@ export default function NotebookPage() {
               </ul>
             )}
             <Link
-              href={`${API_BASE}/namespace/?node=${notebook ? "" : ""}`}
+              href="/namespace/"
               className="mt-3 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
               style={{ border: "1px dashed var(--border)", color: "var(--foreground-muted)" }}
             >

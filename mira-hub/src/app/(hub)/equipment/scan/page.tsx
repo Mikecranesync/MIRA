@@ -108,7 +108,7 @@ export default function ScanPage() {
   return (
     <div className="mx-auto w-full max-w-md px-4 py-6" style={{ color: "var(--foreground)" }}>
       <header className="mb-4 flex items-center gap-2">
-        <Link href={`${API_BASE}/equipment`} aria-label="Back" style={{ color: "var(--foreground-muted)" }}>
+        <Link href="/equipment" aria-label="Back" style={{ color: "var(--foreground-muted)" }}>
           <ArrowLeft size={18} />
         </Link>
         <h1 className="text-lg font-semibold">Scan machine</h1>

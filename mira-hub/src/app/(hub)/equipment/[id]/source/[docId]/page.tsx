@@ -37,7 +37,7 @@ export default function SourceViewerPage() {
   return (
     <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-4xl flex-col" style={{ color: "var(--foreground)" }}>
       <header className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
-        <Link href={`${API_BASE}/equipment/${id}`} aria-label="Back to chat" style={{ color: "var(--foreground-muted)" }}>
+        <Link href={`/equipment/${id}`} aria-label="Back to chat" style={{ color: "var(--foreground-muted)" }}>
           <ArrowLeft size={18} />
         </Link>
         <div className="min-w-0 flex-1">
