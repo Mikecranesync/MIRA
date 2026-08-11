@@ -113,7 +113,15 @@ export default function NotebookPage() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-3xl flex-col" style={{ color: "var(--foreground)" }}>
+    <div
+      className="mx-auto flex w-full max-w-3xl flex-col"
+      style={{
+        color: "var(--foreground)",
+        // Clear the hub's fixed mobile bottom-tab bar so the chat composer isn't
+        // hidden under it; on desktop (no tab bar) fall back to the full height.
+        height: "calc(100dvh - 3.5rem - var(--bottom-tab-height, 0px))",
+      }}
+    >
       <header className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
         <Link href={`${API_BASE}/equipment`} aria-label="Back" style={{ color: "var(--foreground-muted)" }}>
           <ArrowLeft size={18} />

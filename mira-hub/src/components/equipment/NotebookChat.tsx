@@ -199,7 +199,7 @@ export function NotebookChat({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {turns.length === 0 && (
           <div className="py-8 text-center text-sm" style={{ color: "var(--foreground-subtle)" }}>
             Ask this machine anything about its selected sources.
@@ -215,7 +215,7 @@ export function NotebookChat({
         )}
         <div ref={endRef} />
       </div>
-      <div className="flex items-end gap-2 border-t p-2" style={{ borderColor: "var(--border)" }}>
+      <div className="flex shrink-0 items-end gap-2 border-t p-2" style={{ borderColor: "var(--border)" }}>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
