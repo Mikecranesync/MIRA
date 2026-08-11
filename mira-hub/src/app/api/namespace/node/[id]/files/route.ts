@@ -159,6 +159,12 @@ export async function GET(
 
 /** Map a server-side ingest error to a message the panel can show verbatim. */
 function friendlyIngestError(msg: string): string {
+  // ARPK 1c: zero extractable text is a property of the file — name it, don't
+  // hide it behind the generic "couldn't read" (checked FIRST: the raw message
+  // would otherwise be swallowed by broader patterns below).
+  if (/no extractable text/i.test(msg)) {
+    return "This PDF has no extractable text — it appears to be scanned or image-only. OCR isn't supported yet, so it can't be indexed for chat; the original file is kept.";
+  }
   if (/unpdf\/pdfjs|Serverless PDF\.js bundle|Cannot find module/i.test(msg)) {
     return "PDF processing is temporarily unavailable on the server. Please try again shortly.";
   }

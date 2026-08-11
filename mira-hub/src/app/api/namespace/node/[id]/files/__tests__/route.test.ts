@@ -198,6 +198,26 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
     expect((body.file as Record<string, unknown>).id).toBe("direct-parked-1");
   });
 
+  it("names the scanned/no-text cause in the warning (ARPK 1c honest failure)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext)
+      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
+      .mockResolvedValueOnce("direct-parked-scan");
+    // The real writePdfChunksForNode throws NoExtractableTextError when every
+    // page yields zero chunks (scanned/image-only PDF); the route must map it
+    // to a warning that names the cause instead of a generic "couldn't read".
+    vi.mocked(ingestPdfToNode).mockRejectedValue(
+      new Error("no extractable text — the PDF appears to be scanned or image-only"),
+    );
+
+    const res = await POST(makePostReq("scanned.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ ok: true, indexed: false });
+    expect(body.warning).toMatch(/scanned or image-only/i);
+    expect(body.warning).toMatch(/kept/i);
+  });
+
   it("links the parked original to the ingest upload on success", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
     // call 1: node lookup; call 2: park insert; call 3: upload_id link UPDATE.

@@ -78,6 +78,23 @@ export interface NodeIngestResult {
 }
 
 /**
+ * ARPK Phase 1c — thrown when a document yields ZERO chunks (scanned/image-only
+ * PDF, or an empty/whitespace text file). A property of the FILE, not the
+ * pipeline: retrying another ingest path cannot fix it, so callers must mark
+ * the upload failed with this cause instead of reporting a bogus success
+ * (`parsed` / `indexed:true` with chunkCount 0 — a document that can never be
+ * cited). PRD: "Honest failure if no usable content is extracted."
+ */
+export class NoExtractableTextError extends Error {
+  constructor(filename: string) {
+    super(
+      `no extractable text in ${filename} — the file appears to be scanned, image-only, or empty`,
+    );
+    this.name = "NoExtractableTextError";
+  }
+}
+
+/**
  * Split text into ~CHUNK_CHARS windows with overlap, preferring to end on a
  * paragraph or sentence boundary. Single-use, intentionally simple.
  */
@@ -300,6 +317,9 @@ async function writeChunkRowsForNode(
     }
     await flush();
   });
+
+  // Zero chunks = nothing was inserted above; failing here is honest and safe.
+  if (idx === 0) throw new NoExtractableTextError(filename);
 
   // Fire-and-forget embed pass — chunks are already BM25-live, so the upload
   // response must not block on embedding a large manual (and a slow/dead

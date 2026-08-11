@@ -25,6 +25,7 @@ import { resolveOrCreateInboxNode } from "@/lib/inbox-node";
 import {
   writePdfChunksForNode,
   writeTextChunksForNode,
+  NoExtractableTextError,
 } from "@/lib/node-knowledge-ingest";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
@@ -241,6 +242,22 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
       await deleteUploadBuffer(p.uploadId);
       return;
     } catch (err) {
+      // ARPK 1c: zero extractable text is a property of the FILE — no other
+      // ingest path can fix it, so fail the upload honestly with the cause
+      // instead of falling through (the legacy OW forwarder is sunset anyway,
+      // so the fall-through would end in a bogus success or a network error).
+      if (err instanceof NoExtractableTextError) {
+        log.error("failed", err);
+        await updateUploadStatus(
+          p.uploadId,
+          p.tenantId,
+          "failed",
+          err.message,
+        ).catch((statusErr: unknown) =>
+          log.error("status_update_failed", statusErr),
+        );
+        return; // buffer kept for retry-after-OCR-lands; no legacy fallback
+      }
       // v2 inbox ingest failed — fall back to the legacy OW-KB path below so the
       // door still works (the v2 core is the same proven node-attach path).
       log.error("v2_inbox_fallback", err);
