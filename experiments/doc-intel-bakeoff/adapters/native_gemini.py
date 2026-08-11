@@ -119,13 +119,23 @@ def ask(
         },
     }
     t0 = time.monotonic()
-    r = client.post(
-        f"{API}/models/{model}:generateContent",
-        params={"key": _key()},
-        json=body,
-        timeout=180,
-    )
+    r = None
+    for attempt in range(4):
+        r = client.post(
+            f"{API}/models/{model}:generateContent",
+            params={"key": _key()},
+            json=body,
+            timeout=180,
+        )
+        if r.status_code == 429:
+            time.sleep(35)  # free-tier TPM window; wait out the minute
+            continue
+        if r.status_code == 503:
+            time.sleep(12)
+            continue
+        break
     latency = time.monotonic() - t0
+    assert r is not None
     r.raise_for_status()
     data = r.json()
     usage = data.get("usageMetadata", {})

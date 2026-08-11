@@ -230,10 +230,14 @@ def main() -> None:
     ap.add_argument("--lane", required=True, help="comma list: pymupdf,pymupdf-tables,docling,docling-tables,docling-scanned,gemini,textqa")
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--repeat-id", default="pf525-fault-f004")
+    ap.add_argument("--only", default="", help="comma list of question ids to (re)run")
     ap.add_argument("--out", default=str(OUT / "results.jsonl"))
     args = ap.parse_args()
 
     docs, questions = load_questions()
+    if args.only:
+        wanted = {x.strip() for x in args.only.split(",")}
+        questions = [q for q in questions if q["id"] in wanted]
     all_results: list[QResult] = []
     for lane in args.lane.split(","):
         lane = lane.strip()
