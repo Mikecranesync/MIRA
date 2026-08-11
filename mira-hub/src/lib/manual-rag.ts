@@ -28,6 +28,8 @@ import type { PoolClient } from "pg";
 
 export interface ManualChunk {
   content: string;
+  /** hub_uploads.id the chunk came from (v2 node rows; undefined on OEM path). */
+  docId?: string | null;
   manufacturer: string;
   modelNumber: string;
   sourceUrl: string;
@@ -385,7 +387,16 @@ export async function retrieveNodeChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
-  opts: { nodeId: string; unsPath: string | null; topK?: number; docId?: string },
+  opts: {
+    nodeId: string;
+    unsPath: string | null;
+    topK?: number;
+    docId?: string;
+    /** Equipment Notebook: restrict retrieval to an explicit allowed-doc set
+     *  (enabled notebook sources). Same enforcement point as docId — the
+     *  predicate applies to BOTH tsquery passes in SQL, never app-side. */
+    docIds?: string[];
+  },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
   if (!q) return [];
@@ -432,13 +443,15 @@ export async function retrieveNodeChunks(
   // same node, so the predicate applies to BOTH the AND and OR passes. The
   // node/tenant predicates stay — a docId outside this node's subtree (or
   // another tenant) yields [] ("no coverage"), never a cross-scope leak.
-  const docParams = opts.docId ? [opts.docId] : [];
-  const docClause = opts.docId ? "AND doc_id = $5::uuid" : "";
+  const allowedDocIds = opts.docIds ?? (opts.docId ? [opts.docId] : []);
+  const docParams = allowedDocIds.length > 0 ? [allowedDocIds] : [];
+  const docClause = allowedDocIds.length > 0 ? "AND doc_id = ANY($5::uuid[])" : "";
 
   const runRetrieval = async (tsquery: string) => {
     const res = await client.query(
       `SELECT
           content,
+          doc_id::text AS doc_id,
           source_url,
           source_page,
           page_start,
@@ -467,6 +480,7 @@ export async function retrieveNodeChunks(
 
   return rows.map((r: Record<string, unknown>) => ({
     content: String(r.content ?? ""),
+    docId: r.doc_id == null ? null : String(r.doc_id),
     // Node attachments have no manufacturer/model — the filename is the citable title.
     manufacturer: "",
     modelNumber: "",
