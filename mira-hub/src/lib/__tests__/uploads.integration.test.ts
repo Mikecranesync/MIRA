@@ -94,6 +94,7 @@ afterEach(async () => {
   // The ensureUploadsSchema tests transiently DROP the ingest_route column —
   // guarantee it's back for every other test, whatever the previous test did.
   await testPool.query(`ALTER TABLE hub_uploads ADD COLUMN IF NOT EXISTS ingest_route TEXT`);
+  await testPool.query(`ALTER TABLE hub_uploads ADD COLUMN IF NOT EXISTS content_sha256 TEXT`);
 });
 
 describe("ensureUploadsSchema", () => {
@@ -105,20 +106,22 @@ describe("ensureUploadsSchema", () => {
     return import("../uploads");
   }
 
-  it("resolves once migration 068 has been applied (happy path)", async () => {
+  it("resolves once migrations 068+072 have been applied (happy path)", async () => {
     const mod = await freshUploadsModule();
     await expect(mod.ensureUploadsSchema()).resolves.toBeUndefined();
   });
 
-  it("throws when ingest_route is missing, and does not cache the failure — a retry after the column appears succeeds", async () => {
-    await testPool.query(`ALTER TABLE hub_uploads DROP COLUMN IF EXISTS ingest_route`);
+  // The probe watches the NEWEST known column — content_sha256 since migration
+  // 072 (ARPK 1b) — so dropping it is how "schema out of date" is simulated.
+  it("throws when content_sha256 is missing, and does not cache the failure — a retry after the column appears succeeds", async () => {
+    await testPool.query(`ALTER TABLE hub_uploads DROP COLUMN IF EXISTS content_sha256`);
     const mod = await freshUploadsModule();
 
     await expect(mod.ensureUploadsSchema()).rejects.toThrow(/hub_uploads schema is out of date/);
 
     // Simulate the migration landing, then retry on the SAME module instance
     // (not a new import). If the failure had been memoized, this would still reject.
-    await testPool.query(`ALTER TABLE hub_uploads ADD COLUMN IF NOT EXISTS ingest_route TEXT`);
+    await testPool.query(`ALTER TABLE hub_uploads ADD COLUMN IF NOT EXISTS content_sha256 TEXT`);
     await expect(mod.ensureUploadsSchema()).resolves.toBeUndefined();
   });
 });

@@ -330,3 +330,6 @@ tests/regime1_telethon/code_input.txt
 tests/regime1_telethon/campaign/ledger/
 tests/regime1_telethon/campaign/frozen/
 tests/regime1_telethon/campaign/retrieval/
+
+# ARPK T2108 fixture binary — fetch via tests/beta/fixtures/t2108/fetch.py
+tests/beta/fixtures/t2108/*.pdf

@@ -21,6 +21,9 @@ const defaultMigrationFiles = [
   "056_contextualization_intake.sql",
   "067_ctx_import_batches_approval_cols.sql",
   "068_hub_uploads.sql",
+  // ARPK 1b: ensureUploadsSchema() now probes content_sha256 — without 072 the
+  // uploads integration suite fails loud at the schema check.
+  "072_hub_uploads_content_sha256.sql",
 ];
 
 function requireEnv(name) {
