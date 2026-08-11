@@ -99,8 +99,8 @@ describe("NodeChat docId scope", () => {
     expect(res.status).toBe(200);
     const retrieval = calls.find((c) => c.sql.includes("content_tsv @@"));
     expect(retrieval).toBeDefined();
-    expect(retrieval!.sql).toContain("doc_id = $5");
-    expect(retrieval!.params).toContain(DOC_ID);
+    expect(retrieval!.sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(retrieval!.params).toContainEqual([DOC_ID]);
   });
 
   it("without docId, no doc lookup runs and retrieval is node-scoped (unchanged)", async () => {
@@ -109,6 +109,6 @@ describe("NodeChat docId scope", () => {
     expect(res.status).toBe(200);
     const retrieval = calls.find((c) => c.sql.includes("content_tsv @@"));
     expect(retrieval).toBeDefined();
-    expect(retrieval!.sql).not.toContain("doc_id");
+    expect(retrieval!.sql).not.toContain("doc_id = ANY"); // projection keeps doc_id::text; only the PREDICATE is omitted
   });
 });
