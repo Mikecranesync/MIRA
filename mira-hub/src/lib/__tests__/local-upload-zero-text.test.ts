@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/uploads", () => ({
   createUpload: vi.fn(async () => ({ id: "up-1", tenantId: "t-1" })),
   updateUploadStatus: vi.fn(async () => undefined),
+  findDuplicateUpload: vi.fn(async () => null),
 }));
 
 vi.mock("@/lib/upload-buffer", () => ({

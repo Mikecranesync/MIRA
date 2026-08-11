@@ -399,6 +399,8 @@ export async function ingestPdfToNode(opts: {
   mimeType: string | null;
   sizeBytes: number;
   buffer: Buffer;
+  /** sha256 hex of the bytes — persisted for content dedup (ARPK 1b). */
+  contentSha256?: string | null;
 }): Promise<NodeIngestResult> {
   const { tenantId, nodeId, unsPath, filename, mimeType, sizeBytes, buffer } =
     opts;
@@ -414,6 +416,7 @@ export async function ingestPdfToNode(opts: {
     kgEntityId: nodeId,
     ingestRoute: "v2",
     initialStatus: "parsing",
+    contentSha256: opts.contentSha256 ?? null,
   });
 
   try {

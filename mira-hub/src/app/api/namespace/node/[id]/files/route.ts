@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
+import { findDuplicateUpload } from "@/lib/uploads";
 import pool from "@/lib/db";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
@@ -231,6 +233,32 @@ export async function POST(
       return NextResponse.json({ error: "node not found" }, { status: 404 });
     }
 
+    // ARPK 1b — content dedup. An exact re-upload of already-indexed bytes to
+    // this node returns the EXISTING document instead of chunking a second
+    // copy (the 158x-ingest class). Best-effort: a dedup-lookup failure must
+    // never block an upload.
+    const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+    if (isPdf) {
+      try {
+        const dup = await findDuplicateUpload(ctx.tenantId, contentSha256, id);
+        if (dup) {
+          return NextResponse.json(
+            {
+              ok: true,
+              indexed: true,
+              duplicate: true,
+              uploadId: dup.id,
+              chunkCount: dup.kbChunkCount,
+              file: { filename: file.name, size_bytes: file.size },
+            },
+            { status: 200 },
+          );
+        }
+      } catch (err) {
+        console.warn("[api/namespace/node/:id/files POST] dedup lookup skipped", err);
+      }
+    }
+
     // Filing cabinet: park the original bytes FIRST, for every upload. The
     // document is kept even when downstream indexing fails (an image-only PDF
     // used to 500 and be lost entirely) — the cabinet never loses a file it
@@ -258,6 +286,7 @@ export async function POST(
           mimeType: mimeRaw,
           sizeBytes: file.size,
           buffer,
+          contentSha256,
         });
         // Link the parked original to its indexed upload so the panel shows ONE
         // row per document (downloadable AND citable) and the tree doesn't
