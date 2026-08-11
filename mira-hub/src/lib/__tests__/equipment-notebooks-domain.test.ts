@@ -69,6 +69,18 @@ describe("createNotebook", () => {
     expect(nb.nodeId).toBe("node-1");
   });
 
+  it("uses an UN-aliased RETURNING clause (a RETURNING has no table alias — live 500 regression)", async () => {
+    rowsByMatch.push(
+      { re: /INSERT INTO kg_entities/, rows: [{ id: "node-1" }] },
+      { re: /INSERT INTO equipment_notebooks/, rows: [{ id: NB, display_name: "X", node_id: "node-1", identity_status: "unknown", created_at: "now" }] },
+    );
+    await createNotebook(TENANT, { displayName: "X" });
+    const ins = callFor(/INSERT INTO equipment_notebooks/);
+    const returning = ins!.sql.slice(ins!.sql.indexOf("RETURNING"));
+    expect(returning).not.toMatch(/n\./); // no `n.`-prefixed columns in RETURNING
+    expect(returning).toContain("display_name");
+  });
+
   it("rejects an empty display name", async () => {
     await expect(createNotebook(TENANT, { displayName: "  " })).rejects.toThrow(
       "display_name_required",

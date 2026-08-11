@@ -47,11 +47,15 @@ export type NotebookSource = {
   fileId: string | null; // namespace_direct_uploads id for the byte-serving viewer
 };
 
+// Aliased for SELECTs that join the source-count subquery (needs `n.`).
 const NOTEBOOK_COLS = `
   n.id::text AS id, n.display_name, n.manufacturer, n.model, n.catalog_number,
   n.serial_number, n.equipment_type, n.asset_tag, n.location_label,
   n.identity_status, n.identity_confidence, n.identity_source_type,
   n.node_id::text AS node_id, n.last_opened_at, n.created_at`;
+// Un-aliased for RETURNING / single-table SELECTs — a RETURNING clause has no
+// table alias, so the `n.` form errors ("missing FROM-clause entry for n").
+const NOTEBOOK_COLS_BARE = NOTEBOOK_COLS.replace(/\bn\./g, "");
 
 function rowToNotebook(r: Record<string, unknown>, sourceCount = 0): EquipmentNotebook {
   return {
@@ -114,7 +118,7 @@ export async function createNotebook(
           equipment_type, asset_tag, location_label, identity_status, identity_confidence,
           identity_source_type, identity_observation, node_id, created_by)
        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::uuid, $15)
-       RETURNING ${NOTEBOOK_COLS}`,
+       RETURNING ${NOTEBOOK_COLS_BARE}`,
       [
         tenantId,
         name,
