@@ -57,11 +57,19 @@ def _key() -> str:
     return key
 
 
+# The key travels ONLY as a header — never a query param. httpx embeds the full
+# request URL (query string included) in HTTPStatusError messages, and error rows
+# are persisted to results.jsonl: a `?key=` param put the live key into 30 rows
+# until gitleaks blocked the commit. Headers are not part of exception text.
+def _auth_headers() -> dict:
+    return {"x-goog-api-key": _key()}
+
+
 def pick_model(client: httpx.Client) -> str:
     force = os.environ.get("GEMINI_MODEL_FORCE")
     if force:
         return force
-    listed = client.get(f"{API}/models", params={"key": _key(), "pageSize": 1000})
+    listed = client.get(f"{API}/models", params={"pageSize": 1000}, headers=_auth_headers())
     listed.raise_for_status()
     names = {m["name"].split("/")[-1] for m in listed.json().get("models", [])}
     for cand in MODEL_CANDIDATES:
@@ -75,8 +83,9 @@ def upload_pdf(client: httpx.Client, path: str) -> str:
     with open(path, "rb") as f:
         data = f.read()
     r = client.post(
-        f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={_key()}",
+        "https://generativelanguage.googleapis.com/upload/v1beta/files",
         headers={
+            **_auth_headers(),
             "X-Goog-Upload-Protocol": "raw",
             "Content-Type": "application/pdf",
         },
@@ -88,7 +97,7 @@ def upload_pdf(client: httpx.Client, path: str) -> str:
     name, uri = info["name"], info["uri"]
     # poll until ACTIVE
     for _ in range(60):
-        st = client.get(f"{API}/{name}", params={"key": _key()}).json()
+        st = client.get(f"{API}/{name}", headers=_auth_headers()).json()
         if st.get("state") == "ACTIVE":
             return uri
         time.sleep(2)
@@ -126,7 +135,7 @@ def ask(
     for attempt in range(4):
         r = client.post(
             f"{API}/models/{model}:generateContent",
-            params={"key": _key()},
+            headers=_auth_headers(),
             json=body,
             timeout=180,
         )

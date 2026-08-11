@@ -4,7 +4,19 @@
 **Harness:** `experiments/doc-intel-bakeoff/` (disposable; repro commands in its README)
 **Baseline:** PR #3185 — immutable reference; nothing here modifies its guarantees.
 
-> VERDICT: **[PENDING — filled from final benchmark data below]**
+> ## VERDICT: **B — thin evidence layer only.**
+>
+> Native document AI already answers technical-manual questions essentially perfectly
+> (Gemini native-PDF: **28/28** on this benchmark, including every class the FactoryLM
+> production path fails), and open-source parsing (Docling) already extracts structure,
+> tables, and OCR text we must not rebuild. **ARPK as a portable compiled-document
+> format is NOT justified by the evidence** — no `ARPK-CONCEPT-0.1.md` is created.
+> What the measurements DO justify FactoryLM owning is thin and specific: the
+> **evidence/provenance contract** (content-derived anchors, source hashes, revision
+> identity, rights, tenant/doc boundary enforcement) plus **retrieval repair** in the
+> serving path — because those are exactly the capabilities the winning systems
+> measurably lack (self-asserted citations at ~90% precision, per-question whole-manual
+> re-reads, daily-quota fragility, zero enforceable boundaries, no revision semantics).
 
 ---
 
@@ -78,39 +90,122 @@ Gemini free tier — costs are what the tokens *would* bill).
 
 ## 2. Results
 
-**[PENDING — full per-adapter and per-class tables from summarize.py, plus the
-narrative findings. Interim findings already locked:]**
+Run r1, 2026-08-11. Machine-readable: `experiments/doc-intel-bakeoff/out/results.jsonl`
+(regenerable via the README commands; `summarize.py --md` reproduces these tables).
 
-- **The production retrieval shape loses exact-token questions to its own stemming.**
-  The real #3185 lane (Postgres `english` tsvector) misses "What does fault F004 mean"
-  against a *single 274-page manual* — F004's fault-table page ranks below parameter-list
-  pages — while the identical chunker under unstemmed FTS5 finds it. This reproduces the
-  production PF525=RETRIEVAL root cause in miniature and confirms it is a property of
-  the *representation/config*, not corpus size.
-- **Cheap geometric table extraction is worthless for the spec-table class.** pymupdf
-  `find_tables()` row-context chunks changed nothing (12/27 → 12/27): the T2108
-  Specifications "table" is a designed key-value layout, not ruled lines, and it isn't
-  detected. Docling's TableFormer detects real tables beautifully (error-tone and
-  troubleshooting tables come out in perfect row-context form) but ALSO does not call
-  the T2108 spec layout a table — evidence that "table-aware chunking" alone is not a
-  silver bullet for spec lookups; the lexical-bridge problem is broader than ruled tables.
-- **Gemini native-PDF QA is highly accurate when it answers** — **[PENDING exact n]** —
-  with mostly-correct self-reported pages, but free-tier throttling killed 15/28
-  whole-manual requests on the first pass (429/503), and each question costs a full
-  manual re-read (~117k tokens per GS10 question). Whole-doc-per-question is an
-  operational non-starter at fleet scale; page anchors are self-asserted, not returned
-  by the API.
+### By adapter
+
+| adapter | correct | citation | errors | avg lat (s) | est cost |
+|---|---|---|---|---|---|
+| **gemini-native** (whole PDF attached, 3.6-flash + 3.5-flash-lite) | **28/28** | 18/20 | 0 | 27.9 | $1.17 |
+| **textqa-docling** (docling+FTS5 top-6 → Groq gpt-oss-120b) | **18/28** | 9/20 | 0 | 1.3 | ~$0 |
+| pymupdf (FTS5, #3185 chunker) | 12/27 | 10/19 | 0 | <0.01 | 0 |
+| pymupdf-tables (+find_tables) | 12/27 | 9/19 | 0 | <0.01 | 0 |
+| docling (FTS5) | 11/27 | 8/19 | 0* | <0.01 | 0 |
+| docling-tables (FTS5, row-context) | 10/27 | 10/19 | 0* | <0.01 | 0 |
+| **factorylm-baseline** (REAL #3185, pg tsvector) | **8/27** | 5/19 | 0* | 0.01 | 0 |
+| docling-scanned (OCR, scanned fixture only) | **2/2** | — | — | — | 0 |
+
+\* error rows are by-design coverage gaps (the scanned fixture has no text-lane IR;
+the OCR lane only covers the scanned fixture), not runtime failures.
+
+### Per-class (correct/total, the decisive columns)
+
+| class | #3185 | best-FTS5-parser | textqa | gemini |
+|---|---|---|---|---|
+| exact spec | 0/3 | 2/3 | 2/4 | **4/4** |
+| table row×column | 2/4 | 1/4 | 0/4 | **4/4** |
+| units | 0/2 | 1/2 | 2/2 | **2/2** |
+| synonyms | 1/2 | 1/2 | 1/2 | **2/2** |
+| procedures | 2/2 | 2/2 | 2/2 | 2/2 |
+| warnings | 0/1 | 1/1 | 1/1 | **1/1** |
+| scanned | 0/2 | 0/2 (2/2 with OCR lane) | 2/2 | **2/2** |
+| answer-not-present | 0/2 | 0/2 | **2/2** | **2/2** |
+| sibling leakage | **1/1** | 0/1 | 1/1 | 1/1 |
+| model ambiguity | 1/2 | 1/2 | 1/2 | **2/2** |
+| revision identity | 1/1 | 1/1 | 1/1 | 1/1 |
+| multi-context | 0/2 | 1/2 | 0/2 | **2/2** |
+| lexical control | 0/1 | 0/1 | 1/1 | **1/1** |
+| structural table | 0/1 | 1/1 | 1/1 | **1/1** |
+| figure-adjacent | 0/1 | 1/1 | 1/1 | 1/1 |
+
+### Narrative findings (each traceable to result rows)
+
+1. **Native model QA wins outright on answer quality.** Gemini with the whole PDF
+   attached went 28/28 — including all three #3185 spec-table misses, the GS11N-10P5
+   row×column lookup in a 452-page manual, both abstention traps, the wrong-manual scope
+   question, revision identity, and both scanned pages. The cheap tier
+   (`gemini-3.5-flash-lite`) answered its share correctly too. There is **no
+   answer-quality gap left for custom document intelligence to close.**
+2. **…but its wins are operationally fenced.** Every question re-reads the full manual
+   (~258 tokens/page ⇒ ~117k tokens per GS10 question; ~$1.17 estimated for one
+   28-question pass); the flagship model's free-tier daily quota exhausted mid-run
+   (15/28 first-pass 429/503, then 15/15 429s on same-day retry — a second model tier's
+   separate bucket was needed to finish); page citations are self-asserted (18/20 = 90%
+   precision, no API anchors); and Files-API uploads expire in 48h. Deterministic on the
+   repeat probe (temp 0, byte-identical), but determinism is a model property we don't
+   control.
+3. **The production retrieval shape loses exact-token questions to its own stemming.**
+   The real #3185 lane (Postgres `english` tsvector) misses "What does fault F004 mean"
+   against a *single 274-page manual* — while the identical chunker under unstemmed
+   FTS5 finds it. The production PF525=RETRIEVAL root cause reproduced in a controlled
+   corpus: a representation/config property, not corpus size.
+4. **Parse-then-QA more than doubles the baseline for free.** docling+FTS5 top-6 →
+   Groq `gpt-oss-120b` scores 18/28 at ~$0 and 1.3s/question, fixing every judgment
+   class (abstention 2/2, scope 1/1, scanned 2/2 via OCR IR, units, warnings) — and its
+   remaining failures are ALL retrieval misses, not answer-composition failures. Its
+   citations (9/20) inherit retrieval's page errors — parser anchors only help when the
+   right chunk is retrieved. Also NOT deterministic across reps (provider-side), unlike
+   the retrieval lanes.
+5. **The retrieval bottleneck is RANKING, not parsing.** Docling's IR contains the
+   answers verbatim — its PF525 p161 table serializes to `F004 [Description]: DC bus
+   voltage fell below the min value`, the exact lexical bridge the question needs — yet
+   `docling-tables` still fails that question: BM25 length-normalization ranks the big
+   table chunk below index/parameter pages that repeat the query tokens. Matches the
+   2026 literature (reranking is the single largest retrieval lever, +17pp; BM25 beats
+   dense on spec tables; structure-aware chunking doubles BM25 recall@1 *when ranking
+   can surface it*).
+6. **Cheap geometric table extraction is worthless; ML table extraction is necessary
+   but not sufficient.** pymupdf `find_tables()` moved nothing (12→12). Docling's
+   TableFormer extracts ruled tables beautifully (402 tables in PF525) but does NOT
+   classify the T2108 Specifications key-value LAYOUT as a table — the spec-lookup
+   problem is broader than ruled tables, which is exactly why the native-model lane
+   (which reads layouts like a human) sweeps that class.
+7. **OCR is a solved dependency, not a build.** Docling's OCR lane answered 2/2 on the
+   image-only fixture on this CPU-only laptop.
+8. **Only the FactoryLM path enforces boundaries.** #3185 was the only lane where
+   sibling-manual isolation is *structural* (gate F: SQL predicate) rather than model
+   good-behavior. Gemini also declined the wrong-manual question — but that is
+   compliance, not enforcement, and nothing in a native-API path enforces tenancy.
 
 ---
 
 ## 3. ARPK falsification analysis
 
-**[PENDING — the 12-capability checklist scored against the measured lanes:]**
-durable structured facts · stable evidence anchors · reproducible citations · revision
-identity · source hashes · provider-independent portability · deterministic querying
-without re-reading the PDF · structured tables/specs/procedures · fact↔evidence
-relationships · offline/local usability · model-swap without recompiling · enforceable
-document/tenant boundaries.
+The 12 capabilities the ARPK concept claimed FactoryLM needs, scored against what the
+measured systems already provide:
+
+| capability | native (Gemini) | OSS parse (Docling) | #3185 today | needs owning? |
+|---|---|---|---|---|
+| durable structured facts (not transient answers) | ✗ transient | ◐ structure, no facts | ✗ chunks only | ◐ only as *evidence-linked extractions*, not a format |
+| stable evidence anchors | ✗ self-asserted (90%) | ◐ bbox per parse, positional refs | ◐ page anchors | **✓ — content-derived anchor IDs (the one novel piece)** |
+| reproducible citations | ✗ | ✓ from anchors | ✓ page-level | ✓ keep + deepen to region |
+| document revision identity | ✗ | ✗ | ◐ sha only | **✓ — issue/inWork + supersession** |
+| source hashes | ✗ | ✗ (non-crypto binary_hash) | **✓ (072 dedup)** | already ours |
+| provider-independent portability | ✗ | ✓ | ✓ | via parser-adapter seam |
+| deterministic query w/o re-reading PDF | ✗ (re-reads, throttles) | ✓ | ✓ | via parsed IR at rest |
+| structured tables/specs/procedures | ✓ at answer time | ✓ ruled tables (not layouts) | ✗ | **use Docling; don't build** |
+| fact↔evidence relationships | ✗ | ✗ | ✗ | ✓ thin join, if/when facts land |
+| offline/local usability | ✗ | ✓ | ✓ | via Docling |
+| model swap w/o recompiling knowledge | ✗ | ✓ | ✓ | via parse-then-QA architecture |
+| enforceable doc/tenant boundaries | ✗ | ✗ | **✓ (gate F, RLS, is_private)** | already ours — the moat |
+
+Reading: the LEFT columns falsify building document intelligence (parsing, OCR, tables,
+answer quality — all commoditized or nearly so). The RIGHT column is small and specific:
+anchors, revision/supersession, the fact↔evidence join *when needed*, and the boundary
+enforcement FactoryLM already ships. **That is a thin evidence layer, not a portable
+compiled-document standard** — hence Verdict B and no `ARPK-CONCEPT-0.1.md`. The
+codename "ARPK" should be retired in favor of "the evidence contract."
 
 ---
 
@@ -200,10 +295,60 @@ PDF/source → parser ADAPTER → normalized document IR → (optional structure
    48h expiry) and budget control.
 6. `file` (libmagic) reports linearized-PDF page counts wrongly (said 18; real 274) —
    never use it for PDF metadata in tooling.
+7. **Leak class: query-param credentials in persisted exception text.** httpx embeds
+   the full request URL in `HTTPStatusError` messages; a `?key=` auth param put the
+   live Gemini key into 30 persisted result rows. Caught by the gitleaks pre-commit
+   (never committed/pushed); rows scrubbed; the adapter now sends the key ONLY via
+   `x-goog-api-key` header. Rule for any tool that persists error text: auth in
+   headers, never in URLs. (Rotating `GEMINI_API_KEY` is a cheap belt-and-braces
+   option — the key only ever touched local gitignored files.)
 
-## 8. Phase 2 recommendation
+## 8. Phase 2 recommendation (exact scope)
 
-**[PENDING — exact scope from the verdict.]**
+Ordered by measured leverage; each item cites its evidence. Everything rides the
+existing one-pipeline + #3185 guarantees — no new pipeline, no new format.
+
+**Step 0 (this week, independent of everything):** migrate the Groq default model off
+`llama-3.3-70b-versatile` (shutdown 2026-08-16) in the Hub chat cascades and anywhere
+engine-side — e.g. to `openai/gpt-oss-120b`.
+
+1. **Answer stage over retrieved evidence (parse-then-QA) on the doc-chat path.**
+   8/27 → 18/28 measured, ~$0 (Groq free tier), ~1.3s. This is the `textqa` lane
+   productized: retrieved chunks → cite-or-refuse JSON answer with pages taken from
+   chunk anchors. Slots into the existing NodeChat cascade (which already fronts an
+   LLM); keeps citation_compliance semantics; abstention/scope classes go from 0 to
+   green. NOT a new fast-path fork — it's the existing chat surface's grounding.
+2. **Retrieval repair in the #3185 SQL path.**
+   (a) exact-token side-channel: unstemmed (`simple`-config) tsvector OR'd with the
+   `english` one — kills the stemming loss (F004-class; baseline 8 vs FTS5 12 measured);
+   (b) candidate-pool widening + rerank (top-24 → rerank → 6) — the literature's +17pp
+   lever and the fix for finding 5 (long table chunks ranked out); rerank via the free
+   cascade LLM scoring or a small local cross-encoder — measure both.
+3. **Docling behind the parser-adapter seam for uploads.** Replace/augment the unpdf
+   text-only extraction with a Docling adapter emitting: real tables (row-context chunk
+   text), `section_path` (headings), bbox anchors persisted into the EXISTING 045
+   columns, and OCR fallback for zero-text PDFs (2/2 measured; converts 1c's honest
+   failure into ingestion). Windows/CPU caveats are containerized away (dynamo off,
+   page-batching, ~0.5-2s/page). Marker stays excluded (license); PaddleOCR-VL is the
+   Linux/GPU upgrade candidate later.
+4. **The thin evidence contract (the durable layer).** Metadata on existing rows/tables
+   — not a file format: content-derived anchor IDs (`sha256(page ‖ quantized_bbox ‖
+   normalized_text)[:16]`), Web-Annotation-shaped selector JSON per chunk, BagIt-style
+   per-document manifest (source + IR + pages digests; 072's `content_sha256` is the
+   seed), PROV-lite compile record (parser+versions+timestamps), S1000D-style
+   `issue_number/in_work` + `wasRevisionOf` on documents, and the rights block (§5).
+   VDI 2770 classification + AAS Handover export live in the industrial profile,
+   deferred until a customer asks.
+5. **Native-model document AI as an extraction/cross-check tool, not the serving
+   path.** Gemini's 28/28 is best amortized per-DOCUMENT (extraction-time enrichment,
+   golden-answer generation for validation questions, spec-table → structured facts),
+   where cost is paid once and outputs are pinned to anchors — not per-question at
+   ~117k tokens with daily-quota fragility and unverifiable self-citations.
+
+**Explicitly NOT in Phase 2** (falsified or unjustified): a custom PDF parser, custom
+OCR, custom table models, a `.arpk` file format, a new ontology, embedding-architecture
+work (BM25+rerank beat dense on this class in the current literature; embeddings stay
+the disposable trailing pass), and any weakening of #3185's gates.
 
 ## 9. Reproducing
 
