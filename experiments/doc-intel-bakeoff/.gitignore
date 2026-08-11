@@ -1,0 +1,5 @@
+fixtures/*.pdf
+.venv*/
+out/
+models/
+__pycache__/
