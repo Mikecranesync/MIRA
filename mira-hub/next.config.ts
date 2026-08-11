@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
   output: "standalone",
   basePath,
   assetPrefix: basePath,
+  // Dev-only (ignored by `next build`): allow phone/tablet testing over the
+  // Tailscale IP. Without this, Next 16 dev rejects the HMR websocket from a
+  // non-localhost origin and the client runtime never hydrates — every button
+  // on the page is inert (bit us on the phone login, 2026-08-11).
+  allowedDevOrigins: ["100.72.2.99", "100.83.251.23", "localhost"],
   // #1899: unpdf loads its PDF.js engine via a runtime `import('unpdf/pdfjs')`.
   // Under `output: "standalone"`, @vercel/nft does not trace that dynamic
   // subpath import, so unpdf is dropped from `.next/standalone/node_modules`
