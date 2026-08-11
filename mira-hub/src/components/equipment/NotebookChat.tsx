@@ -199,7 +199,9 @@ export function NotebookChat({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      {/* Bottom padding reserves room for the fixed composer so the last
+          message is never hidden behind it. */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 pb-24">
         {turns.length === 0 && (
           <div className="py-8 text-center text-sm" style={{ color: "var(--foreground-subtle)" }}>
             Ask this machine anything about its selected sources.
@@ -215,7 +217,18 @@ export function NotebookChat({
         )}
         <div ref={endRef} />
       </div>
-      <div className="flex shrink-0 items-end gap-2 border-t p-2" style={{ borderColor: "var(--border)" }}>
+      {/* Fixed above the hub's mobile bottom-tab bar — immune to top-chrome
+          height (trial banner + nav) that a viewport-height calc mis-measures.
+          On desktop the tab bar is hidden but the token stays 56px, leaving a
+          small harmless gap; phone-first is the priority (PRD §5). */}
+      <div
+        className="fixed inset-x-0 z-30 mx-auto flex max-w-3xl items-end gap-2 border-t p-2"
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--surface-0)",
+          bottom: "calc(var(--bottom-tab-height, 0px) + env(safe-area-inset-bottom, 0px))",
+        }}
+      >
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
