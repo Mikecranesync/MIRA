@@ -14,6 +14,14 @@ const nextConfig: NextConfig = {
   // non-localhost origin and the client runtime never hydrates — every button
   // on the page is inert (bit us on the phone login, 2026-08-11).
   allowedDevOrigins: ["100.72.2.99", "100.83.251.23", "localhost"],
+  // Next 16 buffers proxied (middleware/proxy.ts) request bodies at 10MB by
+  // default — silently truncating manual uploads, which then fail multipart
+  // parsing ("expected multipart/form-data" / server-action 404). Lift it just
+  // above the app's own MAX_UPLOAD_MB=50 gate (route returns a clean 413 there);
+  // +5mb headroom covers multipart framing overhead.
+  experimental: {
+    proxyClientMaxBodySize: "55mb",
+  },
   // #1899: unpdf loads its PDF.js engine via a runtime `import('unpdf/pdfjs')`.
   // Under `output: "standalone"`, @vercel/nft does not trace that dynamic
   // subpath import, so unpdf is dropped from `.next/standalone/node_modules`
