@@ -157,18 +157,24 @@ class QResult:
     ts: str = ""
 
 
+def _norm(text: str) -> str:
+    """Case-fold + strip digit-grouping commas so '1,000' matches marker '1000'.
+    Applied uniformly to every lane (fairness fix, not a threshold change)."""
+    return re.sub(r"(?<=\d),(?=\d)", "", text.lower())
+
+
 def score(result: QResult, q: dict) -> None:
     """Deterministic scoring, in place."""
     expect_abstain = bool(q.get("abstain"))
-    hay_answer = result.answer_text.lower()
-    hay_evidence = "\n".join(e.get("snippet", "") for e in result.evidence).lower()
+    hay_answer = _norm(result.answer_text)
+    hay_evidence = _norm("\n".join(e.get("snippet", "") for e in result.evidence))
     hay = hay_answer if result.adapter_kind == "answer" else hay_evidence
 
     def has_all(markers: list[str]) -> bool:
-        return all(m.lower() in hay for m in markers)
+        return all(_norm(m) in hay for m in markers)
 
     def has_any(markers: list[str]) -> bool:
-        return any(m.lower() in hay for m in markers)
+        return any(_norm(m) in hay for m in markers)
 
     if expect_abstain:
         if result.adapter_kind == "answer":

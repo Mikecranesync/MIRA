@@ -58,6 +58,9 @@ def _key() -> str:
 
 
 def pick_model(client: httpx.Client) -> str:
+    force = os.environ.get("GEMINI_MODEL_FORCE")
+    if force:
+        return force
     listed = client.get(f"{API}/models", params={"key": _key(), "pageSize": 1000})
     listed.raise_for_status()
     names = {m["name"].split("/")[-1] for m in listed.json().get("models", [])}
