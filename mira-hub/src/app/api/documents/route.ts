@@ -73,6 +73,10 @@ export async function GET(req: Request) {
       where.push(`model_number ILIKE '%' || $${params.length} || '%'`);
     }
 
+    // ARPK 1d — doc-scoped-chat keys. For a v2 upload group, source_url embeds
+    // the uploadId, so doc_id / node_id / filename are constant within the
+    // group (MIN is just the aggregate-safe way to project them). Shared OEM
+    // rows have no doc_id/node_id → NULL → the UI renders no Chat action.
     const sql = `
       SELECT source_url,
              MIN(equipment_type) AS equipment_type,
@@ -80,7 +84,12 @@ export async function GET(req: Request) {
              MIN(model_number)   AS model_number,
              COUNT(*)::int       AS chunk_count,
              MAX(created_at)     AS last_indexed,
-             BOOL_OR(verified)   AS verified
+             BOOL_OR(verified)   AS verified,
+             MIN(doc_id::text)            AS doc_id,
+             MIN(metadata->>'node_id')    AS node_id,
+             MIN(metadata->>'filename')   AS filename,
+             MAX(page_end)::int           AS pages,
+             BOOL_OR(is_private)          AS mine
         FROM knowledge_entries
        WHERE ${where.join(" AND ")}
        GROUP BY source_url
@@ -94,13 +103,20 @@ export async function GET(req: Request) {
     return NextResponse.json({
       documents: rows.map((r: Record<string, unknown>) => ({
         source_url: r.source_url,
-        title: ((r.source_url as string) || "").split("/").pop()?.split("?")[0] ?? r.source_url,
+        title:
+          (r.filename as string | null) ??
+          (((r.source_url as string) || "").split("/").pop()?.split("?")[0] ?? r.source_url),
         manufacturer: r.manufacturer,
         model_number: r.model_number,
         equipment_type: r.equipment_type,
         chunk_count: r.chunk_count,
         last_indexed: r.last_indexed,
         verified: r.verified ?? false,
+        doc_id: (r.doc_id as string | null) ?? null,
+        node_id: (r.node_id as string | null) ?? null,
+        filename: (r.filename as string | null) ?? null,
+        pages: r.pages != null ? Number(r.pages) : null,
+        mine: r.mine === true,
       })),
     });
   } catch (err) {

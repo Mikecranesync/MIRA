@@ -65,7 +65,7 @@ describe("blind door: content dedup", () => {
     expect(res.status).toBe(201);
 
     // The door computed and persisted the content hash.
-    const createArg = vi.mocked(createUpload).mock.calls[0][0] as Record<string, unknown>;
+    const createArg = vi.mocked(createUpload).mock.calls[0][0] as unknown as Record<string, unknown>;
     expect(String(createArg.contentSha256)).toMatch(/^[0-9a-f]{64}$/);
 
     await vi.waitFor(() => {
