@@ -1,3 +1,15 @@
+# Hot Cache — 2026-08-11 — Phase 1.5 bake-off: VERDICT B, ARPK-as-format FALSIFIED — HELD PR #3187
+
+Bake-off report (read first): `docs/architecture/PHASE-1.5-DOCUMENT-INTELLIGENCE-BAKEOFF.md`.
+PR **#3187** (`exp/phase15-doc-intel-bakeoff`, retargeted to main after #3185 merged, HELD).
+Gemini native-PDF **28/28** (self-asserted citations 90%, ~117k tok/question, quota-fragile) ·
+parse-then-QA **18/28** ~$0 · REAL #3185 baseline **8/27** (stemming loses F004-class tokens) ·
+ranking-not-parsing is the bottleneck · docling OCR 2/2 · only #3185 enforces boundaries.
+**Phase 2 = report §8.** (The 08-16 Groq default P0 this entry used to flag is DONE — see the
+migration entry below.) Handoff: `%TEMP%\handoff-mira-arpk-doc-intel-2026-08-11.md`.
+
+---
+
 # Hot Cache — 2026-08-11 — Groq model retirement migrated (P0 was 2026-08-16)
 
 Groq retires `llama-3.3-70b-versatile` + `llama-3.1-8b-instant` on **2026-08-16**. Branch
