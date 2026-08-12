@@ -5,9 +5,23 @@
 // (hub has no jsdom/RTL — audit §11).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Bot, User, Loader2, FileText } from "lucide-react";
+import { Send, Loader2, FileText, ChevronDown } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import { parseFrame, type EvidenceCitation } from "@/lib/notebook-chat-types";
+
+/** Collapse citations to distinct (doc, page) passages — repeated cites from the
+ *  same page count once, so "6 filename pills" becomes "3 supporting passages". */
+export function distinctPassages(cites: EvidenceCitation[]): EvidenceCitation[] {
+  const seen = new Set<string>();
+  const out: EvidenceCitation[] = [];
+  for (const c of cites) {
+    const k = `${c.docId}|${c.page ?? ""}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(c);
+  }
+  return out;
+}
 
 export type ChatTurn = {
   id: string;
@@ -44,69 +58,93 @@ export function Bubble({
   const isUser = turn.role === "user";
   const cites = turn.citations ?? [];
   const parts = turn.content.split(/(\[\d+\])/g);
-  return (
-    <div className={`flex gap-2 ${isUser ? "flex-row-reverse" : ""}`}>
-      <div
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-        style={{ background: isUser ? "var(--brand-blue)" : "var(--surface-2)" }}
-      >
-        {isUser ? <User size={15} color="white" aria-hidden /> : <Bot size={15} aria-hidden />}
-      </div>
-      <div className="min-w-0 max-w-[85%]">
-        <div
-          className="rounded-2xl px-3 py-2 text-sm"
-          style={{
-            background: isUser ? "var(--brand-blue)" : "var(--surface-1)",
-            color: isUser ? "white" : "var(--foreground)",
-            border: isUser ? "none" : "1px solid var(--border)",
-          }}
-        >
-          {parts.map((p, i) => {
-            const m = p.match(/^\[(\d+)\]$/);
-            if (m) {
-              const c = cites.find((x) => x.citationId === m[1]);
-              if (c) {
-                // Rounded numbered chip, ≥22px tall — PRD §26 forbids tiny
-                // citation hit targets; §15 wants [n] tappable with a
-                // source-title hint.
-                return (
-                  <button
-                    key={i}
-                    onClick={() => onCite?.(c)}
-                    className="mx-0.5 inline-flex min-h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-xs font-semibold align-baseline"
-                    style={{ background: "var(--brand-blue)", color: "white" }}
-                    title={`${c.sourceTitle}${c.page != null ? ` · p. ${c.page}` : ""}`}
-                    aria-label={`Open citation ${m[1]}: ${c.sourceTitle}${c.page != null ? `, page ${c.page}` : ""}`}
-                  >
-                    {m[1]}
-                  </button>
-                );
-              }
-            }
-            return <span key={i}>{p}</span>;
-          })}
-        </div>
-        {turn.status === "insufficient_evidence" && (
-          <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }}>
-            No selected source supported this. Add a source or rephrase.
-          </p>
-        )}
-        {cites.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {cites.map((c) => (
+  const passages = distinctPassages(cites);
+  const [showSources, setShowSources] = useState(false);
+
+  // Answer body: inline [n] citation chips, whitespace preserved so multi-step
+  // answers keep their line breaks (no unbroken blob). User turns render as a
+  // compact right-aligned bubble; assistant answers use the full column width.
+  const body = (
+    <div className="whitespace-pre-wrap text-sm leading-relaxed" style={{ color: isUser ? "white" : "var(--foreground)" }}>
+      {parts.map((p, i) => {
+        const m = p.match(/^\[(\d+)\]$/);
+        if (m) {
+          const c = cites.find((x) => x.citationId === m[1]);
+          if (c) {
+            // Rounded numbered chip ≥24px — PRD §26 forbids tiny hit targets.
+            return (
               <button
-                key={c.citationId}
+                key={i}
                 onClick={() => onCite?.(c)}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px]"
-                style={{ border: "1px solid var(--border)", color: "var(--foreground-muted)" }}
+                className="mx-0.5 inline-flex min-h-[24px] min-w-[24px] items-center justify-center rounded-full px-1.5 text-xs font-semibold align-baseline"
+                style={{ background: "var(--brand-blue)", color: "white" }}
+                aria-label={`Open citation ${m[1]}: ${c.sourceTitle}${c.page != null ? `, page ${c.page}` : ""}`}
               >
-                <FileText size={11} aria-hidden />[{c.citationId}] {c.sourceTitle}
-                {c.page != null ? ` · p.${c.page}` : ""}
+                {m[1]}
               </button>
-            ))}
-          </div>
-        )}
+            );
+          }
+        }
+        return <span key={i}>{p}</span>;
+      })}
+    </div>
+  );
+
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div
+          className="max-w-[85%] rounded-2xl px-3 py-2"
+          style={{ background: "var(--brand-blue)" }}
+        >
+          {body}
+        </div>
       </div>
+    );
+  }
+
+  // Assistant: full-width, no avatar, no bubble chrome — NotebookLM-style.
+  return (
+    <div className="w-full">
+      {body}
+      {turn.status === "insufficient_evidence" && (
+        <p className="mt-1 text-xs" style={{ color: "var(--foreground-subtle)" }}>
+          Not found in the selected sources. Add a source or rephrase.
+        </p>
+      )}
+      {passages.length > 0 && (
+        <div className="mt-2">
+          <button
+            onClick={() => setShowSources((s) => !s)}
+            aria-expanded={showSources}
+            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
+            style={{ border: "1px solid var(--border)", color: "var(--foreground-muted)" }}
+          >
+            <FileText size={12} aria-hidden />
+            {passages.length} supporting {passages.length === 1 ? "passage" : "passages"}
+            <ChevronDown size={12} aria-hidden style={{ transform: showSources ? "rotate(180deg)" : "none" }} />
+          </button>
+          {showSources && (
+            <div className="mt-1.5 flex flex-col gap-1">
+              {passages.map((c) => (
+                <button
+                  key={c.citationId}
+                  onClick={() => onCite?.(c)}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-xs"
+                  style={{ border: "1px solid var(--border)", color: "var(--foreground-muted)" }}
+                >
+                  <FileText size={12} aria-hidden />
+                  <span className="min-w-0 truncate">
+                    [{c.citationId}] {c.sourceTitle}
+                    {c.page != null ? ` · p.${c.page}` : ""}
+                  </span>
+                  {c.quote ? <span className="truncate opacity-70">— {c.quote.slice(0, 60)}</span> : null}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -299,7 +337,7 @@ export function NotebookChat({
         <button
           onClick={() => void send()}
           disabled={busy || !input.trim()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg"
           style={{ background: "var(--brand-blue)", color: "white", opacity: busy || !input.trim() ? 0.5 : 1 }}
           aria-label="Send"
         >
