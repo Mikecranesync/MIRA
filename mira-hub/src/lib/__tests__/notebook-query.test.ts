@@ -25,6 +25,11 @@ describe("expandIndustrialQuery", () => {
     expect(e.variants[0]).toBe("What parameter is the slow down ramp?"); // original first
   });
 
+  it("bridges 'taking too long to stop' → deceleration (decel time, not stop mode)", () => {
+    const e = expandIndustrialQuery("the motor is taking too long to stop");
+    expect(e.variants.join(" ").toLowerCase()).toContain("decel time");
+  });
+
   it("expands 'second speed' to both interpretations", () => {
     const e = expandIndustrialQuery("Which terminal sets second speed?");
     const joined = e.variants.join(" ").toLowerCase();

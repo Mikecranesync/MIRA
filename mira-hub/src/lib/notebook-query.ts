@@ -20,6 +20,7 @@
  *  insensitive) contributes manufacturer-vocabulary terms to the query set. */
 const SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/\bslow(?:\s|-)?down\b|\bramp\s*down\b|\bdecel\w*\b/i, ["deceleration", "decel time"]],
+  [/\b(?:too )?long to stop\b|\bstop(?:ping)?\s*time\b|\btakes? (?:too )?long to stop\b|\bslow to stop\b/i, ["deceleration", "decel time"]],
   [/\bspeed(?:\s|-)?up\b|\bramp\s*up\b|\baccel\w*\b/i, ["acceleration", "accel time"]],
   [/\bramp\b/i, ["accel time", "decel time"]],
   [/\bsecond\s+speed\b|\b2nd\s+speed\b/i, ["speed reference 2", "preset frequency", "start source 2"]],
