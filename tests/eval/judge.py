@@ -208,6 +208,9 @@ class Judge:
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 512,
             "temperature": 0.1,
+            # gpt-oss spends completion tokens on reasoning; low effort keeps
+            # the judge verdict inside the 512-token cap.
+            **({"reasoning_effort": "low"} if "gpt-oss" in self._groq_model else {}),
         }
         with httpx.Client(timeout=30) as client:
             resp = client.post(

@@ -181,6 +181,9 @@ class LLMJudge:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            # gpt-oss spends completion tokens on reasoning; low effort keeps
+            # the four-score JSON inside the 1024-token cap.
+            **({"reasoning_effort": "low"} if "gpt-oss" in self.model else {}),
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",

@@ -736,6 +736,9 @@ async def _groq_judge(
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        # gpt-oss spends completion tokens on reasoning; low effort keeps the
+        # judge JSON inside the 512-token cap.
+        **({"reasoning_effort": "low"} if "gpt-oss" in model else {}),
     }
     t0 = time.monotonic()
     async with _JUDGE_SEMAPHORE:

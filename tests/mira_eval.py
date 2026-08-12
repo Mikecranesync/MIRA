@@ -236,6 +236,10 @@ def _call_openai_compat(
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": user_content},
             ],
+            # gpt-oss spends completion tokens on reasoning; low effort keeps
+            # the letter answer inside the 300-token cap (Groq and Cerebras
+            # both accept the param for gpt-oss models).
+            **({"reasoning_effort": "low"} if "gpt-oss" in model else {}),
         },
         timeout=REQUEST_TIMEOUT,
     )

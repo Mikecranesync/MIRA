@@ -338,6 +338,9 @@ async def _score_fallback(
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "temperature": 0.0,
         "max_tokens": 64,
+        # gpt-oss spends completion tokens on reasoning; at default effort the
+        # 64-token JSON score burns the whole cap and comes back empty.
+        **({"reasoning_effort": "low"} if "gpt-oss" in _GROQ_MODEL else {}),
     }
     try:
         async with httpx.AsyncClient(timeout=30) as client:

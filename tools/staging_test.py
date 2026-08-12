@@ -362,6 +362,11 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
         # hint only to Groq and rely on parsing for the others.
         if provider.name == "groq":
             body["response_format"] = {"type": "json_object"}
+        # gpt-oss spends completion tokens on reasoning; at default effort the
+        # 200-token json_object call fails closed (json_validate_failed, empty
+        # generation). Gated so a non-reasoning override never sees the param.
+        if "gpt-oss" in provider.model:
+            body["reasoning_effort"] = "low"
         headers = {
             "Authorization": f"Bearer {os.environ[provider.api_key_env]}",
             "Content-Type": "application/json",

@@ -289,6 +289,9 @@ async def _call_groq(messages: list[dict], max_tokens: int) -> str:
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "temperature": 0.85,  # Slightly higher for realistic variation
+                # gpt-oss spends completion tokens on reasoning; low effort
+                # keeps persona turns inside the 120-150 token caps.
+                **({"reasoning_effort": "low"} if "gpt-oss" in model else {}),
             },
         )
         resp.raise_for_status()

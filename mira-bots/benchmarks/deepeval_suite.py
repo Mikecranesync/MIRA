@@ -100,6 +100,9 @@ class GroqJudge(DeepEvalBaseLLM):
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
             "max_tokens": 512,
+            # gpt-oss spends completion tokens on reasoning; low effort keeps
+            # DeepEval's schema JSON inside the 512-token cap.
+            **({"reasoning_effort": "low"} if "gpt-oss" in self._model else {}),
         }
         resp = httpx.post(
             GROQ_API_URL,
@@ -118,6 +121,9 @@ class GroqJudge(DeepEvalBaseLLM):
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
             "max_tokens": 512,
+            # gpt-oss spends completion tokens on reasoning; low effort keeps
+            # DeepEval's schema JSON inside the 512-token cap.
+            **({"reasoning_effort": "low"} if "gpt-oss" in self._model else {}),
         }
         async with httpx.AsyncClient(timeout=JUDGE_TIMEOUT) as client:
             resp = await client.post(

@@ -50,6 +50,9 @@ def complete_json(system: str, user: str, max_tokens: int = 500) -> dict:
                     "temperature": 0.7,
                     "max_tokens": max_tokens,
                     "response_format": {"type": "json_object"},
+                    # gpt-oss spends completion tokens on reasoning; at default
+                    # effort a tight json_object call fails closed on Groq.
+                    **({"reasoning_effort": "low"} if "gpt-oss" in model else {}),
                     "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},

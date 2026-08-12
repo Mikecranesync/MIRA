@@ -259,6 +259,9 @@ Evaluate this conversation."""
                     ],
                     "temperature": 0.1,
                     "max_tokens": 400,
+                    # gpt-oss spends completion tokens on reasoning; low effort
+                    # keeps the judge JSON inside the 400-token cap.
+                    "reasoning_effort": "low",
                 },
             )
             resp.raise_for_status()
