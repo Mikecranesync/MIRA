@@ -48,7 +48,9 @@ logger = logging.getLogger("mira-gsd")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "openai/gpt-oss-20b"
 GROQ_TIMEOUT_S = 5.0
-GROQ_MAX_TOKENS = 220
+# 300, not 220: gpt-oss reasoning length scales with input length, and this
+# call carries message history + salient entities.
+GROQ_MAX_TOKENS = 300
 
 
 # Prompt anchors. Spelled out in plain language — the Groq 8b model handles

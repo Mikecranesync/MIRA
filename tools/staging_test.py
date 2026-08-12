@@ -79,9 +79,9 @@ GROQ_BASE = os.getenv("GROQ_API_BASE", "https://api.groq.com/openai/v1")
 # is skipped silently if its API key is unset. Fail closed only if ALL
 # configured providers fail. The provider that scored each reply is tagged
 # in `Score.judge_reason` for PR-comment debuggability.
-CEREBRAS_JUDGE_MODEL = os.getenv("STAGING_JUDGE_CEREBRAS_MODEL", "llama-3.3-70b")
+CEREBRAS_JUDGE_MODEL = os.getenv("STAGING_JUDGE_CEREBRAS_MODEL", "gpt-oss-120b")
 CEREBRAS_BASE = os.getenv("CEREBRAS_API_BASE", "https://api.cerebras.ai/v1")
-GEMINI_JUDGE_MODEL = os.getenv("STAGING_JUDGE_GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_JUDGE_MODEL = os.getenv("STAGING_JUDGE_GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_BASE = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai")
 
 
@@ -350,7 +350,10 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
             },
         ],
         "temperature": 0,
-        "max_tokens": 200,
+        # 400, not 200: gpt-oss reasoning length scales with the judged
+        # reply's length; a 2000-char reply at effort=low burns ~130 reasoning
+        # tokens, and the truncated JSON fails every question (measured).
+        "max_tokens": 400,
     }
 
     attempts: list[str] = []

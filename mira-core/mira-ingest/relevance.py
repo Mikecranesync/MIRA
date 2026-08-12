@@ -69,10 +69,11 @@ async def classify_document(first_page_text: str, *, timeout_s: float = 5.0) -> 
     payload = {
         "model": GROQ_MODEL,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 64,
+        # 160, not 64: gpt-oss reasoning length scales with input length, and
+        # this call carries a full page of text (default effort burned the
+        # whole old cap and returned empty).
+        "max_tokens": 160,
         "temperature": 0,
-        # gpt-oss spends completion tokens on reasoning; low effort keeps the
-        # verdict inside the 64-token cap (default effort burns the whole cap).
         "reasoning_effort": "low",
     }
     headers = {

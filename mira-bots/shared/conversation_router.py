@@ -148,9 +148,10 @@ async def _call_router_llm(messages: list[dict]) -> str:
                     "model": "openai/gpt-oss-20b",
                     "messages": messages,
                     "temperature": 0.1,
-                    "max_tokens": 150,
-                    # gpt-oss spends completion tokens on reasoning; low effort
-                    # keeps the routing JSON inside the 150-token cap.
+                    # 300, not 150: gpt-oss reasoning length scales with input
+                    # length, and this call carries conversation history — 150
+                    # produced truncated-JSON parse failures in the staging gate.
+                    "max_tokens": 300,
                     "reasoning_effort": "low",
                 },
             )
