@@ -480,10 +480,18 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
-  "mira-hub/src/lib/manual-rag.ts:462":
+  "mira-hub/src/lib/manual-rag.ts:469":
     approved_classification: TENANT-ONLY
-    query_sha256: "cc1440d0ac508462a69fb5918e7447883d1bbd032412b8cbeb3f08127aaf7e49"
-    reason: "retrieveNodeChunks (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Re-hashed for ARPK 1a: an optional AND doc_id = ANY($5::uuid[]) narrows the SAME pure-tenant scope to an explicit allowed document set (Equipment Notebook source membership) — strictly tighter, never wider."
+    query_sha256: "dffd0a7edef21eb333d4e66ab52637fc17a20f19607273b3cb2e4d9d6b8a0cdb"
+    reason: "retrieveNodeChunks widened BM25 pass (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Moved from :462 by the retrieval-repair rewrite (query expansion + rerank widen the candidate LIMIT to a pool; the WHERE scope is unchanged — strictly tighter, never wider)."
+    query_snippet: |
+      FROM knowledge_entries
+              WHERE tenant_id = $1
+                AND ingest_route = 'v2'
+  "mira-hub/src/lib/manual-rag.ts:505":
+    approved_classification: TENANT-ONLY
+    query_sha256: "4f1261ca26cee7c82109acaf95df27281808fe91af6f45f5b7ad16f62e4b948d"
+    reason: "retrieveNodeChunks exact-token ILIKE lane — the SAME pure-tenant scope as the widened BM25 pass above (tenant_id=$caller + ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership). It guarantees a chunk containing a verbatim parameter/fault/terminal token is a retrieval candidate regardless of ts_rank; it never widens scope beyond the caller's own node-attached uploads, so it stays tenant-only by the same rule (NOT the OEM hybrid)."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
