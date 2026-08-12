@@ -138,7 +138,7 @@ class LLMJudge:
 
     def __init__(self) -> None:
         self.api_key = os.getenv("GROQ_API_KEY", "")
-        self.model = os.getenv("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
+        self.model = os.getenv("GROQ_JUDGE_MODEL", "openai/gpt-oss-120b")
         self.enabled = bool(self.api_key)
         self._semaphore = asyncio.Semaphore(5)
 
@@ -181,6 +181,9 @@ class LLMJudge:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            # gpt-oss spends completion tokens on reasoning; low effort keeps
+            # the four-score JSON inside the 1024-token cap.
+            **({"reasoning_effort": "low"} if "gpt-oss" in self.model else {}),
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",

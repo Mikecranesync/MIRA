@@ -252,13 +252,16 @@ Evaluate this conversation."""
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
                 json={
-                    "model": "llama-3.3-70b-versatile",
+                    "model": "openai/gpt-oss-120b",
                     "messages": [
                         {"role": "system", "content": JUDGE_PROMPT},
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": 0.1,
                     "max_tokens": 400,
+                    # gpt-oss spends completion tokens on reasoning; low effort
+                    # keeps the judge JSON inside the 400-token cap.
+                    "reasoning_effort": "low",
                 },
             )
             resp.raise_for_status()

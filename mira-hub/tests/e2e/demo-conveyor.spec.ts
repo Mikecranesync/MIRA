@@ -205,7 +205,7 @@ async function installMocks(page: import("@playwright/test").Page) {
         session_id: "demo-session-1",
         answer:
           "The photo eye is reading PRESENT and the motor is running at 60 Hz, so the box is detected and the conveyor is moving.",
-        provider: "groq:llama-3.3-70b-versatile",
+        provider: "groq:openai/gpt-oss-120b",
         duration_ms: 1234,
         citations: [
           {

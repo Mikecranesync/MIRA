@@ -89,7 +89,7 @@ Keep fixes minimal and targeted — no refactoring beyond the issue."""
 PROVIDERS = [
     ("groq", "https://api.groq.com/openai/v1/chat/completions",
      os.environ.get("GROQ_API_KEY", ""),
-     os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")),
+     os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")),
     ("cerebras", "https://api.cerebras.ai/v1/chat/completions",
      os.environ.get("CEREBRAS_API_KEY", ""),
      os.environ.get("CEREBRAS_MODEL", "llama3.1-8b")),

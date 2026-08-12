@@ -60,7 +60,7 @@ function llmProviders(): LlmProvider[] {
       name: "groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
       apiKey: groq,
-      model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
+      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
     });
   }
   const cerebras = process.env.CEREBRAS_API_KEY;
@@ -211,6 +211,9 @@ async function callLlmCascade(
           messages,
           temperature: 0.2,
           max_tokens: 512,
+          // gpt-oss spends completion tokens on reasoning; low effort keeps
+          // the answer inside the 512-token cap.
+          ...(p.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
         }),
         signal: AbortSignal.timeout(30000),
       });

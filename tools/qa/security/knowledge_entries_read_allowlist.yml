@@ -629,7 +629,7 @@ approved:
           orphans = conn.execute(text(
   "tools/build_component_template.py:94":
     approved_classification: UNFILTERED
-    query_sha256: "6aec4537047bfb85090ea7403cbaf35323a4524e0243a40f88374737ac11af71"
+    query_sha256: "5364a4ba63cb216c3b4114c1799bd38002ba31dede167aebc25e82507380ed42"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -1176,7 +1176,7 @@ approved:
       
   "mira-scan-monday/backend/vendor_rag.py:81":
     approved_classification: UNFILTERED
-    query_sha256: "6048da8434fe2ec5a2774b4ee9fccaf471377362c0f275f0be65a919cb7b2b1d"
+    query_sha256: "9fe66da9c3ccf23f2d9500a1b7474f3c6b2bab984664e15888ab1920f7285cef"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
