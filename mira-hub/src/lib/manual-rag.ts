@@ -1,5 +1,13 @@
 import type { PoolClient } from "pg";
-import { expandIndustrialQuery, rerankChunks, classifyBroad, diversifyByPage } from "@/lib/notebook-query";
+import {
+  expandIndustrialQuery,
+  rerankChunks,
+  classifyBroad,
+  classifyIntent,
+  diversifyByPage,
+  COMM_FACETS,
+  type RerankTraceRow,
+} from "@/lib/notebook-query";
 
 /**
  * Manufacturer-scoped BM25 retrieval from `knowledge_entries`.
@@ -541,8 +549,14 @@ export async function retrieveNodeChunks(
   // vocabulary so every proven facet lands in the pool; the answer still cites
   // and only lists a facet an excerpt proves.
   const broad = classifyBroad(q);
+  const intent = broad.broad ? "broad" : classifyIntent(q);
   if (broad.broad) {
     for (const facet of broad.facets) add(await runRetrieval(OR_TSQUERY, facet));
+  } else if (intent === "comm") {
+    // Specific comm question ("where's the Profinet setting?") — fan out comm
+    // facets so scattered comm material (the adapter table, embedded params)
+    // reaches the pool, without forcing the broad "enumerate everything" shape.
+    for (const facet of COMM_FACETS) add(await runRetrieval(OR_TSQUERY, facet));
   }
 
   // Last-resort recall: if precise + expanded + exact all found nothing, fall
@@ -552,6 +566,8 @@ export async function retrieveNodeChunks(
   // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
   // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive
   // (no single page may fill the context); otherwise the tight topK.
+  const trace: RerankTraceRow[] | undefined =
+    process.env.NOTEBOOK_RETRIEVAL_DEBUG === "1" ? [] : undefined;
   const rerankedAll = rerankChunks(
     expanded,
     pool.map((r) => ({
@@ -561,10 +577,22 @@ export async function retrieveNodeChunks(
       docId: r.doc_id == null ? null : String(r.doc_id),
       _row: r,
     })),
+    { intent, trace },
   );
   const reranked = broad.broad
     ? diversifyByPage(rerankedAll, 2, Math.max(topK * 2, 12))
     : rerankedAll.slice(0, topK);
+
+  if (trace) {
+    // Observability (env-gated): the full ranked candidate set with per-chunk
+    // features + which pages won, so a retrieval/ranking failure is inspectable
+    // (mission "make retrieval observable" A/B/C classification).
+    console.log(
+      `[retrieval-trace] q=${JSON.stringify(q)} intent=${intent} pool=${pool.length} ` +
+        `final=${JSON.stringify(reranked.map((c) => c.sourcePage))} ` +
+        `cands=${JSON.stringify(trace.slice(0, 12).map((t) => ({ p: t.page, s: +t.score.toFixed(2), b: +t.base.toFixed(3), i: +t.index.toFixed(2), pr: +t.proc.toFixed(2), cm: +t.comm.toFixed(2), x: t.exactHit })))}`,
+    );
+  }
 
   return reranked.map(({ _row: r }) => ({
     content: String(r.content ?? ""),

@@ -74,6 +74,13 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
   for (const m of lower.matchAll(/\b(?:terminal|term|digital input|din)\s*#?\s*0*(\d{1,2})\b/g)) {
     exact.add(`0${m[1]}`.slice(-2)); // 7 → "07"
   }
+  // A specific protocol/fieldbus named in the question is an exact token: the
+  // chunk that documents it (often an adapter/accessory table) must surface and
+  // dominate, so a "where's the PROFINET setting?" question reaches the evidence
+  // that lets MIRA answer or correct the premise instead of blindly abstaining.
+  for (const m of q.matchAll(/\b(profinet|profibus|devicenet|ethercat|canopen|bacnet|modbus)\b/gi)) {
+    exact.add(m[0].toUpperCase());
+  }
 
   const phrases = [...q.matchAll(/"([^"]{2,})"/g)].map((m) => m[1]);
 
@@ -99,16 +106,97 @@ export type Rerankable = {
   docId: string | null;
 };
 
+// ---------------------------------------------------------------------------
+// Intent + content-signal ranking features
+//
+// section_path is NULL on v2 chunks, so we can't rank by heading — we rank by
+// the chunk's CONTENT signature. A parameter-index chunk ("Motor NP FLA P034
+// Motor NP Poles P035 …", "607 HW Addr 692 EN Subnet(1) …") is dense in
+// param-id/number tokens and footnote markers with little prose; a PROCEDURE
+// chunk ("The cause must be corrected before the fault can be cleared … ATTENTION")
+// is prose + imperatives. When the technician's intent is a procedure / fault /
+// comm question, we boost the prose/imperative/comm signal and penalize
+// index-density so a param index can't beat an actual how-to on lexical overlap.
+// Gated by intent: a param-lookup or spec question does NOT get the index
+// penalty (the param chunk IS the answer, and exact-token dominance still holds).
+// ---------------------------------------------------------------------------
+
+export type Intent = "param_lookup" | "spec" | "procedure" | "fault" | "comm" | "broad" | "generic";
+
+const PARAM_ID_TOKEN = /\b(?:[PpAaBbCcHhLdtUu]\d{2,4})\b/g; // P034, A410, C124, t082, d380
+const FOOTNOTE_MARK = /\(\d\)/g; // "(1)" cross-ref footnote markers dense in index chunks
+const PROSE_WORDS =
+  /\b(the|a|an|to|of|is|are|be|before|after|when|if|must|should|then|this|that|which|from|with|until|while|because|so)\b/gi;
+const PROC_SIGNALS =
+  /\b(verify|check|set|press|remove|clear|reset|correct|corrected|apply|turn|ensure|connect|disconnect|measure|inspect|replace|confirm|select|enter|navigate|attention|warning|caution|step|steps|procedure|follow)\b/gi;
+const COMM_SIGNALS =
+  /\b(ethernet\/ip|ethernet|modbus|rs-?485|profibus|profinet|devicenet|adapter|network|node addr|ip addr|gateway|subnet|comm loss|dsi|rj45|protocol)\b/gi;
+
+const wordCount = (t: string) => Math.max(1, t.split(/\s+/).filter(Boolean).length);
+const countMatches = (t: string, re: RegExp) => (t.match(re) || []).length;
+
+/** How "parameter-index-like" a chunk reads: high digit/footnote token density,
+ *  low prose. 0..~1; high on a cross-reference index, ~0 on a procedure. */
+function indexiness(text: string): number {
+  const w = wordCount(text);
+  const ids = countMatches(text, PARAM_ID_TOKEN) + countMatches(text, FOOTNOTE_MARK);
+  const prose = countMatches(text, PROSE_WORDS);
+  return ids / w - prose / w; // param-index heavy minus prose-heavy
+}
+function procedureScore(text: string): number {
+  return Math.min(countMatches(text, PROC_SIGNALS), 6) / 6;
+}
+function commScore(text: string): number {
+  return Math.min(countMatches(text, COMM_SIGNALS), 6) / 6;
+}
+
+// Intent detection — deterministic/lexical (the mission's "favor the simplest
+// mechanism"). Order matters: fault-action beats generic procedure beats comm
+// beats spec beats param-lookup.
+const FAULT_ACTION =
+  /\b(clear|reset|recover|clears|resets|recovers|clearing|resetting)\b[^.?!]*\b(fault|trip)|\b(fault|trip)\b[^.?!]*\b(clear|reset|recover)|after (?:it|the drive|this) (?:faults|trips)|get (?:it|the drive) running again/i;
+const PROCEDURE_LEAD =
+  /^(how (?:do|can|to)|how do i|how does one|walk me through|steps to|what(?:'s| is) the (?:procedure|process|sequence))\b|\b(procedure|commission|set ?up|wire|wiring|autotune|navigate|on the keypad)\b/i;
+const COMM_TOPIC =
+  /\b(communicat\w*|comms?|network\w*|fieldbus|protocol|ethernet|modbus|rs-?485|profibus|profinet|devicenet|adapter|node addr|ip addr|gateway|subnet)\b/i;
+const SPEC_TOPIC =
+  /\b(max|maximum|min|minimum|range|limit|default|how high|how low|highest|lowest|what value|valid value)\b/i;
+
+/** Classify the query's ranking intent. Composes with classifyBroad (a comm
+ *  question can be both comm + broad); this returns the SINGLE ranking lever. */
+export function classifyIntent(query: string): Intent {
+  const q = query.trim();
+  if (FAULT_ACTION.test(q)) return "fault";
+  if (COMM_TOPIC.test(q)) return "comm";
+  if (PROCEDURE_LEAD.test(q)) return "procedure";
+  if (SPEC_TOPIC.test(q)) return "spec";
+  if (classifyBroad(q).broad) return "broad";
+  if (/\b[PpAaBbCcHhLdtUu]\d{2,4}\b|\bparameter\b|\bwhat does\b/i.test(q)) return "param_lookup";
+  return "generic";
+}
+
+export type RerankTraceRow = {
+  page: number | null;
+  base: number;
+  score: number;
+  exactHit: boolean;
+  index: number;
+  proc: number;
+  comm: number;
+};
+
 /**
- * Deterministic rerank of a widened candidate pool. Score = normalized ts_rank
- * + big boost for a chunk that contains an exact token (param ID / fault code /
- * terminal) verbatim + boost for verbatim quoted phrases + boost for synonym
- * term presence. Exact-token presence dominates: a chunk that literally contains
- * "P042" must beat a same-page sibling that merely shares generic words.
+ * Deterministic rerank of a widened candidate pool. Base = normalized ts_rank +
+ * exact-token dominance + phrase/synonym boosts. Then INTENT-gated content
+ * features: a procedure/fault question boosts prose+imperative signal and
+ * penalizes param-index density; a comm question boosts comm-material and
+ * penalizes index density; param-lookup/spec keep exact-token dominance with no
+ * index penalty. Pass `opts.trace` to capture per-candidate scoring features.
  */
 export function rerankChunks<T extends Rerankable>(
   expanded: ExpandedQuery,
   chunks: T[],
+  opts?: { intent?: Intent; trace?: RerankTraceRow[] },
 ): T[] {
   const exact = expanded.exactTokens.map((t) => t.toLowerCase());
   const phrases = expanded.phrases.map((p) => p.toLowerCase());
@@ -118,6 +206,7 @@ export function rerankChunks<T extends Rerankable>(
     .toLowerCase()
     .split(/\s+/)
     .filter((w) => w.length > 3);
+  const intent = opts?.intent ?? "generic";
 
   const maxRank = Math.max(1e-6, ...chunks.map((c) => c.rank));
   const scored = chunks.map((c, i) => {
@@ -134,10 +223,28 @@ export function rerankChunks<T extends Rerankable>(
     let synHits = 0;
     for (const s of synTerms) if (text.includes(s)) synHits++;
     score += Math.min(synHits, 4) * 0.4;
+
+    // Intent-gated content features.
+    const idx = indexiness(c.content);
+    const proc = procedureScore(c.content);
+    const comm = commScore(c.content);
+    if (intent === "fault" || intent === "procedure") {
+      score += proc * 2.0;
+      score -= Math.max(0, idx) * 2.5; // demote the param index
+    } else if (intent === "comm") {
+      score += comm * 1.8;
+      score -= Math.max(0, idx) * 1.5;
+    } else if (intent === "broad") {
+      score -= Math.max(0, idx) * 0.8; // mild: prefer real sections over indexes
+    }
+    // param_lookup / spec / generic: no index penalty (the param row IS the answer).
+
+    opts?.trace?.push({ page: c.sourcePage, base: c.rank, score, exactHit, index: idx, proc, comm });
     return { c, score, exactHit, i };
   });
 
   scored.sort((a, b) => b.score - a.score || a.i - b.i);
+  if (opts?.trace) opts.trace.sort((a, b) => b.score - a.score);
   return scored.map((s) => s.c);
 }
 
@@ -294,14 +401,20 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[])
 
 type FacetFamily = { re: RegExp; key: string; facets: readonly string[] };
 
+/** Generic comm-facet vocabulary — used both for a broad "what comm options?"
+ *  fan-out AND a specific comm question ("where's the Profinet setting?"), so
+ *  scattered comm material (embedded params on one page, the adapter table on
+ *  another) all reaches the candidate pool. Retrieval hints only; never asserted. */
+export const COMM_FACETS: readonly string[] = [
+  "embedded EtherNet/IP", "RS-485 Modbus RTU", "DSI serial",
+  "communication adapter", "DeviceNet", "PROFIBUS", "PROFINET",
+];
+
 const FACET_FAMILIES: readonly FacetFamily[] = [
   {
     re: /\b(communicat\w*|comms?|network\w*|fieldbus|protocol|talk to|connect (?:it )?to (?:a )?(?:plc|controller))\b/i,
     key: "comm",
-    facets: [
-      "embedded EtherNet/IP", "RS-485 Modbus RTU", "DSI serial",
-      "communication adapter", "DeviceNet", "PROFIBUS", "PROFINET",
-    ],
+    facets: COMM_FACETS,
   },
   {
     re: /\b(command (?:the )?speed|control (?:the )?speed|speed (?:reference|command|source)|frequency reference|ways .* speed|speed .* (?:source|command))\b/i,

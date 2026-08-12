@@ -11,6 +11,7 @@ import {
   isReferentialFollowup,
   buildRetrievalQuery,
   classifyBroad,
+  classifyIntent,
   diversifyByPage,
   type ChatHistoryTurn,
 } from "../notebook-query";
@@ -254,5 +255,63 @@ describe("diversifyByPage", () => {
   it("preserves the incoming (reranked) order", () => {
     const chunks = [mk("d", 1, "a"), mk("d", 2, "b"), mk("d", 3, "c")];
     expect(diversifyByPage(chunks, 2, 3).map((c) => c.tag)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("classifyIntent", () => {
+  it("classifies fault-clear/reset as a fault (procedure-style ranking)", () => {
+    expect(classifyIntent("how do I clear a fault?")).toBe("fault");
+    expect(classifyIntent("how do I reset this trip?")).toBe("fault");
+    expect(classifyIntent("how do I get it running again after a fault?")).toBe("fault");
+  });
+  it("classifies how-to as a procedure", () => {
+    expect(classifyIntent("how do I run an autotune?")).toBe("procedure");
+    expect(classifyIntent("walk me through commissioning")).toBe("procedure");
+  });
+  it("classifies comm/protocol questions as comm", () => {
+    expect(classifyIntent("where's the Profinet setting?")).toBe("comm");
+    expect(classifyIntent("how do I set the Modbus node address?")).toBe("comm");
+    expect(classifyIntent("what are the Ethernet settings?")).toBe("comm");
+  });
+  it("classifies limit/range questions as spec", () => {
+    expect(classifyIntent("what's the maximum decel time?")).toBe("spec");
+    expect(classifyIntent("what's the default for that?")).toBe("spec");
+  });
+  it("classifies a bare parameter lookup", () => {
+    expect(classifyIntent("what does P042 do?")).toBe("param_lookup");
+  });
+});
+
+describe("protocol exact-token", () => {
+  it("treats a named protocol as an exact token so its chunk can dominate", () => {
+    expect(expandIndustrialQuery("where's the Profinet setting?").exactTokens).toContain("PROFINET");
+    expect(expandIndustrialQuery("how do I set up DeviceNet").exactTokens).toContain("DEVICENET");
+  });
+});
+
+describe("rerankChunks — intent-gated content features", () => {
+  const mk = (content: string, rank: number, page: number) => ({ content, rank, sourcePage: page, docId: "d" });
+  // A dense parameter-index chunk vs a real fault-clearing procedure chunk.
+  const paramIndex = mk(
+    "P034 Motor NP FLA P035 Motor NP Poles P036 Motor NP RPM(1) 641 Fault 9 Current(1) 692 EN Subnet(1) 700 Fault 7",
+    0.9,
+    155,
+  );
+  const procedure = mk(
+    "The cause must be corrected before the fault can be cleared. Press Stop, then set A551 Fault Clear to reset the drive after you verify the condition.",
+    0.4,
+    160,
+  );
+
+  it("floats the procedure above the param-index under fault intent", () => {
+    const e = expandIndustrialQuery("how do I clear a fault?");
+    const out = rerankChunks(e, [paramIndex, procedure], { intent: "fault" });
+    expect(out[0]).toBe(procedure);
+  });
+
+  it("does NOT demote the param-index under param_lookup intent (default behavior preserved)", () => {
+    const e = expandIndustrialQuery("motor poles parameter");
+    const out = rerankChunks(e, [paramIndex, procedure], { intent: "param_lookup" });
+    expect(out[0]).toBe(paramIndex); // higher ts_rank wins; no index penalty
   });
 });

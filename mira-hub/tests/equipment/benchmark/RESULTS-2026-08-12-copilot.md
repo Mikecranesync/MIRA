@@ -45,6 +45,32 @@ Symptom: after "where's the slowdown ramp?" → P042, the follow-up "what's the 
 - "where do I check that parameter?" → resolves to **b012 Control Source**, cited p.80.
 - "what parameter do I set first?" → **"Set C128 [EN Addr Sel] to 1 first … C129–C140 [3][4]"** cited p.103/104.
 
+## Procedure / section-aware ranking (the two "known failures", fixed for the right reason)
+
+`section_path` is NULL on v2 chunks, so ranking uses the chunk's CONTENT signature. Added an env-gated **retrieval trace** (`NOTEBOOK_RETRIEVAL_DEBUG=1` → per-candidate page/base-rank/rerank-score/features + winning pages) to make retrieval observable, then:
+
+- **`classifyIntent`** — lexical intent (fault / procedure / comm / spec / param_lookup / broad).
+- **Intent-gated content features in `rerankChunks`** — a procedure/fault question **boosts prose+imperative signal and penalizes param-index density** (a cross-reference index can't beat an actual how-to on lexical overlap); a comm question boosts comm-material; **param_lookup/spec keep exact-token dominance with no index penalty** (the param row IS the answer).
+- **Comm fan-out on comm-intent** (not just broad) + **named protocol as an exact token** — so a specific "where's the PROFINET setting?" retrieves the adapter table (p.185) that proves it's adapter-only.
+- **Evidence-gated premise-check** re-added — now justified by the trace: for profinet the evidence reached context but generation abstained, so the directive flips a **generation** failure, not a retrieval one. Guarded so hydraulic/warranty (no supporting excerpt) still abstain.
+
+| question | before | after (trace-verified) |
+|---|---|---|
+| how do I clear a fault? | abstained (param-index out-ranked p.160) | **Stop / A551 [Fault Clear] / DI "Clear Fault"**, cited p.160/164 — p.160 rose to rank #1 |
+| where's the Profinet setting? | abstained (p.185 never retrieved) | **"no built-in PROFINET; only via optional adapter (25-COMM-PNET2P)"**, cited p.185 — premise corrected |
+
+**Paraphrases generalize** (not benchmark-overfit): all 4 fault-reset paraphrases ("reset a fault", "clear this trip", "get it running again after a fault", "reset procedure") now give the A551/Stop/DI procedure cited p.160/164; comm paraphrases ("where do I configure Profinet?", "where are the Ethernet settings?", "how do I configure the network?") answer correctly with premise-correction. **Zero regressions** on exact-fact / fault-meaning / broad / multi-turn / F1 / abstention (full battery `after8-ranking` + `expanded`).
+
+**Adversarial (false premises) — safe:** "P999 controls Profinet, right?" → refused (no P999, PROFINET via adapter); "manual says EtherCAT, enable it" → refused (not documented); no fabrication. (Minor: "that parameter's maximum" for A551 answered "2" — grounded highest enum, but accepts the "maximum" framing rather than correcting "it's an action, not a range".)
+
+## Newly-surfaced hard cases (multi-turn topic tracking — next frontier, documented not rushed)
+
+The **topic-switch** conversation exposed two genuinely hard cases (NEW tests, not regressions):
+- **T2 "what's the maximum?"** after establishing P042 → resolved to **P044 Maximum Freq** (lexical collision on "maximum") instead of P042's max — a **conversation-resolution failure (D)**.
+- **T5 "go back to that decel setting, what's the default?"** after an intervening Ethernet topic → abstained on P042's default (10 s) — **retrieval failure (A)**: the follow-up augmentation carried the *recent* (Ethernet) topic's tokens, not the returned-to decel topic.
+
+These need lightweight topic-state tracking (which topic a "go back to X" / bare "what's the maximum?" refers to). Deliberately **not** attempted here — that's the conversation-state work the mission warns against over-engineering. Classified and queued.
+
 ## Hardest remaining (honest, non-systematic)
 
 - **IP-value reasoning:** "mine says 192.168.1.20, is that okay?" → honest refusal ("the excerpts don't specify"). A great copilot would reason about the IP format from general knowledge while grounding subnet/gateway in the manual — but forcing that risks ungrounded answers, so left as-is for now.
