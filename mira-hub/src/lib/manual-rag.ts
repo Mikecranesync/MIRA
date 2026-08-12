@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { expandIndustrialQuery, rerankChunks } from "@/lib/notebook-query";
 
 /**
  * Manufacturer-scoped BM25 retrieval from `knowledge_entries`.
@@ -447,7 +448,13 @@ export async function retrieveNodeChunks(
   const docParams = allowedDocIds.length > 0 ? [allowedDocIds] : [];
   const docClause = allowedDocIds.length > 0 ? "AND doc_id = ANY($5::uuid[])" : "";
 
-  const runRetrieval = async (tsquery: string) => {
+  // Widen the candidate pool, then rerank down to topK (bakeoff finding 5: the
+  // bottleneck is RANKING, not parsing — the answer chunk is present but
+  // out-ranked). POOL is retrieved per pass; the final slice is topK.
+  const POOL = Math.max(topK * 4, 24);
+
+  // $2 is the tsquery text (per-pass), $6 the exact-token ILIKE patterns.
+  const runRetrieval = async (tsquery: string, queryText: string) => {
     const res = await client.query(
       `SELECT
           content,
@@ -468,17 +475,81 @@ export async function retrieveNodeChunks(
           AND content_tsv @@ ${tsquery}
         ORDER BY rank DESC
         LIMIT $4`,
-      [tenantId, boundBm25Query(q), nodeIds, topK, ...docParams],
+      [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams],
     );
     return res.rows;
   };
 
-  let rows = await runRetrieval(AND_TSQUERY);
-  if (rows.length === 0) {
-    rows = await runRetrieval(OR_TSQUERY);
-  }
+  // Exact-token lane: a technician question naming P042 / F004 / terminal 07
+  // must ALWAYS surface the chunk that contains that token verbatim, regardless
+  // of ts_rank. Unstemmed by construction (ILIKE on raw content) — closes the
+  // stemming/exact-token loss the bakeoff flagged, with no schema migration
+  // (doc-scoped candidate set is small, so the scan is cheap).
+  const expanded = expandIndustrialQuery(q);
+  const runExactLane = async (tokens: string[]) => {
+    if (tokens.length === 0) return [];
+    // Independent, clean param numbering: $1 tenant, $2 nodeIds, $3 patterns,
+    // $4 limit, $5 docIds (only when doc-scoped).
+    const patterns = tokens.map((t) => `%${t}%`);
+    const exactParams: unknown[] = [tenantId, nodeIds, patterns, POOL];
+    let exactDocClause = "";
+    if (allowedDocIds.length > 0) {
+      exactParams.push(allowedDocIds);
+      exactDocClause = "AND doc_id = ANY($5::uuid[])";
+    }
+    const res = await client.query(
+      `SELECT
+          content, doc_id::text AS doc_id, source_url, source_page, page_start,
+          section_path, metadata->>'filename' AS filename, verified,
+          0::float4 AS rank
+        FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND ingest_route = 'v2'
+          ${approvalFilterSql()}
+          AND (metadata->>'node_id') = ANY($2::text[])
+          ${exactDocClause}
+          AND content ILIKE ANY($3::text[])
+        LIMIT $4`,
+      exactParams,
+    );
+    return res.rows;
+  };
 
-  return rows.map((r: Record<string, unknown>) => ({
+  // Collect a pooled candidate set across: original AND (precision), each
+  // expanded variant OR (manufacturer-vocabulary recall), and the exact-token
+  // lane. De-dupe by (doc_id, page, content prefix) so a chunk counts once.
+  const pool: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  const add = (rs: Record<string, unknown>[]) => {
+    for (const r of rs) {
+      const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pool.push(r);
+    }
+  };
+
+  add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
+  for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
+  add(await runExactLane(expanded.exactTokens));
+  // Last-resort recall: if precise + expanded + exact all found nothing, fall
+  // back to the original OR pass (a fully off-vocabulary conversational query).
+  if (pool.length === 0) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
+
+  // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank), then
+  // take topK. Preserves the ManualChunk shape the caller expects.
+  const reranked = rerankChunks(
+    expanded,
+    pool.map((r) => ({
+      content: String(r.content ?? ""),
+      rank: Number(r.rank ?? 0),
+      sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
+      docId: r.doc_id == null ? null : String(r.doc_id),
+      _row: r,
+    })),
+  ).slice(0, topK);
+
+  return reranked.map(({ _row: r }) => ({
     content: String(r.content ?? ""),
     docId: r.doc_id == null ? null : String(r.doc_id),
     // Node attachments have no manufacturer/model — the filename is the citable title.
