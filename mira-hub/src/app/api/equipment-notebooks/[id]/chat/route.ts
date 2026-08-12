@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { recordTurn, validateChatSources } from "@/lib/equipment-notebooks";
+import { getNotebook, listSources, recordTurn, validateChatSources } from "@/lib/equipment-notebooks";
 import {
   appendManualContext,
   buildManualUserContent,
@@ -31,13 +31,25 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant answering questions about ONE specific machine using ONLY the reference excerpts provided below.
-Rules:
-1. Ground every factual claim in the numbered reference excerpts and cite them inline like [1] or [2].
-2. Preserve units, fault codes, part numbers, and terminal identifiers EXACTLY as written.
-3. If the excerpts do not contain the answer, say you could not find it in the selected sources — never guess.
-4. Distinguish what the manual says from your own inference; keep inference clearly labeled.
-5. Be concise and practical — the reader is a technician standing at the machine.`;
+const BASE_SYSTEM_PROMPT = `You are MIRA, a maintenance assistant for ONE specific machine. Answer ONLY from the numbered reference excerpts provided below.
+
+ANSWER SHAPE — a technician is standing at the machine and needs the answer fast:
+- Lead with the direct answer in the FIRST sentence: the parameter number, terminal number, fault meaning, value, or action. e.g. "P042 [Decel Time 1] sets the deceleration ramp [1]."
+- Then at most one or two short sentences of explanation. Stop there.
+- Do NOT open with background, safety boilerplate, or a restatement of the question.
+
+GROUNDING & CITATIONS:
+- Cite every factual claim inline like [1] or [2], matching the numbered excerpts.
+- Preserve parameter IDs, fault codes, terminal identifiers, and units EXACTLY (P042, F004, terminal 07, 60 Hz).
+- Cite ONLY an excerpt that actually supports the sentence it is attached to. Never cite an excerpt just because it was retrieved.
+- If the excerpts do not contain the answer, say so plainly in one sentence and cite NOTHING. Never present unrelated pages as if they were evidence.
+
+PRECISION RULES:
+- A monitoring/display value (e.g. b001, b002, "Output Freq", "Commanded Freq") is NOT a setting. Never tell the user to "set" a display parameter. If asked how to set something, give the configuration parameter, not the monitor.
+- When a question is genuinely ambiguous (e.g. "second speed" may mean Speed Reference 2 OR a preset frequency), give BOTH concise interpretations or ask ONE targeted clarifying question — do not dump loosely related parameters.
+- If the excerpts only partially cover the topic and the authoritative detail is likely in a fuller manual, answer what you found and note the complete specification may be in the full user manual.
+
+MACHINE OVERVIEW — if asked what you know about the machine, or for an overview: state the equipment identity (manufacturer/model), the documents currently loaded and what they cover, and any coverage limitation. Do NOT merely summarize the first excerpt.`;
 
 type CascadeProvider = { name: string; url: string; key?: string; model: string };
 
@@ -47,7 +59,9 @@ function providers(): CascadeProvider[] {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
       key: process.env.GROQ_API_KEY,
-      model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
+      // llama-3.3-70b-versatile shuts down 2026-08-16 (Phase 1.5 bakeoff §7 P0);
+      // default to the current gpt-oss model so the primary provider keeps serving.
+      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
     },
     {
       name: "Cerebras",
@@ -99,6 +113,56 @@ async function buildCitations(
     for (const c of citations) c.fileId = fileByDoc.get(c.docId) ?? null;
   }
   return citations;
+}
+
+/** gpt-oss models emit OpenAI-style citation markers (`【3】`, `【4†L1-L7】`)
+ *  instead of `[3]`. Normalize to `[n]` so the UI renders clickable chips and
+ *  citation-entailment can match. Streaming-safe: a delta that ends mid-marker
+ *  (an open `【` with no closing `】`) is held back until the marker completes. */
+export function makeCitationNormalizer(): { push: (delta: string) => string; flush: () => string } {
+  let pending = "";
+  return {
+    push(delta: string): string {
+      let buf = pending + delta;
+      // Replace any COMPLETE fancy-bracket citation with [n].
+      buf = buf.replace(/【\s*(\d+)(?:\s*†[^】]*)?】/g, "[$1]");
+      // If an unclosed `【` remains, hold from it back (marker split across deltas).
+      const open = buf.lastIndexOf("【");
+      if (open !== -1) {
+        pending = buf.slice(open);
+        return buf.slice(0, open);
+      }
+      pending = "";
+      return buf;
+    },
+    // Emit any held text at stream end (a malformed/unclosed marker), normalized.
+    flush(): string {
+      const out = pending.replace(/【\s*(\d+)(?:\s*†[^】]*)?】/g, "[$1]");
+      pending = "";
+      return out;
+    },
+  };
+}
+
+/** A prose refusal ("I could not find that in the selected sources") must NOT
+ *  ship citations — otherwise unrelated retrieved pages render as false proof
+ *  (the anti-pattern this closes). Detect the model's own honest-refusal phrasing. */
+export function isRefusal(answer: string): boolean {
+  const a = answer.toLowerCase();
+  return (
+    /\b(could|couldn'?t|can'?t|cannot|do(?:es)? not|don'?t)\b[^.]*\b(find|contain|include|have|see)\b/.test(a) &&
+    /\b(excerpt|source|reference|document|manual|provided|selected|information)\b/.test(a) &&
+    a.length < 400
+  );
+}
+
+/** Citation-entailment (lite): keep only citations the answer actually used via
+ *  a [n] marker. Kills "cite a retrieved page that didn't support anything". */
+export function citationsUsedInAnswer(answer: string, citations: EvidenceCitation[]): EvidenceCitation[] {
+  const used = new Set(
+    [...answer.matchAll(/\[(\d+)\]/g)].map((m) => m[1]),
+  );
+  return citations.filter((c) => used.has(c.citationId));
 }
 
 function sse(obj: unknown): string {
@@ -185,7 +249,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const citations = await buildCitations(ctx.tenantId, chunks);
-  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks);
+
+  // Machine-context header — gives the model the equipment identity and the
+  // documents actually loaded, so "what do you know about the machine?" answers
+  // from notebook facts (identity + coverage) instead of the first excerpt, and
+  // so it can flag when the loaded doc only partially covers a question.
+  const [nb, srcs] = await Promise.all([
+    getNotebook(ctx.tenantId, notebookId).catch(() => null),
+    listSources(ctx.tenantId, notebookId).catch(() => [] as { filename: string | null }[]),
+  ]);
+  const identity = [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
+  const loadedDocs = srcs.map((s) => s.filename).filter(Boolean).join(", ") || "none";
+  const machineContext =
+    `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
+    `- Equipment: ${identity}${nb?.displayName ? ` — "${nb.displayName}"` : ""}.\n` +
+    `- Loaded source documents: ${loadedDocs}.\n` +
+    `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
+
+  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes.
@@ -196,14 +277,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const sourcesFrame: NotebookSourcesFrame = {
-        kind: "sources",
-        citations,
-        sourceSnapshot: docIds,
-      };
-      controller.enqueue(enc.encode(sse(sourcesFrame)));
-
+      // Citations are emitted AFTER generation, filtered to what the answer
+      // actually cited — so a refusal ships no pages and a grounded answer ships
+      // only its supporting evidence (no retrieved-but-unused pages as proof).
       const responseBuffer: string[] = [];
+      const normalize = makeCitationNormalizer();
       let served = false;
       let servedModel: string | null = null;
 
@@ -250,9 +328,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 };
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
-                  responseBuffer.push(delta);
-                  const frame: NotebookContentFrame = { kind: "content", content: delta };
-                  controller.enqueue(enc.encode(sse(frame)));
+                  const norm = normalize.push(delta);
+                  if (norm) {
+                    responseBuffer.push(norm);
+                    const frame: NotebookContentFrame = { kind: "content", content: norm };
+                    controller.enqueue(enc.encode(sse(frame)));
+                  }
                 }
                 if (parsed.choices?.[0]?.finish_reason === "stop") finished = true;
               } catch {
@@ -261,6 +342,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }
           }
           if (responseBuffer.length > 0) {
+            const tail = normalize.flush();
+            if (tail) {
+              responseBuffer.push(tail);
+              controller.enqueue(enc.encode(sse({ kind: "content", content: tail } as NotebookContentFrame)));
+            }
             served = true;
             servedModel = `${provider.name}:${provider.model}`;
             break;
@@ -271,9 +357,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       const answerText = responseBuffer.join("");
-      const statusFrame: NotebookStatusFrame = served
-        ? { kind: "status", status: "answered" }
-        : { kind: "status", status: "error", message: "No answer provider available." };
+
+      // Determine the honest status + which citations to ship. A refusal ships
+      // ZERO citations (no irrelevant pages as proof) and is recorded as
+      // insufficient_evidence; a grounded answer ships only the [n] it used.
+      const refused = served && isRefusal(answerText);
+      const emittedCitations = !served || refused ? [] : citationsUsedInAnswer(answerText, citations);
+      const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
+        ? "error"
+        : refused
+          ? "insufficient_evidence"
+          : "answered";
+
+      const sourcesFrame: NotebookSourcesFrame = {
+        kind: "sources",
+        citations: emittedCitations,
+        sourceSnapshot: docIds,
+      };
+      controller.enqueue(enc.encode(sse(sourcesFrame)));
+
+      const statusFrame: NotebookStatusFrame =
+        answerStatus === "answered"
+          ? { kind: "status", status: "answered" }
+          : answerStatus === "insufficient_evidence"
+            ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
+            : { kind: "status", status: "error", message: "No answer provider available." };
       controller.enqueue(enc.encode(sse(statusFrame)));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
@@ -281,10 +389,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       try {
         await recordTurn(ctx.tenantId, notebookId, {
           question: message,
-          answerStatus: served ? "answered" : "error",
+          answerStatus,
           answerText: served ? answerText : null,
           enabledSourceDocIds: docIds,
-          evidence: citations,
+          evidence: emittedCitations,
           model: servedModel,
         });
       } catch {
