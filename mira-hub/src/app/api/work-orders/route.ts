@@ -130,7 +130,13 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     const msg = String(err);
-    if (msg.includes("work_orders") && msg.includes("does not exist")) {
+    // Degrade a read-only list to empty when the DB is behind on migrations —
+    // a missing work_orders TABLE *or* a missing COLUMN (e.g. source_run_diff_id
+    // from migration 060 on a dev/preview branch that hasn't applied it). Both
+    // are Postgres "does not exist" errors and both mean "this environment's
+    // schema is behind", not a real query failure. Prod has the column, so this
+    // never fires there. Fixes a dev-only 500 on GET /api/work-orders.
+    if (/does not exist/i.test(msg)) {
       return NextResponse.json({ count: 0, work_orders: [] });
     }
     console.error("[api/work-orders GET]", err);

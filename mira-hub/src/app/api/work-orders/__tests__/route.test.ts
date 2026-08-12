@@ -9,7 +9,7 @@ vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/capabilities", () => ({ requireCapability: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 
-import { POST, rowToWO } from "../route";
+import { GET, POST, rowToWO } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -138,5 +138,38 @@ describe("rowToWO source_run_diff_id (T4)", () => {
     const wo = rowToWO({ id: "wo-2", title: "Inspect", status: "open" });
     expect(wo.source_run_diff_id).toBeNull();
     expect("source_run_diff_id" in wo).toBe(true);
+  });
+});
+
+function getReq() {
+  // GET reads req.nextUrl.searchParams (a NextRequest field), so provide it.
+  return { nextUrl: new URL("http://t/api/work-orders") } as unknown as Parameters<typeof GET>[0];
+}
+
+describe("GET /api/work-orders — schema-behind graceful degradation", () => {
+  it("degrades to an empty list when a COLUMN is missing (dev DB behind migration 060)", async () => {
+    // The source_run_diff_id column (migration 060) is absent on a dev/preview
+    // branch → Postgres 'column ... does not exist'. The list must degrade to
+    // empty, not 500. Regression for the dev-only work-orders 500.
+    vi.mocked(withTenantContext).mockRejectedValue(
+      new Error('column "source_run_diff_id" does not exist') as never,
+    );
+    const res = await GET(getReq());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ count: 0, work_orders: [] });
+  });
+
+  it("still degrades when the TABLE is missing (pre-existing behavior preserved)", async () => {
+    vi.mocked(withTenantContext).mockRejectedValue(
+      new Error('relation "work_orders" does not exist') as never,
+    );
+    const res = await GET(getReq());
+    expect(await res.json()).toEqual({ count: 0, work_orders: [] });
+  });
+
+  it("still returns 500 on a genuine query failure (not a schema-missing error)", async () => {
+    vi.mocked(withTenantContext).mockRejectedValue(new Error("connection terminated") as never);
+    const res = await GET(getReq());
+    expect(res.status).toBe(500);
   });
 });
