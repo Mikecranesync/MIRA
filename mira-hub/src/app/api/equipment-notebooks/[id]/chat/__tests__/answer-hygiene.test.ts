@@ -9,8 +9,10 @@ import {
   makeCitationNormalizer,
   isRefusal,
   citationsUsedInAnswer,
+  buildProviderMessages,
 } from "../route";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import type { ChatHistoryTurn } from "@/lib/notebook-query";
 
 const cite = (id: string): EvidenceCitation => ({
   citationId: id,
@@ -65,5 +67,35 @@ describe("citationsUsedInAnswer", () => {
   });
   it("returns nothing when the answer cited nothing", () => {
     expect(citationsUsedInAnswer("no markers here", [cite("1")])).toEqual([]);
+  });
+});
+
+describe("buildProviderMessages — multi-turn memory", () => {
+  const history: ChatHistoryTurn[] = [
+    { role: "user", content: "how do I communicate with this drive?" },
+    { role: "assistant", content: "It supports EtherNet/IP and Modbus RTU [1]." },
+  ];
+
+  it("places history between the system prompt and the current evidence turn", () => {
+    const msgs = buildProviderMessages("SYS", history, "USER+EXCERPTS");
+    expect(msgs).toEqual([
+      { role: "system", content: "SYS" },
+      { role: "user", content: "how do I communicate with this drive?" },
+      { role: "assistant", content: "It supports EtherNet/IP and Modbus RTU [1]." },
+      { role: "user", content: "USER+EXCERPTS" },
+    ]);
+  });
+
+  it("still produces a valid single-turn shape with empty history", () => {
+    const msgs = buildProviderMessages("SYS", [], "USER");
+    expect(msgs).toEqual([
+      { role: "system", content: "SYS" },
+      { role: "user", content: "USER" },
+    ]);
+  });
+
+  it("keeps the CURRENT (evidence-bearing) turn last so grounding wins", () => {
+    const msgs = buildProviderMessages("SYS", history, "CURRENT");
+    expect(msgs.at(-1)).toEqual({ role: "user", content: "CURRENT" });
   });
 });

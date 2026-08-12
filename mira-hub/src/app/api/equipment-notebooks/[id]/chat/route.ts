@@ -22,6 +22,11 @@ import {
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
+import {
+  sanitizeHistory,
+  buildRetrievalQuery,
+  type ChatHistoryTurn,
+} from "@/lib/notebook-query";
 import type {
   EvidenceCitation,
   NotebookContentFrame,
@@ -156,6 +161,23 @@ export function isRefusal(answer: string): boolean {
   );
 }
 
+/** Assemble the provider messages: system prompt, then the sanitized
+ *  conversation history (so a follow-up has memory of the thread), then the
+ *  current user turn carrying the fresh grounding excerpts. Prior turns are plain
+ *  text — only the CURRENT turn gets the retrieved excerpts, so the model always
+ *  grounds the live question in live evidence. Exported for unit testing. */
+export function buildProviderMessages(
+  systemPrompt: string,
+  history: ChatHistoryTurn[],
+  userContent: string,
+): { role: string; content: string }[] {
+  return [
+    { role: "system", content: systemPrompt },
+    ...history.map((h) => ({ role: h.role, content: h.content })),
+    { role: "user", content: userContent },
+  ];
+}
+
 /** Citation-entailment (lite): keep only citations the answer actually used via
  *  a [n] marker. Kills "cite a retrieved page that didn't support anything". */
 export function citationsUsedInAnswer(answer: string, citations: EvidenceCitation[]): EvidenceCitation[] {
@@ -174,7 +196,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (ctx instanceof NextResponse) return ctx;
   const { id: notebookId } = await params;
 
-  let body: { message?: string; sourceDocIds?: string[] };
+  let body: { message?: string; sourceDocIds?: string[]; history?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -185,6 +207,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (message.length > 4000) {
     return NextResponse.json({ error: "message_too_long" }, { status: 400 });
   }
+  // Multi-turn memory: the client sends the recent thread; we cap/sanitize it,
+  // pass it to the model for continuity, and use it to rewrite the retrieval
+  // query so a referential follow-up ("what about Ethernet?", "the other one")
+  // retrieves on the thread's subject instead of its own thin words.
+  const history = sanitizeHistory(body.history);
 
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
@@ -200,8 +227,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const { docIds, nodeId } = validated;
+  const retrievalQuery = buildRetrievalQuery(message, history);
   const chunks = await withTenantContext(ctx.tenantId, (client) =>
-    retrieveNodeChunks(client, ctx.tenantId, message, {
+    retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
       nodeId,
       unsPath: null, // notebook nodes are standalone; scope is the doc set
       topK: 6,
@@ -269,11 +297,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
-  // same as the asset-chat and node-chat routes.
-  const messages = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: buildManualUserContent(message, chunks) },
-  ];
+  // same as the asset-chat and node-chat routes. Conversation history rides
+  // between the system prompt and the current (evidence-bearing) turn so the
+  // model has thread memory without diluting the live grounding.
+  const messages = buildProviderMessages(
+    systemPrompt,
+    history,
+    buildManualUserContent(message, chunks),
+  );
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

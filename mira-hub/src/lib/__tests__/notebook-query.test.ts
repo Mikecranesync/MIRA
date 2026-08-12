@@ -4,7 +4,14 @@
  * failures (P042 / "slow down" / terminal 07) require.
  */
 import { describe, expect, it } from "vitest";
-import { expandIndustrialQuery, rerankChunks } from "../notebook-query";
+import {
+  expandIndustrialQuery,
+  rerankChunks,
+  sanitizeHistory,
+  isReferentialFollowup,
+  buildRetrievalQuery,
+  type ChatHistoryTurn,
+} from "../notebook-query";
 
 describe("expandIndustrialQuery", () => {
   it("bridges 'slow down ramp' → deceleration vocabulary", () => {
@@ -78,5 +85,92 @@ describe("rerankChunks", () => {
     const a = mk("alpha content", 0.9);
     const b = mk("beta content", 0.3);
     expect(rerankChunks(e, [b, a])).toEqual([a, b]);
+  });
+});
+
+describe("sanitizeHistory", () => {
+  it("keeps well-formed user/assistant turns in order", () => {
+    const h = sanitizeHistory([
+      { role: "user", content: "how do I communicate with this drive?" },
+      { role: "assistant", content: "It supports EtherNet/IP and Modbus RTU [1]." },
+    ]);
+    expect(h).toEqual([
+      { role: "user", content: "how do I communicate with this drive?" },
+      { role: "assistant", content: "It supports EtherNet/IP and Modbus RTU [1]." },
+    ]);
+  });
+
+  it("drops malformed, empty, and non-user/assistant turns", () => {
+    const h = sanitizeHistory([
+      { role: "system", content: "ignore me" },
+      { role: "user", content: "   " },
+      { role: "user" },
+      "not an object",
+      null,
+      { role: "assistant", content: "kept" },
+    ]);
+    expect(h).toEqual([{ role: "assistant", content: "kept" }]);
+  });
+
+  it("caps to the most recent maxTurns and trims per-turn length", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ role: "user" as const, content: `q${i}` }));
+    const h = sanitizeHistory(many, 6);
+    expect(h).toHaveLength(6);
+    expect(h[0].content).toBe("q4"); // last 6 → q4..q9
+    const long = sanitizeHistory([{ role: "user", content: "x".repeat(5000) }], 6, 2000);
+    expect(long[0].content).toHaveLength(2000);
+  });
+
+  it("returns [] for a non-array body", () => {
+    expect(sanitizeHistory(undefined)).toEqual([]);
+    expect(sanitizeHistory({ role: "user", content: "hi" })).toEqual([]);
+  });
+});
+
+describe("isReferentialFollowup", () => {
+  it("flags short and deictic follow-ups", () => {
+    expect(isReferentialFollowup("what about Ethernet?")).toBe(true);
+    expect(isReferentialFollowup("let's use Ethernet")).toBe(true);
+    expect(isReferentialFollowup("no, the other one")).toBe(true);
+    expect(isReferentialFollowup("what should that be set to?")).toBe(true);
+    expect(isReferentialFollowup("why?")).toBe(true);
+  });
+
+  it("does not flag a long self-contained question", () => {
+    expect(
+      isReferentialFollowup("How do I configure the EtherNet/IP address on a PowerFlex 525 drive from the keypad?"),
+    ).toBe(false);
+  });
+});
+
+describe("buildRetrievalQuery", () => {
+  const history: ChatHistoryTurn[] = [
+    { role: "user", content: "How do I set up communications on this drive?" },
+    { role: "assistant", content: "It supports EtherNet/IP and Modbus RTU. Which network are you on? [1]" },
+  ];
+
+  it("augments a referential follow-up with salient thread tokens it lacks", () => {
+    const q = buildRetrievalQuery("what parameter changes first?", history);
+    // pulls domain context already in the thread (comm/network vocabulary),
+    // current message stays first so it still dominates ranking.
+    expect(q.startsWith("what parameter changes first?")).toBe(true);
+    expect(q.toLowerCase()).toMatch(/ethernet|modbus|communications|network/);
+  });
+
+  it("does not re-add a token the message already contains", () => {
+    const q = buildRetrievalQuery("what about Modbus?", history);
+    expect(q.toLowerCase().match(/modbus/g)?.length).toBe(1);
+  });
+
+  it("leaves a self-contained question unchanged", () => {
+    const q = buildRetrievalQuery(
+      "What is the maximum value of parameter P042 on this drive controller?",
+      history,
+    );
+    expect(q).toBe("What is the maximum value of parameter P042 on this drive controller?");
+  });
+
+  it("returns the message unchanged when there is no history", () => {
+    expect(buildRetrievalQuery("what about that?", [])).toBe("what about that?");
   });
 });
