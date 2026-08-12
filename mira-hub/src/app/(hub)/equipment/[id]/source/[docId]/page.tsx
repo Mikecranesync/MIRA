@@ -35,7 +35,7 @@ export default function SourceViewerPage() {
     : null;
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-4xl flex-col" style={{ color: "var(--foreground)" }}>
+    <div data-notebook-immersive className="mx-auto flex h-[100dvh] w-full max-w-4xl flex-col" style={{ color: "var(--foreground)" }}>
       <header className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
         <Link href={`/equipment/${id}`} aria-label="Back to chat" style={{ color: "var(--foreground-muted)" }}>
           <ArrowLeft size={18} />

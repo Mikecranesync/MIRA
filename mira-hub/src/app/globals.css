@@ -317,3 +317,17 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--foreground-subtle); }
+
+/* ─── Immersive route (Equipment Notebook) ──────────────────────────────
+   A notebook detail/source route renders [data-notebook-immersive]. On mobile
+   we hide the global hub chrome (bottom tab bar + top bar with theme/language)
+   so the notebook is a focused NotebookLM-style surface, and reclaim the
+   bottom-tab padding the shell reserves on <main>. Desktop keeps the sidebar. */
+body:has([data-notebook-immersive]) .hub-bottom-tabs,
+body:has([data-notebook-immersive]) .hub-mobile-topbar,
+body:has([data-notebook-immersive]) .hub-trial-banner {
+  display: none !important;
+}
+body:has([data-notebook-immersive]) .hub-main {
+  padding-bottom: 0 !important;
+}

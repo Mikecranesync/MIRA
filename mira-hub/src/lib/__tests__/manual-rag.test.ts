@@ -210,9 +210,11 @@ describe("retrieveNodeChunks", () => {
   });
 
   it("falls back to an OR tsquery when the precise AND query is empty", async () => {
-    // unsPath null → skip the subtree node-id lookup; call[0]=AND, call[1]=OR.
+    // Query with NO synonym-expansion trigger and no exact-ID token, so the flow
+    // is the simple two-pass: call[0]=AND (empty), then — pool still empty — the
+    // final OR fallback (call[1]) so a conversational question still grounds.
     const { client, calls } = makeClient([[], [nodeRow()]]);
-    const out = await retrieveNodeChunks(client, "t-1", "What does GS10 fault code oC mean?", {
+    const out = await retrieveNodeChunks(client, "t-1", "What does GS10 code oC mean?", {
       nodeId: "n-1",
       unsPath: null,
     });
@@ -227,6 +229,30 @@ describe("retrieveNodeChunks", () => {
     // node scoping + route discriminator preserved on both queries.
     expect(calls[1].sql).toContain("ingest_route = 'v2'");
     expect(calls[1].sql).toContain("metadata->>'node_id'");
+  });
+
+  it("expands a synonym query into extra recall passes (vocabulary bridge)", async () => {
+    // "slow down" has no shared token with a "decel" chunk; the expansion runs
+    // additional OR passes in the manufacturer's vocabulary so the answer chunk
+    // is still retrieved. AND(variant0)=empty → OR(expanded variants) find it.
+    const { client, calls } = makeClient([[], [nodeRow()], [nodeRow()]]);
+    const out = await retrieveNodeChunks(client, "t-1", "what is the slow down ramp", {
+      nodeId: "n-1",
+      unsPath: null,
+    });
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    // More than the plain two-pass: the expanded variants add OR passes.
+    expect(calls.length).toBeGreaterThan(2);
+    // At least one pass uses the OR (recall) rewrite.
+    expect(calls.some((c) => c.sql.includes("replace("))).toBe(true);
+  });
+
+  it("always issues an exact-token ILIKE pass for a parameter/fault id", async () => {
+    // A query naming P042 must run the unstemmed ILIKE lane so the verbatim
+    // chunk is a candidate regardless of ts_rank.
+    const { client, calls } = makeClient([[nodeRow()], [nodeRow()]]);
+    await retrieveNodeChunks(client, "t-1", "what parameter is P042", { nodeId: "n-1", unsPath: null });
+    expect(calls.some((c) => c.sql.includes("content ILIKE ANY"))).toBe(true);
   });
 
   it("keeps the precise AND result and does NOT fall back when AND matches", async () => {

@@ -26,7 +26,7 @@ export function TrialBanner() {
 
   return (
     <div
-      className="w-full px-4 py-2.5 flex items-center justify-between text-sm relative"
+      className="hub-trial-banner w-full px-4 py-2.5 flex items-center justify-between text-sm relative"
       style={{
         backgroundColor: urgent ? "#92400E" : "#1E3A5F",
         borderBottom: `1px solid ${urgent ? "#B45309" : "#1D4ED8"}`,

@@ -22,9 +22,11 @@ export default function HubLayout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 min-h-0">
         <Sidebar />
 
-        {/* Main content — offset by sidebar width on desktop */}
+        {/* Main content — offset by sidebar width on desktop. `hub-main` lets
+            an immersive route (Equipment Notebook) reclaim the mobile bottom-tab
+            padding via the :has() rule in globals.css. */}
         <main
-          className="flex-1 overflow-auto"
+          className="hub-main flex-1 overflow-auto"
           style={{ paddingBottom: "var(--bottom-tab-height)" }}
         >
           <div className="md:ml-[var(--sidebar-width)]">

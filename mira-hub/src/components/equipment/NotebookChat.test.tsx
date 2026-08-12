@@ -5,7 +5,7 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Bubble, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
+import { Bubble, distinctPassages, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
 
 const citation = {
   citationId: "1",
@@ -17,7 +17,7 @@ const citation = {
 };
 
 describe("Bubble", () => {
-  it("renders a clickable [1] button wired to its citation", () => {
+  it("renders a clickable numbered citation chip wired to its source", () => {
     const turn: ChatTurn = {
       id: "a1",
       role: "assistant",
@@ -28,9 +28,10 @@ describe("Bubble", () => {
     const html = renderToStaticMarkup(<Bubble turn={turn} />);
     // the marker becomes a <button>, not raw text
     expect(html).toContain("<button");
-    expect(html).toContain("[1]");
-    // hover/tap title carries source + page
-    expect(html).toContain("PF525 User Manual · p. 87");
+    // the chip's accessible label carries source + page (clickable to open it)
+    expect(html).toContain("Open citation 1: PF525 User Manual, page 87");
+    // citations collapse to a compact count, not a stack of filename pills
+    expect(html).toContain("1 supporting passage");
   });
 
   it("does NOT fabricate a citation button when the [n] has no matching source", () => {
@@ -77,6 +78,16 @@ describe("Bubble", () => {
     };
     const html = renderToStaticMarkup(<Bubble turn={turn} />);
     expect(html).toContain("Open citation 1: PF525 User Manual, page 87");
+  });
+});
+
+describe("distinctPassages", () => {
+  const c = (id: string, docId: string, page: number) => ({
+    citationId: id, docId, sourceTitle: "m.pdf", page, fileId: null, quote: "",
+  });
+  it("collapses repeated (doc,page) citations to distinct passages", () => {
+    const cites = [c("1", "d1", 5), c("2", "d1", 5), c("3", "d1", 9), c("4", "d2", 5)];
+    expect(distinctPassages(cites).map((x) => x.citationId)).toEqual(["1", "3", "4"]);
   });
 });
 

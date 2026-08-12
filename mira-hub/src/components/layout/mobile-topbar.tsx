@@ -12,7 +12,7 @@ export function MobileTopBar() {
 
   return (
     <header
-      className="md:hidden sticky top-0 z-50 flex items-center justify-between px-3 flex-shrink-0"
+      className="hub-mobile-topbar md:hidden sticky top-0 z-50 flex items-center justify-between px-3 flex-shrink-0"
       style={{
         height: 56, // was 44 — increased to fit 48px buttons comfortably
         backgroundColor: "var(--sidebar-bg)",

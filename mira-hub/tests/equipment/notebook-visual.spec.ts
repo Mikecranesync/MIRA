@@ -52,9 +52,10 @@ test.describe("Equipment Notebook visuals", () => {
     await page.getByRole("button", { name: /^Sources · / }).click();
     await expect(page.getByRole("dialog", { name: "Sources" })).toBeVisible();
     await page.waitForTimeout(400);
-    // The sheet is the subject; mask the chat behind it + the trial banner.
-    await expect(page).toHaveScreenshot("sources-sheet.png", {
-      mask: [page.getByText(TRIAL), page.getByTestId("notebook-chat-log")],
+    // Screenshot the sheet PANEL element (not the full-screen scrim dialog):
+    // its content is deterministic (title, source rows, Upload PDF, Add-source
+    // link), independent of the conversation behind the scrim.
+    await expect(page.getByTestId("sources-sheet-panel")).toHaveScreenshot("sources-sheet.png", {
       maxDiffPixelRatio: 0.02,
     });
   });

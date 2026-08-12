@@ -198,10 +198,13 @@ export default function NotebookPage() {
 
   return (
     <div
-      // Own the column height so the chat log scrolls internally and the
-      // composer sticks to the bottom. The hub <main> reserves the bottom-tab
-      // height on mobile; subtract it so nothing hides under the tab bar.
-      className="mx-auto flex w-full max-w-3xl flex-col h-[calc(100dvh-var(--bottom-tab-height))] md:h-[100dvh]"
+      // data-notebook-immersive → globals.css hides the mobile hub chrome (top
+      // bar + bottom tabs) and zeroes the shell's bottom padding, so this is a
+      // focused, full-height NotebookLM-style surface. The column owns its own
+      // height; the chat log scrolls internally and the composer sits at the
+      // bottom with nothing covering it.
+      data-notebook-immersive
+      className="mx-auto flex w-full max-w-3xl flex-col h-[100dvh]"
       style={{ color: "var(--foreground)" }}
     >
       <header className="flex shrink-0 items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
@@ -211,7 +214,9 @@ export default function NotebookPage() {
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{notebook?.displayName ?? "…"}</div>
           <div className="truncate text-xs" style={{ color: "var(--foreground-muted)" }}>
-            {[notebook?.manufacturer, notebook?.model].filter(Boolean).join(" ") || "No model set"}
+            {[[notebook?.manufacturer, notebook?.model].filter(Boolean).join(" ") || "No model set", notebook?.locationLabel]
+              .filter(Boolean)
+              .join(" · ")}
             {` · ${enabledDocIds.length} of ${usableCount} sources`}
           </div>
         </div>
@@ -248,6 +253,7 @@ export default function NotebookPage() {
           aria-label="Sources"
         >
           <div
+            data-testid="sources-sheet-panel"
             className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-2xl"
             style={{ background: "var(--surface-0)", border: "1px solid var(--border)" }}
             onClick={(e) => e.stopPropagation()}
