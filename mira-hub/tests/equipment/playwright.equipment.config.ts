@@ -54,6 +54,40 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STATE },
     },
     {
+      // The SAME full loop on a phone — the product milestone is a new user on
+      // a phone, so the loop must pass at 412×915 with touch, not just desktop.
+      name: "loop-mobile",
+      testMatch: /notebook-loop\.spec\.ts$/,
+      dependencies: ["setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 412, height: 915 },
+        deviceScaleFactor: 2,
+        isMobile: true,
+        hasTouch: true,
+        storageState: STATE,
+      },
+    },
+    {
+      name: "adversarial",
+      testMatch: /notebook-adversarial\.spec\.ts$/,
+      dependencies: ["setup"],
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: STATE },
+    },
+    {
+      name: "adversarial-mobile",
+      testMatch: /notebook-adversarial\.spec\.ts$/,
+      dependencies: ["setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 412, height: 915 },
+        deviceScaleFactor: 2,
+        isMobile: true,
+        hasTouch: true,
+        storageState: STATE,
+      },
+    },
+    {
       name: "visual-desktop",
       testMatch: /notebook-visual\.spec\.ts$/,
       dependencies: ["setup"],
