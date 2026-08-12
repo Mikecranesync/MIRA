@@ -49,5 +49,7 @@ Symptom: after "where's the slowdown ramp?" → P042, the follow-up "what's the 
 
 - **IP-value reasoning:** "mine says 192.168.1.20, is that okay?" → honest refusal ("the excerpts don't specify"). A great copilot would reason about the IP format from general knowledge while grounding subnet/gateway in the manual — but forcing that risks ungrounded answers, so left as-is for now.
 - **Ambiguous "that parameter"** in the won't-run thread (command-word vs start-source, both discussed) resolves ~half the time — LLM variance at temp 0.3, not a systematic miss.
-- **Wrong-assumption redirect:** "where's the Profinet setting?" flatly abstains instead of correcting with the adapter table it can retrieve ("no embedded PROFINET; only via adapter"). Next.
-- **"how do I clear a fault?"** misses A551 on the full-manual corpus (retrieval). Next.
+- **Shared root cause → next PR (retrieval ranking in a large corpus):** two remaining misses have the *same* cause — the **procedure / corrective chunk is out-ranked by param-list noise** in the full manual:
+  - "how do I clear a fault?" → the "Manually Clearing Faults" procedure (p.160) + "Stop command clears active fault" (p.87) exist and are retrievable, but param-index chunks that merely list "Fault Clear 551" out-rank the procedure into the top-k, so the model abstains.
+  - "where's the Profinet setting?" → the adapter table (p.185, proving PROFINET is adapter-only) isn't ranked into the top-k for a specific-protocol query, so there's no excerpt to correct the premise from. A grounded premise-check directive was tried and **reverted** (zero regressions, but no measured benefit without the corrective chunk in context).
+  - Fix direction: **section/procedure-aware ranking** (boost chunks whose section is a procedure/how-to, or heading-aware retrieval) so how-to and corrective sections beat param-index noise. That's the next PR.
