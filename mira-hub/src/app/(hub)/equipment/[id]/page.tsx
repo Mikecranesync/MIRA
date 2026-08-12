@@ -253,6 +253,7 @@ export default function NotebookPage() {
           aria-label="Sources"
         >
           <div
+            data-testid="sources-sheet-panel"
             className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-2xl"
             style={{ background: "var(--surface-0)", border: "1px solid var(--border)" }}
             onClick={(e) => e.stopPropagation()}
