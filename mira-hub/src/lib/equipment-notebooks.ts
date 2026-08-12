@@ -430,12 +430,21 @@ export async function listTurns(
   }[]
 > {
   return withTenantContext(tenantId, async (c) => {
+    // Take the MOST RECENT `limit` turns (inner DESC), then present them
+    // chronologically (outer ASC). A plain `ORDER BY created_at ASC LIMIT n`
+    // returns the OLDEST n — so past n turns the recent conversation vanishes
+    // from the notebook on reload. Recent-window + chronological display fixes
+    // that while keeping the render order the UI expects.
     const res = await c.query(
-      `SELECT id::text AS id, question, answer_status, answer_text, evidence, created_at
-         FROM equipment_notebook_turns
-        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
-        ORDER BY created_at ASC
-        LIMIT $3`,
+      `SELECT id, question, answer_status, answer_text, evidence, created_at
+         FROM (
+           SELECT id::text AS id, question, answer_status, answer_text, evidence, created_at
+             FROM equipment_notebook_turns
+            WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+            ORDER BY created_at DESC
+            LIMIT $3
+         ) recent
+        ORDER BY created_at ASC`,
       [tenantId, notebookId, limit],
     );
     return res.rows.map((r: Record<string, unknown>) => ({
