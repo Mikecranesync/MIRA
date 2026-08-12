@@ -146,28 +146,48 @@ function getReq() {
   return { nextUrl: new URL("http://t/api/work-orders") } as unknown as Parameters<typeof GET>[0];
 }
 
+// A Postgres error carries a SQLSTATE `code`; the degradation keys on it.
+function pgError(message: string, code: string) {
+  return Object.assign(new Error(message), { code });
+}
+
 describe("GET /api/work-orders — schema-behind graceful degradation", () => {
-  it("degrades to an empty list when a COLUMN is missing (dev DB behind migration 060)", async () => {
-    // The source_run_diff_id column (migration 060) is absent on a dev/preview
-    // branch → Postgres 'column ... does not exist'. The list must degrade to
-    // empty, not 500. Regression for the dev-only work-orders 500.
+  it("degrades to empty AND logs on undefined_column 42703 (dev DB behind migration 060)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(withTenantContext).mockRejectedValue(
-      new Error('column "source_run_diff_id" does not exist') as never,
+      pgError('column "source_run_diff_id" does not exist', "42703") as never,
     );
     const res = await GET(getReq());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ count: 0, work_orders: [] });
+    // Observable: the degradation is logged (never a silent empty list).
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("SQLSTATE 42703"),
+      expect.any(String),
+    );
+    warn.mockRestore();
   });
 
-  it("still degrades when the TABLE is missing (pre-existing behavior preserved)", async () => {
+  it("degrades to empty on undefined_table 42P01 (table missing)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(withTenantContext).mockRejectedValue(
-      new Error('relation "work_orders" does not exist') as never,
+      pgError('relation "work_orders" does not exist', "42P01") as never,
     );
     const res = await GET(getReq());
     expect(await res.json()).toEqual({ count: 0, work_orders: [] });
   });
 
-  it("still returns 500 on a genuine query failure (not a schema-missing error)", async () => {
+  it("does NOT degrade on a 'does not exist' MESSAGE without a schema SQLSTATE (no silent mask)", async () => {
+    // A genuine error whose text merely contains "does not exist" (e.g. a
+    // constraint/trigger failure) must NOT be masked as empty data.
+    vi.mocked(withTenantContext).mockRejectedValue(
+      pgError("function some_fn() does not exist in this context", "42883") as never,
+    );
+    const res = await GET(getReq());
+    expect(res.status).toBe(500);
+  });
+
+  it("returns 500 on a genuine query failure (no schema code)", async () => {
     vi.mocked(withTenantContext).mockRejectedValue(new Error("connection terminated") as never);
     const res = await GET(getReq());
     expect(res.status).toBe(500);

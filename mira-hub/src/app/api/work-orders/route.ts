@@ -129,14 +129,20 @@ export async function GET(req: NextRequest) {
       work_orders: rows.map(rowToWO),
     });
   } catch (err) {
-    const msg = String(err);
-    // Degrade a read-only list to empty when the DB is behind on migrations —
-    // a missing work_orders TABLE *or* a missing COLUMN (e.g. source_run_diff_id
-    // from migration 060 on a dev/preview branch that hasn't applied it). Both
-    // are Postgres "does not exist" errors and both mean "this environment's
-    // schema is behind", not a real query failure. Prod has the column, so this
-    // never fires there. Fixes a dev-only 500 on GET /api/work-orders.
-    if (/does not exist/i.test(msg)) {
+    // Degrade a read-only list to empty ONLY on a genuine schema-behind error,
+    // keyed on the Postgres SQLSTATE code (not a string match, which could
+    // false-degrade on any error whose message happens to contain "does not
+    // exist"): 42P01 undefined_table OR 42703 undefined_column — e.g. a
+    // dev/preview branch that hasn't applied migration 060 (source_run_diff_id).
+    // Prod has the schema, so this never fires there. Every degradation is
+    // LOGGED at warn with the code, so a schema drift is observable and can
+    // never silently masquerade as "no work orders". Any other error → 500.
+    const code = (err as { code?: unknown })?.code;
+    if (code === "42P01" || code === "42703") {
+      console.warn(
+        `[api/work-orders GET] schema behind (SQLSTATE ${code}) — degrading to empty list; apply pending migrations:`,
+        String(err),
+      );
       return NextResponse.json({ count: 0, work_orders: [] });
     }
     console.error("[api/work-orders GET]", err);
