@@ -396,7 +396,7 @@ approved:
       FROM knowledge_entries
              WHERE ${where.join(" AND ")}
              GROUP BY source_url
-  "mira-hub/src/app/api/namespace/node/[id]/chat/route.ts:263":
+  "mira-hub/src/app/api/namespace/node/[id]/chat/route.ts:266":
     approved_classification: TENANT-ONLY
     query_sha256: "5209062084e5e805827bd726ab6a33b5d79ffdcc54f86593ba652d50beec82e6"
     reason: "ARPK 1a doc-scoped NodeChat: resolves the selected document's filename from its own v2 chunks (chunk-side, under withTenantContext RLS — hub_uploads has no RLS, same doctrine as retrieveNodeChunks). Pure-tenant is the SECURITY property here: it must never resolve another tenant's doc_id, and shared OEM rows are not doc-scoped chat targets (no v2 doc_id)."
