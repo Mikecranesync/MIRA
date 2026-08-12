@@ -75,3 +75,5 @@ Only after that behaves as expected should `hold-gate` be added to required chec
 - `.github/workflows/hold-gate.yml` — the workflow (reports only until required).
 - `tools/ci/hold_gate.py` — `is_held()` decision + Actions entrypoint.
 - `tests/test_hold_gate.py` — unit tests for the decision function.
+
+<!-- hold-gate enforcement smoke check a45c67b00 -->
