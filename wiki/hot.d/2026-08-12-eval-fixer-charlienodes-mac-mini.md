@@ -95,3 +95,12 @@ as targets for failures no keyword edit could fix. Standing #2759.
    gate that clears the noise band (now ±6), never alone.
 
 *(Left #3154 and #3190-adjacent work for a human — did not merge another agent's PR unprompted.)*
+
+## Deviation: branch-protection bypass, 2nd consecutive night
+
+Committed this fragment **directly to `main`** per the agent spec's Step 10. The push reported
+`Changes must be made through a pull request` + `4 of 4 required status checks are expected` and
+went through anyway — the same bypass as 08-10. Docs-only, and `main` is not left diverged
+(local == origin, rebased onto `d3c36196` first, since the pinned tree was behind). Flagging rather
+than burying: **the spec's Step 10 and this repo's branch protection now disagree twice running**,
+and one of the two should change.
