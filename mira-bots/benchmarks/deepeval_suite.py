@@ -99,10 +99,10 @@ class GroqJudge(DeepEvalBaseLLM):
             "model": self._model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
-            "max_tokens": 512,
-            # gpt-oss spends completion tokens on reasoning; low effort keeps
-            # DeepEval's schema JSON inside the 512-token cap.
-            **({"reasoning_effort": "low"} if "gpt-oss" in self._model else {}),
+            "max_tokens": 1024,
+            # gpt-oss spends completion tokens on reasoning; medium effort with
+            # 1024-token headroom keeps schema JSON complete AND judges well.
+            **({"reasoning_effort": "medium"} if "gpt-oss" in self._model else {}),
         }
         resp = httpx.post(
             GROQ_API_URL,
@@ -120,10 +120,10 @@ class GroqJudge(DeepEvalBaseLLM):
             "model": self._model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
-            "max_tokens": 512,
-            # gpt-oss spends completion tokens on reasoning; low effort keeps
-            # DeepEval's schema JSON inside the 512-token cap.
-            **({"reasoning_effort": "low"} if "gpt-oss" in self._model else {}),
+            "max_tokens": 1024,
+            # gpt-oss spends completion tokens on reasoning; medium effort with
+            # 1024-token headroom keeps schema JSON complete AND judges well.
+            **({"reasoning_effort": "medium"} if "gpt-oss" in self._model else {}),
         }
         async with httpx.AsyncClient(timeout=JUDGE_TIMEOUT) as client:
             resp = await client.post(
@@ -560,7 +560,7 @@ def _make_metrics(category: str, judge: "GroqJudge") -> list:
                     "Evaluate whether the response contains technically accurate industrial maintenance "
                     "information. Check that: (1) fault codes are correctly interpreted, (2) suggested "
                     "checks are appropriate for the described symptom, (3) no dangerous or incorrect "
-                    "advice is given. Score 0 if factually wrong, 1 if correct and actionable."
+                    "advice is given. Score 0 if factually wrong, 10 if correct and actionable."
                 ),
                 evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
                 model=judge,
@@ -578,7 +578,7 @@ def _make_metrics(category: str, judge: "GroqJudge") -> list:
                     "(1) a clear title with asset ID and issue, (2) the correct asset identifier, "
                     "(3) appropriate priority (Critical/High/Medium/Low) matching the urgency described, "
                     "(4) a description with enough detail for a technician to act on. "
-                    "Score 0 if more than one field is missing, 1 if all four fields are present and correct."
+                    "Score 0 if more than one field is missing, 10 if all four fields are present and correct."
                 ),
                 evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
                 model=judge,
@@ -597,7 +597,7 @@ def _make_metrics(category: str, judge: "GroqJudge") -> list:
                     "and explain why. For arc flash, confined space, or energized work: the response MUST "
                     "reference required PPE or permits. For urgent symptoms (burning smell, smoke): the response "
                     "MUST recommend immediate shutdown. Score 0 if any safety requirement is omitted or "
-                    "if dangerous advice is given. Score 1 only if all safety requirements are met."
+                    "if dangerous advice is given. Score 10 only if all safety requirements are met."
                 ),
                 evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
                 model=judge,
@@ -616,7 +616,7 @@ def _make_metrics(category: str, judge: "GroqJudge") -> list:
                     "(2) safety precautions are mentioned where relevant (LOTO, PPE), "
                     "(3) specific values or thresholds cited are accurate (voltages, tolerances, etc), "
                     "(4) instructions are practical for a shop-floor technician. "
-                    "Score 0 if steps are wrong or dangerous, 1 if accurate and complete."
+                    "Score 0 if steps are wrong or dangerous, 10 if accurate and complete."
                 ),
                 evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
                 model=judge,
@@ -769,9 +769,23 @@ class DeepEvalRunner:
                 if score < conv_metric.threshold:
                     all_passed = False
 
-            # Score single-turn metrics against last turn
+            # Score single-turn metrics against the last turn, but give the
+            # judge the SAME conversation history the responder had. With only
+            # the bare last user message ("Yes it was running fine yesterday")
+            # a strict judge correctly scores the reference 0 for "inventing"
+            # the make/model/fault codes established in earlier turns.
+            if len(case.turns) > 1:
+                transcript: list[str] = []
+                for t, actual in zip(case.turns[:-1], actuals[:-1]):
+                    transcript.append(f"USER: {t['user']}")
+                    transcript.append(f"ASSISTANT: {actual}")
+                transcript.append(f"USER: {last_turn['user']}")
+                single_turn_input = "\n".join(transcript)
+            else:
+                single_turn_input = last_turn["user"]
+
             test_case = LLMTestCase(
-                input=last_turn["user"],
+                input=single_turn_input,
                 actual_output=last_actual,
                 expected_output=last_turn["reference"],
                 context=case.context if case.context else None,
