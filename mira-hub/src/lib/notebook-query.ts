@@ -235,10 +235,11 @@ export function rerankChunks<T extends Rerankable>(
     } else if (intent === "comm") {
       score += comm * 1.8;
       score -= Math.max(0, idx) * 1.5;
-    } else if (intent === "broad") {
-      score -= Math.max(0, idx) * 0.8; // mild: prefer real sections over indexes
     }
-    // param_lookup / spec / generic: no index penalty (the param row IS the answer).
+    // broad / param_lookup / spec / generic: no index penalty. (Broad already has
+    // facet fan-out + page diversity; an index penalty here MEASURABLY regressed
+    // "what protections?" — protection evidence lives in fault tables that read
+    // as index-like, so penalizing them demoted the answer's own evidence.)
 
     opts?.trace?.push({ page: c.sourcePage, base: c.rank, score, exactHit, index: idx, proc, comm });
     return { c, score, exactHit, i };
