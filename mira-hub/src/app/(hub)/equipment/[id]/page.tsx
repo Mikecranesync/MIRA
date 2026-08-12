@@ -3,11 +3,11 @@
 // Equipment notebook — mobile-first, chat-centered. Compact identity header,
 // a "Sources · N of M" sheet, chat, and citation → source viewer.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FilePlus2, Layers, X, Check } from "lucide-react";
-import { API_BASE } from "@/lib/config";
+import { ArrowLeft, FilePlus2, Layers, Loader2, X, Check } from "lucide-react";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import { NotebookChat, type ChatTurn } from "@/components/equipment/NotebookChat";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 
@@ -18,6 +18,7 @@ type Notebook = {
   model: string | null;
   locationLabel: string | null;
   identityStatus: string;
+  nodeId: string;
 };
 type Source = {
   docId: string;
@@ -37,6 +38,9 @@ export default function NotebookPage() {
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
@@ -93,6 +97,60 @@ export default function NotebookPage() {
     [enabled, id],
   );
 
+  // NotebookLM loop: pick a PDF → upload to this notebook's node (parks the
+  // original + chunks it via ingest-v2) → attach the indexed doc as a source →
+  // reload so it's immediately askable. Reuses the node-files and sources
+  // routes verbatim; no new server surface.
+  const uploadPdf = useCallback(
+    async (file: File) => {
+      if (!notebook?.nodeId) return;
+      if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+        setUploadNote(`That file is over the ${MAX_UPLOAD_MB} MB limit.`);
+        return;
+      }
+      setUploading(true);
+      setUploadNote(null);
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(`${API_BASE}/api/namespace/node/${notebook.nodeId}/files/`, {
+          method: "POST",
+          body: fd,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setUploadNote(data.error ?? "Upload failed — please try again.");
+          return;
+        }
+        if (data.indexed && data.uploadId) {
+          const att = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/sources/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ docId: data.uploadId, sourceRole: "manual" }),
+          });
+          if (!att.ok) {
+            setUploadNote("Uploaded, but it couldn't be attached as a source.");
+            return;
+          }
+          await load();
+          setUploadNote(
+            data.duplicate
+              ? "Already in the cabinet — attached to this notebook."
+              : "Source added. Ask away.",
+          );
+        } else {
+          // Parked but not indexed (image-only PDF etc.) — honest, not silent.
+          setUploadNote(data.warning ?? "Saved, but this file couldn't be indexed for chat.");
+        }
+      } catch {
+        setUploadNote("Upload failed — check the connection and try again.");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [notebook, id, load],
+  );
+
   const openCitation = useCallback(
     (c: EvidenceCitation) => {
       const q = c.page != null ? `?page=${c.page}` : "";
@@ -147,9 +205,12 @@ export default function NotebookPage() {
       </div>
 
       {sheetOpen && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setSheetOpen(false)}>
+        // z-50: must paint ABOVE the mobile bottom tab bar (z-40 in
+        // layout/bottom-tabs.tsx) — at z-40 the tab bar covered the sheet's
+        // bottom rows and swallowed their taps on phones.
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setSheetOpen(false)}>
           <div
-            className="w-full max-w-md rounded-t-2xl p-4 sm:rounded-2xl"
+            className="w-full max-w-md rounded-t-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-2xl"
             style={{ background: "var(--surface-0)", border: "1px solid var(--border)" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -204,9 +265,34 @@ export default function NotebookPage() {
                 })}
               </ul>
             )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void uploadPdf(f);
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || !notebook?.nodeId}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+              style={{ background: "var(--brand-blue)", color: "white", opacity: uploading || !notebook?.nodeId ? 0.6 : 1 }}
+            >
+              {uploading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <FilePlus2 size={16} aria-hidden />}
+              {uploading ? "Processing…" : "Upload PDF"}
+            </button>
+            {uploadNote && (
+              <p className="mt-2 text-center text-xs" role="status" style={{ color: "var(--foreground-muted)" }}>
+                {uploadNote}
+              </p>
+            )}
             <Link
               href="/namespace/"
-              className="mt-3 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+              className="mt-2 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
               style={{ border: "1px dashed var(--border)", color: "var(--foreground-muted)" }}
             >
               <FilePlus2 size={16} aria-hidden /> Add source in filing cabinet
