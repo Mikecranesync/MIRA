@@ -650,8 +650,8 @@ describe("retrieveNodeChunks docId scope", () => {
     });
     expect(out).toHaveLength(1);
     expect(calls).toHaveLength(1);
-    expect(calls[0].sql).toContain("doc_id = $5");
-    expect(calls[0].params).toContain(DOC_ID);
+    expect(calls[0].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(calls[0].params).toContainEqual([DOC_ID]);
   });
 
   it("keeps the doc_id filter on the OR fallback (gate F holds for conversational queries)", async () => {
@@ -662,9 +662,9 @@ describe("retrieveNodeChunks docId scope", () => {
       docId: DOC_ID,
     });
     expect(calls).toHaveLength(2);
-    expect(calls[0].sql).toContain("doc_id = $5");
-    expect(calls[1].sql).toContain("doc_id = $5");
-    expect(calls[1].params).toContain(DOC_ID);
+    expect(calls[0].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(calls[1].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(calls[1].params).toContainEqual([DOC_ID]);
   });
 
   it("omits the doc_id filter entirely when no docId is given (node-scope unchanged)", async () => {
@@ -673,7 +673,7 @@ describe("retrieveNodeChunks docId scope", () => {
       nodeId: "n-1",
       unsPath: null,
     });
-    expect(calls[0].sql).not.toContain("doc_id");
+    expect(calls[0].sql).not.toContain("doc_id = ANY"); // projection keeps doc_id::text; only the PREDICATE is omitted
   });
 });
 

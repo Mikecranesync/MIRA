@@ -13,12 +13,15 @@ interface FileContentRow {
 
 // Raster images render inline (thumbnails + click-to-view in the filing
 // cabinet). Deliberately a safelist, NOT `image/*`: SVG is scriptable and must
-// stay a download.
+// stay a download. PDF is inline for the Equipment Notebook source viewer
+// (citation tap → iframe at the cited page); browser PDF viewers render
+// outside the page origin, and nosniff stays on.
 const INLINE_MIME_SAFELIST = new Set([
   "image/png",
   "image/jpeg",
   "image/gif",
   "image/webp",
+  "application/pdf",
 ]);
 
 export async function GET(

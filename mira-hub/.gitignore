@@ -47,3 +47,8 @@ tests/e2e/.state/
 
 # Playwright E2E artifacts (screenshots, results json) — not committed
 tests/e2e/.artifacts/
+
+# Equipment Notebook Playwright run artifacts (creds-derived state, reports)
+tests/equipment/.state/
+tests/equipment/**/.report/
+tests/equipment/**/test-results/
