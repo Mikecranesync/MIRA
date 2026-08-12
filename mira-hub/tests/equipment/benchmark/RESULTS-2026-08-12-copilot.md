@@ -45,6 +45,21 @@ Symptom: after "where's the slowdown ramp?" → P042, the follow-up "what's the 
 - "where do I check that parameter?" → resolves to **b012 Control Source**, cited p.80.
 - "what parameter do I set first?" → **"Set C128 [EN Addr Sel] to 1 first … C129–C140 [3][4]"** cited p.103/104.
 
+## SESSION CLOSE — final tally (battery `final3`, live dev app, full PF525 manual)
+
+**53 turns = 30 single-turn + 23 multi-turn (5 conversations).** Deterministic auto-signals flag 6; **3 of those are the heuristic mis-flagging CORRECT refusals** (warranty + P999-adversarial + a variance-uncited broad answer), leaving **3 genuinely-weak turns**, all multi-turn (keypad-navigation, decel-too-high effect, return-to-topic).
+
+- **Single-turn: 30/30 acceptable** — no fabrications, no wrong answers; every grounded answer cited or correctly abstained.
+- **Multi-turn: ~21/23 turns good; 2 genuine failures** (topic-switch "what's the maximum?" lexical collision → P044; return-to-topic "go back to that decel setting").
+- **Both mission "known failures" FIXED for the right reason** (ranking, verified by trace): fault-clear (p.160 #1), profinet (premise corrected, p.185).
+- **Paraphrases generalize** (4/4 fault-reset, comm variants). **Adversarial safe** (no fabrication on P999/EtherCAT). **Zero regression** on the prior wins (multi-turn, completeness, F1, exact/fault/vocab, abstention).
+
+**Two late fixes (measured):**
+- **"taking too long to stop" → decel time (P042)** — the mission's own example conversation led with P045 [Stop Mode] then cascaded to abstentions; a vocabulary bridge now leads with P042 (default 10 s, max 600 s), all cited.
+- **Removed the broad-intent index penalty** — measured (4 runs): it demoted the protection evidence (fault tables read as index-like), making "what protections?" flip-flop abstain/answer (1/3 abstained). Removed → 3/3 answer with citations. A broad-only temperature experiment didn't help and was reverted.
+
+**Variance (measured, not guessed):** "what protections?" retrieval is deterministic; the residual variance is generation-only (facet count 2–4), no longer abstain-vs-answer. Documented as generation variance, not a retrieval defect.
+
 ## Procedure / section-aware ranking (the two "known failures", fixed for the right reason)
 
 `section_path` is NULL on v2 chunks, so ranking uses the chunk's CONTENT signature. Added an env-gated **retrieval trace** (`NOTEBOOK_RETRIEVAL_DEBUG=1` → per-candidate page/base-rank/rerank-score/features + winning pages) to make retrieval observable, then:
