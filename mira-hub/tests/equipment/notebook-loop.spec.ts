@@ -10,8 +10,12 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 
-// Safe disposable dev notebook (Conveyor 4). Overridable per environment.
-const NB = process.env.NOTEBOOK_ID ?? "39f36b8a-0303-4d85-a9aa-db63c4341172";
+// Notebook under test. Maintainer mode: NOTEBOOK_ID pins an existing notebook.
+// Default (new-user mode): the FIRST test creates one through the real UI from
+// a possibly-empty list — the loop must be provable for a brand-new account
+// with zero seeded state (the product milestone), not just the author's rig.
+let NB = process.env.NOTEBOOK_ID ?? "";
+const NB_NAME = `E2E Rig ${Date.now()}`;
 const FIXTURE = path.join(__dirname, "fixtures", "diagnostic-fixture.pdf");
 
 // Deterministic source state: enable every non-rejected source via the API so
@@ -51,7 +55,24 @@ async function enableOnly(request: ApiCtx, filenameSubstr: string): Promise<stri
   return target.docId;
 }
 
+// Serial: every later test operates on the notebook the first test creates
+// (or NOTEBOOK_ID). A creation failure should fail fast, not cascade timeouts.
+test.describe.configure({ mode: "serial" });
+
 test.describe("Equipment Notebook loop", () => {
+  test("new user: create a notebook from the (possibly empty) list", async ({ page }) => {
+    test.skip(Boolean(process.env.NOTEBOOK_ID), "NOTEBOOK_ID provided — maintainer mode");
+    // Creation uses a native prompt() dialog — accept it with the run's name.
+    page.on("dialog", (d) => void d.accept(NB_NAME));
+    await page.goto("equipment/");
+    await expect(page.getByRole("heading", { name: "Equipment Notebooks" })).toBeVisible();
+    await page.getByRole("button", { name: "New notebook" }).first().click();
+    await page.waitForURL(/\/equipment\/[0-9a-f-]{36}/, { timeout: 30_000 });
+    NB = page.url().match(/equipment\/([0-9a-f-]{36})/)![1];
+    // The fresh notebook lands on its chat with an (empty) sources header.
+    await expect(page.getByRole("button", { name: /^Sources · / })).toBeVisible();
+  });
+
   test("list → notebook renders without console/hydration errors", async ({ page }) => {
     const errors: string[] = [];
     page.on("console", (m) => {
@@ -63,7 +84,9 @@ test.describe("Equipment Notebook loop", () => {
 
     await page.goto("equipment/");
     await expect(page.getByRole("heading", { name: "Equipment Notebooks" })).toBeVisible();
-    await page.getByRole("link", { name: /Conveyor 4/ }).click();
+    // Navigate via the list card for the notebook under test (name-agnostic —
+    // works for both the created rig and a pinned NOTEBOOK_ID).
+    await page.locator(`a[href*="${NB}"]`).first().click();
     await expect(page).toHaveURL(new RegExp(`/equipment/${NB}/`));
     await expect(page.getByRole("button", { name: /^Sources · / })).toBeVisible();
     expect(errors, `unexpected console/page errors: ${errors.join(" | ")}`).toEqual([]);
@@ -77,8 +100,10 @@ test.describe("Equipment Notebook loop", () => {
     // The upload button and every source row must actually receive taps — the
     // z-index bug made them present-but-covered. trial:true asserts hittability.
     await dialog.getByRole("button", { name: /Upload PDF/ }).click({ trial: true });
-    const firstRow = dialog.locator("ul li button").first();
-    await firstRow.click({ trial: true });
+    // Row hit-testability applies only once a source exists (a fresh notebook
+    // opens the sheet with zero rows — that render is itself the assertion).
+    const rows = dialog.locator("ul li button");
+    if (await rows.count()) await rows.first().click({ trial: true });
     // Escape closes it (dialog semantics).
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();

@@ -403,6 +403,14 @@ approved:
     query_snippet: |
       FROM knowledge_entries
                   WHERE tenant_id = $1 AND doc_id = $2::uuid AND ingest_route = 'v2'
+  "mira-hub/src/lib/__tests__/notebook-isolation.test.ts:50":
+    approved_classification: UNFILTERED
+    query_sha256: "77a99070767e75fded5b01434c7683a6a4f8c69ed8832529b7d3da86f25fbeb0"
+    reason: "Not a database read: a regex assertion (/FROM knowledge_entries/.test) locating the generated SQL in a MOCK client's call log to prove the doc_id predicate is SQL-enforced (Gate D). No connection, no data."
+  "mira-hub/src/lib/__tests__/notebook-isolation.test.ts:65":
+    approved_classification: UNFILTERED
+    query_sha256: "196ec89e74c6b6020454fdb05d627aecb91b64c2b234e02fafd36786661cc2e6"
+    reason: "Same mock-client regex assertion as :50, for the no-docIds branch (predicate must be ABSENT). No database read."
   "mira-hub/src/lib/__tests__/t2108-doc-chat.integration.test.ts:125":
     approved_classification: TENANT-ONLY
     query_sha256: "732263844a55d35d5e13c1e4fd2e0ce3aeda3b27d8531cf1eda274c5674d2d11"
@@ -472,10 +480,10 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
-  "mira-hub/src/lib/manual-rag.ts:449":
+  "mira-hub/src/lib/manual-rag.ts:462":
     approved_classification: TENANT-ONLY
     query_sha256: "cc1440d0ac508462a69fb5918e7447883d1bbd032412b8cbeb3f08127aaf7e49"
-    reason: "retrieveNodeChunks (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Re-hashed for ARPK 1a: an optional AND doc_id = $5 narrows the SAME pure-tenant scope to one document — strictly tighter, never wider."
+    reason: "retrieveNodeChunks (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Re-hashed for ARPK 1a: an optional AND doc_id = ANY($5::uuid[]) narrows the SAME pure-tenant scope to an explicit allowed document set (Equipment Notebook source membership) — strictly tighter, never wider."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1

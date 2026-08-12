@@ -15,6 +15,14 @@ const NB = process.env.NOTEBOOK_ID ?? "39f36b8a-0303-4d85-a9aa-db63c4341172";
 const TRIAL = /Free trial/;
 
 test.describe("Equipment Notebook visuals", () => {
+  // Baselines encode the maintainer notebook's chrome. For an account that
+  // can't see that notebook (e.g. the new-user loop account), skip loudly
+  // instead of timing out — the loop project is the account-agnostic gate.
+  test.beforeEach(async ({ page }) => {
+    const r = await page.request.get(`api/equipment-notebooks/${NB}/`);
+    test.skip(!r.ok(), `notebook ${NB} not visible to this account — set NOTEBOOK_ID to a seeded notebook for visual baselines`);
+  });
+
   test("notebook list", async ({ page }) => {
     await page.goto("equipment/");
     await expect(page.getByRole("heading", { name: "Equipment Notebooks" })).toBeVisible();
