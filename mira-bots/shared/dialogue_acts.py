@@ -1,4 +1,4 @@
-"""Dialogue Act Classifier — single Groq llama-3.1-8b call returning a typed
+"""Dialogue Act Classifier — single Groq openai/gpt-oss-20b call returning a typed
 `DialogueTurn` (one of the 10 acts in `dialogue_state.py`).
 
 This is the "lightweight LLM call to classify the dialogue act before routing"
@@ -46,7 +46,7 @@ from .dialogue_state import (
 logger = logging.getLogger("mira-gsd")
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "openai/gpt-oss-20b"
 GROQ_TIMEOUT_S = 5.0
 GROQ_MAX_TOKENS = 220
 
@@ -223,7 +223,7 @@ async def classify_dialogue_act(
     Order of resolution:
     1. Regex short-circuits for unambiguous moves (don't_know, meta, greet,
        confirm, deny, WO/doc requests). Saves an LLM call on ~30% of turns.
-    2. Groq llama-3.1-8b call returning JSON.
+    2. Groq openai/gpt-oss-20b call returning JSON.
     3. Single retry on JSON parse failure (the LLM almost always recovers).
     4. Fallback to a keyword-derived act if Groq is unreachable.
 
@@ -277,6 +277,9 @@ async def _classify_via_groq(
         "temperature": 0.0,
         "max_tokens": GROQ_MAX_TOKENS,
         "response_format": {"type": "json_object"},
+        # gpt-oss spends completion tokens on reasoning; low effort keeps the
+        # JSON classification inside GROQ_MAX_TOKENS.
+        "reasoning_effort": "low",
     }
 
     async with httpx.AsyncClient(timeout=GROQ_TIMEOUT_S) as client:

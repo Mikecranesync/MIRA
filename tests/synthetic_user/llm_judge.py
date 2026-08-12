@@ -138,7 +138,7 @@ class LLMJudge:
 
     def __init__(self) -> None:
         self.api_key = os.getenv("GROQ_API_KEY", "")
-        self.model = os.getenv("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
+        self.model = os.getenv("GROQ_JUDGE_MODEL", "openai/gpt-oss-120b")
         self.enabled = bool(self.api_key)
         self._semaphore = asyncio.Semaphore(5)
 

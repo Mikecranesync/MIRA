@@ -19,7 +19,7 @@ Tiers (cheapest first; each is independently runnable):
                      staging phone test.
 
   groq   (--groq N)  Live router battery: N stratified corpus samples through
-                     the real conversation_router (Groq llama-3.1-8b-instant,
+                     the real conversation_router (Groq openai/gpt-oss-20b,
                      free tier), rate-limited. Measures (a) raw router intent
                      accuracy and (b) post-arbitration accuracy — the number
                      that actually matters, because the deterministic layer

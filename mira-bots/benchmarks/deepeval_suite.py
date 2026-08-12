@@ -1,6 +1,6 @@
 """MIRA DeepEval benchmark suite.
 
-Evaluates MIRA bot responses with a Groq LLM judge (llama-3.3-70b-versatile)
+Evaluates MIRA bot responses with a Groq LLM judge (openai/gpt-oss-120b)
 across 4 categories and 5 metrics. Complements benchmark_suite.py — same 20
 representative cases, scored with semantic quality instead of keyword checks.
 
@@ -72,7 +72,7 @@ _HERE = Path(__file__).parent.resolve()
 _RESULTS_DIR = _HERE / "deepeval_results"
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-JUDGE_MODEL = "llama-3.3-70b-versatile"
+JUDGE_MODEL = "openai/gpt-oss-120b"
 JUDGE_TIMEOUT = 30
 
 

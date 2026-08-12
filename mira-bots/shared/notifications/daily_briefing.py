@@ -1,7 +1,7 @@
 """Personalized daily briefing engine — role-aware AI summarization per user.
 
 Delivery channels: ntfy push | Resend email | (Telegram/Slack via bot adapters).
-LLM: Groq llama-3.1-8b-instant (~500 tokens per briefing, fast + cheap).
+LLM: Groq openai/gpt-oss-20b (~500 tokens per briefing, fast + cheap).
 
 Celery beat: every 15 minutes. Each run checks which profiles are due (preferred_time
 within the current 15-minute window, UTC-adjusted) and delivers to matching users.
@@ -27,7 +27,7 @@ logger = logging.getLogger("mira-briefing")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 NEON_DATABASE_URL = os.getenv("NEON_DATABASE_URL", "")
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh")
@@ -178,7 +178,7 @@ def build_briefing_context(rows: list[dict], profile: dict) -> str:
 
 
 async def summarize_briefing(context: str, profile: dict) -> str:
-    """Call Groq llama-3.1-8b-instant to produce a personalized briefing summary."""
+    """Call Groq openai/gpt-oss-20b to produce a personalized briefing summary."""
     role = profile.get("role", "technician")
     digest = profile.get("digest_length", "short")
     max_tokens = 200 if digest == "short" else 500
@@ -219,6 +219,9 @@ async def summarize_briefing(context: str, profile: dict) -> str:
                     "messages": messages,
                     "max_tokens": max_tokens,
                     "temperature": 0.3,
+                    # gpt-oss spends completion tokens on reasoning; low effort
+                    # keeps the briefing inside the short-digest 200-token cap.
+                    "reasoning_effort": "low",
                 },
             )
             resp.raise_for_status()

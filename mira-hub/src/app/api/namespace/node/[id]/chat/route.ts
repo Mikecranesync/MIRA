@@ -54,7 +54,7 @@ function getProviders(): CascadeProvider[] {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
       key: process.env.GROQ_API_KEY,
-      model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
+      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
     },
     {
       name: "Cerebras",
@@ -94,6 +94,9 @@ async function streamFromProvider(
         stream: true,
         max_tokens: 800,
         temperature: 0.3,
+        // gpt-oss spends completion tokens on reasoning; low effort preserves
+        // the 800-token budget for the streamed answer.
+        ...(provider.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
       }),
       signal: AbortSignal.timeout(30_000),
     });

@@ -208,7 +208,7 @@ def _build_providers() -> list[_Provider]:
                 name="groq",
                 api_url="https://api.groq.com/openai/v1/chat/completions",
                 api_key=groq_key,
-                model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
                 timeout=30.0,
                 # Groq removed ALL vision-capable models on 2026-07-18 (llama-4
                 # scout/maverick delisted; /v1/models lists nothing multimodal),

@@ -23,7 +23,7 @@ Each layer would have passed its own narrow unit test. The composite failure mod
 | 1 | DB / recall | `mira-bots/tests/test_recall_no_embedding_fallthrough.py` | `recall_knowledge(None, tenant, query)` returns non-empty when BM25 has hits |
 | 2 | Quality gate | `tests/test_quality_gate_stream_aware.py` | Merged chunks carry `retrieval_streams`; gate only suppresses vector-only chunks below the cosine threshold |
 | 3 | Engine | `mira-bots/tests/test_engine_no_embedding_gs11.py` | `RAGWorker.process()` with `_embed_ollama` mocked to None produces a prompt containing `8192` and sets `_last_no_kb = False` |
-| 4 | LLM judge | `mira-bots/benchmarks/deepeval_suite.py` case `de-in-06-gs11-modbus` | Groq llama-3.3-70b-versatile judge gives the reference answer ≥ 0.85 across the 5 metrics |
+| 4 | LLM judge | `mira-bots/benchmarks/deepeval_suite.py` case `de-in-06-gs11-modbus` | Groq openai/gpt-oss-120b judge gives the reference answer ≥ 0.85 across the 5 metrics |
 
 Layers 1-3 run offline (~2 seconds total). Layer 4 needs `GROQ_API_KEY` (Doppler `factorylm/prd`).
 

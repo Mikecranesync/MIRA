@@ -74,7 +74,7 @@ def build_endpoints(skip_local: bool) -> list[Endpoint]:
         eps.append(Endpoint(
             name="groq",
             url="https://api.groq.com/openai/v1/chat/completions",
-            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
             api_key=os.getenv("GROQ_API_KEY", ""),
         ))
     if os.getenv("CEREBRAS_API_KEY"):

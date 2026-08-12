@@ -276,7 +276,7 @@ def _pick_provider() -> str:
 async def _call_groq(messages: list[dict], max_tokens: int) -> str:
     import httpx
 
-    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             _GROQ_URL,

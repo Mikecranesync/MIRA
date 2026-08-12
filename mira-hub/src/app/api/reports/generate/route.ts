@@ -19,7 +19,7 @@ async function callLLM(prompt: string): Promise<string> {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
       key: process.env.GROQ_API_KEY,
-      model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
+      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
     },
     {
       name: "Cerebras",
@@ -46,6 +46,9 @@ async function callLLM(prompt: string): Promise<string> {
           messages: [{ role: "user", content: prompt }],
           max_tokens: 500,
           temperature: 0.4,
+          // gpt-oss spends completion tokens on reasoning; low effort keeps
+          // the report inside the 500-token cap.
+          ...(p.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
         }),
         signal: AbortSignal.timeout(15_000),
       });

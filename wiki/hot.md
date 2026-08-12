@@ -1,3 +1,19 @@
+# Hot Cache — 2026-08-11 — Groq model retirement migrated (P0 was 2026-08-16)
+
+Groq retires `llama-3.3-70b-versatile` + `llama-3.1-8b-instant` on **2026-08-16**. Branch
+`fix/groq-model-retirement` (own lane off main, does NOT wait for #3185) migrates every live
+default: 70b→`openai/gpt-oss-120b`, 8b-instant→`openai/gpt-oss-20b` — router cascade, Hub
+chat/report routes + `cascade.ts`, compose env defaults, code-review workflow, eval judges,
+direct classifier calls. **Trap found live:** gpt-oss burns completion tokens on reasoning —
+default effort HARD-FAILS a 64-token `json_object` call (`json_validate_failed`, empty
+generation); fix = `reasoning_effort: "low"` at every tight-budget Groq-direct site (gated on
+`"gpt-oss" in model` where env-overridable). Router path already safe (reasoning-burn retry).
+Verified: both ids micro-probed live; real `InferenceRouter` returned clean content at
+max_tokens=60 on the new default; 65 offline tests green; tsc adds no errors. Historical
+docs/specs deliberately untouched.
+
+---
+
 # Hot Cache — 2026-08-03 — Deploy-integrity lane (#3081 identity + #3055 tag-race)
 
 Deploy-integrity work in flight (both open; **do not repeat #3083/#3084 — merged**

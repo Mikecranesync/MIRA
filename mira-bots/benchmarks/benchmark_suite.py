@@ -1173,7 +1173,7 @@ async def _run_case(
 
 async def run_benchmark(version: str, cases: list[BenchmarkCase] | None = None) -> BenchmarkRun:
     api_key = os.getenv("GROQ_API_KEY", "")
-    model = os.getenv("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
+    model = os.getenv("GROQ_JUDGE_MODEL", "openai/gpt-oss-120b")
     target_cases = cases or ALL_CASES
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 

@@ -119,7 +119,7 @@ def _format_history(history: list[dict]) -> str:
 
 
 async def _call_router_llm(messages: list[dict]) -> str:
-    """Call Groq llama-3.1-8b-instant for routing — fast and cheap (~200ms)."""
+    """Call Groq openai/gpt-oss-20b for routing — fast and cheap (~200ms)."""
     groq_key = os.getenv("GROQ_API_KEY", "")
     if not groq_key:
         return json.dumps(
@@ -145,10 +145,13 @@ async def _call_router_llm(messages: list[dict]) -> str:
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}"},
                 json={
-                    "model": "llama-3.1-8b-instant",
+                    "model": "openai/gpt-oss-20b",
                     "messages": messages,
                     "temperature": 0.1,
                     "max_tokens": 150,
+                    # gpt-oss spends completion tokens on reasoning; low effort
+                    # keeps the routing JSON inside the 150-token cap.
+                    "reasoning_effort": "low",
                 },
             )
             resp.raise_for_status()

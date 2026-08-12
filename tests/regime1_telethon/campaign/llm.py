@@ -16,7 +16,7 @@ PROVIDERS = [
         "groq",
         "https://api.groq.com/openai/v1/chat/completions",
         "GROQ_API_KEY",
-        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
     ),
     (
         "cerebras",

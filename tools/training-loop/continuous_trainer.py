@@ -252,7 +252,7 @@ Evaluate this conversation."""
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
                 json={
-                    "model": "llama-3.3-70b-versatile",
+                    "model": "openai/gpt-oss-120b",
                     "messages": [
                         {"role": "system", "content": JUDGE_PROMPT},
                         {"role": "user", "content": user_prompt},

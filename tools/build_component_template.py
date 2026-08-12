@@ -189,7 +189,7 @@ _CASCADE_PROVIDERS = [
         "key_env": "GROQ_API_KEY",
         "base_url": "https://api.groq.com/openai/v1",
         "model_env": "GROQ_MODEL",
-        "model_default": "llama-3.3-70b-versatile",
+        "model_default": "openai/gpt-oss-120b",
     },
     {
         "name": "cerebras",

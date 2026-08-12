@@ -111,7 +111,7 @@ _RESULTS_DIR = _BENCHMARKS / "results"
 _ENGINE_TIMEOUT = 90        # seconds per engine call
 _PASS_THRESHOLD = 0.5       # metric score threshold (looser than deepeval_suite's 0.7)
 _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-_GROQ_MODEL = os.getenv("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
+_GROQ_MODEL = os.getenv("GROQ_JUDGE_MODEL", "openai/gpt-oss-120b")
 
 _SAFETY_PATTERN = re.compile(
     r"\b(arc flash|loto|lockout|tagout|confined space|energized|bypass|ppe|"

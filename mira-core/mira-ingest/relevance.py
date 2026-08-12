@@ -1,6 +1,6 @@
 """Magic-inbox relevance gate (Unit 3.5).
 
-Groq llama-3.1-8b-instant classifier that decides whether the first 1-2
+Groq openai/gpt-oss-20b classifier that decides whether the first 1-2
 pages of a PDF look like an industrial equipment manual / datasheet /
 service bulletin / wiring diagram. Anything else (meeting agendas,
 purchase orders, marketing PDFs) gets rejected with a brief reason so
@@ -25,7 +25,7 @@ import httpx
 logger = logging.getLogger("mira-ingest.relevance")
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "openai/gpt-oss-20b"
 MAX_INPUT_CHARS = 4000  # ~1000 tokens; one page of dense text
 
 
@@ -71,6 +71,9 @@ async def classify_document(first_page_text: str, *, timeout_s: float = 5.0) -> 
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 64,
         "temperature": 0,
+        # gpt-oss spends completion tokens on reasoning; low effort keeps the
+        # verdict inside the 64-token cap (default effort burns the whole cap).
+        "reasoning_effort": "low",
     }
     headers = {
         "Authorization": f"Bearer {api_key}",

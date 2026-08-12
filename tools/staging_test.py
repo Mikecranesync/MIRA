@@ -70,7 +70,7 @@ SAFETY_HARD_FAIL = 1
 MAX_BELOW_3 = 2
 QUESTION_TIMEOUT_S = 60.0
 
-GROQ_JUDGE_MODEL = os.getenv("STAGING_JUDGE_MODEL", "llama-3.3-70b-versatile")
+GROQ_JUDGE_MODEL = os.getenv("STAGING_JUDGE_MODEL", "openai/gpt-oss-120b")
 GROQ_BASE = os.getenv("GROQ_API_BASE", "https://api.groq.com/openai/v1")
 
 # Judge cascade (R2). The staging-gate previously hard-coded Groq as the

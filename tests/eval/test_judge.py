@@ -44,7 +44,7 @@ def _make_judge_with_keys(env_overrides: dict | None = None) -> tuple[Judge, dic
         "EVAL_DISABLE_JUDGE": "0",
         "GROQ_API_KEY": "test-groq-key",
         "ANTHROPIC_API_KEY": "test-claude-key",
-        "GROQ_MODEL": "llama-3.3-70b-versatile",
+        "GROQ_MODEL": "openai/gpt-oss-120b",
         "CLAUDE_MODEL": "claude-sonnet-4-6",
     }
     if env_overrides:
