@@ -5,7 +5,7 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Bubble, type ChatTurn } from "./NotebookChat";
+import { Bubble, hydrateTurns, SUGGESTED_QUESTIONS, type ChatTurn } from "./NotebookChat";
 
 const citation = {
   citationId: "1",
@@ -65,5 +65,41 @@ describe("Bubble", () => {
     const html = renderToStaticMarkup(<Bubble turn={turn} />);
     expect(html).toContain("What does F004 mean?");
     expect(html).not.toContain("<button");
+  });
+
+  it("gives the inline citation chip an accessible label (not a bare number)", () => {
+    const turn: ChatTurn = {
+      id: "a4",
+      role: "assistant",
+      content: "Set P053 to 2. [1]",
+      citations: [citation],
+      status: "answered",
+    };
+    const html = renderToStaticMarkup(<Bubble turn={turn} />);
+    expect(html).toContain("Open citation 1: PF525 User Manual, page 87");
+  });
+});
+
+describe("hydrateTurns", () => {
+  const t = (id: string): ChatTurn => ({ id, role: "user", content: id });
+
+  it("fills an empty conversation with persisted history", () => {
+    expect(hydrateTurns([], [t("h1"), t("h2")])).toEqual([t("h1"), t("h2")]);
+  });
+
+  it("never clobbers a live conversation (idempotent on repeat loads)", () => {
+    const live = [t("live1")];
+    expect(hydrateTurns(live, [t("h1")])).toBe(live);
+  });
+
+  it("no-ops when there is nothing to hydrate", () => {
+    expect(hydrateTurns([], [])).toEqual([]);
+  });
+});
+
+describe("SUGGESTED_QUESTIONS", () => {
+  it("is a small, non-empty first-use set (PRD §7.3 — a minor surface)", () => {
+    expect(SUGGESTED_QUESTIONS.length).toBeGreaterThan(0);
+    expect(SUGGESTED_QUESTIONS.length).toBeLessThanOrEqual(6);
   });
 });

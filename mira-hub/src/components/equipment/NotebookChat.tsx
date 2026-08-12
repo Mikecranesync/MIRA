@@ -17,6 +17,21 @@ export type ChatTurn = {
   citations?: EvidenceCitation[];
 };
 
+/** PRD §7.3 first-use suggested questions — a minor surface, not a feature. */
+export const SUGGESTED_QUESTIONS = [
+  "What does this fault mean?",
+  "What should I check first?",
+  "Where is the power input?",
+  "What are the motor specs?",
+] as const;
+
+/** Pure hydration rule (unit-tested): persisted turns fill the chat exactly
+ *  once — only while the conversation is still empty. A live conversation is
+ *  never clobbered by a late (or repeated) load of the same history. */
+export function hydrateTurns(prev: ChatTurn[], initial: ChatTurn[]): ChatTurn[] {
+  return prev.length === 0 && initial.length > 0 ? initial : prev;
+}
+
 /** Pure leaf — unit-tested via renderToStaticMarkup. Renders answer text with
  *  clickable [n] markers wired to the matching citation. */
 export function Bubble({
@@ -51,15 +66,19 @@ export function Bubble({
             if (m) {
               const c = cites.find((x) => x.citationId === m[1]);
               if (c) {
+                // Rounded numbered chip, ≥22px tall — PRD §26 forbids tiny
+                // citation hit targets; §15 wants [n] tappable with a
+                // source-title hint.
                 return (
                   <button
                     key={i}
                     onClick={() => onCite?.(c)}
-                    className="mx-0.5 rounded px-1 text-xs font-medium align-baseline"
+                    className="mx-0.5 inline-flex min-h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-xs font-semibold align-baseline"
                     style={{ background: "var(--brand-blue)", color: "white" }}
                     title={`${c.sourceTitle}${c.page != null ? ` · p. ${c.page}` : ""}`}
+                    aria-label={`Open citation ${m[1]}: ${c.sourceTitle}${c.page != null ? `, page ${c.page}` : ""}`}
                   >
-                    {p}
+                    {m[1]}
                   </button>
                 );
               }
@@ -107,6 +126,16 @@ export function NotebookChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Persisted history loads async in the parent — hydrate once it arrives.
+  // Without this, the server-side turns never render (Gate I client gap). The
+  // functional update is idempotent (see hydrateTurns) so it never clobbers a
+  // live conversation. Same async-prop-sync pattern as equipment/[id]/page.tsx.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync to async-loaded prop; idempotent via hydrateTurns
+    setTurns((prev) => hydrateTurns(prev, initialTurns));
+  }, [initialTurns]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -199,12 +228,35 @@ export function NotebookChat({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Bottom padding reserves room for the fixed composer so the last
-          message is never hidden behind it. */}
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 pb-24">
+      {/* The chat log owns the scroll; the composer below is a normal flex item
+          pinned to the column bottom (the page sets the column height). No
+          fixed/sticky positioning → the composer can't slide under the desktop
+          sidebar and never hides under the mobile tab bar. */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3" aria-busy={busy} data-testid="notebook-chat-log">
         {turns.length === 0 && (
-          <div className="py-8 text-center text-sm" style={{ color: "var(--foreground-subtle)" }}>
-            Ask this machine anything about its selected sources.
+          <div className="py-8 text-center">
+            <p className="text-sm" style={{ color: "var(--foreground-subtle)" }}>
+              Ask this machine anything about its selected sources.
+            </p>
+            <div className="mx-auto mt-4 flex max-w-sm flex-wrap justify-center gap-2">
+              {SUGGESTED_QUESTIONS.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => {
+                    setInput(q);
+                    inputRef.current?.focus();
+                  }}
+                  className="rounded-full px-3 py-1.5 text-xs"
+                  style={{
+                    border: "1px solid var(--border)",
+                    color: "var(--foreground-muted)",
+                    background: "var(--surface-1)",
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {turns.map((t) => (
@@ -217,19 +269,19 @@ export function NotebookChat({
         )}
         <div ref={endRef} />
       </div>
-      {/* Fixed above the hub's mobile bottom-tab bar — immune to top-chrome
-          height (trial banner + nav) that a viewport-height calc mis-measures.
-          On desktop the tab bar is hidden but the token stays 56px, leaving a
-          small harmless gap; phone-first is the priority (PRD §5). */}
+      {/* Composer: a plain flex item at the column bottom. The parent column's
+          height (set by the page: 100dvh minus the mobile tab bar) keeps it
+          visible above the tab bar, and above the mobile keyboard because dvh
+          shrinks when the keyboard opens. Safe-area padding for the home bar. */}
       <div
-        className="fixed inset-x-0 z-30 mx-auto flex max-w-3xl items-end gap-2 border-t p-2"
+        className="flex shrink-0 items-end gap-2 border-t p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
         style={{
           borderColor: "var(--border)",
           background: "var(--surface-0)",
-          bottom: "calc(var(--bottom-tab-height, 0px) + env(safe-area-inset-bottom, 0px))",
         }}
       >
         <textarea
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {

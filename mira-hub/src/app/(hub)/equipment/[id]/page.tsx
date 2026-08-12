@@ -159,6 +159,32 @@ export default function NotebookPage() {
     [id, router],
   );
 
+  // Mobile back-button closes the sheet before leaving the page (PRD mobile
+  // nav: Back closes the active surface first). Push a history entry when the
+  // sheet opens; popstate closes it. Closing via X/scrim/Escape unwinds the
+  // pushed entry so Back doesn't need two taps.
+  const openSheet = useCallback(() => {
+    setSheetOpen(true);
+    window.history.pushState({ sheet: true }, "");
+  }, []);
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false);
+    if (window.history.state?.sheet) window.history.back();
+  }, []);
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onPop = () => setSheetOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeSheet();
+    };
+    window.addEventListener("popstate", onPop);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [sheetOpen, closeSheet]);
+
   if (notFound) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center" style={{ color: "var(--foreground-muted)" }}>
@@ -172,10 +198,13 @@ export default function NotebookPage() {
 
   return (
     <div
-      className="mx-auto flex min-h-[60vh] w-full max-w-3xl flex-col"
+      // Own the column height so the chat log scrolls internally and the
+      // composer sticks to the bottom. The hub <main> reserves the bottom-tab
+      // height on mobile; subtract it so nothing hides under the tab bar.
+      className="mx-auto flex w-full max-w-3xl flex-col h-[calc(100dvh-var(--bottom-tab-height))] md:h-[100dvh]"
       style={{ color: "var(--foreground)" }}
     >
-      <header className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
+      <header className="flex shrink-0 items-center gap-2 border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
         <Link href="/equipment" aria-label="Back" style={{ color: "var(--foreground-muted)" }}>
           <ArrowLeft size={18} />
         </Link>
@@ -187,7 +216,9 @@ export default function NotebookPage() {
           </div>
         </div>
         <button
-          onClick={() => setSheetOpen(true)}
+          onClick={openSheet}
+          aria-haspopup="dialog"
+          aria-expanded={sheetOpen}
           className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium"
           style={{ border: "1px solid var(--border)" }}
         >
@@ -205,18 +236,25 @@ export default function NotebookPage() {
       </div>
 
       {sheetOpen && (
-        // z-50: must paint ABOVE the mobile bottom tab bar (z-40 in
-        // layout/bottom-tabs.tsx) — at z-40 the tab bar covered the sheet's
-        // bottom rows and swallowed their taps on phones.
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setSheetOpen(false)}>
+        // --z-overlay (50): above nav chrome (--z-nav 40 = bottom tab bar +
+        // sidebar). At z-40 the tab bar covered the sheet's rows and swallowed
+        // their taps on phones (the class of bug this token scale prevents).
+        <div
+          className="fixed inset-0 z-[var(--z-overlay)] flex items-end justify-center sm:items-center"
+          style={{ background: "rgba(0,0,0,0.4)" }}
+          onClick={closeSheet}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sources"
+        >
           <div
-            className="w-full max-w-md rounded-t-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-2xl"
+            className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-2xl"
             style={{ background: "var(--surface-0)", border: "1px solid var(--border)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Sources</h2>
-              <button onClick={() => setSheetOpen(false)} aria-label="Close" style={{ color: "var(--foreground-muted)" }}>
+              <button onClick={closeSheet} aria-label="Close" style={{ color: "var(--foreground-muted)" }}>
                 <X size={18} />
               </button>
             </div>
