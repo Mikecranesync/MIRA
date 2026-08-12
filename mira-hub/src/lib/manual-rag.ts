@@ -385,7 +385,7 @@ export async function retrieveNodeChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
-  opts: { nodeId: string; unsPath: string | null; topK?: number },
+  opts: { nodeId: string; unsPath: string | null; topK?: number; docId?: string },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
   if (!q) return [];
@@ -425,6 +425,16 @@ export async function retrieveNodeChunks(
   const OR_TSQUERY =
     "to_tsquery('english', replace(plainto_tsquery('english', $2)::text, ' & ', ' | '))";
 
+  // ARPK Phase 1a — document scope. When a docId is given, the retrieval
+  // boundary narrows from the node subtree to ONE document (doc_id =
+  // hub_uploads.id, stamped on every v2 chunk at ingest). Gate F of the PRD:
+  // a doc-scoped ask must never ground in a sibling document parked on the
+  // same node, so the predicate applies to BOTH the AND and OR passes. The
+  // node/tenant predicates stay — a docId outside this node's subtree (or
+  // another tenant) yields [] ("no coverage"), never a cross-scope leak.
+  const docParams = opts.docId ? [opts.docId] : [];
+  const docClause = opts.docId ? "AND doc_id = $5::uuid" : "";
+
   const runRetrieval = async (tsquery: string) => {
     const res = await client.query(
       `SELECT
@@ -441,10 +451,11 @@ export async function retrieveNodeChunks(
           AND ingest_route = 'v2'
           ${approvalFilterSql()}
           AND (metadata->>'node_id') = ANY($3::text[])
+          ${docClause}
           AND content_tsv @@ ${tsquery}
         ORDER BY rank DESC
         LIMIT $4`,
-      [tenantId, boundBm25Query(q), nodeIds, topK],
+      [tenantId, boundBm25Query(q), nodeIds, topK, ...docParams],
     );
     return res.rows;
   };
@@ -473,6 +484,38 @@ export async function retrieveNodeChunks(
     rank: Number(r.rank ?? 0),
     verified: r.verified === true,
   }));
+}
+
+/**
+ * System prompt for DOCUMENT-scoped chat (ARPK Phase 1a). The user explicitly
+ * selected one document, so the scope statement names the file, and the persona
+ * is deliberately domain-NEUTRAL: a doc-scoped chat may be grounded in a
+ * consumer product manual (the T2108 canary), where the industrial persona
+ * ("maintenance assistant for industrial equipment", "techs are on the floor")
+ * misframes answers. Grounding, [n]-citation, honest-refusal, and safety rules
+ * are kept verbatim in spirit from buildNodeSystemPrompt.
+ */
+export function buildDocScopedSystemPrompt(doc: {
+  filename: string;
+  nodeName: string;
+  unsPath: string | null;
+}): string {
+  return `You are MIRA, a document-grounded assistant built by FactoryLM.
+
+## Document in scope
+- Document: ${doc.filename}
+- Attached at namespace node: ${doc.nodeName}${doc.unsPath ? ` (${doc.unsPath})` : ""}
+
+The user selected this document. Every answer must be grounded in it.
+
+## Instructions
+- Answer using ONLY the documentation provided below — it is excerpted from the selected document.
+- Cite sources with [n] markers matching the numbered documentation blocks.
+- If the documentation does not cover the question, say so plainly — never guess at
+  specifications, procedures, error meanings, or safety steps.
+- Keep answers concise and actionable.
+- If the question involves electrical work, stored energy, or any hazardous procedure,
+  repeat the document's safety prerequisites before the steps and tell the user to follow them.`;
 }
 
 /**

@@ -95,6 +95,9 @@ export default function NamespacePage() {
   const [nodeFiles, setNodeFiles] = useState<Record<string, FileRecord[]>>({});
   const [ctxMenu, setCtxMenu] = useState<{ node: NamespaceNode; x: number; y: number } | null>(null);
   const [pendingChat, setPendingChat] = useState(false);
+  // ARPK 1d — `?doc=<hub_uploads.id>&docname=<filename>` scopes the opened Ask
+  // MIRA panel to ONE document (the per-document Chat action on /documents).
+  const [docScope, setDocScope] = useState<{ docId: string; docName: string | null } | null>(null);
   const [deepLinkApplied, setDeepLinkApplied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -179,6 +182,10 @@ export default function NamespacePage() {
     setExpandedIds((prev) => new Set([...prev, ...chain.map((n) => n.id)]));
     setSelected(target);
     void loadFiles(target.id);
+    const docParam = params.get("doc");
+    if (docParam && /^[0-9a-f-]{36}$/i.test(docParam)) {
+      setDocScope({ docId: docParam, docName: params.get("docname") });
+    }
     if (params.get("chat") === "1") setPendingChat(true);
   }, [deepLinkApplied, loading, tree, loadFiles]);
 
@@ -536,6 +543,7 @@ export default function NamespacePage() {
               uploadState={uploadState}
               openChat={pendingChat}
               onChatOpened={() => setPendingChat(false)}
+              docScope={docScope}
               onSelect={handleSelect}
               onDeleteFile={(fileId) => handleDeleteFile(fileId, selected.id)}
               onVerifyFile={(fileId, verified) => handleVerifyFile(fileId, selected.id, verified)}
@@ -813,7 +821,7 @@ function TreeNode({
 // ── ContentPanel ──────────────────────────────────────────────────────────────
 
 function ContentPanel({
-  node, files, uploadState, openChat, onChatOpened,
+  node, files, uploadState, openChat, onChatOpened, docScope,
   onSelect, onDeleteFile, onVerifyFile, onUpload,
 }: {
   node: NamespaceNode;
@@ -821,6 +829,8 @@ function ContentPanel({
   uploadState: UploadState;
   openChat: boolean;
   onChatOpened: () => void;
+  /** ARPK 1d — scope the Ask MIRA panel to one document (from `?doc=`). */
+  docScope: { docId: string; docName: string | null } | null;
   onSelect: (n: NamespaceNode) => void;
   onDeleteFile: (fileId: string) => void;
   onVerifyFile: (fileId: string, verified: boolean) => void;
@@ -903,7 +913,14 @@ function ContentPanel({
 
       {showChat ? (
         <div className="min-h-0 flex-1">
-          <NodeChat key={node.id} nodeId={node.id} nodeName={node.name} unsPath={node.unsPath} />
+          <NodeChat
+            key={docScope ? `${node.id}_doc_${docScope.docId}` : node.id}
+            nodeId={node.id}
+            nodeName={node.name}
+            unsPath={node.unsPath}
+            docId={docScope?.docId}
+            docName={docScope?.docName ?? undefined}
+          />
         </div>
       ) : (
       <div className="flex-1 overflow-auto p-3">

@@ -11,6 +11,7 @@ import {
   isRefusalAnswer,
   retrieveManualChunks,
   retrieveNodeChunks,
+  buildDocScopedSystemPrompt,
   type ManualChunk,
 } from "../manual-rag";
 
@@ -630,5 +631,77 @@ describe("citation page guard (#2910) — suppress chunk-index-as-page", () => {
   it("no chunkIndex present → page shown unchanged (back-compat: node/page_start path)", () => {
     const src = chunksToSources([{ ...base, sourcePage: 88 }]);
     expect(src[0].page).toBe(88);
+  });
+});
+
+// ── Document-scoped retrieval (ARPK Phase 1a) ──────────────────────────────
+// PRD: docs/plans/2026-08-10-prd-agent-readable-product-knowledge-t2108.md
+// "Retrieval must scope by doc_id" + acceptance gate F: a doc-scoped ask must
+// not retrieve sibling documents parked on the same node.
+describe("retrieveNodeChunks docId scope", () => {
+  const DOC_ID = "5f9b2c1a-0000-4000-8000-000000000001";
+
+  it("filters by doc_id on the AND query when docId is given", async () => {
+    const { client, calls } = makeClient([[nodeRow()]]);
+    const out = await retrieveNodeChunks(client, "t-1", "how do I clean the brush", {
+      nodeId: "n-1",
+      unsPath: null,
+      docId: DOC_ID,
+    });
+    expect(out).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).toContain("doc_id = $5");
+    expect(calls[0].params).toContain(DOC_ID);
+  });
+
+  it("keeps the doc_id filter on the OR fallback (gate F holds for conversational queries)", async () => {
+    const { client, calls } = makeClient([[], [nodeRow()]]);
+    await retrieveNodeChunks(client, "t-1", "why does it move randomly?", {
+      nodeId: "n-1",
+      unsPath: null,
+      docId: DOC_ID,
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0].sql).toContain("doc_id = $5");
+    expect(calls[1].sql).toContain("doc_id = $5");
+    expect(calls[1].params).toContain(DOC_ID);
+  });
+
+  it("omits the doc_id filter entirely when no docId is given (node-scope unchanged)", async () => {
+    const { client, calls } = makeClient([[nodeRow()]]);
+    await retrieveNodeChunks(client, "t-1", "GS10 oC overcurrent", {
+      nodeId: "n-1",
+      unsPath: null,
+    });
+    expect(calls[0].sql).not.toContain("doc_id");
+  });
+});
+
+// ── Document-scoped neutral prompt (ARPK Phase 1a) ─────────────────────────
+// PRD: "Use neutral prompts for unknown vendors." A doc-scoped chat is
+// grounded in ONE user-selected document that may be a consumer manual — the
+// industrial persona ("maintenance assistant for industrial equipment", "techs
+// on the floor") is wrong there. Grounding + citation + safety rules stay.
+describe("buildDocScopedSystemPrompt", () => {
+  const prompt = buildDocScopedSystemPrompt({
+    filename: "T2108_Manual_EN.pdf",
+    nodeName: "Inbox",
+    unsPath: "inbox",
+  });
+
+  it("names the selected document and the node scope", () => {
+    expect(prompt).toContain("T2108_Manual_EN.pdf");
+    expect(prompt).toContain("Inbox");
+  });
+
+  it("is vendor/domain neutral — no industrial persona", () => {
+    expect(prompt.toLowerCase()).not.toContain("industrial");
+    expect(prompt.toLowerCase()).not.toContain("techs are on the floor");
+  });
+
+  it("keeps the grounding, citation, and safety rules", () => {
+    expect(prompt).toContain("ONLY the documentation provided");
+    expect(prompt).toContain("[n]");
+    expect(prompt.toLowerCase()).toContain("safety");
   });
 });
