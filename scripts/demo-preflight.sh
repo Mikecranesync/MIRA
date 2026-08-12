@@ -60,7 +60,7 @@ fi
 
 # ── 3. mira-pipeline-saas live ───────────────────────────────────────────────
 TOTAL=$((TOTAL + 1))
-PIPELINE_PAYLOAD='{"model":"llama-3.1-8b-instant","messages":[{"role":"user","content":"ping"}],"max_tokens":5}'
+PIPELINE_PAYLOAD='{"model":"openai/gpt-oss-20b","messages":[{"role":"user","content":"ping"}],"max_tokens":5}'
 PIPELINE_HTTP=$(curl -sf --max-time 10 -o /dev/null -w "%{http_code}" \
   -X POST https://app.factorylm.com/v1/chat/completions \
   -H "Content-Type: application/json" \

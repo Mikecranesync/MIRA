@@ -134,10 +134,13 @@ class PromptOptimizerAgent(MIRAAgent):
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
                     json={
-                        "model": "llama-3.3-70b-versatile",
+                        "model": "openai/gpt-oss-120b",
                         "messages": [{"role": "user", "content": llm_prompt}],
                         "max_tokens": 400,
                         "temperature": 0.3,
+                        # gpt-oss spends completion tokens on reasoning; low
+                        # effort keeps the suggestion inside the 400-token cap.
+                        "reasoning_effort": "low",
                     },
                 )
                 resp.raise_for_status()

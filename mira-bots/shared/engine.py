@@ -3152,7 +3152,7 @@ class Supervisor:
 
             # Stage 1 (2026-05-04) — Dialogue State Tracker dispatch. Behind
             # MIRA_USE_DST flag; default OFF. When enabled the tracker is the
-            # single routing decision (PLAN.md §2.3): one Groq llama-3.1-8b
+            # single routing decision (PLAN.md §2.3): one Groq openai/gpt-oss-20b
             # call returning a typed DialogueTurn → DispatchPlan → handler.
             # The Stage 0 regex fast-paths below stay in place as the OFF-flag
             # path AND as the shortcircuit a DST tracker hits before the LLM

@@ -21,7 +21,7 @@ x-bot-common-env: &bot-common-env
   OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
   OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct:free}
   GROQ_API_KEY: ${GROQ_API_KEY:-}
-  GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+  GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-}
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
   CEREBRAS_MODEL: ${CEREBRAS_MODEL:-gpt-oss-120b}
@@ -225,7 +225,7 @@ services:
       - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
       - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_MODEL=llama-3.3-70b-versatile
+      - GROQ_MODEL=openai/gpt-oss-120b
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=gpt-oss-120b
@@ -329,7 +329,7 @@ services:
       - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
       - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_MODEL=llama-3.3-70b-versatile
+      - GROQ_MODEL=openai/gpt-oss-120b
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=gpt-oss-120b
@@ -428,7 +428,7 @@ services:
       - MIRA_WO_EVIDENCE_TIMEOUT_S=${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}
       - MIRA_WO_EVIDENCE_LIMIT=${MIRA_WO_EVIDENCE_LIMIT:-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_MODEL=llama-3.3-70b-versatile
+      - GROQ_MODEL=openai/gpt-oss-120b
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=gpt-oss-120b
@@ -792,7 +792,7 @@ services:
       - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
       # LLM cascade for AI Reports (Groq → Cerebras → Together)
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-gpt-oss-120b}
       - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
