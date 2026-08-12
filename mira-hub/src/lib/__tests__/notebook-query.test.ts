@@ -138,9 +138,26 @@ describe("isReferentialFollowup", () => {
     expect(isReferentialFollowup("why?")).toBe(true);
   });
 
-  it("does not flag a long self-contained question", () => {
+  it("flags a pronoun used as a verb OBJECT ('set that to?', 'turn it up')", () => {
+    // The case that was silently missed — "that" is the object of "set…to",
+    // so the follow-up must still pull the thread's subject into retrieval.
+    expect(isReferentialFollowup("what's the max I can set that to?")).toBe(true);
+    expect(isReferentialFollowup("can I turn it up a bit more than that?")).toBe(true);
+    expect(isReferentialFollowup("how do I change it for the second motor?")).toBe(true);
+  });
+
+  it("flags ordinal/sequence continuations with no pronoun ('what do I set first?')", () => {
+    expect(isReferentialFollowup("what parameter do I set first?")).toBe(true);
+    expect(isReferentialFollowup("okay what is next after that?")).toBe(true);
+  });
+
+  it("does not flag a long self-contained question or a bare determiner", () => {
     expect(
       isReferentialFollowup("How do I configure the EtherNet/IP address on a PowerFlex 525 drive from the keypad?"),
+    ).toBe(false);
+    // "this drive" is a determiner, not a pronoun reference → still self-contained.
+    expect(
+      isReferentialFollowup("What is the maximum value of parameter P042 on this drive controller?"),
     ).toBe(false);
   });
 });

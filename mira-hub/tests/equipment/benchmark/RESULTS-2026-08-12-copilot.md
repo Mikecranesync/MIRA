@@ -34,9 +34,20 @@ language, judged for factual / grounded / complete / helpful, then iterated.
 3. **Broad answer-shape directive** — enumerate every option the excerpts prove (embedded AND optional), each cited, then offer the next step. Never lists an unproven option.
 4. **gpt-oss budget fix** — `reasoning_effort:low` on Groq + `max_tokens` 1400 for broad answers: the hidden reasoning was eating the 800-token completion budget and truncating broad lists.
 
-## Hardest remaining failure (honest)
+## F1 — referential follow-ups (fixed in `after5`/`after6`)
 
-**F1 — referential follow-ups that ask a named parameter's *spec* over-abstain.**
-E.g. after "where's the slowdown ramp?" → P042, the follow-up "what's the max I can set that to?" answers *"not specified in the excerpts"* — even though P042's max (600 s) is in the manual (the single-turn accel-max returns it fine). Root cause **verified**: the follow-up retrieves the parameter's *definition* chunk but not its *range/spec* chunk (different page; tables split the param number from the range), so the model correctly refuses rather than hallucinate. A prompt nudge + topK bump did **not** move it (tried in `after4`, reverted) — confirming it's a **retrieval** problem (definition-vs-spec chunk, table-aware retrieval), the next PR's target. Not masked, not weakened.
+Symptom: after "where's the slowdown ramp?" → P042, the follow-up "what's the max I can set that to?" answered *"not specified in the excerpts"* — even though P042's max (600 s) sits right in the p.66 chunk (`P042 [Decel Time 1] 0.00/600.00 s`).
 
-Lesser: wrong-assumption ("where's the Profinet setting?") flatly abstains instead of correcting with the adapter table it can retrieve ("no embedded PROFINET; only via adapter"); "how do I clear a fault?" misses A551 on the full-manual corpus.
+**Root cause (found by instrumenting the route, not guessing):** the follow-up's retrieval query was **never augmented** — the debug log showed `rq="what's the max I can set that to?"` unchanged, retrieving pages `[139,139,47,126,235,100]` (none is p.66). `isReferentialFollowup` under-detected: "that" is the **object** of "set…to" (not "that"+verb), so it wasn't recognized as referential and `buildRetrievalQuery` never folded the thread's P042/decel tokens in. The earlier prompt/topK nudge failed *because the model never received the P042 chunk* — it was a **detection** bug, not an answer bug.
+
+**Fix:** broadened `isReferentialFollowup` to catch a pronoun used as a verb object ("set that", "turn it up"), a pronoun before a target particle ("that to", "it up"), and ordinal continuations with no pronoun ("what do I set **first**?"). Now:
+- "what's the max I can set that to?" → **"600.00 seconds [1]"** cited p.86.
+- "where do I check that parameter?" → resolves to **b012 Control Source**, cited p.80.
+- "what parameter do I set first?" → **"Set C128 [EN Addr Sel] to 1 first … C129–C140 [3][4]"** cited p.103/104.
+
+## Hardest remaining (honest, non-systematic)
+
+- **IP-value reasoning:** "mine says 192.168.1.20, is that okay?" → honest refusal ("the excerpts don't specify"). A great copilot would reason about the IP format from general knowledge while grounding subnet/gateway in the manual — but forcing that risks ungrounded answers, so left as-is for now.
+- **Ambiguous "that parameter"** in the won't-run thread (command-word vs start-source, both discussed) resolves ~half the time — LLM variance at temp 0.3, not a systematic miss.
+- **Wrong-assumption redirect:** "where's the Profinet setting?" flatly abstains instead of correcting with the adapter table it can retrieve ("no embedded PROFINET; only via adapter"). Next.
+- **"how do I clear a fault?"** misses A551 on the full-manual corpus (retrieval). Next.

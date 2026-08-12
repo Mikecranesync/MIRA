@@ -185,16 +185,31 @@ export function sanitizeHistory(raw: unknown, maxTurns = 6, maxChars = 2000): Ch
 // message is very short / opens with a follow-up connective.
 const FOLLOWUP_LEAD = /^(and|so|but|no|ok|okay|then|what about|how about|why|what if|now)\b/i;
 const PRONOUN = "(?:it|that|this|those|these|one|mine|them)";
+// Pronoun as SUBJECT before a verb/aux: "what should THAT be set to?", "does IT fault?".
 const PRONOUN_VERB = new RegExp(
   `\\b${PRONOUN}\\s+(?:is|are|was|were|be|been|mean|means|do|does|did|should|would|will|wo|can|could|go|goes|work|works|change|changes|set|fault|faults|help)\\b`,
   "i",
 );
+// Pronoun as OBJECT of a transitive verb: "SET that", "CHANGE it", "RAISE that",
+// "turn IT" — the case that was missing ("what's the max I can set that to?").
+const PRONOUN_VERB_OBJECT = new RegExp(
+  `\\b(?:set|sets|change|changes|raise|lower|adjust|increase|decrease|make|leave|check|find|use|fix|reset|read|enter|configure|program|bump|turn|do)\\s+(?:the\\s+)?${PRONOUN}\\b`,
+  "i",
+);
+// Pronoun trailed by a directional/target particle: "set that TO", "turn it UP".
+const PRONOUN_PREP = new RegExp(`\\b${PRONOUN}\\s+(?:to|too|for|up|down)\\b`, "i");
 const PRONOUN_END = new RegExp(`\\b${PRONOUN}\\b[\\s?.!,'’]*$`, "i");
 const REFERENTIAL_PHRASE = /\b(the other|the same|another|that one|this one|the previous|like that)\b/i;
+// Ordinal / sequence continuation with no explicit pronoun: "what do I set
+// FIRST?", "what's NEXT?", "AFTER THAT?" — only meaningful mid-conversation
+// (buildRetrievalQuery no-ops when there's no history), so safe to include.
+const SEQUENCE_CONT = /\b(first|next|after that|before that)\b/i;
 
 /** A short or genuinely referential message ("the other one", "what about
- *  Ethernet?", "what should that be set to?") needs conversational context to
- *  retrieve well; a long self-contained question ("...on this drive?") does not. */
+ *  Ethernet?", "what should that be set to?", "what's the max I can set that
+ *  to?") needs conversational context to retrieve well; a long self-contained
+ *  question ("...on this drive?") does not. A bare "this/that" as a determiner
+ *  ("this drive") is deliberately NOT referential — only pronoun uses are. */
 export function isReferentialFollowup(message: string): boolean {
   const m = message.trim();
   const words = m.split(/\s+/).filter(Boolean);
@@ -202,8 +217,11 @@ export function isReferentialFollowup(message: string): boolean {
   return (
     FOLLOWUP_LEAD.test(m) ||
     PRONOUN_VERB.test(m) ||
+    PRONOUN_VERB_OBJECT.test(m) ||
+    PRONOUN_PREP.test(m) ||
     PRONOUN_END.test(m) ||
-    REFERENTIAL_PHRASE.test(m)
+    REFERENTIAL_PHRASE.test(m) ||
+    SEQUENCE_CONT.test(m)
   );
 }
 
