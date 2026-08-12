@@ -257,3 +257,92 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[])
   }
   return added.length ? `${msg} ${added.join(" ")}` : msg;
 }
+
+// ---------------------------------------------------------------------------
+// Broad / enumeration intent + facet fan-out
+//
+// A broad question ("what communication options does this drive have?", "what
+// are all the ways I can command speed?", "what protections does it have?")
+// fails single-cluster retrieval: the reranker floats ONE matching section to
+// the top and the answer treats it as exhaustive — so the PF525 answer listed
+// only the optional adapter table and MISSED embedded EtherNet/IP + embedded
+// Modbus that the same manual proves on other pages. The fix is (a) recognize
+// broad intent, (b) fan retrieval out across the GENERIC facet vocabulary of the
+// family so scattered facets all reach the pool, and (c) diversify by page so no
+// single section eats every slot. The facet terms are generic industrial
+// vocabulary used only to RETRIEVE — the answer still cites, and lists an option
+// only if an excerpt proves it (same discipline as the synonym expansion above).
+// ---------------------------------------------------------------------------
+
+type FacetFamily = { re: RegExp; key: string; facets: readonly string[] };
+
+const FACET_FAMILIES: readonly FacetFamily[] = [
+  {
+    re: /\b(communicat\w*|comms?|network\w*|fieldbus|protocol|talk to|connect (?:it )?to (?:a )?(?:plc|controller))\b/i,
+    key: "comm",
+    facets: [
+      "embedded EtherNet/IP", "RS-485 Modbus RTU", "DSI serial",
+      "communication adapter", "DeviceNet", "PROFIBUS", "PROFINET",
+    ],
+  },
+  {
+    re: /\b(command (?:the )?speed|control (?:the )?speed|speed (?:reference|command|source)|frequency reference|ways .* speed|speed .* (?:source|command))\b/i,
+    key: "speed",
+    facets: [
+      "keypad frequency", "potentiometer", "preset frequency",
+      "analog input", "network reference", "MOP", "speed reference select",
+    ],
+  },
+  {
+    re: /\b(protection|protect\w*|trip\w*|safety feature|fault protection)\b/i,
+    key: "protection",
+    facets: [
+      "overcurrent", "overvoltage", "undervoltage", "motor overload",
+      "ground fault", "short circuit", "thermal", "stall",
+    ],
+  },
+];
+
+// Generic enumeration phrasing that isn't tied to a known family.
+const BROAD_ENUM =
+  /\b(what (?:are\s+)?(?:all\s+)?(?:the\s+)?(?:different\s+)?(?:ways|options|methods|choices|kinds|types)|all the ways|how many (?:ways|options)|what \w+ (?:options|methods|protections|features|inputs|modes)|set ?up (?:the )?communicat)/i;
+
+export type BroadIntent = { broad: boolean; key: string | null; facets: string[] };
+
+/** Detect a broad/enumeration question and, when it belongs to a known family,
+ *  return the generic facet vocabulary to fan retrieval out across. */
+export function classifyBroad(query: string): BroadIntent {
+  const fam = FACET_FAMILIES.find((f) => f.re.test(query));
+  const broad = Boolean(fam) || BROAD_ENUM.test(query);
+  return { broad, key: fam?.key ?? null, facets: fam ? [...fam.facets] : [] };
+}
+
+/** Cap how many chunks may come from the same (doc, page) so one section can't
+ *  fill the whole context on a broad question — distinct facets on other pages
+ *  get slots. Preserves the incoming (reranked) order; backfills from the capped
+ *  overflow if pages are few, so a narrow corpus is never starved. */
+export function diversifyByPage<T extends { docId: string | null; sourcePage: number | null }>(
+  chunks: T[],
+  perPageCap: number,
+  limit: number,
+): T[] {
+  const count = new Map<string, number>();
+  const kept: T[] = [];
+  const overflow: T[] = [];
+  for (const c of chunks) {
+    const k = `${c.docId}|${c.sourcePage ?? "?"}`;
+    const n = count.get(k) ?? 0;
+    if (n < perPageCap) {
+      count.set(k, n + 1);
+      kept.push(c);
+    } else {
+      overflow.push(c);
+    }
+    if (kept.length >= limit) return kept.slice(0, limit);
+  }
+  for (const c of overflow) {
+    if (kept.length >= limit) break;
+    kept.push(c);
+  }
+  return kept.slice(0, limit);
+}

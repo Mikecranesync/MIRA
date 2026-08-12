@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { expandIndustrialQuery, rerankChunks } from "@/lib/notebook-query";
+import { expandIndustrialQuery, rerankChunks, classifyBroad, diversifyByPage } from "@/lib/notebook-query";
 
 /**
  * Manufacturer-scoped BM25 retrieval from `knowledge_entries`.
@@ -532,13 +532,27 @@ export async function retrieveNodeChunks(
   add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
   for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
   add(await runExactLane(expanded.exactTokens));
+
+  // Broad/enumeration questions ("what comm options?", "all the ways to command
+  // speed?", "what protections?") fail single-cluster retrieval: the top section
+  // is treated as exhaustive and scattered facets (embedded EtherNet/IP on one
+  // page, embedded Modbus on another, the adapter table on a third) never all
+  // reach the answer. Fan retrieval out across the family's GENERIC facet
+  // vocabulary so every proven facet lands in the pool; the answer still cites
+  // and only lists a facet an excerpt proves.
+  const broad = classifyBroad(q);
+  if (broad.broad) {
+    for (const facet of broad.facets) add(await runRetrieval(OR_TSQUERY, facet));
+  }
+
   // Last-resort recall: if precise + expanded + exact all found nothing, fall
   // back to the original OR pass (a fully off-vocabulary conversational query).
   if (pool.length === 0) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
 
-  // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank), then
-  // take topK. Preserves the ManualChunk shape the caller expects.
-  const reranked = rerankChunks(
+  // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
+  // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive
+  // (no single page may fill the context); otherwise the tight topK.
+  const rerankedAll = rerankChunks(
     expanded,
     pool.map((r) => ({
       content: String(r.content ?? ""),
@@ -547,7 +561,10 @@ export async function retrieveNodeChunks(
       docId: r.doc_id == null ? null : String(r.doc_id),
       _row: r,
     })),
-  ).slice(0, topK);
+  );
+  const reranked = broad.broad
+    ? diversifyByPage(rerankedAll, 2, Math.max(topK * 2, 12))
+    : rerankedAll.slice(0, topK);
 
   return reranked.map(({ _row: r }) => ({
     content: String(r.content ?? ""),

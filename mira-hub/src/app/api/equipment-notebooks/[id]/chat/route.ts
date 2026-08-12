@@ -25,6 +25,7 @@ import {
 import {
   sanitizeHistory,
   buildRetrievalQuery,
+  classifyBroad,
   type ChatHistoryTurn,
 } from "@/lib/notebook-query";
 import type {
@@ -294,7 +295,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
-  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext;
+  // Broad/enumeration questions get an answer-shape directive: enumerate EVERY
+  // option the excerpts prove (embedded AND optional), each cited, then offer the
+  // natural next step — instead of answering with the first matching method.
+  const isBroad = classifyBroad(message).broad;
+  const broadDirective = isBroad
+    ? `\n\nBROAD / ENUMERATION QUESTION — the technician asked what options/methods/protections exist. Answer as a short list that names EVERY distinct one the excerpts prove — both embedded/built-in AND optional — each with its own citation. Do NOT stop after the first method; if different excerpts describe different methods, include them all. Never list an option the excerpts do not prove. After the list, offer the natural next step (e.g. "want the setup steps for one of these?").`
+    : "";
+  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext + broadDirective;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -329,8 +337,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               model: provider.model,
               messages,
               stream: true,
-              max_tokens: 800,
+              // A broad/enumeration answer legitimately needs more room; a narrow
+              // answer stays tight. On gpt-oss the model's hidden reasoning also
+              // draws from the completion budget, which was truncating broad
+              // answers mid-list — hence reasoning_effort:low on Groq (frees the
+              // budget for the visible answer; see the gpt-oss Groq migration
+              // trap) plus the larger broad cap.
+              max_tokens: isBroad ? 1400 : 800,
               temperature: 0.3,
+              ...(provider.name === "Groq"
+                ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
+                : {}),
             }),
             signal: AbortSignal.timeout(30_000),
           });

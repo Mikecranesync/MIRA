@@ -10,6 +10,8 @@ import {
   sanitizeHistory,
   isReferentialFollowup,
   buildRetrievalQuery,
+  classifyBroad,
+  diversifyByPage,
   type ChatHistoryTurn,
 } from "../notebook-query";
 
@@ -172,5 +174,68 @@ describe("buildRetrievalQuery", () => {
 
   it("returns the message unchanged when there is no history", () => {
     expect(buildRetrievalQuery("what about that?", [])).toBe("what about that?");
+  });
+});
+
+describe("classifyBroad", () => {
+  it("detects the comm family and fans out comm facets", () => {
+    const b = classifyBroad("what communication options does this drive have?");
+    expect(b.broad).toBe(true);
+    expect(b.key).toBe("comm");
+    expect(b.facets.join(" ").toLowerCase()).toMatch(/ethernet\/ip/);
+    expect(b.facets.join(" ").toLowerCase()).toMatch(/modbus/);
+  });
+
+  it("detects 'how do I set up communications' as a broad comm question", () => {
+    expect(classifyBroad("how do I set up communications on this drive?").key).toBe("comm");
+  });
+
+  it("detects the speed-command family", () => {
+    const b = classifyBroad("what are all the ways I can command the speed?");
+    expect(b.broad).toBe(true);
+    expect(b.key).toBe("speed");
+  });
+
+  it("detects the protection family", () => {
+    expect(classifyBroad("what protections does this drive have?").key).toBe("protection");
+  });
+
+  it("flags generic enumeration phrasing with no family", () => {
+    const b = classifyBroad("what are the different options here?");
+    expect(b.broad).toBe(true);
+    expect(b.facets).toEqual([]);
+  });
+
+  it("does NOT flag a narrow single-fact question as broad", () => {
+    expect(classifyBroad("what parameter is the decel ramp?").broad).toBe(false);
+    expect(classifyBroad("what does fault F004 mean?").broad).toBe(false);
+    expect(classifyBroad("what is the max accel time?").broad).toBe(false);
+  });
+});
+
+describe("diversifyByPage", () => {
+  const mk = (docId: string, sourcePage: number, tag: string) => ({ docId, sourcePage, tag });
+
+  it("caps chunks per (doc,page) so one section can't fill the slice", () => {
+    const chunks = [
+      mk("d", 185, "adapter1"), mk("d", 185, "adapter2"), mk("d", 185, "adapter3"),
+      mk("d", 73, "enet"), mk("d", 102, "modbus"),
+    ];
+    const out = diversifyByPage(chunks, 2, 4);
+    // p.185 limited to 2; p.73 and p.102 get in → distinct facets survive
+    expect(out.filter((c) => c.sourcePage === 185)).toHaveLength(2);
+    expect(out.map((c) => c.tag)).toContain("enet");
+    expect(out.map((c) => c.tag)).toContain("modbus");
+  });
+
+  it("backfills from the capped overflow when pages are few (never starves)", () => {
+    const chunks = [mk("d", 1, "a"), mk("d", 1, "b"), mk("d", 1, "c"), mk("d", 1, "d")];
+    const out = diversifyByPage(chunks, 2, 4);
+    expect(out).toHaveLength(4); // cap is 2/page, but backfill fills to the limit
+  });
+
+  it("preserves the incoming (reranked) order", () => {
+    const chunks = [mk("d", 1, "a"), mk("d", 2, "b"), mk("d", 3, "c")];
+    expect(diversifyByPage(chunks, 2, 3).map((c) => c.tag)).toEqual(["a", "b", "c"]);
   });
 });

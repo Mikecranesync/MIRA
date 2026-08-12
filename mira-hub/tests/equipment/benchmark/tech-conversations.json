@@ -1,0 +1,56 @@
+{
+  "_note": "Adversarial technician conversation corpus for the Equipment Notebook maintenance-copilot mission. Voice = a real maintenance tech, not a textbook. Single-turn cases exercise the answer categories (exact / obscure / procedure / broad-completeness / troubleshooting / ambiguous-vocab / wrong-assumption / boundary / off-scope); multi-turn scripts exercise conversational memory, pronoun/shorthand resolution, and objective continuity. Run with tech-battery.mjs against a notebook loaded with the PF525 documents. Evaluation is qualitative (a knowledgeable tech judges each answer) plus cheap auto-signals (citation present? refused? cited pages). The `notes` field states what a GREAT answer needs — used by the human/Claude judge, NOT auto-scored, so the harness never grades itself against its own opinion.",
+  "singles": [
+    { "id": "exact-p042", "cat": "exact-fact", "q": "what does P042 do?", "notes": "P042 = Decel Time 1; lead with it + units; cite." },
+    { "id": "exact-accel-max", "cat": "exact-fact", "q": "what's the max I can set accel time to?", "notes": "P041 Accel Time 1 range top (600.00 s on PF525); cite the page." },
+    { "id": "exact-run-terminal", "cat": "exact-fact", "q": "which terminal is the run/start input?", "notes": "DigIn TermBlk 02 (Start/Run FWD) in 2-wire; name the terminal number; cite." },
+    { "id": "fault-f004", "cat": "fault-code", "q": "what does fault F004 mean?", "notes": "F004 = UnderVoltage; cite." },
+    { "id": "fault-f005-slang", "cat": "fault-code", "q": "drive keeps popping an F005, what is that?", "notes": "F005 = OverVoltage; correct meaning + likely cause; cite." },
+    { "id": "obscure-carrier", "cat": "obscure-fact", "q": "what's the carrier frequency range on this drive?", "notes": "PWM/carrier frequency parameter range (buried in the full manual). If the loaded docs prove it, give it + cite; else abstain honestly." },
+    { "id": "proc-autotune", "cat": "procedure", "q": "how do I run an autotune on this thing?", "notes": "The autotune procedure (P040/Motor Ctrl + the autotune sequence). Complete steps, not one paragraph; cite." },
+    { "id": "proc-fault-reset", "cat": "procedure", "q": "how do I clear a fault?", "notes": "Stop key or A551 Fault Clear; cite." },
+    { "id": "broad-comm", "cat": "broad-completeness", "q": "what communication options does this drive have?", "notes": "COMPLETENESS: must enumerate the source-proven comm paths (embedded EtherNet/IP, embedded RS-485/DSI Modbus RTU, optional 25-COMM adapter modules) — NOT stop at one. Each cited. Missing a source-proven facet = incomplete even if what it says is correct." },
+    { "id": "broad-speed-cmd", "cat": "broad-completeness", "q": "what are all the ways I can command the speed?", "notes": "COMPLETENESS: speed reference sources (keypad/pot, preset freqs, analog input, comms/network, MOP). Enumerate the source-proven set; cite each." },
+    { "id": "broad-protections", "cat": "broad-completeness", "q": "what protections does this drive have?", "notes": "COMPLETENESS: overcurrent, overvoltage/undervoltage, overload/thermal, short-circuit, ground fault, etc. as the source proves. Enumerate + cite." },
+    { "id": "ts-runs-no-turn", "cat": "troubleshooting", "q": "the drive says it's running but the motor isn't turning, what do I check?", "notes": "A logical diagnostic sequence (output wiring, motor connection, output freq vs commanded, mechanical, control mode) from the docs; not a single paragraph." },
+    { "id": "ts-plc-no-speed", "cat": "troubleshooting", "q": "my PLC sees the drive but I can't change the speed", "notes": "Speed-reference-source check (P047/A051 start & speed reference set to comms), command priority, network config; grounded diagnostic sequence." },
+    { "id": "vocab-slowdown", "cat": "ambiguous-vocab", "q": "where do I set the slowdown ramp?", "notes": "Bridge tech slang → P042 Decel Time 1 without hallucinating; cite." },
+    { "id": "vocab-motor-amps", "cat": "ambiguous-vocab", "q": "where's the motor amps setting?", "notes": "Motor nameplate FLA / overload (P033 Motor OL Current / Motor NP Amps); bridge vocab; cite." },
+    { "id": "wrong-profinet", "cat": "wrong-assumption", "q": "where's the Profinet setting on this?", "notes": "PF525 embedded network is EtherNet/IP, not PROFINET (PROFINET only via an optional adapter, if the source proves it). Should CORRECT the premise, not invent a Profinet parameter." },
+    { "id": "wrong-hydraulic", "cat": "wrong-assumption", "q": "what parameter controls the hydraulic pressure?", "notes": "This is a VFD, not a hydraulic system — correct the premise; do not invent a parameter." },
+    { "id": "boundary-warranty", "cat": "boundary-absent", "q": "what's the warranty period on this drive?", "notes": "Commercial/warranty terms are not in a technical manual — abstain honestly with zero citations; optionally point to where it would live." },
+    { "id": "offscope-accumulator", "cat": "off-scope", "q": "how do I bleed the hydraulic accumulator?", "notes": "Off-scope for a VFD manual — refuse with zero citations." }
+  ],
+  "conversations": [
+    {
+      "id": "comm-drilldown",
+      "cat": "multi-turn/comm",
+      "turns": [
+        { "q": "how do I set up communications on this drive?", "notes": "Broad opener — should give the overview of comm options + ask/guide which network." },
+        { "q": "let's use Ethernet", "notes": "Follow-up: must stay on the EtherNet/IP path (embedded EtherNet/IP setup), NOT re-explain everything or lose the thread." },
+        { "q": "what parameter do I set first?", "notes": "Referential: 'first' EtherNet/IP parameter (IP address config / C128+ Enet params). Must resolve to the Ethernet context from prior turns." },
+        { "q": "mine says 192.168.1.20, is that okay?", "notes": "Should reason about the IP being valid/format, not hallucinate a spec; grounded where possible." },
+        { "q": "the PLC still won't connect, what now?", "notes": "Comms troubleshooting sequence for EtherNet/IP; must remember we're on Ethernet with that IP." }
+      ]
+    },
+    {
+      "id": "wont-run",
+      "cat": "multi-turn/troubleshoot",
+      "turns": [
+        { "q": "why won't this drive run?", "notes": "Diagnostic opener — check enable/start source, faults, speed reference." },
+        { "q": "the keypad works but not from the PLC", "notes": "Referential: narrows to control-source — Start Source / Speed Reference must be set to comms; must carry the 'won't run' objective." },
+        { "q": "what command word does it need?", "notes": "The control/logic command word over comms (run bit, etc.) if the source proves it; else say what's needed and where." },
+        { "q": "where do I check that parameter?", "notes": "'that parameter' must resolve to the start-source/command parameter just discussed — pronoun continuity." }
+      ]
+    },
+    {
+      "id": "decel-shorthand",
+      "cat": "multi-turn/shorthand",
+      "turns": [
+        { "q": "where's the slowdown ramp?", "notes": "P042 Decel Time 1." },
+        { "q": "what's the max I can set that to?", "notes": "'that' = P042 — return P042's max (600.00 s), not a generic answer." },
+        { "q": "and the speed-up one?", "notes": "'the speed-up one' = accel ramp = P041 Accel Time 1 — resolve the contrastive shorthand from context." }
+      ]
+    }
+  ]
+}
