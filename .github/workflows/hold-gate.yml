@@ -1,0 +1,40 @@
+name: hold-gate
+
+# Makes a PR "HELD" state machine-enforceable. A label or a "[HELD]" title
+# string is NOT a merge gate on its own — GitHub's merge machinery reads
+# neither. This check goes RED whenever the PR carries a hold label
+# (do-not-merge / hold / held / wip / blocked) or a hold marker in its title
+# (HELD / DO NOT MERGE / WIP / DRAFT). Once added to main's REQUIRED status
+# checks (see docs/ci/hold-gate.md), a red hold-gate blocks merge AND an armed
+# auto-merge until the hold is cleared.
+#
+# Post-mortem it closes: a "[HELD / DO NOT MERGE]" PR (#3189, zero labels)
+# auto-merged the moment required checks went green, because nothing machine-
+# checked the hold.
+#
+# NOTE: adding this file does NOT make it required — that is a separate,
+# human-authorized branch-protection change (docs/ci/hold-gate.md). Until then
+# it runs and reports, but does not block.
+
+on:
+  pull_request:
+    types: [opened, edited, labeled, unlabeled, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: hold-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  hold-gate:
+    name: hold-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Evaluate hold state (title + labels)
+        run: python3 tools/ci/hold_gate.py
