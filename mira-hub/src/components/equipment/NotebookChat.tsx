@@ -165,6 +165,10 @@ export function NotebookChat({
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Always-current view of the thread for send() — `turns` is not in send()'s
+  // dep array, so a closure capture would be stale. This ref lets us send the
+  // recent history (multi-turn memory) without re-creating the callback per turn.
+  const turnsRef = useRef(turns);
 
   // Persisted history loads async in the parent — hydrate once it arrives.
   // Without this, the server-side turns never render (Gate I client gap). The
@@ -176,6 +180,7 @@ export function NotebookChat({
   }, [initialTurns]);
 
   useEffect(() => {
+    turnsRef.current = turns; // keep send()'s history source current
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns]);
 
@@ -198,6 +203,12 @@ export function NotebookChat({
     }
     setInput("");
     setBusy(true);
+    // Recent thread (before this exchange) → multi-turn memory for the server.
+    // Only completed user/assistant turns with content; the route caps it again.
+    const history = turnsRef.current
+      .filter((t) => t.content && (t.role === "user" || t.role === "assistant"))
+      .slice(-8)
+      .map((t) => ({ role: t.role, content: t.content }));
     const userTurn: ChatTurn = { id: `u${Date.now()}`, role: "user", content: message };
     const aId = `a${Date.now()}`;
     setTurns((t) => [...t, userTurn, { id: aId, role: "assistant", content: "" }]);
@@ -206,7 +217,7 @@ export function NotebookChat({
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${notebookId}/chat/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, sourceDocIds: enabledDocIds }),
+        body: JSON.stringify({ message, sourceDocIds: enabledDocIds, history }),
       });
       if (!res.body) throw new Error("no_stream");
       const reader = res.body.getReader();

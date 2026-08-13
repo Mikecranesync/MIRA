@@ -140,3 +140,120 @@ export function rerankChunks<T extends Rerankable>(
   scored.sort((a, b) => b.score - a.score || a.i - b.i);
   return scored.map((s) => s.c);
 }
+
+// ---------------------------------------------------------------------------
+// Multi-turn conversation memory
+//
+// The notebook chat was single-shot: the route received only {message} and sent
+// the model `[system, one-user]`, so a follow-up like "let's use Ethernet" or
+// "what parameter changes first?" reached the model with ZERO prior context and
+// retrieved on its own thin words. These helpers (a) sanitize/cap the history the
+// client now sends so it can ride in the model messages, and (b) rewrite the
+// RETRIEVAL query for a referential follow-up by folding in salient tokens the
+// technician already used earlier in the thread. They NEVER invent equipment
+// facts — they only reuse words already present in the transcript.
+// ---------------------------------------------------------------------------
+
+export type ChatHistoryTurn = { role: "user" | "assistant"; content: string };
+
+const HISTORY_ROLES = new Set(["user", "assistant"]);
+
+/** Validate + cap client-supplied history: keep only well-formed user/assistant
+ *  turns with non-empty content, trim + hard-cap each turn's length, and keep the
+ *  most recent `maxTurns` in order. Defensive against a bloated or malformed body. */
+export function sanitizeHistory(raw: unknown, maxTurns = 6, maxChars = 2000): ChatHistoryTurn[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ChatHistoryTurn[] = [];
+  for (const t of raw) {
+    if (!t || typeof t !== "object") continue;
+    const role = (t as { role?: unknown }).role;
+    const content = (t as { content?: unknown }).content;
+    if (typeof role !== "string" || !HISTORY_ROLES.has(role)) continue;
+    if (typeof content !== "string") continue;
+    const trimmed = content.trim();
+    if (!trimmed) continue;
+    out.push({ role: role as "user" | "assistant", content: trimmed.slice(0, maxChars) });
+  }
+  return out.slice(-maxTurns);
+}
+
+// Referential signals. NOTE: a bare "this"/"that" mid-sentence is usually a
+// determiner ("this drive", "that fault") — extremely common in self-contained
+// first-turn questions — so it is NOT treated as referential. We only augment
+// when a pronoun is used AS a pronoun: right before a verb ("what should THAT be
+// set to?"), at the end of the sentence ("why is it doing THAT?"), or when the
+// message is very short / opens with a follow-up connective.
+const FOLLOWUP_LEAD = /^(and|so|but|no|ok|okay|then|what about|how about|why|what if|now)\b/i;
+const PRONOUN = "(?:it|that|this|those|these|one|mine|them)";
+const PRONOUN_VERB = new RegExp(
+  `\\b${PRONOUN}\\s+(?:is|are|was|were|be|been|mean|means|do|does|did|should|would|will|wo|can|could|go|goes|work|works|change|changes|set|fault|faults|help)\\b`,
+  "i",
+);
+const PRONOUN_END = new RegExp(`\\b${PRONOUN}\\b[\\s?.!,'’]*$`, "i");
+const REFERENTIAL_PHRASE = /\b(the other|the same|another|that one|this one|the previous|like that)\b/i;
+
+/** A short or genuinely referential message ("the other one", "what about
+ *  Ethernet?", "what should that be set to?") needs conversational context to
+ *  retrieve well; a long self-contained question ("...on this drive?") does not. */
+export function isReferentialFollowup(message: string): boolean {
+  const m = message.trim();
+  const words = m.split(/\s+/).filter(Boolean);
+  if (words.length <= 5) return true;
+  return (
+    FOLLOWUP_LEAD.test(m) ||
+    PRONOUN_VERB.test(m) ||
+    PRONOUN_END.test(m) ||
+    REFERENTIAL_PHRASE.test(m)
+  );
+}
+
+// Generic maintenance / comms / control vocabulary. Reused ONLY when present in
+// the transcript — this list is a filter over words the technician already said,
+// never a source of new equipment facts.
+const DOMAIN_TERMS: ReadonlyArray<RegExp> = [
+  /ethernet\/?ip/gi, /\bethernet\b/gi, /\bmodbus\b/gi, /\brs-?485\b/gi, /\bdevicenet\b/gi,
+  /\bprofibus\b/gi, /\bprofinet\b/gi, /\bdsi\b/gi, /\bkeypad\b/gi, /\bterminal\b/gi,
+  /\bparameter\b/gi, /\bdecel\w*\b/gi, /\baccel\w*\b/gi, /\bspeed\s+reference\b/gi,
+  /\bpreset\b/gi, /\bfault\b/gi, /\bautotune\b/gi, /\bcomm\w*\b/gi, /\bnetwork\b/gi,
+];
+
+/** Extract the salient, reusable tokens from a turn: exact IDs (param/fault/
+ *  catalog numbers) + any domain vocabulary the turn actually contains. */
+function salientTokens(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (tok: string) => {
+    const k = tok.toLowerCase();
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(tok);
+    }
+  };
+  for (const re of EXACT_PATTERNS) for (const m of text.matchAll(re)) push(m[0]);
+  for (const re of DOMAIN_TERMS) for (const m of text.matchAll(re)) push(m[0]);
+  return out;
+}
+
+/** Build the retrieval query for a possibly-referential follow-up. Self-contained
+ *  questions are returned unchanged; a referential follow-up is augmented with the
+ *  salient tokens from the most recent turns that it does not already mention, so
+ *  BM25 has the thread's subject to match. Current message stays FIRST so it
+ *  dominates ranking. Deterministic + pure. */
+export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[]): string {
+  const msg = message.trim();
+  if (history.length === 0 || !isReferentialFollowup(msg)) return msg;
+  const lower = msg.toLowerCase();
+  const added: string[] = [];
+  const seen = new Set<string>();
+  for (const t of history.slice(-4)) {
+    for (const tok of salientTokens(t.content)) {
+      const k = tok.toLowerCase();
+      if (lower.includes(k) || seen.has(k)) continue;
+      seen.add(k);
+      added.push(tok);
+      if (added.length >= 6) break;
+    }
+    if (added.length >= 6) break;
+  }
+  return added.length ? `${msg} ${added.join(" ")}` : msg;
+}
