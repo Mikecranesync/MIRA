@@ -9,35 +9,45 @@
 Raw pass dropped from a 50-56 band to 45-51 starting 08-12T0848. Measured across 20 consecutive
 runs, that drop is dominated by **ungradeable timeouts**, not by the engine getting worse.
 
-A timed-out fixture never produced an answer to grade, so it belongs out of the denominator:
+A timed-out fixture never produced an answer to grade, so it belongs out of the denominator. Split
+by **UTC start time** (filename is UTC at *write* time — subtract `Total runtime`), against the
+#3190 pickup at 08-12 01:05 EDT = **05:05 UTC**:
 
 | window | runs | raw | timeouts/run | **gradeable** |
 |---|---|---|---|---|
-| 08-09 → 08-12T0409 | 14 | 50-56 (76-86%) | 0-3 | 80-86%, mean **83.2%** |
-| 08-12T0848 → 08-13 | 5 | 45-51 (69-78%) | 4-10 | 77-85%, mean **80.2%** |
+| PRE  08-09T0324 → 08-12T0409 | 15 | 50-56 (76-86%) | **0-3** (mean 1.2) | 79-86%, mean **83.2%** |
+| POST 08-12T0848 → 08-13T0314 | 5 | 45-51 (69-78%) | **4-10** (mean 6.4) | 77-85%, mean **80.6%** |
 
-The bands overlap heavily. `08-12T1327` reads as the second-worst night (70% raw) and is **83%
-gradeable — inside the pre band.** So #3085 (eval inherits the 30s `MIRA_PROCESS_TIMEOUT` default vs
-Slack 60 / kiosk 90) is no longer a "2-4 phantom failures a night" nuisance; it is currently the
-**largest single distortion in the nightly scorecard**, and it is what trips the multi-cluster hard
-stop each night by inflating all three clusters at once.
+**Every** pre run has ≤3 timeouts; **every** post run has ≥4. Non-overlapping, stepping exactly at
+the migration boundary. But the *gradeable* bands overlap heavily — `08-12T1327` reads as the
+second-worst night (70% raw) and is **83% gradeable, inside the pre band.**
 
-## Mechanism NOT isolated — do not repeat my first framing
+⇒ Answer *quality* is roughly flat; the raw drop is dominated by fixtures that never answered. So
+#3085 (eval inherits the 30s `MIRA_PROCESS_TIMEOUT` vs Slack 60 / kiosk 90) is no longer a "2-4
+phantom failures a night" nuisance — it is the **largest single distortion in the nightly
+scorecard**, and it is what trips the multi-cluster hard stop each night by inflating all three
+clusters at once.
 
-The surge is coincident with **#3190** (Groq default → `openai/gpt-oss-120b`, merged 08-11 23:27,
-picked up in this checkout 08-12 01:05 per reflog). #3190's own commit message supplies a plausible
-mechanism: gpt-oss burns completion tokens on reasoning, and `router.py:558` fires a reasoning-burn
-retry with `max_tokens=8192` — a second round trip against a 30s budget.
+## ⚠️ I hit the UTC trap this file already documents — and had to correct two filings
 
-**I drafted that as settled cause and it is not.** `08-12T0409` is post-migration, ran the new code,
-and scored the best of all 20 runs (56/65) with **zero** timeouts. A simple "new model is slower"
-story does not predict that run.
+My first pass called `08-12T0409` (56/65, 0 timeouts) a **post**-migration counter-example and
+concluded "mechanism not isolated." Wrong: `0409` minus its 1957s runtime starts **08-12 03:36
+UTC**, *before* the 05:05 UTC pickup. It is PRE-migration and matches its group perfectly. The
+counter-example dissolved and attribution to #3190 became well-supported.
 
-The discriminating evidence is **not retained**: `grep -rl REASONING_BURN tests/eval/ /tmp` returns
-nothing, and no 429/rate-limit/retry-after signal appears in any scorecard. Router logs aren't
-captured by the harness. → **Next step: re-run one suite with router logging captured.**
-`REASONING_BURN` present ⇒ retry mechanism confirmed; absent ⇒ provider latency variance, #3190
-coincidental.
+The 08-03 update in [[project_eval_fixer_agent_silent_failure]] warns about exactly this
+("the scorecard filename is UTC computed at WRITE time"). **I read it, then split a series on a
+commit boundary using EDT anyway.** Corrections posted to #3085 and #1876 rather than left
+standing. **Never split a run series on a commit boundary without converting both sides to UTC.**
+
+## Still NOT confirmed at the log level
+
+#3190's own commit message supplies the mechanism: gpt-oss burns completion tokens on reasoning, and
+`router.py:558` fires a reasoning-burn retry with `max_tokens=8192` — a second round trip against a
+30s budget. But `grep -rl REASONING_BURN tests/eval/ /tmp` returns **nothing**, and no
+429/rate-limit/retry-after signal appears in any scorecard: the harness doesn't capture router logs.
+→ **Next step: re-run one suite with router logging captured.** Present ⇒ retry mechanism confirmed;
+absent ⇒ some other latency path.
 
 ## ⚠️ Trap planted for future runs
 
@@ -73,3 +83,5 @@ FSM ✓ and failed keyword only — so "a timeout fails both checks" is **false*
 - Still do not grep `TIMEOUT_WARNING` — that is the constant's name, not the rendered prose.
 - Report **both** denominators every night. Raw-only reading is what made this look like a
   code regression for two nights running.
+- Convert scorecard timestamps to **UTC** before splitting a series on a commit boundary — see the
+  correction above. `python3` on filename minus `Total runtime`, never eyeballed local time.
