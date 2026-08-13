@@ -144,6 +144,9 @@ const SYSTEM_ACCOUNT_EMAIL_PATTERNS: RegExp[] = [
   /\be2e[-_]/i, // e2e-trial-*, e2e_audit@…
   /(^|[-_.+])test[-_.@]/i, // drawer-test-*, *-test@, +test@
   /\bprobe\b/i, // *-probe@…
+  // Disposable prod-verification accounts (mobile notebook loop, adversarial
+  // suite). Deleted periodically by qa-cleanup.yml; hidden here meanwhile.
+  /^(notebook-qa-|notebook-live-|adversarial-)/i,
 ];
 const SYSTEM_ACCOUNT_NAME_PATTERNS: RegExp[] = [
   /\bplaywright\b/i,

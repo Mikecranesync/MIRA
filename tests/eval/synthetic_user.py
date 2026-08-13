@@ -301,7 +301,7 @@ async def _call_groq(messages: list[dict], max_tokens: int) -> str:
 async def _call_cerebras(messages: list[dict], max_tokens: int) -> str:
     import httpx
 
-    model = os.getenv("CEREBRAS_MODEL", "llama-3.3-70b")
+    model = os.getenv("CEREBRAS_MODEL", "gpt-oss-120b")
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             _CEREBRAS_URL,

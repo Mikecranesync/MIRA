@@ -171,7 +171,7 @@ def _providers() -> list[dict[str, str]]:
                 "name": "cerebras",
                 "url": "https://api.cerebras.ai/v1/chat/completions",
                 "key": k,
-                "model": os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
+                "model": os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
             }
         )
     if (k := os.getenv("GEMINI_API_KEY", "")):
