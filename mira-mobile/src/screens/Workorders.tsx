@@ -96,9 +96,15 @@ function List({
   const [queued, setQueued] = useState<QueuedCreate[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState("");
+  // Sequence-guarded: a mount-drain "all" fetch racing a quick filter click
+  // must never let the stale response overwrite the newer filter's list.
+  const seqRef = useRef(0);
   const refresh = (f = filter) => {
+    const seq = ++seqRef.current;
     setState({ state: "loading" });
-    void load(() => listWorkOrders(f === "all" ? undefined : f)).then(setState);
+    void load(() => listWorkOrders(f === "all" ? undefined : f)).then((s) => {
+      if (seq === seqRef.current) setState(s);
+    });
   };
   useEffect(() => refresh(filter), [filter]);
 
@@ -295,8 +301,10 @@ function Detail({
               ))}
               {mutError != null && <ErrorState error={mutError} />}
               {/* Archive path for mistaken/test WOs (punch list WO-06):
-                  status "closed" with a resolution — server-validated. */}
-              {wo.status !== "closed" && (
+                  status "completed" with a resolution — server-validated
+                  closing status (sets closed_at). NOTE: "closed" 500s on prod
+                  (enum lacks the value) — do not switch back without a probe. */}
+              {wo.status !== "completed" && wo.status !== "closed" && (
                 <button
                   style={{ marginTop: 4 }}
                   disabled={Boolean(mutating)}
@@ -310,7 +318,7 @@ function Detail({
                     setMutError(null);
                     try {
                       await updateWorkOrder(wo.id, {
-                        status: "closed",
+                        status: "completed",
                         resolution: resolution.trim(),
                       });
                       refresh();
