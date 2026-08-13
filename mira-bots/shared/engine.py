@@ -1164,6 +1164,12 @@ _H4_GAP_PHRASES: tuple[str, ...] = (
     "not have specific documentation",
     "consult the asset nameplate",
     "consult the vendor manual",
+    # #3213 — the rag_worker rule-16 honesty sentence and the kiosk phrasing.
+    # After the admission-conflict strip removes a contradictory [Source:] tag,
+    # H4 must recognize the surviving admission instead of appending a second,
+    # redundant stock admission beneath it.
+    "have documentation for this equipment",
+    "have documentation for that in my records",
 )
 
 _H4_STOCK_ADMISSION = (
@@ -2194,6 +2200,10 @@ class Supervisor:
             "chunks": parsed.get("_last_chunks") or [],
             "sources": parsed.get("_sources") or [],
             "no_kb": parsed.get("_no_kb", False),
+            # #3213 — labels the compliance gate stripped THIS turn; the rewrite
+            # bridge passes them as disallowed so a rejected citation cannot be
+            # silently re-inserted by the salvage pass.
+            "stripped_labels": parsed.get("_stripped_labels") or [],
         }
 
     async def _enforce_citation_rewrite(
@@ -2229,6 +2239,7 @@ class Supervisor:
                 fsm_state=fsm_state,
                 chat_id=chat_id,
                 llm_call=rag._call_llm,
+                disallowed_labels=set(evidence.get("stripped_labels") or []),
             )
         except Exception:
             logger.warning(
@@ -4466,6 +4477,7 @@ class Supervisor:
         )
         if _cc.get("sanitized_reply"):
             formatted = _cc["sanitized_reply"]
+            parsed["_stripped_labels"] = _cc.get("stripped_labels") or []
 
         tl_flush()
         return self._make_result(
@@ -5822,6 +5834,7 @@ class Supervisor:
         )
         if _cc.get("sanitized_reply"):
             formatted = _cc["sanitized_reply"]
+            parsed["_stripped_labels"] = _cc.get("stripped_labels") or []
 
         return self._make_result(
             formatted,
