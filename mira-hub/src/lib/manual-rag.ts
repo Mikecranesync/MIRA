@@ -5,6 +5,7 @@ import {
   classifyBroad,
   classifyIntent,
   diversifyByPage,
+  ensureFacetRepresentation,
   COMM_FACETS,
   type RerankTraceRow,
 } from "@/lib/notebook-query";
@@ -590,8 +591,16 @@ export async function retrieveNodeChunks(
     })),
     { intent, trace },
   );
+  // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
+  // overall, so one family (e.g. overload) can fill every slot while a planned
+  // facet (overcurrent) sits uncovered in the pool. Every facet with pool
+  // evidence gets representation; facets with none stay an explicit gap.
   const reranked = broad.broad
-    ? diversifyByPage(rerankedAll, 2, Math.max(topK * 2, 12))
+    ? ensureFacetRepresentation(
+        diversifyByPage(rerankedAll, 2, Math.max(topK * 2, 12)),
+        rerankedAll,
+        broad.facets,
+      )
     : rerankedAll.slice(0, topK);
 
   if (trace) {

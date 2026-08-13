@@ -612,6 +612,109 @@ export function classifyBroad(query: string): BroadIntent {
   return { broad, key: fam?.key ?? null, facets: fam ? [...fam.facets] : [] };
 }
 
+// ---------------------------------------------------------------------------
+// Coverage planning (answer-shape classification)
+//
+// A broad question is not answered by the single best passage — the answer
+// SHAPE determines how much evidence the answer owes. The planner classifies
+// the question; multi_facet/exhaustive shapes carry an evidence plan (the
+// family's facet vocabulary) that retrieval fans out across and generation
+// must cover-or-declare-gap. Coverage and groundedness are separate axes: an
+// answer can be 100% grounded and still 40% complete.
+// ---------------------------------------------------------------------------
+
+export type CoverageShape = "single_fact" | "procedure" | "comparison" | "multi_facet" | "exhaustive";
+export type CoveragePlan = { shape: CoverageShape; facets: string[] };
+
+const COMPARISON_SHAPE = /\bdifference between\b|\bcompare\b|\bversus\b|\bvs\.?\b/i;
+const EXHAUSTIVE_SHAPE =
+  /\b(?:all|every)\b[\s\S]{0,40}\b(?:ways|options|methods|parameters|types|kinds|features|protections)\b|\blist (?:all|every)\b/i;
+
+/** Classify the answer shape a question demands. multi_facet / exhaustive
+ *  return the known family's facet plan (empty for generic enumerations —
+ *  retrieval then relies on the plain broad path). */
+export function classifyCoverage(query: string): CoveragePlan {
+  const q = query.trim();
+  if (COMPARISON_SHAPE.test(q)) return { shape: "comparison", facets: [] };
+  const broad = classifyBroad(q);
+  // Exhaustive phrasing counts even outside the known families ("list every
+  // parameter") — those get an honest-scope answer, not silent single-passage.
+  if (EXHAUSTIVE_SHAPE.test(q)) return { shape: "exhaustive", facets: broad.facets };
+  if (broad.broad) return { shape: "multi_facet", facets: broad.facets };
+  if (classifyIntent(q) === "procedure") return { shape: "procedure", facets: [] };
+  return { shape: "single_fact", facets: [] };
+}
+
+// Facet → content matcher. The facet phrases are OUR vocabulary (FACET_FAMILIES),
+// so tricky ones get explicit regexes; the default requires every significant
+// word's stem. Used for (a) facet-guaranteed slots and (b) the evidence map.
+const FACET_MATCHERS: Record<string, RegExp> = {
+  "embedded EtherNet/IP": /embedded[\s\S]{0,40}ethernet|emb enet/i,
+  "RS-485 Modbus RTU": /rs-?485|modbus rtu|\bdsi\b/i,
+  "DSI serial": /\bdsi\b/i,
+  "communication adapter": /communication adapter|25-comm/i,
+  "keypad frequency": /keypad freq|drive pot|potentiometer/i,
+  "analog input": /analog in|0-10 ?v|4-20 ?ma/i,
+  "network reference": /network reference|comm freq|network opt|ethernet\/ip reference/i,
+  "speed reference select": /speed reference|p04[79]|p051/i,
+  "preset frequency": /preset freq/i,
+  "motor overload": /motor overload|\boverload\b/i,
+  "short circuit": /short circuit/i,
+  thermal: /thermal|heatsink|over ?temperature/i,
+  stall: /\bstall\b/i,
+};
+
+function facetMatcher(term: string): RegExp {
+  const explicit = FACET_MATCHERS[term];
+  if (explicit) return explicit;
+  const stems = term
+    .toLowerCase()
+    .split(/[^a-z0-9-]+/)
+    .filter((w) => w.length >= 3)
+    .map((w) => w.slice(0, 6).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(stems.join("[\\s\\S]{0,30}"), "i");
+}
+
+type FacetChunk = { content: string; sourcePage: number | null; docId?: string | null };
+
+/** Guarantee every planned facet with pool evidence is represented in the
+ *  selected slice — the completeness gap in one line: rerank picks the BEST
+ *  chunks overall, so three overload chunks beat one overcurrent chunk and a
+ *  whole protection family goes missing. Appends (order-preserving) the best
+ *  pool chunk for each unrepresented facet; facets with no pool evidence add
+ *  nothing (the gap is then generation's to declare, never to invent). */
+export function ensureFacetRepresentation<T extends FacetChunk>(
+  selected: T[],
+  pool: T[],
+  facets: string[],
+): T[] {
+  const out = [...selected];
+  for (const f of facets) {
+    const re = facetMatcher(f);
+    if (out.some((c) => re.test(c.content))) continue;
+    const candidate = pool.find((c) => re.test(c.content));
+    if (candidate && !out.includes(candidate)) out.push(candidate);
+  }
+  return out;
+}
+
+/** Evidence-map provenance: facet → pages of the selected chunks that prove it
+ *  (content-matched). An empty list is an explicit GAP the answer must declare. */
+export function facetEvidencePages(chunks: FacetChunk[], facets: string[]): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  for (const f of facets) {
+    const re = facetMatcher(f);
+    const pages: number[] = [];
+    for (const c of chunks) {
+      if (re.test(c.content) && c.sourcePage != null && !pages.includes(c.sourcePage)) {
+        pages.push(c.sourcePage);
+      }
+    }
+    map.set(f, pages);
+  }
+  return map;
+}
+
 /** Cap how many chunks may come from the same (doc, page) so one section can't
  *  fill the whole context on a broad question — distinct facets on other pages
  *  get slots. Preserves the incoming (reranked) order; backfills from the capped

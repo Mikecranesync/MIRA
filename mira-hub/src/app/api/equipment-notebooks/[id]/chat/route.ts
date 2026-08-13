@@ -27,6 +27,8 @@ import {
   buildRetrievalQuery,
   buildTopicHint,
   classifyBroad,
+  classifyCoverage,
+  facetEvidencePages,
   type ChatHistoryTurn,
 } from "@/lib/notebook-query";
 import type {
@@ -301,14 +303,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
-  // Broad/enumeration questions get an answer-shape directive: enumerate EVERY
-  // option the excerpts prove (embedded AND optional), each cited, then offer the
-  // natural next step — instead of answering with the first matching method.
-  const isBroad = classifyBroad(message).broad;
-  const broadDirective = isBroad
-    ? `\n\nBROAD / ENUMERATION QUESTION — the technician asked what options/methods/protections exist. Answer as a short list that names EVERY distinct one the excerpts prove — both embedded/built-in AND optional — each with its own citation. Do NOT stop after the first method; if different excerpts describe different methods, include them all. Never list an option the excerpts do not prove. After the list, offer the natural next step (e.g. "want the setup steps for one of these?").`
-    : "";
-  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext + broadDirective;
+  // Coverage planning (answer completeness): the answer SHAPE determines how
+  // much evidence the answer owes. Family questions get an explicit EVIDENCE
+  // MAP (facet → the pages whose excerpts prove it) plus a cover-or-declare-gap
+  // contract; generic enumerations keep the enumerate-everything directive;
+  // impossible exhaustives get an honest-scope contract.
+  const plan = classifyCoverage(message);
+  let coverageDirective = "";
+  if ((plan.shape === "multi_facet" || plan.shape === "exhaustive") && plan.facets.length) {
+    const evidence = facetEvidencePages(chunks, plan.facets);
+    const proven = [...evidence].filter(([, pages]) => pages.length);
+    const gaps = [...evidence].filter(([, pages]) => !pages.length).map(([f]) => f);
+    coverageDirective =
+      `\n\nREQUIRED COVERAGE — this is a ${plan.shape === "exhaustive" ? "complete-enumeration" : "multi-facet"} question. ` +
+      `The excerpts contain evidence for these distinct options/aspects: ` +
+      proven.map(([f, pages]) => `${f} (excerpts from p.${pages.join(", p.")})`).join("; ") +
+      `. Your answer MUST name each of these, each with its own citation — do not stop after the first. ` +
+      `Never list an option the excerpts do not prove.` +
+      (gaps.length
+        ? ` No excerpt covers: ${gaps.join(", ")} — do NOT invent these; omit them or say the loaded excerpts don't cover them.`
+        : "");
+  } else if (plan.shape === "exhaustive") {
+    coverageDirective =
+      `\n\nEXHAUSTIVE-LIST QUESTION — the technician asked for a complete enumeration that the excerpts cannot fully provide. ` +
+      `Do NOT pretend completeness and do NOT dump a partial list as if it were the whole. Instead: say plainly that the full ` +
+      `enumeration is beyond the loaded excerpts, then describe the manual's own STRUCTURE for it from the excerpts (e.g. the ` +
+      `parameter GROUPS and where the full list lives). This structural description IS a grounded answer, not a refusal — ` +
+      `every structural claim MUST carry an inline [n] citation to the excerpt that shows it.`;
+  } else if (classifyBroad(message).broad) {
+    coverageDirective = `\n\nBROAD / ENUMERATION QUESTION — the technician asked what options/methods/protections exist. Answer as a short list that names EVERY distinct one the excerpts prove — both embedded/built-in AND optional — each with its own citation. Do NOT stop after the first method; if different excerpts describe different methods, include them all. Never list an option the excerpts do not prove. After the list, offer the natural next step (e.g. "want the setup steps for one of these?").`;
+  }
+  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext + coverageDirective;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
@@ -354,7 +379,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               // answers mid-list — hence reasoning_effort:low on Groq (frees the
               // budget for the visible answer; see the gpt-oss Groq migration
               // trap) plus the larger broad cap.
-              max_tokens: isBroad ? 1400 : 800,
+              max_tokens: coverageDirective ? 1400 : 800,
               temperature: 0.3,
               ...(provider.name === "Groq"
                 ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
