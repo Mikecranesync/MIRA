@@ -40,6 +40,7 @@
   --fl-fault: #dc2626;       /* fault / stop / rejected */
   --fl-fault-bg: #fef2f2;
   --fl-off: #9ca3af;         /* off / unknown / low confidence */
+  --fl-scrim: rgba(17, 24, 39, 0.72); /* overlay scrim on live media (header at 72%) */
 
   /* type */
   --fl-font: "Segoe UI", system-ui, -apple-system, sans-serif;

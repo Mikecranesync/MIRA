@@ -1,3 +1,35 @@
+# Hot Cache — 2026-08-13 — Native mobile Phase 4: offline WO queue + QR scan (branch, device-proof in progress)
+
+`feat/native-mobile-app` @ `a24d9f688` (pushed; PR #3222 still OPEN — merges are Mike's).
+Phase 4 client work on top of the device-proven Phase 0–3 shell:
+- **Offline WO queue** (`mira-mobile/src/lib/offline-queue.ts`, 13 vitest tests, 21/21 suite
+  green): create fails on transport → persisted tenant-keyed with its retained `client_key`;
+  FIFO drain on Workorders mount / app-resume / "Sync now" through the same `createWorkOrder`
+  (safe replay per PR #3223 contract — server PR still OPEN, client degrades gracefully).
+  Keep-and-stop on network/server/auth; drop-and-surface on definitive 4xx. Sign-out drains,
+  warns before destroying unsynced items, purges all queues.
+- **QR scan**: `ScanView` ports the rescued `qr-scanner-view.tsx` (branch
+  `wip/expo-scan-page-rescue-2026-05-20`) on `qr-scanner` (MIT) via WebView getUserMedia — no
+  native plugin. Scan → `extractAssetTag` trust filter → existing tag-landing. CAMERA
+  permission (Android) + NSCameraUsageDescription (iOS). New `--fl-scrim` token added to
+  canonical tokens first, synced to mobile copy.
+- **Well-known files** (Phase-4 server gate): `deployment/well-known/` (assetlinks.json with
+  debug-cert fingerprint + AASA with team-id placeholder + runbook); exact-match nginx
+  locations staged in `deployment/nginx-app-factorylm.conf`. Prod deploy = gated path.
+- **QA tenant for mobile proofs**: `notebook-qa-mobile-0813@factorylm.com` (matches the
+  qa-cleanup selector; password was session-temp), tenant `3b80d98d…`, asset
+  `ALLE-MMDHMQV0` (PowerFlex 525). Register door is `POST /api/auth/register/` — trailing
+  slash, else 308 body.
+- **Emulator trap (this box, 2026-08-13 afternoon)**: `Medium_Phone_API_36.1` hung twice at
+  "QEMU2 main loop no response" under low free RAM (~4.3GB); WHPX fine, disk fine. Lean
+  launch (`-memory 2048 -no-boot-anim -gpu swiftshader_indirect -no-snapshot`) + visible
+  window is the workaround being proven. Pre-commit gitleaks takes 3+ min under emulator CPU
+  load — run commits in background.
+- Still open in Phase 4: camera/photo capture, Keystore/Keychain secure storage, offline read
+  cache, streamed SSE. Phase 5 = store readiness (account deletion server work).
+
+---
+
 # Hot Cache — 2026-08-11 — Groq model retirement migrated (P0 was 2026-08-16)
 
 Groq retires `llama-3.3-70b-versatile` + `llama-3.1-8b-instant` on **2026-08-16**. Branch
