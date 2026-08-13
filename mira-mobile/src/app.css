@@ -79,3 +79,74 @@ label { display: block; font-size: 13px; color: var(--fl-ink-muted); margin: 12p
 .composer { display: flex; gap: 8px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--fl-surface); border-top: 1px solid var(--fl-line); }
 .composer input { flex: 1; }
 .composer button { width: auto; }
+
+/* --- Phase 3: five-tab shell (all colors are --fl-* tokens) --- */
+.tabhost { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.tabhost > .content { flex: 1; }
+.tabbar {
+  display: flex;
+  background: var(--fl-surface);
+  border-top: 1px solid var(--fl-line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1;
+  min-height: 56px; /* >=44px touch target incl. label */
+  border: none;
+  border-radius: 0;
+  background: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--fl-ink-muted);
+  font-size: 11px;
+}
+.tab-active { color: var(--fl-accent); font-weight: 600; }
+.tab-icon { font-size: 18px; line-height: 1; }
+
+.chip-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 8px; }
+.chip {
+  width: auto;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--fl-ink-muted);
+  white-space: nowrap;
+}
+.chip-active { border-color: var(--fl-accent); color: var(--fl-accent); font-weight: 600; }
+
+.badge {
+  display: inline-block;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--fl-line);
+  color: var(--fl-ink-muted);
+}
+.badge-open { color: var(--fl-amber); border-color: var(--fl-amber); }
+.badge-in_progress { color: var(--fl-accent); border-color: var(--fl-accent); }
+.badge-resolved { color: var(--fl-green); border-color: var(--fl-green); }
+.badge-prio-critical, .badge-prio-high { color: var(--fl-red); border-color: var(--fl-red); }
+
+.warnbox {
+  border: 1px solid var(--fl-amber);
+  border-radius: var(--fl-radius);
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--fl-ink);
+  margin: 8px 0;
+}
+
+select {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--fl-line);
+  border-radius: var(--fl-radius);
+  padding: 0 12px;
+  font-size: 15px;
+  background: var(--fl-surface);
+  color: var(--fl-ink);
+}

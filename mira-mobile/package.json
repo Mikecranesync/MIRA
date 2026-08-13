@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "sync": "npm run build && npx cap sync",
-    "android": "npm run sync && npx cap run android"
+    "android": "npm run sync && npx cap run android",
+    "test": "vitest run"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^4.1.10"
   }
 }
