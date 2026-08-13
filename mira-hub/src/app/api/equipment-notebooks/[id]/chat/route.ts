@@ -67,7 +67,7 @@ function providers(): CascadeProvider[] {
       name: "Cerebras",
       url: "https://api.cerebras.ai/v1/chat/completions",
       key: process.env.CEREBRAS_API_KEY,
-      model: process.env.CEREBRAS_MODEL ?? "llama3.1-8b",
+      model: process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
     },
     {
       name: "Gemini",

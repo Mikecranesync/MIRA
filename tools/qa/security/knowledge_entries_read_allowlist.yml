@@ -1192,7 +1192,7 @@ approved:
       
   "mira-scan-monday/backend/vendor_rag.py:81":
     approved_classification: UNFILTERED
-    query_sha256: "9fe66da9c3ccf23f2d9500a1b7474f3c6b2bab984664e15888ab1920f7285cef"
+    query_sha256: "02d6515a9b8caf4920e9f0adb5db215c381caeca0caa22b7efd9f05ca4690db7"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries

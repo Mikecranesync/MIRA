@@ -92,7 +92,7 @@ PROVIDERS = [
      os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")),
     ("cerebras", "https://api.cerebras.ai/v1/chat/completions",
      os.environ.get("CEREBRAS_API_KEY", ""),
-     os.environ.get("CEREBRAS_MODEL", "llama3.1-8b")),
+     os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")),
     ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
      os.environ.get("GEMINI_API_KEY", ""),
      os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")),

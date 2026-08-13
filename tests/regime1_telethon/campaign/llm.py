@@ -22,7 +22,7 @@ PROVIDERS = [
         "cerebras",
         "https://api.cerebras.ai/v1/chat/completions",
         "CEREBRAS_API_KEY",
-        "llama-3.3-70b",
+        "gpt-oss-120b",
     ),
     (
         "together",

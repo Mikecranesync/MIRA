@@ -69,7 +69,7 @@ function llmProviders(): LlmProvider[] {
       name: "cerebras",
       url: "https://api.cerebras.ai/v1/chat/completions",
       apiKey: cerebras,
-      model: process.env.CEREBRAS_MODEL ?? "llama3.1-8b",
+      model: process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
     });
   }
   const gemini = process.env.GEMINI_API_KEY;
@@ -79,7 +79,7 @@ function llmProviders(): LlmProvider[] {
       name: "gemini",
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       apiKey: gemini,
-      model: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
     });
   }
   return providers;
