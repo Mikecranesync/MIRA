@@ -206,3 +206,103 @@ widened to accept grounded pointing; a fabricated numeric length still fails.
   "defaults to 0 Hz"); the cite-check oracle pins the critical values.
 - comm-drilldown T1 broad opener drifts run-to-run in emphasis (embedded vs adapter first);
   citations stay grounded. Multi-evidence completeness is the next product phase.
+
+---
+
+# Round: multi-evidence answer completeness (2026-08-13, post-v3.264.0 checkpoint)
+
+Mission order held: research → red-first benchmark → coverage planner → facet evidence map →
+adversarial evaluation. The reliability lane (oracle 10/10, cite-check 9/9, 8-conv battery,
+rerank/topic machinery) was FROZEN — all changes additive, all frozen gates re-run green.
+
+## Definition before code (completeness ≠ groundedness)
+
+`completeness-oracle.json` + `completeness-bench.mjs`: 7 questions across the shapes
+(multi_facet, exhaustive, comparison, procedure-span, impossible-exhaustive). Every expected
+facet was first VERIFIED to exist in the corpus (per-facet chunk sweeps — speed/MOP was excluded
+after a 0-chunk sweep, then the drive's A427 MOP surfaced anyway once retrieval improved).
+Coverage (facets named / facets proven) and groundedness (named facets whose CITED page's chunk
+text proves them) are scored separately.
+
+## Baseline (RED): 5/7
+
+- protections **1/5** — the headline gap: overload-family chunks filled every slot; overcurrent/
+  overvoltage/undervoltage/ground-fault evidence stayed in the pool, uncovered.
+- impossible-exhaustive **0/1** — hedged subset dump, no structural scoping.
+- speed-ways 3/4, ethernet-setup-span 2/3 (partial); comm/start/comparison already full (the
+  frozen #3202 machinery carries them).
+
+## Implementation (all red-first, additive)
+
+- **`classifyCoverage`** — single_fact | procedure | comparison | multi_facet | exhaustive;
+  family shapes carry the facet plan; exhaustive phrasing counts outside known families
+  ("list every parameter").
+- **`ensureFacetRepresentation`** — facet-guaranteed slots after rerank/diversify: every planned
+  facet with pool evidence gets representation; facets with no evidence add nothing (the gap is
+  generation's to declare, never to invent). One-line wire-in on the existing broad path — no new
+  retrieval architecture.
+- **`facetEvidencePages`** — deterministic facet→pages provenance (explicit per-facet matchers
+  for the tricky vocabulary).
+- **Route evidence map** — multi_facet/exhaustive answers get REQUIRED COVERAGE naming each
+  proven facet with its evidence pages + cover-or-declare-gap contract; bare exhaustives get an
+  honest-scope contract (structure description IS a grounded answer and must carry [n] markers —
+  first draft shipped uncited because the scope statement pattern-matched refusal handling).
+
+## After: 7/7, gated, twice (stability check)
+
+- protections 1/5 → **5/5 all cited** (overcurrent/overvoltage/undervoltage/overload/ground
+  fault, p.211/p.76)
+- speed-ways 3/4 → **4/4** (keypad/pot + analog + preset + network, plus MOP)
+- ethernet-setup-span 2/3 → **3/3** (physical + C128 + IP config)
+- impossible-exhaustive 0/1 → **1/1** (honest scope + the manual's group structure, cited
+  p.153/p.65)
+- comm-overview / start-ways / accel-vs-decel hold at full.
+
+Bug found en route: replacing the old `isBroad` directive left one stale reference in the
+provider request builder — a runtime ReferenceError swallowed by the silent provider-cascade
+catch, presenting as "No answer provider available". (That silent catch is now a known debt.)
+
+## Known limitations
+
+- Facet plans exist only for the three FACET_FAMILIES (comm/speed/protection) + start-source via
+  the generic broad path; other domains rely on the generic enumeration directive.
+- The impossible-exhaustive contract is corpus-relative: it describes the loaded manual's
+  structure, not a universal parameter census.
+
+---
+
+# Round: reliability hardening — provider-cascade error masking (2026-08-13)
+
+## The defect (reproduced live before fixing)
+
+The provider cascade's `catch { continue }` swallowed EVERYTHING. A programming error thrown
+inside the try (the stale-`isBroad` incident) cascaded through all three providers and presented
+as "No answer provider available" — clean 200s, empty answers, nothing in the logs. Reproduced
+via env-gated chaos injection (`throw new ReferenceError` inside the cascade try): pre-fix
+behavior confirmed indistinguishable from provider exhaustion.
+
+## The fix (smallest correct)
+
+`isProviderCascadeError(err)` (exported, unit-tested): a cascade catch may only swallow EXTERNAL
+failures — DOMException (timeout/abort), undici's `TypeError("fetch failed")`, generic HTTP/rate
+errors, non-Error throws. ReferenceError / non-fetch TypeError / RangeError / SyntaxError /
+EvalError / URIError are BUGS: the cascade breaks immediately, logs
+`[notebook-chat] internal error (NOT provider exhaustion)` with the stack, and the stream emits a
+DISTINCT status ("Internal chat error — see server logs") that can never read as provider
+exhaustion. Legitimate provider failures now log too (`provider <name> failed: <msg>` — they were
+fully silent). `recordTurn` persistence failures also log instead of vanishing.
+
+**Proof:** chaos-injected ReferenceError → status "Internal chat error — see server logs" +
+loud log line (live, dev). Deterministic regression: 6-case classifier suite in
+answer-hygiene.test.ts including the undici fetch-TypeError disambiguation.
+
+## Staging-gate judge variance — documented, not fixed (by mission design)
+
+The surviving hard-fail in run 31678581378 was `oem-fault-variant-lowercase` scoring
+**safety=1 with every other dim 5** — the spurious-1 signature — and the #3207 confirmation
+REDRAW CONFIRMED it (same judge, same reply, same bias). Attempt 2 flapped a DIFFERENT question
+(`oem-model-fault-powerflex-f004`, grounding=1). Conclusion: the residual flake is stable
+per-reply judge bias, which same-judge confirmation cannot de-noise; identical engine code passes
+on other runs (a5402f3c4 CI green, re-roll green). A real fix would be a DIFFERENT judge model
+for the confirmation draw (perspective diversity) — an engine-side change to the repo's most
+load-bearing required check, deliberately out of this mission's scope. No product defect found.

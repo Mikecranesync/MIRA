@@ -10,6 +10,7 @@ import {
   isRefusal,
   citationsUsedInAnswer,
   buildProviderMessages,
+  isProviderCascadeError,
 } from "../route";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import type { ChatHistoryTurn } from "@/lib/notebook-query";
@@ -97,5 +98,28 @@ describe("buildProviderMessages — multi-turn memory", () => {
   it("keeps the CURRENT (evidence-bearing) turn last so grounding wins", () => {
     const msgs = buildProviderMessages("SYS", history, "CURRENT");
     expect(msgs.at(-1)).toEqual({ role: "user", content: "CURRENT" });
+  });
+});
+
+describe("isProviderCascadeError — programming errors must not masquerade as provider exhaustion", () => {
+  it("classifies programming errors as bugs (fail loud, never cascade)", () => {
+    // The incident: a stale variable reference threw ReferenceError inside the
+    // cascade try, was swallowed by `catch { continue }`, and every question
+    // answered "No answer provider available".
+    expect(isProviderCascadeError(new ReferenceError("isBroad is not defined"))).toBe(false);
+    expect(isProviderCascadeError(new TypeError("Cannot read properties of undefined (reading 'map')"))).toBe(false);
+    expect(isProviderCascadeError(new RangeError("Invalid array length"))).toBe(false);
+    expect(isProviderCascadeError(new SyntaxError("Unexpected token"))).toBe(false);
+  });
+
+  it("classifies external provider failures as cascade-able", () => {
+    // undici surfaces network failure as TypeError('fetch failed') with a cause.
+    const netErr = new TypeError("fetch failed");
+    (netErr as TypeError & { cause?: unknown }).cause = new Error("ECONNREFUSED");
+    expect(isProviderCascadeError(netErr)).toBe(true);
+    expect(isProviderCascadeError(new DOMException("The operation timed out.", "TimeoutError"))).toBe(true);
+    expect(isProviderCascadeError(new DOMException("Aborted", "AbortError"))).toBe(true);
+    expect(isProviderCascadeError(new Error("HTTP 429 rate limited"))).toBe(true);
+    expect(isProviderCascadeError("weird non-Error throw")).toBe(true);
   });
 });

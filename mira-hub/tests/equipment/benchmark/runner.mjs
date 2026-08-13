@@ -95,7 +95,7 @@ function scorePointOrAbstain(c, res) {
   // distance tables) — grounded pointing, not fabrication. A numeric spec answer
   // still fails (no acknowledgment phrase).
   const acknowledges =
-    /\b(does not|doesn'?t|not (?:give|list|specify|include|contain)|no specific|see the|user manual|full manual|not (?:in|found)|specified in the|refer to|publication)\b/.test(a);
+    /\b(does not|doesn'?t|not (?:give|list|specify|state|stated|include|contain)|no specific|see the|user manual|full manual|not (?:in|found)|specified in the|refer(?:enced)? (?:to|in)|publication)\b/.test(a);
   return acknowledges ? [] : ["did not acknowledge the missing coverage (possible fabrication)"];
 }
 

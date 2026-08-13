@@ -12,6 +12,9 @@ import {
   buildRetrievalQuery,
   buildTopicHint,
   classifyBroad,
+  classifyCoverage,
+  ensureFacetRepresentation,
+  facetEvidencePages,
   classifyIntent,
   diversifyByPage,
   type ChatHistoryTurn,
@@ -317,6 +320,78 @@ describe("EtherNet/IP architecture discrimination (topic-switch T3/T4)", () => {
     expect(q.toLowerCase()).toMatch(/ethernet|c128/); // current topic carried
     expect(q).not.toMatch(/P042/); // pre-switch topic must NOT pollute
     expect(q.toLowerCase()).not.toMatch(/decel/);
+  });
+});
+
+describe("classifyCoverage — answer-shape planning", () => {
+  it("classifies multi-facet family questions with an evidence plan", () => {
+    const c = classifyCoverage("what protections does this drive have?");
+    expect(c.shape).toBe("multi_facet");
+    expect(c.facets.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("classifies 'all the ways' as exhaustive with facets", () => {
+    const c = classifyCoverage("what are all the ways I can command the speed?");
+    expect(c.shape).toBe("exhaustive");
+    expect(c.facets.join(" ")).toMatch(/preset/i);
+  });
+
+  it("classifies comparisons", () => {
+    expect(classifyCoverage("what's the difference between the accel time and the decel time?").shape).toBe(
+      "comparison",
+    );
+  });
+
+  it("classifies procedures and single facts without facet plans", () => {
+    expect(classifyCoverage("how do I autotune the motor?").shape).toBe("procedure");
+    const single = classifyCoverage("what does P042 do?");
+    expect(single.shape).toBe("single_fact");
+    expect(single.facets).toEqual([]);
+  });
+});
+
+describe("classifyCoverage — impossible exhaustive", () => {
+  it("classifies 'list every parameter' as exhaustive even outside known families", () => {
+    const c = classifyCoverage("list every parameter this drive supports");
+    expect(c.shape).toBe("exhaustive");
+  });
+});
+
+describe("ensureFacetRepresentation — facet-guaranteed slots", () => {
+  const mk = (content: string, page: number) => ({ content, rank: 0.5, sourcePage: page, docId: "d" });
+
+  it("promotes a pool chunk for a facet the selection missed (protections gap)", () => {
+    // Baseline failure: 'what protections?' context filled with overload/param
+    // chunks; overcurrent/undervoltage evidence stayed in the pool, uncovered.
+    const overload = mk("F007 Motor Overload protection per P033 [Motor OL Current]", 84);
+    const params = mk("P031 Motor NP Volts P032 Motor NP Hertz parameter table", 65);
+    const overcurrent = mk("F063 HW OverCurrent — hardware overcurrent trip at 200% of rating", 162);
+    const undervolt = mk("F004 UnderVoltage — DC bus voltage fell below the minimum", 160);
+    const selected = [overload, params];
+    const pool = [overload, params, overcurrent, undervolt];
+    const out = ensureFacetRepresentation(selected, pool, ["motor overload", "overcurrent", "undervoltage"]);
+    expect(out).toContain(overcurrent);
+    expect(out).toContain(undervolt);
+    expect(out[0]).toBe(overload); // original order preserved
+  });
+
+  it("adds nothing when every facet is already represented or has no pool evidence", () => {
+    const a = mk("overcurrent trip levels", 1);
+    const out = ensureFacetRepresentation([a], [a], ["overcurrent", "ground fault"]);
+    expect(out).toEqual([a]); // ground fault has no pool evidence — no invented slot
+  });
+});
+
+describe("facetEvidencePages — evidence map provenance", () => {
+  it("maps facets to the pages of the chunks that prove them, and flags gaps", () => {
+    const chunks = [
+      { content: "embedded EtherNet/IP port on the drive", sourcePage: 147, docId: "d" },
+      { content: "RS-485 (DSI) protocol Modbus RTU", sourcePage: 202, docId: "d" },
+    ];
+    const map = facetEvidencePages(chunks, ["embedded EtherNet/IP", "RS-485 Modbus RTU", "DeviceNet"]);
+    expect(map.get("embedded EtherNet/IP")).toEqual([147]);
+    expect(map.get("RS-485 Modbus RTU")).toEqual([202]);
+    expect(map.get("DeviceNet")).toEqual([]); // gap — generation must declare it
   });
 });
 
