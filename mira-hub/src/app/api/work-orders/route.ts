@@ -180,6 +180,16 @@ export async function POST(req: NextRequest) {
   const sourceRunDiffIdRaw =
     typeof body.source_run_diff_id === "string" ? body.source_run_diff_id.trim() : "";
   const sourceRunDiffId = UUID_RE.test(sourceRunDiffIdRaw) ? sourceRunDiffIdRaw : null;
+  // Idempotency (migration 074, native-mobile Phase 3): an optional
+  // client-generated UUID. Same (tenant, client_key) → the FIRST create wins
+  // and a replay returns the existing row instead of a duplicate. Non-UUID
+  // values are rejected loudly rather than silently ignored — a client that
+  // sends a malformed key believes it has replay protection when it doesn't.
+  const clientKeyRaw = typeof body.client_key === "string" ? body.client_key.trim() : "";
+  if (clientKeyRaw && !UUID_RE.test(clientKeyRaw)) {
+    return NextResponse.json({ error: "client_key must be a UUID" }, { status: 400 });
+  }
+  const clientKey = clientKeyRaw || null;
 
   if (!equipmentId) {
     return NextResponse.json({ error: "equipment_id is required" }, { status: 400 });
@@ -189,7 +199,30 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    let replayed = false;
     const row = await withTenantContext(ctx.tenantId, async (c) => {
+      // Idempotent replay: if this tenant already created a WO under this
+      // client_key, return it as-is (whatever the retried payload says — the
+      // key identifies the LOGICAL create; payload drift on a replay is noise,
+      // not a second work order).
+      if (clientKey) {
+        const existing = await c.query(
+          `SELECT id, work_order_number, source, created_by_agent,
+                  manufacturer, model_number, equipment_id,
+                  title, description, suggested_actions, safety_warnings,
+                  status, priority, route_taken, tenant_id, created_at, updated_at,
+                  atlas_id, cmms_synced_at, source_run_diff_id
+             FROM work_orders
+            WHERE tenant_id = $1 AND client_key = $2
+            LIMIT 1`,
+          [ctx.tenantId, clientKey],
+        );
+        if (existing.rows[0]) {
+          replayed = true;
+          return existing.rows[0];
+        }
+      }
+
       const eq = await c.query<{
         id: string;
         manufacturer: string | null;
@@ -216,7 +249,7 @@ export async function POST(req: NextRequest) {
             suggested_actions, safety_warnings,
             status, priority, route_taken,
             tenant_id, user_id, created_at, updated_at,
-            source_run_diff_id
+            source_run_diff_id, client_key
           ) VALUES (
             gen_random_uuid(), $1, 'hub_ui', NULL,
             $2, $3, $4,
@@ -224,8 +257,10 @@ export async function POST(req: NextRequest) {
             ARRAY[]::TEXT[], ARRAY[]::TEXT[],
             'open'::workorderstatus, $8::prioritylevel, NULL,
             $9, $10, NOW(), NOW(),
-            $11
+            $11, $12
           )
+          ON CONFLICT (tenant_id, client_key) WHERE client_key IS NOT NULL
+          DO NOTHING
           RETURNING id, work_order_number, source, created_by_agent,
             manufacturer, model_number, equipment_id,
             title, description, suggested_actions, safety_warnings,
@@ -243,16 +278,40 @@ export async function POST(req: NextRequest) {
           ctx.tenantId,
           ctx.userId,
           sourceRunDiffId,
+          clientKey,
         ],
       );
-      return result.rows[0] ?? null;
+      if (result.rows[0]) return result.rows[0];
+      // Concurrent-replay race: another request with the same key won the
+      // insert between our SELECT and INSERT. Surface the winner.
+      if (clientKey) {
+        const winner = await c.query(
+          `SELECT id, work_order_number, source, created_by_agent,
+                  manufacturer, model_number, equipment_id,
+                  title, description, suggested_actions, safety_warnings,
+                  status, priority, route_taken, tenant_id, created_at, updated_at,
+                  atlas_id, cmms_synced_at, source_run_diff_id
+             FROM work_orders
+            WHERE tenant_id = $1 AND client_key = $2
+            LIMIT 1`,
+          [ctx.tenantId, clientKey],
+        );
+        if (winner.rows[0]) {
+          replayed = true;
+          return winner.rows[0];
+        }
+      }
+      return null;
     });
 
     if (!row) {
       return NextResponse.json({ error: "Asset not found for this tenant" }, { status: 404 });
     }
 
-    return NextResponse.json({ work_order: rowToWO(row) }, { status: 201 });
+    return NextResponse.json(
+      { work_order: rowToWO(row), replayed },
+      { status: replayed ? 200 : 201 },
+    );
   } catch (err) {
     console.error("[api/work-orders POST]", err);
     return NextResponse.json({ error: "Failed to create work order" }, { status: 500 });
