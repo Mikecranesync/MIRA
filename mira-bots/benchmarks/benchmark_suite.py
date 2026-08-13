@@ -45,6 +45,14 @@ for _noisy in ("httpx", "httpcore", "urllib3", "asyncio", "httpx._client"):
 
 import httpx  # noqa: E402
 
+# Plain-output logger for benchmark CLI (no level prefix — readable as a report).
+_bench_logger = logging.getLogger("mira-benchmark")
+_bench_logger.setLevel(logging.INFO)
+_bench_logger.propagate = False
+_bench_handler = logging.StreamHandler()
+_bench_handler.setFormatter(logging.Formatter("%(message)s"))
+_bench_logger.addHandler(_bench_handler)
+
 # ---------------------------------------------------------------------------
 # Dimension weights (must sum to 1.0)
 # ---------------------------------------------------------------------------
@@ -1195,12 +1203,12 @@ async def run_benchmark(version: str, cases: list[BenchmarkCase] | None = None) 
         total_cases=len(target_cases),
     )
 
-    print(f"\n{'=' * 60}")
-    print(f"MIRA Benchmark Suite v{version}")
-    print(
+    _bench_logger.info(f"\n{'=' * 60}")
+    _bench_logger.info(f"MIRA Benchmark Suite v{version}")
+    _bench_logger.info(
         f"Cases: {len(target_cases)} | Judge: {'Groq ' + model if api_key else 'DISABLED (neutral scores)'}"
     )
-    print(f"{'=' * 60}\n")
+    _bench_logger.info(f"{'=' * 60}\n")
 
     # Group by dimension for ordered output
     by_dim: dict[str, list[BenchmarkCase]] = {}
@@ -1214,8 +1222,6 @@ async def run_benchmark(version: str, cases: list[BenchmarkCase] | None = None) 
         dim_cases = by_dim.get(dim, [])
         if not dim_cases:
             continue
-        print(f"  [{dim.upper()}] {len(dim_cases)} cases", end="", flush=True)
-
         # Run all cases in this dimension concurrently
         dim_tasks = [_run_case(c, api_key, model) for c in dim_cases]
         dim_results = await asyncio.gather(*dim_tasks)
@@ -1224,7 +1230,9 @@ async def run_benchmark(version: str, cases: list[BenchmarkCase] | None = None) 
         scores = [r.score for r in dim_results]
         avg = sum(scores) / len(scores) if scores else 0.0
         errors = sum(1 for r in dim_results if r.error)
-        print(f"  →  avg {avg * 100:.1f}%  ({errors} errors)")
+        _bench_logger.info(
+            f"  [{dim.upper()}] {len(dim_cases)} cases  →  avg {avg * 100:.1f}%  ({errors} errors)"
+        )
 
     run.case_results = results
 
@@ -1276,11 +1284,11 @@ DIM_LABELS = {
 
 def print_report(run: BenchmarkRun) -> None:
     bar_width = 30
-    print(f"\n{'=' * 60}")
-    print(f"  MIRA Quality Benchmark  v{run.version}  |  {run.timestamp}")
-    print(f"{'=' * 60}")
-    print(f"\n  {'DIMENSION':<28} {'SCORE':>6}  {'BAR'}")
-    print(f"  {'-' * 54}")
+    _bench_logger.info(f"\n{'=' * 60}")
+    _bench_logger.info(f"  MIRA Quality Benchmark  v{run.version}  |  {run.timestamp}")
+    _bench_logger.info(f"{'=' * 60}")
+    _bench_logger.info(f"\n  {'DIMENSION':<28} {'SCORE':>6}  {'BAR'}")
+    _bench_logger.info(f"  {'-' * 54}")
 
     dim_order = ["technical", "conversational", "wo_quality", "fsm", "response_quality"]
     for dim in dim_order:
@@ -1290,13 +1298,15 @@ def print_report(run: BenchmarkRun) -> None:
         filled = int(bar_width * score / 100)
         bar = "█" * filled + "░" * (bar_width - filled)
         label = DIM_LABELS.get(dim, dim)
-        print(f"  {label:<28} {score:>5.1f}%  {bar}")
+        _bench_logger.info(f"  {label:<28} {score:>5.1f}%  {bar}")
 
-    print(f"  {'-' * 54}")
+    _bench_logger.info(f"  {'-' * 54}")
     overall_filled = int(bar_width * run.overall_score / 100)
     overall_bar = "█" * overall_filled + "░" * (bar_width - overall_filled)
-    print(f"  {'OVERALL SCORE':<28} {run.overall_score:>5.1f}%  {overall_bar}  [{run.grade}]")
-    print(
+    _bench_logger.info(
+        f"  {'OVERALL SCORE':<28} {run.overall_score:>5.1f}%  {overall_bar}  [{run.grade}]"
+    )
+    _bench_logger.info(
         f"\n  Cases: {run.passed_cases}/{run.total_cases} passed (≥70%)  |  "
         f"Total time: {run.total_ms / 1000:.1f}s  |  Judge: {run.groq_model}"
     )
@@ -1304,12 +1314,14 @@ def print_report(run: BenchmarkRun) -> None:
     # Low-score callouts
     failures = [r for r in run.case_results if r.score < 0.5]
     if failures:
-        print(f"\n  ⚠  LOW SCORES ({len(failures)} cases below 50%):")
+        _bench_logger.info(f"\n  ⚠  LOW SCORES ({len(failures)} cases below 50%):")
         for r in sorted(failures, key=lambda x: x.score)[:10]:
             err = f"  [{r.error[:60]}]" if r.error else ""
-            print(f"    {r.case_id:<12} {r.score * 100:>4.0f}%  {r.reasoning[:60]}{err}")
+            _bench_logger.info(
+                f"    {r.case_id:<12} {r.score * 100:>4.0f}%  {r.reasoning[:60]}{err}"
+            )
 
-    print(f"\n{'=' * 60}\n")
+    _bench_logger.info(f"\n{'=' * 60}\n")
 
 
 def save_results(run: BenchmarkRun, output_dir: Path | None = None) -> Path:
@@ -1332,15 +1344,15 @@ def compare_runs(path_a: str, path_b: str) -> None:
     data_a = json.loads(Path(path_a).read_text())
     data_b = json.loads(Path(path_b).read_text())
 
-    print(f"\n{'=' * 60}")
-    print("  MIRA Benchmark Comparison")
-    print(f"  A: v{data_a['version']}  ({data_a['timestamp']})")
-    print(f"  B: v{data_b['version']}  ({data_b['timestamp']})")
-    print(f"{'=' * 60}")
+    _bench_logger.info(f"\n{'=' * 60}")
+    _bench_logger.info("  MIRA Benchmark Comparison")
+    _bench_logger.info(f"  A: v{data_a['version']}  ({data_a['timestamp']})")
+    _bench_logger.info(f"  B: v{data_b['version']}  ({data_b['timestamp']})")
+    _bench_logger.info(f"{'=' * 60}")
 
     dim_order = ["technical", "conversational", "wo_quality", "fsm", "response_quality"]
-    print(f"\n  {'DIMENSION':<28} {'A':>6}  {'B':>6}  {'DELTA':>7}")
-    print(f"  {'-' * 52}")
+    _bench_logger.info(f"\n  {'DIMENSION':<28} {'A':>6}  {'B':>6}  {'DELTA':>7}")
+    _bench_logger.info(f"  {'-' * 52}")
 
     for dim in dim_order:
         sa = data_a.get("dimension_scores", {}).get(dim)
@@ -1350,18 +1362,18 @@ def compare_runs(path_a: str, path_b: str) -> None:
         delta = sb - sa
         arrow = "▲" if delta > 0 else ("▼" if delta < 0 else "─")
         label = DIM_LABELS.get(dim, dim)
-        print(f"  {label:<28} {sa:>5.1f}%  {sb:>5.1f}%  {arrow}{abs(delta):>5.1f}%")
+        _bench_logger.info(f"  {label:<28} {sa:>5.1f}%  {sb:>5.1f}%  {arrow}{abs(delta):>5.1f}%")
 
     oa = data_a.get("overall_score", 0)
     ob = data_b.get("overall_score", 0)
     od = ob - oa
-    print(f"  {'-' * 52}")
+    _bench_logger.info(f"  {'-' * 52}")
     arrow = "▲" if od > 0 else ("▼" if od < 0 else "─")
-    print(
+    _bench_logger.info(
         f"  {'OVERALL':<28} {oa:>5.1f}%  {ob:>5.1f}%  {arrow}{abs(od):>5.1f}%  "
         f"[{data_a['grade']}→{data_b['grade']}]"
     )
-    print(f"\n{'=' * 60}\n")
+    _bench_logger.info(f"\n{'=' * 60}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -1395,7 +1407,7 @@ async def _main() -> None:
     cases: list[BenchmarkCase] | None = None
     if args.dimension:
         cases = [c for c in ALL_CASES if c.dimension == args.dimension]
-        print(f"Running {len(cases)} cases for dimension: {args.dimension}")
+        _bench_logger.info(f"Running {len(cases)} cases for dimension: {args.dimension}")
 
     run = await run_benchmark(args.version, cases)
     print_report(run)
@@ -1403,7 +1415,7 @@ async def _main() -> None:
     if not args.no_save:
         out_dir = Path(args.output_dir) if args.output_dir else None
         out_path = save_results(run, out_dir)
-        print(f"Results saved → {out_path}")
+        _bench_logger.info(f"Results saved → {out_path}")
 
     # Exit non-zero if grade is F
     if run.grade == "F":
