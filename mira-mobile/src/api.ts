@@ -250,14 +250,25 @@ export interface ChatTurn {
 
 /** Notebook chat — SSE over POST. CapacitorHttp returns the complete body, so
  *  the skeleton parses the full frame stream at once (sources → content* →
- *  status → [DONE]). Incremental streaming is a Phase 3 concern. */
+ *  status → [DONE]). Incremental streaming is a Phase 3 concern.
+ *  The route REQUIRES sourceDocIds (422 without them): send the notebook's
+ *  enabled sources, exactly as the web client and tech-battery do. */
 export async function askNotebook(
   notebookId: string,
   message: string,
 ): Promise<ChatTurn> {
+  const nb = await request(
+    `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/`,
+  );
+  const sources =
+    ((nb.data as { sources?: { docId: string; enabledByDefault?: boolean }[] } | null)
+      ?.sources ?? []);
+  const sourceDocIds = sources
+    .filter((s) => s.enabledByDefault !== false)
+    .map((s) => s.docId);
   const r = await request(
     `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/chat/`,
-    { method: "POST", json: { message } },
+    { method: "POST", json: { message, sourceDocIds } },
   );
   let answer = "";
   let citations: ChatTurn["citations"] = [];
