@@ -1,5 +1,13 @@
 import type { PoolClient } from "pg";
-import { expandIndustrialQuery, rerankChunks } from "@/lib/notebook-query";
+import {
+  expandIndustrialQuery,
+  rerankChunks,
+  classifyBroad,
+  classifyIntent,
+  diversifyByPage,
+  COMM_FACETS,
+  type RerankTraceRow,
+} from "@/lib/notebook-query";
 
 /**
  * Manufacturer-scoped BM25 retrieval from `knowledge_entries`.
@@ -397,6 +405,11 @@ export async function retrieveNodeChunks(
      *  (enabled notebook sources). Same enforcement point as docId — the
      *  predicate applies to BOTH tsquery passes in SQL, never app-side. */
     docIds?: string[];
+    /** The technician's raw message when `query` was conversation-augmented.
+     *  Adds one OR pass on the un-augmented words, so history-carried tokens
+     *  (e.g. a thread's P042) can only ADD candidates — never crowd the
+     *  message's own keywords ("keypad") out of the pool. */
+    rawQuery?: string;
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -532,13 +545,41 @@ export async function retrieveNodeChunks(
   add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
   for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
   add(await runExactLane(expanded.exactTokens));
+  // Message-native pass: when the query was conversation-augmented, the raw
+  // words get their own OR pass — otherwise the thread's exact IDs dominate
+  // every variant and the chunk answering the message's OWN subject (keypad
+  // navigation) never enters the pool.
+  const rawQ = opts.rawQuery?.trim();
+  if (rawQ && rawQ !== q) add(await runRetrieval(OR_TSQUERY, rawQ));
+
+  // Broad/enumeration questions ("what comm options?", "all the ways to command
+  // speed?", "what protections?") fail single-cluster retrieval: the top section
+  // is treated as exhaustive and scattered facets (embedded EtherNet/IP on one
+  // page, embedded Modbus on another, the adapter table on a third) never all
+  // reach the answer. Fan retrieval out across the family's GENERIC facet
+  // vocabulary so every proven facet lands in the pool; the answer still cites
+  // and only lists a facet an excerpt proves.
+  const broad = classifyBroad(q);
+  const intent = broad.broad ? "broad" : classifyIntent(q);
+  if (broad.broad) {
+    for (const facet of broad.facets) add(await runRetrieval(OR_TSQUERY, facet));
+  } else if (intent === "comm") {
+    // Specific comm question ("where's the Profinet setting?") — fan out comm
+    // facets so scattered comm material (the adapter table, embedded params)
+    // reaches the pool, without forcing the broad "enumerate everything" shape.
+    for (const facet of COMM_FACETS) add(await runRetrieval(OR_TSQUERY, facet));
+  }
+
   // Last-resort recall: if precise + expanded + exact all found nothing, fall
   // back to the original OR pass (a fully off-vocabulary conversational query).
   if (pool.length === 0) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
 
-  // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank), then
-  // take topK. Preserves the ManualChunk shape the caller expects.
-  const reranked = rerankChunks(
+  // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
+  // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive
+  // (no single page may fill the context); otherwise the tight topK.
+  const trace: RerankTraceRow[] | undefined =
+    process.env.NOTEBOOK_RETRIEVAL_DEBUG === "1" ? [] : undefined;
+  const rerankedAll = rerankChunks(
     expanded,
     pool.map((r) => ({
       content: String(r.content ?? ""),
@@ -547,7 +588,22 @@ export async function retrieveNodeChunks(
       docId: r.doc_id == null ? null : String(r.doc_id),
       _row: r,
     })),
-  ).slice(0, topK);
+    { intent, trace },
+  );
+  const reranked = broad.broad
+    ? diversifyByPage(rerankedAll, 2, Math.max(topK * 2, 12))
+    : rerankedAll.slice(0, topK);
+
+  if (trace) {
+    // Observability (env-gated): the full ranked candidate set with per-chunk
+    // features + which pages won, so a retrieval/ranking failure is inspectable
+    // (mission "make retrieval observable" A/B/C classification).
+    console.log(
+      `[retrieval-trace] q=${JSON.stringify(q)} intent=${intent} pool=${pool.length} ` +
+        `final=${JSON.stringify(reranked.map((c) => c.sourcePage))} ` +
+        `cands=${JSON.stringify(trace.slice(0, 12).map((t) => ({ p: t.page, s: +t.score.toFixed(2), b: +t.base.toFixed(3), i: +t.index.toFixed(2), pr: +t.proc.toFixed(2), cm: +t.comm.toFixed(2), x: t.exactHit })))}`,
+    );
+  }
 
   return reranked.map(({ _row: r }) => ({
     content: String(r.content ?? ""),

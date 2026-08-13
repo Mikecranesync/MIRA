@@ -207,7 +207,7 @@ export function NotebookChat({
     // Only completed user/assistant turns with content; the route caps it again.
     const history = turnsRef.current
       .filter((t) => t.content && (t.role === "user" || t.role === "assistant"))
-      .slice(-8)
+      .slice(-12)
       .map((t) => ({ role: t.role, content: t.content }));
     const userTurn: ChatTurn = { id: `u${Date.now()}`, role: "user", content: message };
     const aId = `a${Date.now()}`;

@@ -25,6 +25,8 @@ import {
 import {
   sanitizeHistory,
   buildRetrievalQuery,
+  buildTopicHint,
+  classifyBroad,
   type ChatHistoryTurn,
 } from "@/lib/notebook-query";
 import type {
@@ -48,6 +50,10 @@ GROUNDING & CITATIONS:
 - Preserve parameter IDs, fault codes, terminal identifiers, and units EXACTLY (P042, F004, terminal 07, 60 Hz).
 - Cite ONLY an excerpt that actually supports the sentence it is attached to. Never cite an excerpt just because it was retrieved.
 - If the excerpts do not contain the answer, say so plainly in one sentence and cite NOTHING. Never present unrelated pages as if they were evidence.
+
+PREMISE CHECK — a technician sometimes asks for something in a form the machine doesn't have:
+- If the excerpts SHOW the asked-for thing exists only in a different form — e.g. a protocol the excerpts prove is available ONLY via an optional communication adapter/module (not a built-in parameter), or a feature that lives under a different name — do NOT just say "not found". Correct the premise in one sentence and cite it, e.g. "This drive has no built-in PROFINET parameter; PROFINET is available only through an optional communication adapter [n]." Then point to the real path (the adapter, or the correct parameter).
+- Do this ONLY when an excerpt actually supports the correction. If nothing in the excerpts speaks to the asked-for thing at all (e.g. a hydraulic system on a VFD), abstain as usual in one sentence with no citation — never invent a correction.
 
 PRECISION RULES:
 - A monitoring/display value (e.g. b001, b002, "Output Freq", "Commanded Freq") is NOT a setting. Never tell the user to "set" a display parameter. If asked how to set something, give the configuration parameter, not the monitor.
@@ -234,6 +240,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       unsPath: null, // notebook nodes are standalone; scope is the doc set
       topK: 6,
       docIds,
+      rawQuery: message,
     }),
   );
 
@@ -294,16 +301,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
-  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext;
+  // Broad/enumeration questions get an answer-shape directive: enumerate EVERY
+  // option the excerpts prove (embedded AND optional), each cited, then offer the
+  // natural next step — instead of answering with the first matching method.
+  const isBroad = classifyBroad(message).broad;
+  const broadDirective = isBroad
+    ? `\n\nBROAD / ENUMERATION QUESTION — the technician asked what options/methods/protections exist. Answer as a short list that names EVERY distinct one the excerpts prove — both embedded/built-in AND optional — each with its own citation. Do NOT stop after the first method; if different excerpts describe different methods, include them all. Never list an option the excerpts do not prove. After the list, offer the natural next step (e.g. "want the setup steps for one of these?").`
+    : "";
+  const systemPrompt = appendManualContext(BASE_SYSTEM_PROMPT, chunks) + machineContext + broadDirective;
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
   // same as the asset-chat and node-chat routes. Conversation history rides
   // between the system prompt and the current (evidence-bearing) turn so the
   // model has thread memory without diluting the live grounding.
+  // Referential follow-ups get a deterministic topic note (transcript tokens
+  // only) riding IN the user turn next to the question — an end-of-system-prompt
+  // hint measurably failed to stop "what's the maximum?" in a decel thread from
+  // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
+  const topicHint = buildTopicHint(message, history);
   const messages = buildProviderMessages(
     systemPrompt,
     history,
-    buildManualUserContent(message, chunks),
+    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks),
   );
 
   const stream = new ReadableStream<Uint8Array>({
@@ -329,8 +348,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               model: provider.model,
               messages,
               stream: true,
-              max_tokens: 800,
+              // A broad/enumeration answer legitimately needs more room; a narrow
+              // answer stays tight. On gpt-oss the model's hidden reasoning also
+              // draws from the completion budget, which was truncating broad
+              // answers mid-list — hence reasoning_effort:low on Groq (frees the
+              // budget for the visible answer; see the gpt-oss Groq migration
+              // trap) plus the larger broad cap.
+              max_tokens: isBroad ? 1400 : 800,
               temperature: 0.3,
+              ...(provider.name === "Groq"
+                ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
+                : {}),
             }),
             signal: AbortSignal.timeout(30_000),
           });
