@@ -23,6 +23,7 @@ export function ScanView({
   const firedRef = useRef(false);
   const [status, setStatus] = useState<Status>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [manualTag, setManualTag] = useState("");
 
   const teardown = () => {
     scannerRef.current?.stop();
@@ -34,8 +35,13 @@ export function ScanView({
     if (!videoRef.current || scannerRef.current) return;
     setStatus("starting");
     setErrMsg(null);
+    // Never leave the user on an infinite spinner (punch list QR-01): if the
+    // camera hasn't produced a stream in 12s, fail to the visible fallback.
+    const timeout = new Promise<never>((_, rej) => {
+      setTimeout(() => rej(new Error("camera start timed out")), 12_000);
+    });
     try {
-      if (!(await QrScanner.hasCamera())) {
+      if (!(await Promise.race([QrScanner.hasCamera(), timeout]))) {
         setStatus("no-camera");
         return;
       }
@@ -55,11 +61,15 @@ export function ScanView({
         },
       );
       scannerRef.current = scanner;
-      await scanner.start();
+      await Promise.race([scanner.start(), timeout]);
       setStatus("scanning");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setErrMsg(msg);
+      setErrMsg(
+        /timed out/.test(msg)
+          ? "Camera unavailable (needs HTTPS or camera permission)."
+          : msg,
+      );
       setStatus(/permission|denied|notallowed/i.test(msg) ? "denied" : "error");
       teardown();
     }
@@ -110,6 +120,22 @@ export function ScanView({
             )}
           </div>
         )}
+      </div>
+      {/* Camera can never be the only door (QR-01): manual tag entry always works. */}
+      <label>Or enter the asset tag manually</label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={manualTag}
+          placeholder="e.g. ALLE-MMDHMQV0"
+          onChange={(e) => setManualTag(e.target.value)}
+        />
+        <button
+          style={{ width: "auto" }}
+          disabled={!manualTag.trim()}
+          onClick={() => onResult(manualTag.trim())}
+        >
+          Go
+        </button>
       </div>
     </div>
   );

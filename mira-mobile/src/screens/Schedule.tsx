@@ -42,7 +42,7 @@ export function ScheduleTab({
       {state.state === "loading" && <Loading what="PM schedule" />}
       {state.state === "error" && <ErrorState error={state.error} onRetry={refresh} />}
       {state.state === "ready" && state.data.length === 0 && (
-        <Empty text="No PM schedules yet in this workspace." />
+        <Empty text="No PM schedules yet. Schedules are created in the web Command Center for now — this tab tracks and completes them in the field. Mobile creation is coming." />
       )}
       {mutError != null && <ErrorState error={mutError} />}
       {state.state === "ready" &&

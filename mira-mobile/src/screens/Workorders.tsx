@@ -294,6 +294,36 @@ function Detail({
                 </button>
               ))}
               {mutError != null && <ErrorState error={mutError} />}
+              {/* Archive path for mistaken/test WOs (punch list WO-06):
+                  status "closed" with a resolution — server-validated. */}
+              {wo.status !== "closed" && (
+                <button
+                  style={{ marginTop: 4 }}
+                  disabled={Boolean(mutating)}
+                  onClick={async () => {
+                    const resolution = window.prompt(
+                      "Close & archive this work order?\nEnter a short resolution note (required):",
+                      wo.title.startsWith("ZZZ-TEST") ? "Test entry — discarded." : "",
+                    );
+                    if (resolution == null || !resolution.trim()) return;
+                    setMutating("closed");
+                    setMutError(null);
+                    try {
+                      await updateWorkOrder(wo.id, {
+                        status: "closed",
+                        resolution: resolution.trim(),
+                      });
+                      refresh();
+                    } catch (e) {
+                      setMutError(e);
+                    } finally {
+                      setMutating("");
+                    }
+                  }}
+                >
+                  {mutating === "closed" ? "Closing…" : "Close & archive"}
+                </button>
+              )}
             </div>
           ) : (
             <div className="meta" style={{ textAlign: "center" }}>
@@ -345,7 +375,10 @@ function Create({
             <option value="">Select an asset…</option>
             {assets.data.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.name || a.model_number || a.id}
+                {/* Disambiguate same-named assets (punch list DATA-10). */}
+                {[a.name || a.model_number || a.model || a.id, a.tag, a.location]
+                  .filter(Boolean)
+                  .join(" · ")}
               </option>
             ))}
           </select>
@@ -398,6 +431,16 @@ function Create({
             {busy ? "Creating…" : "Create work order"}
           </button>
         </div>
+        {/* A disabled primary button must say WHY (punch list FRM-02). */}
+        {(!equipmentId || !description.trim()) && (
+          <div className="meta" style={{ marginTop: 8 }}>
+            To create:{" "}
+            {[!equipmentId && "select an asset", !description.trim() && "add a description"]
+              .filter(Boolean)
+              .join(" and ")}
+            .
+          </div>
+        )}
         {error != null && <ErrorState error={error} />}
         {replayNote && <div className="meta">Already created (replay detected).</div>}
       </div>

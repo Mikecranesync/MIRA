@@ -97,3 +97,50 @@ describe("notebook scoping + covers (NotebookLM flow)", () => {
     expect(coverGlyph(null)).toBe("📓");
   });
 });
+
+describe("punch-list pure helpers", () => {
+  it("humanizes machine status tokens (COPY-09) — no raw tokens leak", async () => {
+    const { humanizeAnswerStatus, answerBody } = await import("../chat-copy");
+    expect(humanizeAnswerStatus("insufficient_evidence")).toMatch(/couldn't find/i);
+    expect(humanizeAnswerStatus("answered")).toBe("");
+    expect(humanizeAnswerStatus("http 422")).toMatch(/422/);
+    expect(answerBody(null, "insufficient_evidence")).not.toContain("_");
+    expect(answerBody("Real answer [1].", "answered")).toBe("Real answer [1].");
+  });
+  it("parses persisted evidence into citations defensively (CIT-07)", async () => {
+    const { citationsFromEvidence } = await import("../../screens/NotebookScreen");
+    const rows = citationsFromEvidence([
+      { citationId: "1", sourceTitle: "manual.pdf", page: 44, quote: "torque is 0.71 N-m", docId: "d1" },
+      "junk",
+      { noCitationId: true },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].quote).toContain("0.71");
+    expect(citationsFromEvidence(undefined)).toEqual([]);
+  });
+  it("sse parser passes quote/docId through the sources frame", async () => {
+    const { parseChatSse } = await import("../sse");
+    const body =
+      'data: {"kind":"sources","citations":[{"citationId":"1","sourceTitle":"m.pdf","page":2,"quote":"the cited passage","docId":"d9"}]}\n\n' +
+      'data: {"kind":"content","content":"x [1]"}\n\ndata: {"kind":"status","status":"answered"}\n\ndata: [DONE]';
+    const t = parseChatSse(body);
+    expect(t.citations[0].quote).toBe("the cited passage");
+    expect(t.citations[0].docId).toBe("d9");
+  });
+  it("sign-out purge also clears cached Studio artifacts", async () => {
+    const { purgeAllQueues } = await import("../offline-queue");
+    const data: Record<string, string> = {
+      "flm.woqueue.v1.t1": "[]",
+      "flm.studio.v1.nb1": "{}",
+      "flm.cookiejar.v1": "keep",
+    };
+    const store = {
+      get: async (k: string) => data[k] ?? null,
+      set: async (k: string, v: string) => { data[k] = v; },
+      remove: async (k: string) => { delete data[k]; },
+      keys: async () => Object.keys(data),
+    };
+    expect(await purgeAllQueues(store)).toBe(2);
+    expect(Object.keys(data)).toEqual(["flm.cookiejar.v1"]);
+  });
+});

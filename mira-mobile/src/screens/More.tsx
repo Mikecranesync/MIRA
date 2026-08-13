@@ -35,6 +35,9 @@ export function MoreTab({
         {team === null && <div className="meta">Tap to load members</div>}
         {team?.state === "loading" && <Loading what="team" />}
         {team?.state === "error" && <ErrorState error={team.error} />}
+        {team?.state === "ready" && team.data.length === 0 && (
+          <div className="meta">No team members yet.</div>
+        )}
         {team?.state === "ready" &&
           team.data.map((m) => (
             <div key={m.email} className="meta">

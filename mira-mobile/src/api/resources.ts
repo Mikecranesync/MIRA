@@ -181,10 +181,14 @@ export async function completePmSchedule(id: string): Promise<void> {
 export interface Asset {
   id: string;
   name: string;
+  /** Permanent QR identity (API field `tag`, from equipment_number). */
+  tag?: string | null;
+  location?: string | null;
   equipment_type?: string | null;
+  type?: string | null;
   manufacturer?: string | null;
   model_number?: string | null;
-  equipment_number?: string | null;
+  model?: string | null;
 }
 
 export async function listAssets(): Promise<Asset[]> {
@@ -268,6 +272,8 @@ export interface NotebookServerTurn {
   question: string;
   answerStatus: string;
   answerText: string | null;
+  /** Persisted citations (same shape as the live sources frame). */
+  evidence?: unknown[];
 }
 
 export interface NotebookDetail {
@@ -411,9 +417,11 @@ export interface TeamMember {
 }
 
 export async function listTeam(): Promise<TeamMember[]> {
+  // The Hub returns a BARE ARRAY here (punch list TEAM-08) — accept both.
   const r = await request("/api/team/");
-  const d = r.data as { members?: Record<string, unknown>[] } | null;
-  return (d?.members ?? []).map((m) => ({
+  const d = r.data as Record<string, unknown>[] | { members?: Record<string, unknown>[] } | null;
+  const rows = Array.isArray(d) ? d : (d?.members ?? []);
+  return rows.map((m) => ({
     email: String(m.email ?? ""),
     role: String(m.role ?? ""),
     status: String(m.status ?? ""),

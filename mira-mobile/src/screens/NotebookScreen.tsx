@@ -19,7 +19,9 @@ import {
   type NotebookDetail,
   type WorkspaceDoc,
 } from "../api/resources";
-import type { ChatTurn } from "../lib/sse";
+import { preferencesStore } from "../lib/offline-queue";
+import { answerBody } from "../lib/chat-copy";
+import type { ChatCitation, ChatTurn } from "../lib/sse";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -30,9 +32,47 @@ const QUICK_STARTS = [
   "Show the safety steps",
 ];
 
-const STUDIO_TILES = [
-  { t: "Maintenance report", d: "RCA / PM checklist from the sources" },
-  { t: "Spec & parts table", d: "Torque specs, part numbers, fault codes" },
+/** Persisted-evidence rows are the live citation shape stored as JSON —
+ *  parse defensively so a malformed row never breaks the chat render. */
+export function citationsFromEvidence(evidence: unknown[] | undefined): ChatCitation[] {
+  if (!Array.isArray(evidence)) return [];
+  return evidence
+    .filter(
+      (e): e is Record<string, unknown> =>
+        typeof e === "object" && e !== null && "citationId" in e,
+    )
+    .map((e) => ({
+      citationId: String(e.citationId),
+      sourceTitle: String(e.sourceTitle ?? "Attached document"),
+      page: typeof e.page === "number" ? e.page : null,
+      quote: typeof e.quote === "string" ? e.quote : null,
+      docId: typeof e.docId === "string" ? e.docId : null,
+    }));
+}
+
+// Studio generators (STU-03): each runs a GROUNDED generation through the
+// same chat endpoint — same retrieval scope, same citation rules. Results are
+// cached device-local (purged on sign-out) until server-side storage exists.
+const STUDIO_KEY = (notebookId: string) => `flm.studio.v1.${notebookId}`;
+interface StudioOutput {
+  tile: string;
+  generatedAt: string;
+  answer: string;
+  citations: ChatCitation[];
+}
+const STUDIO_TILES: { t: string; d: string; prompt?: string }[] = [
+  {
+    t: "Spec & parts table",
+    d: "Torque specs, part numbers, fault codes",
+    prompt:
+      "Create a reference table (markdown) of every concrete specification in the sources: torque specs, voltages, part/catalog numbers, fault codes with meanings, dimensions, ratings. One row per item with its value and units, citing each row. If a category has no data, omit it.",
+  },
+  {
+    t: "Maintenance report",
+    d: "How this machine works + key procedures",
+    prompt:
+      "Write a concise maintenance briefing for this machine from the sources: what it is, the key procedures covered by the documentation, the faults it can report and their first checks, and any safety-critical steps. Use short sections with headings, cite every claim.",
+  },
   { t: "Shift briefing", d: "Hands-free audio walkthrough" },
   { t: "Training pack", d: "Flashcards + quiz for sign-off" },
 ];
@@ -55,9 +95,14 @@ export function NotebookScreen({
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [chatError, setChatError] = useState<unknown>(null);
+  const [viewCitation, setViewCitation] = useState<ChatCitation | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   backRef.current = () => {
+    if (viewCitation) {
+      setViewCitation(null);
+      return true;
+    }
     if (sheetOpen) {
       setSheetOpen(false);
       return true;
@@ -163,6 +208,13 @@ export function NotebookScreen({
                 className="detach"
                 title="Remove from this notebook"
                 onClick={async () => {
+                  // Mis-tap protection (punch list SRC-11).
+                  if (
+                    !window.confirm(
+                      `Remove "${s.filename ?? "this source"}" from the notebook? The document stays in your workspace.`,
+                    )
+                  )
+                    return;
                   await detachSource(id, s.docId).catch(() => {});
                   refresh();
                 }}
@@ -200,21 +252,37 @@ export function NotebookScreen({
             {turns.map((t) => (
               <div key={t.id}>
                 <div className="msg-user">{t.question}</div>
-                <div className="msg-answer">
-                  {t.answerText ?? `(${t.answerStatus.replace(/_/g, " ")})`}
+                <div className="msg-answer">{answerBody(t.answerText, t.answerStatus)}</div>
+                <div>
+                  {citationsFromEvidence(t.evidence).map((c) => (
+                    <button
+                      key={c.citationId}
+                      className="cite-chip"
+                      style={{ border: "none", cursor: "pointer" }}
+                      onClick={() => setViewCitation(c)}
+                    >
+                      {c.citationId} · {c.sourceTitle}
+                      {c.page ? ` p.${c.page}` : ""}
+                    </button>
+                  ))}
                 </div>
               </div>
             ))}
             {liveTurns.map((t, i) => (
               <div key={`live-${i}`}>
                 <div className="msg-user">{t.q}</div>
-                <div className="msg-answer">{t.a.answer || `(${t.a.status})`}</div>
+                <div className="msg-answer">{answerBody(t.a.answer, t.a.status)}</div>
                 <div>
                   {t.a.citations.map((c) => (
-                    <span key={c.citationId} className="cite-chip">
+                    <button
+                      key={c.citationId}
+                      className="cite-chip"
+                      style={{ border: "none", cursor: "pointer" }}
+                      onClick={() => setViewCitation(c)}
+                    >
                       {c.citationId} · {c.sourceTitle}
                       {c.page ? ` p.${c.page}` : ""}
-                    </span>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -257,20 +325,46 @@ export function NotebookScreen({
       )}
 
       {panel === "studio" && (
-        <div className="content bottompad" style={{ paddingTop: 0 }}>
-          <div className="meta">
-            Turn this notebook's sources into reusable artifacts. Generation is
-            coming to mobile — nothing here runs yet.
-          </div>
-          <div className="studio-grid">
-            {STUDIO_TILES.map((tile) => (
-              <div key={tile.t} className="studio-tile" style={{ opacity: 0.65 }}>
-                <div className="t">{tile.t}</div>
-                <div className="d">
-                  {sources.length === 0 ? "Add sources first." : tile.d}
-                </div>
+        <StudioPanel
+          notebookId={id}
+          scope={scope}
+          ask={(prompt) => askNotebook(id, prompt, scope)}
+          onCitation={setViewCitation}
+        />
+      )}
+
+      {viewCitation && (
+        <div className="sheet-backdrop" onClick={() => setViewCitation(null)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>
+              [{viewCitation.citationId}] {viewCitation.sourceTitle}
+              {viewCitation.page ? ` — p.${viewCitation.page}` : ""}
+            </h3>
+            {viewCitation.quote ? (
+              <div
+                className="msg-answer"
+                style={{
+                  borderLeft: "2px solid var(--flm-citation-fg)",
+                  paddingLeft: 12,
+                  color: "var(--fl-ink-muted)",
+                }}
+              >
+                “{viewCitation.quote.trim()}…”
               </div>
-            ))}
+            ) : (
+              <div className="meta">
+                The cited passage isn't stored for this older answer — re-ask the
+                question to get a linked citation.
+              </div>
+            )}
+            <div className="meta" style={{ marginTop: 10 }}>
+              Cited from the source document
+              {viewCitation.page ? ` at page ${viewCitation.page}` : ""}. Full
+              in-app page view is coming; verify against the manual before acting.
+            </div>
+            <button style={{ marginTop: 12 }} onClick={() => setViewCitation(null)}>
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -286,6 +380,119 @@ export function NotebookScreen({
         />
       )}
     </>
+  );
+}
+
+function StudioPanel({
+  notebookId,
+  scope,
+  ask,
+  onCitation,
+}: {
+  notebookId: string;
+  scope: string[];
+  ask: (prompt: string) => Promise<ChatTurn>;
+  onCitation: (c: ChatCitation) => void;
+}) {
+  const [outputs, setOutputs] = useState<Record<string, StudioOutput>>({});
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [genError, setGenError] = useState<unknown>(null);
+
+  useEffect(() => {
+    void preferencesStore.get(STUDIO_KEY(notebookId)).then((raw) => {
+      if (!raw) return;
+      try {
+        setOutputs(JSON.parse(raw) as Record<string, StudioOutput>);
+      } catch {
+        /* corrupt cache = empty */
+      }
+    });
+  }, [notebookId]);
+
+  const generate = async (tile: (typeof STUDIO_TILES)[number]) => {
+    if (!tile.prompt || scope.length === 0 || generating) return;
+    setGenerating(tile.t);
+    setGenError(null);
+    try {
+      const a = await ask(tile.prompt);
+      const out: StudioOutput = {
+        tile: tile.t,
+        generatedAt: new Date().toISOString(),
+        answer: answerBody(a.answer, a.status),
+        citations: a.citations,
+      };
+      const next = { ...outputs, [tile.t]: out };
+      setOutputs(next);
+      await preferencesStore.set(STUDIO_KEY(notebookId), JSON.stringify(next));
+    } catch (e) {
+      setGenError(e);
+    } finally {
+      setGenerating(null);
+    }
+  };
+
+  return (
+    <div className="content bottompad" style={{ paddingTop: 0 }}>
+      <div className="meta">
+        Reusable artifacts generated ONLY from this notebook's enabled sources,
+        with citations. Stored on this device.
+      </div>
+      <div className="studio-grid">
+        {STUDIO_TILES.map((tile) => {
+          const runnable = Boolean(tile.prompt);
+          const locked = scope.length === 0;
+          return (
+            <div
+              key={tile.t}
+              className="studio-tile"
+              style={{
+                opacity: runnable && !locked ? 1 : 0.6,
+                cursor: runnable && !locked ? "pointer" : "default",
+              }}
+              onClick={() => void generate(tile)}
+            >
+              <div className="t">{tile.t}</div>
+              <div className="d">
+                {locked
+                  ? "Add sources first."
+                  : !runnable
+                    ? `${tile.d} — coming soon`
+                    : generating === tile.t
+                      ? "Generating from your sources…"
+                      : outputs[tile.t]
+                        ? "Tap to regenerate"
+                        : tile.d}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {genError != null && <ErrorState error={genError} />}
+      {Object.values(outputs)
+        .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))
+        .map((o) => (
+          <div key={o.tile} className="card" style={{ marginTop: 12 }}>
+            <h3>{o.tile}</h3>
+            <div className="meta" style={{ marginBottom: 6 }}>
+              Generated {new Date(o.generatedAt).toLocaleString()} · grounded in your sources
+            </div>
+            <div className="msg-answer">{o.answer}</div>
+            <div>
+              {o.citations.map((c) => (
+                <button
+                  key={c.citationId}
+                  className="cite-chip"
+                  style={{ border: "none", cursor: "pointer" }}
+                  onClick={() => onCitation(c)}
+                >
+                  {c.citationId} · {c.sourceTitle}
+                  {c.page ? ` p.${c.page}` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+    </div>
   );
 }
 
@@ -351,15 +558,9 @@ function AddSourcesSheet({
             >
               🗂 From this workspace
             </button>
-            <button className="sheet-option" disabled>
-              🌐 Website — coming soon
-            </button>
-            <button className="sheet-option" disabled>
-              📋 Copied text — coming soon
-            </button>
-            <button className="sheet-option" disabled>
-              📷 Photo — coming soon
-            </button>
+            <div className="meta" style={{ margin: "2px 0 10px" }}>
+              Website, copied text, and photo sources are coming soon.
+            </div>
             {note && <div className="meta">{note}</div>}
             <button style={{ marginTop: 6 }} onClick={onClose}>
               Done

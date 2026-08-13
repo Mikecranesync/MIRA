@@ -6,6 +6,10 @@ export interface ChatCitation {
   citationId: string;
   sourceTitle: string;
   page?: number | null;
+  /** 240-char cited passage from the server's sources frame (CIT-07: the
+   *  tap-a-chip trust feature renders this). */
+  quote?: string | null;
+  docId?: string | null;
 }
 
 export interface ChatTurn {

@@ -270,6 +270,11 @@ function CreateNotebook({
             {busy ? "Creating…" : "Create notebook"}
           </button>
         </div>
+        {!displayName.trim() && (
+          <div className="meta" style={{ marginTop: 8 }}>
+            To create: give the machine a name.
+          </div>
+        )}
         {error != null && <ErrorState error={error} />}
       </div>
     </div>

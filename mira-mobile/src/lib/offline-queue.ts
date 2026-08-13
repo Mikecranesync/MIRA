@@ -142,10 +142,15 @@ export async function drainQueue(
   }
 }
 
-/** Sign-out hygiene: remove every offline queue on the device (all tenants).
- *  Returns how many queue keys were purged. */
+/** All device-local data namespaces that must not outlive a session. */
+const PURGE_PREFIXES = [PREFIX, "flm.studio.v1."];
+
+/** Sign-out hygiene: remove every offline queue AND cached Studio artifact on
+ *  the device (all tenants). Returns how many keys were purged. */
 export async function purgeAllQueues(store: KvStore): Promise<number> {
-  const keys = (await store.keys()).filter((k) => k.startsWith(PREFIX));
+  const keys = (await store.keys()).filter((k) =>
+    PURGE_PREFIXES.some((p) => k.startsWith(p)),
+  );
   for (const k of keys) await store.remove(k);
   return keys.length;
 }
