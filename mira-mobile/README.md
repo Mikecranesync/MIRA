@@ -8,11 +8,31 @@ entire WebView trust boundary; external content opens in the system browser.
 Docs: `docs/adr/0034-native-mobile-static-capacitor-client.md` ·
 `docs/prd/2026-08-13-native-mobile-app-prd.md` · UX contract `docs/specs/hub-mobile-spec.md`.
 
-## Walking skeleton (Phase 2 — current state)
+## Walking skeleton (Phase 2)
 Login (NextAuth credentials dance, prod-proven) → `/api/me` (fail-closed capabilities) → assets
 list → asset detail → equipment-notebook chat (SSE parsed full-body) → sign out (server signout +
 local purge) → deep links `factorylm://m/<TAG>` and `https://app.factorylm.com/m/<TAG>` →
 `GET /api/assets/by-tag/<TAG>`.
+
+## Phase 4 (current state)
+- **Offline WO queue** (`src/lib/offline-queue.ts`, unit-tested): a create that fails on
+  transport is persisted tenant-keyed (Preferences) with its retained `client_key`, so the
+  later drain through the same `createWorkOrder` is a safe replay (server contract PR #3223;
+  older servers ignore the key). Drains on Workorders mount, app-resume, and "Sync now";
+  visible "Waiting to sync (N)" state; definitive 4xx rejections are dropped and surfaced.
+  Sign-out tries a final drain, warns before destroying unsynced items, then purges every
+  queue on the device.
+- **QR scan** (`src/screens/ScanView.tsx`): ported from the rescued Hub
+  `qr-scanner-view.tsx` (gesture-gated start, teardown on unmount/error, permission states)
+  on the `qr-scanner` lib (MIT) via WebView `getUserMedia` — no native plugin. Scan →
+  `extractAssetTag` trust filter → the same tag-landing route deep links use. CAMERA
+  permission (Android, not-required feature) + `NSCameraUsageDescription` (iOS) declared.
+- **Well-known files**: `deployment/well-known/` (assetlinks.json + AASA + deploy/verify
+  runbook); nginx locations staged in `deployment/nginx-app-factorylm.conf` (prod deploy is
+  the gated server task).
+- Still open in Phase 4: camera/photo capture → WO close photos + notebook uploads,
+  Keystore/Keychain secure storage (session still in Preferences), offline read cache,
+  streamed SSE.
 
 ## Build & run (Android, this repo's Windows dev box)
 ```bash

@@ -6,6 +6,8 @@
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FactoryLM uses the camera to scan asset QR codes on equipment.</string>
 	<key>CFBundleDisplayName</key>
         <string>FactoryLM</string>
 	<key>CFBundleExecutable</key>

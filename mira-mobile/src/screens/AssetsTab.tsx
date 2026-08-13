@@ -1,11 +1,17 @@
-// Assets tab — list, detail, and the deep-link tag-resolution landing.
+// Assets tab — list, detail, the deep-link tag-resolution landing, and the
+// Phase-4 QR scan route (scan → extractAssetTag trust filter → tag landing;
+// a code that isn't a FactoryLM asset link lands on the same error surface a
+// bad deep link does).
 import { useEffect, useState, type MutableRefObject } from "react";
 import { listAssets, getAsset, getAssetByTag, type Asset } from "../api/resources";
+import { extractAssetTag } from "../lib/tags";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
+import { ScanView } from "./ScanView";
 
 export type AssetsRoute =
   | { name: "list" }
   | { name: "detail"; id: string }
+  | { name: "scan" }
   | { name: "tag"; tag: string; error?: string };
 
 export function AssetsTab({
@@ -27,6 +33,20 @@ export function AssetsTab({
 
   if (route.name === "detail")
     return <Detail id={route.id} onBack={() => setRoute({ name: "list" })} />;
+  if (route.name === "scan")
+    return (
+      <ScanView
+        onCancel={() => setRoute({ name: "list" })}
+        onResult={(text) => {
+          const tag = extractAssetTag(text);
+          setRoute(
+            tag
+              ? { name: "tag", tag }
+              : { name: "tag", tag: "", error: `Not a FactoryLM asset code: ${text}` },
+          );
+        }}
+      />
+    );
   if (route.name === "tag")
     return (
       <TagLanding
@@ -36,10 +56,15 @@ export function AssetsTab({
         onHome={() => setRoute({ name: "list" })}
       />
     );
-  return <List onOpen={(id) => setRoute({ name: "detail", id })} />;
+  return (
+    <List
+      onOpen={(id) => setRoute({ name: "detail", id })}
+      onScan={() => setRoute({ name: "scan" })}
+    />
+  );
 }
 
-function List({ onOpen }: { onOpen: (id: string) => void }) {
+function List({ onOpen, onScan }: { onOpen: (id: string) => void; onScan: () => void }) {
   const [state, setState] = useState<Loadable<Asset[]>>({ state: "loading" });
   const refresh = () => {
     setState({ state: "loading" });
@@ -51,6 +76,9 @@ function List({ onOpen }: { onOpen: (id: string) => void }) {
       <div className="chip-row">
         <button className="chip" onClick={refresh}>
           ↻ Refresh
+        </button>
+        <button className="chip" onClick={onScan}>
+          ⌗ Scan QR
         </button>
       </div>
       {state.state === "loading" && <Loading what="assets" />}

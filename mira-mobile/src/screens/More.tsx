@@ -64,7 +64,11 @@ export function MoreTab({
         disabled={signingOut}
         onClick={async () => {
           setSigningOut(true);
-          await onSignOut();
+          try {
+            await onSignOut(); // may decline (unsynced-queue confirm)
+          } finally {
+            setSigningOut(false);
+          }
         }}
       >
         {signingOut ? "Signing out…" : "Sign out"}

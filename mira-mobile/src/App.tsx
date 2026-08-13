@@ -6,7 +6,13 @@ import { useEffect, useRef, useState } from "react";
 import { App as CapApp } from "@capacitor/app";
 import { Preferences } from "@capacitor/preferences";
 import { onAuthExpired } from "./api/client";
-import { getMe, signOut, type Me } from "./api/resources";
+import { createWorkOrder, getMe, signOut, type Me } from "./api/resources";
+import {
+  drainQueue,
+  pendingCount,
+  preferencesStore,
+  purgeAllQueues,
+} from "./lib/offline-queue";
 import { TABS, visibleTabs, type TabId } from "./nav";
 import { extractAssetTag } from "./lib/tags";
 import { Login } from "./screens/Login";
@@ -114,7 +120,21 @@ export default function App() {
             me={me}
             backRef={backHandler}
             onSignOut={async () => {
+              // Phase 4: local data never outlives the session — but try to
+              // sync queued work orders first, and warn before destroying any.
+              if ((await pendingCount(preferencesStore, me.tenantId)) > 0) {
+                await drainQueue(preferencesStore, me.tenantId, createWorkOrder);
+                const left = await pendingCount(preferencesStore, me.tenantId);
+                if (
+                  left > 0 &&
+                  !window.confirm(
+                    `${left} queued work order${left > 1 ? "s haven't" : " hasn't"} synced and will be deleted. Sign out anyway?`,
+                  )
+                )
+                  return;
+              }
               await signOut();
+              await purgeAllQueues(preferencesStore);
               setMe(null);
             }}
           />

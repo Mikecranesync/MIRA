@@ -150,3 +150,29 @@ select {
   background: var(--fl-surface);
   color: var(--fl-ink);
 }
+
+/* Phase 4 — QR scanner (tokens only) */
+.scanbox {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--fl-radius);
+  background: var(--fl-header);
+  margin-top: 10px;
+}
+.scanbox video { width: 100%; height: 100%; object-fit: cover; }
+.scan-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--fl-scrim);
+  color: var(--fl-header-ink);
+  padding: 20px;
+  text-align: center;
+  font-size: 15px;
+}

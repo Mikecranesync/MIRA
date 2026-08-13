@@ -3,7 +3,12 @@
 // All mutations flow through the shared layer; create generates ONE client_key
 // per logical create so a retry after a network error can never duplicate
 // (server contract: PR #3223; older servers ignore the key gracefully).
+// Phase 4: a create that fails on transport lands in the tenant-keyed offline
+// queue; the list view shows the queued items and drains them on mount, on
+// app-resume, and via "Sync now" (visible sync state).
 import { useEffect, useState, type MutableRefObject } from "react";
+import { App as CapApp } from "@capacitor/app";
+import { ApiError } from "../api/client";
 import {
   listWorkOrders,
   getWorkOrder,
@@ -14,6 +19,13 @@ import {
   type Asset,
   type Me,
 } from "../api/resources";
+import {
+  enqueueCreate,
+  loadQueue,
+  drainQueue,
+  preferencesStore,
+  type QueuedCreate,
+} from "../lib/offline-queue";
 import { can } from "../nav";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
@@ -56,6 +68,7 @@ export function WorkordersTab({
   if (route.name === "create")
     return (
       <Create
+        me={me}
         onDone={() => setRoute({ name: "list" })}
         onCancel={() => setRoute({ name: "list" })}
       />
@@ -80,11 +93,47 @@ function List({
 }) {
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
   const [state, setState] = useState<Loadable<WorkOrder[]>>({ state: "loading" });
+  const [queued, setQueued] = useState<QueuedCreate[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState("");
   const refresh = (f = filter) => {
     setState({ state: "loading" });
     void load(() => listWorkOrders(f === "all" ? undefined : f)).then(setState);
   };
   useEffect(() => refresh(filter), [filter]);
+
+  const refreshQueue = async () => {
+    setQueued(await loadQueue(preferencesStore, me.tenantId));
+  };
+  const sync = async () => {
+    setSyncing(true);
+    setSyncNote("");
+    try {
+      const r = await drainQueue(preferencesStore, me.tenantId, createWorkOrder);
+      if (!r) return;
+      const parts: string[] = [];
+      if (r.sent > 0) parts.push(`${r.sent} synced`);
+      for (const rej of r.rejected) parts.push(`rejected: ${rej.error}`);
+      if (r.stopped && r.remaining > 0) parts.push(`${r.remaining} still waiting (offline?)`);
+      setSyncNote(parts.join(" · "));
+      await refreshQueue();
+      if (r.sent > 0) refresh();
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Drain on mount and whenever the app returns to the foreground.
+  useEffect(() => {
+    void refreshQueue().then(() => void sync());
+    const sub = CapApp.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) void sync();
+    });
+    return () => {
+      void sub.then((s) => s.remove());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.tenantId]);
 
   return (
     <div className="content bottompad">
@@ -106,6 +155,31 @@ function List({
         <button className="btn-primary" style={{ margin: "10px 0" }} onClick={onCreate}>
           + New work order
         </button>
+      )}
+      {(queued.length > 0 || syncNote) && (
+        <div className="card">
+          <h3>
+            {queued.length > 0
+              ? `Waiting to sync (${queued.length})`
+              : "Sync"}
+          </h3>
+          {queued.map((q) => (
+            <div key={q.input.client_key} className="meta">
+              ⏳ {q.input.title || q.input.description}
+              {q.attempts > 0 ? ` · ${q.attempts} attempt${q.attempts > 1 ? "s" : ""}` : ""}
+            </div>
+          ))}
+          {syncNote && <div className="meta">{syncNote}</div>}
+          {queued.length > 0 && (
+            <button
+              style={{ marginTop: 8 }}
+              disabled={syncing}
+              onClick={() => void sync()}
+            >
+              {syncing ? "Syncing…" : "Sync now"}
+            </button>
+          )}
+        </div>
       )}
       {state.state === "loading" && <Loading what="work orders" />}
       {state.state === "error" && <ErrorState error={state.error} onRetry={() => refresh()} />}
@@ -229,7 +303,15 @@ function Detail({
   );
 }
 
-function Create({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+function Create({
+  me,
+  onDone,
+  onCancel,
+}: {
+  me: Me;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
   const [assets, setAssets] = useState<Loadable<Asset[]>>({ state: "loading" });
   const [equipmentId, setEquipmentId] = useState("");
   const [title, setTitle] = useState("");
@@ -284,17 +366,26 @@ function Create({ onDone, onCancel }: { onDone: () => void; onCancel: () => void
             onClick={async () => {
               setBusy(true);
               setError(null);
+              const input = {
+                equipment_id: equipmentId,
+                description: description.trim(),
+                title: title.trim() || undefined,
+                priority,
+                client_key: clientKey,
+              };
               try {
-                const r = await createWorkOrder({
-                  equipment_id: equipmentId,
-                  description: description.trim(),
-                  title: title.trim() || undefined,
-                  priority,
-                  client_key: clientKey,
-                });
+                const r = await createWorkOrder(input);
                 setReplayNote(r.replayed);
                 onDone();
               } catch (e) {
+                // Transport failure ⇒ queue it (Phase 4). The retained
+                // client_key makes the later drain a safe replay even if the
+                // original request half-landed.
+                if (e instanceof ApiError && e.kind === "network") {
+                  await enqueueCreate(preferencesStore, me.tenantId, input);
+                  onDone();
+                  return;
+                }
                 setError(e); // key is retained — pressing again is a SAFE replay
               } finally {
                 setBusy(false);

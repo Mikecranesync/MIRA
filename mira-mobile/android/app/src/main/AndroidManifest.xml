@@ -59,4 +59,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Phase 4: QR scan via WebView getUserMedia (Capacitor bridges the
+         runtime permission prompt). Camera hardware is NOT required — the
+         scanner degrades to its no-camera state. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>
