@@ -148,28 +148,3 @@
   font: var(--flm-label);
 }
 .flm-mono { font: var(--flm-mono); }  /* error codes, part numbers, torque specs */
-
-/* ============================================================================
-   Compatibility alias layer (mobile app) — the pre-v2 --fl-* names used by
-   existing screens, resolved FROM the --flm-* system above so there is ONE
-   source of values and dark mode flips everything. New code uses --flm-*.
-   ============================================================================ */
-:root {
-  --fl-bg:          var(--flm-surface);            /* page background        */
-  --fl-surface:     var(--flm-surface-container);  /* cards / inputs         */
-  --fl-header:      var(--flm-surface);            /* top bar (MD3: surface) */
-  --fl-header-ink:  var(--flm-on-surface);
-  --fl-header-muted:var(--flm-on-surface-muted);
-  --fl-ink:         var(--flm-on-surface);
-  --fl-ink-muted:   var(--flm-on-surface-muted);
-  --fl-line:        var(--flm-outline);
-  --fl-line-strong: var(--flm-outline-strong);
-  --fl-accent:      var(--flm-primary);
-  --fl-green:       var(--flm-status-ok);
-  --fl-amber:       var(--flm-status-warn);
-  --fl-red:         var(--flm-status-fault);
-  --fl-radius:      var(--flm-radius-input);
-  /* Camera viewport is dark in every theme; scrim sits over live video. */
-  --fl-camera-bg:   #101317;
-  --fl-scrim:       rgba(16, 19, 23, 0.72);
-}

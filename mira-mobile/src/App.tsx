@@ -18,7 +18,7 @@ import { extractAssetTag } from "./lib/tags";
 import { Login } from "./screens/Login";
 import { WorkordersTab } from "./screens/Workorders";
 import { ScheduleTab } from "./screens/Schedule";
-import { ChatTab } from "./screens/ChatTab";
+import { NotebooksTab } from "./screens/NotebooksTab";
 import { AssetsTab, type AssetsRoute } from "./screens/AssetsTab";
 import { MoreTab } from "./screens/More";
 
@@ -111,7 +111,7 @@ export default function App() {
       <div className="tabhost">
         {tab === "workorders" && <WorkordersTab me={me} backRef={backHandler} />}
         {tab === "schedule" && <ScheduleTab me={me} backRef={backHandler} />}
-        {tab === "chat" && <ChatTab backRef={backHandler} />}
+        {tab === "chat" && <NotebooksTab backRef={backHandler} />}
         {tab === "assets" && (
           <AssetsTab route={assetsRoute} setRoute={setAssetsRoute} backRef={backHandler} />
         )}

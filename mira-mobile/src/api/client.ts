@@ -208,6 +208,44 @@ function errorFromStatus(status: number, data: unknown): ApiError {
   return new ApiError("client", status, detail);
 }
 
+/** Multipart POST (file uploads). Uses window.fetch: on native the Capacitor
+ *  fetch patch rebuilds real multipart in native code (FormData cannot cross
+ *  the plugin bridge) and we attach the session Cookie explicitly from OUR
+ *  jar; in the dev browser it is a plain fetch through the vite proxy with
+ *  browser cookies. NOT retried — callers own replay semantics. */
+export async function uploadMultipart(path: string, form: FormData): Promise<ApiResponse> {
+  await loadJar();
+  const native = Capacitor.isNativePlatform();
+  const headers: Record<string, string> = {};
+  if (native) {
+    const cookies = cookieHeader();
+    if (cookies) headers["Cookie"] = cookies;
+  }
+  let res: Response;
+  try {
+    res = await fetch(native ? API_BASE + path : path, {
+      method: "POST",
+      headers,
+      body: form,
+      ...(native ? {} : { credentials: "include" as const }),
+    });
+  } catch (e) {
+    throw new ApiError("network", null, String(e));
+  }
+  const text = await res.text();
+  let data: unknown = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = null;
+  }
+  if (res.status === 401 && !suppressAuthEvents) {
+    for (const fn of authExpiredListeners) fn();
+  }
+  if (res.status >= 200 && res.status < 300) return { status: res.status, data, text };
+  throw errorFromStatus(res.status, data);
+}
+
 /** Core request: throws typed ApiError on non-2xx; retries transport failures
  *  once for GETs and keyed mutations. 401s notify the auth-expired listeners
  *  (unless suppressed) AND still throw, so callers always see the failure. */

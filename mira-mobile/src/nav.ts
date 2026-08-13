@@ -18,7 +18,7 @@ export interface TabDef {
 export const TABS: readonly TabDef[] = [
   { id: "workorders", title: "Workorders", icon: "🛠" },
   { id: "schedule", title: "Schedule", icon: "📅" },
-  { id: "chat", title: "Chat", icon: "💬" },
+  { id: "chat", title: "Notebook", icon: "📓" },
   { id: "assets", title: "Assets", icon: "⚙" },
   { id: "more", title: "More", icon: "☰" },
 ] as const;

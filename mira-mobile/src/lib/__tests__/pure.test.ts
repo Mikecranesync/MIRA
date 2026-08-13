@@ -75,3 +75,25 @@ describe("canonical nav model — fail closed", () => {
     expect(can(["work_orders.create"], "work_orders.create")).toBe(true);
   });
 });
+
+describe("notebook scoping + covers (NotebookLM flow)", () => {
+  it("enabledDocIds keeps only checked sources (retrieval scope)", async () => {
+    const { enabledDocIds } = await import("../../api/resources");
+    expect(
+      enabledDocIds([
+        { docId: "a", enabledByDefault: true },
+        { docId: "b", enabledByDefault: false },
+        { docId: "c", enabledByDefault: true },
+      ]),
+    ).toEqual(["a", "c"]);
+    expect(enabledDocIds([])).toEqual([]);
+  });
+  it("cover class is deterministic and glyph maps equipment types", async () => {
+    const { coverClass, coverGlyph } = await import("../../screens/NotebooksTab");
+    const nb = { id: "x1", equipmentType: "drive" };
+    expect(coverClass(nb)).toBe(coverClass({ ...nb }));
+    expect(coverClass(nb)).toMatch(/^nb-cover-(blue|green|amber|violet)$/);
+    expect(coverGlyph("VFD Drive")).toBe("⚡");
+    expect(coverGlyph(null)).toBe("📓");
+  });
+});

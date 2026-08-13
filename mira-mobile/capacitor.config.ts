@@ -13,10 +13,14 @@ const config: CapacitorConfig = {
   },
   plugins: {
     CapacitorHttp: {
-      // We call CapacitorHttp.request explicitly in src/api.ts; do NOT patch
-      // window.fetch globally (keeps the boundary between app code and any
-      // future embedded content explicit).
-      enabled: false,
+      // JSON/text calls go through CapacitorHttp.request explicitly
+      // (src/api/client.ts owns the cookie jar). The fetch patch is enabled
+      // ONLY because multipart uploads (notebook source PDFs, nameplate
+      // photos) cannot cross the plugin bridge as FormData — the patch is the
+      // one path that rebuilds real multipart natively. Upload calls pass the
+      // session Cookie header explicitly; nothing else uses window.fetch on
+      // native. Trust boundary unchanged: packaged bundle only, no remote UI.
+      enabled: true,
     },
   },
 };
