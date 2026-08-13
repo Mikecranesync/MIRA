@@ -1,0 +1,195 @@
+# Phase 1.5 bake-off benchmark — technical-manual QA, 15 adversarial classes.
+#
+# Every expected marker was verified against the actual fixture text (pymupdf
+# per-page extraction, 2026-08-11) — no marker is guessed. `expect_page` is the
+# 1-based PDF page (not the printed page label). Scoring is deterministic:
+#   correctness        — all expect_all markers (case-insensitive) present in the
+#                        answer/evidence; expect_any = at least one
+#   citation           — cited page == expect_page (±0 tolerance)
+#   abstention         — abstain question answered with an abstention
+#   scope              — no evidence from outside the scoped document
+#
+# docs: t2108 (16pp consumer), pf525 (274pp, pub 520-UM001O Sept 2025),
+#       gs10 (452pp, 1st Ed Rev B), gs10_small (2.4KB fixture),
+#       t2108_scanned (image-only excerpt of t2108 pages 12+15, generated)
+
+docs:
+  t2108:
+    file: fixtures/T2108_Manual_EN.pdf
+    sha256: b2e7912ed063dd118eb8db05060c2c30f18865e60ea0b33d609cf6cf473b506e
+  pf525:
+    file: fixtures/pf525_user_manual.pdf
+    sha256: b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6
+  gs10:
+    file: fixtures/gs10_user_manual.pdf
+    sha256: 090aa1b36250be11e1da33526a4b995492593c6fc35aa82ad18115e411dcc5e4
+  t2108_scanned:
+    file: fixtures/t2108_scanned_excerpt.pdf
+    sha256: null   # generated fixture; runner fills at build time
+
+questions:
+  # ── T2108 (consumer canary; q1-q3 are the #3185 known spec-table misses) ──
+  - id: t2108-spec-input
+    class: 1_exact_spec
+    doc: t2108
+    q: "What input power does the RoboVac require?"
+    expect_all: ["19", "0.6"]
+    expect_page: 15
+  - id: t2108-table-battery
+    class: 2_table_lookup
+    doc: t2108
+    q: "What battery does it use?"
+    expect_all: ["14.4", "2600"]
+    expect_page: 15
+  - id: t2108-spec-runtime
+    class: 2_table_lookup
+    doc: t2108
+    q: "How long can it clean and how long does charging take?"
+    expect_any: ["100 min", "300"]
+    expect_page: 15
+  - id: t2108-units-voltage
+    class: 3_units
+    doc: t2108
+    q: "How many volts is the battery?"
+    expect_all: ["14.4"]
+    expect_page: 15
+  - id: t2108-synonym-dustbin
+    class: 4_synonyms
+    doc: t2108
+    q: "How do I empty the dustbin?"          # manual says "dust collector"
+    expect_all: ["dust collector"]
+    expect_page: 12
+  - id: t2108-procedure-brush
+    class: 5_procedure
+    doc: t2108
+    q: "How do I clean the rolling brush?"
+    expect_all: ["rolling brush"]
+    expect_page: 12
+  - id: t2108-figure-box
+    class: 7_figure
+    doc: t2108
+    q: "What items come in the box with the RoboVac?"
+    expect_all: ["Power Adapter", "Remote Control"]
+    expect_page: 5
+  - id: t2108-absent-wifi
+    class: 9_absent
+    doc: t2108
+    q: "How do I connect the RoboVac 11S to Wi-Fi?"
+    abstain: true                              # 11S is a non-Wi-Fi product
+  - id: t2108-identity
+    class: 11_model_ambiguity
+    doc: t2108
+    q: "What exact model number is this manual for?"
+    expect_all: ["T2108"]
+  - id: t2108-multi-charge
+    class: 13_multi_context
+    doc: t2108
+    q: "How many minutes does a full charge take?"   # 'charge/charging' on many pages; value only in spec table
+    expect_any: ["300", "360"]
+    expect_page: 15
+
+  # ── PF525 (274pp industrial; RET-001 heritage cases) ──
+  - id: pf525-fault-f004
+    class: 1_exact_spec
+    doc: pf525
+    q: "What does fault F004 mean on the PowerFlex 525?"
+    expect_any: ["UnderVoltage", "DC bus voltage fell below"]
+    expect_page: 161
+  - id: pf525-fault-table-f005
+    class: 15_structural_table
+    doc: pf525
+    q: "Which fault number is OverVoltage and what should I check?"
+    expect_all: ["F005"]
+    expect_any: ["exceeded max", "high line voltage", "regeneration"]
+    expect_page: 161
+  - id: pf525-clear-fault
+    class: 5_procedure
+    doc: pf525
+    q: "How do I clear a fault on the PowerFlex 525?"
+    expect_any: ["A551", "Fault Clear", "Cycle drive power"]
+    expect_page: 160
+  - id: pf525-param-dcbus
+    class: 2_table_lookup
+    doc: pf525
+    q: "Which parameter displays the DC Bus Voltage?"
+    expect_all: ["b005"]
+    expect_page: 73
+  - id: pf525-warning-capacitors
+    class: 6_warnings
+    doc: pf525
+    q: "How long must I wait after removing power before working on the drive, and why?"
+    expect_all: ["three minutes"]
+    expect_any: ["capacitor", "discharge"]
+    expect_page: 13
+  - id: pf525-ambig-pf40
+    class: 11_model_ambiguity
+    doc: pf525
+    q: "What does fault F004 mean on the PowerFlex 40?"
+    abstain: true                              # this manual covers the 520-series, not the PF40
+  - id: pf525-revision
+    class: 12_revision
+    doc: pf525
+    q: "What is the exact publication number and date of this manual revision?"
+    expect_all: ["520-UM001O"]
+    expect_any: ["September 2025"]
+  - id: pf525-absent-price
+    class: 9_absent
+    doc: pf525
+    q: "What is the list price of the PowerFlex 525?"
+    abstain: true
+
+  # ── GS10 (452pp industrial; the #3177 un-ingested manual) ──
+  - id: gs10-fault-oca
+    class: 1_exact_spec
+    doc: gs10
+    q: "What does fault code ocA mean on the GS10?"
+    expect_any: ["Over-current during acceleration", "over-current during accel"]
+    expect_page: 214
+  - id: gs10-table-rated-current
+    class: 2_table_lookup
+    doc: gs10
+    q: "What is the rated output current of the GS11N-10P5?"
+    expect_all: ["2.5"]
+    expect_page: 25
+  - id: gs10-units-kw
+    class: 3_units
+    doc: gs10
+    q: "What is the maximum motor output of the GS11N-11P0 in kilowatts?"
+    expect_all: ["0.75"]
+    expect_page: 25
+  - id: gs10-multi-ce10
+    class: 13_multi_context
+    doc: gs10
+    q: "What does fault code CE10 mean?"
+    expect_any: ["Modbus transmission time-out", "Modbus transmission timeout"]
+    expect_page: 215
+  - id: gs10-synonym-altitude
+    class: 4_synonyms
+    doc: gs10
+    q: "How high above sea level can I install the drive before I have to derate it?"
+    expect_all: ["1000"]
+    expect_page: 18
+  - id: gs10-lexical-derate
+    class: 14_lexical_ok
+    doc: gs10
+    q: "How much do I derate output current per 100m of altitude above 1000 meters?"
+    expect_any: ["1%", "decrease 1"]
+    expect_page: 18
+
+  # ── Scope / scanned (cross-cutting) ──
+  - id: scope-gs10-from-t2108
+    class: 10_sibling_leakage
+    doc: t2108                                 # deliberately scoped to the WRONG doc
+    q: "What does GS10 fault code ocA mean?"
+    abstain: true
+    scope_guard: true                          # any GS10 evidence = scope failure
+  - id: scanned-battery
+    class: 8_scanned
+    doc: t2108_scanned
+    q: "What is the battery voltage?"
+    expect_all: ["14.4"]
+  - id: scanned-brush
+    class: 8_scanned
+    doc: t2108_scanned
+    q: "How do I clean the dust collector?"
+    expect_any: ["dust collector", "release button"]
