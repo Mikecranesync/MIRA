@@ -25,6 +25,7 @@ fault-detective/pathb composes only), **CI** (exercised only by `.github/workflo
 | mira-ignition-exchange | ORPHAN | no compose, workflow, or test reference found | Ignition Exchange packaging artifacts |
 | mira-machine-logic-graph | ORPHAN | no compose, workflow, or test reference found | |
 | mira-mcp | DEPLOYED | saas.yml builds `./mira-mcp` | |
+| mira-mobile | BENCH | no compose (static Capacitor client, ADR-0034); vitest suite runs locally; APK sideloaded for device proofs | Native iOS/Android app consuming prod Hub APIs; store distribution is Phase 5 of docs/prd/2026-08-13-native-mobile-app-prd.md |
 | mira-pipeline | DEPLOYED | saas.yml builds `mira-pipeline/Dockerfile` | Active VPS chat path |
 | mira-plc-parser | DEPLOYED | `mira-core/mira-ingest/Dockerfile` COPYs `mira-plc-parser/mira_plc_parser/` (powers /ingest/plc-parse) | Ships inside mira-ingest-saas image; GUI itself is a desktop tool |
 | mira-relay | DEPLOYED | saas.yml builds `./mira-relay`; root CLAUDE.md: "Active SaaS infrastructure (NOT deferred)" | Ignition factory→cloud tag streaming |
