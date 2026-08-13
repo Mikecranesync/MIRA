@@ -366,18 +366,17 @@ jobs:
             --cov-fail-under=20
 
       - name: Run bot tests with coverage
-        # SERIAL on purpose — do not re-add `-n auto` without fixing the
-        # collection-time shared state first. Attempted 2026-08-13: xdist
-        # workers collecting concurrently hit `sqlite3.OperationalError:
-        # database is locked` in test_equipment_photo_memory.py (a module
-        # opens a shared SQLite file at import), which also desynced
-        # collection across workers ("Different tests were collected between
-        # gw1 and gw3") and collapsed coverage. First run passed — it is a
-        # RACE, not a deterministic failure. Proper enablement needs a
-        # per-worker MIRA_DB_PATH (PYTEST_XDIST_WORKER) set in conftest
-        # before test-module imports. --durations=25 is diagnostic output.
+        # -n auto is safe here ONLY because mira-bots/tests/conftest.py gives
+        # each xdist worker a private MIRA_DB_PATH (issue #3212). Without that,
+        # concurrent collection hit a shared-SQLite `database is locked` race
+        # (#3208, reverted in #3211) — a race whose first run PASSED, so a
+        # single green run proves nothing; the enablement evidence is 3×
+        # consecutive green (local + CI). The renderers sys.modules collision
+        # pair (test_slack_relay / test_email_adapter) stays ignored exactly
+        # as before. This step was ~218s serial — the largest block on the CI
+        # critical path. --durations=25 is diagnostic output.
         run: |
-          pytest mira-bots/tests/ -v --durations=25 \
+          pytest mira-bots/tests/ -v -n auto --durations=25 \
             --ignore=mira-bots/tests/test_slack_relay.py \
             --ignore=mira-bots/tests/test_email_adapter.py \
             --cov=mira-bots/shared --cov-report=term-missing \

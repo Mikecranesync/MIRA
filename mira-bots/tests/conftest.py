@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+# --- Per-worker DB isolation for pytest-xdist (issue #3212) -------------------
+# Several test modules pin MIRA_DB_PATH to one FIXED path
+# (`os.environ.setdefault("MIRA_DB_PATH", "/tmp/mira_test.db")`), and modules on
+# their import chains (e.g. shared.chat_tenant) open + CREATE-TABLE that SQLite
+# file. Under xdist, N workers import/collect concurrently → concurrent schema
+# writes on ONE file → `sqlite3.OperationalError: database is locked` at
+# COLLECTION time, which also desyncs per-worker collection ("Different tests
+# were collected between gw1 and gw3") and collapses coverage. Observed on CI
+# when #3208 enabled `-n auto` (reverted in #3211); the first run passing proved
+# it is a RACE, not a deterministic failure.
+#
+# Fix: point each worker at its own private DB file HERE — conftest is imported
+# before any test module in the same worker, so every module's `setdefault`
+# becomes a no-op and no two workers ever share a SQLite file. Serial runs
+# (no PYTEST_XDIST_WORKER) are byte-for-byte unchanged.
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+if _XDIST_WORKER:
+    _iso_dir = Path(tempfile.gettempdir()) / f"mira-bots-xdist-{os.getpid()}-{_XDIST_WORKER}"
+    _iso_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["MIRA_DB_PATH"] = str(_iso_dir / "mira_test.db")
 
 # Repo root on sys.path: telegram modules import the repo-root `printsense`
 # package (bot.py -> printsense_commercial -> printsense.*). CI invokes bare
