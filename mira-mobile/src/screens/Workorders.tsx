@@ -6,7 +6,7 @@
 // Phase 4: a create that fails on transport lands in the tenant-keyed offline
 // queue; the list view shows the queued items and drains them on mount, on
 // app-resume, and via "Sync now" (visible sync state).
-import { useEffect, useState, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { App as CapApp } from "@capacitor/app";
 import { ApiError } from "../api/client";
 import {
@@ -123,11 +123,14 @@ function List({
     }
   };
 
-  // Drain on mount and whenever the app returns to the foreground.
+  // Drain on mount and whenever the app returns to the foreground. The
+  // listener goes through a ref so it always sees the CURRENT filter/closure.
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
   useEffect(() => {
-    void refreshQueue().then(() => void sync());
+    void refreshQueue().then(() => void syncRef.current());
     const sub = CapApp.addListener("appStateChange", ({ isActive }) => {
-      if (isActive) void sync();
+      if (isActive) void syncRef.current();
     });
     return () => {
       void sub.then((s) => s.remove());
