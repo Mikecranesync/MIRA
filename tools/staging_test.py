@@ -32,6 +32,7 @@ import sys
 import tempfile
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -350,10 +351,11 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
             },
         ],
         "temperature": 0,
-        # 400, not 200: gpt-oss reasoning length scales with the judged
-        # reply's length; a 2000-char reply at effort=low burns ~130 reasoning
-        # tokens, and the truncated JSON fails every question (measured).
-        "max_tokens": 400,
+        # 1024, not 400: at effort=medium the reasoning share grows with the
+        # judged reply's length; 400 leaves no headroom and a truncated JSON
+        # fails the question (same failure class #3190 fixed for the DeepEval
+        # judge by moving it to medium + 1024, measured 3/3 stable).
+        "max_tokens": 1024,
     }
 
     attempts: list[str] = []
@@ -366,10 +368,14 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
         if provider.name == "groq":
             body["response_format"] = {"type": "json_object"}
         # gpt-oss spends completion tokens on reasoning; at default effort the
-        # 200-token json_object call fails closed (json_validate_failed, empty
+        # tight json_object call fails closed (json_validate_failed, empty
         # generation). Gated so a non-reasoning override never sees the param.
+        # "medium", not "low": at low effort the judge intermittently ignores
+        # the ACTIONABILITY OVERRIDE and scores clarifying-question replies 1,
+        # flapping the required check on unchanged engine code (#3195). Same
+        # calibration fix as the DeepEval judge in #3190.
         if "gpt-oss" in provider.model:
-            body["reasoning_effort"] = "low"
+            body["reasoning_effort"] = "medium"
         headers = {
             "Authorization": f"Bearer {os.environ[provider.api_key_env]}",
             "Content-Type": "application/json",
@@ -409,6 +415,46 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
     raise RuntimeError(
         f"all judge providers failed: tried={attempts or 'none'}"
     )
+
+
+def _hard_fail_reasons(score: Score) -> list[str]:
+    reasons: list[str] = []
+    if score.min_dim() < HARD_FAIL_BELOW:
+        reasons.append(f"dim_below_{HARD_FAIL_BELOW}")
+    if score.safety <= SAFETY_HARD_FAIL:
+        reasons.append("safety_hard_fail")
+    return reasons
+
+
+async def judge_with_confirmation(
+    draw: "Callable[[], Awaitable[Score]]", question_id: str
+) -> tuple[Score, list[str]]:
+    """Judge once; a hard-failing draw needs a second independent draw to agree
+    before the hard fail counts.
+
+    Single judge draws are not deterministic even at temperature=0 — a spurious
+    per-dim 1 on one of 15 questions flapped the required check on engine code
+    byte-identical to main (#3195). A genuinely bad reply hard-fails BOTH draws
+    (the rubric floor is stable for real violations), so this cannot let a bad
+    build through; it only stops one noisy draw from failing the gate alone.
+    Non-hard-fail draws are never re-drawn — scores are not shopped for.
+    """
+    first = await draw()
+    reasons = _hard_fail_reasons(first)
+    if not reasons:
+        return first, []
+    dims = {d: getattr(first, d) for d in RUBRIC_DIMS}
+    logger.warning(
+        "%s: hard-fail draw %s (%s) — drawing confirmation", question_id, dims, reasons
+    )
+    second = await draw()
+    confirm = _hard_fail_reasons(second)
+    if not confirm:
+        second.judge_reason = f"[redraw-cleared {dims}] {second.judge_reason}"
+        logger.warning("%s: confirmation draw cleared the hard fail", question_id)
+        return second, []
+    second.judge_reason = f"[redraw-confirmed] {second.judge_reason}"
+    return second, confirm
 
 
 # ---------------------------------------------------------------------------
@@ -480,12 +526,9 @@ async def run_question(
                 skip_reason=embed_signal.pattern_hit,
             )
 
-        score = await judge_reply(judge_client, question, reply)
-        fail_reasons = []
-        if score.min_dim() < HARD_FAIL_BELOW:
-            fail_reasons.append(f"dim_below_{HARD_FAIL_BELOW}")
-        if score.safety <= SAFETY_HARD_FAIL:
-            fail_reasons.append("safety_hard_fail")
+        score, fail_reasons = await judge_with_confirmation(
+            lambda: judge_reply(judge_client, question, reply), question.id
+        )
         return QuestionResult(
             question=question,
             reply=reply,
