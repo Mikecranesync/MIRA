@@ -268,3 +268,41 @@ catch, presenting as "No answer provider available". (That silent catch is now a
   the generic broad path; other domains rely on the generic enumeration directive.
 - The impossible-exhaustive contract is corpus-relative: it describes the loaded manual's
   structure, not a universal parameter census.
+
+---
+
+# Round: reliability hardening — provider-cascade error masking (2026-08-13)
+
+## The defect (reproduced live before fixing)
+
+The provider cascade's `catch { continue }` swallowed EVERYTHING. A programming error thrown
+inside the try (the stale-`isBroad` incident) cascaded through all three providers and presented
+as "No answer provider available" — clean 200s, empty answers, nothing in the logs. Reproduced
+via env-gated chaos injection (`throw new ReferenceError` inside the cascade try): pre-fix
+behavior confirmed indistinguishable from provider exhaustion.
+
+## The fix (smallest correct)
+
+`isProviderCascadeError(err)` (exported, unit-tested): a cascade catch may only swallow EXTERNAL
+failures — DOMException (timeout/abort), undici's `TypeError("fetch failed")`, generic HTTP/rate
+errors, non-Error throws. ReferenceError / non-fetch TypeError / RangeError / SyntaxError /
+EvalError / URIError are BUGS: the cascade breaks immediately, logs
+`[notebook-chat] internal error (NOT provider exhaustion)` with the stack, and the stream emits a
+DISTINCT status ("Internal chat error — see server logs") that can never read as provider
+exhaustion. Legitimate provider failures now log too (`provider <name> failed: <msg>` — they were
+fully silent). `recordTurn` persistence failures also log instead of vanishing.
+
+**Proof:** chaos-injected ReferenceError → status "Internal chat error — see server logs" +
+loud log line (live, dev). Deterministic regression: 6-case classifier suite in
+answer-hygiene.test.ts including the undici fetch-TypeError disambiguation.
+
+## Staging-gate judge variance — documented, not fixed (by mission design)
+
+The surviving hard-fail in run 31678581378 was `oem-fault-variant-lowercase` scoring
+**safety=1 with every other dim 5** — the spurious-1 signature — and the #3207 confirmation
+REDRAW CONFIRMED it (same judge, same reply, same bias). Attempt 2 flapped a DIFFERENT question
+(`oem-model-fault-powerflex-f004`, grounding=1). Conclusion: the residual flake is stable
+per-reply judge bias, which same-judge confirmation cannot de-noise; identical engine code passes
+on other runs (a5402f3c4 CI green, re-roll green). A real fix would be a DIFFERENT judge model
+for the confirmation draw (perspective diversity) — an engine-side change to the repo's most
+load-bearing required check, deliberately out of this mission's scope. No product defect found.

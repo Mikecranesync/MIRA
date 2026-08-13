@@ -186,6 +186,27 @@ export function buildProviderMessages(
   ];
 }
 
+/** A provider-cascade catch may only swallow EXTERNAL failures (network, HTTP,
+ *  timeout/abort). A programming error thrown inside the cascade is a bug in
+ *  THIS route and must fail loud — swallowing one masquerades as "No answer
+ *  provider available" (the stale-variable incident: every question errored
+ *  with clean 200s and nothing in the logs). undici reports network failure as
+ *  TypeError("fetch failed"), so TypeError disambiguates on message. */
+export function isProviderCascadeError(err: unknown): boolean {
+  if (err instanceof DOMException) return true; // TimeoutError / AbortError
+  if (err instanceof TypeError) return /fetch/i.test(err.message);
+  if (
+    err instanceof ReferenceError ||
+    err instanceof RangeError ||
+    err instanceof SyntaxError ||
+    err instanceof EvalError ||
+    err instanceof URIError
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Citation-entailment (lite): keep only citations the answer actually used via
  *  a [n] marker. Kills "cite a retrieved page that didn't support anything". */
 export function citationsUsedInAnswer(answer: string, citations: EvidenceCitation[]): EvidenceCitation[] {
@@ -359,8 +380,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const normalize = makeCitationNormalizer();
       let served = false;
       let servedModel: string | null = null;
+      let internalError: unknown = null;
 
-      for (const provider of providers()) {
+      cascade: for (const provider of providers()) {
         if (!provider.key) continue;
         try {
           const res = await fetch(provider.url, {
@@ -435,7 +457,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             servedModel = `${provider.name}:${provider.model}`;
             break;
           }
-        } catch {
+        } catch (err) {
+          if (!isProviderCascadeError(err)) {
+            // A bug in this route, not a provider outage — fail loud with a
+            // DISTINCT status so it can never read as provider exhaustion.
+            internalError = err;
+            console.error("[notebook-chat] internal error (NOT provider exhaustion):", err);
+            break cascade;
+          }
+          console.error(
+            `[notebook-chat] provider ${provider.name} failed:`,
+            err instanceof Error ? err.message : err,
+          );
           continue; // cascade to next provider
         }
       }
@@ -465,7 +498,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? { kind: "status", status: "answered" }
           : answerStatus === "insufficient_evidence"
             ? { kind: "status", status: "insufficient_evidence", message: "Not found in the selected sources." }
-            : { kind: "status", status: "error", message: "No answer provider available." };
+            : internalError
+              ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
+              : { kind: "status", status: "error", message: "No answer provider available." };
       controller.enqueue(enc.encode(sse(statusFrame)));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
@@ -479,8 +514,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           evidence: emittedCitations,
           model: servedModel,
         });
-      } catch {
-        // persistence failure must not break the stream already delivered
+      } catch (err) {
+        // persistence failure must not break the stream already delivered —
+        // but it must not be invisible either.
+        console.error("[notebook-chat] recordTurn failed:", err instanceof Error ? err.message : err);
       }
     },
   });
