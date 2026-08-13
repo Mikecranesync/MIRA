@@ -259,11 +259,140 @@ describe("topic-state tracking (battery defects D + A)", () => {
     expect(out[0].sourcePage).toBe(86);
   });
 
-  it("keeps recent-turn augmentation when a pronoun points at the thread despite a named noun", () => {
-    // "it" refers to P042; "keypad" is the question's surface, not the referent —
-    // it must not topic-scope the augmentation away from the thread.
+  it("does not pollute a topic-naming question with the prior topic despite a trailing deictic", () => {
+    // "how do I set up Ethernet on this?" — "this" is the DRIVE, not the decel
+    // thread; the named topic (Ethernet) defines the subject. Decel tokens
+    // polluted this into an abstention (adv-5topic T3).
+    const q = buildRetrievalQuery("how do I set up Ethernet on this?", decelThenEthernet.slice(0, 2));
+    expect(q).not.toMatch(/P042/);
+    expect(q.toLowerCase()).not.toMatch(/decel/);
+  });
+
+  it("leaves a keypad-navigation follow-up un-augmented (synonym bridge carries retrieval)", () => {
+    // "keypad" names the question's topic; no history turn shares it, so the
+    // query stays clean — the keypad→procedure-vocabulary synonyms (not the
+    // thread's P042) are what retrieve the navigation section.
     const q = buildRetrievalQuery("where do I find it on the keypad?", decelThenEthernet.slice(0, 2));
-    expect(q).toMatch(/P042/);
+    expect(q).toBe("where do I find it on the keypad?");
+  });
+});
+
+describe("EtherNet/IP architecture discrimination (topic-switch T3/T4)", () => {
+  it("comm intent naming a protocol floats that family's chunks over another family's (T3)", () => {
+    // "how does Ethernet work?" must not fill context with the RS-485/DSI-Modbus
+    // appendix just because it is comm-dense — the embedded EtherNet/IP material
+    // is the queried family.
+    const expanded = expandIndustrialQuery("actually, how does Ethernet work on this drive?");
+    const modbusAppendix = {
+      content:
+        "RS485 (DSI) protocol. The drive supports the RS-485 (DSI) protocol Modbus RTU. Connect the network to the DSI port. Modbus function codes supported by the drive. Baud rate and node address are set in the comm group.",
+      rank: 1.2,
+      sourcePage: 202,
+      docId: "d",
+    };
+    const embedded = {
+      content:
+        "PowerFlex 525 Embedded EtherNet/IP Indicators. ENET display state. Connect one end of an Ethernet cable to the EtherNet/IP network and insert the cable's plug into the embedded EtherNet/IP port of the drive.",
+      rank: 0.4,
+      sourcePage: 35,
+      docId: "d",
+    };
+    const out = rerankChunks(expanded, [modbusAppendix, embedded], { intent: "comm" });
+    expect(out[0].sourcePage).toBe(35);
+  });
+
+  it("bare referential follow-up after a topic switch augments from the CURRENT topic segment only (T4)", () => {
+    const thread: ChatHistoryTurn[] = [
+      { role: "user", content: "what's the decel parameter?" },
+      { role: "assistant", content: "P042 [Decel Time 1] sets the deceleration time. [2]" },
+      { role: "user", content: "what's the maximum?" },
+      { role: "assistant", content: "The maximum allowed value for P042 [Decel Time 1] is 600.00 seconds. [1]" },
+      { role: "user", content: "actually, how does Ethernet work on this drive?" },
+      {
+        role: "assistant",
+        content: "EtherNet/IP is configured via C128 [EN Addr Sel] and the EN IP Addr parameters. [5]",
+      },
+    ];
+    const q = buildRetrievalQuery("does that require an adapter?", thread);
+    expect(q.toLowerCase()).toMatch(/ethernet|c128/); // current topic carried
+    expect(q).not.toMatch(/P042/); // pre-switch topic must NOT pollute
+    expect(q.toLowerCase()).not.toMatch(/decel/);
+  });
+});
+
+describe("classifyIntent — param-ID request vs spec value", () => {
+  it("'what's the maximum frequency parameter?' asks WHICH parameter, not a value", () => {
+    // The word "maximum" must not force spec intent (whose value-density boost
+    // floods context with A-group frequency tables) when the question asks for
+    // a parameter ID (adv-similar-names T1 abstention).
+    expect(classifyIntent("what's the maximum frequency parameter?")).toBe("param_lookup");
+    expect(classifyIntent("which parameter sets the maximum frequency?")).toBe("param_lookup");
+  });
+
+  it("keeps spec intent for value questions", () => {
+    expect(classifyIntent("what's the maximum?")).toBe("spec");
+    expect(classifyIntent("what's the max I can set that to?")).toBe("spec");
+  });
+});
+
+describe("ordinal return-to-first-topic (adv-5topic T7)", () => {
+  const thread: ChatHistoryTurn[] = [
+    { role: "user", content: "what's the accel parameter?" },
+    { role: "assistant", content: "P041 [Accel Time 1] sets the acceleration ramp. [1]" },
+    { role: "user", content: "how do I set up Ethernet on this?" },
+    { role: "assistant", content: "Configure the embedded EtherNet/IP via C128 [EN Addr Sel]. [3]" },
+    { role: "user", content: "which inputs start it from the terminal block?" },
+    { role: "assistant", content: "P046 [Start Source 1] selects the start source; DigIn TermBlk terminals. [5]" },
+  ];
+
+  it("resolves 'that first setting we talked about' to the FIRST topic, not the latest", () => {
+    const q = buildRetrievalQuery(
+      "ok, go back to that first setting we talked about. what's its default?",
+      thread,
+    );
+    expect(q).toMatch(/P041/);
+    expect(q).not.toMatch(/P046|C128/);
+  });
+
+  it("does NOT treat a 'what do I set first?' step question as a return-to-first-topic", () => {
+    const q = buildRetrievalQuery("what parameter do I set first?", thread.slice(2, 4));
+    // stays on the recent (Ethernet) topic — 'first' here is step order.
+    expect(q).toMatch(/C128|Ethernet/i);
+    expect(q).not.toMatch(/P041/);
+  });
+});
+
+describe("procedure-intent ranking (keypad navigation)", () => {
+  it("expands a keypad-navigation question into the manual's procedure vocabulary", () => {
+    // "where do I find it on the keypad?" shares no tokens with the answer
+    // section ("Viewing and Editing Parameters … programming menu"); the
+    // synonym table must bridge the vocabulary, same as decel→deceleration.
+    const e = expandIndustrialQuery("where do I find it on the keypad?");
+    const joined = e.variants.join(" ").toLowerCase();
+    expect(joined).toMatch(/editing parameters|programming menu/);
+  });
+
+  it("floats a navigation procedure above a param-detail exact hit on a procedure question", () => {
+    // "where do I find it on the keypad?" — the answer is the generic keypad
+    // procedure (no P042 in it); the history-carried P042 must not let the
+    // param-detail chunk dominate via the exact-token bonus.
+    const expanded = expandIndustrialQuery("where do I find it on the keypad? P042 Decel deceleration");
+    const paramDetail = {
+      content:
+        "P042 [Decel Time 1] Range: 0.00 - 600.00 s. Default: 10.00 s. Sets the time for the drive to decelerate from maximum frequency to 0 Hz.",
+      rank: 1.4,
+      sourcePage: 86,
+      docId: "d",
+    };
+    const keypadProcedure = {
+      content:
+        "Viewing and Editing Parameters. The following is an example of basic integral keypad and display functions. Press Esc to display the menu. Press the Up Arrow or Down Arrow to scroll through the group list. Press Enter or Sel to enter a group. Press the Up Arrow or Down Arrow to scroll through the parameter list. Press Enter to view the value.",
+      rank: 0.5,
+      sourcePage: 18,
+      docId: "d",
+    };
+    const out = rerankChunks(expanded, [paramDetail, keypadProcedure], { intent: "procedure" });
+    expect(out[0].sourcePage).toBe(18);
   });
 });
 

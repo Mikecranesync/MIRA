@@ -1,91 +1,402 @@
 {
   "_note": "Adversarial technician conversation corpus for the Equipment Notebook maintenance-copilot mission. Voice = a real maintenance tech, not a textbook. Single-turn cases exercise the answer categories (exact / obscure / procedure / broad-completeness / troubleshooting / ambiguous-vocab / wrong-assumption / boundary / off-scope); multi-turn scripts exercise conversational memory, pronoun/shorthand resolution, and objective continuity. Run with tech-battery.mjs against a notebook loaded with the PF525 documents. Evaluation is qualitative (a knowledgeable tech judges each answer) plus cheap auto-signals (citation present? refused? cited pages). The `notes` field states what a GREAT answer needs — used by the human/Claude judge, NOT auto-scored, so the harness never grades itself against its own opinion.",
   "singles": [
-    { "id": "exact-p042", "cat": "exact-fact", "q": "what does P042 do?", "notes": "P042 = Decel Time 1; lead with it + units; cite." },
-    { "id": "exact-accel-max", "cat": "exact-fact", "q": "what's the max I can set accel time to?", "notes": "P041 Accel Time 1 range top (600.00 s on PF525); cite the page." },
-    { "id": "exact-run-terminal", "cat": "exact-fact", "q": "which terminal is the run/start input?", "notes": "DigIn TermBlk 02 (Start/Run FWD) in 2-wire; name the terminal number; cite." },
-    { "id": "fault-f004", "cat": "fault-code", "q": "what does fault F004 mean?", "notes": "F004 = UnderVoltage; cite." },
-    { "id": "fault-f005-slang", "cat": "fault-code", "q": "drive keeps popping an F005, what is that?", "notes": "F005 = OverVoltage; correct meaning + likely cause; cite." },
-    { "id": "obscure-carrier", "cat": "obscure-fact", "q": "what's the carrier frequency range on this drive?", "notes": "PWM/carrier frequency parameter range (buried in the full manual). If the loaded docs prove it, give it + cite; else abstain honestly." },
-    { "id": "proc-autotune", "cat": "procedure", "q": "how do I run an autotune on this thing?", "notes": "The autotune procedure (P040/Motor Ctrl + the autotune sequence). Complete steps, not one paragraph; cite." },
-    { "id": "proc-fault-reset", "cat": "procedure", "q": "how do I clear a fault?", "notes": "Stop key or A551 Fault Clear; cite." },
-    { "id": "broad-comm", "cat": "broad-completeness", "q": "what communication options does this drive have?", "notes": "COMPLETENESS: must enumerate the source-proven comm paths (embedded EtherNet/IP, embedded RS-485/DSI Modbus RTU, optional 25-COMM adapter modules) — NOT stop at one. Each cited. Missing a source-proven facet = incomplete even if what it says is correct." },
-    { "id": "broad-speed-cmd", "cat": "broad-completeness", "q": "what are all the ways I can command the speed?", "notes": "COMPLETENESS: speed reference sources (keypad/pot, preset freqs, analog input, comms/network, MOP). Enumerate the source-proven set; cite each." },
-    { "id": "broad-protections", "cat": "broad-completeness", "q": "what protections does this drive have?", "notes": "COMPLETENESS: overcurrent, overvoltage/undervoltage, overload/thermal, short-circuit, ground fault, etc. as the source proves. Enumerate + cite." },
-    { "id": "ts-runs-no-turn", "cat": "troubleshooting", "q": "the drive says it's running but the motor isn't turning, what do I check?", "notes": "A logical diagnostic sequence (output wiring, motor connection, output freq vs commanded, mechanical, control mode) from the docs; not a single paragraph." },
-    { "id": "ts-plc-no-speed", "cat": "troubleshooting", "q": "my PLC sees the drive but I can't change the speed", "notes": "Speed-reference-source check (P047/A051 start & speed reference set to comms), command priority, network config; grounded diagnostic sequence." },
-    { "id": "vocab-slowdown", "cat": "ambiguous-vocab", "q": "where do I set the slowdown ramp?", "notes": "Bridge tech slang → P042 Decel Time 1 without hallucinating; cite." },
-    { "id": "vocab-motor-amps", "cat": "ambiguous-vocab", "q": "where's the motor amps setting?", "notes": "Motor nameplate FLA / overload (P033 Motor OL Current / Motor NP Amps); bridge vocab; cite." },
-    { "id": "wrong-profinet", "cat": "wrong-assumption", "q": "where's the Profinet setting on this?", "notes": "PF525 embedded network is EtherNet/IP, not PROFINET (PROFINET only via an optional adapter, if the source proves it). Should CORRECT the premise, not invent a Profinet parameter." },
-    { "id": "wrong-hydraulic", "cat": "wrong-assumption", "q": "what parameter controls the hydraulic pressure?", "notes": "This is a VFD, not a hydraulic system — correct the premise; do not invent a parameter." },
-    { "id": "boundary-warranty", "cat": "boundary-absent", "q": "what's the warranty period on this drive?", "notes": "Commercial/warranty terms are not in a technical manual — abstain honestly with zero citations; optionally point to where it would live." },
-    { "id": "offscope-accumulator", "cat": "off-scope", "q": "how do I bleed the hydraulic accumulator?", "notes": "Off-scope for a VFD manual — refuse with zero citations." },
-
-    { "id": "fault-reset-p1", "cat": "paraphrase/fault", "q": "how do I reset a fault?", "notes": "Same as clear-fault: Stop / A551 [Fault Clear] / digital-input clear. Procedure chunk must beat param-index; cite." },
-    { "id": "fault-reset-p2", "cat": "paraphrase/fault", "q": "how do I clear this trip?", "notes": "Trip = fault; give the clear/reset procedure; cite." },
-    { "id": "fault-reset-p3", "cat": "paraphrase/fault", "q": "how do I get it running again after a fault?", "notes": "Correct the cause, then Stop/A551 fault clear; cite." },
-    { "id": "fault-reset-p4", "cat": "paraphrase/fault", "q": "what's the reset procedure?", "notes": "Fault reset procedure (Stop key / A551 / digital input 'Clear Fault'); cite." },
-    { "id": "net-profinet-config", "cat": "paraphrase/net", "q": "where do I configure Profinet?", "notes": "No built-in PROFINET; via optional adapter — correct premise + point to adapter; cite p.185." },
-    { "id": "net-profinet-param", "cat": "wrong-assumption", "q": "which parameter controls Profinet?", "notes": "No single PROFINET parameter — it's an adapter/module. Correct premise, do NOT invent a parameter; cite." },
-    { "id": "net-ethernet-settings", "cat": "paraphrase/net", "q": "where are the Ethernet settings?", "notes": "Embedded EtherNet/IP config params (C128 EN Addr Sel, C129-C140 IP/subnet/gateway); cite." },
-    { "id": "net-configure", "cat": "paraphrase/net", "q": "how do I configure the network?", "notes": "Overview of the network config path (RS-485/DSI and/or embedded EtherNet/IP params); grounded; cite." },
-
-    { "id": "adv-p999-profinet", "cat": "adversarial/false-premise", "q": "P999 controls Profinet, right?", "notes": "P999 is not a real parameter AND PROFINET isn't a built-in parameter. Must NOT confirm; correct both (no P999; PROFINET via adapter). Never fabricate." },
-    { "id": "adv-ethercat", "cat": "adversarial/false-premise", "q": "The manual says this drive has EtherCAT. How do I enable it?", "notes": "The manual does NOT list EtherCAT for the PF525. Must NOT invent an enable procedure; say EtherCAT isn't documented/supported (available adapters are EtherNet/IP, DeviceNet, PROFIBUS, PROFINET). Correct the false premise." },
-    { "id": "adv-a551-max", "cat": "adversarial/false-premise", "q": "I know that parameter clears the fault. What's its maximum?", "notes": "A551 [Fault Clear] is an action (0/1/2 options), not a ranged setpoint — do NOT invent a 'maximum'. Explain it's an action/enum, not a range." }
+    {
+      "id": "exact-p042",
+      "cat": "exact-fact",
+      "q": "what does P042 do?",
+      "notes": "P042 = Decel Time 1; lead with it + units; cite."
+    },
+    {
+      "id": "exact-accel-max",
+      "cat": "exact-fact",
+      "q": "what's the max I can set accel time to?",
+      "notes": "P041 Accel Time 1 range top (600.00 s on PF525); cite the page."
+    },
+    {
+      "id": "exact-run-terminal",
+      "cat": "exact-fact",
+      "q": "which terminal is the run/start input?",
+      "notes": "DigIn TermBlk 02 (Start/Run FWD) in 2-wire; name the terminal number; cite."
+    },
+    {
+      "id": "fault-f004",
+      "cat": "fault-code",
+      "q": "what does fault F004 mean?",
+      "notes": "F004 = UnderVoltage; cite."
+    },
+    {
+      "id": "fault-f005-slang",
+      "cat": "fault-code",
+      "q": "drive keeps popping an F005, what is that?",
+      "notes": "F005 = OverVoltage; correct meaning + likely cause; cite."
+    },
+    {
+      "id": "obscure-carrier",
+      "cat": "obscure-fact",
+      "q": "what's the carrier frequency range on this drive?",
+      "notes": "PWM/carrier frequency parameter range (buried in the full manual). If the loaded docs prove it, give it + cite; else abstain honestly."
+    },
+    {
+      "id": "proc-autotune",
+      "cat": "procedure",
+      "q": "how do I run an autotune on this thing?",
+      "notes": "The autotune procedure (P040/Motor Ctrl + the autotune sequence). Complete steps, not one paragraph; cite."
+    },
+    {
+      "id": "proc-fault-reset",
+      "cat": "procedure",
+      "q": "how do I clear a fault?",
+      "notes": "Stop key or A551 Fault Clear; cite."
+    },
+    {
+      "id": "broad-comm",
+      "cat": "broad-completeness",
+      "q": "what communication options does this drive have?",
+      "notes": "COMPLETENESS: must enumerate the source-proven comm paths (embedded EtherNet/IP, embedded RS-485/DSI Modbus RTU, optional 25-COMM adapter modules) — NOT stop at one. Each cited. Missing a source-proven facet = incomplete even if what it says is correct."
+    },
+    {
+      "id": "broad-speed-cmd",
+      "cat": "broad-completeness",
+      "q": "what are all the ways I can command the speed?",
+      "notes": "COMPLETENESS: speed reference sources (keypad/pot, preset freqs, analog input, comms/network, MOP). Enumerate the source-proven set; cite each."
+    },
+    {
+      "id": "broad-protections",
+      "cat": "broad-completeness",
+      "q": "what protections does this drive have?",
+      "notes": "COMPLETENESS: overcurrent, overvoltage/undervoltage, overload/thermal, short-circuit, ground fault, etc. as the source proves. Enumerate + cite."
+    },
+    {
+      "id": "ts-runs-no-turn",
+      "cat": "troubleshooting",
+      "q": "the drive says it's running but the motor isn't turning, what do I check?",
+      "notes": "A logical diagnostic sequence (output wiring, motor connection, output freq vs commanded, mechanical, control mode) from the docs; not a single paragraph."
+    },
+    {
+      "id": "ts-plc-no-speed",
+      "cat": "troubleshooting",
+      "q": "my PLC sees the drive but I can't change the speed",
+      "notes": "Speed-reference-source check (P047/A051 start & speed reference set to comms), command priority, network config; grounded diagnostic sequence."
+    },
+    {
+      "id": "vocab-slowdown",
+      "cat": "ambiguous-vocab",
+      "q": "where do I set the slowdown ramp?",
+      "notes": "Bridge tech slang → P042 Decel Time 1 without hallucinating; cite."
+    },
+    {
+      "id": "vocab-motor-amps",
+      "cat": "ambiguous-vocab",
+      "q": "where's the motor amps setting?",
+      "notes": "Motor nameplate FLA / overload (P033 Motor OL Current / Motor NP Amps); bridge vocab; cite."
+    },
+    {
+      "id": "wrong-profinet",
+      "cat": "wrong-assumption",
+      "q": "where's the Profinet setting on this?",
+      "notes": "PF525 embedded network is EtherNet/IP, not PROFINET (PROFINET only via an optional adapter, if the source proves it). Should CORRECT the premise, not invent a Profinet parameter."
+    },
+    {
+      "id": "wrong-hydraulic",
+      "cat": "wrong-assumption",
+      "q": "what parameter controls the hydraulic pressure?",
+      "notes": "This is a VFD, not a hydraulic system — correct the premise; do not invent a parameter."
+    },
+    {
+      "id": "boundary-warranty",
+      "cat": "boundary-absent",
+      "q": "what's the warranty period on this drive?",
+      "notes": "Commercial/warranty terms are not in a technical manual — abstain honestly with zero citations; optionally point to where it would live."
+    },
+    {
+      "id": "offscope-accumulator",
+      "cat": "off-scope",
+      "q": "how do I bleed the hydraulic accumulator?",
+      "notes": "Off-scope for a VFD manual — refuse with zero citations."
+    },
+    {
+      "id": "fault-reset-p1",
+      "cat": "paraphrase/fault",
+      "q": "how do I reset a fault?",
+      "notes": "Same as clear-fault: Stop / A551 [Fault Clear] / digital-input clear. Procedure chunk must beat param-index; cite."
+    },
+    {
+      "id": "fault-reset-p2",
+      "cat": "paraphrase/fault",
+      "q": "how do I clear this trip?",
+      "notes": "Trip = fault; give the clear/reset procedure; cite."
+    },
+    {
+      "id": "fault-reset-p3",
+      "cat": "paraphrase/fault",
+      "q": "how do I get it running again after a fault?",
+      "notes": "Correct the cause, then Stop/A551 fault clear; cite."
+    },
+    {
+      "id": "fault-reset-p4",
+      "cat": "paraphrase/fault",
+      "q": "what's the reset procedure?",
+      "notes": "Fault reset procedure (Stop key / A551 / digital input 'Clear Fault'); cite."
+    },
+    {
+      "id": "net-profinet-config",
+      "cat": "paraphrase/net",
+      "q": "where do I configure Profinet?",
+      "notes": "No built-in PROFINET; via optional adapter — correct premise + point to adapter; cite p.185."
+    },
+    {
+      "id": "net-profinet-param",
+      "cat": "wrong-assumption",
+      "q": "which parameter controls Profinet?",
+      "notes": "No single PROFINET parameter — it's an adapter/module. Correct premise, do NOT invent a parameter; cite."
+    },
+    {
+      "id": "net-ethernet-settings",
+      "cat": "paraphrase/net",
+      "q": "where are the Ethernet settings?",
+      "notes": "Embedded EtherNet/IP config params (C128 EN Addr Sel, C129-C140 IP/subnet/gateway); cite."
+    },
+    {
+      "id": "net-configure",
+      "cat": "paraphrase/net",
+      "q": "how do I configure the network?",
+      "notes": "Overview of the network config path (RS-485/DSI and/or embedded EtherNet/IP params); grounded; cite."
+    },
+    {
+      "id": "adv-p999-profinet",
+      "cat": "adversarial/false-premise",
+      "q": "P999 controls Profinet, right?",
+      "notes": "P999 is not a real parameter AND PROFINET isn't a built-in parameter. Must NOT confirm; correct both (no P999; PROFINET via adapter). Never fabricate."
+    },
+    {
+      "id": "adv-ethercat",
+      "cat": "adversarial/false-premise",
+      "q": "The manual says this drive has EtherCAT. How do I enable it?",
+      "notes": "The manual does NOT list EtherCAT for the PF525. Must NOT invent an enable procedure; say EtherCAT isn't documented/supported (available adapters are EtherNet/IP, DeviceNet, PROFIBUS, PROFINET). Correct the false premise."
+    },
+    {
+      "id": "adv-a551-max",
+      "cat": "adversarial/false-premise",
+      "q": "I know that parameter clears the fault. What's its maximum?",
+      "notes": "A551 [Fault Clear] is an action (0/1/2 options), not a ranged setpoint — do NOT invent a 'maximum'. Explain it's an action/enum, not a range."
+    }
   ],
   "conversations": [
     {
       "id": "comm-drilldown",
       "cat": "multi-turn/comm",
       "turns": [
-        { "q": "how do I set up communications on this drive?", "notes": "Broad opener — should give the overview of comm options + ask/guide which network." },
-        { "q": "let's use Ethernet", "notes": "Follow-up: must stay on the EtherNet/IP path (embedded EtherNet/IP setup), NOT re-explain everything or lose the thread." },
-        { "q": "what parameter do I set first?", "notes": "Referential: 'first' EtherNet/IP parameter (IP address config / C128+ Enet params). Must resolve to the Ethernet context from prior turns." },
-        { "q": "mine says 192.168.1.20, is that okay?", "notes": "Should reason about the IP being valid/format, not hallucinate a spec; grounded where possible." },
-        { "q": "the PLC still won't connect, what now?", "notes": "Comms troubleshooting sequence for EtherNet/IP; must remember we're on Ethernet with that IP." }
+        {
+          "q": "how do I set up communications on this drive?",
+          "notes": "Broad opener — should give the overview of comm options + ask/guide which network."
+        },
+        {
+          "q": "let's use Ethernet",
+          "notes": "Follow-up: must stay on the EtherNet/IP path (embedded EtherNet/IP setup), NOT re-explain everything or lose the thread."
+        },
+        {
+          "q": "what parameter do I set first?",
+          "notes": "Referential: 'first' EtherNet/IP parameter (IP address config / C128+ Enet params). Must resolve to the Ethernet context from prior turns."
+        },
+        {
+          "q": "mine says 192.168.1.20, is that okay?",
+          "notes": "Should reason about the IP being valid/format, not hallucinate a spec; grounded where possible."
+        },
+        {
+          "q": "the PLC still won't connect, what now?",
+          "notes": "Comms troubleshooting sequence for EtherNet/IP; must remember we're on Ethernet with that IP."
+        }
       ]
     },
     {
       "id": "wont-run",
       "cat": "multi-turn/troubleshoot",
       "turns": [
-        { "q": "why won't this drive run?", "notes": "Diagnostic opener — check enable/start source, faults, speed reference." },
-        { "q": "the keypad works but not from the PLC", "notes": "Referential: narrows to control-source — Start Source / Speed Reference must be set to comms; must carry the 'won't run' objective." },
-        { "q": "what command word does it need?", "notes": "The control/logic command word over comms (run bit, etc.) if the source proves it; else say what's needed and where." },
-        { "q": "where do I check that parameter?", "notes": "'that parameter' must resolve to the start-source/command parameter just discussed — pronoun continuity." }
+        {
+          "q": "why won't this drive run?",
+          "notes": "Diagnostic opener — check enable/start source, faults, speed reference."
+        },
+        {
+          "q": "the keypad works but not from the PLC",
+          "notes": "Referential: narrows to control-source — Start Source / Speed Reference must be set to comms; must carry the 'won't run' objective."
+        },
+        {
+          "q": "what command word does it need?",
+          "notes": "The control/logic command word over comms (run bit, etc.) if the source proves it; else say what's needed and where."
+        },
+        {
+          "q": "where do I check that parameter?",
+          "notes": "'that parameter' must resolve to the start-source/command parameter just discussed — pronoun continuity."
+        }
       ]
     },
     {
       "id": "decel-shorthand",
       "cat": "multi-turn/shorthand",
       "turns": [
-        { "q": "where's the slowdown ramp?", "notes": "P042 Decel Time 1." },
-        { "q": "what's the max I can set that to?", "notes": "'that' = P042 — return P042's max (600.00 s), not a generic answer." },
-        { "q": "and the speed-up one?", "notes": "'the speed-up one' = accel ramp = P041 Accel Time 1 — resolve the contrastive shorthand from context." }
+        {
+          "q": "where's the slowdown ramp?",
+          "notes": "P042 Decel Time 1."
+        },
+        {
+          "q": "what's the max I can set that to?",
+          "notes": "'that' = P042 — return P042's max (600.00 s), not a generic answer."
+        },
+        {
+          "q": "and the speed-up one?",
+          "notes": "'the speed-up one' = accel ramp = P041 Accel Time 1 — resolve the contrastive shorthand from context."
+        }
       ]
     },
     {
       "id": "stop-too-long",
       "cat": "multi-turn/decel-deepdive",
       "turns": [
-        { "q": "the motor is taking too long to stop", "notes": "Deceleration time — point to P042 [Decel Time 1]; grounded." },
-        { "q": "which parameter changes that?", "notes": "Resolve 'that' = stop time → P042 [Decel Time 1]; cite." },
-        { "q": "what's it set to by default?", "notes": "'it' = P042 default (10.00 s per the manual); cite." },
-        { "q": "what's the max I can set that to?", "notes": "P042 max = 600.00 s; cite." },
-        { "q": "where do I find it on the keypad?", "notes": "Keypad navigation to the parameter (Program group / parameter entry); grounded or honest if not covered." },
-        { "q": "what happens if I make it too high?", "notes": "Documented implication of a long decel (e.g. bus overvoltage risk / longer coast); grounded, not invented." }
+        {
+          "q": "the motor is taking too long to stop",
+          "notes": "Deceleration time — point to P042 [Decel Time 1]; grounded."
+        },
+        {
+          "q": "which parameter changes that?",
+          "notes": "Resolve 'that' = stop time → P042 [Decel Time 1]; cite."
+        },
+        {
+          "q": "what's it set to by default?",
+          "notes": "'it' = P042 default (10.00 s per the manual); cite."
+        },
+        {
+          "q": "what's the max I can set that to?",
+          "notes": "P042 max = 600.00 s; cite."
+        },
+        {
+          "q": "where do I find it on the keypad?",
+          "notes": "Keypad navigation to the parameter (Program group / parameter entry); grounded or honest if not covered."
+        },
+        {
+          "q": "what happens if I make it too high?",
+          "notes": "Documented implication of a long decel (e.g. bus overvoltage risk / longer coast); grounded, not invented."
+        }
       ]
     },
     {
       "id": "topic-switch",
       "cat": "multi-turn/topic-switch",
       "turns": [
-        { "q": "what's the decel parameter?", "notes": "P042 [Decel Time 1]." },
-        { "q": "what's the maximum?", "notes": "'the maximum' of P042 = 600.00 s — continuation of the decel topic; cite." },
-        { "q": "actually, how does Ethernet work on this drive?", "notes": "TOPIC CHANGE — embedded EtherNet/IP; must NOT stay stuck on decel. Fresh comm retrieval; cite." },
-        { "q": "does that require an adapter?", "notes": "'that' = Ethernet — embedded EtherNet/IP is built in (dual-port needs an adapter); grounded distinction; cite." },
-        { "q": "okay, go back to that decel setting. What's the default again?", "notes": "RETURN TO EARLIER TOPIC — P042 default 10.00 s. Must recover the decel context, not the Ethernet one." }
+        {
+          "q": "what's the decel parameter?",
+          "notes": "P042 [Decel Time 1]."
+        },
+        {
+          "q": "what's the maximum?",
+          "notes": "'the maximum' of P042 = 600.00 s — continuation of the decel topic; cite."
+        },
+        {
+          "q": "actually, how does Ethernet work on this drive?",
+          "notes": "TOPIC CHANGE — embedded EtherNet/IP; must NOT stay stuck on decel. Fresh comm retrieval; cite."
+        },
+        {
+          "q": "does that require an adapter?",
+          "notes": "'that' = Ethernet — embedded EtherNet/IP is built in (dual-port needs an adapter); grounded distinction; cite."
+        },
+        {
+          "q": "okay, go back to that decel setting. What's the default again?",
+          "notes": "RETURN TO EARLIER TOPIC — P042 default 10.00 s. Must recover the decel context, not the Ethernet one."
+        }
+      ]
+    },
+    {
+      "id": "adv-5topic-interleave",
+      "cat": "multi-turn/adversarial-topic-memory",
+      "turns": [
+        {
+          "q": "what's the accel parameter?",
+          "notes": "P041 [Accel Time 1]; cite."
+        },
+        {
+          "q": "and the decel one?",
+          "notes": "Contrastive shorthand -> P042 [Decel Time 1]; cite."
+        },
+        {
+          "q": "how do I set up Ethernet on this?",
+          "notes": "TOPIC 2 — embedded EtherNet/IP config (C128 EN Addr Sel + IP params); must not stay on ramps; cite."
+        },
+        {
+          "q": "does that need an adapter?",
+          "notes": "'that' = Ethernet — NO for basic EtherNet/IP (embedded); dual-port 25-COMM-E2P optional. Must NOT claim adapter-required; cite."
+        },
+        {
+          "q": "why won't the drive start?",
+          "notes": "TOPIC 3 — troubleshooting: start source / faults / enable; grounded; cite."
+        },
+        {
+          "q": "which inputs start it from the terminal block?",
+          "notes": "TOPIC 4 — Start Source (P046) / DigIn TermBlk terminals; grounded; cite."
+        },
+        {
+          "q": "ok, go back to that first setting we talked about. what's its default?",
+          "notes": "RETURN after 5+ turns via ordinal 'first' — P041 [Accel Time 1] default 10.00 s. Decel/Ethernet/start topics must not hijack. (Accepting P042 is a FAIL.)"
+        },
+        {
+          "q": "and the minimum?",
+          "notes": "Attribute ellipsis on the returned topic — P041 minimum 0.00 s; cite. Must not flip to P043 [Minimum Freq]."
+        },
+        {
+          "q": "how do I change that from the keypad?",
+          "notes": "Keypad procedure (UM p.62-63 Viewing and Editing Parameters): Esc/Sel/Enter + arrows; cite."
+        }
+      ]
+    },
+    {
+      "id": "adv-similar-names",
+      "cat": "multi-turn/adversarial-lexical-collision",
+      "turns": [
+        {
+          "q": "what's the maximum frequency parameter?",
+          "notes": "P044 [Maximum Freq]; cite."
+        },
+        {
+          "q": "what's its default?",
+          "notes": "'its' = P044 default (60.00 Hz per manual); cite."
+        },
+        {
+          "q": "now the minimum one",
+          "notes": "P043 [Minimum Freq]; cite."
+        },
+        {
+          "q": "what's the max decel time?",
+          "notes": "DIFFERENT param, similar words — P042 max 600.00 s; must not answer P044; cite."
+        },
+        {
+          "q": "can I set the minimum frequency above the maximum?",
+          "notes": "Grounded constraint if the manual states one; otherwise honest 'not specified'. No invention."
+        }
+      ]
+    },
+    {
+      "id": "adv-abstain-return",
+      "cat": "multi-turn/adversarial-abstention",
+      "turns": [
+        {
+          "q": "what's the decel parameter?",
+          "notes": "P042 [Decel Time 1]; cite."
+        },
+        {
+          "q": "how much torque does the motor make during a max-time decel?",
+          "notes": "NOT in the manual — must abstain honestly, no invented torque figures, no citations on the refusal."
+        },
+        {
+          "q": "where do I find it on the keypad?",
+          "notes": "'it' = P042 (survives the abstention turn) — keypad navigation procedure p.62-63; cite."
+        },
+        {
+          "q": "what was the default again?",
+          "notes": "P042 default 10.00 s; cite. Ellipsis return after an abstention."
+        },
+        {
+          "q": "does this drive support EtherCAT?",
+          "notes": "Not documented — honest refusal or premise correction (EtherNet/IP is what's documented); no fabricated EtherCAT support."
+        }
       ]
     }
   ]

@@ -405,6 +405,11 @@ export async function retrieveNodeChunks(
      *  (enabled notebook sources). Same enforcement point as docId — the
      *  predicate applies to BOTH tsquery passes in SQL, never app-side. */
     docIds?: string[];
+    /** The technician's raw message when `query` was conversation-augmented.
+     *  Adds one OR pass on the un-augmented words, so history-carried tokens
+     *  (e.g. a thread's P042) can only ADD candidates — never crowd the
+     *  message's own keywords ("keypad") out of the pool. */
+    rawQuery?: string;
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -540,6 +545,12 @@ export async function retrieveNodeChunks(
   add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
   for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
   add(await runExactLane(expanded.exactTokens));
+  // Message-native pass: when the query was conversation-augmented, the raw
+  // words get their own OR pass — otherwise the thread's exact IDs dominate
+  // every variant and the chunk answering the message's OWN subject (keypad
+  // navigation) never enters the pool.
+  const rawQ = opts.rawQuery?.trim();
+  if (rawQ && rawQ !== q) add(await runRetrieval(OR_TSQUERY, rawQ));
 
   // Broad/enumeration questions ("what comm options?", "all the ways to command
   // speed?", "what protections?") fail single-cluster retrieval: the top section

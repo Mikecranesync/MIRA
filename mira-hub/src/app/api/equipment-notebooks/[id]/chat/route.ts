@@ -240,6 +240,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       unsPath: null, // notebook nodes are standalone; scope is the doc set
       topK: 6,
       docIds,
+      rawQuery: message,
     }),
   );
 

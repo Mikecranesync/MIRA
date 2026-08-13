@@ -29,6 +29,12 @@ const SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/\b(nameplate|name\s*plate)\b/i, ["motor np hertz", "motor np volts", "motor np amps"]],
   [/\bpreset\b/i, ["preset freq"]],
   [/\bterminal\b|\bwire\b|\binput\b/i, ["digin termblk", "terminal block"]],
+  // Keypad/panel NAVIGATION questions ("find it on the keypad") share no tokens
+  // with the manual's procedure section — bridge to the generic drive-manual
+  // vocabulary. Trigger only on navigation phrasing: a bare "keypad" mention
+  // ("the keypad works but not from the PLC") is a control-source question and
+  // must NOT be flooded with navigation chunks.
+  [/\b(?:on|from|via|with|using)\s+the\s+keypad\b|\bfront panel\b/i, ["viewing and editing parameters", "programming menu", "navigation keys"]],
   [/\bfault\b|\btrip\b|\balarm\b|\berror\s*code\b/i, ["fault"]],
   [/\breset\b|\bclear\b/i, ["fault clear"]],
   [/\btorque\b/i, ["torque"]],
@@ -154,6 +160,36 @@ function procedureScore(text: string): number {
 function commScore(text: string): number {
   return Math.min(countMatches(text, COMM_SIGNALS), 6) / 6;
 }
+
+// Protocol families for architecture discrimination: a comm question that NAMES
+// a protocol ("how does Ethernet work?") must rank that family's material above
+// another family's, or the RS-485/DSI appendix wins on generic comm density and
+// the answer describes the wrong architecture (topic-switch T3 defect).
+const PROTOCOL_FAMILIES: ReadonlyArray<{ key: string; re: RegExp }> = [
+  { key: "ethernet", re: /ethernet(?:\/ip)?|\benet\b|\beip\b/gi },
+  { key: "modbus", re: /\bmodbus\b|\brs-?485\b|\bdsi\b/gi },
+  { key: "profinet", re: /\bprofinet\b/gi },
+  { key: "profibus", re: /\bprofibus\b/gi },
+  { key: "devicenet", re: /\bdevicenet\b/gi },
+  { key: "canopen", re: /\bcanopen\b/gi },
+  { key: "ethercat", re: /\bethercat\b/gi },
+  { key: "bacnet", re: /\bbacnet\b/gi },
+];
+
+/** The single protocol family a query names, or null (none / more than one —
+ *  a multi-protocol question is a survey, not a family-scoped one). */
+export function queryProtocolFamily(query: string): { key: string; re: RegExp } | null {
+  const hits = PROTOCOL_FAMILIES.filter((f) => {
+    f.re.lastIndex = 0;
+    return f.re.test(query);
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+function familyScore(text: string, re: RegExp): number {
+  re.lastIndex = 0;
+  return Math.min(countMatches(text, re), 6) / 6;
+}
 function specScore(text: string): number {
   return Math.min(countMatches(text, SPEC_SIGNALS), 6) / 6;
 }
@@ -172,11 +208,19 @@ const SPEC_TOPIC =
 
 /** Classify the query's ranking intent. Composes with classifyBroad (a comm
  *  question can be both comm + broad); this returns the SINGLE ranking lever. */
+// "what's the <X> parameter?" / "which parameter …?" asks for a parameter ID —
+// even when <X> contains a spec word ("maximum frequency parameter"). Spec's
+// value-density boost must not fire there (it floods context with value tables
+// and starves the naming row).
+const PARAM_ID_REQUEST =
+  /\bwhich parameter\b|\bwhat(?:'s| is)?\s+the\b[^.?!]{0,60}\bparameter\b(?![^.?!]{0,30}\bset to\b)/i;
+
 export function classifyIntent(query: string): Intent {
   const q = query.trim();
   if (FAULT_ACTION.test(q)) return "fault";
   if (COMM_TOPIC.test(q)) return "comm";
   if (PROCEDURE_LEAD.test(q)) return "procedure";
+  if (PARAM_ID_REQUEST.test(q)) return "param_lookup";
   if (SPEC_TOPIC.test(q)) return "spec";
   if (classifyBroad(q).broad) return "broad";
   if (/\b[PpAaBbCcHhLdtUu]\d{2,4}\b|\bparameter\b|\bwhat does\b/i.test(q)) return "param_lookup";
@@ -213,17 +257,26 @@ export function rerankChunks<T extends Rerankable>(
     .join(" ")
     .toLowerCase()
     .split(/\s+/)
+    // Strip clinging punctuation ("keypad?" → "keypad") or the term can never
+    // match chunk text via includes() — message keywords were invisible here.
+    .map((w) => w.replace(/^[^a-z0-9]+|[^a-z0-9/-]+$/g, ""))
     .filter((w) => w.length > 3);
   const intent = opts?.intent ?? "generic";
+  const queryFamily = intent === "comm" ? queryProtocolFamily(expanded.variants[0] ?? "") : null;
 
   const maxRank = Math.max(1e-6, ...chunks.map((c) => c.rank));
   const scored = chunks.map((c, i) => {
     const text = c.content.toLowerCase();
     let score = (c.rank / maxRank) * 1.0; // 0..1 base
     let exactHit = false;
+    // Exact-ID dominance is right when the ID is the SUBJECT (spec/param/fault
+    // lookups). On a procedure question the ID is thread context, not the
+    // subject — the answering chunk is generic how-to text that often lacks the
+    // ID entirely (keypad-navigation defect) — so damp it there.
+    const exactWeight = intent === "procedure" ? 0.5 : 3.0;
     for (const t of exact) {
       if (t && text.includes(t)) {
-        score += 3.0; // dominant: exact ID present verbatim
+        score += exactWeight; // exact ID present verbatim
         exactHit = true;
       }
     }
@@ -237,10 +290,13 @@ export function rerankChunks<T extends Rerankable>(
     const proc = procedureScore(c.content);
     const comm = commScore(c.content);
     if (intent === "fault" || intent === "procedure") {
-      score += proc * 2.0;
+      score += proc * 2.5;
       score -= Math.max(0, idx) * 2.5; // demote the param index
     } else if (intent === "comm") {
-      score += comm * 1.8;
+      // A comm question naming ONE protocol family scores the chunk on THAT
+      // family's material, so another family's appendix can't win on generic
+      // comm density (architecture discrimination). Otherwise generic comm.
+      score += (queryFamily ? familyScore(c.content, queryFamily.re) : comm) * 1.8;
       score -= Math.max(0, idx) * 1.5;
     } else if (intent === "spec") {
       // Spec questions want the chunk with the VALUES (range/default/decimals),
@@ -282,7 +338,10 @@ const HISTORY_ROLES = new Set(["user", "assistant"]);
 /** Validate + cap client-supplied history: keep only well-formed user/assistant
  *  turns with non-empty content, trim + hard-cap each turn's length, and keep the
  *  most recent `maxTurns` in order. Defensive against a bloated or malformed body. */
-export function sanitizeHistory(raw: unknown, maxTurns = 6, maxChars = 2000): ChatHistoryTurn[] {
+// Default window: 12 turns (6 exchanges). At 6 turns a 5-topic conversation's
+// opening topic fell out of the window entirely, so "go back to that first
+// setting" was unanswerable by construction (adv-5topic T7).
+export function sanitizeHistory(raw: unknown, maxTurns = 12, maxChars = 2000): ChatHistoryTurn[] {
   if (!Array.isArray(raw)) return [];
   const out: ChatHistoryTurn[] = [];
   for (const t of raw) {
@@ -393,13 +452,39 @@ function topicTerms(text: string): string[] {
  *  the recent turns — the pronoun's referent lives in the thread, and a named
  *  noun ("keypad") is the question's surface, not the referent. */
 function topicPool(message: string, history: ChatHistoryTurn[]): ChatHistoryTurn[] {
-  const pronounRef =
-    PRONOUN_VERB.test(message) ||
-    PRONOUN_VERB_OBJECT.test(message) ||
-    PRONOUN_PREP.test(message) ||
-    PRONOUN_END.test(message);
   const named = topicTerms(message).map((t) => t.toLowerCase());
-  if (pronounRef || !named.length) return history.slice(-4);
+  // A message that NAMES a topic defines its own subject — even when it also
+  // carries a deictic ("how do I set up Ethernet on THIS?", where "this" is
+  // the drive, not the thread). The named topic wins; pronoun-driven recency
+  // augmentation applies only to messages with no topic terms of their own.
+  if (!named.length) {
+    // "Go back to that FIRST setting we talked about" — an ordinal return to
+    // the conversation's earliest topic. Requires BOTH a return signal and the
+    // ordinal, so a step-order question ("what do I set first?") stays on the
+    // current topic.
+    const ordinalReturn =
+      /\b(go back|back to|talked about|discussed|earlier|at the (start|beginning))\b/i.test(message) &&
+      /\b(first|original|beginning)\b/i.test(message);
+    if (ordinalReturn) {
+      for (let i = 0; i < history.length; i++) {
+        if (history[i].role === "user" && topicTerms(history[i].content).length) {
+          return history.slice(i, i + 2); // that topic's user turn + its answer
+        }
+      }
+    }
+    // Bare/pronoun referent = the CURRENT topic. Take the most recent topic
+    // segment — from the latest user turn that introduced topic terms onward —
+    // so a follow-up after a topic switch ("does that require an adapter?")
+    // doesn't drag the pre-switch topic's tokens into retrieval (T4 defect:
+    // decel tokens polluted an Ethernet question). Fall back to the recency
+    // window when no user turn names a topic.
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role === "user" && topicTerms(history[i].content).length) {
+        return history.slice(i);
+      }
+    }
+    return history.slice(-4);
+  }
   return history.filter((t) => {
     const turnLower = t.content.toLowerCase();
     return named.some((k) => turnLower.includes(k));

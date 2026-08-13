@@ -1,0 +1,70 @@
+{
+  "_note": "Citation-integrity oracle for multi-turn battery runs (cite-check.mjs). Each entry pins a conversation turn to (a) required answer markers, (b) a support regex that at least ONE cited page's chunk text must match — a right number citing a wrong page is a FAIL — and/or (c) an abstention contract (refusal with zero citations). Verified against Rockwell 520-UM001O (September 2025).",
+  "checks": [
+    {
+      "conv": "topic-switch",
+      "turn": 2,
+      "answer_all": ["P042", "600.00"],
+      "support": "P042[\\s\\S]{0,400}600\\.00|600\\.00[\\s\\S]{0,400}P042",
+      "note": "P042 max = 600.00 s; the cited page must itself contain P042 with the 600.00 range."
+    },
+    {
+      "conv": "topic-switch",
+      "turn": 4,
+      "answer_any": ["embedded", "built-in", "built‑in"],
+      "answer_none": ["no native Ethernet", "only through an optional", "requires the optional"],
+      "support": "embedded[\\s\\S]{0,60}EtherNet/IP|EtherNet/IP[\\s\\S]{0,60}embedded|Emb Enet",
+      "note": "Embedded EtherNet/IP is built in; dual-port adapter optional. Cited page must prove the embedded interface."
+    },
+    {
+      "conv": "topic-switch",
+      "turn": 5,
+      "answer_all": ["P042", "10.00"],
+      "support": "P042[\\s\\S]{0,400}10\\.00|10\\.00[\\s\\S]{0,400}P042",
+      "note": "P042 default 10.00 s, cited from a page that states it."
+    },
+    {
+      "conv": "stop-too-long",
+      "turn": 3,
+      "answer_all": ["10.00"],
+      "support": "P042[\\s\\S]{0,400}10\\.00|10\\.00[\\s\\S]{0,400}P042",
+      "note": "P042 default is 10.00 s — a 0.00 answer (min misread as default) is a FAIL."
+    },
+    {
+      "conv": "stop-too-long",
+      "turn": 5,
+      "answer_any": ["Esc", "Enter", "Sel"],
+      "support": "Viewing and Editing Parameters|programming menu|group list",
+      "note": "Keypad navigation must cite the Viewing-and-Editing-Parameters procedure page."
+    },
+    {
+      "conv": "adv-5topic-interleave",
+      "turn": 7,
+      "answer_all": ["P041"],
+      "answer_none": ["P042 [Decel", "P042 default"],
+      "support": "P041",
+      "note": "Ordinal return-to-first-topic: P041, not the more recent P042."
+    },
+    {
+      "conv": "adv-similar-names",
+      "turn": 4,
+      "answer_all": ["600"],
+      "answer_any": ["P042", "decel", "Decel"],
+      "support": "P042[\\s\\S]{0,400}600\\.00|600\\.00[\\s\\S]{0,400}P042|Decel Time[\\s\\S]{0,200}600\\.00",
+      "note": "Max decel time = P042 600.00 s — must not answer P044 despite 'maximum' collision."
+    },
+    {
+      "conv": "adv-abstain-return",
+      "turn": 2,
+      "abstain": true,
+      "note": "Torque during decel is not in the manual — refusal with ZERO citations."
+    },
+    {
+      "conv": "adv-abstain-return",
+      "turn": 4,
+      "answer_all": ["10.00"],
+      "support": "P042[\\s\\S]{0,400}10\\.00|10\\.00[\\s\\S]{0,400}P042|Decel Time[\\s\\S]{0,200}10\\.00",
+      "note": "Return after abstention still resolves P042's default."
+    }
+  ]
+}

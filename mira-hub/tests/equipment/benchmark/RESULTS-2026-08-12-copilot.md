@@ -128,3 +128,81 @@ decel-shorthand, stop-too-long, topic-switch — runs/battery-topicfix2.md); sin
 structurally unaffected (empty history → no note, unchanged rewrite). Known residual (pre-existing,
 failed identically in final3): topic-switch T3/T4 claims EtherNet/IP is adapter-only — the
 embedded-vs-dual-port-adapter distinction still loses to the Appendix-H framing.
+
+---
+
+# Round: stabilization phase — EtherNet/IP architecture + keypad navigation + adversarial battery + citation integrity (2026-08-13)
+
+Trace-driven (NOTEBOOK_RETRIEVAL_DEBUG=1); every fix identified its failing layer before code
+changed, and each landed red-first.
+
+## EtherNet/IP embedded-vs-adapter confusion (topic-switch T3/T4) — FIXED, two layers
+
+- **T3 (retrieval ranking):** context was [3,202,205,146,249,103] — the RS-485/DSI-Modbus appendix
+  dominated on generic comm density (cm=1.0 for ANY comm material); none of the embedded-proving
+  chunks (p.17/35/106/147) reached context. Fix: **protocol-family affinity** — a comm question
+  naming ONE protocol family scores chunks on THAT family's terms (`queryProtocolFamily` +
+  `familyScore`). Ethernet question → embedded-EtherNet/IP chunks; Modbus appendix demoted.
+- **T4 (query pollution):** rewritten query carried `P042 Decel` across the topic switch (the
+  bare-referential slice(-4) reached into pre-switch turns), and the "adapter required" claim
+  cited pages that didn't prove it. Fix: **bare/pronoun referential pool = most recent topic
+  segment** (from the latest topic-bearing user turn onward).
+- After: T3 "embedded EtherNet/IP adapter (built-in) and optionally 25-COMM-E2P dual-port"
+  cited p.249/147/250 (p.147 = F683 [Com Sts-Emb Enet]); T4 "No — built-in; dual-port optional"
+  — the exact WANT.
+
+## Keypad navigation — classified **BUG — evidence exists; retrieval/generation fixed**
+
+The loaded UM contains the full procedure (p.62 Control and Navigation Keys, p.63 Viewing and
+Editing Parameters). It never reached context for "where do I find it on the keypad?" — four
+stacked causes, each fixed generally:
+1. History-carried P042 poisoned every AND variant and dominated rerank → **message-native OR
+   pass** (`opts.rawQuery` in retrieveNodeChunks): augmentation may only ADD candidates.
+2. Exact-ID dominance is wrong when the ID is thread context, not the subject → **procedure-intent
+   exact damping** (0.5 vs 3.0) + proc signal 2.5.
+3. `synTerms` kept punctuation ("keypad?") so the message's own keyword could never match chunk
+   text — **token-hygiene fix** (real bug, general).
+4. "keypad" shares no vocabulary with "Viewing and Editing Parameters" → **navigation-phrasing
+   synonym row** (trigger `on/from/via the keypad` — a bare "the keypad works but not from the
+   PLC" is a control-source question and must NOT be flooded; first broad trigger regressed
+   wont-run T2 and was narrowed).
+After: "Press Esc → group list → P group → Enter → scroll to P042 → Enter" cited p.63/62;
+generalizes (stop-too-long T5, adv-5topic T9, adv-abstain T3 all pass).
+
+## Adversarial battery (new, committed): 3 conversations stressing topic memory
+
+`adv-5topic-interleave` (5 topics, ordinal return after 6 turns, attribute ellipsis, keypad),
+`adv-similar-names` (Maximum Freq / Minimum Freq / max decel collisions), `adv-abstain-return`
+(required abstention mid-thread + return). New defects found and fixed:
+- **Ordinal return** ("go back to that first setting we talked about") resolved to the LATEST
+  topic → ordinal-return rule picks the EARLIEST topic segment (requires return-signal + ordinal;
+  "what do I set first?" step questions unaffected). Also raised the history window (client 12
+  turns, sanitize cap 12) — at 6, a 5-topic conversation's opening topic fell out entirely.
+- **Trailing deictic false positive**: "how do I set up Ethernet on THIS?" — "this" = the drive;
+  decel tokens polluted it into an abstention → a message that NAMES a topic defines its own
+  subject (named-topic check now precedes pronoun recency).
+- **Param-ID request misclassified as spec**: "what's the maximum frequency parameter?" — spec's
+  value-density boost flooded context with A-group tables and the model abstained 2/3 →
+  `PARAM_ID_REQUEST` precedes SPEC in classifyIntent. After: P044 3/3.
+  (A generation-side abbreviation-equivalence prompt line was tried first and REVERTED — no
+  measured benefit on its target case.)
+
+## Citation-integrity gate (new, committed)
+
+`cite-check.mjs` + `cite-oracle.json`: for each oracled turn, required answer markers AND at
+least one CITED page whose chunk text matches a support regex (right number + wrong page = FAIL),
+plus zero-citation abstention contracts. 9/9 pass on the adversarial battery. It caught a real
+class in earlier runs (P042 "defaults to 0.00" — min misread as default — now watched).
+
+## Oracle scorer fix
+
+`absent-cable-length`: the answer's grounded deferral ("specified in the … Wiring and Grounding
+publication", which UM p.10/p.34 genuinely make) wasn't recognized by the acknowledges regex —
+widened to accept grounded pointing; a fabricated numeric length still fails.
+
+## Known limitations (honest)
+
+- Single-run LLM variance at temp 0.3 persists on definition sub-claims (one run said P044
+  "defaults to 0 Hz"); the cite-check oracle pins the critical values.
+- comm-drilldown T1 broad opener drifts run-to-run in emphasis (embedded vs adapter first);
+  citations stay grounded. Multi-evidence completeness is the next product phase.

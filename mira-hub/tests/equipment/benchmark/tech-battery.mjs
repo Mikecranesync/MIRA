@@ -93,7 +93,7 @@ for (const conv of corpus.conversations) {
   const history = [];
   const turns = [];
   for (const t of conv.turns) {
-    const r = await ask(t.q, history.slice(-8));
+    const r = await ask(t.q, history.slice(-12));
     turns.push({ ...t, ...r, autoFlags: autoFlags(r) });
     history.push({ role: "user", content: t.q });
     if (r.answer) history.push({ role: "assistant", content: r.answer });

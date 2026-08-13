@@ -90,7 +90,12 @@ function scoreAbstain(c, res) {
 // is not.
 function scorePointOrAbstain(c, res) {
   const a = norm(res.content).toLowerCase();
-  const acknowledges = /\b(does not|doesn'?t|not (?:give|list|specify|include|contain)|no specific|see the|user manual|full manual|not (?:in|found))\b/.test(a);
+  // "specified in the <external publication>" / "refer to <pub>" is the manual's
+  // own deferral (UM p.10 lists the Wiring-and-Grounding pub; p.34 defers to its
+  // distance tables) — grounded pointing, not fabrication. A numeric spec answer
+  // still fails (no acknowledgment phrase).
+  const acknowledges =
+    /\b(does not|doesn'?t|not (?:give|list|specify|include|contain)|no specific|see the|user manual|full manual|not (?:in|found)|specified in the|refer to|publication)\b/.test(a);
   return acknowledges ? [] : ["did not acknowledge the missing coverage (possible fabrication)"];
 }
 
