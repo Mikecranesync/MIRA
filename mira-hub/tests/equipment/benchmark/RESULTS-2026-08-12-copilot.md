@@ -94,3 +94,37 @@ These need lightweight topic-state tracking (which topic a "go back to X" / bare
   - "how do I clear a fault?" → the "Manually Clearing Faults" procedure (p.160) + "Stop command clears active fault" (p.87) exist and are retrievable, but param-index chunks that merely list "Fault Clear 551" out-rank the procedure into the top-k, so the model abstains.
   - "where's the Profinet setting?" → the adapter table (p.185, proving PROFINET is adapter-only) isn't ranked into the top-k for a specific-protocol query, so there's no excerpt to correct the premise from. A grounded premise-check directive was tried and **reverted** (zero regressions, but no measured benefit without the corrective chunk in context).
   - Fix direction: **section/procedure-aware ranking** (boost chunks whose section is a procedure/how-to, or heading-aware retrieval) so how-to and corrective sections beat param-index noise. That's the next PR.
+
+---
+
+# Round: topic-state tracking (defects D + A) — 2026-08-12 (late)
+
+The two queued topic-switch defects, fixed with deliberately lightweight topic tracking in
+`notebook-query.ts` + one route wiring change. Trace-driven (NOTEBOOK_RETRIEVAL_DEBUG=1) — each
+sub-cause was measured before the next fix was attempted:
+
+- **`topicPool`** — a referential follow-up that NAMES its topic ("go back to that decel
+  setting") augments retrieval only from the thread turns that share that topic, anywhere in the
+  window — the intervening topic's tokens no longer pollute the query (defect A). A follow-up
+  with a pronoun-as-pronoun signal ("where do I find IT on the keypad?") keeps recent-turn
+  augmentation — the named noun ("keypad") is the question's surface, not the referent.
+- **`buildTopicHint`** — deterministic, transcript-tokens-only note riding IN the user turn next
+  to the question. An end-of-system-prompt hint measurably failed (T2 still answered P044); the
+  user-turn note fixed referent resolution but exposed the next layer (below). The note names the
+  attribute-ellipsis class explicitly ("what's the maximum?" asks for that attribute OF the topic).
+- **Spec-intent value boost in `rerankChunks`** — after resolution was fixed, the model abstained
+  because the VALUE-bearing chunk (Range 0.00–600.00 / Default 10.00) sat at rank #8 below
+  param name-list pages (all exact-token ties). `specScore` (decimal-value + range/default
+  density) breaks the tie for spec intent; the p.86/p.66 value chunks now rank #1/#2 (trace).
+
+| turn | before (final3) | after (topicfix2, live) |
+|---|---|---|
+| topic-switch T2 "what's the maximum?" | **P044 [Maximum Freq]** (lexical collision) | **P042 max = 600.00 s**, cited p.86 + p.66 |
+| topic-switch T5 "go back to that decel setting…" | abstained, no cites (Ethernet-token pollution) | **P042 default = 10.00 s**, cited p.66 |
+| wont-run T4 "where do I check that parameter?" | "no specific parameter listed" | **b012 [Control Source] + P046 [Start Source 1]**, cited p.80/p.88 |
+
+**Zero regressions** across all 5 multi-turn conversations (comm-drilldown, wont-run,
+decel-shorthand, stop-too-long, topic-switch — runs/battery-topicfix2.md); singles are
+structurally unaffected (empty history → no note, unchanged rewrite). Known residual (pre-existing,
+failed identically in final3): topic-switch T3/T4 claims EtherNet/IP is adapter-only — the
+embedded-vs-dual-port-adapter distinction still loses to the Appendix-H framing.

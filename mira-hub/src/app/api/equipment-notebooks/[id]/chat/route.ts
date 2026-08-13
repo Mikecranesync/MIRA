@@ -25,6 +25,7 @@ import {
 import {
   sanitizeHistory,
   buildRetrievalQuery,
+  buildTopicHint,
   classifyBroad,
   type ChatHistoryTurn,
 } from "@/lib/notebook-query";
@@ -312,10 +313,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // same as the asset-chat and node-chat routes. Conversation history rides
   // between the system prompt and the current (evidence-bearing) turn so the
   // model has thread memory without diluting the live grounding.
+  // Referential follow-ups get a deterministic topic note (transcript tokens
+  // only) riding IN the user turn next to the question — an end-of-system-prompt
+  // hint measurably failed to stop "what's the maximum?" in a decel thread from
+  // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
+  const topicHint = buildTopicHint(message, history);
   const messages = buildProviderMessages(
     systemPrompt,
     history,
-    buildManualUserContent(message, chunks),
+    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks),
   );
 
   const stream = new ReadableStream<Uint8Array>({

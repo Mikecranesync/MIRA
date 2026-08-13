@@ -10,6 +10,7 @@ import {
   sanitizeHistory,
   isReferentialFollowup,
   buildRetrievalQuery,
+  buildTopicHint,
   classifyBroad,
   classifyIntent,
   diversifyByPage,
@@ -197,6 +198,112 @@ describe("buildRetrievalQuery", () => {
 
   it("returns the message unchanged when there is no history", () => {
     expect(buildRetrievalQuery("what about that?", [])).toBe("what about that?");
+  });
+});
+
+describe("topic-state tracking (battery defects D + A)", () => {
+  // The topic-switch battery script: decel thread → Ethernet thread → return.
+  const decelThenEthernet: ChatHistoryTurn[] = [
+    { role: "user", content: "what's the decel parameter?" },
+    {
+      role: "assistant",
+      content: "Decel Time 1 is parameter P042. It sets the deceleration time from maximum frequency to 0 Hz. [2]",
+    },
+    { role: "user", content: "actually, how does Ethernet work on this drive?" },
+    {
+      role: "assistant",
+      content: "EtherNet/IP is embedded on the drive; a dual-port option requires a communication adapter. [5]",
+    },
+  ];
+
+  it("augments a return-to-topic follow-up from the topic it names, not the intervening topic (A)", () => {
+    const q = buildRetrievalQuery(
+      "okay, go back to that decel setting. What's the default again?",
+      decelThenEthernet,
+    );
+    expect(q).toMatch(/P042/); // recovered from the decel turns
+    expect(q.toLowerCase()).not.toMatch(/ethernet|adapter/); // intervening topic excluded
+  });
+
+  it("adds nothing when the message names a topic no history turn shares", () => {
+    const q = buildRetrievalQuery("ok so what about the autotune procedure?", decelThenEthernet);
+    expect(q).toBe("ok so what about the autotune procedure?");
+  });
+
+  it("still augments a bare referential follow-up from the most recent turns", () => {
+    const q = buildRetrievalQuery("what's the maximum?", decelThenEthernet.slice(0, 2));
+    expect(q).toMatch(/P042/);
+    expect(q.toLowerCase()).toMatch(/decel/);
+  });
+
+  it("spec intent floats a value-bearing chunk over a name-list index chunk (both exact hits)", () => {
+    // Defect D residual: "what's the maximum?" resolved to P042 but the chunk
+    // holding the numeric range sat below the parameter name-list pages, so the
+    // model abstained. A spec question wants the chunk with the VALUES.
+    const expanded = expandIndustrialQuery("what's the maximum? parameter decel P042 deceleration");
+    const nameList = {
+      content:
+        "P040 Motor NP Poles P041 Accel Time 1 P042 Decel Time 1 P043 Minimum Freq P044 Maximum Freq P045 Stop Mode P046 Start Source 1",
+      rank: 1.2,
+      sourcePage: 77,
+      docId: "d",
+    };
+    const detail = {
+      content:
+        "P042 [Decel Time 1] Range: 0.00 - 600.00 s. Default: 10.00 s. Sets the time for the drive to decelerate from maximum frequency to 0 Hz.",
+      rank: 0.02,
+      sourcePage: 86,
+      docId: "d",
+    };
+    const out = rerankChunks(expanded, [nameList, detail], { intent: "spec" });
+    expect(out[0].sourcePage).toBe(86);
+  });
+
+  it("keeps recent-turn augmentation when a pronoun points at the thread despite a named noun", () => {
+    // "it" refers to P042; "keypad" is the question's surface, not the referent —
+    // it must not topic-scope the augmentation away from the thread.
+    const q = buildRetrievalQuery("where do I find it on the keypad?", decelThenEthernet.slice(0, 2));
+    expect(q).toMatch(/P042/);
+  });
+});
+
+describe("buildTopicHint", () => {
+  const decelThread: ChatHistoryTurn[] = [
+    { role: "user", content: "what's the decel parameter?" },
+    {
+      role: "assistant",
+      content: "Decel Time 1 is parameter P042. It sets the deceleration time from maximum frequency to 0 Hz. [2]",
+    },
+  ];
+  const decelThenEthernet: ChatHistoryTurn[] = [
+    ...decelThread,
+    { role: "user", content: "actually, how does Ethernet work on this drive?" },
+    {
+      role: "assistant",
+      content: "EtherNet/IP is embedded on the drive; a dual-port option requires a communication adapter. [5]",
+    },
+  ];
+
+  it("names the active thread tokens for a bare referential follow-up (D)", () => {
+    const hint = buildTopicHint("what's the maximum?", decelThread);
+    expect(hint).toMatch(/P042/);
+    expect(hint.toLowerCase()).toMatch(/decel/);
+  });
+
+  it("scopes the hint to the topic the message names, not the intervening one", () => {
+    const hint = buildTopicHint(
+      "okay, go back to that decel setting. What's the default again?",
+      decelThenEthernet,
+    );
+    expect(hint).toMatch(/P042/);
+    expect(hint.toLowerCase()).not.toMatch(/ethernet|adapter/);
+  });
+
+  it("is empty for a self-contained question or an empty thread", () => {
+    expect(
+      buildTopicHint("What is the maximum value of parameter P042 on this drive controller?", decelThread),
+    ).toBe("");
+    expect(buildTopicHint("what's the maximum?", [])).toBe("");
   });
 });
 

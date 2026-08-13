@@ -132,6 +132,10 @@ const PROC_SIGNALS =
   /\b(verify|check|set|press|remove|clear|reset|correct|corrected|apply|turn|ensure|connect|disconnect|measure|inspect|replace|confirm|select|enter|navigate|attention|warning|caution|step|steps|procedure|follow)\b/gi;
 const COMM_SIGNALS =
   /\b(ethernet\/ip|ethernet|modbus|rs-?485|profibus|profinet|devicenet|adapter|network|node addr|ip addr|gateway|subnet|comm loss|dsi|rj45|protocol)\b/gi;
+// Value-bearing spec material: decimal values ("600.00", "10.00 s") and the
+// range/default vocabulary of a parameter detail row — what a spec question
+// ("what's the maximum?") actually needs, vs. a name-list index page.
+const SPEC_SIGNALS = /\b\d+\.\d+\b|\b(range|default|units?|min\/max)\b/gi;
 
 const wordCount = (t: string) => Math.max(1, t.split(/\s+/).filter(Boolean).length);
 const countMatches = (t: string, re: RegExp) => (t.match(re) || []).length;
@@ -149,6 +153,9 @@ function procedureScore(text: string): number {
 }
 function commScore(text: string): number {
   return Math.min(countMatches(text, COMM_SIGNALS), 6) / 6;
+}
+function specScore(text: string): number {
+  return Math.min(countMatches(text, SPEC_SIGNALS), 6) / 6;
 }
 
 // Intent detection — deterministic/lexical (the mission's "favor the simplest
@@ -235,6 +242,11 @@ export function rerankChunks<T extends Rerankable>(
     } else if (intent === "comm") {
       score += comm * 1.8;
       score -= Math.max(0, idx) * 1.5;
+    } else if (intent === "spec") {
+      // Spec questions want the chunk with the VALUES (range/default/decimals),
+      // not the parameter name-list page — no index penalty (a value-dense
+      // parameter table IS spec material), just a value-material boost.
+      score += specScore(c.content) * 1.5;
     }
     // broad / param_lookup / spec / generic: no index penalty. (Broad already has
     // facet fan-out + page diversity; an index penalty here MEASURABLY regressed
@@ -361,18 +373,51 @@ function salientTokens(text: string): string[] {
   return out;
 }
 
+// Vocabulary too generic to define a topic on its own — "what parameter changes
+// first?" must not topic-match every parameter turn in the thread.
+const GENERIC_TOPIC_TERMS = new Set(["parameter"]);
+
+/** Topic-defining tokens of a message: exact IDs + domain vocabulary, minus the
+ *  generic terms that appear in nearly every drive question. */
+function topicTerms(text: string): string[] {
+  return salientTokens(text).filter((t) => !GENERIC_TOPIC_TERMS.has(t.toLowerCase()));
+}
+
+/** The history turns a referential follow-up should draw context from.
+ *  A follow-up that NAMES its topic ("go back to that decel setting") draws only
+ *  from the turns about that topic — anywhere in the thread — because the
+ *  intervening topic's tokens pollute retrieval (battery defect A: the Ethernet
+ *  turns buried the decel default). A bare referential follow-up ("what's the
+ *  maximum?") draws from the most recent turns, as before. A message with a
+ *  pronoun used AS a pronoun ("where do I find IT on the keypad?") also keeps
+ *  the recent turns — the pronoun's referent lives in the thread, and a named
+ *  noun ("keypad") is the question's surface, not the referent. */
+function topicPool(message: string, history: ChatHistoryTurn[]): ChatHistoryTurn[] {
+  const pronounRef =
+    PRONOUN_VERB.test(message) ||
+    PRONOUN_VERB_OBJECT.test(message) ||
+    PRONOUN_PREP.test(message) ||
+    PRONOUN_END.test(message);
+  const named = topicTerms(message).map((t) => t.toLowerCase());
+  if (pronounRef || !named.length) return history.slice(-4);
+  return history.filter((t) => {
+    const turnLower = t.content.toLowerCase();
+    return named.some((k) => turnLower.includes(k));
+  });
+}
+
 /** Build the retrieval query for a possibly-referential follow-up. Self-contained
  *  questions are returned unchanged; a referential follow-up is augmented with the
- *  salient tokens from the most recent turns that it does not already mention, so
- *  BM25 has the thread's subject to match. Current message stays FIRST so it
- *  dominates ranking. Deterministic + pure. */
+ *  salient tokens from its topic pool (see topicPool) that it does not already
+ *  mention, so BM25 has the thread's subject to match. Current message stays FIRST
+ *  so it dominates ranking. Deterministic + pure. */
 export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[]): string {
   const msg = message.trim();
   if (history.length === 0 || !isReferentialFollowup(msg)) return msg;
   const lower = msg.toLowerCase();
   const added: string[] = [];
   const seen = new Set<string>();
-  for (const t of history.slice(-4)) {
+  for (const t of topicPool(msg, history)) {
     for (const tok of salientTokens(t.content)) {
       const k = tok.toLowerCase();
       if (lower.includes(k) || seen.has(k)) continue;
@@ -383,6 +428,38 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[])
     if (added.length >= 6) break;
   }
   return added.length ? `${msg} ${added.join(" ")}` : msg;
+}
+
+/** Deterministic topic hint for the SYSTEM prompt. When the current message is a
+ *  referential follow-up, name the thread tokens its pronouns/ellipses resolve
+ *  against, so the model doesn't resolve an elliptical question to a lexically
+ *  similar but off-topic row (battery defect D: "what's the maximum?" in a decel
+ *  thread answered P044 [Maximum Freq] instead of P042's maximum). Reuses ONLY
+ *  tokens already present in the transcript — never a source of equipment facts.
+ *  Returns "" for a self-contained question or an empty thread. */
+export function buildTopicHint(message: string, history: ChatHistoryTurn[]): string {
+  const msg = message.trim();
+  if (history.length === 0 || !isReferentialFollowup(msg)) return "";
+  const tokens: string[] = [];
+  const seen = new Set<string>();
+  for (const t of topicPool(msg, history)) {
+    for (const tok of salientTokens(t.content)) {
+      const k = tok.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      tokens.push(tok);
+      if (tokens.length >= 6) break;
+    }
+    if (tokens.length >= 6) break;
+  }
+  if (!tokens.length) return "";
+  return (
+    `(SYSTEM NOTE — this question is a follow-up in an ongoing conversation about: ` +
+    `${tokens.join(", ")}. Resolve pronouns and elliptical phrasing against that topic. An ` +
+    `elliptical attribute question — e.g. "what's the maximum?", "what's the default?" — asks ` +
+    `for that attribute OF the topic (such as the maximum allowed value of the topic parameter), ` +
+    `NOT for a different row or parameter whose name happens to contain that word.)`
+  );
 }
 
 // ---------------------------------------------------------------------------
