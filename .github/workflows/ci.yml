@@ -366,14 +366,18 @@ jobs:
             --cov-fail-under=20
 
       - name: Run bot tests with coverage
-        # -n auto: this 179-file suite was the single largest serial block on
-        # the CI critical path (~218s of the ~8.5-min wall; measured 2026-08-12).
-        # pytest-xdist is already installed and already used by the ingest step
-        # above; pytest-cov is xdist-compatible. The renderers sys.modules
-        # collision pair (test_slack_relay / test_email_adapter) stays ignored
-        # here exactly as before. --durations=25 is diagnostic output only.
+        # SERIAL on purpose — do not re-add `-n auto` without fixing the
+        # collection-time shared state first. Attempted 2026-08-13: xdist
+        # workers collecting concurrently hit `sqlite3.OperationalError:
+        # database is locked` in test_equipment_photo_memory.py (a module
+        # opens a shared SQLite file at import), which also desynced
+        # collection across workers ("Different tests were collected between
+        # gw1 and gw3") and collapsed coverage. First run passed — it is a
+        # RACE, not a deterministic failure. Proper enablement needs a
+        # per-worker MIRA_DB_PATH (PYTEST_XDIST_WORKER) set in conftest
+        # before test-module imports. --durations=25 is diagnostic output.
         run: |
-          pytest mira-bots/tests/ -v -n auto --durations=25 \
+          pytest mira-bots/tests/ -v --durations=25 \
             --ignore=mira-bots/tests/test_slack_relay.py \
             --ignore=mira-bots/tests/test_email_adapter.py \
             --cov=mira-bots/shared --cov-report=term-missing \
