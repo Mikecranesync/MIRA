@@ -1,3 +1,47 @@
+# Hot Cache — 2026-08-11 — Groq model retirement migrated (P0 was 2026-08-16)
+
+Groq retires `llama-3.3-70b-versatile` + `llama-3.1-8b-instant` on **2026-08-16**. Branch
+`fix/groq-model-retirement` (own lane off main, does NOT wait for #3185) migrates every live
+default: 70b→`openai/gpt-oss-120b`, 8b-instant→`openai/gpt-oss-20b` — router cascade, Hub
+chat/report routes + `cascade.ts`, compose env defaults, code-review workflow, eval judges,
+direct classifier calls. **Trap found live:** gpt-oss burns completion tokens on reasoning —
+default effort HARD-FAILS a 64-token `json_object` call (`json_validate_failed`, empty
+generation); fix = `reasoning_effort: "low"` at every tight-budget Groq-direct site (gated on
+`"gpt-oss" in model` where env-overridable). Router path already safe (reasoning-burn retry).
+Verified: both ids micro-probed live; real `InferenceRouter` returned clean content at
+max_tokens=60 on the new default; 65 offline tests green; tsc adds no errors. Historical
+docs/specs deliberately untouched.
+
+---
+
+# Hot Cache — 2026-08-10 — ARPK Phase 0+1: chat with ANY manual (T2108 canary) — HELD PR
+
+Mike's Agent-Readable Product Knowledge PRD (`docs/plans/2026-08-10-prd-agent-readable-product-knowledge-t2108.md`)
+Phase 0+1 implemented on `feat/arpk-doc-scoped-chat` (**HELD — no merge/deploy without Mike**):
+- **Doc-scoped NodeChat**: `retrieveNodeChunks` takes `docId` (= `knowledge_entries.doc_id` =
+  `hub_uploads.id`) on both BM25 passes; chat route accepts `docId`, resolves the doc chunk-side
+  under RLS, neutral (non-industrial) system prompt for doc scope. `approval_state='verified'`
+  pinned on user-facing node INSERTs (008-vs-029 default ambiguity — staging default proven
+  'verified' via the green beta gate).
+- **SHA-256 content dedup** (migration 072 + `findDuplicateUpload`) at both v2 doors — closes the
+  158×-reingest class. **Zero-text honesty**: scanned PDFs now fail with `NoExtractableTextError`
+  instead of `parsed`-with-0-chunks; blind door skips the dead OW fallback.
+- **Real documents surface**: `/api/documents` returns doc_id/node_id/filename/pages/mine; the
+  documents list/detail pages drop the Labs mock (Telegram deep-link gone) for a per-document
+  "Chat with this document" action → `/namespace?node=..&chat=1&doc=..`.
+- **Beta gate hardened**: `_gate.py` parses the real `sources` SSE frame; hallucinated `[1]` can no
+  longer pass on SSE surfaces.
+- **T2108 proof (measured, ephemeral pgvector/pg16)**: official eufy RoboVac 11S manual → real
+  ingest → doc-scoped retrieval: 43 chunks, real page anchors, gate F proven (sibling GS10 doc
+  never leaks into doc scope), 3/6 natural-language goldens retrieve; the 3 misses are ALL
+  spec-TABLE answers (BM25 lexical-bridge failure, same class as PF525) — encoded `it.fails`,
+  repair = Phase 2 table-aware extraction. Mirror note: the manuals.plus mirror slug IS the
+  official PDF's sha256 (byte-identical → dedup collapses them).
+- Research base: `docs/plans/2026-08-10-chat-with-any-manual-design.md` + phase-0 delta doc.
+  NEXT: Mike reviews the held PR; Phase 2 = metadata extraction + table/section-aware chunker + OCR.
+
+---
+
 # Hot Cache — 2026-08-03 — Deploy-integrity lane (#3081 identity + #3055 tag-race)
 
 Deploy-integrity work in flight (both open; **do not repeat #3083/#3084 — merged**

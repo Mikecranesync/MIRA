@@ -51,14 +51,20 @@ describe("GET /api/namespace/files/[id] — inline pictures, attachment for the 
     expect(res.headers.get("Content-Disposition")).toMatch(/^inline;/);
   });
 
-  it("keeps SVG (scriptable) and PDFs as attachment downloads", async () => {
+  it("keeps SVG (scriptable) as an attachment download", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    for (const mime of ["image/svg+xml", "application/pdf"]) {
-      vi.mocked(withTenantContext).mockResolvedValue(contentRow(mime));
-      const res = await GET(makeReq("GET"), makeParams(VALID_UUID));
-      expect(res.status).toBe(200);
-      expect(res.headers.get("Content-Disposition")).toMatch(/^attachment;/);
-    }
+    vi.mocked(withTenantContext).mockResolvedValue(contentRow("image/svg+xml"));
+    const res = await GET(makeReq("GET"), makeParams(VALID_UUID));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Disposition")).toMatch(/^attachment;/);
+  });
+
+  it("serves PDF inline — the notebook source viewer iframes it at the cited page", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValue(contentRow("application/pdf"));
+    const res = await GET(makeReq("GET"), makeParams(VALID_UUID));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Disposition")).toMatch(/^inline;/);
   });
 });
 

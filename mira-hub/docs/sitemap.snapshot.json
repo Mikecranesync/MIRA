@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 64,
-    "apiRoutes": 161
+    "pages": 68,
+    "apiRoutes": 167
   },
   "pages": [
     "/admin",
@@ -24,6 +24,10 @@
     "/demo/conveyor/[tag]",
     "/documents",
     "/documents/[id]",
+    "/equipment",
+    "/equipment/[id]",
+    "/equipment/[id]/source/[docId]",
+    "/equipment/scan",
     "/event-log",
     "/feed",
     "/graph",
@@ -149,6 +153,12 @@
     "/api/demo/signals/toggle",
     "/api/documents",
     "/api/documents/upload",
+    "/api/equipment-notebooks",
+    "/api/equipment-notebooks/[id]",
+    "/api/equipment-notebooks/[id]/chat",
+    "/api/equipment-notebooks/[id]/sources",
+    "/api/equipment-notebooks/[id]/sources/[docId]",
+    "/api/equipment-notebooks/recognize-nameplate",
     "/api/events",
     "/api/events/[id]",
     "/api/export",

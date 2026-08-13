@@ -43,7 +43,20 @@ wiki/
    - What's blocked
    - What should happen next (on any machine)
 2. Append a log entry to `wiki/log.md`
-3. Remind the user to `git add wiki/ && git commit -m "wiki: update session state" && git push`
+3. **Stage the wiki files you actually edited, by exact path** — inspect first, then stage:
+
+   ```bash
+   git status -s wiki/                     # look before you stage
+   git add wiki/hot.md wiki/log.md         # name the paths YOU changed
+   git commit -m "wiki: update session state"
+   git push
+   ```
+
+   **Never `git add wiki/`, `git add -A`, or `git add .` here.** This is a shared working
+   tree — other sessions carry in-flight WIP, and `wiki/hot.d/` now holds machine-written
+   run fragments from the nightly eval-fixer. A broad `git add wiki/` sweeps someone
+   else's fragment, or another session's half-finished note, into your human session
+   commit. Same discipline as `.claude/rules/session-discipline.md` § "Scoped commits".
 
 ## Operations
 
@@ -154,8 +167,12 @@ Each entry starts with a consistent prefix for grep-ability:
 per run write **one dated file each** under `hot.d/` instead:
 
 ```
-wiki/hot.d/YYYY-MM-DD-<writer>.md      # e.g. 2026-08-03-eval-fixer.md
+wiki/hot.d/YYYY-MM-DD-<writer>-<worker>.md   # e.g. 2026-08-04-eval-fixer-charlie.md
 ```
+
+The `<worker>` segment (slugified short hostname) is required: the repo is kept identical
+across nodes by Ansible, so the same job can fire on more than one node on the same date —
+date alone is not a unique key.
 
 An automated writer must never modify, stage, or commit `hot.md`. Appending every run
 to one shared file put each night's PR into conflict with every other pending night,

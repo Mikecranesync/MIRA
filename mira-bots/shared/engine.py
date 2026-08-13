@@ -62,6 +62,7 @@ from .fsm import (
     ACTIVE_DIAGNOSTIC_STATES,
     HISTORY_LIMIT,
     PHOTO_MEMORY_TURNS,
+    PIVOT_EXEMPT_STATES,
     STATE_ORDER,
     VALID_STATES,
     advance_state,
@@ -859,11 +860,74 @@ _REPEAT_QUESTION_SIM = 0.8
 _REPEAT_SCAN_LIMIT = 3
 _REPEAT_MIN_LEN = 40
 
+# CTX-004b: a CONTAINED repeat — the prior answer reproduced VERBATIM inside a
+# longer reply. Whole-reply similarity cannot see this, and the failure is
+# perverse: appending more text pushes the ratio DOWN, so the more padding wrapped
+# around a verbatim repeat, the safer it is from a similarity-only guard. Caught
+# live in campaign c6 t2_000 on a run the scenario otherwise PASSED.
+#
+# Fenced by a length floor (_REPEAT_MIN_LEN) and this fraction, because restating
+# a short earlier line at the top of a genuinely new, longer answer is ordinary
+# technician writing, not repetition. Measured on the real transcripts:
+#
+#   c6 t2_000 verbatim-prefix repeat  frac 0.619   <- must fire
+#   the same repeat, heavily padded   frac 0.440   <- must fire
+#   short line quoted then elaborated frac 0.118   <- must NOT fire
+#
+# 0.35 sits between them with ~3x headroom over the legitimate case. The remedy
+# is one severed retry that fails safe (the reply is returned either way), so the
+# threshold deliberately favours catching a repeat over missing one.
+_REPEAT_CONTAINED_FRAC = 0.35
+
 
 def _normalize_reply_text(text: str) -> str:
     text = re.sub(r"\[Source:[^\]]*\]", " ", text or "")
     text = re.sub(r"---\s*Sources\s*---.*", " ", text, flags=re.DOTALL | re.IGNORECASE)
     return re.sub(r"\s+", " ", text).strip().lower()
+
+
+# CIT-006 (#3165) — a parameter-shaped token MIRA asserts must be supported.
+#
+# Live on staging MIRA answered "How do I reset it?" with
+#   "set P0594 = 1 [Source: Allen-Bradley PowerFlex 525, Parameter Reference]"
+# and P0594 exists nowhere in the corpus. Every guard passed: `_is_grounded`
+# scores a bag-of-words overlap, which generic prose ("reset / output /
+# powerflex / 525 / digital") clears, and citation_compliance validates the
+# ATTRIBUTED VENDOR, which was correct. So an invented SPECIFIC carrying a
+# correctly-attributed tag was invisible to both layers.
+#
+# `F` is deliberately excluded: F004/F111 are FAULT codes that legitimately
+# reach a reply from uns_context without appearing in any retrieved chunk.
+# 2-4 digits keeps ordinary tokens ("L1", "P1") out.
+#
+# Measured over all 13 frozen campaign ledgers (671 MIRA replies) there are
+# exactly THREE distinct parameter tokens — P09.03, P09.04 and P0594 — of which
+# only P0594 is absent from the corpus. Zero false positives on the real ones.
+# Offline detector + sweep: tests/regime1_telethon/campaign/{fabrication,offline_lab}.py
+_PARAM_CLAIM_RE = re.compile(r"\b([APbtCd]\d{2,4}(?:\.\d{1,2})?)\b")
+_SOURCE_TAG_RE = re.compile(r"\[Source:[^\]]*\]", re.IGNORECASE)
+
+
+def _find_unsupported_param_claims(
+    reply: str, message: str, history: list, sources: list | None
+) -> list[str]:
+    """Parameter tokens asserted by ``reply`` that nothing supports.
+
+    Supported means: present in this turn's retrieved sources, in the
+    technician's message, or anywhere in the conversation so far. A token
+    inside a ``[Source: …]`` label is attribution, not a claim.
+    """
+    body = _SOURCE_TAG_RE.sub(" ", reply or "")
+    claimed = set(_PARAM_CLAIM_RE.findall(body))
+    if not claimed:
+        return []
+    supported = " ".join(
+        [message or ""]
+        + [(h.get("content") or "") for h in (history or []) if isinstance(h, dict)]
+        + [str(s) for s in (sources or [])]
+    )
+    known = set(_PARAM_CLAIM_RE.findall(supported))
+    return sorted(claimed - known)
 
 
 def _find_repeated_answer(reply: str, message: str, history: list) -> bool:
@@ -889,7 +953,16 @@ def _find_repeated_answer(reply: str, message: str, history: list) -> bool:
         prior = _normalize_reply_text(entry.get("content", ""))
         if not prior:
             continue
-        if difflib.SequenceMatcher(None, norm_reply, prior).ratio() < _REPEAT_REPLY_SIM:
+        near_duplicate = (
+            difflib.SequenceMatcher(None, norm_reply, prior).ratio() >= _REPEAT_REPLY_SIM
+        )
+        # CTX-004b — the prior answer carried verbatim inside this one.
+        contained = (
+            len(prior) >= _REPEAT_MIN_LEN
+            and prior in norm_reply
+            and len(prior) / len(norm_reply) >= _REPEAT_CONTAINED_FRAC
+        )
+        if not (near_duplicate or contained):
             continue
         prev_user = ""
         for j in range(i - 1, -1, -1):
@@ -1158,8 +1231,61 @@ _H4_SKIP_DISPATCH_KINDS = frozenset(
         "uns_confirm_no",
         "greeting",
         "help",
+        # A safety STOP. Live campaign c4safety (2026-08-08) showed the footer
+        # appended beneath "STOP — describe the hazard. De-energize the equipment
+        # first." — noise on the highest-stakes message MIRA sends.
+        "safety_alert",
     }
 )
+
+
+# Adapter chrome only — a markdown rule, or the italic button row the adapters
+# append. NOT bullets and NOT numbered lines: a technician-facing reply puts its
+# real claims in exactly those ("1. Incoming voltage measures 480V at L1-L2"),
+# and skipping them let an uncited claim escape the H4 gate entirely.
+_H4_NON_PROSE_LINE_RE = re.compile(r"^\s*(?:-{3,}\s*$|\*[^*]+\*(?:\s*\|\s*\*[^*]+\*)*\s*$)")
+
+# Canned templates that ask a question and offer parallel CHOICES rather than
+# asserting anything. These are exempt by DECLARATION, not by inferring intent
+# from their text: an option list ("3. Sensor reading (e.g. pressure at 120 PSI)")
+# is textually indistinguishable from a claim list, and guessing wrong in the
+# permissive direction suppresses an honest knowledge-gap admission.
+_H4_SKIP_PREFIXES = (
+    "Before I can give you a confident diagnosis, could you share one more detail",
+)
+
+
+def _asserts_nothing(reply: str) -> bool:
+    """True when every sentence in the reply is a question.
+
+    A turn that only ASKS makes no claim, so it has nothing to cite and nothing
+    to admit a gap about — footering it produces the contradiction the campaign
+    caught: MIRA asks the technician for the fault code and, in the same message,
+    tells them it has no documentation and to go read the nameplate.
+
+    Deliberately narrow, and stricter than it looks: bullets and numbered lines
+    are inspected like any other prose, so a reply that asks a question and then
+    lists uncited technical claims underneath still earns the admission. One
+    declarative sentence anywhere is enough. Suppressing an honest admission is a
+    worse failure than an ugly one, so anything ambiguous keeps the footer.
+    """
+    prose: list[str] = []
+    for line in (reply or "").splitlines():
+        if not line.strip() or _H4_NON_PROSE_LINE_RE.match(line):
+            continue
+        # Strip an enumerator/bullet marker but KEEP the content it introduces.
+        prose.append(re.sub(r"^\s*(?:\d+[.)]|[-*•])\s+", "", line).strip())
+    if not prose:
+        return False
+    # A LINE BREAK IS A SENTENCE BOUNDARY. Joining the lines first would let a
+    # colon-led claim absorb the question after it — "The drive is faulted:" +
+    # "what code?" reads as one interrogative and escapes the gate.
+    sentences: list[str] = []
+    for line in prose:
+        sentences.extend(s.strip() for s in re.split(r"(?<=[.!?])\s+", line) if s.strip())
+    if not sentences:
+        return False
+    return all(s.endswith("?") for s in sentences)
 
 
 def enforce_citation_or_gap_admission(reply: str, dispatch_kind: str = "") -> str:
@@ -1189,6 +1315,26 @@ def enforce_citation_or_gap_admission(reply: str, dispatch_kind: str = "") -> st
     for phrase in _H4_GAP_PHRASES:
         if phrase.lower() in lower:
             return reply
+    # CIT-005 — a question-only turn asserts nothing, so there is no claim to
+    # ground and no gap to admit. Live campaign c1/c1r4 (t1:reset_procedure,
+    # t1:symptom_report): the footer landed on a bare clarifying question, so
+    # MIRA asked for the fault code and told the technician to go read the
+    # nameplate in the same breath.
+    #
+    # Checked HERE, after the citation tests, on purpose: a reply that carries a
+    # [Source:] tag is claiming grounding even when it is phrased as a question
+    # ("why can a faulty capacitor stop the fan [Source: junk]?"), and a junk
+    # citation must still earn the admission rather than escape through this
+    # exemption.
+    if "[source:" not in reply.lower() and (
+        stripped.startswith(_H4_SKIP_PREFIXES) or _asserts_nothing(reply)
+    ):
+        logger.info(
+            "H4_GAP_ADMISSION_SKIPPED kind=non_asserting dispatch_kind=%s reply_len=%d",
+            dispatch_kind,
+            len(reply),
+        )
+        return reply
     # A reply that CLAIMS to have documentation but produced no usable citation
     # gets a correcting admission — appending the stock line would contradict
     # the sentence above it inside a single message.
@@ -3006,7 +3152,7 @@ class Supervisor:
 
             # Stage 1 (2026-05-04) — Dialogue State Tracker dispatch. Behind
             # MIRA_USE_DST flag; default OFF. When enabled the tracker is the
-            # single routing decision (PLAN.md §2.3): one Groq llama-3.1-8b
+            # single routing decision (PLAN.md §2.3): one Groq openai/gpt-oss-20b
             # call returning a typed DialogueTurn → DispatchPlan → handler.
             # The Stage 0 regex fast-paths below stay in place as the OFF-flag
             # path AND as the shortcircuit a DST tracker hits before the LLM
@@ -3204,9 +3350,21 @@ class Supervisor:
                     ((state.get("context") or {}).get("session_context") or {}).get("last_question")
                 )
             ):
+                # Same severance bookkeeping as the pivot branch (live catch
+                # c1 t2_s42, 2026-08-07: the IDLE branch set the flag but left
+                # the dead thread's F004 carry, and the reply answered it).
                 _ctx_ft = state.get("context") or {}
                 _ctx_ft["fresh_thread_turn"] = True
+                _sc_ft = _ctx_ft.get("session_context") or {}
+                _sc_ft.pop("last_options", None)
+                _sc_ft.pop("active_alarm", None)
+                _ctx_ft["session_context"] = _sc_ft
+                _uns_ft = _ctx_ft.get("uns_context") or {}
+                _uns_ft.pop("fault_code", None)
+                _uns_ft.pop("fault_code_raw", None)
+                _ctx_ft["uns_context"] = _uns_ft
                 state["context"] = _ctx_ft
+                state["fault_category"] = None
                 logger.info(
                     "CTX_FRESH_THREAD chat_id=%s p=%.3f parts=%s (new subject, completed thread)",
                     chat_id,
@@ -3233,9 +3391,19 @@ class Supervisor:
             # prompt builder, pending question dropped, fault carry cleared so
             # _prepend_equipment_context cannot re-anchor retrieval on it. The
             # asset pin is KEPT (the symptom may belong to the pinned machine).
+            # CTX-001d (2026-08-08) — the pivot fires from EVERY state holding a
+            # pending diagnostic question, not just the Q-states. Gating on
+            # ACTIVE_DIAGNOSTIC_STATES left two reachable quadrants uncovered,
+            # both observed live (campaign t2:pivot_after_fault, issue #3160,
+            # STABLE_FAIL across every seed): the low-groundedness self-critique
+            # parks the session in DIAGNOSIS_REVISION, and a RAG turn can leave
+            # the FSM in IDLE while still setting last_question. In both the new
+            # symptom was consumed as an answer and the dead fault rode forward.
+            # Only PIVOT_EXEMPT_STATES — whose own handler owns the turn — are
+            # excluded now; see shared/fsm.py for why each one is on that list.
             elif (
                 _names_new_subject
-                and state.get("state") in ACTIVE_DIAGNOSTIC_STATES
+                and state.get("state") not in PIVOT_EXEMPT_STATES
                 and ((state.get("context") or {}).get("session_context") or {}).get("last_question")
             ):
                 _ctx_pv = state.get("context") or {}
@@ -3270,7 +3438,14 @@ class Supervisor:
                 tl_flush()
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
-                return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+                # dispatch_kind exempts the STOP from the H4 footer. A safety
+                # escalation asserts no technical claim, and appending "I don't
+                # have specific documentation indexed for this — consult the
+                # asset nameplate" dilutes the one message that must land
+                # cleanly. Same reasoning as the E2 control-refusal incident.
+                return self._make_result(
+                    reply, "high", trace_id, "SAFETY_ALERT", dispatch_kind="safety_alert"
+                )
 
             # Electrical-print follow-up — but only while the user is still
             # asking ABOUT the print. A stale ELECTRICAL_PRINT session (left over
@@ -4078,7 +4253,33 @@ class Supervisor:
                     diag_rev_count,
                 )
 
-                if "groundedness" in low_dims and diag_rev_count == 0:
+                # CTX-005 (2026-08-08) — never re-ask for information the
+                # session already holds. The clarifier below asks for "what
+                # exact fault code, alarm number, or behaviour"; when a fault
+                # code is already pinned it discards a real answer to request
+                # what the technician supplied a turn ago. Live shape (campaign
+                # defect A behind #3160 and the unfixed half of #3156): after
+                # MIRA explains F004 on a resolved PowerFlex 525, "How do I
+                # reset it?" was answered by asking for the fault code again.
+                # The guard belongs HERE and not in the judge — the critique
+                # only ever sees (question, reply), so it cannot know what the
+                # session holds. A known MODEL is deliberately NOT enough: it
+                # says nothing about what the equipment is displaying, which is
+                # the vague-symptom case the clarifier exists for (eval fixture
+                # 34) and which must keep firing.
+                _uns_cr = ctx_sc.get("uns_context") or {}
+                _sc_cr = ctx_sc.get("session_context") or {}
+                _fault_already_supplied = bool(
+                    _uns_cr.get("fault_code")
+                    or _uns_cr.get("fault_code_raw")
+                    or _sc_cr.get("active_alarm")
+                )
+
+                if (
+                    "groundedness" in low_dims
+                    and diag_rev_count == 0
+                    and not _fault_already_supplied
+                ):
                     # First time this fault episode has low groundedness — ask one
                     # targeted clarifying question and park in DIAGNOSIS_REVISION.
                     note = scores.get("groundedness_note", "")
@@ -4114,14 +4315,17 @@ class Supervisor:
                     ctx_sc["session_context"] = sc
                     state["context"] = ctx_sc
 
-                elif "groundedness" in low_dims and diag_rev_count >= 1:
-                    # Already asked once — user's response still has low groundedness.
-                    # Don't repeat the same question.  Accept the LLM response and move on.
+                elif "groundedness" in low_dims:
+                    # Either we already asked once and the answer is still
+                    # ungrounded, or (CTX-005) the fault code the clarifier
+                    # would ask for is already pinned. Both mean the same
+                    # thing: stop asking, keep the answer we have.
                     logger.info(
                         "SELF_CRITIQUE_GROUNDEDNESS_ACCEPT chat_id=%s diag_rev_count=%d "
-                        "— proceeding with available info",
+                        "reason=%s — proceeding with available info",
                         chat_id,
                         diag_rev_count,
+                        "fault_already_supplied" if _fault_already_supplied else "already_asked",
                     )
                     ctx_sc.pop("diag_rev_count", None)
                     ctx_sc.pop("revision_critique", None)
@@ -4407,7 +4611,9 @@ class Supervisor:
                 reply = "Updated.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "RESOLVED")
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
 
             # No yes/no and no recognised edit — fill missing fields in order.
             if not wo_draft.get("asset") and message.strip():
@@ -4418,7 +4624,9 @@ class Supervisor:
                 reply = "Got it — asset set.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "RESOLVED")
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
 
             if not wo_draft.get("fault_description") and message.strip():
                 ctx["cmms_wo_draft"] = {**wo_draft, "fault_description": message.strip()[:500]}
@@ -4428,7 +4636,9 @@ class Supervisor:
                 reply = "Got it — fault description noted.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "RESOLVED")
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
 
             # Unrecognised input — re-show the preview rather than silently
             # treating it as "no" (which would discard the WO draft).
@@ -4442,7 +4652,9 @@ class Supervisor:
             ) + format_wo_preview(wo)
             self._record_exchange(chat_id, state, message, reply)
             tl_flush()
-            return self._make_result(reply, "none", trace_id, "RESOLVED")
+            return self._make_result(
+                reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+            )
 
         # Consume the pending state now that we have a definitive yes/no.
         ctx.pop("cmms_wo_draft", None)
@@ -4469,7 +4681,9 @@ class Supervisor:
                 reply = "\n".join(lines)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
-                return self._make_result(reply, "none", trace_id, "RESOLVED")
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
 
             try:
                 reply = await self._post_cmms_work_order(wo)
@@ -4506,7 +4720,7 @@ class Supervisor:
 
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
-        return self._make_result(reply, "none", trace_id, "RESOLVED")
+        return self._make_result(reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending")
 
     async def _handle_pm_suggestion_pending(
         self, chat_id: str, message: str, state: dict, trace_id: str
@@ -5426,6 +5640,7 @@ class Supervisor:
         # severed attempt beyond max_attempts, so the loop is a while (a
         # range() computed up front could not extend).
         _repeat_retry_used = False
+        _param_retry_used = False
         attempt = 0
         while attempt < max_attempts:
             if attempt and _fresh_thread_snapshot:
@@ -5499,6 +5714,35 @@ class Supervisor:
                     continue
                 # The severed retry repeated too — fail safe: return it, loudly.
                 logger.info("REPEATED_ANSWER_UNRESOLVED reply_len=%d", len(parsed.get("reply", "")))
+
+            # CIT-006 (#3165): an unsupported parameter claim gets exactly one
+            # corrective retry, then fails safe like the repeat guard above —
+            # the reply is returned and logged, never withheld. Bounding the
+            # cost of a false positive to one extra call is what makes this
+            # shippable: suppressing a CORRECT answer would be worse than the
+            # defect it prevents.
+            if not photo_b64:
+                _unsupported = _find_unsupported_param_claims(
+                    parsed.get("reply", ""),
+                    message,
+                    (state.get("context") or {}).get("history") or [],
+                    parsed.get("_sources"),
+                )
+                if _unsupported:
+                    if not _param_retry_used:
+                        _param_retry_used = True
+                        logger.info(
+                            "UNSUPPORTED_PARAM_CLAIM_DETECTED attempt=%d tokens=%s",
+                            attempt,
+                            _unsupported,
+                        )
+                        max_attempts = max(max_attempts, attempt + 2)
+                        attempt += 1
+                        continue
+                    logger.warning(
+                        "UNSUPPORTED_PARAM_CLAIM_UNRESOLVED tokens=%s — returning reply",
+                        _unsupported,
+                    )
 
             # Check grounding against THIS turn's sources snapshot, never the
             # shared self.rag._last_sources (#1704).
@@ -7931,8 +8175,62 @@ class Supervisor:
         # offered candidate is recorded so a manufacturer the resolver merely
         # carries forward (already offered, never confirmed) cannot count as
         # "new information" and re-open the loop.
+        _prev_candidate = ctx.get("uns_gate_last_candidate")
         ctx["uns_gate_attempts"] = int(ctx.get("uns_gate_attempts") or 0) + 1
         ctx["uns_gate_last_candidate"] = candidate
+
+        # CON-004c — a SESSION-scoped count of identity asks, deliberately NOT
+        # cleared by the asset-switch reset that wipes uns_gate_attempts.
+        #
+        # Campaign c10 (#3157/#3158): the no-candidate escalation never fired
+        # because a tier-8 persona that keeps questioning the asset triggers the
+        # asset-switch reset between gate firings, so uns_gate_attempts was back
+        # to 0 every time and MIRA could re-send the identical demand forever.
+        #
+        # That reset is CORRECT for suppression (UNS-025: never carry context
+        # across an asset change) — but this counter is about MIRA's own
+        # repetition, not about the asset. It only ever changes WORDING; it can
+        # never suppress the gate, so keeping it across a switch cannot weaken
+        # the UNS contract.
+        ctx["identity_ask_count"] = int(ctx.get("identity_ask_count") or 0) + 1
+
+        # CON-004 (#3158) — do not repeat the demand verbatim.
+        #
+        # Campaign c8 t8_41_002, live: the technician did not ANSWER the
+        # confirmation, they CHALLENGED it ("How do you know it's a Rockwell
+        # PF40 now, earlier we were talking about a PF525?") and MIRA replayed
+        # the identical prompt word for word. It reads as a machine looping,
+        # and no repeat guard can catch it — CTX-004/004b live in
+        # _call_with_correction and this lane never goes through it.
+        #
+        # A technician who questions the guess is owed its PROVENANCE, not the
+        # same demand again. Say where it came from, admit it is unverified,
+        # and make the choice explicit. The offline lab's contained_repeat
+        # detector is what surfaced this; keep it green.
+        _asks = int(ctx.get("identity_ask_count") or 0)
+        if candidate and _prev_candidate == candidate:
+            prompt = (
+                f"I still don't have that confirmed. I read **{candidate}** from what "
+                "you told me earlier — I haven't verified it against the nameplate, "
+                "so I don't want to diagnose on it.\n\n"
+                f"1. Yes, it's {candidate}\n"
+                "2. Something else — tell me the manufacturer and model\n"
+                "3. Not sure — send a photo of the nameplate"
+            )
+        elif not candidate and _asks > 1:
+            # The no-candidate branch loops hardest: with nothing resolved there
+            # is no candidate to vary on, so "tell me the manufacturer and
+            # model" came back turn after turn (c8/c9 t8_41_001 and
+            # t8_41_003 — the "experienced" and "impatient" personas of #3157
+            # and #3158). Asking the same way twice and expecting a different
+            # answer is the loop. Offer the OTHER routes to the same fact.
+            prompt = (
+                "I still can't tell which machine this is, and I won't guess at it.\n\n"
+                "Any one of these gets me there:\n"
+                "1. A photo of the nameplate\n"
+                "2. The manufacturer and model (e.g. 'Allen-Bradley PowerFlex 525')\n"
+                "3. The asset tag or where it sits on the line"
+            )
 
         # Promote to AWAITING_UNS_CONFIRMATION so downstream code paths
         # (citation-compliance enforcement, telemetry, dialogue-state tracker)

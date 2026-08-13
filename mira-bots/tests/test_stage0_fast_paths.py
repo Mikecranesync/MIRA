@@ -318,3 +318,113 @@ class TestWoRequestDispatchKind:
         assert result["dispatch_kind"] == "action_request"
         # The WO preview must mention the asset / fault for Mike's regression case.
         assert result["reply"]
+
+
+# ---------------------------------------------------------------------------
+# 4. The bypass is only real if the HANDLER tags its replies
+# ---------------------------------------------------------------------------
+
+
+class TestCmmsPendingIsActuallyTagged:
+    """`"cmms_pending" in _TRUSTED_DISPATCH_KINDS` is not enough.
+
+    The set above is the CONSUMER. `_handle_cmms_pending` is the producer, and
+    it returned every one of its six replies through
+    `_make_result(reply, "none", trace_id, "RESOLVED")` — positionally, with
+    `dispatch_kind` left at its "" default. So `_apply_quality_gate` read
+    `dispatch_kind=""`, the bypass never fired, and the gate evaluated a work-
+    order preview that its own docstring says it will flag ("the WO preview has
+    intentional repeated bullet headers").
+
+    Live consequence, campaign cap1 (2026-08-09): the draft arms correctly and
+    then EVERY follow-up turn — a field edit, an unrecognised input, a fresh
+    question — came back as GRACEFUL_FALLBACK. A technician could create a work
+    order and then not edit it, not be re-prompted, and not escape it. Three
+    scenarios, one root cause.
+
+    A registry entry with no producer is the same class of dead contract as a
+    gate the runner never dispatches: it reads as covered and does nothing.
+    """
+
+    @pytest.mark.asyncio
+    async def test_every_cmms_pending_reply_is_tagged(self, supervisor, tmp_path):
+        """Each branch of the handler must tag its result, not just one."""
+        from shared.engine import _TRUSTED_DISPATCH_KINDS as TRUSTED
+
+        # Real UNSWorkOrder field names — the draft is fed straight into the
+        # dataclass by the edit branch, so a made-up shape fails as a TypeError
+        # long before the assertion under test.
+        draft = {
+            "asset": "Pump 7",
+            "fault_description": "leaking seal on discharge side",
+            "wo_type": "CORRECTIVE",
+            "priority": "MEDIUM",
+        }
+        branches = {
+            "field_edit": "asset is Pump A3",
+            "unrecognised": "hmm",
+            "decline": "no",
+        }
+        for name, message in branches.items():
+            chat = f"cmms-tag-{name}"
+            supervisor._save_state(
+                chat,
+                {
+                    "state": "RESOLVED",
+                    "exchange_count": 2,
+                    "asset_identified": "Pump 7",
+                    "context": {"cmms_pending": True, "cmms_wo_draft": dict(draft)},
+                },
+            )
+            state = supervisor._load_state(chat)
+            result = await supervisor._handle_cmms_pending(chat, message, state, "trace-x")
+            assert result.get("dispatch_kind") == "cmms_pending", (
+                f"branch {name!r} returned dispatch_kind="
+                f"{result.get('dispatch_kind')!r} — the quality-gate bypass keys on "
+                "this, so an untagged reply gets replaced by GRACEFUL_FALLBACK"
+            )
+            assert result["dispatch_kind"] in TRUSTED
+
+    @pytest.mark.asyncio
+    async def test_a_work_order_preview_survives_the_gate_when_tagged(self, supervisor):
+        """The end-to-end invariant, expressed on the real preview shape.
+
+        The separator bars are the reason the bypass exists: the preview repeats
+        a 30-char run three times, one field short of the substring heuristic's
+        `> 3` ceiling. Tagged, it is returned untouched.
+        """
+        bar = "━" * 28
+        preview = (
+            "\U0001f4cb **Work Order Preview (UNS format):**\n"
+            f"{bar}\n\U0001f527 Asset: Pump 7\n{bar}\n"
+            "Type: CORRECTIVE\nPriority: MEDIUM\nFault: leaking seal\n"
+            f"{bar}\n\nLog this work order? Say **yes** to log this work order, "
+            "**no** to cancel, or correct any field."
+        )
+        kept = await supervisor._apply_quality_gate(
+            chat_id="c",
+            message="asset is Pump A3",
+            reply=preview,
+            dispatch_kind="cmms_pending",
+        )
+        assert kept == preview
+
+    @pytest.mark.asyncio
+    async def test_the_bypass_is_load_bearing_not_decorative(self, supervisor):
+        """Mutation control: the SAME reply with no dispatch_kind must be
+        gate-eligible. If this ever passes untagged too, the bypass proves
+        nothing and this whole class is decoration."""
+        import shared.quality_gate as qg
+
+        leak = '{"reply": "raw json envelope leak"}'
+        untagged = await supervisor._apply_quality_gate(
+            chat_id="c", message="asset is Pump A3", reply=leak, dispatch_kind=""
+        )
+        tagged = await supervisor._apply_quality_gate(
+            chat_id="c",
+            message="asset is Pump A3",
+            reply=leak,
+            dispatch_kind="cmms_pending",
+        )
+        assert untagged == qg.GRACEFUL_FALLBACK, "untagged reply should have been gated"
+        assert tagged == leak, "tagged reply must bypass"

@@ -17,8 +17,11 @@ INTENTS = [
         [
             dict(
                 send="My conveyor keeps stopping randomly",
-                expect=["manufacturer", "model", "equipment"],
+                # Graded by the identifying-question GATE, not by vocabulary —
+                # see gates.check_identifying_question for why.
+                expect=[],
                 forbid=["[Source:"],
+                gate="identifying_question",
             )
         ],
     ),
@@ -27,8 +30,9 @@ INTENTS = [
         [
             dict(
                 send="Something's wrong with one of our drives, it keeps faulting",
-                expect=["manufacturer", "model", "equipment"],
+                expect=[],
                 forbid=["[Source:"],
+                gate="identifying_question",
             )
         ],
     ),
@@ -145,12 +149,17 @@ def generate(seed: int, count: int) -> list[dict]:
         conv_turns = []
         for t in turns:
             send = _mutate_case_punct(rng, _apply_swaps(rng, t["send"]))
-            conv_turns.append(
-                dict(send=send, expect=t.get("expect", []), forbid=t.get("forbid", []))
-            )
+            # Carry EVERY declared key, not an allow-list of three. The old form
+            # rebuilt the turn as dict(send=, expect=, forbid=) and silently
+            # dropped `gate` — so the two intents graded by behaviour rather than
+            # vocabulary (expect=[]) emitted turns whose ONLY assertion was
+            # forbid=['[Source:']. They could not fail on the thing they exist to
+            # test, and the green cell was mistaken for evidence a product fix had
+            # landed. Mutate the message; pass the contract through untouched.
+            conv_turns.append({**t, "send": send})
         out.append(
             dict(
-                id=f"t1_{i:03d}_{intent_id}",
+                id=f"t1_s{seed}_{i:03d}_{intent_id}",
                 contract=f"Tier1 language-mutation ({intent_id})",
                 seed=seed,
                 turns=conv_turns,

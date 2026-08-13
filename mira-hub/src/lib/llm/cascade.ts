@@ -22,15 +22,15 @@ function defaultProviders(): CascadeProvider[] {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
       key: process.env.GROQ_API_KEY,
-      // 8B preferred for short structured tasks; the 70B used in chat is
-      // overkill for relationship extraction.
-      model: process.env.GROQ_CLASSIFIER_MODEL ?? process.env.GROQ_MODEL ?? "llama-3.1-8b-instant",
+      // Small model preferred for short structured tasks; the 120b used in
+      // chat is overkill for relationship extraction.
+      model: process.env.GROQ_CLASSIFIER_MODEL ?? process.env.GROQ_MODEL ?? "openai/gpt-oss-20b",
     },
     {
       name: "Cerebras",
       url: "https://api.cerebras.ai/v1/chat/completions",
       key: process.env.CEREBRAS_API_KEY,
-      model: process.env.CEREBRAS_CLASSIFIER_MODEL ?? process.env.CEREBRAS_MODEL ?? "llama3.1-8b",
+      model: process.env.CEREBRAS_CLASSIFIER_MODEL ?? process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
     },
     {
       name: "Gemini",
@@ -74,6 +74,10 @@ async function callOne(
     stream: false,
   };
   if (opts.jsonMode) body.response_format = { type: "json_object" };
+  // gpt-oss spends completion tokens on reasoning; low effort keeps short
+  // structured outputs inside tight maxTokens caps. Guarded so non-reasoning
+  // models never receive an unsupported param.
+  if (provider.model.includes("gpt-oss")) body.reasoning_effort = "low";
 
   let res: Response;
   try {

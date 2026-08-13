@@ -22,6 +22,7 @@ import {
   retrieveNodeChunks,
   appendManualContext,
   buildManualUserContent,
+  buildDocScopedSystemPrompt,
   chunksToSources,
   type ManualChunk,
   type ManualSource,
@@ -54,13 +55,13 @@ function getProviders(): CascadeProvider[] {
       name: "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
       key: process.env.GROQ_API_KEY,
-      model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
+      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
     },
     {
       name: "Cerebras",
       url: "https://api.cerebras.ai/v1/chat/completions",
       key: process.env.CEREBRAS_API_KEY,
-      model: process.env.CEREBRAS_MODEL ?? "llama3.1-8b",
+      model: process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
     },
     {
       name: "Gemini",
@@ -94,6 +95,9 @@ async function streamFromProvider(
         stream: true,
         max_tokens: 800,
         temperature: 0.3,
+        // gpt-oss spends completion tokens on reasoning; low effort preserves
+        // the 800-token budget for the streamed answer.
+        ...(provider.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
       }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -182,9 +186,9 @@ export async function POST(
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
 
-  let body: { messages?: ChatMessage[] };
+  let body: { messages?: ChatMessage[]; docId?: string };
   try {
-    body = await req.json() as { messages?: ChatMessage[] };
+    body = await req.json() as { messages?: ChatMessage[]; docId?: string };
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -192,6 +196,15 @@ export async function POST(
   const messages = body.messages;
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: "messages array required" }, { status: 400 });
+  }
+
+  // ARPK Phase 1a — optional document scope. docId = hub_uploads.id, stamped as
+  // knowledge_entries.doc_id on every v2 chunk. Validated here, resolved below
+  // (chunk-side, under RLS) so an unknown/foreign docId is a 404, not an
+  // ungrounded chat with a misleading scope banner.
+  const docId = typeof body.docId === "string" && body.docId.length > 0 ? body.docId : null;
+  if (docId && !/^[0-9a-f-]{36}$/i.test(docId)) {
+    return NextResponse.json({ error: "invalid docId" }, { status: 400 });
   }
 
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
@@ -223,9 +236,12 @@ export async function POST(
     });
   }
 
-  // Resolve node context + subtree-scoped chunks in one tenant-scoped (RLS) transaction.
-  // Both are non-fatal: chat still answers (ungrounded, "no coverage") if either is empty.
+  // Resolve node context (+ optional document) + scoped chunks in one
+  // tenant-scoped (RLS) transaction. Node/doc misses are fatal (404); empty
+  // retrieval is not — chat still answers ("no coverage").
   let nodeRow: { name: string; uns_path: string | null } | null = null;
+  let docFilename: string | null = null;
+  let docMissing = false;
   let nodeChunks: ManualChunk[] = [];
   try {
     const fetched = await withTenantContext(ctx.tenantId, async (c) => {
@@ -238,18 +254,38 @@ export async function POST(
         [id, ctx.tenantId],
       );
       const row = (nodeRes.rows[0] ?? null) as { name: string; uns_path: string | null } | null;
-      if (!row) return { row: null, chunks: [] as ManualChunk[] };
+      if (!row) return { row: null, chunks: [] as ManualChunk[], filename: null, missing: false };
+
+      // Document scope: resolve the filename from the doc's own chunks
+      // (chunk-side, RLS-visible — the same reason retrieveNodeChunks reads
+      // metadata->>'node_id' instead of joining hub_uploads, which has no RLS).
+      let filename: string | null = null;
+      if (docId) {
+        const docRes = await c.query(
+          `SELECT metadata->>'filename' AS filename
+             FROM knowledge_entries
+            WHERE tenant_id = $1 AND doc_id = $2::uuid AND ingest_route = 'v2'
+            LIMIT 1`,
+          [ctx.tenantId, docId],
+        );
+        filename = (docRes.rows[0]?.filename as string | undefined) ?? null;
+        if (!filename) return { row, chunks: [] as ManualChunk[], filename: null, missing: true };
+      }
+
       const chunks = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
         nodeId: id,
         unsPath: row.uns_path,
+        ...(docId ? { docId } : {}),
       });
       const approvedChunks = approvedAskEnforcementEnabled()
         ? chunks.filter((chunk) => chunk.verified === true)
         : chunks;
-      return { row, chunks: approvedChunks };
+      return { row, chunks: approvedChunks, filename, missing: false };
     });
     nodeRow = fetched.row;
     nodeChunks = fetched.chunks;
+    docFilename = fetched.filename;
+    docMissing = fetched.missing;
   } catch {
     // Non-fatal: continue without DB context (graceful degradation)
     nodeRow = null;
@@ -259,11 +295,21 @@ export async function POST(
   if (!nodeRow) {
     return NextResponse.json({ error: "node not found" }, { status: 404 });
   }
+  if (docId && docMissing) {
+    return NextResponse.json({ error: "document not found" }, { status: 404 });
+  }
 
-  const baseSystemPrompt = buildNodeSystemPrompt({
-    name: nodeRow.name,
-    unsPath: nodeRow.uns_path,
-  });
+  const baseSystemPrompt =
+    docId && docFilename
+      ? buildDocScopedSystemPrompt({
+          filename: docFilename,
+          nodeName: nodeRow.name,
+          unsPath: nodeRow.uns_path,
+        })
+      : buildNodeSystemPrompt({
+          name: nodeRow.name,
+          unsPath: nodeRow.uns_path,
+        });
   const systemPrompt = appendManualContext(baseSystemPrompt, nodeChunks);
   const nodeSources: ManualSource[] = chunksToSources(nodeChunks);
   const approvedSourceCount = nodeSources.filter((s) => s.verified).length;

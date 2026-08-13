@@ -50,8 +50,19 @@ except Exception:
 ' 2>/dev/null || true)
   fi
 fi
+# Legacy fallback. $CLAUDE_TOOL_INPUT is EMPTY in every current harness build
+# (verified 2026-08-09 by dumping the hook environment), so this can no longer
+# fire; it is retained only for an older harness that did populate it.
 [ -z "$cmd" ] && cmd="${CLAUDE_TOOL_INPUT:-}"
-[ -z "$cmd" ] && exit 0  # Nothing to inspect; allow.
+# Fail open, but NEVER silently. This guard can only allow-by-default when it has
+# no command to inspect — blocking every Bash call would wedge the session. The
+# danger is that a future break in the stdin read above lands here and looks
+# identical to "nothing to inspect", which is exactly how the dead-hook class of
+# 2026-08-09 stayed invisible for months. So say so on stderr.
+if [ -z "$cmd" ]; then
+  echo "$(basename "$0"): no PreToolUse payload on stdin or in env - NOT inspected, allowing. If you see this on a real command, the payload plumbing is broken." >&2
+  exit 0
+fi
 
 deny() {
   cat <<EOF
@@ -62,13 +73,42 @@ EOF
 
 # A prod target: the prod host by name, any *.factorylm.com, root@<host>, or the
 # prod VPS IP. Used to scope the SSH read/write split and scp/rsync deny.
-PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91)'
+# NOTE the bare `prod` / `prod-public` aliases: ~/.ssh/config defines
+# `Host prod factorylm-prod` and `Host prod-public factorylm-prod-public`, so
+# `ssh prod docker compose restart mira-hub` is the SHORTEST and likeliest form —
+# and until 2026-08-09 it sailed straight through, because only the long
+# `factorylm-prod` spelling was listed. Also covers the Tailscale HostName
+# (100.68.120.99) for the case where it is dialled without a `root@` prefix.
+# This regex is only consulted for commands that are already an ssh/scp/rsync
+# invocation at a command position (see §2 below), so the loose `prod` alternative
+# cannot fire on unrelated text; and a false positive here fails CLOSED, which is
+# the correct direction for this guard (override: MIRA_ALLOW_PROD=1).
+PROD_HOST='(factorylm-prod|\.factorylm\.com|root@|165\.245\.138\.91|100\.68\.120\.99|[[:space:]]prod(-public)?([[:space:]]|$))'
 
 # Command-position anchor: a verb only counts as an INVOKED command when it sits
-# at the start of the string or right after a shell separator (; & | `( ). This
-# stops false positives where a verb merely appears as TEXT — e.g. a git commit
+# at the start of a line or right after a shell separator (; & ( ). This stops
+# false positives where a verb merely appears as TEXT — e.g. a git commit
 # message or an echo describing "ssh root@prod / docker restart / git pull".
-CMDSTART='(^|[;&|`(])[[:space:]]*'
+#
+# Backtick and `|` are deliberately NOT separators here, though both really are
+# shell syntax. They were, and both misfired constantly on ordinary work
+# (observed 2026-08-09, twice inside ten minutes):
+#
+#   git commit -m "moved into a `docker compose` fallback"   -> backtick + verb
+#   grep -n "git commit\|docker compose" f.sh                -> the \| in a regex
+#
+# Prose in commit messages is written in markdown, so backticks wrap command
+# names by convention; and `\|` is alternation in every ERE. Meanwhile the
+# constructs they'd catch — a command substitution `docker compose up` or a
+# pipeline `echo x | docker compose up` — are not how anyone invokes these
+# verbs. Dropping the two characters removes the entire false-positive class
+# and costs no realistic detection: `^`, `;`, `&` (so `&&`), and `(` still
+# anchor every real invocation, including chained ones.
+#
+# This matters beyond annoyance. A guard that cries wolf on commit messages
+# teaches the operator to reach for MIRA_ALLOW_PROD=1 reflexively, which
+# disables it for the command that actually deserved a block.
+CMDSTART='(^|[;&(])[[:space:]]*'
 
 # Mutation verbs — state-changing commands. UNANCHORED (match anywhere) because
 # this is consulted ONLY inside the step-2 SSH-to-prod branch, whose entry is

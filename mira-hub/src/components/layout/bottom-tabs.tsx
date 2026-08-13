@@ -24,7 +24,7 @@ export function BottomTabs() {
       <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center"
+        className="hub-bottom-tabs md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center"
         style={{
           height: "var(--bottom-tab-height)",
           backgroundColor: "var(--sidebar-bg)",

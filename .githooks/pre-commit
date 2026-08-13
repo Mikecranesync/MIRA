@@ -340,6 +340,39 @@ if [ -n "$STAGED_ALL" ]; then
 fi
 
 # ------------------------------------------------------------------
+# Offline defect lab (advisory) - replays every frozen campaign ledger
+# through the deterministic detectors. Pure disk, ~2s, no bot, no LLM.
+#
+# Advisory by design, and skipped when there are no ledgers: they are
+# gitignored and local-only, so CI can never run this. The point is that a
+# defect the graders passed (a contained repeat, a fabricated parameter)
+# surfaces here without anyone remembering to look.
+# ------------------------------------------------------------------
+LAB_LEDGERS=tests/regime1_telethon/campaign/ledger
+if [ -d "$LAB_LEDGERS" ] && [ -n "$(ls -A "$LAB_LEDGERS" 2>/dev/null)" ]; then
+  bold "Offline defect lab (advisory)..."
+  # Resolve an interpreter: on Windows "python" is a Store alias stub that
+  # prints an install prompt and exits, which silently skipped this step.
+  LAB_PY=""
+  for c in py python3 python; do
+    if [ "$c" = "py" ]; then command -v py >/dev/null 2>&1 && LAB_PY="py -3" && break
+    elif command -v "$c" >/dev/null 2>&1 && "$c" -c "import sys" >/dev/null 2>&1; then LAB_PY="$c" && break
+    fi
+  done
+  if [ -n "$LAB_PY" ]; then
+    LAB_OUT=$(PYTHONIOENCODING=utf-8 $LAB_PY -m tests.regime1_telethon.campaign.offline_lab 2>/dev/null | grep -m1 "^ACTIONABLE")
+  else
+    LAB_OUT=""
+  fi
+  if [ -n "$LAB_OUT" ]; then
+    yellow "  $LAB_OUT"
+    yellow "  full table: python -m tests.regime1_telethon.campaign.offline_lab"
+  else
+    green "  offline lab: no actionable findings"
+  fi
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 bold ""

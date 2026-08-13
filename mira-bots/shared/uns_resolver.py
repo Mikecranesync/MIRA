@@ -442,6 +442,17 @@ def _alias_pattern(alias: str) -> str:
     a `gs10` and `gs10` is not a `gs1`.
     """
     esc = re.escape(alias)
+    # A technician types the same model with or without a separator: "PF525",
+    # "PF-525". Allow ONE hyphen/underscore at the letter->digit boundary inside
+    # the alias. This widens nothing else — both boundary rules above still
+    # apply, so "gs-100" is still not a "gs10" (the trailing-digit veto fires)
+    # and "pf" alone still matches nothing.
+    #
+    # A SPACE is deliberately not accepted here. "pf 70" / "pf 40" is plausibly
+    # a power-factor reading, and resolving that to a PowerFlex would pull an
+    # unrelated vendor's manual into the conversation — the exact citation
+    # failure class #3133 closed. "PF-70" has no such reading.
+    esc = re.sub(r"(?<=[a-z])(?=\d)", "[_-]?", esc, count=1)
     tail = r"(?![a-z0-9])" if alias[-1].isdigit() else r"(?![a-z])"
     return rf"(?<![a-z0-9]){esc}{tail}"
 

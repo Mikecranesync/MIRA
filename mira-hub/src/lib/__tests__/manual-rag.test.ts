@@ -11,6 +11,7 @@ import {
   isRefusalAnswer,
   retrieveManualChunks,
   retrieveNodeChunks,
+  buildDocScopedSystemPrompt,
   type ManualChunk,
 } from "../manual-rag";
 
@@ -209,9 +210,11 @@ describe("retrieveNodeChunks", () => {
   });
 
   it("falls back to an OR tsquery when the precise AND query is empty", async () => {
-    // unsPath null → skip the subtree node-id lookup; call[0]=AND, call[1]=OR.
+    // Query with NO synonym-expansion trigger and no exact-ID token, so the flow
+    // is the simple two-pass: call[0]=AND (empty), then — pool still empty — the
+    // final OR fallback (call[1]) so a conversational question still grounds.
     const { client, calls } = makeClient([[], [nodeRow()]]);
-    const out = await retrieveNodeChunks(client, "t-1", "What does GS10 fault code oC mean?", {
+    const out = await retrieveNodeChunks(client, "t-1", "What does GS10 code oC mean?", {
       nodeId: "n-1",
       unsPath: null,
     });
@@ -226,6 +229,30 @@ describe("retrieveNodeChunks", () => {
     // node scoping + route discriminator preserved on both queries.
     expect(calls[1].sql).toContain("ingest_route = 'v2'");
     expect(calls[1].sql).toContain("metadata->>'node_id'");
+  });
+
+  it("expands a synonym query into extra recall passes (vocabulary bridge)", async () => {
+    // "slow down" has no shared token with a "decel" chunk; the expansion runs
+    // additional OR passes in the manufacturer's vocabulary so the answer chunk
+    // is still retrieved. AND(variant0)=empty → OR(expanded variants) find it.
+    const { client, calls } = makeClient([[], [nodeRow()], [nodeRow()]]);
+    const out = await retrieveNodeChunks(client, "t-1", "what is the slow down ramp", {
+      nodeId: "n-1",
+      unsPath: null,
+    });
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    // More than the plain two-pass: the expanded variants add OR passes.
+    expect(calls.length).toBeGreaterThan(2);
+    // At least one pass uses the OR (recall) rewrite.
+    expect(calls.some((c) => c.sql.includes("replace("))).toBe(true);
+  });
+
+  it("always issues an exact-token ILIKE pass for a parameter/fault id", async () => {
+    // A query naming P042 must run the unstemmed ILIKE lane so the verbatim
+    // chunk is a candidate regardless of ts_rank.
+    const { client, calls } = makeClient([[nodeRow()], [nodeRow()]]);
+    await retrieveNodeChunks(client, "t-1", "what parameter is P042", { nodeId: "n-1", unsPath: null });
+    expect(calls.some((c) => c.sql.includes("content ILIKE ANY"))).toBe(true);
   });
 
   it("keeps the precise AND result and does NOT fall back when AND matches", async () => {
@@ -630,5 +657,77 @@ describe("citation page guard (#2910) — suppress chunk-index-as-page", () => {
   it("no chunkIndex present → page shown unchanged (back-compat: node/page_start path)", () => {
     const src = chunksToSources([{ ...base, sourcePage: 88 }]);
     expect(src[0].page).toBe(88);
+  });
+});
+
+// ── Document-scoped retrieval (ARPK Phase 1a) ──────────────────────────────
+// PRD: docs/plans/2026-08-10-prd-agent-readable-product-knowledge-t2108.md
+// "Retrieval must scope by doc_id" + acceptance gate F: a doc-scoped ask must
+// not retrieve sibling documents parked on the same node.
+describe("retrieveNodeChunks docId scope", () => {
+  const DOC_ID = "5f9b2c1a-0000-4000-8000-000000000001";
+
+  it("filters by doc_id on the AND query when docId is given", async () => {
+    const { client, calls } = makeClient([[nodeRow()]]);
+    const out = await retrieveNodeChunks(client, "t-1", "how do I clean the brush", {
+      nodeId: "n-1",
+      unsPath: null,
+      docId: DOC_ID,
+    });
+    expect(out).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(calls[0].params).toContainEqual([DOC_ID]);
+  });
+
+  it("keeps the doc_id filter on the OR fallback (gate F holds for conversational queries)", async () => {
+    const { client, calls } = makeClient([[], [nodeRow()]]);
+    await retrieveNodeChunks(client, "t-1", "why does it move randomly?", {
+      nodeId: "n-1",
+      unsPath: null,
+      docId: DOC_ID,
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(calls[1].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(calls[1].params).toContainEqual([DOC_ID]);
+  });
+
+  it("omits the doc_id filter entirely when no docId is given (node-scope unchanged)", async () => {
+    const { client, calls } = makeClient([[nodeRow()]]);
+    await retrieveNodeChunks(client, "t-1", "GS10 oC overcurrent", {
+      nodeId: "n-1",
+      unsPath: null,
+    });
+    expect(calls[0].sql).not.toContain("doc_id = ANY"); // projection keeps doc_id::text; only the PREDICATE is omitted
+  });
+});
+
+// ── Document-scoped neutral prompt (ARPK Phase 1a) ─────────────────────────
+// PRD: "Use neutral prompts for unknown vendors." A doc-scoped chat is
+// grounded in ONE user-selected document that may be a consumer manual — the
+// industrial persona ("maintenance assistant for industrial equipment", "techs
+// on the floor") is wrong there. Grounding + citation + safety rules stay.
+describe("buildDocScopedSystemPrompt", () => {
+  const prompt = buildDocScopedSystemPrompt({
+    filename: "T2108_Manual_EN.pdf",
+    nodeName: "Inbox",
+    unsPath: "inbox",
+  });
+
+  it("names the selected document and the node scope", () => {
+    expect(prompt).toContain("T2108_Manual_EN.pdf");
+    expect(prompt).toContain("Inbox");
+  });
+
+  it("is vendor/domain neutral — no industrial persona", () => {
+    expect(prompt.toLowerCase()).not.toContain("industrial");
+    expect(prompt.toLowerCase()).not.toContain("techs are on the floor");
+  });
+
+  it("keeps the grounding, citation, and safety rules", () => {
+    expect(prompt).toContain("ONLY the documentation provided");
+    expect(prompt).toContain("[n]");
+    expect(prompt.toLowerCase()).toContain("safety");
   });
 });

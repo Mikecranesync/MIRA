@@ -10,3 +10,4 @@ mira-web/public/lib/*.css binary
 #   git config merge.graphify.driver "graphify merge-driver %O %A %B"
 # Without that config, git falls back to the default merge + a harmless warning.
 wiki/orchestrator/kg/graph.json merge=graphify
+*.pdf binary

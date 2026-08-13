@@ -366,8 +366,17 @@ jobs:
             --cov-fail-under=20
 
       - name: Run bot tests with coverage
+        # -n auto is safe here ONLY because mira-bots/tests/conftest.py gives
+        # each xdist worker a private MIRA_DB_PATH (issue #3212). Without that,
+        # concurrent collection hit a shared-SQLite `database is locked` race
+        # (#3208, reverted in #3211) — a race whose first run PASSED, so a
+        # single green run proves nothing; the enablement evidence is 3×
+        # consecutive green (local + CI). The renderers sys.modules collision
+        # pair (test_slack_relay / test_email_adapter) stays ignored exactly
+        # as before. This step was ~218s serial — the largest block on the CI
+        # critical path. --durations=25 is diagnostic output.
         run: |
-          pytest mira-bots/tests/ -v \
+          pytest mira-bots/tests/ -v -n auto --durations=25 \
             --ignore=mira-bots/tests/test_slack_relay.py \
             --ignore=mira-bots/tests/test_email_adapter.py \
             --cov=mira-bots/shared --cov-report=term-missing \
@@ -531,6 +540,21 @@ jobs:
         # repo files), pyyaml already installed above.
         run: pytest tests/test_deploy_staging_targets.py -v
 
+      - name: PR merge-blocker resolver (#3109)
+        # Pins the classification that keeps a bare "BLOCKED" from being reported
+        # as a finding: QUEUED/IN_PROGRESS are pending (not failures), a REQUIRED
+        # context that never reported is pending (not passing), and an all-green
+        # PR whose aggregate still says BLOCKED resolves to CLEAN-was-stale.
+        # Hermetic — classify() is pure, fixtures only, no gh/network.
+        #
+        # NOT the file's only coverage: the `Eval Offline` job collects root
+        # tests/ broadly under `-n auto` and already runs these (verified in the
+        # log, not assumed). This step is a named, ~0.1s signal in a job that
+        # reports in seconds, so a classification regression is legible here
+        # instead of buried in a 4000-test run — the neighbouring steps' "root
+        # tests/ is not collected wholesale" rationale does NOT apply to it.
+        run: pytest tests/test_pr_merge_blocker.py -v
+
       - name: Connector framework tests
         # mira-connectors/ is its own package (pyproject pythonpath=["."]) — run from
         # inside it. Hermetic mock connectors (Maximo/Ignition/SAP/MaintainX/PI), no
@@ -660,6 +684,30 @@ jobs:
 
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
+
+      - name: Deploy must not tear down containers before building
+        # Pins the fix for the 2026-08-09 outage: deploy-vps.yml used to `docker rm -f`
+        # every target BEFORE `docker compose build`, so both public surfaces were dark
+        # for build+boot rather than boot. Four merges to main in 40 minutes that day
+        # produced four separate refused-connection windows on app.factorylm.com and
+        # factorylm.com. Invisible when it regresses — the deploy still reports green.
+        run: pytest tests/test_deploy_no_teardown_before_build.py -v
+
+      - name: Check hook wiring (payload source, fail-loud, prod-guard coverage)
+        # Guards the whole class found 2026-08-09: the harness does NOT set
+        # $CLAUDE_TOOL_INPUT / $CLAUDE_FILE_PATH (the tool payload is JSON on
+        # stdin), so every hook keyed on those vars was a silent no-op — ruff,
+        # pyright, the gitleaks secret scan and worktree-file-guard had all
+        # never run. The failure mode is silence, which is why this is a test
+        # and not doctrine. Hermetic: reads settings.json + tools/hooks/*.sh.
+        run: pytest tests/test_hook_payload_source.py -v
+
+      - name: rm-guard unit tests
+        # tests/test_rm_guard.py has existed since the rm-guard hook shipped but
+        # was never added here, so the deterministic floor against a catastrophic
+        # `rm -rf` (root / $HOME / repo root / .git) had zero CI coverage — the
+        # same "written but never wired" gap called out in the step below.
+        run: pytest tests/test_rm_guard.py -v
 
       - name: Check Hub Unit Tests path-filter contract
         # tests/test_hub_unit_filter_contract.py was written for this job
@@ -823,6 +871,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          # Latency: same pip cache as Unit Tests — the cold triple-requirements
+          # install was ~87s of this job (measured 2026-08-12).
+          cache: "pip"
+          cache-dependency-path: |
+            mira-core/mira-ingest/requirements.txt
+            mira-bots/telegram/requirements.txt
 
       - name: Install pip-licenses and project deps
         run: |

@@ -72,11 +72,37 @@ A future PR may consolidate after adoption is confirmed.
 The `PostToolUse(Edit|Write)` hook in `.claude/settings.json` runs pyright as:
 
 ```sh
-perl -e 'alarm 45; exec @ARGV' pyright "$CLAUDE_FILE_PATH" 2>/dev/null | tail -1
+perl -e 'alarm 45; exec @ARGV' pyright "$f" 2>/dev/null | tail -1
 ```
 
 That wrapper looks redundant. It is load-bearing, and JSON can't hold a comment
 saying so — hence this note.
+
+> **Update 2026-08-09 — `$f` comes from stdin, and that is the whole point.**
+> This hook previously passed `"$CLAUDE_FILE_PATH"`. **The harness never sets that
+> variable.** Dumping the hook environment during a real `Write` showed
+> `CLAUDE_PROJECT_DIR`, `CLAUDE_CODE_SESSION_ID` and `CLAUDE_PID` set, but
+> `CLAUDE_TOOL_INPUT` empty and `CLAUDE_FILE_PATH` absent entirely — the tool
+> payload arrives **only as JSON on stdin**. So the invocation was effectively
+> `pyright ""`, and with no usable file argument pyright falls back to scanning the
+> **whole project**. That is the actual engine behind the orphan story above: the
+> `alarm` bounded how long each orphan lived, but every invocation was always going
+> to be a full-project scan. The same empty variable silently disabled `ruff`,
+> `review_hook.sh` and the touched-files log in that hook, the gitleaks secret scan
+> in the `PreToolUse(Bash)` hook, and `worktree-file-guard.sh`.
+>
+> **Rule for any new hook: read the payload from stdin.** Capture it ONCE — stdin is
+> consumed on first read, so two `jq` calls each piping `cat` leaves the second empty:
+>
+> ```sh
+> IN=$(cat); f=$(printf '%s' "$IN" | jq -r '.tool_response.filePath // .tool_input.file_path // empty')
+> ```
+>
+> Session/project vars (`CLAUDE_PROJECT_DIR`, `CLAUDE_CODE_SESSION_ID`) *are* set and
+> remain fine to use. Enforced by `tests/test_hook_payload_source.py`, which also
+> rejects the disguised form — feeding a parser from the env var
+> (`echo "$CLAUDE_TOOL_INPUT" | jq`, `python3 -c ... <<< "$CLAUDE_TOOL_INPUT"`)
+> reads stdin but still reads *nothing*.
 
 **What it prevents.** A bare `pyright` in that hook leaks orphans. When the hook
 shell is killed (harness timeout, session interrupt), pyright is a *separate

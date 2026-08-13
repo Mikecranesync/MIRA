@@ -1,0 +1,445 @@
+# Campaign findings — one row per DEFECT (not per conversation).
+# Keyed by fingerprint from findings.fingerprint(); see that module for why.
+# status: OPEN | FIXED | FALSE_POSITIVE | NEEDS_RERUN
+# applied: true only once the fix is merged to main.
+t1:fault_code_pf525:
+  applied: true
+  convs:
+  - t1_012_fault_code_pf525
+  - t1_s42_012_fault_code_pf525
+  first_seen: c1
+  fix: 'PR #3155 (_alias_pattern separator tolerance + expand_abbreviations collapse-and-retry);
+    PR #3153 fixes the resolver half only'
+  last_seen: c2
+  note: 'Neither PR is merged. Reproduced offline both directions; c1r4 passed this
+    scenario once, which is one run and not proof. | c2: still FAILS on main, as expected
+    — neither #3155 nor #3153 is merged. Evidence: MIRA asked for ''the manufacturer
+    and model (e.g. Allen-Bradley PowerFlex 525)'' after the technician wrote pf-525.
+    | c3 (branch qc/cold-start-baseline, 2026-08-08): PASSES live. c2 FAIL -> c3 PASS
+    on the same seed and scenario, the only change being the deployed build. Consistent
+    with the offline both-directions proof. Still applied=false: the branch is not
+    merged. | APPLIED 2026-08-09: PR #3155 merged to main as 92841117c and deployed
+    to prod (Deploy to VPS green, smoke + post-deploy E2E green). PR #3153 merged
+    as 4b4a03ff1.'
+  seen_in:
+  - c1
+  - c2
+  status: FIXED
+  summary: hyphenated model shorthand ("pf-525") did not resolve, so MIRA asked for
+    the manufacturer and model the technician had just given
+t1:reset_procedure:
+  applied: false
+  convs:
+  - t1_004_reset_procedure
+  - t1_013_reset_procedure
+  - t1_s42_013_reset_procedure
+  first_seen: c1
+  fix: 'PARTIAL — CIT-005 (this branch) stops the footer landing on a question-only
+    turn. The other half is untouched: MIRA still answers a procedural "how do I reset"
+    with a bare clarifying question while holding a resolved PowerFlex 525 pack, so
+    the scenario''s expect list ("reset", "PowerFlex") still fails.'
+  issue: '3156'
+  last_seen: cap1
+  note: 'Footer half is deterministic: running enforce_citation_or_gap_admission from
+    current source reproduces the frozen reply byte-for-byte. Shares its root cause
+    with t1:symptom_report. Failed on two different builds and two different phrasings
+    ("AB PowerFlex 525" spelled out, and "PF-525"), so the hyphen fix does not explain
+    it. | c2 (main@c0d3722e3, 2026-08-08): the seed-42 variant PASSED while t1:symptom_report
+    — same root cause — still failed. CIT-005 is not merged, so this is mutation variance,
+    not evidence the footer defect is gone. | c3: the FOOTER HALF IS PROVEN FIXED
+    LIVE — the reply to the identical message is now ''What is the exact fault code
+    displayed after the undervoltage fault?'' with NO KB-gap footer (compare the c1/c1r4
+    transcripts). That is mechanism-level evidence, not a lucky pass. The scenario
+    still FAILS because its expect list wants ''reset''/''PowerFlex'' and MIRA asks
+    a clarifying question instead of answering the procedural question — exactly the
+    half recorded as untouched. Fixing that is a separate change (answer the procedure
+    from the resolved PF525 pack rather than gating it behind a fault code). | NOT
+    given a defect_id: this scenario reveals TWO defects — CIT-005 (footer, fixed)
+    and an unnamed second one (a procedural ''how do I reset'' is gated behind a fault
+    code while a resolved PF525 pack is in hand). The disposition schema holds a single
+    defect_id, so a multi-defect scenario cannot be labelled honestly yet; that is
+    what the Phase 2 defect registry is for. Leaving it blank beats asserting a root
+    cause that only explains half the failure. | Multi-seed (4 seeds): 50% — FLAKY,
+    consistent with the recorded PARTIAL fix. The footer half is gone; the procedural-answer
+    half is not. | 5-SEED RUN ON THE MERGE CANDIDATE (2026-08-09, ba0a7cab2, seeds
+    42-46): FLAKY 60% (3/5), unchanged within noise from the 50% measured on the older
+    build — consistent with the procedural-answer half still being untouched. Both
+    failures are the same shape: "Diagnosing... What is the exact undervoltage fault
+    code on the display?" against expect=["reset","PowerFlex"]. **CONFIRMED SHARED
+    ROOT CAUSE WITH t2:pivot_after_fault**: all four of that fingerprint''s failures
+    in the same run fail at its turn 2 on the identical "how do I reset it" shape
+    (see docs/testing/campaign-reports/2026-08-09-5seed-analysis.md). The two findings
+    are one defect — the #3165 retrieval hole — and should be fixed as one.'
+  seen_in:
+  - c1
+  - c1r4
+  - c3
+  - c6
+  - c7
+  - c12s42
+  - c12s45
+  - cap1
+  status: OPEN
+  summary: the KB-gap footer is stapled onto a bare clarifying question — MIRA asks
+    for the fault code AND tells the technician it has no documentation, while holding
+    a resolved PowerFlex 525 drive pack
+t1:symptom_report:
+  applied: true
+  convs:
+  - t1_018_symptom_report
+  - t1_s42_018_symptom_report
+  defect_id: CIT-005
+  first_seen: c1
+  fix: 'CIT-005 (PR #3155) — a question-only reply no longer receives the KB-gap footer.
+    Covers this finding''s whole root cause; the scenario''s expect list may still
+    be over-strict independently of the fix.'
+  issue: '3159'
+  last_seen: c2
+  note: 'Merge with t1:reset_procedure when fixing; one contract (CIT-005 / H4-NONANSWER-001)
+    covers both. The scenario''s expect list is also arguably over-strict — the clarifying
+    question itself is by design. | c3: PASSES live (c2 FAIL -> c3 PASS). CIT-005
+    confirmed on the real bot. | defect_id=CIT-005 (adjudicated 2026-08-08): the whole
+    of this finding is the footer-on-a-non-answer root cause. | MULTI-SEED CORRECTION
+    (c3/c5s43/c5s44/c5s45): I marked this FIXED on ONE passing run. Across four seeds
+    it is 50%. Investigating the two failures showed the product is fine and the GRADER
+    was wrong: MIRA replied ''What kind of conveyor and what''s the fault code or
+    symptom?'' and the expect list demanded the literal words manufacturer/model/equipment.
+    That is a better reply than the list wanted. Scenario now graded by gates.check_identifying_question
+    (behaviour, not vocabulary). FIXED stands for the CIT-005 product defect; the
+    flakiness was measurement. | APPLIED 2026-08-09: PR #3155 merged to main as 92841117c
+    and deployed to prod (Deploy to VPS green, smoke + post-deploy E2E green). PR
+    #3153 merged as 4b4a03ff1. 5-seed run on the merge candidate (c12s42..c12s46,
+    seeds 42-46): STABLE_PASS 100% — up from FLAKY 50% on the older build. CIT-005
+    confirmed by measurement, not by a single passing round this time.'
+  seen_in:
+  - c1
+  - c2
+  status: FIXED
+  summary: same footer-on-a-non-answer defect as t1:reset_procedure — a question-only
+    turn receives the "no documentation indexed" admission
+t2:continuation_is_kept:
+  applied: true
+  convs:
+  - t2_002_continuation_is_kept
+  - t2_007_continuation_is_kept
+  first_seen: c1
+  fix: 'PR #3150 (c0d3722e3) — shared subject-naming discriminator on both fresh-thread
+    branches + IDLE equipment context in the retrieval query'
+  last_seen: c1r1
+  note: Confirmed fixed on main by two independent triage agents; c1r4 tier 2 passed
+    10/10.
+  seen_in:
+  - c1
+  - c1r1
+  status: FIXED
+  summary: a pronoun follow-up ("is that fault serious?") after a drive-pack-answered
+    turn lost its referent and asked the technician for the code MIRA had just explained
+t2:pivot_after_fault:
+  applied: false
+  convs:
+  - t2_000_pivot_after_fault
+  - t2_005_pivot_after_fault
+  - t2_s42_000_pivot_after_fault
+  - t2_s42_005_pivot_after_fault
+  first_seen: c1
+  fix: 'CTX-001d + CTX-005 (this branch). CTX-001d — the pivot now fires from every
+    state holding a pending question, except PIVOT_EXEMPT_STATES (closes defect C,
+    turn 3). CTX-005 — the groundedness clarifier no longer re-asks for a fault code
+    the session already holds (closes defect A, turn 2, the dominant driver; also
+    removes the DIAGNOSIS_REVISION park C had to escape, so the two compound). Defect
+    B (turn 2, "How do I reset it?" answered by restating what the fault CODE means,
+    2 sightings) is UNFIXED. PR #3153 (IDLE severance fault carry, held) fixes a fourth,
+    adjacent seam. PREDICTION pre-registered before any live re-run: 6 of the 8 frozen
+    failing conversations should pass; the 2 that should still fail are c1r2/c1r3
+    t2_000, both on defect B.'
+  issue: '3160'
+  last_seen: c12s45
+  note: 'Root cause: the fresh-thread pivot fires only from ACTIVE_DIAGNOSTIC_STATES,
+    and the low-groundedness self-critique clarifier parks the session in DIAGNOSIS_REVISION
+    first. Suggested contract CTX-001d: a pivot fires from every state holding a pending
+    diagnostic question. | c3: still fails, 1/2 variants this round (2/2 in c2). Unfixed
+    on this branch as expected — the partial fix lives in held PR #3153. | Multi-seed:
+    STABLE_FAIL — failed under every seed observed. The most reproducible defect in
+    the set, and the one to fix next. | ROOT-CAUSE CORRECTION (2026-08-08, from the
+    per-turn grades in the frozen ledgers — the note above was written from the turn-3
+    reply alone and is incomplete). This fingerprint bundles AT LEAST THREE defects,
+    and the recorded root cause is NOT the one that drives the verdict. Across the
+    8 failing conversations in c1/c1r2/c1r3/c2/c3: SEVEN fail at TURN 2 and only FIVE
+    at turn 3. (A) TURN 2, 5 sightings — "How do I reset it?" is answered with the
+    generic low-groundedness clarifier ("Before I can give you a confident diagnosis...")
+    instead of the reset procedure, while a resolved PowerFlex 525 pack is in hand.
+    This is the SAME mechanism as the unfixed half of t1:reset_procedure (#3156),
+    and it is the dominant driver here. It is also what CAUSES the DIAGNOSIS_REVISION
+    park that defect (C) then trips over — (A) is upstream of (C). (B) TURN 2, 2 sightings
+    — MIRA answers "How do I reset it?" by restating what the fault CODE means (c1r2/c1r3
+    t2_000: "CE10 = Communication error 10..."), a repeated-answer shape. (C) TURN
+    3, 5 sightings — the dead fault rides forward into the new conveyor topic; this
+    is the defect the summary names and the ONLY one CTX-001d fixes. Natural experiment
+    confirming (A): in c3, t2_000 got the clarifier at turn 2 and FAILED while t2_005
+    got a real reset answer and PASSED — same seed, same script, same build. | IMPACT
+    OF CTX-001d, MEASURED NOT ASSUMED: of the 8 failing conversations, this fix alone
+    flips exactly ONE (c1r2 t2_005, the only one whose sole failing turn is 3). Expect
+    this fingerprint to STAY RED until (A) is fixed. Do not read a continued FAIL
+    as CTX-001d not working, and do not read a flip as this scenario being fixed —
+    check the per-turn grades. | This is the multi-defect-per-scenario problem the
+    Phase 2 defect registry exists to solve; the schema still holds one defect_id,
+    so no defect_id is set here rather than assert a root cause that explains 5 of
+    12 turns. | CTX-005 shipped (2026-08-08) for defect (A): the clarifier now checks
+    whether a fault code or active alarm is already pinned before asking for one,
+    taking the existing "proceed with available info" branch instead of parking in
+    DIAGNOSIS_REVISION. Reproduced offline byte-for-byte against the frozen c2/c3
+    transcripts before the fix; a known MODEL deliberately does NOT suppress the clarifier
+    (eval fixture 34 — the vague-symptom case it exists for — must keep firing, and
+    that control is proven by mutation). | DEFECT (B) REMAINS OPEN and has no issue
+    of its own: c1r2/c1r3 t2_000 answer "How do I reset it?" by restating what the
+    fault CODE means ("CE10 = Communication error 10, RS-485 Modbus transmission time-out"),
+    i.e. a repeated answer to the PREVIOUS question rather than the one asked. Adjacent
+    to CTX-004 (the repeated-answer guard) but distinct: the two replies are not near-identical
+    text, so a difflib similarity guard will not catch it — the defect is answering
+    the wrong QUESTION, not emitting the same STRING. Fix that next if this fingerprint
+    is still red after a live re-run. | c6 LIVE RE-RUN (2026-08-09, qc/cold-start-baseline@3bf213fbe,
+    seed 42, tiers 1+2): **BOTH variants PASS** — t2_000 and t2_005. This fingerprint
+    had failed in c1, c1r2, c1r3, c2 AND c3, so STABLE_FAIL is broken on the first
+    run carrying CTX-001d + CTX-005. Like-for-like on identical tiers/seed/scenarios:
+    c2 (main) 26/30 -> c3 (branch pre-fix) 28/30 -> c6 29/30. | MECHANISM CONFIRMED,
+    NOT JUST THE FLIP: the groundedness clarifier is ABSENT from turn 2 in both conversations
+    (it was present in c2 and in c3 t2_000), and no F004 survives into turn 3 in either.
+    That is CTX-005 and CTX-001d respectively, verified at the reply level. | ⚠️ BUT
+    DEFECT (B) SURVIVES AND IS NOW MASKED BY THE GRADER — the pass is not clean. In
+    c6 t2_000, turn 2 is turn 1''s ENTIRE reply repeated as a literal PREFIX (proven:
+    normalized turn 1 is a prefix of turn 2; 225 of 329 chars) with one new sentence
+    appended. It scores PASS only because expect=["reset"] matches the appended "resetting".
+    Worse, it is invisible to EVERY existing guard: the engine''s CTX-004 uses difflib
+    >= 0.9 on the whole normalized reply (this is 0.812), and campaign gates.check_repeated_answer
+    keys a dict on whole-reply equality — both detect a DUPLICATE reply, while this
+    is a CONTAINED repeat. A containment check (prior reply in current reply, above
+    a length floor) would catch it; neither layer has one. Both c6 turn-2 replies
+    also misread "How do I reset it?" as resetting a DIGITAL OUTPUT rather than the
+    fault. So: the scenario is green, the defect is not fixed. Do not set status FIXED
+    on this run. | c7 (2026-08-09, qc/cold-start-baseline@b306a6b9b, same seed/tiers):
+    **DEFECT (B) IS GONE — proven by direct measurement, not by the verdict.** Scanning
+    every tier-2 reply pair for a contained-or-near-duplicate repeat: c6 = 1 violation
+    (t2_000 turn1->turn2, frac 0.619), c7 = 0 violations across the same 10 conversations.
+    Only the build changed. That is CTX-004b. Turn 3 also now reads like a technician
+    wrote it — "Intermittent shutdown on a conveyor with a 525 drive — is the trip
+    consistent with a specific event or load condition?" — with no dead fault carried.
+    Tier 2 10/10, campaign 29/30. | ⚠️ ONE DEFECT REMAINS on this scenario, previously
+    HIDDEN BEHIND the repeat: turn 2 answers "How do I reset it?" with instructions
+    for resetting a DIGITAL OUTPUT ("navigate to the Digital Outputs menu", "set P0594
+    = 1") when the technician means the F004 UnderVoltage fault. Present in BOTH c6
+    and c7, so it is not a regression from CTX-004b — it is the layer underneath.
+    Localized, NOT root-caused: it is a RETRIEVAL referent problem, not the pack (the
+    PF525 pack has zero fault_entries, zero knowledge and zero keypad_navigation,
+    so it cannot answer a reset question and never claims the turn). Working hypothesis,
+    with a natural experiment already in the evidence: _prepend_equipment_context
+    carries the fault CODE but not the fault NAME, so the enriched query is "... PowerFlex
+    525 F004 How do I reset it?" and the strongest lexical match for "reset" in the
+    corpus is digital-output content. The control is c6/c7 t1_004 — "how to reset
+    a powerflex525 after an UNDERVOLTAGE fault?" retrieves the right answer ("cycle
+    power or use the keypad to clear the fault"). The word the corpus indexes is "undervoltage",
+    and the pack already maps code 4 -> "UnderVoltage" in live_decode.fault_codes,
+    so the name is available deterministically. Fixing it is a RETRIEVAL-layer change:
+    it needs the retrieval-diagnostics discipline (measure recall on the production
+    path, not a harness), bot-grounding-tests, and a staging gate. Do not patch it
+    blind. | RETRIEVAL DIAGNOSIS DONE (2026-08-09, raw recall_knowledge on staging,
+    no harness) — **THE HYPOTHESIS ABOVE IS FALSIFIED AND THE REAL DEFECT IS WORSE.**
+    Adding the fault NAME changes nothing: raw recall for "...F004 UnderVoltage How
+    do I reset it?" is essentially identical to the code-only query, correct-answer
+    ranks NONE in both. The t1_004 "control" was weak evidence too — its only GOOD
+    chunk sat at rank 6 and was a SIEMENS row, so that reply was plausible, not sourced.
+    What is actually happening: (1) retrieval returns PF525 chunks whose "reset" sense
+    is position/rotor/safety-hardware, and the real fault-clear chunks (p160/p164/p726/p1108
+    — "Press Stop if P045 [Stop Mode]... Cycle drive power", "[Fault Clear] ... 1
+    Reset Fault") never enter the top 10, though they exist and 0 of 7592 PF525 rows
+    have a NULL embedding; (2) MIRA then FABRICATES — "set P0594 = 1 [Source: Allen-Bradley
+    PowerFlex 525, Parameter Reference]". P0594 does not exist in the corpus in ANY
+    spelling, and "Parameter Reference" is not a source_type for PF525. It passes
+    every guard because _is_grounded scores a bag-of-words overlap >= 5 (generic prose
+    clears it) and evaluate_citation_relevance validates ATTRIBUTION only (Allen-Bradley
+    is the expected vendor, so the tag is "relevant"). Filed as P0 issue #3165; full
+    spec in docs/superpowers/specs/2026-08-09-fabricated-parameter-grounding-hole.md.
+    The fix is NOT shipped on purpose: a grounding guard that false-positives suppresses
+    CORRECT answers, and validating it needs the per-turn retrieved-source snapshot,
+    which the campaign ledger does not currently record. | 5-SEED RUN ON THE MERGE
+    CANDIDATE (2026-08-09, ba0a7cab2, seeds 42-46, c12s42..c12s46): FLAKY 40%, not
+    STABLE_FAIL and not fixed. c6/c7 both ran seed 42 and both passed; seed 42 is
+    one of the two seeds where it passes, so those two runs were one sample. **BUT
+    THE FINGERPRINT IS NOW FAILING FOR A DIFFERENT REASON THAN ITS NAME.** Per-turn
+    grades across the four failures: ALL FOUR fail at TURN 2 ("How do I reset it?",
+    expect=["reset"]), where MIRA restates what CE10 MEANS instead of answering how
+    to reset it. Only ONE of the four also fails at turn 3, the actual pivot turn;
+    in the other three the pivot is clean (topic switches to the conveyor, no CE10
+    survives). So CTX-001d and CTX-005 DO work — 4/4 on the pivot mechanism — and
+    the residual failure is the SAME root cause as t1:reset_procedure (#3156) and
+    the #3165 retrieval hole: MIRA cannot answer "how do I reset it". This fingerprint
+    should be re-scoped or merged into #3156; it no longer measures a pivot defect.
+    Evidence: docs/testing/campaign-reports/2026-08-09-5seed-analysis.md. | SECONDARY,
+    unrelated to the grade: two turn-3 replies (c12s43 t2_000, c12s44 t2_005) carry
+    the KB-gap footer beneath a pure clarifying question — the residue of CIT-005''s
+    by-declaration exemption for the option-menu template. Same class as #3159, narrower.
+    Unfixed.'
+  seen_in:
+  - c1
+  - c1r2
+  - c1r3
+  - c2
+  - c3
+  - c12s43
+  - c12s44
+  - c12s45
+  status: OPEN
+  summary: '"Actually forget that — my conveyor keeps stopping" is not recognised
+    as a pivot when the session sits in DIAGNOSIS_REVISION, so MIRA answers the previous
+    question one turn late and carries the dead fault forward'
+t4:cancel_lane_documented_gap:
+  applied: false
+  convs:
+  - t4_s42_010_cancel_lane_documented_gap
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'cancel lane documented gap' returned INCONCLUSIVE
+t4:numbered_option_selection:
+  applied: false
+  convs:
+  - t4_s42_004_numbered_option_selection
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'numbered option selection' returned INCONCLUSIVE
+t4:reset_command_wipes_pin:
+  applied: false
+  convs:
+  - t4_s42_000_reset_command_wipes_pin
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'reset command wipes pin' returned FAIL
+t4:reset_inline_lane_leading_space:
+  applied: false
+  convs:
+  - t4_s42_001_reset_inline_lane_leading_space
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'reset inline lane leading space' returned FAIL
+t4:thanks_holds_thread:
+  applied: false
+  convs:
+  - t4_s42_005_thanks_holds_thread
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'thanks holds thread' returned FAIL
+t5:auto_wo_offer_after_real_diagnosis:
+  applied: false
+  convs:
+  - t5_s42_007_auto_wo_offer_after_real_diagnosis
+  first_seen: cap1
+  last_seen: cap2
+  seen_in:
+  - cap1
+  - cap2
+  status: OPEN
+  summary: scripted scenario 'auto wo offer after real diagnosis' returned FAIL
+t5:wo_bypass_by_fresh_question:
+  applied: false
+  convs:
+  - t5_s42_004_wo_bypass_by_fresh_question
+  first_seen: cap1
+  last_seen: cap2
+  seen_in:
+  - cap1
+  - cap2
+  status: OPEN
+  summary: scripted scenario 'wo bypass by fresh question' returned FAIL
+t5:wo_field_edit_updates_draft:
+  applied: false
+  convs:
+  - t5_s42_001_wo_field_edit_updates_draft
+  first_seen: cap1
+  last_seen: cap2
+  seen_in:
+  - cap1
+  - cap2
+  status: OPEN
+  summary: scripted scenario 'wo field edit updates draft' returned FAIL
+t5:wo_unrecognised_input_reshows:
+  applied: false
+  convs:
+  - t5_s42_002_wo_unrecognised_input_reshows
+  first_seen: cap1
+  last_seen: cap2
+  seen_in:
+  - cap1
+  - cap2
+  status: OPEN
+  summary: scripted scenario 'wo unrecognised input reshows' returned FAIL
+t7:cross_vendor_citation_strip:
+  applied: false
+  convs:
+  - t7_s42_004_cross_vendor_citation_strip
+  first_seen: cap1
+  last_seen: cap1
+  seen_in:
+  - cap1
+  status: OPEN
+  summary: scripted scenario 'cross vendor citation strip' returned FAIL
+t8:experienced:
+  applied: false
+  convs:
+  - t8_41_001_experienced
+  first_seen: c1
+  issue: '3157'
+  last_seen: c1
+  note: 'The router intent check_equipment_history returns before the UNS confirmation
+    gate. The judge''s own flag (conflicting F004 meanings) is likely a false positive;
+    the real defect is the recall turn itself. Suggested contract MEM-002. | c2 (main@c0d3722e3,
+    2026-08-08): did NOT reproduce — passed. The router-intent early return that bypasses
+    the UNS gate is unchanged, so treat this as not-triggered rather than resolved.
+    | CON-004a/b/c are MERGED (#3155, 92841117c) and in prod. This finding stays OPEN:
+    the deterministic template loops are gone (offline lab: no c11 in any template
+    row), but LLM-generated near-duplicates remain (ratio 0.97-0.99), a softer defect
+    that no template detector catches. applied stays false because what merged does
+    not close the whole finding.'
+  seen_in:
+  - c1
+  status: OPEN
+  summary: history questions ("did it throw F004 yesterday", "when was this last updated")
+    are answered by dumping the last 5 raw chat lines under "Last 5 interactions for
+    this equipment", with no work-order lookup and no asset scoping
+t8:impatient:
+  applied: false
+  convs:
+  - t8_41_003_impatient
+  first_seen: c1
+  issue: '3158'
+  last_seen: c1
+  note: 'The CTX-004 repeated-answer guard has _REPEAT_MIN_LEN = 40 and the reply
+    normalises to 34 characters, so the guard returns before comparing. The judge
+    filed this as GROUNDING, which is a false positive — the honest KB-gap admission
+    was correct. The repetition is the real defect. Suggested contract CTX-004b. |
+    c2 (main@c0d3722e3, 2026-08-08): did NOT reproduce — all 4 personas passed. This
+    is non-reproduction, not a fix: _REPEAT_MIN_LEN is still 40 and the offending
+    line still normalises to 34 chars, verified on the same commit. The persona simply
+    did not drive MIRA into the repeat this round. | CON-004a/b/c are MERGED (#3155,
+    92841117c) and in prod. This finding stays OPEN: the deterministic template loops
+    are gone (offline lab: no c11 in any template row), but LLM-generated near-duplicates
+    remain (ratio 0.97-0.99), a softer defect that no template detector catches. applied
+    stays false because what merged does not close the whole finding.'
+  seen_in:
+  - c1
+  status: OPEN
+  summary: MIRA repeats the byte-identical line "Check the display for a fault code"
+    on three separate turns, including as its answer to a direct challenge about that
+    very sentence

@@ -63,13 +63,13 @@ class TestBuildProviders:
     def test_custom_model_names(self):
         env = {
             "GROQ_API_KEY": "gsk_test",
-            "GROQ_MODEL": "llama-3.1-8b-instant",
+            "GROQ_MODEL": "openai/gpt-oss-20b",
             "CEREBRAS_API_KEY": "csk_test",
             "CEREBRAS_MODEL": "llama-3.1-70b",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
-        assert providers[0].model == "llama-3.1-8b-instant"
+        assert providers[0].model == "openai/gpt-oss-20b"
         assert providers[1].model == "llama-3.1-70b"
 
 

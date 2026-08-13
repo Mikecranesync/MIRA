@@ -4,6 +4,7 @@ Turn 2: simulate a technician providing operational context after the bot
         identifies the equipment.
 Turn 3: inject a fault code when has_fault_code=True (conditional).
 """
+
 from __future__ import annotations
 
 TURN2_TEMPLATES: dict[str, list[str]] = {

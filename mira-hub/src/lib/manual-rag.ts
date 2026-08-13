@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { expandIndustrialQuery, rerankChunks } from "@/lib/notebook-query";
 
 /**
  * Manufacturer-scoped BM25 retrieval from `knowledge_entries`.
@@ -28,6 +29,8 @@ import type { PoolClient } from "pg";
 
 export interface ManualChunk {
   content: string;
+  /** hub_uploads.id the chunk came from (v2 node rows; undefined on OEM path). */
+  docId?: string | null;
   manufacturer: string;
   modelNumber: string;
   sourceUrl: string;
@@ -385,7 +388,16 @@ export async function retrieveNodeChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
-  opts: { nodeId: string; unsPath: string | null; topK?: number },
+  opts: {
+    nodeId: string;
+    unsPath: string | null;
+    topK?: number;
+    docId?: string;
+    /** Equipment Notebook: restrict retrieval to an explicit allowed-doc set
+     *  (enabled notebook sources). Same enforcement point as docId — the
+     *  predicate applies to BOTH tsquery passes in SQL, never app-side. */
+    docIds?: string[];
+  },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
   if (!q) return [];
@@ -425,10 +437,28 @@ export async function retrieveNodeChunks(
   const OR_TSQUERY =
     "to_tsquery('english', replace(plainto_tsquery('english', $2)::text, ' & ', ' | '))";
 
-  const runRetrieval = async (tsquery: string) => {
+  // ARPK Phase 1a — document scope. When a docId is given, the retrieval
+  // boundary narrows from the node subtree to ONE document (doc_id =
+  // hub_uploads.id, stamped on every v2 chunk at ingest). Gate F of the PRD:
+  // a doc-scoped ask must never ground in a sibling document parked on the
+  // same node, so the predicate applies to BOTH the AND and OR passes. The
+  // node/tenant predicates stay — a docId outside this node's subtree (or
+  // another tenant) yields [] ("no coverage"), never a cross-scope leak.
+  const allowedDocIds = opts.docIds ?? (opts.docId ? [opts.docId] : []);
+  const docParams = allowedDocIds.length > 0 ? [allowedDocIds] : [];
+  const docClause = allowedDocIds.length > 0 ? "AND doc_id = ANY($5::uuid[])" : "";
+
+  // Widen the candidate pool, then rerank down to topK (bakeoff finding 5: the
+  // bottleneck is RANKING, not parsing — the answer chunk is present but
+  // out-ranked). POOL is retrieved per pass; the final slice is topK.
+  const POOL = Math.max(topK * 4, 24);
+
+  // $2 is the tsquery text (per-pass), $6 the exact-token ILIKE patterns.
+  const runRetrieval = async (tsquery: string, queryText: string) => {
     const res = await client.query(
       `SELECT
           content,
+          doc_id::text AS doc_id,
           source_url,
           source_page,
           page_start,
@@ -441,21 +471,87 @@ export async function retrieveNodeChunks(
           AND ingest_route = 'v2'
           ${approvalFilterSql()}
           AND (metadata->>'node_id') = ANY($3::text[])
+          ${docClause}
           AND content_tsv @@ ${tsquery}
         ORDER BY rank DESC
         LIMIT $4`,
-      [tenantId, boundBm25Query(q), nodeIds, topK],
+      [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...docParams],
     );
     return res.rows;
   };
 
-  let rows = await runRetrieval(AND_TSQUERY);
-  if (rows.length === 0) {
-    rows = await runRetrieval(OR_TSQUERY);
-  }
+  // Exact-token lane: a technician question naming P042 / F004 / terminal 07
+  // must ALWAYS surface the chunk that contains that token verbatim, regardless
+  // of ts_rank. Unstemmed by construction (ILIKE on raw content) — closes the
+  // stemming/exact-token loss the bakeoff flagged, with no schema migration
+  // (doc-scoped candidate set is small, so the scan is cheap).
+  const expanded = expandIndustrialQuery(q);
+  const runExactLane = async (tokens: string[]) => {
+    if (tokens.length === 0) return [];
+    // Independent, clean param numbering: $1 tenant, $2 nodeIds, $3 patterns,
+    // $4 limit, $5 docIds (only when doc-scoped).
+    const patterns = tokens.map((t) => `%${t}%`);
+    const exactParams: unknown[] = [tenantId, nodeIds, patterns, POOL];
+    let exactDocClause = "";
+    if (allowedDocIds.length > 0) {
+      exactParams.push(allowedDocIds);
+      exactDocClause = "AND doc_id = ANY($5::uuid[])";
+    }
+    const res = await client.query(
+      `SELECT
+          content, doc_id::text AS doc_id, source_url, source_page, page_start,
+          section_path, metadata->>'filename' AS filename, verified,
+          0::float4 AS rank
+        FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND ingest_route = 'v2'
+          ${approvalFilterSql()}
+          AND (metadata->>'node_id') = ANY($2::text[])
+          ${exactDocClause}
+          AND content ILIKE ANY($3::text[])
+        LIMIT $4`,
+      exactParams,
+    );
+    return res.rows;
+  };
 
-  return rows.map((r: Record<string, unknown>) => ({
+  // Collect a pooled candidate set across: original AND (precision), each
+  // expanded variant OR (manufacturer-vocabulary recall), and the exact-token
+  // lane. De-dupe by (doc_id, page, content prefix) so a chunk counts once.
+  const pool: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  const add = (rs: Record<string, unknown>[]) => {
+    for (const r of rs) {
+      const key = `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pool.push(r);
+    }
+  };
+
+  add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
+  for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
+  add(await runExactLane(expanded.exactTokens));
+  // Last-resort recall: if precise + expanded + exact all found nothing, fall
+  // back to the original OR pass (a fully off-vocabulary conversational query).
+  if (pool.length === 0) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
+
+  // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank), then
+  // take topK. Preserves the ManualChunk shape the caller expects.
+  const reranked = rerankChunks(
+    expanded,
+    pool.map((r) => ({
+      content: String(r.content ?? ""),
+      rank: Number(r.rank ?? 0),
+      sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
+      docId: r.doc_id == null ? null : String(r.doc_id),
+      _row: r,
+    })),
+  ).slice(0, topK);
+
+  return reranked.map(({ _row: r }) => ({
     content: String(r.content ?? ""),
+    docId: r.doc_id == null ? null : String(r.doc_id),
     // Node attachments have no manufacturer/model — the filename is the citable title.
     manufacturer: "",
     modelNumber: "",
@@ -473,6 +569,38 @@ export async function retrieveNodeChunks(
     rank: Number(r.rank ?? 0),
     verified: r.verified === true,
   }));
+}
+
+/**
+ * System prompt for DOCUMENT-scoped chat (ARPK Phase 1a). The user explicitly
+ * selected one document, so the scope statement names the file, and the persona
+ * is deliberately domain-NEUTRAL: a doc-scoped chat may be grounded in a
+ * consumer product manual (the T2108 canary), where the industrial persona
+ * ("maintenance assistant for industrial equipment", "techs are on the floor")
+ * misframes answers. Grounding, [n]-citation, honest-refusal, and safety rules
+ * are kept verbatim in spirit from buildNodeSystemPrompt.
+ */
+export function buildDocScopedSystemPrompt(doc: {
+  filename: string;
+  nodeName: string;
+  unsPath: string | null;
+}): string {
+  return `You are MIRA, a document-grounded assistant built by FactoryLM.
+
+## Document in scope
+- Document: ${doc.filename}
+- Attached at namespace node: ${doc.nodeName}${doc.unsPath ? ` (${doc.unsPath})` : ""}
+
+The user selected this document. Every answer must be grounded in it.
+
+## Instructions
+- Answer using ONLY the documentation provided below — it is excerpted from the selected document.
+- Cite sources with [n] markers matching the numbered documentation blocks.
+- If the documentation does not cover the question, say so plainly — never guess at
+  specifications, procedures, error meanings, or safety steps.
+- Keep answers concise and actionable.
+- If the question involves electrical work, stored energy, or any hazardous procedure,
+  repeat the document's safety prerequisites before the steps and tell the user to follow them.`;
 }
 
 /**

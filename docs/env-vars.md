@@ -20,7 +20,7 @@ Slack production identity, verified 2026-07-19: production `SLACK_BOT_TOKEN`/`SL
 
 | `INFERENCE_BACKEND`  | mira-bots — `"cloud"` (cascade) or `"local"` |
 | `GROQ_API_KEY`       | mira-bots, mira-pipeline (Groq — first in cascade, fastest) |
-| `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
+| `GROQ_MODEL`         | mira-bots, mira-pipeline — default: openai/gpt-oss-120b |
 | `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: **empty since v3.162.2** (Groq removed all vision models 2026-07-18; image requests skip Groq). Set only if Groq re-adds a vision model. |
 | `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — second in cascade) |
 | `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: gpt-oss-120b |

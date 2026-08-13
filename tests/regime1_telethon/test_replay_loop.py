@@ -16,16 +16,15 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from pathlib import Path
-
 import pytest
 
-from tests.conftest import REPO_ROOT, load_golden_file, load_photo_b64
+from tests.conftest import REPO_ROOT, load_golden_file
 from tests.scoring.contains_check import score_case
 from tests.scoring.composite import CaseResult, build_case_result
 
 
 # ── Golden case loading ─────────────────────────────────────────────────────
+
 
 def _load_vision_cases() -> list[dict]:
     """Load manufactured-photo golden cases (with full ground truth)."""
@@ -76,10 +75,13 @@ _DRY_RUN_RESPONSES: dict[str, str] = {
 def _get_dry_run_response(case: dict) -> str:
     """Return a mock response for dry-run testing."""
     name = case.get("name", "")
-    return _DRY_RUN_RESPONSES.get(name, "Equipment identified. Check for common fault causes and inspect the system.")
+    return _DRY_RUN_RESPONSES.get(
+        name, "Equipment identified. Check for common fault causes and inspect the system."
+    )
 
 
 # ── HTTP fallback mode ──────────────────────────────────────────────────────
+
 
 async def _send_http(case: dict, base_url: str) -> tuple[str | None, float]:
     """Send photo via HTTP to mira-ingest and get response."""
@@ -109,6 +111,7 @@ async def _send_http(case: dict, base_url: str) -> tuple[str | None, float]:
 
 
 # ── Telethon live mode ──────────────────────────────────────────────────────
+
 
 async def _send_telethon(case: dict, bot_username: str, timeout: int) -> tuple[str | None, float]:
     """Send photo via Telethon to the actual bot and collect reply."""
@@ -157,6 +160,7 @@ async def _send_telethon(case: dict, bot_username: str, timeout: int) -> tuple[s
 
 # ── Test parametrization ────────────────────────────────────────────────────
 
+
 def _get_case_ids() -> list[str]:
     """Get case IDs for parametrization."""
     try:
@@ -177,10 +181,17 @@ class TestReplayLoop:
         self.timeout = telethon_timeout
         self.vision_cases = _load_vision_cases()
 
-    @pytest.mark.parametrize("case_index", range(5), ids=[
-        "ab_micro820_tag", "gs10_vfd_tag", "generic_cabinet_tag",
-        "bad_glare_tag", "cropped_tight_tag",
-    ])
+    @pytest.mark.parametrize(
+        "case_index",
+        range(5),
+        ids=[
+            "ab_micro820_tag",
+            "gs10_vfd_tag",
+            "generic_cabinet_tag",
+            "bad_glare_tag",
+            "cropped_tight_tag",
+        ],
+    )
     def test_vision_case(self, case_index):
         """Test a vision (manufactured photo) golden case."""
         if case_index >= len(self.vision_cases):
@@ -202,9 +213,7 @@ class TestReplayLoop:
 
         if self.mode == "http":
             base_url = os.getenv("MIRA_INGEST_URL", "http://localhost:8002")
-            return asyncio.get_event_loop().run_until_complete(
-                _send_http(case, base_url)
-            )
+            return asyncio.get_event_loop().run_until_complete(_send_http(case, base_url))
 
         if self.mode == "telethon":
             return asyncio.get_event_loop().run_until_complete(
@@ -231,6 +240,7 @@ class TestReplayLoopLive:
 
 # ── Regime runner (called by synthetic_eval.py) ─────────────────────────────
 
+
 async def regime1_runner(
     mode: str = "dry-run",
     bot_username: str = "@MIRABot",
@@ -245,8 +255,6 @@ async def regime1_runner(
     results: list[CaseResult] = []
 
     for case in cases:
-        t0 = time.monotonic()
-
         if mode == "dry-run":
             reply = _get_dry_run_response(case)
             elapsed = 1.0

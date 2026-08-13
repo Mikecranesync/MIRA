@@ -209,6 +209,46 @@ async def test_explicit_abandon_with_new_symptom_pivots(sv, caplog):
 
 
 @pytest.mark.asyncio
+async def test_idle_severance_also_clears_fault_carry(sv, caplog):
+    """Live campaign catch #4 (c1 t2_s42_000, 2026-08-07): after a PACK-claimed
+    turn (IDLE, no last_question), 'Actually forget that -- my conveyor keeps
+    stopping.' took the IDLE severance branch, which set the fresh flag but
+    left the F004 fault carry in uns_context -- and the reply answered the
+    dead fault. Both severance branches must clear the dead thread's fault."""
+    caplog.set_level("INFO", logger="mira-gsd")
+    chat = "idle-sever-fault"
+    state = {
+        "state": "IDLE",
+        "asset_identified": "Rockwell Automation, 525",
+        "exchange_count": 2,
+        "fault_category": "voltage",
+        "context": {
+            "history": [
+                {"role": "user", "content": "What does F004 mean on a PowerFlex 525?"},
+                {"role": "assistant", "content": "F004 = UnderVoltage."},
+            ],
+            "session_context": {"active_alarm": "F004"},
+            "uns_context": {
+                "manufacturer": "Rockwell Automation",
+                "model": "525",
+                "fault_code": "F004",
+                "confidence": 0.81,
+            },
+        },
+    }
+    sv._save_state(chat, state)
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, "Actually forget that — my conveyor keeps stopping.")
+    saved = sv._load_state(chat)
+    ctx = saved.get("context") or {}
+    assert "CTX_FRESH_THREAD" in caplog.text
+    assert (ctx.get("uns_context") or {}).get("fault_code") is None, (
+        "IDLE severance left the dead thread's fault carry in place"
+    )
+    assert (ctx.get("session_context") or {}).get("active_alarm") is None
+
+
+@pytest.mark.asyncio
 async def test_plural_asset_noun_pivots(sv, caplog):
     """Live Telethon regression 2026-08-07: 'one of our DRIVES keeps faulting'
     after an F004 thread was consumed as a continuation — the noun evidence
@@ -362,6 +402,132 @@ async def test_stale_flag_does_not_leak_to_next_turn(sv):
         # An answer-shaped turn: must NOT re-derive the flag.
         await sv.process(chat, "yes")
     assert not seen.get("flag"), "stale fresh_thread_turn leaked into an answer turn"
+
+
+# ── CTX-001d — the pivot must not depend on WHICH state holds the question ──
+#
+# Campaign finding t2:pivot_after_fault (issue #3160), STABLE_FAIL across every
+# seed observed in c1/c1r2/c1r3/c2/c3. CTX-001c gated the pivot on
+# ACTIVE_DIAGNOSTIC_STATES and the CTX-001b fresh-thread branch on
+# IDLE-with-no-pending-question, which leaves two reachable quadrants where a
+# pending question exists and NEITHER branch fires:
+#
+#   state                 last_question   covered by
+#   IDLE                  absent          CTX-001b fresh thread
+#   Q1/Q2/Q3/DIAG/FIX     present         CTX-001c pivot
+#   DIAGNOSIS_REVISION    present         NOTHING  ← self-critique parks here
+#   IDLE                  present         NOTHING  ← every RAG turn sets one
+#
+# Both holes are live: the low-groundedness self-critique parks the session in
+# DIAGNOSIS_REVISION (engine.py, "park in DIAGNOSIS_REVISION"), and a RAG turn
+# that leaves state IDLE still sets last_question — the c1r2 t2_005 transcript
+# carried F004 into the new conveyor topic from exactly that shape.
+
+
+def _parked_state(fsm_state: str, last_question: str | None):
+    """A dead CE10 thread parked in an arbitrary state."""
+    state = _dead_thread_state()
+    state["state"] = fsm_state
+    sc = state["context"]["session_context"]
+    if last_question is None:
+        sc.pop("last_question", None)
+    else:
+        sc["last_question"] = last_question
+    return state
+
+
+async def _run_parked_turn(sv, fsm_state, message, chat, caplog=None, last_question="..."):
+    if caplog is not None:
+        caplog.set_level("INFO", logger="mira-gsd")
+    sv._save_state(chat, _parked_state(fsm_state, last_question))
+    with patch("shared.engine.route_intent", new=AsyncMock(return_value=ROUTED)):
+        await sv.process(chat, message)
+    return sv._load_state(chat)
+
+
+@pytest.mark.asyncio
+async def test_pivot_fires_from_diagnosis_revision(sv, caplog):
+    """#3160: the self-critique clarifier parks the session in
+    DIAGNOSIS_REVISION with a pending question. 'Actually forget that — my
+    conveyor keeps stopping.' arriving there was consumed as an answer to the
+    dead CE10 thread, so the reply carried the dead fault forward."""
+    saved = await _run_parked_turn(
+        sv,
+        "DIAGNOSIS_REVISION",
+        "Actually forget that — my conveyor keeps stopping.",
+        chat="pivot-revision",
+        caplog=caplog,
+        last_question=(
+            "Before I can give you a confident diagnosis, could you share one more detail"
+        ),
+    )
+    assert "CTX_FRESH_THREAD_PIVOT" in caplog.text, (
+        "a pending question in DIAGNOSIS_REVISION must pivot like any other"
+    )
+    uns = (saved.get("context") or {}).get("uns_context") or {}
+    assert uns.get("fault_code") is None, "dead fault carried past the pivot"
+
+
+@pytest.mark.asyncio
+async def test_pivot_fires_from_idle_with_a_pending_question(sv, caplog):
+    """The second uncovered quadrant (c1r2 t2_005): a RAG turn can leave the
+    FSM in IDLE while still setting last_question. CTX-001b skips it (a
+    question is pending) and CTX-001c skipped it (IDLE is not an active
+    diagnostic state), so the new subject was consumed as an answer."""
+    saved = await _run_parked_turn(
+        sv,
+        "IDLE",
+        "Actually forget that — my conveyor keeps stopping.",
+        chat="pivot-idle-pending",
+        caplog=caplog,
+        last_question="Is the fault code still displayed?",
+    )
+    assert "CTX_FRESH_THREAD" in caplog.text, "IDLE with a pending question must still pivot"
+    uns = (saved.get("context") or {}).get("uns_context") or {}
+    assert uns.get("fault_code") is None, "dead fault carried past the pivot"
+
+
+@pytest.mark.asyncio
+async def test_answer_in_diagnosis_revision_does_not_pivot(sv, caplog):
+    """Negative control (CTX-002 preservation). Broadening the state predicate
+    must not make ANSWERS pivot: the clarifier's whole purpose is to collect
+    the fault code, and 'the code on the display is CE10' is an answer whose
+    only noun evidence is the carried fault token itself."""
+    saved = await _run_parked_turn(
+        sv,
+        "DIAGNOSIS_REVISION",
+        "the code on the display is CE10",
+        chat="revision-answer",
+        caplog=caplog,
+        last_question="what exact fault code is the equipment showing right now?",
+    )
+    assert "CTX_FRESH_THREAD_PIVOT" not in caplog.text, (
+        "an answer to the pending question must retain context"
+    )
+    uns = (saved.get("context") or {}).get("uns_context") or {}
+    assert uns.get("fault_code") == "CE10", "answering the clarifier must not sever the thread"
+
+
+@pytest.mark.asyncio
+async def test_uns_confirmation_gate_is_never_pivoted(sv, caplog):
+    """Negative control: AWAITING_UNS_CONFIRMATION is owned by the UNS
+    location-confirmation gate, which is non-negotiable
+    (.claude/rules/uns-confirmation-gate.md). Severing its pending question
+    from underneath it would strand the gate mid-confirmation, so it stays
+    exempt no matter how new the subject looks."""
+    saved = await _run_parked_turn(
+        sv,
+        "AWAITING_UNS_CONFIRMATION",
+        "Actually forget that — my conveyor keeps stopping.",
+        chat="pivot-uns-gate",
+        caplog=caplog,
+        last_question="I think you're on the GS10 at line 2 — is that right?",
+    )
+    assert "CTX_FRESH_THREAD_PIVOT" not in caplog.text, (
+        "the UNS confirmation gate owns its own turn — the pivot must not pre-empt it"
+    )
+    sc = ((saved.get("context") or {}).get("session_context")) or {}
+    assert sc.get("last_question"), "the gate's pending confirmation was severed"
 
 
 @pytest.mark.asyncio
