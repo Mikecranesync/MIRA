@@ -58,6 +58,7 @@ on `"gpt-oss" in model` (memory: `reference_gpt_oss_groq_migration_traps`).
 **P1 — reliability / velocity**
 - Staging-gate judge variance (#3195): FIXED — #3207 merged (medium effort + confirmation re-draw, 3/3 live gate passes); watch a few days of PR traffic to confirm the flap rate is gone.
 - CI critical path ~8.5 min/PR. #3208's `-n auto` attempt was REVERTED (#3211) — xdist workers hit a collection-time SQLite lock in `test_equipment_photo_memory.py` (race; first run passed). The ~2-min win is real but gated on per-worker DB isolation — issue #3212. License-cache win (~87s) retained. Other levers (job split, guard-job consolidation, merge queue re `strict: true`) = Mike's call.
+- **#3213 (found BY the fixed judge):** the engine's no-docs F004 reply intermittently carries a fabricated `[Source:]` citation (citation-compliance render-pass defect + the known F004 retrieval miss). The gate now fails honestly when the engine emits it — expect occasional legitimate staging-gate reds on unrelated PRs until fixed. True positive; do not re-weaken the judge.
 - `tests/eval` referential-spec over-abstention (F1) — owned by the notebook→copilot arc (#3201/#3202 follow-up).
 - Nightly eval-fixer loop bypasses branch protection when its checkout is stale — PR #3154 (open, green) fixes the cron pull; recommended merge.
 - DeepEval offline ±8-fixture variance (#3116) still causes advisory-check noise.
