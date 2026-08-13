@@ -176,3 +176,20 @@ select {
   text-align: center;
   font-size: 15px;
 }
+
+/* Dev-browser preview (web only, wide windows): center a phone-sized frame so
+   `npx vite` in a desktop browser shows the complete app. Never active in the
+   packaged native app (body.web-preview is added only off-native). */
+@media (min-width: 768px) {
+  body.web-preview { background: var(--fl-header); }
+  body.web-preview #root {
+    max-width: 412px;
+    height: 915px;
+    max-height: 96vh;
+    margin: 2vh auto 0;
+    overflow: hidden;
+    border-radius: 24px;
+    border: 1px solid var(--fl-line-strong);
+    background: var(--fl-bg);
+  }
+}
