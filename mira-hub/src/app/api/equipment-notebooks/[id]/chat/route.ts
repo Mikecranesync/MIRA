@@ -34,9 +34,11 @@ import {
 import type {
   EvidenceCitation,
   NotebookContentFrame,
+  NotebookFollowupsFrame,
   NotebookSourcesFrame,
   NotebookStatusFrame,
 } from "@/lib/notebook-chat-types";
+import { buildFollowupSuggestions } from "@/lib/notebook-followups";
 
 export const dynamic = "force-dynamic";
 
@@ -502,6 +504,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               ? { kind: "status", status: "error", message: "Internal chat error — see server logs." }
               : { kind: "status", status: "error", message: "No answer provider available." };
       controller.enqueue(enc.encode(sse(statusFrame)));
+
+      // Deterministic follow-up chips (answered turns only) — derived from the
+      // coverage plan + proven facet evidence; no LLM, no new retrieval.
+      if (answerStatus === "answered") {
+        const provenFacets = plan.facets.length
+          ? [...facetEvidencePages(chunks, plan.facets)].filter(([, p]) => p.length).map(([f]) => f)
+          : [];
+        const suggestions = buildFollowupSuggestions({
+          plan,
+          provenFacets,
+          answer: answerText,
+          status: answerStatus,
+        });
+        if (suggestions.length) {
+          const followupsFrame: NotebookFollowupsFrame = { kind: "followups", suggestions };
+          controller.enqueue(enc.encode(sse(followupsFrame)));
+        }
+      }
+
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
 

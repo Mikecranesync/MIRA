@@ -36,12 +36,24 @@ export type NotebookStatusFrame = {
   message?: string;
 };
 
-export type NotebookChatFrame = NotebookSourcesFrame | NotebookContentFrame | NotebookStatusFrame;
+/** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
+ *  `status` on answered turns only; each string is a complete question the
+ *  client may send verbatim as the next user turn. */
+export type NotebookFollowupsFrame = { kind: "followups"; suggestions: string[] };
+
+export type NotebookChatFrame =
+  | NotebookSourcesFrame
+  | NotebookContentFrame
+  | NotebookStatusFrame
+  | NotebookFollowupsFrame;
 
 export function parseFrame(data: string): NotebookChatFrame | null {
   try {
     const obj = JSON.parse(data);
-    if (obj && (obj.kind === "sources" || obj.kind === "content" || obj.kind === "status")) {
+    if (
+      obj &&
+      (obj.kind === "sources" || obj.kind === "content" || obj.kind === "status" || obj.kind === "followups")
+    ) {
       return obj as NotebookChatFrame;
     }
     return null;
