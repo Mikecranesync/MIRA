@@ -512,6 +512,12 @@ def strip_conflicting_citations(
     out = _prune_sources_block(out, [_tag_label(t).strip() for t in conflicting_tags])
     out = re.sub(r"[ \t]{2,}", " ", out).rstrip()
 
+    if reason == "admission_conflict":
+        # #3213 — the reply itself already says "I don't have documentation";
+        # appending another honesty note would be redundant. The strip alone
+        # resolves the contradiction.
+        return out
+
     if reason == "ineligible":
         out += (
             "\n\n_(Note: I removed a citation that pointed to a photo or session "
@@ -551,6 +557,28 @@ _TECHNICAL_REPLY_RE = re.compile(
 )
 
 _TECHNICAL_FSM_STATES = frozenset({"DIAGNOSIS", "FIX_STEP"})
+
+# #3213 — the canonical "I have nothing for this equipment" admissions. A reply
+# built around one of these must never simultaneously present [Source:]
+# evidence: the staging judge correctly hard-failed such a reply as a
+# hallucinated source (run 31662003031, oem-model-fault-powerflex-f004, 4/4
+# independent draws). Deliberately scoped to the WHOLE-EQUIPMENT admissions the
+# system itself defines (rag_worker rule 16, the H4 stock admission, the kiosk
+# direct-answer phrasing) — a partial admission about one aspect ("I don't have
+# documentation for the brake circuit, but…") must keep its legitimate
+# citations, so free-form phrasings are intentionally NOT matched.
+_NO_DOCS_ADMISSION_RE = re.compile(
+    r"i\s+(?:don'?t|do\s+not)\s+have\s+(?:any\s+)?(?:specific\s+)?documentation\s+"
+    r"(?:for\s+(?:this|that)\s+equipment"
+    r"|indexed\s+for\s+this"
+    r"|for\s+that\s+in\s+my\s+records)",
+    re.IGNORECASE,
+)
+
+
+def is_no_docs_admission(reply: str) -> bool:
+    """True when the reply contains a canonical whole-equipment no-docs admission."""
+    return bool(_NO_DOCS_ADMISSION_RE.search(reply or ""))
 
 
 def check_citation_compliance(
@@ -664,6 +692,36 @@ def check_citation_compliance(
                 base, ineligible_tags, None, "ineligible"
             )
 
+    # #3213 — admission conflict: a reply that says it has no documentation for
+    # this equipment must not present [Source:] evidence in the same breath.
+    # Whatever tag it carries (model-copied from an irrelevant retrieved chunk,
+    # or surviving the passes above) is stripped wholesale — the admission wins.
+    if present and is_no_docs_admission(reply or ""):
+        logger.warning(
+            "CITATION_ADMISSION_CONFLICT chat_id=%s tags=%d — no-docs admission "
+            "carried a [Source:] citation; stripping (issue #3213)",
+            chat_id,
+            len(tags),
+        )
+        if enforce:
+            base = result["sanitized_reply"] or (reply or "")
+            remaining = CITATION_TAG_RE.findall(base)
+            if remaining:
+                result["sanitized_reply"] = strip_conflicting_citations(
+                    base, remaining, None, "admission_conflict"
+                )
+
+    # Labels removed by ANY enforcement strip this turn — threaded to the
+    # salvage rewrite as disallowed_labels so a just-stripped citation cannot
+    # be re-inserted (the strip-then-reinsert loop observed live on
+    # photo-less-ocr-claim in the same #3213 staging run).
+    if enforce and result["sanitized_reply"] is not None:
+        before = _emitted_labels(reply or "")
+        after = _emitted_labels(result["sanitized_reply"])
+        result["stripped_labels"] = sorted(before - after)
+    else:
+        result["stripped_labels"] = []
+
     return result
 
 
@@ -759,6 +817,7 @@ async def enforce_citation_via_rewrite(
     fsm_state: str = "",
     chat_id: str = "",
     llm_call: Callable[[list[dict]], Awaitable[str]],
+    disallowed_labels: set[str] | None = None,
 ) -> str:
     """Salvage an uncited-but-grounded technical reply via one insertion-only pass.
 
@@ -772,11 +831,23 @@ async def enforce_citation_via_rewrite(
     appends its KB-gap admission downstream. Never raises: a failing/​erroring
     ``llm_call`` falls back to the original reply (fail-open).
     """
+    # #3213 — an admission of having no documentation is NOT an "uncited-but-
+    # grounded technical reply"; stamping a retrieved chunk's label onto it
+    # manufactures evidence the reply itself disclaims. Never salvage it.
+    if is_no_docs_admission(reply):
+        logger.info("CITATION_REWRITE_SKIP_ADMISSION chat_id=%s", chat_id)
+        return reply
+
     compliance = check_citation_compliance(reply, kb_status, fsm_state=fsm_state, chat_id=chat_id)
     if not compliance["required"] or compliance["present"]:
         return reply
 
     labels = valid_source_labels(chunks)
+    # #3213 — a label the relevance/eligibility/admission gates stripped THIS
+    # turn was already judged unpresentable; re-inserting it here silently
+    # undoes the strip (observed live: photo-less-ocr-claim, run 31662003031).
+    if disallowed_labels:
+        labels -= set(disallowed_labels)
     if not labels:
         return reply  # nothing legitimate to cite — leave it to the H4 admission
 
