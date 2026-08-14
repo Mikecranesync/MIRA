@@ -21,8 +21,10 @@ from starlette.testclient import TestClient
 
 import relay_server
 from tag_ingest import (
+    VALID_QUALITY,
     IngestError,
     TagEventRow,
+    _derive_freshness,
     ingest_batch,
     normalize_tag_path,
 )
@@ -369,3 +371,69 @@ def test_ingest_batch_without_session_falls_back_to_direct_calls():
     res = ingest_batch(_batch(), "t-1", store)
     assert res.accepted == 1
     assert len(store.events) == 1
+
+
+# --- freshness_status derivation (#3161 / ADR-0034 CV-101 liveness) -----------
+#
+# `freshness_status` used to be the constant `"simulated" if simulated else "live"`,
+# so a reading the COLLECTOR had already marked untrustworthy was still cached as
+# `live`. Measured on prod 2026-08-14: all 12 cv_101 tags read
+# latest_quality='bad' AND freshness_status='live', refreshed 1.3 s earlier, while
+# the newest real observation was 11 d 22 h old.
+
+
+def test_bad_quality_is_never_cached_as_live():
+    """The #3161 defect, pinned. Ignition said 'bad'; we said 'live'."""
+    assert _derive_freshness(False, "bad") == "stale"
+
+
+def test_stale_quality_is_never_cached_as_live():
+    assert _derive_freshness(False, "stale") == "stale"
+
+
+def test_good_quality_stays_live():
+    assert _derive_freshness(False, "good") == "live"
+
+
+def test_uncertain_stays_live():
+    """OPC 'uncertain' means imprecise-but-current, not disconnected."""
+    assert _derive_freshness(False, "uncertain") == "live"
+
+
+def test_simulated_wins_over_quality():
+    """A simulated reading is labelled 'simulated' whatever its quality —
+    real-vs-simulated provenance must not be lost to a staleness rule."""
+    for q in ("good", "bad", "stale", "uncertain"):
+        assert _derive_freshness(True, q) == "simulated"
+
+
+def test_quality_comparison_is_case_insensitive_and_null_safe():
+    assert _derive_freshness(False, "BAD") == "stale"
+    assert _derive_freshness(False, "") == "live"
+    assert _derive_freshness(False, None) == "live"  # type: ignore[arg-type]
+
+
+def test_freshness_does_NOT_age_client_timestamps():
+    """Guards the 2026-07-04 regression this fix must not reintroduce.
+
+    Ageing the client-supplied event_timestamp is the obvious alternative and it
+    already backfired: Ignition report-by-exception freezes a tag's timestamp
+    while the collector keeps posting, which turned a healthy 2 s stream into
+    permanently-stale cards. So the signature takes NO timestamp at all — a
+    good-quality reading is live regardless of how old its observation looks.
+    """
+    import inspect
+
+    params = set(inspect.signature(_derive_freshness).parameters)
+    assert params == {"simulated", "quality"}, (
+        "freshness must derive from quality only — adding a timestamp parameter "
+        "reintroduces the 2026-07-04 report-by-exception regression"
+    )
+
+
+def test_every_valid_quality_maps_to_a_valid_freshness():
+    """No quality band may produce a freshness value the schema rejects."""
+    allowed = {"live", "stale", "simulated"}
+    for q in VALID_QUALITY:
+        assert _derive_freshness(False, q) in allowed
+        assert _derive_freshness(True, q) in allowed

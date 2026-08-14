@@ -433,6 +433,127 @@ jobs:
            ORDER BY started_at DESC LIMIT 5;
           SQL
 
+      - name: CV-101 telemetry liveness probe (ADR-0034 / #3161) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. Answers ONE question: is the cv_101 / "Discharge Conveyor"
+          # telemetry genuinely live, or is a producer replaying a frozen snapshot?
+          #
+          # The discriminator is built into the 033 schema: event_timestamp is
+          # OBSERVED-at (client/source clock) and ingested_at is RECEIVED-at
+          # (server NOW). They separate the two cases cleanly:
+          #
+          #   LIVE   -> distinct(event_timestamp) tracks row count; the observed
+          #             span matches the ingest span; lag is small and bounded.
+          #   REPLAY -> many rows but FEW distinct event_timestamps; observed span
+          #             collapses toward zero while the ingest span keeps growing;
+          #             lag grows without bound (it is just wall-clock since the
+          #             snapshot was taken).
+          #
+          # Row counts alone cannot tell these apart, which is why #3161's
+          # "845k rows/24h" is not by itself evidence either way. Read section B.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === A. server clock (all ages below are relative to this) ===
+          SELECT now() AS server_now;
+
+          \echo
+          \echo === B. THE VERDICT TABLE: replay signature per source, last 24h of INGESTS ===
+          \echo 'live_ratio = distinct observed timestamps / rows. ~1.0 = live, ~0.0 = replay.'
+          \echo 'observed_span collapsing to 00:00:00 while ingest_span ~24h IS the replay signature.'
+          SELECT source_system,
+                 coalesce(source_connection_id,'(null)') AS source_connection_id,
+                 count(*)                                   AS rows_24h,
+                 count(DISTINCT event_timestamp)            AS distinct_observed_ts,
+                 round(count(DISTINCT event_timestamp)::numeric
+                       / greatest(count(*),1), 4)           AS live_ratio,
+                 max(event_timestamp) - min(event_timestamp) AS observed_span,
+                 max(ingested_at)     - min(ingested_at)     AS ingest_span,
+                 max(event_timestamp)                        AS newest_observed,
+                 now() - max(event_timestamp)                AS newest_observed_age,
+                 max(ingested_at)                            AS newest_ingest,
+                 now() - max(ingested_at)                    AS newest_ingest_age
+            FROM tag_events
+           WHERE ingested_at > now() - interval '24 hours'
+           GROUP BY 1,2
+           ORDER BY rows_24h DESC;
+
+          \echo
+          \echo === C. is ANYTHING arriving right now? (ingest recency buckets) ===
+          SELECT 'last 5 min'  AS window, count(*) FROM tag_events WHERE ingested_at > now() - interval '5 minutes'
+          UNION ALL SELECT 'last 15 min', count(*) FROM tag_events WHERE ingested_at > now() - interval '15 minutes'
+          UNION ALL SELECT 'last 60 min', count(*) FROM tag_events WHERE ingested_at > now() - interval '60 minutes'
+          UNION ALL SELECT 'last 24 h',   count(*) FROM tag_events WHERE ingested_at > now() - interval '24 hours';
+
+          \echo
+          \echo === D. cv101-bench-gw specifically (the #3161 source) ===
+          SELECT count(*)                        AS rows_total,
+                 count(DISTINCT event_timestamp) AS distinct_observed_ts_all_time,
+                 min(event_timestamp)            AS oldest_observed,
+                 max(event_timestamp)            AS newest_observed,
+                 now() - max(event_timestamp)    AS newest_observed_age,
+                 max(ingested_at)                AS newest_ingest,
+                 now() - max(ingested_at)        AS newest_ingest_age
+            FROM tag_events
+           WHERE source_connection_id = 'cv101-bench-gw';
+
+          \echo
+          \echo === E. quality + simulated mix for that source (last 24h of ingests) ===
+          SELECT quality, simulated, count(*) AS n
+            FROM tag_events
+           WHERE source_connection_id = 'cv101-bench-gw'
+             AND ingested_at > now() - interval '24 hours'
+           GROUP BY 1,2 ORDER BY n DESC;
+
+          \echo
+          \echo === F. VALUE CHURN: are the readings actually changing? (last 24h) ===
+          \echo 'distinct_values = 1 on a moving conveyor is a replay/stuck tell.'
+          SELECT tag_path,
+                 count(*)                AS samples,
+                 count(DISTINCT value)   AS distinct_values,
+                 count(DISTINCT event_timestamp) AS distinct_observed_ts,
+                 min(value)              AS min_value,
+                 max(value)              AS max_value
+            FROM tag_events
+           WHERE source_connection_id = 'cv101-bench-gw'
+             AND ingested_at > now() - interval '24 hours'
+           GROUP BY 1 ORDER BY samples DESC LIMIT 20;
+
+          \echo
+          \echo === G. any OTHER source carrying cv_101 / discharge-conveyor identity? (ADR-0034 alias check) ===
+          SELECT source_system,
+                 coalesce(source_connection_id,'(null)') AS source_connection_id,
+                 coalesce(uns_path::text,'(null)')       AS uns_path,
+                 count(*) AS n,
+                 max(event_timestamp) AS newest_observed,
+                 now() - max(event_timestamp) AS newest_observed_age
+            FROM tag_events
+           WHERE uns_path::text ILIKE '%cv_101%'
+              OR uns_path::text ILIKE '%cv101%'
+              OR uns_path::text ILIKE '%conveyor%'
+              OR uns_path::text ILIKE '%cv200%'
+              OR tag_path ILIKE '%cv_101%'
+              OR tag_path ILIKE '%cv101%'
+           GROUP BY 1,2,3 ORDER BY n DESC LIMIT 20;
+
+          \echo
+          \echo === H. what live_signal_cache CLAIMS vs how old the observation really is ===
+          \echo 'freshness_status=live while observed_age is days IS the #3161 defect.'
+          SELECT plc_tag,
+                 coalesce(uns_path::text,'(null)') AS uns_path,
+                 latest_quality,
+                 freshness_status,
+                 simulated,
+                 source_system,
+                 last_seen_at,
+                 updated_at,
+                 now() - updated_at AS updated_age
+            FROM live_signal_cache
+           ORDER BY updated_at DESC NULLS LAST
+           LIMIT 15;
+          SQL
+
       - name: KB-growth feeder inventory (manual_cache un-ingested) — READ-ONLY
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
