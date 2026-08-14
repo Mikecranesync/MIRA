@@ -556,10 +556,12 @@ function AddSourcesSheet({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const [mode, setMode] = useState<"menu" | "workspace">("menu");
+  const [mode, setMode] = useState<"menu" | "workspace" | "paste">("menu");
   const [docs, setDocs] = useState<Loadable<WorkspaceDoc[]> | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pasteTitle, setPasteTitle] = useState("");
+  const [pasteText, setPasteText] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const uploadPdf = async (file: File | null) => {
@@ -607,12 +609,79 @@ function AddSourcesSheet({
             >
               🗂 From this workspace
             </button>
+            <button className="sheet-option" onClick={() => setMode("paste")}>
+              📋 Paste text (error notes, nameplate data…)
+            </button>
             <div className="meta" style={{ margin: "2px 0 10px" }}>
-              Website, copied text, and photo sources are coming soon.
+              Website and photo sources are coming soon.
             </div>
             {note && <div className="meta">{note}</div>}
             <button style={{ marginTop: 6 }} onClick={onClose}>
               Done
+            </button>
+          </>
+        )}
+        {mode === "paste" && (
+          <>
+            <h3>Paste text</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              Becomes a grounded, citable source — same pipeline as an uploaded
+              document (private to your workspace).
+            </div>
+            <label>Name (optional)</label>
+            <input
+              value={pasteTitle}
+              placeholder="e.g. Fault notes from the floor"
+              onChange={(e) => setPasteTitle(e.target.value)}
+            />
+            <label>Text</label>
+            <textarea
+              value={pasteText}
+              rows={7}
+              placeholder="Paste the error text, nameplate data, or technician note…"
+              onChange={(e) => setPasteText(e.target.value)}
+            />
+            <button
+              className="btn-primary"
+              style={{ marginTop: 10 }}
+              disabled={busy || !pasteText.trim()}
+              onClick={async () => {
+                // A pasted note IS a text file — reuse the ONE upload pipeline
+                // (writeTextChunksForNode downstream), no paste-specific fork.
+                const base =
+                  pasteTitle.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") ||
+                  "pasted-note";
+                const file = new File([pasteText], `${base}.txt`, { type: "text/plain" });
+                setBusy(true);
+                setNote(null);
+                try {
+                  const r = await uploadSourceToNotebook(notebook, file);
+                  if (r.attached) {
+                    setNote(r.duplicate ? "Already in your workspace — attached here." : "Note added as a source.");
+                    setPasteText("");
+                    setPasteTitle("");
+                    onChanged();
+                    setMode("menu");
+                  } else {
+                    setNote(r.warning);
+                  }
+                } catch (e) {
+                  setNote(e instanceof Error ? e.message : "Couldn't save the note — try again.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? "Saving…" : "Add as source"}
+            </button>
+            {!pasteText.trim() && (
+              <div className="meta" style={{ marginTop: 6 }}>
+                To add: paste some text.
+              </div>
+            )}
+            {note && <div className="meta">{note}</div>}
+            <button style={{ marginTop: 6 }} onClick={() => setMode("menu")}>
+              ← Back
             </button>
           </>
         )}

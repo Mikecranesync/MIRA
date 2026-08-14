@@ -163,6 +163,18 @@ select {
   color: var(--fl-ink);
 }
 
+textarea {
+  width: 100%;
+  border: 1px solid var(--fl-line);
+  border-radius: var(--fl-radius);
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--fl-surface);
+  color: var(--fl-ink);
+  resize: vertical;
+}
+
 /* Phase 4 — QR scanner (tokens only) */
 .scanbox {
   position: relative;
