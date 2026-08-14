@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
+import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { findDuplicateUpload } from "@/lib/uploads";
 import pool from "@/lib/db";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
@@ -219,6 +219,12 @@ export async function POST(
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const isPdf = mimeRaw === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  // Plain text is indexable too (copied-text source door): the bytes ARE the
+  // text — no extraction, single-page chunking via writeTextChunksForNode.
+  const isText =
+    mimeRaw.startsWith("text/plain") ||
+    file.name.toLowerCase().endsWith(".txt") ||
+    file.name.toLowerCase().endsWith(".md");
 
   try {
     // Validate the node belongs to the tenant + read its UNS path.
@@ -274,11 +280,12 @@ export async function POST(
       return ins.rows[0].id;
     });
 
-    // Indexable docs (PDF) → mira-ingest-v2 path: chunk into knowledge_entries,
-    // attached to this node (folder = brain). Re-readable + citable via node chat.
-    if (isPdf) {
+    // Indexable docs (PDF + plain text) → mira-ingest-v2 path: chunk into
+    // knowledge_entries attached to this node. Re-readable + citable via chat.
+    if (isPdf || isText) {
       try {
-        const { uploadId, chunkCount } = await ingestPdfToNode({
+        const ingest = isPdf ? ingestPdfToNode : ingestTextToNode;
+        const { uploadId, chunkCount } = await ingest({
           tenantId: ctx.tenantId,
           nodeId: id,
           unsPath: node.uns_path,

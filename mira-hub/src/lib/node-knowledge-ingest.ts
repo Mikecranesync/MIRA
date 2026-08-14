@@ -391,6 +391,72 @@ export async function writeTextChunksForNode(opts: {
  * extracts + chunks the text, and writes per-chunk knowledge_entries rows.
  * Returns the upload id + chunk count. Throws (and marks the upload failed) on error.
  */
+/**
+ * Ingest a plain-text buffer attached to a namespace node (the copied-text /
+ * technician-note source door, #3241 follow-through). Identical lifecycle to
+ * ingestPdfToNode — createUpload → chunk rows → parsed/failed status → edge
+ * proposal — but the bytes ARE the text, so writeTextChunksForNode decodes and
+ * chunks as a single page (is_private=true, dedup, embed-on-write downstream).
+ */
+export async function ingestTextToNode(opts: {
+  tenantId: string;
+  nodeId: string;
+  unsPath: string | null;
+  filename: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  buffer: Buffer;
+  contentSha256?: string | null;
+}): Promise<NodeIngestResult> {
+  const { tenantId, nodeId, unsPath, filename, mimeType, sizeBytes, buffer } =
+    opts;
+
+  const upload = await createUpload({
+    tenantId,
+    provider: "local",
+    kind: "document",
+    filename,
+    mimeType,
+    sizeBytes,
+    unsPath,
+    kgEntityId: nodeId,
+    ingestRoute: "v2",
+    initialStatus: "parsing",
+    contentSha256: opts.contentSha256 ?? null,
+  });
+
+  try {
+    const chunkCount = await writeTextChunksForNode({
+      tenantId,
+      uploadId: upload.id,
+      nodeId,
+      unsPath,
+      filename,
+      buffer,
+    });
+    await updateUploadStatus(upload.id, tenantId, "parsed", null, {
+      kbChunkCount: chunkCount,
+    });
+    void proposeDocumentEdgesForNode({
+      tenantId,
+      uploadId: upload.id,
+      nodeId,
+      unsPath,
+      filename,
+      chunkCount,
+    });
+    return { uploadId: upload.id, chunkCount };
+  } catch (err) {
+    await updateUploadStatus(
+      upload.id,
+      tenantId,
+      "failed",
+      (err as Error).message,
+    );
+    throw err;
+  }
+}
+
 export async function ingestPdfToNode(opts: {
   tenantId: string;
   nodeId: string;
