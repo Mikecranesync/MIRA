@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FactoryLM</string>
+    <string name="title_activity_main">FactoryLM</string>
+    <string name="package_name">com.factorylm.mira</string>
+    <string name="custom_url_scheme">com.factorylm.mira</string>
+</resources>

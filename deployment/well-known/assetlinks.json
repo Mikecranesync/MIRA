@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.factorylm.mira",
+      "sha256_cert_fingerprints": [
+        "67:71:B2:30:82:E3:34:60:50:47:7F:B3:3F:2A:14:93:07:4F:39:83:55:D9:E0:8B:05:73:62:1D:E5:7E:35:4D"
+      ]
+    }
+  }
+]

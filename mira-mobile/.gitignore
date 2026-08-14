@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.log
+
+# Android build outputs + local machine config (never commit signing/SDK paths)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/release/
+android/app/*.keystore
+android/capacitor-cordova-android-plugins/build/
+
+# iOS build outputs / pods
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/

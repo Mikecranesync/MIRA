@@ -1,0 +1,175 @@
+/* ============================================================================
+   FactoryLM — Design Tokens
+   Drop-in CSS custom properties. Adapted from NotebookLM's live token system
+   (Angular Material / MD3), rebranded for FactoryLM (industrial).
+   Supports light & dark via prefers-color-scheme + a manual [data-theme] override.
+   Fonts: Inter (UI/body), Inter Display or Space Grotesk (headings),
+          JetBrains Mono (error codes / part numbers / specs / telemetry).
+   ============================================================================ */
+
+:root {
+  /* ---- Brand ---- */
+  --flm-primary:            #1558d6;   /* trust blue: actions, links, active   */
+  --flm-on-primary:         #ffffff;
+  --flm-primary-hover:      #0f47b0;
+  --flm-accent:             #ff7a00;   /* safety amber: high-vis CTAs/highlight */
+  --flm-on-accent:          #1a1200;
+
+  /* ---- Surfaces & text ---- */
+  --flm-surface:            #ffffff;
+  --flm-surface-container:  #f2f5f9;
+  --flm-surface-landing:    #ffffff;
+  --flm-on-surface:         #1a1c1e;   /* body text            */
+  --flm-on-surface-muted:   #5e6265;   /* secondary text       */
+  --flm-outline:            #d3d8df;   /* borders / dividers    */
+  --flm-outline-strong:     #b7bec7;
+
+  /* ---- Primary (black pill) button — matches NotebookLM ---- */
+  --flm-btn-primary-bg:     #101317;
+  --flm-btn-primary-fg:     #ffffff;
+
+  /* ---- Equipment-state semantics ---- */
+  --flm-status-ok:          #1c8a4d;   /* running / healthy    */
+  --flm-status-warn:        #c47f00;   /* degraded / watch     */
+  --flm-status-fault:       #c0261e;   /* fault / stopped      */
+  --flm-error:              #c0261e;
+
+  /* ---- Category tile covers (workspace cards, by equipment family) ---- */
+  --flm-tile-blue:          #e7eefc;
+  --flm-tile-green:         #eafaf0;
+  --flm-tile-amber:         #fff3e6;
+  --flm-tile-violet:        #f1eefc;
+  --flm-tile-on:            #1a1c1e;
+
+  /* ---- Citation & safety ---- */
+  --flm-citation-bg:        #e7eefc;
+  --flm-citation-fg:        #1558d6;
+  --flm-safety-bg:          #fff3e6;
+  --flm-safety-border:      #ff7a00;
+  --flm-safety-fg:          #7a3b00;
+
+  /* ---- Typography ---- */
+  --flm-font-ui:      "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --flm-font-display: "Inter Display", "Space Grotesk", "Inter", sans-serif;
+  --flm-font-mono:    "JetBrains Mono", "Roboto Mono", ui-monospace, monospace;
+
+  --flm-display:  400 28px/32px var(--flm-font-display);
+  --flm-headline: 400 24px/32px var(--flm-font-display);
+  --flm-title:    500 18px/24px var(--flm-font-ui);
+  --flm-body:     400 16px/24px var(--flm-font-ui);
+  --flm-label:    500 14px/20px var(--flm-font-ui);
+  --flm-mono:     400 14px/20px var(--flm-font-mono);
+
+  /* ---- Radii (NotebookLM: card 16 / input 12 / button pill) ---- */
+  --flm-radius-card:   16px;
+  --flm-radius-input:  12px;
+  --flm-radius-pill:   100px;
+
+  /* ---- Spacing scale ---- */
+  --flm-space-1: 4px;  --flm-space-2: 8px;  --flm-space-3: 12px;
+  --flm-space-4: 16px; --flm-space-6: 24px; --flm-space-8: 32px;
+
+  /* ---- Elevation (subtle; prefer borders over heavy shadow) ---- */
+  --flm-shadow-1: 0 1px 2px rgba(16,19,23,.06), 0 1px 3px rgba(16,19,23,.04);
+  --flm-shadow-2: 0 4px 12px rgba(16,19,23,.10);
+}
+
+/* ---------- Dark theme ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --flm-primary:            #a9c7ff;
+    --flm-on-primary:         #08152e;
+    --flm-primary-hover:      #c2d6ff;
+    --flm-accent:             #ffb861;
+    --flm-on-accent:          #241500;
+
+    --flm-surface:            #1a1d21;
+    --flm-surface-container:  #22262b;
+    --flm-surface-landing:    #1a1d21;
+    --flm-on-surface:         #e3e3e6;
+    --flm-on-surface-muted:   #a8abb0;
+    --flm-outline:            #3a3d42;
+    --flm-outline-strong:     #4c5057;
+
+    --flm-btn-primary-bg:     #f2f2f2;
+    --flm-btn-primary-fg:     #101317;
+
+    --flm-status-ok:          #7fe0a6;
+    --flm-status-warn:        #ffcf70;
+    --flm-status-fault:       #ff9b93;
+    --flm-error:              #ff9b93;
+
+    --flm-tile-blue:          #22304d;
+    --flm-tile-green:         #1e3b2b;
+    --flm-tile-amber:         #3a2b17;
+    --flm-tile-violet:        #2c2743;
+    --flm-tile-on:            #e3e3e6;
+
+    --flm-citation-bg:        #22304d;
+    --flm-citation-fg:        #a9c7ff;
+    --flm-safety-bg:          #3a2b17;
+    --flm-safety-border:      #ffb861;
+    --flm-safety-fg:          #ffcf9e;
+  }
+}
+
+/* Manual override: <html data-theme="dark"> */
+:root[data-theme="dark"] {
+  --flm-primary:#a9c7ff; --flm-on-primary:#08152e; --flm-accent:#ffb861;
+  --flm-surface:#1a1d21; --flm-surface-container:#22262b; --flm-on-surface:#e3e3e6;
+  --flm-on-surface-muted:#a8abb0; --flm-outline:#3a3d42;
+  --flm-btn-primary-bg:#f2f2f2; --flm-btn-primary-fg:#101317;
+  --flm-status-ok:#7fe0a6; --flm-status-warn:#ffcf70; --flm-status-fault:#ff9b93;
+  --flm-tile-blue:#22304d; --flm-tile-green:#1e3b2b; --flm-tile-amber:#3a2b17; --flm-tile-violet:#2c2743;
+  --flm-citation-bg:#22304d; --flm-citation-fg:#a9c7ff;
+  --flm-safety-bg:#3a2b17; --flm-safety-border:#ffb861; --flm-safety-fg:#ffcf9e;
+}
+
+/* ---------- Example primitives (reference; adapt to your component lib) ---------- */
+.flm-btn-primary {
+  background: var(--flm-btn-primary-bg); color: var(--flm-btn-primary-fg);
+  border: none; border-radius: var(--flm-radius-pill);
+  font: var(--flm-label); padding: 0 24px; height: 40px; cursor: pointer;
+}
+.flm-card {
+  background: var(--flm-surface); border: 1px solid var(--flm-outline);
+  border-radius: var(--flm-radius-card); box-shadow: var(--flm-shadow-1);
+}
+.flm-citation-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin: 0 2px;
+  background: var(--flm-citation-bg); color: var(--flm-citation-fg);
+  border-radius: var(--flm-radius-pill); font: var(--flm-mono); cursor: pointer;
+}
+.flm-safety-banner {
+  background: var(--flm-safety-bg); color: var(--flm-safety-fg);
+  border: 1px solid var(--flm-safety-border); border-left-width: 4px;
+  border-radius: var(--flm-radius-input); padding: var(--flm-space-3) var(--flm-space-4);
+  font: var(--flm-label);
+}
+.flm-mono { font: var(--flm-mono); }  /* error codes, part numbers, torque specs */
+
+/* ============================================================================
+   Compatibility alias layer (mobile app) — the pre-v2 --fl-* names used by
+   existing screens, resolved FROM the --flm-* system above so there is ONE
+   source of values and dark mode flips everything. New code uses --flm-*.
+   ============================================================================ */
+:root {
+  --fl-bg:          var(--flm-surface);            /* page background        */
+  --fl-surface:     var(--flm-surface-container);  /* cards / inputs         */
+  --fl-header:      var(--flm-surface);            /* top bar (MD3: surface) */
+  --fl-header-ink:  var(--flm-on-surface);
+  --fl-header-muted:var(--flm-on-surface-muted);
+  --fl-ink:         var(--flm-on-surface);
+  --fl-ink-muted:   var(--flm-on-surface-muted);
+  --fl-line:        var(--flm-outline);
+  --fl-line-strong: var(--flm-outline-strong);
+  --fl-accent:      var(--flm-primary);
+  --fl-green:       var(--flm-status-ok);
+  --fl-amber:       var(--flm-status-warn);
+  --fl-red:         var(--flm-status-fault);
+  --fl-radius:      var(--flm-radius-input);
+  /* Camera viewport is dark in every theme; scrim sits over live video. */
+  --fl-camera-bg:   #101317;
+  --fl-scrim:       rgba(16, 19, 23, 0.72);
+}
