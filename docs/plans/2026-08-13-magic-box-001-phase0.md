@@ -1,7 +1,8 @@
 # Magic Box #001 — Phase 0 Reconnaissance
 
 **PRD:** MIRA Edge / Magic Box #001 (build-ready, supplied 2026-08-13)
-**Status:** Phase 0 IN PROGRESS — runtime inventory complete, repo archaeology in flight
+**Status:** Phase 0 COMPLETE — runtime inventory + reuse matrix done; asset identity decided
+(ADR-0034); one read-only DB verification outstanding before Phase 2
 **Rule being honored:** PRD §16 Phase 0 — *"No major feature work"*, and §24 — *"Begin with
 reconnaissance, not implementation."*
 
@@ -15,7 +16,7 @@ Five things materially change the PRD's plan. Each is measured, not assumed.
 
 | # | Finding | Consequence for the PRD |
 |---|---|---|
-| 1 | **One physical conveyor carries at least FIVE UNS identities** — `enterprise.garage.demo_cell.cv_101`, `…demo_cell.bottling_demo.cv_101`, `enterprise.garage.cv_101`, `…conveyor_line.equipment.conveyor_001`, and `enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200`. CV-200 is a **real UNS segment**, not branding; the Northwind surface deliberately re-presents the same rig and same source tags (§3.5). | §2/§3.2/§19 asset identity is genuinely ambiguous. **Decide a canonical identity + alias map before Phase 2** — split identity fragments the historian and silently drops graph edges while every part still looks correct. |
+| 1 | **One physical conveyor carries at least FIVE UNS identities** — `enterprise.garage.demo_cell.cv_101`, `…demo_cell.bottling_demo.cv_101`, `enterprise.garage.cv_101`, `…conveyor_line.equipment.conveyor_001`, and `enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200`. CV-200 is a **real UNS segment**, not branding; the Northwind surface deliberately re-presents the same rig and same source tags (§3.5). | §2/§3.2/§19 asset identity was genuinely ambiguous. ✅ **RESOLVED — ADR-0034**: canonical key `cv_101`, human name **"Discharge Conveyor"**, everything else an alias. Split identity would have fragmented the historian and silently dropped graph edges while every part still looked correct. |
 | 2 | **The CV-101 telemetry stream is currently replaying a frozen snapshot and labelling it `live`** (issue #3161 — **figures quoted from that issue's 2026-08-08 measurement, NOT re-verified here**: 845k rows/24 h, 100 % `quality='bad'`, `MIN=MAX` source timestamp of 2026-08-02, 144 h ingest lag, yet `freshness_status='live'`). | This is a **direct, pre-existing blocker** for PRD §6 (provenance), §11 (incident history) and §17 ("provenance is preserved"). Phase 2/3 cannot be honestly demonstrated on top of it. **Fix #3161 first.** |
 | 3 | **The PLC is not reachable from this machine.** `192.168.1.100` does not answer ping from CHARLIE. Consistent with the known point-to-point topology (Micro820 ↔ PLC laptop, not on the LAN). | §19's "physical proof" cannot run direct from this box. The **working path is Ignition over Tailscale** (below) — which the PRD already blesses in §3.7. |
 | 4 | **The Ignition gateway IS reachable** — `100.72.2.99:8088` OPEN (the Windows laptop `laptop-0ka3c70h`, over Tailscale). LAN `192.168.1.20:8088` and `.99:8088` are closed. | Confirms §3.7's "Ignition plant" path is the viable one for Box #001. Do **not** plan a local protocol adapter for Phase 1–2. |
@@ -243,7 +244,31 @@ snake-case form.
 provenance; §11 requires incident reconstruction; §17 requires "the graph relates machine/device
 context". If history lands under one identity and the graph/documents under another, the historian
 fragments and root-cause traversal silently misses edges — while every individual component still
-looks correct. **A canonical identity + explicit alias mapping must be decided before Phase 2.**
+looks correct.
+
+### ✅ RESOLVED 2026-08-14 — see **ADR-0034**
+
+Decided by Mike:
+
+| | |
+|---|---|
+| **Canonical machine key** | `cv_101` |
+| **Human name** | **"Discharge Conveyor"** (`kg_entities.name`) |
+| **Everything else** | alias in `kg_entities.properties` — `CV-200`, `discharge_conveyor_cv200`, `conveyor_001`; `CV-100` to be retired |
+
+**No schema migration.** `kg_entities` already separates `entity_id` (machine key) / `name`
+(human) / `properties` (aliases), so this is additive.
+
+`cv_101` was chosen because the live stream is already keyed to it (`cv101-bench-gw`), so
+**nothing has to be re-keyed** — making the Northwind id canonical would have meant migrating the
+live stream *and* existing history, on a stream #3161 already reports as unstable.
+"Discharge Conveyor" was chosen over the incumbent "garage conveyor" (~120 uses) because it names
+what the machine *does* rather than where it lives — the appliance ships into a customer's control
+panel, where "the garage conveyor" means nothing. Location already lives in the UNS path.
+
+The Northwind/Riverside path remains a valid **presentation** surface. Consequence to enforce:
+any path accepting an asset reference must resolve aliases to `cv_101` before writing — **storing
+a non-canonical id is a bug.**
 
 **Not started:** the companion repo `Mikecranesync/factorylm`.
 
@@ -264,15 +289,22 @@ ambiguous duplicate ownership.*
 | Reasoning | `mira-bots/shared/engine.py` (+ `interlock_context.py`) | ✅ unambiguous |
 | Citations | `mira-bots/shared/citation_compliance.py` | ✅ unambiguous |
 | SimLab | `simlab/` (34 modules) | ✅ unambiguous |
-| **CV-101 / CV-200 ingestion** | **contested — ≥5 UNS identities (§3.5); live-ingest state contradicted (§3.4)** | ❌ **AMBIGUOUS** |
+| **Asset identity** ("Discharge Conveyor") | **`cv_101` canonical — ADR-0034** | ✅ **decided 2026-08-14** |
+| CV-101 ingestion — *live vs replayed* | `tag_ingest.py` owns it; **stream state unproven** (§3.4) | ⚠️ **needs db-inspect** |
 | UI | `mira-bots/ask_api/` (Ignition/kiosk) | ⚠️ no edge surface yet |
 | **Target-PC runtime inventory** | this document §1 | ✅ complete |
 | **Git/worktree safety report** | this document §1.5 | ✅ complete |
 
-**Gate verdict: NOT MET — one blocker.** Nine of ten capabilities have a single unambiguous owner
-and no duplicate implementations (the one-pipeline law is holding). The gate fails on exactly one
-row: **CV-101/CV-200 asset identity and its live-ingest state.** The PRD's gate wording is "no
-ambiguous duplicate ownership", and §3.5 is precisely that.
+**Gate verdict: SUBSTANTIALLY MET — one verification outstanding.** All capabilities now have a
+single unambiguous owner and no duplicate implementations (the one-pipeline law is holding). The
+identity ambiguity that blocked the gate is **resolved by ADR-0034**: canonical key `cv_101`, human
+name **"Discharge Conveyor"**, everything else an alias.
+
+What remains is not ambiguity of *ownership* but of *fact*: `tag_ingest.py` unambiguously owns
+CV-101 ingestion, but whether that stream is currently live or replaying a frozen snapshot is
+contradicted between #3161 and archaeology (§3.4) and was not measured here. One read-only
+`db-inspect.yml` run settles it. **Phase 1 (appliance runtime) may proceed; Phase 2's dual-source
+provenance gate may not, until that is settled and #3161 is fixed.**
 
 This is a *good* outcome for the PRD's thesis — §35's "the primary mission is convergence, reuse,
 wiring, gap closure" is confirmed: far more exists than the PRD assumes, including the §12
@@ -299,10 +331,11 @@ Genuinely new/unproven: the **appliance runtime** (§16 Phase 1), the **edge sur
 
 ## 6. Recommended sequencing (proposed, NOT executed)
 
-1. **Decide the canonical asset identity** for the physical rig and write the alias map (§3.5).
-   Cheapest item here and everything downstream keys on it. This is a **product decision**, not a
-   code change — CV-101 (garage/engineering truth) and CV-200 (Northwind/customer-facing demo)
-   both have legitimate reasons to exist; what is missing is a declared canonical + mapping.
+1. ~~**Decide the canonical asset identity**~~ ✅ **DONE 2026-08-14 — ADR-0034.** Canonical key
+   `cv_101`; human name **"Discharge Conveyor"**; `CV-200` / `discharge_conveyor_cv200` /
+   `conveyor_001` become aliases; `CV-100` to be retired. No migration — `kg_entities` already has
+   `entity_id` / `name` / `properties`. **Next mechanical step:** write the alias rows and add
+   alias resolution to every asset-reference intake, so a non-canonical id can never be stored.
 2. **Fix #3161** before Phase 2. The dual-source provenance exit gate cannot be honestly met on a
    stream that reports 2026-08-02 values as `freshness_status='live'`. Note this also needs a
    design decision (split collector-liveness from value-freshness), not just a patch.
