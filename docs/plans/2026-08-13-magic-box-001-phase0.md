@@ -16,7 +16,7 @@ Five things materially change the PRD's plan. Each is measured, not assumed.
 | # | Finding | Consequence for the PRD |
 |---|---|---|
 | 1 | **One physical conveyor carries at least FIVE UNS identities** — `enterprise.garage.demo_cell.cv_101`, `…demo_cell.bottling_demo.cv_101`, `enterprise.garage.cv_101`, `…conveyor_line.equipment.conveyor_001`, and `enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200`. CV-200 is a **real UNS segment**, not branding; the Northwind surface deliberately re-presents the same rig and same source tags (§3.5). | §2/§3.2/§19 asset identity is genuinely ambiguous. **Decide a canonical identity + alias map before Phase 2** — split identity fragments the historian and silently drops graph edges while every part still looks correct. |
-| 2 | **The CV-101 telemetry stream is currently replaying a frozen snapshot and labelling it `live`** (issue #3161, verified 2026-08-08: 845k rows/24 h, 100 % `quality='bad'`, `MIN=MAX` source timestamp of 2026-08-02, 144 h ingest lag, yet `freshness_status='live'`). | This is a **direct, pre-existing blocker** for PRD §6 (provenance), §11 (incident history) and §17 ("provenance is preserved"). Phase 2/3 cannot be honestly demonstrated on top of it. **Fix #3161 first.** |
+| 2 | **The CV-101 telemetry stream is currently replaying a frozen snapshot and labelling it `live`** (issue #3161 — **figures quoted from that issue's 2026-08-08 measurement, NOT re-verified here**: 845k rows/24 h, 100 % `quality='bad'`, `MIN=MAX` source timestamp of 2026-08-02, 144 h ingest lag, yet `freshness_status='live'`). | This is a **direct, pre-existing blocker** for PRD §6 (provenance), §11 (incident history) and §17 ("provenance is preserved"). Phase 2/3 cannot be honestly demonstrated on top of it. **Fix #3161 first.** |
 | 3 | **The PLC is not reachable from this machine.** `192.168.1.100` does not answer ping from CHARLIE. Consistent with the known point-to-point topology (Micro820 ↔ PLC laptop, not on the LAN). | §19's "physical proof" cannot run direct from this box. The **working path is Ignition over Tailscale** (below) — which the PRD already blesses in §3.7. |
 | 4 | **The Ignition gateway IS reachable** — `100.72.2.99:8088` OPEN (the Windows laptop `laptop-0ka3c70h`, over Tailscale). LAN `192.168.1.20:8088` and `.99:8088` are closed. | Confirms §3.7's "Ignition plant" path is the viable one for Box #001. Do **not** plan a local protocol adapter for Phase 1–2. |
 | 5 | **Nothing is running on the target machine.** Colima is stopped → no Docker daemon → **zero MIRA containers**; no MIRA port is listening. | §5 says "do not assume a clean computer" — the real state is the opposite of what was feared: it is *empty*, not crowded. Phase 1 is a genuine cold start, which is **easier**, but it also means no local service is currently proven. |
@@ -25,6 +25,12 @@ Plus one hard constraint: **11 GiB of disk free (95 % full)**. A local historian
 headroom. See §2.3.
 
 ---
+
+> **Provenance of numbers in this document.** Everything in §1 (runtime inventory) and §3
+> (reuse matrix) was measured or grounded directly against this machine and this tree.
+> All `#3161` figures are **quoted from that issue's 2026-08-08 measurement and were NOT
+> re-verified here** — settling them needs a read-only `db-inspect.yml` run against prod,
+> which is step 3 of §6. Treat them as a strong lead, not as this document's evidence.
 
 ## 1. Target runtime inventory (PRD §5 / §14.2)
 
@@ -117,14 +123,14 @@ existing guards before writing new ones. Since the PLC is unreachable from this 
 11 GiB free. PRD §11 wants a local incident buffer, and §11 already prescribes the mitigation:
 *"Avoid collecting every available tag at maximum frequency. Use tiered sampling or change-based
 capture."* That is now a **hard requirement, not a preference**. Either free disk first or design
-change-based capture from the start. Note issue #3161's replay produced **845k rows in 24 h from
-12 tags** — that is the anti-pattern, on this exact stream.
+change-based capture from the start. Note the replay reported in #3161 produced **845k rows in 24 h from 12 tags** (per that issue,
+not re-measured here) — that is the anti-pattern, on this exact stream.
 
 ### 2.4 Phase 2 rests on a stream that is currently lying
 
 Restating finding #2 because it is the critical path: PRD §6 requires every reading to preserve
 quality, timestamp and simulated-vs-physical status, and §17 requires "provenance is preserved".
-Issue #3161 documents the live stream doing the opposite — stale values refreshing
+Issue #3161 reports the live stream doing the opposite (its measurement, not re-verified here) — stale values refreshing
 `freshness_status='live'`. **Phase 2's exit gate cannot be honestly met until #3161 is fixed.**
 It is also a genuine design decision (splitting "collector is reporting" from "value is current"),
 not a patch — see the issue.
@@ -211,7 +217,7 @@ Recorded because acting on any of them would have caused real damage.
 | "Cannot express `driven_by` / `upstream_of` / `shared_utility_feeds` — add 4 new types to `mira-hub/src/lib/kg/types.ts`" | **False.** `UPSTREAM_OF`, `DOWNSTREAM_OF`, `DEPENDS_ON`, `CAUSES`, `POWERED_BY`, `WIRED_TO` all already exist — in a **SQL CHECK constraint** (mig 018), not in a `types.ts` (that path yielded nothing). | Would have added duplicate relationship types **and** edited the wrong file — the exact "rebuild what exists" failure the PRD forbids. |
 | "Verify migration 037 exists before Phase 5 — it may be missing" | **False.** `mira-hub/db/migrations/037_tag_event_diffs.sql` is present. | Would have sent someone chasing a non-existent gap. |
 | "CV-200 and Northwind are branding aliases only" | **Materially incomplete.** `CV-200` is a *real UNS path segment* — `enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200`. See §3.5. | The dual-identity risk is the single biggest data-modelling hazard in this PRD; "just branding" would have hidden it. |
-| "No production CV-101 → NeonDB ingest active today" | **Contradicted** by issue #3161, which measured 845k rows in 24 h from `source_system='ignition'`, `source_connection_id='cv101-bench-gw'`, and 19.2M rows since 2026-07-04. | Ingest *is* active — it is replaying a frozen snapshot. Opposite conclusions, opposite remedies. Marked UNKNOWN-NEEDS-PROOF pending a read-only DB check. |
+| "No production CV-101 → NeonDB ingest active today" | **Contradicted** by issue #3161, which reports 845k rows in 24 h from `source_system='ignition'`, `source_connection_id='cv101-bench-gw'`, and 19.2M rows since 2026-07-04. | Ingest *is* active — it is replaying a frozen snapshot. Opposite conclusions, opposite remedies. Marked UNKNOWN-NEEDS-PROOF pending a read-only DB check. |
 
 ### 3.5 ⚠️ One physical conveyor, at least five UNS identities
 
@@ -303,8 +309,8 @@ Genuinely new/unproven: the **appliance runtime** (§16 Phase 1), the **edge sur
 3. **Confirm the live-ingest reality** with a read-only DB check to settle §3.4's contradiction.
 4. **Adopt Ignition-over-Tailscale** (§3.7 "Ignition plant") for Box #001; defer the local
    protocol adapter — the PLC is not reachable from this box anyway (§1.4).
-5. **Decide the disk story** before the historian (§2.3): 11 GiB free, and #3161 shows this exact
-   stream producing 845k rows/day from 12 tags.
+5. **Decide the disk story** before the historian (§2.3): 11 GiB free (measured here), and #3161
+   reports this exact stream producing 845k rows/day from 12 tags (its figure, not re-verified).
 6. Only then Phase 1 (appliance runtime), expressed portably — compose healthchecks and restart
    policies, not launchd (§2.1).
 
