@@ -29,9 +29,9 @@ headroom. See §2.3.
 
 > **Provenance of numbers in this document.** Everything in §1 (runtime inventory) and §3
 > (reuse matrix) was measured or grounded directly against this machine and this tree.
-> All `#3161` figures are **quoted from that issue's 2026-08-08 measurement and were NOT
-> re-verified here** — settling them needs a read-only `db-inspect.yml` run against prod,
-> which is step 3 of §6. Treat them as a strong lead, not as this document's evidence.
+> `#3161` figures were originally quoted from that issue and not re-verified. **They have
+> since been re-measured directly — see §8. The verdict is FROZEN/REPLAYED and #3161 was
+> if anything understating it.**
 
 ## 1. Target runtime inventory (PRD §5 / §14.2)
 
@@ -290,7 +290,7 @@ ambiguous duplicate ownership.*
 | Citations | `mira-bots/shared/citation_compliance.py` | ✅ unambiguous |
 | SimLab | `simlab/` (34 modules) | ✅ unambiguous |
 | **Asset identity** ("Discharge Conveyor") | **`cv_101` canonical — ADR-0034** | ✅ **decided 2026-08-14** |
-| CV-101 ingestion — *live vs replayed* | `tag_ingest.py` owns it; **stream state unproven** (§3.4) | ⚠️ **needs db-inspect** |
+| CV-101 ingestion — *live vs replayed* | `tag_ingest.py` owns it; **measured FROZEN/REPLAYED** (§8) | ✅ **settled 2026-08-14** |
 | UI | `mira-bots/ask_api/` (Ignition/kiosk) | ⚠️ no edge surface yet |
 | **Target-PC runtime inventory** | this document §1 | ✅ complete |
 | **Git/worktree safety report** | this document §1.5 | ✅ complete |
@@ -359,3 +359,58 @@ One agent also wrote a report into the shared checkout at
 `.planning/ARCHAEOLOGY-EDGE-APPLIANCE-REUSE.md` despite a read-only instruction. `.planning/` is
 gitignored so nothing was clobbered, but it confirms that write-capable dispatches need worktree
 isolation even when the prompt says "research only".
+
+
+---
+
+## 8. CV-101 telemetry verdict — **FROZEN / REPLAYED** (measured 2026-08-14)
+
+The last open Phase-0 fact, settled from production data via a read-only `db-inspect` probe
+added for this purpose (run `31773087124`, `target=prod`, 2026-08-14 05:29 UTC).
+
+### Evidence
+
+| metric — last 24 h of ingests, `source_connection_id='cv101-bench-gw'` | value |
+|---|---|
+| rows | 774,480 |
+| **distinct observed timestamps** | **1** |
+| **live_ratio** (distinct observed / rows) | **0.0000** |
+| **observed_span** | **00:00:00** |
+| ingest_span | 23:59:58 |
+| newest observed | 2026-08-02 07:14:33Z |
+| **newest observation age** | **11 days 22:15** |
+| newest ingest age | 0.7 s |
+
+Rows arrive continuously (2,952 in the last 5 minutes) all stamped with **one** observed
+timestamp from twelve days ago — received-time advancing, observed-time frozen.
+
+Corroborating: `distinct_values = 1` on **all 12 tags** over 24 h; `vfd_comm_ok=false`,
+`vfd_frequency=0`, `vfd_current=0`; 774,468 rows `quality='bad'`, `simulated=false`.
+
+**Method note.** Row count is not evidence — a replay loop produces 845k rows/24 h just as
+readily as a live stream. The discriminator is `distinct(event_timestamp) / rows`, because the
+033 schema already separates observed-at from received-at.
+
+### Root cause
+
+**The bench PLC↔Ignition link has been down since 2026-08-02.** Ignition has been reporting
+`quality='bad'` and `vfd_comm_ok=false` the entire time; the gateway kept forwarding
+last-known values with their original frozen timestamps. This is a **physical** fault at the
+rig, not a code fault.
+
+Compounding it, a genuine code defect: `freshness_status` was the hardcoded constant
+`"simulated" if simulated else "live"` and was **never computed**, so untrustworthy readings
+were cached as `live`. Rows 41 and 45 days stale also read `live`. Fixed in PR #3232 (derive
+from quality; gated on quality only, because ageing client timestamps caused the 2026-07-04
+report-by-exception regression).
+
+### Consequences
+
+- **Phase 0 is otherwise COMPLETE.** Ownership is unambiguous across every capability;
+  identity is decided (ADR-0034); this last fact is now measured rather than assumed.
+- **Phase 1 remains gated.** It starts on a genuine LIVE verdict, which requires restoring the
+  bench link — a physical action, then a re-run of the same probe expecting
+  `live_ratio ≈ 1.0`.
+- **Phase 2 remains gated** independently, per its own provenance requirements.
+- A **sixth** UNS identity surfaced (`enterprise.home_garage.conveyor_lab.conveyor_1`, 23.7M
+  rows) — ADR-0034's alias rule is already violated in production. Filed as **#3233**.
