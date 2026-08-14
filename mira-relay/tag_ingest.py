@@ -60,6 +60,45 @@ VALID_SOURCE_SYSTEMS = {"ignition", "plc_bridge", "relay", "simulator"}
 VALID_VALUE_TYPES = {"bool", "int", "float", "string", "enum"}
 VALID_QUALITY = {"good", "bad", "stale", "uncertain"}
 
+# Qualities the COLLECTOR itself has declared untrustworthy. A reading carrying
+# one of these must never be cached as `freshness_status='live'`.
+_UNTRUSTWORTHY_QUALITY = {"bad", "stale"}
+
+
+def _derive_freshness(simulated: bool, quality: str) -> str:
+    """Derive `live_signal_cache.freshness_status` from the reading itself.
+
+    This was a hardcoded constant (`"simulated" if simulated else "live"`), so
+    EVERY non-simulated reading was cached as `live` no matter what the collector
+    said about it. Measured on prod 2026-08-14 (db-inspect, CV-101 liveness
+    probe): all 12 `cv_101` tags showed `latest_quality='bad'` **and**
+    `freshness_status='live'`, refreshed 1.3 s earlier, while the newest actual
+    observation was 11 days 22 h old. Rows 41 and 45 days stale also read `live`.
+    That is issue #3161 — stale data masquerading as live.
+
+    Gate on QUALITY ONLY, deliberately. Ageing the client-supplied
+    `event_timestamp` is the obvious-looking alternative and it is the one that
+    already backfired: Ignition report-by-exception freezes a tag's timestamp
+    while the collector keeps posting, and trusting that turned a healthy 2 s
+    stream into permanently-stale cards (bench-proven 2026-07-04 — see the
+    `last_seen_at` comment in `persist_batch`). Quality carries no such hazard:
+    `bad`/`stale` is the collector's own explicit statement that the value is not
+    trustworthy, which is exactly the question `freshness_status` answers.
+
+    `uncertain` stays `live`: in the OPC bands it means imprecise-but-current,
+    not disconnected. `good` stays `live`.
+
+    Keeps the split the schema already implies:
+      last_seen_at      -> "is the collector reporting?"  (server NOW(), unchanged)
+      freshness_status  -> "is this value trustworthy as current?"  (this function)
+    """
+    if simulated:
+        return "simulated"
+    if (quality or "").lower() in _UNTRUSTWORTHY_QUALITY:
+        return "stale"
+    return "live"
+
+
 class IngestError(ValueError):
     """Raised for batch-level validation failures (bad source_system, etc.)."""
 
@@ -73,7 +112,9 @@ def _canonical_value(value: Any) -> Optional[str]:
     return str(value)
 
 
-def _value_columns(value_type: str, value: Any) -> tuple[Optional[str], Optional[float], Optional[bool]]:
+def _value_columns(
+    value_type: str, value: Any
+) -> tuple[Optional[str], Optional[float], Optional[bool]]:
     """Map a typed value to live_signal_cache's (text, numeric, bool) columns."""
     if value is None:
         return (None, None, None)
@@ -255,9 +296,7 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
             if prev_sim is False and p.simulated:
                 # Real data already cached; do NOT clobber it with a simulated value.
                 result.cache_skipped += 1
-                logger.info(
-                    "CACHE_SKIP sim-over-real tenant=%s tag=%s", tenant_id, p.tag_path
-                )
+                logger.info("CACHE_SKIP sim-over-real tenant=%s tag=%s", tenant_id, p.tag_path)
                 continue
             state_rows.append(p)
 
@@ -334,9 +373,7 @@ class NeonTagStore:
 
         engine = self._engine()
         with engine.begin() as conn:
-            conn.execute(
-                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
-            )
+            conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
             yield _BoundNeonTagStore(self, conn)
 
     def load_allowlist(
@@ -345,9 +382,10 @@ class NeonTagStore:
         from sqlalchemy import text
 
         def _run(c):
-            rows = c.execute(
-                text(
-                    """
+            rows = (
+                c.execute(
+                    text(
+                        """
                     SELECT normalized_tag_path, uns_path::text AS uns_path
                       FROM approved_tags
                      WHERE tenant_id = :tid
@@ -355,9 +393,12 @@ class NeonTagStore:
                        AND enabled = true
                        AND normalized_tag_path IS NOT NULL
                     """
-                ),
-                {"tid": tenant_id, "ss": source_system},
-            ).mappings().all()
+                    ),
+                    {"tid": tenant_id, "ss": source_system},
+                )
+                .mappings()
+                .all()
+            )
             return {r["normalized_tag_path"]: r["uns_path"] for r in rows}
 
         if conn is not None:
@@ -395,9 +436,7 @@ class NeonTagStore:
             )
         return res.rowcount or 0
 
-    def record_seen_tags(
-        self, tenant_id: str, source_system: str, tag_paths: list[str]
-    ) -> int:
+    def record_seen_tags(self, tenant_id: str, source_system: str, tag_paths: list[str]) -> int:
         """Record discovered-but-not-allowlisted tags as *seen* — an
         ``approved_tags`` row with ``enabled = false``. Seen tags are visible for
         a human to promote (flip ``enabled = true``) but, being disabled, stay
@@ -448,16 +487,20 @@ class NeonTagStore:
         from sqlalchemy import text
 
         def _run(c):
-            rows = c.execute(
-                text(
-                    """
+            rows = (
+                c.execute(
+                    text(
+                        """
                     SELECT plc_tag, simulated
                       FROM live_signal_cache
                      WHERE tenant_id = :tid AND plc_tag = ANY(:tags)
                     """
-                ),
-                {"tid": tenant_id, "tags": tag_paths},
-            ).mappings().all()
+                    ),
+                    {"tid": tenant_id, "tags": tag_paths},
+                )
+                .mappings()
+                .all()
+            )
             return {r["plc_tag"]: r["simulated"] for r in rows}
 
         if conn is not None:
@@ -516,7 +559,7 @@ class NeonTagStore:
                     "simulated": r.simulated,
                     "source_system": r.source_system,
                     "quality": r.quality,
-                    "freshness": "simulated" if r.simulated else "live",
+                    "freshness": _derive_freshness(r.simulated, r.quality),
                     "props": json.dumps(r.metadata),
                 }
             )
