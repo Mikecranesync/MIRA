@@ -13,6 +13,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, listSources, recordTurn, validateChatSources } from "@/lib/equipment-notebooks";
@@ -96,6 +97,7 @@ function providers(): CascadeProvider[] {
 async function buildCitations(
   tenantId: string,
   chunks: ManualChunk[],
+  question: string,
 ): Promise<EvidenceCitation[]> {
   const seen = new Map<string, EvidenceCitation>();
   for (const c of chunks) {
@@ -107,7 +109,8 @@ async function buildCitations(
       sourceTitle: c.title || "Attached document",
       page: c.sourcePage,
       fileId: null,
-      quote: c.content.slice(0, 240),
+      // Claim-centered window (CIT-07 phase 2) — not the chunk head.
+      quote: relevantQuoteWindow(c.content, question),
     });
   }
   const citations = [...seen.values()];
@@ -306,7 +309,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  const citations = await buildCitations(ctx.tenantId, chunks);
+  const citations = await buildCitations(ctx.tenantId, chunks, message);
 
   // Machine-context header — gives the model the equipment identity and the
   // documents actually loaded, so "what do you know about the machine?" answers

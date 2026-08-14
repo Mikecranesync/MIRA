@@ -408,6 +408,25 @@ export async function recognizeNameplate(image: File): Promise<NameplateCandidat
   return ((r.data as { candidate?: NameplateCandidate } | null)?.candidate ?? {});
 }
 
+export interface SourcePassage {
+  page: number | null;
+  text: string;
+}
+
+/** Full cited passage for a citation chip (CIT-07 phase 2) — fetched on
+ *  demand, never inlined in chat frames (payload stays small). */
+export async function getSourcePassage(
+  notebookId: string,
+  docId: string,
+  page: number | null,
+): Promise<SourcePassage[]> {
+  const q = page != null ? `?page=${page}` : "";
+  const r = await request(
+    `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/${encodeURIComponent(docId)}/passage/${q}`,
+  );
+  return ((r.data as { passages?: SourcePassage[] } | null)?.passages ?? []);
+}
+
 /** Ask within the caller-selected source scope (per-source checkboxes). */
 export async function askNotebook(
   notebookId: string,

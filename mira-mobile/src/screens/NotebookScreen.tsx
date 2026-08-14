@@ -15,9 +15,11 @@ import {
   detachSource,
   listWorkspaceDocs,
   uploadSourceToNotebook,
+  getSourcePassage,
   enabledDocIds,
   type NotebookDetail,
   type WorkspaceDoc,
+  type SourcePassage,
 } from "../api/resources";
 import { preferencesStore } from "../lib/offline-queue";
 import { answerBody } from "../lib/chat-copy";
@@ -96,11 +98,13 @@ export function NotebookScreen({
   const [busy, setBusy] = useState(false);
   const [chatError, setChatError] = useState<unknown>(null);
   const [viewCitation, setViewCitation] = useState<ChatCitation | null>(null);
+  const [passages, setPassages] = useState<Loadable<SourcePassage[]> | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   backRef.current = () => {
     if (viewCitation) {
       setViewCitation(null);
+      setPassages(null);
       return true;
     }
     if (sheetOpen) {
@@ -334,13 +338,19 @@ export function NotebookScreen({
       )}
 
       {viewCitation && (
-        <div className="sheet-backdrop" onClick={() => setViewCitation(null)}>
+        <div
+          className="sheet-backdrop"
+          onClick={() => {
+            setViewCitation(null);
+            setPassages(null);
+          }}
+        >
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h3>
               [{viewCitation.citationId}] {viewCitation.sourceTitle}
               {viewCitation.page ? ` — p.${viewCitation.page}` : ""}
             </h3>
-            {viewCitation.quote ? (
+            {passages === null && viewCitation.quote && (
               <div
                 className="msg-answer"
                 style={{
@@ -351,18 +361,57 @@ export function NotebookScreen({
               >
                 “{viewCitation.quote.trim()}…”
               </div>
-            ) : (
+            )}
+            {passages === null && !viewCitation.quote && (
               <div className="meta">
-                The cited passage isn't stored for this older answer — re-ask the
-                question to get a linked citation.
+                The quote isn't stored for this older answer — open the full
+                passage below.
               </div>
+            )}
+            {passages?.state === "loading" && <Loading what="passage" />}
+            {passages?.state === "error" && <ErrorState error={passages.error} />}
+            {passages?.state === "ready" && passages.data.length === 0 && (
+              <Empty text="No passage text available for this page." />
+            )}
+            {passages?.state === "ready" &&
+              passages.data.map((p, i) => (
+                <div
+                  key={i}
+                  className="msg-answer"
+                  style={{
+                    borderLeft: "2px solid var(--flm-citation-fg)",
+                    paddingLeft: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  {p.text}
+                </div>
+              ))}
+            {passages === null && viewCitation.docId && (
+              <button
+                style={{ marginTop: 12 }}
+                onClick={() => {
+                  setPassages({ state: "loading" });
+                  void load(() =>
+                    getSourcePassage(id, viewCitation.docId!, viewCitation.page ?? null),
+                  ).then(setPassages);
+                }}
+              >
+                Show full passage
+              </button>
             )}
             <div className="meta" style={{ marginTop: 10 }}>
               Cited from the source document
-              {viewCitation.page ? ` at page ${viewCitation.page}` : ""}. Full
-              in-app page view is coming; verify against the manual before acting.
+              {viewCitation.page ? ` at page ${viewCitation.page}` : ""}. Verify
+              against the manual before acting.
             </div>
-            <button style={{ marginTop: 12 }} onClick={() => setViewCitation(null)}>
+            <button
+              style={{ marginTop: 12 }}
+              onClick={() => {
+                setViewCitation(null);
+                setPassages(null);
+              }}
+            >
               Close
             </button>
           </div>
