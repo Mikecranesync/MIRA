@@ -192,3 +192,18 @@ describe("POST /api/pm-schedules", () => {
     expect((await res.json()).error).toBe("Create failed");
   });
 });
+
+describe("rowToPM raw timestamps (mobile 'due unscheduled' fix)", () => {
+  it("201 response carries ISO next_due_at even when pg returns a Date object", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    scriptQueries([
+      { rows: [{ id: ASSET_ID, manufacturer: "AB", model_number: "X" }] },
+      { rows: [{ ...insertedRow, next_due_at: new Date("2026-11-13T00:00:00.000Z") }] },
+    ]);
+    const res = await POST(makeReq(GOOD_BODY));
+    const body = await res.json();
+    expect(body.schedule.next_due_at).toBe("2026-11-13T00:00:00.000Z");
+    expect(body.schedule.date).toBe("2026-11-13");
+    expect(body.schedule.last_completed_at).toBeNull();
+  });
+});

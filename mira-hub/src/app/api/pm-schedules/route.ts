@@ -44,8 +44,17 @@ function intervalToRecur(value: number, unit: string): string {
 }
 
 function rowToPM(r: Record<string, unknown>) {
-  const nextDueAt = r.next_due_at ? String(r.next_due_at) : null;
-  const lastCompletedAt = r.last_completed_at ? String(r.last_completed_at) : null;
+  // pg returns Date objects; String(Date) is "Sat Sep 12 …", NOT ISO — so
+  // normalize through Date→toISOString for both the raw field and the
+  // YYYY-MM-DD display slice below. Clients (mobile Schedule tab) read the
+  // raw `next_due_at`; without it every PM rendered "due unscheduled".
+  const toIso = (v: unknown): string | null => {
+    if (!v) return null;
+    const d = new Date(v as string | Date);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  };
+  const nextDueAt = toIso(r.next_due_at);
+  const lastCompletedAt = toIso(r.last_completed_at);
   const durationMin = typeof r.estimated_duration_minutes === "number"
     ? r.estimated_duration_minutes
     : null;
@@ -64,6 +73,9 @@ function rowToPM(r: Record<string, unknown>) {
     recur: intervalToRecur(Number(r.interval_value), String(r.interval_unit)),
     durationH: durationMin ? Math.max(1, Math.round(durationMin / 60)) : 1,
     status: pmStatus(nextDueAt, lastCompletedAt),
+    // Raw ISO timestamps for clients (display `date` above is calendar-only).
+    next_due_at: nextDueAt,
+    last_completed_at: lastCompletedAt,
     // Extended fields for detail view
     manufacturer: r.manufacturer ?? null,
     model_number: r.model_number ?? null,
