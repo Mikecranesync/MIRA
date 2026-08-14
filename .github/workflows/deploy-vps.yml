@@ -485,6 +485,61 @@ jobs:
           doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml ps --format "table {{.Name}}\t{{.Status}}"
           ENDSSH
 
+      - name: nginx sites-enabled hygiene (#3173)
+        # READ-ONLY. /etc/nginx/nginx.conf includes sites-enabled/ by a BARE
+        # wildcard, so every file there is live production config — a stray
+        # `cp mira mira.bak` silently becomes a duplicate server block, and
+        # nginx keeps whichever sorts FIRST. The only native signal is a
+        # `[warn]` line nobody reads, so this asserts it on every deploy.
+        #
+        # Default-deny by NAME. Not `*.conf` (no live vhost has that suffix —
+        # requiring it would disable all of them) and not "must be a symlink"
+        # (`cmms.factorylm.com` and `factorylm-landing` are regular files and
+        # are live). Rationale in full: nginx-sites-enabled-hygiene.yml.
+        #
+        # KNOWN_PENDING is the 10 backups that already existed when this guard
+        # shipped (verified on prod 2026-08-10). They warn; anything NOT in that
+        # list FAILS the deploy, so the hole is closed for new occurrences today
+        # without breaking deploys on pre-existing state. Run
+        # nginx-sites-enabled-hygiene.yml (mode=fix) to clear them, then DELETE
+        # KNOWN_PENDING here — the guard then becomes strict on its own.
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            root@165.245.138.91 'bash -s' << 'ENDSSH'
+          set -uo pipefail
+          SE=/etc/nginx/sites-enabled
+          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview remoteme stg-factorylm"
+          KNOWN_PENDING="factorylm-landing.bak.2026-05-13-csp factorylm-landing.bak.20260509-203650 mira.bak.20260426-082325 mira.bak.20260506-094431 mira.bak.20260509-121505 mira.bak.before-scan-restore-20260518-215310 mira.bak.cra-20260504-024235 mira.bak.inbox mira.bak.phase1 mira.bak.scan-deploy-20260504-224027"
+
+          known=""; unknown=""
+          for f in "$SE"/*; do
+            [ -e "$f" ] || continue
+            b=$(basename "$f")
+            case " $ALLOW " in *" $b "*) continue ;; esac
+            case " $KNOWN_PENDING " in
+              *" $b "*) known="$known $b" ;;
+              *)        unknown="$unknown $b" ;;
+            esac
+          done
+          known=$(echo "$known" | xargs || true)
+          unknown=$(echo "$unknown" | xargs || true)
+
+          if [ -n "$unknown" ]; then
+            echo "::error::NEW unexpected file(s) in $SE are live nginx config: $unknown"
+            echo "::error::A duplicate server block can silently take over a production hostname (#3173)."
+            echo "::error::Move it out (or add it to ALLOW if it is a real vhost), then re-run."
+            ls -la "$SE"
+            exit 1
+          fi
+
+          if [ -n "$known" ]; then
+            echo "::warning::$(echo "$known" | wc -w) known pre-existing backup(s) still live in $SE (#3173): $known"
+            echo "::warning::Clear with nginx-sites-enabled-hygiene.yml (mode=fix), then drop KNOWN_PENDING from deploy-vps.yml."
+          else
+            echo "✅ $SE is clean — #3173 is done; DELETE KNOWN_PENDING from deploy-vps.yml to make this guard strict."
+          fi
+          ENDSSH
+
       - name: Notify failure
         if: failure()
         run: |

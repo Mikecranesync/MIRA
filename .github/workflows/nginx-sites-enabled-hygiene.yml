@@ -1,0 +1,242 @@
+name: nginx sites-enabled hygiene
+
+# #3173 — /etc/nginx/nginx.conf:60 includes sites-enabled/ by a BARE wildcard
+# (`include /etc/nginx/sites-enabled/*;` — no `.conf` suffix), so every file in
+# that directory is live production configuration, backups included. Ten `.bak`
+# files currently declare duplicate `server` blocks for production hostnames;
+# nginx keeps the FIRST block in include order (alphabetical for a glob) and
+# emits a `[warn] conflicting server name ... ignored` for the rest.
+#
+# Measured on prod 2026-08-10 (read-only): 39 conflicting-server-name warnings
+# and 4 `protocol options redefined`. The correct blocks win today only because
+# `mira` < `mira.bak.*` and `factorylm-landing` < `factorylm-landing.bak.*`.
+# A backup that sorts EARLIER (`app-mira.bak`, `OLD-mira`, a leading digit)
+# silently takes over a production hostname with months-old upstreams.
+#
+# `protocol options redefined` is already a live functional bleed: ssl_protocols
+# belongs to the LISTEN SOCKET, not the server block, so whichever block defines
+# it first sets it for all of 0.0.0.0:443 — including hostnames whose own block
+# was ignored.
+#
+# ── Why the allowlist is by NAME, and not the two rules #3173 proposed ────────
+#
+# The issue suggested (a) narrowing the include to `*.conf`, or (b) failing on
+# any non-symlink. Both were checked against the real directory and BOTH ARE
+# WRONG:
+#
+#   (a) `*.conf` would disable EVERY vhost on the box. Not one live file ends in
+#       `.conf` — `mira`, `factorylm`, `factorylm-landing`, `cmms.factorylm.com`,
+#       `plane`, `preview`, `remoteme` all lack the suffix. Applying it would
+#       load zero server blocks.
+#   (b) `cmms.factorylm.com` and `factorylm-landing` are regular files, not
+#       symlinks, and both are current live config. A non-symlink rule flags two
+#       legitimate vhosts and would move them out.
+#
+# So the guard is a default-deny ALLOWLIST of expected vhost names (the
+# `_ONE_PIPELINE_ALLOWLIST` idiom). It catches every backup regardless of how it
+# is named — including one that a `.bak`-pattern denylist would miss — and a new
+# legitimate vhost is added here deliberately, in review.
+#
+# `stg-factorylm` is allowlisted because deploy-nginx-stg.yml creates it. It is
+# NOT present today (that workflow has not run, or was undone) — allowlisting an
+# absent-but-sanctioned name is harmless; the check only ever inspects what IS
+# in the directory.
+#
+# ── Modes ────────────────────────────────────────────────────────────────────
+#   check (default) — READ-ONLY. Lists the directory, names every entry not in
+#                     the allowlist, counts nginx -t warnings. Exits non-zero if
+#                     any offender is present. Also runs weekly.
+#   fix             — Moves offenders to /etc/nginx/sites-backup/<utc-stamp>/,
+#                     re-tests, reloads, and re-probes. NEVER deletes; rolls the
+#                     exact moved set back if nginx -t fails or any hostname
+#                     regresses against the baseline captured moments earlier.
+#
+# Human-dispatched and `environment: production`-gated, matching
+# deploy-nginx-stg.yml — the repo's established path for a prod nginx mutation.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check = read-only report | fix = move backups out (gated)"
+        type: choice
+        options: [check, fix]
+        default: check
+        required: true
+      confirm:
+        description: "For mode=fix ONLY, type: MOVE-BAK-FILES"
+        type: string
+        default: ""
+        required: false
+  schedule:
+    # Weekly read-only check (Mondays 07:00 UTC) so a reintroduced backup is
+    # noticed even if no one deploys.
+    - cron: "0 7 * * 1"
+
+concurrency:
+  group: nginx-sites-enabled-hygiene
+  cancel-in-progress: false
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Guard — fix mode requires the confirmation token
+        if: inputs.mode == 'fix'
+        run: |
+          if [ "${{ inputs.confirm }}" != "MOVE-BAK-FILES" ]; then
+            echo "::error::mode=fix requires confirm=MOVE-BAK-FILES (got '${{ inputs.confirm }}')."
+            echo "This moves live nginx configuration on the production box. Re-dispatch with the token."
+            exit 1
+          fi
+          echo "Confirmation token accepted."
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run hygiene ${{ inputs.mode || 'check' }}
+        env:
+          MODE: ${{ inputs.mode || 'check' }}
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            root@165.245.138.91 "MODE='${MODE}' bash -s" << 'ENDSSH'
+          set -uo pipefail
+
+          SE=/etc/nginx/sites-enabled
+          # Expected vhosts. Anything else in the directory is an offender.
+          ALLOW="cmms.factorylm.com factorylm factorylm-landing factorylm-paths mira plane preview remoteme stg-factorylm"
+
+          # chat.factorylm.com is deliberately NOT probed: it has NO DNS record
+          # at all (verified 2026-08-10, `dig +short` empty), so it cannot serve
+          # and never could here. #3173 step 3 listed it, which would have failed
+          # the verification for a reason unrelated to this change.
+          HOSTS="factorylm.com www.factorylm.com app.factorylm.com cmms.factorylm.com"
+
+          # Probe the LOCAL nginx directly (--resolve pins to loopback) so the
+          # result reflects this box's config rather than DNS or any edge cache.
+          probe() {
+            local h code out=""
+            for h in $HOSTS; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+                       --resolve "$h:443:127.0.0.1" "https://$h/" 2>/dev/null || echo 000)
+              out="$out$h=$code "
+            done
+            echo "$out"
+          }
+
+          offenders=""
+          for f in "$SE"/*; do
+            [ -e "$f" ] || continue
+            b=$(basename "$f")
+            case " $ALLOW " in *" $b "*) continue ;; esac
+            offenders="$offenders $b"
+          done
+          offenders=$(echo "$offenders" | xargs || true)
+
+          echo "=== $SE ==="
+          ls -la "$SE"
+          echo
+          echo "=== nginx -t warnings ==="
+          conflicts=$(nginx -t 2>&1 | grep -c "conflicting server name" || true)
+          redefined=$(nginx -t 2>&1 | grep -c "protocol options redefined" || true)
+          echo "conflicting server name : $conflicts"
+          echo "protocol options redefined: $redefined"
+          echo
+          echo "=== probe (local nginx) ==="
+          probe
+          echo
+
+          if [ -z "$offenders" ]; then
+            echo "✅ No unexpected files in $SE."
+            if [ "$conflicts" -ne 0 ] || [ "$redefined" -ne 0 ]; then
+              echo "::warning::Directory is clean but nginx still reports $conflicts conflicting / $redefined redefined — duplicates must live elsewhere in the include graph."
+            fi
+            echo "REMINDER: once this has been clean for a while, drop KNOWN_PENDING from deploy-vps.yml (#3173)."
+            exit 0
+          fi
+
+          echo "OFFENDERS (live config, not an expected vhost):"
+          for b in $offenders; do echo "  - $b"; done
+          echo
+
+          if [ "${MODE}" != "fix" ]; then
+            echo "::error::$(echo "$offenders" | wc -w) unexpected file(s) in $SE are live nginx config (#3173)."
+            echo "Re-dispatch this workflow with mode=fix and confirm=MOVE-BAK-FILES to move them aside."
+            exit 1
+          fi
+
+          # ---------- fix ----------
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          DEST="/etc/nginx/sites-backup/$STAMP"
+          mkdir -p "$DEST"
+
+          BASELINE=$(probe)
+          echo "Baseline: $BASELINE"
+
+          moved=""
+          for b in $offenders; do
+            if [ -L "$SE/$b" ]; then
+              # Never touch a symlink: every symlink here points into
+              # sites-available and is a real vhost, not a backup.
+              echo "::warning::skipping symlink $b — not a backup; add it to ALLOW if it is a real vhost."
+              continue
+            fi
+            mv "$SE/$b" "$DEST/$b" && moved="$moved $b"
+          done
+          moved=$(echo "$moved" | xargs || true)
+
+          if [ -z "$moved" ]; then
+            echo "::error::Nothing was moved (all offenders were symlinks). Not reloading."
+            exit 1
+          fi
+          echo "Moved to $DEST:"; for b in $moved; do echo "  - $b"; done
+
+          rollback() {
+            echo "::error::$1 — rolling back."
+            for b in $moved; do mv "$DEST/$b" "$SE/$b" || true; done
+            nginx -t && systemctl reload nginx || true
+            echo "Rolled back. Probe after rollback: $(probe)"
+            exit 1
+          }
+
+          nginx -t || rollback "nginx -t failed after moving files"
+
+          systemctl reload nginx || rollback "nginx reload failed"
+          sleep 3
+
+          AFTER=$(probe)
+          echo "After   : $AFTER"
+
+          # Compare per host. A host that served before must still serve; a host
+          # that was already failing is not this change's problem and must not
+          # block it (see chat.factorylm.com note above).
+          for h in $HOSTS; do
+            before=$(echo "$BASELINE" | tr ' ' '\n' | grep "^$h=" | cut -d= -f2)
+            after=$(echo "$AFTER"    | tr ' ' '\n' | grep "^$h=" | cut -d= -f2)
+            case "$before" in
+              2*|3*)
+                case "$after" in
+                  2*|3*) echo "  ok   $h $before -> $after" ;;
+                  *)     rollback "$h regressed $before -> $after" ;;
+                esac ;;
+              *) echo "  skip $h was already $before before the change" ;;
+            esac
+          done
+
+          echo
+          echo "=== nginx -t after ==="
+          nginx -t 2>&1 | grep -c "conflicting server name" | xargs echo "conflicting server name :"
+          nginx -t 2>&1 | grep -c "protocol options redefined" | xargs echo "protocol options redefined:"
+          echo
+          echo "✅ #3173 cleanup complete. Backups preserved (NOT deleted) in $DEST."
+          echo "NEXT: remove the KNOWN_PENDING list from deploy-vps.yml so the guard becomes strict."
+          ENDSSH
