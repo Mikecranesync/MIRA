@@ -210,3 +210,41 @@ def test_string_numerics_from_psql_are_tolerated():
         ]
     )
     assert v.ok
+
+
+# --- workflow contract -------------------------------------------------------
+#
+# The classifier was correct from day one; the WORKFLOW threw its verdict away.
+# `rc=${PIPESTATUS[1]}` reads `tee` (always 0) instead of python, so run
+# 31782370772 printed "NO-GO: REPLAY" and then announced "CV-101 GO" and exited
+# 0. An alarm that can never fire is worse than no alarm — it certifies health.
+
+
+def _workflow_text() -> str:
+    return (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "cv101-live-gate.yml"
+    ).read_text()
+
+
+def test_workflow_reads_the_gate_exit_code_not_tee():
+    wf = _workflow_text()
+    assert "rc=${PIPESTATUS[0]}" in wf, (
+        "the gate's exit code is PIPESTATUS[0] (python); [1] is tee and is always 0, "
+        "which makes the alarm silently un-fireable"
+    )
+    assert "rc=${PIPESTATUS[1]}" not in wf
+
+
+def test_workflow_propagates_a_nogo_as_a_failed_run():
+    """A NO-GO must FAIL the run — a green run is the only 'all clear'."""
+    wf = _workflow_text()
+    assert 'exit "$rc"' in wf
+
+
+def test_workflow_probe_is_read_only():
+    wf = _workflow_text()
+    for mutating in ("INSERT", "UPDATE ", "DELETE", "DROP", "ALTER", "TRUNCATE"):
+        assert mutating not in wf, f"{mutating!r} in a read-only probe"

@@ -128,7 +128,11 @@ jobs:
             --expected-uns-path "$EXPECTED_UNS" \
             --max-observed-age-s "$MAX_OBS_AGE" \
             < /tmp/probe.json | tee /tmp/verdict.txt
-          rc=${PIPESTATUS[1]}
+          # PIPESTATUS[0] = python (the verdict). [1] would be `tee`, which is
+          # ALWAYS 0 — reading it made the gate announce GO while printing NO-GO,
+          # i.e. an alarm that could never fire. Caught by running it against prod
+          # rather than trusting green CI.
+          rc=${PIPESTATUS[0]}
           set -e
 
           {
