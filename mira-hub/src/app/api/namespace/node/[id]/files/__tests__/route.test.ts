@@ -19,13 +19,13 @@ import { NextResponse } from "next/server";
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn() } }));
-vi.mock("@/lib/node-knowledge-ingest", () => ({ ingestPdfToNode: vi.fn() }));
+vi.mock("@/lib/node-knowledge-ingest", () => ({ ingestPdfToNode: vi.fn(), ingestTextToNode: vi.fn() }));
 vi.mock("@/lib/uploads", () => ({ findDuplicateUpload: vi.fn(async () => null) }));
 
 import { GET, POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
+import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { findDuplicateUpload } from "@/lib/uploads";
 import pool from "@/lib/db";
 
@@ -279,5 +279,45 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
     expect(body).toMatchObject({ ok: true, indexed: false });
     expect(body.warning).toBeUndefined();
     expect(ingestPdfToNode).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST — plain text is indexable (copied-text source door)", () => {
+  const makePostReq = (filename: string, type: string) => {
+    const fd = new FormData();
+    fd.append("file", new File(["torque the lugs to 1.4 N-m"], filename, { type }));
+    return new Request(`https://hub.test/api/namespace/node/${VALID_UUID}/files`, {
+      method: "POST",
+      body: fd,
+    });
+  };
+
+  it("routes text/plain through ingestTextToNode and returns indexed:true", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext)
+      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
+      .mockResolvedValueOnce("direct-parked-txt")
+      .mockResolvedValueOnce(undefined); // upload_id link update
+    vi.mocked(ingestTextToNode).mockResolvedValue({ uploadId: "up-txt-1", chunkCount: 1 });
+
+    const res = await POST(makePostReq("bench-note.txt", "text/plain"), makeParams(VALID_UUID));
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ ok: true, indexed: true, uploadId: "up-txt-1" });
+    expect(ingestTextToNode).toHaveBeenCalledTimes(1);
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+  });
+
+  it("markdown (text/markdown) indexes as text too", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext)
+      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
+      .mockResolvedValueOnce("direct-parked-md")
+      .mockResolvedValueOnce(undefined);
+    vi.mocked(ingestTextToNode).mockResolvedValue({ uploadId: "up-md-1", chunkCount: 1 });
+
+    const res = await POST(makePostReq("notes.md", "text/markdown"), makeParams(VALID_UUID));
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ indexed: true });
   });
 });
