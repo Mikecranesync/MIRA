@@ -1,0 +1,148 @@
+name: CV-101 live gate
+
+# One workflow, two jobs — the same five checks, different trigger:
+#
+#   workflow_dispatch -> THE 10:00 BENCH GATE. Run it the moment the physical
+#                        link is restored and get GO / NO-GO. No SQL to
+#                        reconstruct at the conveyor.
+#   schedule          -> THE LIVENESS ALARM. #3161's real failure was not the
+#                        replay, it was that the stream sat non-live for 12 days
+#                        without anything shouting. This shouts.
+#
+# READ-ONLY. SELECTs only. It never writes to production.
+#
+# The decision lives in tools/cv101_live_gate.py (pure `classify`, unit-tested
+# against the REAL 2026-08-14 frozen-replay measurement in
+# tests/test_cv101_live_gate.py). This file only fetches rows and pipes them in,
+# so the gate's logic can be changed and tested without touching a database.
+#
+# Why live_ratio and not row count: the 033 schema separates observed-at
+# (event_timestamp, source clock) from received-at (ingested_at, server NOW). A
+# replay keeps posting, so volume stays high while observed time stands still —
+# 774,480 rows carrying ONE distinct observed timestamp is what prod looked like
+# on 2026-08-14. Volume can never imply health; the ratio can.
+
+on:
+  workflow_dispatch:
+    inputs:
+      window_minutes:
+        description: "Observation window in minutes (10:00 gate: use 5-10 after the link is up)"
+        type: string
+        default: "10"
+      expected_uns_path:
+        description: "Allowlisted uns_path the rows MUST carry (see #3233)"
+        type: string
+        default: "enterprise.home_garage.conveyor_lab.conveyor_1"
+      max_observed_age_s:
+        description: "Newest observation must be younger than this"
+        type: string
+        default: "300"
+  schedule:
+    # Hourly. A 12-day silence must never happen again.
+    - cron: "17 * * * *"
+
+concurrency:
+  group: cv101-live-gate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: CV-101 GO/NO-GO
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Resolve DATABASE_URL (prod, read-only use)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch"; exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+
+      - name: Probe (read-only) + evaluate gate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          WINDOW_MIN: ${{ inputs.window_minutes || '10' }}
+          EXPECTED_UNS: ${{ inputs.expected_uns_path || 'enterprise.home_garage.conveyor_lab.conveyor_1' }}
+          MAX_OBS_AGE: ${{ inputs.max_observed_age_s || '300' }}
+        run: |
+          set -euo pipefail
+
+          # One row per (source_system, source_connection_id) seen in the window.
+          # Grouping by source is what lets the gate keep SimLab traffic separate
+          # from the physical rig instead of averaging them together.
+          SQL=$(cat <<SQLEOF
+          SELECT coalesce(json_agg(t), '[]'::json) FROM (
+            SELECT source_system,
+                   coalesce(source_connection_id,'(null)')      AS source_connection_id,
+                   bool_or(simulated)                            AS simulated,
+                   count(*)                                      AS rows,
+                   count(DISTINCT event_timestamp)               AS distinct_observed_ts,
+                   count(DISTINCT tag_path)                      AS tag_count,
+                   count(*) FILTER (WHERE quality IN ('bad','stale')) AS bad_quality_rows,
+                   EXTRACT(EPOCH FROM (now() - max(event_timestamp)))::bigint AS newest_observed_age_s,
+                   EXTRACT(EPOCH FROM (now() - max(ingested_at)))::bigint     AS newest_ingest_age_s,
+                   coalesce(
+                     array_agg(DISTINCT uns_path::text) FILTER (WHERE uns_path IS NOT NULL),
+                     ARRAY[]::text[]
+                   ) AS uns_paths
+              FROM tag_events
+             WHERE ingested_at > now() - (interval '1 minute' * ${WINDOW_MIN})
+               AND (
+                     source_connection_id = 'cv101-bench-gw'
+                  OR uns_path::text = '${EXPECTED_UNS}'
+                   )
+             GROUP BY 1,2
+          ) t;
+          SQLEOF
+          )
+
+          echo "=== observation window: ${WINDOW_MIN} min | expected uns_path: ${EXPECTED_UNS} ==="
+          psql "$DATABASE_URL" --no-psqlrc -At -v ON_ERROR_STOP=1 -c "$SQL" > /tmp/probe.json
+          echo "--- raw probe ---"; cat /tmp/probe.json; echo
+
+          set +e
+          python3 tools/cv101_live_gate.py \
+            --expected-uns-path "$EXPECTED_UNS" \
+            --max-observed-age-s "$MAX_OBS_AGE" \
+            < /tmp/probe.json | tee /tmp/verdict.txt
+          rc=${PIPESTATUS[1]}
+          set -e
+
+          {
+            echo "## CV-101 live gate"
+            echo '```'
+            cat /tmp/verdict.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$rc" -eq 0 ]; then
+            echo "::notice::CV-101 GO — telemetry is live, fresh, physical and canonically identified."
+          elif [ "$rc" -eq 2 ]; then
+            echo "::error::CV-101 UNKNOWN — the gate could not determine state (see output)."
+          else
+            echo "::error::CV-101 NO-GO — $(head -1 /tmp/verdict.txt)"
+          fi
+          exit "$rc"
