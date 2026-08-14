@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+// Release signing (Google Play upload key). Secrets live in android/keystore.properties
+// (gitignored) + a keystore file OUTSIDE the repo — see docs/release/android/signing.md.
+// Without keystore.properties the release build stays unsigned (CI-safe): Play App
+// Signing holds the real app signing key; this keystore is only the upload key.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "com.factorylm.mira"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +17,10 @@ android {
         applicationId "com.factorylm.mira"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // versionCode bumps by exactly 1 on every Play upload (Play rejects reuse);
+        // versionName tracks the mobile release line (docs/release/android/README.md).
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +28,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
