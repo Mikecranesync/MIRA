@@ -60,7 +60,7 @@ function llmProviders(): LlmProvider[] {
       name: "groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
       apiKey: groq,
-      model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
+      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
     });
   }
   const cerebras = process.env.CEREBRAS_API_KEY;
@@ -69,7 +69,7 @@ function llmProviders(): LlmProvider[] {
       name: "cerebras",
       url: "https://api.cerebras.ai/v1/chat/completions",
       apiKey: cerebras,
-      model: process.env.CEREBRAS_MODEL ?? "llama3.1-8b",
+      model: process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
     });
   }
   const gemini = process.env.GEMINI_API_KEY;
@@ -79,7 +79,7 @@ function llmProviders(): LlmProvider[] {
       name: "gemini",
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       apiKey: gemini,
-      model: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
     });
   }
   return providers;
@@ -211,6 +211,9 @@ async function callLlmCascade(
           messages,
           temperature: 0.2,
           max_tokens: 512,
+          // gpt-oss spends completion tokens on reasoning; low effort keeps
+          // the answer inside the 512-token cap.
+          ...(p.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
         }),
         signal: AbortSignal.timeout(30000),
       });

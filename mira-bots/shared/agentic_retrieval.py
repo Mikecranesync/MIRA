@@ -3,7 +3,7 @@
 Spec: docs/specs/agentic-rag-upgrade-spec.md.
 
 C1 (``decompose_query``): splits a complex question into 2-4 focused
-sub-queries via Groq llama-3.1-8b-instant; per-sub-query results merged
+sub-queries via Groq openai/gpt-oss-20b; per-sub-query results merged
 via RRF in ``merge_subquery_results``. Flag-gated by
 ``MIRA_QUERY_DECOMPOSE`` (default ``0``). Fail-open to ``[question]``.
 
@@ -26,8 +26,12 @@ import httpx
 logger = logging.getLogger(__name__)
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = os.getenv("MIRA_DECOMPOSE_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL = os.getenv("MIRA_DECOMPOSE_MODEL", "openai/gpt-oss-20b")
 GROQ_TIMEOUT = float(os.getenv("MIRA_DECOMPOSE_TIMEOUT", "5"))
+# gpt-oss spends completion tokens on reasoning; low effort keeps the JSON
+# replies inside the 128/256-token caps. Gated so an env override to a
+# non-reasoning model doesn't send an unsupported param.
+_REASONING_KW = {"reasoning_effort": "low"} if "gpt-oss" in GROQ_MODEL else {}
 
 MAX_SUBQUERIES = int(os.getenv("MIRA_DECOMPOSE_MAX_SUBQUERIES", "4"))
 MIN_TOKENS = int(os.getenv("MIRA_DECOMPOSE_MIN_TOKENS", "6"))
@@ -91,6 +95,7 @@ async def decompose_query(question: str) -> list[str]:
                     "temperature": 0.1,
                     "max_tokens": 256,
                     "response_format": {"type": "json_object"},
+                    **_REASONING_KW,
                 },
             )
             resp.raise_for_status()
@@ -237,6 +242,7 @@ async def evaluate_retrieval(
                     "temperature": 0.1,
                     "max_tokens": 128,
                     "response_format": {"type": "json_object"},
+                    **_REASONING_KW,
                 },
             )
             resp.raise_for_status()
@@ -313,6 +319,7 @@ async def _reformulate_query(
                     "temperature": 0.1,
                     "max_tokens": 128,
                     "response_format": {"type": "json_object"},
+                    **_REASONING_KW,
                 },
             )
             resp.raise_for_status()

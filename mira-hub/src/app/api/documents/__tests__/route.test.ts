@@ -113,3 +113,56 @@ describe("GET /api/documents — knowledge_entries hybrid tenant scoping", () =>
     expect(queryMock).not.toHaveBeenCalled();
   });
 });
+
+// ── ARPK Phase 1d — the list carries the doc-scoped-chat keys ────────────────
+// A per-tenant v2 upload row group must expose doc_id (= hub_uploads.id),
+// node_id (the namespace node), the real filename, and a page count, so the
+// documents UI can render a per-document "Chat" action deep-linking into
+// NodeChat with `doc=` scope. Shared OEM rows have no doc_id/node_id (NULL) —
+// the UI shows no chat action for them.
+describe("doc-scoped chat keys (ARPK 1d)", () => {
+  it("returns doc_id, node_id, filename, pages, and mine for v2 upload groups", async () => {
+    vi.mocked(sessionOrDemo).mockResolvedValue(goodSession);
+    queryMock.mockImplementation((sql: string) => {
+      if (/FROM cmms_equipment/.test(sql)) return Promise.resolve({ rows: [] });
+      return Promise.resolve({
+        rows: [
+          {
+            source_url: "node-doc/up-1/T2108_Manual_EN.pdf",
+            equipment_type: null,
+            manufacturer: null,
+            model_number: null,
+            chunk_count: 42,
+            last_indexed: "2026-08-10T00:00:00Z",
+            verified: false,
+            doc_id: "5f9b2c1a-0000-4000-8000-000000000001",
+            node_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            filename: "T2108_Manual_EN.pdf",
+            pages: 16,
+            mine: true,
+          },
+        ],
+      });
+    });
+
+    const res = await GET(new Request("https://hub.test/api/documents"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { documents: Record<string, unknown>[] };
+    expect(body.documents[0]).toMatchObject({
+      doc_id: "5f9b2c1a-0000-4000-8000-000000000001",
+      node_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      filename: "T2108_Manual_EN.pdf",
+      pages: 16,
+      mine: true,
+      title: "T2108_Manual_EN.pdf",
+    });
+
+    // The rollup SQL must actually select the new keys.
+    const keSql = String(
+      queryMock.mock.calls.find((c) => /FROM knowledge_entries/.test(String(c[0])))![0],
+    );
+    expect(keSql).toContain("doc_id");
+    expect(keSql).toContain("node_id");
+    expect(keSql).toContain("is_private");
+  });
+});

@@ -61,7 +61,7 @@ CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 
 CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
 DEFAULT_CEREBRAS_MODEL = "gpt-oss-120b"
@@ -236,6 +236,10 @@ def _call_openai_compat(
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": user_content},
             ],
+            # gpt-oss spends completion tokens on reasoning; low effort keeps
+            # the letter answer inside the 300-token cap (Groq and Cerebras
+            # both accept the param for gpt-oss models).
+            **({"reasoning_effort": "low"} if "gpt-oss" in model else {}),
         },
         timeout=REQUEST_TIMEOUT,
     )

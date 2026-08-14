@@ -366,8 +366,17 @@ jobs:
             --cov-fail-under=20
 
       - name: Run bot tests with coverage
+        # -n auto is safe here ONLY because mira-bots/tests/conftest.py gives
+        # each xdist worker a private MIRA_DB_PATH (issue #3212). Without that,
+        # concurrent collection hit a shared-SQLite `database is locked` race
+        # (#3208, reverted in #3211) — a race whose first run PASSED, so a
+        # single green run proves nothing; the enablement evidence is 3×
+        # consecutive green (local + CI). The renderers sys.modules collision
+        # pair (test_slack_relay / test_email_adapter) stays ignored exactly
+        # as before. This step was ~218s serial — the largest block on the CI
+        # critical path. --durations=25 is diagnostic output.
         run: |
-          pytest mira-bots/tests/ -v \
+          pytest mira-bots/tests/ -v -n auto --durations=25 \
             --ignore=mira-bots/tests/test_slack_relay.py \
             --ignore=mira-bots/tests/test_email_adapter.py \
             --cov=mira-bots/shared --cov-report=term-missing \
@@ -862,6 +871,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          # Latency: same pip cache as Unit Tests — the cold triple-requirements
+          # install was ~87s of this job (measured 2026-08-12).
+          cache: "pip"
+          cache-dependency-path: |
+            mira-core/mira-ingest/requirements.txt
+            mira-bots/telegram/requirements.txt
 
       - name: Install pip-licenses and project deps
         run: |

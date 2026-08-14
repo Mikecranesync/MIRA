@@ -83,7 +83,7 @@ def test_ask_handles_sse_and_sends_messages_array():
         )
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        answer = _ask(_cfg(), client)
+        answer = _ask(_cfg(), client).answer
 
     assert answer == "oC = overcurrent"
     # NodeChat requires a messages array, else it 400s "messages array required".
@@ -100,7 +100,7 @@ def test_ask_detects_sse_by_body_when_content_type_missing():
         return httpx.Response(200, text=_sse({"content": "overcurrent"}))
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        assert _ask(_cfg(), client) == "overcurrent"
+        assert _ask(_cfg(), client).answer == "overcurrent"
 
 
 # ── auth headers: Hub NodeChat needs a session COOKIE, not a bearer ───────────
@@ -130,7 +130,7 @@ def test_ask_sends_cookie_header_to_nodechat():
 
     cookie = "next-auth.session-token=abc.def.ghi"
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        answer = _ask(_cfg(cookie=cookie), client)
+        answer = _ask(_cfg(cookie=cookie), client).answer
 
     assert answer == "overcurrent"
     assert seen["cookie"] == cookie
@@ -144,7 +144,7 @@ def test_ask_json_reply_shape():
         return httpx.Response(200, json={"reply": "overcurrent fault"})
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        assert _ask(_cfg(), client) == "overcurrent fault"
+        assert _ask(_cfg(), client).answer == "overcurrent fault"
 
 
 def test_ask_openai_choices_shape():
@@ -155,4 +155,4 @@ def test_ask_openai_choices_shape():
         )
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        assert _ask(_cfg(), client) == "overcurrent"
+        assert _ask(_cfg(), client).answer == "overcurrent"

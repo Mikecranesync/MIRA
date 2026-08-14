@@ -9,6 +9,25 @@ const nextConfig: NextConfig = {
   output: "standalone",
   basePath,
   assetPrefix: basePath,
+  // Dev-only (ignored by `next build`): allow phone/tablet testing over the
+  // Tailscale IP. Without this, Next 16 dev rejects the HMR websocket from a
+  // non-localhost origin and the client runtime never hydrates — every button
+  // on the page is inert (bit us on the phone login, 2026-08-11).
+  allowedDevOrigins: [
+    "100.72.2.99",
+    "100.83.251.23",
+    "localhost",
+    // tailscale serve HTTPS front door (phone testing without a firewall rule)
+    "laptop-0ka3c70h.tail136e43.ts.net",
+  ],
+  // Next 16 buffers proxied (middleware/proxy.ts) request bodies at 10MB by
+  // default — silently truncating manual uploads, which then fail multipart
+  // parsing ("expected multipart/form-data" / server-action 404). Lift it just
+  // above the app's own MAX_UPLOAD_MB=50 gate (route returns a clean 413 there);
+  // +5mb headroom covers multipart framing overhead.
+  experimental: {
+    proxyClientMaxBodySize: "55mb",
+  },
   // #1899: unpdf loads its PDF.js engine via a runtime `import('unpdf/pdfjs')`.
   // Under `output: "standalone"`, @vercel/nft does not trace that dynamic
   // subpath import, so unpdf is dropped from `.next/standalone/node_modules`
@@ -26,6 +45,12 @@ const nextConfig: NextConfig = {
   // /hub/ → /hub, producing an infinite redirect loop on the basePath root.
   // Forcing trailingSlash: true keeps Next.js consistent with nginx.
   trailingSlash: true,
+  // Bare-domain friendliness when the hub fronts the whole host (tailscale
+  // serve / phone testing): / is outside basePath and 404s. In prod nginx owns
+  // / (mira-web), so this redirect is never reached there.
+  async redirects() {
+    return [{ source: "/", destination: "/hub/", basePath: false, permanent: false }];
+  },
 };
 
 export default nextConfig;

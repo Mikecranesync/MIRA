@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   createUpload,
+  findDuplicateUpload,
   updateUploadStatus,
   type Upload,
   type UploadKind,
@@ -25,6 +26,7 @@ import { resolveOrCreateInboxNode } from "@/lib/inbox-node";
 import {
   writePdfChunksForNode,
   writeTextChunksForNode,
+  NoExtractableTextError,
 } from "@/lib/node-knowledge-ingest";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
@@ -131,6 +133,10 @@ export async function handleLocalUpload(
     );
   }
 
+  // ARPK 1b — hash once at the door; persisted on the row and used by the v2
+  // ingest branch to skip re-chunking an exact re-upload (content dedup).
+  const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+
   const upload = await createUpload({
     tenantId: ctx.tenantId,
     provider: "local",
@@ -142,6 +148,7 @@ export async function handleLocalUpload(
     initialStatus: "parsing",
     assetTag,
     unsPath,
+    contentSha256,
   });
 
   const requestId = req.headers.get("x-request-id") ?? randomUUID();
@@ -162,6 +169,7 @@ export async function handleLocalUpload(
     kind,
     assetTag,
     requestId,
+    contentSha256,
   });
 
   return NextResponse.json(upload, {
@@ -179,6 +187,7 @@ interface LocalIngestParams {
   kind: UploadKind;
   assetTag: string | null;
   requestId: string;
+  contentSha256?: string | null;
 }
 
 /**
@@ -216,6 +225,44 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
   if (isV2Doc) {
     try {
       const inbox = await resolveOrCreateInboxNode(p.tenantId);
+
+      // ARPK 1b — content dedup: an exact re-drop of already-indexed bytes into
+      // the Inbox is marked parsed-as-duplicate instead of chunked again (the
+      // 158x-ingest class). Best-effort: a lookup failure falls through to a
+      // normal ingest, never a lost upload.
+      if (p.contentSha256) {
+        try {
+          const dup = await findDuplicateUpload(
+            p.tenantId,
+            p.contentSha256,
+            inbox.nodeId,
+          );
+          if (dup) {
+            await updateUploadStatus(
+              p.uploadId,
+              p.tenantId,
+              "parsed",
+              `duplicate of ${dup.id}`,
+              {
+                kbChunkCount: dup.kbChunkCount ?? undefined,
+                kgEntityId: inbox.nodeId,
+                ingestRoute: "v2",
+              },
+            );
+            log.log("parsed", {
+              kind: p.kind,
+              route: "v2",
+              duplicateOf: dup.id,
+              nodeId: inbox.nodeId,
+            });
+            await deleteUploadBuffer(p.uploadId);
+            return;
+          }
+        } catch (err) {
+          log.error("dedup_lookup_skipped", err);
+        }
+      }
+
       const nodeArgs = {
         tenantId: p.tenantId,
         uploadId: p.uploadId,
@@ -241,6 +288,22 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
       await deleteUploadBuffer(p.uploadId);
       return;
     } catch (err) {
+      // ARPK 1c: zero extractable text is a property of the FILE — no other
+      // ingest path can fix it, so fail the upload honestly with the cause
+      // instead of falling through (the legacy OW forwarder is sunset anyway,
+      // so the fall-through would end in a bogus success or a network error).
+      if (err instanceof NoExtractableTextError) {
+        log.error("failed", err);
+        await updateUploadStatus(
+          p.uploadId,
+          p.tenantId,
+          "failed",
+          err.message,
+        ).catch((statusErr: unknown) =>
+          log.error("status_update_failed", statusErr),
+        );
+        return; // buffer kept for retry-after-OCR-lands; no legacy fallback
+      }
       // v2 inbox ingest failed — fall back to the legacy OW-KB path below so the
       // door still works (the v2 core is the same proven node-attach path).
       log.error("v2_inbox_fallback", err);

@@ -295,10 +295,10 @@ jobs:
           providers = [
               ("groq", os.environ.get("GROQ_API_KEY", ""),
                "https://api.groq.com/openai/v1/chat/completions",
-               "llama-3.3-70b-versatile"),
+               "openai/gpt-oss-120b"),
               ("cerebras", os.environ.get("CEREBRAS_API_KEY", ""),
                "https://api.cerebras.ai/v1/chat/completions",
-               "llama-3.3-70b"),
+               "gpt-oss-120b"),
               ("gemini", os.environ.get("GEMINI_API_KEY", ""),
                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
                "gemini-2.5-flash"),

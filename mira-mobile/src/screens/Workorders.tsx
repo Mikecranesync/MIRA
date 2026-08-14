@@ -1,0 +1,457 @@
+// Workorders tab — the Phase-3 vertical: list (status filter, refresh),
+// detail (status/priority mutations), create (asset picker + idempotency key).
+// All mutations flow through the shared layer; create generates ONE client_key
+// per logical create so a retry after a network error can never duplicate
+// (server contract: PR #3223; older servers ignore the key gracefully).
+// Phase 4: a create that fails on transport lands in the tenant-keyed offline
+// queue; the list view shows the queued items and drains them on mount, on
+// app-resume, and via "Sync now" (visible sync state).
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { App as CapApp } from "@capacitor/app";
+import { ApiError } from "../api/client";
+import {
+  listWorkOrders,
+  getWorkOrder,
+  createWorkOrder,
+  updateWorkOrder,
+  listAssets,
+  type WorkOrder,
+  type Asset,
+  type Me,
+} from "../api/resources";
+import {
+  enqueueCreate,
+  loadQueue,
+  drainQueue,
+  preferencesStore,
+  type QueuedCreate,
+} from "../lib/offline-queue";
+import { can } from "../nav";
+import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
+
+type Route =
+  | { name: "list" }
+  | { name: "detail"; id: string }
+  | { name: "create" };
+
+const STATUS_FILTERS = ["all", "open", "in_progress", "resolved"] as const;
+const NEXT_STATUS: Record<string, string[]> = {
+  open: ["in_progress", "resolved"],
+  in_progress: ["resolved", "open"],
+  resolved: ["open"],
+};
+
+export function WorkordersTab({
+  me,
+  backRef,
+}: {
+  me: Me;
+  backRef: MutableRefObject<(() => boolean) | null>;
+}) {
+  const [route, setRoute] = useState<Route>({ name: "list" });
+  backRef.current = () => {
+    if (route.name !== "list") {
+      setRoute({ name: "list" });
+      return true;
+    }
+    return false;
+  };
+
+  if (route.name === "detail")
+    return (
+      <Detail
+        id={route.id}
+        me={me}
+        onBack={() => setRoute({ name: "list" })}
+      />
+    );
+  if (route.name === "create")
+    return (
+      <Create
+        me={me}
+        onDone={() => setRoute({ name: "list" })}
+        onCancel={() => setRoute({ name: "list" })}
+      />
+    );
+  return (
+    <List
+      me={me}
+      onOpen={(id) => setRoute({ name: "detail", id })}
+      onCreate={() => setRoute({ name: "create" })}
+    />
+  );
+}
+
+function List({
+  me,
+  onOpen,
+  onCreate,
+}: {
+  me: Me;
+  onOpen: (id: string) => void;
+  onCreate: () => void;
+}) {
+  const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
+  const [state, setState] = useState<Loadable<WorkOrder[]>>({ state: "loading" });
+  const [queued, setQueued] = useState<QueuedCreate[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState("");
+  // Sequence-guarded: a mount-drain "all" fetch racing a quick filter click
+  // must never let the stale response overwrite the newer filter's list.
+  const seqRef = useRef(0);
+  const refresh = (f = filter) => {
+    const seq = ++seqRef.current;
+    setState({ state: "loading" });
+    void load(() => listWorkOrders(f === "all" ? undefined : f)).then((s) => {
+      if (seq === seqRef.current) setState(s);
+    });
+  };
+  useEffect(() => refresh(filter), [filter]);
+
+  const refreshQueue = async () => {
+    setQueued(await loadQueue(preferencesStore, me.tenantId));
+  };
+  const sync = async () => {
+    setSyncing(true);
+    setSyncNote("");
+    try {
+      const r = await drainQueue(preferencesStore, me.tenantId, createWorkOrder);
+      if (!r) return;
+      const parts: string[] = [];
+      if (r.sent > 0) parts.push(`${r.sent} synced`);
+      for (const rej of r.rejected) parts.push(`rejected: ${rej.error}`);
+      if (r.stopped && r.remaining > 0) parts.push(`${r.remaining} still waiting (offline?)`);
+      setSyncNote(parts.join(" · "));
+      await refreshQueue();
+      if (r.sent > 0) refresh();
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Drain on mount and whenever the app returns to the foreground. The
+  // listener goes through a ref so it always sees the CURRENT filter/closure.
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
+  useEffect(() => {
+    void refreshQueue().then(() => void syncRef.current());
+    const sub = CapApp.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) void syncRef.current();
+    });
+    return () => {
+      void sub.then((s) => s.remove());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.tenantId]);
+
+  return (
+    <div className="content bottompad">
+      <div className="chip-row">
+        {STATUS_FILTERS.map((f) => (
+          <button
+            key={f}
+            className={`chip ${f === filter ? "chip-active" : ""}`}
+            onClick={() => setFilter(f)}
+          >
+            {f.replace("_", " ")}
+          </button>
+        ))}
+        <button className="chip" onClick={() => refresh()}>
+          ↻
+        </button>
+      </div>
+      {can(me.capabilities, "work_orders.create") && (
+        <button className="btn-primary" style={{ margin: "10px 0" }} onClick={onCreate}>
+          + New work order
+        </button>
+      )}
+      {(queued.length > 0 || syncNote) && (
+        <div className="card">
+          <h3>
+            {queued.length > 0
+              ? `Waiting to sync (${queued.length})`
+              : "Sync"}
+          </h3>
+          {queued.map((q) => (
+            <div key={q.input.client_key} className="meta">
+              ⏳ {q.input.title || q.input.description}
+              {q.attempts > 0 ? ` · ${q.attempts} attempt${q.attempts > 1 ? "s" : ""}` : ""}
+            </div>
+          ))}
+          {syncNote && <div className="meta">{syncNote}</div>}
+          {queued.length > 0 && (
+            <button
+              style={{ marginTop: 8 }}
+              disabled={syncing}
+              onClick={() => void sync()}
+            >
+              {syncing ? "Syncing…" : "Sync now"}
+            </button>
+          )}
+        </div>
+      )}
+      {state.state === "loading" && <Loading what="work orders" />}
+      {state.state === "error" && <ErrorState error={state.error} onRetry={() => refresh()} />}
+      {state.state === "ready" && state.data.length === 0 && (
+        <Empty text="No work orders match this filter." />
+      )}
+      {state.state === "ready" &&
+        state.data.map((wo) => (
+          <div key={wo.id} className="card" onClick={() => onOpen(wo.id)}>
+            <h3>
+              {wo.work_order_number} · {wo.title}
+            </h3>
+            <div className="meta">
+              <span className={`badge badge-${wo.status}`}>{wo.status.replace("_", " ")}</span>{" "}
+              <span className={`badge badge-prio-${wo.priority}`}>{wo.priority}</span>{" "}
+              {wo.asset}
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function Detail({
+  id,
+  me,
+  onBack,
+}: {
+  id: string;
+  me: Me;
+  onBack: () => void;
+}) {
+  const [state, setState] = useState<Loadable<WorkOrder | null>>({ state: "loading" });
+  const [mutating, setMutating] = useState("");
+  const [mutError, setMutError] = useState<unknown>(null);
+  const refresh = () => {
+    setState({ state: "loading" });
+    void load(() => getWorkOrder(id)).then(setState);
+  };
+  useEffect(refresh, [id]);
+
+  const wo = state.state === "ready" ? state.data : null;
+  const mayUpdate = can(me.capabilities, "work_orders.update");
+
+  return (
+    <div className="content bottompad">
+      <button className="btn-link" onClick={onBack}>
+        ← Workorders
+      </button>
+      {state.state === "loading" && <Loading what="work order" />}
+      {state.state === "error" && <ErrorState error={state.error} onRetry={refresh} />}
+      {state.state === "ready" && !wo && <Empty text="Work order not found." />}
+      {wo && (
+        <>
+          <div className="card">
+            <h3>
+              {wo.work_order_number} · {wo.title}
+            </h3>
+            <div className="meta" style={{ margin: "6px 0" }}>
+              <span className={`badge badge-${wo.status}`}>{wo.status.replace("_", " ")}</span>{" "}
+              <span className={`badge badge-prio-${wo.priority}`}>{wo.priority}</span>{" "}
+              {wo.source_label}
+            </div>
+            <div className="meta">{wo.asset}</div>
+            <p className="chat-answer" style={{ fontSize: 14 }}>
+              {wo.description}
+            </p>
+            {wo.safety_warnings.length > 0 && (
+              <div className="warnbox">
+                {wo.safety_warnings.map((w, i) => (
+                  <div key={i}>⚠ {w}</div>
+                ))}
+              </div>
+            )}
+            {wo.suggested_actions.length > 0 && (
+              <ul style={{ paddingLeft: 18, margin: "8px 0" }}>
+                {wo.suggested_actions.map((a, i) => (
+                  <li key={i} style={{ fontSize: 14 }}>
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {mayUpdate ? (
+            <div className="card">
+              <div className="meta" style={{ marginBottom: 8 }}>
+                Move to:
+              </div>
+              {(NEXT_STATUS[wo.status] ?? []).map((s) => (
+                <button
+                  key={s}
+                  disabled={Boolean(mutating)}
+                  style={{ marginBottom: 8 }}
+                  onClick={async () => {
+                    setMutating(s);
+                    setMutError(null);
+                    try {
+                      await updateWorkOrder(wo.id, { status: s });
+                      refresh();
+                    } catch (e) {
+                      setMutError(e);
+                    } finally {
+                      setMutating("");
+                    }
+                  }}
+                >
+                  {mutating === s ? "Updating…" : s.replace("_", " ")}
+                </button>
+              ))}
+              {mutError != null && <ErrorState error={mutError} />}
+              {/* Archive path for mistaken/test WOs (punch list WO-06):
+                  status "completed" with a resolution — server-validated
+                  closing status (sets closed_at). NOTE: "closed" 500s on prod
+                  (enum lacks the value) — do not switch back without a probe. */}
+              {wo.status !== "completed" && wo.status !== "closed" && (
+                <button
+                  style={{ marginTop: 4 }}
+                  disabled={Boolean(mutating)}
+                  onClick={async () => {
+                    const resolution = window.prompt(
+                      "Close & archive this work order?\nEnter a short resolution note (required):",
+                      wo.title.startsWith("ZZZ-TEST") ? "Test entry — discarded." : "",
+                    );
+                    if (resolution == null || !resolution.trim()) return;
+                    setMutating("closed");
+                    setMutError(null);
+                    try {
+                      await updateWorkOrder(wo.id, {
+                        status: "completed",
+                        resolution: resolution.trim(),
+                      });
+                      refresh();
+                    } catch (e) {
+                      setMutError(e);
+                    } finally {
+                      setMutating("");
+                    }
+                  }}
+                >
+                  {mutating === "closed" ? "Closing…" : "Close & archive"}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="meta" style={{ textAlign: "center" }}>
+              Your role can view but not update work orders.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Create({
+  me,
+  onDone,
+  onCancel,
+}: {
+  me: Me;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [assets, setAssets] = useState<Loadable<Asset[]>>({ state: "loading" });
+  const [equipmentId, setEquipmentId] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("medium");
+  // ONE key per logical create — survives retries of the same form submission.
+  const [clientKey] = useState(() => crypto.randomUUID());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [replayNote, setReplayNote] = useState(false);
+
+  useEffect(() => {
+    void load(listAssets).then(setAssets);
+  }, []);
+
+  return (
+    <div className="content bottompad">
+      <button className="btn-link" onClick={onCancel}>
+        ← Cancel
+      </button>
+      <div className="card">
+        <h3>New work order</h3>
+        <label>Asset</label>
+        {assets.state === "loading" && <Loading what="assets" />}
+        {assets.state === "error" && <ErrorState error={assets.error} />}
+        {assets.state === "ready" && (
+          <select value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)}>
+            <option value="">Select an asset…</option>
+            {assets.data.map((a) => (
+              <option key={a.id} value={a.id}>
+                {/* Disambiguate same-named assets (punch list DATA-10). */}
+                {[a.name || a.model_number || a.model || a.id, a.tag, a.location]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </option>
+            ))}
+          </select>
+        )}
+        <label>Title (optional)</label>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        <label>Description</label>
+        <input value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label>Priority</label>
+        <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+          {["low", "medium", "high", "critical"].map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <div style={{ marginTop: 14 }}>
+          <button
+            className="btn-primary"
+            disabled={busy || !equipmentId || !description.trim()}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              const input = {
+                equipment_id: equipmentId,
+                description: description.trim(),
+                title: title.trim() || undefined,
+                priority,
+                client_key: clientKey,
+              };
+              try {
+                const r = await createWorkOrder(input);
+                setReplayNote(r.replayed);
+                onDone();
+              } catch (e) {
+                // Transport failure ⇒ queue it (Phase 4). The retained
+                // client_key makes the later drain a safe replay even if the
+                // original request half-landed.
+                if (e instanceof ApiError && e.kind === "network") {
+                  await enqueueCreate(preferencesStore, me.tenantId, input);
+                  onDone();
+                  return;
+                }
+                setError(e); // key is retained — pressing again is a SAFE replay
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "Creating…" : "Create work order"}
+          </button>
+        </div>
+        {/* A disabled primary button must say WHY (punch list FRM-02). */}
+        {(!equipmentId || !description.trim()) && (
+          <div className="meta" style={{ marginTop: 8 }}>
+            To create:{" "}
+            {[!equipmentId && "select an asset", !description.trim() && "add a description"]
+              .filter(Boolean)
+              .join(" and ")}
+            .
+          </div>
+        )}
+        {error != null && <ErrorState error={error} />}
+        {replayNote && <div className="meta">Already created (replay detected).</div>}
+      </div>
+    </div>
+  );
+}

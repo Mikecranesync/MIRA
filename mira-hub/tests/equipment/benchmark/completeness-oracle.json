@@ -1,0 +1,84 @@
+{
+  "_note": "Multi-evidence answer-completeness oracle. Each broad question lists the FACETS the loaded corpus actually proves (verified by per-facet chunk sweeps 2026-08-13 — e.g. speed/MOP is deliberately absent: 0 supporting chunks). A facet counts as covered when its answer marker matches AND (strict mode) at least one cited page's chunk text matches the facet's support regex. Coverage and groundedness are scored SEPARATELY: an answer can be 100% grounded yet 40% complete. `min_coverage` is the post-implementation gate; baseline runs are report-only.",
+  "questions": [
+    {
+      "id": "comm-overview",
+      "q": "how can I communicate with this drive?",
+      "shape": "multi_facet",
+      "min_coverage": 1.0,
+      "facets": [
+        { "key": "embedded-ethernet", "marker": "embedded|built.?in", "marker2": "ethernet", "support": "embedded[\\s\\S]{0,40}EtherNet|Emb Enet" },
+        { "key": "rs485-modbus", "marker": "rs.?485|modbus|dsi", "support": "RS-?485|Modbus RTU|DSI" },
+        { "key": "optional-adapter", "marker": "adapter|25-COMM", "support": "25-COMM|communication adapter" }
+      ]
+    },
+    {
+      "id": "speed-ways",
+      "q": "what are all the ways I can command the speed?",
+      "shape": "exhaustive",
+      "min_coverage": 0.75,
+      "facets": [
+        { "key": "keypad-pot", "marker": "keypad|potentiometer", "support": "potentiometer|keypad freq" },
+        { "key": "analog", "marker": "analog|0-10|4-20", "support": "analog in|0-10V|4-20 ?mA" },
+        { "key": "preset", "marker": "preset", "support": "preset freq" },
+        { "key": "network", "marker": "network|ethernet|comm", "support": "network reference|comm freq|network opt|EtherNet" }
+      ]
+    },
+    {
+      "id": "protections",
+      "q": "what protections does this drive have?",
+      "shape": "multi_facet",
+      "min_coverage": 0.8,
+      "facets": [
+        { "key": "overcurrent", "marker": "overcurrent|over.current", "support": "overcurrent|over current" },
+        { "key": "overvoltage", "marker": "overvoltage|over.voltage", "support": "overvoltage" },
+        { "key": "undervoltage", "marker": "undervoltage|under.voltage", "support": "undervoltage" },
+        { "key": "motor-overload", "marker": "overload", "support": "motor overload|overload" },
+        { "key": "ground-fault", "marker": "ground", "support": "ground fault" }
+      ]
+    },
+    {
+      "id": "start-ways",
+      "q": "what are the different ways to start this drive?",
+      "shape": "multi_facet",
+      "min_coverage": 1.0,
+      "facets": [
+        { "key": "keypad", "marker": "keypad", "support": "start source|P046|keypad" },
+        { "key": "terminal-digin", "marker": "terminal|digin|2-wire|3-wire", "support": "DigIn TrmBlk|2-wire|3-wire" },
+        { "key": "network", "marker": "network|ethernet|comm", "support": "start source[\\s\\S]{0,120}(network|ethernet)|network opt" }
+      ]
+    },
+    {
+      "id": "accel-vs-decel",
+      "q": "what's the difference between the accel time and the decel time settings?",
+      "shape": "comparison",
+      "min_coverage": 1.0,
+      "facets": [
+        { "key": "accel-p041", "marker": "P041", "support": "P041" },
+        { "key": "decel-p042", "marker": "P042", "support": "P042" }
+      ]
+    },
+    {
+      "id": "ethernet-setup-span",
+      "q": "walk me through setting up Ethernet on this drive from scratch",
+      "shape": "procedure",
+      "min_coverage": 0.66,
+      "facets": [
+        { "key": "physical", "marker": "cable|rj-?45|port|connect", "support": "Ethernet cable|RJ-?45|embedded EtherNet" },
+        { "key": "addr-select", "marker": "C128|addr sel|bootp|dhcp|parameters", "support": "C128|EN Addr Sel|BOOTP" },
+        { "key": "ip-config", "marker": "C129|ip address|subnet|gateway", "support": "C129|EN IP Addr|subnet" }
+      ]
+    },
+    {
+      "id": "impossible-exhaustive",
+      "q": "list every parameter this drive supports",
+      "shape": "impossible_exhaustive",
+      "min_coverage": 1.0,
+      "honest_scope": true,
+      "facets": [
+        { "key": "scopes-honestly", "marker": "group|hundreds|chapter|full list|not (?:practical|possible|list)|too many", "support": "Parameter Group|Basic Program|Advanced Program" }
+      ],
+      "_note": "Must NOT pretend to enumerate everything; should name the parameter GROUPS (b/P/t/C/L/d/A/f) or point to the programming chapter, with citation."
+    }
+  ]
+}

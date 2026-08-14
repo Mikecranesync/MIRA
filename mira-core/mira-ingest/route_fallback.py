@@ -309,7 +309,7 @@ async def _run_llm_discover_url(
 
     # --- Groq ---
     groq_key = os.getenv("GROQ_API_KEY", "")
-    groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    groq_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     if groq_key and not discovered_url:
         try:
             async with httpx.AsyncClient(timeout=20) as client:
@@ -321,6 +321,11 @@ async def _run_llm_discover_url(
                         "messages": [{"role": "user", "content": prompt}],
                         "response_format": {"type": "json_object"},
                         "max_tokens": 200,
+                        # gpt-oss spends completion tokens on reasoning; low
+                        # effort keeps the JSON inside the 200-token cap. Gated
+                        # so an env override to a non-reasoning model doesn't
+                        # send an unsupported param.
+                        **({"reasoning_effort": "low"} if "gpt-oss" in groq_model else {}),
                     },
                 )
                 if resp.status_code == 200:

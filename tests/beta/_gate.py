@@ -97,6 +97,19 @@ class GateResult:
     cited: bool
     answer: str
     explain: str
+    # The actually-retrieved sources from the SSE `sources` frame. None = the
+    # surface emitted no frame (JSON surfaces never do; an SSE surface with zero
+    # retrieved chunks doesn't either — NodeChat only emits it when non-empty).
+    sources: list | None = None
+
+
+@dataclass
+class AskResult:
+    """One chat round: the assembled answer plus the real retrieval evidence."""
+
+    answer: str
+    sources: list | None
+    sse: bool
 
 
 def load_gate_config() -> GateConfig:
@@ -142,16 +155,22 @@ def _headers(cfg: GateConfig) -> dict[str, str]:
     return h
 
 
-def _parse_sse_answer(text: str) -> str:
-    """Accumulate the answer from an SSE stream.
+def _parse_sse_frames(text: str) -> tuple[str, list | None]:
+    """Accumulate the answer AND the sources frame from an SSE stream.
 
     The Hub NodeChat surface (`/api/namespace/node/<id>/chat`) streams
     `text/event-stream` lines of the form `data: {"content": "..."}` (token
-    deltas), plus a leading `data: {"sources": [...]}` and a terminating
-    `data: [DONE]`. We concatenate the `content` deltas — the assembled string
-    is the answer the human reads.
+    deltas), plus a leading `data: {"sources": [...]}` (emitted ONLY when
+    retrieval returned chunks) and a terminating `data: [DONE]`. The assembled
+    content string is the answer the human reads; the sources list is the real
+    retrieval evidence — the thing the citation verdict must judge, because the
+    system prompt instructs the model to emit `[n]` markers whether or not
+    anything was retrieved (ARPK Phase 1e).
+
+    Returns (answer, sources) — sources is None when no frame was seen.
     """
     parts: list[str] = []
+    sources: list | None = None
     for line in text.splitlines():
         line = line.strip()
         if not line.startswith("data:"):
@@ -163,13 +182,26 @@ def _parse_sse_answer(text: str) -> str:
             obj = json.loads(payload)
         except (ValueError, TypeError):
             continue
-        if isinstance(obj, dict) and isinstance(obj.get("content"), str):
+        if not isinstance(obj, dict):
+            continue
+        if isinstance(obj.get("content"), str):
             parts.append(obj["content"])
-    return "".join(parts)
+        if isinstance(obj.get("sources"), list):
+            sources = obj["sources"]
+    return "".join(parts), sources
 
 
-def _ask(cfg: GateConfig, client: httpx.Client) -> str:
-    """Ask the question through the real chat endpoint; return the answer text.
+def _parse_sse_answer(text: str) -> str:
+    """Answer text only — thin wrapper kept for the pinned harness protocol."""
+    answer, _ = _parse_sse_frames(text)
+    return answer
+
+
+def _ask(cfg: GateConfig, client: httpx.Client) -> AskResult:
+    """Ask the question through the real chat endpoint.
+
+    Returns an AskResult: the answer text, the real `sources` frame (SSE
+    surfaces only), and whether the surface spoke SSE at all.
 
     Supports two contracts so the same gate runs against either beta surface:
       * Hub **NodeChat** (`/api/namespace/node/<id>/chat`): body is a `messages`
@@ -193,26 +225,62 @@ def _ask(cfg: GateConfig, client: httpx.Client) -> str:
     resp = client.post(cfg.chat_url, json=payload, headers=_headers(cfg))
     resp.raise_for_status()
 
-    # SSE surface (NodeChat) — accumulate the streamed content deltas.
+    # SSE surface (NodeChat) — accumulate the streamed content deltas AND the
+    # sources frame (the real retrieval evidence).
     ctype = resp.headers.get("content-type", "")
     body = resp.text
     if "text/event-stream" in ctype or body.lstrip().startswith("data:"):
-        return _parse_sse_answer(body)
+        answer, sources = _parse_sse_frames(body)
+        return AskResult(answer=answer, sources=sources, sse=True)
 
-    # JSON surfaces (engine / pipeline / OpenAI-compat).
-    try:
-        data = resp.json()
-    except (ValueError, TypeError):
-        return body
-    if isinstance(data, dict):
-        if "reply" in data:
-            return str(data["reply"])
-        if "answer" in data:
-            return str(data["answer"])
-        choices = data.get("choices")
-        if isinstance(choices, list) and choices:
-            return str(choices[0].get("message", {}).get("content", ""))
-    return str(data)
+    # JSON surfaces (engine / pipeline / OpenAI-compat) — no sources frame.
+    def _json_answer() -> str:
+        try:
+            data = resp.json()
+        except (ValueError, TypeError):
+            return body
+        if isinstance(data, dict):
+            if "reply" in data:
+                return str(data["reply"])
+            if "answer" in data:
+                return str(data["answer"])
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                return str(choices[0].get("message", {}).get("content", ""))
+        return str(data)
+
+    return AskResult(answer=_json_answer(), sources=None, sse=False)
+
+
+def _judge(last: AskResult) -> GateResult:
+    """Judge one chat round: is the answer grounded AND actually cited?
+
+    Three requirements on an SSE surface (NodeChat):
+      1. content   — the answer states the manual fact (answers_with_manual_fact)
+      2. citation  — the answer text carries a citation marker
+      3. sources   — the route's `sources` frame is non-empty; this is the real
+                     retrieval evidence, and it is what stops a hallucinated
+                     "[1]" with zero retrieved chunks from passing (Phase 1e).
+    JSON surfaces have no sources frame; they keep the (weaker) marker+content
+    contract unchanged.
+    """
+    low = last.answer.lower()
+    has_content = answers_with_manual_fact(last.answer)
+    has_citation = any(m in low for m in CITATION_MARKERS)
+    if last.sse:
+        has_sources = last.sources is not None and len(last.sources) > 0
+    else:
+        has_sources = True  # not applicable on JSON surfaces
+    cited = has_content and has_citation and has_sources
+    n_sources = len(last.sources) if last.sources is not None else 0
+    explain = (
+        f"answer({len(last.answer)} chars) content={has_content} "
+        f"citation={has_citation} sources={n_sources} sse={last.sse}; "
+        f"first 240: {last.answer[:240]!r}"
+    )
+    return GateResult(
+        cited=cited, answer=last.answer, explain=explain, sources=last.sources
+    )
 
 
 def run_beta_gate() -> GateResult:
@@ -237,19 +305,11 @@ def run_beta_gate() -> GateResult:
 
         # 2. Poll: re-ask until the uploaded content shows up or the budget runs out.
         deadline = time.monotonic() + cfg.poll_seconds
-        last = ""
+        last = AskResult(answer="", sources=None, sse=False)
         while time.monotonic() < deadline:
             last = _ask(cfg, client)
-            if answers_with_manual_fact(last):
+            if answers_with_manual_fact(last.answer):
                 break
             time.sleep(5)
 
-    low = last.lower()
-    has_content = answers_with_manual_fact(last)
-    has_citation = any(m in low for m in CITATION_MARKERS)
-    cited = has_content and has_citation
-    explain = (
-        f"answer({len(last)} chars) content={has_content} citation={has_citation}; "
-        f"first 240: {last[:240]!r}"
-    )
-    return GateResult(cited=cited, answer=last, explain=explain)
+    return _judge(last)

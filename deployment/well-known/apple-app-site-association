@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["REPLACE_TEAM_ID.com.factorylm.mira"],
+        "components": [
+          {
+            "/": "/m/*",
+            "comment": "Asset QR deep links — factorylm.com/m/<TAG> opens the FactoryLM app"
+          }
+        ]
+      }
+    ]
+  }
+}

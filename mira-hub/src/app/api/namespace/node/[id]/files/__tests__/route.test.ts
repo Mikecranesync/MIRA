@@ -20,11 +20,13 @@ vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn() } }));
 vi.mock("@/lib/node-knowledge-ingest", () => ({ ingestPdfToNode: vi.fn() }));
+vi.mock("@/lib/uploads", () => ({ findDuplicateUpload: vi.fn(async () => null) }));
 
 import { GET, POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
+import { findDuplicateUpload } from "@/lib/uploads";
 import pool from "@/lib/db";
 
 const VALID_UUID = "11111111-2222-3333-4444-555555555555";
@@ -45,6 +47,8 @@ const makeParams = (id: string) => ({ params: Promise.resolve({ id }) });
 beforeEach(() => {
   vi.resetAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
+  // resetAllMocks clears the factory default — restore "no duplicate found".
+  vi.mocked(findDuplicateUpload).mockResolvedValue(null);
 });
 
 describe("GET /api/namespace/node/[id]/files — merge + filing-cabinet dedupe", () => {
@@ -198,6 +202,26 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
     expect((body.file as Record<string, unknown>).id).toBe("direct-parked-1");
   });
 
+  it("names the scanned/no-text cause in the warning (ARPK 1c honest failure)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext)
+      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
+      .mockResolvedValueOnce("direct-parked-scan");
+    // The real writePdfChunksForNode throws NoExtractableTextError when every
+    // page yields zero chunks (scanned/image-only PDF); the route must map it
+    // to a warning that names the cause instead of a generic "couldn't read".
+    vi.mocked(ingestPdfToNode).mockRejectedValue(
+      new Error("no extractable text — the PDF appears to be scanned or image-only"),
+    );
+
+    const res = await POST(makePostReq("scanned.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ ok: true, indexed: false });
+    expect(body.warning).toMatch(/scanned or image-only/i);
+    expect(body.warning).toMatch(/kept/i);
+  });
+
   it("links the parked original to the ingest upload on success", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
     // call 1: node lookup; call 2: park insert; call 3: upload_id link UPDATE.
@@ -213,6 +237,34 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
     expect(body).toMatchObject({ ok: true, indexed: true, uploadId: "upload-9", chunkCount: 12 });
     // node check + park + link = 3 tenant-context round-trips.
     expect(withTenantContext).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns the existing document on a same-node re-upload without re-chunking (ARPK 1b)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    // node lookup only — no park, no ingest for a duplicate.
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(findDuplicateUpload).mockResolvedValue({
+      id: "up-original",
+      kbChunkCount: 42,
+      filename: "manual.pdf",
+    } as never);
+
+    const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      ok: true,
+      indexed: true,
+      duplicate: true,
+      uploadId: "up-original",
+      chunkCount: 42,
+    });
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    // No second parked copy either — the original upload already parked it.
+    expect(withTenantContext).toHaveBeenCalledTimes(1);
   });
 
   it("parks non-PDF files without touching the ingest pipeline", async () => {

@@ -1,3 +1,79 @@
+# Hot Cache — 2026-08-13 — Native mobile Phase 4: offline WO queue + QR scan (branch, device-proof in progress)
+
+`feat/native-mobile-app` @ `a24d9f688` (pushed; PR #3222 still OPEN — merges are Mike's).
+Phase 4 client work on top of the device-proven Phase 0–3 shell:
+- **Offline WO queue** (`mira-mobile/src/lib/offline-queue.ts`, 13 vitest tests, 21/21 suite
+  green): create fails on transport → persisted tenant-keyed with its retained `client_key`;
+  FIFO drain on Workorders mount / app-resume / "Sync now" through the same `createWorkOrder`
+  (safe replay per PR #3223 contract — server PR still OPEN, client degrades gracefully).
+  Keep-and-stop on network/server/auth; drop-and-surface on definitive 4xx. Sign-out drains,
+  warns before destroying unsynced items, purges all queues.
+- **QR scan**: `ScanView` ports the rescued `qr-scanner-view.tsx` (branch
+  `wip/expo-scan-page-rescue-2026-05-20`) on `qr-scanner` (MIT) via WebView getUserMedia — no
+  native plugin. Scan → `extractAssetTag` trust filter → existing tag-landing. CAMERA
+  permission (Android) + NSCameraUsageDescription (iOS). New `--fl-scrim` token added to
+  canonical tokens first, synced to mobile copy.
+- **Well-known files** (Phase-4 server gate): `deployment/well-known/` (assetlinks.json with
+  debug-cert fingerprint + AASA with team-id placeholder + runbook); exact-match nginx
+  locations staged in `deployment/nginx-app-factorylm.conf`. Prod deploy = gated path.
+- **QA tenant for mobile proofs**: `notebook-qa-mobile-0813@factorylm.com` (matches the
+  qa-cleanup selector; password was session-temp), tenant `3b80d98d…`, asset
+  `ALLE-MMDHMQV0` (PowerFlex 525). Register door is `POST /api/auth/register/` — trailing
+  slash, else 308 body.
+- **Emulator trap (this box, 2026-08-13 afternoon)**: `Medium_Phone_API_36.1` hung twice at
+  "QEMU2 main loop no response" under low free RAM (~4.3GB); WHPX fine, disk fine. Lean
+  launch (`-memory 2048 -no-boot-anim -gpu swiftshader_indirect -no-snapshot`) + visible
+  window is the workaround being proven. Pre-commit gitleaks takes 3+ min under emulator CPU
+  load — run commits in background.
+- Still open in Phase 4: camera/photo capture, Keystore/Keychain secure storage, offline read
+  cache, streamed SSE. Phase 5 = store readiness (account deletion server work).
+
+---
+
+# Hot Cache — 2026-08-11 — Groq model retirement migrated (P0 was 2026-08-16)
+
+Groq retires `llama-3.3-70b-versatile` + `llama-3.1-8b-instant` on **2026-08-16**. Branch
+`fix/groq-model-retirement` (own lane off main, does NOT wait for #3185) migrates every live
+default: 70b→`openai/gpt-oss-120b`, 8b-instant→`openai/gpt-oss-20b` — router cascade, Hub
+chat/report routes + `cascade.ts`, compose env defaults, code-review workflow, eval judges,
+direct classifier calls. **Trap found live:** gpt-oss burns completion tokens on reasoning —
+default effort HARD-FAILS a 64-token `json_object` call (`json_validate_failed`, empty
+generation); fix = `reasoning_effort: "low"` at every tight-budget Groq-direct site (gated on
+`"gpt-oss" in model` where env-overridable). Router path already safe (reasoning-burn retry).
+Verified: both ids micro-probed live; real `InferenceRouter` returned clean content at
+max_tokens=60 on the new default; 65 offline tests green; tsc adds no errors. Historical
+docs/specs deliberately untouched.
+
+---
+
+# Hot Cache — 2026-08-10 — ARPK Phase 0+1: chat with ANY manual (T2108 canary) — HELD PR
+
+Mike's Agent-Readable Product Knowledge PRD (`docs/plans/2026-08-10-prd-agent-readable-product-knowledge-t2108.md`)
+Phase 0+1 implemented on `feat/arpk-doc-scoped-chat` (**HELD — no merge/deploy without Mike**):
+- **Doc-scoped NodeChat**: `retrieveNodeChunks` takes `docId` (= `knowledge_entries.doc_id` =
+  `hub_uploads.id`) on both BM25 passes; chat route accepts `docId`, resolves the doc chunk-side
+  under RLS, neutral (non-industrial) system prompt for doc scope. `approval_state='verified'`
+  pinned on user-facing node INSERTs (008-vs-029 default ambiguity — staging default proven
+  'verified' via the green beta gate).
+- **SHA-256 content dedup** (migration 072 + `findDuplicateUpload`) at both v2 doors — closes the
+  158×-reingest class. **Zero-text honesty**: scanned PDFs now fail with `NoExtractableTextError`
+  instead of `parsed`-with-0-chunks; blind door skips the dead OW fallback.
+- **Real documents surface**: `/api/documents` returns doc_id/node_id/filename/pages/mine; the
+  documents list/detail pages drop the Labs mock (Telegram deep-link gone) for a per-document
+  "Chat with this document" action → `/namespace?node=..&chat=1&doc=..`.
+- **Beta gate hardened**: `_gate.py` parses the real `sources` SSE frame; hallucinated `[1]` can no
+  longer pass on SSE surfaces.
+- **T2108 proof (measured, ephemeral pgvector/pg16)**: official eufy RoboVac 11S manual → real
+  ingest → doc-scoped retrieval: 43 chunks, real page anchors, gate F proven (sibling GS10 doc
+  never leaks into doc scope), 3/6 natural-language goldens retrieve; the 3 misses are ALL
+  spec-TABLE answers (BM25 lexical-bridge failure, same class as PF525) — encoded `it.fails`,
+  repair = Phase 2 table-aware extraction. Mirror note: the manuals.plus mirror slug IS the
+  official PDF's sha256 (byte-identical → dedup collapses them).
+- Research base: `docs/plans/2026-08-10-chat-with-any-manual-design.md` + phase-0 delta doc.
+  NEXT: Mike reviews the held PR; Phase 2 = metadata extraction + table/section-aware chunker + OCR.
+
+---
+
 # Hot Cache — 2026-08-03 — Deploy-integrity lane (#3081 identity + #3055 tag-race)
 
 Deploy-integrity work in flight (both open; **do not repeat #3083/#3084 — merged**

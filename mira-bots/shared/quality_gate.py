@@ -16,7 +16,7 @@ Two stages:
    - unbalanced markdown code fences
 
 2. LLM-as-judge (off by default, opt in via QUALITY_GATE_JUDGE=1):
-   - one Groq llama-3.1-8b-instant call (~250ms) when heuristics pass
+   - one Groq openai/gpt-oss-20b call (~250ms) when heuristics pass
    - returns coherence score 0.0-1.0 + brief reason
    - used as a soft signal for telemetry; only fails when score is very low
 

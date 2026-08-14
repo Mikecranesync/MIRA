@@ -59,3 +59,23 @@ describe("resolveOrCreateInboxNode", () => {
     await expect(resolveOrCreateInboxNode("tenant-1")).rejects.toThrow("kg_entities boom");
   });
 });
+
+// ARPK Phase 1a hardening — the 008/029 approval_state default ambiguity.
+// docs/migrations/008 says DEFAULT 'verified'; mira-hub/db/migrations/029 says
+// DEFAULT 'proposed'. NodeChat 404s any node that is not 'verified', so an
+// environment where 029's default won would make every blind upload
+// un-chattable. Pin the state explicitly at INSERT so chatability never
+// depends on which migration set an environment applied first.
+describe("approval_state pin", () => {
+  it("creates the Inbox node with approval_state pinned to 'verified'", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: "node-new" }] });
+
+    await resolveOrCreateInboxNode("tenant-1");
+
+    const insertSql = queryMock.mock.calls[1][0] as string;
+    expect(insertSql).toContain("approval_state");
+    expect(insertSql).toContain("'verified'");
+  });
+});

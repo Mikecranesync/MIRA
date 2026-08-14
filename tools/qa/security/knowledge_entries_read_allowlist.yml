@@ -13,7 +13,7 @@
 # HYBRID & PUBLIC-ONLY surfaces (compliant — do not edit)
 compliant:
   # Per-tenant document browser with hybrid filter (OEM + own uploads)
-  "mira-hub/src/app/api/documents/route.ts:84":
+  "mira-hub/src/app/api/documents/route.ts:93":
     classification: HYBRID
     status: compliant
     reason: Reference implementation with (is_private = false OR tenant_id = $1) on raw pool
@@ -388,7 +388,7 @@ approved:
       SELECT COUNT(*) FROM knowledge_entries
                     WHERE tenant_id = $1::uuid AND COALESCE(verified, false) = false
                   )::text AS docs_pending,
-  "mira-hub/src/app/api/documents/route.ts:84":
+  "mira-hub/src/app/api/documents/route.ts:93":
     approved_classification: UNFILTERED
     query_sha256: "f2c5edcd78d2216d991b14a974a7e2615d4b17a9b08d4089420cb18ba26dc8e5"
     reason: "TODO: justify this read pattern"
@@ -396,6 +396,37 @@ approved:
       FROM knowledge_entries
              WHERE ${where.join(" AND ")}
              GROUP BY source_url
+  "mira-hub/src/app/api/namespace/node/[id]/chat/route.ts:266":
+    approved_classification: TENANT-ONLY
+    query_sha256: "5209062084e5e805827bd726ab6a33b5d79ffdcc54f86593ba652d50beec82e6"
+    reason: "ARPK 1a doc-scoped NodeChat: resolves the selected document's filename from its own v2 chunks (chunk-side, under withTenantContext RLS — hub_uploads has no RLS, same doctrine as retrieveNodeChunks). Pure-tenant is the SECURITY property here: it must never resolve another tenant's doc_id, and shared OEM rows are not doc-scoped chat targets (no v2 doc_id)."
+    query_snippet: |
+      FROM knowledge_entries
+                  WHERE tenant_id = $1 AND doc_id = $2::uuid AND ingest_route = 'v2'
+  "mira-hub/src/lib/__tests__/notebook-isolation.test.ts:50":
+    approved_classification: UNFILTERED
+    query_sha256: "77a99070767e75fded5b01434c7683a6a4f8c69ed8832529b7d3da86f25fbeb0"
+    reason: "Not a database read: a regex assertion (/FROM knowledge_entries/.test) locating the generated SQL in a MOCK client's call log to prove the doc_id predicate is SQL-enforced (Gate D). No connection, no data."
+  "mira-hub/src/lib/__tests__/notebook-isolation.test.ts:65":
+    approved_classification: UNFILTERED
+    query_sha256: "196ec89e74c6b6020454fdb05d627aecb91b64c2b234e02fafd36786661cc2e6"
+    reason: "Same mock-client regex assertion as :50, for the no-docIds branch (predicate must be ABSENT). No database read."
+  "mira-hub/src/lib/__tests__/t2108-doc-chat.integration.test.ts:125":
+    approved_classification: TENANT-ONLY
+    query_sha256: "732263844a55d35d5e13c1e4fd2e0ce3aeda3b27d8531cf1eda274c5674d2d11"
+    reason: "Test-only cleanup DELETE against the disposable integration DB (TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE); never runs against a shared corpus."
+  "mira-hub/src/lib/__tests__/t2108-doc-chat.integration.test.ts:150":
+    approved_classification: TENANT-ONLY
+    query_sha256: "810fe3d8cbb6abfc21452e1f24ae8a0d897e57509fc006898c9d32bac1294481"
+    reason: "Test-only cleanup DELETE against the disposable integration DB; see :125."
+  "mira-hub/src/lib/__tests__/t2108-doc-chat.integration.test.ts:162":
+    approved_classification: TENANT-ONLY
+    query_sha256: "4c5cc3c4d4021f32b34701dec9b688f0c784bf67736b777154a7ead53514d6f4"
+    reason: "Test-only assertion query (chunk counts/page anchors for the T2108 ingest proof) against the disposable integration DB."
+  "mira-hub/src/app/api/documents/__tests__/route.test.ts:162":
+    approved_classification: UNFILTERED
+    query_sha256: "23537cfd591e64596606af4a0584a3a32da1c8a272478dea417d9c23a796d917"
+    reason: "Test-only: regex over a mocked query call to assert the route SELECTs the ARPK 1d doc keys — no real knowledge_entries read."
   "mira-hub/src/app/api/documents/__tests__/route.test.ts:75":
     approved_classification: UNFILTERED
     query_sha256: "989afad587b66ddb8a9c3abb0a6c10377c84eb967a010f67e96a0d635d290f1e"
@@ -449,15 +480,23 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
-  "mira-hub/src/lib/manual-rag.ts:439":
+  "mira-hub/src/lib/manual-rag.ts:483":
     approved_classification: TENANT-ONLY
-    query_sha256: "5a4f3e56b6cfab04522f590a13871709393fe26e31cd2cac44f18851d99d89a3"
-    reason: "retrieveNodeChunks (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above)."
+    query_sha256: "dffd0a7edef21eb333d4e66ab52637fc17a20f19607273b3cb2e4d9d6b8a0cdb"
+    reason: "retrieveNodeChunks widened BM25 pass (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Moved from :462 by the retrieval-repair rewrite, then :469->:482 (rawQuery pass) -> :483 (ensureFacetRepresentation import; SQL text unchanged) (query expansion + rerank widen the candidate LIMIT to a pool; the WHERE scope is unchanged — strictly tighter, never wider)."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/node-knowledge-ingest.ts:178":
+  "mira-hub/src/lib/manual-rag.ts:519":
+    approved_classification: TENANT-ONLY
+    query_sha256: "4f1261ca26cee7c82109acaf95df27281808fe91af6f45f5b7ad16f62e4b948d"
+    reason: "retrieveNodeChunks exact-token ILIKE lane — the SAME pure-tenant scope as the widened BM25 pass above (tenant_id=$caller + ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership). It guarantees a chunk containing a verbatim parameter/fault/terminal token is a retrieval candidate regardless of ts_rank; it never widens scope beyond the caller's own node-attached uploads, so it stays tenant-only by the same rule (NOT the OEM hybrid). Moved :505->:518 (rawQuery pass) -> :519 (ensureFacetRepresentation import; SQL text unchanged)."
+    query_snippet: |
+      FROM knowledge_entries
+              WHERE tenant_id = $1
+                AND ingest_route = 'v2'
+  "mira-hub/src/lib/node-knowledge-ingest.ts:195":
     approved_classification: TENANT-ONLY
     query_sha256: "c965f42f4c6ba78d95e3e5ccd62a6ac2a8117e5a199aecfc9948106875aa083f"
     reason: "embedPendingNodeChunks embed-on-write pass — reads back ONLY the rows it
@@ -606,7 +645,7 @@ approved:
           orphans = conn.execute(text(
   "tools/build_component_template.py:94":
     approved_classification: UNFILTERED
-    query_sha256: "6aec4537047bfb85090ea7403cbaf35323a4524e0243a40f88374737ac11af71"
+    query_sha256: "5364a4ba63cb216c3b4114c1799bd38002ba31dede167aebc25e82507380ed42"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries
@@ -1153,7 +1192,7 @@ approved:
       
   "mira-scan-monday/backend/vendor_rag.py:81":
     approved_classification: UNFILTERED
-    query_sha256: "6048da8434fe2ec5a2774b4ee9fccaf471377362c0f275f0be65a919cb7b2b1d"
+    query_sha256: "02d6515a9b8caf4920e9f0adb5db215c381caeca0caa22b7efd9f05ca4690db7"
     reason: "TODO: justify this read pattern"
     query_snippet: |
       FROM knowledge_entries

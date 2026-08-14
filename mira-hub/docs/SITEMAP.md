@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **64** (9 dynamic) |
-| API routes | **161** (52 dynamic) |
+| Pages | **68** (11 dynamic) |
+| API routes | **167** (56 dynamic) |
 
-## Pages (64)
+## Pages (68)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -36,6 +36,10 @@
 | `/demo/conveyor/[tag]` | dynamic | `demo/conveyor/[tag]/page.tsx` |
 | `/documents` | static | `(hub)/documents/page.tsx` |
 | `/documents/[id]` | dynamic | `(hub)/documents/[id]/page.tsx` |
+| `/equipment` | static | `(hub)/equipment/page.tsx` |
+| `/equipment/[id]` | dynamic | `(hub)/equipment/[id]/page.tsx` |
+| `/equipment/[id]/source/[docId]` | dynamic | `(hub)/equipment/[id]/source/[docId]/page.tsx` |
+| `/equipment/scan` | static | `(hub)/equipment/scan/page.tsx` |
 | `/event-log` | static | `(hub)/event-log/page.tsx` |
 | `/feed` | static | `(hub)/feed/page.tsx` |
 | `/graph` | static | `(hub)/graph/page.tsx` |
@@ -82,7 +86,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (161)
+## API routes (167)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -164,6 +168,12 @@
 | `/api/demo/signals/toggle` | static | `api/demo/signals/toggle/route.ts` |
 | `/api/documents` | static | `api/documents/route.ts` |
 | `/api/documents/upload` | static | `api/documents/upload/route.ts` |
+| `/api/equipment-notebooks` | static | `api/equipment-notebooks/route.ts` |
+| `/api/equipment-notebooks/[id]` | dynamic | `api/equipment-notebooks/[id]/route.ts` |
+| `/api/equipment-notebooks/[id]/chat` | dynamic | `api/equipment-notebooks/[id]/chat/route.ts` |
+| `/api/equipment-notebooks/[id]/sources` | dynamic | `api/equipment-notebooks/[id]/sources/route.ts` |
+| `/api/equipment-notebooks/[id]/sources/[docId]` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/route.ts` |
+| `/api/equipment-notebooks/recognize-nameplate` | static | `api/equipment-notebooks/recognize-nameplate/route.ts` |
 | `/api/events` | static | `api/events/route.ts` |
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
 | `/api/export` | static | `api/export/route.ts` |

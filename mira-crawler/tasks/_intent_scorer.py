@@ -3,7 +3,7 @@
 Scores Reddit posts / YouTube comments for buying intent on a 0-100 scale.
 Used by ``tasks.reddit_intent`` and ``tasks.youtube_intent``.
 
-Backend: Groq ``llama-3.1-8b-instant`` (free tier, OpenAI-compatible).
+Backend: Groq ``openai/gpt-oss-20b`` (free tier, OpenAI-compatible).
 No cascade fallback here — intent scoring is best-effort and skips on failure;
 the cascade lives in the diagnostic engine path, not in low-priority crawl
 enrichment. Logged misses surface in worker logs.
@@ -24,8 +24,12 @@ import httpx
 logger = logging.getLogger("mira-crawler.tasks._intent_scorer")
 
 _GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-_GROQ_MODEL = os.getenv("INTENT_SCORER_MODEL", "llama-3.1-8b-instant")
+_GROQ_MODEL = os.getenv("INTENT_SCORER_MODEL", "openai/gpt-oss-20b")
 _TIMEOUT = float(os.getenv("INTENT_SCORER_TIMEOUT_S", "20"))
+# gpt-oss spends completion tokens on reasoning; low effort keeps the JSON
+# score inside the 400-token cap. Gated so an env override to a non-reasoning
+# model doesn't send an unsupported param.
+_REASONING_KW = {"reasoning_effort": "low"} if "gpt-oss" in _GROQ_MODEL else {}
 
 VALID_CATEGORIES = {
     "cmms_search",
@@ -117,6 +121,7 @@ def score_intent(title: str, content: str, source_hint: str = "") -> tuple[int, 
                 "temperature": 0.2,
                 "max_tokens": 400,
                 "response_format": {"type": "json_object"},
+                **_REASONING_KW,
             },
             timeout=_TIMEOUT,
         )

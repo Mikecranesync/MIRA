@@ -1,0 +1,86 @@
+{
+  "_note": "Verified PowerFlex 525 technician benchmark oracle. Sources: Rockwell 520-QS001 (quick-start) + 520-UM001 (full user manual), cross-checked. Each case scores by required markers present in the answer AND (for grounded cases) a non-empty citation; abstention cases require a refusal with ZERO citations. Run against a notebook loaded with the quick-start via runner.mjs.",
+  "cases": [
+    {
+      "id": "decel-ramp",
+      "q": "What parameter is the slow down ramp?",
+      "class": "synonym+exact-spec",
+      "expect": "grounded",
+      "markers_any": ["P042"],
+      "markers_all": ["P042"],
+      "note": "P042 [Decel Time 1]; leads with the parameter."
+    },
+    {
+      "id": "second-speed-terminal",
+      "q": "Which terminal sets second speed?",
+      "class": "ambiguity+terminal",
+      "expect": "grounded",
+      "markers_any": ["07", "Speed Reference 2", "Preset Freq", "05", "06"],
+      "note": "Terminal 07 = Spd+Strt 2 (Speed Reference 2) OR terminals 05/06 = Preset Freq. Either interpretation, with the terminal number, is correct."
+    },
+    {
+      "id": "motor-frequency",
+      "q": "What about setting motor frequency?",
+      "class": "config-vs-monitoring",
+      "expect": "grounded",
+      "markers_any": ["P032", "P044", "P043", "A410", "A425", "A426", "Preset Freq", "Keypad Freq"],
+      "must_not_conflate": ["b001", "b002"],
+      "note": "Give configuration parameters; must NOT present b001/b002 (display values) AS settings. Bonus if it explicitly flags them as display-only."
+    },
+    {
+      "id": "machine-overview",
+      "q": "What do you know about the machine?",
+      "class": "identity+coverage",
+      "expect": "grounded",
+      "markers_all": ["PowerFlex 525"],
+      "markers_any": ["quick-start", "quick start", "user manual", "coverage", "does not"],
+      "note": "State identity + loaded source coverage + limitation; NOT a summary of the first excerpt."
+    },
+    {
+      "id": "fault-f004",
+      "q": "What does fault F004 mean?",
+      "class": "fault-code",
+      "expect": "grounded",
+      "markers_all": ["F004", "UnderVoltage"],
+      "note": "F004 = UnderVoltage."
+    },
+    {
+      "id": "fault-clear",
+      "q": "How do I clear an active fault?",
+      "class": "procedure",
+      "expect": "grounded",
+      "markers_any": ["A551", "Stop", "Fault Clear"],
+      "note": "Stop key or A551 [Fault Clear]."
+    },
+    {
+      "id": "param-lookup-p042",
+      "q": "What parameter is P042?",
+      "class": "exact-param-lookup",
+      "expect": "grounded",
+      "markers_all": ["P042"],
+      "markers_any": ["Decel", "deceleration"],
+      "note": "Exact-token retrieval; P042 [Decel Time 1]."
+    },
+    {
+      "id": "absent-cable-length",
+      "q": "What is the maximum motor cable length?",
+      "class": "answer-not-present",
+      "expect": "abstain_or_point",
+      "note": "The quick-start lacks the cable-length restriction tables; must NOT invent a number, and must NOT cite unrelated pages as proof. Pointing to the full user manual is acceptable."
+    },
+    {
+      "id": "absent-fault-f999",
+      "q": "What does fault F999 mean?",
+      "class": "answer-not-present",
+      "expect": "abstain",
+      "note": "F999 is not a real code; must refuse with zero citations."
+    },
+    {
+      "id": "wrong-domain",
+      "q": "How do I bleed the hydraulic accumulator?",
+      "class": "off-scope",
+      "expect": "abstain",
+      "note": "Off-scope for a VFD manual; must refuse with zero citations."
+    }
+  ]
+}

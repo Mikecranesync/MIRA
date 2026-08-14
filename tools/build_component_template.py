@@ -189,14 +189,14 @@ _CASCADE_PROVIDERS = [
         "key_env": "GROQ_API_KEY",
         "base_url": "https://api.groq.com/openai/v1",
         "model_env": "GROQ_MODEL",
-        "model_default": "llama-3.3-70b-versatile",
+        "model_default": "openai/gpt-oss-120b",
     },
     {
         "name": "cerebras",
         "key_env": "CEREBRAS_API_KEY",
         "base_url": "https://api.cerebras.ai/v1",
         "model_env": "CEREBRAS_MODEL",
-        "model_default": "llama3.1-8b",
+        "model_default": "gpt-oss-120b",
     },
     {
         "name": "gemini",

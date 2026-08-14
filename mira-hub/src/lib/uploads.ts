@@ -35,6 +35,8 @@ export interface Upload {
   kgEntityId: string | null;
   /** 'v2' = chunks written to knowledge_entries (citable); null/'ow' = legacy OW-only. */
   ingestRoute: string | null;
+  /** sha256 hex of the uploaded bytes — server-side content dedup (ARPK 1b, migration 072). */
+  contentSha256: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,12 +54,12 @@ export function ensureUploadsSchema(): Promise<void> {
   schemaReady = (async () => {
     const { rows } = await pool.query(
       `SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'hub_uploads' AND column_name = 'ingest_route'`,
+        WHERE table_name = 'hub_uploads' AND column_name = 'content_sha256'`,
     );
     if (rows.length === 0) {
       schemaReady = null; // don't cache a failure — allow retry once the migration lands
       throw new Error(
-        "hub_uploads schema is out of date — apply mira-hub/db/migrations/068_hub_uploads.sql",
+        "hub_uploads schema is out of date — apply mira-hub/db/migrations/072_hub_uploads_content_sha256.sql",
       );
     }
   })();
@@ -81,6 +83,8 @@ export interface CreateUploadInput {
   kgEntityId?: string | null;
   /** 'v2' = chunks written to knowledge_entries; null/'ow' = legacy Open-WebUI-only path. */
   ingestRoute?: string | null;
+  /** sha256 hex of the uploaded bytes; enables findDuplicateUpload (ARPK 1b). */
+  contentSha256?: string | null;
 }
 
 /**
@@ -118,6 +122,7 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     unsPath: (r.uns_path as string | null) ?? null,
     kgEntityId: (r.kg_entity_id as string | null) ?? null,
     ingestRoute: (r.ingest_route as string | null) ?? null,
+    contentSha256: (r.content_sha256 as string | null) ?? null,
     createdAt: toIsoString(r.created_at as Date | string),
     updatedAt: toIsoString(r.updated_at as Date | string),
   };
@@ -138,8 +143,8 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
     INSERT INTO hub_uploads
       (tenant_id, provider, kind, external_file_id, external_download_url,
        filename, mime_type, size_bytes, external_created_at, status, asset_tag, uns_path,
-       kg_entity_id, ingest_route)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       kg_entity_id, ingest_route, content_sha256)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING *
   `,
     [
@@ -157,9 +162,42 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
       input.unsPath ?? null,
       input.kgEntityId ?? null,
       input.ingestRoute ?? null,
+      input.contentSha256 ?? null,
     ],
   );
   return rowToUpload(rows[0]);
+}
+
+/**
+ * ARPK Phase 1b — find an existing PARSED v2 document with the same bytes on
+ * the same node. Scoped to (tenant, hash, node) deliberately: an exact
+ * re-upload to the same node/Inbox is a duplicate (skip re-chunking — the
+ * 158x-ingest class), but the same bytes attached to a DIFFERENT node must
+ * still ingest, because chunks carry that node's node_id. Failed/legacy rows
+ * never match (status/ingest_route predicates), so a failed first attempt
+ * doesn't block a retry.
+ */
+export async function findDuplicateUpload(
+  tenantId: string,
+  contentSha256: string,
+  kgEntityId: string,
+): Promise<Upload | null> {
+  await ensureUploadsSchema();
+  const { rows } = await pool.query(
+    `
+    SELECT * FROM hub_uploads
+     WHERE tenant_id = $1
+       AND content_sha256 = $2
+       AND kg_entity_id = $3
+       AND status = 'parsed'
+       AND ingest_route = 'v2'
+       AND kind = 'document'
+     ORDER BY created_at DESC
+     LIMIT 1
+  `,
+    [tenantId, contentSha256, kgEntityId],
+  );
+  return rows.length > 0 ? rowToUpload(rows[0]) : null;
 }
 
 export async function listUploads(tenantId = DEFAULT_TENANT_ID): Promise<Upload[]> {

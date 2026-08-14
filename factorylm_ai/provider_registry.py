@@ -104,7 +104,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         cascade_url="https://api.groq.com/openai/v1/chat/completions",
         canonical_url="https://api.groq.com/openai/v1",
         text_model_env="GROQ_MODEL",
-        text_model_default="llama-3.3-70b-versatile",
+        text_model_default="openai/gpt-oss-120b",
         vision_model_env="GROQ_VISION_MODEL",
         # Groq delisted all vision models 2026-07-18 — empty on purpose so
         # image turns skip Groq instead of 404ing.

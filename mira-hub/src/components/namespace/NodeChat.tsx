@@ -33,10 +33,17 @@ interface NodeChatProps {
   nodeId: string;
   nodeName: string;
   unsPath: string | null;
+  /** ARPK 1d — scope the chat to ONE document (hub_uploads.id). */
+  docId?: string;
+  /** Display name for the doc scope chip/welcome (falls back to "this document"). */
+  docName?: string;
 }
 
 const WELCOME = (name: string) =>
   `Hi — I'm MIRA. Ask me about **${name}** and everything beneath it in the namespace.\n\nI answer only from the documents attached to this part of your namespace, and I cite the source. If nothing's attached here yet, attach a manual and ask again.`;
+
+const DOC_WELCOME = (doc: string) =>
+  `Hi — I'm MIRA. Ask me anything about **${doc}**.\n\nI answer only from this document, and I cite the page. If it doesn't cover your question, I'll say so.`;
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -115,8 +122,12 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
-export function NodeChat({ nodeId, nodeName, unsPath }: NodeChatProps) {
-  const storageKey = `mira_node_chat_${nodeId}`;
+export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChatProps) {
+  // Doc-scoped history is its own thread — switching between folder chat and a
+  // document chat must not interleave transcripts.
+  const storageKey = docId
+    ? `mira_node_chat_${nodeId}_doc_${docId}`
+    : `mira_node_chat_${nodeId}`;
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     if (typeof window === "undefined") return [];
@@ -180,7 +191,7 @@ export function NodeChat({ nodeId, nodeName, unsPath }: NodeChatProps) {
       const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/chat/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({ messages: apiMessages, ...(docId ? { docId } : {}) }),
         signal: controller.signal,
       });
 
@@ -258,7 +269,7 @@ export function NodeChat({ nodeId, nodeName, unsPath }: NodeChatProps) {
       setStreaming(false);
       abortRef.current = null;
     }
-  }, [nodeId, messages, streaming]);
+  }, [nodeId, docId, messages, streaming]);
 
   function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -276,7 +287,7 @@ export function NodeChat({ nodeId, nodeName, unsPath }: NodeChatProps) {
     }
   }
 
-  const welcome = WELCOME(nodeName);
+  const welcome = docId ? DOC_WELCOME(docName ?? "this document") : WELCOME(nodeName);
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 360 }}>
@@ -290,13 +301,24 @@ export function NodeChat({ nodeId, nodeName, unsPath }: NodeChatProps) {
           <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
             Ask MIRA
           </span>
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-            style={{ background: "var(--surface-1)", color: "var(--foreground-subtle)" }}
-            title={unsPath ?? undefined}
-          >
-            Grounded in this folder + below
-          </span>
+          {docId ? (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-1"
+              style={{ background: "var(--surface-1)", color: "var(--foreground-subtle)" }}
+              title={docName ?? undefined}
+            >
+              <FileText className="w-3 h-3" />
+              {docName ?? "One document"}
+            </span>
+          ) : (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+              style={{ background: "var(--surface-1)", color: "var(--foreground-subtle)" }}
+              title={unsPath ?? undefined}
+            >
+              Grounded in this folder + below
+            </span>
+          )}
         </div>
         {messages.length > 0 && (
           <button
