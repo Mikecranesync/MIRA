@@ -176,6 +176,24 @@ export async function completePmSchedule(id: string): Promise<void> {
   });
 }
 
+export const PM_INTERVAL_UNITS = ["days", "weeks", "months", "years"] as const;
+
+export interface CreatePmScheduleInput {
+  equipment_id: string;
+  task: string;
+  interval_value: number;
+  interval_unit: (typeof PM_INTERVAL_UNITS)[number];
+  next_due_at?: string; // ISO date; server defaults to now + interval
+  criticality?: "low" | "medium" | "high" | "critical";
+}
+
+/** SCH-04 (#3226): server contract — 201 {schedule}, stable 400 tokens,
+ *  tenant-scoped 404 asset_not_found. No optimistic anything: callers refresh
+ *  the list only after the server confirms. */
+export async function createPmSchedule(input: CreatePmScheduleInput): Promise<void> {
+  await request("/api/pm-schedules/", { method: "POST", json: input });
+}
+
 // --- assets -----------------------------------------------------------------
 
 export interface Asset {

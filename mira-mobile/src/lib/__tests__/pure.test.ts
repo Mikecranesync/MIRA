@@ -144,3 +144,15 @@ describe("punch-list pure helpers", () => {
     expect(Object.keys(data)).toEqual(["flm.cookiejar.v1"]);
   });
 });
+
+describe("SCH-04 create-schedule contract (client side)", () => {
+  it("interval units offered match the server's calendar CREATE_UNITS subset", async () => {
+    const { PM_INTERVAL_UNITS } = await import("../../api/resources");
+    // Server accepts hours..years; client offers the field-sensible calendar
+    // subset and NEVER "cycles" (meter-only unit the POST rejects).
+    for (const u of PM_INTERVAL_UNITS) {
+      expect(["hours", "days", "weeks", "months", "years"]).toContain(u);
+    }
+    expect(PM_INTERVAL_UNITS).not.toContain("cycles");
+  });
+});
