@@ -1,6 +1,6 @@
 # Convergence Unit — CU-P1 (PILOT): one asset-tag grammar for Hub + Mobile
 
-**Contract ID:** TAG-001 · **Status:** implemented, awaiting Gate 7 review + Gate 9 promotion
+**Contract ID:** TAG-001 · **Status:** ✅ DONE — merged, R1 recorded
 **Doctrine:** `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md` — this is the §15 pilot.
 
 ## Current behavior (pre-change)
@@ -52,7 +52,7 @@ Mike GO on CU-P1 given 2026-08-15 (pilot authorization). Gate 9 promotion = PR m
 Normal PR → required checks → merge. Mobile ships to users via its own store/release pipeline (ADR-0034); no VPS deploy surface changes.
 
 ## R1 SHA/checkpoint
-_To record at merge (PR merge commit + auto-tag)._
+Merge `a353a334a` (PR #3249, squash) → tag `v3.273.2` + rollback checkpoint `rollback/2026-08-15-v3.273.2`. Gate 7: round 1 BLOCK (real finding: case-sensitive raw-prefix trust filter), fixed at root in `855a5153d`, round 2 PASS. Gate 9: Mike GO 2026-08-15 + green CI + review PASS.
 
 ## Observation window
 Next mobile release cycle: watch Hub `/api/assets/by-tag` 404 rate on mobile-originated requests (should only drop).
