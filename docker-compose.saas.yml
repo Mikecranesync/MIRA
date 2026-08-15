@@ -787,6 +787,15 @@ services:
       # error/non-match.
       - MIRA_ASK_URL=${MIRA_ASK_URL:-http://mira-ask:8011}
       - ASK_API_KEY=${ASK_API_KEY:-}
+      # Nameplate recognition runs IN THE HUB (src/lib/nameplate). TOGETHERAI_API_KEY
+      # is already supplied further down with the AI-Reports LLM cascade, so the
+      # recognizer is configured — but the VISION MODEL selectors were missing,
+      # which meant prod could only ever use the in-code default and had no way
+      # to move off a model if Together deprecates it (exactly what happened to
+      # Groq's vision models on 2026-07-18). Empty NAMEPLATE_VISION_MODEL falls
+      # through to TOGETHERAI_VISION_MODEL and then the in-code default.
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
+      - NAMEPLATE_VISION_MODEL=${NAMEPLATE_VISION_MODEL:-}
       # Where local-upload bytes are persisted so a FAILED local upload can be
       # retried without the user re-picking the file from disk (2026-06-06).
       # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed
