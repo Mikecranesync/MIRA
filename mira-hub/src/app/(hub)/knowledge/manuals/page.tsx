@@ -279,7 +279,14 @@ export default function KnowledgePage() {
           });
           if (r.ok) {
             const data = await r.json();
-            setAssetDocs((prev) => ({ ...prev, [id]: data }));
+            // The route now returns { attached, suggested } (canonical Files:
+            // explicitly attached files are distinct from manufacturer/model
+            // inference). Accept the legacy bare array too so this panel keeps
+            // working against an older deploy.
+            const docs: AssetDoc[] = Array.isArray(data)
+              ? data
+              : [...(data?.attached ?? []), ...(data?.suggested ?? [])];
+            setAssetDocs((prev) => ({ ...prev, [id]: docs }));
           }
         } catch {
           /* ignore */

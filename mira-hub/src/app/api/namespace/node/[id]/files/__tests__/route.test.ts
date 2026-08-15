@@ -21,12 +21,25 @@ vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/db", () => ({ default: { query: vi.fn() } }));
 vi.mock("@/lib/node-knowledge-ingest", () => ({ ingestPdfToNode: vi.fn(), ingestTextToNode: vi.fn() }));
 vi.mock("@/lib/uploads", () => ({ findDuplicateUpload: vi.fn(async () => null) }));
+// Parking/linking now goes through the canonical Files service (075). The pure
+// capability helper stays real — it is the thing the "stored, not indexed"
+// assertion is about.
+vi.mock("@/lib/workspace-files", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/workspace-files")>();
+  return {
+    ...actual,
+    parkOrReuseFile: vi.fn(),
+    linkFileToUpload: vi.fn(),
+    attachFileToTargets: vi.fn(),
+  };
+});
 
 import { GET, POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { findDuplicateUpload } from "@/lib/uploads";
+import { parkOrReuseFile, linkFileToUpload, attachFileToTargets } from "@/lib/workspace-files";
 import pool from "@/lib/db";
 
 const VALID_UUID = "11111111-2222-3333-4444-555555555555";
@@ -49,6 +62,14 @@ beforeEach(() => {
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
   // resetAllMocks clears the factory default — restore "no duplicate found".
   vi.mocked(findDuplicateUpload).mockResolvedValue(null);
+  // Default: fresh bytes parked as a new canonical file, not yet indexed.
+  vi.mocked(parkOrReuseFile).mockResolvedValue({
+    fileId: "direct-parked-default",
+    reused: false,
+    uploadId: null,
+  });
+  vi.mocked(attachFileToTargets).mockResolvedValue({ ok: true, links: [] });
+  vi.mocked(linkFileToUpload).mockResolvedValue(undefined);
 });
 
 describe("GET /api/namespace/node/[id]/files — merge + filing-cabinet dedupe", () => {
@@ -186,10 +207,17 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
 
   it("keeps the parked file and returns 201 + warning when PDF ingest fails", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    // call 1: node lookup → node exists; call 2: park insert → direct id.
-    vi.mocked(withTenantContext)
-      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
-      .mockResolvedValueOnce("direct-parked-1");
+    // The only tenant-context round-trip left in POST is the node lookup;
+    // parking moved into the canonical Files service.
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "direct-parked-1",
+      reused: false,
+      uploadId: null,
+    });
     vi.mocked(ingestPdfToNode).mockRejectedValue(
       new Error("extractText: Invalid PDF structure"),
     );
@@ -204,9 +232,15 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
 
   it("names the scanned/no-text cause in the warning (ARPK 1c honest failure)", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    vi.mocked(withTenantContext)
-      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
-      .mockResolvedValueOnce("direct-parked-scan");
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "direct-parked-scan",
+      reused: false,
+      uploadId: null,
+    });
     // The real writePdfChunksForNode throws NoExtractableTextError when every
     // page yields zero chunks (scanned/image-only PDF); the route must map it
     // to a warning that names the cause instead of a generic "couldn't read".
@@ -224,19 +258,107 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
 
   it("links the parked original to the ingest upload on success", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    // call 1: node lookup; call 2: park insert; call 3: upload_id link UPDATE.
-    vi.mocked(withTenantContext)
-      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
-      .mockResolvedValueOnce("direct-parked-2")
-      .mockResolvedValueOnce(undefined);
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "direct-parked-2",
+      reused: false,
+      uploadId: null,
+    });
     vi.mocked(ingestPdfToNode).mockResolvedValue({ uploadId: "upload-9", chunkCount: 12 });
 
     const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
     expect(res.status).toBe(201);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ ok: true, indexed: true, uploadId: "upload-9", chunkCount: 12 });
-    // node check + park + link = 3 tenant-context round-trips.
-    expect(withTenantContext).toHaveBeenCalledTimes(3);
+    expect(body).toMatchObject({
+      ok: true,
+      indexed: true,
+      uploadId: "upload-9",
+      chunkCount: 12,
+      fileId: "direct-parked-2",
+    });
+    // Parked once through the service, linked to its parsed document once.
+    expect(parkOrReuseFile).toHaveBeenCalledTimes(1);
+    expect(linkFileToUpload).toHaveBeenCalledWith(TENANT_ID, "direct-parked-2", "upload-9");
+    // …and filed at this node.
+    expect(attachFileToTargets).toHaveBeenCalledWith(
+      TENANT_ID,
+      "direct-parked-2",
+      [{ targetType: "namespace_node", targetId: VALID_UUID, isPrimary: false }],
+      { createdBy: "u_1" },
+    );
+    // Only the node lookup still needs a tenant-context round-trip here.
+    expect(withTenantContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses an already-parsed canonical file without re-ingesting (exact-byte reuse)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "file-canonical",
+      reused: true,
+      uploadId: "upload-existing",
+    });
+
+    // A .bin so the PDF pre-check (findDuplicateUpload) is not what answers.
+    const res = await POST(
+      makePostReq("trend.bin", "application/octet-stream"),
+      makeParams(VALID_UUID),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      ok: true,
+      indexed: true,
+      duplicate: true,
+      uploadId: "upload-existing",
+      fileId: "file-canonical",
+    });
+    // No re-parse / re-chunk / re-embed…
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+    // …but the reuse still files the file in the new location.
+    expect(attachFileToTargets).toHaveBeenCalledWith(
+      TENANT_ID,
+      "file-canonical",
+      [{ targetType: "namespace_node", targetId: VALID_UUID, isPrimary: false }],
+      { createdBy: "u_1" },
+    );
+  });
+
+  it("stores an unknown binary type as a downloadable 'stored' file, never indexed", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "direct-parked-bin",
+      reused: false,
+      uploadId: null,
+    });
+
+    const res = await POST(
+      makePostReq("plc-backup.acd", "application/x-rockwell-acd"),
+      makeParams(VALID_UUID),
+    );
+    // Behavior change: an unrecognized type is retained (was 415).
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ ok: true, indexed: false, fileId: "direct-parked-bin" });
+    expect((body.file as Record<string, unknown>).capability).toBe("stored");
+    // Parked under a neutral type — never executed, never indexed.
+    expect(vi.mocked(parkOrReuseFile).mock.calls[0][0]).toMatchObject({
+      filename: "plc-backup.acd",
+      mimeType: "application/octet-stream",
+    });
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    expect(ingestTextToNode).not.toHaveBeenCalled();
   });
 
   it("returns the existing document on a same-node re-upload without re-chunking (ARPK 1b)", async () => {
@@ -265,13 +387,20 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
     expect(ingestPdfToNode).not.toHaveBeenCalled();
     // No second parked copy either — the original upload already parked it.
     expect(withTenantContext).toHaveBeenCalledTimes(1);
+    expect(parkOrReuseFile).not.toHaveBeenCalled();
   });
 
   it("parks non-PDF files without touching the ingest pipeline", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    vi.mocked(withTenantContext)
-      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
-      .mockResolvedValueOnce("direct-parked-3");
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "direct-parked-3",
+      reused: false,
+      uploadId: null,
+    });
 
     const res = await POST(makePostReq("photo.png", "image/png"), makeParams(VALID_UUID));
     expect(res.status).toBe(201);
@@ -294,10 +423,15 @@ describe("POST — plain text is indexable (copied-text source door)", () => {
 
   it("routes text/plain through ingestTextToNode and returns indexed:true", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    vi.mocked(withTenantContext)
-      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
-      .mockResolvedValueOnce("direct-parked-txt")
-      .mockResolvedValueOnce(undefined); // upload_id link update
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "direct-parked-txt",
+      reused: false,
+      uploadId: null,
+    });
     vi.mocked(ingestTextToNode).mockResolvedValue({ uploadId: "up-txt-1", chunkCount: 1 });
 
     const res = await POST(makePostReq("bench-note.txt", "text/plain"), makeParams(VALID_UUID));
@@ -310,10 +444,15 @@ describe("POST — plain text is indexable (copied-text source door)", () => {
 
   it("markdown (text/markdown) indexes as text too", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    vi.mocked(withTenantContext)
-      .mockResolvedValueOnce({ id: VALID_UUID, uns_path: "enterprise.site" })
-      .mockResolvedValueOnce("direct-parked-md")
-      .mockResolvedValueOnce(undefined);
+    vi.mocked(withTenantContext).mockResolvedValueOnce({
+      id: VALID_UUID,
+      uns_path: "enterprise.site",
+    });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({
+      fileId: "direct-parked-md",
+      reused: false,
+      uploadId: null,
+    });
     vi.mocked(ingestTextToNode).mockResolvedValue({ uploadId: "up-md-1", chunkCount: 1 });
 
     const res = await POST(makePostReq("notes.md", "text/markdown"), makeParams(VALID_UUID));
