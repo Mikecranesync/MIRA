@@ -10,12 +10,10 @@
 // Inputs: the full contract corpus + 5,000 deterministic fuzz strings
 // (seeded LCG, no Math.random — reproducible forever).
 import { describe, it, expect } from "vitest";
-import { extractAssetTag as mobileExtract } from "../tags";
+import { extractAssetTag as mobileExtract, isTrustedDeepLink } from "../tags";
 // eslint-disable-next-line import/no-relative-packages — the point IS to run the real Hub code
 import { extractAssetTag as hubExtract } from "../../../../mira-hub/src/lib/scan-target";
 import corpus from "../../../../docs/contracts/asset-tag-grammar.json";
-
-const TRUSTED_PREFIXES = ["https://app.factorylm.com/m/", "factorylm://m/"];
 
 function isAbsoluteUrl(s: string): boolean {
   return /^[a-z]+:\/\//i.test(s.trim());
@@ -37,14 +35,12 @@ function isMobileOwnScheme(input: string): boolean {
 function divergenceAllowed(input: string, hub: string | null, mobile: string | null): boolean {
   const trimmed = input.trim();
   // Sanctioned difference: mobile trust-filters absolute URLs from
-  // non-allowlisted origins down to null. Never the reverse, never on
-  // non-URL forms.
-  return (
-    hub !== null &&
-    mobile === null &&
-    isAbsoluteUrl(trimmed) &&
-    !TRUSTED_PREFIXES.some((p) => trimmed.startsWith(p))
-  );
+  // untrusted origins down to null. Never the reverse, never on non-URL
+  // forms. The trust rule is the implementation's OWN exported
+  // isTrustedDeepLink — the Gate 7 review caught this test using a private
+  // re-implementation (raw case-sensitive prefixes) that excused real
+  // divergences on trusted-origin URLs (HTTPS://, :443). One rule, one place.
+  return hub !== null && mobile === null && isAbsoluteUrl(trimmed) && !isTrustedDeepLink(trimmed);
 }
 
 // Deterministic fuzz: seeded LCG over a tag-shaped alphabet, biased toward
@@ -56,7 +52,14 @@ function* fuzz(count: number): Generator<string> {
     return seed / 0x100000000;
   };
   const alpha = "abcXYZ019_-._..//m/ %2E?#:";
-  const prefixes = ["", "/m/", "m/", "https://app.factorylm.com/m/", "https://evil.example.com/m/", "factorylm://m/"];
+  // Mixed-case prefixes included deliberately: the Gate 7 review proved a
+  // lowercase-only generator is blind to scheme/host-case divergences.
+  const prefixes = [
+    "", "/m/", "m/",
+    "https://app.factorylm.com/m/", "HTTPS://APP.FACTORYLM.COM/m/", "HtTpS://app.factorylm.com/m/",
+    "https://app.factorylm.com:443/m/", "https://app.factorylm.com@evil.com/m/",
+    "https://evil.example.com/m/", "factorylm://m/", "FACTORYLM://m/",
+  ];
   for (let i = 0; i < count; i++) {
     const len = 1 + Math.floor(next() * 70);
     let s = prefixes[Math.floor(next() * prefixes.length)];

@@ -41,7 +41,9 @@ Corpus probed against the live Hub resolver (zero-mismatch before adoption) → 
 `tag-grammar-shadow.test.ts` imports the real Hub resolver (no copy) and diffs structured results over corpus + 5,000 deterministic fuzz inputs (seeded LCG — reproducible forever). Runs on every mobile/hub-grammar/corpus change via the CI filters. Fuzz already paid off pre-merge: it exposed the `factorylm://m//m/x` parser-accident divergence, which the contract now names instead of hiding.
 
 ## Adversarial reviewer effort
-High (default). **Deviation from §Gate 7:** the Codex/GPT-5.6 Sol lane is not yet wired; an independent fresh-context reviewer agent substitutes for this pilot, recorded in the PR. Wiring the external lane remains an open program task.
+High (default). **Deviation from §Gate 7:** the Codex/GPT-5.6 Sol lane is not yet wired; an independent fresh-context reviewer agent substituted for this pilot. Wiring the external lane remains an open program task.
+
+**Gate 7 round 1: BLOCK — and the gate worked.** The reviewer proved a real divergence the shadow suite was blind to: mobile's trust filter did a case-sensitive raw-string `startsWith`, so `HTTPS://APP.FACTORYLM.COM/m/<tag>` (and, found on re-probe, explicit `:443` default ports) resolved on Hub but died on mobile — and both the corpus and the lowercase-only fuzz generator were structurally unable to see it. Root-cause fix, not case-patching: the trust decision now operates on the parsed, normalized URL (`isTrustedDeepLink`, exported), the shadow's sanctioned-divergence rule now REUSES that exact function instead of privately re-implementing it (the false-green mechanism), the fuzz generator includes mixed-case prefixes, and 6 new corpus cases pin the finding (uppercase scheme/host, `:443`, userinfo trick, uppercase path). Evidence post-fix: mobile 68/68, hub 54/54.
 
 ## Human approval requirement
 Mike GO on CU-P1 given 2026-08-15 (pilot authorization). Gate 9 promotion = PR merge after green CI + adversarial review.
@@ -59,4 +61,4 @@ Next mobile release cycle: watch Hub `/api/assets/by-tag` 404 rate on mobile-ori
 N/A — nothing deleted; the old regex was replaced in place.
 
 ## Evidence required for GO
-Hub 48/48 (contract + pre-existing tag suites) · mobile 62/62 (full suite incl. shadow) · `tsc --noEmit` clean · actionlint clean · red-first proof recorded above.
+Hub 54/54 (contract + pre-existing tag suites) · mobile 68/68 (full suite incl. shadow) · `tsc --noEmit` clean · actionlint clean · red-first proof recorded above.

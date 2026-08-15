@@ -165,6 +165,38 @@
       "input": "javascript://m/x",
       "expect": null,
       "mobile_expect": null
+    },
+    {
+      "name": "uppercase scheme+host \u2014 same trusted origin (RFC 3986; Gate 7 finding)",
+      "input": "HTTPS://APP.FACTORYLM.COM/m/ROCK-BBTKAX7M",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "mixed-case scheme, lowercase host",
+      "input": "HtTpS://app.factorylm.com/m/EQ_pump-01",
+      "expect": "EQ_pump-01"
+    },
+    {
+      "name": "explicit default port normalizes to trusted origin",
+      "input": "https://app.factorylm.com:443/m/X",
+      "expect": "X"
+    },
+    {
+      "name": "uppercase app scheme \u2014 mobile-only surface",
+      "input": "FACTORYLM://m/ROCK-BBTKAX7M",
+      "expect": null,
+      "mobile_expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "userinfo trick \u2014 hub extracts (no filter), mobile trust-filters (host=evil.com)",
+      "input": "https://app.factorylm.com@evil.com/m/x",
+      "expect": "x",
+      "mobile_expect": null
+    },
+    {
+      "name": "uppercase /M/ path rejected both sides (path is case-sensitive)",
+      "input": "https://app.factorylm.com/M/ROCK-BBTKAX7M",
+      "expect": null
     }
   ]
 }
