@@ -71,6 +71,17 @@ describe("measurement parsing — the decimal is the whole game", () => {
     expect(measurementsAgree("3.87VDC", "3.87VDC")).toBe(true);
   });
 
+  it("does NOT treat a part number as a measurement", () => {
+    // Regression: an unanchored parse found the `911` inside `AZM911AC-D`, so
+    // two different part numbers that happen to share embedded digits compared
+    // EQUAL as measurements and corroborated each other silently. A part number
+    // is not a quantity.
+    expect(parseMeasurement("AZM911AC-D").value).toBeNull();
+    expect(parseMeasurement("DGM200R-AZAC").value).toBeNull();
+    expect(measurementsAgree("AZM911AC-D", "AZM911AC-0")).toBe(false);
+    expect(measurementsAgree("DGM200R-AZAC", "DGM130R-AZAC")).toBe(false);
+  });
+
   it("parses units off real plate strings", () => {
     expect(parseMeasurement("3.87VDC")).toEqual({ value: 3.87, unit: "VDC" });
     expect(parseMeasurement("1.27A")).toEqual({ value: 1.27, unit: "A" });

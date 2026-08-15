@@ -175,8 +175,14 @@ export function parseMeasurement(raw: string | null | undefined): {
 } {
   if (!raw) return { value: null, unit: null };
   const text = String(raw).trim();
-  // Number: optional sign, digits, optional single . or , decimal group.
-  const m = text.match(/(-?\d+(?:[.,]\d+)?)\s*([a-zA-ZΩ°µμ/%]+(?:\s*\/\s*[a-zA-Z]+)?)?/);
+  // ANCHORED at the start on purpose. A measurement is "number then unit"
+  // (`1.27A`, `3.87VDC`, `40°C`, `0.01°/STEP`). An unanchored match happily
+  // finds the digits buried inside an identifier — `AZM911AC-D` parsed as
+  // 911 "AC", so two genuinely different part numbers sharing those digits
+  // compared EQUAL as measurements and silently corroborated each other. A
+  // part number is not a quantity; if it does not start with a number it is
+  // not a measurement, and it falls through to exact text comparison instead.
+  const m = text.match(/^(-?\d+(?:[.,]\d+)?)\s*([a-zA-ZΩ°µμ/%]+(?:\s*\/\s*[a-zA-Z]+)?)?/);
   if (!m) return { value: null, unit: null };
   const numRaw = m[1].replace(",", ".");
   const value = Number(numRaw);
