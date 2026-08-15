@@ -366,7 +366,7 @@ mira-mobile:
     - "deep linking"
   dependencies:
     - mira-hub
-  known_drift: ["asset-tag grammar diverges from Hub (D-5, pilot CU-P1); hub-mobile-spec.md not yet superseded (D-1)"]
+  known_drift: ["hub-mobile-spec.md not yet superseded (D-1)"]   # D-5 RESOLVED by CU-P1 (v3.273.2)
 
 mira-pipeline:
   repo: MIRA

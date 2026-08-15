@@ -17,7 +17,7 @@
 | 7 | Executable architecture contracts | CU-06 in backlog (not yet built — implementation, so post-Gate-0) | ⏳ planned |
 | 8 | Ranked migration backlog | `BACKLOG.md` — 10 units, sequenced | ✅ |
 | 9 | Personal SWE-Bench starter set | `SWE_BENCH_SEED.md` — ~30 cases, 10 categories | ✅ seed |
-| 10 | One evidenced pilot migration | CU-P1 selected (asset-tag grammar); execution awaits human GO | ⏳ selected |
+| 10 | One evidenced pilot migration | CU-P1 ✅ DONE (PR #3249, v3.273.2) — full gate walk incl. a round-1 adversarial BLOCK on a real defect, fixed and re-passed; record in `units/CU-P1.md` | ✅ |
 
 ## The five headline discoveries
 
