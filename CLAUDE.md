@@ -245,6 +245,10 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 
 ---
 
+## Architecture changes
+
+Before any cross-module refactor, migration, consolidation, new service, dependency-direction change, canonical identity change, or legacy deletion, read and follow `docs/architecture/FACTORYLM_MIRA_ARCHITECTURE_CONVERGENCE.md`. Query the Architecture Registry (`docs/architecture/convergence/REGISTRY.yaml`) before planning. No architecture-affecting implementation may begin without an R0 known-good rollback point. Follow the gated workflow and independent adversarial-review requirements. Gate 0 outputs (drift, duplicates, ownership, backlog): `docs/architecture/convergence/GATE0_SUMMARY.md`.
+
 ## Release / PR Workflow
 
 No PR bumps a version file and no PR hand-writes a changelog line. `/VERSION` and `.github/workflows/version-gate.yml` were **deleted 2026-08-02 (#3064)** — they were the shared line that put every open PR into conflict with every merge. `.github/workflows/version-tag.yml` derives the next semver from the latest `v*` tag plus the merge commit's **Conventional Commit type** (`feat`→minor, `fix`→patch, `feat!`/`BREAKING CHANGE`→major) and creates the tag, the paired `rollback/<date>-vX.Y.Z` checkpoint, and a GitHub Release. Release notes are generated from merged PRs (`.github/release.yml`); `docs/CHANGELOG.md` is frozen as an archive. So: write a well-formed Conventional Commit title, label the PR, and that's the whole authoring duty. See `docs/versioning.md`.
