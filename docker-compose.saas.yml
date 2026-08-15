@@ -504,6 +504,17 @@ services:
       ENABLE_WO_EVIDENCE: "${ENABLE_WO_EVIDENCE:-0}"
       MIRA_WO_EVIDENCE_TIMEOUT_S: "${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}"
       MIRA_WO_EVIDENCE_LIMIT: "${MIRA_WO_EVIDENCE_LIMIT:-5}"
+      # Manual-discovery endpoint (POST /manual-discovery/search) — real-time
+      # OEM PDF manual search over shared/manual_search/ (Serper-backed).
+      # SERPER_API_KEY has no safe default (Doppler-managed secret); the rest
+      # mirror shared/manual_search/search.py's own env-var defaults so a
+      # missing Doppler value degrades to the same behavior the module uses
+      # when run standalone. MIRA_MANUAL_SENSE_WEB_ENABLED defaults off.
+      SERPER_API_KEY: "${SERPER_API_KEY:-}"
+      MANUAL_SEARCH_TIMEOUT: "${MANUAL_SEARCH_TIMEOUT:-15}"
+      MANUAL_HEAD_TIMEOUT: "${MANUAL_HEAD_TIMEOUT:-8}"
+      MANUAL_DISCOVERY_TIMEOUT: "${MANUAL_DISCOVERY_TIMEOUT:-20}"
+      MIRA_MANUAL_SENSE_WEB_ENABLED: "${MIRA_MANUAL_SENSE_WEB_ENABLED:-0}"
     volumes:
       - /opt/mira/data:/mira-db
     networks:

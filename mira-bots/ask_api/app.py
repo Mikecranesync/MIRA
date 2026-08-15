@@ -24,6 +24,7 @@ from shared.live_snapshot import _FAULT_CODES, normalize, render_status_block
 from ask_api.drive_pack import router as drive_pack_router
 from ask_api.gate_state import derive_uns_gate
 from ask_api.machine_context import MACHINE_CONTEXT
+from ask_api.manual_discovery import router as manual_discovery_router
 from ask_api.readonly_guard import enforce_readonly_kiosk_reply
 from ask_api.workspace import router as workspace_router
 
@@ -56,6 +57,7 @@ engine = Supervisor(
 
 app = FastAPI(title="MIRA Ask API", docs_url=None, redoc_url=None)
 app.include_router(drive_pack_router)
+app.include_router(manual_discovery_router)
 app.include_router(workspace_router)
 
 
