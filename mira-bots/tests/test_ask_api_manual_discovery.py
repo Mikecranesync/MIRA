@@ -308,6 +308,20 @@ class TestIsOemHost:
     def test_oem_host_subdomain_match(self):
         assert is_oem_host("rockwell automation", "sub.literature.rockwellautomation.com") is True
 
+    def test_oriental_motor_is_a_recognized_oem(self):
+        # Oriental Motor serves its operating manuals from its own domain. The
+        # searcher already FOUND the right manual without this entry; the entry
+        # is what lets an auto-import gate keyed on oem_host accept a genuine
+        # first-party document instead of demanding manual review.
+        assert is_oem_host("Oriental Motor", "www.orientalmotor.com") is True
+        assert is_oem_host("orientalmotor", "orientalmotor.com") is True
+
+    def test_oriental_motor_does_not_match_lookalike_hosts(self):
+        # The dot-suffix rule must hold for a newly added OEM exactly as it does
+        # for the originals — a bare suffix test would trust both of these.
+        assert is_oem_host("Oriental Motor", "evil-orientalmotor.com") is False
+        assert is_oem_host("Oriental Motor", "orientalmotor.com.attacker.net") is False
+
     def test_trusted_domains_host_true_even_for_unrelated_manufacturer_key(self):
         # docs.rs-online.com is in TRUSTED_DOMAINS but not tied to a specific
         # manufacturer key — should match regardless of the manufacturer given.

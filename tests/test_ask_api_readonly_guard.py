@@ -62,8 +62,28 @@ def _install_app_import_stubs(monkeypatch):
         def _load_state(self, _chat_id):
             return {}
 
+    class APIRouter:
+        """Router modules do `from fastapi import APIRouter` at import time.
+
+        Each one is stubbed below so the real module never loads, but the stub
+        `fastapi` must still expose the name: a router that slips into app.py
+        without a matching stub entry otherwise fails with a bare
+        `ImportError: cannot import name 'APIRouter'`, which reads like a
+        dependency problem rather than a missing stub.
+        """
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def get(self, *_args, **_kwargs):
+            return lambda fn: fn
+
+        def post(self, *_args, **_kwargs):
+            return lambda fn: fn
+
     fastapi = types.ModuleType("fastapi")
     fastapi.FastAPI = FastAPI
+    fastapi.APIRouter = APIRouter
     fastapi.Header = lambda default=None: default
     fastapi.HTTPException = HTTPException
 
@@ -84,12 +104,16 @@ def _install_app_import_stubs(monkeypatch):
     ask_workspace = types.ModuleType("ask_api.workspace")
     ask_workspace.router = object()
 
+    ask_manual_discovery = types.ModuleType("ask_api.manual_discovery")
+    ask_manual_discovery.router = object()
+
     monkeypatch.setitem(sys.modules, "fastapi", fastapi)
     monkeypatch.setitem(sys.modules, "pydantic", pydantic)
     monkeypatch.setitem(sys.modules, "shared.engine", shared_engine)
     monkeypatch.setitem(sys.modules, "shared.live_snapshot", shared_live_snapshot)
     monkeypatch.setitem(sys.modules, "ask_api.drive_pack", ask_drive_pack)
     monkeypatch.setitem(sys.modules, "ask_api.workspace", ask_workspace)
+    monkeypatch.setitem(sys.modules, "ask_api.manual_discovery", ask_manual_discovery)
     sys.modules.pop("ask_api.app", None)
 
 

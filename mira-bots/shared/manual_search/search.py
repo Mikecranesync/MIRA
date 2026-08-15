@@ -115,6 +115,27 @@ OEM_DOMAINS: dict[str, tuple[str, ...]] = {
     "square d": ("se.com",),
     "square-d": ("se.com",),
     "omron": ("automation.omron.com", "omron.com"),
+    # Oriental Motor publishes its operating manuals directly under
+    # www.orientalmotor.com/products/pdfs/opmanuals/ (verified 2026-08-15 against
+    # the DGII-series actuator manual HL-80002-12E.pdf). Without this entry the
+    # searcher still FINDS the right document, but scores it as a non-OEM host,
+    # so an auto-import gate keyed on oem_host refuses it and the technician is
+    # sent to manual review for a genuine first-party manual.
+    "oriental motor": (
+        "www.orientalmotor.com",
+        "orientalmotor.com",
+        "orientalmotor.co.jp",
+    ),
+    "orientalmotor": (
+        "www.orientalmotor.com",
+        "orientalmotor.com",
+        "orientalmotor.co.jp",
+    ),
+    "oriental motor co., ltd.": (
+        "www.orientalmotor.com",
+        "orientalmotor.com",
+        "orientalmotor.co.jp",
+    ),
     "phoenix contact": ("phoenixcontact.com",),
     "phoenix-contact": ("phoenixcontact.com",),
     "mitsubishi": ("mitsubishielectric.com", "mitsubishifa.co.jp"),

@@ -652,27 +652,42 @@ export async function listFilesForTarget(
 }
 
 /**
- * Document ids (hub_uploads.id = knowledge_entries.doc_id) linked to a
- * namespace node through file links — the retrieval derivation for node chat
- * over reused documents. Only indexed files contribute.
+ * Document ids (hub_uploads.id = knowledge_entries.doc_id) explicitly linked to
+ * ONE target — the retrieval derivation for chat over reused documents. Only
+ * indexed files contribute (a stored-only file has no document to retrieve).
+ *
+ * This IS the membership proof: the row exists, in this tenant, for this exact
+ * target. A caller may therefore pass the result to `retrieveNodeChunks` with
+ * `validatedDocScope: true`, which is what lets one canonical document answer
+ * for every place it is filed instead of only the node it happened to be
+ * ingested under.
  */
-export async function linkedDocIdsForNode(
+export async function linkedDocIdsForTarget(
   tenantId: string,
-  nodeId: string,
+  targetType: LinkTargetType,
+  targetId: string,
 ): Promise<string[]> {
-  if (!UUID_RE.test(nodeId)) return [];
+  if (!UUID_RE.test(targetId)) return [];
   return withTenantContext(tenantId, async (c) => {
     const r = await c.query<{ upload_id: string }>(
       `SELECT DISTINCT f.upload_id::text AS upload_id
          FROM workspace_file_links l
          JOIN namespace_direct_uploads f
            ON f.id = l.file_id AND f.tenant_id = l.tenant_id
-        WHERE l.tenant_id = $1::uuid AND l.target_type = 'namespace_node'
-          AND l.target_id = $2::uuid AND f.upload_id IS NOT NULL`,
-      [tenantId, nodeId],
+        WHERE l.tenant_id = $1::uuid AND l.target_type = $2
+          AND l.target_id = $3::uuid AND f.upload_id IS NOT NULL`,
+      [tenantId, targetType, targetId],
     );
     return r.rows.map((row) => row.upload_id);
   });
+}
+
+/** Namespace-node specialization of {@link linkedDocIdsForTarget}. */
+export async function linkedDocIdsForNode(
+  tenantId: string,
+  nodeId: string,
+): Promise<string[]> {
+  return linkedDocIdsForTarget(tenantId, "namespace_node", nodeId);
 }
 
 // ── Delete ───────────────────────────────────────────────────────────────────
