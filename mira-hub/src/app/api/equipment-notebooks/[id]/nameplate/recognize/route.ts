@@ -22,6 +22,7 @@ import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
+import { toFact, summarizeForReview, isComplianceMark } from "@/lib/nameplate/evidence";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +125,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const recognizer = defaultRecognizer();
   try {
     const candidate = await recognizer.recognize(buffer.toString("base64"), mime);
+    const rawText = candidate.rawText ?? [];
+
+    // Classify every claim before it leaves the server. `rawText` is the
+    // recognizer's own account of what it read, and a model that hallucinates
+    // also lists the hallucination there — on a real Oriental Motor photo it
+    // reported a `RoHS` mark that is not on the plate. Returning those lines
+    // unclassified invites the client to render invented text as if it had been
+    // read off the equipment. The evidence layer marks each claim observed /
+    // candidate / rejected with a reason the UI can show verbatim; the raw
+    // lines still ride along for provenance, but they are no longer the only
+    // thing describing what was "seen".
+    const evidence = [
+      toFact({ field: "manufacturer", value: candidate.manufacturer ?? null, rawText, confidence: candidate.confidence ?? null }),
+      toFact({ field: "model", value: candidate.model ?? null, rawText, confidence: candidate.confidence ?? null }),
+      toFact({ field: "catalogNumber", value: candidate.catalogNumber ?? null, rawText }),
+      toFact({ field: "serialNumber", value: candidate.serialNumber ?? null, rawText }),
+      toFact({ field: "equipmentType", value: candidate.equipmentType ?? null, rawText }),
+      // Certification marks the recognizer claims to have seen. Each is judged
+      // independently; a single vision pass can never establish one.
+      ...rawText.filter(isComplianceMark).map((mark) => toFact({ field: "certification", value: mark, rawText })),
+    ];
+    const review = summarizeForReview(evidence);
+
     return NextResponse.json({
       fileId: parked.fileId,
       candidate,
@@ -131,7 +155,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         provider: recognizer.name,
         filename,
         mimeType: mime,
-        rawText: candidate.rawText ?? [],
+        rawText,
+      },
+      // Provenance-carrying view of the same claims. Clients should prefer this
+      // over `candidate` when deciding what to present as fact.
+      evidence,
+      review: {
+        needsReview: review.needsReview.map((f) => f.field),
+        rejected: review.rejected.map((f) => ({ field: f.field, value: f.value, reason: f.reason })),
+        promotable: review.promotable.map((f) => f.field),
       },
       confidence: candidate.confidence ?? null,
       attachment,

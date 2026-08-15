@@ -152,6 +152,44 @@ describe("the photo survives every recognition outcome", () => {
     expect(parkOrder).toBeLessThan(gateOrder);
   });
 
+  it("never presents a fabricated certification mark as observed", async () => {
+    // Verbatim from the real Oriental Motor run: the plate carries UL/CE/UK CA
+    // and NO RoHS, but the recognizer listed `RoHS` among the lines it claims to
+    // have read — a hallucination that corroborates itself in rawText. The
+    // response must not let a client render that as something seen on the plate.
+    vi.mocked(defaultRecognizer).mockReturnValue({
+      name: "together-vision",
+      recognize: vi.fn().mockResolvedValue({
+        manufacturer: "Orientalmotor",
+        model: "DGM200R-AZAC",
+        catalogNumber: null,
+        equipmentType: "Rotary Actuator",
+        confidence: 0.95,
+        rawText: ["DGM200R-AZAC", "Orientalmotor", "12A", "UL", "CE", "RoHS"],
+      }),
+    });
+
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const marks = body.evidence.filter((f: { field: string }) => f.field === "certification");
+    expect(marks.length).toBeGreaterThan(0);
+    // No mark may be `observed` off a single vision pass.
+    expect(marks.every((m: { status: string }) => m.status !== "observed")).toBe(true);
+    expect(body.review.promotable).not.toContain("certification");
+
+    // Identity still flows through untouched — the gate is targeted, not blunt.
+    const model = body.evidence.find((f: { field: string }) => f.field === "model");
+    expect(model.status).toBe("observed");
+    expect(body.review.promotable).toContain("model");
+
+    // The catalog number the recognizer missed is a candidate, never "read".
+    const cat = body.evidence.find((f: { field: string }) => f.field === "catalogNumber");
+    expect(cat.status).toBe("candidate");
+    expect(cat.rawText).toBeNull();
+  });
+
   it("parks + links BEFORE a provider failure, and still reports the fileId on 502", async () => {
     const recognize = vi.fn().mockRejectedValue(new Error("recognizer_provider_error_404?key=abc"));
     vi.mocked(defaultRecognizer).mockReturnValue({ name: "together-vision", recognize });
