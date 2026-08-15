@@ -10,20 +10,27 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import {
   getNotebookDetail,
   askNotebook,
-  attachSource,
+  attachFileToTargets,
   setSourceEnabled,
   detachSource,
-  listWorkspaceDocs,
   uploadSourceToNotebook,
   getSourcePassage,
+  getFile,
   enabledDocIds,
+  canBeChatSource,
+  fileCapabilityLabel,
   type NotebookDetail,
-  type WorkspaceDoc,
+  type NotebookSource,
   type SourcePassage,
+  type WorkspaceFile,
 } from "../api/resources";
 import { preferencesStore } from "../lib/offline-queue";
 import { answerBody } from "../lib/chat-copy";
-import type { ChatCitation, ChatTurn } from "../lib/sse";
+import { normalizeCitations, type ChatCitation, type ChatTurn } from "../lib/sse";
+import { AttachFileSheet } from "./AttachFileSheet";
+import { ComponentNameplateFlow } from "./ComponentNameplateFlow";
+import { FilePreview } from "./FilePreview";
+import { PickWorkspaceFileSheet } from "./FilesScreen";
 import { Loading, Empty, ErrorState, load, type Loadable } from "./common";
 
 type Panel = "sources" | "chat" | "studio";
@@ -34,22 +41,38 @@ const QUICK_STARTS = [
   "Show the safety steps",
 ];
 
-/** Persisted-evidence rows are the live citation shape stored as JSON —
- *  parse defensively so a malformed row never breaks the chat render. */
+/** Persisted-evidence rows are the live citation shape stored as JSON — so
+ *  they go through the SAME normalizer as a live `sources` frame. One mapping
+ *  means a saved citation can never carry less than a live one (notably
+ *  `fileId`, which powers "Open original at cited page"). */
 export function citationsFromEvidence(evidence: unknown[] | undefined): ChatCitation[] {
-  if (!Array.isArray(evidence)) return [];
-  return evidence
-    .filter(
-      (e): e is Record<string, unknown> =>
-        typeof e === "object" && e !== null && "citationId" in e,
-    )
-    .map((e) => ({
-      citationId: String(e.citationId),
-      sourceTitle: String(e.sourceTitle ?? "Attached document"),
-      page: typeof e.page === "number" ? e.page : null,
-      quote: typeof e.quote === "string" ? e.quote : null,
-      docId: typeof e.docId === "string" ? e.docId : null,
-    }));
+  return normalizeCitations(evidence);
+}
+
+/** How a source row presents itself. Three kinds, never blurred:
+ *  - `searchable`  — materialized + confirmed: chat can cite it (checkbox).
+ *  - `viewable`    — a real attachment you can open, but not chat evidence.
+ *  - `stored`      — kept, but the pipeline can't read it.
+ *  A `candidate` or `rejected` match is NEVER searchable, however good the
+ *  file is: an unconfirmed proposal is not grounded evidence. */
+export type SourceKind = "searchable" | "viewable" | "stored";
+
+export function sourceKind(s: Pick<NotebookSource, "docId" | "matchState" | "status">): SourceKind {
+  if (canBeChatSource(s)) return "searchable";
+  return s.docId ? "viewable" : "stored";
+}
+
+export function sourceKindLabel(s: Pick<NotebookSource, "docId" | "matchState" | "status">): string {
+  const kind = sourceKind(s);
+  const base =
+    kind === "searchable"
+      ? fileCapabilityLabel("indexable")
+      : kind === "viewable"
+        ? fileCapabilityLabel("viewable")
+        : fileCapabilityLabel("stored");
+  if (s.matchState === "candidate") return `${base} · proposed match — confirm before using`;
+  if (s.matchState === "rejected") return `${base} · you rejected this match`;
+  return base;
 }
 
 // Studio generators (STU-03): each runs a GROUNDED generation through the
@@ -99,12 +122,24 @@ export function NotebookScreen({
   const [chatError, setChatError] = useState<unknown>(null);
   const [viewCitation, setViewCitation] = useState<ChatCitation | null>(null);
   const [passages, setPassages] = useState<Loadable<SourcePassage[]> | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [openSource, setOpenSource] = useState<NotebookSource | null>(null);
+  const [attachSource, setAttachSource] = useState<NotebookSource | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   backRef.current = () => {
+    if (attachSource) {
+      setAttachSource(null);
+      return true;
+    }
+    if (openSource) {
+      setOpenSource(null);
+      return true;
+    }
     if (viewCitation) {
       setViewCitation(null);
       setPassages(null);
+      setShowOriginal(false);
       return true;
     }
     if (sheetOpen) {
@@ -138,7 +173,9 @@ export function NotebookScreen({
       </div>
     );
   const { notebook, sources, turns } = detail.data;
-  const scope = enabledDocIds(sources);
+  // Chat scope is fail-closed: only CONFIRMED, materialized sources can ever
+  // enter it, whatever the checkbox says about a candidate row.
+  const scope = enabledDocIds(sources.filter(canBeChatSource));
 
   return (
     <>
@@ -170,63 +207,105 @@ export function NotebookScreen({
           <button className="btn-primary" onClick={() => setSheetOpen(true)}>
             + Add sources
           </button>
+          {sources.length > 0 && (
+            <div className="meta" style={{ margin: "10px 0 2px" }}>
+              The checkbox means: include this source in notebook chat. Only
+              searchable, confirmed sources can be included — you can still open
+              everything else.
+            </div>
+          )}
           {sources.length === 0 && (
             <Empty text="Saved sources will appear here. Add the machine's manual to start asking questions." />
           )}
-          {sources.map((s) => (
-            <div key={s.docId} className="source-row">
-              <input
-                type="checkbox"
-                checked={s.enabledByDefault}
-                onChange={async (e) => {
-                  const enabled = e.target.checked;
-                  // Optimistic: flip locally NOW; server truth wins on error.
-                  setDetail((d) =>
-                    d.state === "ready"
-                      ? {
-                          state: "ready",
-                          data: {
-                            ...d.data,
-                            sources: d.data.sources.map((x) =>
-                              x.docId === s.docId ? { ...x, enabledByDefault: enabled } : x,
-                            ),
-                          },
-                        }
-                      : d,
-                  );
-                  try {
-                    await setSourceEnabled(id, s.docId, enabled);
-                  } catch {
-                    refresh();
-                  }
-                }}
-              />
-              <div className="grow">
-                <div className="title">📄 {s.filename ?? s.docId}</div>
-                <div className="meta">
-                  {s.pages ? `${s.pages} pages` : "document"}
-                  {s.matchState && s.matchState !== "user_confirmed" ? ` · ${s.matchState}` : ""}
+          {sources.map((s) => {
+            const chattable = canBeChatSource(s);
+            return (
+              <div key={s.docId || s.fileId || s.filename} className="source-row">
+                {chattable ? (
+                  <input
+                    type="checkbox"
+                    title="Include this source in notebook chat"
+                    checked={s.enabledByDefault}
+                    onChange={async (e) => {
+                      const enabled = e.target.checked;
+                      // Optimistic: flip locally NOW; server truth wins on error.
+                      setDetail((d) =>
+                        d.state === "ready"
+                          ? {
+                              state: "ready",
+                              data: {
+                                ...d.data,
+                                sources: d.data.sources.map((x) =>
+                                  x.docId === s.docId ? { ...x, enabledByDefault: enabled } : x,
+                                ),
+                              },
+                            }
+                          : d,
+                      );
+                      try {
+                        await setSourceEnabled(id, s.docId, enabled);
+                      } catch {
+                        refresh();
+                      }
+                    }}
+                  />
+                ) : (
+                  // No checkbox at all — the box means "include in chat", and
+                  // this row cannot be included, so offering one would lie.
+                  <span
+                    aria-hidden
+                    style={{ width: 22, textAlign: "center", color: "var(--fl-ink-muted)" }}
+                  >
+                    —
+                  </span>
+                )}
+                <div className="grow">
+                  <div className="title">
+                    {s.sourceRole === "photo" ? "🖼" : "📄"} {s.filename ?? s.docId}
+                  </div>
+                  <div className="meta">
+                    {s.pages ? `${s.pages} pages · ` : ""}
+                    {sourceKindLabel(s)}
+                    {s.sourceRole && s.sourceRole !== "manual" ? ` · ${s.sourceRole}` : ""}
+                  </div>
                 </div>
-              </div>
-              <button
-                className="detach"
-                title="Remove from this notebook"
-                onClick={async () => {
-                  // Mis-tap protection (punch list SRC-11).
-                  if (
-                    !window.confirm(
-                      `Remove "${s.filename ?? "this source"}" from the notebook? The document stays in your workspace.`,
+                {/* Open is independent of the checkbox AND of detach. */}
+                <button
+                  className="detach row-action"
+                  title="Open the original"
+                  disabled={!s.fileId}
+                  onClick={() => s.fileId && setOpenSource(s)}
+                >
+                  Open
+                </button>
+                <button
+                  className="detach row-action"
+                  title="Attach this file somewhere else too"
+                  disabled={!s.fileId}
+                  onClick={() => s.fileId && setAttachSource(s)}
+                >
+                  Attach to another…
+                </button>
+                <button
+                  className="detach"
+                  title="Detach from this notebook"
+                  onClick={async () => {
+                    // Mis-tap protection (punch list SRC-11).
+                    if (
+                      !window.confirm(
+                        `Detach "${s.filename ?? "this source"}" from this notebook? The file stays in your workspace.`,
+                      )
                     )
-                  )
-                    return;
-                  await detachSource(id, s.docId).catch(() => {});
-                  refresh();
-                }}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+                      return;
+                    await detachSource(id, s.docId).catch(() => {});
+                    refresh();
+                  }}
+                >
+                  Detach
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -343,6 +422,7 @@ export function NotebookScreen({
           onClick={() => {
             setViewCitation(null);
             setPassages(null);
+            setShowOriginal(false);
           }}
         >
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -400,6 +480,30 @@ export function NotebookScreen({
                 Show full passage
               </button>
             )}
+            {/* The original bytes, fetched WITH the session (requestBinary) and
+                rendered in-app. Never window.open: on native that would land
+                on a login page and would mean handing the session cookie to an
+                external browser. */}
+            {viewCitation.fileId && !showOriginal && (
+              <button style={{ marginTop: 12 }} onClick={() => setShowOriginal(true)}>
+                Open original{viewCitation.page ? ` at cited page ${viewCitation.page}` : ""}
+              </button>
+            )}
+            {viewCitation.fileId && showOriginal && (
+              <div style={{ marginTop: 12 }}>
+                <FilePreview
+                  fileId={viewCitation.fileId}
+                  filename={viewCitation.sourceTitle}
+                  page={viewCitation.page ?? null}
+                />
+              </div>
+            )}
+            {!viewCitation.fileId && (
+              <div className="meta" style={{ marginTop: 12 }}>
+                This answer didn't record which file the passage came from, so
+                the original can't be opened from here.
+              </div>
+            )}
             <div className="meta" style={{ marginTop: 10 }}>
               Cited from the source document
               {viewCitation.page ? ` at page ${viewCitation.page}` : ""}. Verify
@@ -410,6 +514,7 @@ export function NotebookScreen({
               onClick={() => {
                 setViewCitation(null);
                 setPassages(null);
+                setShowOriginal(false);
               }}
             >
               Close
@@ -418,10 +523,39 @@ export function NotebookScreen({
         </div>
       )}
 
+      {openSource?.fileId && (
+        <div className="sheet-backdrop" onClick={() => setOpenSource(null)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>{openSource.filename ?? "Source"}</h3>
+            <div className="meta" style={{ marginBottom: 10 }}>
+              {sourceKindLabel(openSource)}
+            </div>
+            <FilePreview
+              fileId={openSource.fileId}
+              filename={openSource.filename ?? "document"}
+            />
+            <button style={{ marginTop: 12 }} onClick={() => setOpenSource(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {attachSource?.fileId && (
+        <NotebookSourceAttachSheet
+          source={attachSource}
+          onClose={() => setAttachSource(null)}
+          onAttached={() => {
+            setAttachSource(null);
+            refresh();
+          }}
+        />
+      )}
+
       {sheetOpen && (
         <AddSourcesSheet
           notebook={notebook}
-          attachedDocIds={sources.map((s) => s.docId)}
+          attachedFileIds={sources.map((s) => s.fileId).filter((f): f is string => Boolean(f))}
           onClose={() => setSheetOpen(false)}
           onChanged={() => {
             refresh();
@@ -429,6 +563,52 @@ export function NotebookScreen({
         />
       )}
     </>
+  );
+}
+
+/** "Attach to another…" from a source row — the shared sheet, but its existing
+ *  filings have to be fetched first so they render pre-checked. */
+function NotebookSourceAttachSheet({
+  source,
+  onClose,
+  onAttached,
+}: {
+  source: NotebookSource;
+  onClose: () => void;
+  onAttached: () => void;
+}) {
+  const [links, setLinks] = useState<Loadable<{ id: string; targetType: string; targetId: string }[]>>({
+    state: "loading",
+  });
+  useEffect(() => {
+    void load(() => getFile(source.fileId!).then((r) => r.links)).then(setLinks);
+  }, [source.fileId]);
+
+  if (links.state === "loading")
+    return (
+      <div className="sheet-backdrop" onClick={onClose}>
+        <div className="sheet" onClick={(e) => e.stopPropagation()}>
+          <Loading what="where this file is filed" />
+        </div>
+      </div>
+    );
+  if (links.state === "error")
+    return (
+      <div className="sheet-backdrop" onClick={onClose}>
+        <div className="sheet" onClick={(e) => e.stopPropagation()}>
+          <ErrorState error={links.error} />
+          <button onClick={onClose}>Close</button>
+        </div>
+      </div>
+    );
+  return (
+    <AttachFileSheet
+      fileId={source.fileId!}
+      filename={source.filename ?? "this file"}
+      existingLinks={links.data}
+      onClose={onClose}
+      onAttached={onAttached}
+    />
   );
 }
 
@@ -547,29 +727,33 @@ function StudioPanel({
 
 function AddSourcesSheet({
   notebook,
-  attachedDocIds,
+  attachedFileIds,
   onClose,
   onChanged,
 }: {
   notebook: NotebookDetail["notebook"];
-  attachedDocIds: string[];
+  attachedFileIds: string[];
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const [mode, setMode] = useState<"menu" | "workspace" | "paste">("menu");
-  const [docs, setDocs] = useState<Loadable<WorkspaceDoc[]> | null>(null);
+  const [mode, setMode] = useState<"menu" | "files" | "paste" | "nameplate">("menu");
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteText, setPasteText] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // The proven camera pattern (NotebooksTab): capture="environment" on a
+  // hidden input, value reset after every pick so re-shooting the same photo
+  // still fires onChange.
+  const cameraRef = useRef<HTMLInputElement | null>(null);
 
   const uploadPdf = async (file: File | null) => {
     if (!file) return;
     setBusy(true);
     setNote(null);
     try {
-      const r = await uploadSourceToNotebook(notebook, file);
+      const r = await uploadSourceToNotebook(notebook, file, { sourceRole: "manual" });
       if (r.attached) {
         setNote(r.duplicate ? "Already in your workspace — attached here." : "Source added. Ask away.");
         onChanged();
@@ -582,6 +766,50 @@ function AddSourcesSheet({
       setBusy(false);
     }
   };
+
+  // "From Files" is the FULL workspace — photos and stored-only files included,
+  // each labelled with what it can actually do, not just parsed documents.
+  const attachExisting = async (f: WorkspaceFile) => {
+    setBusy(true);
+    setNote(null);
+    try {
+      await attachFileToTargets(
+        f.id,
+        [
+          {
+            targetType: "equipment_notebook",
+            targetId: notebook.id,
+            role: f.mimeType.startsWith("image/") ? "photo" : "manual",
+            matchState: "user_confirmed",
+          },
+        ],
+        crypto.randomUUID(),
+      );
+      setNote(
+        f.capability === "indexable"
+          ? "Attached — it's a searchable source now."
+          : `Attached as a ${fileCapabilityLabel(f.capability).toLowerCase()}.`,
+      );
+      onChanged();
+      setMode("menu");
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Couldn't attach that file.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (mode === "files")
+    return (
+      <PickWorkspaceFileSheet
+        title="From Files"
+        hint="Everything in your workspace — manuals, drawings, photos, and stored files."
+        excludeFileIds={attachedFileIds}
+        busy={busy}
+        onClose={() => setMode("menu")}
+        onPick={(f) => void attachExisting(f)}
+      />
+    );
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
@@ -601,20 +829,17 @@ function AddSourcesSheet({
             </button>
             <button
               className="sheet-option"
-              onClick={() => {
-                setMode("workspace");
-                setDocs({ state: "loading" });
-                void load(listWorkspaceDocs).then(setDocs);
-              }}
+              disabled={busy}
+              onClick={() => cameraRef.current?.click()}
             >
-              🗂 From this workspace
+              📷 Photograph a component nameplate
+            </button>
+            <button className="sheet-option" onClick={() => setMode("files")}>
+              🗂 From Files
             </button>
             <button className="sheet-option" onClick={() => setMode("paste")}>
               📋 Paste text (error notes, nameplate data…)
             </button>
-            <div className="meta" style={{ margin: "2px 0 10px" }}>
-              Website and photo sources are coming soon.
-            </div>
             {note && <div className="meta">{note}</div>}
             <button style={{ marginTop: 6 }} onClick={onClose}>
               Done
@@ -655,7 +880,10 @@ function AddSourcesSheet({
                 setBusy(true);
                 setNote(null);
                 try {
-                  const r = await uploadSourceToNotebook(notebook, file);
+                  // A pasted note is a NOTE, not a manual — say so on the wire.
+                  const r = await uploadSourceToNotebook(notebook, file, {
+                    sourceRole: "note",
+                  });
                   if (r.attached) {
                     setNote(r.duplicate ? "Already in your workspace — attached here." : "Note added as a source.");
                     setPasteText("");
@@ -685,46 +913,16 @@ function AddSourcesSheet({
             </button>
           </>
         )}
-        {mode === "workspace" && (
-          <>
-            <h3>From this workspace</h3>
-            {docs?.state === "loading" && <Loading what="documents" />}
-            {docs?.state === "error" && <ErrorState error={docs.error} />}
-            {docs?.state === "ready" && docs.data.length === 0 && (
-              <Empty text="No documents in this workspace yet." />
-            )}
-            {docs?.state === "ready" &&
-              docs.data.map((d) => {
-                const attached = attachedDocIds.includes(d.docId);
-                return (
-                  <button
-                    key={d.docId}
-                    className="sheet-option"
-                    disabled={attached || busy}
-                    onClick={async () => {
-                      setBusy(true);
-                      try {
-                        await attachSource(notebook.id, d.docId);
-                        setNote("Source attached.");
-                        onChanged();
-                        setMode("menu");
-                      } catch (e) {
-                        setNote(e instanceof Error ? e.message : "Couldn't attach that document.");
-                      } finally {
-                        setBusy(false);
-                      }
-                    }}
-                  >
-                    📄 {d.filename ?? d.docId}
-                    {d.pages ? ` · ${d.pages}p` : ""}
-                    {attached ? " · attached" : ""}
-                  </button>
-                );
-              })}
-            <button style={{ marginTop: 6 }} onClick={() => setMode("menu")}>
-              ← Back
-            </button>
-          </>
+        {mode === "nameplate" && photo && (
+          <ComponentNameplateFlow
+            notebookId={notebook.id}
+            photo={photo}
+            onDone={onChanged}
+            onCancel={() => {
+              setPhoto(null);
+              setMode("menu");
+            }}
+          />
         )}
         <input
           ref={fileRef}
@@ -734,6 +932,21 @@ function AddSourcesSheet({
           onChange={(e) => {
             void uploadPdf(e.target.files?.[0] ?? null);
             e.target.value = "";
+          }}
+        />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0] ?? null;
+            e.target.value = "";
+            if (!f) return;
+            setNote(null);
+            setPhoto(f);
+            setMode("nameplate");
           }}
         />
       </div>

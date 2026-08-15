@@ -272,6 +272,13 @@ textarea {
 .source-row .title { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-row input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--flm-primary); }
 .source-row .detach { width: auto; min-height: 36px; padding: 0 10px; border: none; background: none; color: var(--fl-ink-muted); }
+/* A source/file row carries up to three actions (Open · Attach · Detach) —
+   they wrap under the title rather than squeezing the filename on a phone. */
+.source-row { flex-wrap: wrap; }
+.source-row .grow { flex: 1 1 100%; }
+.source-row .detach { font-size: 13px; padding: 0 8px; }
+.source-row .detach:disabled { opacity: 0.45; }
+.source-row .row-action { color: var(--fl-accent); }
 
 .sheet-backdrop {
   position: absolute; inset: 0; background: var(--fl-scrim); z-index: 10;

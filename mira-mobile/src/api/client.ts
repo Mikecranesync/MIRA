@@ -246,6 +246,85 @@ export async function uploadMultipart(path: string, form: FormData): Promise<Api
   throw errorFromStatus(res.status, data);
 }
 
+// --- authenticated binary retrieval -----------------------------------------
+
+/** Decode standard base64 (what CapacitorHttp returns for responseType "blob")
+ *  into raw bytes. `atob` is present in the Android/iOS WebView and in Node's
+ *  vitest environment, so no polyfill is needed. */
+export function base64ToBytes(b64: string): Uint8Array {
+  const clean = b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64;
+  const bin = atob(clean);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Fetch the AUTHENTICATED original bytes of a file (e.g.
+ *  `/api/namespace/files/{id}/`).
+ *
+ *  Why this exists rather than `window.open(API_BASE + path)`: on native the
+ *  session cookie lives in OUR persisted jar, not in the system browser or the
+ *  WebView cookie store, so an external open of an authenticated URL lands on
+ *  the Hub's login page — and shipping the session cookie out to an external
+ *  browser would be a trust-boundary violation (ADR-0034: no remote app UI in
+ *  the shell). `rawRequest` cannot be reused either: it pins
+ *  responseType "text" and coerces the body to a string, which mangles any
+ *  non-UTF8 byte. This is the ONE door for binary reads. */
+export async function requestBinary(
+  path: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<{ status: number; bytes: Uint8Array; contentType: string }> {
+  await loadJar();
+  const headers: Record<string, string> = {};
+  const cookies = cookieHeader();
+  if (cookies) headers["Cookie"] = cookies;
+
+  if (Capacitor.isNativePlatform()) {
+    let res: Awaited<ReturnType<typeof CapacitorHttp.request>>;
+    try {
+      res = await CapacitorHttp.request({
+        url: API_BASE + path,
+        method: "GET",
+        headers,
+        disableRedirects: true,
+        responseType: "blob", // native returns base64 text in res.data
+        readTimeout: opts.timeoutMs ?? 90_000,
+        connectTimeout: 15_000,
+      });
+    } catch (e) {
+      throw new ApiError("network", null, String(e));
+    }
+    storeSetCookies((res.headers ?? {}) as Record<string, string>);
+    await saveJar();
+    if (res.status === 401 && !suppressAuthEvents) {
+      for (const fn of authExpiredListeners) fn();
+    }
+    if (res.status < 200 || res.status >= 300) throw errorFromStatus(res.status, null);
+    const h = (res.headers ?? {}) as Record<string, string>;
+    const contentType = h["Content-Type"] ?? h["content-type"] ?? "application/octet-stream";
+    const raw = typeof res.data === "string" ? res.data : "";
+    return { status: res.status, bytes: base64ToBytes(raw), contentType };
+  }
+
+  // Dev-browser fallback (vite proxy); browser owns cookies.
+  let res: Response;
+  try {
+    res = await fetch(path, { method: "GET", credentials: "include" });
+  } catch (e) {
+    throw new ApiError("network", null, String(e));
+  }
+  if (res.status === 401 && !suppressAuthEvents) {
+    for (const fn of authExpiredListeners) fn();
+  }
+  if (res.status < 200 || res.status >= 300) throw errorFromStatus(res.status, null);
+  const buf = await res.arrayBuffer();
+  return {
+    status: res.status,
+    bytes: new Uint8Array(buf),
+    contentType: res.headers.get("content-type") ?? "application/octet-stream",
+  };
+}
+
 /** Core request: throws typed ApiError on non-2xx; retries transport failures
  *  once for GETs and keyed mutations. 401s notify the auth-expired listeners
  *  (unless suppressed) AND still throw, so callers always see the failure. */
