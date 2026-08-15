@@ -1,0 +1,170 @@
+{
+  "$comment": "TAG-001: THE asset-tag grammar contract. Canonical definition: mira-hub/src/lib/asset-tag.ts (ASSET_TAG_REGEX = ^[A-Za-z0-9_-]{1,64}$ \u2014 no dots: '.'/'..' traversal defense for the mira-ingest PHOTOS_DIR path) with resolution semantics from mira-hub/src/lib/scan-target.ts (URL form -> /m/ path form -> raw tag, percent-decoded before validation). Consumers: Hub scan page, Hub uploads/assets APIs, mira-mobile QR/deep-link handling. Both mira-hub and mira-mobile test suites execute every case in this file; changing this file is changing a cross-surface contract and requires updating BOTH consumers in the same PR. Convergence unit CU-P1 (docs/architecture/convergence/units/CU-P1.md). Mobile applies ONE deliberate extra restriction on top of this grammar: an absolute-URL input resolves only from https://app.factorylm.com/m/ or factorylm://m/ (deep-link trust filter) \u2014 cases marked mobile_expect capture that difference explicitly; everywhere else the two surfaces MUST agree. Canonical URL semantics are Node's WHATWG URL parser (the Hub's production runtime): a non-special scheme like factorylm:// parses with host='m', so the Hub resolver returns null for it \u2014 the factorylm:// deep-link scheme is delivered by the mobile OS exclusively to the app and is therefore a sanctioned mobile-only resolution, marked via mobile_expect.",
+  "version": 1,
+  "canonical_regex": "^[A-Za-z0-9_-]{1,64}$",
+  "cases": [
+    {
+      "name": "raw tag simple",
+      "input": "ROCK-BBTKAX7M",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "raw tag single char",
+      "input": "X",
+      "expect": "X"
+    },
+    {
+      "name": "raw tag 64 chars",
+      "input": "A123456789012345678901234567890123456789012345678901234567890123",
+      "expect": "A123456789012345678901234567890123456789012345678901234567890123"
+    },
+    {
+      "name": "raw tag 65 chars rejected",
+      "input": "A1234567890123456789012345678901234567890123456789012345678901234",
+      "expect": null
+    },
+    {
+      "name": "raw tag underscore + dash",
+      "input": "EQ_pump-01",
+      "expect": "EQ_pump-01"
+    },
+    {
+      "name": "dotted tag rejected (traversal defense)",
+      "input": "ROCK.TEST",
+      "expect": null
+    },
+    {
+      "name": "dot-dot rejected",
+      "input": "..",
+      "expect": null
+    },
+    {
+      "name": "single dot rejected",
+      "input": ".",
+      "expect": null
+    },
+    {
+      "name": "hidden-file style rejected",
+      "input": ".env",
+      "expect": null
+    },
+    {
+      "name": "slash rejected",
+      "input": "a/b",
+      "expect": null
+    },
+    {
+      "name": "space rejected",
+      "input": "EQ 01",
+      "expect": null
+    },
+    {
+      "name": "unicode rejected",
+      "input": "EQ\u00e9",
+      "expect": null
+    },
+    {
+      "name": "empty",
+      "input": "",
+      "expect": null
+    },
+    {
+      "name": "whitespace only",
+      "input": "   ",
+      "expect": null
+    },
+    {
+      "name": "leading/trailing space trimmed",
+      "input": "  ROCK-BBTKAX7M  ",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "path form",
+      "input": "/m/ROCK-BBTKAX7M",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "path form trailing slash",
+      "input": "/m/ROCK-BBTKAX7M/",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "path form no leading slash",
+      "input": "m/ROCK-BBTKAX7M",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "path form dotted rejected",
+      "input": "/m/ROCK.TEST",
+      "expect": null
+    },
+    {
+      "name": "path form single char",
+      "input": "/m/X",
+      "expect": "X"
+    },
+    {
+      "name": "app URL",
+      "input": "https://app.factorylm.com/m/ROCK-BBTKAX7M",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "app URL trailing slash",
+      "input": "https://app.factorylm.com/m/ROCK-BBTKAX7M/",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "app URL single-char tag",
+      "input": "https://app.factorylm.com/m/X",
+      "expect": "X"
+    },
+    {
+      "name": "app URL percent-encoded decodes",
+      "input": "https://app.factorylm.com/m/EQ%5Fpump%2D01",
+      "expect": "EQ_pump-01"
+    },
+    {
+      "name": "app URL percent-encoded dot still rejected",
+      "input": "https://app.factorylm.com/m/EQ%2E%2E",
+      "expect": null
+    },
+    {
+      "name": "app URL dotted tag rejected",
+      "input": "https://app.factorylm.com/m/ROCK.TEST",
+      "expect": null
+    },
+    {
+      "name": "app URL with query",
+      "input": "https://app.factorylm.com/m/ROCK-BBTKAX7M?src=qr",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "app URL with fragment",
+      "input": "https://app.factorylm.com/m/ROCK-BBTKAX7M#top",
+      "expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "custom scheme deep link \u2014 mobile-only surface (hub: Node URL parses host='m')",
+      "input": "factorylm://m/ROCK-BBTKAX7M",
+      "expect": null,
+      "mobile_expect": "ROCK-BBTKAX7M"
+    },
+    {
+      "name": "URL without /m/ path",
+      "input": "https://app.factorylm.com/login/",
+      "expect": null
+    },
+    {
+      "name": "foreign URL \u2014 hub extracts, mobile trust-filters",
+      "input": "https://evil.example.com/m/ROCK-BBTKAX7M",
+      "expect": "ROCK-BBTKAX7M",
+      "mobile_expect": null
+    },
+    {
+      "name": "javascript scheme rejected on both sides",
+      "input": "javascript://m/x",
+      "expect": null,
+      "mobile_expect": null
+    }
+  ]
+}
