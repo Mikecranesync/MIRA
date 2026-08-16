@@ -280,34 +280,141 @@ export function parseInsulation(lines: string[]): string | null {
 
 const ID_TOKEN = "([A-Z0-9][A-Z0-9\\-/.]{2,})";
 
-/** Labelled part / catalog number: `Motor P/N AZM911AC-D`, `Catalog: 2080-LC20-20QWB`. */
+/**
+ * Values that are actually the anchor's OWN trailing words, captured via regex
+ * backtracking on keyword-only lines ("CAT. NO.", "SERIAL NUMBER", "MODEL
+ * NO."): the optional NO./NUMBER group matches empty and the ID token eats the
+ * word instead. Measured on the internet-100 replay (web-009 "NO.", web-099
+ * "NUMBER", web-134 "SERIES"). A captured value that IS one of these is not a
+ * value at all.
+ */
+const KEYWORD_NOISE = /^(?:NO\.?|NUMBER|SERIAL|MODEL|TYPE|CAT\.?|CATALOG|PART|SERIES|SPEC\.?|DATE|CODE|REF\.?)$/i;
+
+function idCapture(m: RegExpMatchArray | null): { value: string; raw: string } | null {
+  if (!m) return null;
+  const value = m[1].trim();
+  if (KEYWORD_NOISE.test(value)) return null;
+  return { value, raw: m[0].trim() };
+}
+
+/** Labelled part / catalog number: `Motor P/N AZM911AC-D`, `Catalog: 2080-LC20-20QWB`,
+ * `CAT# 301217`, Siemens article `1P 6SL3040-1MA01-0AA0`. */
 export function parseCatalogNumber(lines: string[]): { value: string; raw: string } | null {
   const patterns = [
     new RegExp(`P\\s*/\\s*N[:.#\\s]*${ID_TOKEN}`, "i"),
     new RegExp(`\\bPART\\s*(?:NO\\.?|NUMBER)?[:.#\\s]*${ID_TOKEN}`, "i"),
     new RegExp(`\\bCAT(?:ALOG|\\.)?\\s*(?:NO\\.?|NUMBER)?[:.#\\s]*${ID_TOKEN}`, "i"),
+    // Siemens data-matrix labels prefix the orderable article number with `1P`
+    // (ISO/IEC 15434 data identifier). Line-anchored so a `1P` inside some
+    // other token can't fire.
+    new RegExp(`^1P[:.\\s]+${ID_TOKEN}`, "i"),
   ];
   for (const re of patterns) {
-    const m = firstMatch(lines, re);
-    if (m) return { value: m[1].toUpperCase(), raw: m[0].trim() };
+    const hit = idCapture(firstMatch(lines, re));
+    if (hit) return { ...hit, value: hit.value.toUpperCase() };
   }
   return null;
 }
 
-/** Labelled model: `MODEL DGM200R-AZAC`, `Model: Micro820`. */
+/** Labelled model: `MODEL DGM200R-AZAC`, `Model: Micro820`, `M/N EA7-T8C`,
+ * `TYPE 5K444AK456`. TYPE is last AND requires a token of >=4 chars: on real
+ * plates TYPE also labels short classifier codes ("TYPE PTC", ABB "T53"
+ * fragments) where the model's own fuller assignment was right — measured on
+ * the internet-100 replay (web-049, web-109). */
 export function parseModel(lines: string[]): { value: string; raw: string } | null {
-  const m = firstMatch(lines, new RegExp(`\\bMODEL[:.#\\s]*${ID_TOKEN}`, "i"));
-  if (m) return { value: m[1], raw: m[0].trim() };
+  const patterns = [
+    new RegExp(`\\bMODEL[:.#\\s]*${ID_TOKEN}`, "i"),
+    new RegExp(`\\bMOD\\.\\s*${ID_TOKEN}`, "i"),
+    new RegExp(`\\bM\\s*/\\s*N[:.#\\s]*${ID_TOKEN}`, "i"),
+  ];
+  for (const re of patterns) {
+    const hit = idCapture(firstMatch(lines, re));
+    if (hit) return hit;
+  }
+  const type = idCapture(firstMatch(lines, new RegExp(`\\bTYPE[:.#\\s]+${ID_TOKEN}`, "i")));
+  if (type && type.value.length >= 4) return type;
   return null;
 }
 
-/** Labelled serial / lot: `S/N 12345`, `SERIAL: ABC-9`, `LOT QS8`. */
+/** Labelled serial / lot: `S/N 12345`, `SER.NO. X`, `SERIAL: ABC-9`, `LOT QS8`,
+ * `ID# Z 03 7689115`, and the Siemens bare-`S` data-identifier line
+ * (`S T-P96166484`). */
 export function parseSerial(lines: string[]): { value: string; raw: string } | null {
-  const m = firstMatch(
-    lines,
-    /\b(?:S\s*\/\s*N|SERIAL(?:\s*NO\.?)?|LOT(?:\s*NO\.?)?)[:.#\s]*([A-Z0-9][A-Z0-9\-/ ]{3,})/i,
+  const m = idCapture(
+    firstMatch(
+      lines,
+      // Capture floor is 3 chars — real serials can be short ("SER NO J10").
+      /\b(?:S\s*\/\s*N|\bSN\b|SER\.?\s*NO\.?|SERIAL(?:\s*NO\.?|\s*NUMBER)?|LOT(?:\s*NO\.?)?|ID#)[:.#\s]*([A-Z0-9][A-Z0-9\-/ ]{2,})/i,
+    ),
   );
-  if (m) return { value: m[1].trim(), raw: m[0].trim() };
+  if (m) return m;
+  // Siemens labels: `S T-P96166484` — the bare `S` data identifier starts the
+  // line. Require length >=5 after it so a stray "S 123" can't fire.
+  const s = idCapture(firstMatch(lines, /^S[:.\s]+([A-Z0-9][A-Z0-9\-/]{4,})$/i));
+  return s;
+}
+
+/**
+ * The printed-anchor lookup behind the identity promotion gate: which value
+ * does the PLATE label as this field? Returns null when no anchored line
+ * exists — which is exactly the situation in which a model-assigned identity
+ * must not be promoted unconfirmed (the internet-100 benchmark's dominant
+ * failure was correctly-read strings slotted into unanchored identity fields:
+ * frame sizes as models, bearing numbers as serials).
+ */
+const KEYWORD_ONLY: Record<"model" | "catalogNumber" | "serialNumber", RegExp> = {
+  model: /^(?:MODEL|M\s*\/\s*N)[:.#\s]*$/i,
+  catalogNumber: /^(?:P\s*\/\s*N|PART\s*(?:NO\.?|NUMBER)?|CAT(?:ALOG|\.)?\s*(?:NO\.?|NUMBER)?#?|1P)[:.#\s]*$/i,
+  serialNumber: /^(?:S\s*\/\s*N|SN|SER\.?\s*NO\.?|SERIAL(?:\s*NO\.?|\s*NUMBER)?|LOT(?:\s*NO\.?)?)[:.#\s]*$/i,
+};
+
+/** Does this line look like an identifier value (not prose, not a heading)? */
+function looksLikeIdValue(field: "model" | "catalogNumber" | "serialNumber", line: string): boolean {
+  if (KEYWORD_ONLY.model.test(line) || KEYWORD_ONLY.catalogNumber.test(line) || KEYWORD_ONLY.serialNumber.test(line)) {
+    return false;
+  }
+  if (field === "serialNumber") {
+    // Serials may contain spaces ("QS8 I119701") but always carry a digit —
+    // which keeps prose neighbors like "MADE IN JAPAN" out.
+    return /^[A-Z0-9][A-Z0-9\-/. ]{3,}$/i.test(line) && /\d/.test(line);
+  }
+  // Models/catalogs are single tokens — a spaced line is a description.
+  return /^[A-Z0-9][A-Z0-9\-/.]{2,}$/i.test(line);
+}
+
+/**
+ * The printed-anchor lookup behind the identity promotion gate: which value
+ * does the PLATE label as this field? Returns null when no anchored line
+ * exists — which is exactly the situation in which a model-assigned identity
+ * must not be promoted unconfirmed (the internet-100 benchmark's dominant
+ * failure was correctly-read strings slotted into unanchored identity fields:
+ * frame sizes as models, bearing numbers as serials).
+ *
+ * Two anchor shapes, because OCR splits them both ways on real plates:
+ *  1. same line   — "MODEL DGM200R-AZAC", "1P 6SL3040-1MA01-0AA0"
+ *  2. adjacent    — a keyword-only line ("MODEL") with the value on the next
+ *                   line, or the previous one (recognizers do not preserve
+ *                   print order reliably).
+ */
+export function anchoredValueFor(
+  field: "model" | "catalogNumber" | "serialNumber",
+  lines: string[],
+): { value: string; raw: string } | null {
+  const clean = lines.map((l) => String(l ?? "").trim()).filter(Boolean);
+  const sameLine =
+    field === "model" ? parseModel(clean) : field === "catalogNumber" ? parseCatalogNumber(clean) : parseSerial(clean);
+  if (sameLine) return sameLine;
+
+  const keyword = KEYWORD_ONLY[field];
+  for (let i = 0; i < clean.length; i++) {
+    if (!keyword.test(clean[i])) continue;
+    for (const j of [i + 1, i - 1]) {
+      const neighbor = clean[j];
+      if (neighbor && looksLikeIdValue(field, neighbor)) {
+        return { value: neighbor.trim(), raw: `${clean[i]} ${neighbor.trim()}` };
+      }
+    }
+  }
   return null;
 }
 

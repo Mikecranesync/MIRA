@@ -23,6 +23,7 @@ import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
 import { resolveRecognitionImage } from "@/lib/nameplate/detect";
+import { parseNameplateLines } from "@/lib/nameplate/passes";
 import { toFact, summarizeForReview, isComplianceMark } from "@/lib/nameplate/evidence";
 
 export const dynamic = "force-dynamic";
@@ -130,8 +131,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // — the crop is read-only working pixels, never persisted. Detection is
     // geometry, not testimony: it adds no fact, no FactSource, and no
     // corroboration — the crop and the reading below are ONE observation.
-    const read = await resolveRecognitionImage(buffer.toString("base64"), mime);
-    const candidate = await recognizer.recognize(read.base64, read.mimeType);
+    const originalB64 = buffer.toString("base64");
+    const read = await resolveRecognitionImage(originalB64, mime);
+    let imageSource = read.imageSource;
+    let candidate;
+    try {
+      candidate = await recognizer.recognize(read.base64, read.mimeType);
+    } catch (err) {
+      // Second-level fallback: a recognition failure ON THE CROP must not cost
+      // a photo the whole-frame path could read (internet-100: two dense
+      // plates whose crop response overflowed the provider while the original
+      // parsed fine). Detection may only ever ADD information.
+      if (imageSource.kind !== "auto_detected_crop") throw err;
+      candidate = await recognizer.recognize(originalB64, mime);
+      imageSource = { kind: "original_photo" };
+    }
     const rawText = candidate.rawText ?? [];
 
     // Classify every claim before it leaves the server. `rawText` is the
@@ -143,11 +157,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // candidate / rejected with a reason the UI can show verbatim; the raw
     // lines still ride along for provenance, but they are no longer the only
     // thing describing what was "seen".
+    // Deterministic field assignment first (internet-100 fix): when the plate
+    // itself labels an identifier (MODEL / CAT / P/N / 1P / SER / S/N ...),
+    // that anchored value outranks the model's field assignment — the
+    // benchmark's dominant defect was correctly-read strings slotted into the
+    // wrong identity field (frame→model, bearing→serial). The model's value
+    // fills in only when the plate carries no anchor, and toFact's anchor gate
+    // then holds it at `candidate` until a human confirms.
+    const det = parseNameplateLines(rawText);
     const evidence = [
       toFact({ field: "manufacturer", value: candidate.manufacturer ?? null, rawText, confidence: candidate.confidence ?? null }),
-      toFact({ field: "model", value: candidate.model ?? null, rawText, confidence: candidate.confidence ?? null }),
-      toFact({ field: "catalogNumber", value: candidate.catalogNumber ?? null, rawText }),
-      toFact({ field: "serialNumber", value: candidate.serialNumber ?? null, rawText }),
+      toFact({ field: "model", value: det.model?.value ?? candidate.model ?? null, rawText, confidence: candidate.confidence ?? null }),
+      toFact({ field: "catalogNumber", value: det.catalogNumber?.value ?? candidate.catalogNumber ?? null, rawText }),
+      toFact({ field: "serialNumber", value: det.serialNumber?.value ?? candidate.serialNumber ?? null, rawText }),
       toFact({ field: "equipmentType", value: candidate.equipmentType ?? null, rawText }),
       // Certification marks the recognizer claims to have seen. Each is judged
       // independently; a single vision pass can never establish one.
@@ -165,8 +187,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         rawText,
         // Which pixels the recognition actually read: the parked original, or
         // the detector's union-of-boxes crop (with the exact rectangle, so the
-        // read pixels can be rebuilt from the parked file).
-        imageSource: read.imageSource,
+        // read pixels can be rebuilt from the parked file). If crop recognition
+        // failed and the original rescued it, this honestly says original_photo.
+        imageSource,
       },
       // Provenance-carrying view of the same claims. Clients should prefer this
       // over `candidate` when deciding what to present as fact.

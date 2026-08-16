@@ -174,7 +174,9 @@ describe("the photo survives every recognition outcome", () => {
         catalogNumber: null,
         equipmentType: "Rotary Actuator",
         confidence: 0.95,
-        rawText: ["DGM200R-AZAC", "Orientalmotor", "12A", "UL", "CE", "RoHS"],
+        // The real plate prints "MODEL" above the model string — the anchor
+        // the identity promotion gate requires (rawText order per real OCR).
+        rawText: ["MODEL", "DGM200R-AZAC", "Orientalmotor", "12A", "UL", "CE", "RoHS"],
       }),
     });
 
@@ -328,6 +330,24 @@ describe("detector crop wiring", () => {
     const [b64, mimeArg] = recognize.mock.calls[0];
     expect(Buffer.from(b64, "base64").length).toBe(16); // the original upload
     expect(mimeArg).toBe("image/jpeg");
+    expect((await res.json()).rawObservation.imageSource).toEqual({ kind: "original_photo" });
+  });
+
+  it("crop-recognition failure retries on the ORIGINAL and reports original_photo provenance", async () => {
+    // internet-100: two dense plates whose CROP overflowed the provider while
+    // the whole frame parsed fine. Detection may only ever ADD information —
+    // a crop that breaks recognition must not cost the photo.
+    armCrop();
+    const recognize = vi
+      .fn()
+      .mockRejectedValueOnce(new SyntaxError("Unexpected EOF"))
+      .mockResolvedValueOnce(CANDIDATE);
+    vi.mocked(defaultRecognizer).mockReturnValue({ name: "together-vision", recognize });
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    expect(recognize).toHaveBeenCalledTimes(2);
+    // Second call read the original upload bytes, not the crop.
+    expect(Buffer.from(recognize.mock.calls[1][0], "base64").length).toBe(16);
     expect((await res.json()).rawObservation.imageSource).toEqual({ kind: "original_photo" });
   });
 

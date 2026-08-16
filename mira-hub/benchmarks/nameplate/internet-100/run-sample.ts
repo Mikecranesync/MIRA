@@ -43,11 +43,13 @@ function mimeFor(p: string): string {
 function routeShapedRead(candidate: Awaited<ReturnType<ReturnType<typeof defaultRecognizer>["recognize"]>>) {
   const rawText = candidate.rawText ?? [];
   const det = parseNameplateLines(rawText);
+  // Mirrors the recognize route exactly: anchored deterministic values outrank
+  // the model's field assignment for the three promotable identifiers.
   const evidence = [
     toFact({ field: "manufacturer", value: candidate.manufacturer ?? null, rawText, confidence: candidate.confidence ?? null }),
-    toFact({ field: "model", value: candidate.model ?? null, rawText, confidence: candidate.confidence ?? null }),
-    toFact({ field: "catalogNumber", value: candidate.catalogNumber ?? null, rawText }),
-    toFact({ field: "serialNumber", value: candidate.serialNumber ?? null, rawText }),
+    toFact({ field: "model", value: det.model?.value ?? candidate.model ?? null, rawText, confidence: candidate.confidence ?? null }),
+    toFact({ field: "catalogNumber", value: det.catalogNumber?.value ?? candidate.catalogNumber ?? null, rawText }),
+    toFact({ field: "serialNumber", value: det.serialNumber?.value ?? candidate.serialNumber ?? null, rawText }),
     toFact({ field: "equipmentType", value: candidate.equipmentType ?? null, rawText }),
     ...rawText.filter(isComplianceMark).map((mark) => toFact({ field: "certification", value: mark, rawText })),
   ];
@@ -57,10 +59,10 @@ function routeShapedRead(candidate: Awaited<ReturnType<ReturnType<typeof default
     rawText,
     values: {
       manufacturer: candidate.manufacturer ?? null,
-      model: candidate.model ?? null,
-      catalogNumber: candidate.catalogNumber ?? det.catalogNumber?.value ?? null,
+      model: det.model?.value ?? candidate.model ?? null,
+      catalogNumber: det.catalogNumber?.value ?? candidate.catalogNumber ?? null,
       equipmentType: candidate.equipmentType ?? null,
-      serialNumber: candidate.serialNumber ?? det.serialNumber?.value ?? null,
+      serialNumber: det.serialNumber?.value ?? candidate.serialNumber ?? null,
       voltage: det.voltage?.text ?? null,
       current: det.current?.text ?? null,
       resolution: det.resolution?.text ?? null,
@@ -99,11 +101,20 @@ async function main() {
     const t0 = Date.now();
     const read = await resolveRecognitionImage(b64, mime);
     const tDetect = Date.now() - t0;
-    const candidate = await defaultRecognizer().recognize(read.base64, read.mimeType);
+    let imageSource = read.imageSource;
+    let candidate;
+    try {
+      candidate = await defaultRecognizer().recognize(read.base64, read.mimeType);
+    } catch (err) {
+      // Route parity: crop-recognition failure retries on the original.
+      if (imageSource.kind !== "auto_detected_crop") throw err;
+      candidate = await defaultRecognizer().recognize(b64, mime);
+      imageSource = { kind: "original_photo" };
+    }
     out.improved = {
       ...routeShapedRead(candidate),
-      imageSource: read.imageSource,
-      fallback_used: read.imageSource.kind === "original_photo",
+      imageSource,
+      fallback_used: imageSource.kind === "original_photo",
       detect_ms: tDetect,
       total_ms: Date.now() - t0,
     };

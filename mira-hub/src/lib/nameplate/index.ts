@@ -110,35 +110,52 @@ async function openAiCompatVision(
   imageBase64: string,
   mimeType: string,
 ): Promise<EquipmentIdentityCandidate> {
-  const resp = await fetch(apiUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      max_tokens: 500,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: VISION_PROMPT },
-            {
-              type: "image_url",
-              image_url: { url: `data:${mimeType};base64,${imageBase64}` },
-            },
-          ],
-        },
-      ],
-    }),
-  });
-  if (!resp.ok) {
-    // Scrub any credential-bearing detail from provider errors (PRD §20).
-    throw new Error(`recognizer_provider_error_${resp.status}`);
+  // max_tokens 500 -> 1200 (internet-100 finding): dense real-world plates
+  // (dual-frequency motor tables, VFD spec labels) produce rawText past 500
+  // tokens; the provider truncates mid-string and the whole recognition dies
+  // on JSON.parse — a total outage on 3.3% of real photos, deterministically.
+  // 1200 covers the largest rawText observed in the 154-sample set with slack.
+  const callOnce = async (): Promise<EquipmentIdentityCandidate> => {
+    const resp = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        max_tokens: 1200,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: VISION_PROMPT },
+              {
+                type: "image_url",
+                image_url: { url: `data:${mimeType};base64,${imageBase64}` },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!resp.ok) {
+      // Scrub any credential-bearing detail from provider errors (PRD §20).
+      throw new Error(`recognizer_provider_error_${resp.status}`);
+    }
+    const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+    const text = body.choices?.[0]?.message?.content ?? "{}";
+    return normalizeCandidate(JSON.parse(text));
+  };
+  try {
+    return await callOnce();
+  } catch (err) {
+    // A malformed/truncated provider payload (SyntaxError from JSON.parse) is
+    // frequently transient — retry exactly once. Provider HTTP errors keep
+    // their status-bearing message and are not retried here (the route's
+    // fallback semantics own those).
+    if (err instanceof SyntaxError) return await callOnce();
+    throw err;
   }
-  const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
-  const text = body.choices?.[0]?.message?.content ?? "{}";
-  return normalizeCandidate(JSON.parse(text));
 }
 
 /**

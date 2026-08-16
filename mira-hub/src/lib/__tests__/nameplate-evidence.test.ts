@@ -272,3 +272,52 @@ describe("review summary — show the technician only what needs judgment", () =
     );
   });
 });
+
+// ── Anchor gate on identity promotion (internet-100 fix) ─────────────────────
+//
+// 86 wrong identity promotions across 59 real-world samples shared one shape:
+// the string was genuinely on the plate (so image-evidence passed) but it was
+// NOT the field it was promoted as. The gate: model/catalogNumber/serialNumber
+// promote only when the plate's own printed anchor agrees.
+
+describe("identity anchor gate — right string, wrong field, no promotion", () => {
+  it("demotes a frame size assigned as model to candidate (web-006 J56Z case)", () => {
+    const fact = toFact({
+      field: "model",
+      value: "J56Z",
+      rawText: ["CENTURY ELECTRIC", "FRAME J56Z", "SER NO J10", "HP 1/3"],
+    });
+    expect(fact.status).toBe("candidate");
+    expect(fact.reason).toMatch(/anchor/i);
+    expect(canPromote(fact).ok).toBe(false);
+  });
+
+  it("CONFLICTS a bearing number assigned as serial when the plate anchors a different serial", () => {
+    const fact = toFact({
+      field: "serialNumber",
+      value: "6203-2Z-J/C3",
+      rawText: ["OPP END BRG 6203-2Z-J/C3", "ID# Z 03 7689115-0061"],
+    });
+    expect(fact.status).toBe("conflicting");
+    expect(fact.conflicts[0].value).toContain("7689115");
+    expect(canPromote(fact).ok).toBe(false);
+  });
+
+  it("keeps an anchored, agreeing identity observed and promotable (CU320 catalog)", () => {
+    const fact = toFact({
+      field: "catalogNumber",
+      value: "6SL3040-1MA01-0AA0",
+      rawText: ["1P 6SL3040-1MA01-0AA0", "S T-P96166484"],
+    });
+    expect(fact.status).toBe("observed");
+    expect(canPromote(fact).ok).toBe(true);
+    // Provenance upgraded to the anchored line, not just the bare value.
+    expect(fact.rawText).toContain("1P");
+  });
+
+  it("manufacturer keeps the permissive rule — logos carry no anchor keyword", () => {
+    const fact = toFact({ field: "manufacturer", value: "SIEMENS", rawText: ["SIEMENS", "SINAMICS"] });
+    expect(fact.status).toBe("observed");
+    expect(canPromote(fact).ok).toBe(true);
+  });
+});

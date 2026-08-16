@@ -529,3 +529,51 @@ describe("inspectImage", () => {
     expect(orientationHint(inspectImage(new Uint8Array([1, 2, 3])))).toBeNull();
   });
 });
+
+// ── Anchored identity lookup (internet-100 field-assignment fix) ─────────────
+//
+// The benchmark's dominant genuine defect was correctly-READ strings slotted
+// into the wrong identity field. anchoredValueFor is the deterministic layer
+// that answers "which value does the PLATE label as this field?" — these
+// fixtures are lifted from real failing samples.
+
+import { anchoredValueFor } from "../nameplate/passes";
+
+describe("anchoredValueFor — printed label anchors", () => {
+  it("anchors the Siemens 1P article number as catalogNumber (web CU320 case)", () => {
+    const lines = ["SIEMENS", "SINAMICS", "CONTROL UNIT CU320-2 PN", "1P 6SL3040-1MA01-0AA0", "S T-P96166484"];
+    expect(anchoredValueFor("catalogNumber", lines)?.value).toBe("6SL3040-1MA01-0AA0");
+  });
+
+  it("anchors the Siemens bare-S data-identifier line as the FULL serial (T- prefix kept)", () => {
+    const lines = ["1P 6SL3040-1MA01-0AA0", "S T-P96166484", "A5E31885465"];
+    expect(anchoredValueFor("serialNumber", lines)?.value).toBe("T-P96166484");
+  });
+
+  it("anchors SER NO rows (web-006: 'SER NO J10' was mispromoted as J110)", () => {
+    expect(anchoredValueFor("serialNumber", ["FRAME J56Z", "SER NO J10"])?.value).toBe("J10");
+  });
+
+  it("finds a model on the ADJACENT line when the keyword stands alone (real Oriental OCR order)", () => {
+    const lines = ["DGM200R-AZAC", "MODEL", "HOLLOW ROTARY ACTUATORS"];
+    expect(anchoredValueFor("model", lines)?.value).toBe("DGM200R-AZAC");
+  });
+
+  it("does NOT anchor a frame size, bearing number, or RPM row as an identity", () => {
+    const lines = ["FRAME J56Z", "OPP END BRG 6203-2Z-J/C3", "TR/MIN-RPM 1770", "HP 15"];
+    expect(anchoredValueFor("model", lines)).toBeNull();
+    expect(anchoredValueFor("catalogNumber", lines)).toBeNull();
+    expect(anchoredValueFor("serialNumber", lines)).toBeNull();
+  });
+
+  it("does not let a prose neighbor satisfy an adjacency anchor", () => {
+    // "MADE IN JAPAN" next to a keyword-only SERIAL line must not become the serial.
+    expect(anchoredValueFor("serialNumber", ["SERIAL", "MADE IN JAPAN"])).toBeNull();
+    // A spaced description next to "MODEL" must not become the model.
+    expect(anchoredValueFor("model", ["MODEL", "HOLLOW ROTARY ACTUATORS"])).toBeNull();
+  });
+
+  it("anchors TYPE rows as a model anchor (GE 'TYPE 5K444AK456')", () => {
+    expect(anchoredValueFor("model", ["TYPE 5K444AK456", "FRAME 444TS"])?.value).toBe("5K444AK456");
+  });
+});

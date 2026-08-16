@@ -276,7 +276,9 @@ async function main() {
   const dir = arg("dir") ?? path.join(path.dirname(new URL(import.meta.url).pathname), ".");
   const outName = arg("out") ?? "results.json";
   const gtDir = path.join(dir, "gt");
-  const runDir = path.join(dir, "runs");
+  // --runs lets a replay (recomputed field assignment over stored rawText) be
+  // scored against the same GT without touching the original runs/ evidence.
+  const runDir = path.join(dir, arg("runs") ?? "runs");
   const gtFiles = fs.existsSync(gtDir) ? fs.readdirSync(gtDir).filter((f) => f.endsWith(".json")) : [];
 
   const perSample: Record<string, unknown>[] = [];

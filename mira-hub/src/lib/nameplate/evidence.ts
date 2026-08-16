@@ -29,6 +29,8 @@
  * directly testable and cannot drift with a model change.
  */
 
+import { anchoredValueFor } from "./passes";
+
 // ── Provenance ───────────────────────────────────────────────────────────────
 
 /** Where a value came from. Ordered weakest → strongest. */
@@ -317,6 +319,39 @@ export function toFact(obs: ObservationInput): NameplateFact {
       ...base,
       status: "candidate",
       reason: "the recognizer asserted this but no observed text on the photo supports it",
+    };
+  }
+
+  // Anchor gate for the three promotable identifier fields. The internet-100
+  // benchmark's dominant genuine defect (86 wrong identity promotions across
+  // 59 samples) was correctly-READ text slotted into the wrong FIELD: frame
+  // sizes promoted as models, bearing numbers as serials, an RPM row as a
+  // model. Presence in rawText cannot catch that — the string really was on
+  // the plate. What distinguishes a real model/catalog/serial is the printed
+  // label anchor next to it (MODEL / CAT / P/N / 1P / SER / S/N / S ...), so:
+  //  - value matches the plate's anchored value  -> observed (promotable)
+  //  - plate anchors a DIFFERENT value           -> conflicting (human chooses)
+  //  - no anchored line exists for this field    -> candidate (confirm first)
+  if (field === "model" || field === "catalogNumber" || field === "serialNumber") {
+    const anchor = anchoredValueFor(field, rawText);
+    if (anchor) {
+      const a = normalizeForEvidence(anchor.value);
+      const v = normalizeForEvidence(value);
+      if (a && v && (a === v || a.includes(v) || v.includes(a))) {
+        return { ...base, rawText: anchor.raw };
+      }
+      return {
+        ...base,
+        status: "conflicting",
+        conflicts: [{ source: "image", value: anchor.value, detail: anchor.raw }],
+        reason: `the plate labels this field as "${anchor.value}" (${anchor.raw}) but the recognizer assigned "${value}" — a human must choose`,
+      };
+    }
+    return {
+      ...base,
+      status: "candidate",
+      reason:
+        "no printed label anchor (MODEL / CAT / P/N / SER ...) supports this assignment — the string is on the plate but the field is the model's guess; confirm before trusting",
     };
   }
 
