@@ -389,7 +389,18 @@ PROVIDERS = [
 
 
 def _gh_json(args: list[str]) -> dict:
-    out = subprocess.run(["gh", *args], capture_output=True, text=True, check=True)
+    # encoding= is load-bearing on Windows: text=True alone decodes with the
+    # console codepage (cp1252) on a READER THREAD — a single non-cp1252 byte
+    # in a diff kills that thread, stdout silently becomes None, and the
+    # caller crashes downstream (fails OPEN). Found by CU-03's first run.
+    out = subprocess.run(
+        ["gh", *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     return json.loads(out.stdout)
 
 
@@ -397,9 +408,14 @@ def fetch_pr(number: int) -> tuple[str, str, list[str], str]:
     meta = _gh_json(["pr", "view", str(number), "--json", "title,body,files"])
     paths = [f["path"] for f in meta.get("files", [])]
     diff = subprocess.run(
-        ["gh", "pr", "diff", str(number)], capture_output=True, text=True, check=True
+        ["gh", "pr", "diff", str(number)],
+        capture_output=True,
+        text=True,
+        check=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout
-    return meta.get("title", ""), meta.get("body") or "", paths, diff
+    return meta.get("title", ""), meta.get("body") or "", paths, diff or ""
 
 
 def call_cascade(prompt: str, max_tokens: int = 3000) -> tuple[Optional[str], str, list[str]]:
