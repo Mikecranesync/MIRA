@@ -39,6 +39,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+# Windows consoles default to cp1252; reviewer output is UTF-8 (a model
+# emitting ‑ crashed the report write on CU-03's second run). Reconfigure
+# BOTH streams — stdout carries the report, stderr the progress lines.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 # --- Gate 7 auto-escalation ------------------------------------------------
 #
 # The doctrine lists fifteen categories that force xhigh. That list is stable
