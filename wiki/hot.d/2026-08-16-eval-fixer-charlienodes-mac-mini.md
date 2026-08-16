@@ -99,14 +99,23 @@ The leak has now moved twice — committed-but-unpushed (fixed 08-06) → pushed
   docs-only PR. Work done in an isolated worktree; the foreign untracked
   `docs/prd/2026-08-03-cited-technician-turn.md` was never touched.
 
-## ⚠️ Host state confounds the timeout attribution
+## ⚠️ Host-state confound — checked, and it is clean
 
 `tools/orphan-health.sh` (shipped `5d6fc452e`) reports **2 findings** on the measuring host:
-two Claude sessions from **07-28, 18 days old** (pid 3108, 11102), holding pre-08-09 hook config,
-and **1915 MB free**. Memory records one orphan thrashing CHARLIE via paging. So tonight's 16
-timeouts are being attributed to #3190's three added reasoning round-trips **while measuring on a
-possibly-paging host** — the confound is unquantified. Free memory captured at experiment start/end
-so the number stays interpretable. **Not killed — stale sessions on a shared host are a human call.**
+two Claude sessions from **07-28, 18 days old** (pids 3108, 11102), holding pre-08-09 hook config.
+No orphaned pyright processes. Memory records one orphan thrashing CHARLIE via paging, so the 16
+timeouts could not be attributed to #3190's three added reasoning round-trips without ruling that out.
+
+Measured at experiment start: **system-wide memory free 74%** (`memory_pressure`). The host is
+**not** paging, so this run's timings are interpretable and the confound is closed for this
+measurement.
+
+⚠️ **`vm_stat`'s "Pages free" is not a usable pressure metric on macOS.** It read **49 MB** at the
+same instant `memory_pressure` reported 74% free — most pages sit inactive/speculative and are
+reclaimable. A future run must not read that 49 MB as exhaustion. Use `memory_pressure`;
+`orphan-health.sh`'s own "free:" line is a third, non-comparable metric.
+
+**Stale sessions not killed — shared-host state is a human call.**
 
 ## Failure 4 still latent, and it bit tonight
 
