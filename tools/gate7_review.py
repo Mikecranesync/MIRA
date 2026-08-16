@@ -609,6 +609,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         "from the FULL file list; each group needs its own PASS.",
     )
     p.add_argument(
+        "--diff-cap",
+        type=int,
+        default=None,
+        metavar="CHARS",
+        help="override the reviewed-diff char budget (default 40000). Use for "
+        "evidence-complete adjudication scopes slightly over the default cap "
+        "-- truncation cuts the diff TAIL, which is exactly where quoted "
+        "evidence often lives.",
+    )
+    p.add_argument(
         "--adjudicate",
         metavar="PRIOR_REPORT",
         help="adjudication phase (doctrine §Gate 7): rule on the findings in "
@@ -625,6 +635,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if bool(a.adjudicate) != bool(a.rebuttal):
         p.error("--adjudicate and --rebuttal must be used together")
+
+    if a.diff_cap:
+        global MAX_DIFF_CHARS  # noqa: PLW0603 -- single-run CLI override
+        MAX_DIFF_CHARS = a.diff_cap
 
     try:
         title, body, paths, diff = fetch_pr(a.pr)
