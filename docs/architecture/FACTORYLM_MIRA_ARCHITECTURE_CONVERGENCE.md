@@ -328,7 +328,21 @@ Run applicable:
 
 The implementation agent does not perform final review.
 
-**Default: GPT-5.6 Sol — High reasoning.**
+**Default: the free-tier Groq → Cerebras → Together cascade — High reasoning.**
+Invoke with `py tools/gate7_review.py <PR>` (see `.claude/commands/gate7-review.md`).
+
+> **Amended 2026-08-16 (CU-11, owner decision).** This gate previously specified
+> "GPT-5.6 Sol — High reasoning." **No OpenAI.** That name carried no configuration,
+> credential, or vendor identity anywhere in either repo, so the lane could never have
+> been wired as written — which is why every unit through CU-02 walked this gate on a
+> substitute panel. The cascade is free-tier, OpenAI-compatible, and already proven in
+> `.github/workflows/code-review.yml`, keeping the lane inside PRD §4 and
+> `.claude/rules/zero-token-architecture.md`.
+>
+> **State the limit honestly wherever this gate is cited:** "independent" now means a
+> *different vendor and model from the implementing agent, on a fresh context, briefed to
+> disprove.* It is not a second human, and the reviewer does not run the tests. A unit
+> record that implies more than that has drifted.
 
 Escalate automatically to **xhigh** for:
 
