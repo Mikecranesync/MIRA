@@ -130,7 +130,9 @@ def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
     Any resolution/manifest failure fails CLOSED — an unvalidatable shared
     write is a refused write.
     """
-    if url.startswith("file://"):
+    from urllib.parse import urlparse as _up
+
+    if _up(url).scheme.lower() == "file":
         local = _validated_local_path(url)
         if local is not None:
             return True, "operator-initiated local ingest (allowed dir)"
@@ -186,8 +188,11 @@ def ingest_url(self, url: str, manufacturer: str = "",
     # a new OEM domain, add it to sources.yaml (minutes, auditable forever).
     # file:// is validated inside its branch below so the SAME resolved path
     # that passed validation is the one opened (Gate 9 TOCTOU finding).
+    from urllib.parse import urlparse as _up
+
+    is_file_url = _up(url).scheme.lower() == "file"
     final_url = url
-    if not url.startswith("file://"):
+    if not is_file_url:
         allowed, gate_reason = shared_corpus_source_allowed(url)
         if not allowed:
             logger.warning("Refusing shared-corpus ingest of %s: %s", url[:80], gate_reason)
@@ -196,7 +201,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
     # 1. Download (supports http(s):// and file:// schemes)
     is_pdf_url = url.lower().endswith(".pdf")
 
-    if url.startswith("file://"):
+    if is_file_url:
         local_path = _validated_local_path(url)
         if local_path is None:
             logger.warning(
@@ -242,7 +247,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
                         if resp.status_code in (301, 302, 303, 307, 308):
                             location = resp.headers.get("location", "")
                             nxt = str(httpx.URL(current).join(location))
-                            if not nxt.startswith(("http://", "https://")):
+                            if _up(nxt).scheme.lower() not in ("http", "https"):
                                 raise _UncuratedHop(f"non-http redirect target {nxt[:80]}")
                             hop_ok, hop_reason = shared_corpus_source_allowed(nxt)
                             if not hop_ok:

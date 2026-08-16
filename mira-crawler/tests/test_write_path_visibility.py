@@ -446,3 +446,30 @@ class TestLearningIngesterPrivate:
         assert "true, false, 'faq'" in window
         assert "false, true, 'faq'" not in window
         assert "true, true, 'faq'" not in window
+
+
+class TestSchemeCaseNormalization:
+    """Gate 7 group-A finding: RFC 3986 schemes are case-insensitive; the gate
+    must not key on lowercase-only startswith. (Odd-case schemes already failed
+    CLOSED via the host branch; normalization removes the class and makes
+    FILE:// operator ingest consistent.)"""
+
+    def _gate(self):
+        try:
+            from tasks.ingest import shared_corpus_source_allowed
+        except ImportError:
+            from mira_crawler.tasks.ingest import shared_corpus_source_allowed
+        return shared_corpus_source_allowed
+
+    def test_uppercase_file_scheme_validated_as_file(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(tmp_path))
+        uri = (tmp_path / "m.pdf").as_uri().replace("file://", "FILE://", 1)
+        ok, reason = self._gate()(uri)
+        assert ok
+        assert "operator-initiated" in reason
+
+    def test_uppercase_http_scheme_still_curation_gated(self) -> None:
+        ok, _ = self._gate()("HTTPS://evil-uncurated.example/x.pdf")
+        assert not ok
+        ok, _ = self._gate()("HTTPS://ibiblio.org/x.pdf")
+        assert ok

@@ -425,6 +425,19 @@ def filter_diff_paths(diff: str, prefixes: tuple[str, ...]) -> str:
     return "".join(kept)
 
 
+def diff_paths_excluded(diff: str, prefixes: tuple[str, ...]) -> list[str]:
+    """The b/ paths a --paths scope EXCLUDES from review. Printed so a scoped
+    run can never silently hide part of the PR — the operator must cover every
+    excluded file in another group's run (each group needs its own PASS)."""
+    excluded: list[str] = []
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            target = line.rsplit(" b/", 1)[-1].strip()
+            if not any(target.startswith(p) for p in prefixes):
+                excluded.append(target)
+    return excluded
+
+
 def fetch_pr(number: int) -> tuple[str, str, list[str], str]:
     meta = _gh_json(["pr", "view", str(number), "--json", "title,body,files"])
     paths = [f["path"] for f in meta.get("files", [])]
@@ -517,11 +530,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 1
 
     if a.paths:
+        excluded = diff_paths_excluded(diff, tuple(a.paths))
         diff = filter_diff_paths(diff, tuple(a.paths))
         if not diff.strip():
             print(f"error: --paths {a.paths} matched nothing in the diff", file=sys.stderr)
             return 1
         print(f"Gate 7: diff scoped to {a.paths}", file=sys.stderr)
+        if excluded:
+            print(
+                f"Gate 7: NOT reviewed in this scoped run ({len(excluded)} files — "
+                f"cover each in another group's run): {', '.join(excluded)}",
+                file=sys.stderr,
+            )
 
     level, reasons = escalation(paths, f"{title}\n{body}\n{diff}")
     if a.xhigh:

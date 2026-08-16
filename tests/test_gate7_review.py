@@ -384,3 +384,11 @@ def test_filter_diff_paths_multiple_prefixes():
 
 def test_filter_diff_paths_no_match_is_empty():
     assert filter_diff_paths(_sample_diff(), ("mira-hub/",)) == ""
+
+
+def test_diff_paths_excluded_lists_uncovered_files():
+    from gate7_review import diff_paths_excluded
+
+    excluded = diff_paths_excluded(_sample_diff(), ("mira-crawler/",))
+    assert excluded == ["tools/vendor_coverage_ingest.py"]
+    assert diff_paths_excluded(_sample_diff(), ("mira-crawler/", "tools/")) == []
