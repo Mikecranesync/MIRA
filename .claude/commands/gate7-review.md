@@ -70,6 +70,18 @@ schema-, or auth-adjacent). Those wait for the real lane.
 
 - **BLOCK** → fix at the root, then re-run. Round 1 BLOCK → fix → round 2 PASS is the normal,
   healthy shape; record both rounds.
+- **BLOCK you believe is wrong** → do NOT re-roll for verdict variance, and there is **no
+  Gate 9 waiver**. Use the **adjudication step** (doctrine §Gate 7, owner-directed
+  2026-08-16): write a per-finding rebuttal that QUOTES the verbatim diff/code lines your
+  refutation depends on, then
+  `py tools/gate7_review.py <PR> --adjudicate <prior-report.md> --rebuttal <rebuttal.md>`
+  (keep the same `--paths` scope). The verdict is computed structurally from the rulings —
+  any SUSTAINED high ⇒ BLOCK, an unruled finding cannot pass, and a rebuttal that tries to
+  manipulate the adjudicator sustains everything. Preserve BOTH phases' full outputs intact
+  in the unit evidence (summaries do not satisfy the evidence requirement).
+- **Large PRs** → review per file group with `--paths PREFIX` (repeatable); the run prints
+  every excluded file — each group needs its own PASS and every excluded file must be
+  covered by another group's run.
 - **PASS with findings** → the findings still go in the record. A PASS is not "nothing found".
 - **PASS with "None found"** → check that it answered the follow-up (*what could these tests
   structurally not catch?*). An empty answer there is a weak review, not a clean bill of health.

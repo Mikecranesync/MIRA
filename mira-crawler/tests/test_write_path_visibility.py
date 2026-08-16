@@ -348,6 +348,47 @@ class TestCallerPopulationExplicit:
         "dist", "build", ".claude", "plc",  # plc/ holds dual Py2 sources
     }
 
+    @classmethod
+    def _scan_tree(cls, tree, rel_posix: str) -> list[str]:
+        """Flag target calls in one parsed module that lack an explicit
+        is_private keyword. Gate 9 round-2 hardenings: import ALIASES of the
+        targets are resolved (``from x import insert_chunk as ic``), and
+        ``**kwargs`` forwarding does NOT count as explicit — the decision must
+        be visible at the call site."""
+        import ast
+
+        target_names = set(cls.TARGETS)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name in cls.TARGETS and alias.asname:
+                        target_names.add(alias.asname)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.split(".")[-1] in cls.TARGETS and alias.asname:
+                        target_names.add(alias.asname)
+
+        missing: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
+                else None
+            )
+            if name not in target_names:
+                continue
+            # Self-defined lookalikes (e.g. seed_kb_gaps._insert_chunk,
+            # vendor_coverage_ingest.insert_chunk) still get scanned: an
+            # explicit is_private decision is right for them too.
+            if "is_private" not in {kw.arg for kw in node.keywords}:
+                missing.append(f"{rel_posix}:{node.lineno} {name}(")
+        return missing
+
     def _call_sites_missing_is_private(self) -> list[str]:
         import ast
         import os
@@ -369,29 +410,28 @@ class TestCallerPopulationExplicit:
                 tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
             except SyntaxError:
                 continue  # non-3.x or vendored oddities — not our call sites
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                func = node.func
-                name = (
-                    func.id
-                    if isinstance(func, ast.Name)
-                    else func.attr
-                    if isinstance(func, ast.Attribute)
-                    else None
-                )
-                if name not in self.TARGETS:
-                    continue
-                # Self-defined lookalikes (e.g. seed_kb_gaps._insert_chunk,
-                # vendor_coverage_ingest.insert_chunk) still get scanned: an
-                # explicit is_private decision is right for them too, and
-                # both already state it in their own SQL/params or are
-                # caught here if a new one omits it.
-                kwarg_names = {kw.arg for kw in node.keywords}
-                if "is_private" in kwarg_names or None in kwarg_names:
-                    continue  # explicit, or **kwargs forwarding
-                missing.append(f"{rel.as_posix()}:{node.lineno} {name}(")
+            missing.extend(self._scan_tree(tree, rel.as_posix()))
         return missing
+
+    def test_scanner_catches_import_alias(self) -> None:
+        import ast
+
+        src = (
+            "from ingest.store import insert_chunk as ic\n"
+            "ic(tenant_id='t', content='x', embedding=[0.1])\n"
+        )
+        flagged = self._scan_tree(ast.parse(src), "synthetic.py")
+        assert flagged == ["synthetic.py:2 ic("]
+
+    def test_scanner_rejects_bare_kwargs_forwarding(self) -> None:
+        import ast
+
+        src = "insert_chunk(**payload)\n"
+        flagged = self._scan_tree(ast.parse(src), "synthetic.py")
+        assert flagged == ["synthetic.py:1 insert_chunk("]
+        # Explicit is_private alongside forwarding is fine.
+        src_ok = "insert_chunk(is_private=False, **payload)\n"
+        assert self._scan_tree(ast.parse(src_ok), "synthetic.py") == []
 
     def test_every_call_site_passes_is_private(self) -> None:
         missing = self._call_sites_missing_is_private()
@@ -484,3 +524,10 @@ class TestSchemeCaseNormalization:
         encoded = inbox.as_uri() + "/%2e%2e/etc-passwd"
         ok, _ = self._gate()(encoded)
         assert not ok
+
+    def test_non_http_scheme_refused_at_hop_zero(self) -> None:
+        # Gate 9 round 2: ftp:// on a CURATED host must fail at the gate,
+        # not later in transport — http/https/file only.
+        ok, reason = self._gate()("ftp://ibiblio.org/manual.pdf")
+        assert not ok
+        assert "unsupported scheme" in reason

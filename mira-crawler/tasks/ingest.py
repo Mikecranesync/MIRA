@@ -97,9 +97,12 @@ def _validated_local_path(url: str) -> Path | None:
     the operator ingest dir; None otherwise (fail closed on any error).
 
     The caller must open THIS returned resolved path — never re-parse the
-    URL — so validation and the read are bound to the same object (Gate 9
-    TOCTOU finding: a symlink swapped between two independent parses could
-    escape the allowed dir).
+    URL. That closes the validate-one-path/open-another bug (Gate 9 round 1),
+    but it is NOT an object-handle guarantee: an atomic symlink swap of a
+    path component between resolve() and open can still redirect the read
+    (no O_NOFOLLOW/handle-based open here — portable Windows/POSIX code).
+    Residual accepted for the operator-controlled inbox dir; recorded in
+    units/CU-03.md.
     """
     from urllib.parse import urlparse
     from urllib.request import url2pathname
@@ -132,11 +135,16 @@ def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
     """
     from urllib.parse import urlparse as _up
 
-    if _up(url).scheme.lower() == "file":
+    scheme = _up(url).scheme.lower()
+    if scheme == "file":
         local = _validated_local_path(url)
         if local is not None:
             return True, "operator-initiated local ingest (allowed dir)"
         return False, "file:// path outside the allowed dir (or unresolvable) — fail closed"
+    if scheme not in ("http", "https"):
+        # Hop-0 contract (Gate 9 round 2): only http/https/file are ever
+        # eligible — ftp://curated-host must fail at the GATE, not in transport.
+        return False, f"unsupported scheme {scheme!r} — http/https/file only"
     try:
         hosts = _curated_hosts()
     except Exception as e:
