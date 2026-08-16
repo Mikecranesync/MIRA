@@ -50,6 +50,7 @@ export type ConfirmStatus =
   | "search_unavailable"
   | "no_extractable_text"
   | "manufacturer_model_required"
+  | "nameplate_not_indexed"
   | "download_rejected";
 
 const IDENTITY_FIELDS = [
@@ -248,9 +249,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             sizeBytes: textBuffer.length,
             buffer: textBuffer,
           });
-          nameplateDocId = ingested.uploadId;
           nameplateChunks = ingested.chunkCount;
-          await linkFileToUpload(ctx.tenantId, parkedText.fileId, ingested.uploadId);
+          // Token-fenced finalize: only claim the pointer if we still own the
+          // claim. If ownership was lost (stale-window takeover), our ingest is
+          // orphaned — do NOT treat the doc as ours.
+          const won = await linkFileToUpload(
+            ctx.tenantId,
+            parkedText.fileId,
+            ingested.uploadId,
+            claim.claimToken,
+          );
+          nameplateDocId = won ? ingested.uploadId : null;
         } catch (err) {
           await releaseIngestClaim(ctx.tenantId, parkedText.fileId, claim.claimToken).catch(() => {});
           throw err;
@@ -308,6 +317,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       applicability: null,
       ...extra,
     });
+
+  // FAIL-CLOSED on the nameplate (Codex round 2, 2026-08-16): the
+  // technician-confirmed nameplate is the PRIMARY deliverable of this route.
+  // If it did not materialize into a citable source, do NOT proceed to manual
+  // discovery and NEVER report "complete" — a verified manual must not let the
+  // route declare success while the nameplate the tech actually confirmed is
+  // missing. The client shows this as "saved, indexing — retry", not done.
+  if (nameplateIngestFailed) {
+    return respond("nameplate_not_indexed", {
+      message:
+        "Your nameplate was saved but is still being indexed (or indexing failed). Retry in a moment — the manual search runs once the nameplate is citable.",
+    });
+  }
 
   // ── (d) Manual discovery ──────────────────────────────────────────────────
   if (body.discover === false) {
@@ -432,9 +454,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         sizeBytes: download.buffer.length,
         buffer: download.buffer,
       });
-      manualDocId = ing.uploadId;
       manualChunks = ing.chunkCount;
-      await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId);
+      // Token-fenced finalize (see nameplate section): if the claim was stolen
+      // mid-ingest, our document is orphaned and must not be reported attached.
+      const won = manualClaimToken
+        ? await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId, manualClaimToken)
+        : await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId);
+      manualDocId = won ? ing.uploadId : null;
     } catch (err) {
       if (manualClaimToken) {
         await releaseIngestClaim(ctx.tenantId, manualParked.fileId, manualClaimToken).catch(() => {});

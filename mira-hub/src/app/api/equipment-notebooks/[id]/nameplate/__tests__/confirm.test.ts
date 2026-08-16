@@ -178,7 +178,7 @@ beforeEach(() => {
     uploadId: null,
   });
   vi.mocked(ingestPdfToNode).mockResolvedValue({ uploadId: MANUAL_DOC_ID, chunkCount: 400 });
-  vi.mocked(linkFileToUpload).mockResolvedValue(undefined);
+  vi.mocked(linkFileToUpload).mockResolvedValue(true);
   // Default: this request wins the atomic ingestion claim (single-writer path).
   vi.mocked(claimIngest).mockResolvedValue({ claimed: true, claimToken: "tok-1" });
   vi.mocked(releaseIngestClaim).mockResolvedValue(undefined);

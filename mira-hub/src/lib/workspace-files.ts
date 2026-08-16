@@ -262,20 +262,33 @@ export async function parkOrReuseFile(opts: {
   });
 }
 
-/** Record the parsed document id on the canonical file (post-ingest) and
- * release any ingestion claim in the same statement. */
+/**
+ * Record the parsed document id on the canonical file (post-ingest) and
+ * release the ingestion claim in the same statement.
+ *
+ * TOKEN-FENCED (Codex round 2, 2026-08-16): when `claimToken` is given the
+ * finalize only succeeds if THIS worker still holds the claim — a slow
+ * original whose claim was stolen after the stale window cannot commit its
+ * `upload_id` over the winner's and create a duplicate pointer. Returns
+ * whether the finalize landed; a `false` means ownership was lost and the
+ * caller must treat its own ingest as orphaned (not report the doc attached).
+ */
 export async function linkFileToUpload(
   tenantId: string,
   fileId: string,
   uploadId: string,
-): Promise<void> {
-  await withTenantContext(tenantId, async (c) => {
-    await c.query(
+  claimToken?: string,
+): Promise<boolean> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
       `UPDATE namespace_direct_uploads
           SET upload_id = $1::uuid, ingest_claim_token = NULL, ingest_claimed_at = NULL
-        WHERE id = $2::uuid AND tenant_id = $3::uuid`,
-      [uploadId, fileId, tenantId],
+        WHERE id = $2::uuid AND tenant_id = $3::uuid
+          AND upload_id IS NULL
+          ${claimToken ? "AND ingest_claim_token = $4::uuid" : ""}`,
+      claimToken ? [uploadId, fileId, tenantId, claimToken] : [uploadId, fileId, tenantId],
     );
+    return (res.rowCount ?? 0) > 0;
   });
 }
 

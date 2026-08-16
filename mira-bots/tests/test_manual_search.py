@@ -381,7 +381,8 @@ import httpx as _httpx
 _FAKE_DNS = {
     "good.example": "93.184.216.34",     # public
     "evil-internal.example": "10.0.0.8", # private
-    "evil-loop.example": "127.0.0.1",    # loopback
+    "evil-loop.example": "127.0.0.1",
+    "evil-cgnat.example": "100.64.0.1",  # CGNAT via DNS    # loopback
 }
 
 
@@ -399,9 +400,12 @@ class TestSsrfGuardDirect:
             "http://10.0.0.8/manual.pdf",
             "http://192.168.4.1/m.pdf",
             "http://169.254.169.254/latest/meta-data/",  # cloud metadata
+            "http://100.64.0.1/x",                       # CGNAT (Codex-reproduced bypass)
+            "http://100.127.255.254/x",                  # CGNAT upper edge
             "http://[::1]/x",
             "http://[fe80::1]/x",
             "http://[::ffff:127.0.0.1]/x",               # v4-mapped loopback
+            "http://[::ffff:100.64.0.1]/x",              # v4-mapped CGNAT
             "file:///etc/passwd",
             "gopher://good.example/x",
             "http://evil-internal.example/m.pdf",        # private via DNS

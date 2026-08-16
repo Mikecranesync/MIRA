@@ -24,6 +24,8 @@ import {
   attachFileToTargets,
   fileCapability,
   isLinkTargetType,
+  claimIngest,
+  releaseIngestClaim,
   type AttachTarget,
   type FileCapability,
 } from "@/lib/workspace-files";
@@ -126,14 +128,26 @@ export async function POST(req: Request) {
     try {
       const parsed = JSON.parse(rawTargets);
       if (!Array.isArray(parsed)) throw new Error("not an array");
-      targets = parsed;
+      // Trust is SERVER-owned (Codex P1, 2026-08-16): rebuild each target from
+      // only the fields a client may set. matchState / matchEvidence are
+      // DROPPED — a public attach is a user action, so upsertNotebookSourceTx's
+      // "user_confirmed" default stands; a client can never mint "verified"
+      // (server-earned) or inject provenance evidence.
+      targets = [];
+      for (const raw of parsed as Record<string, unknown>[]) {
+        if (!raw || !isLinkTargetType(raw.targetType) || typeof raw.targetId !== "string") {
+          return NextResponse.json({ error: "invalid_target_type" }, { status: 422 });
+        }
+        targets.push({
+          targetType: raw.targetType,
+          targetId: raw.targetId,
+          role: typeof raw.role === "string" ? raw.role : null,
+          displayLabel: typeof raw.displayLabel === "string" ? raw.displayLabel : null,
+          isPrimary: raw.isPrimary === true,
+        });
+      }
     } catch {
       return NextResponse.json({ error: "invalid_targets" }, { status: 422 });
-    }
-    for (const t of targets) {
-      if (!t || !isLinkTargetType(t.targetType) || typeof t.targetId !== "string") {
-        return NextResponse.json({ error: "invalid_target_type" }, { status: 422 });
-      }
     }
   }
 
@@ -209,6 +223,23 @@ export async function POST(req: Request) {
 
     const capability = fileCapability(mimeRaw, file.name);
     if (nodeId && (isPdf || isText)) {
+      // Atomic ingestion claim (Codex round 2, 2026-08-16): the same
+      // check-then-ingest race the confirm route had — a concurrent identical
+      // upload could double-ingest into hub_uploads + knowledge_entries. One
+      // writer claims; a loser reuses the finished doc or reports in-progress.
+      const claim = await claimIngest(ctx.tenantId, park.fileId);
+      if (!claim.claimed) {
+        if (claim.reason === "already_ingested" && claim.uploadId) {
+          return NextResponse.json(
+            { ok: true, indexed: true, duplicate: true, fileId: park.fileId, uploadId: claim.uploadId },
+            { status: 200 },
+          );
+        }
+        return NextResponse.json(
+          { ok: true, indexed: false, fileId: park.fileId, indexing: true },
+          { status: 202 },
+        );
+      }
       try {
         const unsPath = await withTenantContext(ctx.tenantId, async (c) => {
           const r = await c.query<{ uns_path: string | null }>(
@@ -228,7 +259,15 @@ export async function POST(req: Request) {
           sizeBytes: file.size,
           buffer,
         });
-        await linkFileToUpload(ctx.tenantId, park.fileId, uploadId);
+        const won = await linkFileToUpload(ctx.tenantId, park.fileId, uploadId, claim.claimToken);
+        if (!won) {
+          // Claim stolen mid-ingest — our doc is orphaned; report indexing so
+          // the client re-fetches the winner's result rather than a duplicate.
+          return NextResponse.json(
+            { ok: true, indexed: false, fileId: park.fileId, indexing: true },
+            { status: 202 },
+          );
+        }
         return NextResponse.json(
           {
             ok: true,
@@ -241,6 +280,7 @@ export async function POST(req: Request) {
           { status: 201 },
         );
       } catch (err) {
+        await releaseIngestClaim(ctx.tenantId, park.fileId, claim.claimToken).catch(() => {});
         // The original is parked and filed — an indexing failure must not lose it.
         console.error("[api/files POST] ingest failed (file kept)", err);
         return NextResponse.json(

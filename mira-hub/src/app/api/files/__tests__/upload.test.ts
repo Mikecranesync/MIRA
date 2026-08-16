@@ -25,6 +25,8 @@ vi.mock("@/lib/workspace-files", async (importOriginal) => {
     parkOrReuseFile: vi.fn(),
     linkFileToUpload: vi.fn(),
     attachFileToTargets: vi.fn(),
+    claimIngest: vi.fn(),
+    releaseIngestClaim: vi.fn(),
   };
 });
 
@@ -32,7 +34,7 @@ import { POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
-import { parkOrReuseFile, linkFileToUpload, attachFileToTargets } from "@/lib/workspace-files";
+import { parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const USER = "99999999-9999-9999-9999-999999999999";
@@ -55,6 +57,9 @@ beforeEach(() => {
   vi.mocked(sessionOr401).mockResolvedValue({ tenantId: TENANT, userId: USER } as never);
   vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: FILE_ID, reused: false, uploadId: null });
   vi.mocked(attachFileToTargets).mockResolvedValue({ ok: true, links: [] } as never);
+  vi.mocked(linkFileToUpload).mockResolvedValue(true);
+  vi.mocked(claimIngest).mockResolvedValue({ claimed: true, claimToken: "tok-1" });
+  vi.mocked(releaseIngestClaim).mockResolvedValue(undefined);
 });
 
 describe("POST /api/files", () => {
@@ -115,7 +120,7 @@ describe("POST /api/files", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ ok: true, indexed: false });
     expect(vi.mocked(attachFileToTargets).mock.calls[0][2]).toEqual([
-      { targetType: "cmms_asset", targetId: ASSET_ID },
+      { targetType: "cmms_asset", targetId: ASSET_ID, role: null, displayLabel: null, isPrimary: false },
     ]);
     expect(vi.mocked(ingestPdfToNode)).not.toHaveBeenCalled();
   });
@@ -131,7 +136,7 @@ describe("POST /api/files", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ indexed: true, uploadId: UPLOAD_ID, chunkCount: 12 });
     expect(vi.mocked(ingestPdfToNode).mock.calls[0][0]).toMatchObject({ nodeId: NODE_ID });
-    expect(vi.mocked(linkFileToUpload)).toHaveBeenCalledWith(TENANT, FILE_ID, UPLOAD_ID);
+    expect(vi.mocked(linkFileToUpload)).toHaveBeenCalledWith(TENANT, FILE_ID, UPLOAD_ID, "tok-1");
   });
 
   it("resolves a notebook target to its backing node for indexing", async () => {

@@ -352,10 +352,24 @@ _MAX_REDIRECT_HOPS = 5
 _PROBE_READ_CAP = 512
 
 
+# CGNAT (RFC 6598) — carrier-grade NAT space. `is_global` already excludes it
+# on Python 3.12, but we reject it EXPLICITLY too (Codex reproduced a bypass on
+# an older classification), matching the hand-rolled guard in
+# mira-hub/src/lib/safe-download.ts.
+_CGNAT_V4 = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _ip_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if ip.version == 6 and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
-    return not (
+    if ip.version == 4 and ip in _CGNAT_V4:
+        return False
+    # `is_global` is the authoritative allow-test: True only for addresses that
+    # are globally routable (excludes private/loopback/link-local/reserved/
+    # multicast/unspecified/CGNAT/benchmarking/documentation ranges). We keep
+    # the individual negatives below as belt-and-suspenders for any stdlib
+    # version whose is_global is narrower than expected.
+    return bool(ip.is_global) and not (
         ip.is_private
         or ip.is_loopback
         or ip.is_link_local

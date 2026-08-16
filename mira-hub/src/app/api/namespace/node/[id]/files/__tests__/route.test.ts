@@ -31,6 +31,8 @@ vi.mock("@/lib/workspace-files", async (importOriginal) => {
     parkOrReuseFile: vi.fn(),
     linkFileToUpload: vi.fn(),
     attachFileToTargets: vi.fn(),
+    claimIngest: vi.fn(),
+    releaseIngestClaim: vi.fn(),
   };
 });
 
@@ -39,7 +41,7 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
 import { findDuplicateUpload } from "@/lib/uploads";
-import { parkOrReuseFile, linkFileToUpload, attachFileToTargets } from "@/lib/workspace-files";
+import { parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import pool from "@/lib/db";
 
 const VALID_UUID = "11111111-2222-3333-4444-555555555555";
@@ -69,7 +71,9 @@ beforeEach(() => {
     uploadId: null,
   });
   vi.mocked(attachFileToTargets).mockResolvedValue({ ok: true, links: [] });
-  vi.mocked(linkFileToUpload).mockResolvedValue(undefined);
+  vi.mocked(linkFileToUpload).mockResolvedValue(true);
+  vi.mocked(claimIngest).mockResolvedValue({ claimed: true, claimToken: "tok-1" });
+  vi.mocked(releaseIngestClaim).mockResolvedValue(undefined);
 });
 
 describe("GET /api/namespace/node/[id]/files — merge + filing-cabinet dedupe", () => {
@@ -281,7 +285,7 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
     });
     // Parked once through the service, linked to its parsed document once.
     expect(parkOrReuseFile).toHaveBeenCalledTimes(1);
-    expect(linkFileToUpload).toHaveBeenCalledWith(TENANT_ID, "direct-parked-2", "upload-9");
+    expect(linkFileToUpload).toHaveBeenCalledWith(TENANT_ID, "direct-parked-2", "upload-9", "tok-1");
     // …and filed at this node.
     expect(attachFileToTargets).toHaveBeenCalledWith(
       TENANT_ID,

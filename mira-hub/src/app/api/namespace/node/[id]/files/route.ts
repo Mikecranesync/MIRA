@@ -11,6 +11,8 @@ import {
   linkFileToUpload,
   attachFileToTargets,
   fileCapability,
+  claimIngest,
+  releaseIngestClaim,
 } from "@/lib/workspace-files";
 
 export const dynamic = "force-dynamic";
@@ -327,6 +329,21 @@ export async function POST(
     // Indexable docs (PDF + plain text) → mira-ingest-v2 path: chunk into
     // knowledge_entries attached to this node. Re-readable + citable via chat.
     if (isPdf || isText) {
+      // Atomic ingestion claim (Codex round 2, 2026-08-16): close the same
+      // check-then-ingest race the confirm route had.
+      const claim = await claimIngest(ctx.tenantId, directId);
+      if (!claim.claimed) {
+        if (claim.reason === "already_ingested" && claim.uploadId) {
+          return NextResponse.json(
+            { ok: true, indexed: true, duplicate: true, uploadId: claim.uploadId, fileId: directId },
+            { status: 200 },
+          );
+        }
+        return NextResponse.json(
+          { ok: true, indexed: false, indexing: true, fileId: directId },
+          { status: 202 },
+        );
+      }
       try {
         const ingest = isPdf ? ingestPdfToNode : ingestTextToNode;
         const { uploadId, chunkCount } = await ingest({
@@ -341,8 +358,14 @@ export async function POST(
         });
         // Link the parked original to its indexed upload so the panel shows ONE
         // row per document (downloadable AND citable) and the tree doesn't
-        // double-count it.
-        await linkFileToUpload(ctx.tenantId, directId, uploadId);
+        // double-count it. Token-fenced against stale-window takeover.
+        const won = await linkFileToUpload(ctx.tenantId, directId, uploadId, claim.claimToken);
+        if (!won) {
+          return NextResponse.json(
+            { ok: true, indexed: false, indexing: true, fileId: directId },
+            { status: 202 },
+          );
+        }
         return NextResponse.json(
           {
             ok: true,
@@ -360,6 +383,7 @@ export async function POST(
           { status: 201 },
         );
       } catch (err) {
+        await releaseIngestClaim(ctx.tenantId, directId, claim.claimToken).catch(() => {});
         // The original is already parked — the file is NOT lost. Report the
         // indexing failure honestly (#1899: visible, durable) without failing
         // the upload.

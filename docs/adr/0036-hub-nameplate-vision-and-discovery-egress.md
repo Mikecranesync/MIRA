@@ -1,58 +1,73 @@
-# ADR-0036 — Hub nameplate vision (Together) + manual-discovery (Serper) egress: a narrow, documented exception
+# ADR-0036 — Hub nameplate vision + manual-discovery egress: a policy decision REQUIRED before this ships
 
-**Status:** Proposed (accepted for the PR #3245 arc pending Mike's sign-off)
+**Status: PROPOSED — NOT accepted. Blocks merge of the nameplate→manual arc until the
+owner decides.** This ADR does not, by itself, authorize anything.
 **Date:** 2026-08-16
-**Raised by:** Codex review of PR #3245 ("cloud-governance violation: the Hub calls
-Together directly, bypassing the governed inference router/sanitizer; Serper lacks
-a documented production exception").
+**Raised by:** Codex review of PR #3245 (rounds 1–2): "the Hub calls Together directly,
+bypassing the governed inference router/sanitizer; Serper lacks a documented production
+exception; ADR simultaneously says 'pending Mike' and describes the egresses as approved."
 
-## Context
+## The honest problem statement
 
-The governed inference boundary in this repo is `mira-bots/shared/inference/router.py`
-(Python): the Groq→Cerebras→Together cascade with `sanitize_context()` (IPv4→`[IP]`,
-MAC→`[MAC]`, serial→`[SN]`) default-on. Two Hub (TypeScript) code paths ship external
-calls outside that boundary:
+Two code paths in the nameplate→manual arc make external cloud calls that **the current
+root policy does not permit**:
 
 1. **Nameplate vision** — `mira-hub/src/lib/nameplate/index.ts` calls Together's
-   OpenAI-compatible endpoint directly (model: `NAMEPLATE_VISION_MODEL` ||
-   `TOGETHERAI_VISION_MODEL` || `google/gemma-3n-E4B-it`).
-2. **Manual discovery** — `mira-ask`'s `/manual-discovery/search`
-   (`shared/manual_search/search.py`) sends `(manufacturer, model/catalog)` strings
-   to Serper.dev.
+   OpenAI-compatible vision endpoint directly. By default `defaultRecognizer()` uses
+   Together (`google/gemma-3n-E4B-it`); it can also use Groq **iff** `GROQ_VISION_MODEL`
+   is explicitly set (Groq ships no vision model otherwise, so this is off by default).
+   Anthropic is never used here.
+2. **Manual discovery** — `mira-ask`'s `/manual-discovery/search` sends
+   `(manufacturer, model/catalog)` strings to Serper.dev, then SSRF-guarded probes the
+   result URLs.
 
-## Decision
+**Root `AGENTS.md` §2 currently says:** "No cloud except Anthropic Codex API + NeonDB …
+plus the narrow governed Together exception … for the FactoryLM AI **paid-training**
+workstream only." Under that text:
+- Hub nameplate vision on Together is **outside** the existing Together carve-out (it is
+  runtime recognition, not paid training).
+- **Serper is not permitted at all.**
 
-Both egresses are **approved as narrow, named exceptions** rather than routed
-through the Python router, with the scope limits below. Routing them through the
-governed boundary is actively wrong for (1): the Python sanitizer masks serial
-numbers — and reading identity strings **including serials** off a photo the user
-deliberately submitted for that purpose is the entire feature. A cross-language
-hop (Hub → bots router → Together) would add a network seam to *destroy the
-payload the user asked us to read*.
+So this arc **cannot be made compliant by code changes**. It needs the owner to decide
+whether to expand the cloud-egress policy. That decision is this ADR.
 
-## Scope limits (what the exception covers — and only this)
+## What is being asked of the owner (pick one per egress)
 
-- **Nameplate vision**: equipment nameplate photos the tenant's user explicitly
-  submitted for recognition, sent to Together only, from the two recognize routes
-  + the confirm flow. NOT a chat/diagnosis provider; NOT part of the diagnostic
-  cascade (PRD §4 / PR #610 unchanged); NEVER Anthropic.
-- **Serper**: manufacturer/model/catalog identity strings only — never chat text,
-  never notebook content, never tenant PII. Downstream URL probing is SSRF-guarded
-  (search.py guard, 2026-08-16) and downloads run through the hardened Hub
-  downloader's allowlist.
-- **Credentials**: Doppler-managed (`TOGETHERAI_API_KEY`, `SERPER_API_KEY`);
-  provider error text is scrubbed of query-string credentials (PRD §20).
-- **Data at the provider**: nameplate photos are transient inference inputs; no
-  training opt-in; Together is already this repo's licensed inference provider.
+**Nameplate vision (Together, optionally Groq):**
+- (A) Approve as a new named runtime exception, and amend `AGENTS.md` §2 + PRD §4 to name
+  it — OR
+- (B) Route Hub vision through the governed Python inference boundary
+  (`mira-bots/shared/inference/router.py`). ⚠️ Note: that boundary's `sanitize_context()`
+  masks serial numbers (`[SN]`) — and reading serials off a nameplate photo the user
+  submitted for that purpose is the whole feature. Routing through it as-is would destroy
+  the payload; option (B) would require a vision-path carve-out in the sanitizer too.
 
-## What would violate this ADR
+**Manual discovery (Serper):**
+- (C) Approve Serper as a permitted egress for identity-string-only queries, and amend
+  `AGENTS.md` §2 — OR
+- (D) Drop external discovery; rely only on the already-attached / already-ingested OEM
+  corpus.
 
-- Any Hub-direct LLM call for chat, diagnosis, summarization, or notebook content.
-- Sending chat/document text to Serper.
-- A second Hub-side provider (this exception names Together + Serper, not a pattern).
+## If approved (A/C), the scope limits that MUST be written into the amended policy
+
+- Nameplate vision: only equipment-nameplate photos the tenant user explicitly submitted;
+  Together (or explicitly-configured Groq); NEVER a chat/diagnosis provider; NEVER
+  Anthropic; not part of the diagnostic cascade (PRD §4 / PR #610 unchanged).
+- Serper: manufacturer/model/catalog identity strings ONLY — never chat text, notebook
+  content, or PII. URL probing is SSRF-guarded (`shared/manual_search/search.py`;
+  is_global + explicit CGNAT reject; per-hop revalidation; streamed cap). Residual
+  DNS-rebinding TOCTOU is the same documented limitation as the hardened Hub downloader
+  (`safe-download.ts`) and mitigated the same way (allowlist on the actual download).
+- Credentials Doppler-managed; provider error text credential-scrubbed (PRD §20).
+
+## Until this ADR is accepted
+
+- The nameplate detector ships DARK (`NAMEPLATE_DETECT_ENABLED=0`).
+- The Hub vision + Serper paths exist in code but this ADR records that enabling them in
+  production is **blocked on the owner's policy decision**, not on any further engineering.
 
 ## Consequences
 
-- The Hub keeps a TS-native, latency-tight vision path (live-qualified 2026-08-15/16).
-- Governance reviewers have ONE place that says why these two egresses exist; the
-  `code-review.yml` cascade + ast-grep secret rules still apply to the call sites.
+If accepted with an explicit `AGENTS.md`/PRD amendment: one documented place explains why
+these two egresses exist and their hard scope limits. If declined: option (B)/(D) is the
+engineering follow-up. Either way, no self-approval — the amendment is an owner action.
