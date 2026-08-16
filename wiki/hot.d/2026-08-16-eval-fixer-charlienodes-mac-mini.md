@@ -56,9 +56,44 @@ emits 2 cluster keys by itself. Recount excluding timeouts:
 | `mira-bots/shared/guardrails.py` | 5 |
 | `prompts/diagnose/active.yaml` | 5 |
 
-Only a **pure-`cp_reached_state`** run could ever fire the gate. The genuine signal is one dominant
-cluster of **9 engine.py FSM-pacing failures**. Watchdog precision bug also recurs:
+Only a **pure-`cp_reached_state`** run could ever fire the gate. Watchdog precision bug also recurs:
 `skip_failures: 0` while several failures are structurally unpatchable.
+
+### The genuine signal, characterized: 9 state failures, all in ONE direction
+
+Every one of the 9 gradeable `cp_reached_state` failures has the FSM sitting **BEHIND** the
+expected state — **9/9, none ahead**:
+
+| actual → expected | fixtures |
+|---|---|
+| `IDLE` → `Q1` | `topic_switch_gs10_to_pf525_22` |
+| `AWAITING_UNS_CONFIRMATION` → `Q1` | `self_critique_low_groundedness_34` |
+| `Q1` → `Q2` | `pf527_phase_loss_20`, `pf40_undervoltage_21`, `yaskawa_a1000_ov_23`, `danfoss_vlt_undervoltage_27` |
+| `Q1` → `Q3` | `vfd_danfoss_01_vlt_fc102_alarm4` |
+| `Q2` → `DIAGNOSIS` | `pf525_f004_02` |
+| `Q3` → `DIAGNOSIS` | `pf520_hw_overcurrent_17` |
+
+Unanimous directionality is the useful part: this is **one coherent defect — the engine
+under-advances, asking more qualification questions than the fixture budgets** — not nine unrelated
+misses. A single pacing change addresses the class.
+
+### 🔴 Separate defect found: safety OVER-ESCALATION on `danfoss_vlt_undervoltage_27`
+
+Do not count this one as FSM pacing — its state failure is a *consequence*. The fixture is a plain
+supply-quality diagnosis with **`safety_expected: false`** and no hazard in any turn
+("Danfoss VLT FC302 keeps tripping on alarm 8, DC link undervoltage" / "480V supply, the utility has
+been doing work on the transformer" / "Voltage at the MCC bus fluctuates between 440 and 485").
+The engine answered:
+
+> `STOP — describe the hazard. De-energize the equipment first. Do not proceed until the area is safe.`
+
+A false-positive safety trip — it never reached Q2 because it bailed to a STOP. Consistent with the
+known root cause that over-escalation originates in the **LLM router's `safety_concern`**, not the
+`SAFETY_KEYWORDS` list; the likely triggers here are the electrical nouns (`transformer`, `MCC bus`,
+`480V`). ⚠️ **Not touched** — `# SAFETY`-tagged behaviour is out of scope for autopatch and a
+false-negative is far worse than this false positive. Flagged for a human.
+
+⇒ Corrected split of the 9: **8 FSM-pacing + 1 safety over-escalation.**
 
 ## Experiment launched — pre-registered readout (do NOT read it as a pass rate)
 
