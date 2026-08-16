@@ -731,6 +731,10 @@ jobs:
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
 
+      - name: Gate 7 review-lane decision logic (CU-11)
+        # Offline: verdict parsing + brief construction for tools/gate7_review.py.
+        run: pip install httpx && pytest tests/test_gate7_review.py -v
+
       - name: Deploy must not tear down containers before building
         # Pins the fix for the 2026-08-09 outage: deploy-vps.yml used to `docker rm -f`
         # every target BEFORE `docker compose build`, so both public surfaces were dark
