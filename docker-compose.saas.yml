@@ -515,13 +515,26 @@ services:
       MANUAL_HEAD_TIMEOUT: "${MANUAL_HEAD_TIMEOUT:-8}"
       MANUAL_DISCOVERY_TIMEOUT: "${MANUAL_DISCOVERY_TIMEOUT:-20}"
       MIRA_MANUAL_SENSE_WEB_ENABLED: "${MIRA_MANUAL_SENSE_WEB_ENABLED:-0}"
+      # Nameplate text-DETECTION endpoint (POST /nameplate/detect) — finds the
+      # label region so the Hub can crop before recognition (fixes the 1.27A->
+      # 12A misread; benchmarks/nameplate/results/auto-round1-union.json).
+      # Default OFF: nothing loads, zero RAM cost. When enabled, one inference
+      # at a time (in-process semaphore) peaks ~757 MiB — covered by the
+      # 1536m ceiling below (VPS measurement 2026-08-16: host has 3.1 GiB
+      # available; mira-ask idles at ~54 MiB).
+      NAMEPLATE_DETECT_ENABLED: "${NAMEPLATE_DETECT_ENABLED:-0}"
+      NAMEPLATE_DET_MODEL: "${NAMEPLATE_DET_MODEL:-PP-OCRv5_mobile_det}"
+      NAMEPLATE_DETECT_TIMEOUT: "${NAMEPLATE_DETECT_TIMEOUT:-30}"
     volumes:
       - /opt/mira/data:/mira-db
     networks:
       - mira-net
     restart: unless-stopped
-    mem_limit: 512m
-    memswap_limit: 512m
+    # 512m -> 1536m for the flagged nameplate detector (measured 757 MiB peak
+    # during single-image CPU inference + engine headroom). Ceilings are not
+    # usage: the service idles ~54 MiB either way.
+    mem_limit: 1536m
+    memswap_limit: 1536m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/health')"]
       interval: 30s
