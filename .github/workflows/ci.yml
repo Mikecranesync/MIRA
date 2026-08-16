@@ -430,8 +430,9 @@ jobs:
         # writes private. Wired here because mira-crawler/tests/ is enumerated
         # per-file, never collected wholesale (see the checker-tests note below).
         # celery: tasks/ingest.py + tasks/_shared.py import celery_app at module
-        # level; not in this job's requirements files.
-        run: pip install celery redis && (cd mira-crawler && pytest tests/test_write_path_visibility.py tests/test_store_verified.py -q)
+        # level; not in this job's requirements files. Pinned to the versions
+        # mira-crawler/requirements-celery.txt ships (Gate 7 round-9 finding).
+        run: pip install -r mira-crawler/requirements-celery.txt && (cd mira-crawler && pytest tests/test_write_path_visibility.py tests/test_store_verified.py -q)
 
       - name: Ignition Gateway contracts (tags, allowlist, signing, live snapshot)
         # CORRECTED 2026-07-30. The first version of this comment claimed

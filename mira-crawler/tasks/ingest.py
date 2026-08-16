@@ -92,17 +92,31 @@ class _UncuratedHop(Exception):
     """A redirect hop failed the curation gate (reason in str)."""
 
 
+def _read_validated(local_path: Path) -> bytes:
+    """Open the validated resolved path bound to the validated object where
+    the platform allows. On POSIX — the production platform; crawler workers
+    run in Linux containers — O_NOFOLLOW refuses a symlink swapped into the
+    FINAL path component after validation (Gate 7/9 TOCTOU finding). On
+    Windows dev boxes O_NOFOLLOW does not exist and the plain open of the
+    resolved path remains; parent-component swaps are likewise out of scope
+    (a full dir_fd walk is not warranted for the operator-controlled inbox —
+    residual recorded in units/CU-03.md)."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    fd = os.open(str(local_path), flags)
+    with os.fdopen(fd, "rb") as fh:
+        return fh.read()
+
+
 def _validated_local_path(url: str) -> Path | None:
     """Resolve a file:// URL and return the path ONLY if it is contained in
     the operator ingest dir; None otherwise (fail closed on any error).
 
-    The caller must open THIS returned resolved path — never re-parse the
-    URL. That closes the validate-one-path/open-another bug (Gate 9 round 1),
-    but it is NOT an object-handle guarantee: an atomic symlink swap of a
-    path component between resolve() and open can still redirect the read
-    (no O_NOFOLLOW/handle-based open here — portable Windows/POSIX code).
-    Residual accepted for the operator-controlled inbox dir; recorded in
-    units/CU-03.md.
+    The caller must open THIS returned resolved path via _read_validated —
+    never re-parse the URL. That closes the validate-one-path/open-another
+    bug (Gate 9 round 1); _read_validated adds O_NOFOLLOW on POSIX (the
+    production platform) so a final-component symlink swap after validation
+    is refused there. The remaining residual (Windows dev boxes;
+    parent-component swaps) is recorded in units/CU-03.md.
     """
     from urllib.parse import urlparse
     from urllib.request import url2pathname
@@ -218,8 +232,8 @@ def ingest_url(self, url: str, manufacturer: str = "",
             return {"url": url, "inserted": 0, "error": "uncurated_source"}
         try:
             # Open the exact resolved path validation returned — never a
-            # re-parse of the URL.
-            data = local_path.read_bytes()
+            # re-parse of the URL; O_NOFOLLOW on POSIX (see _read_validated).
+            data = _read_validated(local_path)
             content_type = (
                 "application/pdf" if local_path.suffix.lower() == ".pdf" else "text/html"
             )
