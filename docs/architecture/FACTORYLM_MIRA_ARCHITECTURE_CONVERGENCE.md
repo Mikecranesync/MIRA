@@ -328,7 +328,23 @@ Run applicable:
 
 The implementation agent does not perform final review.
 
-**Default: GPT-5.6 Sol — High reasoning.**
+**Default: the Gate 7 review lane — `tools/gate7_review.py`, invocable via
+`/gate7-review` — running on the free-tier Groq → Cerebras → Together cascade
+(PRD §4), at High effort.**
+
+> **Amended by CU-11 (owner decision, 2026-08-16 — recorded in PR #3261): no
+> OpenAI.** The previously named "GPT-5.6 Sol / Codex" reviewer is dropped; it
+> was never wired and had no configuration, credential, or vendor identity in
+> the repo. **Honesty requirement:** without a dedicated second frontier
+> vendor, "independent" means *fresh context* (the reviewer sees only the
+> disprove brief and the diff), *an isolated worktree* when the reviewer is an
+> agent, and *a brief to disprove* — **not vendor independence**. A unit
+> record must state which lane ran and must not imply a cross-vendor check
+> that did not happen.
+
+At **xhigh**, every available cascade provider reviews independently and all
+must pass (`--effort xhigh`); fresh-context agent reviewers with distinct
+disprove axes are added per `/gate7-review` step 3.
 
 Escalate automatically to **xhigh** for:
 
@@ -435,7 +451,9 @@ Fresh context; runs deterministic validation and attempts to reproduce failures.
 
 ### Adversarial Reviewer
 
-**Codex / GPT-5.6 Sol**, fresh context, deliberately attempts to prove the change wrong.
+**The Gate 7 lane** (`tools/gate7_review.py` cascade and/or a fresh-context
+reviewer agent in an isolated worktree — see Gate 7), deliberately attempts to
+prove the change wrong.
 
 ### Human Gate
 
@@ -570,7 +588,7 @@ Discovery
 → R0
 → Implementation
 → Deterministic verification
-→ GPT-5.6 Sol review
+→ Gate 7 adversarial review
 → Shadow validation
 → Human GO
 → Merge
@@ -695,7 +713,7 @@ Architecture rules should constrain dependencies.
 
 Rollback checkpoints should make experiments reversible.
 
-Codex should challenge consequential changes independently.
+An independent adversarial reviewer (the Gate 7 lane) should challenge consequential changes.
 
 Shadow execution should compare old and new behavior.
 
