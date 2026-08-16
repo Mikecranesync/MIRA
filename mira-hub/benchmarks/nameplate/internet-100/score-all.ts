@@ -94,12 +94,14 @@ function known(v: unknown): v is string {
 
 function scoreLeg(gt: Gt, leg: LegRead) {
   if (!leg || leg.error || !leg.values) {
-    return { leg_error: leg?.error ?? "missing", scored: false };
+    return { leg_error: leg?.error ?? "missing", scored: false as const };
   }
+  // Captured after the guard: TS narrowing does not survive into closures.
+  const values = leg.values;
   const pg = gt.photo_gt ?? {};
   const searchLines = [
     ...(leg.rawText ?? []),
-    ...Object.values(leg.values).filter((v): v is string => typeof v === "string"),
+    ...Object.values(values).filter((v): v is string => typeof v === "string"),
   ];
   const normLines = searchLines.map(normLine);
   const toks = numTokens(searchLines);
@@ -114,7 +116,7 @@ function scoreLeg(gt: Gt, leg: LegRead) {
     const expected = (pg as Record<string, unknown>)[f];
     if (!known(expected)) continue;
     idTotal++;
-    const got = leg.values[f] ?? null;
+    const got = values[f] ?? null;
     let verdict: string;
     if (got === null) {
       verdict = "safe_null";
@@ -130,7 +132,7 @@ function scoreLeg(gt: Gt, leg: LegRead) {
         idWrong++;
       }
     }
-    identity[f] = { expected, got: leg.values[f] ?? null, verdict };
+    identity[f] = { expected, got: values[f] ?? null, verdict };
   }
 
   // specs
@@ -191,7 +193,7 @@ function scoreLeg(gt: Gt, leg: LegRead) {
 
   // hallucinated marks (only when GT enumerated every legible mark)
   const gtMarks = (pg.marks ?? []).map(normId);
-  const predMarks = (leg.values.marks ?? "")
+  const predMarks = (values.marks ?? "")
     .split(/[,;|/]+/)
     .map((s) => s.trim())
     .filter(Boolean);
@@ -205,11 +207,11 @@ function scoreLeg(gt: Gt, leg: LegRead) {
       .filter(Boolean),
   );
   const suspectClaims = PARSED_SPEC_KEYS.filter((k) => {
-    const v = leg.values[k];
+    const v = values[k];
     if (!v) return false;
     const tok = numTokens([v])[0];
     return tok ? !gtUnits.has(tok.unit) : false;
-  }).map((k) => ({ field: k, value: leg.values[k] }));
+  }).map((k) => ({ field: k, value: values[k] }));
 
   // incorrect promotions — the safety metric
   const incorrectPromotions: Record<string, unknown>[] = [];
@@ -224,7 +226,7 @@ function scoreLeg(gt: Gt, leg: LegRead) {
   }
 
   return {
-    scored: true,
+    scored: true as const,
     identity,
     identity_total: idTotal,
     identity_correct: idCorrect,
