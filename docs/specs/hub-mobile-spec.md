@@ -3,6 +3,17 @@
 **Last Updated:** 2026-05-05
 **Owner:** Mike Harper / FactoryLM
 
+> **⚠️ PARTIALLY SUPERSEDED (2026-08-15, convergence CU-02 / drift finding D-1).** The
+> mobile-platform stance below ("Native iOS/Android apps (not built; PWA is the strategy)",
+> § Scope → OUT of scope) is superseded: a native client ships as `mira-mobile/` (static
+> Capacitor 8 app
+> consuming Hub APIs). The declared mobile architecture is now
+> **ADR-0034** (`docs/adr/0034-native-mobile-static-capacitor-client.md`; status: Proposed) plus the
+> **native mobile PRD** (`docs/prd/2026-08-13-native-mobile-app-prd.md`).
+> The responsive-layout contract in this spec (bottom tabs < 768 px, side drawer ≥ 768 px,
+> 44 px touch targets) **remains authoritative for the Hub web UI** and is referenced by the
+> PRD as the UX contract.
+
 ## Purpose
 Field-tech-friendly responsive layout for `mira-hub`. Most plants run MIRA on a phone in the technician's pocket, with managers on tablet or laptop. This spec freezes the navigation contract: **bottom tabs on phones, side drawer on tablets/desktop**, with the same 17 sections rendered through the same Refine.dev resources. Anything that breaks this layout breaks the field experience.
 
@@ -15,7 +26,7 @@ Field-tech-friendly responsive layout for `mira-hub`. Most plants run MIRA on a 
 - Touch target ≥ 44 px, swipeable tabs, safe-area insets
 
 **OUT of scope**
-- Native iOS/Android apps (not built; PWA is the strategy)
+- Native iOS/Android apps — **superseded**: now built (`mira-mobile/`, ADR-0034); see the supersession notice above
 - Specific section internals (each section owns its mobile-vs-desktop rules)
 
 ## Architecture
