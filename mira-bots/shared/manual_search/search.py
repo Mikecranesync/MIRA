@@ -41,9 +41,12 @@ rather than guess.
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import logging
 import os
-from urllib.parse import urlparse
+import socket
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -332,38 +335,142 @@ async def _serper_search(query: str, num: int = 10) -> list[dict]:
         return resp.json().get("organic", []) or []
 
 
+# ── SSRF guard (Codex P1, 2026-08-16) ────────────────────────────────────────
+#
+# The URLs probed here come from an EXTERNAL search engine — attacker-reachable
+# input — and this service runs inside the production network. An unguarded
+# probe (or an unguarded redirect hop) is a free port-scan / metadata read of
+# the internal network. The guard mirrors the hardened Hub downloader's rules:
+# http(s) only, every hop's hostname must resolve EXCLUSIVELY to public
+# addresses (private / loopback / link-local / reserved / multicast / v4-mapped
+# all rejected), redirects are followed MANUALLY with each hop re-validated,
+# and reads are streamed with a hard byte cap. Residual risk, same as the Hub
+# side: DNS rebinding between the resolve and the connect — no allowlist can
+# exist for open-web discovery, so this is documented rather than closed.
+
+_MAX_REDIRECT_HOPS = 5
+_PROBE_READ_CAP = 512
+
+
+def _ip_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if ip.version == 6 and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def _url_is_probeable(url: str) -> bool:
+    """Sync (DNS-blocking) — call via asyncio.to_thread. True iff the URL is
+    http(s) AND its hostname resolves to public addresses only."""
+    try:
+        p = urlparse(url)
+    except ValueError:
+        return False
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(p.hostname, p.port or (443 if p.scheme == "https" else 80))
+    except OSError:
+        return False
+    addrs = {info[4][0] for info in infos}
+    if not addrs:
+        return False
+    for a in addrs:
+        try:
+            if not _ip_is_public(ipaddress.ip_address(a.split("%")[0])):
+                return False
+        except ValueError:
+            return False
+    return True
+
+
+# Test seam: unit tests inject an httpx.MockTransport here to exercise the
+# redirect loop without any network. None = real transport.
+_transport_for_tests: httpx.AsyncBaseTransport | None = None
+
+
+async def _guarded_probe(
+    client: httpx.AsyncClient, method: str, url: str, headers: dict | None = None
+) -> httpx.Response | None:
+    """Issue method on url, following at most _MAX_REDIRECT_HOPS redirects
+    MANUALLY, re-validating every hop against the SSRF guard. Returns None if
+    any hop is blocked or the hop budget is exhausted."""
+    current = url
+    for _ in range(_MAX_REDIRECT_HOPS + 1):
+        if not await asyncio.to_thread(_url_is_probeable, current):
+            logger.info("manual-search probe blocked by SSRF guard: %s", current[:120])
+            return None
+        r = await client.request(method, current, headers=headers)
+        if r.status_code in (301, 302, 303, 307, 308):
+            loc = r.headers.get("location")
+            if not loc:
+                return None
+            current = urljoin(current, loc)
+            continue
+        return r
+    logger.info("manual-search probe exceeded redirect budget: %s", url[:120])
+    return None
+
+
 async def validate_pdf(url: str) -> bool:
     """Confirm the URL actually serves a PDF.
 
     Strategy: HEAD first, fall back to Range GET (some CDNs don't honour HEAD
     or strip Content-Type). Returns False on any error so a flaky OEM CDN
-    doesn't crash the search. This is the "verify the URL resolves" /
-    "verify PDF/document type" check ManualSense requires before promoting
-    any discovered link.
+    doesn't crash the search. Every request — including every redirect hop —
+    passes the SSRF guard above; the GET is streamed and capped at
+    _PROBE_READ_CAP bytes so a server that ignores Range cannot make us buffer
+    an arbitrary body.
     """
     try:
         async with httpx.AsyncClient(
             timeout=HEAD_TIMEOUT,
-            follow_redirects=True,
+            follow_redirects=False,
+            transport=_transport_for_tests,
             headers={"User-Agent": "Mozilla/5.0 (compatible; mira-manual-search/0.1)"},
         ) as client:
             try:
-                r = await client.head(url)
-                ct = (r.headers.get("content-type") or "").lower()
-                if "pdf" in ct and r.status_code < 400:
-                    return True
+                r = await _guarded_probe(client, "HEAD", url)
+                if r is not None:
+                    ct = (r.headers.get("content-type") or "").lower()
+                    if "pdf" in ct and r.status_code < 400:
+                        return True
             except httpx.HTTPError:
                 pass
 
             # Some hosts 405 on HEAD or strip Content-Type — pull the first
-            # 8 bytes and look for the PDF magic number.
-            r = await client.get(url, headers={"Range": "bytes=0-7"}, timeout=HEAD_TIMEOUT)
-            if r.status_code >= 400:
-                return False
-            ct = (r.headers.get("content-type") or "").lower()
-            if "pdf" in ct:
-                return True
-            return r.content[:5] == b"%PDF-"
+            # bytes and look for the PDF magic number. Stream + cap: a server
+            # that ignores the Range header must not be able to flood us.
+            current = url
+            for _ in range(_MAX_REDIRECT_HOPS + 1):
+                if not await asyncio.to_thread(_url_is_probeable, current):
+                    logger.info("manual-search probe blocked by SSRF guard: %s", current[:120])
+                    return False
+                async with client.stream("GET", current, headers={"Range": "bytes=0-7"}) as r:
+                    if r.status_code in (301, 302, 303, 307, 308):
+                        loc = r.headers.get("location")
+                        if not loc:
+                            return False
+                        current = urljoin(current, loc)
+                        continue
+                    if r.status_code >= 400:
+                        return False
+                    ct = (r.headers.get("content-type") or "").lower()
+                    if "pdf" in ct:
+                        return True
+                    head = b""
+                    async for chunk in r.aiter_bytes():
+                        head += chunk
+                        if len(head) >= _PROBE_READ_CAP:
+                            break
+                    return head[:5] == b"%PDF-"
+            return False
     except Exception:
         logger.info("PDF validation failed for %s — skipping", url[:120])
         return False

@@ -30,10 +30,13 @@ function parseTargets(raw: unknown[]): ParsedTargets {
       role: typeof t.role === "string" ? t.role : null,
       displayLabel: typeof t.displayLabel === "string" ? t.displayLabel : null,
       isPrimary: t.isPrimary === true,
-      ...(t.matchState === "candidate" || t.matchState === "verified" || t.matchState === "user_confirmed"
-        ? { matchState: t.matchState }
-        : {}),
-      ...(t.matchEvidence !== undefined ? { matchEvidence: t.matchEvidence } : {}),
+      // Trust is SERVER-owned (Codex P1, 2026-08-16): a public attach is by
+      // definition a user action, so the source row it creates is
+      // user_confirmed — the client cannot request "verified" (that state is
+      // earned by server-side applicability proof in the confirm route) and
+      // cannot inject match_evidence (evidence describes server-derived
+      // provenance, not caller assertions).
+      matchState: "user_confirmed" as const,
     });
   }
   return { ok: true, targets };

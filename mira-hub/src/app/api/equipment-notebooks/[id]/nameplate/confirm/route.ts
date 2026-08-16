@@ -28,7 +28,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, attachSource, setSourceState } from "@/lib/equipment-notebooks";
-import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets } from "@/lib/workspace-files";
+import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import { ingestTextToNode, ingestPdfToNode, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual, allowedHostsForCandidate } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
@@ -215,29 +215,63 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const textBuffer = Buffer.from(text, "utf8");
   const nameplateFilename = `nameplate-${fileId}.txt`;
 
+  // Idempotent + raced-safe (Codex P1, 2026-08-16): the nameplate text is
+  // deterministic bytes, so it goes through the SAME canonical-file dedup +
+  // atomic ingestion claim as every other document. A repeated confirmation
+  // REUSES the existing doc instead of minting another document/chunk set;
+  // concurrent confirmations cannot double-ingest.
   let nameplateDocId: string | null = null;
   let nameplateChunks = 0;
+  let nameplateIngestFailed = false;
   try {
-    const ingested = await ingestTextToNode({
+    const parkedText = await parkOrReuseFile({
       tenantId: ctx.tenantId,
-      nodeId: notebook.nodeId,
-      unsPath: null,
       filename: nameplateFilename,
       mimeType: "text/plain",
       sizeBytes: textBuffer.length,
       buffer: textBuffer,
+      createdBy: ctx.userId ?? null,
+      nodeId: notebook.nodeId,
+      source: "nameplate_text",
     });
-    nameplateDocId = ingested.uploadId;
-    nameplateChunks = ingested.chunkCount;
-    // Attached by DOC id, not by file link: the generated nameplate text has no
-    // parked byte record of its own (the canonical PHOTO is the parked file, and
-    // it is already linked). attachSource is the honest seam for "a document
-    // that exists only as an indexed doc"; attachFileToTargets is for files.
-    await attachSource(ctx.tenantId, notebookId, nameplateDocId, {
-      matchState: "user_confirmed",
-      sourceRole: "photo",
-      addedBy: ctx.userId ?? null,
-    });
+    nameplateDocId = parkedText.uploadId;
+    if (nameplateDocId === null) {
+      const claim = await claimIngest(ctx.tenantId, parkedText.fileId);
+      if (claim.claimed) {
+        try {
+          const ingested = await ingestTextToNode({
+            tenantId: ctx.tenantId,
+            nodeId: notebook.nodeId,
+            unsPath: null,
+            filename: nameplateFilename,
+            mimeType: "text/plain",
+            sizeBytes: textBuffer.length,
+            buffer: textBuffer,
+          });
+          nameplateDocId = ingested.uploadId;
+          nameplateChunks = ingested.chunkCount;
+          await linkFileToUpload(ctx.tenantId, parkedText.fileId, ingested.uploadId);
+        } catch (err) {
+          await releaseIngestClaim(ctx.tenantId, parkedText.fileId, claim.claimToken).catch(() => {});
+          throw err;
+        }
+      } else if (claim.reason === "already_ingested" && claim.uploadId) {
+        nameplateDocId = claim.uploadId;
+      }
+      // ingest_in_progress: a concurrent confirm is materializing the same
+      // bytes right now — do not double-ingest; report partial below.
+    }
+    if (nameplateDocId !== null) {
+      // Attached by DOC id, not by file link: the generated nameplate text has
+      // no meaningful byte record for the user (the canonical PHOTO is the
+      // parked file, and it is already linked). attachSource is the honest
+      // seam for "a document that exists as an indexed doc".
+      await attachSource(ctx.tenantId, notebookId, nameplateDocId, {
+        matchState: "user_confirmed",
+        sourceRole: "photo",
+        addedBy: ctx.userId ?? null,
+      });
+    }
   } catch (err) {
     console.warn(
       `[nameplate-confirm] nameplate source ingest failed notebook=${notebookId}: ${
@@ -245,6 +279,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }`,
     );
   }
+  nameplateIngestFailed = nameplateDocId === null;
 
   // (c) The notebook's own identity is NOT patched here. See the header.
 
@@ -254,6 +289,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     sourceRole: "photo" as const,
     matchState: "user_confirmed" as const,
     photoFileId: fileId,
+    // EXPLICIT partial signal (never a silent ok with docId:null): until this
+    // is false, the confirmed nameplate is not yet a citable source.
+    ingested: !nameplateIngestFailed,
   };
 
   const respond = (
@@ -347,9 +385,43 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let manualDocId: string | null = manualParked.uploadId;
   let manualChunks = 0;
   let scannedPdf = false;
-  const reused = manualParked.reused && manualParked.uploadId !== null;
+  let manualClaimToken: string | null = null;
+  let reused = manualParked.reused && manualParked.uploadId !== null;
 
-  if (!reused) {
+  if (!reused && manualDocId === null) {
+    // Atomic ingestion claim (Codex P1, 2026-08-16): a concurrent identical
+    // confirm may have parked the same bytes moments ago and still be
+    // ingesting (upload_id lands only at the end). Exactly one request may
+    // ingest; a loser either reuses the finished document or reports an
+    // explicit in-progress partial — it never double-ingests.
+    const claim = await claimIngest(ctx.tenantId, manualParked.fileId);
+    if (claim.claimed) manualClaimToken = claim.claimToken;
+    if (!claim.claimed) {
+      if (claim.reason === "already_ingested" && claim.uploadId) {
+        manualDocId = claim.uploadId;
+        reused = true;
+      } else {
+        return respond("candidate_review", {
+          candidate: candidateView,
+          manual: {
+            fileId: manualParked.fileId,
+            docId: null,
+            filename: manualFilename,
+            discoveryUrl: candidate.url,
+            finalUrl: download.finalUrl,
+            matchState: null,
+            enabledByDefault: false,
+            chunkCount: 0,
+            indexed: false,
+          },
+          warning:
+            "another request is currently indexing this exact document — retry in a moment to attach it",
+        });
+      }
+    }
+  }
+
+  if (!reused && manualDocId === null) {
     try {
       const ing = await ingestPdfToNode({
         tenantId: ctx.tenantId,
@@ -364,6 +436,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       manualChunks = ing.chunkCount;
       await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId);
     } catch (err) {
+      if (manualClaimToken) {
+        await releaseIngestClaim(ctx.tenantId, manualParked.fileId, manualClaimToken).catch(() => {});
+      }
       // A scanned/image-only PDF is a property of the FILE. Keep the bytes
       // (viewable + downloadable), attach the FILE to the notebook so it shows
       // in Files — but with no indexed doc there is no source row, so it can

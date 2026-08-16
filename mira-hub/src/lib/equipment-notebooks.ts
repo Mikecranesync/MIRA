@@ -273,16 +273,36 @@ export async function upsertNotebookSourceTx(
     opts.matchEvidence === undefined || opts.matchEvidence === null
       ? null
       : JSON.stringify(opts.matchEvidence);
+  // Conflict transitions never DOWNGRADE trust (a candidate re-suggestion must
+  // not demote a user-confirmed row) and enabled_by_default is recomputed from
+  // the RESULTING state in the same statement — the candidate->user_confirmed
+  // upsert used to leave enabled_by_default=false behind, silently keeping a
+  // confirmed source out of chat (Codex P1, 2026-08-16). An explicit re-attach
+  // over a rejected row un-rejects it (the re-attach IS the user decision).
   await c.query(
     `INSERT INTO equipment_notebook_sources
        (notebook_id, doc_id, tenant_id, enabled_by_default, match_state,
         source_role, added_by, match_evidence)
      VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::jsonb)
      ON CONFLICT (notebook_id, doc_id)
-     DO UPDATE SET match_state    = EXCLUDED.match_state,
-                   source_role    = EXCLUDED.source_role,
-                   match_evidence = COALESCE(EXCLUDED.match_evidence,
-                                             equipment_notebook_sources.match_evidence)`,
+     DO UPDATE SET
+       match_state = CASE
+         WHEN equipment_notebook_sources.match_state = 'verified' THEN 'verified'
+         WHEN EXCLUDED.match_state = 'verified' THEN 'verified'
+         WHEN equipment_notebook_sources.match_state = 'user_confirmed'
+              AND EXCLUDED.match_state = 'candidate' THEN 'user_confirmed'
+         ELSE EXCLUDED.match_state
+       END,
+       enabled_by_default = CASE
+         WHEN equipment_notebook_sources.match_state = 'verified' THEN true
+         WHEN EXCLUDED.match_state = 'verified' THEN true
+         WHEN equipment_notebook_sources.match_state = 'user_confirmed'
+              AND EXCLUDED.match_state = 'candidate' THEN true
+         ELSE EXCLUDED.match_state IN ('user_confirmed', 'verified')
+       END,
+       source_role    = EXCLUDED.source_role,
+       match_evidence = COALESCE(EXCLUDED.match_evidence,
+                                 equipment_notebook_sources.match_evidence)`,
     [
       opts.notebookId,
       opts.docId,
@@ -411,12 +431,17 @@ export async function validateChatSources(
       [tenantId, notebookId],
     );
     if (nb.rows.length === 0) return { ok: false as const, error: "notebook_not_found" };
+    // Chat grounding requires POSITIVE trust, not merely "not rejected": a
+    // candidate (system-suggested, never human-confirmed) source must not be
+    // citable, and a source the user disabled must not ride along (Codex P1,
+    // 2026-08-16).
     const res = await c.query(
       `SELECT doc_id::text AS doc_id
          FROM equipment_notebook_sources
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
           AND doc_id = ANY($3::uuid[])
-          AND match_state <> 'rejected'`,
+          AND match_state IN ('user_confirmed', 'verified')
+          AND enabled_by_default = true`,
       [tenantId, notebookId, requestedDocIds],
     );
     const valid = new Set(res.rows.map((r: Record<string, unknown>) => String(r.doc_id)));

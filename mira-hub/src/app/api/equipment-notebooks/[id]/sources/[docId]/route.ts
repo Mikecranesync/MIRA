@@ -22,13 +22,14 @@ export async function PATCH(req: NextRequest, { params }: P) {
   }
   const patch: { enabledByDefault?: boolean; matchState?: MatchState } = {};
   if (typeof body.enabledByDefault === "boolean") patch.enabledByDefault = body.enabledByDefault;
-  if (
-    body.matchState === "candidate" ||
-    body.matchState === "user_confirmed" ||
-    body.matchState === "verified" ||
-    body.matchState === "rejected"
-  ) {
+  // Trust is SERVER-owned (Codex P1, 2026-08-16): a client may CONFIRM a
+  // source (a human decision) or REJECT it — never mint "verified" (earned by
+  // server-side applicability proof) and never demote to "candidate" (a
+  // system-suggestion state).
+  if (body.matchState === "user_confirmed" || body.matchState === "rejected") {
     patch.matchState = body.matchState;
+  } else if (body.matchState !== undefined) {
+    return NextResponse.json({ error: "invalid_match_state" }, { status: 400 });
   }
   const ok = await setSourceState(ctx.tenantId, id, docId, patch);
   if (!ok) return NextResponse.json({ error: "not_found" }, { status: 404 });

@@ -196,6 +196,8 @@ describe("POST /api/files/[fileId]/links — attach", () => {
           role: "manual",
           displayLabel: null,
           isPrimary: false,
+          // Server-owned trust: a public attach is always user_confirmed.
+          matchState: "user_confirmed",
         },
       ],
       { createdBy: "u_1" },
@@ -362,6 +364,7 @@ describe("POST /api/files/[fileId]/relocate", () => {
             role: null,
             displayLabel: null,
             isPrimary: false,
+            matchState: "user_confirmed",
           },
         ],
         removeLinkIds: [LINK_A],

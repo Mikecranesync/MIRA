@@ -30,12 +30,15 @@ _TINY_IMAGE_B64 = base64.b64encode(b"\xff\xd8\xff\xe0 not a real jpeg").decode()
 @pytest.fixture(autouse=True)
 def _reset_detector_cache():
     """Each test starts with a cold module: no cached detector, no cached
-    failure — so one test's load-failure cache can't leak into another."""
+    failure, no occupied busy slot — so one test's state can't leak into
+    another."""
     nd._detector = None
     nd._detector_failed_reason = None
+    nd._busy_future = None
     yield
     nd._detector = None
     nd._detector_failed_reason = None
+    nd._busy_future = None
 
 
 class TestFeatureFlag:
@@ -132,13 +135,15 @@ _FAKE_SCORES = [0.9, 0.8]
 
 def _arm_fake_detector(monkeypatch):
     """Simulate a loaded detector without paddle: _load_detector becomes a
-    no-op that marks success, _predict returns fixed boxes."""
+    no-op that marks success, _predict returns fixed boxes, and the header
+    size check passes (the tiny test payload is not a real image)."""
     monkeypatch.setenv("NAMEPLATE_DETECT_ENABLED", "1")
 
     def fake_load():
         nd._detector = object()
 
     monkeypatch.setattr(nd, "_load_detector", fake_load)
+    monkeypatch.setattr(nd, "_check_decoded_size", lambda raw: None)
     monkeypatch.setattr(nd, "_predict", lambda raw: (_FAKE_POLYS, _FAKE_SCORES, 1000, 800))
 
 
@@ -196,6 +201,76 @@ class TestReturnCrop:
         assert body["regions"] == []
         assert body["union_bbox"] is None
         assert body["crop_base64"] is None
+
+
+class TestResourceContainment:
+    """Codex P1: the single inference slot must stay OCCUPIED until the worker
+    thread actually finishes — a timed-out waiter releasing a semaphore would
+    let 757-MiB inference jobs stack."""
+
+    def test_timed_out_run_keeps_the_slot_until_the_thread_ends(self):
+        """The contract itself, driven in ONE event loop (production shape —
+        TestClient tears its loop down between requests, which cancels
+        futures and would test an artifact instead)."""
+        import threading
+
+        release = threading.Event()
+        started = threading.Event()
+        runs = []
+
+        def slow_worker():
+            runs.append("slow")
+            started.set()
+            release.wait(timeout=10)
+            return "slow-done"
+
+        def fast_worker():
+            runs.append("fast")
+            return "fast-done"
+
+        async def scenario():
+            # Waiter 1 times out; its thread keeps running and OWNS the slot.
+            ok1, v1 = await nd._run_exclusive(slow_worker, timeout=0.1)
+            assert (ok1, v1) == (False, "timeout")
+            assert started.is_set()
+            # Waiter 2 while the slow thread still runs: bounced, NOT stacked.
+            ok2, v2 = await nd._run_exclusive(fast_worker, timeout=1.0)
+            assert (ok2, v2) == (False, "busy")
+            assert runs == ["slow"]  # the fast worker never even started
+            # Let the slow thread finish; the slot frees; a new run proceeds.
+            release.set()
+            await nd._busy_future
+            ok3, v3 = await nd._run_exclusive(fast_worker, timeout=1.0)
+            assert (ok3, v3) == (True, "fast-done")
+
+        import asyncio
+
+        asyncio.run(scenario())
+
+    def test_slot_frees_after_worker_completes(self, monkeypatch):
+        _arm_fake_detector(monkeypatch)
+        client = _client()
+        assert client.post("/nameplate/detect", json={"image_base64": _TINY_IMAGE_B64}).json()["available"] is True
+        # Slot released after a normal completion — next request runs.
+        assert client.post("/nameplate/detect", json={"image_base64": _TINY_IMAGE_B64}).json()["available"] is True
+
+    def test_decoded_pixel_bomb_is_413(self, monkeypatch):
+        """A small compressed payload that would DECODE past the pixel cap is
+        rejected by the header check before any allocation."""
+        _arm_fake_detector(monkeypatch)
+
+        def boom(raw):
+            raise ValueError("image_too_large_decoded")
+
+        monkeypatch.setattr(nd, "_check_decoded_size", boom)
+        resp = _client().post("/nameplate/detect", json={"image_base64": _TINY_IMAGE_B64})
+        assert resp.status_code == 413
+
+    def test_base64_field_itself_is_bounded(self, monkeypatch):
+        monkeypatch.setenv("NAMEPLATE_DETECT_ENABLED", "1")
+        too_long = "A" * (nd._MAX_IMAGE_B64_LEN + 100)
+        resp = _client().post("/nameplate/detect", json={"image_base64": too_long})
+        assert resp.status_code == 422  # rejected by the model, before decode
 
 
 class TestUnionBbox:

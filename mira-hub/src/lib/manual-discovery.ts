@@ -38,6 +38,10 @@ export interface DiscoveryResult {
   validated: boolean;
   isDirectPdf: boolean;
   oemHost: boolean;
+  /** Host is on the general curated distributor/OEM-CDN list — a ranking and
+   * review signal only. NEVER sufficient for auto-verification (that is
+   * oemHost, which is strictly the confirmed manufacturer's own domains). */
+  trustedDistributorHost: boolean;
   /** Technician-facing, already honest. Safe to render as-is. */
   reason: string;
 }
@@ -56,6 +60,7 @@ function unavailable(reason = UNAVAILABLE): DiscoveryResult {
     validated: false,
     isDirectPdf: false,
     oemHost: false,
+    trustedDistributorHost: false,
     reason,
   };
 }
@@ -68,6 +73,7 @@ function notFound(reason = NO_MANUAL): DiscoveryResult {
     validated: false,
     isDirectPdf: false,
     oemHost: false,
+    trustedDistributorHost: false,
     reason,
   };
 }
@@ -146,6 +152,7 @@ export async function discoverManual(identity: DiscoveryIdentity): Promise<Disco
     validated: body.validated === true || candidate.validated,
     isDirectPdf: body.is_direct_pdf === true || candidate.isDirectPdf,
     oemHost: body.oem_host === true,
+    trustedDistributorHost: body.trusted_distributor_host === true,
     reason: str(body.reason) ?? "candidate manual found",
   };
 }

@@ -262,7 +262,8 @@ export async function parkOrReuseFile(opts: {
   });
 }
 
-/** Record the parsed document id on the canonical file (post-ingest). */
+/** Record the parsed document id on the canonical file (post-ingest) and
+ * release any ingestion claim in the same statement. */
 export async function linkFileToUpload(
   tenantId: string,
   fileId: string,
@@ -270,9 +271,71 @@ export async function linkFileToUpload(
 ): Promise<void> {
   await withTenantContext(tenantId, async (c) => {
     await c.query(
-      `UPDATE namespace_direct_uploads SET upload_id = $1::uuid
+      `UPDATE namespace_direct_uploads
+          SET upload_id = $1::uuid, ingest_claim_token = NULL, ingest_claimed_at = NULL
         WHERE id = $2::uuid AND tenant_id = $3::uuid`,
       [uploadId, fileId, tenantId],
+    );
+  });
+}
+
+// ── Atomic ingestion claim (Codex P1, 2026-08-16 — migration 077) ────────────
+//
+// Exactly ONE request may ingest a given canonical file. parkOrReuseFile's
+// pre-check window let a concurrent identical upload observe `reused=true,
+// uploadId=null` while the winner was still ingesting, and ingest AGAIN.
+// The claim is a test-and-set on the row: winners ingest and release via
+// linkFileToUpload; losers report an explicit "ingest_in_progress" partial.
+
+const INGEST_CLAIM_STALE_MINUTES = 10;
+
+export type IngestClaim =
+  | { claimed: true; claimToken: string }
+  | { claimed: false; reason: "already_ingested" | "ingest_in_progress"; uploadId: string | null };
+
+/** Try to claim the file for ingestion. Atomic: the UPDATE's WHERE clause is
+ * the whole decision, so two racers cannot both win. A stale claim (crashed
+ * worker) is taken over after INGEST_CLAIM_STALE_MINUTES. */
+export async function claimIngest(tenantId: string, fileId: string): Promise<IngestClaim> {
+  const token = crypto.randomUUID();
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query<{ id: string }>(
+      `UPDATE namespace_direct_uploads
+          SET ingest_claim_token = $1::uuid, ingest_claimed_at = now()
+        WHERE id = $2::uuid AND tenant_id = $3::uuid
+          AND upload_id IS NULL
+          AND (ingest_claim_token IS NULL
+               OR ingest_claimed_at < now() - interval '${INGEST_CLAIM_STALE_MINUTES} minutes')
+        RETURNING id::text AS id`,
+      [token, fileId, tenantId],
+    );
+    if (res.rows.length > 0) return { claimed: true as const, claimToken: token };
+    const row = await c.query<{ upload_id: string | null }>(
+      `SELECT upload_id::text AS upload_id FROM namespace_direct_uploads
+        WHERE id = $1::uuid AND tenant_id = $2::uuid`,
+      [fileId, tenantId],
+    );
+    const uploadId = row.rows[0]?.upload_id ?? null;
+    return uploadId !== null
+      ? { claimed: false as const, reason: "already_ingested" as const, uploadId }
+      : { claimed: false as const, reason: "ingest_in_progress" as const, uploadId: null };
+  });
+}
+
+/** Release a claim WITHOUT an upload (the ingest failed) so another request
+ * can retry immediately instead of waiting out the stale window. Token-scoped:
+ * only the claim's own holder can release it. */
+export async function releaseIngestClaim(
+  tenantId: string,
+  fileId: string,
+  claimToken: string,
+): Promise<void> {
+  await withTenantContext(tenantId, async (c) => {
+    await c.query(
+      `UPDATE namespace_direct_uploads
+          SET ingest_claim_token = NULL, ingest_claimed_at = NULL
+        WHERE id = $1::uuid AND tenant_id = $2::uuid AND ingest_claim_token = $3::uuid`,
+      [fileId, tenantId, claimToken],
     );
   });
 }

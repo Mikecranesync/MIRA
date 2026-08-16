@@ -322,10 +322,20 @@ class TestIsOemHost:
         assert is_oem_host("Oriental Motor", "evil-orientalmotor.com") is False
         assert is_oem_host("Oriental Motor", "orientalmotor.com.attacker.net") is False
 
-    def test_trusted_domains_host_true_even_for_unrelated_manufacturer_key(self):
-        # docs.rs-online.com is in TRUSTED_DOMAINS but not tied to a specific
-        # manufacturer key — should match regardless of the manufacturer given.
-        assert is_oem_host("siemens", "docs.rs-online.com") is True
+    def test_trusted_distributor_is_NOT_oem_host(self):
+        # Codex P1 (2026-08-16): docs.rs-online.com is on the general trusted
+        # list, but oem_host gates AUTO-verify — a distributor (or another
+        # manufacturer's site) must never count as the confirmed
+        # manufacturer's OEM host. Distributor trust is its own signal.
+        from ask_api.manual_discovery import is_trusted_distributor_host
+
+        assert is_oem_host("siemens", "docs.rs-online.com") is False
+        assert is_trusted_distributor_host("docs.rs-online.com") is True
+
+    def test_other_manufacturers_domain_is_not_oem_host(self):
+        # Siemens' documentation host is Siemens' OEM host — and nobody else's.
+        assert is_oem_host("siemens", "support.industry.siemens.com") is True
+        assert is_oem_host("abb", "support.industry.siemens.com") is False
 
     def test_random_host_returns_false(self):
         assert is_oem_host("rockwell", "example-reseller.com") is False

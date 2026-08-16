@@ -29,6 +29,8 @@ vi.mock("@/lib/workspace-files", () => ({
   parkOrReuseFile: vi.fn(),
   linkFileToUpload: vi.fn(),
   attachFileToTargets: vi.fn(),
+  claimIngest: vi.fn(),
+  releaseIngestClaim: vi.fn(),
 }));
 vi.mock("@/lib/node-knowledge-ingest", () => {
   class NoExtractableTextError extends Error {
@@ -52,7 +54,7 @@ import { POST } from "../confirm/route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { getNotebook, attachSource, setSourceState, updateNotebook } from "@/lib/equipment-notebooks";
-import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets } from "@/lib/workspace-files";
+import { getFile, parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import { ingestTextToNode, ingestPdfToNode, NoExtractableTextError } from "@/lib/node-knowledge-ingest";
 import { discoverManual } from "@/lib/manual-discovery";
 import { safeDownloadPdf } from "@/lib/safe-download";
@@ -177,6 +179,9 @@ beforeEach(() => {
   });
   vi.mocked(ingestPdfToNode).mockResolvedValue({ uploadId: MANUAL_DOC_ID, chunkCount: 400 });
   vi.mocked(linkFileToUpload).mockResolvedValue(undefined);
+  // Default: this request wins the atomic ingestion claim (single-writer path).
+  vi.mocked(claimIngest).mockResolvedValue({ claimed: true, claimToken: "tok-1" });
+  vi.mocked(releaseIngestClaim).mockResolvedValue(undefined);
   // Default chunk read: no identity evidence.
   vi.mocked(withTenantContext).mockResolvedValue([{ content: "Some other drive", page: 1 }]);
 });
@@ -355,7 +360,8 @@ describe("discovery terminal states", () => {
     expect(body.status).toBe("candidate_review");
     expect(body.candidate).toMatchObject({ url: CANDIDATE.url });
     expect(safeDownloadPdf).not.toHaveBeenCalled();
-    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    // The nameplate TEXT is parked (idempotent citable source); the MANUAL is not.
+    expect(vi.mocked(parkOrReuseFile).mock.calls.every((c) => c[0].source === "nameplate_text")).toBe(true);
   });
 
   it("status download_rejected when the hardened fetcher refuses", async () => {
@@ -366,7 +372,7 @@ describe("discovery terminal states", () => {
     expect(body.status).toBe("download_rejected");
     expect(body.reason).toBe("blocked_host");
     expect(body.manual).toBeNull();
-    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect(vi.mocked(parkOrReuseFile).mock.calls.every((c) => c[0].source === "nameplate_text")).toBe(true);
   });
 });
 
@@ -474,5 +480,64 @@ describe("scanned manuals are stored, viewable, and never a chat source", () => 
     expect(attachArgs[2][0]).toMatchObject({ role: "manual" });
     expect(attachArgs[2][0].matchState).toBeUndefined();
     expect(setSourceState).not.toHaveBeenCalled();
+  });
+});
+
+describe("atomic, idempotent materialization (Codex P1, 2026-08-16)", () => {
+  it("a repeated confirmation REUSES the nameplate doc — no second document/chunk set", async () => {
+    // The deterministic text's bytes already exist with a finished ingest.
+    vi.mocked(parkOrReuseFile).mockResolvedValueOnce({
+      fileId: "eeeeeeee-1111-2222-3333-444444444444",
+      reused: true,
+      uploadId: NAMEPLATE_DOC_ID,
+    });
+    vi.mocked(discoverManual).mockResolvedValue({
+      serviceAvailable: false, found: false, candidate: null, validated: false,
+      isDirectPdf: false, oemHost: false, trustedDistributorHost: false, reason: "unavailable",
+    });
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(body.nameplate).toMatchObject({ docId: NAMEPLATE_DOC_ID, ingested: true });
+    expect(ingestTextToNode).not.toHaveBeenCalled();
+    // Still attached (attach is idempotent) — but never re-materialized.
+    expect(attachSource).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, NAMEPLATE_DOC_ID, expect.anything());
+  });
+
+  it("the loser of a concurrent identical manual ingest NEVER double-ingests", async () => {
+    vi.mocked(discoverManual).mockResolvedValue(importableDiscovery());
+    vi.mocked(safeDownloadPdf).mockResolvedValue({
+      ok: true,
+      buffer: Buffer.from("%PDF-1.4 fake"),
+      finalUrl: CANDIDATE.url,
+    });
+    // Text park: already ingested (not under test here).
+    vi.mocked(parkOrReuseFile)
+      .mockResolvedValueOnce({ fileId: "eeeeeeee-1111-2222-3333-444444444444", reused: true, uploadId: NAMEPLATE_DOC_ID })
+      // Manual park: bytes exist but the WINNER is still ingesting them.
+      .mockResolvedValueOnce({ fileId: MANUAL_FILE_ID, reused: true, uploadId: null });
+    vi.mocked(claimIngest).mockResolvedValue({ claimed: false, reason: "ingest_in_progress", uploadId: null });
+
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    expect(body.status).toBe("candidate_review");
+    expect(body.warning).toMatch(/currently indexing/i);
+    expect(body.manual).toMatchObject({ fileId: MANUAL_FILE_ID, docId: null, indexed: false });
+  });
+
+  it("an ingest failure releases the claim so a retry need not wait out staleness", async () => {
+    vi.mocked(parkOrReuseFile)
+      .mockResolvedValueOnce({ fileId: "eeeeeeee-1111-2222-3333-444444444444", reused: false, uploadId: null })
+      .mockResolvedValue({ fileId: MANUAL_FILE_ID, reused: false, uploadId: null });
+    vi.mocked(ingestTextToNode).mockRejectedValue(new Error("tika down"));
+    vi.mocked(discoverManual).mockResolvedValue({
+      serviceAvailable: false, found: false, candidate: null, validated: false,
+      isDirectPdf: false, oemHost: false, trustedDistributorHost: false, reason: "unavailable",
+    });
+    const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    // Explicit partial — never a silent ok with a missing citable source.
+    expect(body.nameplate).toMatchObject({ docId: null, ingested: false });
+    expect(releaseIngestClaim).toHaveBeenCalled();
   });
 });

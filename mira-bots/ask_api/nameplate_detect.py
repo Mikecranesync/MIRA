@@ -45,10 +45,55 @@ router = APIRouter()
 # Decoded-bytes cap. The reference photo is 2.8 MB; 8 MB covers any phone JPEG
 # while keeping a hostile payload from ballooning the decode.
 _MAX_IMAGE_BYTES = int(os.getenv("NAMEPLATE_DETECT_MAX_BYTES", str(8 * 1024 * 1024)))
+# base64 expands ~4/3; bound the FIELD so a hostile body can't make FastAPI
+# hold a giant string before we ever decode it.
+_MAX_IMAGE_B64_LEN = (_MAX_IMAGE_BYTES * 4) // 3 + 8
+
+# Compressed-size limits do not bound DECODED size (a 100 KB JPEG can decode to
+# a gigapixel bitmap). Cap total pixels BEFORE cv2 allocates: 4000x3000 (the
+# qualified phone-photo shape) is 12 MP; 32 MP allows any current phone sensor
+# while keeping worst-case BGR allocation under ~100 MB.
+_MAX_IMAGE_PIXELS = int(os.getenv("NAMEPLATE_DETECT_MAX_PIXELS", str(32_000_000)))
 
 # One inference at a time — this is what makes the measured single-run peak RSS
 # (757 MiB) the container's actual worst case rather than a per-request bound.
-_inference_lock = asyncio.Semaphore(1)
+#
+# NOT a plain semaphore-around-await: `asyncio.wait_for(to_thread(...))` cannot
+# cancel a running thread, so a timeout would release the lock while the worker
+# is STILL RUNNING and the next request could stack a second 757 MiB inference
+# on top of it. Instead the busy slot is the worker's own Future — a request
+# that times out stops WAITING but the slot stays occupied until the thread
+# actually finishes; later requests bounce with available=false, "busy".
+_busy_future: asyncio.Future | None = None
+_busy_guard = asyncio.Lock()
+
+
+async def _run_exclusive(fn, *args, timeout: float):
+    """Run fn in a worker thread as THE single occupant of the inference slot.
+
+    Returns (ok, value). ok=False values: "busy" (slot occupied by a previous
+    request — possibly one whose waiter already timed out), "timeout" (this
+    request stopped waiting; the slot stays occupied until the thread ends).
+    """
+    global _busy_future
+    async with _busy_guard:
+        if _busy_future is not None and not _busy_future.done():
+            return False, "busy"
+        _busy_future = asyncio.ensure_future(asyncio.to_thread(fn, *args))
+        fut = _busy_future
+        # If our waiter times out and the run later fails, SOMEONE must retrieve
+        # the exception or asyncio logs it as never-retrieved at GC time.
+        fut.add_done_callback(
+            lambda f: f.cancelled() or f.exception() is None or logger.warning(
+                "nameplate-detect: abandoned run failed: %s", f.exception()
+            )
+        )
+    try:
+        return True, await asyncio.wait_for(asyncio.shield(fut), timeout=timeout)
+    except asyncio.TimeoutError:
+        # The thread keeps running and keeps the slot; it will complete and
+        # release naturally. We just stop waiting on it.
+        return False, "timeout"
 
 # Lazy singleton. False = load failed permanently (missing dep, bad model) —
 # cached so a broken install degrades to available=false without re-importing
@@ -90,8 +135,26 @@ def _load_detector():
         logger.warning("nameplate-detect: %s", _detector_failed_reason)
 
 
+def _check_decoded_size(raw: bytes) -> None:
+    """Reject images whose DECODED size exceeds the pixel cap, reading only the
+    header (PIL's lazy open — no pixel data is decoded). A compressed-size cap
+    alone is not containment: a small JPEG can decode to a gigapixel bitmap."""
+    import io
+
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(raw)) as im:
+            w, h = im.size
+    except Exception as exc:
+        raise ValueError("undecodable_image") from exc
+    if w * h > _MAX_IMAGE_PIXELS:
+        raise ValueError("image_too_large_decoded")
+
+
 def _predict(raw: bytes):
-    """Decode + detect. Runs in a worker thread. Returns (polys, scores, w, h)."""
+    """Decode + detect. Runs in a worker thread. Returns (polys, scores, w, h).
+    Callers must have passed _check_decoded_size first."""
     import cv2
     import numpy as np
 
@@ -194,7 +257,7 @@ class DetectRequest(BaseModel):
     """image_base64: the photo bytes exactly as the app holds them (no
     preprocessing — coordinates come back in this image's pixel space)."""
 
-    image_base64: str = Field(..., min_length=1)
+    image_base64: str = Field(..., min_length=1, max_length=_MAX_IMAGE_B64_LEN)
     min_score: float = Field(default=0.5, ge=0.0, le=1.0)
     # When true, the response carries the union-of-all-boxes crop as JPEG —
     # the exact automated-crop rule qualified in auto-round1-union.json. The
@@ -230,38 +293,66 @@ async def nameplate_detect(req: DetectRequest, x_mira_key: str = Header(default=
 
     timeout = float(os.getenv("NAMEPLATE_DETECT_TIMEOUT", "30"))
     t0 = time.monotonic()
-    async with _inference_lock:
-        try:
-            await asyncio.wait_for(asyncio.to_thread(_load_detector), timeout=timeout)
-            if _detector_failed_reason is not None:
-                return _unavailable(_detector_failed_reason)
-            polys, scores, width, height = await asyncio.wait_for(
-                asyncio.to_thread(_predict, raw), timeout=timeout
-            )
-        except asyncio.TimeoutError:
-            # The worker thread may still be running — the semaphore stays the
-            # concurrency bound; we just stop waiting on this request.
-            return _unavailable("timeout")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="undecodable image")
-        except Exception as exc:  # noqa: BLE001 — degrade, never 500: caller falls back
-            logger.warning("nameplate-detect: inference failed: %s", exc)
-            return _unavailable(f"inference_failed: {type(exc).__name__}")
 
-        bbox = union_bbox(polys, scores, req.min_score)
+    def _detect_and_crop(raw_bytes: bytes, min_score: float, want_crop: bool, pad: int) -> dict:
+        """The ENTIRE heavy path in one worker-thread occupancy of the busy
+        slot: size check (header only) -> detector load -> predict -> crop.
+        One occupancy per request means a timed-out predecessor can never
+        overlap this run — the slot is still theirs until their thread ends."""
+        _load_detector()
+        if _detector_failed_reason is not None:
+            return {"unavailable": _detector_failed_reason}
+        _check_decoded_size(raw_bytes)
+        polys, scores, width, height = _predict(raw_bytes)
+        bbox = union_bbox(polys, scores, min_score)
         crop_b64: str | None = None
         crop_bbox: dict[str, int] | None = None
         crop_rotation_deg = 0
-        if req.return_crop and bbox is not None:
+        if want_crop and bbox is not None:
             try:
-                crop_bytes, crop_bbox, crop_rotation_deg = await asyncio.wait_for(
-                    asyncio.to_thread(_crop_jpeg, raw, bbox, req.crop_pad), timeout=timeout
-                )
+                crop_bytes, crop_bbox, crop_rotation_deg = _crop_jpeg(raw_bytes, bbox, pad)
                 crop_b64 = base64.b64encode(crop_bytes).decode()
             except Exception as exc:  # noqa: BLE001 — a failed crop must not void the detections
                 logger.warning("nameplate-detect: crop failed: %s", exc)
                 crop_bbox = None
                 crop_rotation_deg = 0
+        return {
+            "polys": polys,
+            "scores": scores,
+            "width": width,
+            "height": height,
+            "bbox": bbox,
+            "crop_b64": crop_b64,
+            "crop_bbox": crop_bbox,
+            "crop_rotation_deg": crop_rotation_deg,
+        }
+
+    try:
+        ok, out = await _run_exclusive(
+            _detect_and_crop, raw, req.min_score, req.return_crop, req.crop_pad, timeout=timeout
+        )
+        if not ok:
+            # "busy" = the single inference slot is occupied (possibly by a
+            # request whose waiter already timed out — the thread is still
+            # running and still owns the memory). "timeout" = we stopped
+            # waiting on our own run. Both degrade; the caller falls back.
+            return _unavailable(out)
+        if "unavailable" in out:
+            return _unavailable(out["unavailable"])
+    except ValueError as exc:
+        if str(exc) == "image_too_large_decoded":
+            raise HTTPException(status_code=413, detail="decoded image exceeds pixel limit")
+        raise HTTPException(status_code=400, detail="undecodable image")
+    except Exception as exc:  # noqa: BLE001 — degrade, never 500: caller falls back
+        logger.warning("nameplate-detect: inference failed: %s", exc)
+        return _unavailable(f"inference_failed: {type(exc).__name__}")
+
+    polys, scores = out["polys"], out["scores"]
+    width, height = out["width"], out["height"]
+    bbox = out["bbox"]
+    crop_b64 = out["crop_b64"]
+    crop_bbox = out["crop_bbox"]
+    crop_rotation_deg = out["crop_rotation_deg"]
 
     return {
         "available": True,

@@ -131,7 +131,10 @@ describe("validateChatSources", () => {
     const res = await validateChatSources(TENANT, NB, [DOC]);
     expect(res).toEqual({ ok: false, error: "source_not_in_notebook" });
     const membership = callFor(/FROM equipment_notebook_sources/);
-    expect(membership?.sql).toContain("match_state <> 'rejected'");
+    // Positive trust required (Codex P1, 2026-08-16): candidates and disabled
+    // sources are excluded, not merely rejected ones.
+    expect(membership?.sql).toContain("match_state IN ('user_confirmed', 'verified')");
+    expect(membership?.sql).toContain("enabled_by_default = true");
     expect(membership?.sql).toContain("notebook_id = $2");
   });
 

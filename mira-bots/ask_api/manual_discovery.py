@@ -63,14 +63,21 @@ _NO_RESULT = {
     "validated": False,
     "is_direct_pdf": False,
     "oem_host": False,
+    "trusted_distributor_host": False,
     "reason": "no_result",
 }
 
 
 def is_oem_host(manufacturer: str, host: str) -> bool:
-    """True if `host` is on the OEM domain list for `manufacturer`, or is one
-    of the general TRUSTED_DOMAINS (curated OEM/distributor CDNs not tied to
-    a specific manufacturer key, e.g. docs.rs-online.com).
+    """True ONLY if `host` is on the confirmed manufacturer's OWN domain list.
+
+    Codex P1 (2026-08-16): this used to also return True for any general
+    TRUSTED_DOMAINS entry — distributor CDNs and OTHER manufacturers' sites —
+    and downstream `oem_host` gates AUTO-import/AUTO-verify. A trusted host is
+    not the same claim as "this is the confirmed manufacturer's official
+    documentation host": siemens.com is a trusted domain, but it must never
+    auto-verify a manual for an ABB nameplate. Distributor trust is now the
+    separate `is_trusted_distributor_host` and is informational only.
 
     Pure function over shared.manual_search.search's data tables — exported
     so it is directly unit-testable without a network call.
@@ -79,8 +86,16 @@ def is_oem_host(manufacturer: str, host: str) -> bool:
         return False
     host = host.lower()
     oem_domains = OEM_DOMAINS.get(manufacturer.strip().lower(), ())
-    if any(host == d or host.endswith("." + d) for d in oem_domains):
-        return True
+    return any(host == d or host.endswith("." + d) for d in oem_domains)
+
+
+def is_trusted_distributor_host(host: str) -> bool:
+    """True if `host` is on the general curated trusted list (OEM/distributor
+    documentation CDNs). A quality signal for ranking and human review — NEVER
+    sufficient for auto-verification, because the list is manufacturer-agnostic."""
+    if not host:
+        return False
+    host = host.lower()
     return any(host == d or host.endswith("." + d) for d in (t[0] for t in TRUSTED_DOMAINS))
 
 
@@ -146,7 +161,12 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
 
     validated = bool(candidate.get("validated"))
     is_direct_pdf = bool(candidate.get("is_direct_pdf"))
-    oem_host = is_oem_host(manufacturer, candidate.get("host") or "")
+    host = candidate.get("host") or ""
+    # oem_host is STRICT (the confirmed manufacturer's own domains) — it gates
+    # auto-import/auto-verify downstream. trusted_distributor_host is the
+    # broader curated list: ranking/review signal only, never auto-trust.
+    oem_host = is_oem_host(manufacturer, host)
+    trusted_distributor_host = is_trusted_distributor_host(host)
 
     return {
         "found": True,
@@ -154,5 +174,6 @@ async def manual_discovery_search(req: ManualSearchRequest, x_mira_key: str = He
         "validated": validated,
         "is_direct_pdf": is_direct_pdf,
         "oem_host": oem_host,
+        "trusted_distributor_host": trusted_distributor_host,
         "reason": "ok",
     }
