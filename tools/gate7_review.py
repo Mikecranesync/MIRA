@@ -411,6 +411,20 @@ def _gh_json(args: list[str]) -> dict:
     return json.loads(out.stdout)
 
 
+def filter_diff_paths(diff: str, prefixes: tuple[str, ...]) -> str:
+    """Keep only the file sections of a unified diff whose b/ path starts with
+    one of the prefixes. Used for per-file-group review of large PRs."""
+    kept: list[str] = []
+    keep = False
+    for line in diff.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            target = line.rsplit(" b/", 1)[-1].strip()
+            keep = any(target.startswith(p) for p in prefixes)
+        if keep:
+            kept.append(line)
+    return "".join(kept)
+
+
 def fetch_pr(number: int) -> tuple[str, str, list[str], str]:
     meta = _gh_json(["pr", "view", str(number), "--json", "title,body,files"])
     paths = [f["path"] for f in meta.get("files", [])]
@@ -483,6 +497,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("pr", type=int, help="PR number")
     p.add_argument("--xhigh", action="store_true", help="force xhigh effort")
     p.add_argument("-o", "--out", help="write the report here")
+    p.add_argument(
+        "--paths",
+        action="append",
+        default=None,
+        metavar="PREFIX",
+        help="restrict the reviewed DIFF to files under this path prefix "
+        "(repeatable). For per-file-group review of large PRs: a diff past "
+        "the char cap gets truncated and the reviewer hallucinates findings "
+        "at the cut (CU-03 rounds 3-5). Escalation triggers still compute "
+        "from the FULL file list; each group needs its own PASS.",
+    )
     a = p.parse_args(argv)
 
     try:
@@ -490,6 +515,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
         print(f"error: could not fetch PR #{a.pr}: {e}", file=sys.stderr)
         return 1
+
+    if a.paths:
+        diff = filter_diff_paths(diff, tuple(a.paths))
+        if not diff.strip():
+            print(f"error: --paths {a.paths} matched nothing in the diff", file=sys.stderr)
+            return 1
+        print(f"Gate 7: diff scoped to {a.paths}", file=sys.stderr)
 
     level, reasons = escalation(paths, f"{title}\n{body}\n{diff}")
     if a.xhigh:

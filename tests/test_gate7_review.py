@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from gate7_review import (  # noqa: E402
     BROAD_MODULE_THRESHOLD,
+    filter_diff_paths,
     MAX_DIFF_CHARS,
     Finding,
     build_prompt,
@@ -351,3 +352,35 @@ def test_pii_redactors_actually_loaded():
     import gate7_review
 
     assert gate7_review._REDACTORS, "canonical PII sanitizer failed to load"
+
+
+# --- --paths diff scoping (CU-03: truncated diffs make reviewers hallucinate) --
+
+
+def _sample_diff() -> str:
+    return (
+        "diff --git a/mira-crawler/tasks/ingest.py b/mira-crawler/tasks/ingest.py\n"
+        "--- a/mira-crawler/tasks/ingest.py\n"
+        "+++ b/mira-crawler/tasks/ingest.py\n"
+        "+gate_line\n"
+        "diff --git a/tools/vendor_coverage_ingest.py b/tools/vendor_coverage_ingest.py\n"
+        "--- a/tools/vendor_coverage_ingest.py\n"
+        "+++ b/tools/vendor_coverage_ingest.py\n"
+        "+tool_line\n"
+    )
+
+
+def test_filter_diff_paths_keeps_only_matching_sections():
+    out = filter_diff_paths(_sample_diff(), ("mira-crawler/",))
+    assert "gate_line" in out
+    assert "tool_line" not in out
+    assert out.startswith("diff --git a/mira-crawler/")
+
+
+def test_filter_diff_paths_multiple_prefixes():
+    out = filter_diff_paths(_sample_diff(), ("tools/", "mira-crawler/"))
+    assert "gate_line" in out and "tool_line" in out
+
+
+def test_filter_diff_paths_no_match_is_empty():
+    assert filter_diff_paths(_sample_diff(), ("mira-hub/",)) == ""
