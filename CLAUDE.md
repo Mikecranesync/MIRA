@@ -78,7 +78,7 @@ MIRA/
 ├── mira-crawler/    # KB ingest + manual chunker (OEM discovery pipeline)
 ├── mira-ops/        # Observability dashboards (Prometheus, Grafana, Flower)
 ├── mira-relay/      # Cloud relay endpoint for Ignition factory→cloud tag streaming (SaaS-only, in saas.yml)
-├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008); sunset pending OEM migration
+├── mira-sidecar/    # ⚠️ LEGACY — ChromaDB RAG, superseded by mira-pipeline (ADR-0008); removed from prod 2026-05-20
 ├── mira-connect/    # ⚠️ DEFERRED — Modbus/PLC drivers (post-MVP, "Config 4")
 ├── wiki/            # LLM-maintained ops wiki (Karpathy pattern) — Obsidian vault
 ├── tests/           # 5-regime testing framework (76 offline tests, 39 golden cases)
@@ -91,19 +91,62 @@ See local CLAUDE.md in each module for deep context.
 
 ## Container Map
 
+<!-- BEGIN GENERATED container-map — tools/gen_container_map.py; regenerate: `python3 tools/gen_container_map.py --write`; verify: `--check`. Do not hand-edit. -->
+
+**Dev** — `docker-compose.yml` include set + `docker-compose.override.yml` (env-var ports shown at their defaults):
+
 | Container | Port(s) | Network(s) |
 |-----------|---------|------------|
 | mira-core | 3000→8080 | core-net, bot-net |
-| mira-pipeline | 9099 | core-net |
-| mira-ingest | 8002→8001 | core-net |
-| mira-mcp | 8000, 8001 | core-net |
-| mira-docling | 5001 | core-net |
+| mira-mcpo | 8000 | core-net |
+| mira-ingest | 127.0.0.1:8002→8001 | core-net |
+| mira-tika | 127.0.0.1:9998 | core-net |
+| mira-pipeline | 127.0.0.1:9099 | core-net |
 | mira-bridge | 1880 | core-net |
 | mira-bot-telegram | — | bot-net, core-net |
-| mira-bot-slack | — | bot-net, core-net |
+| mira-bot-slack *(profile: slack-dev)* | — | bot-net, core-net |
+| mira-bot-teams *(profile: dormant)* | 8030 | bot-net, core-net |
+| mira-bot-whatsapp *(profile: dormant)* | 8010 | bot-net, core-net |
+| mira-bot-reddit *(profile: dormant)* | — | bot-net, core-net |
+| mira-telegram-test-runner *(profile: test)* | — | core-net |
+| mira-mcp | 127.0.0.1:8009→8000, 127.0.0.1:8010→8002, 127.0.0.1:8001 | core-net |
+| atlas-db | 5433→5432 | cmms-net |
+| atlas-minio | 9000, 9001 | cmms-net |
 | atlas-api | 8088→8080 | cmms-net, core-net |
-| atlas-db | 5433 | cmms-net |
+| atlas-frontend | 3100→3000 | cmms-net |
 | mira-web | 3200→3000 | core-net, cmms-net |
+| mira-redis | — | core-net |
+| mira-celery-worker | — | core-net |
+| mira-task-bridge | 8003 | core-net |
+| mira-relay | 127.0.0.1:8765 | core-net |
+
+**Prod (VPS)** — `docker-compose.saas.yml` (env-var ports shown at their defaults; container names differ from dev; Atlas CMMS runs as a separate compose project reached via external `cmms-ext`):
+
+| Container | Port(s) | Network(s) |
+|-----------|---------|------------|
+| mira-redis-saas | — | mira-net |
+| mira-ingest-saas | 127.0.0.1:8002→8001 | mira-net |
+| mira-mcp-saas | 127.0.0.1:8009→8000, 127.0.0.1:8001 | mira-net |
+| mira-web | 127.0.0.1:3200→3000 | mira-net, cmms-ext |
+| mira-pipeline-saas | 127.0.0.1:9099 | mira-net |
+| mira-bot-telegram | — | mira-net |
+| mira-bot-slack | — | mira-net |
+| mira-ask-saas | 100.68.120.99:8011 | mira-net |
+| mira-tika-saas | 127.0.0.1:9998 | mira-net |
+| mira-relay | 127.0.0.1:8765 | mira-net |
+| mira-sparkplug-consumer *(profile: sparkplug)* | — | mira-net, mosquitto-ext |
+| nango-db | — | mira-net |
+| nango-server | 127.0.0.1:3003, 127.0.0.1:3009 | mira-net |
+| mira-hub | 127.0.0.1:3101→3000 | mira-net, cmms-ext |
+| mira-synthetic-dogfood-worker | — | mira-net |
+| mira-synthetic-dogfood-beat | — | mira-net |
+| mira-historian-worker | — | mira-net |
+| mira-historian-beat | — | mira-net |
+| mira-cmms-sync | — | mira-net, cmms-ext |
+
+Profile-gated rows start only with `docker compose --profile <name> up`. Staging: `docker-compose.staging-vps.yml` (`stg-*` names) — see `docs/environments.md`.
+
+<!-- END GENERATED container-map -->
 
 ## Node Map
 
@@ -210,7 +253,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 |---|---|---|---|
 | `mira-hud` | **Archived 2026-04-19** | AR HMI demo, hardware-gated (Ignition + MCI badge reader), not in any compose, not customer-shippable in MVP window | branch `archive/mira-hud-2026-04` |
 | `mira-prototype` | **Archived 2026-04-19** | Pre-VIM Flask MJPEG prototype, replaced by mira-pipeline + qwen2.5vl | branch `archive/mira-prototype-2026-04` |
-| `mira-sidecar` | **Sunset pending** | ChromaDB RAG; awaiting OEM migration to Open WebUI KB before stop. Tracked in `docs/known-issues.md`. | still in repo |
+| `mira-sidecar` | **Removed from prod 2026-05-20** | ChromaDB RAG, superseded by mira-pipeline (ADR-0008); not in `docker-compose.saas.yml`. Directory deletion tracked separately (convergence Gate 11). | still in repo |
 | `mira-connect` | **Deferred to "Config 4"** (post-MVP) | Modbus TCP / PLC drivers; not in MVP critical path | still in repo, dormant |
 | `mira-relay` | **Active SaaS infrastructure** (NOT deferred) | Cloud endpoint for Ignition factory→cloud tag streaming; powers MIRA Connect activation flow on `factorylm.com`. Lives in `docker-compose.saas.yml` only. | still in repo + saas.yml |
 
