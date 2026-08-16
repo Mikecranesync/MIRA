@@ -14,7 +14,12 @@ Contracts:
 from __future__ import annotations
 
 import ast
+import importlib.util
+import json
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 # Match Python import lines: "import X" or "from X import Y"
@@ -913,3 +918,439 @@ def test_ambiguous_tool_import_checker_catches_violations():
         assert scan_bare_ambiguous_imports("good.py", src, set(ambiguous)) == [], (
             f"false positive: {label}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Contract 11: ONE asset-tag grammar — every regex copy byte-matches TAG-001
+# ---------------------------------------------------------------------------
+# The tag grammar is a cross-surface contract (docs/contracts/asset-tag-grammar
+# .json, CU-P1 / drift finding D-5): a tag that parses on one surface but not
+# another 404s the QR->asset product spine. The vitest suites lock *behavior*
+# over the golden corpus, but (a) mobile's regex literal is pinned by nothing
+# (a widened quantifier no corpus case distinguishes passes both suites), and
+# (b) the third copy — mira-core/mira-ingest/asset_tag.py, the actual
+# filesystem-traversal defense — is outside both suites entirely. This contract
+# byte-locks every copy to the contract JSON, checks the corpus is
+# self-consistent, and fails if the vitest suites or their CI path filters are
+# unwired (vitest cannot fence its own deletion). Convergence unit CU-06.
+
+_TAG_CONTRACT_PATH = "docs/contracts/asset-tag-grammar.json"
+
+# rel path -> regex that captures the grammar literal in that file.
+_TAG_REGEX_SITES: dict[str, str] = {
+    "mira-hub/src/lib/asset-tag.ts": r"ASSET_TAG_REGEX\s*=\s*/(.*?)/;",
+    "mira-mobile/src/lib/tags.ts": r"ASSET_TAG_REGEX\s*=\s*/(.*?)/;",
+    "mira-core/mira-ingest/asset_tag.py": r'ASSET_TAG_RE\s*=\s*re\.compile\(r"(.*?)"\)',
+}
+
+# The behavior-lock suites CU-P1 wired; deleting/unwiring any of them must fail.
+_TAG_SUITE_FILES = [
+    "mira-hub/src/lib/__tests__/asset-tag-grammar-contract.test.ts",
+    "mira-mobile/src/lib/__tests__/tag-grammar-contract.test.ts",
+    "mira-mobile/src/lib/__tests__/tag-grammar-shadow.test.ts",
+]
+
+
+def extract_tag_regex(source: str, extractor: str) -> str | None:
+    """Return the grammar literal found by `extractor`, or None if absent.
+
+    Pure function — unit-tested against fixtures below so the guard is proven
+    to catch a desynced or missing literal."""
+    m = re.search(extractor, source)
+    return m.group(1) if m else None
+
+
+def _tag_contract() -> dict:
+    return json.loads((_ROOT / _TAG_CONTRACT_PATH).read_text(encoding="utf-8"))
+
+
+def test_tag_grammar_regex_locked_across_surfaces():
+    """Every ASSET_TAG regex copy byte-matches the contract's canonical_regex."""
+    canonical = _tag_contract()["canonical_regex"]
+    offenders: list[str] = []
+    for rel, extractor in _TAG_REGEX_SITES.items():
+        path = _ROOT / rel
+        if not path.is_file():
+            offenders.append(f"{rel}: file missing — grammar site moved without updating Contract 11")
+            continue
+        literal = extract_tag_regex(path.read_text(encoding="utf-8", errors="replace"), extractor)
+        if literal is None:
+            offenders.append(f"{rel}: grammar literal not found — extractor or file drifted")
+        elif literal != canonical:
+            offenders.append(f"{rel}: regex {literal!r} != contract {canonical!r}")
+    assert not offenders, (
+        "The asset-tag grammar is ONE contract (docs/contracts/asset-tag-grammar.json, "
+        "TAG-001). Change the contract JSON and every consumer in the same PR — see "
+        "units/CU-P1.md.\n\n" + "\n".join(offenders)
+    )
+
+
+def test_tag_grammar_corpus_selfconsistent():
+    """The golden corpus itself cannot silently rot (Contract 11)."""
+    data = _tag_contract()
+    canonical = re.compile(data["canonical_regex"])  # must compile
+    cases = data["cases"]
+    assert cases, "corpus has no cases"
+    names = [c["name"] for c in cases]
+    assert len(names) == len(set(names)), "duplicate case names in the corpus"
+    for case in cases:
+        assert "input" in case and "expect" in case, f"case {case.get('name')!r} missing input/expect"
+        for key in ("expect", "mobile_expect"):
+            value = case.get(key)
+            if value is not None:
+                assert canonical.match(value), (
+                    f"case {case['name']!r}: {key}={value!r} does not satisfy the canonical "
+                    "grammar — the corpus asserts an output the grammar rejects"
+                )
+
+
+def test_tag_grammar_suites_still_wired():
+    """The vitest suites and their CI path filters cannot be silently unwired."""
+    offenders: list[str] = []
+    for rel in _TAG_SUITE_FILES:
+        path = _ROOT / rel
+        if not path.is_file():
+            offenders.append(f"{rel}: suite file deleted")
+        elif "asset-tag-grammar" not in path.read_text(encoding="utf-8", errors="replace"):
+            offenders.append(f"{rel}: no longer imports the contract corpus")
+    ci = (_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8", errors="replace")
+    if ci.count(_TAG_CONTRACT_PATH) < 2:
+        offenders.append(
+            "ci.yml: the corpus path must appear in BOTH the hub and mobile path filters "
+            f"(found {ci.count(_TAG_CONTRACT_PATH)} occurrence(s))"
+        )
+    for watched in ("mira-hub/src/lib/asset-tag.ts", "mira-hub/src/lib/scan-target.ts"):
+        if watched not in ci:
+            offenders.append(f"ci.yml: mobile filter no longer watches {watched}")
+    assert not offenders, (
+        "TAG-001 enforcement got unwired — a PR editing one grammar surface would no "
+        "longer re-run the cross-surface suites.\n\n" + "\n".join(offenders)
+    )
+
+
+def test_tag_regex_extractor_catches_desync():
+    """The Contract 11 extractor must see a changed or missing literal."""
+    ts = "export const ASSET_TAG_REGEX = /^[A-Za-z0-9_-]{1,64}$/;\n"
+    assert extract_tag_regex(ts, _TAG_REGEX_SITES["mira-hub/src/lib/asset-tag.ts"]) == "^[A-Za-z0-9_-]{1,64}$"
+    widened = "const ASSET_TAG_REGEX = /^[A-Za-z0-9._-]{1,128}$/;\n"
+    assert extract_tag_regex(widened, _TAG_REGEX_SITES["mira-mobile/src/lib/tags.ts"]) == "^[A-Za-z0-9._-]{1,128}$"
+    py = 'ASSET_TAG_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")\n'
+    assert extract_tag_regex(py, _TAG_REGEX_SITES["mira-core/mira-ingest/asset_tag.py"]) == "^[A-Za-z0-9_-]{1,64}$"
+    assert extract_tag_regex("const OTHER = 1;\n", _TAG_REGEX_SITES["mira-mobile/src/lib/tags.ts"]) is None
+
+
+# ---------------------------------------------------------------------------
+# Contract 12: the CLAUDE.md Container Map matches the compose files
+# ---------------------------------------------------------------------------
+# Drift finding D-2 (CU-02): the hand-kept container map rotted (phantom
+# mira-docling, wrong mira-mcp ports) and agents planned against it. CU-02 made
+# the map GENERATED (tools/gen_container_map.py, doctrine section 11 — prefer
+# machine-validated facts); this contract is the permanent re-drift fence CU-06
+# wires into CI: any compose change that is not re-rendered into CLAUDE.md
+# fails here. Runs the script's --check mode via subprocess (sys.executable,
+# the repo's established cross-platform shape — see tests/test_machine_print_pack.py).
+
+_GEN_CONTAINER_MAP = "tools/gen_container_map.py"
+
+
+def test_container_map_matches_compose():
+    """CLAUDE.md's generated Container Map is byte-identical to regeneration."""
+    result = subprocess.run(
+        [sys.executable, str(_ROOT / _GEN_CONTAINER_MAP), "--check"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",  # the child's stderr may be cp1252 on Windows (em-dash in WARN)
+        cwd=str(_ROOT),
+    )
+    assert result.returncode == 0, (
+        "The root CLAUDE.md Container Map disagrees with the compose files. "
+        "Regenerate it (never hand-edit): python3 tools/gen_container_map.py --write\n\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+
+
+def _load_gen_container_map():
+    spec = importlib.util.spec_from_file_location(
+        "gen_container_map_contract12", _ROOT / _GEN_CONTAINER_MAP
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_container_map_checker_catches_drift():
+    """The Contract 12 comparison must FAIL on a mutated map (red-first proof)."""
+    mod = _load_gen_container_map()
+    text = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    section = mod.generate_section()
+    parts = mod._split_claude_md(text)
+    assert parts is not None, "CLAUDE.md lost its Container Map section/markers"
+    _, current, _ = parts
+    # The committed section matches regeneration (same equality --check uses)...
+    assert current.strip("\n") == section.strip("\n")
+    # ...and a single-token mutation is caught by that same equality.
+    corrupted = current.replace("core-net", "bork-net", 1)
+    assert corrupted != current, "fixture mutation was a no-op"
+    assert corrupted.strip("\n") != section.strip("\n")
+    # Malformed inputs are refused, not corrupted:
+    assert mod._split_claude_md("no map heading here") is None
+    assert mod._split_claude_md(mod.END_MARK + "\nx\n" + mod.BEGIN_MARK) is None
+
+
+# ---------------------------------------------------------------------------
+# Contract 13: no writer INSERTs into knowledge_entries without is_private
+# ---------------------------------------------------------------------------
+# knowledge_entries is a HYBRID corpus (.claude/rules/knowledge-entries-tenant-
+# scoping.md): shared OEM rows are is_private=false, per-tenant uploads MUST be
+# is_private=true. A writer that omits the column silently relies on the
+# default (false) — the exact shape that leaked tenant uploads (#1833, #1903).
+# This fence is default-deny for NEW writers: every INSERT INTO
+# knowledge_entries must state is_private (either value — the OEM/tenant choice
+# is the writer's, per the rule) or be allowlisted here with a reason.
+# NOTE: the BACKLOG.md CU-06 bullet says "ast-grep rule"; this lives here
+# instead because .ast-grep-rules/ is not executed by any CI job today
+# (code-review.yml greps with rg; sgconfig's testDir does not exist) — a fence
+# that doesn't run is not a fence. Recorded in units/CU-06.md.
+# The known writers' semantics (insert_chunk hardcoding false = I-1, learning_
+# ingester visibility, etc.) are CU-03's job — this contract only stops the
+# population of writers from growing without an explicit is_private decision.
+
+_KE_INSERT_RE = re.compile(
+    r'INSERT\s+INTO\s+(?:public\s*\.\s*)?"?knowledge_entries', re.IGNORECASE
+)
+_KE_WRITE_SUFFIXES = {".py", ".ts", ".tsx", ".sql"}
+_KE_EXCLUDED_DIRS = {
+    "node_modules", ".git", "__pycache__", ".next", "dist", "build",
+    ".claude", ".codegraph", ".venv", "venv", "out",
+}
+# Chars after the INSERT keyword within which is_private must appear. The
+# largest real statement in this repo declares it at offset 241; 600 leaves
+# headroom while keeping a following comment/UPDATE from masking an omission
+# (Gate 7 finding F5).
+_KE_WINDOW = 600
+
+# Files whose INSERT legitimately omits is_private today. Each entry MUST carry
+# a reason; the honesty test below fails if an entry stops violating (remove it
+# then) or stops existing.
+_KE_INSERT_ALLOWLIST: dict[str, str] = {
+    "tools/seeds/gs11-field-guide-knowledge.sql":
+        "OEM seed; omits the column so rows take the DB default false (correct for "
+        "shared corpus). Explicit is_private false preferred on next touch.",
+    "mira-hub/scripts/verify-node-subtree-retrieval.ts":
+        "verification script writing node_attachment probe rows; default-false today. "
+        "Flagged for the CU-03 visibility audit — do not silently bless.",
+    "mira-hub/tests/e2e/folder-brain-proof.spec.ts":
+        "e2e fixture rows (cleaned up in-test); default-false today. Flagged for the "
+        "CU-03 visibility audit.",
+    "mira-hub/src/lib/__tests__/node-knowledge-ingest-batching.test.ts":
+        "not a writer — asserts on mock-captured SQL via .includes('INSERT INTO "
+        "knowledge_entries'); the real writer (node-knowledge-ingest.ts) pins true.",
+    "mira-hub/src/lib/__tests__/node-knowledge-ingest-empty.test.ts":
+        "not a writer — same mock-capture assertion string as the batching test.",
+    "mira-hub/src/app/api/documents/upload/__tests__/route.test.ts":
+        "not a writer — regex assertion on mock-captured SQL; the test itself ASSERTS "
+        "is_private true is present (the #1833 guard), just >600 chars after the match.",
+}
+
+
+def scan_knowledge_entries_insert(rel_path: str, source: str) -> list[str]:
+    """Return violations where an INSERT INTO knowledge_entries omits is_private.
+
+    Pure function — unit-tested against fixtures below so the guard is proven
+    to catch violations. is_private must appear within _KE_WINDOW chars of the
+    INSERT keyword (the statement's column list / VALUES / kwargs)."""
+    violations: list[str] = []
+    for m in _KE_INSERT_RE.finditer(source):
+        window = source[m.start(): m.start() + _KE_WINDOW]
+        if "is_private" not in window:
+            line = source.count("\n", 0, m.start()) + 1
+            violations.append(
+                f"{rel_path}:{line} INSERT INTO knowledge_entries without an is_private "
+                "decision (shared OEM rows: false; per-tenant uploads: true — "
+                ".claude/rules/knowledge-entries-tenant-scoping.md)"
+            )
+    return violations
+
+
+def _knowledge_entries_write_candidates() -> list[Path]:
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(_ROOT):
+        dirnames[:] = [d for d in dirnames if d not in _KE_EXCLUDED_DIRS]
+        for name in filenames:
+            p = Path(dirpath) / name
+            if p.suffix in _KE_WRITE_SUFFIXES:
+                out.append(p)
+    return sorted(out)
+
+
+def test_knowledge_entries_writers_declare_is_private():
+    """No file INSERTs into knowledge_entries without an is_private decision."""
+    offenders: list[str] = []
+    for path in _knowledge_entries_write_candidates():
+        rel = path.relative_to(_ROOT).as_posix()
+        if rel == "tests/test_architecture.py" or rel in _KE_INSERT_ALLOWLIST:
+            continue
+        source = path.read_text(encoding="utf-8", errors="replace")
+        if "knowledge_entries" not in source:
+            continue
+        offenders.extend(scan_knowledge_entries_insert(rel, source))
+    assert not offenders, (
+        "New knowledge_entries writers must state is_private explicitly — omitting it "
+        "silently takes the default (false) and is the #1833/#1903 leak shape. Either "
+        "set the column, or (for a legitimately-default OEM seed) add an allowlist "
+        "entry with a reason in Contract 13.\n\n" + "\n".join(offenders)
+    )
+
+
+def test_ke_insert_allowlist_is_honest():
+    """Every Contract 13 allowlist entry still exists and still omits is_private."""
+    for rel, reason in _KE_INSERT_ALLOWLIST.items():
+        assert reason.strip(), f"allowlist entry {rel} has no reason"
+        path = _ROOT / rel
+        assert path.is_file(), f"allowlisted {rel} no longer exists — remove the entry"
+        violations = scan_knowledge_entries_insert(rel, path.read_text(encoding="utf-8", errors="replace"))
+        assert violations, (
+            f"allowlisted {rel} now declares is_private — remove its Contract 13 "
+            "allowlist entry so the fence stays tight"
+        )
+
+
+def test_ke_insert_checker_catches_violations():
+    """The Contract 13 guard must FAIL on the known bad shapes."""
+    bad_cases = {
+        "sql column list omits it":
+            "INSERT INTO knowledge_entries (id, tenant_id, content) VALUES (:i, :t, :c)\n",
+        "lowercase sql":
+            "insert into knowledge_entries (id, content) values (1, 'x')\n",
+        "ts template literal":
+            "await sql`INSERT INTO knowledge_entries (id, tenant_id) VALUES (${a}, ${b})`\n",
+        "schema-qualified table (Gate 7 F6)":
+            "INSERT INTO public.knowledge_entries (id, content) VALUES (:i, :c)\n",
+        "quoted table (Gate 7 F6)":
+            'INSERT INTO "knowledge_entries" (id, content) VALUES (:i, :c)\n',
+        "is_private only in a later statement (Gate 7 F5)":
+            "INSERT INTO knowledge_entries (id, content) VALUES (:i, :c);\n"
+            + "-- filler\n" * 80
+            + "UPDATE knowledge_entries SET is_private = false;\n",
+    }
+    for label, src in bad_cases.items():
+        assert scan_knowledge_entries_insert("bad.py", src), f"checker missed: {label}"
+
+    good_cases = {
+        "explicit false (OEM)":
+            "INSERT INTO knowledge_entries (id, is_private) VALUES (:i, false)\n",
+        "explicit true (tenant)":
+            "INSERT INTO knowledge_entries (id, is_private) VALUES (:i, true)\n",
+        "bound param":
+            "INSERT INTO knowledge_entries (id, is_private) VALUES (:id, :is_private)\n",
+        "non-INSERT statement (UPDATE)":
+            "UPDATE knowledge_entries SET is_private = true WHERE id = :i\n",
+    }
+    for label, src in good_cases.items():
+        assert scan_knowledge_entries_insert("good.py", src) == [], f"false positive: {label}"
+
+
+# ---------------------------------------------------------------------------
+# Contract 14: every Architecture Registry entry carries valid taxonomy tags
+# ---------------------------------------------------------------------------
+# Doctrine section 6 defines the architecture tag taxonomy (type:*, domain:*).
+# CU-06 adopts it in docs/architecture/convergence/REGISTRY.yaml as an inline
+# `tags: [...]` line per module entry. This contract validates the vocabulary
+# by REGEX OVER RAW TEXT, deliberately not yaml.safe_load: the registry has 5
+# duplicate top-level keys (docs/infra/scripts/tests/tools appear for both the
+# MIRA and factorylm repos) which a YAML parser silently last-wins-shadows —
+# recorded as a CU-06 discovery finding; renaming keys is out of scope here.
+# Vocabulary = the section-6 advisory sets plus two CU-06 extensions the real
+# module population needs (the doctrine list is "such as", i.e. extensible):
+#   type:docs   — documentation/knowledge dirs (wiki/, docs/, prompts)
+#   domain:platform — cross-cutting platform/dev-infra modules with no single
+#                     product domain (tools/, tests/, deployment/, ...)
+
+_REGISTRY_REL = "docs/architecture/convergence/REGISTRY.yaml"
+_ALLOWED_TAGS: dict[str, set[str]] = {
+    "type": {"presentation", "adapter", "engine", "domain", "infra", "test",
+             "simulation", "docs"},
+    "domain": {"assets", "identity", "knowledge", "diagnostics", "cmms",
+               "telemetry", "mobile", "platform"},
+}
+_TOP_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+:\s*(?:#.*)?$")  # tolerate a trailing comment
+_TAGS_LINE_RE = re.compile(r"^\s{2}tags:\s*\[(.*)\]\s*$")
+
+
+def scan_registry_tags(text: str) -> tuple[int, int, list[str]]:
+    """Return (entry_count, tags_line_count, violations) for registry text.
+
+    Pure function — unit-tested against fixtures below so the guard is proven
+    to catch violations."""
+    entries = 0
+    tag_lines = 0
+    violations: list[str] = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if _TOP_KEY_RE.match(line):
+            entries += 1
+            continue
+        m = _TAGS_LINE_RE.match(line)
+        if not m:
+            continue
+        tag_lines += 1
+        namespaces: set[str] = set()
+        for raw in m.group(1).split(","):
+            tag = raw.strip().strip("\"'")
+            if not tag:
+                continue
+            ns, sep, value = tag.partition(":")
+            if not sep:
+                violations.append(f"line {lineno}: malformed tag {tag!r} (want ns:value)")
+                continue
+            namespaces.add(ns)
+            allowed = _ALLOWED_TAGS.get(ns)
+            if allowed is None:
+                violations.append(f"line {lineno}: unknown tag namespace {ns!r}")
+            elif value not in allowed:
+                violations.append(f"line {lineno}: {ns}:{value} not in the Contract 14 vocabulary")
+        if not {"type", "domain"} <= namespaces:
+            violations.append(f"line {lineno}: tags must include one type:* and one domain:*")
+    return entries, tag_lines, violations
+
+
+def test_registry_entries_all_tagged():
+    """Every REGISTRY.yaml module entry carries a valid inline tags line."""
+    text = (_ROOT / _REGISTRY_REL).read_text(encoding="utf-8", errors="replace")
+    entries, tag_lines, violations = scan_registry_tags(text)
+    assert entries > 0, "registry parse found no module entries — scanner broke"
+    problems = list(violations)
+    if tag_lines != entries:
+        problems.append(
+            f"{entries} module entries but {tag_lines} tags lines — every entry needs "
+            'an inline `  tags: ["type:<v>", "domain:<v>"]` line (doctrine section 6)'
+        )
+    assert not problems, (
+        "Architecture Registry taxonomy violation(s) — vocabulary and rationale live "
+        "in Contract 14 of this file.\n\n" + "\n".join(problems)
+    )
+
+
+def test_registry_tags_checker_catches_violations():
+    """The Contract 14 guard must FAIL on the known bad shapes."""
+    good = 'mod-a:\n  path: a/\n  tags: ["type:engine", "domain:diagnostics"]\n'
+    entries, tag_lines, violations = scan_registry_tags(good)
+    assert (entries, tag_lines, violations) == (1, 1, [])
+
+    bad_cases = {
+        "unknown namespace": '  tags: ["tier:gold", "domain:assets"]\n',
+        "unknown value": '  tags: ["type:blockchain", "domain:assets"]\n',
+        "missing domain": '  tags: ["type:engine"]\n',
+        "malformed tag": '  tags: ["engine", "domain:assets"]\n',
+    }
+    for label, src in bad_cases.items():
+        _, _, violations = scan_registry_tags(src)
+        assert violations, f"checker missed: {label}"
+
+    untagged = "mod-a:\n  path: a/\nmod-b:\n  path: b/\n"
+    entries, tag_lines, violations = scan_registry_tags(untagged)
+    assert entries == 2 and tag_lines == 0, "entry counting broke"
+
+    # A trailing comment must not hide an entry from the count (Gate 7 F9).
+    commented = "mod-a: # note\n  path: a/\n"
+    entries, tag_lines, _ = scan_registry_tags(commented)
+    assert entries == 1 and tag_lines == 0, "trailing-comment key evaded the entry count"
