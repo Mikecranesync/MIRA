@@ -5,7 +5,10 @@
 
 ---
 
-## CU-P1 — PILOT: one asset-tag grammar for Hub + Mobile ⭐
+## CU-P1 — PILOT: one asset-tag grammar for Hub + Mobile ⭐ ✅ DONE
+
+- **Status: DONE 2026-08-15** — PR #3249 → merge `a353a334a` → **v3.273.2** (deployed). R0 `3ba7f4e54`; rollback checkpoint `rollback/2026-08-15-v3.273.2`. D-5 resolved. Full gate walk (incl. a round-1 adversarial BLOCK on a real defect, fixed and re-passed) in `units/CU-P1.md`. **Next unit: CU-02.**
+- **Open obligation (§19):** observation window — watch Hub `/api/assets/by-tag` 404 rate on mobile-originated requests over the next mobile release cycle (should only drop). Not yet checked.
 
 - **What:** `mira-hub/src/lib/asset-tag.ts:11` forbids dots (traversal defense); `mira-mobile/src/lib/tags.ts:7` allows them while claiming "Hub semantics". Extract ONE tag-grammar contract (Hub's is canonical — the restrictive one, and it is the server), conform mobile, and behavior-lock both sides with shared golden cases (valid tags, dot/traversal attacks, QR deep-link forms).
 - **Why pilot:** real drift finding on the product spine (QR → asset); tiny surface (2 files + tests); no auth/tenancy/DB/Supervisor (§15 requirement); a clean Branch-by-Abstraction miniature; shadow validation is trivially deterministic (run both regexes over the golden corpus, diff acceptance).
@@ -26,6 +29,13 @@
 - Evaluate **dependency-cruiser** for `mira-hub`/`mira-web`/`mira-mobile` TS boundary rules (mobile may import from its own src + generated API types only, etc.).
 - Adopt the §6 tag taxonomy in REGISTRY.yaml (`type:*`, `domain:*`).
 - **Risk:** low (CI-only). **Gate 7:** High.
+
+## CU-11 — Wire the §Gate 7 independent adversarial-review lane (blocks CU-03)
+
+- **What:** §Gate 7 names **GPT-5.6 Sol / Codex, fresh context** as the independent adversarial reviewer. That lane is external to the implementing session's tooling and has never been wired — CU-P1 substituted an independent fresh-context reviewer agent and recorded the deviation. Deliver an invocable step (a `/codex-review` command or equivalent) plus the evidence shape a unit record cites.
+- **Why it is its own unit:** three documents previously asserted this was "tracked in the backlog" while no backlog entry and no issue existed. It is tracked here now.
+- **Ordering:** placed here because CU-02 and CU-06 are docs-only / CI-only and may proceed with a substitute reviewer (recording the deviation each time), but **CU-03 is auto-xhigh (tenancy-adjacent) and must not walk Gate 7 until this lane exists.**
+- **Risk:** low to build; **high leverage** — it is the check that catches false-greens on every later unit.
 
 ## CU-03 — knowledge_entries write-path hardening (I-1..I-3)
 

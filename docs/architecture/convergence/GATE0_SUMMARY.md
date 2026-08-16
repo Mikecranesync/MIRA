@@ -31,9 +31,11 @@
 
 1. **Approve this Gate 0 PR** — merging it makes the doctrine + registry canonical repo content.
 2. **Ratify OWNERSHIP.md** as ADRs (esp. "factorylm repo = cluster infra only").
-3. **GO/no-GO on pilot CU-P1** (asset-tag grammar unification).
-4. **ADR-0033 status decision** (D-3), any time.
-5. Note: §Gate 7 names GPT-5.6 Sol/Codex as the independent adversarial reviewer — that lane is external to this session's tooling and needs wiring (a `/codex-review` step or equivalent) before the pilot's Gate 7.
+3. ~~**GO/no-GO on pilot CU-P1**~~ — **RESOLVED 2026-08-15.** GO given; the pilot walked every gate and shipped (PR #3249 → `a353a334a` → v3.273.2). Record: `units/CU-P1.md`.
+4. **ADR-0033 status decision** (D-3), any time. Scheduled as **CU-09**.
+5. **§Gate 7 external reviewer lane — still owed.** §Gate 7 names GPT-5.6 Sol/Codex as the independent adversarial reviewer. That lane was **not** wired for the pilot: an independent fresh-context reviewer agent substituted (and did its job — it returned a round-1 BLOCK on a real case-sensitivity defect, fixed in `855a5153d`). The deviation is recorded in `units/CU-P1.md` and now tracked as **CU-11** in `BACKLOG.md`. CU-02 (docs-only) can survive another substitute; **CU-03 is xhigh and cannot legitimately walk Gate 7 until this lane exists.**
+
+Merging this PR makes the doctrine + registry canonical. It does **not** by itself satisfy item 2 — ratifying `OWNERSHIP.md` as ADRs is a separate ADR PR.
 
 ## Corrections this discovery forced on prior beliefs
 
