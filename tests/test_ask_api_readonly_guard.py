@@ -107,6 +107,9 @@ def _install_app_import_stubs(monkeypatch):
     ask_manual_discovery = types.ModuleType("ask_api.manual_discovery")
     ask_manual_discovery.router = object()
 
+    ask_nameplate_detect = types.ModuleType("ask_api.nameplate_detect")
+    ask_nameplate_detect.router = object()
+
     monkeypatch.setitem(sys.modules, "fastapi", fastapi)
     monkeypatch.setitem(sys.modules, "pydantic", pydantic)
     monkeypatch.setitem(sys.modules, "shared.engine", shared_engine)
@@ -114,6 +117,7 @@ def _install_app_import_stubs(monkeypatch):
     monkeypatch.setitem(sys.modules, "ask_api.drive_pack", ask_drive_pack)
     monkeypatch.setitem(sys.modules, "ask_api.workspace", ask_workspace)
     monkeypatch.setitem(sys.modules, "ask_api.manual_discovery", ask_manual_discovery)
+    monkeypatch.setitem(sys.modules, "ask_api.nameplate_detect", ask_nameplate_detect)
     sys.modules.pop("ask_api.app", None)
 
 

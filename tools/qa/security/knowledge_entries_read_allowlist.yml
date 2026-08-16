@@ -396,7 +396,14 @@ approved:
       FROM knowledge_entries
              WHERE ${where.join(" AND ")}
              GROUP BY source_url
-  "mira-hub/src/app/api/namespace/node/[id]/chat/route.ts:266":
+  "mira-hub/src/app/api/equipment-notebooks/[id]/nameplate/confirm/route.ts:148":
+    approved_classification: TENANT-ONLY
+    query_sha256: "f72b5d871fc782743203dec1b8745e520c3ae095193ec06db47fd4f01ecb2804"
+    reason: "chunksForDoc: the nameplate confirm route's applicability assessor reads ONLY the caller's own uploaded document's chunks by (tenant_id, doc_id) under withTenantContext RLS, ordered by chunk_index, to prove the discovered manual actually covers the recognized component. Pure-tenant is the security property: it must never read another tenant's doc, and shared OEM rows are not confirm targets (no per-tenant doc_id flow reaches them). Same doctrine as retrieveNodeChunks above; a read failure degrades to zero chunks, never a false verified."
+    query_snippet: |
+      FROM knowledge_entries
+          WHERE tenant_id = $1 AND doc_id = $2::uuid
+  "mira-hub/src/app/api/namespace/node/[id]/chat/route.ts:302":
     approved_classification: TENANT-ONLY
     query_sha256: "5209062084e5e805827bd726ab6a33b5d79ffdcc54f86593ba652d50beec82e6"
     reason: "ARPK 1a doc-scoped NodeChat: resolves the selected document's filename from its own v2 chunks (chunk-side, under withTenantContext RLS — hub_uploads has no RLS, same doctrine as retrieveNodeChunks). Pure-tenant is the SECURITY property here: it must never resolve another tenant's doc_id, and shared OEM rows are not doc-scoped chat targets (no v2 doc_id)."
@@ -464,7 +471,7 @@ approved:
       FROM knowledge_entries
                    ORDER BY created_at DESC`,
                 )
-  "mira-hub/src/app/api/assets/[id]/documents/route.ts:50":
+  "mira-hub/src/app/api/assets/[id]/documents/route.ts:111":
     approved_classification: TENANT-ONLY
     query_sha256: "f7a5972c46a691c2b65f9bd661471a780396dfabd456fc9f220cc56bee50740d"
     reason: "TODO: justify this read pattern"
@@ -480,18 +487,18 @@ approved:
       FROM asset_agent_status WHERE equipment_id = $1 LIMIT 1`,
                 [id],
               )
-  "mira-hub/src/lib/manual-rag.ts:483":
+  "mira-hub/src/lib/manual-rag.ts:504":
     approved_classification: TENANT-ONLY
-    query_sha256: "dffd0a7edef21eb333d4e66ab52637fc17a20f19607273b3cb2e4d9d6b8a0cdb"
-    reason: "retrieveNodeChunks widened BM25 pass (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Moved from :462 by the retrieval-repair rewrite, then :469->:482 (rawQuery pass) -> :483 (ensureFacetRepresentation import; SQL text unchanged) (query expansion + rerank widen the candidate LIMIT to a pool; the WHERE scope is unchanged — strictly tighter, never wider)."
+    query_sha256: "8c1b6e33a43b710942bd65df82041a8006ba9654066cc62a8b88d436117e444c"
+    reason: "retrieveNodeChunks widened BM25 pass (folder=brain node/v2 chat) is a pure-tenant surface — it reads only the caller's own node-attached uploads (ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership), which by design excludes the shared OEM corpus. Per knowledge-entries-tenant-scoping.md, pure-tenant surfaces use tenant_id=$caller (NOT the is_private hybrid, which is for OEM+uploads surfaces like runBm25Query above). Moved from :462 by the retrieval-repair rewrite, then :469->:482 (rawQuery pass) -> :483 (ensureFacetRepresentation import; SQL text unchanged) (query expansion + rerank widen the candidate LIMIT to a pool; the WHERE scope is unchanged — strictly tighter, never wider). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/manual-rag.ts:519":
+  "mira-hub/src/lib/manual-rag.ts:540":
     approved_classification: TENANT-ONLY
-    query_sha256: "4f1261ca26cee7c82109acaf95df27281808fe91af6f45f5b7ad16f62e4b948d"
-    reason: "retrieveNodeChunks exact-token ILIKE lane — the SAME pure-tenant scope as the widened BM25 pass above (tenant_id=$caller + ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership). It guarantees a chunk containing a verbatim parameter/fault/terminal token is a retrieval candidate regardless of ts_rank; it never widens scope beyond the caller's own node-attached uploads, so it stays tenant-only by the same rule (NOT the OEM hybrid). Moved :505->:518 (rawQuery pass) -> :519 (ensureFacetRepresentation import; SQL text unchanged)."
+    query_sha256: "bda4de779cd4fd31c3cd930f150578c542e46ea2760ba016d1c2af45df17e1e0"
+    reason: "retrieveNodeChunks exact-token ILIKE lane — the SAME pure-tenant scope as the widened BM25 pass above (tenant_id=$caller + ingest_route='v2' + node_id ownership + optional doc_id = ANY(...) source membership). It guarantees a chunk containing a verbatim parameter/fault/terminal token is a retrieval candidate regardless of ts_rank; it never widens scope beyond the caller's own node-attached uploads, so it stays tenant-only by the same rule (NOT the OEM hybrid). Moved :505->:518 (rawQuery pass) -> :519 (ensureFacetRepresentation import; SQL text unchanged). HASH MIGRATION 2026-08-16: context gained ${approvalFilterSql()} (empty or 'AND verified = true' — strictly tighter) + select-list columns (verified/section_path); tenant scope re-reviewed unchanged."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
