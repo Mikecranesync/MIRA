@@ -452,6 +452,22 @@ jobs:
         # Hermetic: all Ignition I/O is injected. No Gateway, PLC, network, or DB.
         run: pytest tests/ignition/ -v
 
+      - name: Gate 7 adversarial-review lane (CU-11)
+        # The deterministic core of tools/gate7_review.py: the §Gate 7 auto-xhigh
+        # escalation list, the disprove brief, findings parsing, verdict arbitration,
+        # egress redaction (PII + credentials), and the truncation notice.
+        #
+        # Named explicitly because root tests/ is NOT collected wholesale here — a new
+        # file in tests/ otherwise sits in the tree and never runs, and "green CI" then
+        # means zero coverage. That matters more than usual for this file: units/CU-11.md
+        # cites these tests as its Gate 3 behavior lock, and the escalation rules decide
+        # reviewer effort on tenancy/schema/auth changes. Unenforced, that claim is false
+        # in a governance record.
+        #
+        # Hermetic: no network, no provider call, no tokens. The cascade is I/O and is
+        # not exercised.
+        run: pytest tests/test_gate7_review.py -v
+
       - name: Relational distiller (flywheel Phase 4b)
         # Pure core of tools/relational_distill.py — matched drive-pack fault
         # turns → grounded HAS_FAILURE_MODE edge proposals (human-gated, never
