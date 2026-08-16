@@ -85,6 +85,39 @@ def _curated_hosts() -> frozenset[str]:
     return _CURATED_HOSTS
 
 
+MAX_REDIRECT_HOPS = 5
+
+
+class _UncuratedHop(Exception):
+    """A redirect hop failed the curation gate (reason in str)."""
+
+
+def _validated_local_path(url: str) -> Path | None:
+    """Resolve a file:// URL and return the path ONLY if it is contained in
+    the operator ingest dir; None otherwise (fail closed on any error).
+
+    The caller must open THIS returned resolved path — never re-parse the
+    URL — so validation and the read are bound to the same object (Gate 9
+    TOCTOU finding: a symlink swapped between two independent parses could
+    escape the allowed dir).
+    """
+    from urllib.parse import urlparse
+    from urllib.request import url2pathname
+
+    allowed_base = os.getenv(
+        "INGEST_LOCAL_ALLOWED_DIR",
+        os.getenv("GDRIVE_SYNC_DEST", "/data/gdrive_sync"),
+    )
+    try:
+        local = Path(url2pathname(urlparse(url).path)).resolve()
+        base = Path(allowed_base).resolve()
+        if local.is_relative_to(base):
+            return local
+        return None
+    except Exception:
+        return None
+
+
 def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
     """May this URL land in the shared corpus? Returns (allowed, reason).
 
@@ -98,21 +131,10 @@ def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
     write is a refused write.
     """
     if url.startswith("file://"):
-        from urllib.parse import urlparse
-        from urllib.request import url2pathname
-
-        allowed_base = os.getenv(
-            "INGEST_LOCAL_ALLOWED_DIR",
-            os.getenv("GDRIVE_SYNC_DEST", "/data/gdrive_sync"),
-        )
-        try:
-            local = Path(url2pathname(urlparse(url).path)).resolve()
-            base = Path(allowed_base).resolve()
-            if local.is_relative_to(base):
-                return True, "operator-initiated local ingest (allowed dir)"
-            return False, f"file:// path {local} outside allowed dir {base}"
-        except Exception as e:
-            return False, f"file:// path unresolvable ({e}) — fail closed"
+        local = _validated_local_path(url)
+        if local is not None:
+            return True, "operator-initiated local ingest (allowed dir)"
+        return False, "file:// path outside the allowed dir (or unresolvable) — fail closed"
     try:
         hosts = _curated_hosts()
     except Exception as e:
@@ -159,23 +181,31 @@ def ingest_url(self, url: str, manufacturer: str = "",
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
 
-    # 0. Curation gate (I-2) — BEFORE any download. This task writes shared
-    # rows; an uncurated source must be refused, not shared. To ingest a new
-    # OEM domain, add it to sources.yaml (minutes, and auditable forever).
-    allowed, gate_reason = shared_corpus_source_allowed(url)
-    if not allowed:
-        logger.warning("Refusing shared-corpus ingest of %s: %s", url[:80], gate_reason)
-        return {"url": url, "inserted": 0, "error": "uncurated_source"}
+    # 0. Curation gate (I-2) — BEFORE any network access. This task writes
+    # shared rows; an uncurated source must be refused, not shared. To ingest
+    # a new OEM domain, add it to sources.yaml (minutes, auditable forever).
+    # file:// is validated inside its branch below so the SAME resolved path
+    # that passed validation is the one opened (Gate 9 TOCTOU finding).
+    final_url = url
+    if not url.startswith("file://"):
+        allowed, gate_reason = shared_corpus_source_allowed(url)
+        if not allowed:
+            logger.warning("Refusing shared-corpus ingest of %s: %s", url[:80], gate_reason)
+            return {"url": url, "inserted": 0, "error": "uncurated_source"}
 
     # 1. Download (supports http(s):// and file:// schemes)
     is_pdf_url = url.lower().endswith(".pdf")
 
     if url.startswith("file://"):
-        from urllib.parse import urlparse as _urlparse
-        from urllib.request import url2pathname
-
-        local_path = Path(url2pathname(_urlparse(url).path))
+        local_path = _validated_local_path(url)
+        if local_path is None:
+            logger.warning(
+                "Refusing shared-corpus ingest of %s: file:// outside allowed dir", url[:80]
+            )
+            return {"url": url, "inserted": 0, "error": "uncurated_source"}
         try:
+            # Open the exact resolved path validation returned — never a
+            # re-parse of the URL.
             data = local_path.read_bytes()
             content_type = (
                 "application/pdf" if local_path.suffix.lower() == ".pdf" else "text/html"
@@ -190,65 +220,77 @@ def ingest_url(self, url: str, manufacturer: str = "",
             logger.warning("Local file read failed for %s: %s", url[:80], exc)
             return {"url": url, "inserted": 0, "error": f"local_read_failed: {exc}"}
     else:
-        # Pre-flight size check for PDFs — avoids OOM on very large files
-        if is_pdf_url:
-            try:
-                head = httpx.head(
-                    url,
-                    timeout=10,
-                    follow_redirects=True,
-                    headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
-                )
-                content_length = int(head.headers.get("content-length", 0))
-                if content_length > MAX_PDF_BYTES:
-                    logger.warning(
-                        "Skipping %s — too large (%d MB > %d MB limit)",
-                        url[:80], content_length // 1024 // 1024, MAX_PDF_BYTES // 1024 // 1024,
-                    )
-                    return {"url": url, "inserted": 0, "error": "file_too_large"}
-            except Exception:
-                pass
-
         # Stream download to a tempfile so a misbehaving server (no
         # Content-Length, chunked-encoding bomb, etc.) can't OOM the worker.
-        # Abort mid-stream if we cross the size cap.
+        # Abort mid-stream if we cross the size cap. Redirects are followed
+        # MANUALLY: every hop is scheme-checked and curation-gated BEFORE its
+        # request is sent (Gate 9 finding: follow_redirects=True let a curated
+        # host bounce the crawler to an uncurated/internal target). The final
+        # validated URL becomes the provenance/dedup key.
         tmp = tempfile.NamedTemporaryFile(prefix="mira-ingest-", suffix=".bin", delete=False)
         tmp_path = Path(tmp.name)
         downloaded = 0
         try:
             with httpx.Client(
                 timeout=DOWNLOAD_TIMEOUT,
-                follow_redirects=True,
+                follow_redirects=False,
                 headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
             ) as client:
-                with client.stream("GET", url) as resp:
-                    resp.raise_for_status()
-                    content_type = resp.headers.get("content-type", "")
-                    for chunk in resp.iter_bytes(chunk_size=64 * 1024):
-                        downloaded += len(chunk)
-                        if downloaded > MAX_PDF_BYTES and (
-                            "application/pdf" in content_type or is_pdf_url
-                        ):
-                            tmp.close()
-                            tmp_path.unlink(missing_ok=True)
-                            logger.warning(
-                                "Aborted streaming download of %s — exceeded %d MB cap mid-stream",
-                                url[:80], MAX_PDF_BYTES // 1024 // 1024,
-                            )
-                            return {"url": url, "inserted": 0, "error": "file_too_large"}
-                        tmp.write(chunk)
+                current = url
+                for _hop in range(MAX_REDIRECT_HOPS + 1):
+                    with client.stream("GET", current) as resp:
+                        if resp.status_code in (301, 302, 303, 307, 308):
+                            location = resp.headers.get("location", "")
+                            nxt = str(httpx.URL(current).join(location))
+                            if not nxt.startswith(("http://", "https://")):
+                                raise _UncuratedHop(f"non-http redirect target {nxt[:80]}")
+                            hop_ok, hop_reason = shared_corpus_source_allowed(nxt)
+                            if not hop_ok:
+                                raise _UncuratedHop(f"{nxt[:80]}: {hop_reason}")
+                            current = nxt
+                            continue
+                        resp.raise_for_status()
+                        content_type = resp.headers.get("content-type", "")
+                        for chunk in resp.iter_bytes(chunk_size=64 * 1024):
+                            downloaded += len(chunk)
+                            if downloaded > MAX_PDF_BYTES and (
+                                "application/pdf" in content_type or is_pdf_url
+                            ):
+                                tmp.close()
+                                tmp_path.unlink(missing_ok=True)
+                                logger.warning(
+                                    "Aborted streaming download of %s — exceeded %d MB cap mid-stream",
+                                    url[:80], MAX_PDF_BYTES // 1024 // 1024,
+                                )
+                                return {"url": url, "inserted": 0, "error": "file_too_large"}
+                            tmp.write(chunk)
+                        final_url = current
+                        break
+                else:
+                    raise _UncuratedHop(f"more than {MAX_REDIRECT_HOPS} redirect hops")
             tmp.close()
             data = tmp_path.read_bytes()
+        except _UncuratedHop as exc:
+            tmp.close()
+            tmp_path.unlink(missing_ok=True)
+            logger.warning("Refusing redirected ingest of %s: %s", url[:80], exc)
+            return {"url": url, "inserted": 0, "error": "uncurated_redirect"}
         except _TRANSIENT as exc:
             tmp.close()
             tmp_path.unlink(missing_ok=True)
             logger.warning("Download failed for %s: %s — Celery will retry", url[:80], exc)
             raise  # autoretry_for handles the retry
         finally:
+            # Close before unlink: on Windows an unlink of an open file raises
+            # WinError 32, which would mask the original exception.
+            try:
+                tmp.close()
+            except Exception:
+                pass
             tmp_path.unlink(missing_ok=True)
 
     # 3. Extract text blocks
-    is_pdf = url.lower().endswith(".pdf") or "application/pdf" in content_type
+    is_pdf = final_url.lower().endswith(".pdf") or "application/pdf" in content_type
     if is_pdf:
         blocks = extract_from_pdf_with_fallback(data)
     else:
@@ -261,7 +303,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
     # 4. Chunk
     chunks = chunk_blocks(
         blocks,
-        source_url=url,
+        source_url=final_url,
         max_chars=2000,
         min_chars=80,
         overlap=200,
@@ -289,7 +331,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
             chunk_idx = chunk.get("chunk_index", i)
 
             # Dedup
-            if chunk_exists(tenant_id, url, chunk_idx):
+            if chunk_exists(tenant_id, final_url, chunk_idx):
                 skipped += 1
                 continue
 
@@ -322,7 +364,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
                 tenant_id=tenant_id,
                 content=chunk["text"],
                 embedding=embedding,
-                source_url=url,
+                source_url=final_url,
                 source_type=source_type,
                 manufacturer=manufacturer,
                 model_number=model,

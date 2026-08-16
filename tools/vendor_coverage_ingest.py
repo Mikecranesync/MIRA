@@ -13,13 +13,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import httpx
 from sqlalchemy import create_engine, text
@@ -188,8 +187,14 @@ def insert_chunk(
     model_number: str,
     source_url: str,
     source_type: str = "equipment_manual",
+    *,
+    is_private: bool,
 ) -> bool:
-    """Insert a single knowledge chunk. Returns True on success."""
+    """Insert a single knowledge chunk. Returns True on success.
+
+    is_private is REQUIRED (CU-03, I-1): the caller states the visibility
+    decision explicitly — see .claude/rules/knowledge-entries-tenant-scoping.md.
+    """
     if entry_exists(content):
         return False
     engine = _neon_engine()
@@ -201,7 +206,7 @@ def insert_chunk(
                    content, embedding, is_private, source_url, chunk_type, created_at)
                 VALUES
                   (:id, :tid, :src, :mfr, :model,
-                   :content, cast(:emb AS vector), false, :url, 'manual_text', NOW())
+                   :content, cast(:emb AS vector), :is_private, :url, 'manual_text', NOW())
             """),
             {
                 "id": str(uuid.uuid4()),
@@ -211,6 +216,7 @@ def insert_chunk(
                 "model": model_number,
                 "content": content,
                 "emb": str(embedding),
+                "is_private": is_private,
                 "url": source_url,
             },
         )
@@ -459,6 +465,7 @@ def ingest_vendor(vendor: VendorTarget, dry_run: bool = False) -> None:
                 manufacturer=vendor.manufacturer_normalized,
                 model_number=model_number,
                 source_url=url,
+                is_private=False,  # public OEM coverage ingest -> shared corpus
             ):
                 written += 1
             else:
@@ -517,9 +524,9 @@ def write_report(vendors: list[VendorTarget], dry_run: bool) -> None:
     lines = [
         "# Vendor KB Coverage — v1 Demo Ship-Blocker #3",
         "",
-        f"**Date:** 2026-04-15  ",
+        "**Date:** 2026-04-15  ",
         f"**Tenant:** {SHARED_TENANT_ID}  ",
-        f"**Total KB entries (pre-run):** 61,644  ",
+        "**Total KB entries (pre-run):** 61,644  ",
         f"**Dry-run:** {'YES' if dry_run else 'NO'}",
         "",
         "## Coverage Matrix",

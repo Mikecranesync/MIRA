@@ -198,6 +198,7 @@ def scrape_forums() -> dict:
                         tenant_id=tenant_id,
                         ollama_url=ollama_url,
                         embed_model=embed_model,
+                        is_private=False,  # public forum content -> shared corpus
                     )
                     if n > 0:
                         posts_ingested += 1

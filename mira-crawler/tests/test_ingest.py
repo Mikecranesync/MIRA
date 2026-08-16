@@ -98,6 +98,7 @@ class TestIngestUrlFileScheme:
         # the streaming client, not httpx.get (the old mock silently missed
         # and this test hit the real network; pre-existing red fixed in CU-03).
         class _FakeStreamResp:
+            status_code = 200
             headers = {"content-type": "application/pdf"}
 
             def raise_for_status(self):
