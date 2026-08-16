@@ -222,10 +222,7 @@ def test_string_numerics_from_psql_are_tolerated():
 
 def _workflow_text() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "cv101-live-gate.yml"
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "cv101-live-gate.yml"
     ).read_text()
 
 
@@ -248,3 +245,85 @@ def test_workflow_probe_is_read_only():
     wf = _workflow_text()
     for mutating in ("INSERT", "UPDATE ", "DELETE", "DROP", "ALTER", "TRUNCATE"):
         assert mutating not in wf, f"{mutating!r} in a read-only probe"
+
+
+# --- per-scan ratio (fixed 2026-08-16 against the live bench) ---------------
+
+
+def _live_bench_2026_08_16(**over):
+    """The REAL measurement from the live bench, minutes after the Ignition trial
+    reset restored the device connection.
+
+    2520 rows / 167 distinct / 12 tags over a 5-minute window = one fresh observation
+    every ~1.8 s. Under the old `distinct / rows` formulation this scored 0.0663 and
+    was reported as REPLAY — while sitting at 80% of the theoretical maximum that
+    formulation permits (1/12 = 0.083). Pinning it so the false negative cannot return.
+    """
+    row = {
+        "source_system": "ignition",
+        "source_connection_id": "cv101-bench-gw",
+        "simulated": False,
+        "rows": 2520,
+        "distinct_observed_ts": 167,
+        "newest_observed_age_s": 3,
+        "newest_ingest_age_s": 1,
+        "uns_paths": [CANON],
+        "tag_count": 12,
+        "bad_quality_rows": 0,
+    }
+    row.update(over)
+    return row
+
+
+def test_real_live_bench_measurement_is_GO():
+    """The regression this fix exists for: a healthy 12-tag bench must score GO."""
+    verdict = _run([_live_bench_2026_08_16()])
+    assert verdict.ok, verdict.lines
+
+
+def test_old_per_row_formulation_could_never_reach_the_threshold():
+    """Proof the old denominator made GO unreachable, not merely strict.
+
+    One scan stamps all N tags with a single observation timestamp, so a PERFECT
+    stream — every scan carrying a new observation — scores exactly 1/N per row. For
+    12 tags that is 0.083, below the 0.50 threshold. No bench could ever pass.
+    """
+    tags = 12
+    scans = 500
+    perfect = _live(rows=scans * tags, distinct_observed_ts=scans, tag_count=tags)
+    old_ratio = perfect["distinct_observed_ts"] / perfect["rows"]
+    assert abs(old_ratio - 1 / tags) < 1e-9
+    assert old_ratio < 0.5, "the old formulation's ceiling was below its own threshold"
+    # Under the per-scan formulation the same perfect stream is exactly 1.0.
+    assert _run([perfect]).ok
+
+
+def test_physically_consistent_live_stream_is_GO_at_any_tag_count():
+    """distinct == scans is what a live multi-tag stream actually looks like.
+
+    The original `_live` fixture claimed distinct == rows == 2400 with 12 tags, which
+    is not physically possible (2400 rows over 12 tags is 200 scans, so at most 200
+    distinct stamps). That unphysical fixture is why this defect survived its own
+    test suite — the suite never modelled a real multi-tag stream.
+    """
+    for tags in (1, 4, 12, 65):
+        scans = 300
+        row = _live(rows=scans * tags, distinct_observed_ts=scans, tag_count=tags)
+        # expected_tag_count is passed so this isolates the RATIO; otherwise tags<12
+        # would fail the separate scope check and mask what is under test.
+        verdict = _run([row], expected_tag_count=tags)
+        assert verdict.ok, f"live stream with {tags} tags should be GO: {verdict.lines}"
+
+
+def test_frozen_replay_still_fails_under_the_per_scan_ratio():
+    """The whole point of the alarm (#3161). Must not regress with the denominator."""
+    verdict = _run([_frozen_replay()])
+    assert not verdict.ok
+    assert verdict.cause == gate.CAUSE_REPLAY
+
+
+def test_partially_thawed_stream_still_fails():
+    """A stream that has resumed but is mostly repeating must NOT pass. Guards the
+    other direction: the fix must not turn the ratio into a rubber stamp."""
+    row = _live(rows=2400, distinct_observed_ts=20, tag_count=12)  # 200 scans, 20 new
+    assert not _run([row]).ok
