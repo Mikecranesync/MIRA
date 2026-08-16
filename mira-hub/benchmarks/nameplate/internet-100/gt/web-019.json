@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-019",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "tiny_text", "low_resolution", "small_in_scene"],
+  "photo_gt": {
+    "manufacturer": "AutomationDirect",
+    "model": "EA7-T8C",
+    "catalogNumber": "unknown",
+    "serialNumber": "11Y27B017",
+    "equipment_category": "hmi",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "24V DC", "unit": "V", "confidence": "medium"},
+      {"field": "power", "value_verbatim": "15W", "unit": "W", "confidence": "medium"}
+    ],
+    "marks": ["cULus", "CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

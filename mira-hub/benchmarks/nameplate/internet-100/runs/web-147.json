@@ -1,0 +1,288 @@
+{
+  "image": "c10r1_15.jpg",
+  "bytes": 238549,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Trafo-Union",
+      "model": "TG 9644 D",
+      "catalogNumber": "Nr.K 780099",
+      "serialNumber": "0229",
+      "equipmentType": "Gießharztransformator",
+      "confidence": 0.95,
+      "rawText": [
+        "Trafo-Union",
+        "GEAFOL ® - Gießharztransformator",
+        "Typ",
+        "TG 9644 D",
+        "Nr.K 780099",
+        "Baujahr 75",
+        "VDE 0532/71",
+        "Nennleistung",
+        "400",
+        "kVA",
+        "Art",
+        "LT",
+        "Frequenz",
+        "50",
+        "Hz",
+        "Verbind",
+        "V",
+        "V",
+        "Betrieb",
+        "DB",
+        "Verbind",
+        "2-3",
+        "21 000",
+        "V",
+        "V",
+        "Schaltgr",
+        "Dyn 5",
+        "Verbind",
+        "1-3",
+        "20 000",
+        "V",
+        "400",
+        "V",
+        "Reihe",
+        "20 S/0.5",
+        "Verbind",
+        "1-4",
+        "19 000",
+        "V",
+        "V"
+      ]
+    },
+    "rawText": [
+      "Trafo-Union",
+      "GEAFOL ® - Gießharztransformator",
+      "Typ",
+      "TG 9644 D",
+      "Nr.K 780099",
+      "Baujahr 75",
+      "VDE 0532/71",
+      "Nennleistung",
+      "400",
+      "kVA",
+      "Art",
+      "LT",
+      "Frequenz",
+      "50",
+      "Hz",
+      "Verbind",
+      "V",
+      "V",
+      "Betrieb",
+      "DB",
+      "Verbind",
+      "2-3",
+      "21 000",
+      "V",
+      "V",
+      "Schaltgr",
+      "Dyn 5",
+      "Verbind",
+      "1-3",
+      "20 000",
+      "V",
+      "400",
+      "V",
+      "Reihe",
+      "20 S/0.5",
+      "Verbind",
+      "1-4",
+      "19 000",
+      "V",
+      "V"
+    ],
+    "values": {
+      "manufacturer": "Trafo-Union",
+      "model": "TG 9644 D",
+      "catalogNumber": "Nr.K 780099",
+      "equipmentType": "Gießharztransformator",
+      "serialNumber": "0229",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Trafo-Union"
+        },
+        {
+          "field": "model",
+          "value": "TG 9644 D"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "Nr.K 780099"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Gießharztransformator"
+        }
+      ],
+      "needsReview": [
+        "serialNumber"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 56,
+        "cropBbox": {
+          "left": 45,
+          "top": 28,
+          "width": 718,
+          "height": 640
+        },
+        "imageWidth": 779,
+        "imageHeight": 668,
+        "cropRotationDeg": 0,
+        "ms": 1412
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2171,
+    "total_ms": 9236
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Trafo-Union",
+      "model": "GEAFOL",
+      "catalogNumber": "TG 0644 D",
+      "serialNumber": "0029",
+      "equipmentType": "Gießharztransformator",
+      "confidence": 0.95,
+      "rawText": [
+        "Trafo-Union",
+        "GEAFOL",
+        "Gießharztransformator",
+        "Typ",
+        "TG 0644 D",
+        "Nr.K 7 80009",
+        "Baujahr 75",
+        "VDE 0532/71",
+        "Nennleistung",
+        "400",
+        "kVA",
+        "Art",
+        "LT",
+        "Frequenz",
+        "50",
+        "Hz",
+        "Verbind",
+        "Verbind",
+        "2-3",
+        "21 000",
+        "V",
+        "Verbind",
+        "Schaltgr",
+        "Dyn 5",
+        "Nennspg",
+        "1-3",
+        "20 000",
+        "V",
+        "400",
+        "V",
+        "Reihe",
+        "20 S/0.5",
+        "Verbind",
+        "1-4",
+        "19 000",
+        "V",
+        "Verbind",
+        "Kühlungsart",
+        "AN",
+        "Verbind"
+      ]
+    },
+    "rawText": [
+      "Trafo-Union",
+      "GEAFOL",
+      "Gießharztransformator",
+      "Typ",
+      "TG 0644 D",
+      "Nr.K 7 80009",
+      "Baujahr 75",
+      "VDE 0532/71",
+      "Nennleistung",
+      "400",
+      "kVA",
+      "Art",
+      "LT",
+      "Frequenz",
+      "50",
+      "Hz",
+      "Verbind",
+      "Verbind",
+      "2-3",
+      "21 000",
+      "V",
+      "Verbind",
+      "Schaltgr",
+      "Dyn 5",
+      "Nennspg",
+      "1-3",
+      "20 000",
+      "V",
+      "400",
+      "V",
+      "Reihe",
+      "20 S/0.5",
+      "Verbind",
+      "1-4",
+      "19 000",
+      "V",
+      "Verbind",
+      "Kühlungsart",
+      "AN",
+      "Verbind"
+    ],
+    "values": {
+      "manufacturer": "Trafo-Union",
+      "model": "GEAFOL",
+      "catalogNumber": "TG 0644 D",
+      "equipmentType": "Gießharztransformator",
+      "serialNumber": "0029",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Trafo-Union"
+        },
+        {
+          "field": "model",
+          "value": "GEAFOL"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "TG 0644 D"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Gießharztransformator"
+        }
+      ],
+      "needsReview": [
+        "serialNumber"
+      ],
+      "rejected": []
+    },
+    "total_ms": 7079
+  }
+}

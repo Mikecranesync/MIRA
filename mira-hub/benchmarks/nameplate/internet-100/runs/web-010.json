@@ -1,0 +1,279 @@
+{
+  "image": "c01r1_10.jpg",
+  "bytes": 135211,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "NIDEC MOTOR CORPORATION",
+      "model": "FD11",
+      "catalogNumber": "U32P2DC",
+      "serialNumber": "6203-2Z-J/C3",
+      "equipmentType": "Inverter",
+      "confidence": 0.95,
+      "rawText": [
+        "CATALOG # U32P2DC",
+        "SHAFT END BRG 6205-2Z-J/C3",
+        "FR 145TC",
+        "PH 3 MAX AMP",
+        "DUTY CONT",
+        "HZ 60 HP 1.50",
+        "SF 0.125",
+        "DESIGN B CODE M",
+        "GUARANTEED EFFICIENCY 84.0",
+        "NEMA NOM EFFICIENCY 86.5",
+        "VOLTS 208-230/460",
+        "FL AMPS 4.50-4.30/2.10",
+        "SF AMPS 5.0/2.5",
+        "CC 030A",
+        "80C RISE/RES AT 1.00SF",
+        "MADE IN MEXICO OF IMPORTED AND DOMESTIC COMPONENTS",
+        "NIDEC MOTOR CORPORATION",
+        "INVERTER SUITABLE 20:1 VT & 4:1 CT",
+        "MODEL # FD11",
+        "TYPE UTE",
+        "ENCL TEFC",
+        "°C ID# Z 03 7689115-0061 M 0014",
+        "WT 35 LB",
+        "HZ 50 HP 1.50",
+        "SF 01.00",
+        "DESIGN B CODE J",
+        "GUARANTEED EFFICIENCY 81.5",
+        "NEMA NOM EFFICIENCY 84.7",
+        "VOLTS 190/380",
+        "FL AMPS 4.90/2.50",
+        "SF AMPS",
+        "NEMA",
+        "www.usmotors.com",
+        "ENERGY STAR",
+        "CE",
+        "UL",
+        "BIO TO BIO"
+      ]
+    },
+    "rawText": [
+      "CATALOG # U32P2DC",
+      "SHAFT END BRG 6205-2Z-J/C3",
+      "FR 145TC",
+      "PH 3 MAX AMP",
+      "DUTY CONT",
+      "HZ 60 HP 1.50",
+      "SF 0.125",
+      "DESIGN B CODE M",
+      "GUARANTEED EFFICIENCY 84.0",
+      "NEMA NOM EFFICIENCY 86.5",
+      "VOLTS 208-230/460",
+      "FL AMPS 4.50-4.30/2.10",
+      "SF AMPS 5.0/2.5",
+      "CC 030A",
+      "80C RISE/RES AT 1.00SF",
+      "MADE IN MEXICO OF IMPORTED AND DOMESTIC COMPONENTS",
+      "NIDEC MOTOR CORPORATION",
+      "INVERTER SUITABLE 20:1 VT & 4:1 CT",
+      "MODEL # FD11",
+      "TYPE UTE",
+      "ENCL TEFC",
+      "°C ID# Z 03 7689115-0061 M 0014",
+      "WT 35 LB",
+      "HZ 50 HP 1.50",
+      "SF 01.00",
+      "DESIGN B CODE J",
+      "GUARANTEED EFFICIENCY 81.5",
+      "NEMA NOM EFFICIENCY 84.7",
+      "VOLTS 190/380",
+      "FL AMPS 4.90/2.50",
+      "SF AMPS",
+      "NEMA",
+      "www.usmotors.com",
+      "ENERGY STAR",
+      "CE",
+      "UL",
+      "BIO TO BIO"
+    ],
+    "values": {
+      "manufacturer": "NIDEC MOTOR CORPORATION",
+      "model": "FD11",
+      "catalogNumber": "U32P2DC",
+      "equipmentType": "Inverter",
+      "serialNumber": "6203-2Z-J/C3",
+      "voltage": null,
+      "current": "030A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NIDEC MOTOR CORPORATION"
+        },
+        {
+          "field": "model",
+          "value": "FD11"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "U32P2DC"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Inverter"
+        }
+      ],
+      "needsReview": [
+        "serialNumber",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 140,
+        "cropBbox": {
+          "left": 0,
+          "top": 62,
+          "width": 974,
+          "height": 688
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2365
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2959,
+    "total_ms": 10314
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "NIDEC MOTOR CORPORATION",
+      "model": "FD11",
+      "catalogNumber": "6205-22-J/C3",
+      "serialNumber": null,
+      "equipmentType": "Inverter",
+      "confidence": 0.95,
+      "rawText": [
+        "CATALOG #",
+        "U32P2DC",
+        "SHAFT END BRG",
+        "6205-22-J/C3",
+        "FR",
+        "145TC",
+        "TYPE",
+        "UTE",
+        "MODEL #",
+        "FD11",
+        "6203-22-J/C3",
+        "INSUL",
+        "F",
+        "PH 3",
+        "MAX AMB",
+        "40 °C",
+        "C",
+        "ID#",
+        "Z 03 7689115-0061 M 0014",
+        "HZ",
+        "60 HP",
+        "1.50",
+        "RPM 1755",
+        "HZ",
+        "50 HP",
+        "1.50",
+        "RPM 1435",
+        "SF",
+        "01.25",
+        "DESIGN B",
+        "CODE M",
+        "SF",
+        "01.00",
+        "DESIGN B",
+        "CODE J",
+        "GUARANTEED EFFICIENCY",
+        "84.0",
+        "MAX PF",
+        ".90",
+        "GUARANTEED EFFICIENCY"
+      ]
+    },
+    "rawText": [
+      "CATALOG #",
+      "U32P2DC",
+      "SHAFT END BRG",
+      "6205-22-J/C3",
+      "FR",
+      "145TC",
+      "TYPE",
+      "UTE",
+      "MODEL #",
+      "FD11",
+      "6203-22-J/C3",
+      "INSUL",
+      "F",
+      "PH 3",
+      "MAX AMB",
+      "40 °C",
+      "C",
+      "ID#",
+      "Z 03 7689115-0061 M 0014",
+      "HZ",
+      "60 HP",
+      "1.50",
+      "RPM 1755",
+      "HZ",
+      "50 HP",
+      "1.50",
+      "RPM 1435",
+      "SF",
+      "01.25",
+      "DESIGN B",
+      "CODE M",
+      "SF",
+      "01.00",
+      "DESIGN B",
+      "CODE J",
+      "GUARANTEED EFFICIENCY",
+      "84.0",
+      "MAX PF",
+      ".90",
+      "GUARANTEED EFFICIENCY"
+    ],
+    "values": {
+      "manufacturer": "NIDEC MOTOR CORPORATION",
+      "model": "FD11",
+      "catalogNumber": "6205-22-J/C3",
+      "equipmentType": "Inverter",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NIDEC MOTOR CORPORATION"
+        },
+        {
+          "field": "model",
+          "value": "FD11"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "6205-22-J/C3"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 8067
+  }
+}

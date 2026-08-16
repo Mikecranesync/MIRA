@@ -1,0 +1,122 @@
+{
+  "image": "c03r1_12.jpg",
+  "bytes": 120701,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Monitech",
+      "model": "MB550E",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "MB550E",
+        "Monitech"
+      ]
+    },
+    "rawText": [
+      "MB550E",
+      "Monitech"
+    ],
+    "values": {
+      "manufacturer": "Monitech",
+      "model": "MB550E",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Monitech"
+        },
+        {
+          "field": "model",
+          "value": "MB550E"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 11,
+        "cropBbox": {
+          "left": 243,
+          "top": 254,
+          "width": 847,
+          "height": 291
+        },
+        "imageWidth": 1527,
+        "imageHeight": 1081,
+        "cropRotationDeg": 180,
+        "ms": 1966
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2272,
+    "total_ms": 3566
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "DH485",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "power supply",
+      "confidence": 0.95,
+      "rawText": [
+        "Allen-Bradley",
+        "DH485",
+        "M855DE",
+        "TSM"
+      ]
+    },
+    "rawText": [
+      "Allen-Bradley",
+      "DH485",
+      "M855DE",
+      "TSM"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "DH485",
+      "catalogNumber": null,
+      "equipmentType": "power supply",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "DH485"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1755
+  }
+}

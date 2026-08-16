@@ -1,0 +1,204 @@
+{
+  "image": "c04r1_01.jpg",
+  "bytes": 62323,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "FANUC",
+      "model": "αIS 30/4000HV",
+      "catalogNumber": "A06B-0269-B200#0100",
+      "serialNumber": "C077B9912",
+      "equipmentType": "AC Servo Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "FANUC",
+        "AC Servo Motor",
+        "MODEL αIS 30/4000HV",
+        "SPEC. A06B-0269-B200#0100",
+        "No. C077B9912",
+        "DATE 2007. 07",
+        "FANUC LTD YAMANASHI, MADE IN JAPAN",
+        "OUTPUT 5.5 kW CONT.",
+        "VOLT 353 V",
+        "AMP(~) 9.3 A",
+        "AMP. INPUT(~) 400-480 V 50/60Hz",
+        "POWER FACTOR 98% WIND. CON. Y",
+        "INS. CLASS F",
+        "IP 67 3 PHASES",
+        "STALL TRQ. 30 Nm",
+        "AMP(~) 16 A",
+        "MANUAL No.",
+        "B-65262"
+      ]
+    },
+    "rawText": [
+      "FANUC",
+      "AC Servo Motor",
+      "MODEL αIS 30/4000HV",
+      "SPEC. A06B-0269-B200#0100",
+      "No. C077B9912",
+      "DATE 2007. 07",
+      "FANUC LTD YAMANASHI, MADE IN JAPAN",
+      "OUTPUT 5.5 kW CONT.",
+      "VOLT 353 V",
+      "AMP(~) 9.3 A",
+      "AMP. INPUT(~) 400-480 V 50/60Hz",
+      "POWER FACTOR 98% WIND. CON. Y",
+      "INS. CLASS F",
+      "IP 67 3 PHASES",
+      "STALL TRQ. 30 Nm",
+      "AMP(~) 16 A",
+      "MANUAL No.",
+      "B-65262"
+    ],
+    "values": {
+      "manufacturer": "FANUC",
+      "model": "αIS 30/4000HV",
+      "catalogNumber": "A06B-0269-B200#0100",
+      "equipmentType": "AC Servo Motor",
+      "serialNumber": "C077B9912",
+      "voltage": "400-480V",
+      "current": "9.3A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": "INS.Class F",
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FANUC"
+        },
+        {
+          "field": "model",
+          "value": "αIS 30/4000HV"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "A06B-0269-B200#0100"
+        },
+        {
+          "field": "serialNumber",
+          "value": "C077B9912"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC Servo Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 36,
+        "cropBbox": {
+          "left": 81,
+          "top": 175,
+          "width": 330,
+          "height": 339
+        },
+        "imageWidth": 480,
+        "imageHeight": 640,
+        "cropRotationDeg": 0,
+        "ms": 821
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1117,
+    "total_ms": 5983
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "FANUC",
+      "model": "αiS 30/4000HV",
+      "catalogNumber": "A06B-0269-B200#0100",
+      "serialNumber": "C077B9912",
+      "equipmentType": "AC Servo Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "FANUC",
+        "AC Servo Motor",
+        "MODEL αiS 30/4000HV",
+        "SPEC. A06B-0269-B200#0100",
+        "No. C077B9912",
+        "DATE 2007.07",
+        "FANUC LTD YAMANASHI MADE IN JAPAN",
+        "OUTPUT 5.5 kW CONT. IEC60034-1",
+        "VOLT 353 V",
+        "SPEED 3000 min-1",
+        "AMP. INPUT 9.3 A",
+        "FREQ 200 Hz",
+        "AMP. (Input) 400-480 V",
+        "POWER FACTOR 0.98",
+        "INS. CLASS F",
+        "IP 67 3. PHASES",
+        "STALL TRQ. 30 Nm AMP(Continuos) 16 A",
+        "Manual No. B-65262"
+      ]
+    },
+    "rawText": [
+      "FANUC",
+      "AC Servo Motor",
+      "MODEL αiS 30/4000HV",
+      "SPEC. A06B-0269-B200#0100",
+      "No. C077B9912",
+      "DATE 2007.07",
+      "FANUC LTD YAMANASHI MADE IN JAPAN",
+      "OUTPUT 5.5 kW CONT. IEC60034-1",
+      "VOLT 353 V",
+      "SPEED 3000 min-1",
+      "AMP. INPUT 9.3 A",
+      "FREQ 200 Hz",
+      "AMP. (Input) 400-480 V",
+      "POWER FACTOR 0.98",
+      "INS. CLASS F",
+      "IP 67 3. PHASES",
+      "STALL TRQ. 30 Nm AMP(Continuos) 16 A",
+      "Manual No. B-65262"
+    ],
+    "values": {
+      "manufacturer": "FANUC",
+      "model": "αiS 30/4000HV",
+      "catalogNumber": "A06B-0269-B200#0100",
+      "equipmentType": "AC Servo Motor",
+      "serialNumber": "C077B9912",
+      "voltage": "400-480V",
+      "current": "9.3A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": "INS.Class F",
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FANUC"
+        },
+        {
+          "field": "model",
+          "value": "αiS 30/4000HV"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "A06B-0269-B200#0100"
+        },
+        {
+          "field": "serialNumber",
+          "value": "C077B9912"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC Servo Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 5217
+  }
+}

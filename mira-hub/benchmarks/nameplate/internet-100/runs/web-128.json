@@ -1,0 +1,110 @@
+{
+  "image": "c07r1_10.jpg",
+  "bytes": 16215,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.3,
+      "rawText": [
+        "null"
+      ]
+    },
+    "rawText": [
+      "null"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 1,
+        "cropBbox": {
+          "left": 470,
+          "top": 272,
+          "width": 142,
+          "height": 144
+        },
+        "imageWidth": 786,
+        "imageHeight": 615,
+        "cropRotationDeg": 90,
+        "ms": 1433
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1535,
+    "total_ms": 2697
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SML",
+      "model": "OS18P6V07",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "proximity sensor",
+      "confidence": 0.95,
+      "rawText": [
+        "SML",
+        "OS18P6V07",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "SML",
+      "OS18P6V07",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "SML",
+      "model": "OS18P6V07",
+      "catalogNumber": null,
+      "equipmentType": "proximity sensor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SML"
+        },
+        {
+          "field": "model",
+          "value": "OS18P6V07"
+        }
+      ],
+      "needsReview": [
+        "equipmentType",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1203
+  }
+}

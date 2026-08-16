@@ -1,0 +1,148 @@
+{
+  "image": "c05r1_09.jpg",
+  "bytes": 414533,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SUMITOMO",
+      "model": "SM-CYCLO",
+      "catalogNumber": null,
+      "serialNumber": "A92828",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SUMITOMO",
+        "SM-CYCLO",
+        "A92828",
+        "MADE IN",
+        "USA"
+      ]
+    },
+    "rawText": [
+      "SUMITOMO",
+      "SM-CYCLO",
+      "A92828",
+      "MADE IN",
+      "USA"
+    ],
+    "values": {
+      "manufacturer": "SUMITOMO",
+      "model": "SM-CYCLO",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "A92828",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SUMITOMO"
+        },
+        {
+          "field": "model",
+          "value": "SM-CYCLO"
+        },
+        {
+          "field": "serialNumber",
+          "value": "A92828"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 15,
+        "cropBbox": {
+          "left": 172,
+          "top": 589,
+          "width": 1524,
+          "height": 851
+        },
+        "imageWidth": 1920,
+        "imageHeight": 1440,
+        "cropRotationDeg": 180,
+        "ms": 1864
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2937,
+    "total_ms": 5174
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Sumitomo",
+      "model": "SM-CYCLO",
+      "catalogNumber": null,
+      "serialNumber": "AW383215",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "SM-CYCLO",
+        "CHESAPEAKE, VIRGINIA",
+        "MODEL",
+        "MOTOR H.P.",
+        "OUTPUT R.P.M.",
+        "2415",
+        "S/NO.",
+        "AW383215",
+        "Sumitomo"
+      ]
+    },
+    "rawText": [
+      "SM-CYCLO",
+      "CHESAPEAKE, VIRGINIA",
+      "MODEL",
+      "MOTOR H.P.",
+      "OUTPUT R.P.M.",
+      "2415",
+      "S/NO.",
+      "AW383215",
+      "Sumitomo"
+    ],
+    "values": {
+      "manufacturer": "Sumitomo",
+      "model": "SM-CYCLO",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "AW383215",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Sumitomo"
+        },
+        {
+          "field": "model",
+          "value": "SM-CYCLO"
+        },
+        {
+          "field": "serialNumber",
+          "value": "AW383215"
+        },
+        {
+          "field": "equipmentType",
+          "value": "motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2125
+  }
+}

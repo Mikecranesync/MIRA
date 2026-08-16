@@ -1,0 +1,20 @@
+{
+  "sample_id": "web-018",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["curved_surface", "partially_obstructed", "frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Pepperl+Fuchs",
+    "model": "UB300-18GM",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "sensor",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "18-30 VDC", "unit": "VDC", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

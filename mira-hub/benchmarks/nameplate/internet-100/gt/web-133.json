@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-133",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "tiny_text", "small_in_scene", "low_contrast"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "2711-K5A2",
+    "catalogNumber": "2711-K5A2",
+    "serialNumber": "unknown",
+    "equipment_category": "hmi",
+    "specs": [
+      {"field": "series", "value_verbatim": "F", "unit": "", "confidence": "medium"},
+      {"field": "frn", "value_verbatim": "3.14", "unit": "", "confidence": "medium"},
+      {"field": "voltage", "value_verbatim": "100 - 240 VAC", "unit": "VAC", "confidence": "medium"},
+      {"field": "current", "value_verbatim": "0.25 - 0.15A", "unit": "A", "confidence": "low"},
+      {"field": "frequency", "value_verbatim": "50/60 HZ", "unit": "Hz", "confidence": "medium"},
+      {"field": "power_va", "value_verbatim": "36 VA", "unit": "VA", "confidence": "medium"}
+    ],
+    "marks": ["UL", "CSA", "CE"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

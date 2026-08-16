@@ -1,0 +1,24 @@
+{
+  "sample_id": "web-089",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["angled", "curved_surface", "small_in_scene", "tiny_text", "dirt", "scratched"],
+  "photo_gt": {
+    "manufacturer": "Copeland",
+    "model": "ZR57K3-TF5-930",
+    "catalogNumber": "unknown",
+    "serialNumber": "00DF3645L",
+    "equipment_category": "compressor",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "200-230", "unit": "V", "confidence": "medium"},
+      {"field": "voltage", "value_verbatim": "200-225", "unit": "V", "confidence": "medium"},
+      {"field": "frequency", "value_verbatim": "60", "unit": "Hz", "confidence": "low"},
+      {"field": "frequency", "value_verbatim": "50", "unit": "Hz", "confidence": "low"},
+      {"field": "locked_rotor_amps", "value_verbatim": "123.0", "unit": "A", "confidence": "low"}
+    ],
+    "marks": ["UL"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

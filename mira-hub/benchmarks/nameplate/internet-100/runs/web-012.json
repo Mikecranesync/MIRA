@@ -1,0 +1,11 @@
+{
+  "image": "c04r1_06.jpg",
+  "bytes": 252407,
+  "mime": "image/jpeg",
+  "improved": {
+    "error": "JSON Parse error: Unterminated string"
+  },
+  "baseline": {
+    "error": "JSON Parse error: Unterminated string"
+  }
+}

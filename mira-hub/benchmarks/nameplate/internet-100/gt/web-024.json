@@ -1,0 +1,34 @@
+{
+  "sample_id": "web-024",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "glare", "embossed", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "天津纵西牵引电机有限公司 (ZXTM)",
+    "model": "ZXAM1902A-4S",
+    "catalogNumber": "M000004779792",
+    "serialNumber": "ZX100046-10318",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "power_kw", "value_verbatim": "190 kW", "unit": "kW", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "573 V", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "230 A", "unit": "A", "confidence": "high"},
+      {"field": "poles", "value_verbatim": "4", "unit": "", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "61 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "200", "unit": "", "confidence": "medium"},
+      {"field": "material_no_secondary", "value_verbatim": "F011C03", "unit": "", "confidence": "medium"},
+      {"field": "rpm", "value_verbatim": "1800 r/min", "unit": "r/min", "confidence": "high"},
+      {"field": "max_rpm", "value_verbatim": "4350 r/min", "unit": "r/min", "confidence": "medium"},
+      {"field": "connection", "value_verbatim": "Y", "unit": "", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "S1", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP23", "unit": "", "confidence": "high"},
+      {"field": "weight", "value_verbatim": "540±2% kg", "unit": "kg", "confidence": "medium"},
+      {"field": "standard", "value_verbatim": "IEC60349-2", "unit": "", "confidence": "high"},
+      {"field": "mfg_date", "value_verbatim": "2025年7月", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

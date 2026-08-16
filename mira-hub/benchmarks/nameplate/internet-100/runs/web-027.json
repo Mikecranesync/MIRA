@@ -1,0 +1,128 @@
+{
+  "image": "c03r1_04.jpg",
+  "bytes": 64865,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "000000000000",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS",
+        "000000000000"
+      ]
+    },
+    "rawText": [
+      "SIEMENS",
+      "000000000000"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "000000000000",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "serialNumber",
+          "value": "000000000000"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 3,
+        "cropBbox": {
+          "left": 60,
+          "top": 213,
+          "width": 139,
+          "height": 172
+        },
+        "imageWidth": 471,
+        "imageHeight": 600,
+        "cropRotationDeg": 270,
+        "ms": 1169
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 7850,
+    "total_ms": 9385
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "SIMATIC ET 200S",
+      "catalogNumber": "6E7400-0AA0",
+      "serialNumber": null,
+      "equipmentType": "I/O module",
+      "confidence": 0.95,
+      "rawText": [
+        "SIMATIC ET 200S",
+        "6E7400-0AA0",
+        "1000000000",
+        "CE",
+        "SIMATIC",
+        "ET 200S"
+      ]
+    },
+    "rawText": [
+      "SIMATIC ET 200S",
+      "6E7400-0AA0",
+      "1000000000",
+      "CE",
+      "SIMATIC",
+      "ET 200S"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "SIMATIC ET 200S",
+      "catalogNumber": "6E7400-0AA0",
+      "equipmentType": "I/O module",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "SIMATIC ET 200S"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "6E7400-0AA0"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2076
+  }
+}

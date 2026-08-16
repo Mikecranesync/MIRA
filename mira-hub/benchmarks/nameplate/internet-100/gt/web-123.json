@@ -1,0 +1,18 @@
+{
+  "sample_id": "web-123",
+  "usable": false,
+  "exclusion_reason": "The FANUC ID label is roughly 100 px wide in a 480x640 photo, at a steep oblique angle with washed-out contrast; even at 8x magnification no character of the model/spec text is legible, so no photo-visible ground truth can be established.",
+  "difficulty": "hard",
+  "conditions": ["angled", "low_resolution", "small_in_scene", "tiny_text", "glare"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "servo_motor",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

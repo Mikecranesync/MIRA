@@ -1,0 +1,166 @@
+{
+  "image": "c09r1_06.webp",
+  "bytes": 50112,
+  "mime": "image/webp",
+  "improved": {
+    "candidate": {
+      "manufacturer": "MANCHESTER TANK",
+      "model": "MAWP200",
+      "catalogNumber": "MDMT-20FC",
+      "serialNumber": "E7400 0C 200 PSI",
+      "equipmentType": "tank",
+      "confidence": 0.95,
+      "rawText": [
+        "NAT'L BD921773",
+        "CERTIFIED BY",
+        "MANCHESTER-MO",
+        "W",
+        "RT-NO MAWP200",
+        "CAT# 301217",
+        "CRN E7400 0C 200 PSI",
+        "SH 181",
+        "HD 149",
+        "GAL 120",
+        "32198636",
+        "YR 1999",
+        "21 SE"
+      ]
+    },
+    "rawText": [
+      "NAT'L BD921773",
+      "CERTIFIED BY",
+      "MANCHESTER-MO",
+      "W",
+      "RT-NO MAWP200",
+      "CAT# 301217",
+      "CRN E7400 0C 200 PSI",
+      "SH 181",
+      "HD 149",
+      "GAL 120",
+      "32198636",
+      "YR 1999",
+      "21 SE"
+    ],
+    "values": {
+      "manufacturer": "MANCHESTER TANK",
+      "model": "MAWP200",
+      "catalogNumber": "MDMT-20FC",
+      "equipmentType": "tank",
+      "serialNumber": "E7400 0C 200 PSI",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "MAWP200"
+        },
+        {
+          "field": "serialNumber",
+          "value": "E7400 0C 200 PSI"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "catalogNumber",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 26,
+        "cropBbox": {
+          "left": 106,
+          "top": 178,
+          "width": 644,
+          "height": 822
+        },
+        "imageWidth": 750,
+        "imageHeight": 1000,
+        "cropRotationDeg": 0,
+        "ms": 2105
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2433,
+    "total_ms": 5819
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Manchester-MO",
+      "model": "MAWP200",
+      "catalogNumber": "MDMT-20FC 200 PSI",
+      "serialNumber": "301217",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "NAT'L BD921773",
+        "CERTIFIED BY",
+        "W",
+        "MAWP200",
+        "CAT-#301217 MDMT-20FC 200 PSI",
+        "CRN E7400.2C YR 1999",
+        "SH",
+        "181",
+        "HD",
+        "149 GAL 120",
+        "32498636"
+      ]
+    },
+    "rawText": [
+      "NAT'L BD921773",
+      "CERTIFIED BY",
+      "W",
+      "MAWP200",
+      "CAT-#301217 MDMT-20FC 200 PSI",
+      "CRN E7400.2C YR 1999",
+      "SH",
+      "181",
+      "HD",
+      "149 GAL 120",
+      "32498636"
+    ],
+    "values": {
+      "manufacturer": "Manchester-MO",
+      "model": "MAWP200",
+      "catalogNumber": "MDMT-20FC 200 PSI",
+      "equipmentType": null,
+      "serialNumber": "301217",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "MAWP200"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "MDMT-20FC 200 PSI"
+        },
+        {
+          "field": "serialNumber",
+          "value": "301217"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2952
+  }
+}

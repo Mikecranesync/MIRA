@@ -1,0 +1,30 @@
+{
+  "sample_id": "web-029",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "faded", "low_contrast", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Loher GmbH Elektromotorenwerke Ruhstorf / Rott",
+    "model": "A 160 LA - V6/4",
+    "catalogNumber": "unknown",
+    "serialNumber": "8 253 379",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "Y/Y 380 V", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "10 / 28 A", "unit": "A", "confidence": "high"},
+      {"field": "power_kw", "value_verbatim": "4,8 / 14 kW", "unit": "kW", "confidence": "medium"},
+      {"field": "power_factor", "value_verbatim": "cos φ 0,87/0,88", "unit": "", "confidence": "medium"},
+      {"field": "rpm", "value_verbatim": "965 / 1460 U/min", "unit": "U/min", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "rotor", "value_verbatim": "Läufer HS 4", "unit": "", "confidence": "medium"},
+      {"field": "insulation", "value_verbatim": "Isol.-Kl. B", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP 44", "unit": "", "confidence": "high"},
+      {"field": "standard", "value_verbatim": "VDE 0530", "unit": "", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3~", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

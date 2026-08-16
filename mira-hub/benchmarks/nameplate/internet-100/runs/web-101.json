@@ -1,0 +1,192 @@
+{
+  "image": "c03r1_08.jpg",
+  "bytes": 110490,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "OMRON",
+      "model": "CJ1M-CPU12",
+      "catalogNumber": null,
+      "serialNumber": "N1676",
+      "equipmentType": "CONTROLLER",
+      "confidence": 0.95,
+      "rawText": [
+        "OMRON",
+        "SYSMAC",
+        "CJ1M",
+        "ERRA/FLAM",
+        "COMPATIBLE",
+        "CONTROLLER",
+        "CPU12",
+        "RUN",
+        "ERRA/FLAM",
+        "PRPHL",
+        "COMUN",
+        "Backup",
+        "OPEN",
+        "SW-Setting",
+        "BATTERY",
+        "CPU1M-CPU12",
+        "N1676"
+      ]
+    },
+    "rawText": [
+      "OMRON",
+      "SYSMAC",
+      "CJ1M",
+      "ERRA/FLAM",
+      "COMPATIBLE",
+      "CONTROLLER",
+      "CPU12",
+      "RUN",
+      "ERRA/FLAM",
+      "PRPHL",
+      "COMUN",
+      "Backup",
+      "OPEN",
+      "SW-Setting",
+      "BATTERY",
+      "CPU1M-CPU12",
+      "N1676"
+    ],
+    "values": {
+      "manufacturer": "OMRON",
+      "model": "CJ1M-CPU12",
+      "catalogNumber": null,
+      "equipmentType": "CONTROLLER",
+      "serialNumber": "N1676",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "OMRON"
+        },
+        {
+          "field": "model",
+          "value": "CJ1M-CPU12"
+        },
+        {
+          "field": "serialNumber",
+          "value": "N1676"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CONTROLLER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 31,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 1000,
+          "height": 937
+        },
+        "imageWidth": 1000,
+        "imageHeight": 1000,
+        "cropRotationDeg": 0,
+        "ms": 2898
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3347,
+    "total_ms": 5782
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Omron",
+      "model": "CP12",
+      "catalogNumber": "CP12-CM-CPU12",
+      "serialNumber": "N1876",
+      "equipmentType": "Programmable Controller",
+      "confidence": 0.95,
+      "rawText": [
+        "Omron",
+        "SYSMAC",
+        "CPU12",
+        "PROGRAMMABLE",
+        "CONTROLLER",
+        "CPU12",
+        "CP12-CM-CPU12",
+        "RUN",
+        "ERR/ALM",
+        "PWR",
+        "BKMUP",
+        "OPEN",
+        "SW/SETTING",
+        "BATTERY",
+        "N1876"
+      ]
+    },
+    "rawText": [
+      "Omron",
+      "SYSMAC",
+      "CPU12",
+      "PROGRAMMABLE",
+      "CONTROLLER",
+      "CPU12",
+      "CP12-CM-CPU12",
+      "RUN",
+      "ERR/ALM",
+      "PWR",
+      "BKMUP",
+      "OPEN",
+      "SW/SETTING",
+      "BATTERY",
+      "N1876"
+    ],
+    "values": {
+      "manufacturer": "Omron",
+      "model": "CP12",
+      "catalogNumber": "CP12-CM-CPU12",
+      "equipmentType": "Programmable Controller",
+      "serialNumber": "N1876",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Omron"
+        },
+        {
+          "field": "model",
+          "value": "CP12"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "CP12-CM-CPU12"
+        },
+        {
+          "field": "serialNumber",
+          "value": "N1876"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Programmable Controller"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2518
+  }
+}

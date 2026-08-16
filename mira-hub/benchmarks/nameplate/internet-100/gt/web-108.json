@@ -1,0 +1,26 @@
+{
+  "sample_id": "web-108",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["frontal", "dirt", "corrosion", "faded", "embossed", "low_contrast"],
+  "photo_gt": {
+    "manufacturer": "AEG",
+    "model": "VDNW 22/6",
+    "catalogNumber": "unknown",
+    "serialNumber": "2660874",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "Y/Δ 220/380 V", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "4,5 2,58 A", "unit": "A", "confidence": "medium"},
+      {"field": "power_kw", "value_verbatim": "1,1 KW", "unit": "kW", "confidence": "high"},
+      {"field": "power_factor", "value_verbatim": "cos φ 0,78", "unit": "", "confidence": "medium"},
+      {"field": "rpm", "value_verbatim": "950 U p.min", "unit": "U/min", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50", "unit": "Hz", "confidence": "low"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null,
+  "notes": "Old stamped brass AEG plate on a heavily soiled machine: 'AEG | D Mot Nr. 2660874', 'Type VDNW 22/6', 'Y/Δ 220/380 V | 4,5 2,58 A', '1,1 KW | cosφ 0,78', '950 U p.min | 50'. European comma decimals (1,1 kW; 4,5/2,58 A; 0,78). The '50' after the rpm field is most plausibly the frequency in Hz but its field label is obscured, so confidence low. Lower rows of the plate are blank/obscured by grime; no certification marks discernible, marks_complete=false."
+}

@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-093",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "partially_obstructed", "low_contrast"],
+  "photo_gt": {
+    "manufacturer": "Delta Electronics, Inc.",
+    "model": "VFD004EL43A",
+    "catalogNumber": "unknown",
+    "serialNumber": "004EL43AW0190080",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "input_voltage", "value_verbatim": "3PH 380-480V", "unit": "V", "confidence": "high"},
+      {"field": "input_frequency", "value_verbatim": "50/60Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "input_current", "value_verbatim": "1.9A", "unit": "A", "confidence": "high"},
+      {"field": "output_voltage", "value_verbatim": "3PH 0-480V", "unit": "V", "confidence": "high"},
+      {"field": "output_current", "value_verbatim": "1.5A", "unit": "A", "confidence": "high"},
+      {"field": "output_capacity", "value_verbatim": "1.2KVA", "unit": "kVA", "confidence": "high"},
+      {"field": "power", "value_verbatim": "0.4kW/0.5HP", "unit": "kW/HP", "confidence": "high"},
+      {"field": "frequency_range", "value_verbatim": "0.1-600Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "version", "value_verbatim": "01.04", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["CE", "cUL", "C-Tick"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

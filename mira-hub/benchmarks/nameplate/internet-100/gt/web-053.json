@@ -1,0 +1,18 @@
+{
+  "sample_id": "web-053",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dirt", "partially_obstructed"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "ACS550-U1-124A-4",
+    "catalogNumber": "unknown",
+    "serialNumber": "2064901055",
+    "equipment_category": "vfd_drive",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

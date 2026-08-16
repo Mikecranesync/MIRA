@@ -1,0 +1,236 @@
+{
+  "image": "c06r1_06.jpg",
+  "bytes": 358206,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Eaton",
+      "model": "Digitrip 520M",
+      "catalogNumber": "SMLST",
+      "serialNumber": null,
+      "equipmentType": "Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "EATON",
+        "Digitrip 520M",
+        "SMLST",
+        "MDSX16",
+        "Magnum DSX",
+        "100 Volt Amps AC Power Circuit Breaker",
+        "3 Current Limiting",
+        "50/60 Hz",
+        "Interrupting Ratings in Amps",
+        "Requires Current Limiting",
+        "Abs. Trip",
+        "Interrupting",
+        "Short Delay",
+        "Max Volts",
+        "635",
+        "30,000 A",
+        "258",
+        "65,000 A",
+        "200,000 A",
+        "30,000 A",
+        "200,000 A",
+        "30,000 A",
+        "Accessories",
+        "OTS Bell Alarm",
+        "24 - 48 VDC",
+        "Aux Switches",
+        "64/6B",
+        "Q.O. RQ0011472",
+        "Date",
+        "Seq. 001",
+        "Code",
+        "0009",
+        "CAT # MDSX16W9A",
+        "MNML",
+        "CNNAX",
+        "CAT # MDSX16W9A",
+        "MNML",
+        "CNNAX",
+        "Installation and Operating Instructions",
+        "B 8C12060"
+      ]
+    },
+    "rawText": [
+      "EATON",
+      "Digitrip 520M",
+      "SMLST",
+      "MDSX16",
+      "Magnum DSX",
+      "100 Volt Amps AC Power Circuit Breaker",
+      "3 Current Limiting",
+      "50/60 Hz",
+      "Interrupting Ratings in Amps",
+      "Requires Current Limiting",
+      "Abs. Trip",
+      "Interrupting",
+      "Short Delay",
+      "Max Volts",
+      "635",
+      "30,000 A",
+      "258",
+      "65,000 A",
+      "200,000 A",
+      "30,000 A",
+      "200,000 A",
+      "30,000 A",
+      "Accessories",
+      "OTS Bell Alarm",
+      "24 - 48 VDC",
+      "Aux Switches",
+      "64/6B",
+      "Q.O. RQ0011472",
+      "Date",
+      "Seq. 001",
+      "Code",
+      "0009",
+      "CAT # MDSX16W9A",
+      "MNML",
+      "CNNAX",
+      "CAT # MDSX16W9A",
+      "MNML",
+      "CNNAX",
+      "Installation and Operating Instructions",
+      "B 8C12060"
+    ],
+    "values": {
+      "manufacturer": "Eaton",
+      "model": "Digitrip 520M",
+      "catalogNumber": "SMLST",
+      "equipmentType": "Circuit Breaker",
+      "serialNumber": null,
+      "voltage": "24-48VDC",
+      "current": "30.000A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Eaton"
+        },
+        {
+          "field": "model",
+          "value": "Digitrip 520M"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "SMLST"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Circuit Breaker"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 80,
+        "cropBbox": {
+          "left": 228,
+          "top": 155,
+          "width": 811,
+          "height": 1059
+        },
+        "imageWidth": 1280,
+        "imageHeight": 1251,
+        "cropRotationDeg": 0,
+        "ms": 4576
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 6291,
+    "total_ms": 13729
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Eaton",
+      "model": "Digitrip 520M",
+      "catalogNumber": "Magnum DSX",
+      "serialNumber": "MDSX16",
+      "equipmentType": "Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "EATON",
+        "Digitrip 520M",
+        "Magnum DSX",
+        "MDSX16",
+        "3 Pole",
+        "1600 Amp Frame",
+        "3 Pole",
+        "50/60 Hz",
+        "Interrupting Rating Amps",
+        "30,000",
+        "Short Delay",
+        "65,000 A",
+        "30,000 A",
+        "200,000 A",
+        "30,000 A"
+      ]
+    },
+    "rawText": [
+      "EATON",
+      "Digitrip 520M",
+      "Magnum DSX",
+      "MDSX16",
+      "3 Pole",
+      "1600 Amp Frame",
+      "3 Pole",
+      "50/60 Hz",
+      "Interrupting Rating Amps",
+      "30,000",
+      "Short Delay",
+      "65,000 A",
+      "30,000 A",
+      "200,000 A",
+      "30,000 A"
+    ],
+    "values": {
+      "manufacturer": "Eaton",
+      "model": "Digitrip 520M",
+      "catalogNumber": "Magnum DSX",
+      "equipmentType": "Circuit Breaker",
+      "serialNumber": "MDSX16",
+      "voltage": null,
+      "current": "65.000A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Eaton"
+        },
+        {
+          "field": "model",
+          "value": "Digitrip 520M"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "Magnum DSX"
+        },
+        {
+          "field": "serialNumber",
+          "value": "MDSX16"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 3739
+  }
+}

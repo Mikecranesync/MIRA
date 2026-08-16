@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-083",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["angled", "rotated_90", "tiny_text", "low_resolution"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "LC1 D09 01",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "contactor",
+    "specs": [
+      {"field": "current", "value_verbatim": "Continuous current : 20 A", "unit": "A", "confidence": "medium"},
+      {"field": "aux_contact_rating", "value_verbatim": "Aux. Cont. A 600 P 600", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["CE", "UL"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

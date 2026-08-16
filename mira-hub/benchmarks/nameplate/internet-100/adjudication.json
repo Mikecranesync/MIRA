@@ -1,0 +1,2705 @@
+{
+  "adjudicatedAt": "2026-08-16",
+  "findings": [
+    {
+      "sample_id": "web-002",
+      "field": "model",
+      "expected": "unknown (plate has no model line; '1770' is the RPM row)",
+      "predicted": "1270",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The bilingual TR/MIN-RPM row reads '1770' on the plate; the pipeline misread it as '1270' and promoted that RPM value as the model identity."
+    },
+    {
+      "sample_id": "web-002",
+      "field": "serialNumber",
+      "expected": "unknown (SERIAL NUMBER row reads 'G6082DW07W1410…', partly obscured)",
+      "predicted": "6309-22 J/C3",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Drive-end bearing '6309-2Z-J/C3' ('2Z' misread as '22') was promoted as serialNumber; the real serial row was OCR'd only as garbage ('6408%0W07W 14.10') in rawText."
+    },
+    {
+      "sample_id": "web-002",
+      "field": "manufacturer",
+      "expected": "U.S. Electrical Motors (Division of Emerson Electric)",
+      "predicted": "EMERSON ELECTRIC MOTORS",
+      "category": "other",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Brand conflated with the parent from the 'DIVISION OF EMERSON ELECTRIC' line ('U.S. ELECTRICAL' is in its own rawText); mitigated — manufacturer was routed to needsReview, not promoted."
+    },
+    {
+      "sample_id": "web-003",
+      "field": "model",
+      "expected": "ImperviTRAN (GT treats the series name as model)",
+      "predicted": "B5K0BTZ13JXH",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Both strings are verbatim on the labels ('ImperviTRAN' series + 'CAT. NO. B5K0BTZ13JXH'); for Micron control transformers the catalog code IS the orderable model, so this is a model-vs-series taxonomy disagreement, not a misread."
+    },
+    {
+      "sample_id": "web-003",
+      "field": "marks",
+      "expected": "UL, CSA (both clearly visible; GT marks_complete=true)",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "UL ('LISTED 702X') and CSA logos are legible on the lower label — rawText even contains 'LISTED 702X' — but values.marks was returned null; a miss, not a wrong claim."
+    },
+    {
+      "sample_id": "web-004",
+      "field": "catalogNumber",
+      "expected": "unknown (CPU order number not visible in photo per oem_gt)",
+      "predicted": "MC 951 / 128 kB / 5V FLASH",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The plugged-in memory card's descriptor text was promoted as the CPU's catalogNumber — the card's label, not an identity of the CPU315-2 DP."
+    },
+    {
+      "sample_id": "web-004",
+      "field": "serialNumber",
+      "expected": "unknown (visible string is the memory card part number '6ES7 951-0KG00-0AA0')",
+      "predicted": "95J0C00-0AA0",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Garbled fragment of the memory-card order number '6ES7 951-0KG00-0AA0' ('951-0KG00' → '95J0C00', '6ES7' dropped) promoted as serialNumber — both misread and misassigned (it is a part number, not a serial)."
+    },
+    {
+      "sample_id": "web-004",
+      "field": "voltage",
+      "expected": "(absent from GT)",
+      "predicted": "5V",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'5V FLASH' is genuinely printed on the memory card, so the suspect-claim flag dissolves per the printed-value rule; caveat: it is the card's flash voltage, not a supply rating of the CPU."
+    },
+    {
+      "sample_id": "web-004",
+      "field": "model",
+      "expected": "SIMATIC S7-300 CPU315-2 DP",
+      "predicted": "CPU315-2 DP",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'SIEMENS', 'CPU315-2 DP', and 'SIMATIC S7-300' are all printed; the promoted value is the exact CPU designation and a substring of GT — normalization mismatch, not an error."
+    },
+    {
+      "sample_id": "web-005",
+      "field": "model",
+      "expected": "unknown (plate has no model; 'MAWP200 PSI@650F' is the pressure rating line)",
+      "predicted": "MAWP200",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The MAWP 200 PSI rating was promoted as the model identity (rawText line 'RT-NO MAWP200' merged the RT radiography field with the rating)."
+    },
+    {
+      "sample_id": "web-005",
+      "field": "serialNumber",
+      "expected": "32498636 (bottom stamped row, clearly legible)",
+      "predicted": "E7400 0C 200 PSI",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The CRN 'E7400.2C' ('.2C' misread as '0C') plus the 200 PSI rating was promoted as serialNumber; the true serial was OCR'd into rawText but with a substitution ('32198636' for '32498636') and never assigned."
+    },
+    {
+      "sample_id": "web-005",
+      "field": "catalogNumber",
+      "expected": "301217 ('CAT#301217' on the plate, correctly present in rawText)",
+      "predicted": "MDMT-20FC",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The MDMT temperature rating ('MDMT-20F@ 200 PSI', '@' misread as 'C') was assigned to catalogNumber even though 'CAT# 301217' was cleanly OCR'd; mitigated — catalogNumber was routed to needsReview, not promoted."
+    },
+    {
+      "sample_id": "web-005",
+      "field": "rawText shell/head thickness",
+      "expected": "SH .184 / HD .149 (leading decimals printed on plate)",
+      "predicted": "SH 181 / HD 149",
+      "category": "decimal_dropped",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Pressure-vessel shell thickness lost its decimal and a digit ('.184' → '181') and head thickness lost its decimal ('.149' → '149') in the emitted rawText; not promoted to any values field, but presented as read."
+    },
+    {
+      "sample_id": "web-006",
+      "field": "model",
+      "expected": "unknown (J56Z is the FRAME field)",
+      "predicted": "J56Z",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The frame size 'FRAME J56Z' (correctly captured as such in rawText) was promoted as the motor's model identity; the plate carries no model."
+    },
+    {
+      "sample_id": "web-006",
+      "field": "serialNumber",
+      "expected": "J10 (plate 'SER NO J10'; baseline leg and GT agree)",
+      "predicted": "J110",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Improved leg inserted an extra '1' ('J10' → 'J110') and promoted it; the image shows 'J10' and the baseline leg read it correctly."
+    },
+    {
+      "sample_id": "web-007",
+      "field": "model",
+      "expected": "5K444AK456 ('MODEL 5K444AK456' on plate)",
+      "predicted": "5K4A4M456",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "On the faded embossed plate '444AK' was garbled to '4A4M' and the wrong catalog identity was promoted; baseline's 'A0DEL5K444AK456' shows the correct core string was recoverable."
+    },
+    {
+      "sample_id": "web-007",
+      "field": "serialNumber",
+      "expected": "unknown per GT (annotator could not read the SER NO row)",
+      "predicted": "EN 2120",
+      "category": "insufficient_ground_truth",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The 'SER NO' row shows a faint '…N 2120' in the image and BOTH legs independently read 'EN 2120' — the value appears genuinely printed and GT simply marked it unknown; the promotion mismatch is a GT-readability gap, not a hallucination."
+    },
+    {
+      "sample_id": "web-007",
+      "field": "rawText FL RPM",
+      "expected": "880 ('FL RPM 880' per GT and legible in image)",
+      "predicted": "380",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'FL RPM 380' in the emitted rawText substitutes '3' for '8' on a safety-relevant motor speed (both legs made the same misread); the value was never extracted into values.rpm, so exposure is rawText-only."
+    },
+    {
+      "sample_id": "web-010",
+      "field": "current",
+      "expected": "FL AMPS 4.50-4.30/2.10 (SF AMPS 5.0/2.5)",
+      "predicted": "030A",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "values.current='030A' is the plate's CSA compliance line 'CC 030A' mis-mapped into the amps field; the real full-load amps 4.50-4.30/2.10 were read in rawText but never assigned."
+    },
+    {
+      "sample_id": "web-010",
+      "field": "serialNumber",
+      "expected": "Z 03 7689115-0061 M 0014",
+      "predicted": "6203-2Z-J/C3",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "values.serialNumber holds the OPP END BRG bearing number '6203-2Z-J/C3' even though rawText correctly captured 'ID# Z 03 7689115-0061 M 0014'; mitigated by being routed to needsReview, not promoted."
+    },
+    {
+      "sample_id": "web-010",
+      "field": "equipmentType",
+      "expected": "ac_motor",
+      "predicted": "Inverter",
+      "category": "other",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "PROMOTED 'Inverter' for a plainly labeled AC induction motor — misled by the plate text 'INVERTER SUITABLE 20:1 VT & 4:1 CT' (inverter-duty rating, not device type); incorrect promotion."
+    },
+    {
+      "sample_id": "web-010",
+      "field": "service_factor_60hz",
+      "expected": "SF 01.25",
+      "predicted": "SF 0.125",
+      "category": "decimal_dropped",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "rawText line 'SF 0.125' is a 10x decimal shift of the plate's 'SF 01.25'; confined to rawText (SF is not a values field) but presented as read."
+    },
+    {
+      "sample_id": "web-010",
+      "field": "rawText",
+      "expected": "(no such text on plate)",
+      "predicted": "BIO TO BIO",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'BIO TO BIO' appears nowhere on the plate (likely garble of the connection-diagram block '344136 LINE'); 'ENERGY STAR' is partially real — an 'ENERGY' wordmark sits above the cULus logo, 'STAR' unverifiable."
+    },
+    {
+      "sample_id": "web-010",
+      "field": "marks",
+      "expected": "CSA, cULus, CE",
+      "predicted": "UL, CE",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "'UL' vs GT 'cULus' is a normalization difference (the plate mark IS c-UL-us E51486); the CSA 191252 mark is genuinely omitted — an omission, not a hallucination."
+    },
+    {
+      "sample_id": "web-011",
+      "field": "serialNumber",
+      "expected": "80210364",
+      "predicted": "30210364",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate clearly reads 'SERIAL NO. 80210364'; improved leg read leading 8 as 3 and PROMOTED '30210364' — incorrect promotion of a corrupted identity field (baseline made the same misread)."
+    },
+    {
+      "sample_id": "web-011",
+      "field": "model",
+      "expected": "IK",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "rawText correctly captured 'TYPE' / 'IK' but values.model stayed null; safe omission, extraction failed to map TYPE->model."
+    },
+    {
+      "sample_id": "web-011",
+      "field": "catalogNumber",
+      "expected": "71-3038",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "'71-3038' is in the improved rawText and the baseline mapped it to catalogNumber, but the improved values left catalogNumber null; safe omission."
+    },
+    {
+      "sample_id": "web-011",
+      "field": "voltage",
+      "expected": "200 200 220 (GT confidence: low)",
+      "predicted": "200 200 210 (rawText only)",
+      "category": "insufficient_ground_truth",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The third VOLTS value's middle digit is glare-obscured on the plate ('2?0'); GT itself marks it low confidence, so 210-vs-220 is unadjudicable; values.voltage was null anyway."
+    },
+    {
+      "sample_id": "web-012",
+      "field": "leg",
+      "expected": "any output (GT: Kollmorgen GOLDLINE, all fields unknown)",
+      "predicted": "error: JSON Parse error: Unterminated string",
+      "category": "provider_error",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Improved leg (and baseline) died with a truncated/unterminated-JSON provider response, emitting no values — a full leg error but a safe failure; the source photo is a distant angled shot of a Kollmorgen GOLDLINE servo whose label is illegible at this resolution (GT lists every field unknown), so even a healthy leg had almost nothing recoverable."
+    },
+    {
+      "sample_id": "web-013",
+      "field": "model",
+      "expected": "YVD184TTDBD6030BA M",
+      "predicted": "Globetrotter",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "PROMOTED the product-line trade name 'Globetrotter' as model while the plate's actual 'MODEL YVD184TTDBD6030BA M' line was shunted (corrupted) into serialNumber."
+    },
+    {
+      "sample_id": "web-013",
+      "field": "serialNumber",
+      "expected": "unknown (plate serial line reads 'C-MA01A092-…', partially obstructed)",
+      "predicted": "YVD164TTDB60306BA",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "PROMOTED a doubly-wrong value: it is the MODEL string mis-assigned to serialNumber AND character-corrupted (184->164, 'TTDBD6030'->'TTDB60306'); the candidate rawText's 'Serial No. CAMB248289' is likewise a garble of the barely-legible 'C-MA01A092-…' line that GT marks unknown."
+    },
+    {
+      "sample_id": "web-016",
+      "field": "catalogNumber",
+      "expected": "22F-A4P2N103",
+      "predicted": "22F-4A4P2N103",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate clearly reads 'Cat No. 22F-A4P2N103 SERIES A'; improved leg inserted a spurious '4' ('22F-4A4P2N103') and PROMOTED it — incorrect promotion of a wrong catalog identity (baseline made the identical insertion)."
+    },
+    {
+      "sample_id": "web-016",
+      "field": "model",
+      "expected": "unknown (plate has no model field)",
+      "predicted": "22F-4A4P2N103 SERIES A",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "PROMOTED the catalog string + series as model, carrying the same inserted-'4' corruption; plate carries no separate model designation."
+    },
+    {
+      "sample_id": "web-016",
+      "field": "current",
+      "expected": "Continuous Amps: 4.2 (Short Circuit Current: 100kA)",
+      "predicted": "100A",
+      "category": "unit_error",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "values.current='100A' is the 100kA short-circuit rating with the 'k' dropped and mis-assigned as the drive's current; the real continuous 4.2 A was lost entirely (rawText even says 'Continous Current: 100A')."
+    },
+    {
+      "sample_id": "web-016",
+      "field": "short_circuit_current",
+      "expected": "100kA",
+      "predicted": "1000A (rawText)",
+      "category": "unit_error",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "rawText 'Short Circuit Current: 1000A' vs plate '100kA' — a 100x understatement of SCCR presented as read."
+    },
+    {
+      "sample_id": "web-016",
+      "field": "terminal_torque",
+      "expected": "1.47 Nm (13.02 in-lbs.)",
+      "predicted": "14.7 Nm (13.2 in-lbs) (rawText)",
+      "category": "decimal_dropped",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "rawText torque is a 10x decimal shift (1.47->14.7 Nm); the parenthetical 13.02->13.2 is also corrupted, so the two figures are no longer even mutually consistent."
+    },
+    {
+      "sample_id": "web-016",
+      "field": "ambient",
+      "expected": "rated -10°C to 50°C Ambient",
+      "predicted": "rated to 40°C - 101°C Ambient (rawText)",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "rawText invented an ambient range '40°C - 101°C' from the plate's '-10°C to 50°C'; values.ambient was left null so the wrong range lives only in rawText, but it is presented as read."
+    },
+    {
+      "sample_id": "web-016",
+      "field": "serialNumber",
+      "expected": "FA4P2N0W1440023",
+      "predicted": "null (rawText: SN:FAP2N103W440023)",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "values.serialNumber=null (safe), but the rawText serial 'FAP2N103W440023' is a corruption of the plate's 'FA4P2N0W1440023' (dropped '4', spliced-in catalog fragment '103')."
+    },
+    {
+      "sample_id": "web-017",
+      "field": "current",
+      "expected": "5.3 A",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The faint '5.3' in the A column is printed (baseline captured it) but the improved rawText missed it and values.current stayed null — a safe omission."
+    },
+    {
+      "sample_id": "web-017",
+      "field": "identity_fields",
+      "expected": "YASKAWA ELECTRIC / USAREM-05AE2K / R005FG 582 / AC SERVO MOTOR",
+      "predicted": "identical",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "All four promoted fields match the plate and GT verbatim (500 W, 1.59 N·m, 3000 r/min also match); nothing else on this sample is a real defect — note the flag list's image path (c09r1_01.jpg, a Copeland compressor) is a mismap, the run actually processed c04r1_10.jpg per the run file, which is the plate GT describes."
+    },
+    {
+      "sample_id": "web-018",
+      "field": "model",
+      "expected": "UB300-18GM",
+      "predicted": "UB300-18GN",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate (c07r1_11.jpg) prints 'UB300-18GM...' with the M's final stroke lost at the right image edge, which the pipeline read as 'N' and promoted; P+F's UB300 line has GM variants only (seller listing ub300-18gm-e22-v1), so GT is right and the promoted 'UB300-18GN' is a wrong model identity."
+    },
+    {
+      "sample_id": "web-018",
+      "field": "catalogNumber",
+      "expected": "unknown (Part No. truncated at image edge; actual part no. 36193 per source listing)",
+      "predicted": "3",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The plate shows 'Part No. 3...' cut off by the photo edge; the pipeline promoted the single visible digit '3' as catalogNumber — a visibly truncated fragment presented as a complete identity (GT says unknown, so the scorer never flagged it; adjudicator addition)."
+    },
+    {
+      "sample_id": "web-019",
+      "field": "model",
+      "expected": "EA7-T8C",
+      "predicted": "E3C-BC17204T",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Zoomed label reads 'EA7-T8C+11Y27B017' (model+serial on the barcode line); the pipeline promoted the garbled mangle 'E3C-BC17204T' — a fabricated-looking recombination of those characters — as model."
+    },
+    {
+      "sample_id": "web-019",
+      "field": "voltage",
+      "expected": "24V DC (label: 'INPUT 24V= 15W')",
+      "predicted": "100-240VAC",
+      "category": "hallucination",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The label prints only 'INPUT 24V= 15W'; '100-240VAC, 50/60Hz' (plus rawText '12VDC ±10%'/'24VDC ±10%') is nowhere on this 24VDC-only C-more panel and reads as confabulated typical-PSU text — a dangerous line-voltage claim for a 24VDC device."
+    },
+    {
+      "sample_id": "web-019",
+      "field": "current",
+      "expected": "(not printed; GT has no current spec)",
+      "predicted": "10A",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "No legible '10A' exists anywhere on the label (input is 24V DC 15W ≈ 0.6A); the value was invented alongside the 100-240VAC confabulation."
+    },
+    {
+      "sample_id": "web-019",
+      "field": "equipmentType",
+      "expected": "hmi (C-more EA7 touch panel)",
+      "predicted": "PLC",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The device is an HMI touch panel; 'PLC' was inferred (likely from the 'Ethernet PC.PLC' port caption) and promoted, a wrong classification not printed on the label."
+    },
+    {
+      "sample_id": "web-019",
+      "field": "marks",
+      "expected": "cULus, CE",
+      "predicted": "UL, CE",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The scorer's hallucinated_marks=['UL'] dissolves under inspection: the plate bears the cULus LISTED mark (and prints 'LISTED'), so 'UL' is a normalization/abbreviation mismatch against GT's 'cULus', not an invented mark."
+    },
+    {
+      "sample_id": "web-020",
+      "field": "pressure/coil_voltage/coil_power/ip_rating/marks",
+      "expected": "1.2-8bar; 24V DC; 1.28W; IP00/65; cULus",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "All three identity fields (FESTO / CPE14-M1BH-5J / 196939) are correct and correctly promoted; the specs are printed but rotated 90° on the valve body label ('1.2-8bar', cULus) and on the small coil label ('MSZE-3-24 DC ... 1.28W 24V DC IP00/65'), and the 261x190 detector crop (regionCount=2) dropped them — the leg returned nulls, failing safely."
+    },
+    {
+      "sample_id": "web-021",
+      "field": "serialNumber (+ patent_no spec)",
+      "expected": "1643-30-1045 (BENCH NO.) and D-118930 (PATENT NO.)",
+      "predicted": "null",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Both numbers are legible on the badge's lower tab ('PATENT NO. D-118930' / 'BENCH NO. 1643-30-1045'), but the detector crop (1468,445,721x820 of 4160x2340) ends at y=1265 while the tab text sits around y≈1290-1620, so the region was cut off; the leg returned nulls (safe) — manufacturer/equipmentType promotions are fine."
+    },
+    {
+      "sample_id": "web-023",
+      "field": "serialNumber / catalogNumber",
+      "expected": "catalogNumber='285 090 07' (Id.Nr.); serialNumber=unknown (S.Nr. box cut off at plate edge)",
+      "predicted": "serialNumber='285 090 07 S' (promoted); catalogNumber=null",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The plate reads 'Id.Nr. 285 090 07' followed by a truncated 'S...' box (the start of the cut-off serial field); the pipeline merged the Id.Nr. value with that stray 'S', slotted it into serialNumber, and promoted it — the catalog/part number claimed as a serial number, while catalogNumber (readable) was left null."
+    },
+    {
+      "sample_id": "web-024",
+      "field": "model",
+      "expected": "ZXAM1902A-4S",
+      "predicted": "ZXA11902A-4S",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate 型号 clearly reads 'ZXAM1902A-4S'; the pipeline read the embossed 'M' as '1' and promoted 'ZXA11902A-4S' — wrong model identity."
+    },
+    {
+      "sample_id": "web-024",
+      "field": "manufacturer",
+      "expected": "天津纵西牵引电机有限公司",
+      "predicted": "天津西参电机有限公司",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate bottom line reads 天津纵西牵引电机有限公司; the pipeline dropped 纵/牵引 and invented 参, emitting 天津西参电机有限公司 — mitigated only by being routed to needsReview rather than promoted."
+    },
+    {
+      "sample_id": "web-024",
+      "field": "current",
+      "expected": "230 A (额定电流 230 A)",
+      "predicted": "额定功率: 250 (rawText)",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate prints 额定电流 230 A; the improved rawText emits '额定功率: 250' — a misread numeric (230→250) under a mislabeled field name, presented as read (scorer's wrong_numeric on current is correct)."
+    },
+    {
+      "sample_id": "web-024",
+      "field": "frequency",
+      "expected": "61 Hz",
+      "predicted": "额定频率: 60 (rawText)",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate reads 额定频率 61 Hz; rawText claims 60 — a plausibility-prior misread (60 Hz is the 'expected' value) presented as read; scorer only logged safe_miss because values.frequency doesn't exist, but the rawText claim is wrong."
+    },
+    {
+      "sample_id": "web-024",
+      "field": "ip_rating",
+      "expected": "IP23 (防护等级 IP23)",
+      "predicted": "IP保护等级: IP55 (rawText)",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate clearly prints 防护等级 IP23; rawText asserts IP55 — again the common-value prior substituting for the actual reading."
+    },
+    {
+      "sample_id": "web-024",
+      "field": "standard / insulation / duty / weight",
+      "expected": "IEC60349-2; 绝缘等级 200; 工作制 S1; 重量 540±2% kg",
+      "predicted": "标准编号: IEC60034-3; 绝缘等级: 1000; 工作制 SL; 进气: 50% (rawText)",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Cluster of confabulated rawText: 'IEC60034-3' (the generic motor standard swapped in for the plate's traction-motor IEC60349-2), insulation '1000' vs printed '200', duty 'SL' vs 'S1', and an invented field '进气: 50%' (nothing of the sort on the plate; likely garbled from 重量 540±2% kg)."
+    },
+    {
+      "sample_id": "web-024",
+      "field": "catalogNumber / serialNumber",
+      "expected": "M000004779792 (物料号) / ZX100046-10318 (出厂编号)",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Both are legible on the plate but returned null — safe omissions; note the leg ran with fallback_used=true (detector produced no crop on the 8.5MB photo, 18s detect, and the LLM read the original full frame), which likely drove the tiny-embossed-text misreads above."
+    },
+    {
+      "sample_id": "web-025",
+      "field": "catalogNumber",
+      "expected": "2S1F",
+      "predicted": "251F",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Zoomed crop of c06r1_13.jpg reads 'CAT.NO. 2S1F' and the manifest source page names the product 'square-d-2s1f-2kva'; both legs substituted S->5 and the improved leg promoted '251F'."
+    },
+    {
+      "sample_id": "web-025",
+      "field": "temperature_rise",
+      "expected": "115C",
+      "predicted": "1.15C TEMPERATURE RISE",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate prints '115C TEMPERATURE RISE' (standard Square D Type S 115degC rise); improved rawText inserted a decimal yielding '1.15C', a two-orders-of-magnitude wrong numeric presented as read; structured values carried no temp field."
+    },
+    {
+      "sample_id": "web-025",
+      "field": "image_mapping (apparatus)",
+      "expected": "c06r1_13.jpg per run+manifest",
+      "predicted": "c04r1_11.jpg per adjudicate input",
+      "category": "other",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The adjudication-input image paths are misassigned for all six samples (c04r1_11.jpg is a Yaskawa servo plate); run.json 'image' + manifest.json agree and were used — apparatus bug in the adjudicate input, not in the pipeline or GT."
+    },
+    {
+      "sample_id": "web-026",
+      "field": "model",
+      "expected": "FC-051PK75T4E20H3XXCXXXSXXX",
+      "predicted": "132F0018",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Pipeline promoted the P/N '132F0018' as model even though its own rawText holds the T/C type code ('T/C: FC-051PK75T4E20H3XXCXXXXXXX', with one dropped 'S'); catalogNumber was also correctly filled with 132F0018, so the model slot is a field-mapping error, not a misread."
+    },
+    {
+      "sample_id": "web-026",
+      "field": "input_voltage",
+      "expected": "3x380-480V",
+      "predicted": "3x390-480V (rawText only)",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Zoomed crop shows a smudged glyph readable as 390, but Danfoss FC-051 T4 plates print 3x380-480V (GT correct); both legs misread 8->9 in rawText; the structured values claimed only '480V', which is printed, so the wrong numeric lives in the OCR transcript."
+    },
+    {
+      "sample_id": "web-028",
+      "field": "current",
+      "expected": "DC 0.95A",
+      "predicted": "018A (values.current)",
+      "category": "hallucination",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'018A' appears nowhere on the plate; rawText correctly read 'DC 0.95A' and the scorer graded the spec from rawText as correct, MISSING this values-level wrong claim (both legs emit it — likely mangled from the model suffix '01BA')."
+    },
+    {
+      "sample_id": "web-028",
+      "field": "serialNumber",
+      "expected": "QY7 04414",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "'QY7' and '04414' are both present in rawText but were never assembled into serialNumber; safe null, GT readable."
+    },
+    {
+      "sample_id": "web-029",
+      "field": "power_kw",
+      "expected": "4,8 / 14 kW",
+      "predicted": "'4.8' + '14 kW' (rawText tokens)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Plate prints '4,8 / 14 kW' (German decimal comma); the OCR split the row into '4.8' and '14 kW' which are numerically identical to GT — the wrong_numeric verdict is a join/normalization failure in the scorer, not a pipeline misread; identity fields (Loher GmbH, A 160 LA, 8 253 379) all verified correct against the plate."
+    },
+    {
+      "sample_id": "web-029",
+      "field": "voltage",
+      "expected": "Y/Y 380 V",
+      "predicted": "null (rawText has '280')",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Plate clearly prints 'Y/Y 380 V'; improved rawText misread it as '280' but the structured values.voltage stayed null and nothing was promoted, so the leg failed safely on this field (scored safe_miss)."
+    },
+    {
+      "sample_id": "web-030",
+      "field": "overall",
+      "expected": "Parker / H22VXBG023C / 120 V / 145 PSIG (1000 kPa) MAX / 3710",
+      "predicted": "same",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Every improved-leg value matches the plate exactly (verified on c08r1_11.png); the only misses are safe omissions of series 'isys' and the CSA mark (visible but null, never misclaimed), and the 3/4 unit counter stems from the plate's merged '4.5 V A' line — no wrong claim exists on this sample."
+    },
+    {
+      "sample_id": "web-031",
+      "field": "model",
+      "expected": "3UA52 00-1K",
+      "predicted": "CRU1E 4222",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted 'CRU1E 4222' is a misread of the large stamped marking on the contactor body (device is a 3TF4222-7E per the source listing) while the true type codes sit on tiny 90-degree-rotated side labels; cropRotationDeg=0 shows the detector never rotated them, so orientation failure fed the substitution."
+    },
+    {
+      "sample_id": "web-031",
+      "field": "catalogNumber",
+      "expected": "unknown (device labels show 3TF4222 / 3UA5200-1K)",
+      "predicted": "3RA21040-4XK",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "No legible string on the image matches '3RA21040-4XK', and the 3RA21 family is inconsistent with this vintage 3TF42/3UA52 assembly — a Siemens-format catalog number confabulated from the illegible rotated label and PROMOTED; the scorer left it unscored because GT catalogNumber is unknown."
+    },
+    {
+      "sample_id": "web-032",
+      "field": "improved_leg",
+      "expected": "full extraction (plate legible: Marathon Motors, MODEL H 56T17D15718A, CATALOG NO. K644A)",
+      "predicted": "error: 'JSON Parse error: Unterminated string' — no values, no rawText, no promotions",
+      "category": "provider_error",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "The improved leg returned only a JSON parse error so it emitted zero claims; the plate itself is readable (the baseline leg extracted it, albeit with its own K6844A/172.8 misreads), so this is a truncated/malformed provider response, not an image problem."
+    },
+    {
+      "sample_id": "web-033",
+      "field": "model",
+      "expected": "KER 4 V 110",
+      "predicted": "KER 4V (promoted)",
+      "category": "detector_omitted_region",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The crop bbox (left=808, width=2010 => right edge x=2818 of 3648) cuts through the plate's last cell '110' (TYP row reads 'TYP KER | 4 | V | 110'), so the promoted model lost its '110' suffix that the baseline full-frame leg read correctly."
+    },
+    {
+      "sample_id": "web-033",
+      "field": "manufacturer",
+      "expected": "Electrolux",
+      "predicted": "null",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Crop top=1230 starts below the 'ELECTROLUX' banner row (~y1130-1275 in the 3648x2736 original), so the manufacturer line was excluded from the crop and the leg returned null instead of the clearly printed brand."
+    },
+    {
+      "sample_id": "web-033",
+      "field": "voltage",
+      "expected": "110 (V) — the '110' cell on the TYP row, GT confidence medium",
+      "predicted": "4V",
+      "category": "other",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The values-parser lifted '4V' out of the type designation 'KER 4V' and presented it as the voltage rating; no '4V' rating exists on the plate (actual is 110), so a model fragment became a wrong electrical numeric — a field-mapping parse defect, not an OCR misread."
+    },
+    {
+      "sample_id": "web-035",
+      "field": "serialNumber",
+      "expected": "25511621",
+      "predicted": "202037319-100 (promoted)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The plate row reads 'No.202037319-100   25511621'; the leg promoted the 'No.' part/catalog number as serialNumber even though its own rawText contains the true serial '25511621' as a separate line — an identity field swap, not a misread."
+    },
+    {
+      "sample_id": "web-035",
+      "field": "catalogNumber",
+      "expected": "202037319-100",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Consequence of the serial/catalog swap: the catalog slot was left null while its value was consumed by serialNumber; the string itself was read correctly in rawText ('No.202037319-100')."
+    },
+    {
+      "sample_id": "web-035",
+      "field": "manufacturer",
+      "expected": "NORD Gear Corporation",
+      "predicted": "NORD DRIVESYSTEMS",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Both strings are printed on the plate ('NORD DRIVESYSTEMS' brand header directly above 'NORD Gear Corporation'); the leg picked the brand name and GT picked the legal name — a normalization mismatch, not a pipeline error."
+    },
+    {
+      "sample_id": "web-036",
+      "field": "manufacturer/equipmentType",
+      "expected": "Miller Electric Manufacturing Co. / dc_arc_welder",
+      "predicted": "miller / DIRECT CURRENT ARC WELDER",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Every improved-leg value ('miller', 'SR 200', '24313', 'DIRECT CURRENT ARC WELDER') and every spec line (208/220/440 V, 44/42/21 A, KW 13, KVA 16, 50/60 cycles, 200 A, 60%) is verbatim on the plate — flags dissolve to string normalization; the only imperfection is rawText-only '2ZPI24A' for the small print-stamp '27P124A', which never reached values or promotion."
+    },
+    {
+      "sample_id": "web-038",
+      "field": "model",
+      "expected": "unknown (GT: torn label; legible fragments '...50-0600', 'X2', not identity-grade)",
+      "predicted": "150-0600 x2 (promoted)",
+      "category": "insufficient_ground_truth",
+      "severity": 2,
+      "safe_or_wrong": "excluded",
+      "notes": "Zoomed crop shows the fragment does read '150-0600 X2'' so the transcription is faithful, but the label's left half (manufacturer/series prefix) is destroyed, so promoting the fragment as model identity is unverifiable-by-design — a promotion-policy risk on torn labels rather than a provable misread; note the task-supplied image path c09r1_03.webp does not exist, actual run image is c08r1_07.jpg (byte-verified)."
+    },
+    {
+      "sample_id": "web-038",
+      "field": "rawText numeric '20 HP'",
+      "expected": "250 PSI (torn, reads '250 P...' on the label); no HP rating exists on this pneumatic cylinder",
+      "predicted": "20 HP",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Nothing HP-shaped is printed anywhere on the label — '20 HP' is most plausibly a mangling of the torn '250 PSI' line, turning a pressure rating into an invented horsepower string in rawText (it did not reach values, but it is asserted as read text)."
+    },
+    {
+      "sample_id": "web-039",
+      "field": "catalogNumber",
+      "expected": "85900820 - V03 (the P.N., which the leg's own rawText read correctly)",
+      "predicted": "6305.2Z.C4 (needsReview)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The DE bearing designation '6306.2Z.C4' was misassigned as the catalog number AND digit-misread 6306→6305 (rawText likewise shows '6305.2Z.C3' for the plate's '6306.2Z.C4'); mitigated only by the review gate — it was routed to needsReview, not promoted."
+    },
+    {
+      "sample_id": "web-039",
+      "field": "manufacturer",
+      "expected": "Grundfos (stylized 'GRUNDFOS' logo, clearly printed)",
+      "predicted": "GRUNDEOS (needsReview)",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Single-letter F→E misread of the stylized logo; correctly self-flagged into needsReview rather than promoted, so the wrong string never reached a promotable identity."
+    },
+    {
+      "sample_id": "web-039",
+      "field": "marks",
+      "expected": "cULus, CE (both clearly printed inside the crop bbox)",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The cULus and CE marks sit within the detected crop (left=66..979) and the baseline leg saw 'CE'/'US', so the improved leg simply omitted the marks field — a safe null against readable GT, not a crop failure."
+    },
+    {
+      "sample_id": "web-040",
+      "field": "voltage/current",
+      "expected": "GT has no plain voltage/current fields; plate prints '600V.AC' (short-circuit column) and '600A. 50/60 CY.' (frame size)",
+      "predicted": "voltage='600V', current='600A'",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Both suspect numerics are printed verbatim on the plate ('600V.AC', '600A. 50/60 CY.'); GT simply labels them frame_size_ac/short_circuit_600vac, so the flag is a GT field-taxonomy mismatch. All promotions (ITE Imperial Corporation / K-600 / POWER CIRCUIT BREAKER) match GT exactly; only cosmetic quirk is a literal string 'null' as the last rawText line. Every flag dissolves."
+    },
+    {
+      "sample_id": "web-041",
+      "field": "model",
+      "expected": "Type 'PFL 660/47-300' plus ~17 rating-table specs, all legible in the high-resolution photo",
+      "predicted": "Only 'SIEMENS-SCHUCKERT' + '2002894'; model=null, all specs null",
+      "category": "orientation_misclassified",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "The plate is upright in c12r1_03.jpg but the detector applied cropRotationDeg=180, feeding an upside-down crop; the improved leg then transcribed only 2 lines while the baseline (no rotation) read 10 including 'P.Nr. 660/47-300' and the kVA rows. The two values it did return (manufacturer, serial 2002894) match GT, so the failure is a massive safe omission caused by the orientation call, not a wrong claim."
+    },
+    {
+      "sample_id": "web-042",
+      "field": "model",
+      "expected": "C6T34FC6A (zoomed crop confirms 'F'; GT high-side agrees; catalog 110112-00 pairs with the F variant)",
+      "predicted": "C6T34EC6A (promoted)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Single-character F->E substitution on the MODEL field, likely induced by the scratch crossing the glyph, and it was PROMOTED; the baseline leg read 'C6T34FC6A' correctly, so this is an improved-leg regression on this sample."
+    },
+    {
+      "sample_id": "web-042",
+      "field": "rpm",
+      "expected": "3450/2850 (zoomed crop reads 2850; 2850 is also the physically correct 50 Hz speed for a 60/50 Hz 2-pole motor)",
+      "predicted": "rawText 'R-P-M 3450/2950'",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "8->9 digit substitution in the 50 Hz speed presented as read in rawText (values schema has no rpm slot); an operational rating rather than a shock/energy hazard, but a wrong numeric presented as read; also in the same transcript 'SER FACT L15' garbles the printed '1.15'."
+    },
+    {
+      "sample_id": "web-042",
+      "field": "thermally_protected",
+      "expected": "Plate pairs 'THERMALLY PROTECTED' with 'NOT' in the adjacent cell (GT: 'NOT')",
+      "predicted": "rawText 'THERMALLY PROTECTED' with the 'NOT' cell dropped",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The transcribed string is verbatim printed label text, but omitting the adjacent 'NOT' box inverts the meaning if a reader takes the transcript at face value; no structured field carries it, so scored as a meaning-flipping omission rather than an invention."
+    },
+    {
+      "sample_id": "web-042",
+      "field": "serialNumber",
+      "expected": "GT 'unknown' (plate has no SER.NO. label; '183' is printed in an unlabeled cell next to CODE H)",
+      "predicted": "serialNumber='183' (gated to needsReview, NOT promoted)",
+      "category": "insufficient_ground_truth",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'183' is genuinely printed on the plate lower-left; assigning it to serialNumber is unverifiable either way since GT is 'unknown', and the pipeline correctly withheld promotion, so this flag cannot score against the improved leg."
+    },
+    {
+      "sample_id": "web-043",
+      "field": "model",
+      "expected": "00212ET3E184TC-W22 (printed 'MODEL 00212ET3E184TC-W22', readable after 180-degree rotation)",
+      "predicted": "'CC0294 Premium' (promoted)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Pipeline promoted the WEG plate code 'CC029A' (with an A->4 substitution) fused with 'Premium' from the NEMA Premium logo as the model, even though its own rawText contained the real MODEL line (garbled as '0021EF23E184ATC-W22'); wrong identity promoted while the true model was available in-transcript."
+    },
+    {
+      "sample_id": "web-043",
+      "field": "serialNumber",
+      "expected": "12189641 (printed bottom edge; GT high confidence)",
+      "predicted": "'6207-ZZ' (promoted)",
+      "category": "other",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Field misassignment of real plate text: '6207-ZZ' is the drive-end BEARING designation, promoted as the serial number; the true serial 12189641 (which the baseline leg found) was never emitted by the improved leg."
+    },
+    {
+      "sample_id": "web-043",
+      "field": "voltage/current",
+      "expected": "Rated 230/460 V, 6.44/3.22 A; plate also prints 'USABLE @208V 7.13 A' (GT usable_208v spec)",
+      "predicted": "voltage='208V', current='7.13A'",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Both suspect numerics are printed verbatim in the 'USABLE @208V 7.13 A' derate row (present in GT as usable_208v), so nothing was invented; the residual defect is only that the generic voltage/current slots took the derate row instead of the 230/460 rating row. Detector note: the 180-degree cropRotation was CORRECT here (plate is upside down) and the improved leg out-read the baseline."
+    },
+    {
+      "sample_id": "web-044",
+      "field": "serialNumber",
+      "expected": "1011846138 (clearly printed in header; GT high confidence)",
+      "predicted": "serialNumber=null, though rawText captured '13MA111 1011846138'",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The serial was recognized correctly in the transcript but never assigned to the structured field — a safe null, not a misread; marks (CSA/UL/CE, all visible) were likewise omitted safely; model 00736ES3ESA80LR was promoted and matches GT exactly."
+    },
+    {
+      "sample_id": "web-044",
+      "field": "voltage",
+      "expected": "208-230/460 V (VOLTS row)",
+      "predicted": "voltage='208-230V' (dropped the /460 half); rawText garbles 'AMPS'->'LAMPS 21.6/19.5/9.76' and 'CONT.'->'CONJ.'",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'208-230' is printed verbatim and the amp figures 21.6/19.5/9.76 match GT digit-for-digit (only the label word garbled, and values.current stayed null), so the suspect-numeric flags are formatting/truncation mismatches, not wrong values; the dropped '/460' is an incomplete pick of a printed dual rating, not an invention."
+    },
+    {
+      "sample_id": "web-046",
+      "field": "model",
+      "expected": "Plate Type reads 'DFT100LS4B(M/H)G4HR-1504' under glare; GT conservatively recorded model 'unknown'",
+      "predicted": "'DFTM00LSQBGACHR-1504' (promoted)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Zoomed crop shows '100LS4' where the pipeline promoted 'M00LSQ' (M-for-1, Q-for-4 substitutions) plus 'BGAC' for the 'B?G4' brake block — a garbled identity promoted as promotable; GT 'unknown' means the scorer flagged the promotion per policy, but the character substitutions are independently verifiable from the photo, so this is a genuine pipeline error, not merely a GT gap."
+    },
+    {
+      "sample_id": "web-046",
+      "field": "serialNumber",
+      "expected": "880232912.09.09.001 (S.O. row; zoomed crop shows 9 digits before the first dot: 8-8-0-2-3-2-9-1-2)",
+      "predicted": "'8802382912.09 .09.001' (promoted; 10 digits, extra '8' inserted after the 3)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Digit insertion in a promoted serial/S.O. number — '8802382912' vs the plate's '880232912'; the stray internal space is cosmetic but the extra digit makes the promoted identity unusable for an OEM lookup."
+    },
+    {
+      "sample_id": "web-046",
+      "field": "brake_voltage/brake_torque/brake_control",
+      "expected": "Plate brake row: '460AC' / '20.5' lb-ft / 'BG1.5' (GT low-to-medium confidence; zoomed crop supports 20.5 and BG1.5)",
+      "predicted": "rawText 'Brake M 50AC 22.5 lb-ft Control 861.5'; also 'Conn Dia D179' vs plate 'DT79', and values.voltage '230V' truncating plate '230YY/460Y'",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Brake supply '50AC' vs 460AC and torque '22.5' vs 20.5 are wrong electrical/mechanical numerics presented as read (transcript only, no structured brake fields; GT confidence on this row is low so 460-vs-50 leans on a partially glared first digit, but 22.5-vs-20.5 and '861.5'-vs-'BG1.5' are visible substitutions); marks omission (CE only vs CSA/UR/CE) is safe since E189357 was captured."
+    },
+    {
+      "sample_id": "web-048",
+      "field": "model",
+      "expected": "QJ71LP21GE",
+      "predicted": "Q37LP21GE",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The module's orange header clearly prints 'QJ71LP21GE'; the improved leg read 'Q37LP21GE' (the 'J71' run collapsed to '37') and promoted it as model, a wrong catalog identity (baseline was also wrong with 'Q7TLP216E')."
+    },
+    {
+      "sample_id": "web-048",
+      "field": "imageSource.cropRotationDeg",
+      "expected": "0 (label text is upright in the source photo)",
+      "predicted": "180",
+      "category": "orientation_misclassified",
+      "severity": 5,
+      "safe_or_wrong": "excluded",
+      "notes": "Detector metadata claims the 182x203 label crop was rotated 180 deg although the plate text is upright; surrounding tokens (RUN, D.LINK, STATION NO) were still read, so this is a likely contributing factor to the model misread rather than a full leg failure."
+    },
+    {
+      "sample_id": "web-049",
+      "field": "model",
+      "expected": "Ts3N 150",
+      "predicted": "Tmax Ts3N 150",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'Tmax' is printed on the plate directly above 'Ts3N 150' (and again as 'SACE Tmax' on the red band), so 'Tmax Ts3N 150' is a concatenation of two printed adjacent strings, not a misread; a series-prefix-tolerant normalizer would score this a match."
+    },
+    {
+      "sample_id": "web-049",
+      "field": "rawText",
+      "expected": "ISSUE No. DW-6417; TYPE Ts3 N 150 40°C; 240V~65,000A / 480V~25,000A / 600V~14,000A",
+      "predicted": "ISSUE No. G-6417; Type T53 N 150 40°C; AC 600V 25.0kA / 400V 25.0kA / 600V 20.0kA",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Real transcription errors exist in the improved rawText ('DW'->'G', 'Ts3'->'T53', '480V'->'400V', missing 240V/65kA row) but none of them reached values or promotables; the scored values (voltage 600V, current 150A, marks UL) are all printed and correct."
+    },
+    {
+      "sample_id": "web-050",
+      "field": "manufacturer/voltage/current",
+      "expected": "YASKAWA ELECTRIC; 200 V; 54.7 A (all per GT)",
+      "predicted": "YASKAWA ELECTRIC; 200V; 54.7A (identical)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Every improved value matches GT exactly; '54.7 A' and '200 V' are printed with units on the plate so any suspect-claim flag is a scorer artifact, and 'YASKAWA ELECTRIC' is printed on the plate's bottom line (tiny, next to MADE IN JAPAN) even though absent from rawText — and it was correctly held in needsReview rather than promoted."
+    },
+    {
+      "sample_id": "web-052",
+      "field": "power (inside promoted model string)",
+      "expected": "1/4 HORSEPOWER",
+      "predicted": "4 HORSEPOWER",
+      "category": "decimal_dropped",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The plate legibly reads '1/4 HORSEPOWER'; the improved leg dropped the '1/' fraction and presented '4 HORSEPOWER' as read, a 16x power overstatement promoted inside the model field (baseline made the identical error)."
+    },
+    {
+      "sample_id": "web-052",
+      "field": "model",
+      "expected": "unknown (no model number printed; GT model=unknown)",
+      "predicted": "4 HORSEPOWER SPLIT PHASE MOTOR (promoted)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Descriptive spec text ('... HORSEPOWER SPLIT PHASE MOTOR') was promoted as a model identity on a plate that prints no model number (only 'TYPE SAO', which the improved leg missed), so the promotion is incorrect independent of the 1/4->4 misread."
+    },
+    {
+      "sample_id": "web-052",
+      "field": "voltage/current",
+      "expected": "115 VOLTS; 5 AMPS (both printed and present in the run's own rawText)",
+      "predicted": "null / null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "'115 VOLTS' and '5 AMPs' appear in the improved rawText but were not lifted into values.voltage/values.current; also missed 'TYPE SAO' and the Sears Roebuck lines — all safe under-extraction, no wrong claim."
+    },
+    {
+      "sample_id": "web-053",
+      "field": "model/catalogNumber",
+      "expected": "model=ACS550-U1-124A-4 (single printed string), catalogNumber=unknown",
+      "predicted": "model=ACS550 and catalogNumber=U1-124A-4, both promoted",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The label prints one string 'ACS550-U1-124A-4' (rawText captured it exactly); the values layer split it, promoting a truncated series ('ACS550') as model and inventing a catalogNumber field from the remainder — recoverable by concatenation, but as promoted the model identity is incomplete and the catalog promotion mismatches GT."
+    },
+    {
+      "sample_id": "web-053",
+      "field": "current",
+      "expected": "no current spec printed (GT specs empty)",
+      "predicted": "124A",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'124A' is printed on the plate inside the type code 'ACS550-U1-124A-4' (and 124 A is the correct rated current that code encodes), so the suspect-claim flag is a GT-omission artifact rather than an invention — though note the pipeline decoded it from the catalog string rather than from a printed current field."
+    },
+    {
+      "sample_id": "web-054",
+      "field": "voltage",
+      "expected": "277/480VAC",
+      "predicted": "480VAC",
+      "category": "other",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "rawText captured the full printed '277/480VAC'; the values layer lossily normalized the dual rating to its upper leg '480VAC' — true but incomplete (drops the 277 V rating), a normalization choice rather than a misread; not fully an artifact because the emitted value string genuinely differs from GT verbatim."
+    },
+    {
+      "sample_id": "web-054",
+      "field": "marks/catalogNumber",
+      "expected": "marks UR+CSA+CE (all three symbols visible); catalogNumber WMZS3D16",
+      "predicted": "marks=CE only; catalogNumber=null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The UR (backwards-UL) and CSA symbols are clearly printed next to CE but only 'CE' was emitted, with 'certification' correctly placed in needsReview; catalogNumber left null although GT duplicates the model there — both safe under-reports, no wrong claim."
+    },
+    {
+      "sample_id": "web-054",
+      "field": "rawText (barcode digits)",
+      "expected": "7 866852 599320",
+      "predicted": "6 86652 599320",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The improved rawText garbled the printed barcode number (leading '7'->'6', dropped an '8' from '866852'); rawText-only, never surfaced into values or promotables, and all promoted identity fields (Eaton / WMZS3D16 / MINIATURE CIRCUIT BREAKER) match the plate."
+    },
+    {
+      "sample_id": "web-055",
+      "field": "_image_mapping",
+      "expected": "c12r1_11.png (per manifest.json and run file)",
+      "predicted": "task supplied c02r1_11.jpg (a Delta VFD004EL43A drive)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Adjudication-harness image paths were wrong for ALL six samples (web-055..web-061); manifest local_filename values (c12r1_11.png, c06r1_05.jpg, c10r1_11.jpg, c03r1_10.jpg, c09r1_04.jpg, c08r1_01.jpg) match GT/run content and were used instead."
+    },
+    {
+      "sample_id": "web-055",
+      "field": "serialNumber",
+      "expected": "40.1910245201.0001X13",
+      "predicted": "03100014621S",
+      "category": "other",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Both strings are on the plate and both were OCR'd correctly in rawText; the pipeline promoted the lower barcode/plate-id string '03100014621S' as serialNumber instead of the SEW serial '40.1910245201.0001X13' printed directly under the model line — real-text mis-fielding, promoted as identity."
+    },
+    {
+      "sample_id": "web-055",
+      "field": "model/catalogNumber",
+      "expected": "model='SA47 DRP90M4', catalogNumber=unknown",
+      "predicted": "model='SA47', catalogNumber='DRP90M4'",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Plate prints the single designation 'SA47 DRP90M4'; the pipeline split it across model+catalog (SA47=gear unit, DRP90M4=motor), so the two fields jointly equal GT exactly — field-partition disagreement, not a misread; minor rawText-only misread '188 578 2 TT' for plate '188 578 2 IT'."
+    },
+    {
+      "sample_id": "web-055",
+      "field": "equipmentType",
+      "expected": "gearmotor",
+      "predicted": "Inverter duty VPWM",
+      "category": "other",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'Inverter duty VPWM' is the duty rating printed on the plate (GT spec duty), promoted verbatim as equipmentType for what is a gearmotor — mis-fielded real text, promoted."
+    },
+    {
+      "sample_id": "web-057",
+      "field": "catalogNumber",
+      "expected": "HMCPS007C0CBP10 (plate: 'CAT HMCPS007C0CBP10')",
+      "predicted": "1409D72G56",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Pipeline promoted the AUX SWITCH accessory STYLE number as the breaker catalog number, and misread it too (plate says '1490D72G56', run says '1409D72G56'); the true CAT was even in its own rawText as 'CAT HMCPS007CCBP10' (with a dropped '0')."
+    },
+    {
+      "sample_id": "web-057",
+      "field": "serialNumber",
+      "expected": "unknown (plate string is date code '180829DT')",
+      "predicted": "18029DT",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted the date code as serialNumber AND dropped a digit ('180829DT' -> '18029DT'); plate clearly reads 180829DT."
+    },
+    {
+      "sample_id": "web-057",
+      "field": "aux_switch_dc_current",
+      "expected": ".50 (plate 'DC ... .50 .25')",
+      "predicted": "50 (rawText line '50')",
+      "category": "decimal_dropped",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Leading decimal dropped on the aux-switch DC amps: rawText emits '50' where the plate prints '.50' (a 100x error in a breaking-current rating); rawText-only, not promoted to values."
+    },
+    {
+      "sample_id": "web-057",
+      "field": "conductor",
+      "expected": "CU ONLY (CSA)",
+      "predicted": "CU/AL (CSA)",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate says 'CU ONLY (CSA)' but rawText emits 'CU/AL (CSA)' — falsely permits aluminum conductors under CSA; rawText-only, not promoted; also cosmetic rawText misread 'STYLE 6601C9650' for plate '6601C96G50' (dropped G)."
+    },
+    {
+      "sample_id": "web-058",
+      "field": "model/catalogNumber",
+      "expected": "model='T. Wa. 700' (plate 'Type T. Wa. 700'), catalogNumber=unknown",
+      "predicted": "model='Trommelwaschmaschine', catalogNumber='Wa. 700'",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted the product descriptor 'Trommelwaschmaschine' (German for drum washing machine) as model and a truncated 'Wa. 700' (dropped the 'T.') as catalogNumber; the actual Type field 'T. Wa. 700' was correctly present in rawText but mis-fielded."
+    },
+    {
+      "sample_id": "web-058",
+      "field": "power_kw",
+      "expected": "0,32 (plate kW box; baseline leg also read 0.32)",
+      "predicted": "0.22 (rawText)",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate kW value is 0,32 (glare/embossed but legible; GT and baseline agree); improved leg emits '0.22' in rawText — a wrong numeric presented as read; not promoted to values."
+    },
+    {
+      "sample_id": "web-058",
+      "field": "serialNumber",
+      "expected": "12471 (plate 'Nr.' field, faded but readable)",
+      "predicted": "null (rawText has bare 'Nr.')",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The stamped serial 12471 in the Nr. box was not read; returned null rather than a guess — safe omission; also VDE mark not captured (marks=null, safe)."
+    },
+    {
+      "sample_id": "web-059",
+      "field": "equipmentType",
+      "expected": "PLC (GT equipment_category='plc'; unit is a MicroLogix 1400 controller)",
+      "predicted": "Memory Module",
+      "category": "other",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'MEMORY MODULE' is real printed text labeling the module slot door on the controller's left face — not a hallucination, but promoting it as the equipment type of the PLC is a wrong identity claim; manufacturer/model 'Allen-Bradley MicroLogix 1400' are correct."
+    },
+    {
+      "sample_id": "web-059",
+      "field": "rawText (panel label)",
+      "expected": "HFN_rev2 (user-applied label left of the memory-module slot)",
+      "predicted": "HFN-LV2",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Misread of a hand-applied panel label ('HFN_rev2' -> 'HFN-LV2'); rawText-only, never promoted, no GT field for it — cosmetic."
+    },
+    {
+      "sample_id": "web-060",
+      "field": "lra",
+      "expected": "115 (zoomed crop confirms final glyph is '5' with flat top bar, matching the 5s in S3497K05252)",
+      "predicted": "116 (rawText 'LRA' / '116')",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Locked-rotor-amps misread 115 -> 116 in rawText (baseline made the identical error); not promoted to values.current, but presented as read; GT confidence 'medium' yet the zoom supports 115."
+    },
+    {
+      "sample_id": "web-060",
+      "field": "model/catalogNumber",
+      "expected": "SCD420AC01 (plate 'S.T. NO. SCD420AC01', crisply legible)",
+      "predicted": "null / null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The model string was correctly OCR'd into rawText as 'S.T. NO. SCD420AC01' but never mapped into model/catalogNumber values — safe null where GT is readable; UL/cUL marks also visible but marks=null (safe); cosmetic rawText 'AG' for plate 'AC'."
+    },
+    {
+      "sample_id": "web-061",
+      "field": "model",
+      "expected": "C95SDB40-125",
+      "predicted": "model='C95SDB40' (catalogNumber='C95SDB40-125' matches GT exactly)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Label prints the single designation 'C95SDB40-125'; the pipeline put the full string in catalogNumber (exact GT match) and the series/bore prefix in model — field-partition formatting difference, all values agree with the plate; pressure 1.0MPa, CHINA, G, MZ all correctly read."
+    },
+    {
+      "sample_id": "web-062",
+      "field": "detector/fallback",
+      "expected": "manufacturer=GE Fanuc; all other fields unknown",
+      "predicted": "manufacturer=GE Fanuc; all other fields null (fallback_used=true, original_photo)",
+      "category": "detector_missed_label",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Detector found no plate region on the tiny angled GE Fanuc servo label and fell back to the original photo, but the output ('GE Fanuc' + nulls) exactly matches GT (everything else 'unknown'), so the fallback was benign with no wrong claim."
+    },
+    {
+      "sample_id": "web-063",
+      "field": "voltage",
+      "expected": "GT omits voltage (specs list only digital_operator and label_id)",
+      "predicted": "voltage='400V'",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'400V' IS printed on the plate inside the CE warning text ('ground the supply neutral for 400V class' / 'pour la serie 400V'), so this is a GT omission not an invention — though note the source is warning-class text, not a ratings row."
+    },
+    {
+      "sample_id": "web-063",
+      "field": "current",
+      "expected": "no current value printed anywhere on the visible label",
+      "predicted": "current='1A'",
+      "category": "hallucination",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'1A' appears nowhere on the plate and not even in the pipeline's own rawText (likely conflated from 'Wait 1 minute'); an invented current rating for a ~3.7kW 400V-class V7 drive (real rated current ~9A) presented as read."
+    },
+    {
+      "sample_id": "web-064",
+      "field": "detector/crop",
+      "expected": "manufacturer=Leeson; all other fields unknown (plate illegible: rotated_90, small_in_scene, low_resolution)",
+      "predicted": "manufacturer=LEESON; all other fields null (crop 89x90 px, regionCount=1)",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "The 89x90 crop at (495,172) covers only the 'LEESON' logo and omits the rest of the plate, but the omitted text is illegible at this resolution (GT marks every other field 'unknown'), so the improved leg lost nothing readable and emitted no wrong claim; baseline's extra 'model 30600-006' is unverifiable against GT."
+    },
+    {
+      "sample_id": "web-065",
+      "field": "model",
+      "expected": "WJ200 (plate prints 'WJ200 INVERTER' under HITACHI)",
+      "predicted": "W200 INVERTER (also promoted as promotable model)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The plate clearly reads 'WJ200 INVERTER'; OCR dropped the 'J' yielding 'W200 INVERTER' and the pipeline promoted the wrong model identity — genuine substitution plus incorrect promotion (baseline made the analogous 'V200' error)."
+    },
+    {
+      "sample_id": "web-066",
+      "field": "catalogNumber",
+      "expected": "EM4100T (plate: 'CAT. NO. EM4100T')",
+      "predicted": "10C151Y561G1 (the SPEC number; promoted as promotable catalogNumber)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The pipeline's own rawText contains 'CAT. NO. EM4100T' yet values/promotion mapped the SPEC string '10C151Y561G1' into catalogNumber — a genuine field-mapping error at extraction, not an OCR miss (baseline mapped EM4100T correctly)."
+    },
+    {
+      "sample_id": "web-066",
+      "field": "usable_at_208",
+      "expected": "42 A",
+      "predicted": "rawText tokens 'USABLE AT 208' / '42' / 'A' (scored wrong_numeric)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The plate prints 'USABLE AT 208 42 A' and the pipeline read all of it, merely split across three OCR regions ('USABLE AT 208','42','A'); the scorer's string join failed to match '42 A', so the values actually agree."
+    },
+    {
+      "sample_id": "web-066",
+      "field": "current (values.current)",
+      "expected": "AMPS 42/21 (plate); 'CC 010A' is the CC code, not a current",
+      "predicted": "current='010A'",
+      "category": "other",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Not flagged by the scorer (suspect_claims empty) but substantive: the improved leg's values.current='010A' misattributes the plate's 'CC 010A' code as a current rating while the real AMPS row (42/21, present in rawText) was left out of values — a wrong safety-relevant numeric presented as read (baseline has the same defect)."
+    },
+    {
+      "sample_id": "web-068",
+      "field": "catalogNumber",
+      "expected": "GT duplicates the model 'A860-0202-T014' into catalogNumber; plate prints only 'TYPE A860-0202-T014' (no separate catalog number)",
+      "predicted": "catalogNumber=null (model, serial 051987, PULSE GENERATOR, 1996-02, MADE IN JAPAN all correct)",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Every readable string on the plate was captured correctly; the only non-correct cell is catalogNumber=null, which is a safe omission because the plate carries a single 'TYPE' designation that GT merely copied into catalogNumber — all flags on this sample dissolve."
+    },
+    {
+      "sample_id": "web-069",
+      "field": "catalogNumber",
+      "expected": "6GE-34Y-40P",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Plate (c11r1_07 per manifest; task path c02r1_05 was wrong) carries only '型号 Type 6GE-34Y-40P' with no separate catalog number; GT duplicated the Type into catalogNumber, so the null is a safe omission, not a miss."
+    },
+    {
+      "sample_id": "web-069",
+      "field": "equipmentType",
+      "expected": "Reciprocating Compressor",
+      "predicted": "RECIRCITATING COMPRESSOR",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate subtitle reads 'RECIPROCATING COMPRESSOR'; candidate garbled it to 'RECIRCITATING' even though its own rawText contains the correct 'Reciprocating Compressor'; quarantined in needsReview, not promoted."
+    },
+    {
+      "sample_id": "web-069",
+      "field": "rawText voltage_50hz / frequency",
+      "expected": "380-420 (and Freq rows 50 / 60)",
+      "predicted": "300-420 (and '60','60')",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate shows '380-420' for the 50 Hz nominal-voltage row and frequencies 50/60; improved rawText emitted '300-420' ('8'->'0') and duplicated '60' twice — confined to rawText, values.voltage/current are null so nothing wrong was presented as a read value."
+    },
+    {
+      "sample_id": "web-070",
+      "field": "catalogNumber",
+      "expected": "1336F-B125-AA-EN-GM1-HCS2",
+      "predicted": "CAT 1336F-B125-AA-EN-GM1-HCS2",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The promoted catalog string is character-identical to GT after stripping the plate's own 'CAT ' field label; the flagged promotion mismatch is a normalization artifact, not a misread."
+    },
+    {
+      "sample_id": "web-070",
+      "field": "marks",
+      "expected": "cULus, CE, N223",
+      "predicted": "UL, CE",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "No hallucinated mark: the plate shows the cULus listed mark (normalized to 'UL'), CE, and N223; N223 is captured in rawText but dropped from the marks value, and marks sit in needsReview — a subset/normalization mismatch, not an invention."
+    },
+    {
+      "sample_id": "web-070",
+      "field": "rawText ct_ac_output_frequency / phase / listing file",
+      "expected": "0-400 Hz, PH 3, 'LISTED IND CONT EQ 966X'",
+      "predicted": "50/60, 8, 'Usted Ind Cont Eq 983X'",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate AC OUTPUT Hz column is '0-400' but improved rawText wrote '50/60', PH '3' read as '8', and the UL file '966X' garbled to '983X'; all rawText-only (values voltage/current null) and the VT (variable-torque) columns were silently dropped from rawText."
+    },
+    {
+      "sample_id": "web-071",
+      "field": "serialNumber",
+      "expected": "530586A1A-3",
+      "predicted": "53056A1A-3",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate clearly reads 'SERIAL NO. 530586A1A-3' (baseline leg read it correctly); improved dropped the '8' in '586' and PROMOTED the wrong serial — genuine identity-field error."
+    },
+    {
+      "sample_id": "web-071",
+      "field": "model",
+      "expected": "NTAKL",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "'TYPE NTAKL' is crisply legible on the plate and the crop covered it (crop 1072x1324 of 1072x1440), but the improved leg's recognition dropped the TYPE/FORM/POLES/RPM/Hz/AMPS rows entirely and returned model=null — a safe omission, though the sparse rawText versus baseline shows a real recognition-coverage regression."
+    },
+    {
+      "sample_id": "web-071",
+      "field": "voltage",
+      "expected": "6600",
+      "predicted": "220V",
+      "category": "other",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "values.voltage='220V' is the SPACE HEATER line ('AC 1φ 220V 720W') mis-associated as the machine voltage on a 6600 V generator — the string exists on the plate but is bound to the wrong field, a safety-relevant numeric presented as read."
+    },
+    {
+      "sample_id": "web-071",
+      "field": "rawText field_amps_gen",
+      "expected": "(illegible/smudged box; GT omits the field)",
+      "predicted": "FIELD AMPS. GEN. 165",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The FIELD AMP.S GEN. box is smudged/unreadable in the image (GT excluded it; baseline invented a different value, 145); improved's '165' is fabricated digits for an illegible cell — rawText-only, not in values."
+    },
+    {
+      "sample_id": "web-071",
+      "field": "coolant_temp",
+      "expected": "FRESH WATER 38 ℃ (GT, confidence low)",
+      "predicted": "FRESH WATER 36 °C",
+      "category": "gt_error",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The plate reads 'FRESH WATER 36 ℃' — both legs independently read 36 and the image supports 36; GT's low-confidence '38' is the misread."
+    },
+    {
+      "sample_id": "web-072",
+      "field": "crop/model",
+      "expected": "crop containing the sensor body printed 'KEYENCE PZ-51T' (upper right)",
+      "predicted": "crop (148,129,392x483) of the coiled cable only; model=null",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "The detector crop kept the cable coil and excluded the sensor housing at upper right where 'KEYENCE PZ-51T' is printed, so the model was unrecoverable (null) — root cause of this sample's failure; baseline (full image) read KEYENCE and a near-correct model."
+    },
+    {
+      "sample_id": "web-072",
+      "field": "manufacturer",
+      "expected": "Keyence",
+      "predicted": "REVENGE",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'REVENGE' is a misreading of the upside-down 'KEYENCE' jacket print repeated along the coiled cable (visible inverted in the lower loops) and it was PROMOTED as manufacturer — a real wrong-identity promotion, not a pure invention."
+    },
+    {
+      "sample_id": "web-074",
+      "field": "model",
+      "expected": "MHL368003901",
+      "predicted": "800 A",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The ampere rating '800 A' was promoted as the model while the true model 'MHL368003901' is printed directly below the factory number on the label — identity confusion between rating and model."
+    },
+    {
+      "sample_id": "web-074",
+      "field": "serialNumber",
+      "expected": "unknown (no serial printed; 'MHL368003901' is the model)",
+      "predicted": "MHL3603901",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted serial 'MHL3603901' is the model 'MHL368003901' with '80' dropped, mis-assigned to the serial field — a garbled identity string promoted as a different identity field."
+    },
+    {
+      "sample_id": "web-074",
+      "field": "catalogNumber",
+      "expected": "12-718012-37",
+      "predicted": "12-18012-37",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Label reads '12-718012-37'; improved dropped the '7' and PROMOTED '12-18012-37' — one-digit-dropped identity error (GT filed the string under factory_number, but the pipeline's claim is wrong regardless)."
+    },
+    {
+      "sample_id": "web-074",
+      "field": "voltage",
+      "expected": "600 V~ 250 V=",
+      "predicted": "480V",
+      "category": "other",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "values.voltage='480V' is an interrupting-rating row voltage (480 V~ 65 kA), not the breaker's rated voltage '600 V~ 250 V=' printed at the top — a safety-relevant rating mis-association presented as read."
+    },
+    {
+      "sample_id": "web-074",
+      "field": "rawText interrupting ratings / lug range",
+      "expected": "240V 65kA / 480V 65kA / 600V 25kA / 250V= 14kA; #3/0 AWG-500 kcmil",
+      "predicted": "480V 65kA / 277V 65kA / 250V 75kA; #30 AWG-500 kcmil",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'277 V' and '75 kA' appear nowhere on the label (real rows are 240/65, 480/65, 600/25, 250/14) and '#3/0' garbled to '#30' — invented/substituted safety numerics, though confined to rawText (values does not carry them). Baseline leg separately failed with 'JSON Parse error: Unterminated string' (provider_error on the baseline leg only, not the leg under test)."
+    },
+    {
+      "sample_id": "web-074",
+      "field": "marks",
+      "expected": "UL (GT, marks_complete=false)",
+      "predicted": "UL, CSA",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'CSA' is not invented — the label prints 'UL/CSA/NEMA 60 Hz' in the interrupting-rating block, and GT marks_complete=false; the marks flag dissolves."
+    },
+    {
+      "sample_id": "web-075",
+      "field": "crop/target selection",
+      "expected": "crop containing the Allen-Bradley PanelView Plus HMI (top-center, ~y235-405)",
+      "predicted": "crop (0,280,769x745) covering the two chart recorders, clipping the HMI",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The GT target is the small Allen-Bradley PanelView Plus HMI at the top of the panel; the detector crop starts at y=280 and cut it off, locking the read onto the two Anderson AV-9000 chart recorders below — target-selection failure upstream of recognition."
+    },
+    {
+      "sample_id": "web-075",
+      "field": "manufacturer",
+      "expected": "Allen-Bradley (GT target); recorder branding actually reads ANDERSON",
+      "predicted": "arrow",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted manufacturer 'arrow' is a garble of the 'ANDERSON' logo on the AV-9000 recorders — wrong device AND wrong reading of even that device's brand, promoted without review."
+    },
+    {
+      "sample_id": "web-075",
+      "field": "model",
+      "expected": "PanelView Plus (GT target); recorder model actually reads AV-9000",
+      "predicted": "AC-2000",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted model 'AC-2000' matches nothing in the scene — it is a misread of 'AV-9000' on the Anderson recorders (baseline made the parallel error 'AP-2000'); together with 'arrow' this is a confidently promoted wrong identity on a hard, small-in-scene, low-resolution sample."
+    },
+    {
+      "sample_id": "web-076",
+      "field": "serialNumber",
+      "expected": "90G 02053H",
+      "predicted": "906 02053H",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Embossed plate reads SERIAL NO 90G 02053H (Copeland year+month date-code format corroborates the letter G); improved read the G as 6 and PROMOTED '906 02053H'. Note: adjudicated against c09r1_13.jpg per run-list.tsv, not the task's c05r1_04.jpg."
+    },
+    {
+      "sample_id": "web-076",
+      "field": "voltage",
+      "expected": "208 230 V (VOLTS/HZ row)",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "208/230/60 are readable and even present in improved rawText ('208','230') but values.voltage is null — safe omission, no wrong claim."
+    },
+    {
+      "sample_id": "web-078",
+      "field": "model",
+      "expected": "KA77TDT100LS4BMG4HR-1504",
+      "predicted": "K477DT100LS4BMG4HR",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate Type line clearly embossed 'KA77TDT100LS4BMG4HR-1504' (c05r1_03.jpg); improved misread KA77T as K477 (dropped A/T), stripped the -1504 suffix, and PROMOTED the mangled model."
+    },
+    {
+      "sample_id": "web-078",
+      "field": "catalogNumber",
+      "expected": "unknown (no catalog number on plate)",
+      "predicted": "1504",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'1504' is the tail of the single Type string 'KA77TDT…HR-1504' split off and PROMOTED as a standalone catalog number; the plate has no catalog-number field."
+    },
+    {
+      "sample_id": "web-078",
+      "field": "serialNumber",
+      "expected": "880232912.09 .09.001",
+      "predicted": "330232912.09 .09.001",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate S.O. clearly reads 880232912.09; improved misread the embossed leading '88' as '33' and PROMOTED it. Baseline made the identical 88->33 error."
+    },
+    {
+      "sample_id": "web-078",
+      "field": "manufacturer",
+      "expected": "SEW-EURODRIVE, INC. USA",
+      "predicted": "SEW-EURODRIVE, INC.",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Same manufacturer; improved merely dropped the trailing origin token 'USA' (its rawText has the full 'SEW-EURODRIVE, INC. USA'). String-normalization mismatch, not a substantive error."
+    },
+    {
+      "sample_id": "web-079",
+      "field": "improved_leg",
+      "expected": "full extraction of readable Westinghouse transformer plate",
+      "predicted": "{\"error\": \"JSON Parse error: Unterminated string\"}",
+      "category": "provider_error",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Improved leg emitted no values/rawText/review at all — truncated provider JSON ('Unterminated string'); baseline leg failed the same way ('Unexpected EOF'). Image c11r1_03.jpg is a dense but legible plate, so this is a leg error, not a bad source image; the failure was safe (no claims)."
+    },
+    {
+      "sample_id": "web-080",
+      "field": "manufacturer",
+      "expected": "THE SUPERHEATER CO",
+      "predicted": "THE SUPERHEATER GO",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate reads 'THE SUPERHEATER CO' (The Superheater Company / ELESCO); the ornate serif C was read as G. The review gate worked — 'THE SUPERHEATER GO' was held in needsReview, not promoted. Baseline made the same CO->GO misread."
+    },
+    {
+      "sample_id": "web-080",
+      "field": "brand_mark / patent_statement",
+      "expected": "ELESCO REG. IN PATd U.S. OFFICE; SUPERHEATER & THROTTLE PATENTED IN U.S.A",
+      "predicted": "absent from improved rawText",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Detector crop (top=504 on the 3566x2440 original) clipped the arched ELESCO oval header, and the brand/patent-statement lines are missing from improved rawText (baseline, uncropped, captured them all); equipmentType 'Superheater & Throttle' still surfaced. Omission only — no wrong claim."
+    },
+    {
+      "sample_id": "web-082",
+      "field": "model",
+      "expected": "VH 286TTFCD6526-000004CB I",
+      "predicted": "XRI-SD",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'XRI-SD' is Marathon's severe-duty series brand from the header logo, PROMOTED as model even though improved's own rawText captured the real MODEL line ('MODEL VH 286TTCFD6526-000004CB I' — itself a minor TTFCD->TTCFD transposition of the plate string). Note: 'LEESON', 'LR2025', 'MARINE DUTY' in rawText are genuinely printed on this plate — NOT hallucinations."
+    },
+    {
+      "sample_id": "web-082",
+      "field": "serialNumber",
+      "expected": "45329204-1-01",
+      "predicted": "S# 5329204-1-01",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate reads SER. 45329204-1-01; improved dropped the leading '4' and prefixed junk 'S#'. The review gate held it in needsReview (not promoted), but the wrong value is still emitted in values.serialNumber."
+    },
+    {
+      "sample_id": "web-082",
+      "field": "catalogNumber",
+      "expected": "unknown (PART NO. field is blank on plate)",
+      "predicted": "FR.",
+      "category": "catalog_model_confusion",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'FR.' is the frame-label token from the 'PART NO. | Fr. 286T' row misassigned as a catalog number — obvious junk, not promoted (absent from the promotable list)."
+    },
+    {
+      "sample_id": "web-082",
+      "field": "marks",
+      "expected": "CSA, CE, cULus, NEMA Premium",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "CSA/CE/UL/NEMA Premium logos are visible on the plate and 'NEMA Premium' is even in improved rawText, but values.marks is null — safe omission."
+    },
+    {
+      "sample_id": "web-084",
+      "field": "current",
+      "expected": "not on plate (pneumatic cylinder; only MAX PRESS 9.9 kgf/cm2 / 150 PSI)",
+      "predicted": "50A",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The '50A' in values.current is the bore/stroke code inside the correctly-read model 'CDM2E20-50A-H7C' re-semanticized as an electrical current; no current rating appears anywhere on this pneumatic cylinder's label, so the suspect numeric is an invented claim, not a GT omission. The model itself was read and promoted exactly right. Baseline made the same current='50A' error."
+    },
+    {
+      "sample_id": "web-085",
+      "field": "model (promoted) / manufacturer",
+      "expected": "manufacturer=Ex-Cell-O; model=unknown",
+      "predicted": "model=EX-CELL-O (promoted), manufacturer=null",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "OCR read the brass plate correctly ('EX-CELL-O') but assigned the maker's name to the model slot and promoted it while leaving manufacturer null; the scorer only recorded a manufacturer safe_null because GT model=unknown is excluded, so the mis-slotted promotion escaped scoring."
+    },
+    {
+      "sample_id": "web-085",
+      "field": "detector",
+      "expected": "auto_detected_crop of a large frontal high-resolution plate",
+      "predicted": "fallback_used=true, imageSource=original_photo, detect_ms=20019",
+      "category": "detector_missed_label",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "PP-OCRv5 detection failed to localize an easy frontal embossed plate on the 10.6MB c12r1_02.jpg and fell back to the original photo after ~20s; OCR still succeeded on the fallback, so the failure was safe but the detector leg is genuinely broken here."
+    },
+    {
+      "sample_id": "web-086",
+      "field": "input_voltage",
+      "expected": "380-480V +10% -10%",
+      "predicted": "380-480V +/-10% -10%",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate verbatim is 'Input: 380-480V +10% -10%'; the pipeline inserted a spurious '/-' making '+/-10% -10%' — a genuine OCR insertion (not a normalization mismatch), but numerically equivalent (tolerance still 10%, range 380-480V correct), so cosmetic; all other identity/spec rows on this sample are correct."
+    },
+    {
+      "sample_id": "web-087",
+      "field": "inverter_ambient",
+      "expected": "Amb. 0...40 °C (printed after 'Inverter Duty VPWM')",
+      "predicted": "not emitted — rawText contains only the motor line 'Amb. -20...40 °C'",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The scorer's 'wrong_numeric' double-matched the single motor-ambient string 'Amb. -20...40 °C' (already scored correct for the 'ambient' row) against the inverter_ambient row; the pipeline never claimed 0...40 was -20...40 — it simply omitted the second Amb line, which is a safe miss (field_omitted_safe), not a wrong numeric claim."
+    },
+    {
+      "sample_id": "web-089",
+      "field": "model (rawText)",
+      "expected": "ZR57K3-TF5-930",
+      "predicted": "ZR57K3-TF5-833 (rawText); promoted model truncated to 'ZR57K3'",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "6x zoom of c09r1_05.jpg confirms the plate reads 'ZR57K3-TF5-930' (matching GT and the source listing); the improved leg's rawText substituted '833' for '930' in the bill-of-material suffix — the misread never reached the promoted value (model was truncated to the 'ZR57K3' family prefix, which the scorer accepted), but the rawText asserts a config code not on the plate."
+    },
+    {
+      "sample_id": "web-090",
+      "field": "serialNumber",
+      "expected": "01D1020HL",
+      "predicted": "GPB010500022 (promoted)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Image confirms the Copeland label prints 'SERIAL 01D1020HL' directly under 'MODEL ZR40KC-PFV-230', while 'SERIAL NO: GPB010500022' belongs to the separate white system sticker; both strings are in rawText, so OCR was correct and the field-assignment picked the system-label serial for the compressor serialNumber slot and promoted it — an incorrect promotion of the wrong label's identity."
+    },
+    {
+      "sample_id": "web-091",
+      "field": "manufacturer",
+      "expected": "Bonfiglioli",
+      "predicted": "μMP (promoted)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "6x zoom confirms the small data label carries the Bonfiglioli logo and name ('Bonfi…', with 'X_MP 0…' type line, KLUBERSYNTH lubricant, COD. JD000…); 'µMP' is Bonfiglioli's precision-planetary product-series logo painted on the housing, and promoting it as manufacturer is a wrong identity claim (GT Bonfiglioli stands)."
+    },
+    {
+      "sample_id": "web-091",
+      "field": "detector crop",
+      "expected": "crop covering the data label (~y 430-560 on the 1000x750 image)",
+      "predicted": "cropBbox left=471 top=132 269x289 (bottom edge y=421) — logo only, label excluded",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "The auto-detected crop stopped at y=421 and cut off the Bonfiglioli data label entirely (regionCount=3, rawText reduced to 'μMP'), guaranteeing the manufacturer could never be read from the crop; the omission itself is a safe miss, but it is the proximate cause of the μMP promotion above (baseline on the full image made the same μMP call, so the classifier shares blame)."
+    },
+    {
+      "sample_id": "web-092",
+      "field": "catalogNumber",
+      "expected": "2711P-T10C4D8",
+      "predicted": "271P-RPD10C",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted '271P-RPD10C' is printed nowhere on the plate — it is a garbled fusion of the display-module cat 2711P-RDT10C and logic-module cat 2711P-RPSD (missing a '1' in 2711P), and the assembled-terminal catalog per GT/image is 2711P-T10C4D8."
+    },
+    {
+      "sample_id": "web-092",
+      "field": "serialNumber",
+      "expected": "38792773",
+      "predicted": "3872959",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted serial '3872959' (7 digits) matches neither the terminal serial 38792773 nor the visible logic-module serial 387928xx; a digit-level misread presented as promotable."
+    },
+    {
+      "sample_id": "web-093",
+      "field": "catalogNumber",
+      "expected": "unknown",
+      "predicted": "004EL43A",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate has no catalog number; '004EL43A' was carved out of the serial line 'DELTA ELECTRONICS, INC. 004EL43AW0190080' and promoted as a catalog identity."
+    },
+    {
+      "sample_id": "web-093",
+      "field": "serialNumber",
+      "expected": "004EL43AW0190080",
+      "predicted": "0190080",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted serial truncated to the last 7 digits after the pipeline split the printed serial string; its own rawText also dropped the 'W' ('004EL43A0190080' vs plate '004EL43AW0190080'). GT is correct."
+    },
+    {
+      "sample_id": "web-095",
+      "field": "current (rawText)",
+      "expected": ".11 AMPS",
+      "predicted": "11 AMPS",
+      "category": "decimal_dropped",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate clearly prints '.11 AMPS'; improved rawText presents '11 AMPS' (100x coil current) as read. Mitigation: values.current stayed null (the wrong text lives only in rawText/candidate), and the structured omission of a readable current is itself field_omitted_safe."
+    },
+    {
+      "sample_id": "web-095",
+      "field": "equipmentType",
+      "expected": "solenoid_valve",
+      "predicted": "pneumatic cylinder",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "No equipment type is printed; 'pneumatic cylinder' is an invented classification of what are solenoid air valves — but the pipeline itself routed it to needsReview rather than promoting."
+    },
+    {
+      "sample_id": "web-095",
+      "field": "catalogNumber",
+      "expected": "unknown",
+      "predicted": "228-702B",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'228-702B' is verbatim the only part number on the label; duplicating it into both model and catalogNumber is a field-mapping choice, not a misread — GT 'unknown' just means the plate does not designate a separate catalog."
+    },
+    {
+      "sample_id": "web-096",
+      "field": "frequency (rawText)",
+      "expected": "74.3 Hz",
+      "predicted": "50/60 Hz",
+      "category": "hallucination",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate legibly reads '额定频率: 74.3 Hz'; the improved leg emitted the boilerplate '50/60 Hz' — an invented safety-relevant rating (rawText only; frequency was not surfaced in values, and the promoted model/serial are correct)."
+    },
+    {
+      "sample_id": "web-096",
+      "field": "manufacturer",
+      "expected": "天津纵西牵引电机有限公司",
+      "predicted": "天津兴西牵引电机有限公司",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "One-character misread 纵→兴 in the company name; correctly held in needsReview, not promoted, so it failed toward review rather than a promoted wrong identity."
+    },
+    {
+      "sample_id": "web-096",
+      "field": "standard / weight (rawText)",
+      "expected": "IEC60349-2; 640±2% kg",
+      "predicted": "DBC6849-2; 640±26 kg",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Two rawText garbles of embossed low-contrast fields ('IEC60349-2'→'DBC6849-2', tolerance '±2%'→'±26'); neither reached structured values or promotion. GT matches the plate."
+    },
+    {
+      "sample_id": "web-097",
+      "field": "catalogNumber",
+      "expected": "unknown (plate: SPEC:43P70)",
+      "predicted": "43P70",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Every string on this plate was read verbatim (model CIMR-V7AA43P7, serial J006YA487510041, all specs); '43P70' is printed as 'SPEC:43P70' and GT stores it under spec — promoting it as catalogNumber is a taxonomy/field-mapping disagreement, not an OCR error, so the incorrect-promotion flag dissolves."
+    },
+    {
+      "sample_id": "web-098",
+      "field": "model",
+      "expected": "3196",
+      "predicted": "3X4-10",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The pipeline read '3196' (present in its own rawText) but promoted the size designation '3X4-10' as model; on a Goulds plate 3196 is the model line and 3X4-10 the size — a promoted identity mapping error, not a misread."
+    },
+    {
+      "sample_id": "web-098",
+      "field": "manufacturer",
+      "expected": "Goulds Pumps",
+      "predicted": "GOLDS PUMP",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Faint stamped header reads 'GOULDS PUMPS'; the value 'GOLDS PUMP' (missing U, absent from rawText, so partly inferred) was routed to needsReview rather than promoted — near-miss spelling gated safely."
+    },
+    {
+      "sample_id": "web-100",
+      "field": "catalogNumber",
+      "expected": "245 630 02",
+      "predicted": "LID 311/10",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate prints model 'LID 311/10' and 'Id.Nr. 245 630 02' (catalog); improved promoted the model string as catalogNumber even though 'Id.Nr. 245 630 02' was captured in its own rawText. (Adjudicated on run-recorded image c04r1_09.jpg; task-supplied c04r1_08.jpg is a different plate, HEIDENHAIN LS 486.)"
+    },
+    {
+      "sample_id": "web-100",
+      "field": "model",
+      "expected": "LID 311/10",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Model slot left null because its value 'LID 311/10' was misplaced into catalogNumber; the string is clearly readable on the plate."
+    },
+    {
+      "sample_id": "web-100",
+      "field": "serialNumber",
+      "expected": "5 139 132 C",
+      "predicted": "5 139 132 C R5",
+      "category": "other",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'R5' is printed in a separate divided box adjacent to 'S.Nr. 5 139 132 C' (an index/revision code, per GT notes); pipeline concatenated a genuinely printed adjacent token into the serial — over-inclusive, not a misread or invention."
+    },
+    {
+      "sample_id": "web-101",
+      "field": "serialNumber",
+      "expected": "unknown (plate prints cert number 'N1875')",
+      "predicted": "N1676",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Image (c03r1_08.jpg) side label shows 'N1875' beside a circled certification mark — a C-Tick/RCM approval number, not a serial; improved misread it as 'N1676' (8->6, 7->7, 5->6 digit garbling) AND promoted it as serialNumber; the actual serial is not legible (lot line reads '030918 0002')."
+    },
+    {
+      "sample_id": "web-101",
+      "field": "marks",
+      "expected": "CE",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "CE mark is clearly visible on the side label; improved returned marks=null — a safe omission. rawText also contains garble ('ERRA/FLAM', 'COMPATIBLE' for PROGRAMMABLE, 'CPU1M-CPU12') but none of it reached values."
+    },
+    {
+      "sample_id": "web-102",
+      "field": "manufacturer",
+      "expected": "SICK",
+      "predicted": "Wieland",
+      "category": "hallucination",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Image (c07r1_06.jpg) is a blue SICK W18-series photoelectric sensor with the SICK logo block on the label; 'Wieland' appears nowhere on the device — an invented brand promoted as manufacturer."
+    },
+    {
+      "sample_id": "web-102",
+      "field": "model",
+      "expected": "WT18-P410",
+      "predicted": "WT15.P410",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The one legible label line reads 'WT18-P410'; improved substituted 8->5 and hyphen->dot ('WT15.P410') and promoted it — a wrong catalog identity that would resolve to a different SICK product family."
+    },
+    {
+      "sample_id": "web-102",
+      "field": "catalogNumber",
+      "expected": "unknown (illegible)",
+      "predicted": "9825 10",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The label body occupies a ~90x90 px crop of a 438x480 frame; the part-number lines are unreadable by any reader (GT marks them illegible), yet '9825 10' was emitted and promoted — confabulated from illegible pixels."
+    },
+    {
+      "sample_id": "web-102",
+      "field": "serialNumber",
+      "expected": "unknown (illegible)",
+      "predicted": "010817",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Same illegible 90x90 px label region; '010817' cannot be verified against any visible glyphs and was promoted as serialNumber — confident promotion from unreadable pixels."
+    },
+    {
+      "sample_id": "web-102",
+      "field": "marks",
+      "expected": "CE",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "CE mark visible beside the logo block per GT; improved returned marks=null — safe omission."
+    },
+    {
+      "sample_id": "web-103",
+      "field": "model",
+      "expected": "αiS 30/4000HV",
+      "predicted": "αIS 30/4000HV",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Image (c04r1_01.jpg) prints 'MODEL αiS 30/4000HV' with lowercase italic 'i'; improved's 'αIS' differs only in letter case — the identity is the same FANUC family; a case-insensitive comparison dissolves the flag."
+    },
+    {
+      "sample_id": "web-103",
+      "field": "voltage",
+      "expected": "353 V (GT 'voltage'; GT stores 400-480 V under input_voltage)",
+      "predicted": "400-480V",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'400-480 V 50/60Hz' is genuinely printed on the plate as 'AMP. INPUT(~)'; the pipeline's single voltage slot took the input rating while GT's voltage field holds the motor VOLT 353 V — a schema/field-mapping collision, not a misread (baseline made the identical choice, and current '9.3A' matches GT)."
+    },
+    {
+      "sample_id": "web-103",
+      "field": "rpm",
+      "expected": "3000 min-1",
+      "predicted": "null (absent from rawText)",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Improved rawText dropped the 'SPEED 3000 min-1', 'FREQ 200 Hz', and 'IEC60034-1' lines that baseline captured, and marks=null despite a visible CE — all safe omissions, no wrong values emitted."
+    },
+    {
+      "sample_id": "web-104",
+      "field": "manufacturer",
+      "expected": "unknown (no brand printed in frame)",
+      "predicted": "ACH",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Image (c02r1_03.jpg) shows only two barcode ID labels with no brand/logo; 'ACH' is the first three characters of the type code 'ACH550-VCR-072A-4+F267' split off and promoted as a manufacturer that is not printed anywhere."
+    },
+    {
+      "sample_id": "web-104",
+      "field": "model",
+      "expected": "ACH550-VCR-072A-4+F267",
+      "predicted": "550-VCR-072A",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Model doubly truncated — 'ACH' prefix stripped into the manufacturer slot and the '-4+F267' voltage/option suffix dropped — even though rawText captured the full 'ACH550-VCR-072A-4+F267'; promoted."
+    },
+    {
+      "sample_id": "web-104",
+      "field": "catalogNumber",
+      "expected": "ACX550-U0-072A-4",
+      "predicted": "550-U0-072A-4",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'ACX' prefix stripped from the second label's 'ACX550-U0-072A-4' (full string present in rawText); truncated catalog identity promoted."
+    },
+    {
+      "sample_id": "web-104",
+      "field": "current",
+      "expected": "(no current rating printed)",
+      "predicted": "072A",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "No amp rating appears on either label; '072A' is a frame-size substring of the type code parsed into values.current as if it were a measured spec — fabricated field claim (values-only, not in the promotable list)."
+    },
+    {
+      "sample_id": "web-105",
+      "field": "serialNumber",
+      "expected": "IS7P205",
+      "predicted": "157P205",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Image (c10r1_03.jpg) cast serial reads 'IS7P205' — the second glyph is a serif S matching the S in 'SERIAL'/'WESTINGHOUSE'; improved substituted S->5 (the I->1 first glyph is genuinely ambiguous per GT) and promoted the wrong string."
+    },
+    {
+      "sample_id": "web-105",
+      "field": "current (rawText)",
+      "expected": "AMPS. 1320",
+      "predicted": "AMPS. 1520",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The plate clearly reads 'AMPS. 1320' (verified at full resolution); improved emitted 'AMPS. 1520' — a 200 A misstatement of a safety-relevant current presented as read, though it stayed in rawText (values.current was null, not promoted)."
+    },
+    {
+      "sample_id": "web-105",
+      "field": "rpm (rawText)",
+      "expected": "R.P.M. 425",
+      "predicted": "R.P.M. 428",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The final cast digit matches the stylized 5 used elsewhere on the plate ('5107', '1320'), supporting GT's 425 (GT confidence medium); improved's 428 is a misread of the stylized glyph, rawText-only and not promoted."
+    },
+    {
+      "sample_id": "web-106",
+      "field": "_image_mapping",
+      "expected": "run image c09r1_07.jpg (Ingersoll-Rand)",
+      "predicted": "task pointed at c10r1_03.jpg (Westinghouse Marine DC plate)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The adjudication request's sample-to-image mapping is shuffled for all six samples; each run json's own 'image' field matches its GT content (verified visually), so adjudication used the run-recorded images, not the task paths."
+    },
+    {
+      "sample_id": "web-106",
+      "field": "serialNumber",
+      "expected": "unknown (serial not printed; label says 'Serial Number: On Compressor')",
+      "predicted": "On Compressor (promoted)",
+      "category": "other",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Verbatim transcription of the label line 'Serial Number: On Compressor' — OCR is faithful, but the pipeline promoted a pointer phrase as a serial number where it should have emitted null; semantic-normalization gap, not a misread."
+    },
+    {
+      "sample_id": "web-106",
+      "field": "pressure",
+      "expected": "35 CFM at 175 PSIG",
+      "predicted": "35 CFM at 175 PSI (rawText only)",
+      "category": "unit_error",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate clearly prints '35 CFM at 175 PSIG'; improved rawText dropped the trailing G (PSI vs PSIG); values fields left null so the error lives only in rawText."
+    },
+    {
+      "sample_id": "web-106",
+      "field": "marks",
+      "expected": "CSA (CSA monogram with NRTL/C, LR 56258 clearly visible)",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "CSA NRTL/C mark is plainly visible top-right of the label but values.marks=null and no mark token appears in rawText; also voltage '230/460 (prewired 230...)' was captured in rawText but values.voltage=null — both safe omissions."
+    },
+    {
+      "sample_id": "web-107",
+      "field": "manufacturer",
+      "expected": "BALDOR-RELIANCE (yellow 'BALDOR-RELIANCE Super-E Motor' header legible even in wide shot)",
+      "predicted": "null (improved leg read only 'ATTENTION / LIFTING CARRIER USE FOR / CAUTION')",
+      "category": "detector_missed_label",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Detector (regionCount=1) cropped a 261x220 region rotated 180 that is the white CAUTION/ATTENTION lifting sticker on the fan cowl, entirely missing the actual Baldor nameplate; all fields nulled and nothing promoted, so the leg failed safely — but the baseline leg proved 'Baldor' was recoverable from this image."
+    },
+    {
+      "sample_id": "web-108",
+      "field": "model",
+      "expected": "VDNW 22/6 (plate: 'Type VDNW 22/6')",
+      "predicted": "VDNW (promoted)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Improved leg's own rawText contains '22/6' as a separate token but the assembled/promoted model dropped the frame-size suffix, promoting the incomplete identity 'VDNW' — an assembly error, not an OCR miss."
+    },
+    {
+      "sample_id": "web-108",
+      "field": "rpm/frequency",
+      "expected": "950 U p.min | 50 (visible on plate; baseline rawText captured '950')",
+      "predicted": "absent from improved rawText",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Crop bbox (1054,792,1503x565) ends around the cosφ row and cuts off the plate's lower '950 U p.min 50' row, so the improved leg never saw it; values stayed null (safe), but the crop was tighter than the label."
+    },
+    {
+      "sample_id": "web-108",
+      "field": "voltage",
+      "expected": "Y/Δ 220/380 V",
+      "predicted": "null in values ('220/380' and 'V' present in rawText)",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "OCR captured '220/380' and 'V' plus '4,5'/'2,58'/'1,1 kW'/'0,78' but none were mapped into values (voltage/current all null) — comma decimals preserved correctly in rawText, so a safe mapping omission, not a misread."
+    },
+    {
+      "sample_id": "web-110",
+      "field": "serialNumber",
+      "expected": "unknown (S/NO. field is tiny, scratched, and illegible; GT records unknown)",
+      "predicted": "A92828 (promoted)",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The S/NO. row on the SM-CYCLO label is not legible at this resolution (looks like 'DJ574..'), 'A92828' matches nothing discernible in the image, and the baseline leg read a completely different string ('AW383215', itself resembling the label part no 'AW3892G') — a confidently promoted invented serial."
+    },
+    {
+      "sample_id": "web-110",
+      "field": "model",
+      "expected": "unknown (MODEL field shows a partially torn 'CNHMS1-…' string; 'SM-CYCLO' is the brand line per GT)",
+      "predicted": "SM-CYCLO (promoted)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "SM-CYCLO is the product-line header on the label, not the model; the actual MODEL row content is torn/illegible, so promoting model='SM-CYCLO' is brand-line-as-model confusion."
+    },
+    {
+      "sample_id": "web-110",
+      "field": "origin",
+      "expected": "MADE IN JAPAN (oval badge, mid-letters obscured by paint; GT medium confidence)",
+      "predicted": "MADE IN / USA (rawText)",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The oval badge reads 'MADE IN JAPAN' with the middle painted over; 'USA' was likely contaminated by the 'SUMITOMO MACHINERY CORP OF AMERICA / CHESAPEAKE, VIRGINIA' text on the label; error is confined to rawText (no origin value promoted)."
+    },
+    {
+      "sample_id": "web-111",
+      "field": "catalogNumber",
+      "expected": "22B-D4P0N104 (plate: 'Cat No. 22B-D4P0N104', zero)",
+      "predicted": "22B-D4PON104 (letter O; promoted as both catalogNumber and model)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Letter-O-for-zero in the promoted catalog identity ('D4PON' vs plate 'D4P0N' — the 0 encodes 4.0 A in AB 22B nomenclature); the additional model-vs-GT-'unknown' flag is conventional duplication of the cat no into model, the substantive defect is the O/0 substitution."
+    },
+    {
+      "sample_id": "web-111",
+      "field": "serialNumber",
+      "expected": "BD4P0N0W7190172 (plate: 'S/N: BD4P0N0W7190172')",
+      "predicted": "B4PON0W7190172 (promoted)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Promoted serial drops the second character 'D' and repeats the O-for-0 substitution; plate string is legible in the image, so this is a genuine misread, not a GT error (baseline made a different misread 'B4P0N0V71907172')."
+    },
+    {
+      "sample_id": "web-111",
+      "field": "marks",
+      "expected": "cULus, CE (both visible: cULus LISTED IND. CONT. EQ. and CE)",
+      "predicted": "UL",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "'UL' is a coarse-but-correct reading of the cULus monogram actually on the plate (not a hallucinated mark); CE is merely omitted — a string-normalization mismatch plus a safe omission, not an invented mark."
+    },
+    {
+      "sample_id": "web-112",
+      "field": "model",
+      "expected": "USAGED-02AS2K (plate: 'TYPE USAGED-02AS2K')",
+      "predicted": "USA6ED-02AS2K (promoted)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Dot-matrix stamped 'G' misread as '6' ('USAGED' -> 'USA6ED') and promoted; Yaskawa's real servo family is USAGED, so the promoted identity is a nonexistent catalog string (baseline made a different misread 'USA-CED')."
+    },
+    {
+      "sample_id": "web-112",
+      "field": "current",
+      "expected": "3.0 A (plate column 'A 3.0'; the 0.98 is torque 'N·m 0.98')",
+      "predicted": "0.96A (values.current, presented as read)",
+      "category": "unit_error",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Double fault: the torque value was misread 0.98 -> 0.96 (rawText 'N·m 0.96') AND that N·m figure was mapped into values.current as '0.96A' while the plate's actual rated current 3.0 A was left unmapped — a wrong safety-relevant numeric presented as read."
+    },
+    {
+      "sample_id": "web-112",
+      "field": "manufacturer",
+      "expected": "YASKAWA ELECTRIC (GT; plate line prints 'YASKAWA ELECTRIC JAPAN')",
+      "predicted": "Yaskawa Electric Japan (promoted)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The plate literally prints 'YASKAWA ELECTRIC JAPAN' on one line (JAPAN being the origin suffix); the pipeline's value is a verbatim transcription differing from GT only by the appended origin token and casing — normalization mismatch, both readings agree with the plate."
+    },
+    {
+      "sample_id": "web-115",
+      "field": "frequency",
+      "expected": "60 Hz",
+      "predicted": "50 Hz",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Faded NORD plate; the Hz cell is degraded but a 1770 rpm NORD motor is unambiguously 60 Hz — improved rawText asserts '50 Hz' (plus a stray '3 Hz'). Adjudicated on canonical image c05r1_04.jpg per manifest/run-list; the task's c03r1_02.jpg path is a mis-mapping."
+    },
+    {
+      "sample_id": "web-115",
+      "field": "current",
+      "expected": "14.4/7.20 A",
+      "predicted": "20A",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate shows dual current '14.4/7.20 A'; rawText mashed it to '14.47 20 A' and values.current surfaced the bogus tail '20A' as the machine's current."
+    },
+    {
+      "sample_id": "web-115",
+      "field": "power_kw",
+      "expected": "3.70 kW",
+      "predicted": "2.79",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "rawText asserts '2.79' kW where the plate shows 3.70 (5.00 Hp corroborates ~3.7 kW); values omit kW so the scorer counted safe_miss — wrong string exists only in rawText; baseline misread identically."
+    },
+    {
+      "sample_id": "web-115",
+      "field": "serialNumber",
+      "expected": "unknown",
+      "predicted": "P086537488 00",
+      "category": "insufficient_ground_truth",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Serial line is faded: '…537488 00' is legible but the leading characters are not (baseline read '900637488 00', improved 'P086537488 00'); GT marked unknown, so the promoted value is unverifiable rather than provably wrong."
+    },
+    {
+      "sample_id": "web-116",
+      "field": "current_ac1",
+      "expected": "Ie AC-1 30A",
+      "predicted": "30A",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Plate prints 'Ie AC-1 30A' and values.current='30A' is correct; the wrong_numeric verdict came from the garbled rawText line '30A 600 HP 15' tripping the matcher — the structured claim agrees with GT."
+    },
+    {
+      "sample_id": "web-116",
+      "field": "voltage",
+      "expected": "30A 600V AC",
+      "predicted": "600VAC",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Suspect-claim check: '600V AC' IS printed top-right of the plate ('30A 600V AC'); GT stores it under 'rating' rather than a voltage field, so this is a GT-shape omission, pipeline fine."
+    },
+    {
+      "sample_id": "web-116",
+      "field": "standard_vde",
+      "expected": "VDE0660",
+      "predicted": "VDE0860",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate clearly reads 'VDE0660'; improved rawText asserts 'VDE0860' (6→8). rawText-only — values do not carry the standard, scorer counted safe_miss."
+    },
+    {
+      "sample_id": "web-116",
+      "field": "aux_contacts",
+      "expected": "AUX CONTACTS A600/P600",
+      "predicted": "AUX CONTACTS A800/P600",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate reads 'A600/P600'; rawText asserts 'A800/P600'. Same leg also garbled the 1-ph voltage column to '250 220 360 460 575' (plate: 115 200 230 460 575) — rawText-only errors on a dense black-on-black table."
+    },
+    {
+      "sample_id": "web-118",
+      "field": "model",
+      "expected": "509-B0D",
+      "predicted": "509-BOD",
+      "category": "gt_error",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Allen-Bradley Bulletin 509 catalog letters use letter 'O' for open type (509-AOD/BOD/COD family) and the plate glyph is O/0-indistinguishable in this font, so the pipeline's '509-BOD' is the correct catalog identity; this dissolves both identity 'wrong' verdicts and both incorrect_promotions (model + catalogNumber) — at minimum the scorer needs O-vs-0 normalization."
+    },
+    {
+      "sample_id": "web-118",
+      "field": "voltage_max",
+      "expected": "600VAC MAX",
+      "predicted": "800VAC MAX.",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate top-right clearly reads '600VAC MAX.'; rawText asserts '800VAC MAX.' (6→8); additionally values.voltage='460-575V' lifts the HP-table column header instead of the device max voltage."
+    },
+    {
+      "sample_id": "web-118",
+      "field": "current_max_continuous",
+      "expected": "27 AMP MAX. CONTINUOUS",
+      "predicted": "2 AMP MAX.",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate reads '27 AMP MAX. CONTINUOUS'; improved rawText drops the 7 and asserts '2 AMP MAX.' — a wrong current rating presented as read (scorer counted this field safe_miss, so it is additional to the flagged set)."
+    },
+    {
+      "sample_id": "web-118",
+      "field": "power_hp_3ph_460_575v",
+      "expected": "10 HP",
+      "predicted": "(none — 3-ph HP row absent from output)",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Improved rawText captured only the 1-ph row ('2 HP','3 HP') and never asserted any value for the 3-ph 460-575V cell ('10 HP'); the scorer's wrong_numeric is a matcher artifact pairing the 1-ph HP with the 460-575V column header — an omission, not a wrong claim."
+    },
+    {
+      "sample_id": "web-119",
+      "field": "leg",
+      "expected": "scored improved leg",
+      "predicted": "JSON Parse error: Unexpected EOF",
+      "category": "provider_error",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Image c11r1_04.jpg is a readable but extremely dense Voltran substation-transformer plate (full connection diagram + tap tables); both legs truncated mid-JSON (likely output-token limit), emitting no values, promotions, or claims — a clean leg failure, not a bad source image."
+    },
+    {
+      "sample_id": "web-121",
+      "field": "manufacturer",
+      "expected": "Zhejiang Sanai Transformer Co., Ltd",
+      "predicted": "ZHEJIANG SANAI TRANSFORMER CO,LTD",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "Every flag dissolves: results.json shows identity 3/3 correct, zero wrong specs, no suspect claims, no bad promotions; the plate verbatim prints 'ZHEJIANG SANAI TRANSFORMER CO.,LTD', 'CURRENT MEASURING INSTRUMENT', Serial 31074, LZZBJ-11, all matching the improved leg — the only differences are case/punctuation the scorer already normalizes."
+    },
+    {
+      "sample_id": "web-124",
+      "field": "current_220_240v_delta",
+      "expected": "10.2 - 10.7 A",
+      "predicted": "19.7A",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Embossed plate clearly reads '10.2 - 10.7 A' on the 220/240 V-delta row; rawText misread it as '10.2 = 19.7 A' (10.7→19.7) and values.current surfaced '19.7A' as the machine's current — nearly 2x the true rating."
+    },
+    {
+      "sample_id": "web-124",
+      "field": "voltage_60hz",
+      "expected": "460",
+      "predicted": "450",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Plate's 60 Hz row reads '460' V; rawText asserts '450' (values.voltage is null, so the structured field failed safe); same leg also misread the embossed '440/480 VY' line as '140/430 VY' in rawText."
+    },
+    {
+      "sample_id": "web-125",
+      "field": "detector/crop",
+      "expected": "gold Baldor motor nameplate (GT manufacturer=Baldor, ac_motor)",
+      "predicted": "crop 240x157 @(551,737) on the foreground hazardous-location OUTLET BOX cover label; promoted equipmentType=OUTLET BOX",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Adjudicated on run-recorded image c01r1_03.jpg (task path was misaligned): the detector cropped the accessory conduit-box cover label ('UL LISTED 790 A ... OUTLET BOX FOR HAZARDOUS LOCATIONS') and never saw the motor's gold nameplate, so it promoted equipmentType 'OUTLET BOX' for an ac_motor sample while baseline read 'Baldor' from the full scene."
+    },
+    {
+      "sample_id": "web-125",
+      "field": "manufacturer",
+      "expected": "Baldor (embossed 'BALDOR' on the cover; GT manufacturer=Baldor)",
+      "predicted": "FATRON",
+      "category": "hallucination",
+      "severity": 3,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'FATRON' appears nowhere on the label — the cover is embossed 'BALDOR'; the string is invented (left in needsReview, not promoted, but emitted in values)."
+    },
+    {
+      "sample_id": "web-125",
+      "field": "current",
+      "expected": "null (no amperage on the cover; '790 A' is the UL Listed file marking 'LISTED 790 A')",
+      "predicted": "790A",
+      "category": "other",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The token '790 A' is printed but it is the UL listing file number next to the UL logo, not a current rating; mapping it to values.current presents a bogus 790-amp figure as read."
+    },
+    {
+      "sample_id": "web-126",
+      "field": "model",
+      "expected": "plate brand line reads 'Super-E Motor' (GT model=VEM3546)",
+      "predicted": "SuperT Motor",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Image c05r1_07.jpg clearly shows 'SuperE Motor'; improved leg substituted 'SuperT' (baseline read 'SuperK') and also used the brand line instead of CAT.NO. VEM3546 as model; it was routed to needsReview, not promoted."
+    },
+    {
+      "sample_id": "web-126",
+      "field": "voltage",
+      "expected": "230/460 V (plate 'VOLTS 230/460')",
+      "predicted": "208V",
+      "category": "other",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'208V' is printed only in the alternate line 'USABLE AT 208V 3.1'; presenting it as the motor's voltage instead of the rated 230/460 is a field-misassignment of a printed value (baseline made the identical error)."
+    },
+    {
+      "sample_id": "web-126",
+      "field": "current",
+      "expected": "3/1.5 A (plate 'AMPS 3/1.5')",
+      "predicted": "010A",
+      "category": "other",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'010A' is the UL insulation-system CC code ('CC 010A'), not amperage; mapping it to values.current presents a non-current code as the current rating."
+    },
+    {
+      "sample_id": "web-126",
+      "field": "marks",
+      "expected": "NEMA Premium, CSA Energy Verified, UL (all visible at plate right edge, inside the crop)",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Improved leg returned marks=null and its rawText omitted 'NEMA Premium'/'Energy Verified MC 183051'/UL, which baseline captured; a safe omission, not a wrong claim."
+    },
+    {
+      "sample_id": "web-127",
+      "field": "frequency",
+      "expected": "60 CYCLES (plate clearly stamped '60-CYCLES')",
+      "predicted": "50 CYCLES",
+      "category": "recognition_substitution",
+      "severity": 1,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Image c11r1_12.jpg shows '60 CYCLES'; improved rawText asserts '50 CYCLES' (baseline read 60) — a wrong safety-relevant electrical numeric in the transcript, though no frequency value field was populated."
+    },
+    {
+      "sample_id": "web-127",
+      "field": "serialNumber",
+      "expected": "GT says 'unknown'; plate shows 'A.C. No 36069-482…' with the trailing character(s) obscured at the plate edge",
+      "predicted": "AC NO 36069 - 482 (promoted)",
+      "category": "insufficient_ground_truth",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The visible digits match the pipeline's read ('36069-482'; baseline's '36089' has the wrong third digit), but the end of the number is cut off so no one can certify the full serial — GT 'unknown' makes this unscorable rather than a proven wrong promotion; minor sloppiness: the label prefix 'AC NO' was included in the value."
+    },
+    {
+      "sample_id": "web-127",
+      "field": "model",
+      "expected": "SIC 61614 (plate 'TYPE SIC 61614'; GT model='SIC 61614')",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "Improved rawText captured 'TYPE', 'SIC', '61614' as separate lines but left values.model null — a safe omission of a readable identity field."
+    },
+    {
+      "sample_id": "web-127",
+      "field": "manufacturer",
+      "expected": "Sears Roebuck's Co (plate script reads 'SEARS ROEBUCK'S CO')",
+      "predicted": "Sears Roebuck & Co (promoted)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The plate's ''S' was normalized to the canonical '&' company form — same manufacturer entity, apostrophe-S vs ampersand string difference; not a wrong identity, a normalization mismatch the scorer counted as a promotion miss."
+    },
+    {
+      "sample_id": "web-128",
+      "field": "detector/crop (all fields)",
+      "expected": "Banner QS18VP6LVQ7 / 10-30VDC printed along the yellow sensor body (rotated)",
+      "predicted": "rawText=[\"null\"], all values null, no promotions (crop 142x144 @(470,272) covering the black lens, rot 90)",
+      "category": "detector_omitted_region",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "On c07r1_10.jpg the single detected region is the lens housing, not the tiny rotated 'QS18VP6LVQ7 10-30VDC' text on the barrel, so the improved leg read nothing and failed safely (baseline misread the model as 'OS18P6V07' — GT usable but genuinely hard)."
+    },
+    {
+      "sample_id": "web-129",
+      "field": "model",
+      "expected": "plate 'BODY No. YB 165' (GT serialNumber='YB 165'; GT model='Volvo B8L')",
+      "predicted": "TB 165 (promoted as model)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Dot-matrix 'YB 165' on c10r1_04.jpg was read as 'TB 165' (Y→T) and promoted as model — a wrong promoted identity; the body number also belongs in serial per GT, compounding the mis-slotting (baseline identical)."
+    },
+    {
+      "sample_id": "web-129",
+      "field": "serialNumber",
+      "expected": "YB 165 per GT; the promoted value's source line is 'DATE NOV 16' on the plate",
+      "predicted": "NOV 15 (promoted)",
+      "category": "recognition_substitution",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The build date 'NOV 16' was misread as 'NOV 15' (6→5) AND mis-assigned to serialNumber, then promoted — two errors in one promoted identity field."
+    },
+    {
+      "sample_id": "web-129",
+      "field": "chassis (rawText)",
+      "expected": "VOLVO B8L (plate 'CHASSIS: VOLVO B8L')",
+      "predicted": "CHASSIS: VOLVO BEL",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'B8L' transcribed as 'BEL' (8→E) in rawText only; no values field carried it, so impact is limited to the transcript."
+    },
+    {
+      "sample_id": "web-129",
+      "field": "detector fallback",
+      "expected": "auto-detected crop of the Wrightbus plate",
+      "predicted": "fallback_used=true, imageSource=original_photo after 20s detect",
+      "category": "detector_missed_label",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "The detector failed to yield a crop on the 6.7MB photo and the leg fell back to the original image; the fallback produced a full read identical to baseline, so the failure was contained by design."
+    },
+    {
+      "sample_id": "web-131",
+      "field": "ul_listing (rawText)",
+      "expected": "LISTED 50B8 (plate; GT '50B8')",
+      "predicted": "UL LISTED 50BB",
+      "category": "recognition_substitution",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Final '8' read as 'B' on c06r1_11.jpg (baseline got '50B8'); rawText-only, no values field affected."
+    },
+    {
+      "sample_id": "web-131",
+      "field": "model",
+      "expected": "unknown (plate has no model number; 'GENERAL PURPOSE TRANSFORMER' is a product-line descriptor)",
+      "predicted": "GENERAL PURPOSE TRANSFORMER (promoted)",
+      "category": "other",
+      "severity": 6,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "The promoted string is verbatim on the plate but is a descriptive header, not a model identity — a benign field-mapping error the scorer correctly counted as a promotion mismatching GT 'unknown' (baseline identical); catalogNumber 'T-1-53006' and all other promoted fields match GT exactly."
+    },
+    {
+      "sample_id": "web-131",
+      "field": "marks",
+      "expected": "UL, CSA (both logos clearly printed)",
+      "predicted": "UL",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The CSA monogram beside 'WINDING RISE' was not reported; an omission (marks incomplete), not an invented mark."
+    },
+    {
+      "sample_id": "web-133",
+      "field": "manufacturer",
+      "expected": "Allen-Bradley",
+      "predicted": "Monitech",
+      "category": "detector_missed_label",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Detector cropped a mid-chassis region (cropBbox 243,254 847x291, rotated 180) containing a Monitech retrofit-board sticker instead of the actual Allen-Bradley nameplate at upper-left; 'Monitech' is genuinely printed on an internal component, so this is wrong-label selection plus promotion, not hallucination (baseline read 'Allen-Bradley' correctly)."
+    },
+    {
+      "sample_id": "web-133",
+      "field": "model",
+      "expected": "2711-K5A2",
+      "predicted": "MB550E",
+      "category": "detector_missed_label",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "'MB550E' is the Monitech replacement-monitor board sticker inside the PanelView chassis; the true product nameplate visibly reads '2711-K5A2' but was not the OCR'd label, and the wrong string was promoted as model."
+    },
+    {
+      "sample_id": "web-135",
+      "field": "all",
+      "expected": "OSFPSZ-200000/275TH autotransformer nameplate (25 GT specs)",
+      "predicted": "leg error: 'JSON Parse error: Unexpected EOF'",
+      "category": "provider_error",
+      "severity": 5,
+      "safe_or_wrong": "safe_null",
+      "notes": "Both improved and baseline legs returned truncated/unparseable JSON ('Unexpected EOF'); the image itself is a legible, extremely dense transformer nameplate that GT annotators read fully, so this is provider output truncation (likely token cap on the dense tap-changer table), not a bad source image — no claim was emitted."
+    },
+    {
+      "sample_id": "web-136",
+      "field": "model",
+      "expected": "unknown (GT records 'MS 711-2' as spec field 'frame')",
+      "predicted": "MS 711-2 (promoted)",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The plate prints 'FRAME MS 711-2' and carries no other model string; the pipeline mapped the frame/type designation to model (both legs identically), a taxonomy call rather than a misread or invention, and every other field (manufacturer MALMBERGS, serial 1212073091, all 10 specs in rawText) matches GT exactly."
+    },
+    {
+      "sample_id": "web-139",
+      "field": "current",
+      "expected": "71A/58A (GT input_current)",
+      "predicted": "71A",
+      "category": "scorer_artifact",
+      "severity": 6,
+      "safe_or_wrong": "excluded",
+      "notes": "The plate prints 'INPUT : AC3PH 380-480V 50/60Hz 71A/58A' and the improved rawText captures it verbatim; values.current='71A' is the first (ND) value of the printed dual rating, and voltage '380-480V' likewise matches — a formatting/partial-value normalization mismatch, not a wrong or invented number; model and serial promotions match GT and manufacturer was correctly held in needsReview."
+    },
+    {
+      "sample_id": "web-139",
+      "field": "marks",
+      "expected": "cUL, CE, TUV SUD, RoHS (all clearly visible)",
+      "predicted": "null",
+      "category": "field_omitted_safe",
+      "severity": 6,
+      "safe_or_wrong": "safe_null",
+      "notes": "The improved leg returned marks=null and its rawText omits the visible cUL/CE/TUV SUD/RoHS logos (and 'REV : A'); a recall gap on the improved leg (baseline caught RoHS) but a safe omission, not a wrong claim."
+    },
+    {
+      "sample_id": "web-141",
+      "field": "serialNumber",
+      "expected": "B0168F909210001",
+      "predicted": "R16622 527 (promoted)",
+      "category": "catalog_model_confusion",
+      "severity": 2,
+      "safe_or_wrong": "wrong_claim",
+      "notes": "Identity-field confusion, not a misread: the plate shows 'O/N R16622 527' and 'S/N B0168F909210001', the improved leg's own rawText contains both lines correctly, yet values.serialNumber was assigned the order number and promoted (GT places R16622 527 under spec 'order_number'; baseline mapped the S/N correctly); all other web-141 fields match GT."
+    }
+  ]
+}

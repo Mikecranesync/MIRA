@@ -1,0 +1,22 @@
+{
+  "sample_id": "web-068",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "dirt", "faded"],
+  "photo_gt": {
+    "manufacturer": "FANUC",
+    "model": "A860-0202-T014",
+    "catalogNumber": "A860-0202-T014",
+    "serialNumber": "051987",
+    "equipment_category": "encoder",
+    "specs": [
+      {"field": "device_type", "value_verbatim": "PULSE GENERATOR", "unit": "", "confidence": "high"},
+      {"field": "date", "value_verbatim": "1996-02", "unit": "", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "MADE IN JAPAN", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

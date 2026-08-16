@@ -1,0 +1,41 @@
+{
+  "sample_id": "web-034",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["frontal", "embossed", "glare", "low_contrast", "partially_obstructed"],
+  "photo_gt": {
+    "manufacturer": "Nidec Motor",
+    "model": "unknown",
+    "catalogNumber": "A50P1CS",
+    "serialNumber": "unknown",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "frame", "value_verbatim": "FR 365US", "unit": "", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "PH 3", "unit": "", "confidence": "high"},
+      {"field": "ambient", "value_verbatim": "MAX AMB 40 °C", "unit": "°C", "confidence": "high"},
+      {"field": "id_number", "value_verbatim": "U 01 426422-0001 K 00", "unit": "", "confidence": "low"},
+      {"field": "insulation", "value_verbatim": "INSUL CLASS F", "unit": "", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "DUTY CONT", "unit": "", "confidence": "high"},
+      {"field": "weight", "value_verbatim": "WT 880 LB", "unit": "LB", "confidence": "medium"},
+      {"field": "balance", "value_verbatim": "BAL 0.06 IN", "unit": "IN", "confidence": "low"},
+      {"field": "power_hp", "value_verbatim": "HP 50.00", "unit": "HP", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "RPM 3555", "unit": "RPM", "confidence": "high"},
+      {"field": "service_factor", "value_verbatim": "SF 1.15", "unit": "", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "VOLTS 460", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "AMPS 57.00", "unit": "A", "confidence": "high"},
+      {"field": "sf_amps", "value_verbatim": "SF AMPS 65.0", "unit": "A", "confidence": "high"},
+      {"field": "max_kvar", "value_verbatim": "MAX KVAR 7.6", "unit": "kVAR", "confidence": "medium"},
+      {"field": "code", "value_verbatim": "CODE G", "unit": "", "confidence": "medium"},
+      {"field": "power_factor", "value_verbatim": "PF 90.1", "unit": "", "confidence": "medium"},
+      {"field": "shaft_end_bearing", "value_verbatim": "65BC03JPP3", "unit": "", "confidence": "medium"},
+      {"field": "opp_end_bearing", "value_verbatim": "65BC03JPP3", "unit": "", "confidence": "medium"},
+      {"field": "temp_rise", "value_verbatim": "80C RISE/RES AT 1.00SF", "unit": "", "confidence": "medium"},
+      {"field": "cc_number", "value_verbatim": "CC 030A", "unit": "", "confidence": "medium"},
+      {"field": "origin", "value_verbatim": "MADE IN MEXICO OF IMPORTED AND DOMESTIC COMPONENTS", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["UL", "CSA"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

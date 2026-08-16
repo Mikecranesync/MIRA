@@ -1,0 +1,24 @@
+{
+  "sample_id": "web-056",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["frontal", "faded", "low_contrast"],
+  "photo_gt": {
+    "manufacturer": "Grundfos",
+    "model": "CRNE3-9",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "pump",
+    "specs": [
+      {"field": "head", "value_verbatim": "206.7", "unit": "Feet", "confidence": "medium"},
+      {"field": "head_max", "value_verbatim": "280.8", "unit": "Feet", "confidence": "medium"},
+      {"field": "power_hp", "value_verbatim": "1.5", "unit": "HP", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "3400", "unit": "RPM", "confidence": "low"},
+      {"field": "plate_id", "value_verbatim": "96563333", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

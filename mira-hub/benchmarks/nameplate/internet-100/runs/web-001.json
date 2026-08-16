@@ -1,0 +1,128 @@
+{
+  "image": "c12r1_05.jpg",
+  "bytes": 441911,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "FANUC",
+      "model": "R-2000iC",
+      "catalogNumber": "210F",
+      "serialNumber": null,
+      "equipmentType": "Robot",
+      "confidence": 0.95,
+      "rawText": [
+        "FANUC Robot R-2000iC",
+        "210F"
+      ]
+    },
+    "rawText": [
+      "FANUC Robot R-2000iC",
+      "210F"
+    ],
+    "values": {
+      "manufacturer": "FANUC",
+      "model": "R-2000iC",
+      "catalogNumber": "210F",
+      "equipmentType": "Robot",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FANUC"
+        },
+        {
+          "field": "model",
+          "value": "R-2000iC"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "210F"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Robot"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 1,
+        "cropBbox": {
+          "left": 435,
+          "top": 546,
+          "width": 328,
+          "height": 139
+        },
+        "imageWidth": 1536,
+        "imageHeight": 2040,
+        "cropRotationDeg": 0,
+        "ms": 2234
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3437,
+    "total_ms": 5225
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "FANUC",
+      "model": "R-2000iC-A",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Robot",
+      "confidence": 0.95,
+      "rawText": [
+        "FANUC Robot R-2000iC-A",
+        "2000iC"
+      ]
+    },
+    "rawText": [
+      "FANUC Robot R-2000iC-A",
+      "2000iC"
+    ],
+    "values": {
+      "manufacturer": "FANUC",
+      "model": "R-2000iC-A",
+      "catalogNumber": null,
+      "equipmentType": "Robot",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FANUC"
+        },
+        {
+          "field": "model",
+          "value": "R-2000iC-A"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Robot"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1672
+  }
+}

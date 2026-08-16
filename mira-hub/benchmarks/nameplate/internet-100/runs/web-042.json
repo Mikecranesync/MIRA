@@ -1,0 +1,223 @@
+{
+  "image": "c09r1_09.jpg",
+  "bytes": 122413,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "LEESON",
+      "model": "C6T34EC6A",
+      "catalogNumber": "110112-00",
+      "serialNumber": "183",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "LEESON",
+        "CAT. NO./PART NO. 110112-00",
+        "MODEL C6T34EC6A",
+        "R-P-M 3450/2950",
+        "H.P. 1",
+        "F.L.A. 3.2/3.6",
+        "F.L.A. 1.6/1.8",
+        "82 EFF 75 TYPE TF SER FACT L15",
+        "MAX AMB. 40",
+        "THERMALLY PROTECTED",
+        "CODE H DESIGN",
+        "V 208-230",
+        "V 460",
+        "S.F.A.",
+        "S.F.A.",
+        "INSUL. CLASS B",
+        "CONNECT LEADS T1-T2-T3 TO LINE TO REVERS",
+        "ROTATION INTERCHANGE ANY 2 LINE LEADS"
+      ]
+    },
+    "rawText": [
+      "LEESON",
+      "CAT. NO./PART NO. 110112-00",
+      "MODEL C6T34EC6A",
+      "R-P-M 3450/2950",
+      "H.P. 1",
+      "F.L.A. 3.2/3.6",
+      "F.L.A. 1.6/1.8",
+      "82 EFF 75 TYPE TF SER FACT L15",
+      "MAX AMB. 40",
+      "THERMALLY PROTECTED",
+      "CODE H DESIGN",
+      "V 208-230",
+      "V 460",
+      "S.F.A.",
+      "S.F.A.",
+      "INSUL. CLASS B",
+      "CONNECT LEADS T1-T2-T3 TO LINE TO REVERS",
+      "ROTATION INTERCHANGE ANY 2 LINE LEADS"
+    ],
+    "values": {
+      "manufacturer": "LEESON",
+      "model": "C6T34EC6A",
+      "catalogNumber": "110112-00",
+      "equipmentType": "motor",
+      "serialNumber": "183",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "LEESON"
+        },
+        {
+          "field": "model",
+          "value": "C6T34EC6A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "110112-00"
+        }
+      ],
+      "needsReview": [
+        "serialNumber",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 57,
+        "cropBbox": {
+          "left": 130,
+          "top": 123,
+          "width": 753,
+          "height": 375
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 1917
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2245,
+    "total_ms": 6546
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "LEESON",
+      "model": "C6T34FC6A",
+      "catalogNumber": "110112-00",
+      "serialNumber": "183",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "LEESON",
+        "CAT NO./PART NO.",
+        "110112-00",
+        "model",
+        "C6T34FC6A",
+        "R.P.M.",
+        "3450/2950",
+        "H.P.",
+        "82",
+        "EFF",
+        "MAX",
+        "AMPS",
+        "THERMALLY PROTECTED",
+        "INSUL CLASS",
+        "S.F.A.",
+        "CODE",
+        "H",
+        "DESIGN",
+        "V. 208-230",
+        "V. 460",
+        "FLA 3.2/3.6",
+        "FLA 7.6/7.8",
+        "S.F.A.",
+        "SER",
+        "FACT",
+        "1.15",
+        "C",
+        "40",
+        "C",
+        "NOT",
+        "183"
+      ]
+    },
+    "rawText": [
+      "LEESON",
+      "CAT NO./PART NO.",
+      "110112-00",
+      "model",
+      "C6T34FC6A",
+      "R.P.M.",
+      "3450/2950",
+      "H.P.",
+      "82",
+      "EFF",
+      "MAX",
+      "AMPS",
+      "THERMALLY PROTECTED",
+      "INSUL CLASS",
+      "S.F.A.",
+      "CODE",
+      "H",
+      "DESIGN",
+      "V. 208-230",
+      "V. 460",
+      "FLA 3.2/3.6",
+      "FLA 7.6/7.8",
+      "S.F.A.",
+      "SER",
+      "FACT",
+      "1.15",
+      "C",
+      "40",
+      "C",
+      "NOT",
+      "183"
+    ],
+    "values": {
+      "manufacturer": "LEESON",
+      "model": "C6T34FC6A",
+      "catalogNumber": "110112-00",
+      "equipmentType": "motor",
+      "serialNumber": "183",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "LEESON"
+        },
+        {
+          "field": "model",
+          "value": "C6T34FC6A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "110112-00"
+        },
+        {
+          "field": "serialNumber",
+          "value": "183"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5104
+  }
+}

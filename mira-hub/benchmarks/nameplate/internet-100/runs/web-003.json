@@ -1,0 +1,184 @@
+{
+  "image": "c06r1_01.jpg",
+  "bytes": 344440,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Micron",
+      "model": "B5K0BTZ13JXH",
+      "catalogNumber": "B5K0BTZ13JXH",
+      "serialNumber": null,
+      "equipmentType": "Transformer",
+      "confidence": 0.95,
+      "rawText": [
+        "B5K0BTZ13JXH NTO",
+        "4006679471",
+        "Micron B5K0BTZ13JXH 5kVA",
+        "ImperiTRAN Series General Purpose Transformer",
+        "13082",
+        "Micron",
+        "IMPERIVTRAN",
+        "5.0 kVA",
+        "50/60 Hz",
+        "TEMP. CL. 180°C",
+        "230",
+        "[220 240]",
+        "1 2 3 4",
+        "H1 H2 H3 H4",
+        "460",
+        "[440 480]",
+        "1 2 3 4",
+        "X2",
+        "X1",
+        "CAT. NO. B5K0BTZ13JXH",
+        "U.S. PAT. NO.3516040",
+        "800 664-4660",
+        "LISTED 702X"
+      ]
+    },
+    "rawText": [
+      "B5K0BTZ13JXH NTO",
+      "4006679471",
+      "Micron B5K0BTZ13JXH 5kVA",
+      "ImperiTRAN Series General Purpose Transformer",
+      "13082",
+      "Micron",
+      "IMPERIVTRAN",
+      "5.0 kVA",
+      "50/60 Hz",
+      "TEMP. CL. 180°C",
+      "230",
+      "[220 240]",
+      "1 2 3 4",
+      "H1 H2 H3 H4",
+      "460",
+      "[440 480]",
+      "1 2 3 4",
+      "X2",
+      "X1",
+      "CAT. NO. B5K0BTZ13JXH",
+      "U.S. PAT. NO.3516040",
+      "800 664-4660",
+      "LISTED 702X"
+    ],
+    "values": {
+      "manufacturer": "Micron",
+      "model": "B5K0BTZ13JXH",
+      "catalogNumber": "B5K0BTZ13JXH",
+      "equipmentType": "Transformer",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Micron"
+        },
+        {
+          "field": "model",
+          "value": "B5K0BTZ13JXH"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "B5K0BTZ13JXH"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Transformer"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 22,
+        "cropBbox": {
+          "left": 116,
+          "top": 444,
+          "width": 607,
+          "height": 529
+        },
+        "imageWidth": 945,
+        "imageHeight": 1280,
+        "cropRotationDeg": 0,
+        "ms": 2152
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3197,
+    "total_ms": 8361
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Micron",
+      "model": "B5K0BTZ13JXH",
+      "catalogNumber": "B5K0BTZ13JXH",
+      "serialNumber": "NTO",
+      "equipmentType": "Transformer",
+      "confidence": 0.95,
+      "rawText": [
+        "B5K0BTZ13JXH NTO",
+        "4006679471",
+        "Micron B5K0BTZ13JXH 5KVA",
+        "ImperViTRAN Series General Purpose Transformer",
+        "B5K0BTZ13JXH"
+      ]
+    },
+    "rawText": [
+      "B5K0BTZ13JXH NTO",
+      "4006679471",
+      "Micron B5K0BTZ13JXH 5KVA",
+      "ImperViTRAN Series General Purpose Transformer",
+      "B5K0BTZ13JXH"
+    ],
+    "values": {
+      "manufacturer": "Micron",
+      "model": "B5K0BTZ13JXH",
+      "catalogNumber": "B5K0BTZ13JXH",
+      "equipmentType": "Transformer",
+      "serialNumber": "NTO",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Micron"
+        },
+        {
+          "field": "model",
+          "value": "B5K0BTZ13JXH"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "B5K0BTZ13JXH"
+        },
+        {
+          "field": "serialNumber",
+          "value": "NTO"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Transformer"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2540
+  }
+}

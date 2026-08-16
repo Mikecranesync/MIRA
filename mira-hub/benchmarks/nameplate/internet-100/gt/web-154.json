@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-154",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "3UA50",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "overload_relay",
+    "specs": [
+      {
+        "field": "current_setting_dial",
+        "value_verbatim": "6.3 8 10",
+        "unit": "A",
+        "confidence": "medium"
+      }
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

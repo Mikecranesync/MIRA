@@ -1,0 +1,226 @@
+{
+  "image": "c09r1_12.jpg",
+  "bytes": 127800,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Reliance Electric Company",
+      "model": "MASTER A-C",
+      "catalogNumber": null,
+      "serialNumber": "P5618079M",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "DUTY MASTER A-C MOTOR",
+        "P5618079M",
+        "NF FR AB56C",
+        "TYPE P",
+        "PH 3",
+        "HP",
+        "RPM",
+        "VOLTS",
+        "AMPS",
+        "HZ",
+        "SF",
+        "1/8",
+        "1725",
+        "230/ ",
+        "1.7",
+        "60",
+        "1.38",
+        "460",
+        ".85",
+        "TIME RATING CONT",
+        "INS. CLASS",
+        "INS. TYPE",
+        "B",
+        "AMB. °C",
+        "40",
+        "NEMA DESIGN",
+        "CODE",
+        "SP",
+        "RELIANCE ELECTRIC COMPANY",
+        "602454-14A",
+        "CLEVELAND, OHIO, 44117",
+        "MADE IN U.S.A."
+      ]
+    },
+    "rawText": [
+      "DUTY MASTER A-C MOTOR",
+      "P5618079M",
+      "NF FR AB56C",
+      "TYPE P",
+      "PH 3",
+      "HP",
+      "RPM",
+      "VOLTS",
+      "AMPS",
+      "HZ",
+      "SF",
+      "1/8",
+      "1725",
+      "230/ ",
+      "1.7",
+      "60",
+      "1.38",
+      "460",
+      ".85",
+      "TIME RATING CONT",
+      "INS. CLASS",
+      "INS. TYPE",
+      "B",
+      "AMB. °C",
+      "40",
+      "NEMA DESIGN",
+      "CODE",
+      "SP",
+      "RELIANCE ELECTRIC COMPANY",
+      "602454-14A",
+      "CLEVELAND, OHIO, 44117",
+      "MADE IN U.S.A."
+    ],
+    "values": {
+      "manufacturer": "Reliance Electric Company",
+      "model": "MASTER A-C",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "P5618079M",
+      "voltage": null,
+      "current": "14A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Reliance Electric Company"
+        },
+        {
+          "field": "model",
+          "value": "MASTER A-C"
+        },
+        {
+          "field": "serialNumber",
+          "value": "P5618079M"
+        },
+        {
+          "field": "equipmentType",
+          "value": "motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 38,
+        "cropBbox": {
+          "left": 30,
+          "top": 0,
+          "width": 910,
+          "height": 684
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2109
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 5185,
+    "total_ms": 11564
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Reliance Electric Company",
+      "model": "Duty Master A-C Motor",
+      "catalogNumber": null,
+      "serialNumber": "P56H3079M",
+      "equipmentType": "A-C Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "DUTY MASTER A-C MOTOR",
+        "P56H3079M",
+        "NF FR A856C",
+        "HP 1/8",
+        "RPM 1725",
+        "VOLTS 230/460",
+        "AMPS 1.7/ .85",
+        "HZ 60",
+        "SF 1.38",
+        "TIME RATING CONT",
+        "INS. CLASS B",
+        "INS. TYPE",
+        "AMB. °C 40",
+        "NEMA DESIGN C",
+        "CODE",
+        "RELIANCE ELECTRIC COMPANY",
+        "602454-144",
+        "CLEVELAND, OHIO 44117",
+        "MADE N.S.A."
+      ]
+    },
+    "rawText": [
+      "DUTY MASTER A-C MOTOR",
+      "P56H3079M",
+      "NF FR A856C",
+      "HP 1/8",
+      "RPM 1725",
+      "VOLTS 230/460",
+      "AMPS 1.7/ .85",
+      "HZ 60",
+      "SF 1.38",
+      "TIME RATING CONT",
+      "INS. CLASS B",
+      "INS. TYPE",
+      "AMB. °C 40",
+      "NEMA DESIGN C",
+      "CODE",
+      "RELIANCE ELECTRIC COMPANY",
+      "602454-144",
+      "CLEVELAND, OHIO 44117",
+      "MADE N.S.A."
+    ],
+    "values": {
+      "manufacturer": "Reliance Electric Company",
+      "model": "Duty Master A-C Motor",
+      "catalogNumber": null,
+      "equipmentType": "A-C Motor",
+      "serialNumber": "P56H3079M",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": "INS.Class B",
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Reliance Electric Company"
+        },
+        {
+          "field": "model",
+          "value": "Duty Master A-C Motor"
+        },
+        {
+          "field": "serialNumber",
+          "value": "P56H3079M"
+        },
+        {
+          "field": "equipmentType",
+          "value": "A-C Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4250
+  }
+}

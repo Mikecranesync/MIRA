@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-037",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "partially_obstructed"],
+  "photo_gt": {
+    "manufacturer": "Parker",
+    "model": "19124MXS",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "pneumatic_solenoid_valve",
+    "specs": [
+      {"field": "pressure", "value_verbatim": "p Max = 10 bar", "unit": "bar", "confidence": "high"},
+      {"field": "ambient", "value_verbatim": "t= -10C +55C", "unit": "C", "confidence": "high"},
+      {"field": "date_code", "value_verbatim": "40/98", "unit": "", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "110 V", "unit": "V", "confidence": "high"},
+      {"field": "power_va", "value_verbatim": "9 VA", "unit": "VA", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "voltage_dc", "value_verbatim": "55 V DC", "unit": "V", "confidence": "high"},
+      {"field": "power_w", "value_verbatim": "5 W", "unit": "W", "confidence": "high"}
+    ],
+    "marks": ["ISO"],
+    "marks_complete": true
+  },
+  "oem_gt": null,
+  "notes": "Valve body label: Parker Pneumatic 19124MXS, 5/2 valve symbol, position marker '1'. Coil electrical ratings (110V 9VA 50Hz / 55VDC 5W) are on the separate solenoid coil at left edge, which is angled and partially cropped but legible. No serial number printed; 40/98 is a week/year date code."
+}

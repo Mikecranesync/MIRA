@@ -1,0 +1,160 @@
+{
+  "image": "c12r1_10.jpg",
+  "bytes": 189274,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "PanelView Plus 1000",
+      "catalogNumber": "271P-RPD10C",
+      "serialNumber": "3872959",
+      "equipmentType": "Logic Module",
+      "confidence": 0.95,
+      "rawText": [
+        "Allen-Bradley",
+        "PanelView Plus 1000",
+        "271P-RPD10C",
+        "3872959",
+        "PanelView Plus",
+        "LOGIC MODULE",
+        "271P-RPD10",
+        "24 VDC"
+      ]
+    },
+    "rawText": [
+      "Allen-Bradley",
+      "PanelView Plus 1000",
+      "271P-RPD10C",
+      "3872959",
+      "PanelView Plus",
+      "LOGIC MODULE",
+      "271P-RPD10",
+      "24 VDC"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "PanelView Plus 1000",
+      "catalogNumber": "271P-RPD10C",
+      "equipmentType": "Logic Module",
+      "serialNumber": "3872959",
+      "voltage": "24VDC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "PanelView Plus 1000"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "271P-RPD10C"
+        },
+        {
+          "field": "serialNumber",
+          "value": "3872959"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Logic Module"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 18,
+        "cropBbox": {
+          "left": 205,
+          "top": 210,
+          "width": 1139,
+          "height": 449
+        },
+        "imageWidth": 1600,
+        "imageHeight": 1200,
+        "cropRotationDeg": 0,
+        "ms": 2212
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4560,
+    "total_ms": 7099
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "271-80T10C",
+      "catalogNumber": "271-80T10C",
+      "serialNumber": null,
+      "equipmentType": "Logic Module",
+      "confidence": 0.95,
+      "rawText": [
+        "Allen-Bradley",
+        "271-80T10C",
+        "CAT LOGIC MODULE",
+        "271-80T10C",
+        "24 VDC",
+        "DANGER",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "Allen-Bradley",
+      "271-80T10C",
+      "CAT LOGIC MODULE",
+      "271-80T10C",
+      "24 VDC",
+      "DANGER",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "271-80T10C",
+      "catalogNumber": "271-80T10C",
+      "equipmentType": "Logic Module",
+      "serialNumber": null,
+      "voltage": "24VDC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "271-80T10C"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "271-80T10C"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Logic Module"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2322
+  }
+}

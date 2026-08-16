@@ -1,0 +1,27 @@
+{
+  "sample_id": "web-040",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "low_contrast", "faded"],
+  "photo_gt": {
+    "manufacturer": "ITE Imperial Corporation",
+    "model": "K-600",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "power_circuit_breaker",
+    "specs": [
+      {"field": "frame_size_ac", "value_verbatim": "600A. 50/60 CY.", "unit": "A", "confidence": "high"},
+      {"field": "frame_size_dc", "value_verbatim": "800A. D.C.", "unit": "A", "confidence": "high"},
+      {"field": "short_circuit_600vac", "value_verbatim": "600V.AC 22000A.", "unit": "A", "confidence": "high"},
+      {"field": "short_circuit_480vac", "value_verbatim": "480V.AC 30000A.", "unit": "A", "confidence": "high"},
+      {"field": "short_circuit_240vac", "value_verbatim": "240V.AC 42000A.", "unit": "A", "confidence": "high"},
+      {"field": "short_circuit_dc", "value_verbatim": "250V.-25000A.", "unit": "A", "confidence": "high"},
+      {"field": "short_time_current", "value_verbatim": "22000A.", "unit": "A", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null,
+  "notes": "'POWER CIRCUIT BREAKER TYPE K-600', ITE Imperial Corporation, Philadelphia, Pennsylvania, U.S.A., MADE IN U.S.A. 'CONTINUOUS CURRENT AND CALIBRATION ON TRIP DEVICE'. Stamped SERIAL and DATE fields are present but too faint/blurred to read with confidence (serial appears stamped, illegible; date possibly '11-71' but not certain) — recorded as unknown. Dim lighting, printed text otherwise legible."
+}

@@ -1,0 +1,120 @@
+{
+  "image": "c12r1_13.jpg",
+  "bytes": 647018,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "H.WOHLENBERG",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "H.WOHLENBERG",
+        "HANNOVER",
+        "MD 1093",
+        "1988"
+      ]
+    },
+    "rawText": [
+      "H.WOHLENBERG",
+      "HANNOVER",
+      "MD 1093",
+      "1988"
+    ],
+    "values": {
+      "manufacturer": "H.WOHLENBERG",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "H.WOHLENBERG"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 3,
+        "cropBbox": {
+          "left": 36,
+          "top": 80,
+          "width": 738,
+          "height": 373
+        },
+        "imageWidth": 800,
+        "imageHeight": 521,
+        "cropRotationDeg": 0,
+        "ms": 1458
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3099,
+    "total_ms": 4839
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "H. WOHLENBERG",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "1093 1988",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "H.WOHLENBERG",
+        "HANNOVER",
+        "1093",
+        "1988"
+      ]
+    },
+    "rawText": [
+      "H.WOHLENBERG",
+      "HANNOVER",
+      "1093",
+      "1988"
+    ],
+    "values": {
+      "manufacturer": "H. WOHLENBERG",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "1093 1988",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "H. WOHLENBERG"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1093 1988"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1707
+  }
+}

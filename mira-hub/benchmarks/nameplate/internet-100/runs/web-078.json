@@ -1,0 +1,172 @@
+{
+  "image": "c05r1_03.jpg",
+  "bytes": 296879,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SEW-EURODRIVE, INC.",
+      "model": "K477DT100LS4BMG4HR",
+      "catalogNumber": "1504",
+      "serialNumber": "330232912.09 .09.001",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SEW-EURODRIVE, INC. USA",
+        "Type K477DT100LS4BMG4HR-1504",
+        "S.O. 330232912.09 .09.001",
+        "In 1720 rpm",
+        "Out 34 rpm",
+        "Torque 5626 lb-in",
+        "Ratio 51.18",
+        "Mounting Position H4",
+        "Lubrication A Mobil Product",
+        "H031L 600XP 220 -10 °C 40 °C",
+        "See Operating Instructions for lubrication details",
+        "Min Amb",
+        "Max Amb"
+      ]
+    },
+    "rawText": [
+      "SEW-EURODRIVE, INC. USA",
+      "Type K477DT100LS4BMG4HR-1504",
+      "S.O. 330232912.09 .09.001",
+      "In 1720 rpm",
+      "Out 34 rpm",
+      "Torque 5626 lb-in",
+      "Ratio 51.18",
+      "Mounting Position H4",
+      "Lubrication A Mobil Product",
+      "H031L 600XP 220 -10 °C 40 °C",
+      "See Operating Instructions for lubrication details",
+      "Min Amb",
+      "Max Amb"
+    ],
+    "values": {
+      "manufacturer": "SEW-EURODRIVE, INC.",
+      "model": "K477DT100LS4BMG4HR",
+      "catalogNumber": "1504",
+      "equipmentType": null,
+      "serialNumber": "330232912.09 .09.001",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SEW-EURODRIVE, INC."
+        },
+        {
+          "field": "model",
+          "value": "K477DT100LS4BMG4HR"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "1504"
+        },
+        {
+          "field": "serialNumber",
+          "value": "330232912.09 .09.001"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 33,
+        "cropBbox": {
+          "left": 0,
+          "top": 319,
+          "width": 1260,
+          "height": 698
+        },
+        "imageWidth": 1350,
+        "imageHeight": 1350,
+        "cropRotationDeg": 0,
+        "ms": 3111
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 8188,
+    "total_ms": 12524
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SEW-EURODRIVE, INC. USA",
+      "model": "K477TDT100LS34BG4HR-1504",
+      "catalogNumber": null,
+      "serialNumber": "330232912.09 .09.001",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SEW-EURODRIVE, INC. USA",
+        "Type K477TDT100LS34BG4HR-1504",
+        "S.O. 330232912.09 .09.001",
+        "In 1720 rpm Out 34 rpm",
+        "HP",
+        "Torque 5626 lb-in",
+        "Ratio 51.13",
+        "Service Factor 2.4",
+        "Mounting H4",
+        "Lubrication A Mobil Product",
+        "HOB3L 600XP 220 -10 °C 40 °C",
+        "See Operating Instructions for lubrication details",
+        "Min Amb Max Amb"
+      ]
+    },
+    "rawText": [
+      "SEW-EURODRIVE, INC. USA",
+      "Type K477TDT100LS34BG4HR-1504",
+      "S.O. 330232912.09 .09.001",
+      "In 1720 rpm Out 34 rpm",
+      "HP",
+      "Torque 5626 lb-in",
+      "Ratio 51.13",
+      "Service Factor 2.4",
+      "Mounting H4",
+      "Lubrication A Mobil Product",
+      "HOB3L 600XP 220 -10 °C 40 °C",
+      "See Operating Instructions for lubrication details",
+      "Min Amb Max Amb"
+    ],
+    "values": {
+      "manufacturer": "SEW-EURODRIVE, INC. USA",
+      "model": "K477TDT100LS34BG4HR-1504",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "330232912.09 .09.001",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SEW-EURODRIVE, INC. USA"
+        },
+        {
+          "field": "model",
+          "value": "K477TDT100LS34BG4HR-1504"
+        },
+        {
+          "field": "serialNumber",
+          "value": "330232912.09 .09.001"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4729
+  }
+}

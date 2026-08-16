@@ -1,0 +1,37 @@
+{
+  "sample_id": "web-111",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "partially_obstructed", "glare"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "unknown",
+    "catalogNumber": "22B-D4P0N104",
+    "serialNumber": "BD4P0N0W7190172",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "series", "value_verbatim": "SERIES A", "unit": "", "confidence": "high"},
+      {"field": "power_kw", "value_verbatim": "Motor Rating: 1.5kW/2.0HP", "unit": "kW/HP", "confidence": "high"},
+      {"field": "input_phase", "value_verbatim": "Input: 3 Phase, 380-480V, 48-63Hz", "unit": "", "confidence": "high"},
+      {"field": "input_voltage_range", "value_verbatim": "AC Voltage Range: 342-528", "unit": "V", "confidence": "high"},
+      {"field": "input_current", "value_verbatim": "Amps: 5.7", "unit": "A", "confidence": "high"},
+      {"field": "output", "value_verbatim": "Output: 3 Phase, 0-400Hz", "unit": "", "confidence": "high"},
+      {"field": "output_voltage_range", "value_verbatim": "AC Voltage Range: 0 - 460", "unit": "V", "confidence": "high"},
+      {"field": "output_current", "value_verbatim": "Continuous Amps: 4.0", "unit": "A", "confidence": "high"},
+      {"field": "overload_current", "value_verbatim": "60 Sec Ovld Amps: 6.0", "unit": "A", "confidence": "high"},
+      {"field": "short_circuit_current", "value_verbatim": "SHORT CIRCUIT CURRENT 100kA", "unit": "kA", "confidence": "high"},
+      {"field": "wire_spec", "value_verbatim": "Use 75°C Cu Wire", "unit": "", "confidence": "high"},
+      {"field": "wire_size", "value_verbatim": "5.3 mm² - 1.3 mm² (10-16 AWG)", "unit": "", "confidence": "medium"},
+      {"field": "torque", "value_verbatim": "Torque 1.96 Nm (17.4 in-lbs)", "unit": "Nm", "confidence": "medium"},
+      {"field": "mfd_date", "value_verbatim": "MFD IN 2007 ON MAY.08", "unit": "", "confidence": "medium"},
+      {"field": "firmware", "value_verbatim": "FRN: 4.01", "unit": "", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "IP20 / UL Open-Type with top cover removed (rated -10°C to 50°C Ambient)", "unit": "", "confidence": "medium"},
+      {"field": "enclosure_alt", "value_verbatim": "IP30 / NEMA 1 / UL Type 1 with top cover and optional conduit box kit installed (rated -10°C to 40°C Ambient)", "unit": "", "confidence": "medium"},
+      {"field": "origin", "value_verbatim": "MADE IN CHINA", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["cULus", "CE"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

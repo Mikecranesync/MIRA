@@ -1,0 +1,18 @@
+{
+  "sample_id": "web-001",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["small_in_scene", "angled"],
+  "photo_gt": {
+    "manufacturer": "FANUC",
+    "model": "R-2000iC 210F",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "industrial_robot",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

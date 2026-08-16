@@ -1,0 +1,136 @@
+{
+  "image": "c07r1_06.jpg",
+  "bytes": 17048,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Wieland",
+      "model": "WT15.P410",
+      "catalogNumber": "9825 10",
+      "serialNumber": "010817",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Wieland",
+        "WT15.P410",
+        "9825 10",
+        "010817"
+      ]
+    },
+    "rawText": [
+      "Wieland",
+      "WT15.P410",
+      "9825 10",
+      "010817"
+    ],
+    "values": {
+      "manufacturer": "Wieland",
+      "model": "WT15.P410",
+      "catalogNumber": "9825 10",
+      "equipmentType": null,
+      "serialNumber": "010817",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Wieland"
+        },
+        {
+          "field": "model",
+          "value": "WT15.P410"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "9825 10"
+        },
+        {
+          "field": "serialNumber",
+          "value": "010817"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 1,
+        "cropBbox": {
+          "left": 230,
+          "top": 87,
+          "width": 90,
+          "height": 90
+        },
+        "imageWidth": 438,
+        "imageHeight": 480,
+        "cropRotationDeg": 0,
+        "ms": 587
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 688,
+    "total_ms": 4913
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "OMRON",
+      "model": "WT15-810",
+      "catalogNumber": "1060-3010",
+      "serialNumber": null,
+      "equipmentType": "proximity sensor",
+      "confidence": 0.95,
+      "rawText": [
+        "WT15-810",
+        "OMRON",
+        "1060-3010"
+      ]
+    },
+    "rawText": [
+      "WT15-810",
+      "OMRON",
+      "1060-3010"
+    ],
+    "values": {
+      "manufacturer": "OMRON",
+      "model": "WT15-810",
+      "catalogNumber": "1060-3010",
+      "equipmentType": "proximity sensor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "OMRON"
+        },
+        {
+          "field": "model",
+          "value": "WT15-810"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "1060-3010"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1514
+  }
+}

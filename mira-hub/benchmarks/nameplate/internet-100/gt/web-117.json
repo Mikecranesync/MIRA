@@ -1,0 +1,24 @@
+{
+  "sample_id": "web-117",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "upside_down", "high_resolution", "scratched", "dirt"],
+  "photo_gt": {
+    "manufacturer": "BANNER",
+    "model": "RSBF",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "photoelectric_sensor",
+    "specs": [
+      {"field": "product_line", "value_verbatim": "MAXI-BEAM", "unit": "", "confidence": "high"},
+      {"field": "power_block", "value_verbatim": "POWER BLOCK: RPBT", "unit": "", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "10 TO 30 VOLTS DC", "unit": "VDC", "confidence": "high"},
+      {"field": "output_type", "value_verbatim": "SINKING OUTPUT / SOURCING OUTPUT", "unit": "", "confidence": "medium"},
+      {"field": "tagline", "value_verbatim": "the photoelectric specialist", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

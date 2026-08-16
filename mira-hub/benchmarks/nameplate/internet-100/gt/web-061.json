@@ -1,0 +1,22 @@
+{
+  "sample_id": "web-061",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "small_in_scene", "tiny_text", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "SMC",
+    "model": "C95SDB40-125",
+    "catalogNumber": "C95SDB40-125",
+    "serialNumber": "unknown",
+    "equipment_category": "pneumatic_cylinder",
+    "specs": [
+      {"field": "pressure", "value_verbatim": "MAX.PRESS. 1.0MPa", "unit": "MPa", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "CHINA", "unit": "", "confidence": "high"},
+      {"field": "label_codes", "value_verbatim": "G MZ", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

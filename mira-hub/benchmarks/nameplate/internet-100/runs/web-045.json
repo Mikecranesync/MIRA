@@ -1,0 +1,256 @@
+{
+  "image": "c10r1_14.jpg",
+  "bytes": 818574,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ABB",
+      "model": "QWGy 800 xa4",
+      "catalogNumber": null,
+      "serialNumber": "818 174",
+      "equipmentType": "Asynchronous Machine",
+      "confidence": 0.95,
+      "rawText": [
+        "ABB",
+        "ASEA BROWN BOVERI",
+        "No. 818 174",
+        "1988",
+        "Typ",
+        "QWGy 800 xa4",
+        "P 5000",
+        "kW Duty S1",
+        "cos φ 0,89",
+        "m 15 800 kg",
+        "n 1480",
+        "1/min",
+        "f 50",
+        "Hz IC W37 A81",
+        "U₁ 10000",
+        "V I₁ 335",
+        "A₃~Y",
+        "IM B3",
+        "U₂",
+        "V I₂",
+        "A₃~",
+        "IP 54",
+        "Mec.",
+        "El. VDE-0530",
+        "Cl. F",
+        "Micador Compact"
+      ]
+    },
+    "rawText": [
+      "ABB",
+      "ASEA BROWN BOVERI",
+      "No. 818 174",
+      "1988",
+      "Typ",
+      "QWGy 800 xa4",
+      "P 5000",
+      "kW Duty S1",
+      "cos φ 0,89",
+      "m 15 800 kg",
+      "n 1480",
+      "1/min",
+      "f 50",
+      "Hz IC W37 A81",
+      "U₁ 10000",
+      "V I₁ 335",
+      "A₃~Y",
+      "IM B3",
+      "U₂",
+      "V I₂",
+      "A₃~",
+      "IP 54",
+      "Mec.",
+      "El. VDE-0530",
+      "Cl. F",
+      "Micador Compact"
+    ],
+    "values": {
+      "manufacturer": "ABB",
+      "model": "QWGy 800 xa4",
+      "catalogNumber": null,
+      "equipmentType": "Asynchronous Machine",
+      "serialNumber": "818 174",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ABB"
+        },
+        {
+          "field": "model",
+          "value": "QWGy 800 xa4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "818 174"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Asynchronous Machine"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 44,
+        "cropBbox": {
+          "left": 0,
+          "top": 18,
+          "width": 1211,
+          "height": 603
+        },
+        "imageWidth": 1260,
+        "imageHeight": 651,
+        "cropRotationDeg": 0,
+        "ms": 1587
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3083,
+    "total_ms": 7307
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ABB",
+      "model": "QW6y 800 xa4",
+      "catalogNumber": null,
+      "serialNumber": "818 174",
+      "equipmentType": "Asynchronous Machine",
+      "confidence": 0.95,
+      "rawText": [
+        "ABB",
+        "ASEA BROWN BOVERI",
+        "ASYNCHRONMASCHINE",
+        "MACHINE ASYNCHRONE",
+        "ASYNCHRONOUS MACHINE",
+        "No. AW 818 174",
+        "1988",
+        "Typ",
+        "QW6y 800 xa4",
+        "P",
+        "5000",
+        "kW Duty",
+        "S1",
+        "cos φ",
+        "0,89",
+        "m 15 800 kg",
+        "n",
+        "1480",
+        "1/min",
+        "f",
+        "50",
+        "Hz IC",
+        "W 37 A81",
+        "U₁",
+        "10000",
+        "V I₁",
+        "335",
+        "A₃~Y",
+        "IM",
+        "B3",
+        "U₂",
+        "V I₂",
+        "A₃~",
+        "IP",
+        "54",
+        "Мес.",
+        "El.",
+        "VDE-0530",
+        "Cl.",
+        "F"
+      ]
+    },
+    "rawText": [
+      "ABB",
+      "ASEA BROWN BOVERI",
+      "ASYNCHRONMASCHINE",
+      "MACHINE ASYNCHRONE",
+      "ASYNCHRONOUS MACHINE",
+      "No. AW 818 174",
+      "1988",
+      "Typ",
+      "QW6y 800 xa4",
+      "P",
+      "5000",
+      "kW Duty",
+      "S1",
+      "cos φ",
+      "0,89",
+      "m 15 800 kg",
+      "n",
+      "1480",
+      "1/min",
+      "f",
+      "50",
+      "Hz IC",
+      "W 37 A81",
+      "U₁",
+      "10000",
+      "V I₁",
+      "335",
+      "A₃~Y",
+      "IM",
+      "B3",
+      "U₂",
+      "V I₂",
+      "A₃~",
+      "IP",
+      "54",
+      "Мес.",
+      "El.",
+      "VDE-0530",
+      "Cl.",
+      "F"
+    ],
+    "values": {
+      "manufacturer": "ABB",
+      "model": "QW6y 800 xa4",
+      "catalogNumber": null,
+      "equipmentType": "Asynchronous Machine",
+      "serialNumber": "818 174",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ABB"
+        },
+        {
+          "field": "model",
+          "value": "QW6y 800 xa4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "818 174"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Asynchronous Machine"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 5582
+  }
+}

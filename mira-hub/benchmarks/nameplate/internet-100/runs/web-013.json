@@ -1,0 +1,132 @@
+{
+  "image": "c01r1_07.jpg",
+  "bytes": 67518,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "marathon",
+      "model": "Globetrotter",
+      "catalogNumber": null,
+      "serialNumber": "YVD164TTDB60306BA",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "marathon Globetrotter",
+        "MODEL YVD164TTDB60306BA",
+        "Serial No. CAMB248289",
+        "CAT# GT0113"
+      ]
+    },
+    "rawText": [
+      "marathon Globetrotter",
+      "MODEL YVD164TTDB60306BA",
+      "Serial No. CAMB248289",
+      "CAT# GT0113"
+    ],
+    "values": {
+      "manufacturer": "marathon",
+      "model": "Globetrotter",
+      "catalogNumber": "GT0113",
+      "equipmentType": null,
+      "serialNumber": "YVD164TTDB60306BA",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "marathon"
+        },
+        {
+          "field": "model",
+          "value": "Globetrotter"
+        },
+        {
+          "field": "serialNumber",
+          "value": "YVD164TTDB60306BA"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 23,
+        "cropBbox": {
+          "left": 318,
+          "top": 145,
+          "width": 520,
+          "height": 605
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2519
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4093,
+    "total_ms": 6368
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "marathon",
+      "model": "Globetrotter",
+      "catalogNumber": null,
+      "serialNumber": "GTO113",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "marathon",
+        "Globetrotter",
+        "LEESO",
+        "GTO113"
+      ]
+    },
+    "rawText": [
+      "marathon",
+      "Globetrotter",
+      "LEESO",
+      "GTO113"
+    ],
+    "values": {
+      "manufacturer": "marathon",
+      "model": "Globetrotter",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "GTO113",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "marathon"
+        },
+        {
+          "field": "model",
+          "value": "Globetrotter"
+        },
+        {
+          "field": "serialNumber",
+          "value": "GTO113"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1968
+  }
+}

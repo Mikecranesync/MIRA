@@ -1,0 +1,183 @@
+{
+  "image": "c07r1_02.jpg",
+  "bytes": 119506,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "595-AB",
+      "catalogNumber": "595-AB",
+      "serialNumber": "C",
+      "equipmentType": "Auxiliary Contact",
+      "confidence": 0.95,
+      "rawText": [
+        "TO INSTALL: CONTROLLER MUST BE IN OFF POSITION",
+        "① ALIGN ARROWS ON REVERSE SIDE. FIND TABS.",
+        "INSERT TABS FIRST",
+        "COIL COVER",
+        "TO REMOVE: LOOSEN COIL COVER",
+        "CAT 595-AB C",
+        "SER",
+        "AUXILIARY CONTACT",
+        "SIZES 0-5",
+        "HEAVY DUTY",
+        "MADE IN U.S.A.",
+        "Allen-Bradley",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "TO INSTALL: CONTROLLER MUST BE IN OFF POSITION",
+      "① ALIGN ARROWS ON REVERSE SIDE. FIND TABS.",
+      "INSERT TABS FIRST",
+      "COIL COVER",
+      "TO REMOVE: LOOSEN COIL COVER",
+      "CAT 595-AB C",
+      "SER",
+      "AUXILIARY CONTACT",
+      "SIZES 0-5",
+      "HEAVY DUTY",
+      "MADE IN U.S.A.",
+      "Allen-Bradley",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "595-AB",
+      "catalogNumber": "595-AB",
+      "equipmentType": "Auxiliary Contact",
+      "serialNumber": "C",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "595-AB"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "595-AB"
+        },
+        {
+          "field": "serialNumber",
+          "value": "C"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Auxiliary Contact"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 49,
+        "cropBbox": {
+          "left": 163,
+          "top": 63,
+          "width": 564,
+          "height": 614
+        },
+        "imageWidth": 778,
+        "imageHeight": 800,
+        "cropRotationDeg": 0,
+        "ms": 1524
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1911,
+    "total_ms": 5014
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "595-AB",
+      "catalogNumber": "595-AB",
+      "serialNumber": "C",
+      "equipmentType": "Auxiliary Contact",
+      "confidence": 0.95,
+      "rawText": [
+        "TO INSTALL: CONTROLLER\nMUST BE IN OFF POSITION",
+        "ALIGN ARROWS ON\nREVERSE SIDE. FIND TABS.",
+        "INSERT\nTABS FIRST",
+        "COIL\nCOVER",
+        "TO REMOVE: LOOSEN COIL COVER",
+        "AUXILIARY CONTACT\nSIZES 0-5",
+        "CAT\n595-AB C",
+        "SER",
+        "595-A B",
+        "HEAVY DUTY\n600VAC MAX",
+        "MADE IN U.S.A",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "TO INSTALL: CONTROLLER\nMUST BE IN OFF POSITION",
+      "ALIGN ARROWS ON\nREVERSE SIDE. FIND TABS.",
+      "INSERT\nTABS FIRST",
+      "COIL\nCOVER",
+      "TO REMOVE: LOOSEN COIL COVER",
+      "AUXILIARY CONTACT\nSIZES 0-5",
+      "CAT\n595-AB C",
+      "SER",
+      "595-A B",
+      "HEAVY DUTY\n600VAC MAX",
+      "MADE IN U.S.A",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "595-AB",
+      "catalogNumber": "595-AB",
+      "equipmentType": "Auxiliary Contact",
+      "serialNumber": "C",
+      "voltage": "600VAC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "595-AB"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "595-AB"
+        },
+        {
+          "field": "serialNumber",
+          "value": "C"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Auxiliary Contact"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2995
+  }
+}

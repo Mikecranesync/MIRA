@@ -1,0 +1,108 @@
+{
+  "image": "c12r1_01.jpg",
+  "bytes": 2247049,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "MAAG",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "MAAG",
+        "ZURICH"
+      ]
+    },
+    "rawText": [
+      "MAAG",
+      "ZURICH"
+    ],
+    "values": {
+      "manufacturer": "MAAG",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "MAAG"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 3,
+        "cropBbox": {
+          "left": 638,
+          "top": 1955,
+          "width": 2197,
+          "height": 1413
+        },
+        "imageWidth": 3072,
+        "imageHeight": 4080,
+        "cropRotationDeg": 0,
+        "ms": 2419
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 8101,
+    "total_ms": 9569
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "MAAG",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "MAAG",
+        "ZURICH"
+      ]
+    },
+    "rawText": [
+      "MAAG",
+      "ZURICH"
+    ],
+    "values": {
+      "manufacturer": "MAAG",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "MAAG"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2127
+  }
+}

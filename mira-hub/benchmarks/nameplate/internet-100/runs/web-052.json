@@ -1,0 +1,152 @@
+{
+  "image": "c11r1_10.jpg",
+  "bytes": 48286,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "DUNLAP",
+      "model": "4 HORSEPOWER SPLIT PHASE MOTOR",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "DUNLAP",
+        "4 HORSEPOWER",
+        "SPLIT PHASE MOTOR",
+        "BRONZE BEARING",
+        "1750RPM",
+        "115 VOLTS",
+        "60 CYCLE",
+        "5 AMPs"
+      ]
+    },
+    "rawText": [
+      "DUNLAP",
+      "4 HORSEPOWER",
+      "SPLIT PHASE MOTOR",
+      "BRONZE BEARING",
+      "1750RPM",
+      "115 VOLTS",
+      "60 CYCLE",
+      "5 AMPs"
+    ],
+    "values": {
+      "manufacturer": "DUNLAP",
+      "model": "4 HORSEPOWER SPLIT PHASE MOTOR",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "DUNLAP"
+        },
+        {
+          "field": "model",
+          "value": "4 HORSEPOWER SPLIT PHASE MOTOR"
+        },
+        {
+          "field": "equipmentType",
+          "value": "motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 4,
+        "cropBbox": {
+          "left": 238,
+          "top": 149,
+          "width": 221,
+          "height": 158
+        },
+        "imageWidth": 650,
+        "imageHeight": 487,
+        "cropRotationDeg": 0,
+        "ms": 1118
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2743,
+    "total_ms": 4593
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "DUNLAP",
+      "model": "4 HORSEPOWER SPLIT PHASE MOTOR",
+      "catalogNumber": null,
+      "serialNumber": "1750 REM 115 VOLTS 50 CYCLE 5 AMPS",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "DUNLAP",
+        "4 HORSEPOWER",
+        "SPLIT PHASE MOTOR",
+        "BRONZE BEARING",
+        "1750 REM 115 VOLTS",
+        "50 CYCLE 5 AMPS",
+        "SPRS.M.U.",
+        "185 48"
+      ]
+    },
+    "rawText": [
+      "DUNLAP",
+      "4 HORSEPOWER",
+      "SPLIT PHASE MOTOR",
+      "BRONZE BEARING",
+      "1750 REM 115 VOLTS",
+      "50 CYCLE 5 AMPS",
+      "SPRS.M.U.",
+      "185 48"
+    ],
+    "values": {
+      "manufacturer": "DUNLAP",
+      "model": "4 HORSEPOWER SPLIT PHASE MOTOR",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "1750 REM 115 VOLTS 50 CYCLE 5 AMPS",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "DUNLAP"
+        },
+        {
+          "field": "model",
+          "value": "4 HORSEPOWER SPLIT PHASE MOTOR"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1750 REM 115 VOLTS 50 CYCLE 5 AMPS"
+        },
+        {
+          "field": "equipmentType",
+          "value": "motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2330
+  }
+}

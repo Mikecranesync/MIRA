@@ -1,0 +1,107 @@
+{
+  "image": "c08r1_03.png",
+  "bytes": 578066,
+  "mime": "image/png",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.1,
+      "rawText": [
+        "null"
+      ]
+    },
+    "rawText": [
+      "null"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 1,
+        "cropBbox": {
+          "left": 466,
+          "top": 585,
+          "width": 91,
+          "height": 88
+        },
+        "imageWidth": 1009,
+        "imageHeight": 911,
+        "cropRotationDeg": 270,
+        "ms": 2996
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4388,
+    "total_ms": 5408
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "FAG",
+      "model": "20-200-12",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "cylinder",
+      "confidence": 0.95,
+      "rawText": [
+        "FAG",
+        "20-200-12"
+      ]
+    },
+    "rawText": [
+      "FAG",
+      "20-200-12"
+    ],
+    "values": {
+      "manufacturer": "FAG",
+      "model": "20-200-12",
+      "catalogNumber": null,
+      "equipmentType": "cylinder",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FAG"
+        },
+        {
+          "field": "model",
+          "value": "20-200-12"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1521
+  }
+}

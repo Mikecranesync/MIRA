@@ -1,0 +1,118 @@
+{
+  "image": "c07r1_03.jpg",
+  "bytes": 69844,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Siemens",
+      "model": "3RT2165-0AK2",
+      "catalogNumber": "3RT2165-0AK2",
+      "serialNumber": null,
+      "equipmentType": "Contactor",
+      "confidence": 0.95,
+      "rawText": [
+        "Siemens",
+        "3RT2165-0AK2",
+        "A2"
+      ]
+    },
+    "rawText": [
+      "Siemens",
+      "3RT2165-0AK2",
+      "A2"
+    ],
+    "values": {
+      "manufacturer": "Siemens",
+      "model": "3RT2165-0AK2",
+      "catalogNumber": "3RT2165-0AK2",
+      "equipmentType": "Contactor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Siemens"
+        },
+        {
+          "field": "model",
+          "value": "3RT2165-0AK2"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "3RT2165-0AK2"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "original_photo"
+    },
+    "fallback_used": true,
+    "detect_ms": 1938,
+    "total_ms": 3615
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Siemens",
+      "model": "3RT2165-0AK2",
+      "catalogNumber": "3RT2165-0AK2",
+      "serialNumber": null,
+      "equipmentType": "Contactor",
+      "confidence": 0.95,
+      "rawText": [
+        "Siemens",
+        "3RT2165-0AK2",
+        "A2"
+      ]
+    },
+    "rawText": [
+      "Siemens",
+      "3RT2165-0AK2",
+      "A2"
+    ],
+    "values": {
+      "manufacturer": "Siemens",
+      "model": "3RT2165-0AK2",
+      "catalogNumber": "3RT2165-0AK2",
+      "equipmentType": "Contactor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Siemens"
+        },
+        {
+          "field": "model",
+          "value": "3RT2165-0AK2"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "3RT2165-0AK2"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2479
+  }
+}

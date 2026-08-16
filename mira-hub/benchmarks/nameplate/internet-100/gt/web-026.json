@@ -1,0 +1,29 @@
+{
+  "sample_id": "web-026",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal"],
+  "photo_gt": {
+    "manufacturer": "Danfoss",
+    "model": "FC-051PK75T4E20H3XXCXXXSXXX",
+    "catalogNumber": "132F0018",
+    "serialNumber": "063424A257",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "power_kw", "value_verbatim": "0.75KW", "unit": "kW", "confidence": "medium"},
+      {"field": "power_hp", "value_verbatim": "1.0HP", "unit": "HP", "confidence": "high"},
+      {"field": "input_voltage", "value_verbatim": "3x380-480V", "unit": "V", "confidence": "medium"},
+      {"field": "input_frequency", "value_verbatim": "50/60Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "input_current", "value_verbatim": "3.5/3.0A", "unit": "A", "confidence": "high"},
+      {"field": "output_voltage", "value_verbatim": "3x0-VIn", "unit": "V", "confidence": "high"},
+      {"field": "output_frequency", "value_verbatim": "0-400Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "output_current", "value_verbatim": "2.2/2.1A", "unit": "A", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "CHASSIS/IP20", "unit": "", "confidence": "high"},
+      {"field": "ul_file", "value_verbatim": "5AF3 E358502 Ind.contr.Eq.", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["cULus", "CE", "RoHS", "EAC"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

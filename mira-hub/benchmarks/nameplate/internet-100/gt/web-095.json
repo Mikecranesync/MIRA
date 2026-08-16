@@ -1,0 +1,22 @@
+{
+  "sample_id": "web-095",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "dirt", "tiny_text", "small_in_scene"],
+  "photo_gt": {
+    "manufacturer": "Numatics",
+    "model": "228-702B",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "solenoid_valve",
+    "specs": [
+      {"field": "voltage_50hz", "value_verbatim": "100-115/50", "unit": "V/Hz", "confidence": "high"},
+      {"field": "voltage_60hz", "value_verbatim": "110-120/60", "unit": "V/Hz", "confidence": "high"},
+      {"field": "current", "value_verbatim": ".11 AMPS", "unit": "A", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

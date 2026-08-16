@@ -1,0 +1,23 @@
+{
+  "sample_id": "web-081",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "low_contrast", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Siemens",
+    "model": "SIMATIC S7-300 CPU319-3 PN/DP",
+    "catalogNumber": "318-3EL00-0AB0",
+    "serialNumber": "unknown",
+    "equipment_category": "plc",
+    "specs": [
+      {"field": "io_module_1", "value_verbatim": "SM323 DI16/DO16xDC24V", "unit": "", "confidence": "medium"},
+      {"field": "io_module_2", "value_verbatim": "SM322 DO 32xDC24V/0.5A", "unit": "", "confidence": "medium"},
+      {"field": "io_module_part_number", "value_verbatim": "323-1BL00-0AA0", "unit": "", "confidence": "medium"},
+      {"field": "io_module_part_number_2", "value_verbatim": "322-1BL00-0AA0", "unit": "", "confidence": "low"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

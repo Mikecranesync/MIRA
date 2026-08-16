@@ -1,0 +1,32 @@
+{
+  "sample_id": "web-139",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Yaskawa Electric Corporation",
+    "model": "CIMR-AD4A0072AMA",
+    "catalogNumber": "unknown",
+    "serialNumber": "1D1370334630005",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "max_applicable_motor", "value_verbatim": "37kW/30kW", "unit": "kW", "confidence": "high"},
+      {"field": "revision", "value_verbatim": "A", "unit": "", "confidence": "high"},
+      {"field": "input_voltage", "value_verbatim": "AC3PH 380-480V", "unit": "V", "confidence": "high"},
+      {"field": "input_frequency", "value_verbatim": "50/60Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "input_current", "value_verbatim": "71A/58A", "unit": "A", "confidence": "high"},
+      {"field": "output_voltage", "value_verbatim": "AC3PH 0-480V", "unit": "V", "confidence": "high"},
+      {"field": "output_frequency", "value_verbatim": "0-400Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "output_current", "value_verbatim": "72A/60A", "unit": "A", "confidence": "high"},
+      {"field": "mass", "value_verbatim": "25kg", "unit": "kg", "confidence": "high"},
+      {"field": "prg", "value_verbatim": "1018", "unit": "", "confidence": "high"},
+      {"field": "order_number", "value_verbatim": "R00033-463-5", "unit": "", "confidence": "high"},
+      {"field": "ul_file_number", "value_verbatim": "E131457", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP00", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["cUL", "CE", "TUV SUD", "RoHS"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

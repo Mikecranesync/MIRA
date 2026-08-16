@@ -1,0 +1,33 @@
+{
+  "sample_id": "web-074",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "tiny_text", "small_in_scene", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Square D",
+    "model": "MHL368003901",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "circuit breaker",
+    "specs": [
+      {"field": "current", "value_verbatim": "800 A", "unit": "A", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "600 V~ 250 V=", "unit": "V", "confidence": "high"},
+      {"field": "factory_number", "value_verbatim": "12-718012-37", "unit": "", "confidence": "high"},
+      {"field": "type", "value_verbatim": "MAL S2", "unit": "", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "interrupting_rating_240v", "value_verbatim": "65 kA", "unit": "kA", "confidence": "high"},
+      {"field": "interrupting_rating_480v", "value_verbatim": "65 kA", "unit": "kA", "confidence": "medium"},
+      {"field": "interrupting_rating_600v", "value_verbatim": "25 kA", "unit": "kA", "confidence": "high"},
+      {"field": "interrupting_rating_250vdc", "value_verbatim": "14 kA", "unit": "kA", "confidence": "high"},
+      {"field": "hacr_type", "value_verbatim": "HACR TYPE tipo CAAR", "unit": "", "confidence": "medium"},
+      {"field": "ambient", "value_verbatim": "40°C", "unit": "°C", "confidence": "medium"},
+      {"field": "lug_wire_range", "value_verbatim": "#3/0 AWG–500 kcmil", "unit": "", "confidence": "high"},
+      {"field": "lug_kit", "value_verbatim": "AL900MAT", "unit": "", "confidence": "high"},
+      {"field": "bulletin", "value_verbatim": "#48040-698", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["UL"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

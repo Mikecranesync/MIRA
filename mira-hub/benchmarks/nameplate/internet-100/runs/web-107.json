@@ -1,0 +1,119 @@
+{
+  "image": "c01r1_13.jpg",
+  "bytes": 362570,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.75,
+      "rawText": [
+        "ATTENTION",
+        "LIFTING CARRIER USE FOR",
+        "CAUTION"
+      ]
+    },
+    "rawText": [
+      "ATTENTION",
+      "LIFTING CARRIER USE FOR",
+      "CAUTION"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 1,
+        "cropBbox": {
+          "left": 540,
+          "top": 496,
+          "width": 261,
+          "height": 220
+        },
+        "imageWidth": 1920,
+        "imageHeight": 1440,
+        "cropRotationDeg": 180,
+        "ms": 1870
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2786,
+    "total_ms": 4035
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Baldor",
+      "model": "SPP",
+      "catalogNumber": "SPP",
+      "serialNumber": null,
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Baldor",
+        "SPP",
+        "Electric Motor"
+      ]
+    },
+    "rawText": [
+      "Baldor",
+      "SPP",
+      "Electric Motor"
+    ],
+    "values": {
+      "manufacturer": "Baldor",
+      "model": "SPP",
+      "catalogNumber": "SPP",
+      "equipmentType": "Motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Baldor"
+        },
+        {
+          "field": "model",
+          "value": "SPP"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "SPP"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1471
+  }
+}

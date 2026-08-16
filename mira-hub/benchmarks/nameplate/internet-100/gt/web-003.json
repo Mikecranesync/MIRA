@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-003",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Micron (Micron Control Transformers)",
+    "model": "ImperviTRAN",
+    "catalogNumber": "B5K0BTZ13JXH",
+    "serialNumber": "unknown",
+    "equipment_category": "control_transformer",
+    "specs": [
+      {"field": "capacity", "value_verbatim": "5.0 KVA", "unit": "kVA", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50/60 HZ", "unit": "Hz", "confidence": "high"},
+      {"field": "temp_class", "value_verbatim": "TEMP. CL. 180C°", "unit": "°C", "confidence": "high"},
+      {"field": "primary_voltage", "value_verbatim": "230 / 460 (taps 220 240 / 440 480)", "unit": "V", "confidence": "high"},
+      {"field": "secondary_voltage", "value_verbatim": "110 115 120", "unit": "V", "confidence": "high"},
+      {"field": "patent_no", "value_verbatim": "U.S. PAT. NO.3516040", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["UL", "CSA"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

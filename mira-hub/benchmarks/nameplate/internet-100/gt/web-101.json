@@ -1,0 +1,19 @@
+{
+  "sample_id": "web-101",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "rotated_90", "tiny_text", "small_in_scene"],
+  "photo_gt": {
+    "manufacturer": "OMRON",
+    "model": "CJ1M-CPU12",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "plc",
+    "specs": [],
+    "marks": ["CE"],
+    "marks_complete": false
+  },
+  "oem_gt": null,
+  "notes": "Front label reads 'OMRON SYSMAC CJ1M PROGRAMMABLE CONTROLLER CPU12' with status LEDs (RUN, ERR/ALM, INH, PRPHL, COMM, BKUP) and 'SW SETTING BATTERY'. Side label (rotated 90 deg) reads 'OMRON CJ1M-CPU12 CPU UNIT' with a lot-number line and fine print too small to read reliably. CE mark clearly visible; an additional circled certification mark and 'N1875' number are present but too small to identify with confidence, so marks_complete=false."
+}

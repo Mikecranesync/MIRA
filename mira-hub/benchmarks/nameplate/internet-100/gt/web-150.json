@@ -1,0 +1,34 @@
+{
+  "sample_id": "web-150",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "AEG (AEG KANIS)",
+    "model": "S 6472/2F",
+    "catalogNumber": "unknown",
+    "serialNumber": "788/002",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "phase", "value_verbatim": "6 ~ Mot", "unit": "", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "Y > 2x1100 V", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "2x1417 A", "unit": "A", "confidence": "high"},
+      {"field": "power_kw", "value_verbatim": "4700 kW", "unit": "kW", "confidence": "high"},
+      {"field": "power_factor", "value_verbatim": "cos 0,92", "unit": "", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "6000 /min", "unit": "rpm", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "100 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "excitation_voltage", "value_verbatim": "Erregung 43 V", "unit": "V", "confidence": "high"},
+      {"field": "excitation_current", "value_verbatim": "425 A", "unit": "A", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "Iso.-Kl. F", "unit": "class", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP 44", "unit": "IP", "confidence": "high"},
+      {"field": "weight", "value_verbatim": "20,1 t", "unit": "t", "confidence": "high"},
+      {"field": "standard", "value_verbatim": "VDE 0530 /12.84", "unit": "", "confidence": "high"},
+      {"field": "cooling_water_flow", "value_verbatim": "Kühlwassermenge 52,2 m3/h", "unit": "m3/h", "confidence": "high"},
+      {"field": "connection_note", "value_verbatim": "NUR UVW", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

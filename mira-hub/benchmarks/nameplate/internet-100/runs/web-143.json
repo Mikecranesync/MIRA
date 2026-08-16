@@ -1,0 +1,194 @@
+{
+  "image": "c04r1_05.jpg",
+  "bytes": 254436,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "KOLLMORGEN",
+      "model": "MTC726B2-S1C1",
+      "catalogNumber": null,
+      "serialNumber": "01J726B2-42",
+      "equipmentType": "3ф PM SERVOMOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "KOLLMORGEN GOLDLINE™ Xt",
+        "USA",
+        "MODEL: MTC726B2-S1C1",
+        "IP65",
+        "SERIAL: 01J726B2-42",
+        "3ф PM SERVOMOTOR",
+        "STALL CONT 18.3 AMPSrms 50.4 Nm @ 40°C AMB BRAKE",
+        "STALL PEAK 64.7 AMPSrms 152 Nm @ 40°C AMB 24.0 V",
+        "VOLTS: 400/480 Vrms/L KB: 179.8 V/KRPM 1.40 A",
+        "MAX n: 2C0/23G0 RPM RES L/L @ 25°C 0.553 73.0 NM",
+        "CLASS F",
+        "512 SINE ENC PPR",
+        "THIS PRODUCT MAY BE COVERED BY ONE OR MORE OF THE FOLLOWING U.S. PATENTS: 2083278, 4564755, 4538040, 4579313, 4797592. OTHER (INCLUDING FOREIGN) PATENTS PENDING",
+        "KOLLMORGEN"
+      ]
+    },
+    "rawText": [
+      "KOLLMORGEN GOLDLINE™ Xt",
+      "USA",
+      "MODEL: MTC726B2-S1C1",
+      "IP65",
+      "SERIAL: 01J726B2-42",
+      "3ф PM SERVOMOTOR",
+      "STALL CONT 18.3 AMPSrms 50.4 Nm @ 40°C AMB BRAKE",
+      "STALL PEAK 64.7 AMPSrms 152 Nm @ 40°C AMB 24.0 V",
+      "VOLTS: 400/480 Vrms/L KB: 179.8 V/KRPM 1.40 A",
+      "MAX n: 2C0/23G0 RPM RES L/L @ 25°C 0.553 73.0 NM",
+      "CLASS F",
+      "512 SINE ENC PPR",
+      "THIS PRODUCT MAY BE COVERED BY ONE OR MORE OF THE FOLLOWING U.S. PATENTS: 2083278, 4564755, 4538040, 4579313, 4797592. OTHER (INCLUDING FOREIGN) PATENTS PENDING",
+      "KOLLMORGEN"
+    ],
+    "values": {
+      "manufacturer": "KOLLMORGEN",
+      "model": "MTC726B2-S1C1",
+      "catalogNumber": null,
+      "equipmentType": "3ф PM SERVOMOTOR",
+      "serialNumber": "01J726B2-42",
+      "voltage": "24.0V",
+      "current": "1.40A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "KOLLMORGEN"
+        },
+        {
+          "field": "model",
+          "value": "MTC726B2-S1C1"
+        },
+        {
+          "field": "serialNumber",
+          "value": "01J726B2-42"
+        },
+        {
+          "field": "equipmentType",
+          "value": "3ф PM SERVOMOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 33,
+        "cropBbox": {
+          "left": 120,
+          "top": 70,
+          "width": 1330,
+          "height": 935
+        },
+        "imageWidth": 1600,
+        "imageHeight": 1200,
+        "cropRotationDeg": 0,
+        "ms": 2227
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 10265,
+    "total_ms": 15898
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "KOLLMORGEN",
+      "model": "MTC726B2-S1C1",
+      "catalogNumber": null,
+      "serialNumber": "01J726B2-42",
+      "equipmentType": "3 ф PM SERVOMOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "KOLLMORGEN GOLDLINE™ XTE",
+        "MODEL: MTC726B2-S1C1",
+        "SERIAL: 01J726B2-42",
+        "3 ф PM SERVOMOTOR",
+        "STALL CONT: 18.3 AMPSrms",
+        "50.4 Nm @ 40°C AMB BRAKE",
+        "STALL PEAK: 64.7 AMPSrms",
+        "152 Nm @ 40°C AMB",
+        "24.0 V",
+        "VOLTS: 400/480",
+        "Vrms L/ KB: 179.8",
+        "V/KRPM 1.40 A",
+        "MAX N: 2C0/230G",
+        "RPM RES L/L @ 25°C:0.553",
+        "73.0 NM",
+        "CLASS F",
+        "512 SINE ENC PPR",
+        "IP65",
+        "Made in USA",
+        "THIS PRODUCT MAY BE COVERED BY ONE OR MORE OF THE FOLLOWING U.S. PATENTS: 2083278, 4564755, 4538046, 4579313, 4797592. OTHER (INCLUDING FOREIGN) PATENTS PENDING",
+        "KOLLMORGEN"
+      ]
+    },
+    "rawText": [
+      "KOLLMORGEN GOLDLINE™ XTE",
+      "MODEL: MTC726B2-S1C1",
+      "SERIAL: 01J726B2-42",
+      "3 ф PM SERVOMOTOR",
+      "STALL CONT: 18.3 AMPSrms",
+      "50.4 Nm @ 40°C AMB BRAKE",
+      "STALL PEAK: 64.7 AMPSrms",
+      "152 Nm @ 40°C AMB",
+      "24.0 V",
+      "VOLTS: 400/480",
+      "Vrms L/ KB: 179.8",
+      "V/KRPM 1.40 A",
+      "MAX N: 2C0/230G",
+      "RPM RES L/L @ 25°C:0.553",
+      "73.0 NM",
+      "CLASS F",
+      "512 SINE ENC PPR",
+      "IP65",
+      "Made in USA",
+      "THIS PRODUCT MAY BE COVERED BY ONE OR MORE OF THE FOLLOWING U.S. PATENTS: 2083278, 4564755, 4538046, 4579313, 4797592. OTHER (INCLUDING FOREIGN) PATENTS PENDING",
+      "KOLLMORGEN"
+    ],
+    "values": {
+      "manufacturer": "KOLLMORGEN",
+      "model": "MTC726B2-S1C1",
+      "catalogNumber": null,
+      "equipmentType": "3 ф PM SERVOMOTOR",
+      "serialNumber": "01J726B2-42",
+      "voltage": "24.0V",
+      "current": "1.40A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "KOLLMORGEN"
+        },
+        {
+          "field": "model",
+          "value": "MTC726B2-S1C1"
+        },
+        {
+          "field": "serialNumber",
+          "value": "01J726B2-42"
+        },
+        {
+          "field": "equipmentType",
+          "value": "3 ф PM SERVOMOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 6113
+  }
+}
