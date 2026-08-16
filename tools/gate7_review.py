@@ -43,6 +43,13 @@ import sys
 
 import httpx
 
+# Windows consoles default to cp1252; the diff/prompt/evidence are UTF-8.
+# Reconfigure BOTH streams (gen_container_map.py's stdout-only version left
+# stderr broken -- CU-06 record, finding 4).
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("gate7-review")
 
