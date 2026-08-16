@@ -1243,8 +1243,8 @@ def test_ke_insert_checker_catches_violations():
             "INSERT INTO knowledge_entries (id, is_private) VALUES (:i, true)\n",
         "bound param":
             "INSERT INTO knowledge_entries (id, is_private) VALUES (:id, :is_private)\n",
-        "read-only mention":
-            "SELECT * FROM knowledge_entries WHERE tenant_id = :t\n",
+        "non-INSERT statement (UPDATE)":
+            "UPDATE knowledge_entries SET is_private = true WHERE id = :i\n",
     }
     for label, src in good_cases.items():
         assert scan_knowledge_entries_insert("good.py", src) == [], f"false positive: {label}"
