@@ -800,6 +800,11 @@ services:
       # error/non-match.
       - MIRA_ASK_URL=${MIRA_ASK_URL:-http://mira-ask:8011}
       - ASK_API_KEY=${ASK_API_KEY:-}
+      # Nameplate crop-then-recognize (src/lib/nameplate/detect.ts): ONE shared
+      # switch with the mira-ask endpoint above — the hub only calls
+      # /nameplate/detect when this is "1", so a single Doppler flip turns the
+      # whole path on/off. Any detector failure reads the original photo.
+      - NAMEPLATE_DETECT_ENABLED=${NAMEPLATE_DETECT_ENABLED:-0}
       # Nameplate recognition runs IN THE HUB (src/lib/nameplate). TOGETHERAI_API_KEY
       # is already supplied further down with the AI-Reports LLM cascade, so the
       # recognizer is configured — but the VISION MODEL selectors were missing,

@@ -24,12 +24,14 @@ vi.mock("@/lib/nameplate", () => ({
   isRecognizerConfigured: vi.fn(),
   defaultRecognizer: vi.fn(),
 }));
+vi.mock("@/lib/nameplate/detect", () => ({ resolveRecognitionImage: vi.fn() }));
 
 import { POST } from "../recognize/route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, updateNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { isRecognizerConfigured, defaultRecognizer } from "@/lib/nameplate";
+import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 
 const NOTEBOOK_ID = "11111111-2222-3333-4444-555555555555";
 const NODE_ID = "99999999-8888-7777-6666-555555555555";
@@ -79,6 +81,13 @@ beforeEach(() => {
     links: [{ linkId: "link-1", targetType: "equipment_notebook", targetId: NOTEBOOK_ID }],
   });
   vi.mocked(isRecognizerConfigured).mockReturnValue(true);
+  // Default: detector contributes nothing — the pre-detector behavior. Tests
+  // that exercise the crop path override this per-case.
+  vi.mocked(resolveRecognitionImage).mockImplementation(async (base64, mimeType) => ({
+    base64,
+    mimeType,
+    imageSource: { kind: "original_photo" as const },
+  }));
 });
 
 describe("auth + tenancy", () => {
@@ -253,5 +262,93 @@ describe("success", () => {
     });
     await POST(makeReq(), makeParams(NOTEBOOK_ID));
     expect(updateNotebook).not.toHaveBeenCalled();
+  });
+});
+
+describe("detector crop wiring", () => {
+  const CROP_B64 = Buffer.from("union-crop-jpeg").toString("base64");
+  const DETECTOR = {
+    model: "PP-OCRv5_mobile_det",
+    regionCount: 13,
+    cropBbox: { left: 241, top: 1144, width: 2173, height: 1334 },
+    imageWidth: 3000,
+    imageHeight: 4000,
+    cropRotationDeg: 90,
+    ms: 2310,
+  };
+  const CANDIDATE = {
+    manufacturer: "Orientalmotor",
+    model: "DGM200R-AZAC",
+    catalogNumber: "AZM911AC-D",
+    confidence: 0.95,
+    rawText: ["MODEL DGM200R-AZAC", "Orientalmotor", "Motor P/N AZM911AC-D", "1.27A"],
+  };
+
+  function armCrop() {
+    vi.mocked(resolveRecognitionImage).mockResolvedValue({
+      base64: CROP_B64,
+      mimeType: "image/jpeg",
+      imageSource: { kind: "auto_detected_crop" as const, detector: DETECTOR },
+    });
+  }
+
+  it("recognizer reads the CROP bytes and the response carries crop provenance", async () => {
+    armCrop();
+    const recognize = vi.fn().mockResolvedValue(CANDIDATE);
+    vi.mocked(defaultRecognizer).mockReturnValue({ name: "together-vision", recognize });
+
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    expect(recognize).toHaveBeenCalledWith(CROP_B64, "image/jpeg");
+    const body = await res.json();
+    expect(body.rawObservation.imageSource).toEqual({ kind: "auto_detected_crop", detector: DETECTOR });
+  });
+
+  it("the ORIGINAL photo is parked as evidence even when the crop is read", async () => {
+    armCrop();
+    vi.mocked(defaultRecognizer).mockReturnValue({
+      name: "together-vision",
+      recognize: vi.fn().mockResolvedValue(CANDIDATE),
+    });
+    await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    // parkOrReuseFile received the untouched upload buffer (16 raw bytes from
+    // makeReq), not the crop.
+    const parked = vi.mocked(parkOrReuseFile).mock.calls[0][0];
+    expect(parked.sizeBytes).toBe(16);
+    expect(parked.buffer.equals(Buffer.from(CROP_B64, "base64"))).toBe(false);
+  });
+
+  it("detector failure falls back: recognizer reads the original, provenance says original_photo", async () => {
+    // Default beforeEach mock IS the fallback contract (resolveRecognitionImage
+    // never rejects; it resolves to the original on every failure).
+    const recognize = vi.fn().mockResolvedValue(CANDIDATE);
+    vi.mocked(defaultRecognizer).mockReturnValue({ name: "together-vision", recognize });
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    const [b64, mimeArg] = recognize.mock.calls[0];
+    expect(Buffer.from(b64, "base64").length).toBe(16); // the original upload
+    expect(mimeArg).toBe("image/jpeg");
+    expect((await res.json()).rawObservation.imageSource).toEqual({ kind: "original_photo" });
+  });
+
+  it("detection NEVER corroborates recognition — evidence is byte-identical crop vs original", async () => {
+    // The crop and the reading are one observation chain, not two independent
+    // sources. If wiring the detector in changed any fact's status, source, or
+    // corroboration list, geometry would be acting as testimony.
+    vi.mocked(defaultRecognizer).mockReturnValue({
+      name: "together-vision",
+      recognize: vi.fn().mockResolvedValue(CANDIDATE),
+    });
+    const originalRun = await (await POST(makeReq(), makeParams(NOTEBOOK_ID))).json();
+
+    armCrop();
+    const cropRun = await (await POST(makeReq(), makeParams(NOTEBOOK_ID))).json();
+
+    expect(cropRun.evidence).toEqual(originalRun.evidence);
+    expect(cropRun.review).toEqual(originalRun.review);
+    for (const fact of cropRun.evidence) {
+      expect(["image", "image_inferred"]).toContain(fact.source);
+      expect(fact.corroboration).toEqual([]);
+    }
   });
 });

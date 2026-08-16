@@ -123,6 +123,81 @@ class TestAuthGate:
         assert resp.json()["reason"] == "disabled"
 
 
+_FAKE_POLYS = [
+    [[100, 100], [200, 100], [200, 150], [100, 150]],
+    [[100, 300], [250, 300], [250, 360], [100, 360]],
+]
+_FAKE_SCORES = [0.9, 0.8]
+
+
+def _arm_fake_detector(monkeypatch):
+    """Simulate a loaded detector without paddle: _load_detector becomes a
+    no-op that marks success, _predict returns fixed boxes."""
+    monkeypatch.setenv("NAMEPLATE_DETECT_ENABLED", "1")
+
+    def fake_load():
+        nd._detector = object()
+
+    monkeypatch.setattr(nd, "_load_detector", fake_load)
+    monkeypatch.setattr(nd, "_predict", lambda raw: (_FAKE_POLYS, _FAKE_SCORES, 1000, 800))
+
+
+class TestReturnCrop:
+    def test_detections_without_crop_by_default(self, monkeypatch):
+        _arm_fake_detector(monkeypatch)
+        body = _client().post("/nameplate/detect", json={"image_base64": _TINY_IMAGE_B64}).json()
+        assert body["available"] is True
+        assert len(body["regions"]) == 2
+        assert body["union_bbox"] == {"left": 100, "top": 100, "width": 150, "height": 260}
+        assert body["crop_base64"] is None
+        assert body["crop_bbox"] is None
+
+    def test_return_crop_carries_jpeg_and_padded_bbox(self, monkeypatch):
+        _arm_fake_detector(monkeypatch)
+        monkeypatch.setattr(
+            nd,
+            "_crop_jpeg",
+            lambda raw, bbox, pad: (b"jpegbytes", {"left": 60, "top": 60, "width": 230, "height": 340}, 90),
+        )
+        body = _client().post(
+            "/nameplate/detect",
+            json={"image_base64": _TINY_IMAGE_B64, "return_crop": True, "crop_pad": 40},
+        ).json()
+        assert body["available"] is True
+        assert base64.b64decode(body["crop_base64"]) == b"jpegbytes"
+        assert body["crop_bbox"] == {"left": 60, "top": 60, "width": 230, "height": 340}
+        assert body["crop_rotation_deg"] == 90
+
+    def test_crop_failure_keeps_detections(self, monkeypatch):
+        """A failed crop degrades to crop_base64=null; the boxes still return
+        so the caller can fall back to whole-photo recognition."""
+        _arm_fake_detector(monkeypatch)
+
+        def boom(raw, bbox, pad):
+            raise ValueError("encode_failed")
+
+        monkeypatch.setattr(nd, "_crop_jpeg", boom)
+        body = _client().post(
+            "/nameplate/detect", json={"image_base64": _TINY_IMAGE_B64, "return_crop": True}
+        ).json()
+        assert body["available"] is True
+        assert len(body["regions"]) == 2
+        assert body["crop_base64"] is None
+        assert body["crop_bbox"] is None
+        assert body["crop_rotation_deg"] == 0
+
+    def test_zero_boxes_yields_null_union_and_no_crop(self, monkeypatch):
+        _arm_fake_detector(monkeypatch)
+        monkeypatch.setattr(nd, "_predict", lambda raw: ([], [], 1000, 800))
+        body = _client().post(
+            "/nameplate/detect", json={"image_base64": _TINY_IMAGE_B64, "return_crop": True}
+        ).json()
+        assert body["available"] is True
+        assert body["regions"] == []
+        assert body["union_bbox"] is None
+        assert body["crop_base64"] is None
+
+
 class TestUnionBbox:
     """union_bbox is the automated-crop rule that auto-region.ts qualified
     (union of every box at/above min_score). Verified against the real

@@ -22,6 +22,7 @@ import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
+import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 import { toFact, summarizeForReview, isComplianceMark } from "@/lib/nameplate/evidence";
 
 export const dynamic = "force-dynamic";
@@ -124,7 +125,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const recognizer = defaultRecognizer();
   try {
-    const candidate = await recognizer.recognize(buffer.toString("base64"), mime);
+    // Crop-then-recognize when the detector finds the label; otherwise the
+    // original bytes, exactly as before. The ORIGINAL is already parked above
+    // — the crop is read-only working pixels, never persisted. Detection is
+    // geometry, not testimony: it adds no fact, no FactSource, and no
+    // corroboration — the crop and the reading below are ONE observation.
+    const read = await resolveRecognitionImage(buffer.toString("base64"), mime);
+    const candidate = await recognizer.recognize(read.base64, read.mimeType);
     const rawText = candidate.rawText ?? [];
 
     // Classify every claim before it leaves the server. `rawText` is the
@@ -156,6 +163,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         filename,
         mimeType: mime,
         rawText,
+        // Which pixels the recognition actually read: the parked original, or
+        // the detector's union-of-boxes crop (with the exact rectangle, so the
+        // read pixels can be rebuilt from the parked file).
+        imageSource: read.imageSource,
       },
       // Provenance-carrying view of the same claims. Clients should prefer this
       // over `candidate` when deciding what to present as fact.

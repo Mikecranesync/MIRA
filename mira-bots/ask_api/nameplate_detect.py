@@ -56,6 +56,14 @@ _inference_lock = asyncio.Semaphore(1)
 _detector = None
 _detector_failed_reason: str | None = None
 
+# Doc-orientation classifier (PP-LCNet_x1_0_doc_ori, ~7 MB) — loaded lazily on
+# the first crop request. The hub-path qualification proved orientation is
+# load-bearing for the crop: the identical union crop read sideways scored
+# 1.27A 2/3 / catalog 0/3, uprighted 3/3 / 3/3. A classifier failure degrades
+# to the unrotated crop, never to a failed request.
+_orienter = None
+_orienter_failed = False
+
 
 def _flag_enabled() -> bool:
     return os.getenv("NAMEPLATE_DETECT_ENABLED", "0") == "1"
@@ -96,6 +104,73 @@ def _predict(raw: bytes):
     return polys, scores, int(img.shape[1]), int(img.shape[0])
 
 
+def _upright(crop):
+    """Best-effort uprighting of a crop. Classify orientation; if not "0",
+    rotate the classified amount back and RE-CLASSIFY — the rotation is kept
+    only when the result verifies as upright, so a misclassification can never
+    make the crop worse than sideways. Returns (image, applied_degrees).
+
+    Label mapping calibrated live on the real Oriental Motor crop (2026-08-16):
+    sideways crop → label "90"; cv2.ROTATE_90_COUNTERCLOCKWISE → re-classifies
+    "0" at 0.908. Label N means "rotated N° clockwise"; correction is N° CCW.
+    """
+    global _orienter, _orienter_failed
+    import cv2
+
+    if _orienter_failed:
+        return crop, 0
+    try:
+        if _orienter is None:
+            from paddleocr import DocImgOrientationClassification
+
+            _orienter = DocImgOrientationClassification(
+                model_name="PP-LCNet_x1_0_doc_ori", enable_mkldnn=False
+            )
+        label = str(_orienter.predict(crop)[0]["label_names"][0])
+        rotations = {
+            "90": cv2.ROTATE_90_COUNTERCLOCKWISE,
+            "180": cv2.ROTATE_180,
+            "270": cv2.ROTATE_90_CLOCKWISE,
+        }
+        if label not in rotations:
+            return crop, 0
+        rotated = cv2.rotate(crop, rotations[label])
+        verify = str(_orienter.predict(rotated)[0]["label_names"][0])
+        if verify != "0":
+            return crop, 0
+        return rotated, int(label)
+    except Exception as exc:  # noqa: BLE001 — orientation is an enhancement, never a failure
+        _orienter_failed = True
+        logger.warning("nameplate-detect: orientation classifier failed: %s", exc)
+        return crop, 0
+
+
+def _crop_jpeg(raw: bytes, bbox: dict[str, int], pad: int) -> tuple[bytes, dict[str, int], int]:
+    """Crop `bbox` (expanded by `pad`, clamped to the frame) out of the decoded
+    image at NATIVE resolution, upright it, and re-encode as JPEG q95. Runs in
+    a worker thread. The crop is taken from the original bytes — never from a
+    resized intermediate — so no detail is lost between detection and
+    recognition. Returns (jpeg_bytes, bbox_in_original_space, rotation_deg)."""
+    import cv2
+    import numpy as np
+
+    img = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("undecodable_image")
+    h, w = img.shape[:2]
+    x1 = max(0, bbox["left"] - pad)
+    y1 = max(0, bbox["top"] - pad)
+    x2 = min(w, bbox["left"] + bbox["width"] + pad)
+    y2 = min(h, bbox["top"] + bbox["height"] + pad)
+    if x2 - x1 <= 0 or y2 - y1 <= 0:
+        raise ValueError("empty_crop")
+    crop, rotation_deg = _upright(img[y1:y2, x1:x2])
+    ok, encoded = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    if not ok:
+        raise ValueError("encode_failed")
+    return encoded.tobytes(), {"left": x1, "top": y1, "width": x2 - x1, "height": y2 - y1}, rotation_deg
+
+
 def union_bbox(
     polys: list[list[list[int]]], scores: list[float], min_score: float
 ) -> dict[str, int] | None:
@@ -121,6 +196,13 @@ class DetectRequest(BaseModel):
 
     image_base64: str = Field(..., min_length=1)
     min_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    # When true, the response carries the union-of-all-boxes crop as JPEG —
+    # the exact automated-crop rule qualified in auto-round1-union.json. The
+    # caller (mira-hub) cannot crop pixels itself: sharp is not a declared
+    # hub dependency and nothing under src/lib may import it, while cv2 is
+    # already resident here for detection.
+    return_crop: bool = Field(default=False)
+    crop_pad: int = Field(default=40, ge=0, le=400)
 
 
 def _unavailable(reason: str) -> dict:
@@ -166,6 +248,21 @@ async def nameplate_detect(req: DetectRequest, x_mira_key: str = Header(default=
             logger.warning("nameplate-detect: inference failed: %s", exc)
             return _unavailable(f"inference_failed: {type(exc).__name__}")
 
+        bbox = union_bbox(polys, scores, req.min_score)
+        crop_b64: str | None = None
+        crop_bbox: dict[str, int] | None = None
+        crop_rotation_deg = 0
+        if req.return_crop and bbox is not None:
+            try:
+                crop_bytes, crop_bbox, crop_rotation_deg = await asyncio.wait_for(
+                    asyncio.to_thread(_crop_jpeg, raw, bbox, req.crop_pad), timeout=timeout
+                )
+                crop_b64 = base64.b64encode(crop_bytes).decode()
+            except Exception as exc:  # noqa: BLE001 — a failed crop must not void the detections
+                logger.warning("nameplate-detect: crop failed: %s", exc)
+                crop_bbox = None
+                crop_rotation_deg = 0
+
     return {
         "available": True,
         "reason": None,
@@ -174,6 +271,12 @@ async def nameplate_detect(req: DetectRequest, x_mira_key: str = Header(default=
         "regions": [
             {"poly": poly, "score": score} for poly, score in zip(polys, scores)
         ],
-        "union_bbox": union_bbox(polys, scores, req.min_score),
+        "union_bbox": bbox,
+        "crop_base64": crop_b64,
+        "crop_bbox": crop_bbox,
+        # Degrees the crop was rotated counterclockwise-corrected to upright
+        # (0 = returned as it lies in the original). Provenance: original
+        # pixels = decode(original)[crop_bbox] rotated by this amount.
+        "crop_rotation_deg": crop_rotation_deg,
         "ms": int((time.monotonic() - t0) * 1000),
     }
