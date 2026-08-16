@@ -1221,7 +1221,7 @@ approved:
       FROM knowledge_entries
                       WHERE embedding IS NOT NULL
                       ORDER BY distance
-  "tests/test_architecture.py:600":
+  "tests/test_architecture.py:605":
     approved_classification: TENANT-ONLY
     query_sha256: "e52a17aa9ec6a2bf113db74427d67f6499d9de60b981073b47ff17614f921193"
     reason: "Not a live read path — this is an inert Python triple-quoted string

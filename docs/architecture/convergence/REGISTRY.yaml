@@ -6,6 +6,7 @@
 mira-bots:
   repo: MIRA
   path: mira-bots/
+  tags: ["type:adapter", "domain:diagnostics"]
   purpose: "Multi-channel diagnostic bot platform with shared engine and adapters."
   language: python
   observed_source_loc: 96437
@@ -26,6 +27,7 @@ mira-bots:
 mira-hub:
   repo: MIRA
   path: mira-hub/
+  tags: ["type:presentation", "domain:assets"]
   purpose: "Multi-tenant Command Center & API platform for training/validating asset agents"
   language: typescript
   observed_source_loc: 92246
@@ -47,6 +49,7 @@ mira-hub:
 tests:
   repo: MIRA
   path: tests/
+  tags: ["type:test", "domain:platform"]
   purpose: "Comprehensive test suite covering unit tests, integration tests, scenario runners, and bot emulation."
   language: python
   observed_source_loc: 76507
@@ -66,6 +69,7 @@ tests:
 tools:
   repo: MIRA
   path: tools/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Development and testing utilities for bot capabilities, KB queries, and pipeline orchestration."
   language: python
   observed_source_loc: 55679
@@ -85,6 +89,7 @@ tools:
 mira-crawler:
   repo: MIRA
   path: mira-crawler/
+  tags: ["type:engine", "domain:knowledge"]
   purpose: "Document ingestion pipeline\u2014crawls OEM manuals, extracts/chunks, embeds, writes to NeonDB"
   language: python
   observed_source_loc: 31586
@@ -104,6 +109,7 @@ mira-crawler:
 mira-web:
   repo: MIRA
   path: mira-web/
+  tags: ["type:presentation", "domain:platform"]
   purpose: "PLG funnel for customer onboarding, payments, and AI chat interface"
   language: typescript
   observed_source_loc: 23130
@@ -124,6 +130,7 @@ mira-web:
 factorylm_ai:
   repo: MIRA
   path: factorylm_ai/
+  tags: ["type:engine", "domain:platform"]
   purpose: "Zero-token model lab: provider-agnostic AI runtime, benchmark & promote model behaviors \u2192 ZTA artifacts"
   language: python
   observed_source_loc: 15167
@@ -142,6 +149,7 @@ factorylm_ai:
 plc:
   repo: MIRA
   path: plc/
+  tags: ["type:infra", "domain:telemetry"]
   purpose: "PLC program source, CCW automation, Micro820 ladder-logic artifacts"
   language: st
   observed_source_loc: 14900
@@ -162,6 +170,7 @@ plc:
 printsense:
   repo: MIRA
   path: printsense/
+  tags: ["type:engine", "domain:diagnostics"]
   purpose: "Electrical print interpretation\u2014photo\u2192OCR/vision\u2192structured graph\u2192technician explanation"
   language: python
   observed_source_loc: 12960
@@ -182,6 +191,7 @@ printsense:
 mira-core:
   repo: MIRA
   path: mira-core/
+  tags: ["type:engine", "domain:knowledge"]
   purpose: "Open WebUI knowledge-base UI + mira-ingest service for PDF extraction and RAG"
   language: mixed
   observed_source_loc: 11460
@@ -202,6 +212,7 @@ mira-core:
 docs:
   repo: MIRA
   path: docs/
+  tags: ["type:docs", "domain:platform"]
   purpose: "Feature specifications, architecture decisions, and operational runbooks."
   language: markdown
   observed_source_loc: 8684
@@ -217,6 +228,7 @@ docs:
 mira-relay:
   repo: MIRA
   path: mira-relay/
+  tags: ["type:adapter", "domain:telemetry"]
   purpose: "FastAPI tag-ingest service, MQTT broker, historian query API, NeonDB writer"
   language: python
   observed_source_loc: 7035
@@ -237,6 +249,7 @@ mira-relay:
 ignition:
   repo: MIRA
   path: ignition/
+  tags: ["type:presentation", "domain:telemetry"]
   purpose: "Ignition 8.3 gateway config, Perspective HMI views, tag definitions"
   language: yaml
   observed_source_loc: 5147
@@ -257,6 +270,7 @@ ignition:
 simlab:
   repo: MIRA
   path: simlab/
+  tags: ["type:simulation", "domain:diagnostics"]
   purpose: "Deterministic, headless simulated factory benchmark (juice bottling line)"
   language: python
   observed_source_loc: 5055
@@ -278,6 +292,7 @@ simlab:
 materialized_evidence:
   repo: MIRA
   path: materialized_evidence/
+  tags: ["type:engine", "domain:diagnostics"]
   purpose: "Typified evidence contract + runtime assembly for technician case files (TechnicianContext)"
   language: python
   observed_source_loc: 4681
@@ -297,6 +312,7 @@ materialized_evidence:
 mira-contextualizer:
   repo: MIRA
   path: mira-contextualizer/
+  tags: ["type:presentation", "domain:assets"]
   purpose: "Offline Windows desktop app: ingest any document \u2192 deterministically propose UNS/i3X, export portable bundle"
   language: python
   observed_source_loc: 4582
@@ -316,6 +332,7 @@ mira-contextualizer:
 mira-scan-monday:
   repo: MIRA
   path: mira-scan-monday/
+  tags: ["type:adapter", "domain:knowledge"]
   purpose: "monday.com marketplace app: camera \u2192 nameplate extraction \u2192 KB lookup \u2192 grounded chat"
   language: typescript
   observed_source_loc: 4488
@@ -336,6 +353,7 @@ mira-scan-monday:
 marketing:
   repo: MIRA
   path: marketing/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Video pipeline & demo artifacts: ffmpeg-based build pipeline, promo screenshots, benchmark test stories"
   language: python
   observed_source_loc: 4452
@@ -352,6 +370,7 @@ marketing:
 mira-mobile:
   repo: MIRA
   path: mira-mobile/
+  tags: ["type:presentation", "domain:mobile"]
   purpose: "Native mobile app (iOS/Android) for field technician work orders and diagnostics"
   language: typescript
   observed_source_loc: 4354
@@ -371,6 +390,7 @@ mira-mobile:
 mira-pipeline:
   repo: MIRA
   path: mira-pipeline/
+  tags: ["type:adapter", "domain:diagnostics"]
   purpose: "OpenAI-compatible API wrapping GSDEngine for Open WebUI and Ignition direct chat."
   language: python
   observed_source_loc: 3954
@@ -390,6 +410,7 @@ mira-pipeline:
 mira-mcp:
   repo: MIRA
   path: mira-mcp/
+  tags: ["type:adapter", "domain:diagnostics"]
   purpose: "FastMCP server exposing equipment diagnostics, CMMS integration, and context tools."
   language: python
   observed_source_loc: 3939
@@ -408,6 +429,7 @@ mira-mcp:
 mira-plc-parser:
   repo: MIRA
   path: mira-plc-parser/
+  tags: ["type:engine", "domain:telemetry"]
   purpose: "Vendor-agnostic read-only PLC program analysis: L5X/CSV/ST/PLCopen XML \u2192 IR + maintenance intelligence"
   language: python
   observed_source_loc: 3931
@@ -427,6 +449,7 @@ mira-plc-parser:
 mira-connectors:
   repo: MIRA
   path: mira-connectors/
+  tags: ["type:adapter", "domain:cmms"]
   purpose: "Generic connector framework for CMMS/SCADA/Historian \u2192 canonical model + confirmation gate"
   language: python
   observed_source_loc: 3759
@@ -446,6 +469,7 @@ mira-connectors:
 scripts:
   repo: MIRA
   path: scripts/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Operational automation, PLC deployment, data generation, and service management."
   language: python
   observed_source_loc: 2494
@@ -465,6 +489,7 @@ scripts:
 mira-sidecar:
   repo: MIRA
   path: mira-sidecar/
+  tags: ["type:engine", "domain:knowledge"]
   purpose: "Legacy RAG backend with ChromaDB dual-brain (shared OEM + per-tenant docs)"
   language: python
   observed_source_loc: 2152
@@ -484,6 +509,7 @@ mira-sidecar:
 mira-trend-viewer:
   repo: MIRA
   path: mira-trend-viewer/
+  tags: ["type:presentation", "domain:telemetry"]
   purpose: "ISA-101 HP-HMI industrial trend viewer (vendor-neutral, dependency-free)"
   language: javascript
   observed_source_loc: 1627
@@ -503,6 +529,7 @@ mira-trend-viewer:
 mira-machine-logic-graph:
   repo: MIRA
   path: mira-machine-logic-graph/
+  tags: ["type:engine", "domain:telemetry"]
   purpose: "Parse Micro800 ST programs, expose Ignition-compatible tag JSON with i3X metadata"
   language: typescript
   observed_source_loc: 1083
@@ -521,6 +548,7 @@ mira-machine-logic-graph:
 demo:
   repo: MIRA
   path: demo/
+  tags: ["type:simulation", "domain:diagnostics"]
   purpose: "TBD \u2014 not yet characterized"
   language: python
   observed_source_loc: 859
@@ -532,6 +560,7 @@ demo:
 mira-fault-detective:
   repo: MIRA
   path: mira-fault-detective/
+  tags: ["type:engine", "domain:diagnostics"]
   purpose: "MQTT-driven rule engine for conveyor fault detection (7-rule diagnostic)"
   language: python
   observed_source_loc: 802
@@ -551,6 +580,7 @@ mira-fault-detective:
 evals:
   repo: MIRA
   path: evals/
+  tags: ["type:test", "domain:platform"]
   purpose: "TBD \u2014 not yet characterized"
   language: python
   observed_source_loc: 718
@@ -562,6 +592,7 @@ evals:
 wiki:
   repo: MIRA
   path: wiki/
+  tags: ["type:docs", "domain:platform"]
   purpose: "LLM-maintained ops wiki (Karpathy pattern) for infrastructure, gotchas, and session continuity"
   language: markdown
   observed_source_loc: 692
@@ -581,6 +612,7 @@ wiki:
 samples:
   repo: MIRA
   path: samples/
+  tags: ["type:docs", "domain:platform"]
   purpose: "Example implementations and reference code for integration patterns"
   language: typescript
   observed_source_loc: 685
@@ -596,6 +628,7 @@ samples:
 mira_copy:
   repo: MIRA
   path: mira_copy/
+  tags: ["type:engine", "domain:platform"]
   purpose: "TBD \u2014 not yet characterized"
   language: python
   observed_source_loc: 443
@@ -607,6 +640,7 @@ mira_copy:
 mira-fault-sim:
   repo: MIRA
   path: mira-fault-sim/
+  tags: ["type:simulation", "domain:telemetry"]
   purpose: "Virtual conveyor sensor and power fault simulator (photoeyes, fuses, vision)"
   language: python
   observed_source_loc: 367
@@ -625,6 +659,7 @@ mira-fault-sim:
 deployment:
   repo: MIRA
   path: deployment/
+  tags: ["type:infra", "domain:platform"]
   purpose: "VPS/production nginx configs, network topology, customer guides, and deploy orchestration."
   language: yaml
   observed_source_loc: 314
@@ -641,6 +676,7 @@ deployment:
 nango-integrations:
   repo: MIRA
   path: nango-integrations/
+  tags: ["type:adapter", "domain:cmms"]
   purpose: "Credential vault & custom Nango providers: MaintainX API integration, OAuth/API-key proxying"
   language: typescript
   observed_source_loc: 263
@@ -659,6 +695,7 @@ nango-integrations:
 install:
   repo: MIRA
   path: install/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Production install script, startup scripts, and smoke/tier test harnesses."
   language: shell
   observed_source_loc: 262
@@ -677,6 +714,7 @@ install:
 paperclip:
   repo: MIRA
   path: paperclip/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Multi-agent orchestration dev tool: coordinate parallel Claude agents working on MIRA subsystems"
   language: javascript
   observed_source_loc: 157
@@ -693,6 +731,7 @@ paperclip:
 mira-connect:
   repo: MIRA
   path: mira-connect/
+  tags: ["type:adapter", "domain:telemetry"]
   purpose: "Modbus TCP/RTU and Sparkplug B fieldbus driver framework (deferred post-MVP)"
   language: python
   observed_source_loc: 137
@@ -709,6 +748,7 @@ mira-connect:
 mira-ignition-exchange:
   repo: MIRA
   path: mira-ignition-exchange/
+  tags: ["type:presentation", "domain:diagnostics"]
   purpose: "Free Perspective bundle: ChatDock + ScanWidget views for production Ignition deployments"
   language: yaml
   observed_source_loc: 113
@@ -727,6 +767,7 @@ mira-ignition-exchange:
 mira-bridge:
   repo: MIRA
   path: mira-bridge/
+  tags: ["type:adapter", "domain:telemetry"]
   purpose: "Node-RED 4.x message router, SQLite WAL persistence (mira.db source of truth)"
   language: yaml
   observed_source_loc: 96
@@ -747,6 +788,7 @@ mira-bridge:
 mira-cmms:
   repo: MIRA
   path: mira-cmms/
+  tags: ["type:infra", "domain:cmms"]
   purpose: "Atlas CMMS integration wrapper for work orders, PM scheduling, equipment registry"
   language: yaml
   observed_source_loc: 57
@@ -765,6 +807,7 @@ mira-cmms:
 PRDS:
   repo: MIRA
   path: PRDS/
+  tags: ["type:docs", "domain:platform"]
   purpose: "Product Requirements Documents for feature design and roadmap phases"
   language: markdown
   observed_source_loc: 0
@@ -785,6 +828,7 @@ PRDS:
 content_strategy:
   repo: MIRA
   path: content_strategy/
+  tags: ["type:docs", "domain:platform"]
   purpose: "Strategic planning & product docs: AI+PLC/HMI content strategy, YouTube funnel, learning guides"
   language: markdown
   observed_source_loc: 0
@@ -799,6 +843,7 @@ content_strategy:
 infra:
   repo: MIRA
   path: infra/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Infrastructure-as-Code, deployment configs, and cluster orchestration."
   language: yaml
   observed_source_loc: 0
@@ -818,6 +863,7 @@ infra:
 internet_print_tests:
   repo: MIRA
   path: internet_print_tests/
+  tags: ["type:test", "domain:diagnostics"]
   purpose: "Test fixture collection\u2014OEM electrical prints from live manufacturer sources"
   language: yaml
   observed_source_loc: 0
@@ -836,6 +882,7 @@ internet_print_tests:
 machine-print-pack:
   repo: MIRA
   path: machine-print-pack/
+  tags: ["type:domain", "domain:diagnostics"]
   purpose: "Verified electrical print pack\u2014reproducible, evidence-graded, field-verification register"
   language: mixed
   observed_source_loc: 0
@@ -855,6 +902,7 @@ machine-print-pack:
 ontology:
   repo: MIRA
   path: ontology/
+  tags: ["type:domain", "domain:knowledge"]
   purpose: "RDF/OWL ontologies: MIRA schema definitions (core, controls, drives, electrical, evidence, maintenance)"
   language: yaml
   observed_source_loc: 0
@@ -873,6 +921,7 @@ ontology:
 qa:
   repo: MIRA
   path: qa/
+  tags: ["type:test", "domain:platform"]
   purpose: "QA dogfood and customer-facing testing harness directory."
   language: mixed
   observed_source_loc: 0
@@ -886,6 +935,7 @@ qa:
 reports:
   repo: MIRA
   path: reports/
+  tags: ["type:docs", "domain:platform"]
   purpose: "Analysis and competitive research reports"
   language: markdown
   observed_source_loc: 0
@@ -899,6 +949,7 @@ reports:
 research:
   repo: MIRA
   path: research/
+  tags: ["type:docs", "domain:telemetry"]
   purpose: "Research artifacts and data manifests for PLC/industrial variable mappings"
   language: json
   observed_source_loc: 0
@@ -914,6 +965,7 @@ research:
 apps:
   repo: factorylm
   path: apps/
+  tags: ["type:presentation", "domain:platform"]
   purpose: "Collection of web dashboards and management UIs (monitoring, CMMS, document portal)"
   language: mixed
   observed_source_loc: 126552
@@ -933,6 +985,7 @@ apps:
 services:
   repo: factorylm
   path: services/
+  tags: ["type:engine", "domain:diagnostics"]
   purpose: "Industrial automation microservices for PLC, diagnosis, messaging, and MES"
   language: python
   observed_source_loc: 22139
@@ -952,6 +1005,7 @@ services:
 docs:
   repo: factorylm
   path: docs/
+  tags: ["type:docs", "domain:platform"]
   purpose: "Feature specifications, architecture decisions, and operational runbooks."
   language: markdown
   observed_source_loc: 17638
@@ -967,6 +1021,7 @@ docs:
 simulation:
   repo: factorylm
   path: simulation/
+  tags: ["type:simulation", "domain:telemetry"]
   purpose: "VFD and motor physics simulator for bench testing Modbus integration"
   language: python
   observed_source_loc: 9313
@@ -985,6 +1040,7 @@ simulation:
 workers:
   repo: factorylm
   path: workers/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Celery distributed task orchestration and workflow automation"
   language: python
   observed_source_loc: 8457
@@ -1003,6 +1059,7 @@ workers:
 my-ralph:
   repo: factorylm
   path: my-ralph/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Autonomous AI development loop orchestrator with safeguards and circuit breaker"
   language: mixed
   observed_source_loc: 6735
@@ -1019,6 +1076,7 @@ my-ralph:
 openclaw:
   repo: factorylm
   path: openclaw/
+  tags: ["type:engine", "domain:diagnostics"]
   purpose: "Gist-based autonomous agent loop with troubleshooting decision trees"
   language: python
   observed_source_loc: 5799
@@ -1038,6 +1096,7 @@ openclaw:
 kb:
   repo: factorylm
   path: kb/
+  tags: ["type:engine", "domain:knowledge"]
   purpose: "Knowledge base ingestion pipeline chunking and embedding documents"
   language: python
   observed_source_loc: 5699
@@ -1056,6 +1115,7 @@ kb:
 scripts:
   repo: factorylm
   path: scripts/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Operational automation, PLC deployment, data generation, and service management."
   language: python
   observed_source_loc: 4556
@@ -1075,6 +1135,7 @@ scripts:
 tools:
   repo: factorylm
   path: tools/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Development and testing utilities for bot capabilities, KB queries, and pipeline orchestration."
   language: python
   observed_source_loc: 4221
@@ -1094,6 +1155,7 @@ tools:
 tests:
   repo: factorylm
   path: tests/
+  tags: ["type:test", "domain:platform"]
   purpose: "Comprehensive test suite covering unit tests, integration tests, scenario runners, and bot emulation."
   language: python
   observed_source_loc: 3201
@@ -1113,6 +1175,7 @@ tests:
 cookoff:
   repo: factorylm
   path: cookoff/
+  tags: ["type:simulation", "domain:diagnostics"]
   purpose: "Factory I/O Cosmos cookoff experiment \u2014 diagnosis + Modbus test harness"
   language: python
   observed_source_loc: 2238
@@ -1131,6 +1194,7 @@ cookoff:
 recovery:
   repo: factorylm
   path: recovery/
+  tags: ["type:infra", "domain:telemetry"]
   purpose: "Historical backups and recovery tools for PLC ladder logic and deployment configs."
   language: st
   observed_source_loc: 1767
@@ -1146,6 +1210,7 @@ recovery:
 core:
   repo: factorylm
   path: core/
+  tags: ["type:engine", "domain:platform"]
   purpose: "LLM abstraction layer for multiple cloud providers (Groq, Claude, DeepSeek)"
   language: python
   observed_source_loc: 1732
@@ -1163,6 +1228,7 @@ core:
 sim:
   repo: factorylm
   path: sim/
+  tags: ["type:simulation", "domain:telemetry"]
   purpose: "PLC simulator generating realistic conveyor tag data"
   language: python
   observed_source_loc: 1467
@@ -1182,6 +1248,7 @@ sim:
 cosmos:
   repo: factorylm
   path: cosmos/
+  tags: ["type:simulation", "domain:diagnostics"]
   purpose: "NVIDIA Cosmos Reason 2 integration for video analysis of incidents"
   language: python
   observed_source_loc: 1203
@@ -1198,6 +1265,7 @@ cosmos:
 diagnosis:
   repo: factorylm
   path: diagnosis/
+  tags: ["type:engine", "domain:diagnostics"]
   purpose: "Fault detection and classification for conveyor PLC tags"
   language: python
   observed_source_loc: 908
@@ -1216,6 +1284,7 @@ diagnosis:
 agents:
   repo: factorylm
   path: agents/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Individual agent implementations and task runners (Serena codebase navigator, etc.)"
   language: python
   observed_source_loc: 763
@@ -1234,6 +1303,7 @@ agents:
 analytics:
   repo: factorylm
   path: analytics/
+  tags: ["type:engine", "domain:telemetry"]
   purpose: "Baseline building, drift detection, and pattern embedding for PLC metrics"
   language: python
   observed_source_loc: 751
@@ -1253,6 +1323,7 @@ analytics:
 output:
   repo: factorylm
   path: output/
+  tags: ["type:infra", "domain:platform"]
   purpose: "TBD \u2014 not yet characterized"
   language: python
   observed_source_loc: 703
@@ -1264,6 +1335,7 @@ output:
 collectors:
   repo: factorylm
   path: collectors/
+  tags: ["type:adapter", "domain:telemetry"]
   purpose: "PLC data collectors for Modbus, S7, and Allen-Bradley devices"
   language: python
   observed_source_loc: 620
@@ -1283,6 +1355,7 @@ collectors:
 brain:
   repo: factorylm
   path: brain/
+  tags: ["type:engine", "domain:diagnostics"]
   purpose: "TBD \u2014 not yet characterized"
   language: python
   observed_source_loc: 540
@@ -1294,6 +1367,7 @@ brain:
 remoteme-jarvis-node:
   repo: factorylm
   path: remoteme-jarvis-node/
+  tags: ["type:infra", "domain:platform"]
   purpose: "FastAPI remote control agent for Tailscale network (shell, file I/O, screenshots)"
   language: python
   observed_source_loc: 514
@@ -1311,6 +1385,7 @@ remoteme-jarvis-node:
 video:
   repo: factorylm
   path: video/
+  tags: ["type:infra", "domain:platform"]
   purpose: "TBD \u2014 not yet characterized"
   language: python
   observed_source_loc: 474
@@ -1322,6 +1397,7 @@ video:
 specs:
   repo: factorylm
   path: specs/
+  tags: ["type:docs", "domain:platform"]
   purpose: "TBD \u2014 not yet characterized"
   language: python
   observed_source_loc: 406
@@ -1333,6 +1409,7 @@ specs:
 _BUILDS:
   repo: factorylm
   path: _BUILDS/
+  tags: ["type:infra", "domain:platform"]
   purpose: "TBD \u2014 not yet characterized"
   language: python
   observed_source_loc: 380
@@ -1344,6 +1421,7 @@ _BUILDS:
 data:
   repo: factorylm
   path: data/
+  tags: ["type:docs", "domain:knowledge"]
   purpose: "Training and learner data sets for model training and knowledge bases"
   language: markdown
   observed_source_loc: 125
@@ -1358,6 +1436,7 @@ data:
 infra:
   repo: factorylm
   path: infra/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Infrastructure-as-Code, deployment configs, and cluster orchestration."
   language: yaml
   observed_source_loc: 56
@@ -1377,6 +1456,7 @@ infra:
 antfarm:
   repo: factorylm
   path: antfarm/
+  tags: ["type:infra", "domain:platform"]
   purpose: "Agent orchestration framework with workflow definitions and task dispatch"
   language: python
   observed_source_loc: 0
