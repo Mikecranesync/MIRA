@@ -316,8 +316,11 @@ reporting at medium — say what evidence would settle it.)
 ## FINDINGS
 For each, exactly:
 - **[severity: high|medium|low] Title** — what breaks, the concrete input/state that
-  triggers it, and `file:line` evidence. If you cannot cite a location, say so and
-  lower the severity.
+  triggers it, `file:line` evidence, and a **verbatim quote of the diff line(s) the
+  claim depends on** (copy them exactly — if you cannot quote the line, you cannot
+  cite it). A claim about code that is NOT visible in this diff — truncated, in
+  another file, "presumably", "not shown" — is NOT a finding: it belongs under
+  NOT REVIEWED. Severity attaches only to defects you can quote.
 
 If you genuinely find nothing, write "None found" and then answer:
 what class of defect would this diff's own tests be structurally unable to catch?

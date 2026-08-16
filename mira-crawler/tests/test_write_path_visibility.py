@@ -473,3 +473,14 @@ class TestSchemeCaseNormalization:
         assert not ok
         ok, _ = self._gate()("HTTPS://ibiblio.org/x.pdf")
         assert ok
+
+    def test_percent_encoded_traversal_cannot_escape(self, monkeypatch, tmp_path) -> None:
+        # url2pathname percent-decodes BEFORE resolve-then-contain, so encoded
+        # ../ sequences are normalized away like literal ones (Gate 7 claim
+        # disproven by construction; locked here).
+        inbox = tmp_path / "inbox"
+        inbox.mkdir()
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(inbox))
+        encoded = inbox.as_uri() + "/%2e%2e/etc-passwd"
+        ok, _ = self._gate()(encoded)
+        assert not ok

@@ -175,7 +175,7 @@ def ingest_url(self, url: str, manufacturer: str = "",
     from ingest.embedder import embed_text
     from ingest.store import chunk_exists, insert_chunk
 
-    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    tenant_id = os.getenv("MIRA_TENANT_ID", "").strip()
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 
