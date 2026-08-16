@@ -55,7 +55,9 @@ logger = logging.getLogger("gate7-review")
 
 # Keep the brief inside free-tier context/TPM budgets (gpt-oss reasoning cost
 # scales with input length -- see reference_gpt_oss_groq_migration_traps).
-DIFF_CHAR_CAP = 24_000
+# Round-1 dogfood lesson: a truncated diff makes reviewers hallucinate defects
+# at the cut point -- cap generously and warn loudly when it still triggers.
+DIFF_CHAR_CAP = 48_000
 UNIT_CHAR_CAP = 8_000
 MAX_TOKENS = 4_096
 
@@ -187,15 +189,27 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    diff = gather_diff(args.pr, args.base)
+    # Input gathering must not crash with an uncaught traceback: exit 1 is
+    # reserved for BLOCK, so any infrastructure failure maps to 3 (unavailable).
+    try:
+        diff = gather_diff(args.pr, args.base)
+        unit_text = ""
+        if args.unit:
+            with open(args.unit, encoding="utf-8", errors="replace") as f:
+                unit_text = f.read()
+    except (RuntimeError, OSError) as e:
+        logger.error("could not gather review inputs: %s", e)
+        return 3
     if not diff.strip():
         logger.error("empty diff -- nothing to review")
         return 3
-
-    unit_text = ""
-    if args.unit:
-        with open(args.unit, encoding="utf-8", errors="replace") as f:
-            unit_text = f.read()
+    if len(diff) > DIFF_CHAR_CAP:
+        logger.warning(
+            "diff is %d chars; truncating to %d -- reviewers see a partial diff. "
+            "Prefer per-commit or per-file-group review for large units.",
+            len(diff),
+            DIFF_CHAR_CAP,
+        )
 
     prompt = build_prompt(diff, unit_text)
     if args.dry_run:
