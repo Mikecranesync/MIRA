@@ -378,7 +378,9 @@ def _url_is_probeable(url: str) -> bool:
         infos = socket.getaddrinfo(p.hostname, p.port or (443 if p.scheme == "https" else 80))
     except OSError:
         return False
-    addrs = {info[4][0] for info in infos}
+    # sockaddr[0] is typed loosely by the stdlib stubs (AF_INET6 tuples carry
+    # ints later in the tuple) — coerce to str before the zone-id strip.
+    addrs = {str(info[4][0]) for info in infos}
     if not addrs:
         return False
     for a in addrs:
