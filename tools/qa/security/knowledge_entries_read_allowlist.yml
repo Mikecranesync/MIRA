@@ -885,8 +885,8 @@ approved:
                         AND created_at > NOW() - INTERVAL ':hours hours'
   "mira-crawler/ingest/store.py:50":
     approved_classification: TENANT-ONLY
-    query_sha256: "755bbe16d50c8cce1f9cee02b83c326ee34f21db3e97ba0b597d7842875b8abd"
-    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
+    query_sha256: "30b997e0aa28eca658019752f85d1b4311b761cef0af144359f9283704373c73"
+    reason: "chunk_exists dedup guard — counts the tenant's OWN rows for the same source_url+chunk_index; cross-tenant matches would wrongly skip inserts, so TENANT-ONLY is the point (pure-tenant carve-out). Re-keyed in CU-03: the hash context window extends into insert_chunk's signature, which gained the required is_private param."
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                           WHERE tenant_id = :tid

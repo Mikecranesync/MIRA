@@ -323,6 +323,7 @@ def scrape_pdf_direct(
                 tenant_id=_TENANT_ID,
                 ollama_url=_OLLAMA_URL,
                 embed_model=_EMBED_MODEL,
+                is_private=False,  # public web content -> shared corpus (unverified)
             )
             result["chunks_ingested"] = n
             logger.info("Ingested %d chunks from %s", n, pdf_url)
@@ -497,6 +498,7 @@ def scrape_manual(
                 tenant_id=_TENANT_ID,
                 ollama_url=_OLLAMA_URL,
                 embed_model=_EMBED_MODEL,
+                is_private=False,  # public web content -> shared corpus (unverified)
             )
             result["chunks_ingested"] = n
             logger.info("  Ingested %d chunks from %s", n, canonical_url)

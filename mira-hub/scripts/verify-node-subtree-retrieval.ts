@@ -130,8 +130,8 @@ async function main() {
     const chunk = async (nodeId: string, filename: string, content: string) =>
       client.query(
         `INSERT INTO knowledge_entries
-           (id, tenant_id, source_type, content, source_url, source_page, doc_id, ingest_route, page_start, page_end, metadata)
-         VALUES ($1,$2,'node_attachment',$3,$4,$5,$6,'v2',$5,$5,$7)`,
+           (id, tenant_id, source_type, content, source_url, source_page, doc_id, ingest_route, page_start, page_end, metadata, is_private)
+         VALUES ($1,$2,'node_attachment',$3,$4,$5,$6,'v2',$5,$5,$7,TRUE)`,
         [
           randomUUID(), tenantId, content,
           `node-doc/${MARK}/${filename}`, 7, randomUUID(),

@@ -58,6 +58,8 @@ def ingest_text_inline(
     tenant_id: str,
     ollama_url: str,
     embed_model: str,
+    *,
+    is_private: bool,
 ) -> int:
     """Chunk, embed, and store a raw text string into the KB.
 
@@ -150,6 +152,7 @@ def ingest_text_inline(
                 source_type=source_type,
                 chunk_index=chunk_idx,
                 chunk_type=chunk.get("chunk_type", "text"),
+                is_private=is_private,
             )
             if entry_id:
                 inserted += 1

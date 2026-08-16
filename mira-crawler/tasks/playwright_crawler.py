@@ -272,6 +272,7 @@ def crawl_js_site(start_url: str, max_pages: int = 50) -> dict:
                             tenant_id=tenant_id,
                             ollama_url=ollama_url,
                             embed_model=embed_model,
+                            is_private=False,  # public web content -> shared corpus
                         )
                     except Exception as exc:
                         logger.warning("Inline ingest failed for %s: %s", url[:80], exc)
@@ -473,6 +474,7 @@ def render_and_ingest_page(url: str) -> dict:
             tenant_id=tenant_id,
             ollama_url=ollama_url,
             embed_model=embed_model,
+            is_private=False,  # public web content -> shared corpus
         )
         return {"ingested": True, "chunks_inserted": inserted}
     except Exception as exc:

@@ -1136,12 +1136,6 @@ _KE_INSERT_ALLOWLIST: dict[str, str] = {
     "tools/seeds/gs11-field-guide-knowledge.sql":
         "OEM seed; omits the column so rows take the DB default false (correct for "
         "shared corpus). Explicit is_private false preferred on next touch.",
-    "mira-hub/scripts/verify-node-subtree-retrieval.ts":
-        "verification script writing node_attachment probe rows; default-false today. "
-        "Flagged for the CU-03 visibility audit — do not silently bless.",
-    "mira-hub/tests/e2e/folder-brain-proof.spec.ts":
-        "e2e fixture rows (cleaned up in-test); default-false today. Flagged for the "
-        "CU-03 visibility audit.",
     "mira-hub/src/lib/__tests__/node-knowledge-ingest-batching.test.ts":
         "not a writer — asserts on mock-captured SQL via .includes('INSERT INTO "
         "knowledge_entries'); the real writer (node-knowledge-ingest.ts) pins true.",

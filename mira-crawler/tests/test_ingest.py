@@ -91,13 +91,42 @@ class TestIngestUrlFileScheme:
             }
         ]
 
-        mock_resp = type("R", (), {
-            "content": b"%PDF-1.4",
-            "headers": {"content-type": "application/pdf"},
-            "raise_for_status": lambda self: None,
-        })()
+        # The download path streams via httpx.Client (OOM hardening) — mock
+        # the streaming client, not httpx.get (the old mock silently missed
+        # and this test hit the real network; pre-existing red fixed in CU-03).
+        class _FakeStreamResp:
+            headers = {"content-type": "application/pdf"}
 
-        with patch("tasks.ingest.httpx.get", return_value=mock_resp), \
+            def raise_for_status(self):
+                return None
+
+            def iter_bytes(self, chunk_size):
+                yield b"%PDF-1.4"
+
+        class _FakeStreamCtx:
+            def __enter__(self):
+                return _FakeStreamResp()
+
+            def __exit__(self, *exc):
+                return False
+
+        class _FakeClient:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def stream(self, method, url):
+                return _FakeStreamCtx()
+
+        fake_head = type("H", (), {"headers": {"content-length": "100"}})()
+
+        with patch("tasks.ingest.httpx.Client", _FakeClient), \
+             patch("tasks.ingest.httpx.head", return_value=fake_head), \
              patch("ingest.converter.extract_from_pdf_with_fallback", return_value=fake_blocks), \
              patch("ingest.chunker.chunk_blocks", return_value=fake_chunks), \
              patch("ingest.embedder.embed_text", return_value=[0.1] * 768), \

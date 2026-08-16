@@ -295,6 +295,7 @@ def step_kb_ingest(text: str, source_url: str, manual_type: str,
             tenant_id=TENANT_ID,
             ollama_url=OLLAMA_URL,
             embed_model=EMBED_MODEL,
+            is_private=False,  # public manual crawl -> shared corpus (unverified)
         )
         report.kb_chunks = n
         logger.info("KB ingest: %d chunks stored", n)

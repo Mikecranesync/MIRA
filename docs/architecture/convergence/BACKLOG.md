@@ -48,6 +48,7 @@
 - `store.py::insert_chunk` gains a required `is_private` parameter (no silent default); `ingest_url` validates against `sources.yaml` before shared-corpus writes; audit `learning_ingester.py` visibility.
 - Behavior-lock first: tenant-scoping tests asserting today's exact write shapes (OEM public, uploads private) before touching the code.
 - **Risk:** medium-high (tenancy-adjacent) → **Gate 7 xhigh**, human GO. Not a pilot candidate for exactly that reason.
+- **Status: implemented 2026-08-16 — PR #3268, awaiting Gate 7 (real lane, xhigh — first consuming unit of CU-11) + Gate 9 GO.** I-1: `insert_chunk`/`store_chunks`/`ingest_text_inline` require keyword-only `is_private`, all call sites explicit. I-2: `shared_corpus_source_allowed()` sources.yaml gate in `ingest_url` (fail-closed; `file://` operator carve-out). I-3 audit verdict: learning_ingester → `is_private=true` (no prod wiring; conversation-derived). CU-03-flagged Contract 13 allowlist entries closed (both Hub TS files now pin TRUE inline). New findings filed: **#3269** (ingest_text_inline sibling gate gap), **#3270** (test_celery_tasks stale mocks, not in CI). Gate walk in `units/CU-03.md`.
 
 ## CU-04 — factorylm legacy strangulation, phase 1 (statuses + proof, no deletion)
 

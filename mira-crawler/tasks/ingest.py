@@ -42,6 +42,73 @@ _TRANSIENT = (
     OSError,
 )
 
+# ── Shared-corpus curation gate (CU-03, finding I-2) ─────────────────────────
+# ingest_url writes to the shared corpus (is_private=false). Sharing is only
+# legitimate for curated sources: the human gate is sources.yaml membership
+# (.claude/rules/oem-crawler-trusted.md — "the human gate is sources.yaml
+# curation, not per-chunk review"). An uncurated URL must be refused, not
+# quietly shared.
+
+_CURATED_HOSTS: frozenset[str] | None = None
+
+
+def _curated_hosts() -> frozenset[str]:
+    """Hosts of every url in sources.yaml (cached). Raises if unreadable."""
+    global _CURATED_HOSTS  # noqa: PLW0603
+    if _CURATED_HOSTS is not None:
+        return _CURATED_HOSTS
+
+    from urllib.parse import urlparse
+
+    import yaml
+
+    manifest = Path(__file__).resolve().parents[1] / "sources.yaml"
+    data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+
+    hosts: set[str] = set()
+
+    def _walk(node) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "url" and isinstance(value, str):
+                    host = urlparse(value).hostname
+                    if host:
+                        hosts.add(host.lower())
+                else:
+                    _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(data)
+    _CURATED_HOSTS = frozenset(hosts)
+    return _CURATED_HOSTS
+
+
+def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
+    """May this URL land in the shared corpus? Returns (allowed, reason).
+
+    file:// is allowed: it is operator-initiated local/Drive-inbox ingest
+    (tasks/gdrive.py) and cannot be reached by a crawl. http(s) requires the
+    host to be a sources.yaml host (or a subdomain of one). A manifest read
+    failure fails CLOSED — an unvalidatable shared write is a refused write.
+    """
+    if url.startswith("file://"):
+        return True, "operator-initiated local ingest"
+    try:
+        hosts = _curated_hosts()
+    except Exception as e:
+        return False, f"sources.yaml unreadable ({e}) — fail closed"
+
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return False, "no host in url"
+    if host in hosts or any(host.endswith("." + h) for h in hosts):
+        return True, "curated host"
+    return False, f"host {host} not in sources.yaml"
+
 
 @app.task(
     bind=True,
@@ -73,6 +140,14 @@ def ingest_url(self, url: str, manufacturer: str = "",
     if not tenant_id:
         logger.error("MIRA_TENANT_ID not set — cannot ingest")
         return {"url": url, "inserted": 0, "error": "no_tenant_id"}
+
+    # 0. Curation gate (I-2) — BEFORE any download. This task writes shared
+    # rows; an uncurated source must be refused, not shared. To ingest a new
+    # OEM domain, add it to sources.yaml (minutes, and auditable forever).
+    allowed, gate_reason = shared_corpus_source_allowed(url)
+    if not allowed:
+        logger.warning("Refusing shared-corpus ingest of %s: %s", url[:80], gate_reason)
+        return {"url": url, "inserted": 0, "error": "uncurated_source"}
 
     # 1. Download (supports http(s):// and file:// schemes)
     is_pdf_url = url.lower().endswith(".pdf")
@@ -237,6 +312,10 @@ def ingest_url(self, url: str, manufacturer: str = "",
                 section=chunk.get("section", ""),
                 chunk_index=chunk_idx,
                 chunk_type=chunk.get("chunk_type", "text"),
+                # Shared corpus: source passed the sources.yaml gate above
+                # (or is operator-initiated file:// ingest). Unverified —
+                # trust stays with the OEM crawler class, not this task.
+                is_private=False,
             )
             if entry_id:
                 inserted += 1

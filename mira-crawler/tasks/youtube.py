@@ -581,6 +581,7 @@ def ingest_youtube_channels() -> dict:
                 tenant_id=tenant_id,
                 manufacturer="",
                 model_number="",
+                is_private=False,  # public video transcripts -> shared corpus
             )
             total_stored += stored
 

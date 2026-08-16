@@ -257,6 +257,7 @@ class TestInsertChunkWiring:
             manufacturer="Alien-Bradley",
             model_number="MR-2000",
             chunk_index=0,
+            is_private=False,
         )
 
         assert entry_id  # write path completed

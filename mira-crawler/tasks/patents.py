@@ -236,6 +236,7 @@ def scrape_patents() -> dict:
                         tenant_id=tenant_id,
                         ollama_url=ollama_url,
                         embed_model=embed_model,
+                        is_private=False,  # public patent text -> shared corpus
                     )
                     if n > 0:
                         patents_ingested += 1

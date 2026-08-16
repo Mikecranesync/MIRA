@@ -183,9 +183,15 @@ class LearningIngester:
                         "(id, tenant_id, source_type, manufacturer, model_number, "
                         " equipment_type, content, embedding, source_url, source_page, "
                         " metadata, is_private, verified, chunk_type, created_at) "
+                        # is_private=true (CU-03, I-3 audit): these rows are
+                        # distilled from the tenant's PRODUCTION conversations
+                        # — never more visible than their source (write law,
+                        # knowledge-entries-tenant-scoping.md). verified=true
+                        # stands: the technician's positive rating is the
+                        # human approval gate.
                         "VALUES (:id, :tid, 'approved_faq', '', '', '', :content, "
                         "        cast(:emb AS vector), :url, 0, cast(:meta AS jsonb), "
-                        "        false, true, 'faq', now())"
+                        "        true, true, 'faq', now())"
                     ),
                     {
                         "id": str(uuid.uuid4()),

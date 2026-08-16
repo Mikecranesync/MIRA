@@ -368,6 +368,10 @@ def insert_to_neondb(
         manufacturer=result.get("make") or "",
         model_number=result.get("model") or "",
         image_embedding=image_embedding,
+        # Operator-run bench/garage photo ingest -> shared corpus (unverified),
+        # preserving pre-CU-03 behavior. Customer photo uploads do not use
+        # this script.
+        is_private=False,
     )
     if stored > 0:
         logger.info("Inserted knowledge entry for %s", photo_path.name)
