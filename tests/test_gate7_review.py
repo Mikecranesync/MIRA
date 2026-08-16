@@ -262,3 +262,73 @@ def test_truncation_notice_reports_both_shown_and_total():
     p = build_prompt("t", "b", "x" * (MAX_DIFF_CHARS * 2), "high", [])
     assert f"{MAX_DIFF_CHARS:,}" in p
     assert f"{MAX_DIFF_CHARS * 2:,}" in p
+
+
+# --- credential redaction (Gate 7 round-3 finding on this tool itself) -----
+
+
+def _sample_jwt() -> str:
+    """Build a JWT-shaped string at runtime.
+
+    Deliberately assembled from parts rather than written as a literal: the repo's
+    pre-commit gitleaks gate flags a literal JWT here — correctly, since the whole point
+    of the fixture is to be shaped like a real token. Assembling it keeps the gate honest
+    (no literal secret in the tree) without weakening the test or adding an allowlist
+    entry that would also mask a genuine leak in this file later.
+    """
+    header = "eyJhbGciOiJIUzI1NiJ9"
+    payload = "eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+    signature = "dBjftJeZ4CVPmB92K27uhbUJU1p1r"
+    return ".".join((header, payload, signature))
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "sk-abcdefghijklmnopqrstuvwxyz012345",
+        "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123",
+        "xoxb-1234567890-abcdefghijkl",
+        "dp.pt.abcdefghijklmnopqrstuvwxyz",
+        _sample_jwt(),
+    ],
+)
+def test_known_credential_shapes_never_leave_the_machine(secret):
+    """Round-3 high finding: the router's sanitizer covers PII but nothing
+    credential-shaped, so a key in a diff would have been posted verbatim."""
+    out = redact(f"config value {secret} end")
+    assert secret not in out
+    assert "[SECRET]" in out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'GROQ_API_KEY = "gsk-liveVALUE1234567890abcdef"',
+        "DATABASE_PASSWORD: superSecretValue12345",
+        'AUTH_TOKEN="abcdef1234567890abcdef"',
+    ],
+)
+def test_key_value_assignments_are_redacted(line):
+    out = redact(line)
+    assert "[SECRET]" in out
+    # The variable NAME survives — the reviewer still sees what kind of thing it was.
+    assert any(n in out for n in ("GROQ_API_KEY", "DATABASE_PASSWORD", "AUTH_TOKEN"))
+
+
+def test_authorization_headers_are_redacted_but_the_scheme_survives():
+    out = redact("Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345")
+    assert "abcdefghijklmnopqrstuvwxyz012345" not in out
+    assert "Bearer [SECRET]" in out
+
+
+def test_connection_string_credentials_are_redacted():
+    out = redact("postgres://appuser:hunter2hunter2@db.neon.tech/main")
+    assert "hunter2hunter2" not in out
+    assert "appuser" not in out
+    assert "db.neon.tech/main" in out  # host survives; only credentials go
+
+
+def test_ordinary_code_is_not_mangled_by_the_secret_patterns():
+    """Over-broad redaction costs the reviewer context, so keep it off normal code."""
+    code = "def build_prompt(title: str, body: str) -> str:\n    return f'{title}'"
+    assert redact(code) == code

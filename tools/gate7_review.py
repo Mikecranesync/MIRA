@@ -152,9 +152,38 @@ try:
 except ImportError:  # pragma: no cover - the canonical module must exist
     _REDACTORS = []
 
+# Credential redaction. Found by this tool's own Gate 7 round 3: the router's sanitizer
+# covers PII (IP/MAC/serial) but nothing credential-shaped, so a key sitting in a diff
+# would have been posted to a third-party provider verbatim. `gitleaks` guards the commit
+# path, not this egress path, and there is no Python secret-redactor in the repo to reuse
+# (`tools/predeploy_log_capture.sh` is PII-focused shell `sed`). Defense in depth, not a
+# replacement for gitleaks — deliberately over-broad, since a false redaction costs a
+# reviewer a little context while a miss leaks a live credential.
+_SECRET_RES: list[tuple[re.Pattern, str]] = [
+    # Known-prefix tokens: OpenAI/Stripe/GitHub/Slack/Doppler/Together, xox*, ghp_, dp.pt.
+    (re.compile(r"\b(?:sk|rk|pk)-[A-Za-z0-9_\-]{16,}", re.I), "[SECRET]"),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}"), "[SECRET]"),
+    (re.compile(r"\bxox[abposr]-[A-Za-z0-9\-]{10,}"), "[SECRET]"),
+    (re.compile(r"\bdp\.(?:pt|st|sa)\.[A-Za-z0-9_\-]{16,}"), "[SECRET]"),
+    # JWTs.
+    (re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}"), "[SECRET]"),
+    # Authorization headers.
+    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._\-+/=]{16,}"), r"\1 [SECRET]"),
+    # KEY=value / "key": "value" assignments with a long opaque value.
+    (
+        re.compile(
+            r"(?i)\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|DSN|CREDENTIAL)[A-Z0-9_]*)"
+            r"(\s*[:=]\s*[\"']?)([A-Za-z0-9._\-+/=]{12,})"
+        ),
+        r"\1\2[SECRET]",
+    ),
+    # Connection strings with inline credentials.
+    (re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)[^\s:@/]+:[^\s:@/]+@"), r"\1[SECRET]:[SECRET]@"),
+]
+
 
 def redact(text: str) -> str:
-    """Strip IPs, MACs, and serials before anything leaves the machine.
+    """Strip PII and credentials before anything leaves the machine.
 
     Fails LOUD, not open: if the canonical sanitizer cannot be imported we refuse to
     send rather than sending unredacted. A redaction step that silently no-ops is worse
@@ -166,6 +195,8 @@ def redact(text: str) -> str:
             "refusing to send unredacted repository content to a third-party provider"
         )
     for pattern, repl in _REDACTORS:
+        text = pattern.sub(repl, text)
+    for pattern, repl in _SECRET_RES:
         text = pattern.sub(repl, text)
     return text
 
