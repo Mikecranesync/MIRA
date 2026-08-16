@@ -26,8 +26,13 @@ doppler run -p factorylm -c dev -- py tools/gate7_review.py <PR> -o /tmp/g7.md
 | Code | Meaning | What to do |
 |---|---|---|
 | 0 | A review was produced | **Read the verdict** — 0 does not mean PASS |
-| 2 | The whole cascade failed | Fall back to a substitute panel (below) and **record the deviation** |
+| 2 | No review could be produced (whole cascade failed, or the canonical sanitizer is unavailable) | Fall back to a substitute panel (below) and **record the deviation** |
 | 1 | Usage / PR fetch error | Fix the invocation |
+
+Exit **2** deliberately covers both "no provider answered" and "we refuse to send because
+redaction is unavailable". They differ in cause but not in consequence — no review exists,
+and the answer is the substitute panel either way. Routing the second through exit 1 would
+tell the operator to fix a command line that was correct.
 
 ## Reviewer
 

@@ -332,3 +332,22 @@ def test_ordinary_code_is_not_mangled_by_the_secret_patterns():
     """Over-broad redaction costs the reviewer context, so keep it off normal code."""
     code = "def build_prompt(title: str, body: str) -> str:\n    return f'{title}'"
     assert redact(code) == code
+
+
+def test_pii_redactor_loading_does_not_leave_mira_bots_on_sys_path():
+    """A module-scope sys.path.insert would let any top-level name under mira-bots/
+    shadow for every other test in the same pytest session. This repo has already lost
+    a day to that class (#3089: two tools/ dirs both claimed the name `runner`)."""
+    import gate7_review
+
+    before = list(sys.path)
+    gate7_review._load_pii_redactors()
+    assert sys.path == before
+
+
+def test_pii_redactors_actually_loaded():
+    """Guard the other direction: the scoped import must still succeed, or redact()
+    would fail loud on every run and the lane would never produce a review."""
+    import gate7_review
+
+    assert gate7_review._REDACTORS, "canonical PII sanitizer failed to load"

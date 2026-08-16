@@ -144,13 +144,34 @@ premature deletion"""
 
 MAX_DIFF_CHARS = 40_000
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mira-bots"))
-try:
-    from shared.inference.router import _IPV4_RE, _MAC_RE, _SERIAL_RE  # noqa: E402
 
-    _REDACTORS = [(_IPV4_RE, "[IP]"), (_MAC_RE, "[MAC]"), (_SERIAL_RE, "[SN]")]
-except ImportError:  # pragma: no cover - the canonical module must exist
-    _REDACTORS = []
+def _load_pii_redactors() -> list[tuple[re.Pattern, str]]:
+    """Import the canonical PII regexes, mutating sys.path only for the duration.
+
+    The path insert is scoped to this call and undone in `finally` **on purpose**. A
+    module-scope `sys.path.insert` would leave `mira-bots/` on the path for the whole
+    process — so importing this tool inside a pytest session would let any top-level
+    name under `mira-bots/` (e.g. `shared`) shadow for every *other* test collected in
+    the same run. This repo has already lost a day to exactly that failure: two `tools/`
+    dirs both claimed the name `runner` and broke the whole Eval Offline suite (#3089).
+    A review tool must not be able to break the tests it exists to protect.
+    """
+    root = str(Path(__file__).resolve().parents[1] / "mira-bots")
+    sys.path.insert(0, root)
+    try:
+        from shared.inference.router import _IPV4_RE, _MAC_RE, _SERIAL_RE
+
+        return [(_IPV4_RE, "[IP]"), (_MAC_RE, "[MAC]"), (_SERIAL_RE, "[SN]")]
+    except ImportError:  # pragma: no cover - the canonical module must exist
+        return []
+    finally:
+        try:
+            sys.path.remove(root)
+        except ValueError:  # pragma: no cover
+            pass
+
+
+_REDACTORS = _load_pii_redactors()
 
 # Credential redaction. Found by this tool's own Gate 7 round 3: the router's sanitizer
 # covers PII (IP/MAC/serial) but nothing credential-shaped, so a key sitting in a diff
@@ -460,8 +481,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         title, body, diff = redact(title), redact(body), redact(diff)
     except RuntimeError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
+        # Exit 2, not 1. Round 3's medium finding was right that this was a contract
+        # violation: exit 1 means "fix your invocation", but a missing canonical
+        # sanitizer is not the operator's typo — it is the same situation as a dead
+        # cascade (no review can be produced), and it wants the same answer: run the
+        # substitute panel and record the deviation.
+        print(f"Gate 7: {e}", file=sys.stderr)
+        print(
+            "No review produced. Fall back to a substitute panel and RECORD THE DEVIATION.",
+            file=sys.stderr,
+        )
+        return 2
     sent = min(len(diff), MAX_DIFF_CHARS)
     print(
         f"Gate 7: sending {sent:,}/{len(diff):,} diff chars to a third-party provider "
