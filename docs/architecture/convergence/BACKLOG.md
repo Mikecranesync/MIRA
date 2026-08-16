@@ -41,7 +41,7 @@
 - **Risk:** low to build; **high leverage** — it is the check that catches false-greens on every later unit.
 - **Provider — DECIDED (owner, 2026-08-16): no OpenAI.** "GPT-5.6 Sol / Codex" is dropped. The lane runs on the existing free-tier **Groq → Cerebras → Together** cascade already proven in `.github/workflows/code-review.yml`. This keeps it inside PRD §4 (free-tier, OpenAI-compat, no new paid provider) and `.claude/rules/zero-token-architecture.md`. The §Gate 7 doctrine text must be amended by this unit so it stops naming a rejected provider.
 - **Consequence to state honestly:** without a second vendor, "independent" means **fresh context, isolated worktree, and a brief to disprove** — not vendor independence. CU-11's unit record must say so rather than implying a cross-vendor check we are not performing.
-- **Status: NEXT (2026-08-16)** — selected ahead of CU-06; see the ordering deviation under CU-02.
+- **Status: DONE 2026-08-16** — PR #3262 → merge `39a793cb9` → **v3.274.2**; rollback checkpoint `rollback/2026-08-16-v3.274.2`. R0 `1ad196837`. Delivered `tools/gate7_review.py` + `/gate7-review` + the `gate7-adversarial-reviewer` agent role, and amended the §Gate 7 doctrine to drop the un-wireable provider. Walked its own gate three rounds and fixed 4 real self-findings. Full record in `units/CU-11.md`. **CU-03 is now unblocked** — it is the first unit that can walk Gate 7 on the real lane. **Next unit: CU-06** (returning to backlog order).
 
 ## CU-03 — knowledge_entries write-path hardening (I-1..I-3)
 
