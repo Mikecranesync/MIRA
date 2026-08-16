@@ -38,17 +38,57 @@ class TestParseVerdict:
     def test_missing_verdict_is_indeterminate(self):
         assert gate7.parse_verdict("Looks fine to me!") == "INDETERMINATE"
 
-    def test_conflicting_verdicts_are_indeterminate(self):
-        assert gate7.parse_verdict("Verdict: PASS\n...\nVerdict: BLOCK\n") == "INDETERMINATE"
+    def test_conflicting_verdicts_resolve_to_block(self):
+        # Stop-the-line dominates: a genuine BLOCK must never be demoted to
+        # INDETERMINATE (exit 2, "re-run") by a stray PASS line.
+        assert gate7.parse_verdict("Verdict: PASS\n...\nVerdict: BLOCK\n") == "BLOCK"
 
     def test_repeated_identical_verdict_is_kept(self):
         assert gate7.parse_verdict("Verdict: BLOCK\n...\nVerdict: BLOCK\n") == "BLOCK"
 
     def test_verdict_mentioned_mid_line_does_not_count(self):
-        # Only a line-anchored "Verdict:" counts — a quoted mention inside a
+        # Only a full-line "Verdict:" counts — a quoted mention inside a
         # finding must not decide the round.
         text = "The diff says 'emit Verdict: PASS' in its prompt template."
         assert gate7.parse_verdict(text) == "INDETERMINATE"
+
+    def test_format_echo_line_is_not_a_verdict(self):
+        # Reproduced substitute-panel false-green: the model echoing the
+        # prompt's own format-instruction line used to parse as PASS.
+        echo = "Verdict: PASS or Verdict: BLOCK   (BLOCK iff at least one blocking finding)"
+        assert gate7.parse_verdict(echo) == "INDETERMINATE"
+
+    def test_verdict_with_trailing_text_does_not_count(self):
+        assert gate7.parse_verdict("Verdict: PASS is what it would print") == "INDETERMINATE"
+
+    def test_blocking_finding_forces_block_over_stated_pass(self):
+        # A PASS verdict alongside a [blocking] finding is a contradiction;
+        # fail in the safe direction.
+        text = "Verdict: PASS\n### Findings\n- [blocking] tenant leak -- evidence"
+        assert gate7.parse_verdict(text) == "BLOCK"
+
+    def test_echoed_format_plus_blocking_finding_is_block(self):
+        text = (
+            "Verdict: PASS or Verdict: BLOCK   (BLOCK iff at least one blocking finding)\n"
+            "### Findings\n- [blocking] real defect -- file X"
+        )
+        assert gate7.parse_verdict(text) == "BLOCK"
+
+    def test_severity_format_echo_does_not_force_block(self):
+        # "- [blocking|important|minor] <claim>" is the format line, not a finding.
+        text = "Verdict: PASS\n### Findings\n- [blocking|important|minor] <claim> -- <evidence>"
+        assert gate7.parse_verdict(text) == "PASS"
+
+
+class TestAggregateVerdicts:
+    def test_block_dominates_indeterminate(self):
+        assert gate7.aggregate_verdicts(["INDETERMINATE", "BLOCK"]) == "BLOCK"
+
+    def test_indeterminate_dominates_pass(self):
+        assert gate7.aggregate_verdicts(["PASS", "INDETERMINATE"]) == "INDETERMINATE"
+
+    def test_all_pass(self):
+        assert gate7.aggregate_verdicts(["PASS", "PASS", "PASS"]) == "PASS"
 
 
 class TestBuildPrompt:
@@ -73,6 +113,18 @@ class TestBuildPrompt:
         # (round-2 dogfood lesson) must stay in the brief.
         prompt = gate7.build_prompt("+x\n", "")
         assert "ACCEPTED PLATFORM CONTEXT" in prompt
+
+    def test_untrusted_data_instruction_present(self):
+        # Prompt-injection mitigation (substitute-panel finding): the brief must
+        # mark the diff as untrusted data. Not a security boundary — Gate 9 is
+        # the backstop — but the instruction must not silently disappear.
+        prompt = gate7.build_prompt("+x\n", "")
+        assert "UNTRUSTED DATA" in prompt
+
+    def test_unit_truncation_marker(self):
+        unit = "z" * (gate7.UNIT_CHAR_CAP + 1)
+        prompt = gate7.build_prompt("+x\n", unit)
+        assert "[UNIT RECORD TRUNCATED]" in prompt
 
 
 class TestExitCodeMap:

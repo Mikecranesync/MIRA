@@ -70,6 +70,9 @@ record it. The final recorded round must be a PASS (or a recorded human override
 
 ## Notes
 
+- **A lane PASS alone never authorizes a merge.** The diff under review is untrusted text
+  inside the reviewer prompt (prompt-injection limitation, recorded in `units/CU-11.md`);
+  Gate 9's human GO is the backstop.
 - Keys: `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHERAI_API_KEY` — Doppler-managed
   (`factorylm/dev` locally; repo secrets in CI). Never paste keys into a shell.
 - The lane is deliberately fail-loud, unlike the advisory `code-review.yml` comment bot:
