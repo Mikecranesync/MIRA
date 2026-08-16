@@ -25,17 +25,28 @@ whole decision is unit-testable with no database. The workflow
 
 ## Why `live_ratio`
 
-`live_ratio = distinct(event_timestamp) / rows`. The 033 schema separates
-observed-at (`event_timestamp`, source clock) from received-at (`ingested_at`,
-server NOW). A replay keeps posting so row count stays high while observed-time
-stands still:
+`live_ratio = distinct(event_timestamp) / scans`, where `scans = rows / tag_count`.
+The 033 schema separates observed-at (`event_timestamp`, source clock) from
+received-at (`ingested_at`, server NOW). A replay keeps posting so row count stays
+high while observed-time stands still:
 
     LIVE   -> live_ratio ~ 1.0, observed_span ~ ingest_span
     REPLAY -> live_ratio ~ 0.0, observed_span ~ 0 while ingest_span grows
 
-Measured on prod 2026-08-14: 774,480 rows, **1** distinct observed timestamp,
-live_ratio **0.0000**. Row count alone cannot tell the two apart — which is why
-this gate keys on the ratio and never on volume.
+Measured on prod 2026-08-14: 774,480 rows, **1** distinct observed timestamp —
+still ~0.0000 under either formulation. Row count alone cannot tell the two apart,
+which is why this gate keys on the ratio and never on volume.
+
+**Per SCAN, not per ROW (fixed 2026-08-16).** The denominator was originally `rows`,
+which made GO unreachable by construction: one scan reads all N tags and stamps them
+with a single observation timestamp, so `rows = N x scans` and the ratio can never
+exceed `1/N`. For CV-101's 12 tags that ceiling is **0.083**, below the 0.50
+threshold — a perfectly healthy bench scored NO-GO forever. Caught on the live bench
+2026-08-16 right after the Ignition trial reset restored the device connection:
+2520 rows / 167 distinct / 12 tags = 0.0663, **80% of the theoretical maximum**, and
+the gate still cried REPLAY. Dividing by scans asks what the gate actually means —
+"of the scans in this window, how many carried a NEW observation?" — which is ~1.0
+for a live stream at any tag count and still ~0 for a replay.
 
 Exit: 0 = GO, 1 = NO-GO (named failure), 2 = UNKNOWN (could not determine).
 """
@@ -125,16 +136,33 @@ def classify(
 
     rows_n = _num(g.get("rows"), 0)
     distinct_ts = _num(g.get("distinct_observed_ts"), 0)
-    live_ratio = (distinct_ts / rows_n) if rows_n else 0.0
     observed_age = _num(g.get("newest_observed_age_s"), None)
     ingest_age = _num(g.get("newest_ingest_age_s"), None)
     uns_paths = [p for p in (g.get("uns_paths") or []) if p]
     tag_count = _num(g.get("tag_count"), 0)
     bad_quality = _num(g.get("bad_quality_rows"), 0)
 
+    # live_ratio is per-SCAN, not per-ROW.
+    #
+    # The original formulation was distinct_ts / rows, which is unreachable by
+    # construction: a scan reads all N tags and stamps them with one observation
+    # timestamp, so rows = N x scans and the ratio can never exceed 1/N. For CV-101's
+    # 12 tags that ceiling is 0.083 — below the 0.50 threshold — so a perfectly healthy
+    # bench could never score GO. Measured on the live bench 2026-08-16 after the
+    # Ignition trial reset: 2520 rows, 167 distinct, 12 tags -> 0.0663, i.e. 80% of the
+    # theoretical maximum, still reported as REPLAY.
+    #
+    # Dividing by scans instead asks the question the gate actually means: "of the
+    # scans in this window, how many carried a NEW observation?" That is 1.0 for a live
+    # stream regardless of tag count, and still ~0 for a replay (one frozen timestamp
+    # over thousands of scans). The replay detection #3161 needed is preserved exactly;
+    # only the false negative on healthy multi-tag streams is removed.
+    scans = (rows_n / tag_count) if tag_count else rows_n
+    live_ratio = (distinct_ts / scans) if scans else 0.0
+
     lines.append(
-        "rows=%s distinct_observed_ts=%s live_ratio=%.4f tags=%s"
-        % (rows_n, distinct_ts, live_ratio, tag_count)
+        "rows=%s distinct_observed_ts=%s tags=%s scans=%.0f live_ratio=%.4f"
+        % (rows_n, distinct_ts, tag_count, scans, live_ratio)
     )
     lines.append("observed_age_s=%s ingest_age_s=%s" % (observed_age, ingest_age))
 
@@ -147,9 +175,9 @@ def classify(
         fails.append(
             (
                 CAUSE_REPLAY,
-                "live_ratio %.4f < %.2f — %s rows carry only %s distinct observed "
-                "timestamp(s); observed time is frozen while ingest advances"
-                % (live_ratio, min_live_ratio, rows_n, distinct_ts),
+                "live_ratio %.4f < %.2f — %.0f scans (%s rows / %s tags) carry only %s "
+                "distinct observed timestamp(s); observed time is frozen while ingest "
+                "advances" % (live_ratio, min_live_ratio, scans, rows_n, tag_count, distinct_ts),
             )
         )
 
