@@ -231,3 +231,34 @@ def test_diff_cap_is_the_declared_constant():
     marker = "\u00a7"  # a char the prompt template itself never uses
     p = build_prompt("t", "b", marker * (MAX_DIFF_CHARS * 2), "high", [])
     assert p.count(marker) == MAX_DIFF_CHARS
+
+
+# --- truncation honesty (Gate 7 round-2 finding on this tool itself) -------
+
+
+def test_no_truncation_notice_when_the_diff_fits():
+    p = build_prompt("t", "b", "small diff", "high", [])
+    assert "TRUNCATION NOTICE" not in p
+
+
+def test_truncated_diff_tells_the_reviewer_it_is_reading_a_fragment():
+    """Round-2 finding: the cut removed main(), and the reviewer reported two
+    high-severity defects for code that existed just past the cut. A reviewer that
+    doesn't know it's reading a fragment treats every absence as a defect."""
+    p = build_prompt("t", "b", "x" * (MAX_DIFF_CHARS + 5000), "high", [])
+    assert "TRUNCATION NOTICE" in p
+    assert "FRAGMENT" in p
+    assert "is NOT a finding here" in p
+
+
+def test_truncation_notice_names_where_the_cut_landed():
+    diff = "+++ b/tools/first.py\n" + ("a" * MAX_DIFF_CHARS) + "\n+++ b/tools/second.py\nmore"
+    p = build_prompt("t", "b", diff, "high", [])
+    assert "tools/first.py" in p
+    assert "tools/second.py" not in p.split("TRUNCATION NOTICE")[1]
+
+
+def test_truncation_notice_reports_both_shown_and_total():
+    p = build_prompt("t", "b", "x" * (MAX_DIFF_CHARS * 2), "high", [])
+    assert f"{MAX_DIFF_CHARS:,}" in p
+    assert f"{MAX_DIFF_CHARS * 2:,}" in p

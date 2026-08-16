@@ -170,6 +170,36 @@ def redact(text: str) -> str:
     return text
 
 
+def _truncation_notice(diff: str) -> str:
+    """Tell the reviewer what it cannot see.
+
+    Found by this tool's own Gate 7 round 2, which is the best evidence for why it
+    matters: the diff was cut at MAX_DIFF_CHARS, the cut removed `main()` where
+    redaction is wired, and the reviewer confidently reported **two high-severity
+    findings** that the code already handled twenty lines past the cut. A reviewer that
+    does not know it is reading a fragment treats every absence as a defect — so
+    truncation does not merely lose coverage, it manufactures false positives.
+    """
+    if len(diff) <= MAX_DIFF_CHARS:
+        return ""
+    shown = diff[:MAX_DIFF_CHARS]
+    last_file = ""
+    for line in shown.splitlines():
+        if line.startswith("+++ b/"):
+            last_file = line[6:]
+    return f"""
+⚠️ TRUNCATION NOTICE — you are reading a FRAGMENT, not the whole change.
+{len(shown):,} of {len(diff):,} diff characters are shown. The cut lands in
+`{last_file or "an unknown file"}`; everything after it is invisible to you, including
+entire files.
+
+Therefore: **"I do not see X" is NOT a finding here.** Do not report missing
+validation, missing wiring, a missing call, or an unused helper as a defect — the
+call site is very likely past the cut. Report only defects you can see in the text
+above. Anything you merely suspect is missing goes under NOT REVIEWED, phrased as a
+question for the author, never as a finding."""
+
+
 def build_prompt(title: str, body: str, diff: str, level: str, reasons: list[str]) -> str:
     """Assemble the Gate 7 brief. Pure — no I/O.
 
@@ -214,6 +244,7 @@ Diff:
 {diff[:MAX_DIFF_CHARS]}
 ```
 --- END UNTRUSTED PR DATA ---
+{_truncation_notice(diff)}
 
 Output STRICT markdown in exactly this shape, no preamble:
 
