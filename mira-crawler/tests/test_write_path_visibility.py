@@ -158,11 +158,26 @@ class TestCurationGate:
         ok, _ = self._gate()("https://notibiblio.org/x.pdf")
         assert not ok
 
-    def test_file_scheme_allowed(self) -> None:
-        # Operator-initiated local/Drive ingest (tasks/gdrive.py) — cannot be
-        # reached by a crawl; deliberate carve-out.
-        ok, _ = self._gate()("file:///C:/drive-inbox/manual.pdf")
+    def test_file_scheme_allowed_inside_operator_dir(self, monkeypatch, tmp_path) -> None:
+        # Operator-initiated local/Drive ingest (tasks/gdrive.py) — allowed
+        # only under the configured dir (Gate 7 round-3 [high] finding).
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(tmp_path))
+        ok, _ = self._gate()((tmp_path / "manual.pdf").as_uri())
         assert ok
+
+    def test_file_scheme_refused_outside_operator_dir(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(tmp_path / "inbox"))
+        ok, reason = self._gate()((tmp_path / "secrets" / "id_rsa").as_uri())
+        assert not ok
+        assert "outside allowed dir" in reason
+
+    def test_file_scheme_traversal_cannot_escape(self, monkeypatch, tmp_path) -> None:
+        inbox = tmp_path / "inbox"
+        inbox.mkdir()
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(inbox))
+        escape = (inbox / ".." / "etc-passwd").as_uri()
+        ok, _ = self._gate()(escape)
+        assert not ok
 
     def test_unreadable_manifest_fails_closed(self, monkeypatch) -> None:
         try:

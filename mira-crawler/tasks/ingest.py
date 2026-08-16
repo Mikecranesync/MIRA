@@ -88,13 +88,31 @@ def _curated_hosts() -> frozenset[str]:
 def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
     """May this URL land in the shared corpus? Returns (allowed, reason).
 
-    file:// is allowed: it is operator-initiated local/Drive-inbox ingest
-    (tasks/gdrive.py) and cannot be reached by a crawl. http(s) requires the
-    host to be a sources.yaml host (or a subdomain of one). A manifest read
-    failure fails CLOSED — an unvalidatable shared write is a refused write.
+    file:// is allowed ONLY under the operator ingest dir (Gate 7 finding:
+    an unrestricted carve-out is an arbitrary-local-file-read door into the
+    shared corpus). The dir is INGEST_LOCAL_ALLOWED_DIR, defaulting to the
+    Drive-inbox sync dest (tasks/gdrive.py) — the one legitimate file://
+    producer. Paths are resolved first, so ../ cannot escape. http(s)
+    requires the host to be a sources.yaml host (or a subdomain of one).
+    Any resolution/manifest failure fails CLOSED — an unvalidatable shared
+    write is a refused write.
     """
     if url.startswith("file://"):
-        return True, "operator-initiated local ingest"
+        from urllib.parse import urlparse
+        from urllib.request import url2pathname
+
+        allowed_base = os.getenv(
+            "INGEST_LOCAL_ALLOWED_DIR",
+            os.getenv("GDRIVE_SYNC_DEST", "/data/gdrive_sync"),
+        )
+        try:
+            local = Path(url2pathname(urlparse(url).path)).resolve()
+            base = Path(allowed_base).resolve()
+            if local.is_relative_to(base):
+                return True, "operator-initiated local ingest (allowed dir)"
+            return False, f"file:// path {local} outside allowed dir {base}"
+        except Exception as e:
+            return False, f"file:// path unresolvable ({e}) — fail closed"
     try:
         hosts = _curated_hosts()
     except Exception as e:

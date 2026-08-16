@@ -17,6 +17,7 @@ class TestIngestUrlFileScheme:
 
         monkeypatch.setenv("MIRA_TENANT_ID", "test-tenant")
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(tmp_path))
         monkeypatch.setenv("EMBED_MODEL", "nomic-embed-text:latest")
 
         fake_blocks = [
@@ -51,6 +52,8 @@ class TestIngestUrlFileScheme:
         """ingest_url returns a local_read_failed error for non-existent file:// paths."""
         monkeypatch.setenv("MIRA_TENANT_ID", "test-tenant")
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        # Inside the allowed dir so the curation gate passes and the READ fails.
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", "/nonexistent")
         monkeypatch.setenv("EMBED_MODEL", "nomic-embed-text:latest")
 
         from tasks.ingest import ingest_url
