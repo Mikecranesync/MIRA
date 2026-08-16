@@ -110,6 +110,27 @@ _orienter = None
 _orienter_failed = False
 
 
+# Whitelist of accepted PaddleOCR detection models (defense-in-depth, groq
+# review 2026-08-16): the model name reaches PaddleOCR's model resolver, so an
+# arbitrary env value could point the loader at an unexpected model/path.
+# Constrain it to the qualified detectors; anything else falls back to the
+# default with a warning rather than loading a caller-named artifact.
+_ALLOWED_DET_MODELS = frozenset(
+    {"PP-OCRv5_mobile_det", "PP-OCRv5_server_det", "PP-OCRv4_mobile_det", "PP-OCRv4_server_det"}
+)
+_DEFAULT_DET_MODEL = "PP-OCRv5_mobile_det"
+
+
+def _det_model_name() -> str:
+    name = os.getenv("NAMEPLATE_DET_MODEL", _DEFAULT_DET_MODEL)
+    if name not in _ALLOWED_DET_MODELS:
+        logger.warning(
+            "nameplate-detect: NAMEPLATE_DET_MODEL=%r not in allowlist — using %s", name, _DEFAULT_DET_MODEL
+        )
+        return _DEFAULT_DET_MODEL
+    return name
+
+
 def _flag_enabled() -> bool:
     return os.getenv("NAMEPLATE_DETECT_ENABLED", "0") == "1"
 
@@ -124,7 +145,7 @@ def _load_detector():
     try:
         from paddleocr import TextDetection
 
-        model_name = os.getenv("NAMEPLATE_DET_MODEL", "PP-OCRv5_mobile_det")
+        model_name = _det_model_name()
         # MKL-DNN stays off: Paddle 3.x's PIR + oneDNN CPU path throws
         # "ConvertPirAttribute2RuntimeAttribute not support" on this model
         # (hit on the VPS probe, 2026-08-16).
@@ -357,7 +378,7 @@ async def nameplate_detect(req: DetectRequest, x_mira_key: str = Header(default=
     return {
         "available": True,
         "reason": None,
-        "model": os.getenv("NAMEPLATE_DET_MODEL", "PP-OCRv5_mobile_det"),
+        "model": _det_model_name(),
         "image": {"width": width, "height": height},
         "regions": [
             {"poly": poly, "score": score} for poly, score in zip(polys, scores)

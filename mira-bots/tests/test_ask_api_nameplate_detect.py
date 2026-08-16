@@ -304,3 +304,20 @@ class TestUnionBbox:
     def test_no_boxes_is_none(self):
         assert union_bbox([], [], 0.5) is None
         assert union_bbox([[[0, 0], [1, 0], [1, 1], [0, 1]]], [0.2], 0.5) is None
+
+
+class TestModelAllowlist:
+    """groq review 2026-08-16: NAMEPLATE_DET_MODEL reaches PaddleOCR's model
+    resolver, so an arbitrary value must not select a caller-named artifact."""
+
+    def test_allowed_model_passes_through(self, monkeypatch):
+        monkeypatch.setenv("NAMEPLATE_DET_MODEL", "PP-OCRv4_mobile_det")
+        assert nd._det_model_name() == "PP-OCRv4_mobile_det"
+
+    def test_unknown_model_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("NAMEPLATE_DET_MODEL", "../../etc/passwd")
+        assert nd._det_model_name() == "PP-OCRv5_mobile_det"
+
+    def test_unset_uses_default(self, monkeypatch):
+        monkeypatch.delenv("NAMEPLATE_DET_MODEL", raising=False)
+        assert nd._det_model_name() == "PP-OCRv5_mobile_det"

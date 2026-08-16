@@ -115,29 +115,44 @@ async function openAiCompatVision(
   // tokens; the provider truncates mid-string and the whole recognition dies
   // on JSON.parse — a total outage on 3.3% of real photos, deterministically.
   // 1200 covers the largest rawText observed in the 154-sample set with slack.
+  // Bounded provider call: a stalled Together/Groq endpoint must not hang the
+  // request (and, on a burst, exhaust the worker pool). AbortSignal.timeout
+  // caps the whole round-trip; the caller's route already maps a throw to its
+  // fallback path.
+  const timeoutMs = Number(process.env.NAMEPLATE_VISION_TIMEOUT_MS ?? 30_000);
   const callOnce = async (): Promise<EquipmentIdentityCandidate> => {
-    const resp = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        temperature: 0.1,
-        max_tokens: 1200,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: VISION_PROMPT },
-              {
-                type: "image_url",
-                image_url: { url: `data:${mimeType};base64,${imageBase64}` },
-              },
-            ],
-          },
-        ],
-      }),
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(timeoutMs),
+        body: JSON.stringify({
+          model,
+          temperature: 0.1,
+          max_tokens: 1200,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: VISION_PROMPT },
+                {
+                  type: "image_url",
+                  image_url: { url: `data:${mimeType};base64,${imageBase64}` },
+                },
+              ],
+            },
+          ],
+        }),
+      });
+    } catch (err) {
+      // TimeoutError / network error — surface a stable, credential-free code.
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        throw new Error("recognizer_provider_timeout");
+      }
+      throw new Error("recognizer_provider_unreachable");
+    }
     if (!resp.ok) {
       // Scrub any credential-bearing detail from provider errors (PRD §20).
       throw new Error(`recognizer_provider_error_${resp.status}`);
