@@ -607,6 +607,12 @@ jobs:
               # undetected (the exact gap that shipped #3108). Enforced by
               # tests/test_hub_unit_filter_contract.py.
               - 'mira-bots/shared/guardrails.py'
+              # TAG-001: the asset-tag grammar corpus is executed by the hub
+              # suite (asset-tag-grammar-contract.test.ts). A corpus edit must
+              # re-run it even when mira-hub/** is untouched — same drift
+              # class as guardrails.py above. Mirror: Mobile Unit Tests
+              # watches the hub-side grammar sources.
+              - 'docs/contracts/asset-tag-grammar.json'
 
       - uses: oven-sh/setup-bun@v2
         if: steps.changes.outputs.hub == 'true'
@@ -623,6 +629,46 @@ jobs:
         # covers manual-rag.test.ts and the rest of the hub unit suite.
         if: steps.changes.outputs.hub == 'true'
         working-directory: mira-hub
+        run: bun run test
+
+  mobile-unit-tests:
+    name: Mobile Unit Tests
+    runs-on: ubuntu-latest
+    # mira-mobile's vitest suite (62 tests: deep-link/tag parsing incl. the
+    # TAG-001 cross-surface grammar contract + shadow diff against the REAL
+    # Hub resolver, SSE parsing, offline queue, fail-closed nav) ran NOWHERE
+    # in CI before CU-P1 — the "CI runs only named tests" gap. Same
+    # path-filtered always-green-when-untouched shape as Hub Unit Tests.
+    # The filter watches the Hub tag-grammar sources too: those files are the
+    # canonical side of the TAG-001 contract, and editing them must re-run the
+    # mobile shadow suite or the contract can drift silently again (the exact
+    # bug this unit fixed).
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            mobile:
+              - 'mira-mobile/**'
+              - 'docs/contracts/asset-tag-grammar.json'
+              - 'mira-hub/src/lib/asset-tag.ts'
+              - 'mira-hub/src/lib/scan-target.ts'
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.changes.outputs.mobile == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install mira-mobile dependencies
+        if: steps.changes.outputs.mobile == 'true'
+        working-directory: mira-mobile
+        run: bun install --frozen-lockfile
+
+      - name: Run vitest unit suite
+        if: steps.changes.outputs.mobile == 'true'
+        working-directory: mira-mobile
         run: bun run test
 
   mira-web-pack-tests:
