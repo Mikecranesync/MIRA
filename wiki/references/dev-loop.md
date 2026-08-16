@@ -119,10 +119,55 @@ spinning for **4 days**. Every Edit/Write across every live session can leak one
   and survives orphaning. Verified: kill the parent, child reparents to PID 1,
   child still self-terminates at the alarm (exit 142 / SIGALRM).
 
-**If orphans reappear:** `ps -Ao pid,ppid,pcpu,rss,etime,command | grep pyright`.
-Orphans are `node .../pyright` with `PPID=1`; the live language servers are
+**If orphans reappear:** run `tools/orphan-health.sh` (detection only — it never
+kills anything). By hand:
+`ps -Ao pid,ppid,pcpu,rss,etime,command | grep pyright`. Orphans are
+`node .../pyright` with `PPID=1`; the live language servers are
 `node .../pyright-langserver --stdio` with a real `claude` parent at ~0% CPU.
 Different commands — kill by explicit PID and the live ones are never at risk.
+
+### ⚠️ A landed hook fix does NOT reach a running session
+
+**Claude Code reads `.claude/settings.json` at session start and caches it. It
+never re-reads.** So merging a hook fix repairs the *tree*; only a **restart**
+repairs a *session*. Until every live session on the node is restarted, each one
+keeps running the old hook and leaking one orphan per Edit/Write.
+
+This is not theoretical, and it is the reason the 2026-08-03 fix did not end the
+story. **2026-08-15 on CHARLIE:** a single orphan, `PPID=1`, **7 d 18 h old**,
+**~100 % of a core**, **2.9 GB RSS**, with swap at 6.3 GB of 7 GB and 102 MB
+free — the machine was thrashing. The hook fix (#3167) had merged **2026-08-09**.
+The orphan came from one of two sessions started **2026-07-28**, twelve days
+before the fix, still alive and still running the pre-fix hook. `kill -TERM`
+recovered it immediately: swap 6.3 GB → 1.3 GB (macOS shrank the swap file
+itself), free memory 102 MB → 4.6 GB.
+
+**Two proof-grade discriminators** (both used by `tools/orphan-health.sh`, neither
+a heuristic):
+
+1. **Any `PPID=1` pyright older than ~60 s proves a stale session.** The post-fix
+   hook wraps pyright in `alarm 45`, and a pending `alarm()` survives `exec` *and*
+   orphaning — so a post-fix orphan self-terminates in ~45 s. An older one cannot
+   have come from the post-fix hook.
+2. **A bare `pyright` with no file argument is pre-fix by construction.** The
+   post-fix hook guards `[ -n "$f" ] || exit 0` and execs `pyright "$f"`, so a
+   post-fix invocation always carries a file argument.
+
+**Detecting stale sessions:** compare each `claude` process's start time against
+the last *commit* that changed `.claude/settings.json` — not the file's mtime, which
+a `git checkout` rewrites twice and any cosmetic edit bumps for every session:
+
+```sh
+tools/orphan-health.sh          # reports both; --strict exits 1 for cron/CI
+```
+
+Two macOS gotchas that bite anyone scripting this by hand: `ps -o etimes` does not
+exist (parse `lstart` into an epoch instead — `ps -o etime` formats as
+`DD-HH:MM:SS` / `HH:MM:SS` / `MM:SS` depending on age), and there is no `setsid`.
+
+`orphan-health.sh` is deliberately **detection-only**, like `tools/worktree-health.sh`:
+killing a *session* destroys live work, and only the operator knows whether a
+long-running one is mid-task. It prints the kill command; it never runs it.
 
 ## Spec + plan
 
