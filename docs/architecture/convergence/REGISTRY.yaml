@@ -1,0 +1,1394 @@
+# FactoryLM/MIRA Architecture Registry — machine-generated seed
+# Generated from scc measurements + 12-agent module scan, 2026-08-15.
+# Sizing excludes vendored deps (node_modules/venv/dist) and data langs (JSON/MD/YAML).
+# observed_* fields are MEASURED; declared_state cites repo docs; drift fields filled by Gate 0 discovery.
+
+mira-bots:
+  repo: MIRA
+  path: mira-bots/
+  purpose: "Multi-channel diagnostic bot platform with shared engine and adapters."
+  language: python
+  observed_source_loc: 96437
+  observed_total_loc: 189928
+  observed_files: 1003
+  status: CANONICAL
+  declared_state: "Supervisor engine is THE brain (root CLAUDE.md)"
+  key_components:
+    - "shared/engine.py (Supervisor FSM + RAG)"
+    - "telegram/slack/email adapters"
+    - "ask_api (Ignition HMI fast-path)"
+    - "prompts/ (workflow templates)"
+  dependencies:
+    - mira-pipeline
+    - mira-mcp
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-hub:
+  repo: MIRA
+  path: mira-hub/
+  purpose: "Multi-tenant Command Center & API platform for training/validating asset agents"
+  language: typescript
+  observed_source_loc: 92246
+  observed_total_loc: 98397
+  observed_files: 870
+  status: CANONICAL
+  declared_state: "Command Center, train-before-deploy parent surface"
+  key_components:
+    - "Next.js 16 app"
+    - "db (NeonDB migrations)"
+    - "auth (next-auth)"
+    - "sync workers"
+  dependencies:
+    - mira-pipeline
+    - mira-mcp
+    - mira-cmms
+  known_drift: []   # filled by Gate 0 discovery
+
+tests:
+  repo: MIRA
+  path: tests/
+  purpose: "Comprehensive test suite covering unit tests, integration tests, scenario runners, and bot emulation."
+  language: python
+  observed_source_loc: 76507
+  observed_total_loc: 169405
+  observed_files: 1178
+  status: CANONICAL
+  key_components:
+    - "test_state_machine.py"
+    - "scenario_runner.py"
+    - "telegram_emulator.py"
+    - "live_bot_tester.py"
+  dependencies:
+    - services
+    - core
+  known_drift: []   # filled by Gate 0 discovery
+
+tools:
+  repo: MIRA
+  path: tools/
+  purpose: "Development and testing utilities for bot capabilities, KB queries, and pipeline orchestration."
+  language: python
+  observed_source_loc: 55679
+  observed_total_loc: 99511
+  observed_files: 470
+  status: CANONICAL
+  key_components:
+    - "bot_capability_test.py"
+    - "kb_query.py"
+    - "story_pipeline.py"
+    - "fault_injector/"
+  dependencies:
+    - services
+    - brain
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-crawler:
+  repo: MIRA
+  path: mira-crawler/
+  purpose: "Document ingestion pipeline\u2014crawls OEM manuals, extracts/chunks, embeds, writes to NeonDB"
+  language: python
+  observed_source_loc: 31586
+  observed_total_loc: 33416
+  observed_files: 194
+  status: CANONICAL
+  key_components:
+    - "ingest/ (chunker, extractor, embedder, dedup)"
+    - "bridge.py (REST API :8003)"
+    - "celery_app.py (async task scheduler)"
+    - "store.py (NeonDB knowledge_entries writer)"
+  dependencies:
+    - mira-core
+    - mira-bots
+  known_drift: ["insert_chunk hardcodes is_private=false (I-1); ingest_url lacks sources.yaml gate (I-2) — CU-03"]
+
+mira-web:
+  repo: MIRA
+  path: mira-web/
+  purpose: "PLG funnel for customer onboarding, payments, and AI chat interface"
+  language: typescript
+  observed_source_loc: 23130
+  observed_total_loc: 31178
+  observed_files: 154
+  status: CANONICAL
+  key_components:
+    - "Hono server"
+    - "Stripe integration"
+    - "JWT auth"
+    - "activation flow"
+  dependencies:
+    - mira-pipeline
+    - mira-mcp
+    - mira-cmms
+  known_drift: []   # filled by Gate 0 discovery
+
+factorylm_ai:
+  repo: MIRA
+  path: factorylm_ai/
+  purpose: "Zero-token model lab: provider-agnostic AI runtime, benchmark & promote model behaviors \u2192 ZTA artifacts"
+  language: python
+  observed_source_loc: 15167
+  observed_total_loc: 16613
+  observed_files: 87
+  status: CANONICAL
+  key_components:
+    - "provider_registry.py"
+    - "finetune.py"
+    - "governance"
+    - "promotion.py"
+  dependencies:
+    - mira-bots
+  known_drift: []   # filled by Gate 0 discovery
+
+plc:
+  repo: MIRA
+  path: plc/
+  purpose: "PLC program source, CCW automation, Micro820 ladder-logic artifacts"
+  language: st
+  observed_source_loc: 14900
+  observed_total_loc: 34734
+  observed_files: 294
+  status: CANONICAL
+  key_components:
+    - "Micro820_v4.1.9_Program.st"
+    - "conv_simple_anomaly/rules_core.py"
+    - "deploy_modbus_map.py"
+    - "discover.py"
+  dependencies:
+    - ignition
+    - mira-plc-parser
+    - mira-machine-logic-graph
+  known_drift: []   # filled by Gate 0 discovery
+
+printsense:
+  repo: MIRA
+  path: printsense/
+  purpose: "Electrical print interpretation\u2014photo\u2192OCR/vision\u2192structured graph\u2192technician explanation"
+  language: python
+  observed_source_loc: 12960
+  observed_total_loc: 24875
+  observed_files: 130
+  status: CANONICAL
+  key_components:
+    - "designations/ (deterministic rule engines)"
+    - "deterministic_qa.py (question answering from graph)"
+    - "grader.py (trust & quality gates)"
+    - "benchmarks/ (test suite & golden cases)"
+  dependencies:
+    - machine-print-pack
+    - mira-bots
+    - mira-hub
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-core:
+  repo: MIRA
+  path: mira-core/
+  purpose: "Open WebUI knowledge-base UI + mira-ingest service for PDF extraction and RAG"
+  language: mixed
+  observed_source_loc: 11460
+  observed_total_loc: 12356
+  observed_files: 83
+  status: CANONICAL
+  key_components:
+    - "mira-ingest/ (FastAPI ingest API, NeonDB writer)"
+    - "docker-compose.yml (Open WebUI + Tika + services)"
+    - "main.py (ingest route handlers)"
+    - "db/neon.py (NeonDB connection pool)"
+  dependencies:
+    - mira-crawler
+    - mira-pipeline
+    - mira-bots
+  known_drift: []   # filled by Gate 0 discovery
+
+docs:
+  repo: MIRA
+  path: docs/
+  purpose: "Feature specifications, architecture decisions, and operational runbooks."
+  language: markdown
+  observed_source_loc: 8684
+  observed_total_loc: 269623
+  observed_files: 1272
+  status: DATA
+  key_components:
+    - "specs/"
+    - "architecture/"
+    - "runbooks/"
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-relay:
+  repo: MIRA
+  path: mira-relay/
+  purpose: "FastAPI tag-ingest service, MQTT broker, historian query API, NeonDB writer"
+  language: python
+  observed_source_loc: 7035
+  observed_total_loc: 7092
+  observed_files: 37
+  status: CANONICAL
+  key_components:
+    - "relay_server.py"
+    - "tag_ingest.py"
+    - "mqtt_ingest/"
+    - "historian.py"
+  dependencies:
+    - mira-bridge
+    - mira-bots
+    - mira-core
+  known_drift: []   # filled by Gate 0 discovery
+
+ignition:
+  repo: MIRA
+  path: ignition/
+  purpose: "Ignition 8.3 gateway config, Perspective HMI views, tag definitions"
+  language: yaml
+  observed_source_loc: 5147
+  observed_total_loc: 8485
+  observed_files: 46
+  status: CANONICAL
+  key_components:
+    - "project/"
+    - "gateway-scripts/"
+    - "tags/tags_micro800.json"
+    - "deploy_ignition.ps1"
+  dependencies:
+    - plc
+    - mira-relay
+    - mira-ignition-exchange
+  known_drift: []   # filled by Gate 0 discovery
+
+simlab:
+  repo: MIRA
+  path: simlab/
+  purpose: "Deterministic, headless simulated factory benchmark (juice bottling line)"
+  language: python
+  observed_source_loc: 5055
+  observed_total_loc: 6978
+  observed_files: 115
+  status: CANONICAL
+  declared_state: "flagship deterministic benchmark (root CLAUDE.md)"
+  key_components:
+    - "engine.py"
+    - "scenarios.py"
+    - "diagnostic.py"
+    - "publishers.py"
+  dependencies:
+    - demo/factory_difference_engine
+    - tests/simlab
+    - tools/demo_plc_poller
+  known_drift: []   # filled by Gate 0 discovery
+
+materialized_evidence:
+  repo: MIRA
+  path: materialized_evidence/
+  purpose: "Typified evidence contract + runtime assembly for technician case files (TechnicianContext)"
+  language: python
+  observed_source_loc: 4681
+  observed_total_loc: 4758
+  observed_files: 24
+  status: CANONICAL
+  key_components:
+    - "context_contract.py (TechnicianContext, EvidenceItem typed IR)"
+    - "resolver.py (evidence lookup & assembly)"
+    - "registry.py (evidence persistence & recall)"
+    - "schema.py (Pydantic models)"
+  dependencies:
+    - mira-bots
+    - mira-hub
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-contextualizer:
+  repo: MIRA
+  path: mira-contextualizer/
+  purpose: "Offline Windows desktop app: ingest any document \u2192 deterministically propose UNS/i3X, export portable bundle"
+  language: python
+  observed_source_loc: 4582
+  observed_total_loc: 5380
+  observed_files: 36
+  status: CANONICAL
+  key_components:
+    - "extract.py (P1)"
+    - "contextualize.py (P2)"
+    - "bundle.py (P4)"
+    - "PyInstaller packaging (P5)"
+  dependencies:
+    - mira-hub
+    - mira-plc-parser
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-scan-monday:
+  repo: MIRA
+  path: mira-scan-monday/
+  purpose: "monday.com marketplace app: camera \u2192 nameplate extraction \u2192 KB lookup \u2192 grounded chat"
+  language: typescript
+  observed_source_loc: 4488
+  observed_total_loc: 5202
+  observed_files: 56
+  status: CANONICAL
+  key_components:
+    - "backend (FastAPI)"
+    - "frontend (React 18)"
+    - "vision (GPT-4o)"
+    - "RAG (mira-pipeline)"
+  dependencies:
+    - mira-pipeline
+    - mira-crawler
+    - nango-integrations
+  known_drift: []   # filled by Gate 0 discovery
+
+marketing:
+  repo: MIRA
+  path: marketing/
+  purpose: "Video pipeline & demo artifacts: ffmpeg-based build pipeline, promo screenshots, benchmark test stories"
+  language: python
+  observed_source_loc: 4452
+  observed_total_loc: 8675
+  observed_files: 61
+  status: CANONICAL
+  key_components:
+    - "comic-pipeline/"
+    - "hyperframes/"
+    - "demo-videos/"
+    - "build_video_v2.py"
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-mobile:
+  repo: MIRA
+  path: mira-mobile/
+  purpose: "Native mobile app (iOS/Android) for field technician work orders and diagnostics"
+  language: typescript
+  observed_source_loc: 4354
+  observed_total_loc: 4835
+  observed_files: 62
+  status: CANONICAL
+  declared_state: "NEW Capacitor 8 app (PRs #3234+); contradicts docs/specs/hub-mobile-spec.md PWA-only \u2014 drift finding"
+  key_components:
+    - "Capacitor 8 shell"
+    - "QR scanner"
+    - "offline work order queue"
+    - "deep linking"
+  dependencies:
+    - mira-hub
+  known_drift: ["hub-mobile-spec.md not yet superseded (D-1)"]   # D-5 RESOLVED by CU-P1 (v3.273.2)
+
+mira-pipeline:
+  repo: MIRA
+  path: mira-pipeline/
+  purpose: "OpenAI-compatible API wrapping GSDEngine for Open WebUI and Ignition direct chat."
+  language: python
+  observed_source_loc: 3954
+  observed_total_loc: 4007
+  observed_files: 21
+  status: CANONICAL
+  key_components:
+    - "main.py (FastAPI /v1/chat/completions)"
+    - "ignition_chat.py (direct Ignition endpoint)"
+    - "ignition_audit.py (validation)"
+  dependencies:
+    - mira-bots
+    - mira-mcp
+    - mira-core
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-mcp:
+  repo: MIRA
+  path: mira-mcp/
+  purpose: "FastMCP server exposing equipment diagnostics, CMMS integration, and context tools."
+  language: python
+  observed_source_loc: 3939
+  observed_total_loc: 4197
+  observed_files: 28
+  status: CANONICAL
+  key_components:
+    - "server.py (FastMCP server + tools)"
+    - "cmms/ (Atlas, MaintainX, Limble, Fiix adapters)"
+    - "schematic_intelligence.py"
+  dependencies:
+    - mira-bots
+    - mira-bridge
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-plc-parser:
+  repo: MIRA
+  path: mira-plc-parser/
+  purpose: "Vendor-agnostic read-only PLC program analysis: L5X/CSV/ST/PLCopen XML \u2192 IR + maintenance intelligence"
+  language: python
+  observed_source_loc: 3931
+  observed_total_loc: 7312
+  observed_files: 47
+  status: CANONICAL
+  key_components:
+    - "mira_plc_parser/ir.py"
+    - "parsers/rockwell_l5x.py"
+    - "analyze.py"
+    - "pipeline.py"
+  dependencies:
+    - mira-crawler
+    - mira-hub
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-connectors:
+  repo: MIRA
+  path: mira-connectors/
+  purpose: "Generic connector framework for CMMS/SCADA/Historian \u2192 canonical model + confirmation gate"
+  language: python
+  observed_source_loc: 3759
+  observed_total_loc: 4053
+  observed_files: 39
+  status: CANONICAL
+  key_components:
+    - "mira_connectors/canonical.py"
+    - "confirmation_gate.py"
+    - "store.py"
+    - "mocks/"
+  dependencies:
+    - mira-mcp
+    - mira-hub
+  known_drift: []   # filled by Gate 0 discovery
+
+scripts:
+  repo: MIRA
+  path: scripts/
+  purpose: "Operational automation, PLC deployment, data generation, and service management."
+  language: python
+  observed_source_loc: 2494
+  observed_total_loc: 2635
+  observed_files: 22
+  status: CANONICAL
+  key_components:
+    - "brain-ingest.service"
+    - "factoryio_automator.py"
+    - "deploy-*.sh"
+    - "build_training_data.py"
+  dependencies:
+    - services
+    - plc
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-sidecar:
+  repo: MIRA
+  path: mira-sidecar/
+  purpose: "Legacy RAG backend with ChromaDB dual-brain (shared OEM + per-tenant docs)"
+  language: python
+  observed_source_loc: 2152
+  observed_total_loc: 2232
+  observed_files: 30
+  status: LEGACY
+  declared_state: "sunset pending OEM migration (ADR-0008, root CLAUDE.md)"
+  key_components:
+    - "app.py (FastAPI)"
+    - "rag/ (retrieval & ranking)"
+    - "fsm/ (finite state machine builder)"
+    - "llm/ (LLM provider abstraction)"
+  dependencies:
+    - mira-web
+  known_drift: ["removed from prod 2026-05-20; root CLAUDE.md said sunset-pending (D-4)"]
+
+mira-trend-viewer:
+  repo: MIRA
+  path: mira-trend-viewer/
+  purpose: "ISA-101 HP-HMI industrial trend viewer (vendor-neutral, dependency-free)"
+  language: javascript
+  observed_source_loc: 1627
+  observed_total_loc: 1749
+  observed_files: 19
+  status: CANONICAL
+  key_components:
+    - "js/model.js"
+    - "js/store.js"
+    - "js/adapters/"
+    - "js/ui/"
+  dependencies:
+    - plc/conv_simple_anomaly/trend_historian.py
+    - ignition/Perspective
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-machine-logic-graph:
+  repo: MIRA
+  path: mira-machine-logic-graph/
+  purpose: "Parse Micro800 ST programs, expose Ignition-compatible tag JSON with i3X metadata"
+  language: typescript
+  observed_source_loc: 1083
+  observed_total_loc: 1158
+  observed_files: 15
+  status: EXPERIMENTAL
+  key_components:
+    - "src/server.ts"
+    - "src/projects/registry.ts"
+    - "scripts/generate-tags.ts"
+  dependencies:
+    - plc
+    - ignition
+  known_drift: []   # filled by Gate 0 discovery
+
+demo:
+  repo: MIRA
+  path: demo/
+  purpose: "TBD \u2014 not yet characterized"
+  language: python
+  observed_source_loc: 859
+  observed_total_loc: 944
+  observed_files: 7
+  status: CONSUMER
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-fault-detective:
+  repo: MIRA
+  path: mira-fault-detective/
+  purpose: "MQTT-driven rule engine for conveyor fault detection (7-rule diagnostic)"
+  language: python
+  observed_source_loc: 802
+  observed_total_loc: 832
+  observed_files: 11
+  status: EXPERIMENTAL
+  key_components:
+    - "engine.py"
+    - "rules.py"
+    - "SQLite writer"
+  dependencies:
+    - mira-bots/shared/engine.py
+    - plc/conv_simple_anomaly
+    - docker-compose.fault-detective.yml
+  known_drift: ["bench-only; zero main-codebase imports (CU-08)"]
+
+evals:
+  repo: MIRA
+  path: evals/
+  purpose: "TBD \u2014 not yet characterized"
+  language: python
+  observed_source_loc: 718
+  observed_total_loc: 822
+  observed_files: 8
+  status: CONSUMER
+  known_drift: []   # filled by Gate 0 discovery
+
+wiki:
+  repo: MIRA
+  path: wiki/
+  purpose: "LLM-maintained ops wiki (Karpathy pattern) for infrastructure, gotchas, and session continuity"
+  language: markdown
+  observed_source_loc: 692
+  observed_total_loc: 3233907
+  observed_files: 145
+  status: DATA
+  declared_state: "LLM-maintained ops wiki + KG JSON"
+  key_components:
+    - "hot.md"
+    - "SCHEMA.md"
+    - "nodes/"
+    - "orchestrator/"
+    - "references/"
+    - "reviews/"
+  known_drift: []   # filled by Gate 0 discovery
+
+samples:
+  repo: MIRA
+  path: samples/
+  purpose: "Example implementations and reference code for integration patterns"
+  language: typescript
+  observed_source_loc: 685
+  observed_total_loc: 876
+  observed_files: 13
+  status: CANONICAL
+  key_components:
+    - "stripe-connect/"
+  dependencies:
+    - mira-web
+  known_drift: []   # filled by Gate 0 discovery
+
+mira_copy:
+  repo: MIRA
+  path: mira_copy/
+  purpose: "TBD \u2014 not yet characterized"
+  language: python
+  observed_source_loc: 443
+  observed_total_loc: 443
+  observed_files: 5
+  status: CONSUMER
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-fault-sim:
+  repo: MIRA
+  path: mira-fault-sim/
+  purpose: "Virtual conveyor sensor and power fault simulator (photoeyes, fuses, vision)"
+  language: python
+  observed_source_loc: 367
+  observed_total_loc: 398
+  observed_files: 9
+  status: EXPERIMENTAL
+  key_components:
+    - "sim.py"
+    - "MQTT publisher"
+    - "FastAPI REST endpoints"
+  dependencies:
+    - docker-compose.fault-detective.yml
+    - simlab
+  known_drift: ["bench-only; zero main-codebase imports (CU-08)"]
+
+deployment:
+  repo: MIRA
+  path: deployment/
+  purpose: "VPS/production nginx configs, network topology, customer guides, and deploy orchestration."
+  language: yaml
+  observed_source_loc: 314
+  observed_total_loc: 1692
+  observed_files: 8
+  status: CANONICAL
+  key_components:
+    - "deploy.sh"
+    - "network.yml"
+    - "nginx-*.conf"
+    - "admin_guide.md"
+  known_drift: []   # filled by Gate 0 discovery
+
+nango-integrations:
+  repo: MIRA
+  path: nango-integrations/
+  purpose: "Credential vault & custom Nango providers: MaintainX API integration, OAuth/API-key proxying"
+  language: typescript
+  observed_source_loc: 263
+  observed_total_loc: 375
+  observed_files: 9
+  status: CANONICAL
+  key_components:
+    - "providers.yaml"
+    - "maintainx/"
+    - "nango.yaml"
+    - "models.ts"
+  dependencies:
+    - mira-hub
+  known_drift: []   # filled by Gate 0 discovery
+
+install:
+  repo: MIRA
+  path: install/
+  purpose: "Production install script, startup scripts, and smoke/tier test harnesses."
+  language: shell
+  observed_source_loc: 262
+  observed_total_loc: 262
+  observed_files: 4
+  status: CANONICAL
+  key_components:
+    - "install.sh"
+    - "smoke_test.sh"
+    - "up.sh"
+    - "smoke_test_tiers.sh"
+  dependencies:
+    - deployment
+  known_drift: []   # filled by Gate 0 discovery
+
+paperclip:
+  repo: MIRA
+  path: paperclip/
+  purpose: "Multi-agent orchestration dev tool: coordinate parallel Claude agents working on MIRA subsystems"
+  language: javascript
+  observed_source_loc: 157
+  observed_total_loc: 1028
+  observed_files: 20
+  status: CANONICAL
+  key_components:
+    - "setup.sh"
+    - "start.sh"
+    - "agents/"
+    - "mcp-config.json"
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-connect:
+  repo: MIRA
+  path: mira-connect/
+  purpose: "Modbus TCP/RTU and Sparkplug B fieldbus driver framework (deferred post-MVP)"
+  language: python
+  observed_source_loc: 137
+  observed_total_loc: 157
+  observed_files: 7
+  status: EXPERIMENTAL
+  declared_state: "deferred to Config 4 post-MVP (root CLAUDE.md)"
+  key_components:
+    - "mira_connect/drivers/"
+    - "pymodbus integration"
+    - "websockets subscriber"
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-ignition-exchange:
+  repo: MIRA
+  path: mira-ignition-exchange/
+  purpose: "Free Perspective bundle: ChatDock + ScanWidget views for production Ignition deployments"
+  language: yaml
+  observed_source_loc: 113
+  observed_total_loc: 1294
+  observed_files: 14
+  status: CANONICAL
+  key_components:
+    - "ignition-project/"
+    - "scripts/install_tags.py"
+    - "EXCHANGE_LISTING.md"
+  dependencies:
+    - mira-web
+    - ignition
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-bridge:
+  repo: MIRA
+  path: mira-bridge/
+  purpose: "Node-RED 4.x message router, SQLite WAL persistence (mira.db source of truth)"
+  language: yaml
+  observed_source_loc: 96
+  observed_total_loc: 4102
+  observed_files: 15
+  status: CANONICAL
+  key_components:
+    - "flows/"
+    - "data/mira.db"
+    - "mosquitto/"
+    - "docker-compose.yml"
+  dependencies:
+    - mira-relay
+    - mira-core
+    - mira-bots
+  known_drift: []   # filled by Gate 0 discovery
+
+mira-cmms:
+  repo: MIRA
+  path: mira-cmms/
+  purpose: "Atlas CMMS integration wrapper for work orders, PM scheduling, equipment registry"
+  language: yaml
+  observed_source_loc: 57
+  observed_total_loc: 259
+  observed_files: 5
+  status: CANONICAL
+  key_components:
+    - "atlas-api"
+    - "atlas-db"
+    - "atlas-frontend"
+    - "atlas-minio"
+  dependencies:
+    - mira-mcp
+  known_drift: []   # filled by Gate 0 discovery
+
+PRDS:
+  repo: MIRA
+  path: PRDS/
+  purpose: "Product Requirements Documents for feature design and roadmap phases"
+  language: markdown
+  observed_source_loc: 0
+  observed_total_loc: 1644
+  observed_files: 4
+  status: DATA
+  key_components:
+    - "factorylm-plg-funnel.md"
+    - "mira_factorylm_prd_v2.md"
+    - "MIRA_PRD_Firecrawl_Docling_Ingestion.md"
+  dependencies:
+    - docs
+    - mira-web
+    - mira-hub
+    - mira-crawler
+  known_drift: []   # filled by Gate 0 discovery
+
+content_strategy:
+  repo: MIRA
+  path: content_strategy/
+  purpose: "Strategic planning & product docs: AI+PLC/HMI content strategy, YouTube funnel, learning guides"
+  language: markdown
+  observed_source_loc: 0
+  observed_total_loc: 3737
+  observed_files: 34
+  status: DATA
+  key_components:
+    - "AI_PLC_HMI_MIRA_Content_and_Product_Strategy.md"
+    - "AI_Assisted_PLC_HMI_Learning_Guide_Outline.md"
+  known_drift: []   # filled by Gate 0 discovery
+
+infra:
+  repo: MIRA
+  path: infra/
+  purpose: "Infrastructure-as-Code, deployment configs, and cluster orchestration."
+  language: yaml
+  observed_source_loc: 0
+  observed_total_loc: 0
+  observed_files: 0
+  status: CANONICAL
+  key_components:
+    - "ansible/"
+    - "scada/"
+    - "migration/"
+    - "local/"
+  dependencies:
+    - services
+    - core
+  known_drift: []   # filled by Gate 0 discovery
+
+internet_print_tests:
+  repo: MIRA
+  path: internet_print_tests/
+  purpose: "Test fixture collection\u2014OEM electrical prints from live manufacturer sources"
+  language: yaml
+  observed_source_loc: 0
+  observed_total_loc: 16545
+  observed_files: 76
+  status: CANONICAL
+  key_components:
+    - "subdirs per OEM (rockwell-509, siemens-3sk1, schneider-atv340, etc.)"
+    - "index.json (test manifest)"
+    - "CAMPAIGN_SUMMARY.md (results & metrics)"
+  dependencies:
+    - printsense
+    - machine-print-pack
+  known_drift: []   # filled by Gate 0 discovery
+
+machine-print-pack:
+  repo: MIRA
+  path: machine-print-pack/
+  purpose: "Verified electrical print pack\u2014reproducible, evidence-graded, field-verification register"
+  language: mixed
+  observed_source_loc: 0
+  observed_total_loc: 6411
+  observed_files: 23
+  status: CANONICAL
+  key_components:
+    - "build/ (deterministic builder & validator)"
+    - "schema/ (pack model JSON schema)"
+    - "SPEC.md (artifact definitions)"
+    - "RUBRIC.md (approval grading rules)"
+  dependencies:
+    - printsense
+    - mira-hub
+  known_drift: []   # filled by Gate 0 discovery
+
+ontology:
+  repo: MIRA
+  path: ontology/
+  purpose: "RDF/OWL ontologies: MIRA schema definitions (core, controls, drives, electrical, evidence, maintenance)"
+  language: yaml
+  observed_source_loc: 0
+  observed_total_loc: 13
+  observed_files: 1
+  status: CANONICAL
+  key_components:
+    - "mira-core.ttl"
+    - "mira-controls.ttl"
+    - "mira-drives.ttl"
+    - "shapes/"
+  dependencies:
+    - mira-hub
+  known_drift: []   # filled by Gate 0 discovery
+
+qa:
+  repo: MIRA
+  path: qa/
+  purpose: "QA dogfood and customer-facing testing harness directory."
+  language: mixed
+  observed_source_loc: 0
+  observed_total_loc: 26
+  observed_files: 1
+  status: EXPERIMENTAL
+  key_components:
+    - "dogfood/"
+  known_drift: []   # filled by Gate 0 discovery
+
+reports:
+  repo: MIRA
+  path: reports/
+  purpose: "Analysis and competitive research reports"
+  language: markdown
+  observed_source_loc: 0
+  observed_total_loc: 347
+  observed_files: 1
+  status: CANONICAL
+  key_components:
+    - "competitors-2026-06-13.md"
+  known_drift: []   # filled by Gate 0 discovery
+
+research:
+  repo: MIRA
+  path: research/
+  purpose: "Research artifacts and data manifests for PLC/industrial variable mappings"
+  language: json
+  observed_source_loc: 0
+  observed_total_loc: 120
+  observed_files: 1
+  status: CANONICAL
+  key_components:
+    - "variable-manifest.json"
+  dependencies:
+    - plc
+  known_drift: []   # filled by Gate 0 discovery
+
+apps:
+  repo: factorylm
+  path: apps/
+  purpose: "Collection of web dashboards and management UIs (monitoring, CMMS, document portal)"
+  language: mixed
+  observed_source_loc: 126552
+  observed_total_loc: 140003
+  observed_files: 1458
+  status: LEGACY
+  key_components:
+    - "mission-control (FastAPI dev dashboard)"
+    - "cmms (React CMMS system)"
+    - "portal (knowledge/document viewer)"
+    - "plc-reader (PLC data UI)"
+  dependencies:
+    - antfarm
+    - remoteme-jarvis-node
+  known_drift: ["plc-reader dormant since 2026-03"]
+
+services:
+  repo: factorylm
+  path: services/
+  purpose: "Industrial automation microservices for PLC, diagnosis, messaging, and MES"
+  language: python
+  observed_source_loc: 22139
+  observed_total_loc: 29530
+  observed_files: 228
+  status: LEGACY
+  key_components:
+    - "plc-modbus"
+    - "diagnosis"
+    - "telegram_bot"
+    - "brain"
+  dependencies:
+    - core
+    - workers
+  known_drift: ["diagnosis/telegram_bot/llm-router are frozen 2026-03 predecessors of mira-bots (CU-04); plc-modbus dormant"]
+
+docs:
+  repo: factorylm
+  path: docs/
+  purpose: "Feature specifications, architecture decisions, and operational runbooks."
+  language: markdown
+  observed_source_loc: 17638
+  observed_total_loc: 66542
+  observed_files: 354
+  status: DATA
+  key_components:
+    - "specs/"
+    - "architecture/"
+    - "runbooks/"
+  known_drift: []   # filled by Gate 0 discovery
+
+simulation:
+  repo: factorylm
+  path: simulation/
+  purpose: "VFD and motor physics simulator for bench testing Modbus integration"
+  language: python
+  observed_source_loc: 9313
+  observed_total_loc: 39782
+  observed_files: 186
+  status: DELETE_CANDIDATE
+  key_components:
+    - "vfd_simulator.py"
+    - "motulator"
+    - "modbus-simulator"
+  dependencies:
+    - collectors
+    - diagnosis
+  known_drift: ["frozen 2026-03; coupled deletion unit (CU-04/CU-08)"]
+
+workers:
+  repo: factorylm
+  path: workers/
+  purpose: "Celery distributed task orchestration and workflow automation"
+  language: python
+  observed_source_loc: 8457
+  observed_total_loc: 8457
+  observed_files: 40
+  status: CANONICAL
+  key_components:
+    - "celery_app.py"
+    - "conductor_tasks"
+    - "manual_hunter_tasks"
+    - "photo_analyzer_tasks"
+  dependencies:
+    - services
+  known_drift: []   # filled by Gate 0 discovery
+
+my-ralph:
+  repo: factorylm
+  path: my-ralph/
+  purpose: "Autonomous AI development loop orchestrator with safeguards and circuit breaker"
+  language: mixed
+  observed_source_loc: 6735
+  observed_total_loc: 13310
+  observed_files: 78
+  status: CANONICAL
+  key_components:
+    - "ralph_loop.sh (main loop)"
+    - "lib/circuit_breaker.sh (stagnation detection)"
+    - "lib/response_analyzer.sh (Claude output parsing)"
+    - "api/ (FastAPI service)"
+  known_drift: []   # filled by Gate 0 discovery
+
+openclaw:
+  repo: factorylm
+  path: openclaw/
+  purpose: "Gist-based autonomous agent loop with troubleshooting decision trees"
+  language: python
+  observed_source_loc: 5799
+  observed_total_loc: 6562
+  observed_files: 41
+  status: CANONICAL
+  key_components:
+    - "gist_agent_loop.py (main entry)"
+    - "gist_poller/dispatcher/responder (gist lifecycle)"
+    - "troubleshoot/engine.py (decision tree runner)"
+    - "connectors (integrations)"
+  dependencies:
+    - antfarm
+    - agents
+  known_drift: []   # filled by Gate 0 discovery
+
+kb:
+  repo: factorylm
+  path: kb/
+  purpose: "Knowledge base ingestion pipeline chunking and embedding documents"
+  language: python
+  observed_source_loc: 5699
+  observed_total_loc: 5715
+  observed_files: 6
+  status: CANONICAL
+  key_components:
+    - "ingest.py"
+    - "chunker.py"
+    - "chroma_db"
+  dependencies:
+    - collectors
+    - analytics
+  known_drift: []   # filled by Gate 0 discovery
+
+scripts:
+  repo: factorylm
+  path: scripts/
+  purpose: "Operational automation, PLC deployment, data generation, and service management."
+  language: python
+  observed_source_loc: 4556
+  observed_total_loc: 5094
+  observed_files: 50
+  status: CANONICAL
+  key_components:
+    - "brain-ingest.service"
+    - "factoryio_automator.py"
+    - "deploy-*.sh"
+    - "build_training_data.py"
+  dependencies:
+    - services
+    - plc
+  known_drift: []   # filled by Gate 0 discovery
+
+tools:
+  repo: factorylm
+  path: tools/
+  purpose: "Development and testing utilities for bot capabilities, KB queries, and pipeline orchestration."
+  language: python
+  observed_source_loc: 4221
+  observed_total_loc: 4385
+  observed_files: 20
+  status: CANONICAL
+  key_components:
+    - "bot_capability_test.py"
+    - "kb_query.py"
+    - "story_pipeline.py"
+    - "fault_injector/"
+  dependencies:
+    - services
+    - brain
+  known_drift: []   # filled by Gate 0 discovery
+
+tests:
+  repo: factorylm
+  path: tests/
+  purpose: "Comprehensive test suite covering unit tests, integration tests, scenario runners, and bot emulation."
+  language: python
+  observed_source_loc: 3201
+  observed_total_loc: 3618
+  observed_files: 37
+  status: CANONICAL
+  key_components:
+    - "test_state_machine.py"
+    - "scenario_runner.py"
+    - "telegram_emulator.py"
+    - "live_bot_tester.py"
+  dependencies:
+    - services
+    - core
+  known_drift: []   # filled by Gate 0 discovery
+
+cookoff:
+  repo: factorylm
+  path: cookoff/
+  purpose: "Factory I/O Cosmos cookoff experiment \u2014 diagnosis + Modbus test harness"
+  language: python
+  observed_source_loc: 2238
+  observed_total_loc: 3834
+  observed_files: 16
+  status: DELETE_CANDIDATE
+  key_components:
+    - "diagnosis_engine.py"
+    - "modbus_server"
+    - "record_chunks"
+    - "EVIDENCE.md"
+  dependencies:
+    - diagnosis
+  known_drift: ["frozen 2026-03; coupled deletion unit (CU-04/CU-08)"]
+
+recovery:
+  repo: factorylm
+  path: recovery/
+  purpose: "Historical backups and recovery tools for PLC ladder logic and deployment configs."
+  language: st
+  observed_source_loc: 1767
+  observed_total_loc: 4557
+  observed_files: 42
+  status: LEGACY
+  key_components:
+    - "Micro820_v*.st"
+    - "discover_plc.py"
+    - "deploy_dropin.py"
+  known_drift: []   # filled by Gate 0 discovery
+
+core:
+  repo: factorylm
+  path: core/
+  purpose: "LLM abstraction layer for multiple cloud providers (Groq, Claude, DeepSeek)"
+  language: python
+  observed_source_loc: 1732
+  observed_total_loc: 2964
+  observed_files: 31
+  status: CANONICAL
+  key_components:
+    - "src/factorylm/llm/"
+    - "config.py"
+    - "utils/"
+  dependencies:
+    - services
+  known_drift: []   # filled by Gate 0 discovery
+
+sim:
+  repo: factorylm
+  path: sim/
+  purpose: "PLC simulator generating realistic conveyor tag data"
+  language: python
+  observed_source_loc: 1467
+  observed_total_loc: 1467
+  observed_files: 6
+  status: DELETE_CANDIDATE
+  key_components:
+    - "plc_simulator.py"
+    - "sorting_controller"
+    - "fault_injector"
+  dependencies:
+    - collectors
+    - diagnosis
+    - analytics
+  known_drift: ["frozen 2026-03; coupled deletion unit (CU-04/CU-08)"]
+
+cosmos:
+  repo: factorylm
+  path: cosmos/
+  purpose: "NVIDIA Cosmos Reason 2 integration for video analysis of incidents"
+  language: python
+  observed_source_loc: 1203
+  observed_total_loc: 1203
+  observed_files: 9
+  status: DELETE_CANDIDATE
+  key_components:
+    - "models.py"
+    - "agent"
+    - "client"
+    - "watcher"
+  known_drift: ["frozen 2026-03; coupled deletion unit (CU-04/CU-08)"]
+
+diagnosis:
+  repo: factorylm
+  path: diagnosis/
+  purpose: "Fault detection and classification for conveyor PLC tags"
+  language: python
+  observed_source_loc: 908
+  observed_total_loc: 908
+  observed_files: 5
+  status: CANONICAL
+  key_components:
+    - "conveyor_faults.py"
+    - "fault_classifier"
+    - "prompts"
+  dependencies:
+    - collectors
+    - analytics
+  known_drift: []   # filled by Gate 0 discovery
+
+agents:
+  repo: factorylm
+  path: agents/
+  purpose: "Individual agent implementations and task runners (Serena codebase navigator, etc.)"
+  language: python
+  observed_source_loc: 763
+  observed_total_loc: 856
+  observed_files: 4
+  status: CANONICAL
+  key_components:
+    - "serena_agent.py (Agno Claude-based web UI)"
+    - "jesus-h-christ (task routines)"
+    - "serena_agent.py (codebase navigation)"
+  dependencies:
+    - antfarm
+    - openclaw
+  known_drift: []   # filled by Gate 0 discovery
+
+analytics:
+  repo: factorylm
+  path: analytics/
+  purpose: "Baseline building, drift detection, and pattern embedding for PLC metrics"
+  language: python
+  observed_source_loc: 751
+  observed_total_loc: 751
+  observed_files: 4
+  status: CANONICAL
+  key_components:
+    - "drift_detector"
+    - "baseline_builder"
+    - "pattern_embedder"
+  dependencies:
+    - collectors
+    - diagnosis
+    - kb
+  known_drift: []   # filled by Gate 0 discovery
+
+output:
+  repo: factorylm
+  path: output/
+  purpose: "TBD \u2014 not yet characterized"
+  language: python
+  observed_source_loc: 703
+  observed_total_loc: 703
+  observed_files: 4
+  status: CONSUMER
+  known_drift: []   # filled by Gate 0 discovery
+
+collectors:
+  repo: factorylm
+  path: collectors/
+  purpose: "PLC data collectors for Modbus, S7, and Allen-Bradley devices"
+  language: python
+  observed_source_loc: 620
+  observed_total_loc: 620
+  observed_files: 6
+  status: CANONICAL
+  key_components:
+    - "base_collector"
+    - "modbus_collector_tasks"
+    - "ab_collector_tasks"
+    - "collector_manager"
+  dependencies:
+    - analytics
+    - kb
+  known_drift: []   # filled by Gate 0 discovery
+
+brain:
+  repo: factorylm
+  path: brain/
+  purpose: "TBD \u2014 not yet characterized"
+  language: python
+  observed_source_loc: 540
+  observed_total_loc: 597
+  observed_files: 7
+  status: CONSUMER
+  known_drift: []   # filled by Gate 0 discovery
+
+remoteme-jarvis-node:
+  repo: factorylm
+  path: remoteme-jarvis-node/
+  purpose: "FastAPI remote control agent for Tailscale network (shell, file I/O, screenshots)"
+  language: python
+  observed_source_loc: 514
+  observed_total_loc: 624
+  observed_files: 7
+  status: CANONICAL
+  key_components:
+    - "jarvis_node.py (FastAPI server)"
+    - "install-node.sh (launchd/systemd service)"
+    - "requirements.txt (dependencies)"
+  dependencies:
+    - apps
+  known_drift: []   # filled by Gate 0 discovery
+
+video:
+  repo: factorylm
+  path: video/
+  purpose: "TBD \u2014 not yet characterized"
+  language: python
+  observed_source_loc: 474
+  observed_total_loc: 474
+  observed_files: 5
+  status: CONSUMER
+  known_drift: []   # filled by Gate 0 discovery
+
+specs:
+  repo: factorylm
+  path: specs/
+  purpose: "TBD \u2014 not yet characterized"
+  language: python
+  observed_source_loc: 406
+  observed_total_loc: 406
+  observed_files: 1
+  status: CONSUMER
+  known_drift: []   # filled by Gate 0 discovery
+
+_BUILDS:
+  repo: factorylm
+  path: _BUILDS/
+  purpose: "TBD \u2014 not yet characterized"
+  language: python
+  observed_source_loc: 380
+  observed_total_loc: 388
+  observed_files: 11
+  status: CONSUMER
+  known_drift: []   # filled by Gate 0 discovery
+
+data:
+  repo: factorylm
+  path: data/
+  purpose: "Training and learner data sets for model training and knowledge bases"
+  language: markdown
+  observed_source_loc: 125
+  observed_total_loc: 2041
+  observed_files: 3
+  status: DATA
+  key_components:
+    - "training/train.jsonl"
+    - "learner/knowledge.json"
+  known_drift: []   # filled by Gate 0 discovery
+
+infra:
+  repo: factorylm
+  path: infra/
+  purpose: "Infrastructure-as-Code, deployment configs, and cluster orchestration."
+  language: yaml
+  observed_source_loc: 56
+  observed_total_loc: 1560
+  observed_files: 17
+  status: CANONICAL
+  key_components:
+    - "ansible/"
+    - "scada/"
+    - "migration/"
+    - "local/"
+  dependencies:
+    - services
+    - core
+  known_drift: []   # filled by Gate 0 discovery
+
+antfarm:
+  repo: factorylm
+  path: antfarm/
+  purpose: "Agent orchestration framework with workflow definitions and task dispatch"
+  language: python
+  observed_source_loc: 0
+  observed_total_loc: 7740
+  observed_files: 83
+  status: CANONICAL
+  key_components:
+    - "agents/ (coordinator, router, formatter, factory)"
+    - "workflows/ (20+ YAML task definitions)"
+    - "AGENTS.md (agent registry)"
+  dependencies:
+    - openclaw
+    - apps
+    - agents
+  known_drift: []   # filled by Gate 0 discovery
