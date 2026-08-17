@@ -20,6 +20,15 @@ not satisfy the evidence requirement", amendment of 2026-08-16). Dispositions li
 | `round-9-group{A,B}-adjudication-1-scope-limited.md` | 9.3 | adjudication, scope missing referenced files | SUSTAINED correctly — quotes not visible in scoped diff (the mechanism judging on evidence) |
 | `round-9-group{A,B}-adjudication-2-PASS.md` | 9.4 | adjudication, evidence-complete scope (`--diff-cap 48000`) | **PASS ×2** (A: 2/2 refuted; B: 4 refuted + 1 medium sustained, non-blocking) |
 | `round-9-groupC-adjudication-PASS.md` | 9.3 | adjudication | **PASS** (high refuted; 1 medium sustained, non-blocking) |
+| `round-10-groupA-crawler-prod.md` | 10.1 | A (receipts-bound, High reasoning) | BLOCK — 3 findings |
+| `round-10-groupA-rebuttal.md` | 10.2 | author rebuttal | — |
+| `round-10-groupA-adjudication-1-quote-missed.md` | 10.3 | adjudication run 1 | BLOCK — F1/F3 REFUTED; F2 sustained on "quote not present" (the quote IS at `+` lines of the diff — grep-provable) |
+| `round-10-groupA-adjudication-2.md` | 10.4 | adjudication run 2, byte-anchored rebuttal | BLOCK — ALL sustained, contradicting run 1 — **adjudicator variance; stopped per no-re-roll; DISPUTED → Gate 9** |
+| `round-10-groupB-crawler-tests.md` + rebuttal + adjudication | 10 | B | review BLOCK ×4 → adjudication **PASS (4/4 refuted)** |
+| `round-10-groupC-rest.md` + rebuttal + adjudication | 10 | C (code prefixes) | review BLOCK ×5 → adjudication BLOCK: 3 refuted, **1 real high sustained** (truncated-view-only receipt hash) → fixed (dual-hash receipts) |
+| `round-10-groupD-docs-attempt1-malformed.md` | 10 | D (docs) | findings unparseable (no `severity:` keyword) — preserved; re-run below |
+| `round-10-groupD-docs.md` + rebuttal + adjudication | 10 | D (docs; adjudicated on FULL untruncated diff) | review BLOCK (scope artifact) → adjudication **PASS** |
+| `round-11-groupC-rest.md` + rebuttal + adjudication | 11 | C fresh review after the receipts fix | BLOCK ×3 → adjudication **PASS** (2 highs refuted; 1 medium sustained = recorded Windows-dev residual) |
 
 Rounds 1–9 groups: A = `mira-crawler/{tasks,ingest,crawler,main.py}` · B =
 `mira-crawler/tests/` · C = `tools/ mira-bots/ mira-hub/ tests/ .github/ docs/`.
