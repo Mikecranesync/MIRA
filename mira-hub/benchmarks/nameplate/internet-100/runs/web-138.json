@@ -1,0 +1,148 @@
+{
+  "image": "c03r1_05.jpg",
+  "bytes": 128844,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "CPU315-2-DP",
+      "catalogNumber": "315-2",
+      "serialNumber": "24AH4-0AB0",
+      "equipmentType": "CPU",
+      "confidence": 0.95,
+      "rawText": [
+        "CPU315-2-DP",
+        "SIEMENS",
+        "SIMATIC S7-300",
+        "24AH4-0AB0"
+      ]
+    },
+    "rawText": [
+      "CPU315-2-DP",
+      "SIEMENS",
+      "SIMATIC S7-300",
+      "24AH4-0AB0"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "CPU315-2-DP",
+      "catalogNumber": "315-2",
+      "equipmentType": "CPU",
+      "serialNumber": "24AH4-0AB0",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "CPU315-2-DP"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "315-2"
+        },
+        {
+          "field": "serialNumber",
+          "value": "24AH4-0AB0"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CPU"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 52,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 1000,
+          "height": 1000
+        },
+        "imageWidth": 1000,
+        "imageHeight": 1000,
+        "cropRotationDeg": 0,
+        "ms": 2876
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3351,
+    "total_ms": 5785
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "CPU315-2-DP",
+      "catalogNumber": "315-2",
+      "serialNumber": "24AH4-0AB0",
+      "equipmentType": "CPU",
+      "confidence": 0.95,
+      "rawText": [
+        "CPU315-2-DP",
+        "SIEMENS",
+        "SIMATIC S7-300",
+        "24AH4-0AB0"
+      ]
+    },
+    "rawText": [
+      "CPU315-2-DP",
+      "SIEMENS",
+      "SIMATIC S7-300",
+      "24AH4-0AB0"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "CPU315-2-DP",
+      "catalogNumber": "315-2",
+      "equipmentType": "CPU",
+      "serialNumber": "24AH4-0AB0",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "CPU315-2-DP"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "315-2"
+        },
+        {
+          "field": "serialNumber",
+          "value": "24AH4-0AB0"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CPU"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1730
+  }
+}

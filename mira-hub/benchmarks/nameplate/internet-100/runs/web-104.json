@@ -1,0 +1,144 @@
+{
+  "image": "c02r1_03.jpg",
+  "bytes": 135614,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ACH",
+      "model": "550-VCR-072A",
+      "catalogNumber": "550-U0-072A-4",
+      "serialNumber": "2194700092",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "ACH550-VCR-072A-4+F267",
+        "S/N 2194700092",
+        "AX/XT",
+        "ACX550-U0-072A-4",
+        "S/N 2194602904"
+      ]
+    },
+    "rawText": [
+      "ACH550-VCR-072A-4+F267",
+      "S/N 2194700092",
+      "AX/XT",
+      "ACX550-U0-072A-4",
+      "S/N 2194602904"
+    ],
+    "values": {
+      "manufacturer": "ACH",
+      "model": "550-VCR-072A",
+      "catalogNumber": "550-U0-072A-4",
+      "equipmentType": null,
+      "serialNumber": "2194700092",
+      "voltage": null,
+      "current": "072A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ACH"
+        },
+        {
+          "field": "model",
+          "value": "550-VCR-072A"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "550-U0-072A-4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2194700092"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 6,
+        "cropBbox": {
+          "left": 40,
+          "top": 71,
+          "width": 840,
+          "height": 620
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2039
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 9385,
+    "total_ms": 11978
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ACH",
+      "model": "550-VCR-072A-4",
+      "catalogNumber": "550-U0-072A-4",
+      "serialNumber": "2194700092",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "ACH550-VCR-072A-4+F267",
+        "S/N 2194700092",
+        "AX/XT",
+        "ACX550-U0-072A-4",
+        "S/N 2194602904"
+      ]
+    },
+    "rawText": [
+      "ACH550-VCR-072A-4+F267",
+      "S/N 2194700092",
+      "AX/XT",
+      "ACX550-U0-072A-4",
+      "S/N 2194602904"
+    ],
+    "values": {
+      "manufacturer": "ACH",
+      "model": "550-VCR-072A-4",
+      "catalogNumber": "550-U0-072A-4",
+      "equipmentType": null,
+      "serialNumber": "2194700092",
+      "voltage": null,
+      "current": "072A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ACH"
+        },
+        {
+          "field": "model",
+          "value": "550-VCR-072A-4"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "550-U0-072A-4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2194700092"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2837
+  }
+}

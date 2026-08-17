@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-025",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "scratched", "faded", "dirt"],
+  "photo_gt": {
+    "manufacturer": "Square D Company",
+    "model": "unknown",
+    "catalogNumber": "2S1F",
+    "serialNumber": "unknown",
+    "equipment_category": "transformer",
+    "specs": [
+      {"field": "capacity", "value_verbatim": "2.0KVA", "unit": "kVA", "confidence": "low"},
+      {"field": "temperature_rise", "value_verbatim": "115C", "unit": "°C", "confidence": "medium"},
+      {"field": "phase", "value_verbatim": "SINGLE PHASE", "unit": "", "confidence": "high"},
+      {"field": "type", "value_verbatim": "TYPE S", "unit": "", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60 HZ", "unit": "Hz", "confidence": "high"},
+      {"field": "voltage_hv", "value_verbatim": "480(HV)/240(HV)", "unit": "V", "confidence": "high"},
+      {"field": "voltage_lv", "value_verbatim": "240(LV)/120(LV)", "unit": "V", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "RAINPROOF TYPE 3R ENCLOSURE", "unit": "", "confidence": "high"},
+      {"field": "field_wiring", "value_verbatim": "WIRES INSULATED FOR A MINIMUM OF 90°C AND SIZED ON THE BASIS OF 60°C AMPACITY", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["UL"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

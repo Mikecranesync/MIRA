@@ -1,0 +1,23 @@
+{
+  "sample_id": "web-028",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Oriental Motor Co., Ltd.",
+    "model": "PK243M-01BA",
+    "catalogNumber": "unknown",
+    "serialNumber": "QY7 04414",
+    "equipment_category": "stepper_motor",
+    "specs": [
+      {"field": "current", "value_verbatim": "DC 0.95A", "unit": "A", "confidence": "high"},
+      {"field": "resistance", "value_verbatim": "4.2Ω", "unit": "Ω", "confidence": "high"},
+      {"field": "step_angle", "value_verbatim": "0.9°", "unit": "°", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "2-PHASE", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

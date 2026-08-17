@@ -1,0 +1,18 @@
+{
+  "sample_id": "web-114",
+  "usable": false,
+  "exclusion_reason": "Nameplate label is too small and blurred to read: the sticker occupies roughly 60x100 px of the frame, is rotated on a curved cylinder body, and even at 8x digital zoom no character of the model line, spec block, or header band can be resolved with confidence (header plausibly 'SMC CYLINDER' by layout/color only, which is inference, not reading). No photo-visible field can be established as ground truth.",
+  "difficulty": "hard",
+  "conditions": ["rotated_90", "curved_surface", "small_in_scene", "tiny_text", "low_resolution"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "pneumatic_cylinder",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

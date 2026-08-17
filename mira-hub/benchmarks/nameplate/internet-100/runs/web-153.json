@@ -1,0 +1,134 @@
+{
+  "image": "c07r1_04.jpg",
+  "bytes": 56448,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Telemechanique",
+      "model": "LC1",
+      "catalogNumber": "D09 01",
+      "serialNumber": "01",
+      "equipmentType": "contactor",
+      "confidence": 0.95,
+      "rawText": [
+        "LC1",
+        "D09 01",
+        "01"
+      ]
+    },
+    "rawText": [
+      "LC1",
+      "D09 01",
+      "01"
+    ],
+    "values": {
+      "manufacturer": "Telemechanique",
+      "model": "LC1",
+      "catalogNumber": "D09 01",
+      "equipmentType": "contactor",
+      "serialNumber": "01",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "LC1"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "D09 01"
+        },
+        {
+          "field": "serialNumber",
+          "value": "01"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 11,
+        "cropBbox": {
+          "left": 198,
+          "top": 82,
+          "width": 345,
+          "height": 418
+        },
+        "imageWidth": 800,
+        "imageHeight": 600,
+        "cropRotationDeg": 0,
+        "ms": 1640
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1906,
+    "total_ms": 3409
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Tale meccanica",
+      "model": "LC1",
+      "catalogNumber": "D09 01",
+      "serialNumber": "01",
+      "equipmentType": "contactor",
+      "confidence": 0.95,
+      "rawText": [
+        "LC1",
+        "D09 01",
+        "01"
+      ]
+    },
+    "rawText": [
+      "LC1",
+      "D09 01",
+      "01"
+    ],
+    "values": {
+      "manufacturer": "Tale meccanica",
+      "model": "LC1",
+      "catalogNumber": "D09 01",
+      "equipmentType": "contactor",
+      "serialNumber": "01",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "LC1"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "D09 01"
+        },
+        {
+          "field": "serialNumber",
+          "value": "01"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1656
+  }
+}

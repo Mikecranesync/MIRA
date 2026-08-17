@@ -1,0 +1,198 @@
+{
+  "image": "c06r1_07.jpg",
+  "bytes": 138382,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ABB",
+      "model": "Tmax Ts3N 150",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "C.B 3 POLE UNIT",
+      "confidence": 0.95,
+      "rawText": [
+        "Tmax",
+        "Ts3N 150",
+        "ABB",
+        "SACE Tmax",
+        "C.B 3 POLE UNIT",
+        "ISSUE No. G-6417",
+        "Type T53 N 150 40°C",
+        "600V",
+        "50-60 Hz",
+        "UL",
+        "UL496/C22.2 No. 52",
+        "INTERRUPTING RATINGS",
+        "AC 600V",
+        "25.0kA",
+        "400V",
+        "25.0kA",
+        "600V",
+        "20.0kA",
+        "LR 54280 Icu (kA)",
+        "65",
+        "35",
+        "14",
+        "20",
+        "Made in Italy by ABB SACE",
+        "IEC 60947-2 Rating",
+        "600V",
+        "415~",
+        "750~",
+        "150 A",
+        "on",
+        "off",
+        "TEST"
+      ]
+    },
+    "rawText": [
+      "Tmax",
+      "Ts3N 150",
+      "ABB",
+      "SACE Tmax",
+      "C.B 3 POLE UNIT",
+      "ISSUE No. G-6417",
+      "Type T53 N 150 40°C",
+      "600V",
+      "50-60 Hz",
+      "UL",
+      "UL496/C22.2 No. 52",
+      "INTERRUPTING RATINGS",
+      "AC 600V",
+      "25.0kA",
+      "400V",
+      "25.0kA",
+      "600V",
+      "20.0kA",
+      "LR 54280 Icu (kA)",
+      "65",
+      "35",
+      "14",
+      "20",
+      "Made in Italy by ABB SACE",
+      "IEC 60947-2 Rating",
+      "600V",
+      "415~",
+      "750~",
+      "150 A",
+      "on",
+      "off",
+      "TEST"
+    ],
+    "values": {
+      "manufacturer": "ABB",
+      "model": "Tmax Ts3N 150",
+      "catalogNumber": null,
+      "equipmentType": "C.B 3 POLE UNIT",
+      "serialNumber": null,
+      "voltage": "600V",
+      "current": "150A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ABB"
+        },
+        {
+          "field": "model",
+          "value": "Tmax Ts3N 150"
+        },
+        {
+          "field": "equipmentType",
+          "value": "C.B 3 POLE UNIT"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 27,
+        "cropBbox": {
+          "left": 107,
+          "top": 236,
+          "width": 832,
+          "height": 848
+        },
+        "imageWidth": 1076,
+        "imageHeight": 1280,
+        "cropRotationDeg": 0,
+        "ms": 2337
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2712,
+    "total_ms": 8318
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ABB",
+      "model": "Tmax",
+      "catalogNumber": "SACE Tmax",
+      "serialNumber": null,
+      "equipmentType": "Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "Tmax",
+        "Tsn 150",
+        "ABB",
+        "SACE Tmax",
+        "150 A",
+        "on",
+        "off"
+      ]
+    },
+    "rawText": [
+      "Tmax",
+      "Tsn 150",
+      "ABB",
+      "SACE Tmax",
+      "150 A",
+      "on",
+      "off"
+    ],
+    "values": {
+      "manufacturer": "ABB",
+      "model": "Tmax",
+      "catalogNumber": "SACE Tmax",
+      "equipmentType": "Circuit Breaker",
+      "serialNumber": null,
+      "voltage": null,
+      "current": "150A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ABB"
+        },
+        {
+          "field": "model",
+          "value": "Tmax"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "SACE Tmax"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1683
+  }
+}

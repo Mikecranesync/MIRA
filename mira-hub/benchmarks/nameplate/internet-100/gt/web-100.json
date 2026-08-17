@@ -1,0 +1,19 @@
+{
+  "sample_id": "web-100",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "HEIDENHAIN",
+    "model": "LID 311/10",
+    "catalogNumber": "245 630 02",
+    "serialNumber": "5 139 132 C",
+    "equipment_category": "encoder",
+    "specs": [],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null,
+  "notes": "Black label, white text: 'LID 311/10' | 'Id.Nr. 245 630 02' | 'S.Nr. 5 139 132 C' | 'R5' | 'HEIDENHAIN D-83301 Traunreut' | 'Made in Germany' | barcode. No electrical specs and no certification marks printed on the label."
+}

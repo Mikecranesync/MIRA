@@ -1,0 +1,196 @@
+{
+  "image": "c05r1_02.jpg",
+  "bytes": 193940,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SEW-EURODRIVE, INC. USA",
+      "model": "DFTM00LSQBGACHR-1504",
+      "catalogNumber": null,
+      "serialNumber": "8802382912.09 .09.001",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "SEW-EURODRIVE, INC. USA",
+        "Type DFTM00LSQBGACHR-1504 TEFC 3PH",
+        "S.O. 8802382912.09 .09.001",
+        "V 230V/460Y",
+        "HZ 60",
+        "A 8.6/4.3",
+        "NEMA Num Eff %",
+        "Code",
+        "Conn Dia D179",
+        "HP 3",
+        "S.F. 1.0 Duty CONT",
+        "rpm 1720",
+        "Ins Class B Maximum Ambient 40 °C",
+        "Brake M 50AC 22.5 lb-ft Control 861.5",
+        "E189357",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "SEW-EURODRIVE, INC. USA",
+      "Type DFTM00LSQBGACHR-1504 TEFC 3PH",
+      "S.O. 8802382912.09 .09.001",
+      "V 230V/460Y",
+      "HZ 60",
+      "A 8.6/4.3",
+      "NEMA Num Eff %",
+      "Code",
+      "Conn Dia D179",
+      "HP 3",
+      "S.F. 1.0 Duty CONT",
+      "rpm 1720",
+      "Ins Class B Maximum Ambient 40 °C",
+      "Brake M 50AC 22.5 lb-ft Control 861.5",
+      "E189357",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "SEW-EURODRIVE, INC. USA",
+      "model": "DFTM00LSQBGACHR-1504",
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "8802382912.09 .09.001",
+      "voltage": "230V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": "INS.Class B",
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SEW-EURODRIVE, INC. USA"
+        },
+        {
+          "field": "model",
+          "value": "DFTM00LSQBGACHR-1504"
+        },
+        {
+          "field": "serialNumber",
+          "value": "8802382912.09 .09.001"
+        }
+      ],
+      "needsReview": [
+        "equipmentType",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 31,
+        "cropBbox": {
+          "left": 62,
+          "top": 406,
+          "width": 1186,
+          "height": 630
+        },
+        "imageWidth": 1350,
+        "imageHeight": 1350,
+        "cropRotationDeg": 0,
+        "ms": 2635
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3146,
+    "total_ms": 7897
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SEW-EURODRIVE, INC. USA",
+      "model": "DE1F100LES-BACUHR-1504",
+      "catalogNumber": "DE1F100LES-BACUHR-1504",
+      "serialNumber": "8802829112.09 .09.001",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SEW-EURODRIVE, INC. USA",
+        "Type: DE1F100LES-BACUHR-1504",
+        "IEFC 5PH",
+        "V 280V/460Y",
+        "HZ 60",
+        "A 3.6/4.3",
+        "Code",
+        "NEMA Num Eff %",
+        "Conn Dia",
+        "D179",
+        "HP 3",
+        "S.F. 1.0",
+        "Duty 50%T",
+        "Design Letter",
+        "rpm 1720",
+        "Ins Class 8",
+        "Maximum Ambient 40 °C",
+        "Brake 360AC",
+        "lb-ft Control 861.5",
+        "E18937",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "SEW-EURODRIVE, INC. USA",
+      "Type: DE1F100LES-BACUHR-1504",
+      "IEFC 5PH",
+      "V 280V/460Y",
+      "HZ 60",
+      "A 3.6/4.3",
+      "Code",
+      "NEMA Num Eff %",
+      "Conn Dia",
+      "D179",
+      "HP 3",
+      "S.F. 1.0",
+      "Duty 50%T",
+      "Design Letter",
+      "rpm 1720",
+      "Ins Class 8",
+      "Maximum Ambient 40 °C",
+      "Brake 360AC",
+      "lb-ft Control 861.5",
+      "E18937",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "SEW-EURODRIVE, INC. USA",
+      "model": "DE1F100LES-BACUHR-1504",
+      "catalogNumber": "DE1F100LES-BACUHR-1504",
+      "equipmentType": null,
+      "serialNumber": "8802829112.09 .09.001",
+      "voltage": "280V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SEW-EURODRIVE, INC. USA"
+        },
+        {
+          "field": "model",
+          "value": "DE1F100LES-BACUHR-1504"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "DE1F100LES-BACUHR-1504"
+        }
+      ],
+      "needsReview": [
+        "serialNumber",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 4620
+  }
+}

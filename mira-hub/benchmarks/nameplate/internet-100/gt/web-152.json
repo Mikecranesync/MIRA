@@ -1,0 +1,24 @@
+{
+  "sample_id": "web-152",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Allen-Bradley",
+    "model": "unknown",
+    "catalogNumber": "595-AB",
+    "serialNumber": "unknown",
+    "equipment_category": "auxiliary_contact",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "600VAC MAX.", "unit": "V", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "HEAVY DUTY", "unit": "", "confidence": "high"},
+      {"field": "series", "value_verbatim": "SER C", "unit": "", "confidence": "high"},
+      {"field": "sizes", "value_verbatim": "SIZES 0-5", "unit": "", "confidence": "high"},
+      {"field": "second_label_catalog", "value_verbatim": "CAT 595-A SER B", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["UL", "CSA", "CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-031",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["angled", "rotated_90", "tiny_text", "low_resolution", "low_contrast", "glare"],
+  "photo_gt": {
+    "manufacturer": "Siemens",
+    "model": "3UA52 00-1K",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "contactor_with_overload_relay",
+    "specs": [
+      {"field": "current_range", "value_verbatim": "8-12,5 A", "unit": "A", "confidence": "medium"},
+      {"field": "origin", "value_verbatim": "Made in Germany", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["CE", "UL", "CSA"],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

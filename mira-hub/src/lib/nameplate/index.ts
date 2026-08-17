@@ -48,8 +48,48 @@ export function normalizeCandidate(raw: unknown): EquipmentIdentityCandidate {
   };
 }
 
+// ── Provider selection / model configuration ─────────────────────────────────
+//
+// ⚠️ THE VISION MODEL MUST BE QUALIFIED BEFORE DEPLOYMENT. Vision catalogs churn
+// fast and a delisted id fails as a 404 on every photo, which reads to the
+// technician as "the camera thing is broken". This file previously pinned
+// `meta-llama/llama-4-scout-17b-16e-instruct` — Groq delisted ALL vision models
+// on 2026-07-18 (see mira-bots/shared/inference/router.py, which is the repo's
+// documented source of truth for provider vision config), so that pin was dead.
+//
+// Env contract (mirrors router.py exactly, including the `||` fallback form —
+// compose maps `${VAR:-}` which delivers an EMPTY STRING in-container, so a
+// plain `??` default would leave vision dead):
+//   NAMEPLATE_VISION_MODEL   — overrides the model for THIS feature on either provider
+//   TOGETHERAI_API_KEY       — enables the Together vision path (the only live one)
+//   TOGETHERAI_VISION_MODEL  — Together model id, default google/gemma-3n-E4B-it
+//   GROQ_API_KEY + GROQ_VISION_MODEL — Groq path, live ONLY if the model is set
+//   NAMEPLATE_RECOGNIZER=fixture — deterministic test switch (no module mocking)
+
+const TOGETHER_VISION_DEFAULT = "google/gemma-3n-E4B-it";
+
+export function togetherVisionModel(): string {
+  return (
+    process.env.NAMEPLATE_VISION_MODEL ||
+    process.env.TOGETHERAI_VISION_MODEL ||
+    TOGETHER_VISION_DEFAULT
+  );
+}
+
+/** Groq has no default: it ships no vision model today, so it is opt-in only. */
+export function groqVisionModel(): string {
+  return process.env.NAMEPLATE_VISION_MODEL || process.env.GROQ_VISION_MODEL || "";
+}
+
+function fixtureSelected(): boolean {
+  return (process.env.NAMEPLATE_RECOGNIZER || "").toLowerCase() === "fixture";
+}
+
 export function isRecognizerConfigured(): boolean {
-  return Boolean(process.env.GROQ_API_KEY);
+  if (fixtureSelected()) return true;
+  if (process.env.TOGETHERAI_API_KEY) return true;
+  // A Groq key alone is NOT a vision provider — it needs an explicit model.
+  return Boolean(process.env.GROQ_API_KEY && groqVisionModel());
 }
 
 const VISION_PROMPT = `You are reading an industrial equipment NAMEPLATE photograph.
@@ -62,44 +102,118 @@ Respond ONLY with JSON:
  "serialNumber": string|null, "equipmentType": string|null,
  "confidence": number, "rawText": string[]}`;
 
-/** Groq vision provider (uses the hub server's GROQ_API_KEY when present). */
-export class GroqVisionRecognizer implements NameplateRecognizer {
-  readonly name = "groq-llama4-vision";
-
-  async recognize(imageBase64: string, mimeType: string): Promise<EquipmentIdentityCandidate> {
-    const key = process.env.GROQ_API_KEY;
-    if (!key) throw new Error("recognizer_not_configured");
-    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
-        temperature: 0.1,
-        max_tokens: 500,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: VISION_PROMPT },
-              {
-                type: "image_url",
-                image_url: { url: `data:${mimeType};base64,${imageBase64}` },
-              },
-            ],
-          },
-        ],
-      }),
-    });
+/** Shared OpenAI-compatible vision call — Groq and Together speak the same shape. */
+async function openAiCompatVision(
+  apiUrl: string,
+  apiKey: string,
+  model: string,
+  imageBase64: string,
+  mimeType: string,
+): Promise<EquipmentIdentityCandidate> {
+  // max_tokens 500 -> 1200 (internet-100 finding): dense real-world plates
+  // (dual-frequency motor tables, VFD spec labels) produce rawText past 500
+  // tokens; the provider truncates mid-string and the whole recognition dies
+  // on JSON.parse — a total outage on 3.3% of real photos, deterministically.
+  // 1200 covers the largest rawText observed in the 154-sample set with slack.
+  // Bounded provider call: a stalled Together/Groq endpoint must not hang the
+  // request (and, on a burst, exhaust the worker pool). AbortSignal.timeout
+  // caps the whole round-trip; the caller's route already maps a throw to its
+  // fallback path.
+  const timeoutMs = Number(process.env.NAMEPLATE_VISION_TIMEOUT_MS ?? 30_000);
+  const callOnce = async (): Promise<EquipmentIdentityCandidate> => {
+    let resp: Response;
+    try {
+      resp = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(timeoutMs),
+        body: JSON.stringify({
+          model,
+          temperature: 0.1,
+          max_tokens: 1200,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: VISION_PROMPT },
+                {
+                  type: "image_url",
+                  image_url: { url: `data:${mimeType};base64,${imageBase64}` },
+                },
+              ],
+            },
+          ],
+        }),
+      });
+    } catch (err) {
+      // TimeoutError / network error — surface a stable, credential-free code.
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        throw new Error("recognizer_provider_timeout");
+      }
+      throw new Error("recognizer_provider_unreachable");
+    }
     if (!resp.ok) {
       // Scrub any credential-bearing detail from provider errors (PRD §20).
       throw new Error(`recognizer_provider_error_${resp.status}`);
     }
-    const body = (await resp.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
+    const body = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
     const text = body.choices?.[0]?.message?.content ?? "{}";
     return normalizeCandidate(JSON.parse(text));
+  };
+  try {
+    return await callOnce();
+  } catch (err) {
+    // A malformed/truncated provider payload (SyntaxError from JSON.parse) is
+    // frequently transient — retry exactly once. Provider HTTP errors keep
+    // their status-bearing message and are not retried here (the route's
+    // fallback semantics own those).
+    if (err instanceof SyntaxError) return await callOnce();
+    throw err;
+  }
+}
+
+/**
+ * Groq vision provider. Opt-in only: Groq ships no vision model as of
+ * 2026-07-18, so this throws unless GROQ_VISION_MODEL (or
+ * NAMEPLATE_VISION_MODEL) names one that has been qualified.
+ */
+export class GroqVisionRecognizer implements NameplateRecognizer {
+  readonly name = "groq-vision";
+
+  async recognize(imageBase64: string, mimeType: string): Promise<EquipmentIdentityCandidate> {
+    const key = process.env.GROQ_API_KEY;
+    if (!key) throw new Error("recognizer_not_configured");
+    const model = groqVisionModel();
+    if (!model) throw new Error("recognizer_no_vision_model");
+    return openAiCompatVision(
+      "https://api.groq.com/openai/v1/chat/completions",
+      key,
+      model,
+      imageBase64,
+      mimeType,
+    );
+  }
+}
+
+/**
+ * Together vision provider — the repo's only live vision path
+ * (mira-bots/shared/inference/router.py). Model id from
+ * NAMEPLATE_VISION_MODEL || TOGETHERAI_VISION_MODEL || google/gemma-3n-E4B-it.
+ */
+export class TogetherVisionRecognizer implements NameplateRecognizer {
+  readonly name = "together-vision";
+
+  async recognize(imageBase64: string, mimeType: string): Promise<EquipmentIdentityCandidate> {
+    const key = process.env.TOGETHERAI_API_KEY;
+    if (!key) throw new Error("recognizer_not_configured");
+    return openAiCompatVision(
+      "https://api.together.xyz/v1/chat/completions",
+      key,
+      togetherVisionModel(),
+      imageBase64,
+      mimeType,
+    );
   }
 }
 
@@ -112,6 +226,34 @@ export class FixtureRecognizer implements NameplateRecognizer {
   }
 }
 
+/**
+ * Fixture payload for NAMEPLATE_RECOGNIZER=fixture. NAMEPLATE_FIXTURE_JSON may
+ * carry a candidate; anything unparseable falls back to a neutral fixture so a
+ * misconfigured test env fails loudly at the assertion, not at JSON.parse.
+ */
+function fixtureCandidate(): EquipmentIdentityCandidate {
+  const raw = process.env.NAMEPLATE_FIXTURE_JSON;
+  if (raw) {
+    try {
+      return normalizeCandidate(JSON.parse(raw));
+    } catch {
+      /* fall through */
+    }
+  }
+  return normalizeCandidate({
+    manufacturer: "Fixture Manufacturing",
+    model: "FIX-100",
+    confidence: 0.5,
+    rawText: ["FIXTURE NAMEPLATE"],
+  });
+}
+
+/**
+ * Provider order: explicit fixture switch → Together (the only live vision
+ * path) → Groq (opt-in, needs an explicitly qualified model).
+ */
 export function defaultRecognizer(): NameplateRecognizer {
+  if (fixtureSelected()) return new FixtureRecognizer(fixtureCandidate());
+  if (process.env.TOGETHERAI_API_KEY) return new TogetherVisionRecognizer();
   return new GroqVisionRecognizer();
 }

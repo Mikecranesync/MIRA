@@ -1,0 +1,136 @@
+{
+  "image": "c08r1_06.jpg",
+  "bytes": 77964,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SMC",
+      "model": "CDS1TN140-150-X77US",
+      "catalogNumber": null,
+      "serialNumber": "209",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "CDS1TN140 -150 -X77US-209",
+        "MAX. PRESS:",
+        "145 PSI",
+        "1.0 MPa",
+        "MADE IN USA",
+        "OYI"
+      ]
+    },
+    "rawText": [
+      "CDS1TN140 -150 -X77US-209",
+      "MAX. PRESS:",
+      "145 PSI",
+      "1.0 MPa",
+      "MADE IN USA",
+      "OYI"
+    ],
+    "values": {
+      "manufacturer": "SMC",
+      "model": "CDS1TN140-150-X77US",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "209",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CDS1TN140-150-X77US"
+        },
+        {
+          "field": "serialNumber",
+          "value": "209"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 8,
+        "cropBbox": {
+          "left": 303,
+          "top": 149,
+          "width": 330,
+          "height": 542
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 90,
+        "ms": 2561
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4154,
+    "total_ms": 7449
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SMC",
+      "model": "CDS1TN40 - 150 - X7US - 209",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "CDS1TN40 - 150 - X7US - 209",
+        "MAX. PRESS:",
+        "145 PSI",
+        "1.0 MPa",
+        "SMC",
+        "MADE IN USA",
+        "OVI"
+      ]
+    },
+    "rawText": [
+      "CDS1TN40 - 150 - X7US - 209",
+      "MAX. PRESS:",
+      "145 PSI",
+      "1.0 MPa",
+      "SMC",
+      "MADE IN USA",
+      "OVI"
+    ],
+    "values": {
+      "manufacturer": "SMC",
+      "model": "CDS1TN40 - 150 - X7US - 209",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SMC"
+        },
+        {
+          "field": "model",
+          "value": "CDS1TN40 - 150 - X7US - 209"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2947
+  }
+}

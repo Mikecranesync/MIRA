@@ -1,0 +1,172 @@
+{
+  "image": "c11r1_02.jpg",
+  "bytes": 89462,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "GENERAL ELECTRIC",
+      "model": "5K4A4M456",
+      "catalogNumber": null,
+      "serialNumber": "EN 2120",
+      "equipmentType": "INDUCTION MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "GENERAL ELECTRIC",
+        "5K4A4M456",
+        "SER NO EN 2120",
+        "HP 75",
+        "FL RPM 380",
+        "VOLTS 460",
+        "FI AMP 96",
+        "TYPE X FRAME 444TS",
+        "INSULATION CLASS B",
+        "MAX AMBIENT 40",
+        "708603"
+      ]
+    },
+    "rawText": [
+      "GENERAL ELECTRIC",
+      "5K4A4M456",
+      "SER NO EN 2120",
+      "HP 75",
+      "FL RPM 380",
+      "VOLTS 460",
+      "FI AMP 96",
+      "TYPE X FRAME 444TS",
+      "INSULATION CLASS B",
+      "MAX AMBIENT 40",
+      "708603"
+    ],
+    "values": {
+      "manufacturer": "GENERAL ELECTRIC",
+      "model": "5K4A4M456",
+      "catalogNumber": null,
+      "equipmentType": "INDUCTION MOTOR",
+      "serialNumber": "EN 2120",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": "INS.Class B",
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "GENERAL ELECTRIC"
+        },
+        {
+          "field": "model",
+          "value": "5K4A4M456"
+        },
+        {
+          "field": "serialNumber",
+          "value": "EN 2120"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 4,
+        "cropBbox": {
+          "left": 0,
+          "top": 0,
+          "width": 444,
+          "height": 256
+        },
+        "imageWidth": 494,
+        "imageHeight": 331,
+        "cropRotationDeg": 0,
+        "ms": 461
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 824,
+    "total_ms": 5131
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "GENERAL ELECTRIC",
+      "model": "A0DEL5K444AK456",
+      "catalogNumber": null,
+      "serialNumber": "EN 2120",
+      "equipmentType": "INDUCTION MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "GENERAL ELECTRIC",
+        "induction motor",
+        "A0DEL5K444AK456",
+        "SER NO EN 2120",
+        "HP 75",
+        "FL RPM 380",
+        "VOLTS 460",
+        "FI AMP 56",
+        "TYPE K",
+        "FRAME 444TS",
+        "INSULATION CLASS B",
+        "MAX AMBIENT 40 °C",
+        "70F603",
+        "70F603"
+      ]
+    },
+    "rawText": [
+      "GENERAL ELECTRIC",
+      "induction motor",
+      "A0DEL5K444AK456",
+      "SER NO EN 2120",
+      "HP 75",
+      "FL RPM 380",
+      "VOLTS 460",
+      "FI AMP 56",
+      "TYPE K",
+      "FRAME 444TS",
+      "INSULATION CLASS B",
+      "MAX AMBIENT 40 °C",
+      "70F603",
+      "70F603"
+    ],
+    "values": {
+      "manufacturer": "GENERAL ELECTRIC",
+      "model": "A0DEL5K444AK456",
+      "catalogNumber": null,
+      "equipmentType": "INDUCTION MOTOR",
+      "serialNumber": "EN 2120",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": "INS.Class B",
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "GENERAL ELECTRIC"
+        },
+        {
+          "field": "model",
+          "value": "A0DEL5K444AK456"
+        },
+        {
+          "field": "serialNumber",
+          "value": "EN 2120"
+        },
+        {
+          "field": "equipmentType",
+          "value": "INDUCTION MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3245
+  }
+}

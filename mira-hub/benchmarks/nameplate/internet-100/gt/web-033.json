@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-033",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Electrolux",
+    "model": "KER 4 V 110",
+    "catalogNumber": "unknown",
+    "serialNumber": "2501202",
+    "equipment_category": "motor",
+    "specs": [
+      {"field": "voltage", "value_verbatim": "110", "unit": "V", "confidence": "medium"},
+      {"field": "current_type", "value_verbatim": "~", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

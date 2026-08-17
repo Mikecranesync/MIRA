@@ -1,0 +1,36 @@
+{
+  "sample_id": "web-115",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dirt", "faded", "corrosion", "scratched"],
+  "photo_gt": {
+    "manufacturer": "NORD",
+    "model": "112MH",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "electric_motor",
+    "specs": [
+      {"field": "phase", "value_verbatim": "PH 3", "unit": "", "confidence": "medium"},
+      {"field": "service_factor", "value_verbatim": "SF 1.15", "unit": "", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "DUTY CONT", "unit": "", "confidence": "medium"},
+      {"field": "ip_rating", "value_verbatim": "IP 55", "unit": "", "confidence": "medium"},
+      {"field": "insulation", "value_verbatim": "INS F", "unit": "", "confidence": "medium"},
+      {"field": "power_factor", "value_verbatim": "PF 0.74", "unit": "", "confidence": "high"},
+      {"field": "frame", "value_verbatim": "FR 112", "unit": "", "confidence": "low"},
+      {"field": "ambient", "value_verbatim": "AMB 40 °C", "unit": "°C", "confidence": "medium"},
+      {"field": "enclosure", "value_verbatim": "ENCL TEFC", "unit": "", "confidence": "medium"},
+      {"field": "power_hp", "value_verbatim": "5.00 Hp", "unit": "HP", "confidence": "high"},
+      {"field": "power_kw", "value_verbatim": "3.70 kW", "unit": "kW", "confidence": "medium"},
+      {"field": "rpm", "value_verbatim": "1770 rpm", "unit": "rpm", "confidence": "medium"},
+      {"field": "frequency", "value_verbatim": "60 Hz", "unit": "Hz", "confidence": "medium"},
+      {"field": "voltage", "value_verbatim": "230/460 V", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "14.4/7.20 A", "unit": "A", "confidence": "medium"},
+      {"field": "ul_file", "value_verbatim": "E 191510", "unit": "", "confidence": "high"},
+      {"field": "csa_file", "value_verbatim": "LR 112560", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["UL", "CSA", "CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

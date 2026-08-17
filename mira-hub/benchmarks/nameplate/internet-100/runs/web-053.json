@@ -1,0 +1,120 @@
+{
+  "image": "c02r1_04.jpg",
+  "bytes": 134948,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "ACS550",
+      "catalogNumber": "U1-124A-4",
+      "serialNumber": "2064901055",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "ACS550-U1-124A-4",
+        "S/N 2064901055"
+      ]
+    },
+    "rawText": [
+      "ACS550-U1-124A-4",
+      "S/N 2064901055"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "ACS550",
+      "catalogNumber": "U1-124A-4",
+      "equipmentType": null,
+      "serialNumber": "2064901055",
+      "voltage": null,
+      "current": "124A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "ACS550"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "U1-124A-4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2064901055"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 3,
+        "cropBbox": {
+          "left": 83,
+          "top": 295,
+          "width": 462,
+          "height": 244
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 1879
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2260,
+    "total_ms": 4117
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "AC5550-U1-124A-4",
+      "catalogNumber": null,
+      "serialNumber": "2064901055",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "AC5550-U1-124A-4",
+        "S/N 2064901055"
+      ]
+    },
+    "rawText": [
+      "AC5550-U1-124A-4",
+      "S/N 2064901055"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "AC5550-U1-124A-4",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "2064901055",
+      "voltage": null,
+      "current": "124A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "AC5550-U1-124A-4"
+        },
+        {
+          "field": "serialNumber",
+          "value": "2064901055"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1879
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "sample_id": "web-124",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "embossed", "low_contrast", "dense_table", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Bonfiglioli Riduttori",
+    "model": "M 3 L C 6",
+    "catalogNumber": "8E58030058-E111057",
+    "serialNumber": "100312",
+    "equipment_category": "gearmotor",
+    "specs": [
+      {"field": "phase", "value_verbatim": "3~Mot", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP 55", "unit": "", "confidence": "high"},
+      {"field": "insulation_class", "value_verbatim": "I.Cl. F", "unit": "", "confidence": "medium"},
+      {"field": "duty", "value_verbatim": "S 1", "unit": "", "confidence": "medium"},
+      {"field": "voltage_50hz", "value_verbatim": "230/400", "unit": "V", "confidence": "medium"},
+      {"field": "power_kw_50hz", "value_verbatim": "2.2", "unit": "kW", "confidence": "high"},
+      {"field": "current_50hz", "value_verbatim": "10.4 - 6", "unit": "A", "confidence": "medium"},
+      {"field": "rpm_50hz", "value_verbatim": "930", "unit": "min-1", "confidence": "medium"},
+      {"field": "cos_phi", "value_verbatim": "0.71", "unit": "", "confidence": "low"},
+      {"field": "voltage_60hz", "value_verbatim": "460", "unit": "V", "confidence": "medium"},
+      {"field": "power_kw_60hz", "value_verbatim": "2.5", "unit": "kW", "confidence": "high"},
+      {"field": "current_60hz", "value_verbatim": "5.9", "unit": "A", "confidence": "medium"},
+      {"field": "rpm_60hz", "value_verbatim": "1130", "unit": "min-1", "confidence": "medium"},
+      {"field": "current_220_240v_delta", "value_verbatim": "10.2 - 10.7 A", "unit": "A", "confidence": "medium"},
+      {"field": "current_380_415v_wye", "value_verbatim": "5.9 - 6.2 A", "unit": "A", "confidence": "medium"},
+      {"field": "current_440_480v_wye", "value_verbatim": "5.7 - 5.9 A", "unit": "A", "confidence": "medium"}
+    ],
+    "marks": ["CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

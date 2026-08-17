@@ -1,0 +1,139 @@
+{
+  "image": "c01r1_03.jpg",
+  "bytes": 447250,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "FATRON",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "OUTLET BOX",
+      "confidence": 0.95,
+      "rawText": [
+        "UL",
+        "LISTED",
+        "790 A",
+        "17 CU IN VOLUME",
+        "OUTLET BOX",
+        "FOR HAZARDOUS LOCATIONS",
+        "CLASS I GROUP B - CLASS II GROUPS",
+        "CAUTION TO PREVENT IGNITION OF GAS ATMOSPHERES DISCONNECT FROM ALL POWER CIRCUIT BEFORE OPENING ENCLOSURE",
+        "WAIT UNTIL CLOSED WHILE CIRCUITS ARE",
+        "ATTENTION AVIS DE PRÉCUTION",
+        "PHÉNÈS DANGEREUSES DANS",
+        "COUVRE-CILE GARDEZ LE",
+        "CIRCUITS BOX"
+      ]
+    },
+    "rawText": [
+      "UL",
+      "LISTED",
+      "790 A",
+      "17 CU IN VOLUME",
+      "OUTLET BOX",
+      "FOR HAZARDOUS LOCATIONS",
+      "CLASS I GROUP B - CLASS II GROUPS",
+      "CAUTION TO PREVENT IGNITION OF GAS ATMOSPHERES DISCONNECT FROM ALL POWER CIRCUIT BEFORE OPENING ENCLOSURE",
+      "WAIT UNTIL CLOSED WHILE CIRCUITS ARE",
+      "ATTENTION AVIS DE PRÉCUTION",
+      "PHÉNÈS DANGEREUSES DANS",
+      "COUVRE-CILE GARDEZ LE",
+      "CIRCUITS BOX"
+    ],
+    "values": {
+      "manufacturer": "FATRON",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "OUTLET BOX",
+      "serialNumber": null,
+      "voltage": null,
+      "current": "790A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "equipmentType",
+          "value": "OUTLET BOX"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 2,
+        "cropBbox": {
+          "left": 551,
+          "top": 737,
+          "width": 240,
+          "height": 157
+        },
+        "imageWidth": 1920,
+        "imageHeight": 1440,
+        "cropRotationDeg": 0,
+        "ms": 2207
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 5651,
+    "total_ms": 8827
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Baldor",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "0718-04",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Baldor",
+        "0718-04"
+      ]
+    },
+    "rawText": [
+      "Baldor",
+      "0718-04"
+    ],
+    "values": {
+      "manufacturer": "Baldor",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "motor",
+      "serialNumber": "0718-04",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Baldor"
+        },
+        {
+          "field": "serialNumber",
+          "value": "0718-04"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1545
+  }
+}

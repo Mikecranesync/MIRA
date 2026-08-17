@@ -2,26 +2,38 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
+import { ingestPdfToNode, ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { findDuplicateUpload } from "@/lib/uploads";
 import pool from "@/lib/db";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
+import {
+  parkOrReuseFile,
+  linkFileToUpload,
+  attachFileToTargets,
+  fileCapability,
+  claimIngest,
+  releaseIngestClaim,
+} from "@/lib/workspace-files";
 
 export const dynamic = "force-dynamic";
 
-const MIME_ALLOWLIST = [
+// Types we recognize well enough to keep their declared MIME. Everything else
+// is RETAINED (a maintenance workspace holds arbitrary files) but normalized to
+// application/octet-stream so it is parked as capability "stored": never
+// indexed, never rendered inline, download-only. The only hard rejection left
+// on this door is the size limit.
+const KNOWN_MIME_PREFIXES = [
   "application/pdf",
   "image/",
   "text/",
-  "text/csv",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.",
 ];
 
 const MAX_BYTES = MAX_UPLOAD_BYTES;
 
-function isMimeAllowed(mime: string): boolean {
-  return MIME_ALLOWLIST.some((prefix) => mime.startsWith(prefix));
+function isKnownMime(mime: string): boolean {
+  return KNOWN_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
 }
 
 interface FileRow {
@@ -209,13 +221,10 @@ export async function POST(
     return NextResponse.json({ error: `file exceeds ${MAX_UPLOAD_MB} MB limit` }, { status: 413 });
   }
 
-  const mimeRaw = file.type || "application/octet-stream";
-  if (!isMimeAllowed(mimeRaw)) {
-    return NextResponse.json(
-      { error: `file type '${mimeRaw}' is not allowed` },
-      { status: 415 },
-    );
-  }
+  // Unknown types are kept, not rejected — normalized to octet-stream so the
+  // capability model parks them as "stored" (see KNOWN_MIME_PREFIXES above).
+  const declaredMime = file.type || "application/octet-stream";
+  const mimeRaw = isKnownMime(declaredMime) ? declaredMime : "application/octet-stream";
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const isPdf = mimeRaw === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -265,24 +274,76 @@ export async function POST(
       }
     }
 
-    // Filing cabinet: park the original bytes FIRST, for every upload. The
-    // document is kept even when downstream indexing fails (an image-only PDF
-    // used to 500 and be lost entirely) — the cabinet never loses a file it
-    // accepted.
-    const directId = await withTenantContext(ctx.tenantId, async (c) => {
-      const ins = await c.query<{ id: string }>(
-        `INSERT INTO namespace_direct_uploads
-            (tenant_id, node_id, filename, mime_type, size_bytes, content, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id`,
-        [ctx.tenantId, id, file.name, mimeRaw, file.size, buffer, ctx.userId],
-      );
-      return ins.rows[0].id;
+    // Filing cabinet: park the original bytes FIRST, for every upload — through
+    // the canonical Files service (075), which resolves identical bytes to the
+    // EXISTING canonical file instead of parking a second blob. The document is
+    // kept even when downstream indexing fails (an image-only PDF used to 500
+    // and be lost entirely) — the cabinet never loses a file it accepted.
+    const park = await parkOrReuseFile({
+      tenantId: ctx.tenantId,
+      filename: file.name,
+      mimeType: mimeRaw,
+      sizeBytes: file.size,
+      buffer,
+      createdBy: ctx.userId,
+      nodeId: id,
     });
+    const directId = park.fileId;
+
+    // Every upload files the canonical file at THIS node. Attaching is
+    // idempotent (unique relationship constraint), and a link failure must
+    // never lose the parked bytes.
+    try {
+      await attachFileToTargets(
+        ctx.tenantId,
+        directId,
+        [{ targetType: "namespace_node", targetId: id, isPrimary: false }],
+        { createdBy: ctx.userId },
+      );
+    } catch (err) {
+      console.warn("[api/namespace/node/:id/files POST] node link skipped", err);
+    }
+
+    // Exact bytes already parsed for this tenant → reuse the existing document.
+    // No re-parse, no re-chunk, no re-embed; the file is simply now ALSO filed
+    // here (the link above did that).
+    if (park.reused && park.uploadId !== null) {
+      return NextResponse.json(
+        {
+          ok: true,
+          indexed: true,
+          duplicate: true,
+          uploadId: park.uploadId,
+          fileId: directId,
+          file: {
+            id: directId,
+            filename: file.name,
+            size_bytes: file.size,
+            capability: fileCapability(mimeRaw, file.name),
+          },
+        },
+        { status: 200 },
+      );
+    }
 
     // Indexable docs (PDF + plain text) → mira-ingest-v2 path: chunk into
     // knowledge_entries attached to this node. Re-readable + citable via chat.
     if (isPdf || isText) {
+      // Atomic ingestion claim (Codex round 2, 2026-08-16): close the same
+      // check-then-ingest race the confirm route had.
+      const claim = await claimIngest(ctx.tenantId, directId);
+      if (!claim.claimed) {
+        if (claim.reason === "already_ingested" && claim.uploadId) {
+          return NextResponse.json(
+            { ok: true, indexed: true, duplicate: true, uploadId: claim.uploadId, fileId: directId },
+            { status: 200 },
+          );
+        }
+        return NextResponse.json(
+          { ok: true, indexed: false, indexing: true, fileId: directId },
+          { status: 202 },
+        );
+      }
       try {
         const ingest = isPdf ? ingestPdfToNode : ingestTextToNode;
         const { uploadId, chunkCount } = await ingest({
@@ -297,25 +358,34 @@ export async function POST(
         });
         // Link the parked original to its indexed upload so the panel shows ONE
         // row per document (downloadable AND citable) and the tree doesn't
-        // double-count it.
-        await withTenantContext(ctx.tenantId, async (c) => {
-          await c.query(
-            `UPDATE namespace_direct_uploads SET upload_id = $1
-              WHERE id = $2 AND tenant_id = $3`,
-            [uploadId, directId, ctx.tenantId],
+        // double-count it. Token-fenced against stale-window takeover.
+        const won = await linkFileToUpload(ctx.tenantId, directId, uploadId, claim.claimToken);
+        if (!won) {
+          // Fence lost → duplicate chunk set; remove it (best-effort).
+          await deleteOrphanNodeIngest(ctx.tenantId, uploadId);
+          return NextResponse.json(
+            { ok: true, indexed: false, indexing: true, fileId: directId },
+            { status: 202 },
           );
-        });
+        }
         return NextResponse.json(
           {
             ok: true,
             indexed: true,
             uploadId,
             chunkCount,
-            file: { id: directId, filename: file.name, size_bytes: file.size },
+            fileId: directId,
+            file: {
+              id: directId,
+              filename: file.name,
+              size_bytes: file.size,
+              capability: fileCapability(mimeRaw, file.name),
+            },
           },
           { status: 201 },
         );
       } catch (err) {
+        await releaseIngestClaim(ctx.tenantId, directId, claim.claimToken).catch(() => {});
         // The original is already parked — the file is NOT lost. Report the
         // indexing failure honestly (#1899: visible, durable) without failing
         // the upload.
@@ -325,7 +395,13 @@ export async function POST(
             ok: true,
             indexed: false,
             warning: friendlyIngestError((err as Error)?.message ?? ""),
-            file: { id: directId, filename: file.name, size_bytes: file.size },
+            fileId: directId,
+            file: {
+              id: directId,
+              filename: file.name,
+              size_bytes: file.size,
+              capability: fileCapability(mimeRaw, file.name),
+            },
           },
           { status: 201 },
         );
@@ -333,7 +409,17 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { ok: true, indexed: false, file: { id: directId, filename: file.name, size_bytes: file.size } },
+      {
+        ok: true,
+        indexed: false,
+        fileId: directId,
+        file: {
+          id: directId,
+          filename: file.name,
+          size_bytes: file.size,
+          capability: fileCapability(mimeRaw, file.name),
+        },
+      },
       { status: 201 },
     );
   } catch (err) {

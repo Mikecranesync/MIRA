@@ -1,0 +1,228 @@
+{
+  "image": "c05r1_06.jpg",
+  "bytes": 170242,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperE Motor",
+      "catalogNumber": "EJMM3711T",
+      "serialNumber": "F2007245943",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR RELIANCE",
+        "SuperE Motor",
+        "CAT.NO. EJMM3711T",
+        "SPEC 37M031S864G1",
+        "HP 10",
+        "VOLTS 230/460",
+        "AMPS 23.2/11.6",
+        "RPM 3490",
+        "FRAME 215JM",
+        "Hz 60",
+        "PH 3",
+        "SF 1.15",
+        "CODE G DES B CLASS F",
+        "NEMA NOM. EFF 90.2 % PF 88 %",
+        "RATING 40C AMB-CONT",
+        "CC 010A",
+        "USABLE AT 208V 24.9",
+        "ENCL TEFC SER F2007245943",
+        "BRG DE 6309",
+        "VPWM INVERTER READY",
+        "CT 6-60 Hz (10:1) VT 3–60 Hz (20:1)",
+        "USABLE AT 50Hz 10HP 190/380V 28.2/14.1ASF 1.0",
+        "BALDOR ELECTRIC CO. FT SMITH, AR. MFG IN U.S.A.",
+        "NP3441LUA"
+      ]
+    },
+    "rawText": [
+      "BALDOR RELIANCE",
+      "SuperE Motor",
+      "CAT.NO. EJMM3711T",
+      "SPEC 37M031S864G1",
+      "HP 10",
+      "VOLTS 230/460",
+      "AMPS 23.2/11.6",
+      "RPM 3490",
+      "FRAME 215JM",
+      "Hz 60",
+      "PH 3",
+      "SF 1.15",
+      "CODE G DES B CLASS F",
+      "NEMA NOM. EFF 90.2 % PF 88 %",
+      "RATING 40C AMB-CONT",
+      "CC 010A",
+      "USABLE AT 208V 24.9",
+      "ENCL TEFC SER F2007245943",
+      "BRG DE 6309",
+      "VPWM INVERTER READY",
+      "CT 6-60 Hz (10:1) VT 3–60 Hz (20:1)",
+      "USABLE AT 50Hz 10HP 190/380V 28.2/14.1ASF 1.0",
+      "BALDOR ELECTRIC CO. FT SMITH, AR. MFG IN U.S.A.",
+      "NP3441LUA"
+    ],
+    "values": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperE Motor",
+      "catalogNumber": "EJMM3711T",
+      "equipmentType": "Motor",
+      "serialNumber": "F2007245943",
+      "voltage": "208V",
+      "current": "010A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BALDOR RELIANCE"
+        },
+        {
+          "field": "model",
+          "value": "SuperE Motor"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "EJMM3711T"
+        },
+        {
+          "field": "serialNumber",
+          "value": "F2007245943"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 63,
+        "cropBbox": {
+          "left": 335,
+          "top": 296,
+          "width": 667,
+          "height": 768
+        },
+        "imageWidth": 1350,
+        "imageHeight": 1350,
+        "cropRotationDeg": 0,
+        "ms": 3040
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3870,
+    "total_ms": 10267
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperT Motor",
+      "catalogNumber": "EJMM3711T",
+      "serialNumber": "Z7007245943",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR RELIANCE",
+        "SuperT Motor",
+        "CAT.NO. EJMM3711T",
+        "SPEC 37M031S864G1",
+        "HP 10",
+        "VOLTS 230/460",
+        "AMPS 23.2/11.6",
+        "RPM 3490",
+        "FRAME 21S.JM",
+        "HZ 60",
+        "SF 1.15",
+        "CODE G DES B CLASS F",
+        "NEMA NOM. EFF 90.2 % PF 88 %",
+        "RATING 40C AMB-CONT",
+        "CC 010A",
+        "USABLE-AT 208V 24.9",
+        "ENCL TEFC SER Z7007245943",
+        "BRG DE 630G",
+        "ODE 6206",
+        "VPMM INVERTER READY",
+        "6-10 HP (10.1 kW) 3-60 Hz (201)",
+        "USABLE AT 50-60Hz 10HP 380-282-241-MASF-1.0",
+        "BALDOR ELECTRIC CO. LTD SMITH, ARK. MFG. IN U.S.A.",
+        "NP3441LUA"
+      ]
+    },
+    "rawText": [
+      "BALDOR RELIANCE",
+      "SuperT Motor",
+      "CAT.NO. EJMM3711T",
+      "SPEC 37M031S864G1",
+      "HP 10",
+      "VOLTS 230/460",
+      "AMPS 23.2/11.6",
+      "RPM 3490",
+      "FRAME 21S.JM",
+      "HZ 60",
+      "SF 1.15",
+      "CODE G DES B CLASS F",
+      "NEMA NOM. EFF 90.2 % PF 88 %",
+      "RATING 40C AMB-CONT",
+      "CC 010A",
+      "USABLE-AT 208V 24.9",
+      "ENCL TEFC SER Z7007245943",
+      "BRG DE 630G",
+      "ODE 6206",
+      "VPMM INVERTER READY",
+      "6-10 HP (10.1 kW) 3-60 Hz (201)",
+      "USABLE AT 50-60Hz 10HP 380-282-241-MASF-1.0",
+      "BALDOR ELECTRIC CO. LTD SMITH, ARK. MFG. IN U.S.A.",
+      "NP3441LUA"
+    ],
+    "values": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperT Motor",
+      "catalogNumber": "EJMM3711T",
+      "equipmentType": "Motor",
+      "serialNumber": "Z7007245943",
+      "voltage": "208V",
+      "current": "010A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BALDOR RELIANCE"
+        },
+        {
+          "field": "model",
+          "value": "SuperT Motor"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "EJMM3711T"
+        },
+        {
+          "field": "serialNumber",
+          "value": "Z7007245943"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 6060
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "image": "c08r1_09.jpg",
+  "bytes": 100683,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "FESTO",
+      "model": "CPE14-M1BH-5J",
+      "catalogNumber": "196939",
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "FESTO",
+        "CPE14-M1BH-5J",
+        "196939"
+      ]
+    },
+    "rawText": [
+      "FESTO",
+      "CPE14-M1BH-5J",
+      "196939"
+    ],
+    "values": {
+      "manufacturer": "FESTO",
+      "model": "CPE14-M1BH-5J",
+      "catalogNumber": "196939",
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FESTO"
+        },
+        {
+          "field": "model",
+          "value": "CPE14-M1BH-5J"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "196939"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 2,
+        "cropBbox": {
+          "left": 268,
+          "top": 200,
+          "width": 261,
+          "height": 190
+        },
+        "imageWidth": 1280,
+        "imageHeight": 720,
+        "cropRotationDeg": 0,
+        "ms": 2289
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3170,
+    "total_ms": 4834
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "FESTO",
+      "model": "CRE4M-8S-1",
+      "catalogNumber": "CRE4M-8S-1",
+      "serialNumber": null,
+      "equipmentType": "Solenoid Valve",
+      "confidence": 0.95,
+      "rawText": [
+        "FESTO",
+        "CRE4M-8S-1",
+        "1012932",
+        "3 1/2",
+        "24 V DC",
+        "Pneumatic",
+        "CRE4M-8S-1",
+        "1012932",
+        "3 1/2",
+        "24 V DC",
+        "Pneumatic"
+      ]
+    },
+    "rawText": [
+      "FESTO",
+      "CRE4M-8S-1",
+      "1012932",
+      "3 1/2",
+      "24 V DC",
+      "Pneumatic",
+      "CRE4M-8S-1",
+      "1012932",
+      "3 1/2",
+      "24 V DC",
+      "Pneumatic"
+    ],
+    "values": {
+      "manufacturer": "FESTO",
+      "model": "CRE4M-8S-1",
+      "catalogNumber": "CRE4M-8S-1",
+      "equipmentType": "Solenoid Valve",
+      "serialNumber": null,
+      "voltage": "24VDC",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FESTO"
+        },
+        {
+          "field": "model",
+          "value": "CRE4M-8S-1"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "CRE4M-8S-1"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2675
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "image": "c10r1_02.jpg",
+  "bytes": 3600407,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "MALMBERGS",
+      "model": "MS 711-2",
+      "catalogNumber": null,
+      "serialNumber": "1212073091",
+      "equipmentType": "THREE - PHASE INDUCTION MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "MALMBERGS",
+        "THREE - PHASE INDUCTION MOTOR",
+        "FRAME MS 711-2",
+        "INS.CL F",
+        "kW 0.37",
+        "HP 0.5",
+        "IP 55",
+        "RPM 2730",
+        "Hz 50",
+        "CONN. Δ/Y",
+        "V 230/400",
+        "A 1.67/0.97",
+        "NO. 1212073091"
+      ]
+    },
+    "rawText": [
+      "MALMBERGS",
+      "THREE - PHASE INDUCTION MOTOR",
+      "FRAME MS 711-2",
+      "INS.CL F",
+      "kW 0.37",
+      "HP 0.5",
+      "IP 55",
+      "RPM 2730",
+      "Hz 50",
+      "CONN. Δ/Y",
+      "V 230/400",
+      "A 1.67/0.97",
+      "NO. 1212073091"
+    ],
+    "values": {
+      "manufacturer": "MALMBERGS",
+      "model": "MS 711-2",
+      "catalogNumber": null,
+      "equipmentType": "THREE - PHASE INDUCTION MOTOR",
+      "serialNumber": "1212073091",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "MALMBERGS"
+        },
+        {
+          "field": "model",
+          "value": "MS 711-2"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1212073091"
+        },
+        {
+          "field": "equipmentType",
+          "value": "THREE - PHASE INDUCTION MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 14,
+        "cropBbox": {
+          "left": 115,
+          "top": 193,
+          "width": 2676,
+          "height": 1276
+        },
+        "imageWidth": 3049,
+        "imageHeight": 1640,
+        "cropRotationDeg": 0,
+        "ms": 1791
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 17884,
+    "total_ms": 21340
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "MALMBERGS",
+      "model": "MS 711-2",
+      "catalogNumber": null,
+      "serialNumber": "1212073091",
+      "equipmentType": "THREE - PHASE INDUCTION MOTOR",
+      "confidence": 0.98,
+      "rawText": [
+        "MALMBERGS",
+        "THREE - PHASE INDUCTION MOTOR",
+        "FRAME MS 711-2",
+        "kW 0.37",
+        "HP 0.5",
+        "RPM 2730",
+        "Hz 50",
+        "V 230/400",
+        "A 1.67/0.97",
+        "INS.CL F",
+        "IP 55",
+        "CONN. Δ/Y",
+        "NO. 1212073091"
+      ]
+    },
+    "rawText": [
+      "MALMBERGS",
+      "THREE - PHASE INDUCTION MOTOR",
+      "FRAME MS 711-2",
+      "kW 0.37",
+      "HP 0.5",
+      "RPM 2730",
+      "Hz 50",
+      "V 230/400",
+      "A 1.67/0.97",
+      "INS.CL F",
+      "IP 55",
+      "CONN. Δ/Y",
+      "NO. 1212073091"
+    ],
+    "values": {
+      "manufacturer": "MALMBERGS",
+      "model": "MS 711-2",
+      "catalogNumber": null,
+      "equipmentType": "THREE - PHASE INDUCTION MOTOR",
+      "serialNumber": "1212073091",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "MALMBERGS"
+        },
+        {
+          "field": "model",
+          "value": "MS 711-2"
+        },
+        {
+          "field": "serialNumber",
+          "value": "1212073091"
+        },
+        {
+          "field": "equipmentType",
+          "value": "THREE - PHASE INDUCTION MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4333
+  }
+}

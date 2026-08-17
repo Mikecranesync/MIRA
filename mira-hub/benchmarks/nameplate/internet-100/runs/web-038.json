@@ -1,0 +1,116 @@
+{
+  "image": "c08r1_07.jpg",
+  "bytes": 145381,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "150-0600 x2",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.75,
+      "rawText": [
+        "150-0600 x2",
+        "MADE IN CANADA",
+        "20 HP"
+      ]
+    },
+    "rawText": [
+      "150-0600 x2",
+      "MADE IN CANADA",
+      "20 HP"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "150-0600 x2",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "150-0600 x2"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 1,
+        "cropBbox": {
+          "left": 652,
+          "top": 357,
+          "width": 181,
+          "height": 138
+        },
+        "imageWidth": 1280,
+        "imageHeight": 960,
+        "cropRotationDeg": 0,
+        "ms": 1494
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3075,
+    "total_ms": 4455
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "HMI",
+      "model": "40A 100",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Cylinder",
+      "confidence": 0.95,
+      "rawText": [
+        "HMI",
+        "40A 100"
+      ]
+    },
+    "rawText": [
+      "HMI",
+      "40A 100"
+    ],
+    "values": {
+      "manufacturer": "HMI",
+      "model": "40A 100",
+      "catalogNumber": null,
+      "equipmentType": "Cylinder",
+      "serialNumber": null,
+      "voltage": null,
+      "current": "40A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "HMI"
+        },
+        {
+          "field": "model",
+          "value": "40A 100"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1376
+  }
+}

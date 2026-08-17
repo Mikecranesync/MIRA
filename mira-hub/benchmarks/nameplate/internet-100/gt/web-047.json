@@ -1,0 +1,33 @@
+{
+  "sample_id": "web-047",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "dirt", "scratched", "dense_table"],
+  "photo_gt": {
+    "manufacturer": "unknown",
+    "model": "MG100LC2-28FT130-H3",
+    "catalogNumber": "unknown",
+    "serialNumber": "99208359",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "power_kw", "value_verbatim": "P2 3,00 kW", "unit": "kW", "confidence": "high"},
+      {"field": "poles_duty", "value_verbatim": "2-pole/S1", "unit": "", "confidence": "medium"},
+      {"field": "voltage_50hz", "value_verbatim": "U 200-220/346-380 V", "unit": "V", "confidence": "high"},
+      {"field": "current_50hz", "value_verbatim": "11,6-11,6/6,65-6,65 A", "unit": "A", "confidence": "high"},
+      {"field": "current_max_50hz", "value_verbatim": "Imax 12,4-12,4/7,2-7,1A", "unit": "A", "confidence": "medium"},
+      {"field": "power_factor_50hz", "value_verbatim": "cos φ 0,85-0,77", "unit": "", "confidence": "high"},
+      {"field": "rpm_50hz", "value_verbatim": "n 2920-2940min⁻¹", "unit": "min-1", "confidence": "high"},
+      {"field": "efficiency_50hz", "value_verbatim": "Eff. IE3 87,1% - IE3 87,1", "unit": "%", "confidence": "medium"},
+      {"field": "voltage_60hz", "value_verbatim": "U 200-220/346-380 V", "unit": "V", "confidence": "high"},
+      {"field": "current_60hz", "value_verbatim": "11,4-10,4/6,55-6 A", "unit": "A", "confidence": "high"},
+      {"field": "current_max_60hz", "value_verbatim": "Imax 12,4-11,2/7,15-6,55A", "unit": "A", "confidence": "high"},
+      {"field": "power_factor_60hz", "value_verbatim": "cos φ 0,88-0,86", "unit": "", "confidence": "high"},
+      {"field": "rpm_60hz", "value_verbatim": "n 3500-3520min⁻¹", "unit": "min-1", "confidence": "high"},
+      {"field": "efficiency_60hz", "value_verbatim": "Eff. IE2 87,5% - IE3 88,5", "unit": "%", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

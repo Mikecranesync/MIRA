@@ -1,0 +1,220 @@
+{
+  "image": "c12r1_07.jpg",
+  "bytes": 2432129,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "miller",
+      "model": "SR 200",
+      "catalogNumber": null,
+      "serialNumber": "24313",
+      "equipmentType": "DIRECT CURRENT ARC WELDER",
+      "confidence": 0.95,
+      "rawText": [
+        "MILLER",
+        "DIRECT CURRENT ARC WELDER",
+        "MODEL SR 200",
+        "SERIAL NO:24313",
+        "PRIMARY",
+        "VOLTS208/220/440",
+        "AMPS. 44 / 42 / 21",
+        "K. W. 13",
+        "K. V. A. 16",
+        "CYCLES 50 / 60",
+        "THREE PHASE",
+        "SECONDARY",
+        "AMPS. 200",
+        "DUTY CYCLE 60%",
+        "PATENT APPLIED FOR",
+        "MILLER ELECTRIC MANUFACTURING CO., APPLETON, WIS., U. S.A.",
+        "POSITIVE",
+        "WORK",
+        "ELECTRODE",
+        "STRAIGHT POLARITY",
+        "ELECTRODE",
+        "NEGATIVE",
+        "WORK",
+        "2ZPI24A"
+      ]
+    },
+    "rawText": [
+      "MILLER",
+      "DIRECT CURRENT ARC WELDER",
+      "MODEL SR 200",
+      "SERIAL NO:24313",
+      "PRIMARY",
+      "VOLTS208/220/440",
+      "AMPS. 44 / 42 / 21",
+      "K. W. 13",
+      "K. V. A. 16",
+      "CYCLES 50 / 60",
+      "THREE PHASE",
+      "SECONDARY",
+      "AMPS. 200",
+      "DUTY CYCLE 60%",
+      "PATENT APPLIED FOR",
+      "MILLER ELECTRIC MANUFACTURING CO., APPLETON, WIS., U. S.A.",
+      "POSITIVE",
+      "WORK",
+      "ELECTRODE",
+      "STRAIGHT POLARITY",
+      "ELECTRODE",
+      "NEGATIVE",
+      "WORK",
+      "2ZPI24A"
+    ],
+    "values": {
+      "manufacturer": "miller",
+      "model": "SR 200",
+      "catalogNumber": null,
+      "equipmentType": "DIRECT CURRENT ARC WELDER",
+      "serialNumber": "24313",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "miller"
+        },
+        {
+          "field": "model",
+          "value": "SR 200"
+        },
+        {
+          "field": "serialNumber",
+          "value": "24313"
+        },
+        {
+          "field": "equipmentType",
+          "value": "DIRECT CURRENT ARC WELDER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 54,
+        "cropBbox": {
+          "left": 99,
+          "top": 120,
+          "width": 2241,
+          "height": 2026
+        },
+        "imageWidth": 2340,
+        "imageHeight": 2246,
+        "cropRotationDeg": 0,
+        "ms": 3096
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 8728,
+    "total_ms": 13597
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "miller",
+      "model": "SR 200",
+      "catalogNumber": null,
+      "serialNumber": "24313",
+      "equipmentType": "DIRECT CURRENT ARC WELDER",
+      "confidence": 0.95,
+      "rawText": [
+        "MILLER",
+        "DIRECT CURRENT ARC WELDER",
+        "MODEL SR 200",
+        "SERIAL NO.24313",
+        "PRIMARY",
+        "VOLTS208/220/440",
+        "AMPS. 44/42/21",
+        "K. W. 13",
+        "K. V. A. 16",
+        "CYCLES 50/60",
+        "THREE PHASE",
+        "SECONDARY",
+        "Amps. 200",
+        "DUTY CYCLE 60%",
+        "PATENT APPLIED FOR",
+        "MILLER ELECTRIC MANUFACTURING CO., APPLETON, WIS., U.S.A.",
+        "POSITIVE",
+        "WORK",
+        "STRAIGHT POLARITY",
+        "ELECTRODE",
+        "NEGATIVE",
+        "WORK",
+        "B",
+        "A"
+      ]
+    },
+    "rawText": [
+      "MILLER",
+      "DIRECT CURRENT ARC WELDER",
+      "MODEL SR 200",
+      "SERIAL NO.24313",
+      "PRIMARY",
+      "VOLTS208/220/440",
+      "AMPS. 44/42/21",
+      "K. W. 13",
+      "K. V. A. 16",
+      "CYCLES 50/60",
+      "THREE PHASE",
+      "SECONDARY",
+      "Amps. 200",
+      "DUTY CYCLE 60%",
+      "PATENT APPLIED FOR",
+      "MILLER ELECTRIC MANUFACTURING CO., APPLETON, WIS., U.S.A.",
+      "POSITIVE",
+      "WORK",
+      "STRAIGHT POLARITY",
+      "ELECTRODE",
+      "NEGATIVE",
+      "WORK",
+      "B",
+      "A"
+    ],
+    "values": {
+      "manufacturer": "miller",
+      "model": "SR 200",
+      "catalogNumber": null,
+      "equipmentType": "DIRECT CURRENT ARC WELDER",
+      "serialNumber": "24313",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "miller"
+        },
+        {
+          "field": "model",
+          "value": "SR 200"
+        },
+        {
+          "field": "serialNumber",
+          "value": "24313"
+        },
+        {
+          "field": "equipmentType",
+          "value": "DIRECT CURRENT ARC WELDER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4837
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "image": "c12r1_04.jpg",
+  "bytes": 4717909,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "THE SUPERHEATER GO",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Superheater & Throttle",
+      "confidence": 0.95,
+      "rawText": [
+        "RE16285",
+        "1662955",
+        "1712928",
+        "1863020",
+        "1891898",
+        "1863068",
+        "OTHER PATENTS PENDING"
+      ]
+    },
+    "rawText": [
+      "RE16285",
+      "1662955",
+      "1712928",
+      "1863020",
+      "1891898",
+      "1863068",
+      "OTHER PATENTS PENDING"
+    ],
+    "values": {
+      "manufacturer": "THE SUPERHEATER GO",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": "Superheater & Throttle",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 12,
+        "cropBbox": {
+          "left": 669,
+          "top": 504,
+          "width": 2205,
+          "height": 626
+        },
+        "imageWidth": 3566,
+        "imageHeight": 2440,
+        "cropRotationDeg": 0,
+        "ms": 2096
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 12121,
+    "total_ms": 14640
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ELESCO",
+      "model": "THE SUPERHEATER GO",
+      "catalogNumber": null,
+      "serialNumber": "RE16285 1863020 1662955 1891898 1712928 1863068",
+      "equipmentType": "Superheater & Throttle",
+      "confidence": 0.95,
+      "rawText": [
+        "REG.IN PAT. U.S. OFFICE",
+        "ELESCO",
+        "THE SUPERHEATER GO",
+        "SUPERHEATER & THROTTLE PATENTED IN U.S.A",
+        "RE16285",
+        "1863020",
+        "1662955",
+        "1891898",
+        "1712928",
+        "1863068",
+        "OTHER PATENTS PENDING"
+      ]
+    },
+    "rawText": [
+      "REG.IN PAT. U.S. OFFICE",
+      "ELESCO",
+      "THE SUPERHEATER GO",
+      "SUPERHEATER & THROTTLE PATENTED IN U.S.A",
+      "RE16285",
+      "1863020",
+      "1662955",
+      "1891898",
+      "1712928",
+      "1863068",
+      "OTHER PATENTS PENDING"
+    ],
+    "values": {
+      "manufacturer": "ELESCO",
+      "model": "THE SUPERHEATER GO",
+      "catalogNumber": null,
+      "equipmentType": "Superheater & Throttle",
+      "serialNumber": "RE16285 1863020 1662955 1891898 1712928 1863068",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ELESCO"
+        },
+        {
+          "field": "model",
+          "value": "THE SUPERHEATER GO"
+        },
+        {
+          "field": "serialNumber",
+          "value": "RE16285 1863020 1662955 1891898 1712928 1863068"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Superheater & Throttle"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 5174
+  }
+}

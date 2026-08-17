@@ -9,8 +9,12 @@ vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/db", () => ({ default: { connect: vi.fn() } }));
 vi.mock("@/lib/knowledge-graph/extractor", () => ({ extractAndStore: vi.fn() }));
 vi.mock("@/lib/knowledge-graph/context-builder", () => ({ buildGraphContext: vi.fn() }));
+vi.mock("@/lib/workspace-files", () => ({
+  linkedDocIdsForTarget: vi.fn(async () => []),
+}));
 vi.mock("@/lib/manual-rag", () => ({
   retrieveManualChunks: vi.fn(),
+  retrieveNodeChunks: vi.fn(async () => []),
   appendManualContext: vi.fn((prompt: string) => prompt),
   buildManualUserContent: vi.fn((content: string) => content),
   chunksToSources: vi.fn((chunks: Array<{ title?: string; sourceUrl?: string; sourcePage?: number | null; verified?: boolean }>) =>
@@ -47,7 +51,8 @@ import { POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
-import { retrieveManualChunks, appendManualContext } from "@/lib/manual-rag";
+import { retrieveManualChunks, retrieveNodeChunks, appendManualContext } from "@/lib/manual-rag";
+import { linkedDocIdsForTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
   approvedContextReady,
@@ -230,6 +235,157 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(raw).toContain("[DONE]");
     // Safety stop should NOT call fetch (provider)
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // ── Explicitly-attached documents (workspace_file_links) ──────────────────
+  // The gap these cover: chunks written by the node/notebook ingest path have
+  // NO manufacturer column, so retrieveManualChunks (manufacturer ILIKE) can
+  // never return them. A manual filed on this asset — including one discovered
+  // from its nameplate photo — was invisible to Ask MIRA until this lane.
+
+  it("retrieves documents explicitly attached to the asset, scoped by the validated doc set", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(false);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    vi.mocked(linkedDocIdsForTarget).mockResolvedValue(["doc-1", "doc-2"]);
+    vi.mocked(retrieveNodeChunks).mockResolvedValue([
+      {
+        content: "Rated current 1.27 A per phase",
+        manufacturer: "",
+        modelNumber: "",
+        sourceUrl: "node-doc/doc-1/DGII.pdf",
+        sourcePage: 43,
+        title: "DGII Series Manual",
+        rank: 0.9,
+        verified: false,
+      },
+    ] as never);
+
+    const client = mockClient([
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    await POST(makeReq(userMsg("what is the rated current?")), makeParams(VALID_UUID));
+
+    // Scoped to THIS asset's links...
+    expect(linkedDocIdsForTarget).toHaveBeenCalledWith(
+      goodSession.tenantId,
+      "cmms_asset",
+      VALID_UUID,
+    );
+    // ...and retrieved by the validated doc set, with the node filter bypassed
+    // (these chunks carry the node_id they were ingested under, not the asset).
+    const opts = vi.mocked(retrieveNodeChunks).mock.calls[0]?.[3] as Record<string, unknown>;
+    expect(opts.docIds).toEqual(["doc-1", "doc-2"]);
+    expect(opts.validatedDocScope).toBe(true);
+
+    const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
+    expect(chunks.length).toBe(1);
+    expect(chunks[0].sourceUrl).toBe("node-doc/doc-1/DGII.pdf");
+  });
+
+  it("prefers an attached document over a generic manufacturer match", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(false);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([
+      {
+        content: "Generic manufacturer-matched text",
+        manufacturer: "FactoryLM",
+        modelNumber: "M100",
+        sourceUrl: "https://docs.test/generic",
+        sourcePage: 1,
+        title: "Generic",
+        rank: 0.99,
+        verified: true,
+      },
+    ]);
+    vi.mocked(linkedDocIdsForTarget).mockResolvedValue(["doc-1"]);
+    vi.mocked(retrieveNodeChunks).mockResolvedValue([
+      {
+        content: "Filed-on-this-asset text",
+        manufacturer: "",
+        modelNumber: "",
+        sourceUrl: "node-doc/doc-1/attached.pdf",
+        sourcePage: 7,
+        title: "Attached",
+        rank: 0.1,
+        verified: false,
+      },
+    ] as never);
+
+    const client = mockClient([
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    await POST(makeReq(userMsg("how do I reset it?")), makeParams(VALID_UUID));
+
+    const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
+    // The attached document leads despite a LOWER rank — a document a human
+    // filed here beats a manufacturer string match.
+    expect(chunks[0].sourceUrl).toBe("node-doc/doc-1/attached.pdf");
+    expect(chunks.length).toBe(2);
+  });
+
+  it("does not apply the shared-corpus verified filter to attached documents", async () => {
+    // A tenant's own upload is never `verified` in the shared-corpus sense.
+    // Applying that filter here would silently drop every attached document and
+    // undo this lane wherever approved-retrieval enforcement is on.
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(true);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    vi.mocked(linkedDocIdsForTarget).mockResolvedValue(["doc-1"]);
+    vi.mocked(retrieveNodeChunks).mockResolvedValue([
+      {
+        content: "Attached, tenant-private, not shared-corpus verified",
+        manufacturer: "",
+        modelNumber: "",
+        sourceUrl: "node-doc/doc-1/private.pdf",
+        sourcePage: 2,
+        title: "Attached",
+        rank: 0.5,
+        verified: false,
+      },
+    ] as never);
+
+    const client = mockClient([
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    await POST(makeReq(userMsg("torque spec?")), makeParams(VALID_UUID));
+
+    const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
+    expect(chunks.length).toBe(1);
+    expect(chunks[0].verified).toBe(false);
+  });
+
+  it("survives an attached-file lookup failure without losing asset context", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(false);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    vi.mocked(linkedDocIdsForTarget).mockRejectedValue(new Error("links table unavailable"));
+
+    const client = mockClient([
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(makeReq(userMsg("status?")), makeParams(VALID_UUID));
+    expect(res.status).toBe(200);
+    // The optional lane must never take the primary path down with it.
+    expect(retrieveNodeChunks).not.toHaveBeenCalled();
+    // Asset context still reached the prompt — the failure was contained.
+    expect(appendManualContext).toHaveBeenCalled();
   });
 
   it("filters unverified manual chunks when approved enforcement is enabled", async () => {

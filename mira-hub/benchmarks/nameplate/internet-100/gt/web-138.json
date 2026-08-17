@@ -1,0 +1,21 @@
+{
+  "sample_id": "web-138",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Siemens",
+    "model": "SIMATIC S7-300 CPU315-2 DP",
+    "catalogNumber": "6ES7 315-2AH14-0AB0",
+    "serialNumber": "C-BNVG7368",
+    "equipment_category": "plc",
+    "specs": [],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": {
+    "source_url": "https://4dcontrols.com/shop/6es7-315-2ah14-0ab0-siemens-simatic-s7-300-cpu315-2-dp-cpu-module/",
+    "notes": "Catalog number 6ES7 315-2AH14-0AB0 read directly from the box label; module face reads CPU315-2 DP / SIMATIC S7-300 and edge print 315-2AH14-0AB0. Box label also shows QTY:1 and 11.2011. No electrical specs visible in photo."
+  }
+}

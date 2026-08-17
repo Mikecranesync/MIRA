@@ -1,0 +1,178 @@
+{
+  "image": "c10r1_04.jpg",
+  "bytes": 6702430,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "WRIGHTBUS LTD",
+      "model": "TB 165",
+      "catalogNumber": null,
+      "serialNumber": "NOV 15",
+      "equipmentType": "chassis",
+      "confidence": 0.95,
+      "rawText": [
+        "WRIGHTBUS LTD",
+        "GALGORN, BALLYMENA",
+        "BT42 1PY",
+        "TEL: (028) 2566 41212 FAX: (028) 2564 9703",
+        "BODY No.",
+        "TB 165",
+        "DATE",
+        "NOV 15",
+        "CHASSIS: VOLVO BEL",
+        "BODY LENGTH: 12000mm",
+        "BODY WIDTH: 2550mm",
+        "1-3%",
+        "Volvo Bus Corporation",
+        "Drive",
+        "WB",
+        "Product type",
+        "Vehicle type"
+      ]
+    },
+    "rawText": [
+      "WRIGHTBUS LTD",
+      "GALGORN, BALLYMENA",
+      "BT42 1PY",
+      "TEL: (028) 2566 41212 FAX: (028) 2564 9703",
+      "BODY No.",
+      "TB 165",
+      "DATE",
+      "NOV 15",
+      "CHASSIS: VOLVO BEL",
+      "BODY LENGTH: 12000mm",
+      "BODY WIDTH: 2550mm",
+      "1-3%",
+      "Volvo Bus Corporation",
+      "Drive",
+      "WB",
+      "Product type",
+      "Vehicle type"
+    ],
+    "values": {
+      "manufacturer": "WRIGHTBUS LTD",
+      "model": "TB 165",
+      "catalogNumber": null,
+      "equipmentType": "chassis",
+      "serialNumber": "NOV 15",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "WRIGHTBUS LTD"
+        },
+        {
+          "field": "model",
+          "value": "TB 165"
+        },
+        {
+          "field": "serialNumber",
+          "value": "NOV 15"
+        },
+        {
+          "field": "equipmentType",
+          "value": "chassis"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "original_photo"
+    },
+    "fallback_used": true,
+    "detect_ms": 20017,
+    "total_ms": 26228
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "WRIGHTBUS LTD",
+      "model": "TB 165",
+      "catalogNumber": null,
+      "serialNumber": "NOV 15",
+      "equipmentType": "chassis",
+      "confidence": 0.95,
+      "rawText": [
+        "WRIGHTBUS LTD",
+        "GALGORN, BALLYMENA",
+        "BT42 1PY",
+        "TEL: (028) 2566 41212 FAX: (028) 2564 9703",
+        "BODY No.",
+        "TB 165",
+        "DATE",
+        "NOV 15",
+        "CHASSIS: VOLVO BEL",
+        "BODY LENGTH: 12000mm",
+        "BODY WIDTH: 2550mm",
+        "1-3%",
+        "Volvo Bus Corporation",
+        "Drive",
+        "WB",
+        "Product type",
+        "Vehicle type"
+      ]
+    },
+    "rawText": [
+      "WRIGHTBUS LTD",
+      "GALGORN, BALLYMENA",
+      "BT42 1PY",
+      "TEL: (028) 2566 41212 FAX: (028) 2564 9703",
+      "BODY No.",
+      "TB 165",
+      "DATE",
+      "NOV 15",
+      "CHASSIS: VOLVO BEL",
+      "BODY LENGTH: 12000mm",
+      "BODY WIDTH: 2550mm",
+      "1-3%",
+      "Volvo Bus Corporation",
+      "Drive",
+      "WB",
+      "Product type",
+      "Vehicle type"
+    ],
+    "values": {
+      "manufacturer": "WRIGHTBUS LTD",
+      "model": "TB 165",
+      "catalogNumber": null,
+      "equipmentType": "chassis",
+      "serialNumber": "NOV 15",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "WRIGHTBUS LTD"
+        },
+        {
+          "field": "model",
+          "value": "TB 165"
+        },
+        {
+          "field": "serialNumber",
+          "value": "NOV 15"
+        },
+        {
+          "field": "equipmentType",
+          "value": "chassis"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4935
+  }
+}

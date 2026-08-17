@@ -16,6 +16,9 @@ import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
+// Canonical-files derivation (075) — the widening pass is covered in
+// doc-scope.test.ts; here it stays empty so these branches are unchanged.
+vi.mock("@/lib/workspace-files", () => ({ linkedDocIdsForNode: vi.fn(async () => []) }));
 vi.mock("@/lib/manual-rag", () => ({
   retrieveNodeChunks: vi.fn(),
   appendManualContext: vi.fn((prompt: string) => prompt),
@@ -35,6 +38,7 @@ import { POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { appendManualContext, retrieveNodeChunks } from "@/lib/manual-rag";
+import { linkedDocIdsForNode } from "@/lib/workspace-files";
 
 const VALID_UUID = "11111111-2222-3333-4444-555555555555";
 const TENANT_ID = "tenant-aaaa-bbbb";
@@ -65,6 +69,7 @@ beforeEach(() => {
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
   process.env.GROQ_API_KEY = "test-key"; // so a non-safety path WOULD try to fetch
   vi.mocked(retrieveNodeChunks).mockResolvedValue([]);
+  vi.mocked(linkedDocIdsForNode).mockResolvedValue([]);
   fetchSpy = vi.fn();
   vi.stubGlobal("fetch", fetchSpy);
 });
@@ -198,7 +203,7 @@ describe("POST /api/namespace/node/[id]/chat", () => {
           if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
           return { rows: [] };
         }),
-      }),
+      } as never),
     );
 
     const res = await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
@@ -219,7 +224,7 @@ describe("POST /api/namespace/node/[id]/chat", () => {
           calls.push(sql);
           return { rows: [] };
         }),
-      }),
+      } as never),
     );
 
     const res = await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
@@ -262,7 +267,7 @@ describe("POST /api/namespace/node/[id]/chat", () => {
           if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
           return { rows: [] };
         }),
-      }),
+      } as never),
     );
 
     await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));

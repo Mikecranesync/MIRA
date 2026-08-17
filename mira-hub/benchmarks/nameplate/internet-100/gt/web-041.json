@@ -1,0 +1,38 @@
+{
+  "sample_id": "web-041",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "embossed", "low_contrast", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Siemens-Schuckert",
+    "model": "PFL 660/47-300",
+    "catalogNumber": "unknown",
+    "serialNumber": "2002894",
+    "equipment_category": "synchronous_generator",
+    "specs": [
+      {"field": "voltage_taps", "value_verbatim": "10400 / 11250 / 12100 V", "unit": "V", "confidence": "high"},
+      {"field": "current_rating1", "value_verbatim": "2220 / 2055 / 1905 A", "unit": "A", "confidence": "high"},
+      {"field": "apparent_power_rating1", "value_verbatim": "40000 kVA", "unit": "kVA", "confidence": "high"},
+      {"field": "cos_phi_rating1", "value_verbatim": "0,8", "unit": "", "confidence": "high"},
+      {"field": "duty_rating1", "value_verbatim": "dauernd", "unit": "", "confidence": "high"},
+      {"field": "current_rating2", "value_verbatim": "2490 / 2300 / 2140 A", "unit": "A", "confidence": "high"},
+      {"field": "apparent_power_rating2", "value_verbatim": "44800 kVA", "unit": "kVA", "confidence": "high"},
+      {"field": "cos_phi_rating2", "value_verbatim": "0,8", "unit": "", "confidence": "high"},
+      {"field": "duty_rating2", "value_verbatim": "1 Std.", "unit": "", "confidence": "high"},
+      {"field": "current_rating3", "value_verbatim": "1720 / 1580 / 1470 A", "unit": "A", "confidence": "high"},
+      {"field": "power_rating3", "value_verbatim": "30000 kWm", "unit": "kWm", "confidence": "high"},
+      {"field": "cos_phi_rating3", "value_verbatim": "1", "unit": "", "confidence": "medium"},
+      {"field": "duty_rating3", "value_verbatim": "dauernd", "unit": "", "confidence": "high"},
+      {"field": "speed", "value_verbatim": "300 U/min + 88 %", "unit": "U/min", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50 Per/s", "unit": "Per/s", "confidence": "high"},
+      {"field": "excitation_voltage", "value_verbatim": "220 / 220 / 220 V", "unit": "V", "confidence": "high"},
+      {"field": "excitation_current", "value_verbatim": "750 / 820 / 510 A", "unit": "A", "confidence": "high"},
+      {"field": "connection", "value_verbatim": "Y", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null,
+  "notes": "Embossed cast plate 'SIEMENS-SCHUCKERT' on orange-painted machine housing (Koepchenwerk motor-generator). Header row: 'D | Gen. | Nr 2002894 D'. Type: PFL 660/47-300. Three rating rows each with Y connection and three voltage-tap columns. Excitation row verified by crop at 2x. Embossed gray-on-gray but high-resolution photo makes nearly all text readable."
+}

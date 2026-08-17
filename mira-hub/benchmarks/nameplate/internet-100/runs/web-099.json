@@ -1,0 +1,192 @@
+{
+  "image": "c09r1_03.jpg",
+  "bytes": 100028,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Tecumseh",
+      "model": "AH447RT-172",
+      "catalogNumber": "AH2465Z",
+      "serialNumber": "AH447RT-172-P2 AH2465Z 303290",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "AH447RT-172",
+        "7020 GC 07344",
+        "MADE IN USA",
+        "AH447RT-172-P2",
+        "AH2465Z",
+        "208-230V~ 60Hz",
+        "200-240V~ 50Hz",
+        "LRA 47.0",
+        "3PH",
+        "H2995",
+        "DATE",
+        "303290",
+        "SERIAL NUMBER",
+        "GC",
+        "7020",
+        "MOTOR INFO"
+      ]
+    },
+    "rawText": [
+      "AH447RT-172",
+      "7020 GC 07344",
+      "MADE IN USA",
+      "AH447RT-172-P2",
+      "AH2465Z",
+      "208-230V~ 60Hz",
+      "200-240V~ 50Hz",
+      "LRA 47.0",
+      "3PH",
+      "H2995",
+      "DATE",
+      "303290",
+      "SERIAL NUMBER",
+      "GC",
+      "7020",
+      "MOTOR INFO"
+    ],
+    "values": {
+      "manufacturer": "Tecumseh",
+      "model": "AH447RT-172",
+      "catalogNumber": "AH2465Z",
+      "equipmentType": "motor",
+      "serialNumber": "AH447RT-172-P2 AH2465Z 303290",
+      "voltage": "208-230V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "AH447RT-172"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "AH2465Z"
+        },
+        {
+          "field": "serialNumber",
+          "value": "AH447RT-172-P2 AH2465Z 303290"
+        },
+        {
+          "field": "equipmentType",
+          "value": "motor"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 21,
+        "cropBbox": {
+          "left": 134,
+          "top": 0,
+          "width": 609,
+          "height": 458
+        },
+        "imageWidth": 900,
+        "imageHeight": 608,
+        "cropRotationDeg": 0,
+        "ms": 1188
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1576,
+    "total_ms": 5476
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Tecumseh",
+      "model": "AH447RT-172",
+      "catalogNumber": "AH2465Z",
+      "serialNumber": "303290",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "AH447RT-172",
+        "7020 GC 07344",
+        "AH447RT-172-P2",
+        "AH2465Z",
+        "208-230V~60Hz",
+        "200-240V~50Hz",
+        "LRA 47.0",
+        "3PH",
+        "H2995",
+        "DATE",
+        "303290",
+        "SERIAL NUMBER",
+        "GC",
+        "MOTOR INFO",
+        "7020",
+        "MADE IN USA"
+      ]
+    },
+    "rawText": [
+      "AH447RT-172",
+      "7020 GC 07344",
+      "AH447RT-172-P2",
+      "AH2465Z",
+      "208-230V~60Hz",
+      "200-240V~50Hz",
+      "LRA 47.0",
+      "3PH",
+      "H2995",
+      "DATE",
+      "303290",
+      "SERIAL NUMBER",
+      "GC",
+      "MOTOR INFO",
+      "7020",
+      "MADE IN USA"
+    ],
+    "values": {
+      "manufacturer": "Tecumseh",
+      "model": "AH447RT-172",
+      "catalogNumber": "AH2465Z",
+      "equipmentType": "motor",
+      "serialNumber": "303290",
+      "voltage": "208-230V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "AH447RT-172"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "AH2465Z"
+        },
+        {
+          "field": "serialNumber",
+          "value": "303290"
+        },
+        {
+          "field": "equipmentType",
+          "value": "motor"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 3358
+  }
+}

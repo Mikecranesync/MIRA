@@ -1,0 +1,166 @@
+{
+  "image": "c02r1_09.jpg",
+  "bytes": 139248,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "YASKAWA ELECTRIC CORPORATION",
+      "model": "CIMR-V7AA43P7",
+      "catalogNumber": "43P70",
+      "serialNumber": "J006YA487510041",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL : CIMR-V7AA43P7",
+        "SPEC:43P70",
+        "INPUT : AC3PH 380-460V 50/60Hz 12A",
+        "OUTPUT : AC3PH 0-460V 0-400Hz 8.6A 6.5kVA",
+        "O/N : R11788-450-41",
+        "S/N : J006YA487510041",
+        "MASS : 2.1kg",
+        "PRG:0032",
+        "FILE NO : E131457",
+        "INSTALLATION CATEGORY II",
+        "IP20",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "MODEL : CIMR-V7AA43P7",
+      "SPEC:43P70",
+      "INPUT : AC3PH 380-460V 50/60Hz 12A",
+      "OUTPUT : AC3PH 0-460V 0-400Hz 8.6A 6.5kVA",
+      "O/N : R11788-450-41",
+      "S/N : J006YA487510041",
+      "MASS : 2.1kg",
+      "PRG:0032",
+      "FILE NO : E131457",
+      "INSTALLATION CATEGORY II",
+      "IP20",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "YASKAWA ELECTRIC CORPORATION",
+      "model": "CIMR-V7AA43P7",
+      "catalogNumber": "43P70",
+      "equipmentType": null,
+      "serialNumber": "J006YA487510041",
+      "voltage": "380-460V",
+      "current": "12A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CIMR-V7AA43P7"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "43P70"
+        },
+        {
+          "field": "serialNumber",
+          "value": "J006YA487510041"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 17,
+        "cropBbox": {
+          "left": 22,
+          "top": 388,
+          "width": 624,
+          "height": 567
+        },
+        "imageWidth": 750,
+        "imageHeight": 1000,
+        "cropRotationDeg": 0,
+        "ms": 2205
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2687,
+    "total_ms": 6804
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "YASKAWA ELECTRIC CORPORATION",
+      "model": "CIMR-V7AA43P7",
+      "catalogNumber": "43P70",
+      "serialNumber": "J006YA487510041",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL : CIMR-V7AA43P7",
+        "SPEC :43P70",
+        "INPUT : AC3PH 380-460V 50/60Hz 12A",
+        "OUTPUT : AC3PH 0-460V 0-400Hz 8.6A 6.5kVA",
+        "O/N : R11788-450-41",
+        "S/N : J006YA487510041",
+        "PRG :0032",
+        "FILE NO : E131457",
+        "INSTALLATION CATEGORY II",
+        "IP20",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "MODEL : CIMR-V7AA43P7",
+      "SPEC :43P70",
+      "INPUT : AC3PH 380-460V 50/60Hz 12A",
+      "OUTPUT : AC3PH 0-460V 0-400Hz 8.6A 6.5kVA",
+      "O/N : R11788-450-41",
+      "S/N : J006YA487510041",
+      "PRG :0032",
+      "FILE NO : E131457",
+      "INSTALLATION CATEGORY II",
+      "IP20",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "YASKAWA ELECTRIC CORPORATION",
+      "model": "CIMR-V7AA43P7",
+      "catalogNumber": "43P70",
+      "equipmentType": null,
+      "serialNumber": "J006YA487510041",
+      "voltage": "380-460V",
+      "current": "12A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CIMR-V7AA43P7"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "43P70"
+        },
+        {
+          "field": "serialNumber",
+          "value": "J006YA487510041"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 4276
+  }
+}

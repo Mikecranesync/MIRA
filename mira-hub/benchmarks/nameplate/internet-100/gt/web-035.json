@@ -1,0 +1,28 @@
+{
+  "sample_id": "web-035",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "NORD Gear Corporation",
+    "model": "SK 32 SEK215",
+    "catalogNumber": "202037319-100",
+    "serialNumber": "25511621",
+    "equipment_category": "gear_reducer",
+    "specs": [
+      {"field": "torque", "value_verbatim": "5284 lb-in", "unit": "lb-in", "confidence": "high"},
+      {"field": "gear_ratio", "value_verbatim": "8.36 :1", "unit": "", "confidence": "high"},
+      {"field": "output_rpm", "value_verbatim": "209 rpm", "unit": "rpm", "confidence": "high"},
+      {"field": "mounting_position", "value_verbatim": "Pos M5", "unit": "", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "S1", "unit": "", "confidence": "high"},
+      {"field": "year", "value_verbatim": "2017", "unit": "", "confidence": "high"},
+      {"field": "weight", "value_verbatim": "110 lbs", "unit": "lbs", "confidence": "high"},
+      {"field": "lubricant", "value_verbatim": "MOBIL 600 XP220 2.11 qt", "unit": "qt", "confidence": "high"},
+      {"field": "service_factor", "value_verbatim": "SF 1.00", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

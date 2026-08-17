@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { defaultRecognizer, isRecognizerConfigured } from "@/lib/nameplate";
+import { resolveRecognitionImage } from "@/lib/nameplate/detect";
 
 export const dynamic = "force-dynamic";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -36,8 +37,11 @@ export async function POST(req: NextRequest) {
   }
   const buf = Buffer.from(await file.arrayBuffer());
   try {
-    const candidate = await defaultRecognizer().recognize(buf.toString("base64"), mime);
-    return NextResponse.json({ candidate });
+    // Crop-then-recognize when the detector finds the label (fixes the 10x
+    // current misread); any detector failure reads the original, as before.
+    const read = await resolveRecognitionImage(buf.toString("base64"), mime);
+    const candidate = await defaultRecognizer().recognize(read.base64, read.mimeType);
+    return NextResponse.json({ candidate, imageSource: read.imageSource });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "recognition_failed";
     // Scrub any query-string credentials from provider error text (PRD §20).

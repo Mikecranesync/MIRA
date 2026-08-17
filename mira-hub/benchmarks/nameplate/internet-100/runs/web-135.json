@@ -1,0 +1,11 @@
+{
+  "image": "c11r1_05.jpg",
+  "bytes": 4425034,
+  "mime": "image/jpeg",
+  "improved": {
+    "error": "JSON Parse error: Unexpected EOF"
+  },
+  "baseline": {
+    "error": "JSON Parse error: Unexpected EOF"
+  }
+}

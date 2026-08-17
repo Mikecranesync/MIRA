@@ -1,0 +1,160 @@
+{
+  "image": "c02r1_05.jpg",
+  "bytes": 194132,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "MICROMASTER 440",
+      "catalogNumber": "6SE6440-2AD31-1CA1",
+      "serialNumber": "XAF109-006159",
+      "equipmentType": "E-Stand (Version) : H01/2.21",
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS",
+        "MICROMASTER 440",
+        "6SE6440-2AD31-1CA1",
+        "Serial No:XAF109-006159",
+        "E-Stand (Version) : H01/2.21",
+        "Input: 380-480V +/-10% -10% 3ØAC 23.1 / (33.8VT)A 47 - 63 Hz",
+        "Output: 0-INPUT V 3ØAC 26.0A (32.0A VT) 0- 550Hz",
+        "Motor : 11.00kW (15.00kW VT)",
+        "Protection : IP20",
+        "Temp Range : -10 +50°C Duty Class II",
+        "Line Filter Class A Made in EU (United Kingdom)",
+        "Power conv.equip. 5B33. Use in poll. deg.2.env.",
+        "www.siemens.com/micromaster Refer to user manual"
+      ]
+    },
+    "rawText": [
+      "SIEMENS",
+      "MICROMASTER 440",
+      "6SE6440-2AD31-1CA1",
+      "Serial No:XAF109-006159",
+      "E-Stand (Version) : H01/2.21",
+      "Input: 380-480V +/-10% -10% 3ØAC 23.1 / (33.8VT)A 47 - 63 Hz",
+      "Output: 0-INPUT V 3ØAC 26.0A (32.0A VT) 0- 550Hz",
+      "Motor : 11.00kW (15.00kW VT)",
+      "Protection : IP20",
+      "Temp Range : -10 +50°C Duty Class II",
+      "Line Filter Class A Made in EU (United Kingdom)",
+      "Power conv.equip. 5B33. Use in poll. deg.2.env.",
+      "www.siemens.com/micromaster Refer to user manual"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "MICROMASTER 440",
+      "catalogNumber": "6SE6440-2AD31-1CA1",
+      "equipmentType": "E-Stand (Version) : H01/2.21",
+      "serialNumber": "XAF109-006159",
+      "voltage": "380-480V",
+      "current": "26.0A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "MICROMASTER 440"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "6SE6440-2AD31-1CA1"
+        },
+        {
+          "field": "serialNumber",
+          "value": "XAF109-006159"
+        },
+        {
+          "field": "equipmentType",
+          "value": "E-Stand (Version) : H01/2.21"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 18,
+        "cropBbox": {
+          "left": 0,
+          "top": 148,
+          "width": 984,
+          "height": 529
+        },
+        "imageWidth": 1024,
+        "imageHeight": 771,
+        "cropRotationDeg": 0,
+        "ms": 2059
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 4761,
+    "total_ms": 10439
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SIEMENS",
+      "model": "440",
+      "catalogNumber": null,
+      "serialNumber": "XAF109-006159",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "SIEMENS",
+        "MICROMASTER 440",
+        "Serial No. XAF109-006159",
+        "6SE6440-2AD31-1CA1"
+      ]
+    },
+    "rawText": [
+      "SIEMENS",
+      "MICROMASTER 440",
+      "Serial No. XAF109-006159",
+      "6SE6440-2AD31-1CA1"
+    ],
+    "values": {
+      "manufacturer": "SIEMENS",
+      "model": "440",
+      "catalogNumber": null,
+      "equipmentType": "Motor",
+      "serialNumber": "XAF109-006159",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SIEMENS"
+        },
+        {
+          "field": "model",
+          "value": "440"
+        },
+        {
+          "field": "serialNumber",
+          "value": "XAF109-006159"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2000
+  }
+}

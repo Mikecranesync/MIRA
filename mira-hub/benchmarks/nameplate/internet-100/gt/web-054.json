@@ -1,0 +1,31 @@
+{
+  "sample_id": "web-054",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "EATON",
+    "model": "WMZS3D16",
+    "catalogNumber": "WMZS3D16",
+    "serialNumber": "unknown",
+    "equipment_category": "breaker",
+    "specs": [
+      {"field": "description", "value_verbatim": "UL1077 MINIATURE CIRCUIT BREAKER", "unit": "", "confidence": "high"},
+      {"field": "interrupt_rating", "value_verbatim": "5kA", "unit": "kA", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "277/480VAC", "unit": "V", "confidence": "high"},
+      {"field": "icu", "value_verbatim": "Icu = 15kA", "unit": "kA", "confidence": "high"},
+      {"field": "standard", "value_verbatim": "IEC/EN 60947-2", "unit": "", "confidence": "high"},
+      {"field": "standard_2", "value_verbatim": "IEC/EN 60898", "unit": "", "confidence": "high"},
+      {"field": "date_plant_code", "value_verbatim": "AT70E", "unit": "", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "MADE IN SPAIN", "unit": "", "confidence": "high"},
+      {"field": "barcode_number", "value_verbatim": "7 866852 599320", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["UR", "CSA", "CE"],
+    "marks_complete": true
+  },
+  "oem_gt": {
+    "source_url": "https://bullseyeindustrialsales.com/products/eaton-wmzs3d16-277-480vac-circuit-breaker-16a-3-pole",
+    "notes": "Eaton WMZS3D16 is a real WMZS-series 3-pole, D-curve, 16 A UL1077 miniature circuit breaker. Photo reading was completed before consulting any documentation; the 16 A rating is encoded in the model only and is not printed as a separate spec on the visible face."
+  }
+}

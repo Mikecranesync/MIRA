@@ -1,0 +1,178 @@
+{
+  "image": "c02r1_06.jpg",
+  "bytes": 348877,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "1336F-B125-AA-EN-GM1-HCS2",
+      "catalogNumber": "CAT 1336F-B125-AA-EN-GM1-HCS2",
+      "serialNumber": null,
+      "equipmentType": "AC Drive",
+      "confidence": 0.95,
+      "rawText": [
+        "CAT 1336F-B125-AA-EN-GM1-HCS2",
+        "SER A",
+        "AC INPUT 113-143 380-480 172 8 50/60",
+        "AC OUTPUT 138 0-460 173.0 8 50/60",
+        "DC INPUT - - - -",
+        "REFER TO USER MANUAL FOR INSTALLATION INSTRUCTIONS",
+        "AB Allen-Bradley",
+        "MADE IN U.S.A",
+        "UL US",
+        "Usted Ind Cont Eq 983X",
+        "N223",
+        "CE"
+      ]
+    },
+    "rawText": [
+      "CAT 1336F-B125-AA-EN-GM1-HCS2",
+      "SER A",
+      "AC INPUT 113-143 380-480 172 8 50/60",
+      "AC OUTPUT 138 0-460 173.0 8 50/60",
+      "DC INPUT - - - -",
+      "REFER TO USER MANUAL FOR INSTALLATION INSTRUCTIONS",
+      "AB Allen-Bradley",
+      "MADE IN U.S.A",
+      "UL US",
+      "Usted Ind Cont Eq 983X",
+      "N223",
+      "CE"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "1336F-B125-AA-EN-GM1-HCS2",
+      "catalogNumber": "CAT 1336F-B125-AA-EN-GM1-HCS2",
+      "equipmentType": "AC Drive",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "1336F-B125-AA-EN-GM1-HCS2"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "CAT 1336F-B125-AA-EN-GM1-HCS2"
+        }
+      ],
+      "needsReview": [
+        "equipmentType",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 46,
+        "cropBbox": {
+          "left": 22,
+          "top": 133,
+          "width": 694,
+          "height": 285
+        },
+        "imageWidth": 800,
+        "imageHeight": 450,
+        "cropRotationDeg": 0,
+        "ms": 1288
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2361,
+    "total_ms": 7428
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "1336F-B125-AA-EN-GM1-HCS2",
+      "catalogNumber": "1336F",
+      "serialNumber": "SER A",
+      "equipmentType": "Variable Torque",
+      "confidence": 0.95,
+      "rawText": [
+        "CAT 1336F-B125-AA-EN-GM1-HCS2",
+        "SER A",
+        "CONSTANT TORQUE",
+        "VARIABLE TORQUE",
+        "AC INPUT 113-143 380-480 172 8 50/60 117-148 380-480 178 8 50/60",
+        "AC OUTPUT 138 0-460 173.0 8 0-400 143 0-460 180.0 8 0-400",
+        "DC INPUT - - - - - - - - -",
+        "REFER TO USER MANUAL FOR INSTALLATION INSTRUCTIONS",
+        "MADE IN U.S.A.",
+        "UL",
+        "N229",
+        "CE",
+        "U9",
+        "USTD IND CONT EQ 989x"
+      ]
+    },
+    "rawText": [
+      "CAT 1336F-B125-AA-EN-GM1-HCS2",
+      "SER A",
+      "CONSTANT TORQUE",
+      "VARIABLE TORQUE",
+      "AC INPUT 113-143 380-480 172 8 50/60 117-148 380-480 178 8 50/60",
+      "AC OUTPUT 138 0-460 173.0 8 0-400 143 0-460 180.0 8 0-400",
+      "DC INPUT - - - - - - - - -",
+      "REFER TO USER MANUAL FOR INSTALLATION INSTRUCTIONS",
+      "MADE IN U.S.A.",
+      "UL",
+      "N229",
+      "CE",
+      "U9",
+      "USTD IND CONT EQ 989x"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "1336F-B125-AA-EN-GM1-HCS2",
+      "catalogNumber": "1336F",
+      "equipmentType": "Variable Torque",
+      "serialNumber": "SER A",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "1336F-B125-AA-EN-GM1-HCS2"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "1336F"
+        },
+        {
+          "field": "serialNumber",
+          "value": "SER A"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Variable Torque"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "certification"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5574
+  }
+}

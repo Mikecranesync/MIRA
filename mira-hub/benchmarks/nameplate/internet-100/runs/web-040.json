@@ -1,0 +1,188 @@
+{
+  "image": "c11r1_06.jpg",
+  "bytes": 240424,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "ITE Imperial Corporation",
+      "model": "K-600",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "POWER CIRCUIT BREAKER",
+      "confidence": 0.95,
+      "rawText": [
+        "POWER CIRCUIT BREAKER",
+        "TYPE K-600",
+        "FRAME SIZE",
+        "600A. 50/60 CY.",
+        "800A. D.C.",
+        "SHORT CIRCUIT CURRENT-SYM. AMPS",
+        "600V.AC 480V.AC 240V.AC",
+        "22000A. 30000A. 42000A.",
+        "SHORT CIRCUIT CURRENT-D.C.",
+        "250V.-25000A.",
+        "SHORT TIME CURRENT 22000A.",
+        "ITE Imperial Corporation",
+        "PHILADELPHIA, PENNSYLVANIA, U.S.A",
+        "MADE IN U.S.A",
+        "CONTINUOUS CURRENT AND CALIBRATION ON TRIP DEVICE",
+        "SERIAL",
+        "null"
+      ]
+    },
+    "rawText": [
+      "POWER CIRCUIT BREAKER",
+      "TYPE K-600",
+      "FRAME SIZE",
+      "600A. 50/60 CY.",
+      "800A. D.C.",
+      "SHORT CIRCUIT CURRENT-SYM. AMPS",
+      "600V.AC 480V.AC 240V.AC",
+      "22000A. 30000A. 42000A.",
+      "SHORT CIRCUIT CURRENT-D.C.",
+      "250V.-25000A.",
+      "SHORT TIME CURRENT 22000A.",
+      "ITE Imperial Corporation",
+      "PHILADELPHIA, PENNSYLVANIA, U.S.A",
+      "MADE IN U.S.A",
+      "CONTINUOUS CURRENT AND CALIBRATION ON TRIP DEVICE",
+      "SERIAL",
+      "null"
+    ],
+    "values": {
+      "manufacturer": "ITE Imperial Corporation",
+      "model": "K-600",
+      "catalogNumber": null,
+      "equipmentType": "POWER CIRCUIT BREAKER",
+      "serialNumber": null,
+      "voltage": "600V",
+      "current": "600A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ITE Imperial Corporation"
+        },
+        {
+          "field": "model",
+          "value": "K-600"
+        },
+        {
+          "field": "equipmentType",
+          "value": "POWER CIRCUIT BREAKER"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 47,
+        "cropBbox": {
+          "left": 149,
+          "top": 294,
+          "width": 670,
+          "height": 652
+        },
+        "imageWidth": 960,
+        "imageHeight": 1280,
+        "cropRotationDeg": 0,
+        "ms": 1480
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2119,
+    "total_ms": 5813
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "ITE",
+      "model": "K-600",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Power Circuit Breaker",
+      "confidence": 0.95,
+      "rawText": [
+        "ITE",
+        "POWER CIRCUIT BREAKER",
+        "TYPE K-600",
+        "FRAME SIZE",
+        "600A. 50/60 CY.",
+        "800A. D.C.",
+        "SHORT CIRCUIT CURRENT-SYM. AMPS",
+        "600V.AC 480V.AC 240V. AC",
+        "22000A.",
+        "30000A. 42000A.",
+        "SHORT CIRCUIT CURRENT-D.C.",
+        "250 V.- 25000A.",
+        "SHORT TIME CURRENT 22000A.",
+        "ITE Imperial Corporation",
+        "PHILADELPHIA, PENNSYLVANIA, U.S.A.",
+        "MADE IN U.S.A.",
+        "CONTINUOUS CURRENT AND CALIBRATION ON TRIP DEVICE",
+        "SERIAL",
+        "DATE"
+      ]
+    },
+    "rawText": [
+      "ITE",
+      "POWER CIRCUIT BREAKER",
+      "TYPE K-600",
+      "FRAME SIZE",
+      "600A. 50/60 CY.",
+      "800A. D.C.",
+      "SHORT CIRCUIT CURRENT-SYM. AMPS",
+      "600V.AC 480V.AC 240V. AC",
+      "22000A.",
+      "30000A. 42000A.",
+      "SHORT CIRCUIT CURRENT-D.C.",
+      "250 V.- 25000A.",
+      "SHORT TIME CURRENT 22000A.",
+      "ITE Imperial Corporation",
+      "PHILADELPHIA, PENNSYLVANIA, U.S.A.",
+      "MADE IN U.S.A.",
+      "CONTINUOUS CURRENT AND CALIBRATION ON TRIP DEVICE",
+      "SERIAL",
+      "DATE"
+    ],
+    "values": {
+      "manufacturer": "ITE",
+      "model": "K-600",
+      "catalogNumber": null,
+      "equipmentType": "Power Circuit Breaker",
+      "serialNumber": null,
+      "voltage": "600V",
+      "current": "600A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "ITE"
+        },
+        {
+          "field": "model",
+          "value": "K-600"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Power Circuit Breaker"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4425
+  }
+}

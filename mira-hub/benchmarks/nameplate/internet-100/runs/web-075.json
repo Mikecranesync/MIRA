@@ -1,0 +1,132 @@
+{
+  "image": "c03r1_02.jpg",
+  "bytes": 104127,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "arrow",
+      "model": "AC-2000",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "CIP System",
+      "confidence": 0.95,
+      "rawText": [
+        "AC-2000",
+        "arrow",
+        "Past CIP System 1",
+        "Past CIP System 2"
+      ]
+    },
+    "rawText": [
+      "AC-2000",
+      "arrow",
+      "Past CIP System 1",
+      "Past CIP System 2"
+    ],
+    "values": {
+      "manufacturer": "arrow",
+      "model": "AC-2000",
+      "catalogNumber": null,
+      "equipmentType": "CIP System",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "arrow"
+        },
+        {
+          "field": "model",
+          "value": "AC-2000"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CIP System"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 9,
+        "cropBbox": {
+          "left": 0,
+          "top": 280,
+          "width": 769,
+          "height": 745
+        },
+        "imageWidth": 769,
+        "imageHeight": 1025,
+        "cropRotationDeg": 0,
+        "ms": 2318
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3494,
+    "total_ms": 4954
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Ahern",
+      "model": "AP-2000",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "CIP System",
+      "confidence": 0.95,
+      "rawText": [
+        "Ahern",
+        "AP-2000",
+        "CIP System 1",
+        "CIP System 2"
+      ]
+    },
+    "rawText": [
+      "Ahern",
+      "AP-2000",
+      "CIP System 1",
+      "CIP System 2"
+    ],
+    "values": {
+      "manufacturer": "Ahern",
+      "model": "AP-2000",
+      "catalogNumber": null,
+      "equipmentType": "CIP System",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Ahern"
+        },
+        {
+          "field": "model",
+          "value": "AP-2000"
+        },
+        {
+          "field": "equipmentType",
+          "value": "CIP System"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1535
+  }
+}

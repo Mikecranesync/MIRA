@@ -1,0 +1,38 @@
+{
+  "sample_id": "web-055",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "embossed"],
+  "photo_gt": {
+    "manufacturer": "SEW-Eurodrive",
+    "model": "SA47 DRP90M4",
+    "catalogNumber": "unknown",
+    "serialNumber": "40.1910245201.0001X13",
+    "equipment_category": "gearmotor",
+    "specs": [
+      {"field": "frequency", "value_verbatim": "60", "unit": "Hz", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "1750/75", "unit": "r/min", "confidence": "high"},
+      {"field": "power_kw", "value_verbatim": "0.75 S1", "unit": "kW", "confidence": "high"},
+      {"field": "power_factor", "value_verbatim": "0,76", "unit": "", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "130(B)", "unit": "", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "277/480 Δ/Y", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "2,40/1,39", "unit": "A", "confidence": "high"},
+      {"field": "efficiency", "value_verbatim": "85,6 IE3", "unit": "%", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP 55", "unit": "", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "Inverter duty VPWM", "unit": "", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3~IEC60034", "unit": "", "confidence": "high"},
+      {"field": "gear_ratio", "value_verbatim": "i 23,20", "unit": "", "confidence": "high"},
+      {"field": "torque", "value_verbatim": "79", "unit": "Nm", "confidence": "high"},
+      {"field": "mounting_position", "value_verbatim": "IM M1B", "unit": "", "confidence": "high"},
+      {"field": "lubricant", "value_verbatim": "CLP HC-460-NSF-H1 Olio alim./0,40 l", "unit": "", "confidence": "high"},
+      {"field": "weight", "value_verbatim": "28.189", "unit": "kg", "confidence": "high"},
+      {"field": "plate_id", "value_verbatim": "03100014621S", "unit": "", "confidence": "high"},
+      {"field": "plate_part_number", "value_verbatim": "188 578 2 IT", "unit": "", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "Made in Germany", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

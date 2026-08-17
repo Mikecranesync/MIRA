@@ -18,6 +18,7 @@
 // embed-gate fragility (#1385): a down embedder just leaves chunks BM25-only.
 
 import { randomUUID } from "crypto";
+import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
 import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
@@ -454,6 +455,39 @@ export async function ingestTextToNode(opts: {
       (err as Error).message,
     );
     throw err;
+  }
+}
+
+/**
+ * Best-effort removal of an ORPHANED node ingest — an upload whose token-fenced
+ * finalize LOST the claim (stolen mid-ingest after the stale window): its
+ * chunks duplicate the winner's and must not stay retrievable, which is the
+ * exact duplicate-corpus bug the ingestion claim exists to prevent.
+ *
+ * Raw owner pool, explicit tenant + doc predicates: factorylm_app has no
+ * DELETE grant on knowledge_entries (migrations 011/049 grant SELECT/INSERT
+ * only), and the scope here is one tenant's one upload. Never throws — losing
+ * the race is benign and a cleanup failure must not fail the request; a leaked
+ * orphan is logged and stays invisible to notebook chat (no source row points
+ * at it).
+ */
+export async function deleteOrphanNodeIngest(
+  tenantId: string,
+  uploadId: string,
+): Promise<void> {
+  try {
+    await pool.query(
+      `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`,
+      [tenantId, uploadId],
+    );
+    await pool.query(`DELETE FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid`, [
+      tenantId,
+      uploadId,
+    ]);
+  } catch (err) {
+    console.warn(
+      `[node-ingest] orphan cleanup failed upload=${uploadId}: ${(err as Error).message}`,
+    );
   }
 }
 

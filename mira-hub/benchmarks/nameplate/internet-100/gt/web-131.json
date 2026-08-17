@@ -1,0 +1,30 @@
+{
+  "sample_id": "web-131",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "dirt", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Acme Transformer (A Division of Acme Electric Corporation)",
+    "model": "unknown",
+    "catalogNumber": "T-1-53006",
+    "serialNumber": "unknown",
+    "equipment_category": "transformer",
+    "specs": [
+      {"field": "style", "value_verbatim": "STYLE ER", "unit": "", "confidence": "high"},
+      {"field": "primary_voltage", "value_verbatim": "240X480", "unit": "V", "confidence": "high"},
+      {"field": "secondary_voltage", "value_verbatim": "120/240", "unit": "V", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "1 PHASE", "unit": "", "confidence": "high"},
+      {"field": "capacity_kva", "value_verbatim": ".150 KVA", "unit": "kVA", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50/60 HZ", "unit": "Hz", "confidence": "high"},
+      {"field": "winding_rise", "value_verbatim": "80°C", "unit": "°C", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "TYPE 3R OUTDOOR", "unit": "", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "B-3223-L CLASS 130", "unit": "", "confidence": "high"},
+      {"field": "ul_listing", "value_verbatim": "LISTED 50B8", "unit": "", "confidence": "high"},
+      {"field": "drawing_number", "value_verbatim": "A-4-701370", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["UL", "CSA"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

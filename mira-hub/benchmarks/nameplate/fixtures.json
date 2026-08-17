@@ -1,0 +1,207 @@
+{
+  "$comment": [
+    "Ground truth for nameplate recognition. `expect` is what a human read off the",
+    "plate. `accept` lists alternate renderings that are RIGHT, not merely close.",
+    "`visibleText` is the support corpus for the hallucination metric: any returned",
+    "value with no character support here (and not a known misread of a truth value)",
+    "is counted as invented. `forbidden` are marks/strings that are provably NOT on",
+    "the plate — the exact class that produced the baseline's fabricated RoHS."
+  ],
+  "fixtures": [
+    {
+      "id": "orientalmotor_dgm200r",
+      "image": "C:/Users/hharp/.claude/uploads/84593816-e928-4a91-8bc3-0a1dba84a776/504beeb6-1000007793.jpg",
+      "kind": "real_field_photo",
+      "notes": "Oriental Motor hollow rotary actuator. Dusty curved OVAL label, text rotated ~90deg, glare band across the dark panel, oblique angle, heavy background clutter. Ground truth verified by a human against the physical plate.",
+      "identity": {
+        "manufacturer": { "expect": "Orientalmotor", "accept": ["Oriental Motor", "ORIENTAL MOTOR CO., LTD.", "Oriental Motor Co., Ltd."] },
+        "model": { "expect": "DGM200R-AZAC", "accept": [] },
+        "catalogNumber": { "expect": "AZM911AC-D", "accept": ["Motor P/N AZM911AC-D"] },
+        "equipmentType": { "expect": "HOLLOW ROTARY ACTUATOR", "accept": ["Hollow Rotary Actuator", "rotary actuator"] }
+      },
+      "spec": {
+        "voltage": { "expect": "3.87VDC", "number": 3.87, "unit": "VDC" },
+        "current": { "expect": "1.27A", "number": 1.27, "unit": "A" },
+        "resolution": { "expect": "0.01°/STEP", "number": 0.01, "unit": "°/STEP" },
+        "serialNumber": { "expect": "QS8 I119701", "accept": ["QS8I119701", "QS8 1119701"] },
+        "ambient": { "expect": "Amb.40°C", "number": 40, "unit": "°C" },
+        "insulation": { "expect": "INS.Class A", "accept": ["Class A", "A"] }
+      },
+      "marks": ["UL", "CE", "UKCA"],
+      "forbidden": ["RoHS", "CSA", "CCC", "ATEX", "TUV"],
+      "visibleText": [
+        "Orientalmotor",
+        "MODEL DGM200R-AZAC",
+        "HOLLOW ROTARY ACTUATOR",
+        "Motor P/N AZM911AC-D",
+        "3.87VDC 1.27A 0.01°/STEP",
+        "INS.Class A Amb.40°C",
+        "TE",
+        "QS8 I119701",
+        "ORIENTAL MOTOR CO., LTD.",
+        "TOKYO 110-8536 JAPAN",
+        "MADE IN JAPAN",
+        "2023/05",
+        "CE",
+        "UK CA",
+        "cURus UL"
+      ]
+    },
+    {
+      "id": "ab_micro820",
+      "image": "../../../mira-bots/telegram_test_runner/test-assets/sample_tags/ab_micro820_tag.jpg",
+      "kind": "synthetic_rendered",
+      "notes": "Rendered asset-tag style plate, high contrast, upright text.",
+      "identity": {
+        "manufacturer": { "expect": "Allen-Bradley", "accept": ["Allen Bradley", "Rockwell Automation"] },
+        "model": { "expect": "Micro820", "accept": [] },
+        "catalogNumber": { "expect": "2080-LC20-20QWB", "accept": [] },
+        "equipmentType": { "expect": "PLC - Programmable Logic Controller", "accept": ["Programmable Logic Controller", "PLC", "Programmable Controller"] }
+      },
+      "spec": {
+        "voltage": { "expect": "24VDC", "number": 24, "unit": "VDC" },
+        "current": { "expect": null },
+        "resolution": { "expect": null },
+        "serialNumber": { "expect": null },
+        "ambient": { "expect": null },
+        "insulation": { "expect": null }
+      },
+      "marks": [],
+      "forbidden": ["RoHS", "CSA", "CCC", "ATEX", "TUV", "UKCA"],
+      "visibleText": [
+        "Allen-Bradley Micro820 Programmable Controller",
+        "Manufacturer: Allen-Bradley",
+        "Model: Micro820",
+        "Catalog: 2080-LC20-20QWB",
+        "Voltage: 24VDC",
+        "I/O Points: 20",
+        "Type: PLC - Programmable Logic Controller",
+        "CAUTION: ELECTRICAL HAZARD"
+      ]
+    },
+    {
+      "id": "ab_micro820_glare",
+      "image": "../../../mira-bots/telegram_test_runner/test-assets/sample_tags/bad_glare_tag.jpg",
+      "kind": "synthetic_rendered",
+      "notes": "Same plate as ab_micro820 with a glare band washing out the Catalog row. The catalog number is faintly legible, so it is still ground truth — a miss here is a miss, not an unfair ask.",
+      "identity": {
+        "manufacturer": { "expect": "Allen-Bradley", "accept": ["Allen Bradley", "Rockwell Automation"] },
+        "model": { "expect": "Micro820", "accept": [] },
+        "catalogNumber": { "expect": "2080-LC20-20QWB", "accept": [] },
+        "equipmentType": { "expect": "PLC - Programmable Logic Controller", "accept": ["Programmable Logic Controller", "PLC", "Programmable Controller"] }
+      },
+      "spec": {
+        "voltage": { "expect": "24VDC", "number": 24, "unit": "VDC" },
+        "current": { "expect": null },
+        "resolution": { "expect": null },
+        "serialNumber": { "expect": null },
+        "ambient": { "expect": null },
+        "insulation": { "expect": null }
+      },
+      "marks": [],
+      "forbidden": ["RoHS", "CSA", "CCC", "ATEX", "TUV", "UKCA"],
+      "visibleText": [
+        "Allen-Bradley Micro820 Programmable Controller",
+        "Manufacturer: Allen-Bradley",
+        "Model: Micro820",
+        "Catalog: 2080-LC20-20QWB",
+        "Voltage: 24VDC",
+        "I/O Points: 20",
+        "Type: PLC - Programmable Logic Controller",
+        "CAUTION: ELECTRICAL HAZARD"
+      ]
+    },
+    {
+      "id": "gs10_vfd",
+      "image": "../../../mira-bots/telegram_test_runner/test-assets/sample_tags/gs10_vfd_tag.jpg",
+      "kind": "synthetic_rendered",
+      "notes": "AutomationDirect GS10 drive tag. Voltage ground truth is the INPUT range.",
+      "identity": {
+        "manufacturer": { "expect": "AutomationDirect", "accept": ["Automation Direct"] },
+        "model": { "expect": "GS10", "accept": [] },
+        "catalogNumber": { "expect": "GS10-20P5", "accept": [] },
+        "equipmentType": { "expect": "Variable Frequency Drive", "accept": ["VFD", "0.5HP Variable Frequency Drive", "Drive"] }
+      },
+      "spec": {
+        "voltage": { "expect": "208-240VAC", "number": 240, "unit": "VAC" },
+        "current": { "expect": null },
+        "resolution": { "expect": null },
+        "serialNumber": { "expect": null },
+        "ambient": { "expect": null },
+        "insulation": { "expect": null }
+      },
+      "marks": [],
+      "forbidden": ["RoHS", "CSA", "CCC", "ATEX", "TUV", "UKCA"],
+      "visibleText": [
+        "AutomationDirect GS10 Variable Frequency Drive",
+        "Manufacturer: AutomationDirect",
+        "Model: GS10",
+        "Catalog: GS10-20P5",
+        "Input: 208-240VAC 1PH",
+        "Output: 0-240VAC 3PH",
+        "Rating: 0.5HP Variable Frequency Drive",
+        "CAUTION: ELECTRICAL HAZARD"
+      ]
+    },
+    {
+      "id": "gs10_cropped",
+      "image": "../../../mira-bots/telegram_test_runner/test-assets/sample_tags/cropped_tight_tag.jpg",
+      "kind": "synthetic_rendered",
+      "notes": "Same GS10 tag cropped so only the first three rows survive. Voltage/type are NOT visible: reporting them is a hallucination, not a bonus.",
+      "identity": {
+        "manufacturer": { "expect": "AutomationDirect", "accept": ["Automation Direct"] },
+        "model": { "expect": "GS10", "accept": [] },
+        "catalogNumber": { "expect": "GS10-20P5", "accept": [] },
+        "equipmentType": { "expect": "Variable Frequency Drive", "accept": ["VFD", "Drive"] }
+      },
+      "spec": {
+        "voltage": { "expect": null },
+        "current": { "expect": null },
+        "resolution": { "expect": null },
+        "serialNumber": { "expect": null },
+        "ambient": { "expect": null },
+        "insulation": { "expect": null }
+      },
+      "marks": [],
+      "forbidden": ["RoHS", "CSA", "CCC", "ATEX", "TUV", "UKCA"],
+      "visibleText": [
+        "AutomationDirect GS10 Variable Frequency Drive",
+        "Manufacturer: AutomationDirect",
+        "Model: GS10",
+        "Catalog: GS10-20P5"
+      ]
+    },
+    {
+      "id": "squared_mcc",
+      "image": "../../../mira-bots/telegram_test_runner/test-assets/sample_tags/generic_cabinet_tag.jpg",
+      "kind": "synthetic_rendered",
+      "notes": "Square D MCC panel tag. There is no model/catalog number — only a panel ID. Inventing a catalog number here is a hallucination.",
+      "identity": {
+        "manufacturer": { "expect": "Square D", "accept": ["SquareD", "Schneider Electric"] },
+        "model": { "expect": "MCC-003", "accept": ["Motor Control Center MCC-003"] },
+        "catalogNumber": { "expect": null },
+        "equipmentType": { "expect": "Motor Control Center", "accept": ["MCC", "Motor Control Center Panel"] }
+      },
+      "spec": {
+        "voltage": { "expect": "480VAC", "number": 480, "unit": "VAC" },
+        "current": { "expect": "100A", "number": 100, "unit": "A" },
+        "resolution": { "expect": null },
+        "serialNumber": { "expect": null },
+        "ambient": { "expect": null },
+        "insulation": { "expect": null }
+      },
+      "marks": [],
+      "forbidden": ["RoHS", "CSA", "CCC", "ATEX", "TUV", "UKCA"],
+      "visibleText": [
+        "Square D Motor Control Center Panel MCC-003",
+        "Panel ID: MCC-003",
+        "Manufacturer: Square D",
+        "Voltage: 480VAC 3PH",
+        "Current: 100A",
+        "Enclosure: NEMA 12",
+        "Type: Motor Control Center",
+        "CAUTION: ELECTRICAL HAZARD"
+      ]
+    }
+  ]
+}

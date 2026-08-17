@@ -1,0 +1,209 @@
+{
+  "image": "c02r1_13.jpg",
+  "bytes": 148346,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22B-D017N104",
+      "catalogNumber": "22B-D017N104",
+      "serialNumber": "BD017N0W7320008",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Cat No. 22B-D017N104",
+        "SERIES A",
+        "IP20/UL Open-Type with top cover removed (rated -10°C to 50°C Ambient);",
+        "IP30 / NEMA 1 / UL Type 1 with top cover and optional conduit box kit installed (rated -10°C to 40°C Ambient). Refer to user manual.",
+        "Motor Rating: 7.5kW/10.0HP",
+        "Input: 3 Phase,380-480V,48-63Hz",
+        "AC Voltage Range: 342-528",
+        "Amps: 18.4",
+        "Output: 3 Phase, 0-400Hz",
+        "AC Voltage Range: 0 - 460",
+        "Continuous Amps: 17.0",
+        "60 Sec Ovld Amps: 25.5",
+        "SHORT CIRCUIT CURRENT: 100kA",
+        "POWER TERMINAL WIRE:",
+        "Use 75°C Cu Wire",
+        "8.4 mm² .1.3 mm² (8-16 AWG)",
+        "Torque 2.94 Nm(26.0 in-lbs)",
+        "MFD-IN 2007 ON AUG. 09",
+        "S/N: BD017N0W7320008",
+        "FRN: 4.01",
+        "MADE IN CHINA"
+      ]
+    },
+    "rawText": [
+      "Cat No. 22B-D017N104",
+      "SERIES A",
+      "IP20/UL Open-Type with top cover removed (rated -10°C to 50°C Ambient);",
+      "IP30 / NEMA 1 / UL Type 1 with top cover and optional conduit box kit installed (rated -10°C to 40°C Ambient). Refer to user manual.",
+      "Motor Rating: 7.5kW/10.0HP",
+      "Input: 3 Phase,380-480V,48-63Hz",
+      "AC Voltage Range: 342-528",
+      "Amps: 18.4",
+      "Output: 3 Phase, 0-400Hz",
+      "AC Voltage Range: 0 - 460",
+      "Continuous Amps: 17.0",
+      "60 Sec Ovld Amps: 25.5",
+      "SHORT CIRCUIT CURRENT: 100kA",
+      "POWER TERMINAL WIRE:",
+      "Use 75°C Cu Wire",
+      "8.4 mm² .1.3 mm² (8-16 AWG)",
+      "Torque 2.94 Nm(26.0 in-lbs)",
+      "MFD-IN 2007 ON AUG. 09",
+      "S/N: BD017N0W7320008",
+      "FRN: 4.01",
+      "MADE IN CHINA"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22B-D017N104",
+      "catalogNumber": "22B-D017N104",
+      "equipmentType": "Motor",
+      "serialNumber": "BD017N0W7320008",
+      "voltage": "380-480V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "22B-D017N104"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "22B-D017N104"
+        },
+        {
+          "field": "serialNumber",
+          "value": "BD017N0W7320008"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 34,
+        "cropBbox": {
+          "left": 82,
+          "top": 391,
+          "width": 517,
+          "height": 466
+        },
+        "imageWidth": 750,
+        "imageHeight": 1000,
+        "cropRotationDeg": 0,
+        "ms": 2230
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2704,
+    "total_ms": 10181
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22B-D017N104",
+      "catalogNumber": "22B-D017N104",
+      "serialNumber": "BD017N0W7320008",
+      "equipmentType": "industrial equipment",
+      "confidence": 0.95,
+      "rawText": [
+        "Cat No. 22B-D017N104",
+        "SERIES A",
+        "IP20/UL Open-Type with top cover removed (rated -10°C to 50°C Ambient).",
+        "IP30 / NEMA 1 / UL Type 1 with top cover and optional conduit box kit installed (rated -10°C to 40°C Ambient). Refer to user manual.",
+        "Motor Rating: 7.5kW/10.0HP",
+        "Input: 3 Phase,380-480V,48-63Hz",
+        "AC Voltage Range: 342-528",
+        "Amps: 18.4",
+        "Output: 3 Phase 0-460",
+        "AC Voltage Range: 0-460",
+        "Continuous Amps: 17.0",
+        "60 Sec Ovld Amps: 25.5",
+        "SHORT CIRCUIT CURRENT: 100kA",
+        "POWER TERMINAL WIRE:",
+        "Use 75°C Cu Wire",
+        "8.4 mm² (5/16 AWG)",
+        "torque 2.94 Nm(2.6 lb-in)",
+        "MFD-IN 2007 ON AUG-09",
+        "S/N: BD017N0W7320008",
+        "FRN: 4.01",
+        "MADE IN CHINA"
+      ]
+    },
+    "rawText": [
+      "Cat No. 22B-D017N104",
+      "SERIES A",
+      "IP20/UL Open-Type with top cover removed (rated -10°C to 50°C Ambient).",
+      "IP30 / NEMA 1 / UL Type 1 with top cover and optional conduit box kit installed (rated -10°C to 40°C Ambient). Refer to user manual.",
+      "Motor Rating: 7.5kW/10.0HP",
+      "Input: 3 Phase,380-480V,48-63Hz",
+      "AC Voltage Range: 342-528",
+      "Amps: 18.4",
+      "Output: 3 Phase 0-460",
+      "AC Voltage Range: 0-460",
+      "Continuous Amps: 17.0",
+      "60 Sec Ovld Amps: 25.5",
+      "SHORT CIRCUIT CURRENT: 100kA",
+      "POWER TERMINAL WIRE:",
+      "Use 75°C Cu Wire",
+      "8.4 mm² (5/16 AWG)",
+      "torque 2.94 Nm(2.6 lb-in)",
+      "MFD-IN 2007 ON AUG-09",
+      "S/N: BD017N0W7320008",
+      "FRN: 4.01",
+      "MADE IN CHINA"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22B-D017N104",
+      "catalogNumber": "22B-D017N104",
+      "equipmentType": "industrial equipment",
+      "serialNumber": "BD017N0W7320008",
+      "voltage": "380-480V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "22B-D017N104"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "22B-D017N104"
+        },
+        {
+          "field": "serialNumber",
+          "value": "BD017N0W7320008"
+        }
+      ],
+      "needsReview": [
+        "manufacturer",
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 6681
+  }
+}

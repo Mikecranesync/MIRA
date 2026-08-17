@@ -1,0 +1,40 @@
+{
+  "sample_id": "web-119",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "high_resolution", "dense_table", "tiny_text", "faded"],
+  "photo_gt": {
+    "manufacturer": "Voltran S.A. de C.V.",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "9741",
+    "equipment_category": "transformer",
+    "specs": [
+      {"field": "capacity_kva_oa", "value_verbatim": "10000/12500 KVA 55°C", "unit": "kVA", "confidence": "high"},
+      {"field": "capacity_kva_fa", "value_verbatim": "20000/25000 KVA 55°C", "unit": "kVA", "confidence": "high"},
+      {"field": "voltage_hv", "value_verbatim": "69000 VOLTS H.V.", "unit": "V", "confidence": "high"},
+      {"field": "voltage_lv", "value_verbatim": "34500/19919 X 12470/7200 VOLTS L.V.", "unit": "V", "confidence": "high"},
+      {"field": "type", "value_verbatim": "OA/FA", "unit": "", "confidence": "high"},
+      {"field": "class_kv", "value_verbatim": "69 KV", "unit": "kV", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "60 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "temperature_rise", "value_verbatim": "55 °C", "unit": "°C", "confidence": "high"},
+      {"field": "bil_hv", "value_verbatim": "350 KV", "unit": "kV", "confidence": "high"},
+      {"field": "bil_lv_34_5kv", "value_verbatim": "200 KV", "unit": "kV", "confidence": "high"},
+      {"field": "bil_lv_12_47kv", "value_verbatim": "110 KV", "unit": "kV", "confidence": "high"},
+      {"field": "altitude", "value_verbatim": "3300 FEET", "unit": "ft", "confidence": "high"},
+      {"field": "winding_material", "value_verbatim": "H. V. COPPER L. V. COPPER", "unit": "", "confidence": "high"},
+      {"field": "oil_volume", "value_verbatim": "4345 GALLONS", "unit": "gal", "confidence": "medium"},
+      {"field": "weight_core_and_coil", "value_verbatim": "35990 Lbs.", "unit": "lb", "confidence": "medium"},
+      {"field": "weight_tank_and_fittings", "value_verbatim": "25950 Lbs.", "unit": "lb", "confidence": "medium"},
+      {"field": "weight_oil", "value_verbatim": "32200 Lbs.", "unit": "lb", "confidence": "medium"},
+      {"field": "weight_total", "value_verbatim": "94140 Lbs.", "unit": "lb", "confidence": "medium"},
+      {"field": "weight_insulation", "value_verbatim": "13779 Lbs.", "unit": "lb", "confidence": "medium"},
+      {"field": "instructive_no", "value_verbatim": "IOM - 02", "unit": "", "confidence": "medium"},
+      {"field": "wiring_diagram", "value_verbatim": "P2.45.001.158", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

@@ -1,0 +1,210 @@
+{
+  "image": "c02r1_01.jpg",
+  "bytes": 140819,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22B-D4PON104",
+      "catalogNumber": "22B-D4PON104",
+      "serialNumber": "B4PON0W7190172",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Cat No. 22B-D4PON104",
+        "SERIES A",
+        "IP20 / UL Open-Type with top cover removed (rated -10°C to 50°C Ambient).",
+        "IP30 / NEMA 1/UL Type with top cover and optional conduit box kit installed (rated -10°C to 40°C Ambient) Refer to user manual",
+        "Motor Rating: 1.5kW/2.0HP",
+        "Input: 3 Phase, 380-480V,48-63Hz",
+        "AC Voltage Range: 342-528",
+        "Amps: 5.7",
+        "Output: 3 Phase, 0-400Hz",
+        "AC Voltage Range: 0 - 460",
+        "Continuous Amps: 4.0",
+        "60 sec Ovid Amps: 6.0",
+        "SHORT CIRCUIT CURRENT 100kA",
+        "POWER TERMINAL WIRE",
+        "Use 75°C Cu Wire",
+        "5.3 mm² - 1.3 mm² (10-16 AWG)",
+        "Torque 1.96 Nm (17.4 in .lbs)",
+        "MFD:IN 2007 ON MAY.08",
+        "S/N:B4PON0W7190172",
+        "FRN: 4.01",
+        "MADE IN CHINA"
+      ]
+    },
+    "rawText": [
+      "Cat No. 22B-D4PON104",
+      "SERIES A",
+      "IP20 / UL Open-Type with top cover removed (rated -10°C to 50°C Ambient).",
+      "IP30 / NEMA 1/UL Type with top cover and optional conduit box kit installed (rated -10°C to 40°C Ambient) Refer to user manual",
+      "Motor Rating: 1.5kW/2.0HP",
+      "Input: 3 Phase, 380-480V,48-63Hz",
+      "AC Voltage Range: 342-528",
+      "Amps: 5.7",
+      "Output: 3 Phase, 0-400Hz",
+      "AC Voltage Range: 0 - 460",
+      "Continuous Amps: 4.0",
+      "60 sec Ovid Amps: 6.0",
+      "SHORT CIRCUIT CURRENT 100kA",
+      "POWER TERMINAL WIRE",
+      "Use 75°C Cu Wire",
+      "5.3 mm² - 1.3 mm² (10-16 AWG)",
+      "Torque 1.96 Nm (17.4 in .lbs)",
+      "MFD:IN 2007 ON MAY.08",
+      "S/N:B4PON0W7190172",
+      "FRN: 4.01",
+      "MADE IN CHINA"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22B-D4PON104",
+      "catalogNumber": "22B-D4PON104",
+      "equipmentType": "Motor",
+      "serialNumber": "B4PON0W7190172",
+      "voltage": "380-480V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "22B-D4PON104"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "22B-D4PON104"
+        },
+        {
+          "field": "serialNumber",
+          "value": "B4PON0W7190172"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 31,
+        "cropBbox": {
+          "left": 133,
+          "top": 62,
+          "width": 636,
+          "height": 586
+        },
+        "imageWidth": 892,
+        "imageHeight": 692,
+        "cropRotationDeg": 0,
+        "ms": 1960
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2385,
+    "total_ms": 9419
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22B-D4P0N104",
+      "catalogNumber": "22B-D4P0N104",
+      "serialNumber": "B4P0N0V71907172",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "Cat No. 22B-D4P0N104",
+        "IP20/UL Open- Type with top cover removed (rated 10°C to 50°C Ambient).",
+        "IP20 / NEMA 1 / UL Type with top cover and optional cord/duit box kit installed (rated 10°C to 40°C Ambient) Refer to user manual",
+        "Motor Rating: 1.5kW/2.0HP",
+        "Input: 3 Phase, 380-460V, 48-63Hz",
+        "AC Voltage Range: 342-528",
+        "Amps: 5.7",
+        "Output: 3 Phase, 0-400Hz",
+        "AC Voltage Range: 0 - 460",
+        "Continuous Amps: 4.0",
+        "60 Sec Ovid Amps: 6.0",
+        "SHORT CIRCUIT CURRENT 100kA",
+        "POWER TERMINAL WIRE",
+        "Use 75°C Cu Wire",
+        "5.3 mm² . 1.3 mm² (10-15 AWG",
+        "Torque 1.96 Nm(17.4 in-lbs)",
+        "MFD.IN 2007 ON MAY.08",
+        "S/N: B4P0N0V71907172",
+        "FRN: 4.01",
+        "MADE IN CHINA"
+      ]
+    },
+    "rawText": [
+      "Cat No. 22B-D4P0N104",
+      "IP20/UL Open- Type with top cover removed (rated 10°C to 50°C Ambient).",
+      "IP20 / NEMA 1 / UL Type with top cover and optional cord/duit box kit installed (rated 10°C to 40°C Ambient) Refer to user manual",
+      "Motor Rating: 1.5kW/2.0HP",
+      "Input: 3 Phase, 380-460V, 48-63Hz",
+      "AC Voltage Range: 342-528",
+      "Amps: 5.7",
+      "Output: 3 Phase, 0-400Hz",
+      "AC Voltage Range: 0 - 460",
+      "Continuous Amps: 4.0",
+      "60 Sec Ovid Amps: 6.0",
+      "SHORT CIRCUIT CURRENT 100kA",
+      "POWER TERMINAL WIRE",
+      "Use 75°C Cu Wire",
+      "5.3 mm² . 1.3 mm² (10-15 AWG",
+      "Torque 1.96 Nm(17.4 in-lbs)",
+      "MFD.IN 2007 ON MAY.08",
+      "S/N: B4P0N0V71907172",
+      "FRN: 4.01",
+      "MADE IN CHINA"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "22B-D4P0N104",
+      "catalogNumber": "22B-D4P0N104",
+      "equipmentType": "Motor",
+      "serialNumber": "B4P0N0V71907172",
+      "voltage": "380-460V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "22B-D4P0N104"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "22B-D4P0N104"
+        },
+        {
+          "field": "serialNumber",
+          "value": "B4P0N0V71907172"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 7461
+  }
+}

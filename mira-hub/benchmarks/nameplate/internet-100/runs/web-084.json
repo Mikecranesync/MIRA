@@ -1,0 +1,126 @@
+{
+  "image": "c08r1_02.jpg",
+  "bytes": 927862,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "CDM2E20-50A-H7C",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "CDM2E20-50A-H7C",
+        "MADE IN USA",
+        "MAX. PRESS",
+        "9.9 kgf/cm²",
+        "150 PSI",
+        "COL"
+      ]
+    },
+    "rawText": [
+      "CDM2E20-50A-H7C",
+      "MADE IN USA",
+      "MAX. PRESS",
+      "9.9 kgf/cm²",
+      "150 PSI",
+      "COL"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "CDM2E20-50A-H7C",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": "50A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CDM2E20-50A-H7C"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 6,
+        "cropBbox": {
+          "left": 468,
+          "top": 456,
+          "width": 521,
+          "height": 343
+        },
+        "imageWidth": 1600,
+        "imageHeight": 1200,
+        "cropRotationDeg": 0,
+        "ms": 2245
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 12850,
+    "total_ms": 14751
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "CDM2E20-50A-HTC",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "cylinder",
+      "confidence": 0.95,
+      "rawText": [
+        "CDM2E20-50A-HTC",
+        "MADE IN USA",
+        "MAX. PRES®",
+        "9 G kNm/cm²",
+        "150 PSI",
+        "COL"
+      ]
+    },
+    "rawText": [
+      "CDM2E20-50A-HTC",
+      "MADE IN USA",
+      "MAX. PRES®",
+      "9 G kNm/cm²",
+      "150 PSI",
+      "COL"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "CDM2E20-50A-HTC",
+      "catalogNumber": null,
+      "equipmentType": "cylinder",
+      "serialNumber": null,
+      "voltage": null,
+      "current": "50A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "CDM2E20-50A-HTC"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2684
+  }
+}

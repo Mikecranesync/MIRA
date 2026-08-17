@@ -1,0 +1,31 @@
+{
+  "sample_id": "web-013",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["angled", "glare", "partially_obstructed", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Marathon Motors / Leeson (Globetrotter)",
+    "model": "YVD184TTDBD6030BA M",
+    "catalogNumber": "GT0113",
+    "serialNumber": "unknown",
+    "equipment_category": "ac_motor",
+    "specs": [
+      {"field": "design", "value_verbatim": "A", "unit": "", "confidence": "high"},
+      {"field": "code", "value_verbatim": "K", "unit": "", "confidence": "high"},
+      {"field": "rise", "value_verbatim": "40", "unit": "°C", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "F3", "unit": "", "confidence": "medium"},
+      {"field": "phase", "value_verbatim": "3", "unit": "", "confidence": "high"},
+      {"field": "ambient", "value_verbatim": "40°C", "unit": "°C", "confidence": "low"},
+      {"field": "enclosure", "value_verbatim": "DP", "unit": "", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "22", "unit": "", "confidence": "medium"},
+      {"field": "mounting", "value_verbatim": "F1/F2 CAPABLE", "unit": "", "confidence": "medium"},
+      {"field": "frame", "value_verbatim": "184T", "unit": "", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "CONT", "unit": "", "confidence": "medium"},
+      {"field": "type", "value_verbatim": "TDB", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

@@ -1,0 +1,122 @@
+{
+  "image": "c03r1_11.jpg",
+  "bytes": 117711,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "PanelView 550",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Panel/Interface",
+      "confidence": 0.95,
+      "rawText": [
+        "Allen-Bradley",
+        "PanelView 550"
+      ]
+    },
+    "rawText": [
+      "Allen-Bradley",
+      "PanelView 550"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "PanelView 550",
+      "catalogNumber": null,
+      "equipmentType": "Panel/Interface",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "PanelView 550"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 10,
+        "cropBbox": {
+          "left": 230,
+          "top": 193,
+          "width": 1040,
+          "height": 573
+        },
+        "imageWidth": 1535,
+        "imageHeight": 944,
+        "cropRotationDeg": 0,
+        "ms": 1677
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3526,
+    "total_ms": 4907
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Allen-Bradley",
+      "model": "PanelView 550",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "Panel",
+      "confidence": 0.98,
+      "rawText": [
+        "Allen-Bradley",
+        "PanelView 550"
+      ]
+    },
+    "rawText": [
+      "Allen-Bradley",
+      "PanelView 550"
+    ],
+    "values": {
+      "manufacturer": "Allen-Bradley",
+      "model": "PanelView 550",
+      "catalogNumber": null,
+      "equipmentType": "Panel",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Allen-Bradley"
+        },
+        {
+          "field": "model",
+          "value": "PanelView 550"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Panel"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 1382
+  }
+}

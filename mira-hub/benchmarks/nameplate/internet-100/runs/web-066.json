@@ -1,0 +1,280 @@
+{
+  "image": "c01r1_02.jpg",
+  "bytes": 383166,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperE Motor",
+      "catalogNumber": "10C151Y561G1",
+      "serialNumber": "C1309250322",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR RELIANCE",
+        "SuperE Motor",
+        "CAT. NO. EM4100T",
+        "SPEC",
+        "10C151Y561G1",
+        "CC 010A",
+        "FRAME 284T",
+        "SER. NO. C1309250322",
+        "HP",
+        "15",
+        "CLASS F",
+        "HZ 60",
+        "BEARING SIZE",
+        "R.P.M.",
+        "1175",
+        "PH. 3",
+        "DES. A",
+        "OPP. END",
+        "DRIVE END",
+        "VOLTS",
+        "230/460",
+        "CODE H",
+        "6309",
+        "6311",
+        "AMPS",
+        "42/21",
+        "USABLE AT 208",
+        "42",
+        "A",
+        "GREASE",
+        "40C AMB-CONT",
+        "POLYREX EM",
+        "RATING",
+        "NEMA NOM. EFF.",
+        "91.7",
+        "% P.F.",
+        "73 %",
+        "THERMOSTAT LEADS",
+        "SER. F",
+        "1.15"
+      ]
+    },
+    "rawText": [
+      "BALDOR RELIANCE",
+      "SuperE Motor",
+      "CAT. NO. EM4100T",
+      "SPEC",
+      "10C151Y561G1",
+      "CC 010A",
+      "FRAME 284T",
+      "SER. NO. C1309250322",
+      "HP",
+      "15",
+      "CLASS F",
+      "HZ 60",
+      "BEARING SIZE",
+      "R.P.M.",
+      "1175",
+      "PH. 3",
+      "DES. A",
+      "OPP. END",
+      "DRIVE END",
+      "VOLTS",
+      "230/460",
+      "CODE H",
+      "6309",
+      "6311",
+      "AMPS",
+      "42/21",
+      "USABLE AT 208",
+      "42",
+      "A",
+      "GREASE",
+      "40C AMB-CONT",
+      "POLYREX EM",
+      "RATING",
+      "NEMA NOM. EFF.",
+      "91.7",
+      "% P.F.",
+      "73 %",
+      "THERMOSTAT LEADS",
+      "SER. F",
+      "1.15"
+    ],
+    "values": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperE Motor",
+      "catalogNumber": "10C151Y561G1",
+      "equipmentType": "Motor",
+      "serialNumber": "C1309250322",
+      "voltage": null,
+      "current": "010A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BALDOR RELIANCE"
+        },
+        {
+          "field": "model",
+          "value": "SuperE Motor"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "10C151Y561G1"
+        },
+        {
+          "field": "serialNumber",
+          "value": "C1309250322"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 58,
+        "cropBbox": {
+          "left": 406,
+          "top": 269,
+          "width": 1514,
+          "height": 900
+        },
+        "imageWidth": 1920,
+        "imageHeight": 1440,
+        "cropRotationDeg": 0,
+        "ms": 2010
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3238,
+    "total_ms": 11593
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperE Motor",
+      "catalogNumber": "EM4100T",
+      "serialNumber": "C1309250322",
+      "equipmentType": "Motor",
+      "confidence": 0.95,
+      "rawText": [
+        "BALDOR • RELIANCE",
+        "SuperE Motor",
+        "CAT. NO. EM4100T",
+        "SPEC 10C151Y561G1",
+        "HP 15",
+        "R.P.M. 1175",
+        "OLTS 230/460",
+        "AMPS 42/21",
+        "RATING 40C AMB=CONT",
+        "NEMA NOM. EFF. 91.7 % P.F.",
+        "LEADS H1-H2",
+        "SPACE HEATERS",
+        "VOLTS",
+        "AMPS",
+        "CC 010A",
+        "FRAME 284T",
+        "CLASS F",
+        "PH. 3",
+        "ULTS 230/460",
+        "CODE H",
+        "USABLE AT 208 42",
+        "SER. F 1.15",
+        "MAX. SPACE HEATER TEMP. °C",
+        "NP2130L",
+        "SER. NO. C1309250322",
+        "BEARING SIZE",
+        "OPP. END 6309",
+        "DRIVE END 6311",
+        "GREASE POLYREX EM",
+        "THERMOSTAT LEADS { }",
+        "115 230 460 575",
+        "6.0 15 12",
+        "USE A MANUAL MOMENTARY START SWITCH ONLY",
+        "BALDOR ELECTRIC CO. • FT. SMITH, AR. MFG. IN U.S.A."
+      ]
+    },
+    "rawText": [
+      "BALDOR • RELIANCE",
+      "SuperE Motor",
+      "CAT. NO. EM4100T",
+      "SPEC 10C151Y561G1",
+      "HP 15",
+      "R.P.M. 1175",
+      "OLTS 230/460",
+      "AMPS 42/21",
+      "RATING 40C AMB=CONT",
+      "NEMA NOM. EFF. 91.7 % P.F.",
+      "LEADS H1-H2",
+      "SPACE HEATERS",
+      "VOLTS",
+      "AMPS",
+      "CC 010A",
+      "FRAME 284T",
+      "CLASS F",
+      "PH. 3",
+      "ULTS 230/460",
+      "CODE H",
+      "USABLE AT 208 42",
+      "SER. F 1.15",
+      "MAX. SPACE HEATER TEMP. °C",
+      "NP2130L",
+      "SER. NO. C1309250322",
+      "BEARING SIZE",
+      "OPP. END 6309",
+      "DRIVE END 6311",
+      "GREASE POLYREX EM",
+      "THERMOSTAT LEADS { }",
+      "115 230 460 575",
+      "6.0 15 12",
+      "USE A MANUAL MOMENTARY START SWITCH ONLY",
+      "BALDOR ELECTRIC CO. • FT. SMITH, AR. MFG. IN U.S.A."
+    ],
+    "values": {
+      "manufacturer": "BALDOR RELIANCE",
+      "model": "SuperE Motor",
+      "catalogNumber": "EM4100T",
+      "equipmentType": "Motor",
+      "serialNumber": "C1309250322",
+      "voltage": null,
+      "current": "010A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "BALDOR RELIANCE"
+        },
+        {
+          "field": "model",
+          "value": "SuperE Motor"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "EM4100T"
+        },
+        {
+          "field": "serialNumber",
+          "value": "C1309250322"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Motor"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 8334
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "sample_id": "web-069",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "angled", "dirt", "tiny_text", "dense_table"],
+  "photo_gt": {
+    "manufacturer": "Bitzer",
+    "model": "6GE-34Y-40P",
+    "catalogNumber": "6GE-34Y-40P",
+    "serialNumber": "1994905770",
+    "equipment_category": "compressor",
+    "specs": [
+      {"field": "voltage_50hz", "value_verbatim": "380-420", "unit": "V", "confidence": "high"},
+      {"field": "voltage_60hz", "value_verbatim": "440-480", "unit": "V", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3Ph~", "unit": "", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50", "unit": "Hz", "confidence": "high"},
+      {"field": "frequency_2", "value_verbatim": "60", "unit": "Hz", "confidence": "high"},
+      {"field": "current_max_50hz", "value_verbatim": "65,5", "unit": "A", "confidence": "medium"},
+      {"field": "current_max_60hz", "value_verbatim": "65,5", "unit": "A", "confidence": "medium"},
+      {"field": "locked_rotor_current_y", "value_verbatim": "141", "unit": "A", "confidence": "high"},
+      {"field": "locked_rotor_current_yy", "value_verbatim": "233", "unit": "A", "confidence": "high"},
+      {"field": "displacement_50hz", "value_verbatim": "127", "unit": "m³/h", "confidence": "high"},
+      {"field": "displacement_60hz", "value_verbatim": "153", "unit": "m³/h", "confidence": "high"},
+      {"field": "speed_50hz", "value_verbatim": "1450", "unit": "RPM", "confidence": "high"},
+      {"field": "speed_60hz", "value_verbatim": "1750", "unit": "RPM", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP 54", "unit": "", "confidence": "high"},
+      {"field": "weight", "value_verbatim": "228,00 kg", "unit": "kg", "confidence": "medium"},
+      {"field": "pressure_lp_hp_max", "value_verbatim": "19 / 32 bar", "unit": "bar", "confidence": "high"},
+      {"field": "refrigerant", "value_verbatim": "HFC", "unit": "", "confidence": "high"},
+      {"field": "date", "value_verbatim": "09/2018", "unit": "", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "Made in China", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

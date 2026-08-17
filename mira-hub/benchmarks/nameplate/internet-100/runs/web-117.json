@@ -1,0 +1,140 @@
+{
+  "image": "c07r1_08.jpg",
+  "bytes": 74992,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "BANNER",
+      "model": "RSBF",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "photoelectric specialist",
+      "confidence": 0.95,
+      "rawText": [
+        "MODEL",
+        "RSBF",
+        "the photoelectric specialist"
+      ]
+    },
+    "rawText": [
+      "MODEL",
+      "RSBF",
+      "the photoelectric specialist"
+    ],
+    "values": {
+      "manufacturer": "BANNER",
+      "model": "RSBF",
+      "catalogNumber": null,
+      "equipmentType": "photoelectric specialist",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "RSBF"
+        },
+        {
+          "field": "equipmentType",
+          "value": "photoelectric specialist"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 7,
+        "cropBbox": {
+          "left": 239,
+          "top": 169,
+          "width": 523,
+          "height": 523
+        },
+        "imageWidth": 1198,
+        "imageHeight": 1024,
+        "cropRotationDeg": 0,
+        "ms": 2587
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2852,
+    "total_ms": 4267
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "KANYE",
+      "model": "RSBF",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "POWER BLOCK RPRT",
+      "confidence": 0.95,
+      "rawText": [
+        "MAX-BEAM®",
+        "POWER BLOCK RPRT",
+        "RSBF",
+        "MODEL",
+        "the photoelectric specialist",
+        "OUTPUT",
+        "L-OUTPUT",
+        "ON",
+        "VOL 10-30",
+        "OUTPUT",
+        "VOL 10-30"
+      ]
+    },
+    "rawText": [
+      "MAX-BEAM®",
+      "POWER BLOCK RPRT",
+      "RSBF",
+      "MODEL",
+      "the photoelectric specialist",
+      "OUTPUT",
+      "L-OUTPUT",
+      "ON",
+      "VOL 10-30",
+      "OUTPUT",
+      "VOL 10-30"
+    ],
+    "values": {
+      "manufacturer": "KANYE",
+      "model": "RSBF",
+      "catalogNumber": null,
+      "equipmentType": "POWER BLOCK RPRT",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "RSBF"
+        },
+        {
+          "field": "equipmentType",
+          "value": "POWER BLOCK RPRT"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1942
+  }
+}

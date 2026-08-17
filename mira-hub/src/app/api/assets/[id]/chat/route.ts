@@ -7,6 +7,7 @@ import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
 import { scanBoth, handleSafetyAlert, safetyAlertSseChunk } from "@/lib/agents/safety-alert";
 import {
   retrieveManualChunks,
+  retrieveNodeChunks,
   appendManualContext,
   buildManualUserContent,
   chunksToSources,
@@ -14,6 +15,7 @@ import {
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import { linkedDocIdsForTarget } from "@/lib/workspace-files";
 import {
   approvedAskEnforcementEnabled,
   approvedContextReady,
@@ -304,6 +306,29 @@ export async function POST(
   // is pure-tenant data, so it keeps an explicit `AND tenant_id = $2` (the IDOR
   // guard) — exactly the split /api/documents uses. See
   // `.claude/rules/knowledge-entries-tenant-scoping.md`.
+  // Documents a human EXPLICITLY filed on this asset (workspace_file_links).
+  // Derived before the pool connection below so we never hold two clients.
+  //
+  // Why this lane has to exist: retrieveManualChunks selects by
+  // `manufacturer ILIKE` over the shared corpus, but chunks written by the
+  // node/notebook ingest path carry NO manufacturer column — it is NULL for
+  // every v2 node_attachment row. So a manual a technician attached to this
+  // asset (including one discovered from its nameplate photo) was structurally
+  // unreachable from asset chat: the file appeared under Files, and Ask MIRA
+  // could not cite it. The link row IS the membership proof, which is what
+  // licenses `validatedDocScope` below.
+  let attachedDocIds: string[] = [];
+  try {
+    // `?? []` is load-bearing, not defensive noise: this lane must never be able
+    // to break the asset's PRIMARY retrieval. A non-array here would throw on
+    // `.length` inside the shared try-block below and null out assetRow, turning
+    // an optional enhancement into a total chat outage.
+    attachedDocIds = (await linkedDocIdsForTarget(ctx.tenantId, "cmms_asset", id)) ?? [];
+  } catch (err) {
+    // Non-fatal: fall back to manufacturer/model retrieval only.
+    console.warn("[api/assets/:id/chat] attached-file lookup skipped", err);
+  }
+
   let assetRow: Record<string, unknown> | null = null;
   let manualChunks: ManualChunk[] = [];
   let verifiedRelationshipCount = 0;
@@ -330,6 +355,42 @@ export async function POST(
       });
       if (approvedAskEnforcementEnabled()) {
         manualChunks = manualChunks.filter((chunk) => chunk.verified === true);
+      }
+
+      // Explicitly-attached documents, retrieved by the validated doc set alone.
+      // `validatedDocScope` is licensed by the link rows we just read (tenant +
+      // this exact asset); without it these chunks would be excluded for
+      // carrying the node_id they were ingested under, which is the whole bug.
+      //
+      // NOTE: the `verified === true` filter above is deliberately NOT applied
+      // here. retrieveNodeChunks already runs the sanctioned approvalFilterSql()
+      // seam internally (same as notebook chat). These are the tenant's OWN
+      // private uploads, which are never `verified` in the shared-corpus sense —
+      // filtering on it would drop every attached document and silently undo
+      // this lane. Attachment by a human IS the approval here.
+      if (attachedDocIds.length > 0) {
+        try {
+          const attached = await retrieveNodeChunks(c, ctx.tenantId, lastUser.content, {
+            nodeId: id, // unused while validatedDocScope narrows by doc set
+            unsPath: null,
+            docIds: attachedDocIds,
+            validatedDocScope: true,
+          });
+          // Attached documents are preferred over generic manufacturer results
+          // (a filed manual beats a string match), de-duped so one document
+          // cannot occupy two citation slots.
+          const seen = new Set(
+            attached.map((k) => `${k.sourceUrl}|${k.sourcePage}|${k.content.slice(0, 120)}`),
+          );
+          manualChunks = [
+            ...attached,
+            ...manualChunks.filter(
+              (k) => !seen.has(`${k.sourceUrl}|${k.sourcePage}|${k.content.slice(0, 120)}`),
+            ),
+          ];
+        } catch (err) {
+          console.warn("[api/assets/:id/chat] attached-doc retrieval skipped", err);
+        }
       }
       const relRes = await c.query(
         `WITH anchor AS (

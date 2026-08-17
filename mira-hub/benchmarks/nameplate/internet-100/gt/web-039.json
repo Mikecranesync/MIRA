@@ -1,0 +1,36 @@
+{
+  "sample_id": "web-039",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Grundfos",
+    "model": "MLE90CC-2-56C-D1",
+    "catalogNumber": "85900820 - V03",
+    "serialNumber": "4785",
+    "equipment_category": "pump_motor_integrated_drive",
+    "specs": [
+      {"field": "production_code", "value_verbatim": "P.C. : 0746", "unit": "", "confidence": "high"},
+      {"field": "bearing_de", "value_verbatim": "6306.2Z.C4", "unit": "", "confidence": "high"},
+      {"field": "bearing_nde", "value_verbatim": "6205.2Z.C3", "unit": "", "confidence": "high"},
+      {"field": "service_factor", "value_verbatim": "1,00", "unit": "", "confidence": "high"},
+      {"field": "enclosure", "value_verbatim": "TEFC", "unit": "", "confidence": "high"},
+      {"field": "ambient", "value_verbatim": "TAmb : 40 C", "unit": "C", "confidence": "high"},
+      {"field": "insulation", "value_verbatim": "CL : F", "unit": "", "confidence": "high"},
+      {"field": "env_type", "value_verbatim": "Env.Type : 3R", "unit": "", "confidence": "high"},
+      {"field": "power_factor", "value_verbatim": "PF : 0.94", "unit": "", "confidence": "high"},
+      {"field": "weight", "value_verbatim": "25.5 kg", "unit": "kg", "confidence": "high"},
+      {"field": "voltage_input", "value_verbatim": "3 ~ 208-230 V", "unit": "V", "confidence": "high"},
+      {"field": "current_sf", "value_verbatim": "4,2 A", "unit": "A", "confidence": "high"},
+      {"field": "frequency_input", "value_verbatim": "50/60 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "voltage_output", "value_verbatim": "0 - Uin V", "unit": "V", "confidence": "high"},
+      {"field": "power_hp", "value_verbatim": "P2 : 1.5 HP", "unit": "HP", "confidence": "high"},
+      {"field": "frequency_output", "value_verbatim": "0 - 120 Hz", "unit": "Hz", "confidence": "high"}
+    ],
+    "marks": ["cULus", "CE"],
+    "marks_complete": true
+  },
+  "oem_gt": null,
+  "notes": "Grundfos MLE motor (integrated frequency converter) nameplate on a pump set. 'Made in Hungary'. Slight downward camera angle; all fields legible. Serial No: 4785; P.N. 85900820 - V03 recorded as catalog number."
+}

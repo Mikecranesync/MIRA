@@ -1,0 +1,198 @@
+{
+  "image": "c11r1_14.jpg",
+  "bytes": 43700,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "CENTURY ELECTRIC COMPANY",
+      "model": "J56Z",
+      "catalogNumber": "8-107294-01",
+      "serialNumber": "J110",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "CENTURY",
+        "CENTURY ELECTRIC COMPANY . ST. LOUIS, MO.",
+        "PART 8-107294- 01",
+        "FRAME J56Z",
+        "FORM KHE",
+        "HP 1/3",
+        "AMPS 5.2/2.6",
+        "VOLTS 115/230",
+        "SER NO J110",
+        "CONNECTION DIAGRAM 115241",
+        "THERMALLY PROTECTED NOT",
+        "INSUL CLASS A",
+        "CONT 55",
+        "CODE L 1725",
+        "1.00",
+        "60",
+        "CS",
+        "MADE IN U.S.A",
+        "1037802"
+      ]
+    },
+    "rawText": [
+      "CENTURY",
+      "CENTURY ELECTRIC COMPANY . ST. LOUIS, MO.",
+      "PART 8-107294- 01",
+      "FRAME J56Z",
+      "FORM KHE",
+      "HP 1/3",
+      "AMPS 5.2/2.6",
+      "VOLTS 115/230",
+      "SER NO J110",
+      "CONNECTION DIAGRAM 115241",
+      "THERMALLY PROTECTED NOT",
+      "INSUL CLASS A",
+      "CONT 55",
+      "CODE L 1725",
+      "1.00",
+      "60",
+      "CS",
+      "MADE IN U.S.A",
+      "1037802"
+    ],
+    "values": {
+      "manufacturer": "CENTURY ELECTRIC COMPANY",
+      "model": "J56Z",
+      "catalogNumber": "8-107294-01",
+      "equipmentType": "motor",
+      "serialNumber": "J110",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "CENTURY ELECTRIC COMPANY"
+        },
+        {
+          "field": "model",
+          "value": "J56Z"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "8-107294-01"
+        },
+        {
+          "field": "serialNumber",
+          "value": "J110"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 36,
+        "cropBbox": {
+          "left": 34,
+          "top": 0,
+          "width": 531,
+          "height": 334
+        },
+        "imageWidth": 650,
+        "imageHeight": 363,
+        "cropRotationDeg": 0,
+        "ms": 1022
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2070,
+    "total_ms": 6085
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "CENTURY",
+      "model": "J56Z",
+      "catalogNumber": "8-107294-01",
+      "serialNumber": "115241",
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "CENTURY",
+        "CENTURY ELECTRIC COMPANY . ST. LOUIS, MO",
+        "TYPE CS",
+        "PART 8-107294- 01",
+        "FRAME J56Z",
+        "FORM KHE",
+        "HP 1/3",
+        "AMPS 5.2/2.6",
+        "VOLTS 115/230",
+        "THERMALLY PROTECTED NOT",
+        "SER NO J10",
+        "CONNECTION DIAGRAM 115241",
+        "CODE L 1725",
+        "INSUL CLASS A",
+        "CONT 55",
+        "1.00"
+      ]
+    },
+    "rawText": [
+      "CENTURY",
+      "CENTURY ELECTRIC COMPANY . ST. LOUIS, MO",
+      "TYPE CS",
+      "PART 8-107294- 01",
+      "FRAME J56Z",
+      "FORM KHE",
+      "HP 1/3",
+      "AMPS 5.2/2.6",
+      "VOLTS 115/230",
+      "THERMALLY PROTECTED NOT",
+      "SER NO J10",
+      "CONNECTION DIAGRAM 115241",
+      "CODE L 1725",
+      "INSUL CLASS A",
+      "CONT 55",
+      "1.00"
+    ],
+    "values": {
+      "manufacturer": "CENTURY",
+      "model": "J56Z",
+      "catalogNumber": "8-107294-01",
+      "equipmentType": "motor",
+      "serialNumber": "115241",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "CENTURY"
+        },
+        {
+          "field": "model",
+          "value": "J56Z"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "8-107294-01"
+        },
+        {
+          "field": "serialNumber",
+          "value": "115241"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 3283
+  }
+}

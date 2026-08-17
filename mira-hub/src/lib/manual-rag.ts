@@ -411,6 +411,14 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** Canonical-files retrieval mode (workspace_file_links): scope by the
+     *  validated docIds ALONE, without requiring the chunks' original
+     *  metadata.node_id to equal this caller's node. A document ingested once
+     *  and linked to several notebooks stays retrievable in each of them.
+     *  ONLY set this after membership validation (validateChatSources or a
+     *  file-link derivation) — it is ignored unless docIds/docId narrow the
+     *  scope, so the node filter is never globally removed. */
+    validatedDocScope?: boolean;
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -462,6 +470,19 @@ export async function retrieveNodeChunks(
   const docParams = allowedDocIds.length > 0 ? [allowedDocIds] : [];
   const docClause = allowedDocIds.length > 0 ? "AND doc_id = ANY($5::uuid[])" : "";
 
+  // Canonical-files mode: the validated doc set IS the boundary — chunks keep
+  // their original ingest-time node stamp, so a doc linked to a second notebook
+  // must not be excluded for carrying the first node's id. The bypass is
+  // explicit, requires a non-empty validated doc set, and swaps the node
+  // predicate for an always-true reference (the param must stay bound).
+  const docScopeOnly = opts.validatedDocScope === true && allowedDocIds.length > 0;
+  const nodeClauseMain = docScopeOnly
+    ? "AND ($3::text[] IS NOT NULL)"
+    : "AND (metadata->>'node_id') = ANY($3::text[])";
+  const nodeClauseExact = docScopeOnly
+    ? "AND ($2::text[] IS NOT NULL)"
+    : "AND (metadata->>'node_id') = ANY($2::text[])";
+
   // Widen the candidate pool, then rerank down to topK (bakeoff finding 5: the
   // bottleneck is RANKING, not parsing — the answer chunk is present but
   // out-ranked). POOL is retrieved per pass; the final slice is topK.
@@ -484,7 +505,7 @@ export async function retrieveNodeChunks(
         WHERE tenant_id = $1
           AND ingest_route = 'v2'
           ${approvalFilterSql()}
-          AND (metadata->>'node_id') = ANY($3::text[])
+          ${nodeClauseMain}
           ${docClause}
           AND content_tsv @@ ${tsquery}
         ORDER BY rank DESC
@@ -520,7 +541,7 @@ export async function retrieveNodeChunks(
         WHERE tenant_id = $1
           AND ingest_route = 'v2'
           ${approvalFilterSql()}
-          AND (metadata->>'node_id') = ANY($2::text[])
+          ${nodeClauseExact}
           ${exactDocClause}
           AND content ILIKE ANY($3::text[])
         LIMIT $4`,

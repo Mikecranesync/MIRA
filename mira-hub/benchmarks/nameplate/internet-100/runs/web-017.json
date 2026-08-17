@@ -1,0 +1,170 @@
+{
+  "image": "c04r1_10.jpg",
+  "bytes": 137384,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "YASKAWA ELECTRIC",
+      "model": "USAREM-05AE2K",
+      "catalogNumber": null,
+      "serialNumber": "R005FG 582",
+      "equipmentType": "AC SERVO MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "AC SERVO MOTOR",
+        "TYPE",
+        "USAREM-05AE2K",
+        "W",
+        "500",
+        "N•m",
+        "1.59",
+        "/min",
+        "3000",
+        "S/N",
+        "R005FG 582"
+      ]
+    },
+    "rawText": [
+      "AC SERVO MOTOR",
+      "TYPE",
+      "USAREM-05AE2K",
+      "W",
+      "500",
+      "N•m",
+      "1.59",
+      "/min",
+      "3000",
+      "S/N",
+      "R005FG 582"
+    ],
+    "values": {
+      "manufacturer": "YASKAWA ELECTRIC",
+      "model": "USAREM-05AE2K",
+      "catalogNumber": null,
+      "equipmentType": "AC SERVO MOTOR",
+      "serialNumber": "R005FG 582",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "YASKAWA ELECTRIC"
+        },
+        {
+          "field": "model",
+          "value": "USAREM-05AE2K"
+        },
+        {
+          "field": "serialNumber",
+          "value": "R005FG 582"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC SERVO MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 15,
+        "cropBbox": {
+          "left": 22,
+          "top": 3,
+          "width": 1254,
+          "height": 923
+        },
+        "imageWidth": 1280,
+        "imageHeight": 926,
+        "cropRotationDeg": 0,
+        "ms": 2463
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3019,
+    "total_ms": 5719
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "YASKAWA ELECTRIC",
+      "model": "USAREM-05AE2K",
+      "catalogNumber": null,
+      "serialNumber": "R005FG 582",
+      "equipmentType": "AC SERVO MOTOR",
+      "confidence": 0.95,
+      "rawText": [
+        "AC SERVO MOTOR",
+        "TYPE",
+        "USAREM-05AE2K",
+        "W",
+        "500",
+        "/min",
+        "3000",
+        "N•m",
+        "1.59",
+        "5.3",
+        "S/N",
+        "R005FG 582"
+      ]
+    },
+    "rawText": [
+      "AC SERVO MOTOR",
+      "TYPE",
+      "USAREM-05AE2K",
+      "W",
+      "500",
+      "/min",
+      "3000",
+      "N•m",
+      "1.59",
+      "5.3",
+      "S/N",
+      "R005FG 582"
+    ],
+    "values": {
+      "manufacturer": "YASKAWA ELECTRIC",
+      "model": "USAREM-05AE2K",
+      "catalogNumber": null,
+      "equipmentType": "AC SERVO MOTOR",
+      "serialNumber": "R005FG 582",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "YASKAWA ELECTRIC"
+        },
+        {
+          "field": "model",
+          "value": "USAREM-05AE2K"
+        },
+        {
+          "field": "serialNumber",
+          "value": "R005FG 582"
+        },
+        {
+          "field": "equipmentType",
+          "value": "AC SERVO MOTOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2611
+  }
+}

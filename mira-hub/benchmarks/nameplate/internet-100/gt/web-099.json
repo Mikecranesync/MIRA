@@ -1,0 +1,26 @@
+{
+  "sample_id": "web-099",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "scratched"],
+  "photo_gt": {
+    "manufacturer": "Tecumseh",
+    "model": "AH447RT-172-P2",
+    "catalogNumber": "AH2465Z",
+    "serialNumber": "303290",
+    "equipment_category": "compressor",
+    "specs": [
+      {"field": "voltage_60hz", "value_verbatim": "208-230V~60Hz", "unit": "V/Hz", "confidence": "high"},
+      {"field": "voltage_50hz", "value_verbatim": "200-240V~50Hz", "unit": "V/Hz", "confidence": "high"},
+      {"field": "locked_rotor_amps", "value_verbatim": "47.0", "unit": "A", "confidence": "high"},
+      {"field": "phase", "value_verbatim": "3PH", "unit": "", "confidence": "high"},
+      {"field": "date_code", "value_verbatim": "H2995", "unit": "", "confidence": "high"},
+      {"field": "motor_info", "value_verbatim": "GC", "unit": "", "confidence": "high"},
+      {"field": "plant_code", "value_verbatim": "7020", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["CSA"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

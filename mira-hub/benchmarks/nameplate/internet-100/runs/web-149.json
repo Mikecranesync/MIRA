@@ -1,0 +1,150 @@
+{
+  "image": "c06r1_10.jpg",
+  "bytes": 130346,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SQUARE D",
+      "model": "MJ-5023",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "LISTED HACR TYPE",
+      "confidence": 0.95,
+      "rawText": [
+        "LISTED HACR TYPE",
+        "MJ-5023",
+        "FOR USE WITH",
+        "AIR CONDITIONING",
+        "HEATING & REFRIGERATING",
+        "EQUIPMENT HAVING MOTOR GROUP",
+        "COMBINATIONS AND MARKED FOR USE WITH HACR CIRCUIT BREAKERS",
+        "SQUARE D",
+        "61"
+      ]
+    },
+    "rawText": [
+      "LISTED HACR TYPE",
+      "MJ-5023",
+      "FOR USE WITH",
+      "AIR CONDITIONING",
+      "HEATING & REFRIGERATING",
+      "EQUIPMENT HAVING MOTOR GROUP",
+      "COMBINATIONS AND MARKED FOR USE WITH HACR CIRCUIT BREAKERS",
+      "SQUARE D",
+      "61"
+    ],
+    "values": {
+      "manufacturer": "SQUARE D",
+      "model": "MJ-5023",
+      "catalogNumber": null,
+      "equipmentType": "LISTED HACR TYPE",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SQUARE D"
+        },
+        {
+          "field": "model",
+          "value": "MJ-5023"
+        },
+        {
+          "field": "equipmentType",
+          "value": "LISTED HACR TYPE"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 12,
+        "cropBbox": {
+          "left": 245,
+          "top": 256,
+          "width": 538,
+          "height": 362
+        },
+        "imageWidth": 960,
+        "imageHeight": 960,
+        "cropRotationDeg": 0,
+        "ms": 2571
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2957,
+    "total_ms": 5654
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SQUARE D",
+      "model": "MJ-5023",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "HACR",
+      "confidence": 0.95,
+      "rawText": [
+        "LISTED HACR TYPE",
+        "MJ-5023",
+        "FOR USE WITH AIR CONDITIONING",
+        "HEATING & REFRIGERATING",
+        "EQUIPMENT HAVING MOTOR GROUP",
+        "COMBINATIONS AND MARKED FOR USE WITH HACR CIRCUIT BREAKERS",
+        "SQUARE D",
+        "61"
+      ]
+    },
+    "rawText": [
+      "LISTED HACR TYPE",
+      "MJ-5023",
+      "FOR USE WITH AIR CONDITIONING",
+      "HEATING & REFRIGERATING",
+      "EQUIPMENT HAVING MOTOR GROUP",
+      "COMBINATIONS AND MARKED FOR USE WITH HACR CIRCUIT BREAKERS",
+      "SQUARE D",
+      "61"
+    ],
+    "values": {
+      "manufacturer": "SQUARE D",
+      "model": "MJ-5023",
+      "catalogNumber": null,
+      "equipmentType": "HACR",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SQUARE D"
+        },
+        {
+          "field": "model",
+          "value": "MJ-5023"
+        },
+        {
+          "field": "equipmentType",
+          "value": "HACR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2308
+  }
+}

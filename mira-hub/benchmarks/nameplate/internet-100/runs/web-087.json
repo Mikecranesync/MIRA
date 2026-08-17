@@ -1,0 +1,212 @@
+{
+  "image": "c05r1_01.jpg",
+  "bytes": 120137,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "SEW-EURODRIVE INC USA",
+      "model": "SAF47DRE80M4/MM07",
+      "catalogNumber": null,
+      "serialNumber": "890107840.13.13.002",
+      "equipmentType": "Inverter",
+      "confidence": 0.95,
+      "rawText": [
+        "SEW-EURODRIVE INC USA",
+        "S.O. 890107840.13.13.002",
+        "Type SAF47DRE80M4/MM07",
+        "60 Hz rpm CT280-1700/10-60Hz",
+        "HP 1.00",
+        "Output rpm 8.6-52.34",
+        "Ins.Cl. 155(F)",
+        "Ratio 32.48",
+        "Mtg Pos M4B",
+        "Torque 991",
+        "Rating 1.40",
+        "ShellOmalas2G680",
+        "Inverter Duty VPWM",
+        "Duty CONT-S1",
+        "Amb. -20...40 °C",
+        "V 380-500Y",
+        "A 1.70",
+        "Cos φ 0.99",
+        "IEC60034 0",
+        "3 Phase IP65TEFC",
+        "Nom. Eff %",
+        "KVA",
+        "188 572 3.5k"
+      ]
+    },
+    "rawText": [
+      "SEW-EURODRIVE INC USA",
+      "S.O. 890107840.13.13.002",
+      "Type SAF47DRE80M4/MM07",
+      "60 Hz rpm CT280-1700/10-60Hz",
+      "HP 1.00",
+      "Output rpm 8.6-52.34",
+      "Ins.Cl. 155(F)",
+      "Ratio 32.48",
+      "Mtg Pos M4B",
+      "Torque 991",
+      "Rating 1.40",
+      "ShellOmalas2G680",
+      "Inverter Duty VPWM",
+      "Duty CONT-S1",
+      "Amb. -20...40 °C",
+      "V 380-500Y",
+      "A 1.70",
+      "Cos φ 0.99",
+      "IEC60034 0",
+      "3 Phase IP65TEFC",
+      "Nom. Eff %",
+      "KVA",
+      "188 572 3.5k"
+    ],
+    "values": {
+      "manufacturer": "SEW-EURODRIVE INC USA",
+      "model": "SAF47DRE80M4/MM07",
+      "catalogNumber": null,
+      "equipmentType": "Inverter",
+      "serialNumber": "890107840.13.13.002",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SEW-EURODRIVE INC USA"
+        },
+        {
+          "field": "model",
+          "value": "SAF47DRE80M4/MM07"
+        },
+        {
+          "field": "serialNumber",
+          "value": "890107840.13.13.002"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Inverter"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 31,
+        "cropBbox": {
+          "left": 237,
+          "top": 429,
+          "width": 876,
+          "height": 474
+        },
+        "imageWidth": 1350,
+        "imageHeight": 1350,
+        "cropRotationDeg": 0,
+        "ms": 2827
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3260,
+    "total_ms": 8978
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "SEW-EURODRIVE INC.USA",
+      "model": "S4F7DRE80M4/MM07",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": "gearbox",
+      "confidence": 0.95,
+      "rawText": [
+        "SEW-EURODRIVE INC.USA",
+        "S.O. 890107840.13.1002",
+        "Type S4F7DRE80M4/MM07",
+        "60 Hz rpm CT280-1700/10-60HZ",
+        "V 380-500Y",
+        "3 Phase IP51EIFC",
+        "HP 1.00",
+        "A 1.70",
+        "Cos φ 0.99",
+        "Nom. Eff %",
+        "Output rpm 8.6-52.34",
+        "Ins.Cl. 155(F)",
+        "Duty CONT-S1",
+        "Amb. -20...40 °C",
+        "IE60034 0",
+        "Ratio 32.48",
+        "Torque 991",
+        "In-lbs",
+        "Mtg Poe JM4B",
+        "Rating 1.40",
+        "ShellOmalsS2G680",
+        "Inverter Duty VPWM",
+        "Amb. 0...40 °C",
+        "188 572 355"
+      ]
+    },
+    "rawText": [
+      "SEW-EURODRIVE INC.USA",
+      "S.O. 890107840.13.1002",
+      "Type S4F7DRE80M4/MM07",
+      "60 Hz rpm CT280-1700/10-60HZ",
+      "V 380-500Y",
+      "3 Phase IP51EIFC",
+      "HP 1.00",
+      "A 1.70",
+      "Cos φ 0.99",
+      "Nom. Eff %",
+      "Output rpm 8.6-52.34",
+      "Ins.Cl. 155(F)",
+      "Duty CONT-S1",
+      "Amb. -20...40 °C",
+      "IE60034 0",
+      "Ratio 32.48",
+      "Torque 991",
+      "In-lbs",
+      "Mtg Poe JM4B",
+      "Rating 1.40",
+      "ShellOmalsS2G680",
+      "Inverter Duty VPWM",
+      "Amb. 0...40 °C",
+      "188 572 355"
+    ],
+    "values": {
+      "manufacturer": "SEW-EURODRIVE INC.USA",
+      "model": "S4F7DRE80M4/MM07",
+      "catalogNumber": null,
+      "equipmentType": "gearbox",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "SEW-EURODRIVE INC.USA"
+        },
+        {
+          "field": "model",
+          "value": "S4F7DRE80M4/MM07"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5842
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "sample_id": "web-113",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "rotated_90", "curved_surface", "small_in_scene", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "SMC",
+    "model": "US7802",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "pneumatic_cylinder",
+    "specs": [
+      {"field": "pressure", "value_verbatim": "MAX. PRESS: 100 PSI", "unit": "PSI", "confidence": "high"},
+      {"field": "pressure_mpa", "value_verbatim": "0.70 MPA", "unit": "MPa", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "MADE IN USA", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

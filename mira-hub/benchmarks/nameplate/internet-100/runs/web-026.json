@@ -1,0 +1,214 @@
+{
+  "image": "c02r1_10.jpg",
+  "bytes": 121089,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Danfoss",
+      "model": "132F0018",
+      "catalogNumber": null,
+      "serialNumber": "063424A257",
+      "equipmentType": "Micro Drive",
+      "confidence": 0.95,
+      "rawText": [
+        "VLT",
+        "Micro Drive",
+        "www.danfoss.com",
+        "T/C: FC-051PK75T4E20H3XXCXXXXXXX",
+        "P/N: 132F0018",
+        "S/N: 063424A257",
+        "0.75kW 1.0HP",
+        "IN: 3x390-480V 50/60Hz 3.5/3.0A",
+        "OUT: 3x0-Vin 0-400Hz 2.2/2.1A",
+        "CHASSIS\nIP20",
+        "132F0018063424A257",
+        "MADE BY DANFOSS IN CHINA",
+        "UL US LISTED",
+        "5AF3 E358502 Ind.contr.Eq.",
+        "See manual for prefuse",
+        "CE",
+        "RoHS",
+        "EAC",
+        "CAUTION/ATTENTION:",
+        "See manual for special condition/mainsfuse",
+        "Voir manuel de conditions spéciales/fusibles",
+        "WARNING/AVERTISSEMENT:",
+        "Risk of electric shock. Stored charge do not touch until 4 min. after Disconnection",
+        "Risque du choc électrique,charge résiduelle,attendre 4 min. apres deconnexion"
+      ]
+    },
+    "rawText": [
+      "VLT",
+      "Micro Drive",
+      "www.danfoss.com",
+      "T/C: FC-051PK75T4E20H3XXCXXXXXXX",
+      "P/N: 132F0018",
+      "S/N: 063424A257",
+      "0.75kW 1.0HP",
+      "IN: 3x390-480V 50/60Hz 3.5/3.0A",
+      "OUT: 3x0-Vin 0-400Hz 2.2/2.1A",
+      "CHASSIS\nIP20",
+      "132F0018063424A257",
+      "MADE BY DANFOSS IN CHINA",
+      "UL US LISTED",
+      "5AF3 E358502 Ind.contr.Eq.",
+      "See manual for prefuse",
+      "CE",
+      "RoHS",
+      "EAC",
+      "CAUTION/ATTENTION:",
+      "See manual for special condition/mainsfuse",
+      "Voir manuel de conditions spéciales/fusibles",
+      "WARNING/AVERTISSEMENT:",
+      "Risk of electric shock. Stored charge do not touch until 4 min. after Disconnection",
+      "Risque du choc électrique,charge résiduelle,attendre 4 min. apres deconnexion"
+    ],
+    "values": {
+      "manufacturer": "Danfoss",
+      "model": "132F0018",
+      "catalogNumber": "132F0018",
+      "equipmentType": "Micro Drive",
+      "serialNumber": "063424A257",
+      "voltage": "480V",
+      "current": "3.0A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL, CE, RoHS"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Danfoss"
+        },
+        {
+          "field": "model",
+          "value": "132F0018"
+        },
+        {
+          "field": "serialNumber",
+          "value": "063424A257"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Micro Drive"
+        }
+      ],
+      "needsReview": [
+        "certification"
+      ],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 28,
+        "cropBbox": {
+          "left": 83,
+          "top": 152,
+          "width": 565,
+          "height": 659
+        },
+        "imageWidth": 750,
+        "imageHeight": 1000,
+        "cropRotationDeg": 0,
+        "ms": 1894
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 8571,
+    "total_ms": 15262
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Danfoss A/S",
+      "model": "132F0018",
+      "catalogNumber": null,
+      "serialNumber": "063424A257",
+      "equipmentType": "Micro Drive",
+      "confidence": 0.95,
+      "rawText": [
+        "VLT®",
+        "Micro Drive",
+        "www.danfoss.com",
+        "T/C: FC-051PK75T4E20H3XCXXXXXXX",
+        "P.75kW 1.0HP",
+        "S/N: 063424A257",
+        "0.75kW 1.0HP",
+        "IN: 3x390-480V 50/60Hz 3.5/3.0A",
+        "OUT: 3x0-Vin 0-400Hz 2.2/2.1A",
+        "CHASSIS:IP20",
+        "132F0018063424A257",
+        "MADE BY DANFOSS IN CHINA",
+        "5AF3 E358502 Ind.contr.Eq.",
+        "US LISTED",
+        "See manual for prefuse",
+        "CAUTION/ATTENTION:",
+        "See manual for special condition/mainsuse",
+        "Voir manuel de conditions spéciales/fusibles",
+        "WARNING/AVERTISSEMENT:",
+        "Risk of electric shock. Stored charge do not touch until 4 min. after disconnection",
+        "Risque du choc électrique, charge résiduelle, attendre 4 min. apres deconnexion"
+      ]
+    },
+    "rawText": [
+      "VLT®",
+      "Micro Drive",
+      "www.danfoss.com",
+      "T/C: FC-051PK75T4E20H3XCXXXXXXX",
+      "P.75kW 1.0HP",
+      "S/N: 063424A257",
+      "0.75kW 1.0HP",
+      "IN: 3x390-480V 50/60Hz 3.5/3.0A",
+      "OUT: 3x0-Vin 0-400Hz 2.2/2.1A",
+      "CHASSIS:IP20",
+      "132F0018063424A257",
+      "MADE BY DANFOSS IN CHINA",
+      "5AF3 E358502 Ind.contr.Eq.",
+      "US LISTED",
+      "See manual for prefuse",
+      "CAUTION/ATTENTION:",
+      "See manual for special condition/mainsuse",
+      "Voir manuel de conditions spéciales/fusibles",
+      "WARNING/AVERTISSEMENT:",
+      "Risk of electric shock. Stored charge do not touch until 4 min. after disconnection",
+      "Risque du choc électrique, charge résiduelle, attendre 4 min. apres deconnexion"
+    ],
+    "values": {
+      "manufacturer": "Danfoss A/S",
+      "model": "132F0018",
+      "catalogNumber": null,
+      "equipmentType": "Micro Drive",
+      "serialNumber": "063424A257",
+      "voltage": "480V",
+      "current": "3.0A",
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "132F0018"
+        },
+        {
+          "field": "serialNumber",
+          "value": "063424A257"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Micro Drive"
+        }
+      ],
+      "needsReview": [
+        "manufacturer"
+      ],
+      "rejected": []
+    },
+    "total_ms": 5709
+  }
+}

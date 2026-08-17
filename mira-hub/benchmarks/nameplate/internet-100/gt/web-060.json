@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-060",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "curved_surface", "dirt", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Scroll Technologies",
+    "model": "SCD420AC01",
+    "catalogNumber": "SCD420AC01",
+    "serialNumber": "S3497K05252",
+    "equipment_category": "compressor",
+    "specs": [
+      {"field": "voltage_phase_frequency", "value_verbatim": "208-230 -1- 60", "unit": "", "confidence": "high"},
+      {"field": "run_capacitor", "value_verbatim": "40mF/440V", "unit": "", "confidence": "high"},
+      {"field": "oil_charge", "value_verbatim": "36oz/1.1L", "unit": "", "confidence": "high"},
+      {"field": "lra", "value_verbatim": "115", "unit": "A", "confidence": "medium"},
+      {"field": "thermal_protection", "value_verbatim": "THERMALLY PROTECTED", "unit": "", "confidence": "high"},
+      {"field": "origin", "value_verbatim": "MADE IN THE USA", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["UL", "cUL"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

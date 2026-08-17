@@ -1,0 +1,154 @@
+{
+  "image": "c09r1_04.jpg",
+  "bytes": 162959,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Scroll Technologies",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "S3497K05252",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SERIAL NO S3497K05252",
+        "S.T. NO. SCD420AC01",
+        "VOLTS-PHASE-FREQ.",
+        "AG",
+        "208-230 -1 - 60",
+        "RUN CAP",
+        "40mF",
+        "440",
+        "OIL CHG",
+        "36oz/1.1L",
+        "LRA",
+        "116",
+        "Scroll Technologies",
+        "MADE IN THE USA"
+      ]
+    },
+    "rawText": [
+      "SERIAL NO S3497K05252",
+      "S.T. NO. SCD420AC01",
+      "VOLTS-PHASE-FREQ.",
+      "AG",
+      "208-230 -1 - 60",
+      "RUN CAP",
+      "40mF",
+      "440",
+      "OIL CHG",
+      "36oz/1.1L",
+      "LRA",
+      "116",
+      "Scroll Technologies",
+      "MADE IN THE USA"
+    ],
+    "values": {
+      "manufacturer": "Scroll Technologies",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "S3497K05252",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Scroll Technologies"
+        },
+        {
+          "field": "serialNumber",
+          "value": "S3497K05252"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 27,
+        "cropBbox": {
+          "left": 1,
+          "top": 0,
+          "width": 837,
+          "height": 655
+        },
+        "imageWidth": 900,
+        "imageHeight": 675,
+        "cropRotationDeg": 0,
+        "ms": 1616
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2212,
+    "total_ms": 5618
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Scroll Technologies",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": "S3497K05252",
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "SERIAL NO S3497K05252",
+        "S.T. NO. SCD420AC01",
+        "VOLTS - PHASE-FREQ.",
+        "208-230 • 1 - 60",
+        "RUN CAP 40mF/ 440V",
+        "OIL CHG 36oz/1.1L",
+        "LRA 116",
+        "Scroll Technologies",
+        "MADE IN THE USA"
+      ]
+    },
+    "rawText": [
+      "SERIAL NO S3497K05252",
+      "S.T. NO. SCD420AC01",
+      "VOLTS - PHASE-FREQ.",
+      "208-230 • 1 - 60",
+      "RUN CAP 40mF/ 440V",
+      "OIL CHG 36oz/1.1L",
+      "LRA 116",
+      "Scroll Technologies",
+      "MADE IN THE USA"
+    ],
+    "values": {
+      "manufacturer": "Scroll Technologies",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": "S3497K05252",
+      "voltage": "440V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Scroll Technologies"
+        },
+        {
+          "field": "serialNumber",
+          "value": "S3497K05252"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3284
+  }
+}

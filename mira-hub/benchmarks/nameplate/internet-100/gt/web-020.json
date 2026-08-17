@@ -1,0 +1,23 @@
+{
+  "sample_id": "web-020",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["angled", "rotated_90", "tiny_text"],
+  "photo_gt": {
+    "manufacturer": "Festo",
+    "model": "CPE14-M1BH-5J",
+    "catalogNumber": "196939",
+    "serialNumber": "unknown",
+    "equipment_category": "solenoid_valve",
+    "specs": [
+      {"field": "pressure", "value_verbatim": "1.2-8bar", "unit": "bar", "confidence": "medium"},
+      {"field": "coil_voltage", "value_verbatim": "24V DC", "unit": "V", "confidence": "high"},
+      {"field": "coil_power", "value_verbatim": "1.28W", "unit": "W", "confidence": "medium"},
+      {"field": "ip_rating", "value_verbatim": "IP00/65", "unit": "", "confidence": "medium"}
+    ],
+    "marks": ["cULus"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

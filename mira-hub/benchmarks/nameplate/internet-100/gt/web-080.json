@@ -1,0 +1,23 @@
+{
+  "sample_id": "web-080",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "embossed"],
+  "photo_gt": {
+    "manufacturer": "The Superheater Co",
+    "model": "unknown",
+    "catalogNumber": "unknown",
+    "serialNumber": "unknown",
+    "equipment_category": "steam superheater",
+    "specs": [
+      {"field": "brand_mark", "value_verbatim": "ELESCO REG. IN PATd U.S. OFFICE", "unit": "", "confidence": "high"},
+      {"field": "patent_statement", "value_verbatim": "SUPERHEATER & THROTTLE PATENTED IN U.S.A", "unit": "", "confidence": "high"},
+      {"field": "patent_numbers", "value_verbatim": "RE16285 1662955 1712928 1863020 1891898 1863068", "unit": "", "confidence": "high"},
+      {"field": "patent_note", "value_verbatim": "OTHER PATENTS PENDING", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

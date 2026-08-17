@@ -1,0 +1,29 @@
+{
+  "sample_id": "web-005",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "hard",
+  "conditions": ["angled", "embossed", "low_contrast", "glare", "dirt"],
+  "photo_gt": {
+    "manufacturer": "Manchester",
+    "model": "unknown",
+    "catalogNumber": "301217",
+    "serialNumber": "32498636",
+    "equipment_category": "pressure_vessel_air_receiver",
+    "specs": [
+      {"field": "national_board_no", "value_verbatim": "NAT'L BD 921773", "unit": "", "confidence": "high"},
+      {"field": "pressure_mawp", "value_verbatim": "MAWP 200 PSI", "unit": "PSI", "confidence": "high"},
+      {"field": "mawp_temperature", "value_verbatim": "650F", "unit": "°F", "confidence": "low"},
+      {"field": "mdmt", "value_verbatim": "MDMT -20F @ 200 PSI", "unit": "", "confidence": "medium"},
+      {"field": "crn", "value_verbatim": "E7400.2C", "unit": "", "confidence": "medium"},
+      {"field": "year", "value_verbatim": "YR 1999", "unit": "", "confidence": "high"},
+      {"field": "shell_thickness", "value_verbatim": ".184", "unit": "in", "confidence": "medium"},
+      {"field": "head_thickness", "value_verbatim": ".149", "unit": "in", "confidence": "medium"},
+      {"field": "capacity", "value_verbatim": "GAL 120", "unit": "gal", "confidence": "high"},
+      {"field": "head_type", "value_verbatim": "2:1 SE", "unit": "", "confidence": "medium"}
+    ],
+    "marks": [],
+    "marks_complete": false
+  },
+  "oem_gt": null
+}

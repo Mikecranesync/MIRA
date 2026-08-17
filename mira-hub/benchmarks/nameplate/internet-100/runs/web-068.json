@@ -1,0 +1,146 @@
+{
+  "image": "c04r1_12.jpg",
+  "bytes": 140703,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "FANUC LTD",
+      "model": "A860-0202-T014",
+      "catalogNumber": null,
+      "serialNumber": "051987",
+      "equipmentType": "PULSE GENERATOR",
+      "confidence": 0.95,
+      "rawText": [
+        "PULSE GENERATOR",
+        "TYPE A860-0202-T014",
+        "NO. 051987",
+        "1996-02",
+        "FANUC LTD",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "PULSE GENERATOR",
+      "TYPE A860-0202-T014",
+      "NO. 051987",
+      "1996-02",
+      "FANUC LTD",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "FANUC LTD",
+      "model": "A860-0202-T014",
+      "catalogNumber": null,
+      "equipmentType": "PULSE GENERATOR",
+      "serialNumber": "051987",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FANUC LTD"
+        },
+        {
+          "field": "model",
+          "value": "A860-0202-T014"
+        },
+        {
+          "field": "serialNumber",
+          "value": "051987"
+        },
+        {
+          "field": "equipmentType",
+          "value": "PULSE GENERATOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 6,
+        "cropBbox": {
+          "left": 51,
+          "top": 176,
+          "width": 1067,
+          "height": 481
+        },
+        "imageWidth": 1280,
+        "imageHeight": 808,
+        "cropRotationDeg": 0,
+        "ms": 1397
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 1900,
+    "total_ms": 4449
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "FANUC LTD",
+      "model": "A860-0202-T014",
+      "catalogNumber": null,
+      "serialNumber": "051987",
+      "equipmentType": "PULSE GENERATOR",
+      "confidence": 0.95,
+      "rawText": [
+        "PULSE GENERATOR",
+        "TYPE A860-0202-T014",
+        "NO. 051987 1996-02",
+        "FANUC LTD",
+        "MADE IN JAPAN"
+      ]
+    },
+    "rawText": [
+      "PULSE GENERATOR",
+      "TYPE A860-0202-T014",
+      "NO. 051987 1996-02",
+      "FANUC LTD",
+      "MADE IN JAPAN"
+    ],
+    "values": {
+      "manufacturer": "FANUC LTD",
+      "model": "A860-0202-T014",
+      "catalogNumber": null,
+      "equipmentType": "PULSE GENERATOR",
+      "serialNumber": "051987",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "FANUC LTD"
+        },
+        {
+          "field": "model",
+          "value": "A860-0202-T014"
+        },
+        {
+          "field": "serialNumber",
+          "value": "051987"
+        },
+        {
+          "field": "equipmentType",
+          "value": "PULSE GENERATOR"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 2174
+  }
+}

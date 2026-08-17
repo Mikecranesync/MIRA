@@ -24,10 +24,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!/^[0-9a-f-]{36}$/i.test(docId)) {
     return NextResponse.json({ error: "invalid_doc_id" }, { status: 400 });
   }
-  const matchState =
-    body.matchState === "candidate" || body.matchState === "verified"
-      ? body.matchState
-      : "user_confirmed";
+  // Trust is SERVER-owned (Codex P1, 2026-08-16): attaching an existing doc is
+  // a user action → user_confirmed. A client may NOT mint "verified" (earned
+  // by server-side applicability proof) via this door. "candidate" is a
+  // system-suggestion state and is likewise not client-settable here.
+  if (body.matchState !== undefined && body.matchState !== "user_confirmed") {
+    return NextResponse.json({ error: "invalid_match_state" }, { status: 400 });
+  }
+  const matchState = "user_confirmed" as const;
   // Mirror the equipment_notebook_sources.source_role CHECK — an unknown role
   // must 400 here, not surface as a DB constraint 500.
   const SOURCE_ROLES = ["manual", "quick_start", "drawing", "work_order", "note", "photo", "other"];

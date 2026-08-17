@@ -1,0 +1,120 @@
+{
+  "image": "c05r1_08.jpg",
+  "bytes": 61506,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "μMP",
+      "model": null,
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "μMP"
+      ]
+    },
+    "rawText": [
+      "μMP"
+    ],
+    "values": {
+      "manufacturer": "μMP",
+      "model": null,
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "μMP"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 3,
+        "cropBbox": {
+          "left": 471,
+          "top": 132,
+          "width": 269,
+          "height": 289
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2225
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2459,
+    "total_ms": 3627
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "μMP",
+      "model": "X-MP 0420",
+      "catalogNumber": "X-MP 0420",
+      "serialNumber": null,
+      "equipmentType": "motor",
+      "confidence": 0.95,
+      "rawText": [
+        "μMP",
+        "X-MP 0420",
+        "X-MP 0420",
+        "null"
+      ]
+    },
+    "rawText": [
+      "μMP",
+      "X-MP 0420",
+      "X-MP 0420",
+      "null"
+    ],
+    "values": {
+      "manufacturer": "μMP",
+      "model": "X-MP 0420",
+      "catalogNumber": "X-MP 0420",
+      "equipmentType": "motor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "μMP"
+        },
+        {
+          "field": "model",
+          "value": "X-MP 0420"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "X-MP 0420"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 1632
+  }
+}

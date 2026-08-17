@@ -1,0 +1,150 @@
+{
+  "image": "c08r1_11.png",
+  "bytes": 1509676,
+  "mime": "image/png",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Parker",
+      "model": "H22VXBG023C",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Parker",
+        "H22VXBG023C",
+        "3710",
+        "145 PSIG (1000 kPa) MAX 120 V, 60 Hz : 4.5 V A",
+        "#14",
+        "#12"
+      ]
+    },
+    "rawText": [
+      "Parker",
+      "H22VXBG023C",
+      "3710",
+      "145 PSIG (1000 kPa) MAX 120 V, 60 Hz : 4.5 V A",
+      "#14",
+      "#12"
+    ],
+    "values": {
+      "manufacturer": "Parker",
+      "model": "H22VXBG023C",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": "120V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Parker"
+        },
+        {
+          "field": "model",
+          "value": "H22VXBG023C"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 10,
+        "cropBbox": {
+          "left": 16,
+          "top": 458,
+          "width": 1028,
+          "height": 747
+        },
+        "imageWidth": 1200,
+        "imageHeight": 1205,
+        "cropRotationDeg": 0,
+        "ms": 3101
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 6825,
+    "total_ms": 9166
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Parker isys",
+      "model": "H22VXBG023C",
+      "catalogNumber": "3710",
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "Parker isys",
+        "H22VXBG023C",
+        "3710",
+        "145 PSIG (1000 kPa) MAX",
+        "120 V",
+        "60 Hz",
+        "4.5 V A",
+        "#14",
+        "4 2",
+        "5 1 3",
+        "#12",
+        "SP",
+        "US"
+      ]
+    },
+    "rawText": [
+      "Parker isys",
+      "H22VXBG023C",
+      "3710",
+      "145 PSIG (1000 kPa) MAX",
+      "120 V",
+      "60 Hz",
+      "4.5 V A",
+      "#14",
+      "4 2",
+      "5 1 3",
+      "#12",
+      "SP",
+      "US"
+    ],
+    "values": {
+      "manufacturer": "Parker isys",
+      "model": "H22VXBG023C",
+      "catalogNumber": "3710",
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": "120V",
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Parker isys"
+        },
+        {
+          "field": "model",
+          "value": "H22VXBG023C"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "3710"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 3100
+  }
+}

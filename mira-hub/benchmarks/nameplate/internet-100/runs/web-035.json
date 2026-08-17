@@ -1,0 +1,210 @@
+{
+  "image": "c09r1_08.jpg",
+  "bytes": 103256,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "NORD DRIVESYSTEMS",
+      "model": "SK 32 SEK215",
+      "catalogNumber": null,
+      "serialNumber": "202037319-100",
+      "equipmentType": "gear",
+      "confidence": 0.95,
+      "rawText": [
+        "NORD DRIVESYSTEMS",
+        "NORD Gear Corporation",
+        "US-Waunakee, WI.53597",
+        "Type SK 32 SEK215",
+        "S1",
+        "2017",
+        "No.202037319-100",
+        "25511621",
+        "5284 lb-in",
+        "8.36",
+        "1 Pos",
+        "M5",
+        "P",
+        "209",
+        "rpm",
+        "110 lbs",
+        "MOBIL 600 XP220 2.11 qt",
+        "SF 1.00",
+        "www.nord.com"
+      ]
+    },
+    "rawText": [
+      "NORD DRIVESYSTEMS",
+      "NORD Gear Corporation",
+      "US-Waunakee, WI.53597",
+      "Type SK 32 SEK215",
+      "S1",
+      "2017",
+      "No.202037319-100",
+      "25511621",
+      "5284 lb-in",
+      "8.36",
+      "1 Pos",
+      "M5",
+      "P",
+      "209",
+      "rpm",
+      "110 lbs",
+      "MOBIL 600 XP220 2.11 qt",
+      "SF 1.00",
+      "www.nord.com"
+    ],
+    "values": {
+      "manufacturer": "NORD DRIVESYSTEMS",
+      "model": "SK 32 SEK215",
+      "catalogNumber": null,
+      "equipmentType": "gear",
+      "serialNumber": "202037319-100",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NORD DRIVESYSTEMS"
+        },
+        {
+          "field": "model",
+          "value": "SK 32 SEK215"
+        },
+        {
+          "field": "serialNumber",
+          "value": "202037319-100"
+        },
+        {
+          "field": "equipmentType",
+          "value": "gear"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 17,
+        "cropBbox": {
+          "left": 253,
+          "top": 108,
+          "width": 661,
+          "height": 475
+        },
+        "imageWidth": 1000,
+        "imageHeight": 750,
+        "cropRotationDeg": 0,
+        "ms": 2347
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2663,
+    "total_ms": 6808
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "NORD Gear Corporation",
+      "model": "Type SK 32 SEK215",
+      "catalogNumber": "SEK215",
+      "serialNumber": "202037319-100",
+      "equipmentType": "gear",
+      "confidence": 0.95,
+      "rawText": [
+        "NORD DRIVESYSTEMS",
+        "NORD Gear Corporation",
+        "US-Waunakee, WI.53597",
+        "Type SK 32 SEK215",
+        "S1",
+        "2017",
+        "No.202037319-100",
+        "25511621",
+        "5284",
+        "lb-in",
+        "8.36",
+        "1 Pos",
+        "M5",
+        "P",
+        "n",
+        "209",
+        "rpm",
+        "110",
+        "lbs",
+        "MOBIL 600 XP220 2.11 qt",
+        "SF 1.00",
+        "www.nord.com"
+      ]
+    },
+    "rawText": [
+      "NORD DRIVESYSTEMS",
+      "NORD Gear Corporation",
+      "US-Waunakee, WI.53597",
+      "Type SK 32 SEK215",
+      "S1",
+      "2017",
+      "No.202037319-100",
+      "25511621",
+      "5284",
+      "lb-in",
+      "8.36",
+      "1 Pos",
+      "M5",
+      "P",
+      "n",
+      "209",
+      "rpm",
+      "110",
+      "lbs",
+      "MOBIL 600 XP220 2.11 qt",
+      "SF 1.00",
+      "www.nord.com"
+    ],
+    "values": {
+      "manufacturer": "NORD Gear Corporation",
+      "model": "Type SK 32 SEK215",
+      "catalogNumber": "SEK215",
+      "equipmentType": "gear",
+      "serialNumber": "202037319-100",
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "NORD Gear Corporation"
+        },
+        {
+          "field": "model",
+          "value": "Type SK 32 SEK215"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "SEK215"
+        },
+        {
+          "field": "serialNumber",
+          "value": "202037319-100"
+        },
+        {
+          "field": "equipmentType",
+          "value": "gear"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4056
+  }
+}

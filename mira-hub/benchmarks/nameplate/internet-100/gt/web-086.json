@@ -1,0 +1,33 @@
+{
+  "sample_id": "web-086",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "easy",
+  "conditions": ["frontal", "high_resolution", "dirt"],
+  "photo_gt": {
+    "manufacturer": "SIEMENS",
+    "model": "MICROMASTER 440",
+    "catalogNumber": "6SE6440-2AD31-1CA1",
+    "serialNumber": "XAF109-006159",
+    "equipment_category": "vfd_drive",
+    "specs": [
+      {"field": "version", "value_verbatim": "E-Stand (Version) : H01/2.21", "unit": "", "confidence": "high"},
+      {"field": "input_voltage", "value_verbatim": "380-480V +10% -10%", "unit": "V", "confidence": "high"},
+      {"field": "input_phase", "value_verbatim": "3ØAC", "unit": "", "confidence": "high"},
+      {"field": "input_current", "value_verbatim": "23.1 / (33.8VT)A", "unit": "A", "confidence": "high"},
+      {"field": "input_frequency", "value_verbatim": "47 - 63 Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "output_voltage", "value_verbatim": "0-INPUT V", "unit": "V", "confidence": "high"},
+      {"field": "output_current", "value_verbatim": "26.0A (32.0A VT)", "unit": "A", "confidence": "high"},
+      {"field": "output_frequency", "value_verbatim": "0 - 550Hz", "unit": "Hz", "confidence": "high"},
+      {"field": "motor_power_kw", "value_verbatim": "11.00kW (15.00kW VT)", "unit": "kW", "confidence": "high"},
+      {"field": "ip_rating", "value_verbatim": "IP20", "unit": "", "confidence": "high"},
+      {"field": "ambient", "value_verbatim": "Temp Range : -10 - +50°C", "unit": "°C", "confidence": "high"},
+      {"field": "duty", "value_verbatim": "Duty Class II", "unit": "", "confidence": "high"},
+      {"field": "line_filter", "value_verbatim": "Line Filter Class A", "unit": "", "confidence": "high"},
+      {"field": "equipment_code", "value_verbatim": "Power conv.equip. 5B33", "unit": "", "confidence": "high"}
+    ],
+    "marks": ["CE", "EAC", "cULus"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

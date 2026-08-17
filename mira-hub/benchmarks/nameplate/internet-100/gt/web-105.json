@@ -1,0 +1,25 @@
+{
+  "sample_id": "web-105",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "embossed", "low_contrast", "high_resolution"],
+  "photo_gt": {
+    "manufacturer": "Westinghouse",
+    "model": "Marine D.C. Motor",
+    "catalogNumber": "unknown",
+    "serialNumber": "IS7P205",
+    "equipment_category": "dc_motor",
+    "specs": [
+      {"field": "power_hp", "value_verbatim": "1000 H.P.", "unit": "HP", "confidence": "high"},
+      {"field": "voltage", "value_verbatim": "600 VOLTS", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "AMPS. 1320", "unit": "A", "confidence": "high"},
+      {"field": "rpm", "value_verbatim": "R.P.M. 425", "unit": "RPM", "confidence": "medium"},
+      {"field": "instruction_book", "value_verbatim": "REFER TO INSTRUCTION BOOK 5107", "unit": "", "confidence": "high"}
+    ],
+    "marks": [],
+    "marks_complete": true
+  },
+  "oem_gt": null,
+  "notes": "Cast bronze embossed plate: 'Westinghouse' / 'MARINE D.C. MOTOR' with circled W logo. 'WESTINGHOUSE ELECTRIC & MANUFACTURING COMPANY, E. PITTSBURGH WORKS, EAST PITTSBURGH, PA., U.S.A.' Serial reads 'IS7P205' (first character could be the digit 1 vs letter I in the cast typeface). RPM last digit is a stylized 5 — read as 425, confidence medium. No certification marks on this vintage plate."
+}

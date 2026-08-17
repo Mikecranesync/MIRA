@@ -1,0 +1,32 @@
+{
+  "sample_id": "web-058",
+  "usable": true,
+  "exclusion_reason": null,
+  "difficulty": "medium",
+  "conditions": ["frontal", "glare", "embossed", "faded"],
+  "photo_gt": {
+    "manufacturer": "Mielewerke A.G.",
+    "model": "T. Wa. 700",
+    "catalogNumber": "unknown",
+    "serialNumber": "12471",
+    "equipment_category": "washing_machine",
+    "specs": [
+      {"field": "rpm", "value_verbatim": "n 2800", "unit": "r/min", "confidence": "high"},
+      {"field": "motor_type", "value_verbatim": "Mw 67/2 K", "unit": "", "confidence": "medium"},
+      {"field": "voltage", "value_verbatim": "220 Δ/380 Y", "unit": "V", "confidence": "high"},
+      {"field": "current", "value_verbatim": "1,6/0,9", "unit": "A", "confidence": "medium"},
+      {"field": "power_kw", "value_verbatim": "0,32", "unit": "kW", "confidence": "medium"},
+      {"field": "power_consumption", "value_verbatim": "Wattaufnahme 500", "unit": "W", "confidence": "high"},
+      {"field": "frequency", "value_verbatim": "50", "unit": "Hz", "confidence": "high"},
+      {"field": "supply_type", "value_verbatim": "Drehstrom", "unit": "", "confidence": "high"},
+      {"field": "machine_heating_voltage", "value_verbatim": "220Δ/380Y", "unit": "Volt", "confidence": "medium"},
+      {"field": "machine_heating_power", "value_verbatim": "6300", "unit": "Watt", "confidence": "medium"},
+      {"field": "boiler_heating_voltage", "value_verbatim": "220Δ/380Y", "unit": "Volt", "confidence": "medium"},
+      {"field": "boiler_heating_power", "value_verbatim": "3000", "unit": "Watt", "confidence": "medium"},
+      {"field": "total_rated_power", "value_verbatim": "Gesamt-Nennaufnahme 9300 Watt", "unit": "Watt", "confidence": "high"}
+    ],
+    "marks": ["VDE"],
+    "marks_complete": true
+  },
+  "oem_gt": null
+}

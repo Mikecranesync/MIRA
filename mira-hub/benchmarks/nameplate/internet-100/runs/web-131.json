@@ -1,0 +1,184 @@
+{
+  "image": "c06r1_11.jpg",
+  "bytes": 186365,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": "Acme Transformer",
+      "model": "GENERAL PURPOSE TRANSFORMER",
+      "catalogNumber": "T-1-53006",
+      "serialNumber": null,
+      "equipmentType": "Transformer",
+      "confidence": 0.95,
+      "rawText": [
+        "Acme Transformer",
+        "LUMBERTON NC A DIVISION OF ACME ELECTRIC CORPORATION",
+        "GENERAL PURPOSE TRANSFORMER",
+        "CATALOG NO T-1-53006",
+        "STYLE ER",
+        "PRIMARY VOLTS 240X480",
+        "SECONDARY VOLTS 120/240",
+        ".150 KVA 50/60 HZ",
+        "1 PHASE",
+        "WINDING RISE 80°C",
+        "UL LISTED 50BB",
+        "ENCLOSURE TYPE 3R OUTDOOR",
+        "INSULATION SYSTEM B-3223-L CLASS 130",
+        "WIRING INFORMATION ON INSIDE COVER",
+        "A-4-701370"
+      ]
+    },
+    "rawText": [
+      "Acme Transformer",
+      "LUMBERTON NC A DIVISION OF ACME ELECTRIC CORPORATION",
+      "GENERAL PURPOSE TRANSFORMER",
+      "CATALOG NO T-1-53006",
+      "STYLE ER",
+      "PRIMARY VOLTS 240X480",
+      "SECONDARY VOLTS 120/240",
+      ".150 KVA 50/60 HZ",
+      "1 PHASE",
+      "WINDING RISE 80°C",
+      "UL LISTED 50BB",
+      "ENCLOSURE TYPE 3R OUTDOOR",
+      "INSULATION SYSTEM B-3223-L CLASS 130",
+      "WIRING INFORMATION ON INSIDE COVER",
+      "A-4-701370"
+    ],
+    "values": {
+      "manufacturer": "Acme Transformer",
+      "model": "GENERAL PURPOSE TRANSFORMER",
+      "catalogNumber": "T-1-53006",
+      "equipmentType": "Transformer",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Acme Transformer"
+        },
+        {
+          "field": "model",
+          "value": "GENERAL PURPOSE TRANSFORMER"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "T-1-53006"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Transformer"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 47,
+        "cropBbox": {
+          "left": 43,
+          "top": 161,
+          "width": 901,
+          "height": 570
+        },
+        "imageWidth": 960,
+        "imageHeight": 960,
+        "cropRotationDeg": 0,
+        "ms": 2741
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 3567,
+    "total_ms": 8088
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": "Acme Transformer",
+      "model": "GENERAL PURPOSE TRANSFORMER",
+      "catalogNumber": "T-1-53006",
+      "serialNumber": null,
+      "equipmentType": "Transformer",
+      "confidence": 0.95,
+      "rawText": [
+        "Acme Transformer",
+        "LUMBERTON NC • A DIVISION OF ACME ELECTRIC CORPORATION",
+        "GENERAL PURPOSE TRANSFORMER",
+        "CATALOG NO T-1-53006",
+        "PRIMARY VOLTS 240x480",
+        "SECONDARY VOLTS 120/240",
+        ".150 KVA 50/60 HZ",
+        "STYLE ER",
+        "WINDING RISE 80°C",
+        "UL LISTED 50B8",
+        "SP®",
+        "ENCLOSURE TYPE 3R OUTDOOR",
+        "INSULATION SYSTEM B-3223-L CLASS 130",
+        "WIRING INFORMATION ON INSIDE COVER",
+        "A-4-701370"
+      ]
+    },
+    "rawText": [
+      "Acme Transformer",
+      "LUMBERTON NC • A DIVISION OF ACME ELECTRIC CORPORATION",
+      "GENERAL PURPOSE TRANSFORMER",
+      "CATALOG NO T-1-53006",
+      "PRIMARY VOLTS 240x480",
+      "SECONDARY VOLTS 120/240",
+      ".150 KVA 50/60 HZ",
+      "STYLE ER",
+      "WINDING RISE 80°C",
+      "UL LISTED 50B8",
+      "SP®",
+      "ENCLOSURE TYPE 3R OUTDOOR",
+      "INSULATION SYSTEM B-3223-L CLASS 130",
+      "WIRING INFORMATION ON INSIDE COVER",
+      "A-4-701370"
+    ],
+    "values": {
+      "manufacturer": "Acme Transformer",
+      "model": "GENERAL PURPOSE TRANSFORMER",
+      "catalogNumber": "T-1-53006",
+      "equipmentType": "Transformer",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": "UL"
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "manufacturer",
+          "value": "Acme Transformer"
+        },
+        {
+          "field": "model",
+          "value": "GENERAL PURPOSE TRANSFORMER"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "T-1-53006"
+        },
+        {
+          "field": "equipmentType",
+          "value": "Transformer"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "total_ms": 4085
+  }
+}

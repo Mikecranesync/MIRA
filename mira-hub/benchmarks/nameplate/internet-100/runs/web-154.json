@@ -1,0 +1,132 @@
+{
+  "image": "c07r1_05.jpg",
+  "bytes": 51310,
+  "mime": "image/jpeg",
+  "improved": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "5UA50",
+      "catalogNumber": null,
+      "serialNumber": null,
+      "equipmentType": null,
+      "confidence": 0.95,
+      "rawText": [
+        "5UA50",
+        "50L"
+      ]
+    },
+    "rawText": [
+      "5UA50",
+      "50L"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "5UA50",
+      "catalogNumber": null,
+      "equipmentType": null,
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "5UA50"
+        }
+      ],
+      "needsReview": [],
+      "rejected": []
+    },
+    "imageSource": {
+      "kind": "auto_detected_crop",
+      "detector": {
+        "model": "PP-OCRv5_mobile_det",
+        "regionCount": 12,
+        "cropBbox": {
+          "left": 260,
+          "top": 284,
+          "width": 427,
+          "height": 274
+        },
+        "imageWidth": 933,
+        "imageHeight": 700,
+        "cropRotationDeg": 180,
+        "ms": 1843
+      }
+    },
+    "fallback_used": false,
+    "detect_ms": 2088,
+    "total_ms": 3335
+  },
+  "baseline": {
+    "candidate": {
+      "manufacturer": null,
+      "model": "5OL",
+      "catalogNumber": "5UA50",
+      "serialNumber": null,
+      "equipmentType": "contactor",
+      "confidence": 0.95,
+      "rawText": [
+        "5OL",
+        "5UA50",
+        "A2",
+        "95 NC",
+        "97 NO",
+        "H Reset A",
+        "Test",
+        "NO 98",
+        "NC 96",
+        "4 12",
+        "6 13"
+      ]
+    },
+    "rawText": [
+      "5OL",
+      "5UA50",
+      "A2",
+      "95 NC",
+      "97 NO",
+      "H Reset A",
+      "Test",
+      "NO 98",
+      "NC 96",
+      "4 12",
+      "6 13"
+    ],
+    "values": {
+      "manufacturer": null,
+      "model": "5OL",
+      "catalogNumber": "5UA50",
+      "equipmentType": "contactor",
+      "serialNumber": null,
+      "voltage": null,
+      "current": null,
+      "resolution": null,
+      "ambient": null,
+      "insulation": null,
+      "marks": null
+    },
+    "review": {
+      "promotable": [
+        {
+          "field": "model",
+          "value": "5OL"
+        },
+        {
+          "field": "catalogNumber",
+          "value": "5UA50"
+        }
+      ],
+      "needsReview": [
+        "equipmentType"
+      ],
+      "rejected": []
+    },
+    "total_ms": 2020
+  }
+}
