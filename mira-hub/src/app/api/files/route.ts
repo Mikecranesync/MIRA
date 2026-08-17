@@ -26,6 +26,7 @@ import {
   isLinkTargetType,
   claimIngest,
   releaseIngestClaim,
+  syncNotebookSourcesForFile,
   type AttachTarget,
   type FileCapability,
 } from "@/lib/workspace-files";
@@ -270,6 +271,10 @@ export async function POST(req: Request) {
             { status: 202 },
           );
         }
+        // Targets were attached BEFORE ingestion (uploadId was null), so
+        // notebook source membership was skipped then — create it now, or the
+        // doc is indexed but never citable in notebook chat (review F1).
+        await syncNotebookSourcesForFile(ctx.tenantId, park.fileId, uploadId, ctx.userId ?? null);
         return NextResponse.json(
           {
             ok: true,

@@ -28,6 +28,7 @@ vi.mock("@/lib/workspace-files", async (importOriginal) => {
     attachFileToTargets: vi.fn(),
     claimIngest: vi.fn(),
     releaseIngestClaim: vi.fn(),
+    syncNotebookSourcesForFile: vi.fn(async () => 0),
   };
 });
 
@@ -35,7 +36,7 @@ import { POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
-import { parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
+import { parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim, syncNotebookSourcesForFile } from "@/lib/workspace-files";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const USER = "99999999-9999-9999-9999-999999999999";
@@ -153,6 +154,10 @@ describe("POST /api/files", () => {
     );
     expect(res.status).toBe(201);
     expect(vi.mocked(ingestTextToNode).mock.calls[0][0]).toMatchObject({ nodeId: NODE_ID });
+    // Review F1: targets were attached BEFORE ingestion (uploadId null), so the
+    // route must reconcile notebook source membership AFTER the fenced link —
+    // otherwise the doc is indexed but never citable in notebook chat.
+    expect(syncNotebookSourcesForFile).toHaveBeenCalledWith(TENANT, FILE_ID, UPLOAD_ID, USER);
   });
 
   it("reuses an already-parsed file without re-parsing", async () => {

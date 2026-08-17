@@ -666,7 +666,7 @@ export async function listFiles(
 ): Promise<WorkspaceFile[]> {
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
   const offset = Math.max(opts.offset ?? 0, 0);
-  const files = await withTenantContext(tenantId, async (c) => {
+  return withTenantContext(tenantId, async (c) => {
     const params: unknown[] = [tenantId];
     let where = `f.tenant_id = $1::uuid`;
     if (opts.q && opts.q.trim()) {
@@ -677,18 +677,75 @@ export async function listFiles(
       where += ` AND NOT EXISTS (SELECT 1 FROM workspace_file_links l
                    WHERE l.tenant_id = f.tenant_id AND l.file_id = f.id)`;
     }
-    params.push(limit, offset);
-    const r = await c.query<FileRow>(
-      `SELECT ${FILE_COLS} FROM namespace_direct_uploads f
-        WHERE ${where}
-        ORDER BY f.created_at DESC
-        LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params,
-    );
-    return r.rows.map(rowToFile);
+    const page = async (lim: number, off: number) => {
+      const r = await c.query<FileRow>(
+        `SELECT ${FILE_COLS} FROM namespace_direct_uploads f
+          WHERE ${where}
+          ORDER BY f.created_at DESC
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, lim, off],
+      );
+      return r.rows.map(rowToFile);
+    };
+    if (!opts.capability) return page(limit, offset);
+    // Capability is DERIVED (mime + filename), so it cannot be a SQL predicate
+    // without duplicating the classifier. Filtering after LIMIT/OFFSET returns
+    // incomplete/unstable pages (a page of non-matching rows hides matches
+    // beyond it — PR #3245 review F2), so page over the FILTERED sequence:
+    // batch-scan from row 0, apply offset/limit to matching rows only.
+    const BATCH = 200;
+    const out: WorkspaceFile[] = [];
+    let toSkip = offset;
+    for (let dbOffset = 0; ; dbOffset += BATCH) {
+      const rows = await page(BATCH, dbOffset);
+      for (const f of rows) {
+        if (f.capability !== opts.capability) continue;
+        if (toSkip > 0) {
+          toSkip--;
+          continue;
+        }
+        out.push(f);
+        if (out.length >= limit) return out;
+      }
+      if (rows.length < BATCH) return out;
+    }
   });
-  // Capability is derived (mime + filename), so it filters app-side.
-  return opts.capability ? files.filter((f) => f.capability === opts.capability) : files;
+}
+
+/**
+ * Create the notebook chat-scope source rows for every equipment_notebook
+ * link of a file whose indexed doc just landed (PR #3245 review F1): a fresh
+ * upload attaches its targets BEFORE ingestion, while uploadId is still null,
+ * so attachFileToTargets deliberately skips source membership — without this
+ * reconciliation the file shows in the notebook's Files section but never
+ * enters chat scope. Idempotent (source upsert); call after a WON
+ * linkFileToUpload. Returns the number of notebook links synced.
+ */
+export async function syncNotebookSourcesForFile(
+  tenantId: string,
+  fileId: string,
+  uploadId: string,
+  addedBy: string | null = null,
+): Promise<number> {
+  return withTenantContext(tenantId, async (c) => {
+    const links = await c.query<{ target_id: string; role: string | null }>(
+      `SELECT target_id::text AS target_id, role FROM workspace_file_links
+        WHERE tenant_id = $1::uuid AND file_id = $2::uuid
+          AND target_type = 'equipment_notebook'`,
+      [tenantId, fileId],
+    );
+    for (const l of links.rows) {
+      await upsertNotebookSourceTx(c, {
+        tenantId,
+        notebookId: l.target_id,
+        docId: uploadId,
+        matchState: "user_confirmed",
+        sourceRole: l.role ?? null,
+        addedBy,
+      });
+    }
+    return links.rows.length;
+  });
 }
 
 /** Files attached to one target — the notebook/asset/node/WO Files section. */

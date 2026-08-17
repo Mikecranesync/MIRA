@@ -39,6 +39,8 @@ import {
   relocateFile,
   deleteFile,
   linkedDocIdsForNode,
+  syncNotebookSourcesForFile,
+  listFiles,
 } from "@/lib/workspace-files";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
@@ -416,5 +418,79 @@ describe("linkedDocIdsForNode", () => {
     const { query } = clientFromRoutes([]);
     expect(await linkedDocIdsForNode(TENANT, "junk")).toEqual([]);
     expect(query).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncNotebookSourcesForFile (PR #3245 review F1)", () => {
+  it("creates a user_confirmed source row for EVERY notebook link of the file", async () => {
+    clientFromRoutes([
+      {
+        match: /FROM workspace_file_links/,
+        rows: [
+          { target_id: NOTEBOOK_ID, role: "manual" },
+          { target_id: NOTEBOOK_ID_2, role: null },
+        ],
+      },
+    ]);
+    const n = await syncNotebookSourcesForFile(TENANT, FILE_ID, UPLOAD_ID, "u_1");
+    expect(n).toBe(2);
+    expect(upsertNotebookSourceTx).toHaveBeenCalledTimes(2);
+    expect(upsertNotebookSourceTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        notebookId: NOTEBOOK_ID,
+        docId: UPLOAD_ID,
+        matchState: "user_confirmed",
+        sourceRole: "manual",
+      }),
+    );
+  });
+
+  it("is a no-op for a file with no notebook links", async () => {
+    clientFromRoutes([{ match: /FROM workspace_file_links/, rows: [] }]);
+    expect(await syncNotebookSourcesForFile(TENANT, FILE_ID, UPLOAD_ID)).toBe(0);
+    expect(upsertNotebookSourceTx).not.toHaveBeenCalled();
+  });
+});
+
+describe("listFiles capability paging (PR #3245 review F2)", () => {
+  const fileRow = (i: number, mime: string, name: string) => ({
+    id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    filename: name,
+    mime_type: mime,
+    size_bytes: "10",
+    content_sha256: "x",
+    upload_id: null,
+    verified: false,
+    created_at: "2026-08-16T00:00:00Z",
+    link_count: "0",
+  });
+
+  it("finds a match beyond the first DB page (filter applies BEFORE pagination)", async () => {
+    // First batch (200 rows): all stored-only. The matching PDF is on the
+    // SECOND batch — the old post-LIMIT filter returned an empty page here.
+    const batch1 = Array.from({ length: 200 }, (_, i) => fileRow(i, "application/zip", `a${i}.zip`));
+    const batch2 = [fileRow(900, "application/pdf", "manual.pdf")];
+    let call = 0;
+    clientFromRoutes([
+      { match: /FROM namespace_direct_uploads/, rows: () => (call++ === 0 ? batch1 : batch2) },
+    ]);
+    const out = await listFiles(TENANT, { capability: "indexable", limit: 50 });
+    expect(out.map((f) => f.filename)).toEqual(["manual.pdf"]);
+  });
+
+  it("applies offset to the FILTERED sequence, not raw rows", async () => {
+    const rows = [
+      fileRow(1, "application/pdf", "one.pdf"),
+      fileRow(2, "application/zip", "skip.zip"),
+      fileRow(3, "application/pdf", "two.pdf"),
+      fileRow(4, "application/pdf", "three.pdf"),
+    ];
+    let call = 0;
+    clientFromRoutes([
+      { match: /FROM namespace_direct_uploads/, rows: () => (call++ === 0 ? rows : []) },
+    ]);
+    const out = await listFiles(TENANT, { capability: "indexable", limit: 2, offset: 1 });
+    expect(out.map((f) => f.filename)).toEqual(["two.pdf", "three.pdf"]);
   });
 });

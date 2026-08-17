@@ -503,18 +503,31 @@ approved:
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/node-knowledge-ingest.ts:195":
+  "mira-hub/src/lib/node-knowledge-ingest.ts:196":
     approved_classification: TENANT-ONLY
     query_sha256: "c965f42f4c6ba78d95e3e5ccd62a6ac2a8117e5a199aecfc9948106875aa083f"
     reason: "embedPendingNodeChunks embed-on-write pass — reads back ONLY the rows it
       just wrote for THIS upload (scoped by tenant_id + source_url = node-doc/<uploadId>/…
       + source_type='node_attachment' + embedding IS NULL) to fill their embeddings. Not a
       user-facing corpus read, so the hybrid OEM filter (is_private=false OR …) does not
-      apply; the writer must only ever touch its own tenant's freshly-inserted chunks."
+      apply; the writer must only ever touch its own tenant's freshly-inserted chunks.
+      Moved :195->:196 (import pool added above for deleteOrphanNodeIngest; SQL unchanged)."
     query_snippet: |
       `SELECT id::text, content FROM knowledge_entries
                   WHERE tenant_id = $1 AND source_url = $2
                     AND source_type = 'node_attachment' AND embedding IS NULL
+  "mira-hub/src/lib/node-knowledge-ingest.ts:480":
+    approved_classification: TENANT-ONLY
+    query_sha256: "0d657143447d26f41d1f666f9eba610597104a78d42f8daf31127e5568a2e89a"
+    reason: "deleteOrphanNodeIngest — best-effort DELETE of a LOST-FENCE ingest's own
+      chunk set (Codex round-2 P2 on PR #3245: an orphaned duplicate upload stayed
+      retrievable). Scoped tenant_id + doc_id where doc_id is the upload THIS request
+      just created; not a corpus read, and the hybrid OEM filter cannot apply — OEM
+      rows belong to the system tenant and can never match the caller's tenant_id
+      plus a doc_id minted in this request. Raw owner pool because factorylm_app has
+      no DELETE grant (migrations 011/049 are SELECT/INSERT only)."
+    query_snippet: |
+      `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`,
   "mira-hub/src/lib/node-document-proposals.ts:127":
     approved_classification: TENANT-ONLY
     query_sha256: "2b804da172f666377ddc314cf7c65597bf670e570c4bd547e6f76fbda3de4909"
