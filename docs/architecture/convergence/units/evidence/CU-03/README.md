@@ -21,6 +21,14 @@ not satisfy the evidence requirement", amendment of 2026-08-16). Dispositions li
 | `round-9-group{A,B}-adjudication-2-PASS.md` | 9.4 | adjudication, evidence-complete scope (`--diff-cap 48000`) | **PASS ×2** (A: 2/2 refuted; B: 4 refuted + 1 medium sustained, non-blocking) |
 | `round-9-groupC-adjudication-PASS.md` | 9.3 | adjudication | **PASS** (high refuted; 1 medium sustained, non-blocking) |
 
-Groups: A = `mira-crawler/{tasks,ingest,crawler,main.py}` · B = `mira-crawler/tests/` ·
-C = `tools/ mira-bots/ mira-hub/ tests/ .github/ docs/`. Every file excluded from a
-group's scoped diff is printed in that run's output and covered by another group.
+Rounds 1–9 groups: A = `mira-crawler/{tasks,ingest,crawler,main.py}` · B =
+`mira-crawler/tests/` · C = `tools/ mira-bots/ mira-hub/ tests/ .github/ docs/`.
+**Correction (Gate 9 round 3):** that union did NOT cover `.claude/commands/gate7-review.md`
+or `mira-core/scripts/ingest_equipment_photos.py` — the earlier "covered by another
+group" claim here was false, and the two crash logs above were gitignored (`*.log`) and
+absent from the PR until force-added on 2026-08-16. Round 10 adds `.claude/` and
+`mira-core/` to group C so the union covers every file, and every round-10 report embeds
+Run receipts (head SHA, scope, exclusions, chars sent/total, sha256 of the exact reviewed
+diff bytes, requested reasoning_effort) so coverage is provable from the committed files.
+The round-9 adjudicated "PASS" rows above are preserved as history but **VOID** — see
+`../CU-03.md` § "Gate 9 round 3".

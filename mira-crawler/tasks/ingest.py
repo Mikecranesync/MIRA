@@ -92,18 +92,45 @@ class _UncuratedHop(Exception):
     """A redirect hop failed the curation gate (reason in str)."""
 
 
+def _allowed_base() -> Path:
+    """The one operator-controlled ingest dir (resolved). Trusted config —
+    the dir itself may be a symlinked mount; everything BELOW it is not."""
+    return Path(
+        os.getenv(
+            "INGEST_LOCAL_ALLOWED_DIR",
+            os.getenv("GDRIVE_SYNC_DEST", "/data/gdrive_sync"),
+        )
+    ).resolve()
+
+
 def _read_validated(local_path: Path) -> bytes:
-    """Open the validated resolved path bound to the validated object where
-    the platform allows. On POSIX — the production platform; crawler workers
-    run in Linux containers — O_NOFOLLOW refuses a symlink swapped into the
-    FINAL path component after validation (Gate 7/9 TOCTOU finding). On
-    Windows dev boxes O_NOFOLLOW does not exist and the plain open of the
-    resolved path remains; parent-component swaps are likewise out of scope
-    (a full dir_fd walk is not warranted for the operator-controlled inbox —
-    residual recorded in units/CU-03.md)."""
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
-    fd = os.open(str(local_path), flags)
-    with os.fdopen(fd, "rb") as fh:
+    """Open the validated path with symlink resolution refused for EVERY
+    component below the allowed base, on platforms that support dir_fd
+    (POSIX — the production platform; crawler workers run in Linux
+    containers). The walk starts from a directory fd of the resolved base
+    and opens each component with O_NOFOLLOW, so neither a final-component
+    nor a parent-component symlink swapped in after validation can redirect
+    the read outside the base (Gate 7/9 TOCTOU findings, both rounds).
+    Any component outside the base, or any symlink below it, raises and the
+    caller refuses the ingest (fail closed). On Windows dev boxes dir_fd
+    and O_NOFOLLOW do not exist and the plain open of the resolved path
+    remains — that residual is recorded in units/CU-03.md; production does
+    not run there."""
+    if os.open not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
+        return local_path.read_bytes()
+    base = _allowed_base()
+    rel = local_path.relative_to(base)  # ValueError -> caller refuses
+    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(str(base), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in rel.parts[:-1]:
+            next_fd = os.open(part, dir_flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+        file_fd = os.open(rel.parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+    finally:
+        os.close(fd)
+    with os.fdopen(file_fd, "rb") as fh:
         return fh.read()
 
 
@@ -113,21 +140,18 @@ def _validated_local_path(url: str) -> Path | None:
 
     The caller must open THIS returned resolved path via _read_validated —
     never re-parse the URL. That closes the validate-one-path/open-another
-    bug (Gate 9 round 1); _read_validated adds O_NOFOLLOW on POSIX (the
-    production platform) so a final-component symlink swap after validation
-    is refused there. The remaining residual (Windows dev boxes;
-    parent-component swaps) is recorded in units/CU-03.md.
+    bug (Gate 9 round 1); _read_validated then refuses symlinks on every
+    component below the allowed base via a dir_fd walk on POSIX (the
+    production platform), closing both the final-component and the
+    parent-component swap (Gate 9 round 2). The remaining residual
+    (Windows dev boxes only) is recorded in units/CU-03.md.
     """
     from urllib.parse import urlparse
     from urllib.request import url2pathname
 
-    allowed_base = os.getenv(
-        "INGEST_LOCAL_ALLOWED_DIR",
-        os.getenv("GDRIVE_SYNC_DEST", "/data/gdrive_sync"),
-    )
     try:
         local = Path(url2pathname(urlparse(url).path)).resolve()
-        base = Path(allowed_base).resolve()
+        base = _allowed_base()
         if local.is_relative_to(base):
             return local
         return None

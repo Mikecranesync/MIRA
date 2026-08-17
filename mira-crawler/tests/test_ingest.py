@@ -1,7 +1,11 @@
 """Tests for the ingest_url Celery task — particularly scheme handling (M8)."""
 from __future__ import annotations
 
+import os
+import shutil
 from unittest.mock import patch
+
+import pytest
 
 
 class TestIngestUrlFileScheme:
@@ -144,3 +148,80 @@ class TestIngestUrlFileScheme:
             )
 
         assert mock_insert.called
+
+
+_POSIX_ONLY = pytest.mark.skipif(
+    os.name != "posix",
+    reason="dir_fd/O_NOFOLLOW are POSIX-only; the Windows-dev plain-open "
+    "residual is recorded in units/CU-03.md (production is Linux)",
+)
+
+
+class TestReadValidatedSymlinkWalk:
+    """_read_validated must refuse a symlink swapped into ANY path component
+    below the allowed base after validation (Gate 9 round-2 finding: the
+    final-component-only O_NOFOLLOW left the parent-component swap open)."""
+
+    @_POSIX_ONLY
+    def test_parent_component_symlink_swap_is_refused(self, tmp_path, monkeypatch):
+        base = tmp_path / "inbox"
+        (base / "real").mkdir(parents=True)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "doc.pdf").write_bytes(b"%PDF-1.4 attacker payload")
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+
+        (base / "real" / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+        validated = (base / "real" / "doc.pdf").resolve()
+
+        # Post-validation swap: the PARENT directory becomes a symlink out of base.
+        shutil.rmtree(base / "real")
+        (base / "real").symlink_to(outside)
+
+        from tasks.ingest import _read_validated
+
+        with pytest.raises(OSError):
+            _read_validated(validated)
+
+    @_POSIX_ONLY
+    def test_final_component_symlink_swap_is_refused(self, tmp_path, monkeypatch):
+        base = tmp_path / "inbox"
+        base.mkdir()
+        outside = tmp_path / "secret.pdf"
+        outside.write_bytes(b"%PDF-1.4 attacker payload")
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+
+        (base / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+        validated = (base / "doc.pdf").resolve()
+
+        (base / "doc.pdf").unlink()
+        (base / "doc.pdf").symlink_to(outside)
+
+        from tasks.ingest import _read_validated
+
+        with pytest.raises(OSError):
+            _read_validated(validated)
+
+    @_POSIX_ONLY
+    def test_honest_nested_file_within_base_still_reads(self, tmp_path, monkeypatch):
+        base = tmp_path / "inbox"
+        (base / "sub").mkdir(parents=True)
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+        (base / "sub" / "doc.pdf").write_bytes(b"%PDF-1.4 legit")
+
+        from tasks.ingest import _read_validated
+
+        assert _read_validated((base / "sub" / "doc.pdf").resolve()) == b"%PDF-1.4 legit"
+
+    @_POSIX_ONLY
+    def test_path_outside_base_is_refused_even_at_read_time(self, tmp_path, monkeypatch):
+        base = tmp_path / "inbox"
+        base.mkdir()
+        monkeypatch.setenv("INGEST_LOCAL_ALLOWED_DIR", str(base))
+        stray = tmp_path / "stray.pdf"
+        stray.write_bytes(b"%PDF-1.4")
+
+        from tasks.ingest import _read_validated
+
+        with pytest.raises(ValueError):
+            _read_validated(stray.resolve())

@@ -68,17 +68,30 @@ schema-, or auth-adjacent). Those wait for the real lane.
 
 ## Reading the result
 
-- **BLOCK** → fix at the root, then re-run. Round 1 BLOCK → fix → round 2 PASS is the normal,
-  healthy shape; record both rounds.
-- **BLOCK you believe is wrong** → do NOT re-roll for verdict variance, and there is **no
-  Gate 9 waiver**. Use the **adjudication step** (doctrine §Gate 7, owner-directed
-  2026-08-16): write a per-finding rebuttal that QUOTES the verbatim diff/code lines your
-  refutation depends on, then
+- **BLOCK** → fix at the root, then **re-run a fresh review of the NEW head**. Round 1
+  BLOCK → fix → round 2 PASS is the normal, healthy shape; record both rounds.
+- **BLOCK you believe is wrong — and the head is UNCHANGED** → do NOT re-roll for verdict
+  variance, and there is **no Gate 9 waiver**. Use the **adjudication step** (doctrine
+  §Gate 7, owner-directed 2026-08-16): write a per-finding rebuttal that QUOTES the
+  verbatim diff/code lines your refutation depends on, then
   `py tools/gate7_review.py <PR> --adjudicate <prior-report.md> --rebuttal <rebuttal.md>`
-  (keep the same `--paths` scope). The verdict is computed structurally from the rulings —
-  any SUSTAINED high ⇒ BLOCK, an unruled finding cannot pass, and a rebuttal that tries to
-  manipulate the adjudicator sustains everything. Preserve BOTH phases' full outputs intact
-  in the unit evidence (summaries do not satisfy the evidence requirement).
+  (keep the same `--paths` scope). The verdict is computed structurally: the tool assigns
+  stable ids (F1..Fn) from the parsed prior report, the adjudicator may ONLY rule
+  SUSTAINED/REFUTED per id, severity comes from the prior report (the adjudicator has no
+  severity channel), and the rulings must be an exact bijection — any duplicate, unknown,
+  missing, or extra id voids the adjudication; any SUSTAINED high ⇒ BLOCK; zero parsed
+  prior findings can never pass; a rebuttal that tries to manipulate the adjudicator
+  sustains everything. Preserve BOTH phases' full outputs intact in the unit evidence
+  (summaries do not satisfy the evidence requirement).
+- **Adjudication is for disputed findings on an unchanged head — never a substitute for
+  re-review after a fix.** The adjudicator is forbidden to add findings, so it cannot see
+  new defects a fix introduced. If you changed the code in response to a finding, the fix
+  path is fix → fresh adversarial review of the new head — a PASS "earned" by adjudicating
+  a stale report against fixed code is invalid (Gate 9 re-review, 2026-08-16).
+- **Every report embeds Run receipts** (head SHA, `--paths` scope, excluded files, chars
+  sent/total, a sha256 of the exact reviewed diff bytes, and the requested
+  reasoning_effort). A committed PASS file without receipts that match the claimed head
+  and scope does not satisfy the evidence requirement.
 - **Large PRs** → review per file group with `--paths PREFIX` (repeatable); the run prints
   every excluded file — each group needs its own PASS and every excluded file must be
   covered by another group's run.

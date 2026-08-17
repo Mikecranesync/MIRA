@@ -1,0 +1,14 @@
+Gate 7: PR #3268 · effort=xhigh · triggers=['database/schema', 'tenant scoping', 'security boundaries', 'cross-repository contract', 'concurrency/idempotency/state', 'broad multi-module (8 top-level dirs)', 'forced by --xhigh']
+Gate 7: sending 40,000/52,620 diff chars to a third-party provider (redacted: IP/MAC/SN) — TRUNCATED
+Traceback (most recent call last):
+  File "C:\Users\hharp\Documents\GitHub\MIRA\.claude\worktrees\cu-03\tools\gate7_review.py", line 543, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "C:\Users\hharp\Documents\GitHub\MIRA\.claude\worktrees\cu-03\tools\gate7_review.py", line 538, in main
+    sys.stdout.write(report)
+    ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "C:\Users\hharp\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2011' in position 614: character maps to <undefined>
+LANE_EXIT=1
