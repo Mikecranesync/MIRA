@@ -472,11 +472,18 @@ describe("listFiles capability paging (PR #3245 review F2)", () => {
     const batch1 = Array.from({ length: 200 }, (_, i) => fileRow(i, "application/zip", `a${i}.zip`));
     const batch2 = [fileRow(900, "application/pdf", "manual.pdf")];
     let call = 0;
-    clientFromRoutes([
+    const { query } = clientFromRoutes([
       { match: /FROM namespace_direct_uploads/, rows: () => (call++ === 0 ? batch1 : batch2) },
     ]);
     const out = await listFiles(TENANT, { capability: "indexable", limit: 50 });
     expect(out.map((f) => f.filename)).toEqual(["manual.pdf"]);
+    // Round 3 F2: batches advance by KEYSET cursor, not OFFSET — a concurrent
+    // insert cannot shift/duplicate/hide rows across batches.
+    const secondSql = String(query.mock.calls[1][0]);
+    expect(secondSql).toMatch(/\(f\.created_at, f\.id\) < /);
+    expect(secondSql).not.toMatch(/OFFSET/);
+    // Cursor params carry the last row of batch 1.
+    expect(query.mock.calls[1][1]).toContain(batch1[199].id);
   });
 
   it("orders with a unique tie-breaker (created_at, id) so batches cannot shuffle tied rows (round 2 F2)", async () => {

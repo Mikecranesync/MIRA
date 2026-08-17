@@ -231,18 +231,31 @@ export async function POST(req: Request) {
       const claim = await claimIngest(ctx.tenantId, park.fileId);
       if (!claim.claimed) {
         if (claim.reason === "already_ingested" && claim.uploadId) {
-          // Idempotent reconciliation (review round 2 F1): this request's
+          // Idempotent reconciliation (review rounds 2+3 F1): this request's
           // attach ran while uploadId was still null (raced finalize), and a
           // prior request's sync may have failed transiently — re-running the
           // upsert here is what heals a stranded notebook membership on retry.
-          await syncNotebookSourcesForFile(
-            ctx.tenantId,
-            park.fileId,
-            claim.uploadId,
-            ctx.userId ?? null,
-          ).catch((err) => console.warn("[api/files POST] source re-sync failed", err));
+          // A failure here is NOT swallowed into unqualified success: the
+          // response exposes the retryable unsynchronized state.
+          let sourcesSynced = true;
+          try {
+            await syncNotebookSourcesForFile(ctx.tenantId, park.fileId, claim.uploadId, ctx.userId ?? null);
+          } catch (err) {
+            sourcesSynced = false;
+            console.warn("[api/files POST] source re-sync failed (still pending)", err);
+          }
           return NextResponse.json(
-            { ok: true, indexed: true, duplicate: true, fileId: park.fileId, uploadId: claim.uploadId },
+            {
+              ok: true,
+              indexed: true,
+              duplicate: true,
+              sourcesSynced,
+              fileId: park.fileId,
+              uploadId: claim.uploadId,
+              ...(sourcesSynced
+                ? {}
+                : { warning: "indexed, but notebook chat scope is still pending — retry to complete it" }),
+            },
             { status: 200 },
           );
         }

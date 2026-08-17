@@ -677,32 +677,51 @@ export async function listFiles(
       where += ` AND NOT EXISTS (SELECT 1 FROM workspace_file_links l
                    WHERE l.tenant_id = f.tenant_id AND l.file_id = f.id)`;
     }
-    const page = async (lim: number, off: number) => {
+    // f.id DESC tie-breaker: created_at alone is not a total order (review
+    // round 2 F2 — tied rows could shuffle between statements).
+    const ORDER = `ORDER BY f.created_at DESC, f.id DESC`;
+    if (!opts.capability) {
       const r = await c.query<FileRow>(
-        // f.id DESC tie-breaker: created_at alone is not a total order, and
-        // batch-scanning with LIMIT/OFFSET over tied rows lets Postgres pick a
-        // different order per query — duplicating/omitting rows across batches
-        // (review round 2 F2).
         `SELECT ${FILE_COLS} FROM namespace_direct_uploads f
           WHERE ${where}
-          ORDER BY f.created_at DESC, f.id DESC
+          ${ORDER}
           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, lim, off],
+        [...params, limit, offset],
       );
       return r.rows.map(rowToFile);
-    };
-    if (!opts.capability) return page(limit, offset);
+    }
     // Capability is DERIVED (mime + filename), so it cannot be a SQL predicate
     // without duplicating the classifier. Filtering after LIMIT/OFFSET returns
-    // incomplete/unstable pages (a page of non-matching rows hides matches
-    // beyond it — PR #3245 review F2), so page over the FILTERED sequence:
-    // batch-scan from row 0, apply offset/limit to matching rows only.
+    // incomplete/unstable pages (round 1 F2), and OFFSET batching shifts when
+    // rows are inserted mid-scan (round 3 F2) — so page over the FILTERED
+    // sequence with a KEYSET cursor on the total order (created_at, id):
+    // a concurrent insert lands before the first cursor and can never shift,
+    // duplicate, or hide rows in later batches.
     const BATCH = 200;
     const out: WorkspaceFile[] = [];
     let toSkip = offset;
-    for (let dbOffset = 0; ; dbOffset += BATCH) {
-      const rows = await page(BATCH, dbOffset);
-      for (const f of rows) {
+    // createdAt is passed back VERBATIM (Date or string — the pg driver
+    // serializes either correctly); String() would produce a JS date format
+    // Postgres cannot parse.
+    let cursor: { createdAt: unknown; id: string } | null = null;
+    for (;;) {
+      const p: unknown[] = [...params];
+      let cursorCond = "";
+      if (cursor) {
+        p.push(cursor.createdAt, cursor.id);
+        cursorCond = ` AND (f.created_at, f.id) < ($${p.length - 1}::timestamptz, $${p.length}::uuid)`;
+      }
+      p.push(BATCH);
+      const r = await c.query<FileRow>(
+        `SELECT ${FILE_COLS} FROM namespace_direct_uploads f
+          WHERE ${where}${cursorCond}
+          ${ORDER}
+          LIMIT $${p.length}`,
+        p,
+      );
+      const rows = r.rows;
+      for (const row of rows) {
+        const f = rowToFile(row);
         if (f.capability !== opts.capability) continue;
         if (toSkip > 0) {
           toSkip--;
@@ -712,6 +731,8 @@ export async function listFiles(
         if (out.length >= limit) return out;
       }
       if (rows.length < BATCH) return out;
+      const last = rows[rows.length - 1];
+      cursor = { createdAt: last.created_at, id: last.id };
     }
   });
 }

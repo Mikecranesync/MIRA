@@ -192,8 +192,31 @@ describe("POST /api/files", () => {
       ]),
     );
     expect(retry.status).toBe(200);
-    expect(await retry.json()).toMatchObject({ indexed: true, duplicate: true, uploadId: UPLOAD_ID });
+    expect(await retry.json()).toMatchObject({
+      indexed: true,
+      duplicate: true,
+      sourcesSynced: true,
+      uploadId: UPLOAD_ID,
+    });
     expect(syncNotebookSourcesForFile).toHaveBeenCalledWith(TENANT, FILE_ID, UPLOAD_ID, USER);
+  });
+
+  it("a retry whose re-sync ALSO fails exposes the unsynchronized state — never unqualified success (round 3 F1)", async () => {
+    vi.mocked(withTenantContext).mockResolvedValueOnce(NODE_ID as never);
+    vi.mocked(claimIngest).mockResolvedValue({
+      claimed: false,
+      reason: "already_ingested",
+      uploadId: UPLOAD_ID,
+    });
+    vi.mocked(syncNotebookSourcesForFile).mockRejectedValue(new Error("db still down"));
+    const res = await POST(
+      upload("note.txt", "text/plain", "torque spec 42Nm", [
+        { targetType: "equipment_notebook", targetId: NOTEBOOK_ID },
+      ]),
+    );
+    const body = await res.json();
+    expect(body).toMatchObject({ indexed: true, duplicate: true, sourcesSynced: false });
+    expect(body.warning).toMatch(/chat scope.*pending/i);
   });
 
   it("reuses an already-parsed file without re-parsing", async () => {
