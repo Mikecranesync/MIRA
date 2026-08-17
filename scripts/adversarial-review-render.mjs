@@ -37,6 +37,10 @@ const sha = arg("--sha");
 const baseSha = arg("--base", "(unknown)");
 const iteration = Number(arg("--iteration", "1"));
 const checkOnly = process.argv.includes("--check-only");
+// Post-cap human authorization (Mike, 2026-08-17): stamped INTO the durable
+// record so a post-cap review is visibly authorized, never silent. The line
+// sits AFTER review_iteration so the strict ledger envelope is unaffected.
+const humanAuthorized = process.argv.includes("--human-authorized");
 if (!sha) fail("--sha is required");
 if (!Number.isInteger(iteration) || iteration < 1) fail("--iteration must be a positive integer");
 
@@ -84,6 +88,7 @@ lines.push(`reviewed_sha: ${sha}`);
 lines.push(`base_sha: ${baseSha}`);
 lines.push(`status: ${status}`);
 lines.push(`review_iteration: ${iteration}`);
+if (humanAuthorized) lines.push("post_cap_human_authorized: true");
 lines.push("");
 lines.push(`BLOCKER: ${counts.BLOCKER}`);
 lines.push(`HIGH: ${counts.HIGH}`);

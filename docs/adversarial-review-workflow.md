@@ -65,7 +65,18 @@ bash scripts/adversarial-review-loop.sh 3245
 # One review round only — post the verdict, no remediation:
 bash scripts/adversarial-review-loop.sh --review-only
 # (or directly: bash scripts/adversarial-review.sh [PR] [--force] [--dry-run])
+
+# Post-cap verification pass (requires EXPLICIT human authorization — see
+# "Durable review budget" below). Review-only by construction:
+ADV_REVIEW_HUMAN_AUTHORIZED=1 bash scripts/adversarial-review.sh <PR>
 ```
+
+PR arguments are validated strictly (numeric PR ids only); unknown flags fail
+closed. `--allow-dirty` was **removed** (2026-08-17): an "exact-SHA" review of
+a tree carrying uncommitted tracked drift is a lie, so a dirty tracked tree is
+always a precondition failure. A failed fetch of the base branch is a tooling
+failure (exit 2) — a stale merge-base silently poisons the reviewed diff scope,
+so it fails closed rather than proceeding.
 
 From a Claude Code session: `/adversarial-gate [PR] [--review-only]`.
 
@@ -133,7 +144,28 @@ instructions.
   verdict at that SHA** (a prior ISSUES_FOUND exits 1, not 0). `--force`
   re-reviews.
 - Iteration numbers and dedupe are derived from the PR's own comments —
-  stateless, no local state file to drift.
+  stateless, no local state file to drift. Parsing lives in ONE place
+  (`scripts/adversarial-review-ledger.mjs`, consumed by both scripts): the
+  next iteration is **max(validated `review_iteration`) + 1**, never a raw
+  comment count — duplicate posts of the same record and malformed comments
+  cannot inflate it (live defect on PR #3288, 2026-08-17).
+
+### Durable review budget (2026-08-17 hardening)
+
+The 3-round ceiling is enforced against the **PR's validated review ledger**,
+not any single invocation's loop counter — `consumed` = distinct validated
+`(reviewed_sha, review_iteration)` records across the PR's whole history.
+Restarting the script does **not** mint three fresh autonomous rounds; a new
+session resumes the same budget, and the loop re-reads the ledger **every
+cycle** so concurrent or crashed invocations still count.
+
+Past the cap, exactly one action exists: a **human-authorized, review-only**
+pass — `ADV_REVIEW_HUMAN_AUTHORIZED=1` (set by a human, per run; the loop
+refuses it without `--review-only`, and post-cap autonomous remediation does
+not exist). The resulting record is stamped `post_cap_human_authorized: true`
+inside its fenced block, so a post-cap review is visibly authorized in the
+durable ledger, never silent. An unreadable ledger is a tooling failure —
+unknown budget is never treated as budget available.
 
 ## Loop rules
 

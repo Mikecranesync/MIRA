@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # adversarial-review.sh — one Codex adversarial review round, persisted to the PR.
 #
-#   scripts/adversarial-review.sh [PR_NUMBER] [--force] [--dry-run] [--allow-dirty]
+#   scripts/adversarial-review.sh [PR_NUMBER] [--force] [--dry-run]
 #
 # Flow: resolve PR -> verify local HEAD == PR head (never review unpushed or
-# stale state) -> dedupe by reviewed SHA against existing PR comments -> run
-# `codex exec` (read-only sandbox, JSON output schema) -> validate + render ->
-# `gh pr comment`. See docs/adversarial-review-workflow.md.
+# stale state) -> parse the validated review ledger (iteration + durable
+# budget) -> run `codex exec` (read-only sandbox, JSON output schema) ->
+# validate + render -> `gh pr comment`. See docs/adversarial-review-workflow.md.
 #
 # Exit codes:
 #   0  GREEN (or already reviewed GREEN at this SHA) — re-verified against the
@@ -14,30 +14,50 @@
 #      is still the reviewed SHA
 #   1  ISSUES_FOUND (review posted)
 #   2  tooling failure (codex/gh/parse) — NEVER interpreted as GREEN
-#   3  precondition failure (no PR, dirty tree, HEAD mismatch)
+#   3  precondition failure (no PR, dirty tree, HEAD mismatch, bad arguments,
+#      or the durable review budget is exhausted without human authorization)
 #   4  stale GREEN — the review is GREEN for the reviewed SHA, but the PR head
 #      advanced while Codex ran; the new head is unreviewed
 #
+# Durable budget (Mike, 2026-08-17): a PR gets at most MAX_TOTAL_ROUNDS (3)
+# validated review rounds ACROSS ITS WHOLE HISTORY — counted from the PR
+# comment ledger, so a restarted script cannot mint fresh rounds. Past the
+# cap, a review runs ONLY with ADV_REVIEW_HUMAN_AUTHORIZED=1 (an explicit,
+# per-run human authorization; this runner is review-only by construction),
+# and the posted record carries `post_cap_human_authorized: true`.
+#
 # Env overrides: CODEX_BIN, CODEX_TIMEOUT_SECS (default 2400), CODEX_MODEL,
-# ADV_REVIEW_OUT_DIR (default .adversarial-review/, gitignored).
+# ADV_REVIEW_OUT_DIR (default .adversarial-review/, gitignored),
+# ADV_REVIEW_HUMAN_AUTHORIZED (post-cap override, human-set only).
 
 set -euo pipefail
 
 MARKER='[CODEX-ADVERSARIAL-REVIEW]'
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_TIMEOUT_SECS="${CODEX_TIMEOUT_SECS:-2400}"
+MAX_TOTAL_ROUNDS=3
 
 FORCE=0
 DRY_RUN=0
-ALLOW_DIRTY=0
 PR_NUMBER=""
 for a in "$@"; do
   case "$a" in
     --force) FORCE=1 ;;
     --dry-run) DRY_RUN=1 ;;
-    --allow-dirty) ALLOW_DIRTY=1 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    *) PR_NUMBER="$a" ;;
+    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
+    -*)
+      # --allow-dirty was deliberately REMOVED (it let a review claim an
+      # exact SHA while the tree contained uncommitted drift). Unknown flags
+      # fail closed rather than being silently swallowed into PR_NUMBER.
+      echo "ERROR: unknown flag: $a" >&2; exit 3 ;;
+    *)
+      if [ -n "$PR_NUMBER" ]; then
+        echo "ERROR: multiple PR arguments given ('$PR_NUMBER' and '$a')." >&2; exit 3
+      fi
+      if ! [[ "$a" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: PR argument must be a numeric PR id (got: '$a')." >&2; exit 3
+      fi
+      PR_NUMBER="$a" ;;
   esac
 done
 
@@ -67,22 +87,28 @@ if [ "$LOCAL_SHA" != "$HEAD_SHA" ]; then
   echo "       Push your work (or pull the PR head) so the reviewed tree matches GitHub." >&2
   exit 3
 fi
-if [ "$ALLOW_DIRTY" -eq 0 ] && [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "ERROR: working tree has uncommitted tracked changes — the review would not match $HEAD_SHA." >&2
-  echo "       Commit/push first, or pass --allow-dirty if you accept the contamination." >&2
+  echo "       Commit/push first. (--allow-dirty was removed: an exact-SHA review of a dirty tree is a lie.)" >&2
   exit 3
 fi
 
-git fetch origin "$BASE_REF" -q || true
+# Fail CLOSED: a stale origin/$BASE_REF silently yields a wrong merge-base,
+# which poisons the reviewed diff scope and the coverage gate.
+git fetch origin "$BASE_REF" -q || {
+  echo "ERROR: could not fetch origin/$BASE_REF — refusing to compute a merge-base from stale state." >&2
+  exit 2
+}
 MERGE_BASE="$(git merge-base "origin/$BASE_REF" HEAD)"
 
-# ── Dedupe + iteration number (stateless — PR comments are the ledger) ──────
+# ── Ledger: iteration + dedupe + durable budget (PR comments are the ledger) ─
 #
 # TRUST BOUNDARY (Codex F1, round 2): anyone who can comment on the PR can
-# type the marker. A ledger entry counts ONLY if (a) it was authored by the
-# SAME GitHub account this runner posts as, and (b) the metadata block parses
-# strictly (marker line, fenced block, exact `reviewed_sha:`/`status:` lines).
-# Forged or malformed comments are ignored — they can never mint a GREEN.
+# type the marker. adversarial-review-ledger.mjs is the single validated-record
+# parser: same-account author + strict envelope, or the comment is ignored.
+# Iteration derives from the MAX validated review_iteration (duplicate posts
+# cannot inflate it); the budget counts DISTINCT validated records and
+# survives restarts (Mike, 2026-08-17).
 VIEWER="$(gh api user --jq .login 2>/dev/null || true)"
 if [ -z "$VIEWER" ]; then
   echo "ERROR: could not resolve the authenticated GitHub user (gh api user)" >&2
@@ -91,29 +117,13 @@ fi
 COMMENTS_FILE="$OUT_DIR/comments-$PR_NUMBER.json"
 gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" --paginate > "$COMMENTS_FILE" || {
   echo "ERROR: could not list PR comments" >&2; exit 2; }
-# The single-quoted JS below intentionally contains a JS template literal.
-# shellcheck disable=SC2016
-read -r ITERATION ALREADY PRIOR_STATUS < <(node -e '
-  const fs=require("fs");
-  const raw=fs.readFileSync(process.argv[1],"utf8");
-  // --paginate can emit concatenated arrays: "][", normalize.
-  const arr=JSON.parse("["+raw.replace(/\]\s*\[/g,",").replace(/^\s*\[|\]\s*$/g,"")+"]");
-  const marker=process.argv[2], sha=process.argv[3], viewer=process.argv[4];
-  // Strict envelope: marker line, blank line, fenced block whose first lines
-  // are exact reviewed_sha/status fields. startsWith+includes is forgeable
-  // by ANY commenter; this shape plus the author check is the trust gate.
-  const HEAD_RE=/^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\n/;
-  const reviews=arr.filter(c=>typeof c.body==="string"
-    && c.body.startsWith(marker)
-    && c.user && c.user.login===viewer);
-  const parsed=reviews.map(c=>{const m=c.body.match(HEAD_RE);return m?{sha:m[1],status:m[2]}:null;});
-  const atSha=parsed.filter(p=>p&&p.sha===sha);
-  let prior="NONE";
-  if(atSha.length) prior=atSha[atSha.length-1].status;
-  else if(reviews.length&&parsed.some((p,i)=>p===null&&reviews[i].body.includes("reviewed_sha: "+sha))) prior="MALFORMED";
-  process.stdout.write(`${reviews.length+1} ${atSha.length?1:0} ${prior}\n`);
-' "$COMMENTS_FILE" "$MARKER" "$HEAD_SHA" "$VIEWER")
-if [ -z "${PRIOR_STATUS:-}" ]; then
+LEDGER_JSON="$(node "$ROOT/scripts/adversarial-review-ledger.mjs" "$COMMENTS_FILE" "$VIEWER" --sha "$HEAD_SHA")" || {
+  echo "ERROR: could not parse the PR comment ledger" >&2; exit 2; }
+ITERATION="$(printf '%s' "$LEDGER_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(String(JSON.parse(d).next_iteration)))')"
+ALREADY="$(printf '%s' "$LEDGER_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(String(JSON.parse(d).already)))')"
+PRIOR_STATUS="$(printf '%s' "$LEDGER_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).prior_status))')"
+CONSUMED="$(printf '%s' "$LEDGER_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(String(JSON.parse(d).consumed)))')"
+if [ -z "${PRIOR_STATUS:-}" ] || [ -z "${ITERATION:-}" ] || [ -z "${CONSUMED:-}" ]; then
   echo "ERROR: could not parse the PR comment ledger" >&2
   exit 2
 fi
@@ -142,6 +152,23 @@ if [ "$ALREADY" = "1" ] && [ "$FORCE" -eq 0 ]; then
     ISSUES_FOUND) exit 1 ;;
     *) echo "Prior review at this SHA is malformed — re-reviewing is required (--force)." >&2; exit 2 ;;
   esac
+fi
+
+# ── Durable review budget (cross-restart; the ledger is the counter) ─────────
+# The dedupe early-exit above consumes nothing; only a NEW review is budgeted.
+HUMAN_AUTHORIZED=0
+if [ "$CONSUMED" -ge "$MAX_TOTAL_ROUNDS" ]; then
+  if [ "${ADV_REVIEW_HUMAN_AUTHORIZED:-0}" = "1" ]; then
+    HUMAN_AUTHORIZED=1
+    echo "Post-cap review authorized by a human (ADV_REVIEW_HUMAN_AUTHORIZED=1):" \
+         "$CONSUMED validated rounds already recorded on PR #$PR_NUMBER."
+  else
+    echo "ERROR: the durable review budget for PR #$PR_NUMBER is exhausted" \
+         "($CONSUMED validated review rounds >= $MAX_TOTAL_ROUNDS, counted from the PR ledger)." >&2
+    echo "       A restarted script does NOT reset this budget. Post-cap review requires an" >&2
+    echo "       explicit human authorization: ADV_REVIEW_HUMAN_AUTHORIZED=1 (review-only)." >&2
+    exit 3
+  fi
 fi
 
 # Prior-round context: pass the last review's finding ids so Codex can confirm
@@ -206,8 +233,10 @@ if [ "$CODEX_RC" -ne 0 ] || [ ! -s "$ENVELOPE" ]; then
 fi
 
 # ── Validate + render (fail-safe: malformed => exit 2, never GREEN) ──────────
+RENDER_ARGS=(--sha "$HEAD_SHA" --base "$MERGE_BASE" --iteration "$ITERATION")
+if [ "$HUMAN_AUTHORIZED" -eq 1 ]; then RENDER_ARGS+=(--human-authorized); fi
 if ! STATUS_LINE="$(node "$ROOT/scripts/adversarial-review-render.mjs" "$ENVELOPE" \
-      --sha "$HEAD_SHA" --base "$MERGE_BASE" --iteration "$ITERATION" --check-only)"; then
+      "${RENDER_ARGS[@]}" --check-only)"; then
   echo "ERROR: Codex envelope is malformed. Envelope: $ENVELOPE  Log: $CODEX_LOG" >&2
   exit 2
 fi
@@ -237,7 +266,7 @@ if [ "${STATUS_LINE%% *}" = "GREEN" ]; then
 fi
 BODY_FILE="$OUT_DIR/comment-$PR_NUMBER-$HEAD_SHA.md"
 node "$ROOT/scripts/adversarial-review-render.mjs" "$ENVELOPE" \
-  --sha "$HEAD_SHA" --base "$MERGE_BASE" --iteration "$ITERATION" > "$BODY_FILE"
+  "${RENDER_ARGS[@]}" > "$BODY_FILE"
 
 STATUS="${STATUS_LINE%% *}"
 echo "Review result: $STATUS_LINE"
