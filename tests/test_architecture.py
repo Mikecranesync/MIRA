@@ -1309,7 +1309,19 @@ def scan_ingest_url_dispatches(rel_path: str, source: str) -> list[str]:
             continue
         if called not in names:
             continue
-        if not any(kw.arg == "is_private" for kw in node.keywords):
+        declared = any(kw.arg == "is_private" for kw in node.keywords)
+        # Celery's `apply_async(kwargs={...})` passes task arguments inside a
+        # dict literal rather than as call keywords (Gate 7 finding). Read the
+        # dict's KEYS — still executable syntax, still not prose.
+        if not declared:
+            for kw in node.keywords:
+                if kw.arg == "kwargs" and isinstance(kw.value, ast.Dict):
+                    declared = any(
+                        isinstance(k, ast.Constant) and k.value == "is_private"
+                        for k in kw.value.keys
+                    )
+                    break
+        if not declared:
             missing.append(
                 f"{rel_path}:{node.lineno} dispatches {called} without an explicit "
                 "is_private — it inherits the fail-closed default (private) and "
@@ -1369,6 +1381,7 @@ def test_ingest_url_scanner_catches_violations():
         "plain kwarg dispatch": 'ingest_url.delay(url=u, source_type="manual")\n',
         "direct call": 'ingest_url(url=u)\n',
         "apply_async": 'ingest_url.apply_async(kwargs={"url": u})\n',
+        "apply_async dict without the key": 'ingest_url.apply_async(kwargs={"url": u, "source_type": "m"})\n',
         "import alias": (
             "from tasks.ingest import ingest_url as iu\n"
             'iu.delay(url=u, source_type="manual")\n'
@@ -1385,6 +1398,8 @@ def test_ingest_url_scanner_catches_violations():
             "from tasks.ingest import ingest_url as iu\n"
             "iu.delay(url=u, is_private=False)\n"
         ),
+        "apply_async kwargs dict carrying the key":
+            'ingest_url.apply_async(kwargs={"url": u, "is_private": False})\n',
     }
     for label, src in good.items():
         assert scan_ingest_url_dispatches("good.py", src) == [], f"false positive: {label}"
@@ -1403,6 +1418,8 @@ def test_ingest_url_contract_cannot_be_satisfied_by_prose():
         "docstring above": '"""We pass is_private=False here."""\ningest_url.delay(url=u)\n',
         "unrelated string arg": 'ingest_url.delay(url=u, source_type="is_private=False")\n',
         "later real call": 'ingest_url.delay(url=u)\nother(is_private=False)\n',
+        "kwargs dict with the name only as a VALUE":
+            'ingest_url.apply_async(kwargs={"url": u, "note": "is_private"})\n',
     }
     for label, src in prose_only.items():
         assert scan_ingest_url_dispatches("prose.py", src), (

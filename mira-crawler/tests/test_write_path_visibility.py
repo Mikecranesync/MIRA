@@ -739,3 +739,23 @@ class TestRecrawlPreservesVisibility:
         by_url = {d["url"]: d["is_private"] for d in dispatched}
         assert by_url["https://x.invalid/a.pdf"] is False, "shared row must stay shared"
         assert by_url["https://x.invalid/b.pdf"] is True, "private row must stay private"
+
+    def test_visibility_cannot_be_set_positionally(self) -> None:
+        """Gate 7 finding: a positional 5th argument must not set visibility.
+
+        `is_private` is keyword-only, so an accidental positional cannot flip
+        the corpus a document lands in — and a static contract that scans
+        keywords is therefore complete rather than merely usually-right.
+        """
+        import inspect
+
+        try:
+            from tasks.ingest import ingest_url
+        except ImportError:
+            from mira_crawler.tasks.ingest import ingest_url
+
+        sig = inspect.signature(ingest_url.run if hasattr(ingest_url, "run") else ingest_url)
+        param = sig.parameters["is_private"]
+        assert param.kind is inspect.Parameter.KEYWORD_ONLY, (
+            f"is_private must be keyword-only, got {param.kind}"
+        )

@@ -212,7 +212,7 @@ def shared_corpus_source_allowed(url: str) -> tuple[bool, str]:
 )
 def ingest_url(self, url: str, manufacturer: str = "",
                model: str = "", source_type: str = "equipment_manual",
-               is_private: bool = True):
+               *, is_private: bool = True):
     """Download, extract, chunk, embed, and store one document.
 
     Works with PDFs and HTML pages. Skips already-ingested chunks (dedup).
@@ -231,6 +231,11 @@ def ingest_url(self, url: str, manufacturer: str = "",
     those drain as ``TypeError``. So it takes a default, and the default is the
     **safe direction: private**. Re-sharing a wrongly-privatized row is a
     recrawl; un-sharing a leaked one is an incident.
+
+    It is **keyword-only** (Gate 7 finding): a positional 5th argument could
+    otherwise set corpus visibility by accident, and a static contract that
+    scans keywords would not see it. Celery dispatch is keyword-based, so this
+    costs nothing.
 
     A ``file://`` URL is **forced private** regardless of what the caller
     declares. Local files reach this task from ``tasks/gdrive.py`` (a Google
