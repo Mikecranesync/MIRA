@@ -22,6 +22,7 @@ from chat_adapter import TelegramChatAdapter
 from PIL import Image
 from shared import (
     chat_tenant,
+    document_spool,
     guardrails,
     print_autoeval,
     print_translator,
@@ -151,6 +152,23 @@ def _hub_intake_configured() -> bool:
         hub_url=HUB_URL or HUB_IMPORT_URL or None,
         token=HUB_INGEST_TOKEN or None,
     )
+
+
+def _hub_intake_missing_vars() -> list[str]:
+    """Which Hub env vars are empty — named so ops can fix the door.
+
+    Empty list means the door is configured. Prod was down for documents on
+    2026-08-16 with an empty ``HUB_INGEST_TOKEN`` and nothing in the logs said
+    so; every unconfigured document now logs these names at WARNING.
+    """
+    if _hub_intake_configured():
+        return []
+    missing: list[str] = []
+    if not (HUB_URL or HUB_IMPORT_URL):
+        missing.append("HUB_URL")
+    if not HUB_INGEST_TOKEN:
+        missing.append("HUB_INGEST_TOKEN")
+    return missing or ["HUB_URL", "HUB_INGEST_TOKEN"]
 
 
 engine = Supervisor(
@@ -404,49 +422,123 @@ async def _submit_doc_to_hub(pdf_bytes: bytes, filename: str, caption: str, upda
     )
 
 
+def _retained_doc_reply(filename: str, spooled: document_spool.SpooledDocument | None) -> str:
+    """Technician-facing sentence for a PDF the Hub door could not take.
+
+    Two honest outcomes only: the file is kept (say so, and say it is not
+    searchable yet), or it is not (say that too — never imply a save that did
+    not happen).
+    """
+    if spooled is not None:
+        return (
+            f"Saved {filename} — I have the file and it's held on the bot.\n"
+            "I can't reach the document library right now, so it isn't searchable "
+            "yet; it's queued to be indexed once that connection is back. "
+            "You don't need to send it again."
+        )
+    return (
+        f"I couldn't hold on to {filename}, and I won't pretend otherwise — "
+        "nothing was saved. Please send it again in a few minutes, or upload it "
+        "in the Command Center."
+    )
+
+
+def _spool_document_locally(
+    pdf_bytes: bytes, filename: str, caption: str, update: Update, reason: str
+) -> document_spool.SpooledDocument | None:
+    """Retain the bytes on the bot's own volume. Never raises."""
+    try:
+        uploader, _captured_at, tenant_id = _intake_meta(update)
+    except Exception:  # noqa: BLE001 — provenance is optional; the bytes are not
+        uploader, tenant_id = "", ""
+    return document_spool.spool_document(
+        raw_bytes=pdf_bytes,
+        filename=filename,
+        mime="application/pdf",
+        tenant_id=tenant_id,
+        uploader=uploader,
+        caption=caption,
+        source="telegram",
+        reason=reason,
+    )
+
+
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Receive PDF documents and submit them to the Hub as intake evidence.
 
-    HubV3: a PDF is a contextualization source. The bot builds the §2 intake
-    contract and POSTs it (+ raw bytes) to the Hub import endpoint, where it
-    lands as a ``proposed`` source for review. The bot owns no truth.
+    HubV3: a PDF is a contextualization source. The bot POSTs the raw bytes to
+    the Hub's citable folder-upload door, where they land as a ``proposed``
+    source for review. The bot owns no truth.
+
+    **A technician's document is never discarded.** When the Hub door is
+    unavailable — unconfigured env (the 2026-08-16 prod defect: an empty
+    ``HUB_INGEST_TOKEN`` turned a real manual into "Hub intake is not
+    configured." and a dropped file), a rejected POST, or a transport error —
+    the bytes are retained locally by ``shared.document_spool`` and the reply
+    says what actually happened. Retention is not ingest: the file is kept and
+    ledgered so it can be re-driven, not made searchable.
     """
     doc = update.message.document
     filename = doc.file_name or "upload.pdf"
     caption = update.message.caption or ""
 
     if doc.mime_type != "application/pdf":
-        await update.message.reply_text(f"Only PDF files are supported (got {doc.mime_type}).")
+        await update.message.reply_text(
+            f"I can only read PDF manuals right now, and {filename} isn't one. "
+            "Save or export it as a PDF and send it again."
+        )
         return
 
     MB = 1024 * 1024
     if doc.file_size and doc.file_size > 20 * MB:
-        await update.message.reply_text(f"{filename} is {doc.file_size // MB}MB — limit is 20MB.")
+        await update.message.reply_text(
+            f"{filename} is {doc.file_size // MB}MB and I can only take 20MB. "
+            "Send just the section you need, or split the file and send it in parts."
+        )
         return
 
-    if not _hub_intake_configured():
-        await update.message.reply_text("Hub intake is not configured.")
-        return
-
-    await update.message.reply_text(f"Submitting {filename} to the Hub...")
+    missing = _hub_intake_missing_vars()
+    if missing:
+        logger.warning(
+            "HUB_DOC_INTAKE_UNCONFIGURED missing=%s file=%s — retaining locally, not dropping",
+            ",".join(missing),
+            filename,
+        )
+        await update.message.reply_text(f"Got {filename} — saving it now...")
+    else:
+        await update.message.reply_text(f"Submitting {filename} to the Hub...")
     logger.info("PDF from telegram_id=%s: %s", update.effective_user.id, filename)
 
     async def _do_submit_doc():
         try:
             tg_file = await context.bot.get_file(doc.file_id)
             pdf_bytes = bytes(await tg_file.download_as_bytearray())
-            ok = await _submit_doc_to_hub(pdf_bytes, filename, caption, update)
-            if ok:
-                reply = (
+        except Exception as exc:  # noqa: BLE001 — background task must never raise
+            logger.error("doc download error: %s", exc)
+            await update.message.reply_text(
+                f"I couldn't download {filename} from Telegram, so I don't have the "
+                "file. Please send it again."
+            )
+            return
+
+        try:
+            submitted = False
+            if not missing:
+                submitted = await _submit_doc_to_hub(pdf_bytes, filename, caption, update)
+            if submitted:
+                await update.message.reply_text(
                     f"Submitted *{filename}* to the Hub for review.\n"
-                    "It will appear as a proposed source once contextualized."
+                    "It will appear as a proposed source once contextualized.",
+                    parse_mode="Markdown",
                 )
-            else:
-                reply = f"Couldn't submit {filename} to the Hub. Please try again later."
-            await update.message.reply_text(reply, parse_mode="Markdown")
-        except Exception as exc:
+                return
+            reason = "hub_unconfigured" if missing else "hub_submit_failed"
+            spooled = _spool_document_locally(pdf_bytes, filename, caption, update, reason)
+            await update.message.reply_text(_retained_doc_reply(filename, spooled))
+        except Exception as exc:  # noqa: BLE001 — background task must never raise
             logger.error("doc submit error: %s", exc)
-            await update.message.reply_text(f"Submitting {filename} failed. Please try again.")
+            spooled = _spool_document_locally(pdf_bytes, filename, caption, update, "doc_submit_error")
+            await update.message.reply_text(_retained_doc_reply(filename, spooled))
 
     asyncio.create_task(_do_submit_doc())
 
