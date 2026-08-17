@@ -3,6 +3,13 @@
 Inserts embedded chunks into the knowledge_entries table using the same
 connection pattern as mira-core/mira-ingest/db/neon.py (SQLAlchemy +
 NullPool, sslmode=require).
+
+`knowledge_entries` is a HYBRID corpus, so both write entry points here —
+`insert_chunk` and `store_chunks` — take a **required keyword-only
+`is_private`**: `False` for the shared OEM corpus every tenant reads, `True`
+for rows scoped to `tenant_id`. There is deliberately no default; see
+`insert_chunk`'s docstring for why, and
+`.claude/rules/knowledge-entries-tenant-scoping.md` for the law.
 """
 
 from __future__ import annotations
